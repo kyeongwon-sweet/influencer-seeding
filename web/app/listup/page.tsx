@@ -78,7 +78,10 @@ export default function ListupPage() {
   const [showHelp, setShowHelp] = useState(false);
   const [lastListupAt, setLastListupAt] = useState<string | null>(null);
   const [colWidths, setColWidths] = useState<number[]>(INIT_COL_WIDTHS);
+  const [showTimeoutError, setShowTimeoutError] = useState(false);
   const resizingRef = useRef<{ colIdx: number; startX: number; startW: number } | null>(null);
+  const runningJobIdRef = useRef<string | null>(null);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const uniqueKeywords = [...new Set(influencers.map(i => i.keyword).filter(Boolean))] as string[];
 
@@ -251,14 +254,56 @@ export default function ListupPage() {
 
   async function runListup() {
     if (keywords.length === 0) { toast("검색 키워드를 먼저 추가해주세요.", "error"); return; }
+    if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     setRunning(true);
-    await fetch("/api/jobs", {
+    setShowTimeoutError(false);
+
+    const res = await fetch("/api/jobs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type: "listup", payload: {} }),
     });
-    setRunning(false);
-    toast("리스트업 작업이 시작됐습니다. 완료까지 수 분이 소요됩니다.", "info");
+
+    if (!res.ok) {
+      setRunning(false);
+      toast("리스트업 실행에 실패했습니다.", "error");
+      return;
+    }
+
+    const { job } = await res.json();
+    runningJobIdRef.current = job.id;
+    toast("리스트업이 시작됐습니다. 완료 시 자동으로 업데이트됩니다.", "info");
+
+    const startTime = Date.now();
+    pollTimerRef.current = setInterval(async () => {
+      if (Date.now() - startTime >= 300_000) {
+        clearInterval(pollTimerRef.current!);
+        pollTimerRef.current = null;
+        runningJobIdRef.current = null;
+        setRunning(false);
+        setShowTimeoutError(true);
+        return;
+      }
+      try {
+        const jobRes = await fetch("/api/jobs");
+        const jobs: { id: string; status: string; error?: string }[] = await jobRes.json();
+        const cur = jobs.find(j => j.id === runningJobIdRef.current);
+        if (cur?.status === "done") {
+          clearInterval(pollTimerRef.current!);
+          pollTimerRef.current = null;
+          runningJobIdRef.current = null;
+          setRunning(false);
+          await Promise.all([loadInfluencers(), loadLastListupAt()]);
+          toast("리스트업이 완료됐습니다. 결과가 업데이트됐습니다.", "success");
+        } else if (cur?.status === "failed") {
+          clearInterval(pollTimerRef.current!);
+          pollTimerRef.current = null;
+          runningJobIdRef.current = null;
+          setRunning(false);
+          toast(`리스트업에 실패했습니다: ${cur.error ?? "알 수 없는 오류"}`, "error");
+        }
+      } catch { /* 폴링 오류 무시 */ }
+    }, 30_000);
   }
 
   const allFilteredSelected = filteredInfluencers.length > 0 && filteredInfluencers.every(i => selected.has(i.id));
@@ -349,7 +394,15 @@ export default function ListupPage() {
         <div className="flex items-center gap-1.5">
           <button onClick={() => setShowAdd(true)} className="btn-secondary">+ 계정 추가</button>
           <button onClick={runListup} disabled={running} className="btn-primary">
-            {running ? "실행 중..." : "리스트업 실행"}
+            {running ? (
+              <span className="flex items-center gap-1.5">
+                <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25"/>
+                  <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
+                </svg>
+                실행 중...
+              </span>
+            ) : "리스트업 실행"}
           </button>
         </div>
       </div>
@@ -647,6 +700,41 @@ export default function ListupPage() {
               <button onClick={addInfluencerManual} disabled={addingManual || !addForm.name || !addForm.url}
                 className="px-5 py-2 text-sm bg-a-blue text-white rounded-full hover:bg-a-blue-hover disabled:opacity-40 transition">
                 {addingManual ? "추가 중..." : "추가"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showTimeoutError && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={() => setShowTimeoutError(false)} />
+          <div className="relative bg-white rounded-2xl shadow-xl w-[420px] p-7">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <p className="text-[10px] font-semibold text-red-500 tracking-[0.1em] uppercase mb-1">시간 초과</p>
+                <h2 className="font-bold text-[18px] text-a-ink tracking-tight">리스트업 지연 안내</h2>
+              </div>
+              <button onClick={() => setShowTimeoutError(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-black/[0.06] hover:bg-black/[0.10] transition-colors text-a-ink">
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                  <path d="M1 1l9 9M10 1L1 10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                </svg>
+              </button>
+            </div>
+            <p className="text-sm text-a-ink-muted leading-relaxed mb-5">
+              5분 내에 리스트업이 완료되지 않았습니다.
+              작업은 백그라운드에서 계속 실행 중입니다.
+              완료 후 페이지를 새로고침하면 결과를 확인할 수 있습니다.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowTimeoutError(false)}
+                className="text-xs px-4 py-2 rounded-full border border-a-hairline text-a-ink hover:bg-a-parchment transition">
+                닫기
+              </button>
+              <button onClick={() => { setShowTimeoutError(false); window.location.reload(); }}
+                className="text-xs px-4 py-2 rounded-full bg-a-blue text-white hover:bg-a-blue-hover transition">
+                새로고침
               </button>
             </div>
           </div>

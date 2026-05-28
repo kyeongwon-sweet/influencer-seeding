@@ -46,14 +46,29 @@ function getPostType(url: string): string {
   return "-";
 }
 
-// Sticky columns need explicit fixed widths so left offsets exactly match rendered widths.
-// Widths: 인플루언서(180) + 프로젝트명(150) + 상품명(150) + 유형(72) + 게시물(220) + 게시일(104) = 876px
+// Sticky columns: 썸네일(56) + 인플루언서(180) + 프로젝트명(150) + 상품명(150) + 유형(72) + 게시일(104) = 712px
 const STICKY_WIDTHS: Record<string, number> = {
-  "인플루언서": 180, "프로젝트명": 150, "상품명": 150, "유형": 72, "게시물": 220, "게시일": 104,
+  "썸네일": 56, "인플루언서": 180, "프로젝트명": 150, "상품명": 150, "유형": 72, "게시일": 104,
 };
 const STICKY_LEFTS: Record<string, number> = {
-  "인플루언서": 0, "프로젝트명": 180, "상품명": 330, "유형": 480, "게시물": 552, "게시일": 772,
+  "썸네일": 0, "인플루언서": 56, "프로젝트명": 236, "상품명": 386, "유형": 536, "게시일": 608,
 };
+
+function getThumbnailUrl(url: string): string | null {
+  let m = url.match(/youtube\.com\/shorts\/([^/?&#]+)/);
+  if (m) return `https://i.ytimg.com/vi/${m[1]}/mqdefault.jpg`;
+  m = url.match(/[?&]v=([^&]+)/);
+  if (m) return `https://i.ytimg.com/vi/${m[1]}/mqdefault.jpg`;
+  m = url.match(/youtu\.be\/([^/?#]+)/);
+  if (m) return `https://i.ytimg.com/vi/${m[1]}/mqdefault.jpg`;
+  return null;
+}
+
+function hasNotableChange(post: Post): boolean {
+  const l = post.latest_stats, p = post.prev_stats;
+  if (!l || !p) return false;
+  return (l.play_count ?? 0) > (p.play_count ?? 0) || (l.comments_count ?? 0) > (p.comments_count ?? 0);
+}
 
 function TH({ children, right, col, onSort, sorted, className: cls }: {
   children?: React.ReactNode; right?: boolean; col?: string;
@@ -81,7 +96,7 @@ function TH({ children, right, col, onSort, sorted, className: cls }: {
   );
 }
 
-function TD({ children, right, muted, col }: { children: React.ReactNode; right?: boolean; muted?: boolean; col?: string }) {
+function TD({ children, right, muted, col, highlighted }: { children: React.ReactNode; right?: boolean; muted?: boolean; col?: string; highlighted?: boolean }) {
   const isSticky = col !== undefined;
   const isLast = col === "게시일";
   return (
@@ -91,7 +106,7 @@ function TD({ children, right, muted, col }: { children: React.ReactNode; right?
         "px-3 py-4 text-xs tabular-nums whitespace-nowrap overflow-hidden",
         right ? "text-right" : "text-left",
         muted ? "text-a-ink-muted" : "text-a-ink",
-        isSticky ? "sticky z-10 bg-white group-hover:bg-a-parchment" : "",
+        isSticky ? `sticky z-10 ${highlighted ? "bg-yellow-50 group-hover:bg-yellow-100/60" : "bg-white group-hover:bg-a-parchment"}` : "",
         isLast ? "shadow-[2px_0_5px_rgba(0,0,0,0.06)]" : "",
       ].join(" ")}
     >
@@ -442,21 +457,20 @@ export default function MonitoringPage() {
   });
 
   function downloadCSV() {
-    const headers = ["인플루언서", "프로젝트명", "상품명", "채널분류", "유형", "게시물 URL", "게시일", "조회수", "도달수", "비용", "조회당비용", "도달당비용", "측정일"];
+    const headers = ["인플루언서", "프로젝트명", "상품명", "채널분류", "유형", "게시일", "조회수", "도달수", "비용(원)", "조회당비용(원)", "도달당비용(원)", "측정일"];
     const rows = sortedPosts.map(post => {
       const s = post.latest_stats;
       const play = s?.play_count ?? null;
       const reach = post.reach_count ?? null;
       const cost = post.cost ?? null;
-      const cpr = cost != null && play != null && play > 0 ? Math.round(cost / play) : "";
-      const cpreach = cost != null && reach != null && reach > 0 ? Math.round(cost / reach) : "";
+      const cpr = cost != null && play != null && play > 0 ? (cost / play).toFixed(2) : "";
+      const cpreach = cost != null && reach != null && reach > 0 ? (cost / reach).toFixed(2) : "";
       return [
         post.account_name ?? post.influencers?.name ?? "",
         post.project_name ?? "",
         post.product_name ?? "",
         post.channel_type ?? "",
         getPostType(post.url),
-        post.url,
         post.posted_at ?? "",
         play ?? "",
         reach ?? "",
@@ -673,11 +687,11 @@ export default function MonitoringPage() {
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-30">
                 <tr className="border-b border-a-hairline">
+                  <TH col="썸네일"></TH>
                   <TH col="인플루언서" {...sp("인플루언서")}>인플루언서</TH>
                   <TH col="프로젝트명" {...sp("프로젝트명")}>프로젝트명</TH>
                   <TH col="상품명" {...sp("상품명")}>상품명</TH>
                   <TH col="유형" {...sp("유형")}>유형</TH>
-                  <TH col="게시물">게시물</TH>
                   <TH col="게시일" {...sp("게시일")}>게시일</TH>
                   <TH {...sp("채널분류")} className="min-w-[90px]">채널분류</TH>
                   <TH right {...sp("조회수")} className="min-w-[100px]">조회수</TH>
@@ -694,10 +708,33 @@ export default function MonitoringPage() {
                 {sortedPosts.map(post => {
                   const s = post.latest_stats;
                   const displayName = post.account_name ?? post.influencers?.name ?? "-";
+                  const hl = hasNotableChange(post);
+                  const thumbUrl = getThumbnailUrl(post.url);
                   return (
-                    <tr key={post.id} className="group border-b border-a-divider last:border-0 hover:bg-a-parchment/60 transition-colors">
-                      <TD col="인플루언서"><span className="font-medium">{displayName}</span></TD>
-                      <TD col="프로젝트명">
+                    <tr key={post.id} className={`group border-b border-a-divider last:border-0 transition-colors ${hl ? "bg-yellow-50/60 hover:bg-yellow-100/50" : "hover:bg-a-parchment/60"}`}>
+                      <td style={{ width: STICKY_WIDTHS["썸네일"], minWidth: STICKY_WIDTHS["썸네일"], maxWidth: STICKY_WIDTHS["썸네일"], left: STICKY_LEFTS["썸네일"] }}
+                        className={`sticky z-10 px-2 py-2 ${hl ? "bg-yellow-50 group-hover:bg-yellow-100/60" : "bg-white group-hover:bg-a-parchment"}`}>
+                        {thumbUrl ? (
+                          <img src={thumbUrl} alt="" className="w-10 h-8 object-cover rounded cursor-pointer hover:opacity-80 transition"
+                            onClick={async () => {
+                              window.open(post.url, "_blank");
+                              try { await navigator.clipboard.writeText(post.url); toast("링크가 복사됐습니다.", "success"); } catch {}
+                            }} />
+                        ) : (
+                          <button onClick={async () => {
+                            window.open(post.url, "_blank");
+                            try { await navigator.clipboard.writeText(post.url); toast("링크가 복사됐습니다.", "success"); } catch {}
+                          }}
+                            className="w-10 h-8 rounded bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                              <rect x="2" y="2" width="20" height="20" rx="5" stroke="#d1d5db" strokeWidth="1.5"/>
+                              <path d="M7 12h10M12 7l5 5-5 5" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          </button>
+                        )}
+                      </td>
+                      <TD col="인플루언서" highlighted={hl}><span className="font-medium">{displayName}</span></TD>
+                      <TD col="프로젝트명" highlighted={hl}>
                         {editCell?.postId === post.id && editCell?.field === "project_name" ? (
                           <input autoFocus value={editCell.value}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
@@ -711,7 +748,7 @@ export default function MonitoringPage() {
                           </span>
                         )}
                       </TD>
-                      <TD col="상품명">
+                      <TD col="상품명" highlighted={hl}>
                         {editCell?.postId === post.id && editCell?.field === "product_name" ? (
                           <input autoFocus value={editCell.value}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
@@ -725,14 +762,8 @@ export default function MonitoringPage() {
                           </span>
                         )}
                       </TD>
-                      <TD col="유형" muted>{getPostType(post.url)}</TD>
-                      <TD col="게시물">
-                        <a href={post.url} target="_blank" rel="noreferrer"
-                          className="text-a-blue hover:underline max-w-[120px] block truncate">
-                          {post.url.replace(/^https?:\/\/(www\.)?/, "")}
-                        </a>
-                      </TD>
-                      <TD col="게시일" muted>{post.posted_at ?? "-"}</TD>
+                      <TD col="유형" muted highlighted={hl}>{getPostType(post.url)}</TD>
+                      <TD col="게시일" muted highlighted={hl}>{post.posted_at ?? "-"}</TD>
                       <TD muted>
                         {editCell?.postId === post.id && editCell?.field === "channel_type" ? (
                           <select autoFocus value={editCell.value}
@@ -750,7 +781,7 @@ export default function MonitoringPage() {
                           </span>
                         )}
                       </TD>
-                      <TD right>{fmt(s?.play_count)}</TD>
+                      <TD right muted>{fmt(s?.play_count)}</TD>
                       <td className="px-3 py-4 text-xs tabular-nums text-right whitespace-nowrap min-w-[100px] cursor-text"
                         onClick={() => editCell?.postId !== post.id && setEditCell({ postId: post.id, field: "reach_count", value: String(post.reach_count ?? "") })}>
                         {editCell?.postId === post.id && editCell?.field === "reach_count" ? (
@@ -775,18 +806,18 @@ export default function MonitoringPage() {
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
                         ) : (
                           <span className="text-a-ink-muted hover:text-a-blue transition-colors">
-                            {post.cost != null ? post.cost.toLocaleString() : <span className="text-gray-300">-</span>}
+                            {post.cost != null ? post.cost.toLocaleString() + "원" : <span className="text-gray-300">-</span>}
                           </span>
                         )}
                       </td>
                       <TD right muted>
                         {post.cost != null && s?.play_count != null && s.play_count > 0
-                          ? Math.round(post.cost / s.play_count).toLocaleString()
+                          ? (post.cost / s.play_count).toFixed(2) + "원"
                           : <span className="text-gray-300">-</span>}
                       </TD>
                       <TD right muted>
                         {post.cost != null && post.reach_count != null && post.reach_count > 0
-                          ? Math.round(post.cost / post.reach_count).toLocaleString()
+                          ? (post.cost / post.reach_count).toFixed(2) + "원"
                           : <span className="text-gray-300">-</span>}
                       </TD>
                       <TD muted>{s?.measured_at ?? "-"}</TD>
