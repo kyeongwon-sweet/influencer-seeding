@@ -206,14 +206,14 @@ create policy "service role bypass" on post_daily_stats   for all using (true);
 
 ### 5단계 — GitHub Personal Access Token 발급
 
-웹 UI에서 GitHub Actions를 트리거하기 위해 필요합니다.
+매일 자동 실행되는 협찬 모니터링(GitHub Actions 스케줄)을 위해 필요합니다.
 
 1. GitHub 로그인 → 우측 상단 프로필 → **Settings**
 2. 하단 **Developer settings → Personal access tokens → Tokens (classic)**
 3. **Generate new token (classic)** 클릭
 4. **Note**: 원하는 이름 입력 (예: `influencer-seeding`)
-5. **repo** 체크박스 선택
-6. **Generate token** → 생성된 토큰 복사 (GITHUB_TOKEN)
+5. **repo** 체크박스 선택 + **workflow** 체크박스 선택 (⚠️ 두 개 모두 필요)
+6. **Generate token** → 생성된 토큰(`ghp_`로 시작) 복사 후 메모
 
 ---
 
@@ -235,8 +235,8 @@ GitHub Actions 자동화가 Supabase·Apify에 접근할 수 있도록 비밀값
 ### 7단계 — Vercel 배포
 
 1. [vercel.com](https://vercel.com) 로그인 → **Add New → Project**
-2. **Import Git Repository** → Fork한 GitHub 레포 선택
-3. **Root Directory** 우측 **Edit** 클릭 → `web` 입력 후 **Continue**
+2. **Import Git Repository** → 생성한 GitHub 레포 선택
+3. **Root Directory는 변경하지 않음** (프로젝트 루트의 `vercel.json`이 자동으로 처리)
 4. **Environment Variables**에 아래 값들을 모두 입력:
 
 | 변수명 | 값 |
@@ -246,10 +246,13 @@ GitHub Actions 자동화가 Supabase·Apify에 접근할 수 있도록 비밀값
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase Project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon 키 (Legacy) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service_role 키 (Legacy) |
-| `GITHUB_TOKEN` | 5단계에서 발급한 GitHub 토큰 |
-| `GITHUB_REPO` | `GitHub계정명/레포이름` (예: `mycompany/influencer-seeding`) |
+| `APIFY_API_TOKEN` | 4단계에서 발급한 Apify 토큰 |
+| `APP_URL` | 배포 완료 후 생성된 URL (예: `https://influencer-seeding-xxx.vercel.app`) |
 
-5. **Deploy** 클릭 → 배포 완료 후 URL 확인 (예: `https://influencer-seeding.vercel.app`)
+5. **Deploy** 클릭 → 배포 완료 후 URL 확인
+6. 배포된 URL을 복사해서 `APP_URL` 환경변수에 입력 후 **Redeploy**
+
+> `APP_URL`은 배포 후에야 알 수 있으므로 첫 배포 완료 후 추가합니다.
 
 ---
 
@@ -271,9 +274,8 @@ GitHub Actions 자동화가 Supabase·Apify에 접근할 수 있도록 비밀값
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase → Project Settings → API (Legacy) | Vercel |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API (Legacy) | Vercel + GitHub Secrets |
 | `SUPABASE_URL` | Supabase → Project Settings → API (Legacy) | GitHub Secrets |
-| `GITHUB_TOKEN` | GitHub → Developer settings | Vercel |
-| `GITHUB_REPO` | `계정명/레포명` 직접 입력 | Vercel |
-| `APIFY_API_TOKEN` | Apify → Settings → Integrations | GitHub Secrets |
+| `APIFY_API_TOKEN` | Apify → Settings → Integrations | Vercel + GitHub Secrets |
+| `APP_URL` | 배포 완료 후 Vercel URL 직접 입력 | Vercel |
 
 ---
 
@@ -322,10 +324,10 @@ Claude Code에서 수정 → `git push` → Vercel이 자동으로 재배포
 → Vercel 환경변수 중 Supabase 관련 값을 확인하세요. **Legacy API Keys** 탭의 값을 사용해야 합니다.
 
 **Q. 리스트업·스크리닝 실행 버튼을 눌렀는데 아무것도 안 돼요**
-→ GitHub Secrets 3개가 모두 등록됐는지 확인하세요. 레포 → Settings → Secrets → Actions에서 확인.
+→ Vercel 환경변수에 `APIFY_API_TOKEN`과 `APP_URL`이 **Production** 환경으로 등록됐는지 확인하세요.
 
 **Q. Vercel 배포가 실패해요**
-→ Root Directory가 `web`으로 설정됐는지 확인하세요.
+→ Root Directory를 변경하지 않았는지 확인하세요. 기본값(변경 없음)으로 두면 `vercel.json`이 자동 처리합니다.
 
 **Q. Apify 비용이 걱정돼요**
 → Apify 대시보드 → Billing에서 월 한도를 설정할 수 있습니다. 소규모 운영 시 월 $10 내외로 유지 가능합니다.
