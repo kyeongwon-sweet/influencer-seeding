@@ -1,11 +1,16 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
 
 type Keyword = { id: string; keyword: string; platform: string; created_at: string };
-type Influencer = { id: string; name: string; url: string; platform: string; status: string; source: string; created_at: string; keyword?: string; sample_post_url?: string; post_type?: string; post_uploaded_at?: string };
+type ScreeningMetrics = { avg_views_per_follower: number | null };
+type Influencer = {
+  id: string; name: string; url: string; platform: string; status: string; source: string;
+  created_at: string; keyword?: string; sample_post_url?: string; post_type?: string;
+  post_uploaded_at?: string; screening_metrics?: ScreeningMetrics[];
+};
 
 const PLATFORM_OPTIONS = [
   { value: "instagram", label: "인스타그램" },
@@ -30,6 +35,16 @@ const STATUS_LABEL: Record<string, string> = { pass: "통과", hold: "보류", r
 
 type Filters = { name: string; platform: string; status: string; keyword: string; uploadedFrom: string; uploadedTo: string };
 const INIT_FILTERS: Filters = { name: "", platform: "all", status: "all", keyword: "all", uploadedFrom: "", uploadedTo: "" };
+
+// 드래그 리사이즈 가능한 열 기본 너비 (px)
+// [채널명, 플랫폼, 발굴 키워드, 게시물, 유형, 업로드일, 조회/팔로워, 상태, 추가일]
+const INIT_COL_WIDTHS = [180, 80, 120, 70, 70, 100, 110, 80, 100];
+
+function formatTimestamp(ts: string): string {
+  const d = new Date(ts);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 function FilterSelect({ value, onChange, children }: { value: string; onChange: (v: string) => void; children: React.ReactNode }) {
   const active = value !== "all";
@@ -61,6 +76,9 @@ export default function ListupPage() {
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [showHelp, setShowHelp] = useState(false);
+  const [lastListupAt, setLastListupAt] = useState<string | null>(null);
+  const [colWidths, setColWidths] = useState<number[]>(INIT_COL_WIDTHS);
+  const resizingRef = useRef<{ colIdx: number; startX: number; startW: number } | null>(null);
 
   const uniqueKeywords = [...new Set(influencers.map(i => i.keyword).filter(Boolean))] as string[];
 
@@ -81,7 +99,7 @@ export default function ListupPage() {
   const hasFilter = filters.name !== "" || filters.platform !== "all" || filters.status !== "all" || filters.keyword !== "all" || filters.uploadedFrom !== "" || filters.uploadedTo !== "";
 
   useEffect(() => {
-    Promise.all([loadKeywords(), loadInfluencers()]).finally(() => setLoading(false));
+    Promise.all([loadKeywords(), loadInfluencers(), loadLastListupAt()]).finally(() => setLoading(false));
   }, []);
 
   async function loadKeywords() {
@@ -93,6 +111,36 @@ export default function ListupPage() {
     const res = await fetch("/api/influencers");
     const data: Influencer[] = await res.json();
     setInfluencers(data.filter(i => i.source === "listup" || i.source === "manual"));
+  }
+
+  async function loadLastListupAt() {
+    const res = await fetch("/api/jobs");
+    const jobs: { type: string; status: string; updated_at: string }[] = await res.json();
+    const done = jobs.find(j => j.type === "listup" && j.status === "done");
+    if (done) setLastListupAt(done.updated_at);
+  }
+
+  function startResize(e: React.MouseEvent, colIdx: number) {
+    e.preventDefault();
+    e.stopPropagation();
+    resizingRef.current = { colIdx, startX: e.clientX, startW: colWidths[colIdx] };
+    const onMove = (ev: MouseEvent) => {
+      if (!resizingRef.current) return;
+      const delta = ev.clientX - resizingRef.current.startX;
+      const newW = Math.max(50, resizingRef.current.startW + delta);
+      setColWidths(prev => {
+        const next = [...prev];
+        next[resizingRef.current!.colIdx] = newW;
+        return next;
+      });
+    };
+    const onUp = () => {
+      resizingRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
   }
 
   async function addKeyword() {
@@ -170,7 +218,7 @@ export default function ListupPage() {
   }
 
   function downloadCSV() {
-    const headers = ["채널명", "URL", "플랫폼", "발굴 키워드", "게시물 URL", "유형", "업로드일", "상태", "추가일"];
+    const headers = ["채널명", "URL", "플랫폼", "발굴 키워드", "게시물 URL", "유형", "업로드일", "조회/팔로워", "상태", "추가일"];
     const rows = sortedInfluencers.map(inf => [
       inf.name,
       inf.url,
@@ -179,6 +227,8 @@ export default function ListupPage() {
       inf.sample_post_url ?? "",
       inf.post_type ?? "",
       inf.post_uploaded_at ? new Date(inf.post_uploaded_at).toLocaleDateString("ko-KR") : "",
+      inf.screening_metrics?.[0]?.avg_views_per_follower != null
+        ? String(inf.screening_metrics[0].avg_views_per_follower) : "",
       STATUS_LABEL[inf.status] ?? inf.status,
       new Date(inf.created_at).toLocaleDateString("ko-KR"),
     ]);
@@ -220,6 +270,12 @@ export default function ListupPage() {
 
   const sortedInfluencers = [...filteredInfluencers].sort((a, b) => {
     if (!sortCol) return 0;
+    if (sortCol === "조회/팔로워") {
+      const av = a.screening_metrics?.[0]?.avg_views_per_follower ?? -1;
+      const bv = b.screening_metrics?.[0]?.avg_views_per_follower ?? -1;
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+      return sortDir === "asc" ? cmp : -cmp;
+    }
     let av: string | number = "", bv: string | number = "";
     switch (sortCol) {
       case "채널명": av = a.name.toLowerCase(); bv = b.name.toLowerCase(); break;
@@ -234,14 +290,29 @@ export default function ListupPage() {
     return sortDir === "asc" ? cmp : -cmp;
   });
 
-  function sortTH(col: string, right = false) {
+  // 정렬 + 드래그 리사이즈 th
+  function rsTH(col: string, colIdx: number, sortable = true) {
     const active = sortCol === col;
     return (
-      <th key={col} onClick={() => handleSort(col)}
-        className={`px-5 py-3 text-[10px] font-medium uppercase tracking-wider whitespace-nowrap cursor-pointer select-none transition-colors bg-white ${right ? "text-right" : "text-left"} ${
-          active ? "text-a-ink" : "text-gray-400 hover:text-gray-600"
-        }`}>
-        {col}<span className={`ml-1 ${active ? "text-a-blue" : "opacity-20"}`}>{active ? (sortDir === "asc" ? "↑" : "↓") : "↕"}</span>
+      <th
+        key={col}
+        style={{ minWidth: colWidths[colIdx] }}
+        className={`relative px-4 py-3 text-left text-[10px] font-medium uppercase tracking-wider whitespace-nowrap bg-white select-none ${
+          sortable ? (active ? "text-a-ink" : "text-gray-400") : "text-gray-400"
+        }`}
+      >
+        {sortable ? (
+          <span onClick={() => handleSort(col)} className="cursor-pointer hover:text-gray-600 transition-colors">
+            {col}
+            <span className={`ml-1 ${active ? "text-a-blue" : "opacity-20"}`}>
+              {active ? (sortDir === "asc" ? "↑" : "↓") : "↕"}
+            </span>
+          </span>
+        ) : col}
+        <div
+          onMouseDown={e => startResize(e, colIdx)}
+          className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-100 z-10"
+        />
       </th>
     );
   }
@@ -259,15 +330,22 @@ export default function ListupPage() {
       </header>
 
       <div className="sticky top-11 z-[35] bg-white border-b border-a-hairline px-6 h-11 flex items-center justify-between">
-        <button onClick={() => setShowHelp(true)}
-          className="flex items-center gap-1.5 text-xs text-a-ink-muted hover:text-a-ink transition">
-          <svg width="13" height="13" viewBox="0 0 20 20" fill="none">
-            <circle cx="10" cy="10" r="8.5" stroke="currentColor" strokeWidth="1.5"/>
-            <path d="M10 9.5v4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            <circle cx="10" cy="6.5" r="1" fill="currentColor"/>
-          </svg>
-          사용 안내
-        </button>
+        <div className="flex items-center gap-4">
+          <button onClick={() => setShowHelp(true)}
+            className="flex items-center gap-1.5 text-xs text-a-ink-muted hover:text-a-ink transition">
+            <svg width="13" height="13" viewBox="0 0 20 20" fill="none">
+              <circle cx="10" cy="10" r="8.5" stroke="currentColor" strokeWidth="1.5"/>
+              <path d="M10 9.5v4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              <circle cx="10" cy="6.5" r="1" fill="currentColor"/>
+            </svg>
+            사용 안내
+          </button>
+          {lastListupAt && (
+            <span className="text-xs text-a-ink-muted whitespace-nowrap">
+              마지막 업데이트 <span className="font-medium text-a-ink">{formatTimestamp(lastListupAt)}</span>
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-1.5">
           <button onClick={() => setShowAdd(true)} className="btn-secondary">+ 계정 추가</button>
           <button onClick={runListup} disabled={running} className="btn-primary">
@@ -295,8 +373,7 @@ export default function ListupPage() {
             >
               {PLATFORM_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
-            <button onClick={addKeyword} disabled={adding || !form.keyword.trim()}
-              className="btn-primary">
+            <button onClick={addKeyword} disabled={adding || !form.keyword.trim()} className="btn-primary">
               추가
             </button>
           </div>
@@ -432,75 +509,86 @@ export default function ListupPage() {
                 className="text-xs text-a-blue hover:underline">필터 초기화</button>
             </div>
           ) : (
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 z-30">
-                <tr className="border-b border-a-hairline">
-                  <th className="pl-5 pr-2 py-3 w-9 bg-white">
-                    <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll}
-                      className="w-3.5 h-3.5 accent-a-blue cursor-pointer" />
-                  </th>
-                  {sortTH("채널명")}
-                  {sortTH("플랫폼")}
-                  {sortTH("발굴 키워드")}
-                  <th className="px-5 py-3 text-left text-[10px] font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap bg-white">게시물</th>
-                  {sortTH("유형")}
-                  {sortTH("업로드일")}
-                  {sortTH("상태")}
-                  {sortTH("추가일")}
-                  <th className="px-5 py-3 bg-white"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedInfluencers.map(inf => (
-                  <tr key={inf.id} className={`border-b border-a-divider last:border-0 hover:bg-a-parchment/60 transition-colors ${selected.has(inf.id) ? "bg-blue-50/40" : ""}`}>
-                    <td className="pl-5 pr-2 py-4 w-9">
-                      <input type="checkbox" checked={selected.has(inf.id)} onChange={() => toggleSelect(inf.id)}
+            <div className="overflow-x-auto">
+              <table className="text-sm">
+                <thead className="sticky top-0 z-30">
+                  <tr className="border-b border-a-hairline">
+                    <th className="pl-5 pr-2 py-3 w-9 bg-white">
+                      <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll}
                         className="w-3.5 h-3.5 accent-a-blue cursor-pointer" />
-                    </td>
-                    <td className="px-5 py-4 whitespace-nowrap">
-                      <a href={inf.url} target="_blank" rel="noreferrer"
-                        className="font-medium hover:text-a-blue transition-colors">{inf.name}</a>
-                    </td>
-                    <td className="px-5 py-4 text-a-ink-muted text-xs whitespace-nowrap">
-                      {inf.platform === "instagram" ? "인스타" : "유튜브"}
-                    </td>
-                    <td className="px-5 py-4 whitespace-nowrap">
-                      {inf.keyword
-                        ? <span className="text-xs bg-a-parchment text-a-ink-muted px-2 py-0.5 rounded-full">#{inf.keyword}</span>
-                        : <span className="text-xs text-gray-300">-</span>}
-                    </td>
-                    <td className="px-5 py-4 whitespace-nowrap">
-                      {inf.sample_post_url
-                        ? <a href={inf.sample_post_url} target="_blank" rel="noreferrer"
-                            className="text-xs text-a-blue hover:underline">보기 →</a>
-                        : <span className="text-xs text-gray-300">-</span>}
-                    </td>
-                    <td className="px-5 py-4 whitespace-nowrap">
-                      {inf.post_type
-                        ? <span className="text-xs bg-a-parchment text-a-ink-muted px-2 py-0.5 rounded-full">{inf.post_type}</span>
-                        : <span className="text-xs text-gray-300">-</span>}
-                    </td>
-                    <td className="px-5 py-4 text-a-ink-muted text-xs whitespace-nowrap">
-                      {inf.post_uploaded_at
-                        ? new Date(inf.post_uploaded_at).toLocaleDateString("ko-KR")
-                        : <span className="text-gray-300">-</span>}
-                    </td>
-                    <td className="px-5 py-4 whitespace-nowrap">
-                      <span className={`text-xs px-2.5 py-1 rounded-full ${STATUS_CLS[inf.status] ?? STATUS_CLS.pending}`}>
-                        {STATUS_LABEL[inf.status] ?? inf.status}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4 text-a-ink-muted text-xs whitespace-nowrap">
-                      {new Date(inf.created_at).toLocaleDateString("ko-KR")}
-                    </td>
-                    <td className="px-5 py-4 text-right whitespace-nowrap">
-                      <button onClick={() => deleteInfluencer(inf.id)}
-                        className="text-a-ink-muted hover:text-red-500 text-xs transition">삭제</button>
-                    </td>
+                    </th>
+                    {rsTH("채널명", 0)}
+                    {rsTH("플랫폼", 1)}
+                    {rsTH("발굴 키워드", 2)}
+                    {rsTH("게시물", 3, false)}
+                    {rsTH("유형", 4)}
+                    {rsTH("업로드일", 5)}
+                    {rsTH("조회/팔로워", 6)}
+                    {rsTH("상태", 7)}
+                    {rsTH("추가일", 8)}
+                    <th className="px-4 py-3 bg-white"></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {sortedInfluencers.map(inf => {
+                    const ratio = inf.screening_metrics?.[0]?.avg_views_per_follower;
+                    return (
+                      <tr key={inf.id} className={`border-b border-a-divider last:border-0 hover:bg-a-parchment/60 transition-colors ${selected.has(inf.id) ? "bg-blue-50/40" : ""}`}>
+                        <td className="pl-5 pr-2 py-4 w-9">
+                          <input type="checkbox" checked={selected.has(inf.id)} onChange={() => toggleSelect(inf.id)}
+                            className="w-3.5 h-3.5 accent-a-blue cursor-pointer" />
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <a href={inf.url} target="_blank" rel="noreferrer"
+                            className="font-medium hover:text-a-blue transition-colors">{inf.name}</a>
+                        </td>
+                        <td className="px-4 py-4 text-a-ink-muted text-xs whitespace-nowrap">
+                          {inf.platform === "instagram" ? "인스타" : "유튜브"}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          {inf.keyword
+                            ? <span className="text-xs bg-a-parchment text-a-ink-muted px-2 py-0.5 rounded-full">#{inf.keyword}</span>
+                            : <span className="text-xs text-gray-300">-</span>}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          {inf.sample_post_url
+                            ? <a href={inf.sample_post_url} target="_blank" rel="noreferrer"
+                                className="text-xs text-a-blue hover:underline">보기 →</a>
+                            : <span className="text-xs text-gray-300">-</span>}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          {inf.post_type
+                            ? <span className="text-xs bg-a-parchment text-a-ink-muted px-2 py-0.5 rounded-full">{inf.post_type}</span>
+                            : <span className="text-xs text-gray-300">-</span>}
+                        </td>
+                        <td className="px-4 py-4 text-a-ink-muted text-xs whitespace-nowrap">
+                          {inf.post_uploaded_at
+                            ? new Date(inf.post_uploaded_at).toLocaleDateString("ko-KR")
+                            : <span className="text-gray-300">-</span>}
+                        </td>
+                        <td className="px-4 py-4 text-xs whitespace-nowrap">
+                          {ratio != null
+                            ? <span className="font-medium text-a-ink">{Number(ratio).toFixed(2)}</span>
+                            : <span className="text-gray-300">-</span>}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <span className={`text-xs px-2.5 py-1 rounded-full ${STATUS_CLS[inf.status] ?? STATUS_CLS.pending}`}>
+                            {STATUS_LABEL[inf.status] ?? inf.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 text-a-ink-muted text-xs whitespace-nowrap">
+                          {new Date(inf.created_at).toLocaleDateString("ko-KR")}
+                        </td>
+                        <td className="px-4 py-4 text-right whitespace-nowrap">
+                          <button onClick={() => deleteInfluencer(inf.id)}
+                            className="text-a-ink-muted hover:text-red-500 text-xs transition">삭제</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
 
@@ -518,12 +606,18 @@ export default function ListupPage() {
       {showHelp && (
         <HelpModal title="리스트업 사용 안내" onClose={() => setShowHelp(false)}>
           <HelpSection title="이 탭에서 하는 일">
-            <p className="text-a-ink-muted leading-relaxed">해시태그 기반으로 인스타그램 계정을 자동 발굴합니다. 발굴된 계정은 스크리닝 탭으로 넘어가 지표 수집 대상이 됩니다.</p>
+            <p className="text-a-ink-muted leading-relaxed">특정 브랜드·제품 해시태그가 포함된 게시물(릴스/쇼츠 포함)을 올린 계정을 자동 발굴합니다. 발굴된 계정은 스크리닝 탭에서 상세 지표를 수집합니다.</p>
           </HelpSection>
           <HelpSection title="버튼 설명">
             <HelpItem label="리스트업 실행 —">지정된 해시태그로 Apify를 통해 게시물을 수집하고 계정을 자동 추가합니다. 이미 등록된 계정은 중복 추가되지 않습니다.</HelpItem>
             <HelpItem label="+ 계정 추가 —">채널명과 URL을 직접 입력해 계정을 수동으로 추가합니다.</HelpItem>
             <HelpItem label="선택 삭제 —">체크박스로 선택한 계정을 일괄 삭제합니다.</HelpItem>
+          </HelpSection>
+          <HelpSection title="조회/팔로워 열">
+            <p className="text-a-ink-muted leading-relaxed">스크리닝 완료 후 표시되는 지표입니다. 팔로워 수 대비 평균 재생수 비율로, 높을수록 확산력이 좋은 계정입니다. 이 값으로 정렬하면 시딩 효율이 높은 계정을 우선순위에 올릴 수 있습니다.</p>
+          </HelpSection>
+          <HelpSection title="열 너비 조정">
+            <p className="text-a-ink-muted leading-relaxed">각 열 오른쪽 경계선을 드래그하면 너비를 자유롭게 조정할 수 있습니다.</p>
           </HelpSection>
           <HelpSection title="상태값">
             <HelpItem label="대기중 —">새로 추가된 계정. 아직 스크리닝 전입니다.</HelpItem>

@@ -75,7 +75,7 @@ export default function Sidebar() {
       </nav>
 
       <div className="px-5 py-4 border-t border-white/[0.08] shrink-0">
-        <p className="text-[11px] text-white/20 tracking-wide">시딩 시스템 v1</p>
+        <p className="text-[11px] text-white/20 tracking-wide">트래킹 대시보드 v1</p>
       </div>
     </aside>
   );

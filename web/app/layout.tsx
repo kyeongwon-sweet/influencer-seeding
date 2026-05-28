@@ -7,7 +7,7 @@ import Sidebar from "@/components/Sidebar";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "인플루언서 시딩 시스템",
+  title: "인플루언서 시딩 트래킹 대시보드",
   description: "라라스윗 인플루언서 시딩 관리",
 };
 
