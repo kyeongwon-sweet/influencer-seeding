@@ -13,8 +13,8 @@
 | 인증 | Clerk |
 | 데이터베이스 | Supabase (PostgreSQL) |
 | 배포 | Vercel |
-| 데이터 수집 | Python + Apify |
-| 자동화 | GitHub Actions |
+| 데이터 수집 | Apify (REST API 직접 호출) |
+| 자동화 | GitHub Actions (협찬 모니터링 일 1회 스케줄만) |
 
 ---
 
@@ -82,8 +82,8 @@ export function getServerSupabase() {
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `GITHUB_TOKEN`
-- `GITHUB_REPO` → 본인 레포로 변경 필요 (예: `mycompany/influencer-seeding`)
+- `APIFY_API_TOKEN`
+- `APP_URL` → 배포된 Vercel URL (예: `https://influencer-seeding-xxx.vercel.app`)
 
 ### Python 스크립트 (`.env`)
 - `APIFY_API_TOKEN`
