@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { UserButton } from "@clerk/nextjs";
 import Link from "next/link";
 
-type Influencer = { status: string; source?: string };
+type Influencer = { status: string; source?: string; created_at?: string; screening_metrics?: { run_at?: string }[] };
 type Job = { id: string; type: string; status: string; payload?: { added?: number; screened?: number }; user_email?: string; created_at: string };
 
 const STATUS_CONFIG = [
@@ -50,8 +50,13 @@ export default function DashboardPage() {
     ]).finally(() => setLoading(false));
   }, []);
 
-  const lastListupJob  = jobs.find(j => j.type === "listup"    && j.status === "done");
-  const lastScreenJob  = jobs.find(j => j.type === "screening" && j.status === "done");
+  const lastListupAt = influencers.length > 0
+    ? influencers.map(i => i.created_at).filter(Boolean).sort().reverse()[0] ?? null
+    : null;
+  const allMetricsRunAt = influencers.flatMap(i => (i.screening_metrics ?? []).map(m => m.run_at));
+  const lastScreeningAt = allMetricsRunAt.length > 0
+    ? allMetricsRunAt.filter(Boolean).sort().reverse()[0] ?? null
+    : null;
 
   const total = influencers.length;
   const counts = Object.fromEntries(
@@ -110,21 +115,21 @@ export default function DashboardPage() {
       <main className="px-5 py-7 w-full max-w-[680px] mx-auto space-y-4">
 
         {/* 마지막 업데이트 시각 */}
-        {!loading && (lastListupJob || lastScreenJob) && (
+        {!loading && (lastListupAt || lastScreeningAt) && (
           <div className="flex items-center gap-4 px-1">
-            {lastListupJob && (
+            {lastListupAt && (
               <div className="flex items-center gap-1.5">
                 <span className="text-[11px] text-a-ink-muted">리스트업</span>
-                <span className="text-[11px] font-semibold text-a-ink tabular-nums">{formatTimestamp(lastListupJob.created_at)}</span>
+                <span className="text-[11px] font-semibold text-a-ink tabular-nums">{formatTimestamp(lastListupAt)}</span>
               </div>
             )}
-            {lastListupJob && lastScreenJob && (
+            {lastListupAt && lastScreeningAt && (
               <span className="text-a-hairline text-xs">·</span>
             )}
-            {lastScreenJob && (
+            {lastScreeningAt && (
               <div className="flex items-center gap-1.5">
                 <span className="text-[11px] text-a-ink-muted">스크리닝</span>
-                <span className="text-[11px] font-semibold text-a-ink tabular-nums">{formatTimestamp(lastScreenJob.created_at)}</span>
+                <span className="text-[11px] font-semibold text-a-ink tabular-nums">{formatTimestamp(lastScreeningAt)}</span>
               </div>
             )}
           </div>
