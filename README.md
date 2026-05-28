@@ -178,8 +178,13 @@ create policy "service role bypass" on post_daily_stats   for all using (true);
 
 **API 키 복사** (나중에 사용):
 - 왼쪽 메뉴 **Project Settings → API** 클릭
-- **⚠️ "Legacy API Keys" 탭** 선택 (새 형식 키는 동작하지 않음)
-- `Project URL`, `anon` 키, `service_role` 키를 메모장에 복사
+- **⚠️ "Legacy anon, service_role API keys" 탭** 선택 (새 형식 키는 동작하지 않음)
+- `anon` 키, `service_role` 키를 메모장에 복사
+
+**Project URL 찾기**:
+- 왼쪽 메뉴 **Project Settings → General** 클릭
+- **Reference ID** 항목 확인 (예: `abcdefghijkl`)
+- Project URL = `https://[Reference ID].supabase.co`
 
 ---
 
@@ -196,9 +201,10 @@ create policy "service role bypass" on post_daily_stats   for all using (true);
 ### 4단계 — Apify 계정 및 토큰
 
 1. [apify.com](https://apify.com) 로그인
-2. 우측 상단 프로필 → **Settings → Integrations**
-3. **Personal API tokens** → **+ Create new token**
-4. 생성된 토큰 복사 (APIFY_API_TOKEN)
+2. 왼쪽 사이드바 **하단** → **Settings** 클릭 (상단 Integrations 메뉴와 다름)
+3. **Integrations** 탭 클릭
+4. **Personal API tokens** → **+ Create new token**
+5. 생성된 토큰 복사 (APIFY_API_TOKEN)
 
 > Apify는 사용량에 따라 비용이 발생합니다. 무료 크레딧 $5 제공 후 유료 전환됩니다.
 
