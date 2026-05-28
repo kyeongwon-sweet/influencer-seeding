@@ -146,6 +146,40 @@ export default function ScreeningPage() {
   const runningJobIdRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // column widths for drag-resize
+  const [channelNameWidth, setChannelNameWidth] = useState(160);
+  const [screenColWidths, setScreenColWidths] = useState<Record<string, number>>({
+    "URL": 80, "플랫폼": 80, "팔로워 수": 100, "알고리즘 계수": 110, "100만뷰 개수": 110,
+    "총 평균 조회수": 120, "총 평균 도달수": 120, "댓글 비율": 90, "광고 비율": 90,
+    "광고 평균 조회수": 120, "광고 효율": 90, "광고 최고 조회수": 120,
+    "광고 최고 게시물 URL": 120, "검색어": 140, "검색어 트렌드": 110,
+    "통과 기준": 90, "상태": 90,
+  });
+  const screenResizingRef = useRef<{ col: string; startX: number; startW: number; isSticky: boolean } | null>(null);
+
+  function startScreenResize(col: string, e: React.MouseEvent, isSticky = false) {
+    e.preventDefault();
+    e.stopPropagation();
+    const startW = isSticky ? channelNameWidth : screenColWidths[col];
+    screenResizingRef.current = { col, startX: e.clientX, startW, isSticky };
+    function onMove(ev: MouseEvent) {
+      if (!screenResizingRef.current) return;
+      const newW = Math.max(40, screenResizingRef.current.startW + ev.clientX - screenResizingRef.current.startX);
+      if (screenResizingRef.current.isSticky) {
+        setChannelNameWidth(newW);
+      } else {
+        setScreenColWidths(prev => ({ ...prev, [screenResizingRef.current!.col]: newW }));
+      }
+    }
+    function onUp() {
+      screenResizingRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
   useEffect(() => { load(); loadCriteria(); loadLastListupAt(); }, []);
 
   async function load() {
@@ -415,21 +449,42 @@ export default function ScreeningPage() {
     return sortDir === "asc" ? cmp : -cmp;
   });
 
-  // stickyLeft, stickyWidth (default 160), lastSticky (default false)
-  function sortTH(col: string, right = false, center = false, stickyLeft?: number, stickyWidth = 160, lastSticky = false) {
-    const active = sortCol === col;
+  // sortable + resizable TH helper
+  function sortTH(col: string, right = false, center = false, stickyLeft?: number, stickyColW?: number, lastSticky = false) {
     const isSticky = stickyLeft !== undefined;
+    const colW = stickyColW ?? screenColWidths[col];
+    const active = sortCol === col;
     return (
       <th key={col} onClick={() => handleSort(col)}
-        style={isSticky ? { left: stickyLeft, minWidth: stickyWidth, width: stickyWidth, maxWidth: stickyWidth } : undefined}
+        style={isSticky
+          ? { left: stickyLeft, minWidth: colW, width: colW }
+          : { minWidth: colW }}
         className={[
-          "px-3 py-3 text-xs font-medium whitespace-nowrap cursor-pointer select-none transition-colors bg-white",
+          "relative px-3 py-3 text-xs font-medium whitespace-nowrap cursor-pointer select-none transition-colors bg-white",
           center ? "text-center" : right ? "text-right" : "text-left",
           isSticky ? "sticky z-40" : "",
           lastSticky ? "shadow-[2px_0_5px_rgba(0,0,0,0.06)]" : "",
           active ? "text-a-ink" : "text-a-ink-muted hover:text-a-ink",
         ].join(" ")}>
         {col}<span className={`ml-1 ${active ? "text-a-blue" : "opacity-20"}`}>{active ? (sortDir === "asc" ? "↑" : "↓") : "↕"}</span>
+        <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-a-blue/30"
+          onMouseDown={e => { e.stopPropagation(); startScreenResize(col, e, isSticky); }} />
+      </th>
+    );
+  }
+
+  // non-sortable resizable TH helper
+  function staticTH(col: string, right = false, center = false) {
+    return (
+      <th key={col}
+        style={{ minWidth: screenColWidths[col] }}
+        className={[
+          "relative px-3 py-3 text-xs font-medium text-a-ink-muted bg-white whitespace-nowrap select-none",
+          center ? "text-center" : right ? "text-right" : "text-left",
+        ].join(" ")}>
+        {col}
+        <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-a-blue/30"
+          onMouseDown={e => { e.stopPropagation(); startScreenResize(col, e); }} />
       </th>
     );
   }
@@ -592,8 +647,8 @@ export default function ScreeningPage() {
                     <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll}
                       className="w-3.5 h-3.5 accent-a-blue cursor-pointer" />
                   </th>
-                  {sortTH("채널명", false, false, 44, 160, true)}
-                  <th className="px-3 py-3 text-xs font-medium text-a-ink-muted bg-white whitespace-nowrap text-left">URL</th>
+                  {sortTH("채널명", false, false, 44, channelNameWidth, true)}
+                  {staticTH("URL")}
                   {sortTH("플랫폼")}
                   {sortTH("팔로워 수", true)}
                   {sortTH("알고리즘 계수", true)}
@@ -605,10 +660,10 @@ export default function ScreeningPage() {
                   {sortTH("광고 평균 조회수", true)}
                   {sortTH("광고 효율", true)}
                   {sortTH("광고 최고 조회수", true)}
-                  <th className="px-3 py-3 text-xs font-medium text-a-ink-muted bg-white whitespace-nowrap text-left">광고 최고 게시물 URL</th>
-                  <th className="px-3 py-3 text-xs font-medium text-a-ink-muted bg-white whitespace-nowrap text-left">검색어</th>
-                  <th className="px-3 py-3 text-xs font-medium text-a-ink-muted bg-white whitespace-nowrap text-right">검색어 트렌드</th>
-                  <th className="px-3 py-3 text-xs font-medium text-a-ink-muted bg-white whitespace-nowrap text-center">통과 기준</th>
+                  {staticTH("광고 최고 게시물 URL")}
+                  {staticTH("검색어")}
+                  {staticTH("검색어 트렌드", true)}
+                  {staticTH("통과 기준", false, true)}
                   {sortTH("상태", false, true)}
                 </tr>
               </thead>
@@ -626,12 +681,12 @@ export default function ScreeningPage() {
                         <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(inf.id)}
                           className="w-3.5 h-3.5 accent-a-blue cursor-pointer" />
                       </td>
-                      <td style={{ left: 44, minWidth: 160, width: 160, maxWidth: 160 }}
+                      <td style={{ left: 44, minWidth: channelNameWidth, width: channelNameWidth }}
                         className={`px-3 py-4 shadow-[2px_0_5px_rgba(0,0,0,0.06)] ${stickyCell}`}>
                         <a href={inf.url} target="_blank" rel="noreferrer"
                           className="font-medium hover:text-a-blue transition-colors">{inf.name}</a>
                       </td>
-                      <td className="px-3 py-4 whitespace-nowrap">
+                      <td style={{ minWidth: screenColWidths["URL"] }} className="px-3 py-4 whitespace-nowrap">
                         <a href={inf.url} target="_blank" rel="noreferrer"
                           className="inline-flex items-center gap-1 text-xs text-a-ink-muted hover:text-a-blue transition-colors">
                           <svg width="11" height="11" viewBox="0 0 14 14" fill="none">
@@ -641,34 +696,34 @@ export default function ScreeningPage() {
                           링크
                         </a>
                       </td>
-                      <td className="px-3 py-4 text-a-ink-muted text-xs whitespace-nowrap">
+                      <td style={{ minWidth: screenColWidths["플랫폼"] }} className="px-3 py-4 text-a-ink-muted text-xs whitespace-nowrap">
                         {inf.platform === "instagram" ? "인스타" : "유튜브"}
                       </td>
-                      <td className="px-3 py-4 text-right tabular-nums whitespace-nowrap">
+                      <td style={{ minWidth: screenColWidths["팔로워 수"] }} className="px-3 py-4 text-right tabular-nums whitespace-nowrap">
                         {hasNoMetrics
                           ? <span className="text-[11px] bg-amber-50 text-amber-600 px-2 py-0.5 rounded-full font-medium">미수집</span>
                           : <span className="text-a-ink">{fmt(m?.followers)}</span>}
                       </td>
-                      <td className="px-3 py-4 text-right tabular-nums text-a-ink whitespace-nowrap font-numeric">
+                      <td style={{ minWidth: screenColWidths["알고리즘 계수"] }} className="px-3 py-4 text-right tabular-nums text-a-ink whitespace-nowrap font-numeric">
                         {m?.avg_views_per_follower?.toFixed(2) ?? "-"}
                       </td>
-                      <td className="px-3 py-4 text-right tabular-nums text-a-ink whitespace-nowrap font-numeric">
+                      <td style={{ minWidth: screenColWidths["100만뷰 개수"] }} className="px-3 py-4 text-right tabular-nums text-a-ink whitespace-nowrap font-numeric">
                         {m?.count_1m_view ?? "-"}
                       </td>
-                      <td className="px-3 py-4 text-right tabular-nums text-a-ink whitespace-nowrap font-numeric">{fmt(m?.total_avg_play_count)}</td>
-                      <td className="px-3 py-4 text-right tabular-nums text-a-ink whitespace-nowrap font-numeric">{fmt(m?.total_avg_view_count)}</td>
-                      <td className="px-3 py-4 text-right tabular-nums text-a-ink whitespace-nowrap font-numeric">{fmtRatio(m?.total_comment_ratio)}</td>
-                      <td className="px-3 py-4 text-right tabular-nums text-a-ink whitespace-nowrap font-numeric">
+                      <td style={{ minWidth: screenColWidths["총 평균 조회수"] }} className="px-3 py-4 text-right tabular-nums text-a-ink whitespace-nowrap font-numeric">{fmt(m?.total_avg_play_count)}</td>
+                      <td style={{ minWidth: screenColWidths["총 평균 도달수"] }} className="px-3 py-4 text-right tabular-nums text-a-ink whitespace-nowrap font-numeric">{fmt(m?.total_avg_view_count)}</td>
+                      <td style={{ minWidth: screenColWidths["댓글 비율"] }} className="px-3 py-4 text-right tabular-nums text-a-ink whitespace-nowrap font-numeric">{fmtRatio(m?.total_comment_ratio)}</td>
+                      <td style={{ minWidth: screenColWidths["광고 비율"] }} className="px-3 py-4 text-right tabular-nums text-a-ink whitespace-nowrap font-numeric">
                         {(m?.total_posts && m?.ad_posts != null) ? ((m.ad_posts / m.total_posts) * 100).toFixed(1) + "%" : "-"}
                       </td>
-                      <td className="px-3 py-4 text-right tabular-nums text-a-ink whitespace-nowrap font-numeric">{fmt(m?.ad_avg_play_count)}</td>
-                      <td className="px-3 py-4 text-right tabular-nums text-a-ink whitespace-nowrap font-numeric">
+                      <td style={{ minWidth: screenColWidths["광고 평균 조회수"] }} className="px-3 py-4 text-right tabular-nums text-a-ink whitespace-nowrap font-numeric">{fmt(m?.ad_avg_play_count)}</td>
+                      <td style={{ minWidth: screenColWidths["광고 효율"] }} className="px-3 py-4 text-right tabular-nums text-a-ink whitespace-nowrap font-numeric">
                         {(m?.ad_avg_play_count != null && m?.total_avg_play_count != null)
                           ? ((m.ad_avg_play_count - m.total_avg_play_count) / 10000).toFixed(2)
                           : "-"}
                       </td>
-                      <td className="px-3 py-4 text-right tabular-nums text-a-ink whitespace-nowrap font-numeric">{fmt(m?.top_ad_play_count)}</td>
-                      <td className="px-3 py-4 whitespace-nowrap">
+                      <td style={{ minWidth: screenColWidths["광고 최고 조회수"] }} className="px-3 py-4 text-right tabular-nums text-a-ink whitespace-nowrap font-numeric">{fmt(m?.top_ad_play_count)}</td>
+                      <td style={{ minWidth: screenColWidths["광고 최고 게시물 URL"] }} className="px-3 py-4 whitespace-nowrap">
                         {m?.top_ad_post_url
                           ? <a href={m.top_ad_post_url} target="_blank" rel="noreferrer"
                               className="inline-flex items-center gap-1 text-xs text-a-blue hover:underline">
@@ -680,12 +735,12 @@ export default function ScreeningPage() {
                             </a>
                           : <span className="text-a-ink-muted">-</span>}
                       </td>
-                      <td className="px-3 py-4 whitespace-nowrap max-w-[160px]">
+                      <td style={{ minWidth: screenColWidths["검색어"] }} className="px-3 py-4 whitespace-nowrap">
                         {m ? (
                           m.kw_keywords
                             ? <button
                                 onClick={() => { setKwModal({ metricsId: m.id, infName: inf.name }); setKwForm({ keywords: m.kw_keywords!, adDate: m.kw_ad_date ?? "" }); }}
-                                className="text-xs text-a-ink truncate max-w-[140px] block hover:text-a-blue transition-colors">
+                                className="text-xs text-a-ink hover:text-a-blue transition-colors">
                                 {m.kw_keywords}
                               </button>
                             : <button
@@ -695,7 +750,7 @@ export default function ScreeningPage() {
                               </button>
                         ) : <span className="text-a-ink-muted">-</span>}
                       </td>
-                      <td className="px-3 py-4 text-right tabular-nums whitespace-nowrap">
+                      <td style={{ minWidth: screenColWidths["검색어 트렌드"] }} className="px-3 py-4 text-right tabular-nums whitespace-nowrap">
                         {(() => {
                           if (!m?.kw_keywords) return <span className="text-a-ink-muted">-</span>;
                           if (m.kw_impact == null) return <span className="text-xs text-a-ink-muted">측정 불가</span>;
@@ -709,7 +764,7 @@ export default function ScreeningPage() {
                           );
                         })()}
                       </td>
-                      <td className="px-3 py-4 text-center whitespace-nowrap">
+                      <td style={{ minWidth: screenColWidths["통과 기준"] }} className="px-3 py-4 text-center whitespace-nowrap">
                         {(() => {
                           const snap = m?.criteria_snapshot;
                           if (!snap) return <span className="text-a-ink-muted">-</span>;
@@ -721,7 +776,7 @@ export default function ScreeningPage() {
                           );
                         })()}
                       </td>
-                      <td className="px-3 py-4 text-center whitespace-nowrap">
+                      <td style={{ minWidth: screenColWidths["상태"] }} className="px-3 py-4 text-center whitespace-nowrap">
                         <div className="inline-flex items-center relative">
                           <select value={inf.status} onChange={e => updateStatus(inf.id, e.target.value)}
                             className={`appearance-none pl-2.5 pr-5 py-1 rounded-full cursor-pointer border-0 outline-none text-xs font-medium ${s?.cls}`}>

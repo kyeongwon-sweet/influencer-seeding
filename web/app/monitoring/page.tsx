@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
@@ -46,13 +46,7 @@ function getPostType(url: string): string {
   return "-";
 }
 
-// Sticky columns: 썸네일(56) + 인플루언서(180) + 프로젝트명(150) + 상품명(150) + 유형(72) + 게시일(104) = 712px
-const STICKY_WIDTHS: Record<string, number> = {
-  "썸네일": 56, "인플루언서": 180, "프로젝트명": 150, "상품명": 150, "유형": 72, "게시일": 104,
-};
-const STICKY_LEFTS: Record<string, number> = {
-  "썸네일": 0, "인플루언서": 56, "프로젝트명": 236, "상품명": 386, "유형": 536, "게시일": 608,
-};
+const STICKY_COL_ORDER = ["썸네일", "인플루언서", "프로젝트명", "상품명", "유형", "게시일"] as const;
 
 function getThumbnailUrl(url: string): string | null {
   let m = url.match(/youtube\.com\/shorts\/([^/?&#]+)/);
@@ -70,9 +64,10 @@ function hasNotableChange(post: Post): boolean {
   return (l.play_count ?? 0) > (p.play_count ?? 0) || (l.comments_count ?? 0) > (p.comments_count ?? 0);
 }
 
-function TH({ children, right, col, onSort, sorted, className: cls }: {
+function TH({ children, right, col, onSort, sorted, className: cls, w, leftPos, onResize }: {
   children?: React.ReactNode; right?: boolean; col?: string;
   onSort?: () => void; sorted?: "asc" | "desc" | null; className?: string;
+  w?: number; leftPos?: number; onResize?: (e: React.MouseEvent) => void;
 }) {
   const isSticky = col !== undefined;
   const isLast = col === "게시일";
@@ -80,11 +75,11 @@ function TH({ children, right, col, onSort, sorted, className: cls }: {
   return (
     <th
       onClick={onSort}
-      style={isSticky ? { width: STICKY_WIDTHS[col], minWidth: STICKY_WIDTHS[col], maxWidth: STICKY_WIDTHS[col], left: STICKY_LEFTS[col] } : undefined}
+      style={isSticky ? { width: w, minWidth: w, left: leftPos } : w ? { minWidth: w } : undefined}
       className={[
-        "px-3 py-3 text-xs font-medium whitespace-nowrap overflow-hidden",
+        "relative px-3 py-3 text-xs font-medium whitespace-nowrap select-none",
         right ? "text-right" : "text-left",
-        sortable ? `cursor-pointer select-none transition-colors ${sorted ? "text-a-ink" : "text-a-ink-muted hover:text-a-ink"}` : "text-a-ink-muted",
+        sortable ? `cursor-pointer transition-colors ${sorted ? "text-a-ink" : "text-a-ink-muted hover:text-a-ink"}` : "text-a-ink-muted",
         isSticky ? "sticky z-40 bg-white" : "bg-white",
         isLast ? "shadow-[2px_0_5px_rgba(0,0,0,0.06)]" : "",
         cls ?? "",
@@ -92,18 +87,27 @@ function TH({ children, right, col, onSort, sorted, className: cls }: {
     >
       {children}
       {sortable && <span className={`ml-1 ${sorted ? "text-a-blue" : "opacity-20"}`}>{sorted === "asc" ? "↑" : sorted === "desc" ? "↓" : "↕"}</span>}
+      {onResize && (
+        <div
+          className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-a-blue/30"
+          onMouseDown={e => { e.stopPropagation(); onResize(e); }}
+        />
+      )}
     </th>
   );
 }
 
-function TD({ children, right, muted, col, highlighted }: { children: React.ReactNode; right?: boolean; muted?: boolean; col?: string; highlighted?: boolean }) {
+function TD({ children, right, muted, col, highlighted, w, leftPos }: {
+  children: React.ReactNode; right?: boolean; muted?: boolean; col?: string; highlighted?: boolean;
+  w?: number; leftPos?: number;
+}) {
   const isSticky = col !== undefined;
   const isLast = col === "게시일";
   return (
     <td
-      style={isSticky ? { width: STICKY_WIDTHS[col], minWidth: STICKY_WIDTHS[col], maxWidth: STICKY_WIDTHS[col], left: STICKY_LEFTS[col] } : undefined}
+      style={isSticky ? { width: w, minWidth: w, left: leftPos } : w ? { minWidth: w } : undefined}
       className={[
-        "px-3 py-4 text-xs tabular-nums whitespace-nowrap overflow-hidden",
+        "px-3 py-4 text-xs tabular-nums whitespace-nowrap",
         right ? "text-right" : "text-left",
         muted ? "text-a-ink-muted" : "text-a-ink",
         isSticky ? `sticky z-10 ${highlighted ? "bg-yellow-50 group-hover:bg-yellow-100/60" : "bg-white group-hover:bg-a-parchment"}` : "",
@@ -255,6 +259,15 @@ export default function MonitoringPage() {
   const [trendPost, setTrendPost] = useState<Post | null>(null);
   const [editCell, setEditCell] = useState<EditCell | null>(null);
 
+  // column widths for drag-resize
+  const [stickyColWidths, setStickyColWidths] = useState<Record<string, number>>({
+    "썸네일": 56, "인플루언서": 180, "프로젝트명": 150, "상품명": 150, "유형": 72, "게시일": 104,
+  });
+  const [colWidths, setColWidths] = useState<Record<string, number>>({
+    "채널분류": 100, "조회수": 100, "도달수": 100, "비용": 120, "조회당비용": 110, "도달당비용": 110, "측정일": 120, "Trend": 90, "삭제": 60,
+  });
+  const resizingRef = useRef<{ col: string; startX: number; startW: number; isSticky: boolean } | null>(null);
+
   const filteredPosts = posts.filter(post => {
     const displayName = (post.account_name ?? post.influencers?.name ?? "").toLowerCase();
     if (filters.name && !displayName.includes(filters.name.toLowerCase())) return false;
@@ -316,6 +329,17 @@ export default function MonitoringPage() {
       comments: d.comments - dailyTotals[i].comments,
     }));
   }, [dailyTotals]);
+
+  // derive sticky left positions from current widths
+  const stickyLefts = useMemo(() => {
+    let left = 0;
+    const result: Record<string, number> = {};
+    for (const col of STICKY_COL_ORDER) {
+      result[col] = left;
+      left += stickyColWidths[col];
+    }
+    return result;
+  }, [stickyColWidths]);
 
   useEffect(() => {
     loadPosts().finally(() => setLoading(false));
@@ -517,6 +541,29 @@ export default function MonitoringPage() {
     setEditCell(null);
   }
 
+  function startResize(col: string, e: React.MouseEvent, isSticky = false) {
+    e.preventDefault();
+    e.stopPropagation();
+    const startW = isSticky ? stickyColWidths[col] : colWidths[col];
+    resizingRef.current = { col, startX: e.clientX, startW, isSticky };
+    function onMove(ev: MouseEvent) {
+      if (!resizingRef.current) return;
+      const newW = Math.max(40, resizingRef.current.startW + ev.clientX - resizingRef.current.startX);
+      if (resizingRef.current.isSticky) {
+        setStickyColWidths(prev => ({ ...prev, [resizingRef.current!.col]: newW }));
+      } else {
+        setColWidths(prev => ({ ...prev, [resizingRef.current!.col]: newW }));
+      }
+    }
+    function onUp() {
+      resizingRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
   return (
     <div className="min-h-screen bg-a-parchment">
       <header className="bg-black h-11 px-6 flex items-center justify-between sticky top-0 z-40">
@@ -687,21 +734,21 @@ export default function MonitoringPage() {
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-30">
                 <tr className="border-b border-a-hairline">
-                  <TH col="썸네일"></TH>
-                  <TH col="인플루언서" {...sp("인플루언서")}>인플루언서</TH>
-                  <TH col="프로젝트명" {...sp("프로젝트명")}>프로젝트명</TH>
-                  <TH col="상품명" {...sp("상품명")}>상품명</TH>
-                  <TH col="유형" {...sp("유형")}>유형</TH>
-                  <TH col="게시일" {...sp("게시일")}>게시일</TH>
-                  <TH {...sp("채널분류")} className="min-w-[90px]">채널분류</TH>
-                  <TH right {...sp("조회수")} className="min-w-[100px]">조회수</TH>
-                  <TH right {...sp("도달수")} className="min-w-[100px]">도달수</TH>
-                  <TH right {...sp("비용")} className="min-w-[100px]">비용</TH>
-                  <TH right className="min-w-[100px]">조회당비용</TH>
-                  <TH right className="min-w-[100px]">도달당비용</TH>
-                  <TH {...sp("측정일")} className="min-w-[110px]">측정일</TH>
-                  <TH className="min-w-[90px] text-center">Trend</TH>
-                  <TH className="min-w-[60px]"></TH>
+                  <TH col="썸네일" w={stickyColWidths["썸네일"]} leftPos={stickyLefts["썸네일"]} onResize={e => startResize("썸네일", e, true)}></TH>
+                  <TH col="인플루언서" w={stickyColWidths["인플루언서"]} leftPos={stickyLefts["인플루언서"]} onResize={e => startResize("인플루언서", e, true)} {...sp("인플루언서")}>인플루언서</TH>
+                  <TH col="프로젝트명" w={stickyColWidths["프로젝트명"]} leftPos={stickyLefts["프로젝트명"]} onResize={e => startResize("프로젝트명", e, true)} {...sp("프로젝트명")}>프로젝트명</TH>
+                  <TH col="상품명" w={stickyColWidths["상품명"]} leftPos={stickyLefts["상품명"]} onResize={e => startResize("상품명", e, true)} {...sp("상품명")}>상품명</TH>
+                  <TH col="유형" w={stickyColWidths["유형"]} leftPos={stickyLefts["유형"]} onResize={e => startResize("유형", e, true)} {...sp("유형")}>유형</TH>
+                  <TH col="게시일" w={stickyColWidths["게시일"]} leftPos={stickyLefts["게시일"]} onResize={e => startResize("게시일", e, true)} {...sp("게시일")}>게시일</TH>
+                  <TH w={colWidths["채널분류"]} onResize={e => startResize("채널분류", e)} {...sp("채널분류")}>채널분류</TH>
+                  <TH right w={colWidths["조회수"]} onResize={e => startResize("조회수", e)} {...sp("조회수")}>조회수</TH>
+                  <TH right w={colWidths["도달수"]} onResize={e => startResize("도달수", e)} {...sp("도달수")}>도달수</TH>
+                  <TH right w={colWidths["비용"]} onResize={e => startResize("비용", e)} {...sp("비용")}>비용</TH>
+                  <TH right w={colWidths["조회당비용"]} onResize={e => startResize("조회당비용", e)}>조회당비용</TH>
+                  <TH right w={colWidths["도달당비용"]} onResize={e => startResize("도달당비용", e)}>도달당비용</TH>
+                  <TH w={colWidths["측정일"]} onResize={e => startResize("측정일", e)} {...sp("측정일")}>측정일</TH>
+                  <TH className="text-center" w={colWidths["Trend"]} onResize={e => startResize("Trend", e)}>Trend</TH>
+                  <TH w={colWidths["삭제"]}></TH>
                 </tr>
               </thead>
               <tbody>
@@ -712,7 +759,7 @@ export default function MonitoringPage() {
                   const thumbUrl = getThumbnailUrl(post.url);
                   return (
                     <tr key={post.id} className={`group border-b border-a-divider last:border-0 transition-colors ${hl ? "bg-yellow-50/60 hover:bg-yellow-100/50" : "hover:bg-a-parchment/60"}`}>
-                      <td style={{ width: STICKY_WIDTHS["썸네일"], minWidth: STICKY_WIDTHS["썸네일"], maxWidth: STICKY_WIDTHS["썸네일"], left: STICKY_LEFTS["썸네일"] }}
+                      <td style={{ width: stickyColWidths["썸네일"], minWidth: stickyColWidths["썸네일"], left: stickyLefts["썸네일"] }}
                         className={`sticky z-10 px-2 py-2 ${hl ? "bg-yellow-50 group-hover:bg-yellow-100/60" : "bg-white group-hover:bg-a-parchment"}`}>
                         {thumbUrl ? (
                           <img src={thumbUrl} alt="" className="w-10 h-8 object-cover rounded cursor-pointer hover:opacity-80 transition"
@@ -733,8 +780,8 @@ export default function MonitoringPage() {
                           </button>
                         )}
                       </td>
-                      <TD col="인플루언서" highlighted={hl}><span className="font-medium">{displayName}</span></TD>
-                      <TD col="프로젝트명" highlighted={hl}>
+                      <TD col="인플루언서" w={stickyColWidths["인플루언서"]} leftPos={stickyLefts["인플루언서"]} highlighted={hl}><span className="font-medium">{displayName}</span></TD>
+                      <TD col="프로젝트명" w={stickyColWidths["프로젝트명"]} leftPos={stickyLefts["프로젝트명"]} highlighted={hl}>
                         {editCell?.postId === post.id && editCell?.field === "project_name" ? (
                           <input autoFocus value={editCell.value}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
@@ -748,7 +795,7 @@ export default function MonitoringPage() {
                           </span>
                         )}
                       </TD>
-                      <TD col="상품명" highlighted={hl}>
+                      <TD col="상품명" w={stickyColWidths["상품명"]} leftPos={stickyLefts["상품명"]} highlighted={hl}>
                         {editCell?.postId === post.id && editCell?.field === "product_name" ? (
                           <input autoFocus value={editCell.value}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
@@ -762,9 +809,9 @@ export default function MonitoringPage() {
                           </span>
                         )}
                       </TD>
-                      <TD col="유형" muted highlighted={hl}>{getPostType(post.url)}</TD>
-                      <TD col="게시일" muted highlighted={hl}>{post.posted_at ?? "-"}</TD>
-                      <TD muted>
+                      <TD col="유형" w={stickyColWidths["유형"]} leftPos={stickyLefts["유형"]} muted highlighted={hl}>{getPostType(post.url)}</TD>
+                      <TD col="게시일" w={stickyColWidths["게시일"]} leftPos={stickyLefts["게시일"]} muted highlighted={hl}>{post.posted_at ?? "-"}</TD>
+                      <TD muted w={colWidths["채널분류"]}>
                         {editCell?.postId === post.id && editCell?.field === "channel_type" ? (
                           <select autoFocus value={editCell.value}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
@@ -781,8 +828,9 @@ export default function MonitoringPage() {
                           </span>
                         )}
                       </TD>
-                      <TD right muted>{fmt(s?.play_count)}</TD>
-                      <td className="px-3 py-4 text-xs tabular-nums text-right whitespace-nowrap min-w-[100px] cursor-text"
+                      <TD right muted w={colWidths["조회수"]}>{fmt(s?.play_count)}</TD>
+                      <td style={{ minWidth: colWidths["도달수"] }}
+                        className="px-3 py-4 text-xs tabular-nums text-right whitespace-nowrap cursor-text"
                         onClick={() => editCell?.postId !== post.id && setEditCell({ postId: post.id, field: "reach_count", value: String(post.reach_count ?? "") })}>
                         {editCell?.postId === post.id && editCell?.field === "reach_count" ? (
                           <input autoFocus type="number" value={editCell.value}
@@ -796,7 +844,8 @@ export default function MonitoringPage() {
                           </span>
                         )}
                       </td>
-                      <td className="px-3 py-4 text-xs tabular-nums text-right whitespace-nowrap min-w-[100px] cursor-text"
+                      <td style={{ minWidth: colWidths["비용"] }}
+                        className="px-3 py-4 text-xs tabular-nums text-right whitespace-nowrap cursor-text"
                         onClick={() => editCell?.postId !== post.id && setEditCell({ postId: post.id, field: "cost", value: String(post.cost ?? "") })}>
                         {editCell?.postId === post.id && editCell?.field === "cost" ? (
                           <input autoFocus type="number" value={editCell.value}
@@ -810,21 +859,21 @@ export default function MonitoringPage() {
                           </span>
                         )}
                       </td>
-                      <TD right muted>
+                      <TD right muted w={colWidths["조회당비용"]}>
                         {post.cost != null && s?.play_count != null && s.play_count > 0
                           ? (post.cost / s.play_count).toFixed(2) + "원"
                           : <span className="text-gray-300">-</span>}
                       </TD>
-                      <TD right muted>
+                      <TD right muted w={colWidths["도달당비용"]}>
                         {post.cost != null && post.reach_count != null && post.reach_count > 0
                           ? (post.cost / post.reach_count).toFixed(2) + "원"
                           : <span className="text-gray-300">-</span>}
                       </TD>
-                      <TD muted>{s?.measured_at ?? "-"}</TD>
-                      <td className="px-3 py-3 text-center">
+                      <TD muted w={colWidths["측정일"]}>{s?.measured_at ?? "-"}</TD>
+                      <td style={{ minWidth: colWidths["Trend"] }} className="px-3 py-3 text-center">
                         <Sparkline stats={post.all_stats ?? []} postId={post.id} onClick={() => setTrendPost(post)} />
                       </td>
-                      <td className="px-3 py-3 text-right">
+                      <td style={{ minWidth: colWidths["삭제"] }} className="px-3 py-3 text-right">
                         <button onClick={() => deletePost(post.id)}
                           className="text-a-ink-muted hover:text-red-500 text-xs transition">삭제</button>
                       </td>
