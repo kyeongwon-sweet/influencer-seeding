@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
@@ -85,6 +85,12 @@ const STATUS = [
   { value: "reject",  label: "탈락",   cls: "bg-red-100 text-red-700" },
 ];
 
+function formatTimestamp(ts: string): string {
+  const d = new Date(ts);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function fmt(v: number | null | undefined) {
   return v == null ? "-" : v.toLocaleString();
 }
@@ -133,16 +139,27 @@ export default function ScreeningPage() {
   const [kwModal, setKwModal] = useState<{ metricsId: string; infName: string } | null>(null);
   const [kwForm, setKwForm] = useState({ keywords: "", adDate: "" });
   const [kwRunning, setKwRunning] = useState(false);
-  const [igTypeFilter, setIgTypeFilter] = useState<"both" | "reels" | "feed">("both");
-  const [ytTypeFilter, setYtTypeFilter] = useState<"both" | "longform" | "shorts">("both");
+  const [igTypeFilter, setIgTypeFilter] = useState<"both" | "reels" | "feed">("reels");
+  const [ytTypeFilter, setYtTypeFilter] = useState<"both" | "longform" | "shorts">("shorts");
+  const [lastListupAt, setLastListupAt] = useState<string | null>(null);
+  const [showTimeoutError, setShowTimeoutError] = useState(false);
+  const runningJobIdRef = useRef<string | null>(null);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => { load(); loadCriteria(); }, []);
+  useEffect(() => { load(); loadCriteria(); loadLastListupAt(); }, []);
 
   async function load() {
     setLoading(true);
     const res = await fetch("/api/influencers");
     setList(await res.json());
     setLoading(false);
+  }
+
+  async function loadLastListupAt() {
+    const res = await fetch("/api/jobs");
+    const jobs: { type: string; status: string; updated_at: string }[] = await res.json();
+    const done = jobs.find(j => j.type === "listup" && j.status === "done");
+    if (done) setLastListupAt(done.updated_at);
   }
 
   async function loadCriteria() {
@@ -211,14 +228,58 @@ export default function ScreeningPage() {
   }
 
   async function runScreening() {
+    if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     setRunning(true);
-    await fetch("/api/jobs", {
+    setShowTimeoutError(false);
+
+    const res = await fetch("/api/jobs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type: "screening", payload: {} }),
     });
-    setRunning(false);
-    toast("스크리닝 작업이 시작됐습니다. 완료까지 수 분이 소요됩니다.", "info");
+
+    if (!res.ok) {
+      setRunning(false);
+      toast("스크리닝 실행에 실패했습니다.", "error");
+      return;
+    }
+
+    const { job } = await res.json();
+    runningJobIdRef.current = job.id;
+    toast("스크리닝이 시작됐습니다. 완료 시 자동으로 업데이트됩니다.", "info");
+
+    const startTime = Date.now();
+    pollTimerRef.current = setInterval(async () => {
+      if (Date.now() - startTime >= 300_000) { // 5분 초과
+        clearInterval(pollTimerRef.current!);
+        pollTimerRef.current = null;
+        runningJobIdRef.current = null;
+        setRunning(false);
+        setShowTimeoutError(true);
+        return;
+      }
+      try {
+        const jobRes = await fetch("/api/jobs");
+        const jobs: { id: string; status: string; error?: string }[] = await jobRes.json();
+        const cur = jobs.find(j => j.id === runningJobIdRef.current);
+        if (cur?.status === "done") {
+          clearInterval(pollTimerRef.current!);
+          pollTimerRef.current = null;
+          runningJobIdRef.current = null;
+          setRunning(false);
+          await load();
+          toast("스크리닝이 완료됐습니다. 결과가 업데이트됐습니다.", "success");
+        } else if (cur?.status === "failed") {
+          clearInterval(pollTimerRef.current!);
+          pollTimerRef.current = null;
+          runningJobIdRef.current = null;
+          setRunning(false);
+          toast(`스크리닝에 실패했습니다: ${cur.error ?? "알 수 없는 오류"}`, "error");
+        }
+      } catch {
+        // 폴링 오류는 무시 (재시도)
+      }
+    }, 30_000);
   }
 
   async function updateStatus(id: string, status: string) {
@@ -388,19 +449,34 @@ export default function ScreeningPage() {
       </header>
 
       <div className="sticky top-11 z-[35] bg-white border-b border-a-hairline px-6 h-11 flex items-center justify-between">
-        <button onClick={() => setShowHelp(true)}
-          className="flex items-center gap-1.5 text-xs text-a-ink-muted hover:text-a-ink transition">
-          <svg width="13" height="13" viewBox="0 0 20 20" fill="none">
-            <circle cx="10" cy="10" r="8.5" stroke="currentColor" strokeWidth="1.5"/>
-            <path d="M10 9.5v4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            <circle cx="10" cy="6.5" r="1" fill="currentColor"/>
-          </svg>
-          사용 안내
-        </button>
+        <div className="flex items-center gap-4">
+          <button onClick={() => setShowHelp(true)}
+            className="flex items-center gap-1.5 text-xs text-a-ink-muted hover:text-a-ink transition">
+            <svg width="13" height="13" viewBox="0 0 20 20" fill="none">
+              <circle cx="10" cy="10" r="8.5" stroke="currentColor" strokeWidth="1.5"/>
+              <path d="M10 9.5v4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              <circle cx="10" cy="6.5" r="1" fill="currentColor"/>
+            </svg>
+            사용 안내
+          </button>
+          {lastListupAt && (
+            <span className="text-xs text-a-ink-muted whitespace-nowrap">
+              마지막 리스트업 <span className="font-medium text-a-ink">{formatTimestamp(lastListupAt)}</span>
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-1.5">
           <button onClick={() => setShowCriteria(true)} className="btn-secondary">기준 설정</button>
           <button onClick={runScreening} disabled={running} className="btn-primary">
-            {running ? "실행 중..." : "스크리닝 실행"}
+            {running ? (
+              <span className="flex items-center gap-1.5">
+                <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25"/>
+                  <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
+                </svg>
+                실행 중...
+              </span>
+            ) : "스크리닝 실행"}
           </button>
         </div>
       </div>
@@ -678,6 +754,41 @@ export default function ScreeningPage() {
           </div>
         </div>
       </div>
+
+      {showTimeoutError && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={() => setShowTimeoutError(false)} />
+          <div className="relative bg-white rounded-2xl shadow-xl w-[420px] p-7">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <p className="text-[10px] font-semibold text-red-500 tracking-[0.1em] uppercase mb-1">시간 초과</p>
+                <h2 className="font-bold text-[18px] text-a-ink tracking-tight">스크리닝 지연 안내</h2>
+              </div>
+              <button onClick={() => setShowTimeoutError(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-black/[0.06] hover:bg-black/[0.10] transition-colors text-a-ink">
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                  <path d="M1 1l9 9M10 1L1 10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                </svg>
+              </button>
+            </div>
+            <p className="text-sm text-a-ink-muted leading-relaxed mb-5">
+              5분 내에 스크리닝이 완료되지 않았습니다.
+              작업은 백그라운드에서 계속 실행 중입니다.
+              완료 후 페이지를 새로고침하면 결과를 확인할 수 있습니다.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowTimeoutError(false)}
+                className="text-xs px-4 py-2 rounded-full border border-a-hairline text-a-ink hover:bg-a-parchment transition">
+                닫기
+              </button>
+              <button onClick={() => { setShowTimeoutError(false); window.location.reload(); }}
+                className="text-xs px-4 py-2 rounded-full bg-a-blue text-white hover:bg-a-blue-hover transition">
+                새로고침
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {kwModal && (() => {
         const kwCount = kwForm.keywords.split(",").map(k => k.trim()).filter(Boolean).length;

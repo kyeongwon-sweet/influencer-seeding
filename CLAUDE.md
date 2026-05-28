@@ -84,6 +84,8 @@ export function getServerSupabase() {
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `APIFY_API_TOKEN`
 - `APP_URL` → 배포된 Vercel URL (예: `https://influencer-seeding-xxx.vercel.app`)
+- `NAVER_CLIENT_ID` → 네이버 개발자센터 발급 (검색 트렌드)
+- `NAVER_CLIENT_SECRET` → 네이버 개발자센터 발급 (검색 트렌드)
 
 ### Python 스크립트 (`.env`)
 - `APIFY_API_TOKEN`

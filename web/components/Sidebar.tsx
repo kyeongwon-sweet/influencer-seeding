@@ -35,6 +35,17 @@ const NAV = [
     ),
   },
   {
+    href: "/contact",
+    label: "인플루언서 컨택",
+    icon: (
+      <svg width="15" height="15" viewBox="0 0 20 20" fill="none">
+        <circle cx="8" cy="7" r="3.5" stroke="currentColor" strokeWidth="1.5"/>
+        <path d="M2 17c0-3.314 2.686-5 6-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+        <path d="M13.5 12.5h5M16 10v5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      </svg>
+    ),
+  },
+  {
     href: "/monitoring",
     label: "협찬 모니터링",
     icon: (
