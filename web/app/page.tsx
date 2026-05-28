@@ -22,6 +22,12 @@ const JOB_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   failed:  { label: "실패",   color: "text-red-600 bg-red-50" },
 };
 
+function formatTimestamp(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const m = Math.floor(diff / 60000);
@@ -43,6 +49,9 @@ export default function DashboardPage() {
       fetch("/api/jobs").then(r => r.json()).then(setJobs),
     ]).finally(() => setLoading(false));
   }, []);
+
+  const lastListupJob  = jobs.find(j => j.type === "listup"    && j.status === "done");
+  const lastScreenJob  = jobs.find(j => j.type === "screening" && j.status === "done");
 
   const total = influencers.length;
   const counts = Object.fromEntries(
@@ -94,11 +103,32 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-a-parchment">
       <header className="bg-black h-11 px-6 flex items-center justify-between sticky top-0 z-40">
-        <span className="text-white text-sm font-medium tracking-tight">인플루언서 시딩 시스템</span>
+        <span className="text-white text-sm font-medium tracking-tight">인플루언서 시딩 트래킹 대시보드</span>
         <UserButton />
       </header>
 
       <main className="px-5 py-7 w-full max-w-[680px] mx-auto space-y-4">
+
+        {/* 마지막 업데이트 시각 */}
+        {!loading && (lastListupJob || lastScreenJob) && (
+          <div className="flex items-center gap-4 px-1">
+            {lastListupJob && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-a-ink-muted">리스트업</span>
+                <span className="text-[11px] font-semibold text-a-ink tabular-nums">{formatTimestamp(lastListupJob.created_at)}</span>
+              </div>
+            )}
+            {lastListupJob && lastScreenJob && (
+              <span className="text-a-hairline text-xs">·</span>
+            )}
+            {lastScreenJob && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-a-ink-muted">스크리닝</span>
+                <span className="text-[11px] font-semibold text-a-ink tabular-nums">{formatTimestamp(lastScreenJob.created_at)}</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 인플루언서 현황 */}
         <div className="bg-white rounded-[20px] border border-a-hairline overflow-hidden">
