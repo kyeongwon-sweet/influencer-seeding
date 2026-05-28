@@ -1,0 +1,6 @@
+gspread==6.1.2
+apify-client==1.8.1
+apify-shared==1.1.2
+pandas==2.2.2
+python-dotenv==1.0.1
+supabase==2.15.1

@@ -1,0 +1,27 @@
+name: Run Screening
+
+on:
+  repository_dispatch:
+    types: [screening]
+
+jobs:
+  screen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run screening
+        env:
+          APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          JOB_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+        run: cd scripts && python run_screening_v2.py

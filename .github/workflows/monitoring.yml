@@ -1,0 +1,30 @@
+name: Run Monitoring
+
+on:
+  schedule:
+    - cron: "0 9 * * *"   # 매일 오전 9시 UTC (한국시간 오후 6시)
+  workflow_dispatch:
+  repository_dispatch:
+    types: [monitoring]
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run monitoring
+        env:
+          APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          JOB_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+        run: cd scripts && python run_monitoring.py
