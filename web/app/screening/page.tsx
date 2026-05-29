@@ -110,7 +110,7 @@ function fmt(v: number | null | undefined) {
 }
 
 function fmtRatio(v: number | null | undefined) {
-  return v == null ? "-" : (v * 100).toFixed(2) + "%";
+  return v == null ? "-" : v.toFixed(2) + "%";
 }
 
 function latest(inf: Influencer): Metrics | null {

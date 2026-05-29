@@ -174,6 +174,10 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
   const today = new Date().toISOString().slice(0, 10);
   const { data: posts } = await supabase.from('sponsored_posts').select('id, url, posted_at, account_name, influencer_id');
 
+  // N+1 방지: 인플루언서 URL → id 맵을 미리 로드
+  const { data: allInfs } = await supabase.from('influencers').select('id, url');
+  const infUrlMap = new Map((allInfs || []).map((i: { id: string; url: string }) => [i.url, i.id]));
+
   const statsKey = (url: string) => {
     const m = (url || '').match(/\/(?:p|reel|tv)\/([A-Za-z0-9_-]+)/);
     return m ? m[1] : url.replace(/\/$/, '');
@@ -213,8 +217,8 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
     if (!post.account_name && s.account_name) updates.account_name = s.account_name;
     if (!post.influencer_id && s.owner_username) {
       const profileUrl = `https://www.instagram.com/${s.owner_username}/`;
-      const { data: inf } = await supabase.from('influencers').select('id').eq('url', profileUrl).limit(1);
-      if (inf?.[0]) updates.influencer_id = inf[0].id;
+      const infId = infUrlMap.get(profileUrl);
+      if (infId) updates.influencer_id = infId;
     }
     if (Object.keys(updates).length > 0) {
       await supabase.from('sponsored_posts').update(updates).eq('id', post.id);
@@ -252,8 +256,6 @@ async function handleListup(supabase: ReturnType<typeof getServerSupabase>, jobI
         ? new Date(rawTs * 1000).toISOString()
         : (rawTs as string) || null;
 
-      // 발굴 키워드: 게시물 해시태그에서 추론
-      const hashtags = (item.hashtags as string[]) || [];
       const keyword = null; // 복수 키워드 통합 실행 시 추론 불가
 
       accounts[username] = {
@@ -310,7 +312,7 @@ async function handleListup(supabase: ReturnType<typeof getServerSupabase>, jobI
 
   const newAccounts = Object.values(accounts).filter(a => !existingUrls.has(a.url as string));
   if (newAccounts.length > 0) {
-    await supabase.from('influencers').insert(newAccounts);
+    await supabase.from('influencers').upsert(newAccounts, { onConflict: 'url', ignoreDuplicates: true });
   }
   await supabase.from('jobs').update({ status: 'done', payload: { added: newAccounts.length } }).eq('id', jobId);
 }
@@ -421,7 +423,8 @@ async function handleScreening(
 // ── 무상 노출 조회수 갱신 ────────────────────────────────────────────────
 
 async function handleOrganicRefresh(supabase: ReturnType<typeof getServerSupabase>, jobId: string, items: Record<string, unknown>[]) {
-  let updated = 0;
+  const updates: { url: string; view_count: number }[] = [];
+
   for (const item of items) {
     const shortCode = (item.shortCode || item.shortcode) as string | undefined;
     const rawUrl = (item.url as string) || (shortCode ? `https://www.instagram.com/p/${shortCode}/` : null);
@@ -430,21 +433,19 @@ async function handleOrganicRefresh(supabase: ReturnType<typeof getServerSupabas
     const viewCount = (item.videoPlayCount || item.videoViewCount) as number | null | undefined;
     if (!viewCount) continue;
 
-    // URL 정규화: 쿼리파라미터 제거, trailing slash
     let cleanUrl: string;
     try {
       const u = new URL(rawUrl.startsWith('http') ? rawUrl : 'https://' + rawUrl);
       cleanUrl = `https://www.instagram.com${u.pathname.replace(/\/$/, '')}/`;
     } catch { continue; }
 
-    const { error } = await supabase
-      .from('organic_mentions')
-      .update({ view_count: viewCount })
-      .eq('url', cleanUrl);
-
-    if (!error) updated++;
+    updates.push({ url: cleanUrl, view_count: viewCount });
   }
-  await supabase.from('jobs').update({ status: 'done', payload: { updated } }).eq('id', jobId);
+
+  if (updates.length > 0) {
+    await supabase.from('organic_mentions').upsert(updates, { onConflict: 'url' });
+  }
+  await supabase.from('jobs').update({ status: 'done', payload: { updated: updates.length } }).eq('id', jobId);
 }
 
 // ── 무상 노출 ────────────────────────────────────────────────────────
@@ -486,7 +487,7 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
         platform: 'instagram',
         content_summary: (item.caption as string)?.slice(0, 300) || null,
         uploaded_at: uploadedAt,
-        view_count: viewCount || (item.likesCount as number) || null,
+        view_count: viewCount > 0 ? viewCount : null,
         source: 'apify',
       });
     }

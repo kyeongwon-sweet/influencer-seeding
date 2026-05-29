@@ -9,7 +9,7 @@ function inferPlatform(url: string, channelType: string): string {
   if (url.includes("youtu")) return "유튜브";
   if (url.includes("blog.naver.com")) return "블로그";
   if (url.includes("tiktok.com")) return "틱톡";
-  if (url.includes("x.com") || url.includes("twitter.com")) return "스레드";
+  if (url.includes("x.com") || url.includes("twitter.com")) return "X (트위터)";
   if (channelType === "확인채널_블로그" || channelType === "확인채널_카페") return "블로그";
   if (channelType === "커뮤니티") return "스레드";
   return "인스타그램";

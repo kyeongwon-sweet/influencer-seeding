@@ -15,10 +15,13 @@ export async function startActorRun(
   }])).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
 
   const res = await fetch(
-    `${APIFY_BASE}/acts/${actorId.replace('/', '~')}/runs?token=${token}&webhooks=${webhooks}`,
+    `${APIFY_BASE}/acts/${actorId.replace('/', '~')}/runs?webhooks=${webhooks}`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
       body: JSON.stringify(input),
     }
   );
@@ -33,7 +36,8 @@ export async function startActorRun(
 export async function fetchDatasetItems(datasetId: string): Promise<unknown[]> {
   const token = process.env.APIFY_API_TOKEN!;
   const res = await fetch(
-    `${APIFY_BASE}/datasets/${datasetId}/items?token=${token}&clean=true&limit=5000`
+    `${APIFY_BASE}/datasets/${datasetId}/items?clean=true&limit=5000`,
+    { headers: { 'Authorization': `Bearer ${token}` } }
   );
   if (!res.ok) throw new Error(`Dataset fetch 실패: ${res.status}`);
   return res.json();

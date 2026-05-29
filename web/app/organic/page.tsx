@@ -190,7 +190,7 @@ export default function OrganicPage() {
   async function addMention() {
     if (!addForm.url) return;
     setAdding(true);
-    await fetch("/api/organic-mentions", {
+    const res = await fetch("/api/organic-mentions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -204,9 +204,14 @@ export default function OrganicPage() {
         source: "manual",
       }),
     });
+    setAdding(false);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      toast(`추가 실패: ${(err as { error?: string }).error ?? "오류가 발생했습니다."}`, "error");
+      return;
+    }
     setAddForm({ url: "", account_name: "", platform: "인스타그램", content_summary: "", mentioned_product: "", uploaded_at: "", view_count: "" });
     setShowAdd(false);
-    setAdding(false);
     await loadMentions();
     toast("게시물이 추가됐습니다.", "success");
   }
