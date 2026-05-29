@@ -95,12 +95,17 @@ function TrendChart({ data, selectedDate, onSelect }: {
 
   const selIdx = selectedDate ? data.findIndex(d => d.date === selectedDate) : -1;
 
-  // One label per month
+  // One label per month — skip labels too close to the y-axis area
   const monthLabels: { i: number; label: string }[] = [];
   let lastMonth = "";
   data.forEach((d, i) => {
     const m = d.date.slice(0, 7);
-    if (m !== lastMonth) { monthLabels.push({ i, label: d.date.slice(5, 7) + "월" }); lastMonth = m; }
+    if (m !== lastMonth) {
+      if (xi(i) > PAD.left + 35) {
+        monthLabels.push({ i, label: d.date.slice(5, 7) + "월" });
+      }
+      lastMonth = m;
+    }
   });
 
   function handleMouseMove(e: React.MouseEvent<SVGSVGElement>) {
@@ -128,7 +133,9 @@ function TrendChart({ data, selectedDate, onSelect }: {
         {yTicks.map(({ v }) => (
           <g key={v}>
             <line x1={PAD.left} x2={W - PAD.right} y1={yv(v)} y2={yv(v)} stroke="#e5e7eb" strokeWidth="0.5" />
-            <text x={PAD.left - 4} y={yv(v) + 4} textAnchor="end" fontSize="9" fill="#9ca3af">{v.toLocaleString()}</text>
+            {v !== 0 && (
+              <text x={PAD.left - 4} y={yv(v) + 4} textAnchor="end" fontSize="9" fill="#9ca3af">{v.toLocaleString()}</text>
+            )}
           </g>
         ))}
 
@@ -159,15 +166,25 @@ function TrendChart({ data, selectedDate, onSelect }: {
         )}
       </svg>
 
-      {/* Hover tooltip */}
-      {hov && (
-        <div className="absolute top-1 left-14 bg-black/80 text-white rounded-[8px] px-3 py-2 text-[11px] pointer-events-none z-10 whitespace-nowrap">
-          <p className="font-medium mb-0.5">{hov.date}</p>
-          <p>검색량: <span className="font-semibold text-blue-300">{hov.keywordAbsolute.toLocaleString()}</span></p>
-          <p className="text-gray-400">라라스윗: {hov.larasweetAbsolute.toLocaleString()}</p>
-          <p className="text-gray-500 mt-1 text-[10px]">클릭하여 날짜 선택</p>
-        </div>
-      )}
+      {/* Hover tooltip — follows indicator: right side when on left half, left side when on right half */}
+      {hov && hoverIdx !== null && (() => {
+        const pct = (xi(hoverIdx) / W * 100).toFixed(1);
+        const isRight = hoverIdx >= data.length / 2;
+        return (
+          <div
+            className="absolute top-1 bg-black/80 text-white rounded-[8px] px-3 py-2 text-[11px] pointer-events-none z-10 whitespace-nowrap"
+            style={isRight
+              ? { right: `${(100 - xi(hoverIdx) / W * 100).toFixed(1)}%`, transform: "translateX(-8px)" }
+              : { left: pct + "%", transform: "translateX(8px)" }
+            }
+          >
+            <p className="font-medium mb-0.5">{hov.date}</p>
+            <p>검색량: <span className="font-semibold text-blue-300">{hov.keywordAbsolute.toLocaleString()}</span></p>
+            <p className="text-gray-400">라라스윗: {hov.larasweetAbsolute.toLocaleString()}</p>
+            <p className="text-gray-500 mt-1 text-[10px]">클릭하여 날짜 선택</p>
+          </div>
+        );
+      })()}
 
       {/* Legend */}
       <div className="flex items-center gap-4 mt-2 px-1">
