@@ -62,7 +62,8 @@ export default function Sidebar() {
   return (
     <aside className="fixed left-0 top-0 h-screen w-[200px] bg-white flex flex-col z-50 shadow-[1px_0_0_0_#e4e8f0]">
       <div className="px-5 h-11 flex items-center border-b border-gray-100 shrink-0">
-        <span className="text-a-ink text-sm font-semibold tracking-tight">라라스윗</span>
+        {/* 로고 이미지: web/public/lalasweet-logo.png 에 저장 필요 */}
+        <img src="/lalasweet-logo.png" alt="라라스윗" className="h-5 w-auto object-contain" />
       </div>
 
       <nav className="flex-1 px-2.5 py-3 space-y-0.5 overflow-y-auto">

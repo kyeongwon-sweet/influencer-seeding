@@ -109,7 +109,43 @@ export default function DashboardPage() {
     <div className="min-h-screen">
       <header className="bg-white border-b border-gray-100 h-11 px-6 flex items-center justify-between sticky top-0 z-40">
         <span className="text-a-ink text-sm font-semibold tracking-tight">인플루언서 시딩 트래킹 대시보드</span>
-        <UserButton />
+        <div className="flex items-center gap-2">
+          <a
+            href="https://www.youtube.com/shorts"
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-gray-200 text-[11px] font-medium text-a-ink hover:bg-gray-50 transition-colors whitespace-nowrap"
+          >
+            <svg width="14" height="10" viewBox="0 0 26 18" fill="none">
+              <rect width="26" height="18" rx="4" fill="#FF0000"/>
+              <polygon points="10,4 10,14 20,9" fill="white"/>
+            </svg>
+            YouTube Shorts
+          </a>
+          <a
+            href="https://www.instagram.com/reels/"
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-gray-200 text-[11px] font-medium text-a-ink hover:bg-gray-50 transition-colors whitespace-nowrap"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+              <defs>
+                <linearGradient id="ig-reels" x1="0" y1="24" x2="24" y2="0" gradientUnits="userSpaceOnUse">
+                  <stop offset="0" stopColor="#F09433"/>
+                  <stop offset="0.35" stopColor="#E6683C"/>
+                  <stop offset="0.5" stopColor="#DC2743"/>
+                  <stop offset="0.65" stopColor="#CC2366"/>
+                  <stop offset="1" stopColor="#BC1888"/>
+                </linearGradient>
+              </defs>
+              <rect x="1" y="1" width="22" height="22" rx="6" fill="url(#ig-reels)"/>
+              <circle cx="12" cy="12" r="5.5" stroke="white" strokeWidth="2"/>
+              <circle cx="17.5" cy="6.5" r="1.5" fill="white"/>
+            </svg>
+            Instagram Reels
+          </a>
+          <UserButton />
+        </div>
       </header>
 
       <main className="px-8 py-8 w-full max-w-[860px] mx-auto space-y-5">
