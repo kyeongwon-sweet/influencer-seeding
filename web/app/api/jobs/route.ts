@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
             ).catch((e: unknown) => { startErrors.push(`인스타: ${e}`); }) : Promise.resolve(),
             ytKws.length > 0 ? startActorRun(
               'streamers/youtube-scraper',
-              { searchQueries: ytKws, maxResults: 30, maxResultsShorts: 0, sortingOrder: 'views' },
+              { searchQueries: ytKws, maxResults: 0, maxResultsShorts: 30, sortingOrder: 'views' },
               `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=listup&platform=youtube`
             ).catch((e: unknown) => { startErrors.push(`유튜브: ${e}`); }) : Promise.resolve(),
           ]);
@@ -138,7 +138,7 @@ export async function POST(req: NextRequest) {
           ).catch((e: unknown) => { startErrors.push(`인스타: ${e}`); }),
           startActorRun(
             'streamers/youtube-scraper',
-            { searchQueries: ['라라스윗'], maxResults: 30, maxResultsShorts: 0, sortingOrder: 'relevance' },
+            { searchQueries: ['라라스윗'], maxResults: 0, maxResultsShorts: 30, sortingOrder: 'relevance' },
             `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=organic&platform=youtube`
           ).catch((e: unknown) => { startErrors.push(`유튜브: ${e}`); }),
         ]);
