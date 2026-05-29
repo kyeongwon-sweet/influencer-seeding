@@ -1,18 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 
-// 진단용 GET: Supabase 연결 + 테스트 삽입 확인
+// 진단용 GET: env 확인 + SELECT만 테스트 (INSERT hang 원인 파악)
 export async function GET() {
-  const supabase = getServerSupabase();
-  const { data, error } = await supabase.from("kpi_snapshots").insert({
-    month_label: "진단테스트",
-    metrics: [{ label: "test", target: 1, current: 1, achievement: 100 }],
-  }).select();
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+
+  if (!supabaseUrl || !serviceKey) {
+    return NextResponse.json({ error: "env vars missing", supabaseUrl: !!supabaseUrl, serviceKey: !!serviceKey });
+  }
+
+  // 직접 REST API로 SELECT (SDK hang 우회)
+  const res = await fetch(`${supabaseUrl}/rest/v1/kpi_snapshots?select=id&limit=1`, {
+    headers: {
+      apikey: serviceKey,
+      Authorization: `Bearer ${serviceKey}`,
+    },
+  }).catch((e: Error) => ({ ok: false, status: 0, text: async () => e.message }));
+
+  const body = await (res as Response).text();
   return NextResponse.json({
-    supabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-    serviceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-    insertError: error?.message ?? null,
-    inserted: data,
+    supabaseUrl: supabaseUrl.slice(0, 30) + "...",
+    serviceKeyPrefix: serviceKey.slice(0, 10) + "...",
+    httpStatus: (res as Response).status,
+    body: body.slice(0, 300),
   });
 }
 
