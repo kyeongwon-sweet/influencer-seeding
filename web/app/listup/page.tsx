@@ -102,7 +102,7 @@ export default function ListupPage() {
   const hasFilter = filters.name !== "" || filters.platform !== "all" || filters.status !== "all" || filters.keyword !== "all" || filters.uploadedFrom !== "" || filters.uploadedTo !== "";
 
   useEffect(() => {
-    Promise.all([loadKeywords(), loadInfluencers(), loadLastListupAt()]).finally(() => setLoading(false));
+    Promise.all([loadKeywords(), loadInfluencers()]).finally(() => setLoading(false));
   }, []);
 
   async function loadKeywords() {
@@ -113,14 +113,10 @@ export default function ListupPage() {
   async function loadInfluencers() {
     const res = await fetch("/api/influencers");
     const data: Influencer[] = await res.json();
-    setInfluencers(data.filter(i => i.source === "listup" || i.source === "manual"));
-  }
-
-  async function loadLastListupAt() {
-    const res = await fetch("/api/jobs");
-    const jobs: { type: string; status: string; updated_at: string }[] = await res.json();
-    const done = jobs.find(j => j.type === "listup" && j.status === "done");
-    if (done) setLastListupAt(done.updated_at);
+    const filtered = data.filter(i => i.source === "listup" || i.source === "manual");
+    setInfluencers(filtered);
+    const maxAt = filtered.map(i => i.created_at).filter(Boolean).sort().reverse()[0];
+    if (maxAt) setLastListupAt(maxAt);
   }
 
   function startResize(e: React.MouseEvent, colIdx: number) {
@@ -293,7 +289,7 @@ export default function ListupPage() {
           pollTimerRef.current = null;
           runningJobIdRef.current = null;
           setRunning(false);
-          await Promise.all([loadInfluencers(), loadLastListupAt()]);
+          await loadInfluencers();
           toast("리스트업이 완료됐습니다. 결과가 업데이트됐습니다.", "success");
         } else if (cur?.status === "failed") {
           clearInterval(pollTimerRef.current!);

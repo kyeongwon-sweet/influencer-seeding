@@ -180,20 +180,18 @@ export default function ScreeningPage() {
     window.addEventListener("mouseup", onUp);
   }
 
-  useEffect(() => { load(); loadCriteria(); loadLastListupAt(); }, []);
+  useEffect(() => { load(); loadCriteria(); }, []);
 
   async function load() {
     setLoading(true);
     const res = await fetch("/api/influencers");
-    setList(await res.json());
+    const data: Influencer[] = await res.json();
+    setList(data);
+    const maxRunAt = data
+      .flatMap(i => (i.screening_metrics ?? []).map(m => m.run_at))
+      .filter(Boolean).sort().reverse()[0];
+    if (maxRunAt) setLastListupAt(maxRunAt);
     setLoading(false);
-  }
-
-  async function loadLastListupAt() {
-    const res = await fetch("/api/jobs");
-    const jobs: { type: string; status: string; updated_at: string }[] = await res.json();
-    const done = jobs.find(j => j.type === "listup" && j.status === "done");
-    if (done) setLastListupAt(done.updated_at);
   }
 
   async function loadCriteria() {
@@ -516,7 +514,7 @@ export default function ScreeningPage() {
           </button>
           {lastListupAt && (
             <span className="text-xs text-a-ink-muted whitespace-nowrap">
-              마지막 리스트업 <span className="font-medium text-a-ink">{formatTimestamp(lastListupAt)}</span>
+              마지막 스크리닝 <span className="font-medium text-a-ink">{formatTimestamp(lastListupAt)}</span>
             </span>
           )}
         </div>
