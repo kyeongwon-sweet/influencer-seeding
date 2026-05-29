@@ -4,6 +4,10 @@ import { getServerSupabase } from "@/lib/supabase-server";
 
 const NAVER_API = "https://openapi.naver.com/v1/datalab/search";
 
+// 네이버 Datalab 상대 비율(0~100) → 절대 검색량 변환 계수
+// 기준: '라라스윗'+'라라스윗아이스크림' 합산이 100인 2024-04-05의 실제 검색량 = 1,326.173건
+const ABSOLUTE_FACTOR = 1326.173 / 100; // ≈ 13.26173
+
 function addDays(date: Date, days: number) {
   const d = new Date(date);
   d.setDate(d.getDate() + days);
@@ -77,14 +81,17 @@ export async function POST(req: NextRequest) {
     beforeAvg > 0 ? Math.round(((afterAvg - beforeAvg) / beforeAvg) * 1000) / 10 : null;
 
   const supabase = getServerSupabase();
+  const kwBefore = Math.round(beforeAvg * ABSOLUTE_FACTOR * 10) / 10;
+  const kwAfter = Math.round(afterAvg * ABSOLUTE_FACTOR * 10) / 10;
+
   const { error: dbErr } = await supabase
     .from("screening_metrics")
     .update({
       kw_keywords: kwList.join(", "),
       kw_ad_date: adDate,
       kw_impact: impactPct,
-      kw_before: Math.round(beforeAvg * 100) / 100,
-      kw_after: Math.round(afterAvg * 100) / 100,
+      kw_before: kwBefore,
+      kw_after: kwAfter,
     })
     .eq("id", metricsId);
 
@@ -94,7 +101,7 @@ export async function POST(req: NextRequest) {
     kw_keywords: kwList.join(", "),
     kw_ad_date: adDate,
     kw_impact: impactPct,
-    kw_before: Math.round(beforeAvg * 100) / 100,
-    kw_after: Math.round(afterAvg * 100) / 100,
+    kw_before: kwBefore,
+    kw_after: kwAfter,
   });
 }
