@@ -75,6 +75,7 @@ type Influencer = {
   platform: string;
   status: string;
   category: string | null;
+  notes: string | null;
   created_at: string;
   screening_metrics: Metrics[];
 };
@@ -154,12 +155,13 @@ export default function ScreeningPage() {
   // column widths for drag-resize
   const [channelNameWidth, setChannelNameWidth] = useState(160);
   const [editScreeningName, setEditScreeningName] = useState<{ id: string; value: string } | null>(null);
+  const [editNotes, setEditNotes] = useState<{ id: string; value: string } | null>(null);
   const [screenColWidths, setScreenColWidths] = useState<Record<string, number>>({
     "플랫폼": 80, "팔로워 수": 100, "알고리즘 계수": 110, "100만뷰 개수": 110,
     "총 평균 조회수": 120, "총 평균 도달수": 120, "댓글 비율": 90, "광고 비율": 90,
     "광고 평균 조회수": 120, "광고 효율": 90, "광고 최고 조회수": 120,
     "광고 최고 게시물 URL": 120, "검색어": 140, "검색어 트렌드": 110,
-    "통과 기준": 90, "상태": 90,
+    "통과 기준": 90, "상태": 90, "특이사항": 160,
   });
   const screenResizingRef = useRef<{ col: string; startX: number; startW: number; isSticky: boolean } | null>(null);
 
@@ -368,6 +370,18 @@ export default function ScreeningPage() {
       }
       await checkScreeningJob();
     }, 10_000);
+  }
+
+  async function patchNotes(id: string, notes: string) {
+    const res = await fetch(`/api/influencers/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notes: notes || null }),
+    });
+    if (res.ok) {
+      setList(prev => prev.map(i => i.id === id ? { ...i, notes: notes || null } : i));
+    }
+    setEditNotes(null);
   }
 
   async function patchScreeningName(id: string, name: string) {
@@ -763,6 +777,7 @@ export default function ScreeningPage() {
                   {staticTH("검색어 트렌드", true)}
                   {staticTH("통과 기준", false, true)}
                   {sortTH("상태", false, true)}
+                  {staticTH("특이사항")}
                 </tr>
               </thead>
               <tbody>
@@ -897,12 +912,32 @@ export default function ScreeningPage() {
                           <span className="pointer-events-none absolute right-1.5 text-[9px] opacity-50">▾</span>
                         </div>
                       </td>
+                      <td style={{ minWidth: screenColWidths["특이사항"] }} className="px-3 py-3">
+                        {editNotes?.id === inf.id ? (
+                          <textarea
+                            autoFocus
+                            rows={2}
+                            value={editNotes.value}
+                            onChange={e => setEditNotes(v => v ? { ...v, value: e.target.value } : null)}
+                            onBlur={() => patchNotes(inf.id, editNotes.value)}
+                            onKeyDown={e => { if (e.key === "Escape") setEditNotes(null); }}
+                            className="text-xs w-full bg-transparent border-b border-a-blue outline-none py-0.5 resize-none text-a-ink"
+                          />
+                        ) : (
+                          <span
+                            onClick={() => setEditNotes({ id: inf.id, value: inf.notes ?? "" })}
+                            className="text-xs cursor-text text-a-ink-muted hover:text-a-ink transition-colors line-clamp-2 block"
+                          >
+                            {inf.notes || <span className="text-gray-300">-</span>}
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={18} className="px-5 py-12 text-center">
+                    <td colSpan={19} className="px-5 py-12 text-center">
                       {list.length === 0
                         ? <span className="text-a-ink-muted text-sm">인플루언서가 없습니다.</span>
                         : (

@@ -21,6 +21,7 @@ type Post = {
   channel_type: string | null;
   cost: number | null;
   reach_count: number | null;
+  notes: string | null;
   created_at: string;
   influencers: { id: string; name: string; platform: string; post_type: string | null; category?: string | null } | null;
   latest_stats: DailyStats | null;
@@ -32,7 +33,7 @@ type CsvRow = { url: string; project_name: string | null; product_name: string |
 
 type Filters = { name: string; project: string; products: string[]; type: string; channelType: string; category: string; dateFrom: string; dateTo: string };
 const INIT_FILTERS: Filters = { name: "", project: "", products: [], type: "all", channelType: "all", category: "all", dateFrom: "", dateTo: "" };
-type EditCell = { postId: string; field: "project_name" | "product_name" | "channel_type" | "cost" | "reach_count" | "account_name" | "posted_at"; value: string };
+type EditCell = { postId: string; field: "project_name" | "product_name" | "channel_type" | "cost" | "reach_count" | "account_name" | "posted_at" | "notes"; value: string };
 const POST_TYPES = ["릴스", "피드", "숏폼", "롱폼"];
 const CHANNEL_TYPES = ["파워채널", "매거진", "먹스타", "인플루언서", "바이럴"];
 const CATEGORIES = [
@@ -293,7 +294,7 @@ export default function MonitoringPage() {
     "증분량": 80, "인플루언서": 180, "프로젝트명": 150, "상품명": 150, "게시일": 104, "유형": 72,
   });
   const [colWidths, setColWidths] = useState<Record<string, number>>({
-    "채널분류": 100, "카테고리": 110, "조회수": 100, "도달수": 100, "비용": 120, "조회당비용": 110, "도달당비용": 110, "Trend": 90, "삭제": 60,
+    "채널분류": 100, "카테고리": 110, "조회수": 100, "도달수": 100, "비용": 120, "조회당비용": 110, "도달당비용": 110, "Trend": 90, "삭제": 60, "특이사항": 160,
   });
   const resizingRef = useRef<{ col: string; startX: number; startW: number; isSticky: boolean } | null>(null);
 
@@ -315,7 +316,7 @@ export default function MonitoringPage() {
   ).sort();
 
   const hasFilter = filters.name !== "" || filters.project !== "" || filters.products.length > 0 || filters.type !== "all" || filters.channelType !== "all" || filters.category !== "all" || filters.dateFrom !== "" || filters.dateTo !== "";
-  const colSpan = 15;
+  const colSpan = 16;
 
   const lastMonitoredAt = posts.length > 0
     ? posts.reduce((latest, p) => {
@@ -837,6 +838,7 @@ export default function MonitoringPage() {
                   <TH right w={colWidths["조회당비용"]} onResize={e => startResize("조회당비용", e)}>조회당비용</TH>
                   <TH right w={colWidths["도달당비용"]} onResize={e => startResize("도달당비용", e)}>도달당비용</TH>
                   <TH className="text-center" w={colWidths["Trend"]} onResize={e => startResize("Trend", e)}>트렌드</TH>
+                  <TH w={colWidths["특이사항"]} onResize={e => startResize("특이사항", e)}>특이사항</TH>
                   <TH w={colWidths["삭제"]}></TH>
                 </tr>
               </thead>
@@ -984,6 +986,26 @@ export default function MonitoringPage() {
                       </TD>
                       <td style={{ minWidth: colWidths["Trend"] }} className="px-3 py-3 text-center">
                         <Sparkline stats={post.all_stats ?? []} postId={post.id} onClick={() => setTrendPost(post)} />
+                      </td>
+                      <td style={{ minWidth: colWidths["특이사항"] }} className="px-3 py-3">
+                        {editCell?.postId === post.id && editCell?.field === "notes" ? (
+                          <textarea
+                            autoFocus
+                            rows={2}
+                            value={editCell.value}
+                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
+                            onBlur={() => patchPost(post.id, "notes", editCell.value)}
+                            onKeyDown={e => { if (e.key === "Escape") setEditCell(null); }}
+                            className="text-xs w-full bg-transparent border-b border-a-blue outline-none py-0.5 resize-none text-a-ink"
+                          />
+                        ) : (
+                          <span
+                            onClick={() => setEditCell({ postId: post.id, field: "notes", value: post.notes ?? "" })}
+                            className="text-xs cursor-text text-a-ink-muted hover:text-a-ink transition-colors line-clamp-2 block"
+                          >
+                            {post.notes || <span className="text-gray-300">-</span>}
+                          </span>
+                        )}
                       </td>
                       <td style={{ minWidth: colWidths["삭제"] }} className="px-3 py-3 text-right whitespace-nowrap">
                         <button

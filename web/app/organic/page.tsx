@@ -16,6 +16,7 @@ type Mention = {
   uploaded_at: string | null;
   view_count: number | null;
   exposure_type: string | null;
+  notes: string | null;
   created_at: string;
 };
 
@@ -28,8 +29,8 @@ type CsvRow = {
   uploaded_at: string | null; view_count: number | null;
 };
 
-// [사용자이름, 플랫폼, 내용요약, 언급제품, 업로드일, 조회수, 유형]
-const INIT_COL_WIDTHS = [180, 90, 300, 160, 100, 90, 90];
+// [사용자이름, 플랫폼, 내용요약, 언급제품, 업로드일, 조회수, 유형, 특이사항]
+const INIT_COL_WIDTHS = [180, 90, 300, 160, 100, 90, 90, 160];
 
 function getThumbnailUrl(url: string): string | null {
   let m = url.match(/youtube\.com\/shorts\/([^/?&#]+)/);
@@ -72,7 +73,7 @@ export default function OrganicPage() {
   const [showUpload, setShowUpload] = useState(false);
   const [csvRows, setCsvRows] = useState<CsvRow[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [editCell, setEditCell] = useState<{ id: string; field: "mentioned_product" | "exposure_type" | "account_name" | "content_summary" | "uploaded_at" | "view_count"; value: string } | null>(null);
+  const [editCell, setEditCell] = useState<{ id: string; field: "mentioned_product" | "exposure_type" | "account_name" | "content_summary" | "uploaded_at" | "view_count" | "notes"; value: string } | null>(null);
   const [showHelp, setShowHelp] = useState(false);
   const [importingNotion, setImportingNotion] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -590,6 +591,7 @@ export default function OrganicPage() {
                     {rsTH("업로드일", 4)}
                     {rsTH("조회수", 5, true, true)}
                     {rsTH("유형", 6, false)}
+                    {rsTH("특이사항", 7, false)}
                     <th className="px-4 py-3 bg-white w-10"></th>
                   </tr>
                 </thead>
@@ -754,6 +756,27 @@ export default function OrganicPage() {
                           </span>
                         )}
                       </td>
+                      {/* 특이사항 */}
+                      <td style={{ minWidth: colWidths[7] }} className="px-4 py-4">
+                        {editCell?.id === m.id && editCell.field === "notes" ? (
+                          <textarea
+                            autoFocus
+                            rows={2}
+                            value={editCell.value}
+                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
+                            onBlur={() => patchMentionField(m.id, "notes", editCell.value)}
+                            onKeyDown={e => { if (e.key === "Escape") setEditCell(null); }}
+                            className="text-xs w-full bg-transparent border-b border-a-blue outline-none py-0.5 resize-none text-a-ink"
+                          />
+                        ) : (
+                          <span
+                            onClick={() => setEditCell({ id: m.id, field: "notes", value: m.notes ?? "" })}
+                            className="text-xs cursor-text text-a-ink-muted hover:text-a-ink transition-colors line-clamp-2 block"
+                          >
+                            {m.notes || <span className="text-gray-300">-</span>}
+                          </span>
+                        )}
+                      </td>
                       <td className="px-4 py-4 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button
@@ -773,7 +796,7 @@ export default function OrganicPage() {
                   })}
                   {mentions.length === 0 && !loading && (
                     <tr>
-                      <td colSpan={9} className="px-5 py-14 text-center">
+                      <td colSpan={10} className="px-5 py-14 text-center">
                         <p className="text-sm font-medium text-a-ink mb-1">수집된 게시물이 없습니다</p>
                         <p className="text-xs text-a-ink-muted">'지금 수집' 버튼으로 라라스윗 언급 게시물을 자동 수집하거나, 직접 추가할 수 있습니다.</p>
                       </td>
@@ -781,7 +804,7 @@ export default function OrganicPage() {
                   )}
                   {mentions.length > 0 && filtered.length === 0 && (
                     <tr>
-                      <td colSpan={9} className="px-5 py-12 text-center">
+                      <td colSpan={10} className="px-5 py-12 text-center">
                         <p className="text-sm text-a-ink-muted mb-2">필터 조건에 맞는 게시물이 없습니다.</p>
                         <button onClick={() => setFilters(INIT_FILTERS)} className="text-xs text-a-blue hover:underline">필터 초기화</button>
                       </td>

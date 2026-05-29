@@ -9,7 +9,7 @@ type ScreeningMetrics = { avg_views_per_follower: number | null };
 type Influencer = {
   id: string; name: string; url: string; platform: string; status: string; source: string;
   created_at: string; keyword?: string; sample_post_url?: string; post_type?: string;
-  post_uploaded_at?: string; screening_metrics?: ScreeningMetrics[];
+  post_uploaded_at?: string; notes?: string | null; screening_metrics?: ScreeningMetrics[];
 };
 
 const PLATFORM_OPTIONS = [
@@ -37,8 +37,8 @@ type Filters = { name: string; platform: string; status: string; keyword: string
 const INIT_FILTERS: Filters = { name: "", platform: "all", status: "all", keyword: "all", uploadedFrom: "", uploadedTo: "" };
 
 // 드래그 리사이즈 가능한 열 기본 너비 (px)
-// [채널명, 플랫폼, 발굴 키워드, 게시물, 유형, 업로드일, 조회/팔로워, 상태, 추가일]
-const INIT_COL_WIDTHS = [200, 80, 130, 64, 72, 100, 120, 84, 100];
+// [채널명, 플랫폼, 발굴 키워드, 게시물, 유형, 업로드일, 조회/팔로워, 상태, 추가일, 특이사항]
+const INIT_COL_WIDTHS = [200, 80, 130, 64, 72, 100, 120, 84, 100, 160];
 
 function formatTimestamp(ts: string): string {
   const d = new Date(ts);
@@ -86,6 +86,7 @@ export default function ListupPage() {
   const [showTimeoutError, setShowTimeoutError] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [editName, setEditName] = useState<{ id: string; value: string } | null>(null);
+  const [editNotes, setEditNotes] = useState<{ id: string; value: string } | null>(null);
   const resizingRef = useRef<{ colIdx: number; startX: number; startW: number } | null>(null);
   const runningJobIdRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -254,6 +255,18 @@ export default function ListupPage() {
     a.download = `리스트업_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function patchNotes(id: string, notes: string) {
+    const res = await fetch(`/api/influencers/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notes: notes || null }),
+    });
+    if (res.ok) {
+      setInfluencers(prev => prev.map(i => i.id === id ? { ...i, notes: notes || null } : i));
+    }
+    setEditNotes(null);
   }
 
   async function patchInfluencerName(id: string, name: string) {
@@ -677,6 +690,7 @@ export default function ListupPage() {
                       );
                     })()}
                     {rsTH("추가일", 8)}
+                    {rsTH("특이사항", 9, false)}
                     <th className="px-4 py-3 bg-white"></th>
                   </tr>
                 </thead>
@@ -745,6 +759,26 @@ export default function ListupPage() {
                         </td>
                         <td className="px-4 py-4 text-a-ink-muted text-xs whitespace-nowrap">
                           {new Date(inf.created_at).toLocaleDateString("ko-KR")}
+                        </td>
+                        <td className="px-4 py-3" style={{ minWidth: colWidths[9] }}>
+                          {editNotes?.id === inf.id ? (
+                            <textarea
+                              autoFocus
+                              rows={2}
+                              value={editNotes.value}
+                              onChange={e => setEditNotes(v => v ? { ...v, value: e.target.value } : null)}
+                              onBlur={() => patchNotes(inf.id, editNotes.value)}
+                              onKeyDown={e => { if (e.key === "Escape") setEditNotes(null); }}
+                              className="text-xs w-full bg-transparent border-b border-a-blue outline-none py-0.5 resize-none text-a-ink"
+                            />
+                          ) : (
+                            <span
+                              onClick={() => setEditNotes({ id: inf.id, value: inf.notes ?? "" })}
+                              className="text-xs cursor-text text-a-ink-muted hover:text-a-ink transition-colors line-clamp-2 block"
+                            >
+                              {inf.notes || <span className="text-gray-300">-</span>}
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-4 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">

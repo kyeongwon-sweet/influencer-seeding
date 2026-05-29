@@ -218,7 +218,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-4 px-1">
             {lastListupAt && (
               <div className="flex items-center gap-1.5">
-                <span className="text-[11px] text-a-ink-muted">리스트업</span>
+                <span className="text-[11px] text-a-ink-muted">업데이트</span>
                 <span className="text-[11px] font-semibold text-a-ink tabular-nums">{formatTimestamp(lastListupAt)}</span>
               </div>
             )}
@@ -338,12 +338,22 @@ export default function DashboardPage() {
 
         {/* KPI 현황 */}
         <div className="bg-white rounded-[24px] shadow-[0_4px_32px_rgba(100,120,180,0.13)] overflow-hidden">
-          <div className="px-7 pt-6 pb-2 flex items-center justify-between">
-            <div className="inline-flex items-center gap-1.5 bg-blue-50 rounded-full px-3 py-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-a-blue inline-block" />
-              <p className="text-[11px] font-semibold text-a-blue tracking-widest uppercase">
-                {kpi?.month_label ? `${kpi.month_label} ` : ""}KPI 현황
-              </p>
+          <div className="px-7 pt-6 pb-2 flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-3">
+              <div className="inline-flex items-center gap-1.5 bg-blue-50 rounded-full px-3 py-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-a-blue inline-block" />
+                <p className="text-[11px] font-semibold text-a-blue tracking-widest uppercase">
+                  {kpi?.month_label ? `${kpi.month_label} ` : ""}KPI 현황
+                </p>
+              </div>
+              <a
+                href="https://docs.google.com/spreadsheets/d/1QpUgPdiZGXtgXnRnDld99Kp1qP0rRbqwyv0aYbJ_Omo/edit?gid=1808124579#gid=1808124579"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[11px] text-a-blue hover:underline whitespace-nowrap"
+              >
+                마케팅 현황과 연동 →
+              </a>
             </div>
             {kpi?.fetched_at && (
               <span className="text-[11px] text-a-ink-muted">

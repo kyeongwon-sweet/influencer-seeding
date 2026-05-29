@@ -34,6 +34,7 @@ type Influencer = {
   keyword?: string;
   sample_post_url?: string;
   post_uploaded_at?: string;
+  notes?: string | null;
   screening_metrics: Metrics[];
 };
 
@@ -126,9 +127,8 @@ function TrendChart({ data, selectedDate, onSelect }: {
       <svg
         ref={svgRef}
         viewBox={`0 0 ${W} ${H}`}
-        preserveAspectRatio="none"
         className="w-full cursor-crosshair"
-        style={{ height: 200, display: "block" }}
+        style={{ display: "block" }}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setHoverIdx(null)}
         onClick={() => hoverIdx !== null && onSelect(data[hoverIdx].date)}
@@ -286,6 +286,7 @@ export default function ContactPage() {
   const [editForm, setEditForm] = useState({ name: "", content: "" });
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [editContactName, setEditContactName] = useState<{ id: string; value: string } | null>(null);
+  const [editNotes, setEditNotes] = useState<{ id: string; value: string } | null>(null);
 
   useEffect(() => {
     loadInfluencers();
@@ -350,6 +351,18 @@ export default function ContactPage() {
   }
 
   // ── Contact modal ──────────────────────────────────────────────────────────
+
+  async function patchNotes(id: string, notes: string) {
+    const res = await fetch(`/api/influencers/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notes: notes || null }),
+    });
+    if (res.ok) {
+      setInfluencers(prev => prev.map(i => i.id === id ? { ...i, notes: notes || null } : i));
+    }
+    setEditNotes(null);
+  }
 
   async function patchContactName(id: string, name: string) {
     const res = await fetch(`/api/influencers/${id}`, {
@@ -604,6 +617,7 @@ export default function ContactPage() {
                     <th className="px-3 py-3 text-xs font-medium text-a-ink-muted text-right whitespace-nowrap">알고리즘 계수</th>
                     <th className="px-3 py-3 text-xs font-medium text-a-ink-muted text-right whitespace-nowrap">평균 조회수</th>
                     <th className="px-3 py-3 text-xs font-medium text-a-ink-muted text-left whitespace-nowrap">업로드일</th>
+                    <th className="px-3 py-3 text-xs font-medium text-a-ink-muted text-left whitespace-nowrap" style={{ minWidth: 160 }}>특이사항</th>
                     <th className="px-3 py-3 text-xs font-medium text-a-ink-muted text-center whitespace-nowrap">컨택</th>
                   </tr>
                 </thead>
@@ -655,6 +669,26 @@ export default function ContactPage() {
                         </td>
                         <td className="px-3 py-3 text-xs text-a-ink-muted whitespace-nowrap">
                           {inf.post_uploaded_at?.slice(0, 10) ?? "-"}
+                        </td>
+                        <td className="px-3 py-3 whitespace-nowrap" style={{ minWidth: 160 }}>
+                          {editNotes?.id === inf.id ? (
+                            <textarea
+                              autoFocus
+                              rows={2}
+                              value={editNotes.value}
+                              onChange={e => setEditNotes(v => v ? { ...v, value: e.target.value } : null)}
+                              onBlur={() => patchNotes(inf.id, editNotes.value)}
+                              onKeyDown={e => { if (e.key === "Escape") setEditNotes(null); }}
+                              className="text-xs w-full bg-transparent border-b border-a-blue outline-none py-0.5 resize-none text-a-ink"
+                            />
+                          ) : (
+                            <span
+                              onClick={() => setEditNotes({ id: inf.id, value: inf.notes ?? "" })}
+                              className="text-xs cursor-text text-a-ink-muted hover:text-a-ink transition-colors line-clamp-2 block"
+                            >
+                              {inf.notes || <span className="text-gray-300">-</span>}
+                            </span>
+                          )}
                         </td>
                         <td className="px-3 py-3 text-center whitespace-nowrap">
                           <button onClick={() => openContact(inf)} className="btn-primary">
