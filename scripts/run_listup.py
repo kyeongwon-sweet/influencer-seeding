@@ -1,7 +1,28 @@
 import os
 import json
+import re
+from urllib.parse import urlparse
 from datetime import datetime, timezone
 from db import get_client
+
+
+def normalize_youtube_url(url: str) -> str | None:
+    """YouTube URL을 https:// + trailing slash 형태로 정규화"""
+    if not url:
+        return None
+    try:
+        if not url.startswith("http"):
+            url = "https://" + url
+        u = urlparse(url)
+        if "youtube.com" not in u.netloc:
+            return None
+        path = re.sub(r"/(shorts|videos|featured|community|about)(/.*)?\$?", "", u.path)
+        path = path.rstrip("/")
+        if not path:
+            path = ""
+        return f"https://www.youtube.com{path}/"
+    except Exception:
+        return None
 
 APIFY_HASHTAG_ACTOR = os.getenv("APIFY_HASHTAG_ACTOR_ID", "apify/instagram-hashtag-scraper")
 APIFY_YOUTUBE_ACTOR = os.getenv("APIFY_YOUTUBE_ACTOR_ID", "streamers/youtube-scraper")
@@ -140,9 +161,11 @@ def _run_youtube(db, keywords: list) -> int:
             if not channel_url or not channel_name:
                 continue
 
-            # 채널 base URL 정규화
-            base_url = channel_url.rstrip("/").split("/shorts")[0].split("/videos")[0]
-            normalized_url = base_url + "/"
+            # 채널 base URL 정규화 (https 강제)
+            normalized_url = normalize_youtube_url(channel_url)
+            if not normalized_url:
+                continue
+            base_url = normalized_url.rstrip("/")
 
             if base_url not in channels:
                 video_url = item.get("url")

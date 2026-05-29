@@ -198,10 +198,10 @@ export async function POST(req: NextRequest) {
               { directUrls: igUrls, resultsType: 'posts', resultsLimit: 60, addParentData: true },
               `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=screening&platform=instagram`
             ).catch((e: unknown) => { startErrors.push(`인스타 스크리닝: ${e}`); }) : Promise.resolve(),
-            ...ytInfluencers.map((inf: { url: string }) => startActorRun(
+            ...ytInfluencers.map((inf: { id: string; url: string }) => startActorRun(
               'streamers/youtube-scraper',
               { startUrls: [{ url: inf.url }], maxResultsShorts: 15 },
-              `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=screening&platform=youtube&influencerUrl=${encodeURIComponent(inf.url)}`
+              `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=screening&platform=youtube&influencerId=${inf.id}`
             ).catch((e: unknown) => { startErrors.push(`유튜브(${inf.url}): ${e}`); })),
           ]);
           const totalRuns = (igUrls.length > 0 ? 1 : 0) + ytInfluencers.length;

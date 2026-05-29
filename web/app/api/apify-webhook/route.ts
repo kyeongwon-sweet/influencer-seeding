@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { fetchDatasetItems } from "@/lib/apify";
+import { normalizeYouTubeUrl, normalizeInstagramUrl } from "@/lib/url-utils";
 
 // ── 지표 계산 (metrics.py 포팅) ─────────────────────────────────────
 
@@ -275,12 +276,13 @@ async function handleListup(supabase: ReturnType<typeof getServerSupabase>, jobI
     }
   } else if (platform === 'youtube') {
     for (const item of items) {
-      const channelUrl = (item.channelUrl || item.authorUrl || (item.channelId ? `https://www.youtube.com/channel/${item.channelId}` : null)) as string;
+      const rawChannelUrl = (item.channelUrl || item.authorUrl || (item.channelId ? `https://www.youtube.com/channel/${item.channelId}` : null)) as string;
       const channelName = (item.channelName || item.channelTitle || item.author) as string;
-      if (!channelUrl || !channelName) continue;
+      if (!rawChannelUrl || !channelName) continue;
 
-      const baseUrl = channelUrl.replace(/\/$/, '').split('/shorts')[0].split('/videos')[0];
-      const normalizedUrl = baseUrl + '/';
+      const normalizedUrl = normalizeYouTubeUrl(rawChannelUrl);
+      if (!normalizedUrl) continue;
+      const baseUrl = normalizedUrl.replace(/\/$/, '');
       if (accounts[baseUrl]) continue;
 
       const videoUrl = item.url as string;
@@ -347,7 +349,7 @@ async function handleScreening(
     }
 
     for (const [rawUrl, posts] of Object.entries(grouped)) {
-      const url = rawUrl.endsWith('/') ? rawUrl : rawUrl + '/';
+      const url = normalizeInstagramUrl(rawUrl) ?? (rawUrl.replace(/\/$/, '') + '/');
       const { data: infData } = await supabase
         .from('influencers').select('id').eq('url', url).limit(1);
       const influencer = infData?.[0];
@@ -373,11 +375,21 @@ async function handleScreening(
       }
     }
 
-  } else if (platform === 'youtube' && influencerUrl) {
-    const decodedUrl = decodeURIComponent(influencerUrl);
-    const { data: infData } = await supabase
-      .from('influencers').select('id').eq('url', decodedUrl).limit(1);
-    const influencer = infData?.[0];
+  } else if (platform === 'youtube') {
+    // influencerId 우선, 없으면 influencerUrl fallback (레거시 대응)
+    const influencerId = searchParams.get('influencerId');
+    const influencerUrlParam = searchParams.get('influencerUrl');
+    let influencer: { id: string } | null = null;
+    if (influencerId) {
+      const { data } = await supabase.from('influencers').select('id').eq('id', influencerId).limit(1);
+      influencer = data?.[0] ?? null;
+    } else if (influencerUrlParam) {
+      const normalizedUrl = normalizeYouTubeUrl(decodeURIComponent(influencerUrlParam));
+      if (normalizedUrl) {
+        const { data } = await supabase.from('influencers').select('id').eq('url', normalizedUrl).limit(1);
+        influencer = data?.[0] ?? null;
+      }
+    }
     if (!influencer) {
       await supabase.from('jobs').update({ status: 'done' }).eq('id', jobId);
       return;
@@ -496,7 +508,7 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
     }
   } else if (platform === 'youtube') {
     for (const item of items) {
-      const url = item.url as string;
+      const url = normalizeYouTubeUrl(item.url as string);
       if (!url) continue;
 
       const subscribers = (item.channelSubscriberCount || item.numberOfSubscribers || item.subscriberCount || 0) as number;
