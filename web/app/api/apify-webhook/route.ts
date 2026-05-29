@@ -134,8 +134,11 @@ export async function POST(req: NextRequest) {
   const body = await req.json() as { datasetId: string; status: string };
   const supabase = getServerSupabase();
 
-  if (body.status !== 'SUCCEEDED') {
-    await supabase.from('jobs').update({ status: 'failed', error: `Apify run: ${body.status}` }).eq('id', jobId);
+  // Apify가 템플릿 변수를 치환 못한 경우({{resource.status}}) FAILED로 처리
+  const runStatus = (!body.status || body.status.startsWith('{{')) ? 'FAILED' : body.status;
+
+  if (runStatus !== 'SUCCEEDED') {
+    await supabase.from('jobs').update({ status: 'failed', error: `Apify run: ${runStatus}` }).eq('id', jobId);
     return NextResponse.json({ ok: true });
   }
 
