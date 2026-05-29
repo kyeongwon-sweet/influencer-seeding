@@ -9,5 +9,5 @@ export function getServerSupabase() {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
   }
-  return _supabase;
+  return _supabase!;
 }
