@@ -46,6 +46,11 @@ function formatTimestamp(ts: string): string {
   return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function formatElapsed(s: number): string {
+  if (s < 60) return `${s}초`;
+  return `${Math.floor(s / 60)}분 ${s % 60}초`;
+}
+
 function FilterSelect({ value, onChange, children }: { value: string; onChange: (v: string) => void; children: React.ReactNode }) {
   const active = value !== "all";
   return (
@@ -79,9 +84,11 @@ export default function ListupPage() {
   const [lastListupAt, setLastListupAt] = useState<string | null>(null);
   const [colWidths, setColWidths] = useState<number[]>(INIT_COL_WIDTHS);
   const [showTimeoutError, setShowTimeoutError] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const resizingRef = useRef<{ colIdx: number; startX: number; startW: number } | null>(null);
   const runningJobIdRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const uniqueKeywords = [...new Set(influencers.map(i => i.keyword).filter(Boolean))] as string[];
 
@@ -248,11 +255,39 @@ export default function ListupPage() {
     setKeywords(prev => prev.filter(k => k.id !== id));
   }
 
+  async function checkListupJob() {
+    try {
+      const jobRes = await fetch("/api/jobs");
+      const jobs: { id: string; status: string; error?: string }[] = await jobRes.json();
+      const cur = jobs.find(j => j.id === runningJobIdRef.current);
+      if (cur?.status === "done") {
+        clearInterval(pollTimerRef.current!);
+        clearInterval(elapsedTimerRef.current!);
+        pollTimerRef.current = null;
+        elapsedTimerRef.current = null;
+        runningJobIdRef.current = null;
+        setRunning(false);
+        await loadInfluencers();
+        toast("리스트업이 완료됐습니다. 결과가 업데이트됐습니다.", "success");
+      } else if (cur?.status === "failed") {
+        clearInterval(pollTimerRef.current!);
+        clearInterval(elapsedTimerRef.current!);
+        pollTimerRef.current = null;
+        elapsedTimerRef.current = null;
+        runningJobIdRef.current = null;
+        setRunning(false);
+        toast(`리스트업에 실패했습니다: ${cur.error ?? "알 수 없는 오류"}`, "error");
+      }
+    } catch { /* 폴링 오류 무시 */ }
+  }
+
   async function runListup() {
     if (keywords.length === 0) { toast("검색 키워드를 먼저 추가해주세요.", "error"); return; }
     if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
     setRunning(true);
     setShowTimeoutError(false);
+    setElapsedSeconds(0);
 
     const res = await fetch("/api/jobs", {
       method: "POST",
@@ -270,36 +305,22 @@ export default function ListupPage() {
     runningJobIdRef.current = job.id;
     toast("리스트업이 시작됐습니다. 완료 시 자동으로 업데이트됩니다.", "info");
 
+    elapsedTimerRef.current = setInterval(() => setElapsedSeconds(s => s + 1), 1000);
+
     const startTime = Date.now();
     pollTimerRef.current = setInterval(async () => {
       if (Date.now() - startTime >= 300_000) {
         clearInterval(pollTimerRef.current!);
+        clearInterval(elapsedTimerRef.current!);
         pollTimerRef.current = null;
+        elapsedTimerRef.current = null;
         runningJobIdRef.current = null;
         setRunning(false);
         setShowTimeoutError(true);
         return;
       }
-      try {
-        const jobRes = await fetch("/api/jobs");
-        const jobs: { id: string; status: string; error?: string }[] = await jobRes.json();
-        const cur = jobs.find(j => j.id === runningJobIdRef.current);
-        if (cur?.status === "done") {
-          clearInterval(pollTimerRef.current!);
-          pollTimerRef.current = null;
-          runningJobIdRef.current = null;
-          setRunning(false);
-          await loadInfluencers();
-          toast("리스트업이 완료됐습니다. 결과가 업데이트됐습니다.", "success");
-        } else if (cur?.status === "failed") {
-          clearInterval(pollTimerRef.current!);
-          pollTimerRef.current = null;
-          runningJobIdRef.current = null;
-          setRunning(false);
-          toast(`리스트업에 실패했습니다: ${cur.error ?? "알 수 없는 오류"}`, "error");
-        }
-      } catch { /* 폴링 오류 무시 */ }
-    }, 30_000);
+      await checkListupJob();
+    }, 10_000);
   }
 
   const allFilteredSelected = filteredInfluencers.length > 0 && filteredInfluencers.every(i => selected.has(i.id));
@@ -389,6 +410,12 @@ export default function ListupPage() {
         </div>
         <div className="flex items-center gap-1.5">
           <button onClick={() => setShowAdd(true)} className="btn-secondary">+ 계정 추가</button>
+          {running && (
+            <>
+              <span className="text-xs text-a-ink-muted tabular-nums">{formatElapsed(elapsedSeconds)}</span>
+              <button onClick={checkListupJob} className="btn-secondary">지금 확인</button>
+            </>
+          )}
           <button onClick={runListup} disabled={running} className="btn-primary">
             {running ? (
               <span className="flex items-center gap-1.5">
@@ -396,7 +423,7 @@ export default function ListupPage() {
                   <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25"/>
                   <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
                 </svg>
-                실행 중...
+                실행 중
               </span>
             ) : "리스트업 실행"}
           </button>

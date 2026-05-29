@@ -85,6 +85,11 @@ const STATUS = [
   { value: "reject",  label: "탈락",   cls: "bg-red-100 text-red-700" },
 ];
 
+function formatElapsed(s: number): string {
+  if (s < 60) return `${s}초`;
+  return `${Math.floor(s / 60)}분 ${s % 60}초`;
+}
+
 function formatTimestamp(ts: string): string {
   const d = new Date(ts);
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -143,8 +148,10 @@ export default function ScreeningPage() {
   const [ytTypeFilter, setYtTypeFilter] = useState<"both" | "longform" | "shorts">("shorts");
   const [lastListupAt, setLastListupAt] = useState<string | null>(null);
   const [showTimeoutError, setShowTimeoutError] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const runningJobIdRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // column widths for drag-resize
   const [channelNameWidth, setChannelNameWidth] = useState(160);
@@ -259,10 +266,40 @@ export default function ScreeningPage() {
     setSavingCriteria(false);
   }
 
+  async function checkScreeningJob() {
+    try {
+      const jobRes = await fetch("/api/jobs");
+      const jobs: { id: string; status: string; error?: string }[] = await jobRes.json();
+      const cur = jobs.find(j => j.id === runningJobIdRef.current);
+      if (cur?.status === "done") {
+        clearInterval(pollTimerRef.current!);
+        clearInterval(elapsedTimerRef.current!);
+        pollTimerRef.current = null;
+        elapsedTimerRef.current = null;
+        runningJobIdRef.current = null;
+        setRunning(false);
+        await load();
+        toast("스크리닝이 완료됐습니다. 결과가 업데이트됐습니다.", "success");
+      } else if (cur?.status === "failed") {
+        clearInterval(pollTimerRef.current!);
+        clearInterval(elapsedTimerRef.current!);
+        pollTimerRef.current = null;
+        elapsedTimerRef.current = null;
+        runningJobIdRef.current = null;
+        setRunning(false);
+        toast(`스크리닝에 실패했습니다: ${cur.error ?? "알 수 없는 오류"}`, "error");
+      }
+    } catch {
+      // 폴링 오류는 무시 (재시도)
+    }
+  }
+
   async function runScreening() {
     if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
     setRunning(true);
     setShowTimeoutError(false);
+    setElapsedSeconds(0);
 
     const res = await fetch("/api/jobs", {
       method: "POST",
@@ -280,38 +317,22 @@ export default function ScreeningPage() {
     runningJobIdRef.current = job.id;
     toast("스크리닝이 시작됐습니다. 완료 시 자동으로 업데이트됩니다.", "info");
 
+    elapsedTimerRef.current = setInterval(() => setElapsedSeconds(s => s + 1), 1000);
+
     const startTime = Date.now();
     pollTimerRef.current = setInterval(async () => {
-      if (Date.now() - startTime >= 300_000) { // 5분 초과
+      if (Date.now() - startTime >= 300_000) {
         clearInterval(pollTimerRef.current!);
+        clearInterval(elapsedTimerRef.current!);
         pollTimerRef.current = null;
+        elapsedTimerRef.current = null;
         runningJobIdRef.current = null;
         setRunning(false);
         setShowTimeoutError(true);
         return;
       }
-      try {
-        const jobRes = await fetch("/api/jobs");
-        const jobs: { id: string; status: string; error?: string }[] = await jobRes.json();
-        const cur = jobs.find(j => j.id === runningJobIdRef.current);
-        if (cur?.status === "done") {
-          clearInterval(pollTimerRef.current!);
-          pollTimerRef.current = null;
-          runningJobIdRef.current = null;
-          setRunning(false);
-          await load();
-          toast("스크리닝이 완료됐습니다. 결과가 업데이트됐습니다.", "success");
-        } else if (cur?.status === "failed") {
-          clearInterval(pollTimerRef.current!);
-          pollTimerRef.current = null;
-          runningJobIdRef.current = null;
-          setRunning(false);
-          toast(`스크리닝에 실패했습니다: ${cur.error ?? "알 수 없는 오류"}`, "error");
-        }
-      } catch {
-        // 폴링 오류는 무시 (재시도)
-      }
-    }, 30_000);
+      await checkScreeningJob();
+    }, 10_000);
   }
 
   async function updateStatus(id: string, status: string) {
@@ -520,6 +541,12 @@ export default function ScreeningPage() {
         </div>
         <div className="flex items-center gap-1.5">
           <button onClick={() => setShowCriteria(true)} className="btn-secondary">기준 설정</button>
+          {running && (
+            <>
+              <span className="text-xs text-a-ink-muted tabular-nums">{formatElapsed(elapsedSeconds)}</span>
+              <button onClick={checkScreeningJob} className="btn-secondary">지금 확인</button>
+            </>
+          )}
           <button onClick={runScreening} disabled={running} className="btn-primary">
             {running ? (
               <span className="flex items-center gap-1.5">
@@ -527,7 +554,7 @@ export default function ScreeningPage() {
                   <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25"/>
                   <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
                 </svg>
-                실행 중...
+                실행 중
               </span>
             ) : "스크리닝 실행"}
           </button>
