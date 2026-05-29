@@ -106,13 +106,13 @@ export default function DashboardPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-a-parchment">
-      <header className="bg-black h-11 px-6 flex items-center justify-between sticky top-0 z-40">
-        <span className="text-white text-sm font-medium tracking-tight">인플루언서 시딩 트래킹 대시보드</span>
+    <div className="min-h-screen">
+      <header className="bg-white border-b border-gray-100 h-11 px-6 flex items-center justify-between sticky top-0 z-40">
+        <span className="text-a-ink text-sm font-semibold tracking-tight">인플루언서 시딩 트래킹 대시보드</span>
         <UserButton />
       </header>
 
-      <main className="px-5 py-7 w-full max-w-[680px] mx-auto space-y-4">
+      <main className="px-8 py-8 w-full max-w-[860px] mx-auto space-y-5">
 
         {/* 마지막 업데이트 시각 */}
         {!loading && (lastListupAt || lastScreeningAt) && (
@@ -136,26 +136,29 @@ export default function DashboardPage() {
         )}
 
         {/* 인플루언서 현황 */}
-        <div className="bg-white rounded-[20px] border border-a-hairline overflow-hidden">
-          <div className="px-6 pt-5 pb-1">
-            <p className="text-[11px] font-semibold text-a-ink-muted tracking-widest uppercase">인플루언서 현황</p>
+        <div className="bg-white rounded-[24px] shadow-[0_2px_24px_rgba(100,120,180,0.09)] overflow-hidden">
+          <div className="px-7 pt-6 pb-2">
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-a-blue inline-block" />
+              <p className="text-[11px] font-semibold text-a-ink-muted tracking-widest uppercase">인플루언서 현황</p>
+            </div>
           </div>
           {loading ? (
-            <div className="px-6 pb-6 pt-3 flex gap-6">
+            <div className="px-7 pb-7 pt-3 flex gap-6">
               {[...Array(5)].map((_, i) => (
-                <div key={i} className="h-10 w-16 bg-a-divider rounded-lg animate-pulse" />
+                <div key={i} className="h-12 w-20 bg-a-divider rounded-lg animate-pulse" />
               ))}
             </div>
           ) : (
-            <div className="flex divide-x divide-a-hairline px-2 pb-5 pt-3">
-              <div className="flex-1 px-4 py-1">
-                <div className="text-[32px] font-semibold tracking-tight text-a-ink leading-none">{total}</div>
-                <div className="text-xs text-a-ink-muted mt-1.5">전체</div>
+            <div className="flex divide-x divide-a-hairline px-4 pb-7 pt-3">
+              <div className="flex-1 px-5 py-1">
+                <div className="text-[48px] font-bold tracking-tight text-a-ink leading-none">{total}</div>
+                <div className="text-xs text-a-ink-muted mt-2">전체</div>
               </div>
               {STATUS_CONFIG.map(s => (
-                <div key={s.value} className="flex-1 px-4 py-1">
-                  <div className="text-[32px] font-semibold tracking-tight text-a-ink leading-none">{counts[s.value]}</div>
-                  <div className="flex items-center gap-1.5 mt-1.5">
+                <div key={s.value} className="flex-1 px-5 py-1">
+                  <div className="text-[48px] font-bold tracking-tight text-a-ink leading-none">{counts[s.value]}</div>
+                  <div className="flex items-center gap-1.5 mt-2">
                     <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${s.dot}`} />
                     <span className="text-xs text-a-ink-muted">{s.label}</span>
                   </div>
@@ -166,15 +169,15 @@ export default function DashboardPage() {
         </div>
 
         {/* 워크플로우 메뉴 카드 */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-4">
           {menuItems.map(item => (
             <Link
               key={item.href}
               href={item.href}
-              className="group bg-white rounded-[18px] border border-a-hairline p-4 flex flex-col gap-2 hover:border-a-blue/20 hover:-translate-y-1 hover:shadow-md transition-all duration-200 ease-out"
+              className="group bg-white rounded-[22px] shadow-[0_2px_20px_rgba(100,120,180,0.08)] p-5 flex flex-col gap-2.5 hover:-translate-y-1 hover:shadow-[0_8px_36px_rgba(100,120,180,0.16)] transition-all duration-200 ease-out"
             >
               <div className="flex items-center justify-between">
-                <div className="w-8 h-8 rounded-[10px] bg-a-parchment flex items-center justify-center group-hover:bg-blue-50 transition-colors">
+                <div className="w-8 h-8 rounded-[10px] bg-slate-50 flex items-center justify-center group-hover:bg-blue-50 transition-colors">
                   {item.icon}
                 </div>
                 <span className="text-[11px] font-semibold text-a-ink-muted/30 tabular-nums">{item.step}</span>
@@ -192,9 +195,12 @@ export default function DashboardPage() {
 
         {/* 최근 작업 */}
         {!loading && jobs.length > 0 && (
-          <div className="bg-white rounded-[20px] border border-a-hairline overflow-hidden">
-            <div className="px-6 pt-5 pb-3">
-              <p className="text-[11px] font-semibold text-a-ink-muted tracking-widest uppercase">최근 작업</p>
+          <div className="bg-white rounded-[24px] shadow-[0_2px_24px_rgba(100,120,180,0.09)] overflow-hidden">
+            <div className="px-7 pt-6 pb-3">
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-a-ink-muted inline-block" />
+                <p className="text-[11px] font-semibold text-a-ink-muted tracking-widest uppercase">최근 작업</p>
+              </div>
             </div>
             <div className="divide-y divide-gray-50">
               {jobs.map(job => {
@@ -205,7 +211,7 @@ export default function DashboardPage() {
                   : null
                   : null;
                 return (
-                  <div key={job.id} className="px-6 py-3 flex items-center justify-between gap-4">
+                  <div key={job.id} className="px-7 py-3.5 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-2.5 min-w-0">
                       <span className="text-sm font-medium text-a-ink">{JOB_TYPE[job.type] ?? job.type}</span>
                       <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${js.color}`}>{js.label}</span>

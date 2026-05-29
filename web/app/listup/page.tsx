@@ -359,13 +359,13 @@ export default function ListupPage() {
   }
 
   return (
-    <div className="min-h-screen bg-a-parchment">
-      <header className="bg-black h-11 px-6 flex items-center justify-between sticky top-0 z-40">
+    <div className="min-h-screen">
+      <header className="bg-white border-b border-gray-100 h-11 px-6 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-3">
-          <Link href="/" className="text-white/50 hover:text-white transition text-sm">←</Link>
-          <span className="text-white text-sm font-medium tracking-tight">리스트업</span>
+          <Link href="/" className="text-gray-400 hover:text-a-ink transition text-sm">←</Link>
+          <span className="text-a-ink text-sm font-semibold tracking-tight">리스트업</span>
           {influencers.length > 0 && (
-            <span className="text-white/40 text-xs">{influencers.length}명</span>
+            <span className="text-gray-400 text-xs">{influencers.length}명</span>
           )}
         </div>
       </header>

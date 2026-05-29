@@ -60,9 +60,9 @@ export default function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-[200px] bg-black flex flex-col z-50 border-r border-white/[0.06]">
-      <div className="px-5 h-11 flex items-center border-b border-white/[0.08] shrink-0">
-        <span className="text-white text-sm font-semibold tracking-tight">라라스윗</span>
+    <aside className="fixed left-0 top-0 h-screen w-[200px] bg-white flex flex-col z-50 shadow-[1px_0_0_0_#e4e8f0]">
+      <div className="px-5 h-11 flex items-center border-b border-gray-100 shrink-0">
+        <span className="text-a-ink text-sm font-semibold tracking-tight">라라스윗</span>
       </div>
 
       <nav className="flex-1 px-2.5 py-3 space-y-0.5 overflow-y-auto">
@@ -74,8 +74,8 @@ export default function Sidebar() {
               href={item.href}
               className={`flex items-center gap-2.5 px-3 py-2 rounded-[8px] text-sm transition-colors ${
                 isActive
-                  ? "bg-white/10 text-white"
-                  : "text-white/45 hover:text-white/80 hover:bg-white/5"
+                  ? "bg-blue-50 text-a-blue font-medium"
+                  : "text-gray-400 hover:text-a-ink hover:bg-gray-50"
               }`}
             >
               <span className="shrink-0">{item.icon}</span>
@@ -85,8 +85,8 @@ export default function Sidebar() {
         })}
       </nav>
 
-      <div className="px-5 py-4 border-t border-white/[0.08] shrink-0">
-        <p className="text-[11px] text-white/20 tracking-wide">트래킹 대시보드 v1</p>
+      <div className="px-5 py-4 border-t border-gray-100 shrink-0">
+        <p className="text-[11px] text-gray-300 tracking-wide">트래킹 대시보드 v1</p>
       </div>
     </aside>
   );

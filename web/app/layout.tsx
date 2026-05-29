@@ -17,7 +17,7 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="ko">
-        <body className={`antialiased font-sans bg-a-parchment text-a-ink ${inter.variable}`}>
+        <body className={`antialiased font-sans text-a-ink ${inter.variable}`}>
           <Sidebar />
           <div className="ml-[200px]">{children}</div>
         </body>
