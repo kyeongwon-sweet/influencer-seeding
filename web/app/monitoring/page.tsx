@@ -32,7 +32,7 @@ type CsvRow = { url: string; project_name: string | null; product_name: string |
 
 type Filters = { name: string; project: string; products: string[]; type: string; channelType: string; category: string; dateFrom: string; dateTo: string };
 const INIT_FILTERS: Filters = { name: "", project: "", products: [], type: "all", channelType: "all", category: "all", dateFrom: "", dateTo: "" };
-type EditCell = { postId: string; field: "project_name" | "product_name" | "channel_type" | "cost" | "reach_count"; value: string };
+type EditCell = { postId: string; field: "project_name" | "product_name" | "channel_type" | "cost" | "reach_count" | "account_name"; value: string };
 const POST_TYPES = ["릴스", "피드", "숏폼", "롱폼"];
 const CHANNEL_TYPES = ["파워채널", "매거진", "먹스타", "인플루언서", "바이럴"];
 const CATEGORIES = [
@@ -831,10 +831,26 @@ export default function MonitoringPage() {
                         }
                       </TD>
                       <TD col="인플루언서" w={stickyColWidths["인플루언서"]} leftPos={stickyLefts["인플루언서"]} highlighted={hl}>
-                        <button onClick={async () => {
-                          window.open(post.url, "_blank");
-                          try { await navigator.clipboard.writeText(post.url); toast("링크가 복사됐습니다.", "success"); } catch {}
-                        }} className="font-medium hover:text-a-blue transition-colors text-left">{displayName}</button>
+                        {editCell?.postId === post.id && editCell?.field === "account_name" ? (
+                          <input autoFocus value={editCell.value}
+                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
+                            onBlur={() => patchPost(post.id, "account_name", editCell.value)}
+                            onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "account_name", editCell.value); if (e.key === "Escape") setEditCell(null); }}
+                            className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5" />
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <button onClick={async () => {
+                              window.open(post.url, "_blank");
+                              try { await navigator.clipboard.writeText(post.url); toast("링크가 복사됐습니다.", "success"); } catch {}
+                            }} className="font-medium hover:text-a-blue transition-colors text-left truncate">{displayName}</button>
+                            <button onClick={() => setEditCell({ postId: post.id, field: "account_name", value: displayName === "-" ? "" : displayName })}
+                              className="opacity-0 group-hover:opacity-100 text-a-ink-muted hover:text-a-ink transition flex-shrink-0" title="이름 수정">
+                              <svg width="11" height="11" viewBox="0 0 20 20" fill="none">
+                                <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                          </div>
+                        )}
                       </TD>
                       <TD col="프로젝트명" w={stickyColWidths["프로젝트명"]} leftPos={stickyLefts["프로젝트명"]} highlighted={hl}>
                         {editCell?.postId === post.id && editCell?.field === "project_name" ? (

@@ -72,7 +72,7 @@ export default function OrganicPage() {
   const [showUpload, setShowUpload] = useState(false);
   const [csvRows, setCsvRows] = useState<CsvRow[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [editCell, setEditCell] = useState<{ id: string; field: "mentioned_product" | "exposure_type"; value: string } | null>(null);
+  const [editCell, setEditCell] = useState<{ id: string; field: "mentioned_product" | "exposure_type" | "account_name"; value: string } | null>(null);
   const [showHelp, setShowHelp] = useState(false);
   const [importingNotion, setImportingNotion] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -544,20 +544,14 @@ export default function OrganicPage() {
               })}
             </div>
           )}
-          {/* 유형 필터 칩 */}
-          <div className="flex items-center gap-1.5">
-            {["무가시딩", "오가닉"].map(type => {
-              const active = filters.exposureType === type;
-              return (
-                <button key={type}
-                  onClick={() => setFilters(p => ({ ...p, exposureType: active ? "all" : type }))}
-                  className={`text-xs px-2.5 py-1 rounded-full border transition ${
-                    active ? "border-a-blue bg-blue-50 text-a-blue font-medium" : "border-a-hairline text-a-ink-muted hover:border-gray-400"
-                  }`}
-                >{type}</button>
-              );
-            })}
-          </div>
+          {/* 유형 필터 드롭다운 */}
+          <select value={filters.exposureType}
+            onChange={e => setFilters(p => ({ ...p, exposureType: e.target.value }))}
+            className={`filter-select ${filters.exposureType !== "all" ? "border-a-blue text-a-blue bg-blue-50" : ""}`}>
+            <option value="all">전체 유형</option>
+            <option value="무가시딩">무가시딩</option>
+            <option value="오가닉">오가닉 노출</option>
+          </select>
           <div className="w-px h-4 bg-a-hairline mx-0.5" />
           <div className="flex items-center gap-1.5">
             <input type="date" value={filters.dateFrom}
@@ -613,14 +607,30 @@ export default function OrganicPage() {
                         </a>
                       </td>
                       <td style={{ minWidth: colWidths[0] }} className="px-4 py-4 whitespace-nowrap">
-                        <a href={m.url} target="_blank" rel="noreferrer"
-                          className="inline-flex items-center gap-1 font-medium hover:text-a-blue transition-colors group/link">
-                          {m.account_name ?? <span className="text-a-ink-muted text-xs">링크</span>}
-                          <svg width="10" height="10" viewBox="0 0 14 14" fill="none" className="opacity-0 group-hover/link:opacity-50 flex-shrink-0 transition-opacity">
-                            <path d="M5.5 2.5H2.5a1 1 0 00-1 1v8a1 1 0 001 1h8a1 1 0 001-1V9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                            <path d="M8.5 1.5h4m0 0v4m0-4L6 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        </a>
+                        {editCell?.id === m.id && editCell.field === "account_name" ? (
+                          <input autoFocus value={editCell.value}
+                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
+                            onBlur={() => patchMentionField(m.id, "account_name", editCell.value)}
+                            onKeyDown={e => { if (e.key === "Enter") patchMentionField(m.id, "account_name", editCell.value); if (e.key === "Escape") setEditCell(null); }}
+                            className="w-full text-sm font-medium bg-transparent border-b border-a-blue outline-none py-0.5" />
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <a href={m.url} target="_blank" rel="noreferrer"
+                              className="inline-flex items-center gap-1 font-medium hover:text-a-blue transition-colors group/link">
+                              {m.account_name ?? <span className="text-a-ink-muted text-xs">링크</span>}
+                              <svg width="10" height="10" viewBox="0 0 14 14" fill="none" className="opacity-0 group-hover/link:opacity-50 flex-shrink-0 transition-opacity">
+                                <path d="M5.5 2.5H2.5a1 1 0 00-1 1v8a1 1 0 001 1h8a1 1 0 001-1V9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M8.5 1.5h4m0 0v4m0-4L6 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </a>
+                            <button onClick={() => setEditCell({ id: m.id, field: "account_name", value: m.account_name ?? "" })}
+                              className="opacity-0 group-hover:opacity-100 text-a-ink-muted hover:text-a-ink transition flex-shrink-0" title="이름 수정">
+                              <svg width="11" height="11" viewBox="0 0 20 20" fill="none">
+                                <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                          </div>
+                        )}
                       </td>
                       <td style={{ minWidth: colWidths[1] }} className="px-4 py-4 text-xs text-a-ink-muted whitespace-nowrap">
                         {m.platform}
@@ -630,18 +640,31 @@ export default function OrganicPage() {
                       </td>
                       <td style={{ minWidth: colWidths[3] }} className="px-4 py-4 whitespace-nowrap">
                         {editCell?.id === m.id && editCell.field === "mentioned_product" ? (
-                          <input
-                            autoFocus
-                            value={editCell.value}
-                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
-                            onBlur={() => patchProduct(m.id, editCell.value)}
-                            onKeyDown={e => {
-                              if (e.key === "Enter") patchProduct(m.id, editCell.value);
-                              if (e.key === "Escape") setEditCell(null);
-                            }}
-                            placeholder="쉼표로 구분해 복수 입력"
-                            className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5"
-                          />
+                          <div className="flex items-center gap-1">
+                            <input
+                              autoFocus
+                              value={editCell.value}
+                              onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
+                              onKeyDown={e => {
+                                if (e.key === "Enter") patchProduct(m.id, editCell.value);
+                                if (e.key === "Escape") setEditCell(null);
+                              }}
+                              placeholder="쉼표로 구분해 복수 입력"
+                              className="flex-1 text-xs bg-transparent border-b border-a-blue outline-none py-0.5 min-w-0"
+                            />
+                            <button onClick={() => patchProduct(m.id, editCell.value)}
+                              className="text-a-blue hover:text-a-blue-hover flex-shrink-0 transition" title="저장">
+                              <svg width="12" height="12" viewBox="0 0 20 20" fill="none">
+                                <path d="M4 10l5 5 8-8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                            <button onClick={() => setEditCell(null)}
+                              className="text-a-ink-muted hover:text-a-ink flex-shrink-0 transition" title="취소">
+                              <svg width="10" height="10" viewBox="0 0 20 20" fill="none">
+                                <path d="M4 4l12 12M16 4L4 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                              </svg>
+                            </button>
+                          </div>
                         ) : (
                           <span
                             onClick={() => setEditCell({ id: m.id, field: "mentioned_product", value: m.mentioned_product ?? "" })}

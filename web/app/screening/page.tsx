@@ -547,7 +547,7 @@ export default function ScreeningPage() {
     const def = COL_DEFS[col];
     if (!def) return null;
     return (
-      <div className="hidden group-hover:block absolute top-full left-0 mt-1.5 z-[9999] bg-white border border-a-hairline rounded-[10px] px-3.5 py-3 shadow-[0_4px_16px_rgba(0,0,0,0.10)] min-w-[200px] max-w-[280px] pointer-events-none">
+      <div className="hidden group-hover:block absolute top-full left-0 mt-1.5 z-[9999] bg-white border border-a-hairline rounded-[10px] px-3.5 py-3 shadow-[0_4px_16px_rgba(0,0,0,0.10)] min-w-[200px] max-w-[280px] pointer-events-none text-left">
         <p className="text-[11px] font-semibold text-a-ink mb-1.5">{col}</p>
         {def.both ? (
           <p className="text-[11px] text-a-ink-muted leading-relaxed whitespace-pre-line">{def.both}</p>

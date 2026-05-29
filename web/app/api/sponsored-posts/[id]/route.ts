@@ -11,7 +11,7 @@ export async function PATCH(
 
   const { id } = await params;
   const body = await req.json();
-  const allowed = ["project_name", "product_name", "channel_type"];
+  const allowed = ["project_name", "product_name", "channel_type", "account_name"];
   const allowedNumeric = ["cost", "reach_count"];
   const updates: Record<string, string | number | null> = {};
   for (const key of allowed) {
