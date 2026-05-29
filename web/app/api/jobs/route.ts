@@ -3,6 +3,19 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { startActorRun } from "@/lib/apify";
 
+/** 인스타그램 URL을 Apify가 허용하는 형식으로 정규화. 실패 시 null 반환 */
+function cleanInstagramUrl(url: string): string | null {
+  try {
+    const u = new URL(url.startsWith('http') ? url : 'https://' + url);
+    if (!u.hostname.includes('instagram.com')) return null;
+    // 쿼리파라미터·해시 제거, trailing slash 제거
+    const path = u.pathname.replace(/\/$/, '') || '/';
+    return `https://www.instagram.com${path}`;
+  } catch {
+    return null;
+  }
+}
+
 function getAppUrl() {
   if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, '');
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
@@ -56,7 +69,9 @@ export async function POST(req: NextRequest) {
     try {
       if (type === 'monitoring') {
         const { data: posts } = await supabase.from('sponsored_posts').select('url');
-        const urls = (posts || []).map((p: { url: string }) => p.url);
+        const urls = (posts || [])
+          .map((p: { url: string }) => cleanInstagramUrl(p.url))
+          .filter((u): u is string => u !== null);
 
         if (urls.length === 0) {
           await supabase.from('jobs').update({ status: 'done' }).eq('id', job.id);
@@ -146,11 +161,15 @@ export async function POST(req: NextRequest) {
           const igInfluencers = influencers.filter((i: { platform: string }) => i.platform === 'instagram');
           const ytInfluencers = influencers.filter((i: { platform: string }) => i.platform === 'youtube');
 
+          const igUrls = igInfluencers
+            .map((i: { url: string }) => cleanInstagramUrl(i.url))
+            .filter((u): u is string => u !== null);
+
           const startErrors: string[] = [];
           await Promise.all([
-            igInfluencers.length > 0 ? startActorRun(
+            igUrls.length > 0 ? startActorRun(
               'apify/instagram-scraper',
-              { directUrls: igInfluencers.map((i: { url: string }) => i.url), resultsType: 'posts', resultsLimit: 60, addParentData: true },
+              { directUrls: igUrls, resultsType: 'posts', resultsLimit: 60, addParentData: true },
               `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=screening&platform=instagram`
             ).catch((e: unknown) => { startErrors.push(`인스타 스크리닝: ${e}`); }) : Promise.resolve(),
             ...ytInfluencers.map((inf: { url: string }) => startActorRun(
@@ -159,7 +178,7 @@ export async function POST(req: NextRequest) {
               `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=screening&platform=youtube&influencerUrl=${encodeURIComponent(inf.url)}`
             ).catch((e: unknown) => { startErrors.push(`유튜브(${inf.url}): ${e}`); })),
           ]);
-          const totalRuns = (igInfluencers.length > 0 ? 1 : 0) + ytInfluencers.length;
+          const totalRuns = (igUrls.length > 0 ? 1 : 0) + ytInfluencers.length;
           if (startErrors.length === totalRuns) {
             throw new Error(startErrors.join(' | '));
           }
