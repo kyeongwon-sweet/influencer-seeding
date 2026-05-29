@@ -24,7 +24,7 @@ export function ToastContainer({ toasts }: { toasts: ToastItem[] }) {
         <div
           key={t.id}
           className={`flex items-center gap-2.5 px-4 py-3 rounded-2xl text-sm font-medium shadow-[0_8px_32px_rgba(0,0,0,0.10)] animate-toast-in whitespace-nowrap ${
-            t.type === "error" ? "bg-red-600 text-white" : "bg-white border border-blue-100 text-a-blue"
+            t.type === "error" ? "bg-red-600 text-white" : "bg-blue-50 border border-blue-200 text-a-blue"
           }`}
         >
           {t.type === "success" && <span className="text-a-blue">✓</span>}

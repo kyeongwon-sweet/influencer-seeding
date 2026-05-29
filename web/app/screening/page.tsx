@@ -644,7 +644,7 @@ export default function ScreeningPage() {
           </button>
           {lastListupAt && (
             <span className="text-xs text-a-ink-muted whitespace-nowrap">
-              마지막 스크리닝 <span className="font-medium text-a-ink">{formatTimestamp(lastListupAt)}</span>
+              마지막 업데이트 <span className="font-medium text-a-ink">{formatTimestamp(lastListupAt)}</span>
             </span>
           )}
         </div>

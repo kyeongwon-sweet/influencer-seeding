@@ -47,6 +47,12 @@ function fmt(v: number | null | undefined) {
   return v == null ? "-" : v.toLocaleString();
 }
 
+function formatTimestamp(ts: string): string {
+  const d = new Date(ts);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function getPostType(url: string): string {
   if (url.includes("instagram.com")) return url.includes("/reel/") ? "릴스" : "피드";
   if (url.includes("youtube.com") || url.includes("youtu.be")) return url.includes("/shorts/") ? "숏폼" : "롱폼";
@@ -311,6 +317,13 @@ export default function MonitoringPage() {
   const hasFilter = filters.name !== "" || filters.project !== "" || filters.products.length > 0 || filters.type !== "all" || filters.channelType !== "all" || filters.category !== "all" || filters.dateFrom !== "" || filters.dateTo !== "";
   const colSpan = 15;
 
+  const lastMonitoredAt = posts.length > 0
+    ? posts.reduce((latest, p) => {
+        const t = p.latest_stats?.measured_at ?? p.created_at;
+        return t > latest ? t : latest;
+      }, posts[0].latest_stats?.measured_at ?? posts[0].created_at)
+    : null;
+
   const chartData = useMemo(() => {
     const map = new Map<string, number>();
     for (const post of filteredPosts) {
@@ -376,7 +389,7 @@ export default function MonitoringPage() {
   async function loadPosts() {
     const res = await fetch("/api/sponsored-posts");
     const json = await res.json();
-    if (!res.ok) return;
+    if (!res.ok) { toast("데이터 로드에 실패했습니다: " + (json?.error ?? "오류"), "error"); return; }
     setPosts(Array.isArray(json) ? json : []);
   }
 
@@ -474,13 +487,17 @@ export default function MonitoringPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(csvRows),
     });
+    const resData = await res.json().catch(() => null);
     setUploading(false);
-    if (!res.ok) { toast("업로드 중 오류가 발생했습니다.", "error"); return; }
-    const count = csvRows.length;
+    if (!res.ok) { toast("업로드 실패: " + ((resData as { error?: string })?.error ?? "오류"), "error"); return; }
+    const inserted = Array.isArray(resData) ? resData.length : 0;
+    const total = csvRows.length;
     setCsvRows([]);
     setShowUpload(false);
     await loadPosts();
-    toast(`${count}개 게시물이 추가됐습니다.`, "success");
+    if (inserted === 0) toast(`모든 ${total}개 행이 중복 URL입니다. 추가된 게시물이 없습니다.`, "info");
+    else if (inserted < total) toast(`${inserted}개 추가됨 (${total - inserted}개 중복 스킵)`, "success");
+    else toast(`${inserted}개 게시물이 추가됐습니다.`, "success");
   }
 
   function handleSort(col: string) {
@@ -615,15 +632,22 @@ export default function MonitoringPage() {
       </header>
 
       <div className="sticky top-11 z-[35] bg-white border-b border-a-hairline px-6 h-11 flex items-center justify-between">
-        <button onClick={() => setShowHelp(true)}
-          className="flex items-center gap-1.5 text-xs text-a-ink-muted hover:text-a-ink transition">
-          <svg width="13" height="13" viewBox="0 0 20 20" fill="none">
-            <circle cx="10" cy="10" r="8.5" stroke="currentColor" strokeWidth="1.5"/>
-            <path d="M10 9.5v4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            <circle cx="10" cy="6.5" r="1" fill="currentColor"/>
-          </svg>
-          사용 안내
-        </button>
+        <div className="flex items-center gap-4">
+          <button onClick={() => setShowHelp(true)}
+            className="flex items-center gap-1.5 text-xs text-a-ink-muted hover:text-a-ink transition">
+            <svg width="13" height="13" viewBox="0 0 20 20" fill="none">
+              <circle cx="10" cy="10" r="8.5" stroke="currentColor" strokeWidth="1.5"/>
+              <path d="M10 9.5v4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              <circle cx="10" cy="6.5" r="1" fill="currentColor"/>
+            </svg>
+            사용 안내
+          </button>
+          {lastMonitoredAt && (
+            <span className="text-xs text-a-ink-muted whitespace-nowrap">
+              마지막 업데이트 <span className="font-medium text-a-ink">{formatTimestamp(lastMonitoredAt)}</span>
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-1.5">
           <button onClick={() => setShowUpload(true)} className="btn-secondary">CSV 업로드</button>
           <button onClick={() => setShowAdd(true)} className="btn-secondary">+ 게시물 추가</button>

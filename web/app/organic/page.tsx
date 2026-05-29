@@ -462,7 +462,7 @@ export default function OrganicPage() {
         </div>
         {lastUpdatedAt && (
           <span className="text-xs text-a-ink-muted">
-            최근 업데이트 <span className="font-medium text-a-ink">{formatTimestamp(lastUpdatedAt)}</span>
+            마지막 업데이트 <span className="font-medium text-a-ink">{formatTimestamp(lastUpdatedAt)}</span>
           </span>
         )}
       </header>
