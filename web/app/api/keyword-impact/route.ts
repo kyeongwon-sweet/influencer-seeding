@@ -58,7 +58,13 @@ export async function POST(req: NextRequest) {
       startDate: fmtDate(startDate),
       endDate: fmtDate(endDate),
       timeUnit: "date",
-      keywordGroups: [{ groupName: "검색어", keywords: kwList }],
+      // 라라스윗 기준 그룹을 함께 조회해 검색량 스케일 앵커링
+      // → 두 그룹이 동일한 0~100 척도 위에 정규화됨
+      // → 라라스윗이 100점(=1,326.173건)에 해당하면 다른 키워드도 그 비율로 환산 가능
+      keywordGroups: [
+        { groupName: "검색어", keywords: kwList },
+        { groupName: "라라스윗기준", keywords: ["라라스윗", "라라스윗아이스크림"] },
+      ],
     }),
   });
 
@@ -68,6 +74,7 @@ export async function POST(req: NextRequest) {
   }
 
   const naverData = await naverRes.json();
+  // results[0] = 사용자 지정 검색어 그룹
   const dataPoints: { period: string; ratio: number }[] =
     naverData.results?.[0]?.data ?? [];
 
