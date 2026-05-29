@@ -28,7 +28,13 @@ type CsvRow = {
 };
 
 // [사용자이름, 플랫폼, 내용요약, 언급제품, 업로드일, 조회수]
-const INIT_COL_WIDTHS = [200, 80, 280, 140, 100, 90];
+const INIT_COL_WIDTHS = [180, 90, 300, 160, 100, 90];
+
+function formatTimestamp(ts: string): string {
+  const d = new Date(ts);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 function formatDate(d: string | null): string {
   if (!d) return "-";
@@ -341,13 +347,23 @@ export default function OrganicPage() {
   const filtered = mentions.filter(m => {
     if (filters.name && !(m.account_name ?? "").toLowerCase().includes(filters.name.toLowerCase())) return false;
     if (filters.platform !== "all" && m.platform !== filters.platform) return false;
-    if (filters.product && !(m.mentioned_product ?? "").toLowerCase().includes(filters.product.toLowerCase())) return false;
+    if (filters.product && !(m.mentioned_product ?? "").includes(filters.product)) return false;
     if (filters.dateFrom && (!m.uploaded_at || m.uploaded_at < filters.dateFrom)) return false;
     if (filters.dateTo && (!m.uploaded_at || m.uploaded_at > filters.dateTo)) return false;
     return true;
   });
 
   const hasFilter = filters.name !== "" || filters.platform !== "all" || filters.product !== "" || filters.dateFrom !== "" || filters.dateTo !== "";
+
+  // 언급 제품 드롭다운 옵션
+  const productOptions = Array.from(
+    new Set(mentions.map(m => m.mentioned_product).filter(Boolean) as string[])
+  ).sort();
+
+  // 최근 업데이트 시간
+  const lastUpdatedAt = mentions.length > 0
+    ? mentions.reduce((a, b) => a.created_at > b.created_at ? a : b).created_at
+    : null;
 
   const sorted = [...filtered].sort((a, b) => {
     if (!sortCol) return 0;
@@ -400,6 +416,11 @@ export default function OrganicPage() {
             </span>
           )}
         </div>
+        {lastUpdatedAt && (
+          <span className="text-xs text-a-ink-muted">
+            최근 업데이트 <span className="font-medium text-a-ink">{formatTimestamp(lastUpdatedAt)}</span>
+          </span>
+        )}
       </header>
 
       <div className="sticky top-11 z-[35] bg-white border-b border-a-hairline px-6 h-11 flex items-center justify-between">
@@ -456,13 +477,14 @@ export default function OrganicPage() {
             <option value="all">전체 플랫폼</option>
             {PLATFORMS.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
-          <input
-            type="text"
-            placeholder="언급 제품"
+          <select
             value={filters.product}
             onChange={e => setFilters(p => ({ ...p, product: e.target.value }))}
-            className={`filter-input w-28 ${filters.product ? "border-a-blue" : ""}`}
-          />
+            className={`filter-select ${filters.product ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
+          >
+            <option value="">전체 제품</option>
+            {productOptions.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
           <div className="w-px h-4 bg-a-hairline mx-0.5" />
           <div className="flex items-center gap-1.5">
             <input type="date" value={filters.dateFrom}

@@ -417,12 +417,27 @@ async function handleScreening(
 
 // ── 무상 노출 ────────────────────────────────────────────────────────
 
+const ORGANIC_MIN_FOLLOWERS = 10_000;
+const ORGANIC_MIN_VIEWS = 10_000;
+
 async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, jobId: string, items: Record<string, unknown>[], platform: string) {
   const rows: Record<string, unknown>[] = [];
 
   if (platform === 'instagram') {
     for (const item of items) {
-      const username = (item.ownerUsername || (item.owner as Record<string, unknown>)?.username) as string;
+      // #광고·#협찬 태그 포함 게시물 제외
+      if (isAd(item)) continue;
+
+      const owner = (item.owner as Record<string, unknown>) || {};
+      const followers = (item.ownerFollowersCount || owner.followersCount || 0) as number;
+      const viewCount = (item.videoPlayCount || item.videoViewCount || 0) as number;
+
+      // 팔로워 1만 이상 (데이터 없으면 통과)
+      if (followers > 0 && followers < ORGANIC_MIN_FOLLOWERS) continue;
+      // 조회수 1만 이상 (데이터 없으면 통과)
+      if (viewCount > 0 && viewCount < ORGANIC_MIN_VIEWS) continue;
+
+      const username = (item.ownerUsername || owner.username) as string;
       if (!username) continue;
       const shortCode = item.shortCode as string | undefined;
       const url = (item.url as string) || (shortCode ? `https://www.instagram.com/p/${shortCode}/` : null);
@@ -439,7 +454,7 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
         platform: 'instagram',
         content_summary: (item.caption as string)?.slice(0, 300) || null,
         uploaded_at: uploadedAt,
-        view_count: (item.videoPlayCount || item.videoViewCount || item.likesCount || null) as number | null,
+        view_count: viewCount || (item.likesCount as number) || null,
         source: 'apify',
       });
     }
@@ -447,6 +462,15 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
     for (const item of items) {
       const url = item.url as string;
       if (!url) continue;
+
+      const subscribers = (item.channelSubscriberCount || item.numberOfSubscribers || item.subscriberCount || 0) as number;
+      const viewCount = (item.viewCount || item.views || 0) as number;
+
+      // 구독자 1만 이상 (데이터 없으면 통과)
+      if (subscribers > 0 && subscribers < ORGANIC_MIN_FOLLOWERS) continue;
+      // 조회수 1만 이상 (데이터 없으면 통과)
+      if (viewCount > 0 && viewCount < ORGANIC_MIN_VIEWS) continue;
+
       const channelName = (item.channelName || item.channelTitle || item.author) as string;
 
       const rawTs = item.date || item.publishedAt || item.uploadDate;
@@ -460,7 +484,7 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
         platform: 'youtube',
         content_summary: (item.title as string) || null,
         uploaded_at: uploadedAt,
-        view_count: (item.viewCount || item.views || null) as number | null,
+        view_count: viewCount || null,
         source: 'apify',
       });
     }
