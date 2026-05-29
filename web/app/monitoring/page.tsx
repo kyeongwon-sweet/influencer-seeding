@@ -521,8 +521,8 @@ export default function MonitoringPage() {
       case "프로젝트명": av = (a.project_name ?? "").toLowerCase(); bv = (b.project_name ?? "").toLowerCase(); break;
       case "상품명": av = (a.product_name ?? "").toLowerCase(); bv = (b.product_name ?? "").toLowerCase(); break;
       case "증분량":
-        av = (!a.latest_stats || !a.prev_stats || isRecentPost(a.posted_at)) ? -Infinity : (a.latest_stats.play_count ?? 0) - (a.prev_stats.play_count ?? 0);
-        bv = (!b.latest_stats || !b.prev_stats || isRecentPost(b.posted_at)) ? -Infinity : (b.latest_stats.play_count ?? 0) - (b.prev_stats.play_count ?? 0);
+        av = (!a.latest_stats || !a.prev_stats) ? -Infinity : (a.latest_stats.play_count ?? 0) - (a.prev_stats.play_count ?? 0);
+        bv = (!b.latest_stats || !b.prev_stats) ? -Infinity : (b.latest_stats.play_count ?? 0) - (b.prev_stats.play_count ?? 0);
         break;
       case "채널분류": av = (a.channel_type ?? "").toLowerCase(); bv = (b.channel_type ?? "").toLowerCase(); break;
       case "카테고리": av = (a.influencers?.category ?? "").toLowerCase(); bv = (b.influencers?.category ?? "").toLowerCase(); break;
@@ -558,7 +558,7 @@ export default function MonitoringPage() {
         post.channel_type ?? "",
         getPostType(post.url),
         post.posted_at ?? "",
-        (!isRecentPost(post.posted_at) && play != null && post.prev_stats?.play_count != null) ? (play - post.prev_stats.play_count) : "",
+        (play != null && post.prev_stats?.play_count != null) ? (play - post.prev_stats.play_count) : "",
         play ?? "",
         reach ?? "",
         cost ?? "",
@@ -848,18 +848,15 @@ export default function MonitoringPage() {
                   return (
                     <tr key={post.id} className={`group border-b border-a-divider last:border-0 transition-colors ${hl ? "bg-yellow-50/60 hover:bg-yellow-100/50" : "hover:bg-a-parchment/60"}`}>
                       <TD col="증분량" w={stickyColWidths["증분량"]} leftPos={stickyLefts["증분량"]} right highlighted={hl}>
-                        {isRecentPost(post.posted_at)
-                          ? <span className="text-yellow-500 font-medium">-</span>
-                          : (() => {
-                              if (s?.play_count == null || post.prev_stats == null) return <span className="text-gray-300">-</span>;
-                              const delta = s.play_count - (post.prev_stats.play_count ?? 0);
-                              return (
-                                <span className={`font-semibold ${delta > 0 ? "text-red-500" : delta < 0 ? "text-emerald-600" : "text-gray-300"}`}>
-                                  {delta > 0 ? "+" : ""}{delta.toLocaleString()}
-                                </span>
-                              );
-                            })()
-                        }
+                        {(() => {
+                          if (s?.play_count == null || post.prev_stats == null) return <span className="text-gray-300">-</span>;
+                          const delta = s.play_count - (post.prev_stats.play_count ?? 0);
+                          return (
+                            <span className={`font-semibold ${delta > 0 ? "text-red-500" : delta < 0 ? "text-emerald-600" : "text-gray-300"}`}>
+                              {delta > 0 ? "+" : ""}{delta.toLocaleString()}
+                            </span>
+                          );
+                        })()}
                       </TD>
                       <TD col="인플루언서" w={stickyColWidths["인플루언서"]} leftPos={stickyLefts["인플루언서"]} highlighted={hl}>
                         {editCell?.postId === post.id && editCell?.field === "account_name" ? (
@@ -1088,7 +1085,7 @@ export default function MonitoringPage() {
 
       {showUpload && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white rounded-[22px] p-6 w-[480px] shadow-[0_8px_40px_rgba(0,0,0,0.12)]">
+          <div className="bg-white rounded-[22px] p-6 w-[820px] shadow-[0_8px_40px_rgba(0,0,0,0.12)]">
             <h2 className="font-semibold tracking-tight mb-1">CSV 일괄 업로드</h2>
             <p className="text-xs text-a-ink-muted mb-4">컬럼 순서: 프로젝트명, 상품명, 채널분류, 게시물URL, 인플루언서명, 게시일, 비용, 도달수 (5~8번째 컬럼 생략 가능)</p>
             <div className="flex items-center gap-2 mb-4">

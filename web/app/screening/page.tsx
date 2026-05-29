@@ -159,7 +159,7 @@ export default function ScreeningPage() {
     "총 평균 조회수": 120, "총 평균 도달수": 120, "댓글 비율": 90, "광고 비율": 90,
     "광고 평균 조회수": 120, "광고 효율": 90, "광고 최고 조회수": 120,
     "광고 최고 게시물 URL": 120, "검색어": 140, "검색어 트렌드": 110,
-    "통과 기준": 90, "카테고리": 90, "상태": 90,
+    "통과 기준": 90, "상태": 90,
   });
   const screenResizingRef = useRef<{ col: string; startX: number; startW: number; isSticky: boolean } | null>(null);
 
@@ -442,7 +442,7 @@ export default function ScreeningPage() {
       "채널명", "URL", "플랫폼", "팔로워 수", "알고리즘 계수", "100만뷰 개수",
       "총 평균 조회수", "총 평균 도달수", "댓글 비율", "광고 비율",
       "광고 평균 조회수", "광고 효율", "광고 최고 조회수", "광고 최고 게시물 URL",
-      "검색어", "검색어 트렌드", "통과 기준", "카테고리", "상태",
+      "검색어", "검색어 트렌드", "통과 기준", "상태",
     ];
     const rows = sorted.map(inf => {
       const m = latest(inf);
@@ -473,7 +473,6 @@ export default function ScreeningPage() {
         m?.kw_keywords ?? "",
         m?.kw_impact != null ? m.kw_impact.toFixed(1) + "%" : "",
         snapResult,
-        inf.category ?? "",
         s?.label ?? inf.status,
       ];
     });
@@ -521,7 +520,6 @@ export default function ScreeningPage() {
       case "광고 평균 조회수": av = ma?.ad_avg_play_count ?? -1; bv = mb?.ad_avg_play_count ?? -1; break;
       case "광고 효율": av = (ma?.ad_avg_play_count != null && ma?.total_avg_play_count != null) ? (ma.ad_avg_play_count - ma.total_avg_play_count) / 10000 : -1; bv = (mb?.ad_avg_play_count != null && mb?.total_avg_play_count != null) ? (mb.ad_avg_play_count - mb.total_avg_play_count) / 10000 : -1; break;
       case "광고 최고 조회수": av = ma?.top_ad_play_count ?? -1; bv = mb?.top_ad_play_count ?? -1; break;
-      case "카테고리": av = a.category ?? ""; bv = b.category ?? ""; break;
       case "상태": av = a.status; bv = b.status; break;
     }
     const cmp = av < bv ? -1 : av > bv ? 1 : 0;
@@ -764,30 +762,6 @@ export default function ScreeningPage() {
                   {staticTH("검색어")}
                   {staticTH("검색어 트렌드", true)}
                   {staticTH("통과 기준", false, true)}
-                  {(() => {
-                    const col = "카테고리";
-                    const active = sortCol === col;
-                    return (
-                      <th key={col} onClick={() => handleSort(col)}
-                        style={{ minWidth: screenColWidths[col] }}
-                        className={[
-                          "relative px-3 py-3 text-xs font-medium whitespace-nowrap cursor-pointer select-none transition-colors bg-white text-center group",
-                          active ? "text-a-ink" : "text-a-ink-muted hover:text-a-ink",
-                        ].join(" ")}>
-                        {col}<span className={`ml-1 ${active ? "text-a-blue" : "opacity-20"}`}>{active ? (sortDir === "asc" ? "↑" : "↓") : "↕"}</span>
-                        <div className="hidden group-hover:flex flex-col absolute top-full left-0 mt-0.5 z-50 bg-white border border-a-hairline rounded-[10px] shadow-lg px-3 py-2 text-left whitespace-nowrap">
-                          {CATEGORIES.map(c => (
-                            <div key={c.value} className="flex items-center gap-2 py-0.5">
-                              <span className="text-[11px] font-semibold text-a-ink w-6">{c.value}</span>
-                              <span className="text-[11px] text-a-ink-muted">{c.desc}</span>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-a-blue/30"
-                          onMouseDown={e => { e.stopPropagation(); startScreenResize(col, e); }} />
-                      </th>
-                    );
-                  })()}
                   {sortTH("상태", false, true)}
                 </tr>
               </thead>
@@ -914,22 +888,6 @@ export default function ScreeningPage() {
                           );
                         })()}
                       </td>
-                      <td style={{ minWidth: screenColWidths["카테고리"] }} className="px-3 py-4 text-center whitespace-nowrap">
-                        {(() => {
-                          const cat = CATEGORIES.find(c => c.value === inf.category);
-                          const catCls = cat?.cls ?? "bg-a-divider text-a-ink-muted";
-                          return (
-                            <div className="inline-flex items-center relative">
-                              <select value={inf.category ?? ""} onChange={e => updateCategory(inf.id, e.target.value)}
-                                className={`appearance-none pl-2.5 pr-5 py-1 rounded-full cursor-pointer border-0 outline-none text-xs font-medium ${catCls}`}>
-                                <option value="">-</option>
-                                {CATEGORIES.map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
-                              </select>
-                              <span className="pointer-events-none absolute right-1.5 text-[9px] opacity-50">▾</span>
-                            </div>
-                          );
-                        })()}
-                      </td>
                       <td style={{ minWidth: screenColWidths["상태"] }} className="px-3 py-4 text-center whitespace-nowrap">
                         <div className="inline-flex items-center relative">
                           <select value={inf.status} onChange={e => updateStatus(inf.id, e.target.value)}
@@ -944,7 +902,7 @@ export default function ScreeningPage() {
                 })}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={19} className="px-5 py-12 text-center">
+                    <td colSpan={18} className="px-5 py-12 text-center">
                       {list.length === 0
                         ? <span className="text-a-ink-muted text-sm">인플루언서가 없습니다.</span>
                         : (
