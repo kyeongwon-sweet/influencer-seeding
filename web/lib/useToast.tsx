@@ -23,12 +23,10 @@ export function ToastContainer({ toasts }: { toasts: ToastItem[] }) {
       {toasts.map(t => (
         <div
           key={t.id}
-          className={`flex items-center gap-2.5 px-4 py-3 rounded-2xl text-sm font-medium shadow-[0_8px_32px_rgba(0,0,0,0.10)] animate-toast-in whitespace-nowrap ${
-            t.type === "error" ? "bg-red-600 text-white" : "bg-blue-50 border border-blue-200 text-a-blue"
-          }`}
+          className="flex items-center gap-2.5 px-4 py-3 rounded-2xl text-sm font-medium shadow-[0_8px_32px_rgba(0,0,0,0.10)] animate-toast-in whitespace-nowrap bg-blue-50 border border-blue-200 text-a-blue"
         >
-          {t.type === "success" && <span className="text-a-blue">✓</span>}
-          {t.type === "error"   && <span className="text-red-200">✕</span>}
+          {t.type === "success" && <span className="text-emerald-500">✓</span>}
+          {t.type === "error"   && <span className="text-red-500">✕</span>}
           {t.type === "info"    && <span className="text-a-blue/50">→</span>}
           {t.message}
         </div>
