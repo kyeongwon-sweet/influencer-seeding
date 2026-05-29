@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
             ).catch((e: unknown) => { startErrors.push(`인스타: ${e}`); }) : Promise.resolve(),
             ytKws.length > 0 ? startActorRun(
               'streamers/youtube-scraper',
-              { searchQueries: ytKws, maxResults: 0, maxResultsShorts: 30, sortingOrder: 'views' },
+              { searchQueries: ytKws, maxResultsShorts: 30, sortingOrder: 'views' },
               `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=listup&platform=youtube`
             ).catch((e: unknown) => { startErrors.push(`유튜브: ${e}`); }) : Promise.resolve(),
           ]);
@@ -138,7 +138,7 @@ export async function POST(req: NextRequest) {
           ).catch((e: unknown) => { startErrors.push(`인스타: ${e}`); }),
           startActorRun(
             'streamers/youtube-scraper',
-            { searchQueries: ['라라스윗'], maxResults: 0, maxResultsShorts: 30, sortingOrder: 'relevance' },
+            { searchQueries: ['라라스윗'], maxResultsShorts: 30, sortingOrder: 'relevance' },
             `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=organic&platform=youtube`
           ).catch((e: unknown) => { startErrors.push(`유튜브: ${e}`); }),
         ]);
@@ -200,7 +200,7 @@ export async function POST(req: NextRequest) {
             ).catch((e: unknown) => { startErrors.push(`인스타 스크리닝: ${e}`); }) : Promise.resolve(),
             ...ytInfluencers.map((inf: { url: string }) => startActorRun(
               'streamers/youtube-scraper',
-              { startUrls: [{ url: inf.url }], maxResults: 0, maxResultsShorts: 15 },
+              { startUrls: [{ url: inf.url }], maxResultsShorts: 15 },
               `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=screening&platform=youtube&influencerUrl=${encodeURIComponent(inf.url)}`
             ).catch((e: unknown) => { startErrors.push(`유튜브(${inf.url}): ${e}`); })),
           ]);

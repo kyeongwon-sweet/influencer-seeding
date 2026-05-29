@@ -120,7 +120,6 @@ def _run_youtube(db, keywords: list) -> int:
     for keyword in keywords:
         run = client.actor(APIFY_YOUTUBE_ACTOR).call(run_input={
             "searchQueries": [keyword],
-            "maxResults": 0,
             "maxResultsShorts": RESULTS_PER_KEYWORD,
             "sortingOrder": "views",
         })
