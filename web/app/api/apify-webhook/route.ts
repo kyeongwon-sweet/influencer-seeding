@@ -155,8 +155,9 @@ export async function POST(req: NextRequest) {
 
     } else if (jobType === 'screening') {
       const platform = searchParams.get('platform') || 'instagram';
+      const influencerId = searchParams.get('influencerId');
       const influencerUrl = searchParams.get('influencerUrl');
-      await handleScreening(supabase, jobId, items, platform, influencerUrl);
+      await handleScreening(supabase, jobId, items, platform, influencerId, influencerUrl);
 
     } else if (jobType === 'organic') {
       const platform = searchParams.get('platform') || 'instagram';
@@ -211,6 +212,7 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
   }
 
   const rows = [];
+  const pendingUpdates: { id: string; updates: Record<string, unknown> }[] = [];
   for (const post of posts || []) {
     const key = statsKey(post.url);
     const s = statsByKey[key];
@@ -225,12 +227,20 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
       if (infId) updates.influencer_id = infId;
     }
     if (Object.keys(updates).length > 0) {
-      await supabase.from('sponsored_posts').update(updates).eq('id', post.id);
+      pendingUpdates.push({ id: post.id, updates });
     }
 
     rows.push({ post_id: post.id, measured_at: today, play_count: s.play_count, likes_count: s.likes_count, comments_count: s.comments_count });
   }
 
+  // N+1 방지: 병렬 업데이트
+  if (pendingUpdates.length > 0) {
+    await Promise.all(
+      pendingUpdates.map(({ id, updates: upd }) =>
+        supabase.from('sponsored_posts').update(upd).eq('id', id)
+      )
+    );
+  }
   if (rows.length > 0) {
     await supabase.from('post_daily_stats').upsert(rows, { onConflict: 'post_id,measured_at' });
   }
@@ -329,6 +339,7 @@ async function handleScreening(
   jobId: string,
   items: Record<string, unknown>[],
   platform: string,
+  influencerId: string | null,
   influencerUrl: string | null
 ) {
   const { data: criteriaData } = await supabase
@@ -348,12 +359,18 @@ async function handleScreening(
       grouped[inputUrl].push(item);
     }
 
+    // N+1 방지: 필요한 URL 목록으로 한 번에 조회
+    const urls = Object.keys(grouped).map(
+      rawUrl => normalizeInstagramUrl(rawUrl) ?? (rawUrl.replace(/\/$/, '') + '/')
+    );
+    const { data: infRows } = await supabase
+      .from('influencers').select('id, url').in('url', urls);
+    const infByUrl = new Map((infRows || []).map((i: { id: string; url: string }) => [i.url, i.id]));
+
     for (const [rawUrl, posts] of Object.entries(grouped)) {
       const url = normalizeInstagramUrl(rawUrl) ?? (rawUrl.replace(/\/$/, '') + '/');
-      const { data: infData } = await supabase
-        .from('influencers').select('id').eq('url', url).limit(1);
-      const influencer = infData?.[0];
-      if (!influencer) continue;
+      const infId = infByUrl.get(url);
+      if (!infId) continue;
 
       const profile = {
         username: (posts[0]?.ownerUsername as string) || '',
@@ -364,27 +381,25 @@ async function handleScreening(
       const { result: resultStatus, details } = evaluateCriteria(criteria, metrics);
 
       await supabase.from('screening_metrics').insert({
-        influencer_id: influencer.id,
+        influencer_id: infId,
         ...metrics,
         criteria_snapshot: { result: resultStatus, details },
         type_metrics: Object.keys(typeMetrics).length ? typeMetrics : null,
       });
 
       if (resultStatus === 'pass' || resultStatus === 'reject') {
-        await supabase.from('influencers').update({ status: resultStatus }).eq('id', influencer.id);
+        await supabase.from('influencers').update({ status: resultStatus }).eq('id', infId);
       }
     }
 
   } else if (platform === 'youtube') {
-    // influencerId 우선, 없으면 influencerUrl fallback (레거시 대응)
-    const influencerId = searchParams.get('influencerId');
-    const influencerUrlParam = searchParams.get('influencerUrl');
+    // influencerId 우선(직접 전달), 없으면 URL로 조회 (레거시 대응)
     let influencer: { id: string } | null = null;
     if (influencerId) {
       const { data } = await supabase.from('influencers').select('id').eq('id', influencerId).limit(1);
       influencer = data?.[0] ?? null;
-    } else if (influencerUrlParam) {
-      const normalizedUrl = normalizeYouTubeUrl(decodeURIComponent(influencerUrlParam));
+    } else if (influencerUrl) {
+      const normalizedUrl = normalizeYouTubeUrl(decodeURIComponent(influencerUrl));
       if (normalizedUrl) {
         const { data } = await supabase.from('influencers').select('id').eq('url', normalizedUrl).limit(1);
         influencer = data?.[0] ?? null;

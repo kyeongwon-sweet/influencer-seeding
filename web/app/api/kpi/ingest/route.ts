@@ -15,11 +15,11 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = getServerSupabase();
-  const { data, error } = await supabase.from("kpi_snapshots").insert({
+  const { error } = await supabase.from("kpi_snapshots").insert({
     month_label: body.month_label ?? null,
     metrics: body.metrics,
-  }).select();
+  });
 
   if (error) return NextResponse.json({ error: error.message, code: error.code }, { status: 500 });
-  return NextResponse.json({ ok: true, inserted: data });
+  return NextResponse.json({ ok: true });
 }
