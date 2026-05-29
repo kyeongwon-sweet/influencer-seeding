@@ -198,7 +198,7 @@ export async function POST(req: NextRequest) {
             ).catch((e: unknown) => { startErrors.push(`인스타 스크리닝: ${e}`); }) : Promise.resolve(),
             ...ytInfluencers.map((inf: { url: string }) => startActorRun(
               'streamers/youtube-scraper',
-              { startUrls: [{ url: inf.url }], maxResults: 15, maxResultsShorts: 0 },
+              { startUrls: [{ url: inf.url }], maxResults: 0, maxResultsShorts: 15 },
               `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=screening&platform=youtube&influencerUrl=${encodeURIComponent(inf.url)}`
             ).catch((e: unknown) => { startErrors.push(`유튜브(${inf.url}): ${e}`); })),
           ]);
