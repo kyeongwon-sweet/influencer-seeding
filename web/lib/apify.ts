@@ -7,11 +7,11 @@ export async function startActorRun(
   webhookUrl: string
 ): Promise<void> {
   const token = process.env.APIFY_API_TOKEN!;
-  const webhooks = encodeURIComponent(JSON.stringify([{
+  const webhooks = Buffer.from(JSON.stringify([{
     eventTypes: ['ACTOR.RUN.SUCCEEDED', 'ACTOR.RUN.FAILED'],
     requestUrl: webhookUrl,
     payloadTemplate: '{"datasetId":"{{resource.defaultDatasetId}}","status":"{{resource.status}}"}',
-  }]));
+  }])).toString('base64url');
 
   const res = await fetch(
     `${APIFY_BASE}/acts/${actorId.replace('/', '~')}/runs?token=${token}&webhooks=${webhooks}`,
