@@ -53,7 +53,7 @@ function getPostType(url: string): string {
   return "-";
 }
 
-const STICKY_COL_ORDER = ["썸네일", "인플루언서", "프로젝트명", "상품명", "유형", "게시일"] as const;
+const STICKY_COL_ORDER = ["증분량", "인플루언서", "프로젝트명", "상품명", "게시일", "유형"] as const;
 
 function getThumbnailUrl(url: string): string | null {
   let m = url.match(/youtube\.com\/shorts\/([^/?&#]+)/);
@@ -87,7 +87,7 @@ function TH({ children, right, col, onSort, sorted, className: cls, w, leftPos, 
   w?: number; leftPos?: number; onResize?: (e: React.MouseEvent) => void;
 }) {
   const isSticky = col !== undefined;
-  const isLast = col === "게시일";
+  const isLast = col === "유형";
   const sortable = onSort !== undefined;
   return (
     <th
@@ -119,7 +119,7 @@ function TD({ children, right, muted, col, highlighted, w, leftPos }: {
   w?: number; leftPos?: number;
 }) {
   const isSticky = col !== undefined;
-  const isLast = col === "게시일";
+  const isLast = col === "유형";
   return (
     <td
       style={isSticky ? { width: w, minWidth: w, left: leftPos } : w ? { minWidth: w } : undefined}
@@ -134,6 +134,12 @@ function TD({ children, right, muted, col, highlighted, w, leftPos }: {
       {children}
     </td>
   );
+}
+
+function getCategoryLabel(val: string | null | undefined): string {
+  if (!val) return "-";
+  const cat = CATEGORIES.find(c => c.value === val);
+  return cat ? cat.desc : val;
 }
 
 function pickMetric(s: DailyStats): number | null {
@@ -278,10 +284,10 @@ export default function MonitoringPage() {
 
   // column widths for drag-resize
   const [stickyColWidths, setStickyColWidths] = useState<Record<string, number>>({
-    "썸네일": 56, "인플루언서": 180, "프로젝트명": 150, "상품명": 150, "유형": 72, "게시일": 104,
+    "증분량": 80, "인플루언서": 180, "프로젝트명": 150, "상품명": 150, "게시일": 104, "유형": 72,
   });
   const [colWidths, setColWidths] = useState<Record<string, number>>({
-    "증분량": 80, "채널분류": 100, "조회수": 100, "도달수": 100, "비용": 120, "조회당비용": 110, "도달당비용": 110, "Trend": 90, "삭제": 60,
+    "채널분류": 100, "카테고리": 110, "조회수": 100, "도달수": 100, "비용": 120, "조회당비용": 110, "도달당비용": 110, "Trend": 90, "삭제": 60,
   });
   const resizingRef = useRef<{ col: string; startX: number; startW: number; isSticky: boolean } | null>(null);
 
@@ -481,7 +487,12 @@ export default function MonitoringPage() {
       case "인플루언서": av = (a.account_name ?? a.influencers?.name ?? "").toLowerCase(); bv = (b.account_name ?? b.influencers?.name ?? "").toLowerCase(); break;
       case "프로젝트명": av = (a.project_name ?? "").toLowerCase(); bv = (b.project_name ?? "").toLowerCase(); break;
       case "상품명": av = (a.product_name ?? "").toLowerCase(); bv = (b.product_name ?? "").toLowerCase(); break;
+      case "증분량":
+        av = (!a.latest_stats || !a.prev_stats || isRecentPost(a.posted_at)) ? -Infinity : (a.latest_stats.play_count ?? 0) - (a.prev_stats.play_count ?? 0);
+        bv = (!b.latest_stats || !b.prev_stats || isRecentPost(b.posted_at)) ? -Infinity : (b.latest_stats.play_count ?? 0) - (b.prev_stats.play_count ?? 0);
+        break;
       case "채널분류": av = (a.channel_type ?? "").toLowerCase(); bv = (b.channel_type ?? "").toLowerCase(); break;
+      case "카테고리": av = (a.influencers?.category ?? "").toLowerCase(); bv = (b.influencers?.category ?? "").toLowerCase(); break;
       case "유형": av = getPostType(a.url); bv = getPostType(b.url); break;
       case "게시일": av = a.posted_at ?? ""; bv = b.posted_at ?? ""; break;
       case "조회수": av = sa?.play_count ?? -1; bv = sb?.play_count ?? -1; break;
@@ -661,7 +672,7 @@ export default function MonitoringPage() {
             className={`filter-select ${filters.category !== "all" ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
           >
             <option value="all">전체 카테고리</option>
-            {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.value} ({c.desc})</option>)}
+            {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.desc}</option>)}
           </select>
           <div className="w-px h-4 bg-a-hairline mx-0.5" />
           <div className="flex items-center gap-1.5">
@@ -760,20 +771,20 @@ export default function MonitoringPage() {
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-30">
                 <tr className="border-b border-a-hairline">
-                  <TH col="썸네일" w={stickyColWidths["썸네일"]} leftPos={stickyLefts["썸네일"]} onResize={e => startResize("썸네일", e, true)}></TH>
+                  <TH col="증분량" w={stickyColWidths["증분량"]} leftPos={stickyLefts["증분량"]} onResize={e => startResize("증분량", e, true)} right {...sp("증분량")}>증분량</TH>
                   <TH col="인플루언서" w={stickyColWidths["인플루언서"]} leftPos={stickyLefts["인플루언서"]} onResize={e => startResize("인플루언서", e, true)} {...sp("인플루언서")}>인플루언서</TH>
                   <TH col="프로젝트명" w={stickyColWidths["프로젝트명"]} leftPos={stickyLefts["프로젝트명"]} onResize={e => startResize("프로젝트명", e, true)} {...sp("프로젝트명")}>프로젝트명</TH>
                   <TH col="상품명" w={stickyColWidths["상품명"]} leftPos={stickyLefts["상품명"]} onResize={e => startResize("상품명", e, true)} {...sp("상품명")}>상품명</TH>
-                  <TH col="유형" w={stickyColWidths["유형"]} leftPos={stickyLefts["유형"]} onResize={e => startResize("유형", e, true)} {...sp("유형")}>유형</TH>
                   <TH col="게시일" w={stickyColWidths["게시일"]} leftPos={stickyLefts["게시일"]} onResize={e => startResize("게시일", e, true)} {...sp("게시일")}>게시일</TH>
-                  <TH right w={colWidths["증분량"]} onResize={e => startResize("증분량", e)}>증분량</TH>
+                  <TH col="유형" w={stickyColWidths["유형"]} leftPos={stickyLefts["유형"]} onResize={e => startResize("유형", e, true)} {...sp("유형")}>유형</TH>
                   <TH w={colWidths["채널분류"]} onResize={e => startResize("채널분류", e)} {...sp("채널분류")}>채널분류</TH>
+                  <TH w={colWidths["카테고리"]} onResize={e => startResize("카테고리", e)} {...sp("카테고리")}>카테고리</TH>
                   <TH right w={colWidths["조회수"]} onResize={e => startResize("조회수", e)} {...sp("조회수")}>조회수</TH>
                   <TH right w={colWidths["도달수"]} onResize={e => startResize("도달수", e)} {...sp("도달수")}>도달수</TH>
                   <TH right w={colWidths["비용"]} onResize={e => startResize("비용", e)} {...sp("비용")}>비용</TH>
                   <TH right w={colWidths["조회당비용"]} onResize={e => startResize("조회당비용", e)}>조회당비용</TH>
                   <TH right w={colWidths["도달당비용"]} onResize={e => startResize("도달당비용", e)}>도달당비용</TH>
-                  <TH className="text-center" w={colWidths["Trend"]} onResize={e => startResize("Trend", e)}>Trend</TH>
+                  <TH className="text-center" w={colWidths["Trend"]} onResize={e => startResize("Trend", e)}>트렌드</TH>
                   <TH w={colWidths["삭제"]}></TH>
                 </tr>
               </thead>
@@ -782,31 +793,28 @@ export default function MonitoringPage() {
                   const s = post.latest_stats;
                   const displayName = post.account_name ?? post.influencers?.name ?? "-";
                   const hl = hasNotableChange(post);
-                  const thumbUrl = getThumbnailUrl(post.url);
                   return (
                     <tr key={post.id} className={`group border-b border-a-divider last:border-0 transition-colors ${hl ? "bg-yellow-50/60 hover:bg-yellow-100/50" : "hover:bg-a-parchment/60"}`}>
-                      <td style={{ width: stickyColWidths["썸네일"], minWidth: stickyColWidths["썸네일"], left: stickyLefts["썸네일"] }}
-                        className={`sticky z-10 px-2 py-2 ${hl ? "bg-yellow-50 group-hover:bg-yellow-100/60" : "bg-white group-hover:bg-a-parchment"}`}>
-                        {thumbUrl ? (
-                          <img src={thumbUrl} alt="" className="w-10 h-8 object-cover rounded cursor-pointer hover:opacity-80 transition"
-                            onClick={async () => {
-                              window.open(post.url, "_blank");
-                              try { await navigator.clipboard.writeText(post.url); toast("링크가 복사됐습니다.", "success"); } catch {}
-                            }} />
-                        ) : (
-                          <button onClick={async () => {
-                            window.open(post.url, "_blank");
-                            try { await navigator.clipboard.writeText(post.url); toast("링크가 복사됐습니다.", "success"); } catch {}
-                          }}
-                            className="w-10 h-8 rounded bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                              <rect x="2" y="2" width="20" height="20" rx="5" stroke="#d1d5db" strokeWidth="1.5"/>
-                              <path d="M7 12h10M12 7l5 5-5 5" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                            </svg>
-                          </button>
-                        )}
-                      </td>
-                      <TD col="인플루언서" w={stickyColWidths["인플루언서"]} leftPos={stickyLefts["인플루언서"]} highlighted={hl}><span className="font-medium">{displayName}</span></TD>
+                      <TD col="증분량" w={stickyColWidths["증분량"]} leftPos={stickyLefts["증분량"]} right highlighted={hl}>
+                        {isRecentPost(post.posted_at)
+                          ? <span className="text-yellow-500 font-medium">-</span>
+                          : (() => {
+                              if (s?.play_count == null || post.prev_stats == null) return <span className="text-gray-300">-</span>;
+                              const delta = s.play_count - (post.prev_stats.play_count ?? 0);
+                              return (
+                                <span className={`font-semibold ${delta > 0 ? "text-red-500" : delta < 0 ? "text-emerald-600" : "text-gray-300"}`}>
+                                  {delta > 0 ? "+" : ""}{delta.toLocaleString()}
+                                </span>
+                              );
+                            })()
+                        }
+                      </TD>
+                      <TD col="인플루언서" w={stickyColWidths["인플루언서"]} leftPos={stickyLefts["인플루언서"]} highlighted={hl}>
+                        <button onClick={async () => {
+                          window.open(post.url, "_blank");
+                          try { await navigator.clipboard.writeText(post.url); toast("링크가 복사됐습니다.", "success"); } catch {}
+                        }} className="font-medium hover:text-a-blue transition-colors text-left">{displayName}</button>
+                      </TD>
                       <TD col="프로젝트명" w={stickyColWidths["프로젝트명"]} leftPos={stickyLefts["프로젝트명"]} highlighted={hl}>
                         {editCell?.postId === post.id && editCell?.field === "project_name" ? (
                           <input autoFocus value={editCell.value}
@@ -835,22 +843,8 @@ export default function MonitoringPage() {
                           </span>
                         )}
                       </TD>
-                      <TD col="유형" w={stickyColWidths["유형"]} leftPos={stickyLefts["유형"]} muted highlighted={hl}>{getPostType(post.url)}</TD>
                       <TD col="게시일" w={stickyColWidths["게시일"]} leftPos={stickyLefts["게시일"]} muted highlighted={hl}>{post.posted_at ?? "-"}</TD>
-                      <td style={{ minWidth: colWidths["증분량"] }} className="px-3 py-4 text-xs tabular-nums text-right whitespace-nowrap">
-                        {isRecentPost(post.posted_at)
-                          ? <span className="text-yellow-500 font-medium">-</span>
-                          : (() => {
-                              if (s?.play_count == null || post.prev_stats == null) return <span className="text-gray-300">-</span>;
-                              const delta = s.play_count - (post.prev_stats.play_count ?? 0);
-                              return (
-                                <span className={`font-semibold ${delta > 0 ? "text-red-500" : delta < 0 ? "text-emerald-600" : "text-gray-300"}`}>
-                                  {delta > 0 ? "+" : ""}{delta.toLocaleString()}
-                                </span>
-                              );
-                            })()
-                        }
-                      </td>
+                      <TD col="유형" w={stickyColWidths["유형"]} leftPos={stickyLefts["유형"]} muted highlighted={hl}>{getPostType(post.url)}</TD>
                       <TD muted w={colWidths["채널분류"]}>
                         {editCell?.postId === post.id && editCell?.field === "channel_type" ? (
                           <select autoFocus value={editCell.value}
@@ -868,6 +862,7 @@ export default function MonitoringPage() {
                           </span>
                         )}
                       </TD>
+                      <TD muted w={colWidths["카테고리"]}>{getCategoryLabel(post.influencers?.category)}</TD>
                       <TD right muted w={colWidths["조회수"]}>{fmt(s?.play_count)}</TD>
                       <td style={{ minWidth: colWidths["도달수"] }}
                         className="px-3 py-4 text-xs tabular-nums text-right whitespace-nowrap cursor-text"
