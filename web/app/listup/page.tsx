@@ -110,6 +110,11 @@ export default function ListupPage() {
 
   useEffect(() => {
     Promise.all([loadKeywords(), loadInfluencers()]).finally(() => setLoading(false));
+    checkAndResumeListup();
+    return () => {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
+    };
   }, []);
 
   async function loadKeywords() {
@@ -253,6 +258,34 @@ export default function ListupPage() {
   async function deleteKeyword(id: string) {
     await fetch(`/api/keywords/${id}`, { method: "DELETE" });
     setKeywords(prev => prev.filter(k => k.id !== id));
+  }
+
+  async function checkAndResumeListup() {
+    try {
+      const res = await fetch("/api/jobs");
+      if (!res.ok) return;
+      const jobs: { id: string; type: string; status: string }[] = await res.json();
+      const inProgress = jobs.find(j => j.type === "listup" && j.status === "running");
+      if (!inProgress) return;
+      runningJobIdRef.current = inProgress.id;
+      setRunning(true);
+      setElapsedSeconds(0);
+      elapsedTimerRef.current = setInterval(() => setElapsedSeconds(s => s + 1), 1000);
+      const startTime = Date.now();
+      pollTimerRef.current = setInterval(async () => {
+        if (Date.now() - startTime >= 300_000) {
+          clearInterval(pollTimerRef.current!);
+          clearInterval(elapsedTimerRef.current!);
+          pollTimerRef.current = null;
+          elapsedTimerRef.current = null;
+          runningJobIdRef.current = null;
+          setRunning(false);
+          setShowTimeoutError(true);
+          return;
+        }
+        await checkListupJob();
+      }, 10_000);
+    } catch { /* 무시 */ }
   }
 
   async function checkListupJob() {

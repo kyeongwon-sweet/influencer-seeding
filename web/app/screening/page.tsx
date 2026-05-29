@@ -187,7 +187,15 @@ export default function ScreeningPage() {
     window.addEventListener("mouseup", onUp);
   }
 
-  useEffect(() => { load(); loadCriteria(); }, []);
+  useEffect(() => {
+    load();
+    loadCriteria();
+    checkAndResumeScreening();
+    return () => {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
+    };
+  }, []);
 
   async function load() {
     setLoading(true);
@@ -264,6 +272,34 @@ export default function ScreeningPage() {
       setShowCriteria(false);
     }
     setSavingCriteria(false);
+  }
+
+  async function checkAndResumeScreening() {
+    try {
+      const res = await fetch("/api/jobs");
+      if (!res.ok) return;
+      const jobs: { id: string; type: string; status: string }[] = await res.json();
+      const inProgress = jobs.find(j => j.type === "screening" && j.status === "running");
+      if (!inProgress) return;
+      runningJobIdRef.current = inProgress.id;
+      setRunning(true);
+      setElapsedSeconds(0);
+      elapsedTimerRef.current = setInterval(() => setElapsedSeconds(s => s + 1), 1000);
+      const startTime = Date.now();
+      pollTimerRef.current = setInterval(async () => {
+        if (Date.now() - startTime >= 300_000) {
+          clearInterval(pollTimerRef.current!);
+          clearInterval(elapsedTimerRef.current!);
+          pollTimerRef.current = null;
+          elapsedTimerRef.current = null;
+          runningJobIdRef.current = null;
+          setRunning(false);
+          setShowTimeoutError(true);
+          return;
+        }
+        await checkScreeningJob();
+      }, 10_000);
+    } catch { /* 무시 */ }
   }
 
   async function checkScreeningJob() {
