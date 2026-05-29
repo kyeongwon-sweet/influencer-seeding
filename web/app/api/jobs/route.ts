@@ -15,7 +15,7 @@ export async function GET() {
   const supabase = getServerSupabase();
   const { data, error } = await supabase
     .from("jobs")
-    .select("id, type, status, payload, user_email, created_at, updated_at")
+    .select("id, type, status, payload, user_email, created_at, updated_at, error")
     .order("created_at", { ascending: false })
     .limit(10);
 
