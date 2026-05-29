@@ -28,11 +28,11 @@ type Post = {
   all_stats: DailyStats[];
 };
 
-type CsvRow = { url: string; project_name: string | null; product_name: string | null; channel_type: string | null };
+type CsvRow = { url: string; project_name: string | null; product_name: string | null; channel_type: string | null; account_name: string | null; posted_at: string | null; cost: number | null; reach_count: number | null };
 
 type Filters = { name: string; project: string; products: string[]; type: string; channelType: string; category: string; dateFrom: string; dateTo: string };
 const INIT_FILTERS: Filters = { name: "", project: "", products: [], type: "all", channelType: "all", category: "all", dateFrom: "", dateTo: "" };
-type EditCell = { postId: string; field: "project_name" | "product_name" | "channel_type" | "cost" | "reach_count" | "account_name"; value: string };
+type EditCell = { postId: string; field: "project_name" | "product_name" | "channel_type" | "cost" | "reach_count" | "account_name" | "posted_at"; value: string };
 const POST_TYPES = ["릴스", "피드", "숏폼", "롱폼"];
 const CHANNEL_TYPES = ["파워채널", "매거진", "먹스타", "인플루언서", "바이럴"];
 const CATEGORIES = [
@@ -462,7 +462,16 @@ export default function MonitoringPage() {
       if (lines.length < 2) { toast("데이터가 없습니다. 헤더 포함 2줄 이상 필요합니다.", "error"); return; }
       const rows: CsvRow[] = lines.slice(1).map(line => {
         const cols = parseCsvLine(line);
-        return { project_name: cols[0] || null, product_name: cols[1] || null, channel_type: cols[2] || null, url: cols[3] ?? "" };
+        return {
+          project_name: cols[0] || null,
+          product_name: cols[1] || null,
+          channel_type: cols[2] || null,
+          url: cols[3] ?? "",
+          account_name: cols[4] || null,
+          posted_at: cols[5] || null,
+          cost: cols[6] ? Number(cols[6]) : null,
+          reach_count: cols[7] ? Number(cols[7]) : null,
+        };
       }).filter(r => r.url);
       setCsvRows(rows);
     };
@@ -471,7 +480,7 @@ export default function MonitoringPage() {
   }
 
   function downloadTemplate() {
-    const csv = "프로젝트명,상품명,채널분류,게시물URL\n예시프로젝트,예시상품,인플루언서,https://www.instagram.com/p/xxxxx/";
+    const csv = "프로젝트명,상품명,채널분류,게시물URL,인플루언서명,게시일(YYYY-MM-DD),비용(원),도달수\n예시프로젝트,예시상품,인플루언서,https://www.instagram.com/p/xxxxx/,홍길동,2025-05-01,500000,12000";
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -495,9 +504,7 @@ export default function MonitoringPage() {
     setCsvRows([]);
     setShowUpload(false);
     await loadPosts();
-    if (inserted === 0) toast(`모든 ${total}개 행이 중복 URL입니다. 추가된 게시물이 없습니다.`, "info");
-    else if (inserted < total) toast(`${inserted}개 추가됨 (${total - inserted}개 중복 스킵)`, "success");
-    else toast(`${inserted}개 게시물이 추가됐습니다.`, "success");
+    toast(`${inserted}개 게시물이 처리됐습니다. (신규 추가 또는 업데이트)`, "success");
   }
 
   function handleSort(col: string) {
@@ -904,7 +911,20 @@ export default function MonitoringPage() {
                           </span>
                         )}
                       </TD>
-                      <TD col="게시일" w={stickyColWidths["게시일"]} leftPos={stickyLefts["게시일"]} muted highlighted={hl}>{post.posted_at ?? "-"}</TD>
+                      <TD col="게시일" w={stickyColWidths["게시일"]} leftPos={stickyLefts["게시일"]} muted highlighted={hl}>
+                        {editCell?.postId === post.id && editCell?.field === "posted_at" ? (
+                          <input autoFocus type="date" value={editCell.value}
+                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
+                            onBlur={() => patchPost(post.id, "posted_at", editCell.value)}
+                            onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "posted_at", editCell.value); if (e.key === "Escape") setEditCell(null); }}
+                            className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5" />
+                        ) : (
+                          <span onClick={() => setEditCell({ postId: post.id, field: "posted_at", value: post.posted_at ?? "" })}
+                            className="cursor-text hover:text-a-blue transition-colors">
+                            {post.posted_at ?? "-"}
+                          </span>
+                        )}
+                      </TD>
                       <TD col="유형" w={stickyColWidths["유형"]} leftPos={stickyLefts["유형"]} muted highlighted={hl}>{getPostType(post.url)}</TD>
                       <TD muted w={colWidths["채널분류"]}>
                         {editCell?.postId === post.id && editCell?.field === "channel_type" ? (
@@ -1070,7 +1090,7 @@ export default function MonitoringPage() {
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-white rounded-[22px] p-6 w-[480px] shadow-[0_8px_40px_rgba(0,0,0,0.12)]">
             <h2 className="font-semibold tracking-tight mb-1">CSV 일괄 업로드</h2>
-            <p className="text-xs text-a-ink-muted mb-4">컬럼 순서: 프로젝트명, 상품명, 채널분류, 게시물URL (헤더 행 필수)</p>
+            <p className="text-xs text-a-ink-muted mb-4">컬럼 순서: 프로젝트명, 상품명, 채널분류, 게시물URL, 인플루언서명, 게시일, 비용, 도달수 (5~8번째 컬럼 생략 가능)</p>
             <div className="flex items-center gap-2 mb-4">
               <button onClick={downloadTemplate}
                 className="text-xs px-3.5 py-1.5 rounded-full border border-a-hairline text-a-ink-muted hover:bg-a-parchment transition">
@@ -1094,6 +1114,10 @@ export default function MonitoringPage() {
                         <th className="px-3 py-1.5 text-left font-medium">상품명</th>
                         <th className="px-3 py-1.5 text-left font-medium">채널분류</th>
                         <th className="px-3 py-1.5 text-left font-medium">URL</th>
+                        <th className="px-3 py-1.5 text-left font-medium">인플루언서명</th>
+                        <th className="px-3 py-1.5 text-left font-medium">게시일</th>
+                        <th className="px-3 py-1.5 text-right font-medium">비용</th>
+                        <th className="px-3 py-1.5 text-right font-medium">도달수</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1102,7 +1126,11 @@ export default function MonitoringPage() {
                           <td className="px-3 py-1.5 text-a-ink-muted">{r.project_name ?? "-"}</td>
                           <td className="px-3 py-1.5 text-a-ink-muted">{r.product_name ?? "-"}</td>
                           <td className="px-3 py-1.5 text-a-ink-muted">{r.channel_type ?? "-"}</td>
-                          <td className="px-3 py-1.5 text-a-blue max-w-[160px] truncate">{r.url}</td>
+                          <td className="px-3 py-1.5 text-a-blue max-w-[120px] truncate">{r.url}</td>
+                          <td className="px-3 py-1.5 text-a-ink-muted">{r.account_name ?? "-"}</td>
+                          <td className="px-3 py-1.5 text-a-ink-muted">{r.posted_at ?? "-"}</td>
+                          <td className="px-3 py-1.5 text-a-ink-muted text-right">{r.cost != null ? r.cost.toLocaleString() : "-"}</td>
+                          <td className="px-3 py-1.5 text-a-ink-muted text-right">{r.reach_count != null ? r.reach_count.toLocaleString() : "-"}</td>
                         </tr>
                       ))}
                     </tbody>

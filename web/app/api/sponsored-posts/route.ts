@@ -59,10 +59,10 @@ export async function POST(req: NextRequest) {
     const rows = body
       .map(r => ({ ...r, url: r.url ? cleanPostUrl(r.url) : r.url }))
       .filter(r => r.url);
-    // upsert + ignoreDuplicates: 중복 URL은 건너뛰고 나머지만 삽입
+    // upsert: URL이 이미 있으면 새 컬럼값으로 업데이트, 없으면 삽입
     const { data, error } = await supabase
       .from("sponsored_posts")
-      .upsert(rows, { onConflict: "url", ignoreDuplicates: true })
+      .upsert(rows, { onConflict: "url" })
       .select();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json(data, { status: 201 });
