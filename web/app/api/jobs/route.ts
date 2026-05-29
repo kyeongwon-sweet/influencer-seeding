@@ -4,6 +4,7 @@ import { getServerSupabase } from "@/lib/supabase-server";
 import { startActorRun } from "@/lib/apify";
 
 function getAppUrl() {
+  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, '');
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
   return 'http://localhost:3000';
 }
@@ -45,6 +46,13 @@ export async function POST(req: NextRequest) {
 
   // 응답을 먼저 보내고, Apify 액터 시작은 백그라운드에서 처리
   after(async () => {
+    if (!process.env.APIFY_API_TOKEN) {
+      await supabase.from("jobs").update({
+        status: "failed",
+        error: "APIFY_API_TOKEN 환경변수 없음 — Vercel > Settings > Environment Variables 확인",
+      }).eq("id", job.id);
+      return;
+    }
     try {
       if (type === 'monitoring') {
         const { data: posts } = await supabase.from('sponsored_posts').select('url');
@@ -75,18 +83,50 @@ export async function POST(req: NextRequest) {
           await supabase.from('jobs').update({ status: 'done', payload: { added: 0 } }).eq('id', job.id);
         } else {
           await supabase.from('jobs').update({ status: 'running' }).eq('id', job.id);
+          const startErrors: string[] = [];
           await Promise.all([
             igKws.length > 0 ? startActorRun(
               'apify/instagram-hashtag-scraper',
               { hashtags: igKws, resultsLimit: 100, type: 'recent' },
               `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=listup&platform=instagram`
-            ) : Promise.resolve(),
+            ).catch((e: unknown) => { startErrors.push(`인스타: ${e}`); }) : Promise.resolve(),
             ytKws.length > 0 ? startActorRun(
               'streamers/youtube-scraper',
               { searchQueries: ytKws, maxResults: 100, maxResultsShorts: 100, sortingOrder: 'views' },
               `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=listup&platform=youtube`
-            ) : Promise.resolve(),
+            ).catch((e: unknown) => { startErrors.push(`유튜브: ${e}`); }) : Promise.resolve(),
           ]);
+          // 모든 플랫폼이 실패한 경우에만 잡을 실패 처리
+          const totalPlatforms = (igKws.length > 0 ? 1 : 0) + (ytKws.length > 0 ? 1 : 0);
+          if (startErrors.length === totalPlatforms) {
+            throw new Error(startErrors.join(' | '));
+          }
+          // 일부 실패 시 에러 메시지만 기록 (잡은 계속 실행중 유지)
+          if (startErrors.length > 0) {
+            await supabase.from('jobs').update({ error: startErrors.join(' | ') }).eq('id', job.id);
+          }
+        }
+
+      } else if (type === 'organic') {
+        await supabase.from('jobs').update({ status: 'running' }).eq('id', job.id);
+        const startErrors: string[] = [];
+        await Promise.all([
+          startActorRun(
+            'apify/instagram-hashtag-scraper',
+            { hashtags: ['라라스윗'], resultsLimit: 200, type: 'recent' },
+            `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=organic&platform=instagram`
+          ).catch((e: unknown) => { startErrors.push(`인스타: ${e}`); }),
+          startActorRun(
+            'streamers/youtube-scraper',
+            { searchQueries: ['라라스윗'], maxResults: 100, maxResultsShorts: 100, sortingOrder: 'relevance' },
+            `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=organic&platform=youtube`
+          ).catch((e: unknown) => { startErrors.push(`유튜브: ${e}`); }),
+        ]);
+        if (startErrors.length === 2) {
+          throw new Error(startErrors.join(' | '));
+        }
+        if (startErrors.length > 0) {
+          await supabase.from('jobs').update({ error: startErrors.join(' | ') }).eq('id', job.id);
         }
 
       } else if (type === 'screening') {
@@ -106,18 +146,26 @@ export async function POST(req: NextRequest) {
           const igInfluencers = influencers.filter((i: { platform: string }) => i.platform === 'instagram');
           const ytInfluencers = influencers.filter((i: { platform: string }) => i.platform === 'youtube');
 
+          const startErrors: string[] = [];
           await Promise.all([
             igInfluencers.length > 0 ? startActorRun(
               'apify/instagram-scraper',
               { directUrls: igInfluencers.map((i: { url: string }) => i.url), resultsType: 'posts', resultsLimit: 60, addParentData: true },
               `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=screening&platform=instagram`
-            ) : Promise.resolve(),
+            ).catch((e: unknown) => { startErrors.push(`인스타 스크리닝: ${e}`); }) : Promise.resolve(),
             ...ytInfluencers.map((inf: { url: string }) => startActorRun(
               'streamers/youtube-scraper',
               { startUrls: [{ url: inf.url }], maxResults: 60, maxResultsShorts: 60 },
               `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=screening&platform=youtube&influencerUrl=${encodeURIComponent(inf.url)}`
-            )),
+            ).catch((e: unknown) => { startErrors.push(`유튜브(${inf.url}): ${e}`); })),
           ]);
+          const totalRuns = (igInfluencers.length > 0 ? 1 : 0) + ytInfluencers.length;
+          if (startErrors.length === totalRuns) {
+            throw new Error(startErrors.join(' | '));
+          }
+          if (startErrors.length > 0) {
+            await supabase.from('jobs').update({ error: startErrors.join(' | ') }).eq('id', job.id);
+          }
         }
       }
     } catch (e) {

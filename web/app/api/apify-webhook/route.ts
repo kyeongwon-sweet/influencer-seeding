@@ -153,6 +153,10 @@ export async function POST(req: NextRequest) {
       const platform = searchParams.get('platform') || 'instagram';
       const influencerUrl = searchParams.get('influencerUrl');
       await handleScreening(supabase, jobId, items, platform, influencerUrl);
+
+    } else if (jobType === 'organic') {
+      const platform = searchParams.get('platform') || 'instagram';
+      await handleOrganic(supabase, jobId, items, platform);
     }
   } catch (e) {
     await supabase.from('jobs').update({ status: 'failed', error: String(e) }).eq('id', jobId);
@@ -409,4 +413,61 @@ async function handleScreening(
   }
 
   await supabase.from('jobs').update({ status: 'done' }).eq('id', jobId);
+}
+
+// ── 무상 노출 ────────────────────────────────────────────────────────
+
+async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, jobId: string, items: Record<string, unknown>[], platform: string) {
+  const rows: Record<string, unknown>[] = [];
+
+  if (platform === 'instagram') {
+    for (const item of items) {
+      const username = (item.ownerUsername || (item.owner as Record<string, unknown>)?.username) as string;
+      if (!username) continue;
+      const shortCode = item.shortCode as string | undefined;
+      const url = (item.url as string) || (shortCode ? `https://www.instagram.com/p/${shortCode}/` : null);
+      if (!url) continue;
+
+      const rawTs = item.timestamp || item.takenAtTimestamp;
+      const uploadedAt = typeof rawTs === 'number'
+        ? new Date(rawTs * 1000).toISOString().slice(0, 10)
+        : rawTs ? (rawTs as string).slice(0, 10) : null;
+
+      rows.push({
+        url,
+        account_name: username,
+        platform: 'instagram',
+        content_summary: (item.caption as string)?.slice(0, 300) || null,
+        uploaded_at: uploadedAt,
+        view_count: (item.videoPlayCount || item.videoViewCount || item.likesCount || null) as number | null,
+        source: 'apify',
+      });
+    }
+  } else if (platform === 'youtube') {
+    for (const item of items) {
+      const url = item.url as string;
+      if (!url) continue;
+      const channelName = (item.channelName || item.channelTitle || item.author) as string;
+
+      const rawTs = item.date || item.publishedAt || item.uploadDate;
+      const uploadedAt = typeof rawTs === 'number'
+        ? new Date(rawTs * 1000).toISOString().slice(0, 10)
+        : rawTs ? (rawTs as string).slice(0, 10) : null;
+
+      rows.push({
+        url,
+        account_name: channelName || null,
+        platform: 'youtube',
+        content_summary: (item.title as string) || null,
+        uploaded_at: uploadedAt,
+        view_count: (item.viewCount || item.views || null) as number | null,
+        source: 'apify',
+      });
+    }
+  }
+
+  if (rows.length > 0) {
+    await supabase.from('organic_mentions').upsert(rows, { onConflict: 'url', ignoreDuplicates: false });
+  }
+  await supabase.from('jobs').update({ status: 'done', payload: { saved: rows.length } }).eq('id', jobId);
 }

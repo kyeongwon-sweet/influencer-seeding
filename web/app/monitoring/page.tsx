@@ -22,7 +22,7 @@ type Post = {
   cost: number | null;
   reach_count: number | null;
   created_at: string;
-  influencers: { id: string; name: string; platform: string; post_type: string | null } | null;
+  influencers: { id: string; name: string; platform: string; post_type: string | null; category?: string | null } | null;
   latest_stats: DailyStats | null;
   prev_stats: DailyStats | null;
   all_stats: DailyStats[];
@@ -30,11 +30,18 @@ type Post = {
 
 type CsvRow = { url: string; project_name: string | null; product_name: string | null; channel_type: string | null };
 
-type Filters = { name: string; project: string; product: string; type: string; channelType: string; dateFrom: string; dateTo: string };
-const INIT_FILTERS: Filters = { name: "", project: "", product: "", type: "all", channelType: "all", dateFrom: "", dateTo: "" };
+type Filters = { name: string; project: string; product: string; type: string; channelType: string; category: string; dateFrom: string; dateTo: string };
+const INIT_FILTERS: Filters = { name: "", project: "", product: "", type: "all", channelType: "all", category: "all", dateFrom: "", dateTo: "" };
 type EditCell = { postId: string; field: "project_name" | "product_name" | "channel_type" | "cost" | "reach_count"; value: string };
 const POST_TYPES = ["릴스", "피드", "숏폼", "롱폼"];
 const CHANNEL_TYPES = ["파워채널", "매거진", "먹스타", "인플루언서", "바이럴"];
+const CATEGORIES = [
+  { value: "A",   desc: "찐팬서사 (꾸준함)" },
+  { value: "B",   desc: "선망성" },
+  { value: "C",   desc: "맛잘알" },
+  { value: "D",   desc: "친근감" },
+  { value: "기타", desc: "기타" },
+];
 
 function fmt(v: number | null | undefined) {
   return v == null ? "-" : v.toLocaleString();
@@ -56,6 +63,16 @@ function getThumbnailUrl(url: string): string | null {
   m = url.match(/youtu\.be\/([^/?#]+)/);
   if (m) return `https://i.ytimg.com/vi/${m[1]}/mqdefault.jpg`;
   return null;
+}
+
+function isRecentPost(postedAt: string | null): boolean {
+  if (!postedAt) return false;
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0, 10);
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().slice(0, 10);
+  return postedAt.slice(0, 10) >= yesterdayStr && postedAt.slice(0, 10) <= todayStr;
 }
 
 function hasNotableChange(post: Post): boolean {
@@ -264,7 +281,7 @@ export default function MonitoringPage() {
     "썸네일": 56, "인플루언서": 180, "프로젝트명": 150, "상품명": 150, "유형": 72, "게시일": 104,
   });
   const [colWidths, setColWidths] = useState<Record<string, number>>({
-    "채널분류": 100, "조회수": 100, "도달수": 100, "비용": 120, "조회당비용": 110, "도달당비용": 110, "측정일": 120, "Trend": 90, "삭제": 60,
+    "증분량": 80, "채널분류": 100, "조회수": 100, "도달수": 100, "비용": 120, "조회당비용": 110, "도달당비용": 110, "Trend": 90, "삭제": 60,
   });
   const resizingRef = useRef<{ col: string; startX: number; startW: number; isSticky: boolean } | null>(null);
 
@@ -275,12 +292,13 @@ export default function MonitoringPage() {
     if (filters.product && !(post.product_name ?? "").toLowerCase().includes(filters.product.toLowerCase())) return false;
     if (filters.type !== "all" && getPostType(post.url) !== filters.type) return false;
     if (filters.channelType !== "all" && post.channel_type !== filters.channelType) return false;
+    if (filters.category !== "all" && (post.influencers?.category ?? null) !== filters.category) return false;
     if (filters.dateFrom && (!post.posted_at || post.posted_at < filters.dateFrom)) return false;
     if (filters.dateTo && (!post.posted_at || post.posted_at > filters.dateTo)) return false;
     return true;
   });
 
-  const hasFilter = filters.name !== "" || filters.project !== "" || filters.product !== "" || filters.type !== "all" || filters.channelType !== "all" || filters.dateFrom !== "" || filters.dateTo !== "";
+  const hasFilter = filters.name !== "" || filters.project !== "" || filters.product !== "" || filters.type !== "all" || filters.channelType !== "all" || filters.category !== "all" || filters.dateFrom !== "" || filters.dateTo !== "";
   const colSpan = 15;
 
   const chartData = useMemo(() => {
@@ -469,7 +487,7 @@ export default function MonitoringPage() {
       case "조회수": av = sa?.play_count ?? -1; bv = sb?.play_count ?? -1; break;
       case "도달수": av = a.reach_count ?? -1; bv = b.reach_count ?? -1; break;
       case "비용": av = a.cost ?? -1; bv = b.cost ?? -1; break;
-      case "측정일": av = sa?.measured_at ?? ""; bv = sb?.measured_at ?? ""; break;
+
     }
     const cmp = av < bv ? -1 : av > bv ? 1 : 0;
     return sortDir === "asc" ? cmp : -cmp;
@@ -481,7 +499,7 @@ export default function MonitoringPage() {
   });
 
   function downloadCSV() {
-    const headers = ["인플루언서", "프로젝트명", "상품명", "채널분류", "유형", "게시일", "조회수", "도달수", "비용(원)", "조회당비용(원)", "도달당비용(원)", "측정일"];
+    const headers = ["인플루언서", "프로젝트명", "상품명", "채널분류", "유형", "게시일", "증분량", "조회수", "도달수", "비용(원)", "조회당비용(원)", "도달당비용(원)"];
     const rows = sortedPosts.map(post => {
       const s = post.latest_stats;
       const play = s?.play_count ?? null;
@@ -496,12 +514,12 @@ export default function MonitoringPage() {
         post.channel_type ?? "",
         getPostType(post.url),
         post.posted_at ?? "",
+        (!isRecentPost(post.posted_at) && play != null && post.prev_stats?.play_count != null) ? (play - post.prev_stats.play_count) : "",
         play ?? "",
         reach ?? "",
         cost ?? "",
         cpr,
         cpreach,
-        s?.measured_at ?? "",
       ];
     });
     const csv = [headers, ...rows]
@@ -637,6 +655,14 @@ export default function MonitoringPage() {
             <option value="all">전체 채널분류</option>
             {CHANNEL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
+          <select
+            value={filters.category}
+            onChange={e => setFilters(p => ({ ...p, category: e.target.value }))}
+            className={`filter-select ${filters.category !== "all" ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
+          >
+            <option value="all">전체 카테고리</option>
+            {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.value} ({c.desc})</option>)}
+          </select>
           <div className="w-px h-4 bg-a-hairline mx-0.5" />
           <div className="flex items-center gap-1.5">
             <input type="date" value={filters.dateFrom}
@@ -740,13 +766,13 @@ export default function MonitoringPage() {
                   <TH col="상품명" w={stickyColWidths["상품명"]} leftPos={stickyLefts["상품명"]} onResize={e => startResize("상품명", e, true)} {...sp("상품명")}>상품명</TH>
                   <TH col="유형" w={stickyColWidths["유형"]} leftPos={stickyLefts["유형"]} onResize={e => startResize("유형", e, true)} {...sp("유형")}>유형</TH>
                   <TH col="게시일" w={stickyColWidths["게시일"]} leftPos={stickyLefts["게시일"]} onResize={e => startResize("게시일", e, true)} {...sp("게시일")}>게시일</TH>
+                  <TH right w={colWidths["증분량"]} onResize={e => startResize("증분량", e)}>증분량</TH>
                   <TH w={colWidths["채널분류"]} onResize={e => startResize("채널분류", e)} {...sp("채널분류")}>채널분류</TH>
                   <TH right w={colWidths["조회수"]} onResize={e => startResize("조회수", e)} {...sp("조회수")}>조회수</TH>
                   <TH right w={colWidths["도달수"]} onResize={e => startResize("도달수", e)} {...sp("도달수")}>도달수</TH>
                   <TH right w={colWidths["비용"]} onResize={e => startResize("비용", e)} {...sp("비용")}>비용</TH>
                   <TH right w={colWidths["조회당비용"]} onResize={e => startResize("조회당비용", e)}>조회당비용</TH>
                   <TH right w={colWidths["도달당비용"]} onResize={e => startResize("도달당비용", e)}>도달당비용</TH>
-                  <TH w={colWidths["측정일"]} onResize={e => startResize("측정일", e)} {...sp("측정일")}>측정일</TH>
                   <TH className="text-center" w={colWidths["Trend"]} onResize={e => startResize("Trend", e)}>Trend</TH>
                   <TH w={colWidths["삭제"]}></TH>
                 </tr>
@@ -811,6 +837,20 @@ export default function MonitoringPage() {
                       </TD>
                       <TD col="유형" w={stickyColWidths["유형"]} leftPos={stickyLefts["유형"]} muted highlighted={hl}>{getPostType(post.url)}</TD>
                       <TD col="게시일" w={stickyColWidths["게시일"]} leftPos={stickyLefts["게시일"]} muted highlighted={hl}>{post.posted_at ?? "-"}</TD>
+                      <td style={{ minWidth: colWidths["증분량"] }} className="px-3 py-4 text-xs tabular-nums text-right whitespace-nowrap">
+                        {isRecentPost(post.posted_at)
+                          ? <span className="text-yellow-500 font-medium">-</span>
+                          : (() => {
+                              if (s?.play_count == null || post.prev_stats == null) return <span className="text-gray-300">-</span>;
+                              const delta = s.play_count - (post.prev_stats.play_count ?? 0);
+                              return (
+                                <span className={`font-semibold ${delta > 0 ? "text-red-500" : delta < 0 ? "text-emerald-600" : "text-gray-300"}`}>
+                                  {delta > 0 ? "+" : ""}{delta.toLocaleString()}
+                                </span>
+                              );
+                            })()
+                        }
+                      </td>
                       <TD muted w={colWidths["채널분류"]}>
                         {editCell?.postId === post.id && editCell?.field === "channel_type" ? (
                           <select autoFocus value={editCell.value}
@@ -869,7 +909,6 @@ export default function MonitoringPage() {
                           ? (post.cost / post.reach_count).toFixed(2) + "원"
                           : <span className="text-gray-300">-</span>}
                       </TD>
-                      <TD muted w={colWidths["측정일"]}>{s?.measured_at ?? "-"}</TD>
                       <td style={{ minWidth: colWidths["Trend"] }} className="px-3 py-3 text-center">
                         <Sparkline stats={post.all_stats ?? []} postId={post.id} onClick={() => setTrendPost(post)} />
                       </td>

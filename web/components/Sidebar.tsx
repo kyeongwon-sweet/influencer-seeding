@@ -24,6 +24,16 @@ const NAV = [
     ),
   },
   {
+    href: "/organic",
+    label: "무상 노출",
+    icon: (
+      <svg width="15" height="15" viewBox="0 0 20 20" fill="none">
+        <path d="M10 3C6.69 3 4 5.69 4 9c0 2.12 1.08 3.99 2.72 5.1L6 17h8l-.72-2.9C14.92 12.99 16 11.12 16 9c0-3.31-2.69-6-6-6z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+        <path d="M8 17h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      </svg>
+    ),
+  },
+  {
     href: "/screening",
     label: "스크리닝",
     icon: (

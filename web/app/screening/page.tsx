@@ -74,6 +74,7 @@ type Influencer = {
   url: string;
   platform: string;
   status: string;
+  category: string | null;
   created_at: string;
   screening_metrics: Metrics[];
 };
@@ -83,6 +84,14 @@ const STATUS = [
   { value: "pass",    label: "통과",   cls: "bg-green-100 text-green-700" },
   { value: "hold",    label: "보류",   cls: "bg-yellow-100 text-yellow-700" },
   { value: "reject",  label: "탈락",   cls: "bg-red-100 text-red-700" },
+];
+
+const CATEGORIES = [
+  { value: "A",   desc: "찐팬서사 (꾸준함)", cls: "bg-blue-50 text-blue-700" },
+  { value: "B",   desc: "선망성",            cls: "bg-purple-50 text-purple-700" },
+  { value: "C",   desc: "맛잘알",            cls: "bg-green-50 text-green-700" },
+  { value: "D",   desc: "친근감",            cls: "bg-amber-50 text-amber-700" },
+  { value: "기타", desc: "기타",             cls: "bg-a-divider text-a-ink-muted" },
 ];
 
 function formatElapsed(s: number): string {
@@ -110,15 +119,6 @@ function latest(inf: Influencer): Metrics | null {
   )[0] ?? null;
 }
 
-function applyTypeFilter(m: Metrics | null, platform: string, igFilter: string, ytFilter: string): Metrics | null {
-  if (!m?.type_metrics) return m;
-  let key: string | null = null;
-  if (platform === "instagram" && igFilter !== "both") key = igFilter;
-  if (platform === "youtube" && ytFilter !== "both") key = ytFilter;
-  if (!key) return m;
-  const typed = m.type_metrics[key];
-  return typed ? { ...m, ...typed } : m;
-}
 
 export default function ScreeningPage() {
   const { toasts, show: toast } = useToast();
@@ -144,8 +144,6 @@ export default function ScreeningPage() {
   const [kwModal, setKwModal] = useState<{ metricsId: string; infName: string } | null>(null);
   const [kwForm, setKwForm] = useState({ keywords: "", adDate: "" });
   const [kwRunning, setKwRunning] = useState(false);
-  const [igTypeFilter, setIgTypeFilter] = useState<"both" | "reels" | "feed">("reels");
-  const [ytTypeFilter, setYtTypeFilter] = useState<"both" | "longform" | "shorts">("shorts");
   const [lastListupAt, setLastListupAt] = useState<string | null>(null);
   const [showTimeoutError, setShowTimeoutError] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -156,11 +154,11 @@ export default function ScreeningPage() {
   // column widths for drag-resize
   const [channelNameWidth, setChannelNameWidth] = useState(160);
   const [screenColWidths, setScreenColWidths] = useState<Record<string, number>>({
-    "URL": 80, "플랫폼": 80, "팔로워 수": 100, "알고리즘 계수": 110, "100만뷰 개수": 110,
+    "플랫폼": 80, "팔로워 수": 100, "알고리즘 계수": 110, "100만뷰 개수": 110,
     "총 평균 조회수": 120, "총 평균 도달수": 120, "댓글 비율": 90, "광고 비율": 90,
     "광고 평균 조회수": 120, "광고 효율": 90, "광고 최고 조회수": 120,
     "광고 최고 게시물 URL": 120, "검색어": 140, "검색어 트렌드": 110,
-    "통과 기준": 90, "상태": 90,
+    "통과 기준": 90, "카테고리": 90, "상태": 90,
   });
   const screenResizingRef = useRef<{ col: string; startX: number; startW: number; isSticky: boolean } | null>(null);
 
@@ -380,6 +378,15 @@ export default function ScreeningPage() {
     setList(prev => prev.map(i => i.id === id ? { ...i, status } : i));
   }
 
+  async function updateCategory(id: string, category: string) {
+    await fetch(`/api/influencers/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ category: category || null }),
+    });
+    setList(prev => prev.map(i => i.id === id ? { ...i, category: category || null } : i));
+  }
+
   async function applyBulkStatus() {
     if (selected.size === 0) return;
     setApplying(true);
@@ -420,10 +427,10 @@ export default function ScreeningPage() {
       "채널명", "URL", "플랫폼", "팔로워 수", "알고리즘 계수", "100만뷰 개수",
       "총 평균 조회수", "총 평균 도달수", "댓글 비율", "광고 비율",
       "광고 평균 조회수", "광고 효율", "광고 최고 조회수", "광고 최고 게시물 URL",
-      "검색어", "검색어 트렌드", "통과 기준", "상태",
+      "검색어", "검색어 트렌드", "통과 기준", "카테고리", "상태",
     ];
     const rows = sorted.map(inf => {
-      const m = applyTypeFilter(latest(inf), inf.platform, igTypeFilter, ytTypeFilter);
+      const m = latest(inf);
       const s = STATUS.find(o => o.value === inf.status);
       const adEff = (m?.ad_avg_play_count != null && m?.total_avg_play_count != null)
         ? ((m.ad_avg_play_count - m.total_avg_play_count) / 10000).toFixed(2)
@@ -451,6 +458,7 @@ export default function ScreeningPage() {
         m?.kw_keywords ?? "",
         m?.kw_impact != null ? m.kw_impact.toFixed(1) + "%" : "",
         snapResult,
+        inf.category ?? "",
         s?.label ?? inf.status,
       ];
     });
@@ -482,8 +490,8 @@ export default function ScreeningPage() {
 
   const sorted = [...filtered].sort((a, b) => {
     if (!sortCol) return 0;
-    const ma = applyTypeFilter(latest(a), a.platform, igTypeFilter, ytTypeFilter);
-    const mb = applyTypeFilter(latest(b), b.platform, igTypeFilter, ytTypeFilter);
+    const ma = latest(a);
+    const mb = latest(b);
     let av: string | number = "", bv: string | number = "";
     switch (sortCol) {
       case "채널명": av = a.name.toLowerCase(); bv = b.name.toLowerCase(); break;
@@ -498,6 +506,7 @@ export default function ScreeningPage() {
       case "광고 평균 조회수": av = ma?.ad_avg_play_count ?? -1; bv = mb?.ad_avg_play_count ?? -1; break;
       case "광고 효율": av = (ma?.ad_avg_play_count != null && ma?.total_avg_play_count != null) ? (ma.ad_avg_play_count - ma.total_avg_play_count) / 10000 : -1; bv = (mb?.ad_avg_play_count != null && mb?.total_avg_play_count != null) ? (mb.ad_avg_play_count - mb.total_avg_play_count) / 10000 : -1; break;
       case "광고 최고 조회수": av = ma?.top_ad_play_count ?? -1; bv = mb?.top_ad_play_count ?? -1; break;
+      case "카테고리": av = a.category ?? ""; bv = b.category ?? ""; break;
       case "상태": av = a.status; bv = b.status; break;
     }
     const cmp = av < bv ? -1 : av > bv ? 1 : 0;
@@ -617,40 +626,6 @@ export default function ScreeningPage() {
             <option value="youtube">유튜브</option>
           </select>
 
-          <div className="w-px h-4 bg-a-hairline" />
-
-          {/* 인스타 유형 세그먼트 */}
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-a-ink-muted font-medium">인스타</span>
-            <div className="flex rounded-[8px] border border-a-hairline bg-a-parchment/60 p-0.5">
-              {(["both", "reels", "feed"] as const).map(t => (
-                <button key={t} onClick={() => setIgTypeFilter(t)}
-                  className={`px-2.5 py-1 rounded-[5px] text-xs transition ${
-                    igTypeFilter === t ? "bg-white shadow-sm text-a-ink font-medium" : "text-a-ink-muted hover:text-a-ink"
-                  }`}>
-                  {t === "both" ? "전체" : t === "reels" ? "릴스" : "피드"}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="w-px h-4 bg-a-hairline" />
-
-          {/* 유튜브 유형 세그먼트 */}
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-a-ink-muted font-medium">유튜브</span>
-            <div className="flex rounded-[8px] border border-a-hairline bg-a-parchment/60 p-0.5">
-              {(["both", "longform", "shorts"] as const).map(t => (
-                <button key={t} onClick={() => setYtTypeFilter(t)}
-                  className={`px-2.5 py-1 rounded-[5px] text-xs transition ${
-                    ytTypeFilter === t ? "bg-white shadow-sm text-a-ink font-medium" : "text-a-ink-muted hover:text-a-ink"
-                  }`}>
-                  {t === "both" ? "전체" : t === "longform" ? "롱폼" : "쇼츠"}
-                </button>
-              ))}
-            </div>
-          </div>
-
           {hasFilter && (
             <button onClick={() => { setSearchName(""); setFilterPlatform("all"); }}
               className="btn-ghost py-1 ml-auto">초기화</button>
@@ -700,7 +675,7 @@ export default function ScreeningPage() {
           {loading ? (
             <div className="p-8 text-center text-a-ink-muted text-sm">로딩 중...</div>
           ) : (
-            <table className="w-full text-sm">
+            <table className="text-sm">
               <thead className="sticky top-0 z-30">
                 <tr className="border-b border-a-hairline">
                   <th style={{ left: 0, width: 44, minWidth: 44, maxWidth: 44 }}
@@ -709,7 +684,6 @@ export default function ScreeningPage() {
                       className="w-3.5 h-3.5 accent-a-blue cursor-pointer" />
                   </th>
                   {sortTH("채널명", false, false, 44, channelNameWidth, true)}
-                  {staticTH("URL")}
                   {sortTH("플랫폼")}
                   {sortTH("팔로워 수", true)}
                   {sortTH("알고리즘 계수", true)}
@@ -725,12 +699,36 @@ export default function ScreeningPage() {
                   {staticTH("검색어")}
                   {staticTH("검색어 트렌드", true)}
                   {staticTH("통과 기준", false, true)}
+                  {(() => {
+                    const col = "카테고리";
+                    const active = sortCol === col;
+                    return (
+                      <th key={col} onClick={() => handleSort(col)}
+                        style={{ minWidth: screenColWidths[col] }}
+                        className={[
+                          "relative px-3 py-3 text-xs font-medium whitespace-nowrap cursor-pointer select-none transition-colors bg-white text-center group",
+                          active ? "text-a-ink" : "text-a-ink-muted hover:text-a-ink",
+                        ].join(" ")}>
+                        {col}<span className={`ml-1 ${active ? "text-a-blue" : "opacity-20"}`}>{active ? (sortDir === "asc" ? "↑" : "↓") : "↕"}</span>
+                        <div className="hidden group-hover:flex flex-col absolute top-full left-0 mt-0.5 z-50 bg-white border border-a-hairline rounded-[10px] shadow-lg px-3 py-2 text-left whitespace-nowrap">
+                          {CATEGORIES.map(c => (
+                            <div key={c.value} className="flex items-center gap-2 py-0.5">
+                              <span className="text-[11px] font-semibold text-a-ink w-6">{c.value}</span>
+                              <span className="text-[11px] text-a-ink-muted">{c.desc}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-a-blue/30"
+                          onMouseDown={e => { e.stopPropagation(); startScreenResize(col, e); }} />
+                      </th>
+                    );
+                  })()}
                   {sortTH("상태", false, true)}
                 </tr>
               </thead>
               <tbody>
                 {sorted.map(inf => {
-                  const m = applyTypeFilter(latest(inf), inf.platform, igTypeFilter, ytTypeFilter);
+                  const m = latest(inf);
                   const s = STATUS.find(o => o.value === inf.status);
                   const hasNoMetrics = (inf.screening_metrics ?? []).length === 0;
                   const isSelected = selected.has(inf.id);
@@ -745,16 +743,12 @@ export default function ScreeningPage() {
                       <td style={{ left: 44, minWidth: channelNameWidth, width: channelNameWidth }}
                         className={`px-3 py-4 shadow-[2px_0_5px_rgba(0,0,0,0.06)] ${stickyCell}`}>
                         <a href={inf.url} target="_blank" rel="noreferrer"
-                          className="font-medium hover:text-a-blue transition-colors">{inf.name}</a>
-                      </td>
-                      <td style={{ minWidth: screenColWidths["URL"] }} className="px-3 py-4 whitespace-nowrap">
-                        <a href={inf.url} target="_blank" rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-xs text-a-ink-muted hover:text-a-blue transition-colors">
-                          <svg width="11" height="11" viewBox="0 0 14 14" fill="none">
+                          className="inline-flex items-center gap-1 font-medium hover:text-a-blue transition-colors group/link">
+                          {inf.name}
+                          <svg width="10" height="10" viewBox="0 0 14 14" fill="none" className="opacity-0 group-hover/link:opacity-50 flex-shrink-0 transition-opacity">
                             <path d="M5.5 2.5H2.5a1 1 0 00-1 1v8a1 1 0 001 1h8a1 1 0 001-1V9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
                             <path d="M8.5 1.5h4m0 0v4m0-4L6 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
                           </svg>
-                          링크
                         </a>
                       </td>
                       <td style={{ minWidth: screenColWidths["플랫폼"] }} className="px-3 py-4 text-a-ink-muted text-xs whitespace-nowrap">
@@ -834,6 +828,22 @@ export default function ScreeningPage() {
                               className="text-xs text-a-blue hover:underline">
                               보기
                             </button>
+                          );
+                        })()}
+                      </td>
+                      <td style={{ minWidth: screenColWidths["카테고리"] }} className="px-3 py-4 text-center whitespace-nowrap">
+                        {(() => {
+                          const cat = CATEGORIES.find(c => c.value === inf.category);
+                          const catCls = cat?.cls ?? "bg-a-divider text-a-ink-muted";
+                          return (
+                            <div className="inline-flex items-center relative">
+                              <select value={inf.category ?? ""} onChange={e => updateCategory(inf.id, e.target.value)}
+                                className={`appearance-none pl-2.5 pr-5 py-1 rounded-full cursor-pointer border-0 outline-none text-xs font-medium ${catCls}`}>
+                                <option value="">-</option>
+                                {CATEGORIES.map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+                              </select>
+                              <span className="pointer-events-none absolute right-1.5 text-[9px] opacity-50">▾</span>
+                            </div>
                           );
                         })()}
                       </td>

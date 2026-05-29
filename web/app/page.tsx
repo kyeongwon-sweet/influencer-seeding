@@ -3,8 +3,11 @@ import { useEffect, useState } from "react";
 import { UserButton } from "@clerk/nextjs";
 import Link from "next/link";
 
-type Influencer = { status: string; source?: string; created_at?: string; screening_metrics?: { run_at?: string }[] };
-type Job = { id: string; type: string; status: string; payload?: { added?: number; screened?: number }; user_email?: string; created_at: string };
+type Influencer = { name: string; status: string; source?: string; created_at?: string; screening_metrics?: { run_at?: string; kw_impact?: number | null; kw_keywords?: string | null }[] };
+type OrganicMention = { id: string; created_at: string; platform: string };
+type Job = { id: string; type: string; status: string; payload?: { added?: number; screened?: number }; user_email?: string; created_at: string; error?: string };
+type DailyStats = { play_count: number | null; comments_count: number | null; measured_at: string };
+type SponsoredPost = { id: string; account_name: string | null; project_name: string | null; influencers: { name: string } | null; latest_stats: DailyStats | null; prev_stats: DailyStats | null };
 
 const STATUS_CONFIG = [
   { value: "pass",    label: "통과",   dot: "bg-emerald-500" },
@@ -13,7 +16,7 @@ const STATUS_CONFIG = [
   { value: "reject",  label: "탈락",   dot: "bg-red-400" },
 ];
 
-const JOB_TYPE: Record<string, string> = { listup: "리스트업", screening: "스크리닝", monitoring: "모니터링" };
+const JOB_TYPE: Record<string, string> = { listup: "리스트업", organic: "무상 노출", screening: "스크리닝", monitoring: "모니터링" };
 
 const JOB_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   done:    { label: "완료",   color: "text-emerald-600 bg-emerald-50" },
@@ -41,12 +44,20 @@ function relativeTime(iso: string): string {
 export default function DashboardPage() {
   const [influencers, setInfluencers] = useState<Influencer[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [posts, setPosts] = useState<SponsoredPost[]>([]);
+  const [organicMentions, setOrganicMentions] = useState<OrganicMention[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
       fetch("/api/influencers").then(r => r.json()).then(setInfluencers),
       fetch("/api/jobs").then(r => r.json()).then(setJobs),
+      fetch("/api/sponsored-posts").then(r => r.json()).then((data: SponsoredPost[]) => {
+        if (Array.isArray(data)) setPosts(data);
+      }),
+      fetch("/api/organic-mentions").then(r => r.json()).then((data: OrganicMention[]) => {
+        if (Array.isArray(data)) setOrganicMentions(data);
+      }),
     ]).finally(() => setLoading(false));
   }, []);
 
@@ -63,6 +74,31 @@ export default function DashboardPage() {
     STATUS_CONFIG.map(s => [s.value, influencers.filter(i => i.status === s.value).length])
   );
 
+  const topViewGainers = posts
+    .filter(p => p.prev_stats != null && p.latest_stats != null)
+    .map(p => ({ post: p, delta: (p.latest_stats!.play_count ?? 0) - (p.prev_stats!.play_count ?? 0) }))
+    .filter(x => x.delta > 0)
+    .sort((a, b) => b.delta - a.delta)
+    .slice(0, 3);
+
+  const topCommentGainers = posts
+    .filter(p => p.prev_stats != null && p.latest_stats != null)
+    .map(p => ({ post: p, delta: (p.latest_stats!.comments_count ?? 0) - (p.prev_stats!.comments_count ?? 0) }))
+    .filter(x => x.delta > 0)
+    .sort((a, b) => b.delta - a.delta)
+    .slice(0, 3);
+
+  const kwSpikes = influencers
+    .flatMap(inf => (inf.screening_metrics ?? [])
+      .filter(m => m.kw_impact != null && Math.abs(m.kw_impact!) >= 20)
+      .map(m => ({ inf, kw_impact: m.kw_impact!, kw_keywords: m.kw_keywords ?? null }))
+    )
+    .sort((a, b) => Math.abs(b.kw_impact) - Math.abs(a.kw_impact))
+    .slice(0, 3);
+
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const recentOrganicCount = organicMentions.filter(m => m.created_at >= sevenDaysAgo).length;
+
   const menuItems = [
     {
       href: "/listup",
@@ -78,8 +114,21 @@ export default function DashboardPage() {
       ),
     },
     {
-      href: "/screening",
+      href: "/organic",
       step: "02",
+      label: "무상 노출",
+      desc: "라라스윗 언급 게시물 자동 수집",
+      stat: null,
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="text-a-ink">
+          <path d="M10 3C6.69 3 4 5.69 4 9c0 2.12 1.08 3.99 2.72 5.1L6 17h8l-.72-2.9C14.92 12.99 16 11.12 16 9c0-3.31-2.69-6-6-6z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+          <path d="M8 17h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+        </svg>
+      ),
+    },
+    {
+      href: "/screening",
+      step: "03",
       label: "스크리닝",
       desc: "지표 확인 및 협찬 후보 선정",
       stat: !loading && counts.pass > 0 ? `통과 ${counts.pass}명` : null,
@@ -93,7 +142,7 @@ export default function DashboardPage() {
     },
     {
       href: "/monitoring",
-      step: "03",
+      step: "04",
       label: "협찬 모니터링",
       desc: "게시물 일별 성과 자동 추적",
       stat: null,
@@ -205,7 +254,7 @@ export default function DashboardPage() {
         </div>
 
         {/* 워크플로우 메뉴 카드 */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-4 gap-4">
           {menuItems.map(item => (
             <Link
               key={item.href}
@@ -229,6 +278,93 @@ export default function DashboardPage() {
           ))}
         </div>
 
+        {/* 오늘의 인사이트 */}
+        {!loading && (
+          <div className="bg-white rounded-[24px] shadow-[0_4px_32px_rgba(100,120,180,0.13)] overflow-hidden">
+            <div className="px-7 pt-6 pb-3">
+              <div className="inline-flex items-center gap-1.5 bg-green-50 rounded-full px-3 py-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                <p className="text-[11px] font-semibold text-green-600 tracking-widest uppercase">오늘의 인사이트</p>
+              </div>
+            </div>
+            <div className="px-7 pb-5 grid grid-cols-2 gap-x-8 gap-y-5">
+              <div>
+                <p className="text-[11px] font-semibold text-a-ink-muted mb-2">📈 조회수 급상승</p>
+                {topViewGainers.length > 0 ? (
+                  <div className="space-y-2">
+                    {topViewGainers.map(({ post, delta }, i) => (
+                      <div key={post.id} className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-[11px] text-a-ink-muted tabular-nums w-4 flex-shrink-0">{i + 1}</span>
+                          <span className="text-xs font-medium text-a-ink truncate">
+                            {post.influencers?.name ?? post.account_name ?? "-"}
+                          </span>
+                        </div>
+                        <span className="text-xs font-semibold text-red-500 whitespace-nowrap flex-shrink-0">
+                          +{delta.toLocaleString()}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-a-ink-muted">특이사항 없음</p>
+                )}
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold text-a-ink-muted mb-2">💬 댓글 급상승</p>
+                {topCommentGainers.length > 0 ? (
+                  <div className="space-y-2">
+                    {topCommentGainers.map(({ post, delta }, i) => (
+                      <div key={post.id} className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-[11px] text-a-ink-muted tabular-nums w-4 flex-shrink-0">{i + 1}</span>
+                          <span className="text-xs font-medium text-a-ink truncate">
+                            {post.influencers?.name ?? post.account_name ?? "-"}
+                          </span>
+                        </div>
+                        <span className="text-xs font-semibold text-red-500 whitespace-nowrap flex-shrink-0">
+                          +{delta.toLocaleString()}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-a-ink-muted">특이사항 없음</p>
+                )}
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold text-a-ink-muted mb-2">🔍 검색량 특이치</p>
+                {kwSpikes.length > 0 ? (
+                  <div className="space-y-2">
+                    {kwSpikes.map(({ inf, kw_impact, kw_keywords }, i) => (
+                      <div key={i} className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-[11px] text-a-ink-muted tabular-nums w-4 flex-shrink-0">{i + 1}</span>
+                          <span className="text-xs font-medium text-a-ink truncate">{inf.name}</span>
+                          {kw_keywords && <span className="text-[10px] text-a-ink-muted truncate hidden sm:block">· {kw_keywords}</span>}
+                        </div>
+                        <span className={`text-xs font-semibold whitespace-nowrap flex-shrink-0 ${kw_impact > 0 ? "text-red-500" : "text-emerald-600"}`}>
+                          {kw_impact > 0 ? "+" : ""}{kw_impact.toFixed(1)}%
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-a-ink-muted">특이사항 없음</p>
+                )}
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold text-a-ink-muted mb-2">💡 무상 노출</p>
+                {recentOrganicCount > 0 ? (
+                  <p className="text-xs text-a-ink">최근 7일 <span className="font-semibold text-a-blue">{recentOrganicCount}건</span> 새로 수집됨</p>
+                ) : (
+                  <p className="text-xs text-a-ink-muted">특이사항 없음</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 최근 작업 */}
         {!loading && jobs.length > 0 && (
           <div className="bg-white rounded-[24px] shadow-[0_4px_32px_rgba(100,120,180,0.13)] overflow-hidden">
@@ -247,18 +383,23 @@ export default function DashboardPage() {
                   : null
                   : null;
                 return (
-                  <div key={job.id} className="px-7 py-3.5 flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <span className="text-sm font-medium text-a-ink">{JOB_TYPE[job.type] ?? job.type}</span>
-                      <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${js.color}`}>{js.label}</span>
-                      {count && <span className="text-xs text-a-ink-muted">{count}</span>}
+                  <div key={job.id} className="px-7 py-3.5 flex flex-col gap-1">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="text-sm font-medium text-a-ink">{JOB_TYPE[job.type] ?? job.type}</span>
+                        <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${js.color}`}>{js.label}</span>
+                        {count && <span className="text-xs text-a-ink-muted">{count}</span>}
+                      </div>
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        {job.user_email && (
+                          <span className="text-xs text-gray-400 hidden sm:block truncate max-w-[140px]">{job.user_email}</span>
+                        )}
+                        <span className="text-xs text-gray-400 whitespace-nowrap">{relativeTime(job.created_at)}</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3 flex-shrink-0">
-                      {job.user_email && (
-                        <span className="text-xs text-gray-400 hidden sm:block truncate max-w-[140px]">{job.user_email}</span>
-                      )}
-                      <span className="text-xs text-gray-400 whitespace-nowrap">{relativeTime(job.created_at)}</span>
-                    </div>
+                    {job.status === "failed" && job.error && (
+                      <p className="text-[11px] text-red-400 leading-snug pl-0.5 break-all">{job.error}</p>
+                    )}
                   </div>
                 );
               })}

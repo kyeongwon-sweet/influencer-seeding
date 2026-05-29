@@ -38,7 +38,7 @@ const INIT_FILTERS: Filters = { name: "", platform: "all", status: "all", keywor
 
 // 드래그 리사이즈 가능한 열 기본 너비 (px)
 // [채널명, 플랫폼, 발굴 키워드, 게시물, 유형, 업로드일, 조회/팔로워, 상태, 추가일]
-const INIT_COL_WIDTHS = [180, 80, 120, 70, 70, 100, 110, 80, 100];
+const INIT_COL_WIDTHS = [160, 68, 100, 56, 56, 88, 96, 68, 88];
 
 function formatTimestamp(ts: string): string {
   const d = new Date(ts);
@@ -633,7 +633,34 @@ export default function ListupPage() {
                     {rsTH("유형", 4)}
                     {rsTH("업로드일", 5)}
                     {rsTH("조회/팔로워", 6)}
-                    {rsTH("상태", 7)}
+                    {(() => {
+                      const col = "상태";
+                      const active = sortCol === col;
+                      return (
+                        <th
+                          key={col}
+                          style={{ minWidth: colWidths[7] }}
+                          className={`relative px-4 py-3 text-left text-[10px] font-medium uppercase tracking-wider whitespace-nowrap bg-white select-none group ${
+                            active ? "text-a-ink" : "text-gray-400"
+                          }`}
+                        >
+                          <span onClick={() => handleSort(col)} className="cursor-pointer hover:text-gray-600 transition-colors">
+                            {col}
+                            <span className={`ml-1 ${active ? "text-a-blue" : "opacity-20"}`}>
+                              {active ? (sortDir === "asc" ? "↑" : "↓") : "↕"}
+                            </span>
+                          </span>
+                          <div className="hidden group-hover:block absolute top-full left-0 mt-0.5 z-50 bg-white border border-a-hairline rounded-[10px] shadow-lg px-3 py-2.5 text-left whitespace-nowrap">
+                            <p className="text-[11px] font-semibold text-a-ink mb-0.5">스크리닝과 자동 동기화</p>
+                            <p className="text-[11px] text-a-ink-muted leading-relaxed">스크리닝에서 통과/탈락을 설정하면<br/>이 탭의 상태가 자동으로 반영됩니다.</p>
+                          </div>
+                          <div
+                            onMouseDown={e => startResize(e, 7)}
+                            className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-100 z-10"
+                          />
+                        </th>
+                      );
+                    })()}
                     {rsTH("추가일", 8)}
                     <th className="px-4 py-3 bg-white"></th>
                   </tr>
@@ -649,7 +676,13 @@ export default function ListupPage() {
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap">
                           <a href={inf.url} target="_blank" rel="noreferrer"
-                            className="font-medium hover:text-a-blue transition-colors">{inf.name}</a>
+                            className="inline-flex items-center gap-1 font-medium hover:text-a-blue transition-colors group/link">
+                            {inf.name}
+                            <svg width="10" height="10" viewBox="0 0 14 14" fill="none" className="opacity-0 group-hover/link:opacity-50 flex-shrink-0 transition-opacity">
+                              <path d="M5.5 2.5H2.5a1 1 0 00-1 1v8a1 1 0 001 1h8a1 1 0 001-1V9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                              <path d="M8.5 1.5h4m0 0v4m0-4L6 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          </a>
                         </td>
                         <td className="px-4 py-4 text-a-ink-muted text-xs whitespace-nowrap">
                           {inf.platform === "instagram" ? "인스타" : "유튜브"}
