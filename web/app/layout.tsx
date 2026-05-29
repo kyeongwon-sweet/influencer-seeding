@@ -1,10 +1,7 @@
 import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import Sidebar from "@/components/Sidebar";
-
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 
 export const metadata: Metadata = {
   title: "인플루언서 시딩 트래킹 대시보드",
@@ -17,7 +14,7 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="ko">
-        <body className={`antialiased font-sans text-a-ink ${inter.variable}`}>
+        <body className="antialiased font-sans text-a-ink">
           <Sidebar />
           <div className="ml-[200px]">{children}</div>
         </body>

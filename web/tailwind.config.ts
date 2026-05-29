@@ -25,9 +25,9 @@ const config: Config = {
         "a-divider":      "#f0f0f0",
       },
       fontFamily: {
-        sans: ['"SF Pro Text"', "system-ui", "-apple-system", "BlinkMacSystemFont", '"Helvetica Neue"', "Arial", "sans-serif"],
-        display: ['"SF Pro Display"', "system-ui", "-apple-system", "BlinkMacSystemFont", '"Helvetica Neue"', "Arial", "sans-serif"],
-        numeric: ["var(--font-inter)", "Inter", "system-ui", "-apple-system", "sans-serif"],
+        sans: ['"Pretendard Variable"', "Pretendard", "system-ui", "-apple-system", "BlinkMacSystemFont", '"Helvetica Neue"', "Arial", "sans-serif"],
+        display: ['"Pretendard Variable"', "Pretendard", "system-ui", "-apple-system", "BlinkMacSystemFont", '"Helvetica Neue"', "Arial", "sans-serif"],
+        numeric: ['"Pretendard Variable"', "Pretendard", "system-ui", "-apple-system", "sans-serif"],
       },
       keyframes: {
         "toast-in": {
