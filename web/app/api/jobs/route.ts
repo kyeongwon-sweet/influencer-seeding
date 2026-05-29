@@ -174,9 +174,11 @@ export async function POST(req: NextRequest) {
         const screened = (await supabase.from('screening_metrics').select('influencer_id')).data || [];
         const screenedIds = new Set(screened.map((s: { influencer_id: string }) => s.influencer_id));
 
-        const influencers = influencerIds?.length
+        const SCREENING_BATCH = 10; // 1회 최대 처리 채널 수 (비용 제한)
+        const unscreened = influencerIds?.length
           ? allInfluencers.filter((i: { id: string }) => influencerIds.includes(i.id))
           : allInfluencers.filter((i: { id: string }) => !screenedIds.has(i.id));
+        const influencers = unscreened.slice(0, SCREENING_BATCH);
 
         if (influencers.length === 0) {
           await supabase.from('jobs').update({ status: 'done', payload: { screened: 0 } }).eq('id', job.id);
