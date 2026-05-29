@@ -741,16 +741,18 @@ export default function ScreeningPage() {
                         <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(inf.id)}
                           className="w-3.5 h-3.5 accent-a-blue cursor-pointer" />
                       </td>
-                      <td style={{ left: 44, minWidth: channelNameWidth, width: channelNameWidth }}
+                      <td style={{ left: 44, width: channelNameWidth }}
                         className={`px-3 py-4 shadow-[2px_0_5px_rgba(0,0,0,0.06)] ${stickyCell}`}>
-                        <a href={inf.url} target="_blank" rel="noreferrer"
-                          className="inline-flex items-center gap-1 font-medium hover:text-a-blue transition-colors group/link">
-                          {inf.name}
-                          <svg width="10" height="10" viewBox="0 0 14 14" fill="none" className="opacity-0 group-hover/link:opacity-50 flex-shrink-0 transition-opacity">
-                            <path d="M5.5 2.5H2.5a1 1 0 00-1 1v8a1 1 0 001 1h8a1 1 0 001-1V9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                            <path d="M8.5 1.5h4m0 0v4m0-4L6 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        </a>
+                        <div style={{ width: channelNameWidth - 24, overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                          <a href={inf.url} target="_blank" rel="noreferrer"
+                            className="inline-flex items-center gap-1 font-medium hover:text-a-blue transition-colors group/link">
+                            {inf.name}
+                            <svg width="10" height="10" viewBox="0 0 14 14" fill="none" className="opacity-0 group-hover/link:opacity-50 flex-shrink-0 transition-opacity">
+                              <path d="M5.5 2.5H2.5a1 1 0 00-1 1v8a1 1 0 001 1h8a1 1 0 001-1V9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                              <path d="M8.5 1.5h4m0 0v4m0-4L6 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          </a>
+                        </div>
                       </td>
                       <td style={{ minWidth: screenColWidths["플랫폼"] }} className="px-3 py-4 text-a-ink-muted text-xs whitespace-nowrap">
                         {inf.platform === "instagram" ? "인스타" : "유튜브"}

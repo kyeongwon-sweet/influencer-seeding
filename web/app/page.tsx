@@ -7,7 +7,7 @@ type Influencer = { name: string; status: string; source?: string; created_at?: 
 type OrganicMention = { id: string; created_at: string; platform: string };
 type Job = { id: string; type: string; status: string; payload?: { added?: number; screened?: number }; user_email?: string; created_at: string; error?: string };
 type DailyStats = { play_count: number | null; comments_count: number | null; measured_at: string };
-type SponsoredPost = { id: string; account_name: string | null; project_name: string | null; influencers: { name: string } | null; latest_stats: DailyStats | null; prev_stats: DailyStats | null };
+type SponsoredPost = { id: string; url: string | null; account_name: string | null; project_name: string | null; influencers: { name: string } | null; latest_stats: DailyStats | null; prev_stats: DailyStats | null };
 
 const STATUS_CONFIG = [
   { value: "pass",    label: "통과",   dot: "bg-emerald-500" },
@@ -220,6 +220,95 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {/* 오늘의 인사이트 */}
+        {!loading && (
+          <div className="bg-white rounded-[24px] shadow-[0_4px_32px_rgba(100,120,180,0.13)] overflow-hidden">
+            <div className="px-7 pt-6 pb-3">
+              <div className="inline-flex items-center gap-1.5 bg-green-50 rounded-full px-3 py-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                <p className="text-[11px] font-semibold text-green-600 tracking-widest uppercase">오늘의 인사이트</p>
+              </div>
+            </div>
+            <div className="px-7 pb-5 grid grid-cols-2 gap-x-8 gap-y-5">
+              <div>
+                <p className="text-[11px] font-semibold text-a-ink-muted mb-2">📈 조회수 급상승</p>
+                {topViewGainers.length > 0 ? (
+                  <div className="space-y-0.5">
+                    {topViewGainers.map(({ post, delta }, i) => (
+                      <a key={post.id} href={post.url ?? undefined} target="_blank" rel="noreferrer"
+                        className="flex items-center justify-between gap-2 hover:bg-a-parchment rounded-[6px] py-1 -mx-1 px-1 transition-colors">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-[11px] text-a-ink-muted tabular-nums w-4 flex-shrink-0">{i + 1}</span>
+                          <span className="text-xs font-medium text-a-ink truncate">
+                            {post.influencers?.name ?? post.account_name ?? "-"}
+                          </span>
+                        </div>
+                        <span className="text-xs font-semibold text-red-500 whitespace-nowrap flex-shrink-0">
+                          +{delta.toLocaleString()}
+                        </span>
+                      </a>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-a-ink-muted">특이사항 없음</p>
+                )}
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold text-a-ink-muted mb-2">💬 댓글 급상승</p>
+                {topCommentGainers.length > 0 ? (
+                  <div className="space-y-0.5">
+                    {topCommentGainers.map(({ post, delta }, i) => (
+                      <a key={post.id} href={post.url ?? undefined} target="_blank" rel="noreferrer"
+                        className="flex items-center justify-between gap-2 hover:bg-a-parchment rounded-[6px] py-1 -mx-1 px-1 transition-colors">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-[11px] text-a-ink-muted tabular-nums w-4 flex-shrink-0">{i + 1}</span>
+                          <span className="text-xs font-medium text-a-ink truncate">
+                            {post.influencers?.name ?? post.account_name ?? "-"}
+                          </span>
+                        </div>
+                        <span className="text-xs font-semibold text-red-500 whitespace-nowrap flex-shrink-0">
+                          +{delta.toLocaleString()}
+                        </span>
+                      </a>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-a-ink-muted">특이사항 없음</p>
+                )}
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold text-a-ink-muted mb-2">🔍 검색량 특이치</p>
+                {kwSpikes.length > 0 ? (
+                  <div className="space-y-1">
+                    {kwSpikes.map(({ inf, kw_impact, kw_keywords }, i) => (
+                      <div key={i} className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-[11px] text-a-ink-muted tabular-nums w-4 flex-shrink-0">{i + 1}</span>
+                          <span className="text-xs font-medium text-a-ink truncate">{inf.name}</span>
+                          {kw_keywords && <span className="text-[10px] text-a-ink-muted truncate hidden sm:block">· {kw_keywords}</span>}
+                        </div>
+                        <span className={`text-xs font-semibold whitespace-nowrap flex-shrink-0 ${kw_impact > 0 ? "text-red-500" : "text-emerald-600"}`}>
+                          {kw_impact > 0 ? "+" : ""}{kw_impact.toFixed(1)}%
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-a-ink-muted">특이사항 없음</p>
+                )}
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold text-a-ink-muted mb-2">💡 무상 노출</p>
+                {recentOrganicCount > 0 ? (
+                  <p className="text-xs text-a-ink">최근 7일 <span className="font-semibold text-a-blue">{recentOrganicCount}건</span> 새로 수집됨</p>
+                ) : (
+                  <p className="text-xs text-a-ink-muted">특이사항 없음</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 인플루언서 현황 */}
         <div className="bg-white rounded-[24px] shadow-[0_4px_32px_rgba(100,120,180,0.13)] overflow-hidden">
           <div className="px-7 pt-6 pb-2">
@@ -277,93 +366,6 @@ export default function DashboardPage() {
             </Link>
           ))}
         </div>
-
-        {/* 오늘의 인사이트 */}
-        {!loading && (
-          <div className="bg-white rounded-[24px] shadow-[0_4px_32px_rgba(100,120,180,0.13)] overflow-hidden">
-            <div className="px-7 pt-6 pb-3">
-              <div className="inline-flex items-center gap-1.5 bg-green-50 rounded-full px-3 py-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
-                <p className="text-[11px] font-semibold text-green-600 tracking-widest uppercase">오늘의 인사이트</p>
-              </div>
-            </div>
-            <div className="px-7 pb-5 grid grid-cols-2 gap-x-8 gap-y-5">
-              <div>
-                <p className="text-[11px] font-semibold text-a-ink-muted mb-2">📈 조회수 급상승</p>
-                {topViewGainers.length > 0 ? (
-                  <div className="space-y-2">
-                    {topViewGainers.map(({ post, delta }, i) => (
-                      <div key={post.id} className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-[11px] text-a-ink-muted tabular-nums w-4 flex-shrink-0">{i + 1}</span>
-                          <span className="text-xs font-medium text-a-ink truncate">
-                            {post.influencers?.name ?? post.account_name ?? "-"}
-                          </span>
-                        </div>
-                        <span className="text-xs font-semibold text-red-500 whitespace-nowrap flex-shrink-0">
-                          +{delta.toLocaleString()}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-a-ink-muted">특이사항 없음</p>
-                )}
-              </div>
-              <div>
-                <p className="text-[11px] font-semibold text-a-ink-muted mb-2">💬 댓글 급상승</p>
-                {topCommentGainers.length > 0 ? (
-                  <div className="space-y-2">
-                    {topCommentGainers.map(({ post, delta }, i) => (
-                      <div key={post.id} className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-[11px] text-a-ink-muted tabular-nums w-4 flex-shrink-0">{i + 1}</span>
-                          <span className="text-xs font-medium text-a-ink truncate">
-                            {post.influencers?.name ?? post.account_name ?? "-"}
-                          </span>
-                        </div>
-                        <span className="text-xs font-semibold text-red-500 whitespace-nowrap flex-shrink-0">
-                          +{delta.toLocaleString()}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-a-ink-muted">특이사항 없음</p>
-                )}
-              </div>
-              <div>
-                <p className="text-[11px] font-semibold text-a-ink-muted mb-2">🔍 검색량 특이치</p>
-                {kwSpikes.length > 0 ? (
-                  <div className="space-y-2">
-                    {kwSpikes.map(({ inf, kw_impact, kw_keywords }, i) => (
-                      <div key={i} className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-[11px] text-a-ink-muted tabular-nums w-4 flex-shrink-0">{i + 1}</span>
-                          <span className="text-xs font-medium text-a-ink truncate">{inf.name}</span>
-                          {kw_keywords && <span className="text-[10px] text-a-ink-muted truncate hidden sm:block">· {kw_keywords}</span>}
-                        </div>
-                        <span className={`text-xs font-semibold whitespace-nowrap flex-shrink-0 ${kw_impact > 0 ? "text-red-500" : "text-emerald-600"}`}>
-                          {kw_impact > 0 ? "+" : ""}{kw_impact.toFixed(1)}%
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-a-ink-muted">특이사항 없음</p>
-                )}
-              </div>
-              <div>
-                <p className="text-[11px] font-semibold text-a-ink-muted mb-2">💡 무상 노출</p>
-                {recentOrganicCount > 0 ? (
-                  <p className="text-xs text-a-ink">최근 7일 <span className="font-semibold text-a-blue">{recentOrganicCount}건</span> 새로 수집됨</p>
-                ) : (
-                  <p className="text-xs text-a-ink-muted">특이사항 없음</p>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* 최근 작업 */}
         {!loading && jobs.length > 0 && (
