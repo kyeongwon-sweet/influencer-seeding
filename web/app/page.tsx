@@ -114,7 +114,7 @@ export default function DashboardPage() {
             href="https://www.youtube.com/shorts"
             target="_blank"
             rel="noreferrer"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-gray-200 text-[11px] font-medium text-a-ink hover:bg-gray-50 transition-colors whitespace-nowrap"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white border border-gray-100 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-[11px] font-semibold text-a-ink hover:shadow-[0_4px_14px_rgba(0,0,0,0.13)] transition-all duration-150 whitespace-nowrap"
           >
             <svg width="14" height="10" viewBox="0 0 26 18" fill="none">
               <rect width="26" height="18" rx="4" fill="#FF0000"/>
@@ -126,7 +126,7 @@ export default function DashboardPage() {
             href="https://www.instagram.com/reels/"
             target="_blank"
             rel="noreferrer"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-gray-200 text-[11px] font-medium text-a-ink hover:bg-gray-50 transition-colors whitespace-nowrap"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white border border-gray-100 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-[11px] font-semibold text-a-ink hover:shadow-[0_4px_14px_rgba(0,0,0,0.13)] transition-all duration-150 whitespace-nowrap"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
               <defs>
@@ -172,11 +172,11 @@ export default function DashboardPage() {
         )}
 
         {/* 인플루언서 현황 */}
-        <div className="bg-white rounded-[24px] shadow-[0_2px_24px_rgba(100,120,180,0.09)] overflow-hidden">
+        <div className="bg-white rounded-[24px] shadow-[0_4px_32px_rgba(100,120,180,0.13)] overflow-hidden">
           <div className="px-7 pt-6 pb-2">
-            <div className="flex items-center gap-1.5">
+            <div className="inline-flex items-center gap-1.5 bg-blue-50 rounded-full px-3 py-1">
               <span className="w-1.5 h-1.5 rounded-full bg-a-blue inline-block" />
-              <p className="text-[11px] font-semibold text-a-ink-muted tracking-widest uppercase">인플루언서 현황</p>
+              <p className="text-[11px] font-semibold text-a-blue tracking-widest uppercase">인플루언서 현황</p>
             </div>
           </div>
           {loading ? (
@@ -210,7 +210,7 @@ export default function DashboardPage() {
             <Link
               key={item.href}
               href={item.href}
-              className="group bg-white rounded-[22px] shadow-[0_2px_20px_rgba(100,120,180,0.08)] p-5 flex flex-col gap-2.5 hover:-translate-y-1 hover:shadow-[0_8px_36px_rgba(100,120,180,0.16)] transition-all duration-200 ease-out"
+              className="group bg-white rounded-[22px] shadow-[0_4px_24px_rgba(100,120,180,0.11)] p-5 flex flex-col gap-2.5 hover:-translate-y-1 hover:shadow-[0_12px_40px_rgba(100,120,180,0.20)] transition-all duration-200 ease-out"
             >
               <div className="flex items-center justify-between">
                 <div className="w-8 h-8 rounded-[10px] bg-slate-50 flex items-center justify-center group-hover:bg-blue-50 transition-colors">
@@ -231,9 +231,9 @@ export default function DashboardPage() {
 
         {/* 최근 작업 */}
         {!loading && jobs.length > 0 && (
-          <div className="bg-white rounded-[24px] shadow-[0_2px_24px_rgba(100,120,180,0.09)] overflow-hidden">
+          <div className="bg-white rounded-[24px] shadow-[0_4px_32px_rgba(100,120,180,0.13)] overflow-hidden">
             <div className="px-7 pt-6 pb-3">
-              <div className="flex items-center gap-1.5">
+              <div className="inline-flex items-center gap-1.5 bg-gray-100 rounded-full px-3 py-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-a-ink-muted inline-block" />
                 <p className="text-[11px] font-semibold text-a-ink-muted tracking-widest uppercase">최근 작업</p>
               </div>

@@ -421,13 +421,15 @@ export default function ContactPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-a-parchment">
+    <div className="min-h-screen">
       {/* Header */}
-      <header className="bg-black h-11 px-6 flex items-center justify-between sticky top-0 z-40">
+      <header className="bg-white border-b border-gray-100 h-11 px-6 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-3">
-          <Link href="/" className="text-white/50 hover:text-white transition text-sm">←</Link>
-          <span className="text-white text-sm font-medium tracking-tight">스크리닝 인플루언서 컨택</span>
-          <span className="text-white/40 text-xs">{influencers.length}명 통과</span>
+          <Link href="/" className="text-gray-400 hover:text-a-ink transition text-sm">←</Link>
+          <span className="text-a-ink text-sm font-semibold tracking-tight">인플루언서 컨택</span>
+          {influencers.length > 0 && (
+            <span className="text-gray-400 text-xs">{influencers.length}명 통과</span>
+          )}
         </div>
       </header>
 
@@ -448,9 +450,12 @@ export default function ContactPage() {
       <div className="p-6 space-y-5">
 
         {/* Trend chart card */}
-        <div className="bg-white rounded-[18px] border border-a-hairline p-5">
+        <div className="bg-white rounded-[22px] shadow-[0_4px_32px_rgba(100,120,180,0.11)] p-5">
           <div className="flex items-center gap-3 mb-4 flex-wrap">
-            <h2 className="text-sm font-semibold text-a-ink shrink-0">검색 트렌드 (최근 1년)</h2>
+            <div className="inline-flex items-center gap-1.5 bg-blue-50 rounded-full px-3 py-1 shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-a-blue inline-block" />
+              <p className="text-[11px] font-semibold text-a-blue tracking-widest uppercase">검색 트렌드 (최근 1년)</p>
+            </div>
             <select
               value={selectedKeyword}
               onChange={e => setSelectedKeyword(e.target.value)}
@@ -476,7 +481,7 @@ export default function ContactPage() {
           ) : trendData.length > 0 ? (
             <TrendChart data={trendData} selectedDate={selectedDate} onSelect={setSelectedDate} />
           ) : (
-            <div className="h-[160px] flex items-center justify-center text-a-ink-muted text-sm rounded-[10px] bg-a-parchment">
+            <div className="h-[160px] flex items-center justify-center text-a-ink-muted text-sm rounded-[10px] bg-a-divider/40">
               키워드를 선택하고 &apos;트렌드 조회&apos;를 누르세요
             </div>
           )}
@@ -484,7 +489,7 @@ export default function ContactPage() {
 
         {/* Selected date panel */}
         {selectedDate && (
-          <div className="bg-white rounded-[18px] border border-a-hairline p-5">
+          <div className="bg-white rounded-[22px] shadow-[0_4px_32px_rgba(100,120,180,0.11)] p-5">
             <div className="flex items-center gap-3 mb-4">
               <h2 className="text-sm font-semibold text-a-ink">{selectedDate} 업로드</h2>
               {selectedTrendPoint && (
@@ -502,7 +507,7 @@ export default function ContactPage() {
                 {dateInfluencers.map(inf => {
                   const m = getMetrics(inf);
                   return (
-                    <div key={inf.id} className="flex items-center gap-4 px-4 py-3 rounded-[10px] bg-a-parchment hover:bg-gray-100 transition">
+                    <div key={inf.id} className="flex items-center gap-4 px-4 py-3 rounded-[10px] bg-a-divider/30 hover:bg-blue-50/40 transition">
                       <InfluencerName inf={inf} />
 
                       <span className="text-[11px] text-a-ink-muted shrink-0">
@@ -534,9 +539,12 @@ export default function ContactPage() {
         )}
 
         {/* All pass influencers */}
-        <div className="bg-white rounded-[18px] border border-a-hairline">
-          <div className="px-5 py-4 border-b border-a-hairline">
-            <h2 className="text-sm font-semibold text-a-ink">통과 인플루언서 전체 ({influencers.length}명)</h2>
+        <div className="bg-white rounded-[22px] shadow-[0_4px_32px_rgba(100,120,180,0.11)] overflow-hidden">
+          <div className="px-6 pt-5 pb-4 border-b border-a-hairline">
+            <div className="inline-flex items-center gap-1.5 bg-blue-50 rounded-full px-3 py-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-a-blue inline-block" />
+              <p className="text-[11px] font-semibold text-a-blue tracking-widest uppercase">통과 인플루언서 전체 ({influencers.length}명)</p>
+            </div>
           </div>
 
           {loadingInf ? (
