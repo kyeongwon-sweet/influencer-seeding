@@ -57,6 +57,7 @@ export default function OrganicPage() {
   const [uploading, setUploading] = useState(false);
   const [editCell, setEditCell] = useState<{ id: string; value: string } | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [importingNotion, setImportingNotion] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [showTimeoutError, setShowTimeoutError] = useState(false);
   const resizingRef = useRef<{ colIdx: number; startX: number; startW: number } | null>(null);
@@ -256,6 +257,23 @@ export default function OrganicPage() {
     a.click();
   }
 
+  async function importFromNotion() {
+    setImportingNotion(true);
+    try {
+      const res = await fetch("/api/organic-mentions/import-notion", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        toast(data.error ?? "노션 불러오기에 실패했습니다.", "error");
+      } else {
+        await loadMentions();
+        toast(data.added > 0 ? `노션에서 ${data.added}건 추가됐습니다.` : "새로운 게시물이 없습니다.", data.added > 0 ? "success" : "info");
+      }
+    } catch {
+      toast("노션 불러오기 중 오류가 발생했습니다.", "error");
+    }
+    setImportingNotion(false);
+  }
+
   async function uploadCsvRows() {
     if (csvRows.length === 0) return;
     setUploading(true);
@@ -395,6 +413,9 @@ export default function OrganicPage() {
           사용 안내
         </button>
         <div className="flex items-center gap-1.5">
+          <button onClick={importFromNotion} disabled={importingNotion} className="btn-secondary">
+            {importingNotion ? "불러오는 중..." : "노션 불러오기"}
+          </button>
           <button onClick={() => setShowUpload(true)} className="btn-secondary">CSV 업로드</button>
           <button onClick={() => setShowAdd(true)} className="btn-secondary">+ 게시물 추가</button>
           {running && (
@@ -467,7 +488,7 @@ export default function OrganicPage() {
             {loading ? (
               <div className="p-8 text-center text-a-ink-muted text-sm">로딩 중...</div>
             ) : (
-              <table className="text-sm">
+              <table className="w-full text-sm">
                 <thead className="sticky top-0 z-30">
                   <tr className="border-b border-a-hairline">
                     {rsTH("사용자이름", 0)}

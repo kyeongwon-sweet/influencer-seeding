@@ -86,6 +86,7 @@ export function getServerSupabase() {
 - `APP_URL` → 배포된 Vercel URL (예: `https://influencer-seeding-xxx.vercel.app`)
 - `NAVER_CLIENT_ID` → 네이버 개발자센터 발급 (검색 트렌드)
 - `NAVER_CLIENT_SECRET` → 네이버 개발자센터 발급 (검색 트렌드)
+- `NOTION_API_TOKEN` → notion.so/my-integrations 발급 (무상 노출 노션 동기화)
 
 ### Python 스크립트 (`.env`)
 - `APIFY_API_TOKEN`

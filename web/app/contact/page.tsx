@@ -20,6 +20,9 @@ type Metrics = {
   top_ad_post_url: string | null;
   kw_keywords: string | null;
   kw_impact: number | null;
+  kw_before: number | null;
+  kw_after: number | null;
+  kw_ad_date: string | null;
 };
 
 type Influencer = {
@@ -232,9 +235,14 @@ function InfluencerName({ inf }: { inf: Influencer }) {
             <span className="text-gray-400">광고 효율</span><span className="text-right">{adEff}</span>
             <span className="text-gray-400">광고 최고 조회수</span><span className="text-right">{fmt(m.top_ad_play_count)}</span>
             <span className="text-gray-400">검색어</span><span className="text-right truncate">{m.kw_keywords ?? "-"}</span>
-            <span className="text-gray-400">검색어 트렌드</span>
+            <span className="text-gray-400">광고 전 검색량</span>
+            <span className="text-right">{m.kw_before != null ? m.kw_before.toLocaleString() + "건" : "-"}</span>
+            <span className="text-gray-400">광고 후 검색량</span>
             <span className={`text-right ${m.kw_impact != null ? (m.kw_impact > 0 ? "text-green-400" : "text-red-400") : ""}`}>
-              {m.kw_impact != null ? (m.kw_impact > 0 ? "+" : "") + m.kw_impact.toFixed(1) + "%" : "-"}
+              {m.kw_after != null ? m.kw_after.toLocaleString() + "건" : "-"}
+              {m.kw_impact != null && (
+                <span className="ml-1 text-[10px]">({m.kw_impact > 0 ? "+" : ""}{m.kw_impact.toFixed(1)}%)</span>
+              )}
             </span>
           </div>
           {m.top_ad_post_url && (
