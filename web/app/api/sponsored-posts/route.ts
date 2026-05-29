@@ -37,6 +37,16 @@ export async function GET() {
   return NextResponse.json(result);
 }
 
+// UTM 등 트래킹 파라미터 제거 → 정규화된 URL 반환
+function cleanPostUrl(raw: string): string {
+  try {
+    const u = new URL(raw);
+    // path만 유지 (쿼리 스트링 전체 제거)
+    const path = u.pathname.endsWith("/") ? u.pathname : u.pathname + "/";
+    return `${u.origin}${path}`;
+  } catch { return raw; }
+}
+
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -45,14 +55,23 @@ export async function POST(req: NextRequest) {
   const supabase = getServerSupabase();
 
   if (Array.isArray(body)) {
-    const { data, error } = await supabase.from("sponsored_posts").insert(body).select();
+    // URL 정규화 + 빈 URL 제거
+    const rows = body
+      .map(r => ({ ...r, url: r.url ? cleanPostUrl(r.url) : r.url }))
+      .filter(r => r.url);
+    // upsert + ignoreDuplicates: 중복 URL은 건너뛰고 나머지만 삽입
+    const { data, error } = await supabase
+      .from("sponsored_posts")
+      .upsert(rows, { onConflict: "url", ignoreDuplicates: true })
+      .select();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json(data, { status: 201 });
   }
 
+  const cleaned = { ...body, url: body.url ? cleanPostUrl(body.url) : body.url };
   const { data, error } = await supabase
     .from("sponsored_posts")
-    .insert(body)
+    .insert(cleaned)
     .select()
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
