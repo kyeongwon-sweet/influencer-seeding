@@ -838,11 +838,11 @@ export default function MonitoringPage() {
                             onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "account_name", editCell.value); if (e.key === "Escape") setEditCell(null); }}
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5" />
                         ) : (
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1 min-w-0 overflow-hidden">
                             <button onClick={async () => {
                               window.open(post.url, "_blank");
                               try { await navigator.clipboard.writeText(post.url); toast("링크가 복사됐습니다.", "success"); } catch {}
-                            }} className="font-medium hover:text-a-blue transition-colors text-left truncate">{displayName}</button>
+                            }} className="font-medium hover:text-a-blue transition-colors text-left truncate min-w-0">{displayName}</button>
                             <button onClick={() => setEditCell({ postId: post.id, field: "account_name", value: displayName === "-" ? "" : displayName })}
                               className="opacity-0 group-hover:opacity-100 text-a-ink-muted hover:text-a-ink transition flex-shrink-0" title="이름 수정">
                               <svg width="11" height="11" viewBox="0 0 20 20" fill="none">

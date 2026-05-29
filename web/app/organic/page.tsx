@@ -72,7 +72,7 @@ export default function OrganicPage() {
   const [showUpload, setShowUpload] = useState(false);
   const [csvRows, setCsvRows] = useState<CsvRow[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [editCell, setEditCell] = useState<{ id: string; field: "mentioned_product" | "exposure_type" | "account_name"; value: string } | null>(null);
+  const [editCell, setEditCell] = useState<{ id: string; field: "mentioned_product" | "exposure_type" | "account_name" | "content_summary" | "uploaded_at" | "view_count"; value: string } | null>(null);
   const [showHelp, setShowHelp] = useState(false);
   const [importingNotion, setImportingNotion] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -227,13 +227,15 @@ export default function OrganicPage() {
   }
 
   async function patchMentionField(id: string, field: string, value: string) {
+    const isNumeric = field === "view_count";
+    const parsed = isNumeric ? (value === "" ? null : Number(value)) : (value || null);
     const res = await fetch(`/api/organic-mentions/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ [field]: value || null }),
+      body: JSON.stringify({ [field]: parsed }),
     });
     if (res.ok) {
-      setMentions(prev => prev.map(m => m.id === id ? { ...m, [field]: value || null } : m));
+      setMentions(prev => prev.map(m => m.id === id ? { ...m, [field]: parsed } : m));
     } else {
       toast("저장에 실패했습니다.", "error");
     }
@@ -519,6 +521,14 @@ export default function OrganicPage() {
             <option value="all">전체 플랫폼</option>
             {PLATFORMS.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
+          {/* 유형 필터 드롭다운 */}
+          <select value={filters.exposureType}
+            onChange={e => setFilters(p => ({ ...p, exposureType: e.target.value }))}
+            className={`filter-select ${filters.exposureType !== "all" ? "border-a-blue text-a-blue bg-blue-50" : ""}`}>
+            <option value="all">전체 유형</option>
+            <option value="무가시딩">무가시딩</option>
+            <option value="오가닉">오가닉 노출</option>
+          </select>
           {/* 언급 제품 다중 선택 칩 */}
           {productOptions.length > 0 && (
             <div className="flex items-center gap-1.5 flex-wrap">
@@ -544,14 +554,6 @@ export default function OrganicPage() {
               })}
             </div>
           )}
-          {/* 유형 필터 드롭다운 */}
-          <select value={filters.exposureType}
-            onChange={e => setFilters(p => ({ ...p, exposureType: e.target.value }))}
-            className={`filter-select ${filters.exposureType !== "all" ? "border-a-blue text-a-blue bg-blue-50" : ""}`}>
-            <option value="all">전체 유형</option>
-            <option value="무가시딩">무가시딩</option>
-            <option value="오가닉">오가닉 노출</option>
-          </select>
           <div className="w-px h-4 bg-a-hairline mx-0.5" />
           <div className="flex items-center gap-1.5">
             <input type="date" value={filters.dateFrom}
@@ -636,7 +638,24 @@ export default function OrganicPage() {
                         {m.platform}
                       </td>
                       <td style={{ minWidth: colWidths[2] }} className="px-4 py-4 text-xs text-a-ink-muted max-w-[320px]">
-                        <span className="line-clamp-2 leading-relaxed">{m.content_summary ?? "-"}</span>
+                        {editCell?.id === m.id && editCell.field === "content_summary" ? (
+                          <textarea autoFocus value={editCell.value}
+                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
+                            onBlur={() => patchMentionField(m.id, "content_summary", editCell.value)}
+                            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); patchMentionField(m.id, "content_summary", editCell.value); } if (e.key === "Escape") setEditCell(null); }}
+                            rows={2}
+                            className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 resize-none leading-relaxed" />
+                        ) : (
+                          <div className="flex items-start gap-1">
+                            <span className="line-clamp-2 leading-relaxed flex-1">{m.content_summary ?? "-"}</span>
+                            <button onClick={() => setEditCell({ id: m.id, field: "content_summary", value: m.content_summary ?? "" })}
+                              className="opacity-0 group-hover:opacity-100 text-a-ink-muted hover:text-a-ink transition flex-shrink-0 mt-0.5" title="내용 수정">
+                              <svg width="11" height="11" viewBox="0 0 20 20" fill="none">
+                                <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                          </div>
+                        )}
                       </td>
                       <td style={{ minWidth: colWidths[3] }} className="px-4 py-4 whitespace-nowrap">
                         {editCell?.id === m.id && editCell.field === "mentioned_product" ? (
@@ -678,10 +697,42 @@ export default function OrganicPage() {
                         )}
                       </td>
                       <td style={{ minWidth: colWidths[4] }} className="px-4 py-4 text-xs text-a-ink-muted whitespace-nowrap">
-                        {formatDate(m.uploaded_at)}
+                        {editCell?.id === m.id && editCell.field === "uploaded_at" ? (
+                          <input autoFocus type="date" value={editCell.value}
+                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
+                            onBlur={() => patchMentionField(m.id, "uploaded_at", editCell.value)}
+                            onKeyDown={e => { if (e.key === "Enter") patchMentionField(m.id, "uploaded_at", editCell.value); if (e.key === "Escape") setEditCell(null); }}
+                            className="text-xs bg-transparent border-b border-a-blue outline-none py-0.5" />
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <span>{formatDate(m.uploaded_at)}</span>
+                            <button onClick={() => setEditCell({ id: m.id, field: "uploaded_at", value: m.uploaded_at?.slice(0, 10) ?? "" })}
+                              className="opacity-0 group-hover:opacity-100 text-a-ink-muted hover:text-a-ink transition flex-shrink-0" title="업로드일 수정">
+                              <svg width="11" height="11" viewBox="0 0 20 20" fill="none">
+                                <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                          </div>
+                        )}
                       </td>
                       <td style={{ minWidth: colWidths[5] }} className="px-4 py-4 text-xs text-right tabular-nums whitespace-nowrap text-a-ink">
-                        {m.view_count != null ? m.view_count.toLocaleString() : <span className="text-gray-300">-</span>}
+                        {editCell?.id === m.id && editCell.field === "view_count" ? (
+                          <input autoFocus type="number" value={editCell.value}
+                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
+                            onBlur={() => patchMentionField(m.id, "view_count", editCell.value)}
+                            onKeyDown={e => { if (e.key === "Enter") patchMentionField(m.id, "view_count", editCell.value); if (e.key === "Escape") setEditCell(null); }}
+                            className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
+                        ) : (
+                          <div className="flex items-center justify-end gap-1">
+                            <button onClick={() => setEditCell({ id: m.id, field: "view_count", value: m.view_count != null ? String(m.view_count) : "" })}
+                              className="opacity-0 group-hover:opacity-100 text-a-ink-muted hover:text-a-ink transition flex-shrink-0" title="조회수 수정">
+                              <svg width="11" height="11" viewBox="0 0 20 20" fill="none">
+                                <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                            {m.view_count != null ? m.view_count.toLocaleString() : <span className="text-gray-300">-</span>}
+                          </div>
+                        )}
                       </td>
                       {/* 유형 (무가시딩 / 오가닉) */}
                       <td style={{ minWidth: colWidths[6] }} className="px-4 py-4 whitespace-nowrap">
