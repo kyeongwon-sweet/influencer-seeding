@@ -389,7 +389,7 @@ export default function DashboardPage() {
           ) : (
             <div className="px-7 pb-7 pt-3 text-sm text-a-ink-muted">
               KPI 데이터가 없습니다.{" "}
-              <span className="text-[11px]">환경변수(GOOGLE_SHEETS_API_KEY, CRON_SECRET) 설정 및 Supabase 테이블 생성 후 <code className="bg-a-parchment px-1 rounded">/api/kpi/fetch</code>를 수동으로 호출해 주세요.</span>
+              <span className="text-[11px]">Supabase에 <code className="bg-a-parchment px-1 rounded">kpi_snapshots</code> 테이블 생성 후 <code className="bg-a-parchment px-1 rounded">/api/kpi/fetch</code>를 호출해 주세요.</span>
             </div>
           )}
         </div>
