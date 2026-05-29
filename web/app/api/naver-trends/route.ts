@@ -1,10 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 
-// 라라스윗이 100일 때(2024/4/5)의 절대 검색량
+// 라라스윗+라라스윗아이스크림 합산이 100일 때(2024/4/5)의 절대 검색량
+// keyword-impact 캘리브레이션과 동일한 기준
 const LARASWEET_BASE = 1326.173;
-const LARASWEET_REF_RATIO = 100;
-const MULTIPLIER = LARASWEET_BASE / LARASWEET_REF_RATIO; // 13.26173
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
@@ -32,7 +31,8 @@ export async function POST(req: NextRequest) {
     timeUnit: "date",
     keywordGroups: [
       { groupName: keyword, keywords: [keyword] },
-      { groupName: "라라스윗", keywords: ["라라스윗"] },
+      // keyword-impact와 동일하게 두 키워드 합산 → 1326.173건 기준
+      { groupName: "라라스윗기준", keywords: ["라라스윗", "라라스윗아이스크림"] },
     ],
   };
 
@@ -56,18 +56,24 @@ export async function POST(req: NextRequest) {
   };
 
   const kwResult = data.results.find(r => r.title === keyword);
-  const lsResult = data.results.find(r => r.title === "라라스윗");
+  const lsResult = data.results.find(r => r.title === "라라스윗기준");
 
   if (!kwResult) {
     return NextResponse.json({ error: "키워드 데이터를 받지 못했습니다." }, { status: 502 });
   }
 
+  // 동적 캘리브레이션:
+  // 조인 쿼리에서 라라스윗 최대 비율이 100이 아닐 수 있으므로
+  // 기간 내 라라스윗 최대값을 기준으로 스케일 계산
+  // → 라라스윗 피크 = 1326.173건, 키워드는 이에 비례
+  const lsRatios = (lsResult?.data ?? []).map(d => d.ratio);
+  const lsMaxRatio = Math.max(...lsRatios, 1);
+  const scale = LARASWEET_BASE / lsMaxRatio;
+
   const dates = kwResult.data.map((d, i) => ({
     date: d.period.slice(0, 10),
-    keywordRatio: d.ratio,
-    keywordAbsolute: Math.round(d.ratio * MULTIPLIER),
-    larasweetRatio: lsResult?.data[i]?.ratio ?? 0,
-    larasweetAbsolute: Math.round((lsResult?.data[i]?.ratio ?? 0) * MULTIPLIER),
+    keywordAbsolute: Math.round(d.ratio * scale),
+    larasweetAbsolute: Math.round((lsResult?.data[i]?.ratio ?? 0) * scale),
   }));
 
   return NextResponse.json({ dates });
