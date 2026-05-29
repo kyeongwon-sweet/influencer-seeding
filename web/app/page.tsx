@@ -8,6 +8,8 @@ type OrganicMention = { id: string; created_at: string; platform: string; accoun
 type Job = { id: string; type: string; status: string; payload?: { added?: number; screened?: number }; user_email?: string; created_at: string; error?: string };
 type DailyStats = { play_count: number | null; comments_count: number | null; measured_at: string };
 type SponsoredPost = { id: string; url: string | null; account_name: string | null; project_name: string | null; influencers: { name: string } | null; latest_stats: DailyStats | null; prev_stats: DailyStats | null };
+type KpiMetric = { label: string; target: number | null; current: number | null; achievement: number | null };
+type KpiSnapshot = { id: string; fetched_at: string; month_label: string | null; metrics: KpiMetric[] };
 
 const STATUS_CONFIG = [
   { value: "pass",    label: "통과",   dot: "bg-emerald-500" },
@@ -41,11 +43,20 @@ function relativeTime(iso: string): string {
   return `${Math.floor(h / 24)}일 전`;
 }
 
+function fmtKpi(v: number | null): string {
+  if (v == null) return "-";
+  const abs = Math.abs(v);
+  if (abs >= 100_000_000) return (v / 100_000_000).toFixed(1).replace(/\.0$/, "") + "억";
+  if (abs >= 100_000)     return Math.round(v / 10_000) + "만";
+  return v.toLocaleString();
+}
+
 export default function DashboardPage() {
   const [influencers, setInfluencers] = useState<Influencer[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [posts, setPosts] = useState<SponsoredPost[]>([]);
   const [organicMentions, setOrganicMentions] = useState<OrganicMention[]>([]);
+  const [kpi, setKpi] = useState<KpiSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -57,6 +68,9 @@ export default function DashboardPage() {
       }),
       fetch("/api/organic-mentions").then(r => r.json()).then((data: OrganicMention[]) => {
         if (Array.isArray(data)) setOrganicMentions(data);
+      }),
+      fetch("/api/kpi").then(r => r.json()).then((data: KpiSnapshot | null) => {
+        if (data?.id) setKpi(data);
       }),
     ]).finally(() => setLoading(false));
   }, []);
@@ -322,35 +336,50 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* 인플루언서 현황 */}
+        {/* KPI 현황 */}
         <div className="bg-white rounded-[24px] shadow-[0_4px_32px_rgba(100,120,180,0.13)] overflow-hidden">
-          <div className="px-7 pt-6 pb-2">
+          <div className="px-7 pt-6 pb-2 flex items-center justify-between">
             <div className="inline-flex items-center gap-1.5 bg-blue-50 rounded-full px-3 py-1">
               <span className="w-1.5 h-1.5 rounded-full bg-a-blue inline-block" />
-              <p className="text-[11px] font-semibold text-a-blue tracking-widest uppercase">인플루언서 현황</p>
+              <p className="text-[11px] font-semibold text-a-blue tracking-widest uppercase">
+                {kpi?.month_label ? `${kpi.month_label} ` : ""}KPI 현황
+              </p>
             </div>
+            {kpi?.fetched_at && (
+              <span className="text-[11px] text-a-ink-muted">
+                업데이트 <span className="font-medium text-a-ink">{formatTimestamp(kpi.fetched_at)}</span>
+              </span>
+            )}
           </div>
           {loading ? (
-            <div className="px-7 pb-7 pt-3 flex gap-6">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="h-12 w-20 bg-a-divider rounded-lg animate-pulse" />
-              ))}
+            <div className="px-7 pb-7 pt-3 flex gap-4">
+              {[...Array(7)].map((_, i) => <div key={i} className="h-16 flex-1 bg-a-divider rounded-lg animate-pulse" />)}
+            </div>
+          ) : kpi ? (
+            <div className="flex divide-x divide-a-hairline px-4 pb-7 pt-3 overflow-x-auto">
+              {kpi.metrics.map((m, i) => {
+                const pct = m.achievement;
+                const pctColor = pct == null ? "text-a-ink-muted" : pct >= 100 ? "text-emerald-600" : pct >= 70 ? "text-amber-500" : "text-red-500";
+                return (
+                  <div key={i} className="flex-1 min-w-[90px] px-4 py-1">
+                    <div className="text-[11px] text-a-ink-muted mb-1.5 whitespace-nowrap">{m.label}</div>
+                    <div className="text-[28px] font-bold tracking-tight text-a-ink leading-none tabular-nums">
+                      {fmtKpi(m.current)}
+                    </div>
+                    <div className="text-[11px] text-a-ink-muted mt-2 whitespace-nowrap">
+                      목표 {fmtKpi(m.target)}
+                    </div>
+                    <div className={`text-xs font-semibold mt-0.5 ${pctColor}`}>
+                      {pct != null ? `${pct}%` : "-"}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           ) : (
-            <div className="flex divide-x divide-a-hairline px-4 pb-7 pt-3">
-              <div className="flex-1 px-5 py-1">
-                <div className="text-[48px] font-bold tracking-tight text-a-ink leading-none">{total}</div>
-                <div className="text-xs text-a-ink-muted mt-2">전체</div>
-              </div>
-              {STATUS_CONFIG.map(s => (
-                <div key={s.value} className="flex-1 px-5 py-1">
-                  <div className="text-[48px] font-bold tracking-tight text-a-ink leading-none">{counts[s.value]}</div>
-                  <div className="flex items-center gap-1.5 mt-2">
-                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${s.dot}`} />
-                    <span className="text-xs text-a-ink-muted">{s.label}</span>
-                  </div>
-                </div>
-              ))}
+            <div className="px-7 pb-7 pt-3 text-sm text-a-ink-muted">
+              KPI 데이터가 없습니다.{" "}
+              <span className="text-[11px]">환경변수(GOOGLE_SHEETS_API_KEY, CRON_SECRET) 설정 및 Supabase 테이블 생성 후 <code className="bg-a-parchment px-1 rounded">/api/kpi/fetch</code>를 수동으로 호출해 주세요.</span>
             </div>
           )}
         </div>
