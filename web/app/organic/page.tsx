@@ -15,11 +15,12 @@ type Mention = {
   mentioned_product: string | null;
   uploaded_at: string | null;
   view_count: number | null;
+  exposure_type: string | null;
   created_at: string;
 };
 
-type Filters = { name: string; platform: string; products: string[]; dateFrom: string; dateTo: string };
-const INIT_FILTERS: Filters = { name: "", platform: "all", products: [], dateFrom: "", dateTo: "" };
+type Filters = { name: string; platform: string; products: string[]; exposureType: string; dateFrom: string; dateTo: string };
+const INIT_FILTERS: Filters = { name: "", platform: "all", products: [], exposureType: "all", dateFrom: "", dateTo: "" };
 
 type CsvRow = {
   platform: string; url: string; account_name: string | null;
@@ -27,8 +28,18 @@ type CsvRow = {
   uploaded_at: string | null; view_count: number | null;
 };
 
-// [사용자이름, 플랫폼, 내용요약, 언급제품, 업로드일, 조회수]
-const INIT_COL_WIDTHS = [180, 90, 300, 160, 100, 90];
+// [사용자이름, 플랫폼, 내용요약, 언급제품, 업로드일, 조회수, 유형]
+const INIT_COL_WIDTHS = [180, 90, 300, 160, 100, 90, 90];
+
+function getThumbnailUrl(url: string): string | null {
+  let m = url.match(/youtube\.com\/shorts\/([^/?&#]+)/);
+  if (m) return `https://i.ytimg.com/vi/${m[1]}/mqdefault.jpg`;
+  m = url.match(/[?&]v=([^&]+)/);
+  if (m) return `https://i.ytimg.com/vi/${m[1]}/mqdefault.jpg`;
+  m = url.match(/youtu\.be\/([^/?#]+)/);
+  if (m) return `https://i.ytimg.com/vi/${m[1]}/mqdefault.jpg`;
+  return null;
+}
 
 function formatTimestamp(ts: string): string {
   const d = new Date(ts);
@@ -61,7 +72,7 @@ export default function OrganicPage() {
   const [showUpload, setShowUpload] = useState(false);
   const [csvRows, setCsvRows] = useState<CsvRow[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [editCell, setEditCell] = useState<{ id: string; value: string } | null>(null);
+  const [editCell, setEditCell] = useState<{ id: string; field: "mentioned_product" | "exposure_type"; value: string } | null>(null);
   const [showHelp, setShowHelp] = useState(false);
   const [importingNotion, setImportingNotion] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -167,6 +178,13 @@ export default function OrganicPage() {
     toast("무상 노출 수집이 시작됐습니다. 완료 시 자동으로 업데이트됩니다.", "info");
     elapsedTimerRef.current = setInterval(() => setElapsedSeconds(s => s + 1), 1000);
     startPolling(Date.now());
+
+    // 기존 게시글 조회수 백그라운드 갱신 (fire-and-forget)
+    fetch("/api/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "organic_refresh", payload: {} }),
+    }).catch(() => {});
   }
 
   async function addMention() {
@@ -200,13 +218,17 @@ export default function OrganicPage() {
   }
 
   async function patchProduct(id: string, value: string) {
+    await patchMentionField(id, "mentioned_product", value);
+  }
+
+  async function patchMentionField(id: string, field: string, value: string) {
     const res = await fetch(`/api/organic-mentions/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mentioned_product: value || null }),
+      body: JSON.stringify({ [field]: value || null }),
     });
     if (res.ok) {
-      setMentions(prev => prev.map(m => m.id === id ? { ...m, mentioned_product: value || null } : m));
+      setMentions(prev => prev.map(m => m.id === id ? { ...m, [field]: value || null } : m));
     } else {
       toast("저장에 실패했습니다.", "error");
     }
@@ -272,7 +294,11 @@ export default function OrganicPage() {
         toast(data.error ?? "노션 불러오기에 실패했습니다.", "error");
       } else {
         await loadMentions();
-        toast(data.added > 0 ? `노션에서 ${data.added}건 추가됐습니다.` : "새로운 게시물이 없습니다.", data.added > 0 ? "success" : "info");
+        if (data.added > 0) {
+          toast(`노션에서 ${data.added}건 추가됐습니다.`, "success");
+        } else {
+          toast(`노션 DB 조회 완료 (${data.total ?? 0}건) — 새로운 게시물이 없습니다.`, "info");
+        }
       }
     } catch {
       toast("노션 불러오기 중 오류가 발생했습니다.", "error");
@@ -352,12 +378,13 @@ export default function OrganicPage() {
       const mentionProds = (m.mentioned_product ?? "").split(",").map(p => p.trim()).filter(Boolean);
       if (!filters.products.some(fp => mentionProds.includes(fp))) return false;
     }
+    if (filters.exposureType !== "all" && m.exposure_type !== filters.exposureType) return false;
     if (filters.dateFrom && (!m.uploaded_at || m.uploaded_at < filters.dateFrom)) return false;
     if (filters.dateTo && (!m.uploaded_at || m.uploaded_at > filters.dateTo)) return false;
     return true;
   });
 
-  const hasFilter = filters.name !== "" || filters.platform !== "all" || filters.products.length > 0 || filters.dateFrom !== "" || filters.dateTo !== "";
+  const hasFilter = filters.name !== "" || filters.platform !== "all" || filters.products.length > 0 || filters.exposureType !== "all" || filters.dateFrom !== "" || filters.dateTo !== "";
 
   // 언급 제품 옵션 — 콤마 구분 복수 값 파싱
   const productOptions = Array.from(
@@ -512,6 +539,20 @@ export default function OrganicPage() {
               })}
             </div>
           )}
+          {/* 유형 필터 칩 */}
+          <div className="flex items-center gap-1.5">
+            {["무가시딩", "오가닉"].map(type => {
+              const active = filters.exposureType === type;
+              return (
+                <button key={type}
+                  onClick={() => setFilters(p => ({ ...p, exposureType: active ? "all" : type }))}
+                  className={`text-xs px-2.5 py-1 rounded-full border transition ${
+                    active ? "border-a-blue bg-blue-50 text-a-blue font-medium" : "border-a-hairline text-a-ink-muted hover:border-gray-400"
+                  }`}
+                >{type}</button>
+              );
+            })}
+          </div>
           <div className="w-px h-4 bg-a-hairline mx-0.5" />
           <div className="flex items-center gap-1.5">
             <input type="date" value={filters.dateFrom}
@@ -540,18 +581,32 @@ export default function OrganicPage() {
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-30">
                   <tr className="border-b border-a-hairline">
+                    <th className="px-2 py-3 bg-white w-16 text-[10px] font-medium text-gray-400 uppercase tracking-wider"></th>
                     {rsTH("사용자이름", 0)}
                     {rsTH("플랫폼", 1)}
                     {rsTH("내용요약", 2, false)}
                     {rsTH("언급제품", 3)}
                     {rsTH("업로드일", 4)}
                     {rsTH("조회수", 5, true, true)}
+                    {rsTH("유형", 6, false)}
                     <th className="px-4 py-3 bg-white w-10"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sorted.map(m => (
+                  {sorted.map(m => {
+                    const thumb = getThumbnailUrl(m.url);
+                    const platformShort = m.platform === "인스타그램" ? "IG" : m.platform === "유튜브" ? "YT" : m.platform === "블로그" ? "BL" : m.platform.slice(0, 2);
+                    return (
                     <tr key={m.id} className="group border-b border-a-divider last:border-0 hover:bg-a-parchment/60 transition-colors">
+                      {/* 썸네일 */}
+                      <td className="px-2 py-2 w-16">
+                        <a href={m.url} target="_blank" rel="noreferrer" className="block hover:opacity-80 transition-opacity">
+                          {thumb
+                            ? <img src={thumb} alt="" className="w-12 h-9 object-cover rounded" />
+                            : <div className="w-12 h-9 bg-a-parchment rounded flex items-center justify-center text-[10px] text-a-ink-muted font-medium">{platformShort}</div>
+                          }
+                        </a>
+                      </td>
                       <td style={{ minWidth: colWidths[0] }} className="px-4 py-4 whitespace-nowrap">
                         <a href={m.url} target="_blank" rel="noreferrer"
                           className="inline-flex items-center gap-1 font-medium hover:text-a-blue transition-colors group/link">
@@ -569,7 +624,7 @@ export default function OrganicPage() {
                         <span className="line-clamp-2 leading-relaxed">{m.content_summary ?? "-"}</span>
                       </td>
                       <td style={{ minWidth: colWidths[3] }} className="px-4 py-4 whitespace-nowrap">
-                        {editCell?.id === m.id ? (
+                        {editCell?.id === m.id && editCell.field === "mentioned_product" ? (
                           <input
                             autoFocus
                             value={editCell.value}
@@ -584,7 +639,7 @@ export default function OrganicPage() {
                           />
                         ) : (
                           <span
-                            onClick={() => setEditCell({ id: m.id, value: m.mentioned_product ?? "" })}
+                            onClick={() => setEditCell({ id: m.id, field: "mentioned_product", value: m.mentioned_product ?? "" })}
                             className="flex flex-wrap gap-1 cursor-text">
                             {m.mentioned_product
                               ? m.mentioned_product.split(",").map(p => p.trim()).filter(Boolean).map(p => (
@@ -600,15 +655,46 @@ export default function OrganicPage() {
                       <td style={{ minWidth: colWidths[5] }} className="px-4 py-4 text-xs text-right tabular-nums whitespace-nowrap text-a-ink">
                         {m.view_count != null ? m.view_count.toLocaleString() : <span className="text-gray-300">-</span>}
                       </td>
+                      {/* 유형 (무가시딩 / 오가닉) */}
+                      <td style={{ minWidth: colWidths[6] }} className="px-4 py-4 whitespace-nowrap">
+                        {editCell?.id === m.id && editCell.field === "exposure_type" ? (
+                          <select autoFocus value={editCell.value}
+                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
+                            onBlur={() => patchMentionField(m.id, "exposure_type", editCell.value)}
+                            onKeyDown={e => { if (e.key === "Enter") patchMentionField(m.id, "exposure_type", editCell.value); if (e.key === "Escape") setEditCell(null); }}
+                            className="text-xs bg-transparent border-b border-a-blue outline-none py-0.5 w-full">
+                            <option value="">-</option>
+                            <option value="무가시딩">무가시딩</option>
+                            <option value="오가닉">오가닉</option>
+                          </select>
+                        ) : (
+                          <span
+                            onClick={() => setEditCell({ id: m.id, field: "exposure_type", value: m.exposure_type ?? "" })}
+                            className={`text-xs cursor-text ${m.exposure_type ? "bg-a-parchment px-2 py-0.5 rounded-full text-a-ink" : "text-gray-300"}`}>
+                            {m.exposure_type ?? "클릭"}
+                          </span>
+                        )}
+                      </td>
                       <td className="px-4 py-4 text-right whitespace-nowrap">
-                        <button onClick={() => deleteMention(m.id)}
-                          className="text-a-ink-muted hover:text-red-500 text-xs transition opacity-0 group-hover:opacity-100">삭제</button>
+                        <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => setEditCell({ id: m.id, field: "mentioned_product", value: m.mentioned_product ?? "" })}
+                            className="text-a-ink-muted hover:text-a-ink transition"
+                            title="수정">
+                            <svg width="12" height="12" viewBox="0 0 20 20" fill="none">
+                              <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          </button>
+                          <button onClick={() => deleteMention(m.id)}
+                            className="text-a-ink-muted hover:text-red-500 text-xs transition">삭제</button>
+                        </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                   {mentions.length === 0 && !loading && (
                     <tr>
-                      <td colSpan={7} className="px-5 py-14 text-center">
+                      <td colSpan={9} className="px-5 py-14 text-center">
                         <p className="text-sm font-medium text-a-ink mb-1">수집된 게시물이 없습니다</p>
                         <p className="text-xs text-a-ink-muted">'지금 수집' 버튼으로 라라스윗 언급 게시물을 자동 수집하거나, 직접 추가할 수 있습니다.</p>
                       </td>
@@ -616,7 +702,7 @@ export default function OrganicPage() {
                   )}
                   {mentions.length > 0 && filtered.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="px-5 py-12 text-center">
+                      <td colSpan={9} className="px-5 py-12 text-center">
                         <p className="text-sm text-a-ink-muted mb-2">필터 조건에 맞는 게시물이 없습니다.</p>
                         <button onClick={() => setFilters(INIT_FILTERS)} className="text-xs text-a-blue hover:underline">필터 초기화</button>
                       </td>

@@ -30,8 +30,8 @@ type Post = {
 
 type CsvRow = { url: string; project_name: string | null; product_name: string | null; channel_type: string | null };
 
-type Filters = { name: string; project: string; product: string; type: string; channelType: string; category: string; dateFrom: string; dateTo: string };
-const INIT_FILTERS: Filters = { name: "", project: "", product: "", type: "all", channelType: "all", category: "all", dateFrom: "", dateTo: "" };
+type Filters = { name: string; project: string; products: string[]; type: string; channelType: string; category: string; dateFrom: string; dateTo: string };
+const INIT_FILTERS: Filters = { name: "", project: "", products: [], type: "all", channelType: "all", category: "all", dateFrom: "", dateTo: "" };
 type EditCell = { postId: string; field: "project_name" | "product_name" | "channel_type" | "cost" | "reach_count"; value: string };
 const POST_TYPES = ["릴스", "피드", "숏폼", "롱폼"];
 const CHANNEL_TYPES = ["파워채널", "매거진", "먹스타", "인플루언서", "바이럴"];
@@ -295,7 +295,7 @@ export default function MonitoringPage() {
     const displayName = (post.account_name ?? post.influencers?.name ?? "").toLowerCase();
     if (filters.name && !displayName.includes(filters.name.toLowerCase())) return false;
     if (filters.project && !(post.project_name ?? "").toLowerCase().includes(filters.project.toLowerCase())) return false;
-    if (filters.product && !(post.product_name ?? "").toLowerCase().includes(filters.product.toLowerCase())) return false;
+    if (filters.products.length > 0 && !filters.products.includes(post.product_name ?? "")) return false;
     if (filters.type !== "all" && getPostType(post.url) !== filters.type) return false;
     if (filters.channelType !== "all" && post.channel_type !== filters.channelType) return false;
     if (filters.category !== "all" && (post.influencers?.category ?? null) !== filters.category) return false;
@@ -304,7 +304,11 @@ export default function MonitoringPage() {
     return true;
   });
 
-  const hasFilter = filters.name !== "" || filters.project !== "" || filters.product !== "" || filters.type !== "all" || filters.channelType !== "all" || filters.category !== "all" || filters.dateFrom !== "" || filters.dateTo !== "";
+  const productOptions = Array.from(
+    new Set(posts.map(p => p.product_name).filter((p): p is string => Boolean(p)))
+  ).sort();
+
+  const hasFilter = filters.name !== "" || filters.project !== "" || filters.products.length > 0 || filters.type !== "all" || filters.channelType !== "all" || filters.category !== "all" || filters.dateFrom !== "" || filters.dateTo !== "";
   const colSpan = 15;
 
   const chartData = useMemo(() => {
@@ -397,7 +401,7 @@ export default function MonitoringPage() {
   async function addPost() {
     if (!form.url) return;
     setAdding(true);
-    await fetch("/api/sponsored-posts", {
+    const res = await fetch("/api/sponsored-posts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -408,9 +412,14 @@ export default function MonitoringPage() {
         cost: form.cost ? Number(form.cost) : null,
       }),
     });
+    setAdding(false);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      toast(`추가 실패: ${(err as { error?: string }).error ?? "오류가 발생했습니다."}`, "error");
+      return;
+    }
     setForm({ url: "", product_name: "", project_name: "", channel_type: "", cost: "" });
     setShowAdd(false);
-    setAdding(false);
     await loadPosts();
     toast("게시물이 추가됐습니다.", "success");
   }
@@ -642,13 +651,24 @@ export default function MonitoringPage() {
             onChange={e => setFilters(p => ({ ...p, project: e.target.value }))}
             className={`filter-input w-28 ${filters.project ? "border-a-blue" : ""}`}
           />
-          <input
-            type="text"
-            placeholder="상품명"
-            value={filters.product}
-            onChange={e => setFilters(p => ({ ...p, product: e.target.value }))}
-            className={`filter-input w-24 ${filters.product ? "border-a-blue" : ""}`}
-          />
+          {productOptions.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {productOptions.map(p => {
+                const active = filters.products.includes(p);
+                return (
+                  <button key={p}
+                    onClick={() => setFilters(prev => ({
+                      ...prev,
+                      products: active ? prev.products.filter(x => x !== p) : [...prev.products, p],
+                    }))}
+                    className={`text-xs px-2.5 py-1 rounded-full border transition ${
+                      active ? "border-a-blue bg-blue-50 text-a-blue font-medium" : "border-a-hairline text-a-ink-muted hover:border-gray-400"
+                    }`}
+                  >{p}</button>
+                );
+              })}
+            </div>
+          )}
           <div className="w-px h-4 bg-a-hairline mx-0.5" />
           <select
             value={filters.type}
@@ -908,9 +928,17 @@ export default function MonitoringPage() {
                       <td style={{ minWidth: colWidths["Trend"] }} className="px-3 py-3 text-center">
                         <Sparkline stats={post.all_stats ?? []} postId={post.id} onClick={() => setTrendPost(post)} />
                       </td>
-                      <td style={{ minWidth: colWidths["삭제"] }} className="px-3 py-3 text-right">
+                      <td style={{ minWidth: colWidths["삭제"] }} className="px-3 py-3 text-right whitespace-nowrap">
+                        <button
+                          onClick={() => setEditCell({ postId: post.id, field: "project_name", value: post.project_name ?? "" })}
+                          className="text-a-ink-muted hover:text-a-ink transition opacity-0 group-hover:opacity-100 mr-2"
+                          title="수정">
+                          <svg width="12" height="12" viewBox="0 0 20 20" fill="none">
+                            <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </button>
                         <button onClick={() => deletePost(post.id)}
-                          className="text-a-ink-muted hover:text-red-500 text-xs transition">삭제</button>
+                          className="text-a-ink-muted hover:text-red-500 text-xs transition opacity-0 group-hover:opacity-100">삭제</button>
                       </td>
                     </tr>
                   );

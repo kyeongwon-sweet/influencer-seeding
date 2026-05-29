@@ -3,6 +3,9 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { startActorRun } from "@/lib/apify";
 
+/** Apify instagram-scraper directUrls 허용 정규식 (400 invalid-input 방지) */
+const APIFY_IG_URL_RE = /^(https:\/\/|\/)(www\.)?instagram\.com\/[A-Za-z0-9\-._]+(\/.*)?$/;
+
 /** 인스타그램 URL을 Apify가 허용하는 형식으로 정규화. 실패 시 null 반환 */
 function cleanInstagramUrl(url: string): string | null {
   try {
@@ -10,7 +13,9 @@ function cleanInstagramUrl(url: string): string | null {
     if (!u.hostname.includes('instagram.com')) return null;
     // 쿼리파라미터·해시 제거, trailing slash 제거
     const path = u.pathname.replace(/\/$/, '') || '/';
-    return `https://www.instagram.com${path}`;
+    const cleaned = `https://www.instagram.com${path}`;
+    // Apify 정규식 검증: 통과 못하면 null 반환 (directUrls에서 자동 제외됨)
+    return APIFY_IG_URL_RE.test(cleaned) ? cleaned : null;
   } catch {
     return null;
   }
@@ -142,6 +147,25 @@ export async function POST(req: NextRequest) {
         }
         if (startErrors.length > 0) {
           await supabase.from('jobs').update({ error: startErrors.join(' | ') }).eq('id', job.id);
+        }
+
+      } else if (type === 'organic_refresh') {
+        // 기존 인스타그램 무상노출 게시글 조회수 갱신
+        const { data: mentions } = await supabase.from('organic_mentions').select('url, platform');
+        const igUrls = ((mentions || []) as { url: string; platform: string }[])
+          .filter(m => m.platform === 'instagram' || m.url.includes('instagram.com'))
+          .map(m => cleanInstagramUrl(m.url))
+          .filter((u): u is string => u !== null);
+
+        if (igUrls.length === 0) {
+          await supabase.from('jobs').update({ status: 'done', payload: { updated: 0 } }).eq('id', job.id);
+        } else {
+          await supabase.from('jobs').update({ status: 'running' }).eq('id', job.id);
+          await startActorRun(
+            'apify/instagram-scraper',
+            { directUrls: igUrls, resultsType: 'posts', resultsLimit: igUrls.length },
+            `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=organic_refresh`
+          );
         }
 
       } else if (type === 'screening') {

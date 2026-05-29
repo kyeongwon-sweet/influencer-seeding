@@ -153,6 +153,7 @@ export default function ScreeningPage() {
 
   // column widths for drag-resize
   const [channelNameWidth, setChannelNameWidth] = useState(160);
+  const [editScreeningName, setEditScreeningName] = useState<{ id: string; value: string } | null>(null);
   const [screenColWidths, setScreenColWidths] = useState<Record<string, number>>({
     "플랫폼": 80, "팔로워 수": 100, "알고리즘 계수": 110, "100만뷰 개수": 110,
     "총 평균 조회수": 120, "총 평균 도달수": 120, "댓글 비율": 90, "광고 비율": 90,
@@ -369,6 +370,20 @@ export default function ScreeningPage() {
     }, 10_000);
   }
 
+  async function patchScreeningName(id: string, name: string) {
+    const res = await fetch(`/api/influencers/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (res.ok) {
+      setList(prev => prev.map(i => i.id === id ? { ...i, name } : i));
+    } else {
+      toast("저장에 실패했습니다.", "error");
+    }
+    setEditScreeningName(null);
+  }
+
   async function updateStatus(id: string, status: string) {
     await fetch(`/api/influencers/${id}`, {
       method: "PATCH",
@@ -532,14 +547,25 @@ export default function ScreeningPage() {
     const def = COL_DEFS[col];
     if (!def) return null;
     return (
-      <div className="hidden group-hover:block absolute top-full left-0 mt-1 z-[9999] bg-gray-900 text-white rounded-[8px] px-3 py-2 text-[11px] shadow-xl whitespace-pre-line min-w-[180px] pointer-events-none">
+      <div className="hidden group-hover:block absolute top-full left-0 mt-1.5 z-[9999] bg-white border border-a-hairline rounded-[10px] px-3.5 py-3 shadow-[0_4px_16px_rgba(0,0,0,0.10)] min-w-[200px] max-w-[280px] pointer-events-none">
+        <p className="text-[11px] font-semibold text-a-ink mb-1.5">{col}</p>
         {def.both ? (
-          <p className="leading-relaxed">{def.both}</p>
+          <p className="text-[11px] text-a-ink-muted leading-relaxed whitespace-pre-line">{def.both}</p>
         ) : (
-          <>
-            {def.ig && <p className="leading-relaxed"><span className="text-blue-300 font-medium">인스타 </span>{def.ig}</p>}
-            {def.yt && <p className="leading-relaxed mt-0.5"><span className="text-red-300 font-medium">유튜브 </span>{def.yt}</p>}
-          </>
+          <div className="space-y-2">
+            {def.ig && (
+              <div>
+                <span className="text-[10px] font-semibold text-blue-500">인스타그램</span>
+                <p className="text-[11px] text-a-ink-muted leading-relaxed whitespace-pre-line mt-0.5">{def.ig}</p>
+              </div>
+            )}
+            {def.yt && (
+              <div>
+                <span className="text-[10px] font-semibold text-red-400">유튜브</span>
+                <p className="text-[11px] text-a-ink-muted leading-relaxed whitespace-pre-line mt-0.5">{def.yt}</p>
+              </div>
+            )}
+          </div>
         )}
       </div>
     );
@@ -782,14 +808,30 @@ export default function ScreeningPage() {
                       <td style={{ left: 44, width: channelNameWidth }}
                         className={`px-3 py-4 shadow-[2px_0_5px_rgba(0,0,0,0.06)] ${stickyCell}`}>
                         <div style={{ width: channelNameWidth - 24, overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                          <a href={inf.url} target="_blank" rel="noreferrer"
-                            className="inline-flex items-center gap-1 font-medium hover:text-a-blue transition-colors group/link">
-                            {inf.name}
-                            <svg width="10" height="10" viewBox="0 0 14 14" fill="none" className="opacity-0 group-hover/link:opacity-50 flex-shrink-0 transition-opacity">
-                              <path d="M5.5 2.5H2.5a1 1 0 00-1 1v8a1 1 0 001 1h8a1 1 0 001-1V9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                              <path d="M8.5 1.5h4m0 0v4m0-4L6 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                            </svg>
-                          </a>
+                          {editScreeningName?.id === inf.id ? (
+                            <input autoFocus value={editScreeningName.value}
+                              onChange={e => setEditScreeningName(v => v ? { ...v, value: e.target.value } : null)}
+                              onBlur={() => patchScreeningName(inf.id, editScreeningName.value)}
+                              onKeyDown={e => { if (e.key === "Enter") patchScreeningName(inf.id, editScreeningName.value); if (e.key === "Escape") setEditScreeningName(null); }}
+                              className="w-full text-sm font-medium bg-transparent border-b border-a-blue outline-none py-0.5" />
+                          ) : (
+                            <div className="flex items-center gap-1">
+                              <a href={inf.url} target="_blank" rel="noreferrer"
+                                className="inline-flex items-center gap-1 font-medium hover:text-a-blue transition-colors group/link min-w-0">
+                                <span className="truncate">{inf.name}</span>
+                                <svg width="10" height="10" viewBox="0 0 14 14" fill="none" className="opacity-0 group-hover/link:opacity-50 flex-shrink-0 transition-opacity">
+                                  <path d="M5.5 2.5H2.5a1 1 0 00-1 1v8a1 1 0 001 1h8a1 1 0 001-1V9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                                  <path d="M8.5 1.5h4m0 0v4m0-4L6 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </a>
+                              <button onClick={() => setEditScreeningName({ id: inf.id, value: inf.name })}
+                                className="opacity-0 group-hover:opacity-100 text-a-ink-muted hover:text-a-ink transition flex-shrink-0" title="이름 수정">
+                                <svg width="11" height="11" viewBox="0 0 20 20" fill="none">
+                                  <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </td>
                       <td style={{ minWidth: screenColWidths["플랫폼"] }} className="px-3 py-4 text-a-ink-muted text-xs whitespace-nowrap">

@@ -4,7 +4,7 @@ import { UserButton } from "@clerk/nextjs";
 import Link from "next/link";
 
 type Influencer = { name: string; status: string; source?: string; created_at?: string; screening_metrics?: { run_at?: string; kw_impact?: number | null; kw_keywords?: string | null }[] };
-type OrganicMention = { id: string; created_at: string; platform: string };
+type OrganicMention = { id: string; created_at: string; platform: string; account_name: string | null; mentioned_product: string | null; view_count: number | null };
 type Job = { id: string; type: string; status: string; payload?: { added?: number; screened?: number }; user_email?: string; created_at: string; error?: string };
 type DailyStats = { play_count: number | null; comments_count: number | null; measured_at: string };
 type SponsoredPost = { id: string; url: string | null; account_name: string | null; project_name: string | null; influencers: { name: string } | null; latest_stats: DailyStats | null; prev_stats: DailyStats | null };
@@ -97,7 +97,7 @@ export default function DashboardPage() {
     .slice(0, 3);
 
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const recentOrganicCount = organicMentions.filter(m => m.created_at >= sevenDaysAgo).length;
+  const recentOrganic = organicMentions.filter(m => m.created_at >= sevenDaysAgo).slice(0, 3);
 
   const menuItems = [
     {
@@ -231,7 +231,7 @@ export default function DashboardPage() {
             </div>
             <div className="px-7 pb-5 grid grid-cols-2 gap-x-8 gap-y-5">
               <div>
-                <p className="text-[11px] font-semibold text-a-ink-muted mb-2">📈 조회수 급상승</p>
+                <p className="text-[11px] font-bold text-a-ink mb-2">📈 조회수 급상승</p>
                 {topViewGainers.length > 0 ? (
                   <div className="space-y-0.5">
                     {topViewGainers.map(({ post, delta }, i) => (
@@ -254,7 +254,7 @@ export default function DashboardPage() {
                 )}
               </div>
               <div>
-                <p className="text-[11px] font-semibold text-a-ink-muted mb-2">💬 댓글 급상승</p>
+                <p className="text-[11px] font-bold text-a-ink mb-2">💬 댓글 급상승</p>
                 {topCommentGainers.length > 0 ? (
                   <div className="space-y-0.5">
                     {topCommentGainers.map(({ post, delta }, i) => (
@@ -277,7 +277,7 @@ export default function DashboardPage() {
                 )}
               </div>
               <div>
-                <p className="text-[11px] font-semibold text-a-ink-muted mb-2">🔍 검색량 특이치</p>
+                <p className="text-[11px] font-bold text-a-ink mb-2">🔍 검색량 특이치</p>
                 {kwSpikes.length > 0 ? (
                   <div className="space-y-1">
                     {kwSpikes.map(({ inf, kw_impact, kw_keywords }, i) => (
@@ -298,9 +298,22 @@ export default function DashboardPage() {
                 )}
               </div>
               <div>
-                <p className="text-[11px] font-semibold text-a-ink-muted mb-2">💡 무상 노출</p>
-                {recentOrganicCount > 0 ? (
-                  <p className="text-xs text-a-ink">최근 7일 <span className="font-semibold text-a-blue">{recentOrganicCount}건</span> 새로 수집됨</p>
+                <p className="text-[11px] font-bold text-a-ink mb-2">💡 무상 노출</p>
+                {recentOrganic.length > 0 ? (
+                  <div className="space-y-0.5">
+                    {recentOrganic.map((m, i) => (
+                      <div key={m.id} className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-[11px] text-a-ink-muted tabular-nums w-4 flex-shrink-0">{i + 1}</span>
+                          <span className="text-xs font-medium text-a-ink truncate">{m.account_name ?? "-"}</span>
+                          {m.mentioned_product && <span className="text-[10px] text-a-ink-muted truncate hidden sm:block">· {m.mentioned_product}</span>}
+                        </div>
+                        <span className="text-xs text-a-ink whitespace-nowrap flex-shrink-0">
+                          {m.view_count != null ? m.view_count.toLocaleString() : "-"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 ) : (
                   <p className="text-xs text-a-ink-muted">특이사항 없음</p>
                 )}

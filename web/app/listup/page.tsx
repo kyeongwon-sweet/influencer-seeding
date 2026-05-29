@@ -85,6 +85,7 @@ export default function ListupPage() {
   const [colWidths, setColWidths] = useState<number[]>(INIT_COL_WIDTHS);
   const [showTimeoutError, setShowTimeoutError] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [editName, setEditName] = useState<{ id: string; value: string } | null>(null);
   const resizingRef = useRef<{ colIdx: number; startX: number; startW: number } | null>(null);
   const runningJobIdRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -253,6 +254,20 @@ export default function ListupPage() {
     a.download = `리스트업_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function patchInfluencerName(id: string, name: string) {
+    const res = await fetch(`/api/influencers/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (res.ok) {
+      setInfluencers(prev => prev.map(i => i.id === id ? { ...i, name } : i));
+    } else {
+      toast("저장에 실패했습니다.", "error");
+    }
+    setEditName(null);
   }
 
   async function deleteKeyword(id: string) {
@@ -669,21 +684,29 @@ export default function ListupPage() {
                   {sortedInfluencers.map(inf => {
                     const ratio = inf.screening_metrics?.[0]?.avg_views_per_follower;
                     return (
-                      <tr key={inf.id} className={`border-b border-a-divider last:border-0 hover:bg-a-parchment/60 transition-colors ${selected.has(inf.id) ? "bg-blue-50/40" : ""}`}>
+                      <tr key={inf.id} className={`group border-b border-a-divider last:border-0 hover:bg-a-parchment/60 transition-colors ${selected.has(inf.id) ? "bg-blue-50/40" : ""}`}>
                         <td className="pl-5 pr-2 py-4 w-9">
                           <input type="checkbox" checked={selected.has(inf.id)} onChange={() => toggleSelect(inf.id)}
                             className="w-3.5 h-3.5 accent-a-blue cursor-pointer" />
                         </td>
                         <td className="px-4 py-4">
                           <div style={{ width: colWidths[0] - 32, overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                            <a href={inf.url} target="_blank" rel="noreferrer"
-                              className="inline-flex items-center gap-1 font-medium hover:text-a-blue transition-colors group/link">
-                              {inf.name}
-                              <svg width="10" height="10" viewBox="0 0 14 14" fill="none" className="opacity-0 group-hover/link:opacity-50 flex-shrink-0 transition-opacity">
-                                <path d="M5.5 2.5H2.5a1 1 0 00-1 1v8a1 1 0 001 1h8a1 1 0 001-1V9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                                <path d="M8.5 1.5h4m0 0v4m0-4L6 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            </a>
+                            {editName?.id === inf.id ? (
+                              <input autoFocus value={editName.value}
+                                onChange={e => setEditName(v => v ? { ...v, value: e.target.value } : null)}
+                                onBlur={() => patchInfluencerName(inf.id, editName.value)}
+                                onKeyDown={e => { if (e.key === "Enter") patchInfluencerName(inf.id, editName.value); if (e.key === "Escape") setEditName(null); }}
+                                className="w-full text-sm font-medium bg-transparent border-b border-a-blue outline-none py-0.5" />
+                            ) : (
+                              <a href={inf.url} target="_blank" rel="noreferrer"
+                                className="inline-flex items-center gap-1 font-medium hover:text-a-blue transition-colors group/link">
+                                {inf.name}
+                                <svg width="10" height="10" viewBox="0 0 14 14" fill="none" className="opacity-0 group-hover/link:opacity-50 flex-shrink-0 transition-opacity">
+                                  <path d="M5.5 2.5H2.5a1 1 0 00-1 1v8a1 1 0 001 1h8a1 1 0 001-1V9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                                  <path d="M8.5 1.5h4m0 0v4m0-4L6 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </a>
+                            )}
                           </div>
                         </td>
                         <td className="px-4 py-4 text-a-ink-muted text-xs whitespace-nowrap">
@@ -724,8 +747,16 @@ export default function ListupPage() {
                           {new Date(inf.created_at).toLocaleDateString("ko-KR")}
                         </td>
                         <td className="px-4 py-4 text-right whitespace-nowrap">
-                          <button onClick={() => deleteInfluencer(inf.id)}
-                            className="text-a-ink-muted hover:text-red-500 text-xs transition">삭제</button>
+                          <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => setEditName({ id: inf.id, value: inf.name })}
+                              className="text-a-ink-muted hover:text-a-ink transition" title="이름 수정">
+                              <svg width="12" height="12" viewBox="0 0 20 20" fill="none">
+                                <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                            <button onClick={() => deleteInfluencer(inf.id)}
+                              className="text-a-ink-muted hover:text-red-500 text-xs transition">삭제</button>
+                          </div>
                         </td>
                       </tr>
                     );

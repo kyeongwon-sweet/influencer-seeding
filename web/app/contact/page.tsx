@@ -81,8 +81,8 @@ function TrendChart({ data, selectedDate, onSelect }: {
 
   if (data.length === 0) return null;
 
-  const W = 900, H = 160;
-  const PAD = { top: 12, bottom: 28, left: 52, right: 12 };
+  const W = 900, H = 200;
+  const PAD = { top: 16, bottom: 32, left: 52, right: 12 };
   const innerW = W - PAD.left - PAD.right;
   const innerH = H - PAD.top - PAD.bottom;
 
@@ -126,8 +126,9 @@ function TrendChart({ data, selectedDate, onSelect }: {
       <svg
         ref={svgRef}
         viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
         className="w-full cursor-crosshair"
-        style={{ height: 160 }}
+        style={{ height: 200, display: "block" }}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setHoverIdx(null)}
         onClick={() => hoverIdx !== null && onSelect(data[hoverIdx].date)}
@@ -135,9 +136,9 @@ function TrendChart({ data, selectedDate, onSelect }: {
         {/* Grid lines */}
         {yTicks.map(({ v }) => (
           <g key={v}>
-            <line x1={PAD.left} x2={W - PAD.right} y1={yv(v)} y2={yv(v)} stroke="#e5e7eb" strokeWidth="0.5" />
+            <line x1={PAD.left} x2={W - PAD.right} y1={yv(v)} y2={yv(v)} stroke="#e5e7eb" strokeWidth="0.8" />
             {v !== 0 && (
-              <text x={PAD.left - 4} y={yv(v) + 4} textAnchor="end" fontSize="9" fill="#9ca3af">{v.toLocaleString()}</text>
+              <text x={PAD.left - 4} y={yv(v) + 4} textAnchor="end" fontSize="10" fill="#9ca3af">{v.toLocaleString()}</text>
             )}
           </g>
         ))}
@@ -150,7 +151,7 @@ function TrendChart({ data, selectedDate, onSelect }: {
 
         {/* Month labels */}
         {monthLabels.map(({ i, label }) => (
-          <text key={i} x={xi(i)} y={H - 6} textAnchor="middle" fontSize="9" fill="#9ca3af">{label}</text>
+          <text key={i} x={xi(i)} y={H - 8} textAnchor="middle" fontSize="10" fill="#9ca3af">{label}</text>
         ))}
 
         {/* Selected date line */}
@@ -284,6 +285,7 @@ export default function ContactPage() {
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const [editForm, setEditForm] = useState({ name: "", content: "" });
   const [savingTemplate, setSavingTemplate] = useState(false);
+  const [editContactName, setEditContactName] = useState<{ id: string; value: string } | null>(null);
 
   useEffect(() => {
     loadInfluencers();
@@ -348,6 +350,18 @@ export default function ContactPage() {
   }
 
   // ── Contact modal ──────────────────────────────────────────────────────────
+
+  async function patchContactName(id: string, name: string) {
+    const res = await fetch(`/api/influencers/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (res.ok) {
+      setInfluencers(prev => prev.map(i => i.id === id ? { ...i, name } : i));
+    }
+    setEditContactName(null);
+  }
 
   function openContact(inf: Influencer) {
     setContactModal(inf);
@@ -597,9 +611,25 @@ export default function ContactPage() {
                   {influencers.map(inf => {
                     const m = getMetrics(inf);
                     return (
-                      <tr key={inf.id} className="border-b border-a-divider last:border-0 hover:bg-a-parchment/60 transition-colors">
+                      <tr key={inf.id} className="group border-b border-a-divider last:border-0 hover:bg-a-parchment/60 transition-colors">
                         <td className="px-4 py-3 whitespace-nowrap">
-                          <InfluencerName inf={inf} />
+                          {editContactName?.id === inf.id ? (
+                            <input autoFocus value={editContactName.value}
+                              onChange={e => setEditContactName(v => v ? { ...v, value: e.target.value } : null)}
+                              onBlur={() => patchContactName(inf.id, editContactName.value)}
+                              onKeyDown={e => { if (e.key === "Enter") patchContactName(inf.id, editContactName.value); if (e.key === "Escape") setEditContactName(null); }}
+                              className="text-sm font-medium bg-transparent border-b border-a-blue outline-none py-0.5" />
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <InfluencerName inf={inf} />
+                              <button onClick={() => setEditContactName({ id: inf.id, value: inf.name })}
+                                className="opacity-0 group-hover:opacity-100 text-a-ink-muted hover:text-a-ink transition flex-shrink-0" title="이름 수정">
+                                <svg width="11" height="11" viewBox="0 0 20 20" fill="none">
+                                  <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </button>
+                            </div>
+                          )}
                         </td>
                         <td className="px-3 py-3 text-xs text-a-ink-muted whitespace-nowrap">
                           {inf.platform === "instagram" ? "인스타" : "유튜브"}

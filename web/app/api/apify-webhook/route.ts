@@ -157,6 +157,9 @@ export async function POST(req: NextRequest) {
     } else if (jobType === 'organic') {
       const platform = searchParams.get('platform') || 'instagram';
       await handleOrganic(supabase, jobId, items, platform);
+
+    } else if (jobType === 'organic_refresh') {
+      await handleOrganicRefresh(supabase, jobId, items);
     }
   } catch (e) {
     await supabase.from('jobs').update({ status: 'failed', error: String(e) }).eq('id', jobId);
@@ -413,6 +416,35 @@ async function handleScreening(
   }
 
   await supabase.from('jobs').update({ status: 'done' }).eq('id', jobId);
+}
+
+// ── 무상 노출 조회수 갱신 ────────────────────────────────────────────────
+
+async function handleOrganicRefresh(supabase: ReturnType<typeof getServerSupabase>, jobId: string, items: Record<string, unknown>[]) {
+  let updated = 0;
+  for (const item of items) {
+    const shortCode = (item.shortCode || item.shortcode) as string | undefined;
+    const rawUrl = (item.url as string) || (shortCode ? `https://www.instagram.com/p/${shortCode}/` : null);
+    if (!rawUrl) continue;
+
+    const viewCount = (item.videoPlayCount || item.videoViewCount) as number | null | undefined;
+    if (!viewCount) continue;
+
+    // URL 정규화: 쿼리파라미터 제거, trailing slash
+    let cleanUrl: string;
+    try {
+      const u = new URL(rawUrl.startsWith('http') ? rawUrl : 'https://' + rawUrl);
+      cleanUrl = `https://www.instagram.com${u.pathname.replace(/\/$/, '')}/`;
+    } catch { continue; }
+
+    const { error } = await supabase
+      .from('organic_mentions')
+      .update({ view_count: viewCount })
+      .eq('url', cleanUrl);
+
+    if (!error) updated++;
+  }
+  await supabase.from('jobs').update({ status: 'done', payload: { updated } }).eq('id', jobId);
 }
 
 // ── 무상 노출 ────────────────────────────────────────────────────────
