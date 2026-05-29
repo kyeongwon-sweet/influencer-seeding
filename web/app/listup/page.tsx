@@ -38,7 +38,7 @@ const INIT_FILTERS: Filters = { name: "", platform: "all", status: "all", keywor
 
 // 드래그 리사이즈 가능한 열 기본 너비 (px)
 // [채널명, 플랫폼, 발굴 키워드, 게시물, 유형, 업로드일, 조회/팔로워, 상태, 추가일]
-const INIT_COL_WIDTHS = [160, 68, 100, 56, 56, 88, 96, 68, 88];
+const INIT_COL_WIDTHS = [200, 80, 130, 64, 72, 100, 120, 84, 100];
 
 function formatTimestamp(ts: string): string {
   const d = new Date(ts);
@@ -619,7 +619,7 @@ export default function ListupPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="text-sm">
+              <table className="w-full text-sm">
                 <thead className="sticky top-0 z-30">
                   <tr className="border-b border-a-hairline">
                     <th className="pl-5 pr-2 py-3 w-9 bg-white">

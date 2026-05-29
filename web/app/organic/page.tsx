@@ -18,8 +18,8 @@ type Mention = {
   created_at: string;
 };
 
-type Filters = { name: string; platform: string; product: string; dateFrom: string; dateTo: string };
-const INIT_FILTERS: Filters = { name: "", platform: "all", product: "", dateFrom: "", dateTo: "" };
+type Filters = { name: string; platform: string; products: string[]; dateFrom: string; dateTo: string };
+const INIT_FILTERS: Filters = { name: "", platform: "all", products: [], dateFrom: "", dateTo: "" };
 
 type CsvRow = {
   platform: string; url: string; account_name: string | null;
@@ -347,17 +347,27 @@ export default function OrganicPage() {
   const filtered = mentions.filter(m => {
     if (filters.name && !(m.account_name ?? "").toLowerCase().includes(filters.name.toLowerCase())) return false;
     if (filters.platform !== "all" && m.platform !== filters.platform) return false;
-    if (filters.product && !(m.mentioned_product ?? "").includes(filters.product)) return false;
+    if (filters.products.length > 0) {
+      // 콤마로 구분된 복수 제품 지원: 선택된 제품 중 하나라도 포함되면 통과
+      const mentionProds = (m.mentioned_product ?? "").split(",").map(p => p.trim()).filter(Boolean);
+      if (!filters.products.some(fp => mentionProds.includes(fp))) return false;
+    }
     if (filters.dateFrom && (!m.uploaded_at || m.uploaded_at < filters.dateFrom)) return false;
     if (filters.dateTo && (!m.uploaded_at || m.uploaded_at > filters.dateTo)) return false;
     return true;
   });
 
-  const hasFilter = filters.name !== "" || filters.platform !== "all" || filters.product !== "" || filters.dateFrom !== "" || filters.dateTo !== "";
+  const hasFilter = filters.name !== "" || filters.platform !== "all" || filters.products.length > 0 || filters.dateFrom !== "" || filters.dateTo !== "";
 
-  // 언급 제품 드롭다운 옵션
+  // 언급 제품 옵션 — 콤마 구분 복수 값 파싱
   const productOptions = Array.from(
-    new Set(mentions.map(m => m.mentioned_product).filter(Boolean) as string[])
+    new Set(
+      mentions.flatMap(m =>
+        m.mentioned_product
+          ? m.mentioned_product.split(",").map(p => p.trim()).filter(Boolean)
+          : []
+      )
+    )
   ).sort();
 
   // 최근 업데이트 시간
@@ -477,14 +487,31 @@ export default function OrganicPage() {
             <option value="all">전체 플랫폼</option>
             {PLATFORMS.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
-          <select
-            value={filters.product}
-            onChange={e => setFilters(p => ({ ...p, product: e.target.value }))}
-            className={`filter-select ${filters.product ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
-          >
-            <option value="">전체 제품</option>
-            {productOptions.map(p => <option key={p} value={p}>{p}</option>)}
-          </select>
+          {/* 언급 제품 다중 선택 칩 */}
+          {productOptions.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {productOptions.map(p => {
+                const active = filters.products.includes(p);
+                return (
+                  <button key={p}
+                    onClick={() => setFilters(prev => ({
+                      ...prev,
+                      products: active
+                        ? prev.products.filter(x => x !== p)
+                        : [...prev.products, p],
+                    }))}
+                    className={`text-xs px-2.5 py-1 rounded-full border transition ${
+                      active
+                        ? "border-a-blue bg-blue-50 text-a-blue font-medium"
+                        : "border-a-hairline text-a-ink-muted hover:border-gray-400"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <div className="w-px h-4 bg-a-hairline mx-0.5" />
           <div className="flex items-center gap-1.5">
             <input type="date" value={filters.dateFrom}
@@ -552,15 +579,18 @@ export default function OrganicPage() {
                               if (e.key === "Enter") patchProduct(m.id, editCell.value);
                               if (e.key === "Escape") setEditCell(null);
                             }}
+                            placeholder="쉼표로 구분해 복수 입력"
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5"
                           />
                         ) : (
                           <span
                             onClick={() => setEditCell({ id: m.id, value: m.mentioned_product ?? "" })}
-                            className="text-xs cursor-text text-a-ink hover:text-a-blue transition-colors">
+                            className="flex flex-wrap gap-1 cursor-text">
                             {m.mentioned_product
-                              ? <span className="bg-a-parchment px-2 py-0.5 rounded-full">{m.mentioned_product}</span>
-                              : <span className="text-gray-300">클릭해서 입력</span>}
+                              ? m.mentioned_product.split(",").map(p => p.trim()).filter(Boolean).map(p => (
+                                  <span key={p} className="text-xs bg-a-parchment px-2 py-0.5 rounded-full text-a-ink hover:text-a-blue transition-colors">{p}</span>
+                                ))
+                              : <span className="text-xs text-gray-300">클릭해서 입력</span>}
                           </span>
                         )}
                       </td>

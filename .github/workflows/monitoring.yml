@@ -2,7 +2,7 @@ name: Run Monitoring
 
 on:
   schedule:
-    - cron: "0 9 * * *"   # 매일 오전 9시 UTC (한국시간 오후 6시)
+    - cron: "0 15 * * *"  # 매일 UTC 15:00 = KST 00:00 (자정)
   workflow_dispatch:
   repository_dispatch:
     types: [monitoring]

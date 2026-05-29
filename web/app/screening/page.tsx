@@ -513,11 +513,44 @@ export default function ScreeningPage() {
     return sortDir === "asc" ? cmp : -cmp;
   });
 
+  // 열 정의 툴팁 (인스타 / 유튜브)
+  const COL_DEFS: Record<string, { ig?: string; yt?: string; both?: string }> = {
+    "팔로워 수":        { both: "계정 팔로워(구독자) 수" },
+    "알고리즘 계수":    { ig: "평균 재생수 ÷ 팔로워 수", yt: "평균 재생수 ÷ 구독자 수" },
+    "100만뷰 개수":     { ig: "최근 1개월 릴스 중 재생수 ≥ 1,000,000 게시물 수", yt: "최근 30일 Shorts 중 조회수 ≥ 1,000,000 개수" },
+    "총 평균 조회수":   { ig: "videoPlayCount 평균\n(같은 사람이 여러 번 재생해도 모두 카운트)", yt: "viewCount 평균" },
+    "총 평균 도달수":   { ig: "videoViewCount 평균\n(중복 제거 시청자 수, 1인=1)", yt: "유튜브 미제공" },
+    "댓글 비율":        { ig: "commentsCount / videoPlayCount × 100\n게시물별 비율의 평균", yt: "commentsCount / viewCount × 100\n게시물별 비율의 평균" },
+    "광고 비율":        { ig: "광고 게시물(#광고) / 총 게시물 × 100", yt: "광고 게시물(#광고 #협찬 #AD #Sponsored) / 총 게시물 × 100" },
+    "광고 평균 조회수": { ig: "광고 릴스(#광고)의 평균 재생수", yt: "광고 Shorts의 평균 viewCount" },
+    "광고 효율":        { both: "(광고 평균 재생수 − 일반 평균 재생수) ÷ 10,000\n양수 = 광고 게시물이 일반보다 더 많이 퍼짐" },
+    "광고 최고 조회수": { ig: "광고 릴스(#광고) 중 최고 재생수", yt: "최근 30일 광고 Shorts 중 최고 viewCount" },
+    "검색어 트렌드":    { both: "광고 전후 네이버 검색량 변화율\n(후 7일 평균 − 전 7일 평균) ÷ 전 7일 평균 × 100" },
+  };
+
+  function ColTooltip({ col }: { col: string }) {
+    const def = COL_DEFS[col];
+    if (!def) return null;
+    return (
+      <div className="hidden group-hover:block absolute top-full left-0 mt-1 z-[9999] bg-gray-900 text-white rounded-[8px] px-3 py-2 text-[11px] shadow-xl whitespace-pre-line min-w-[180px] pointer-events-none">
+        {def.both ? (
+          <p className="leading-relaxed">{def.both}</p>
+        ) : (
+          <>
+            {def.ig && <p className="leading-relaxed"><span className="text-blue-300 font-medium">인스타 </span>{def.ig}</p>}
+            {def.yt && <p className="leading-relaxed mt-0.5"><span className="text-red-300 font-medium">유튜브 </span>{def.yt}</p>}
+          </>
+        )}
+      </div>
+    );
+  }
+
   // sortable + resizable TH helper
   function sortTH(col: string, right = false, center = false, stickyLeft?: number, stickyColW?: number, lastSticky = false) {
     const isSticky = stickyLeft !== undefined;
     const colW = stickyColW ?? screenColWidths[col];
     const active = sortCol === col;
+    const hasDef = !!COL_DEFS[col];
     return (
       <th key={col} onClick={() => handleSort(col)}
         style={isSticky
@@ -529,8 +562,10 @@ export default function ScreeningPage() {
           isSticky ? "sticky z-40" : "",
           lastSticky ? "shadow-[2px_0_5px_rgba(0,0,0,0.06)]" : "",
           active ? "text-a-ink" : "text-a-ink-muted hover:text-a-ink",
+          hasDef ? "group" : "",
         ].join(" ")}>
         {col}<span className={`ml-1 ${active ? "text-a-blue" : "opacity-20"}`}>{active ? (sortDir === "asc" ? "↑" : "↓") : "↕"}</span>
+        {hasDef && <ColTooltip col={col} />}
         <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-a-blue/30"
           onMouseDown={e => { e.stopPropagation(); startScreenResize(col, e, isSticky); }} />
       </th>
@@ -539,14 +574,17 @@ export default function ScreeningPage() {
 
   // non-sortable resizable TH helper
   function staticTH(col: string, right = false, center = false) {
+    const hasDef = !!COL_DEFS[col];
     return (
       <th key={col}
         style={{ minWidth: screenColWidths[col] }}
         className={[
           "relative px-3 py-3 text-xs font-medium text-a-ink-muted bg-white whitespace-nowrap select-none",
           center ? "text-center" : right ? "text-right" : "text-left",
+          hasDef ? "group" : "",
         ].join(" ")}>
         {col}
+        {hasDef && <ColTooltip col={col} />}
         <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-a-blue/30"
           onMouseDown={e => { e.stopPropagation(); startScreenResize(col, e); }} />
       </th>
