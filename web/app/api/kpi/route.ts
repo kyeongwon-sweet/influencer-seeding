@@ -28,6 +28,6 @@ export async function GET() {
     .limit(1)
     .maybeSingle();
 
-  if (error) return NextResponse.json(null);
+  if (error) return NextResponse.json({ error: error.message, code: error.code }, { status: 500 });
   return NextResponse.json(data);
 }

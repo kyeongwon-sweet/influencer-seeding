@@ -2,6 +2,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse, after } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { startActorRun } from "@/lib/apify";
+import { normalizeYouTubeUrl } from "@/lib/url-utils";
 
 /** Apify instagram-scraper directUrls 허용 정규식 (400 invalid-input 방지) */
 const APIFY_IG_URL_RE = /^(https:\/\/|\/)(www\.)?instagram\.com\/[A-Za-z0-9\-._]+(\/.*)?$/;
@@ -198,11 +199,14 @@ export async function POST(req: NextRequest) {
               { directUrls: igUrls, resultsType: 'posts', resultsLimit: 60, addParentData: true },
               `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=screening&platform=instagram`
             ).catch((e: unknown) => { startErrors.push(`인스타 스크리닝: ${e}`); }) : Promise.resolve(),
-            ...ytInfluencers.map((inf: { id: string; url: string }) => startActorRun(
-              'streamers/youtube-scraper',
-              { startUrls: [{ url: inf.url }], maxResultsShorts: 15 },
-              `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=screening&platform=youtube&influencerId=${inf.id}`
-            ).catch((e: unknown) => { startErrors.push(`유튜브(${inf.url}): ${e}`); })),
+            ...ytInfluencers.map((inf: { id: string; url: string }) => {
+              const ytUrl = normalizeYouTubeUrl(inf.url) ?? inf.url;
+              return startActorRun(
+                'streamers/youtube-scraper',
+                { startUrls: [{ url: ytUrl }], maxResultsShorts: 15 },
+                `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=screening&platform=youtube&influencerId=${inf.id}`
+              ).catch((e: unknown) => { startErrors.push(`유튜브(${inf.url}): ${e}`); });
+            }),
           ]);
           const totalRuns = (igUrls.length > 0 ? 1 : 0) + ytInfluencers.length;
           if (startErrors.length === totalRuns) {

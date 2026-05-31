@@ -60,16 +60,17 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([
-      fetch("/api/influencers").then(r => r.json()).then(setInfluencers),
-      fetch("/api/jobs").then(r => r.json()).then(setJobs),
-      fetch("/api/sponsored-posts").then(r => r.json()).then((data: SponsoredPost[]) => {
+    const t = AbortSignal.timeout(12000);
+    Promise.allSettled([
+      fetch("/api/influencers", { signal: t }).then(r => r.json()).then(setInfluencers),
+      fetch("/api/jobs", { signal: t }).then(r => r.json()).then(setJobs),
+      fetch("/api/sponsored-posts", { signal: t }).then(r => r.json()).then((data: SponsoredPost[]) => {
         if (Array.isArray(data)) setPosts(data);
       }),
-      fetch("/api/organic-mentions").then(r => r.json()).then((data: OrganicMention[]) => {
+      fetch("/api/organic-mentions", { signal: t }).then(r => r.json()).then((data: OrganicMention[]) => {
         if (Array.isArray(data)) setOrganicMentions(data);
       }),
-      fetch("/api/kpi").then(r => r.json()).then((data: KpiSnapshot | null) => {
+      fetch("/api/kpi", { signal: t }).then(r => r.json()).then((data: KpiSnapshot | null) => {
         if (data?.id) setKpi(data);
       }),
     ]).finally(() => setLoading(false));

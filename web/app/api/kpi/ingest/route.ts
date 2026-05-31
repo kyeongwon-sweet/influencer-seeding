@@ -19,6 +19,7 @@ export async function POST(req: NextRequest) {
   const { error } = await supabase.from("kpi_snapshots").insert({
     month_label: body.month_label ?? null,
     metrics: body.metrics,
+    fetched_at: new Date().toISOString(),
   });
 
   if (error) return NextResponse.json({ error: error.message, code: error.code }, { status: 500 });
