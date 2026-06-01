@@ -62,6 +62,8 @@ function calcMetrics(profile: Record<string, unknown>, posts: Record<string, unk
     total_avg_play_count: totalPlay,
     general_avg_play_count: avg(generalPosts, 'videoPlayCount'),
     ad_avg_play_count: avg(adPosts, 'videoPlayCount'),
+    total_avg_like_count: avg(recent, 'likesCount'),
+    total_avg_comment_count: avg(recent, 'commentsCount'),
     total_like_ratio: ratioAvg(recent, 'likesCount', 'videoPlayCount'),
     general_like_ratio: ratioAvg(generalPosts, 'likesCount', 'videoPlayCount'),
     ad_like_ratio: ratioAvg(adPosts, 'likesCount', 'videoPlayCount'),

@@ -6,7 +6,13 @@ import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
 import { normalizeYouTubeUrl } from "@/lib/url-utils";
 
 type Keyword = { id: string; keyword: string; platform: string; created_at: string };
-type ScreeningMetrics = { avg_views_per_follower: number | null; followers: number | null; total_avg_play_count: number | null };
+type ScreeningMetrics = {
+  avg_views_per_follower: number | null;
+  followers: number | null;
+  total_avg_play_count: number | null;
+  total_avg_like_count: number | null;
+  total_avg_comment_count: number | null;
+};
 type Influencer = {
   id: string; name: string; url: string; platform: string; status: string; source: string;
   created_at: string; keyword?: string; sample_post_url?: string; post_type?: string;
@@ -39,8 +45,8 @@ type Filters = { name: string; platform: string; status: string; keyword: string
 const INIT_FILTERS: Filters = { name: "", platform: "all", status: "all", keyword: "all", uploadedFrom: "", uploadedTo: "" };
 
 // 드래그 리사이즈 가능한 열 기본 너비 (px)
-// [채널명, 플랫폼, 발굴키워드, 팔로워, 조회수, 캡션, 업로드일, 추가일, 특이사항, 상태]
-const INIT_COL_WIDTHS = [200, 80, 130, 90, 90, 200, 100, 100, 160, 84];
+// [채널명, 플랫폼, 발굴키워드, 팔로워, 조회수, 참여수, 캡션, 업로드일, 추가일, 특이사항, 상태]
+const INIT_COL_WIDTHS = [200, 80, 130, 90, 90, 90, 200, 100, 100, 160, 84];
 
 function formatTimestamp(ts: string): string {
   const d = new Date(ts);
@@ -893,17 +899,18 @@ export default function ListupPage() {
                     {rsTH("발굴 키워드", 2)}
                     {rsTH("팔로워", 3)}
                     {rsTH("조회수", 4)}
-                    {rsTH("캡션", 5, false)}
-                    {rsTH("업로드일", 6)}
-                    {rsTH("추가일", 7)}
-                    {rsTH("특이사항", 8, false)}
+                    {rsTH("참여수", 5)}
+                    {rsTH("캡션", 6, false)}
+                    {rsTH("업로드일", 7)}
+                    {rsTH("추가일", 8)}
+                    {rsTH("특이사항", 9, false)}
                     {(() => {
                       const col = "상태";
                       const active = sortCol === col;
                       return (
                         <th
                           key={col}
-                          style={{ minWidth: colWidths[9] }}
+                          style={{ minWidth: colWidths[10] }}
                           className={`relative px-4 py-3 text-left text-[10px] font-medium uppercase tracking-wider whitespace-nowrap bg-white select-none group ${
                             active ? "text-a-ink" : "text-gray-400"
                           }`}
@@ -919,7 +926,7 @@ export default function ListupPage() {
                             <p className="text-[11px] text-a-ink-muted leading-relaxed">스크리닝에서 통과/탈락을 설정하면<br/>이 탭의 상태가 자동으로 반영됩니다.</p>
                           </div>
                           <div
-                            onMouseDown={e => startResize(e, 9)}
+                            onMouseDown={e => startResize(e, 10)}
                             className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-100 z-10"
                           />
                         </th>
@@ -994,7 +1001,31 @@ export default function ListupPage() {
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-3" style={{ minWidth: colWidths[5] }}>
+                        <td className="px-4 py-4 text-xs whitespace-nowrap">
+                          {(() => {
+                            const m = inf.screening_metrics?.[0];
+                            const likes = m?.total_avg_like_count ?? null;
+                            const comments = m?.total_avg_comment_count ?? null;
+                            const total = likes != null || comments != null
+                              ? (likes ?? 0) + (comments ?? 0) : null;
+                            return (
+                              <span className="relative group/eng">
+                                <span className={`font-medium tabular-nums ${total != null ? "text-a-ink" : "text-gray-300"}`}>
+                                  {total != null ? fmtNum(total) : "-"}
+                                </span>
+                                {total != null && (
+                                  <span className="hidden group-hover/eng:block absolute bottom-full left-0 mb-1 z-50 bg-gray-900 text-white text-[11px] rounded-[8px] px-3 py-2 whitespace-nowrap shadow-lg">
+                                    <span className="block">❤️ 좋아요 {fmtNum(likes)}</span>
+                                    <span className="block">💬 댓글 {fmtNum(comments)}</span>
+                                    <span className="block text-gray-400">↗️ 공유 - (미집계)</span>
+                                    <span className="block text-gray-400">🔖 저장 - (미집계)</span>
+                                  </span>
+                                )}
+                              </span>
+                            );
+                          })()}
+                        </td>
+                        <td className="px-4 py-3" style={{ minWidth: colWidths[6] }}>
                           {editCaption?.id === inf.id ? (
                             <textarea
                               autoFocus
@@ -1104,7 +1135,7 @@ export default function ListupPage() {
                         <td className="px-4 py-4 text-a-ink-muted text-xs whitespace-nowrap">
                           {new Date(inf.created_at).toLocaleDateString("ko-KR")}
                         </td>
-                        <td className="px-4 py-3" style={{ minWidth: colWidths[8] }}>
+                        <td className="px-4 py-3" style={{ minWidth: colWidths[9] }}>
                           {editNotes?.id === inf.id ? (
                             <textarea
                               autoFocus
