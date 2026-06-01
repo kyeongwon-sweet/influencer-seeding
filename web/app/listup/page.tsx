@@ -39,8 +39,8 @@ type Filters = { name: string; platform: string; status: string; keyword: string
 const INIT_FILTERS: Filters = { name: "", platform: "all", status: "all", keyword: "all", uploadedFrom: "", uploadedTo: "" };
 
 // 드래그 리사이즈 가능한 열 기본 너비 (px)
-// [채널명, 플랫폼, 캡션, 발굴 키워드, 업로드일, 팔로워, 조회수, 상태, 추가일, 특이사항]
-const INIT_COL_WIDTHS = [200, 80, 200, 130, 100, 90, 90, 84, 100, 160];
+// [채널명, 플랫폼, 발굴키워드, 팔로워, 조회수, 캡션, 업로드일, 추가일, 특이사항, 상태]
+const INIT_COL_WIDTHS = [200, 80, 130, 90, 90, 200, 100, 100, 160, 84];
 
 function formatTimestamp(ts: string): string {
   const d = new Date(ts);
@@ -685,8 +685,7 @@ export default function ListupPage() {
           )}
         </div>
         <div className="flex items-center gap-1.5">
-          <button onClick={() => setShowAdd(true)} className="btn-secondary">+ 계정 추가</button>
-          <button onClick={() => setShowCsvImport(true)} className="btn-secondary">CSV 가져오기</button>
+<button onClick={() => setShowCsvImport(true)} className="btn-secondary">CSV 가져오기</button>
           {running && (
             <>
               <span className="text-xs text-a-ink-muted tabular-nums">{formatElapsed(elapsedSeconds)}</span>
@@ -891,18 +890,20 @@ export default function ListupPage() {
                         </div>
                       </div>
                     ))}
-                    {rsTH("캡션", 2, false)}
-                    {rsTH("발굴 키워드", 3)}
-                    {rsTH("업로드일", 4)}
-                    {rsTH("팔로워", 5)}
-                    {rsTH("조회수", 6)}
+                    {rsTH("발굴 키워드", 2)}
+                    {rsTH("팔로워", 3)}
+                    {rsTH("조회수", 4)}
+                    {rsTH("캡션", 5, false)}
+                    {rsTH("업로드일", 6)}
+                    {rsTH("추가일", 7)}
+                    {rsTH("특이사항", 8, false)}
                     {(() => {
                       const col = "상태";
                       const active = sortCol === col;
                       return (
                         <th
                           key={col}
-                          style={{ minWidth: colWidths[7] }}
+                          style={{ minWidth: colWidths[9] }}
                           className={`relative px-4 py-3 text-left text-[10px] font-medium uppercase tracking-wider whitespace-nowrap bg-white select-none group ${
                             active ? "text-a-ink" : "text-gray-400"
                           }`}
@@ -918,14 +919,12 @@ export default function ListupPage() {
                             <p className="text-[11px] text-a-ink-muted leading-relaxed">스크리닝에서 통과/탈락을 설정하면<br/>이 탭의 상태가 자동으로 반영됩니다.</p>
                           </div>
                           <div
-                            onMouseDown={e => startResize(e, 7)}
+                            onMouseDown={e => startResize(e, 9)}
                             className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-100 z-10"
                           />
                         </th>
                       );
                     })()}
-                    {rsTH("추가일", 8)}
-                    {rsTH("특이사항", 9, false)}
                     <th className="px-4 py-3 bg-white"></th>
                   </tr>
                 </thead>
@@ -967,31 +966,6 @@ export default function ListupPage() {
                         <td className="px-4 py-4 text-a-ink-muted text-xs whitespace-nowrap">
                           {inf.platform === "instagram" ? "인스타" : "유튜브"}
                         </td>
-                        <td className="px-4 py-3" style={{ minWidth: colWidths[2] }}>
-                          {editCaption?.id === inf.id ? (
-                            <textarea
-                              autoFocus
-                              rows={2}
-                              value={editCaption.value}
-                              onChange={e => setEditCaption(v => v ? { ...v, value: e.target.value } : null)}
-                              onBlur={() => patchCaption(inf.id, editCaption.value)}
-                              onKeyDown={e => { if (e.key === "Escape") setEditCaption(null); }}
-                              className="text-xs w-full bg-transparent border-b border-a-blue outline-none py-0.5 resize-none text-a-ink"
-                            />
-                          ) : (
-                            <span
-                              onClick={() => setEditCaption({ id: inf.id, value: inf.content_summary ?? "" })}
-                              className="cursor-pointer flex items-center gap-1 group/cap"
-                            >
-                              {inf.content_summary
-                                ? <span className="text-[11px] text-a-ink-muted line-clamp-2 block">{inf.content_summary}</span>
-                                : <span className="text-xs text-gray-300">-</span>}
-                              <svg width="10" height="10" viewBox="0 0 20 20" fill="none" className="opacity-0 group-hover/cap:opacity-40 transition-opacity flex-shrink-0">
-                                <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            </span>
-                          )}
-                        </td>
                         <td className="px-4 py-4 whitespace-nowrap">
                           {editKeyword?.id === inf.id ? (
                             <input
@@ -1015,6 +989,31 @@ export default function ListupPage() {
                                 ? <span className="text-xs bg-a-parchment text-a-ink-muted px-2 py-0.5 rounded-full">#{inf.keyword}</span>
                                 : <span className="text-xs text-gray-300">-</span>}
                               <svg width="10" height="10" viewBox="0 0 20 20" fill="none" className="opacity-0 group-hover/kw:opacity-40 transition-opacity flex-shrink-0">
+                                <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3" style={{ minWidth: colWidths[5] }}>
+                          {editCaption?.id === inf.id ? (
+                            <textarea
+                              autoFocus
+                              rows={2}
+                              value={editCaption.value}
+                              onChange={e => setEditCaption(v => v ? { ...v, value: e.target.value } : null)}
+                              onBlur={() => patchCaption(inf.id, editCaption.value)}
+                              onKeyDown={e => { if (e.key === "Escape") setEditCaption(null); }}
+                              className="text-xs w-full bg-transparent border-b border-a-blue outline-none py-0.5 resize-none text-a-ink"
+                            />
+                          ) : (
+                            <span
+                              onClick={() => setEditCaption({ id: inf.id, value: inf.content_summary ?? "" })}
+                              className="cursor-pointer flex items-center gap-1 group/cap"
+                            >
+                              {inf.content_summary
+                                ? <span className="text-[11px] text-a-ink-muted line-clamp-2 block">{inf.content_summary}</span>
+                                : <span className="text-xs text-gray-300">-</span>}
+                              <svg width="10" height="10" viewBox="0 0 20 20" fill="none" className="opacity-0 group-hover/cap:opacity-40 transition-opacity flex-shrink-0">
                                 <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                               </svg>
                             </span>
@@ -1102,15 +1101,10 @@ export default function ListupPage() {
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          <span className={`text-xs px-2.5 py-1 rounded-full ${STATUS_CLS[inf.status] ?? STATUS_CLS.pending}`}>
-                            {STATUS_LABEL[inf.status] ?? inf.status}
-                          </span>
-                        </td>
                         <td className="px-4 py-4 text-a-ink-muted text-xs whitespace-nowrap">
                           {new Date(inf.created_at).toLocaleDateString("ko-KR")}
                         </td>
-                        <td className="px-4 py-3" style={{ minWidth: colWidths[9] }}>
+                        <td className="px-4 py-3" style={{ minWidth: colWidths[8] }}>
                           {editNotes?.id === inf.id ? (
                             <textarea
                               autoFocus
@@ -1129,6 +1123,11 @@ export default function ListupPage() {
                               {inf.notes || <span className="text-gray-300">-</span>}
                             </span>
                           )}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <span className={`text-xs px-2.5 py-1 rounded-full ${STATUS_CLS[inf.status] ?? STATUS_CLS.pending}`}>
+                            {STATUS_LABEL[inf.status] ?? inf.status}
+                          </span>
                         </td>
                         <td className="px-4 py-4 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
