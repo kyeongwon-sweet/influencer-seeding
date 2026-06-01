@@ -75,9 +75,11 @@ export async function POST(req: NextRequest) {
     try {
       if (type === 'monitoring') {
         const { data: posts } = await supabase.from('sponsored_posts').select('url');
-        const urls = (posts || [])
-          .map((p: { url: string }) => cleanInstagramUrl(p.url))
-          .filter((u): u is string => u !== null);
+        const urls = [...new Set(
+          (posts || [])
+            .map((p: { url: string }) => cleanInstagramUrl(p.url))
+            .filter((u): u is string => u !== null)
+        )];
 
         if (urls.length === 0) {
           await supabase.from('jobs').update({ status: 'done' }).eq('id', job.id);
