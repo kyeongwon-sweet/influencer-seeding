@@ -212,7 +212,7 @@ function smoothCurvePath(pts: [number, number][]): string {
 function LineChart({ data, height = 160, gradId = "lcGrad" }: { data: { date: string; value: number }[]; height?: number; gradId?: string }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   if (data.length < 2) return <div className="flex items-center justify-center py-8 text-xs text-a-ink-muted">데이터 없음</div>;
-  const pl = 60, pr = 12, pt = 8, pb = 28;
+  const pl = 52, pr = 8, pt = 8, pb = 22;
   const VW = 560, VH = height;
   const cw = VW - pl - pr, ch = VH - pt - pb;
   const vals = data.map(d => d.value);
@@ -261,7 +261,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad" }: { data: { date: st
             </>
           )}
           {xLabelIdxs.map(i => (
-            <text key={i} x={xS(i)} y={ch + 16} textAnchor="middle" fontSize="10" fill="#9ca3af">
+            <text key={i} x={xS(i)} y={ch + 14} textAnchor="middle" fontSize="8.5" fill="#9ca3af">
               {data[i].date.slice(5).replace("-", "/")}
             </text>
           ))}
@@ -895,12 +895,12 @@ export default function MonitoringPage() {
             {/* 차트 + 테이블 */}
             <div className="flex divide-x divide-a-hairline">
               {/* 차트 */}
-              <div className="flex-[3] px-6 py-5">
-                <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest mb-3">조회수 트렌드 (누적)</p>
-                <LineChart data={chartData} height={180} gradId="summaryGrad" />
+              <div className="flex-[5] px-6 py-4">
+                <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest mb-2">조회수 트렌드 (누적)</p>
+                <LineChart data={chartData} height={160} gradId="summaryGrad" />
               </div>
               {/* 증감 테이블 */}
-              <div className="flex-[2] flex flex-col">
+              <div className="flex-[3] flex flex-col self-start min-w-0">
                 <div className="px-5 py-4 border-b border-a-hairline">
                   <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">일자별 조회수 증감</p>
                 </div>
@@ -927,7 +927,7 @@ export default function MonitoringPage() {
                     const rows = [{ date: dailyTotals[0].date, play: 0, likes: 0, comments: 0 }, ...deltaTableData];
                     const reversed = [...rows].reverse();
                     return (
-                      <div className="overflow-y-auto" style={{ maxHeight: 260 }}>
+                      <div className="overflow-y-auto" style={{ maxHeight: 220 }}>
                         <table className="w-full">
                           <thead className="sticky top-0 z-10 bg-white border-b border-a-hairline">
                             <tr>
