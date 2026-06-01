@@ -295,6 +295,8 @@ export default function MonitoringPage() {
   const [showHelp, setShowHelp] = useState(false);
   const [trendPost, setTrendPost] = useState<Post | null>(null);
   const [editCell, setEditCell] = useState<EditCell | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
 
   // column widths for drag-resize
   const [stickyColWidths, setStickyColWidths] = useState<Record<string, number>>({
@@ -590,6 +592,28 @@ export default function MonitoringPage() {
     if (!confirm("게시물을 삭제하시겠습니까?")) return;
     await fetch(`/api/sponsored-posts/${id}`, { method: "DELETE" });
     setPosts(prev => prev.filter(p => p.id !== id));
+    setSelected(prev => { const s = new Set(prev); s.delete(id); return s; });
+  }
+
+  async function deleteSelected() {
+    if (selected.size === 0) return;
+    if (!confirm(`선택한 ${selected.size}건을 삭제하시겠습니까?`)) return;
+    setDeleting(true);
+    await Promise.all([...selected].map(id => fetch(`/api/sponsored-posts/${id}`, { method: "DELETE" })));
+    setPosts(prev => prev.filter(p => !selected.has(p.id)));
+    setSelected(new Set());
+    setDeleting(false);
+    toast(`${selected.size}건 삭제됐습니다.`, "success");
+  }
+
+  function toggleSelect(id: string) {
+    setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  }
+
+  function toggleSelectAll() {
+    const ids = filteredPosts.map(p => p.id);
+    const allSelected = ids.length > 0 && ids.every(id => selected.has(id));
+    setSelected(allSelected ? new Set() : new Set(ids));
   }
 
   async function patchPost(postId: string, field: string, value: string) {
@@ -664,6 +688,12 @@ export default function MonitoringPage() {
           )}
         </div>
         <div className="flex items-center gap-1.5">
+          {selected.size > 0 && (
+            <button onClick={deleteSelected} disabled={deleting}
+              className="text-xs px-3 py-1.5 rounded-full border border-red-300 text-red-500 hover:bg-red-50 disabled:opacity-40 transition">
+              선택 삭제 ({selected.size})
+            </button>
+          )}
           <button onClick={() => setShowUpload(true)} className="btn-secondary">CSV 업로드</button>
           <button onClick={() => setShowAdd(true)} className="btn-secondary">+ 게시물 추가</button>
           <button onClick={refresh} disabled={loading} className="btn-secondary">새로고침</button>
@@ -831,6 +861,11 @@ export default function MonitoringPage() {
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-30">
                 <tr className="border-b border-a-hairline">
+                  <th className="pl-3 pr-1 py-3 sticky z-40 bg-white" style={{ left: 0, width: 36, minWidth: 36 }}>
+                    <input type="checkbox" className="w-3.5 h-3.5 accent-a-blue cursor-pointer"
+                      checked={filteredPosts.length > 0 && filteredPosts.every(p => selected.has(p.id))}
+                      onChange={toggleSelectAll} />
+                  </th>
                   <TH col="증분량" w={stickyColWidths["증분량"]} leftPos={stickyLefts["증분량"]} onResize={e => startResize("증분량", e, true)} right {...sp("증분량")}>증분량</TH>
                   <TH w={colWidths["채널분류"]} onResize={e => startResize("채널분류", e)} {...sp("채널분류")}>
                     <span className="relative group/ct cursor-default">
@@ -861,7 +896,11 @@ export default function MonitoringPage() {
                   const displayName = post.account_name ?? post.influencers?.name ?? "-";
                   const hl = hasNotableChange(post);
                   return (
-                    <tr key={post.id} className={`group border-b border-a-divider last:border-0 transition-colors ${hl ? "bg-yellow-50/60 hover:bg-yellow-100/50" : "hover:bg-a-parchment/60"}`}>
+                    <tr key={post.id} className={`group border-b border-a-divider last:border-0 transition-colors ${selected.has(post.id) ? "bg-blue-50/40" : hl ? "bg-yellow-50/60 hover:bg-yellow-100/50" : "hover:bg-a-parchment/60"}`}>
+                      <td className="pl-3 pr-1 py-3 sticky z-10 bg-inherit" style={{ left: 0, width: 36, minWidth: 36 }}>
+                        <input type="checkbox" className="w-3.5 h-3.5 accent-a-blue cursor-pointer"
+                          checked={selected.has(post.id)} onChange={() => toggleSelect(post.id)} />
+                      </td>
                       <TD col="증분량" w={stickyColWidths["증분량"]} leftPos={stickyLefts["증분량"]} right highlighted={hl}>
                         {(() => {
                           if (s?.play_count == null || post.prev_stats == null) return <span className="text-gray-300">-</span>;

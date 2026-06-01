@@ -225,6 +225,7 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
       posted_at: postedAt,
       account_name: item.ownerFullName || (owner.fullName as string) || item.ownerUsername || (owner.username as string) || null,
       owner_username: item.ownerUsername || (owner.username as string) || null,
+      content_summary: (item.caption as string)?.slice(0, 300) || null,
     };
   }
 
@@ -253,6 +254,7 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
     const updates: Record<string, unknown> = {};
     if (!post.posted_at && s.posted_at) updates.posted_at = s.posted_at;
     if (!post.account_name && s.account_name) updates.account_name = s.account_name;
+    if (!post.content_summary && s.content_summary) updates.content_summary = s.content_summary;
     if (!post.influencer_id && s.owner_username) {
       const profileUrl = `https://www.instagram.com/${s.owner_username}/`;
       const infId = infUrlMap.get(profileUrl);
