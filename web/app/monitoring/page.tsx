@@ -214,7 +214,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData 
   height?: number;
   gradId?: string;
   postsOnDate?: (date: string) => { name: string; url: string }[];
-  lsData?: { date: string; ratio: number }[];
+  lsData?: { date: string; ratio: number; value: number | null }[];
 }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   if (data.length < 2) return <div className="flex items-center justify-center py-8 text-xs text-a-ink-muted">데이터 없음</div>;
@@ -301,9 +301,10 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData 
         <div className="pointer-events-none absolute top-1 bg-white border border-a-hairline rounded-[10px] px-3 py-2.5 shadow-[0_4px_16px_rgba(0,0,0,0.10)] text-xs z-20"
           style={{ left: `${Math.min(Math.max(((pl + xS(hoverIdx)) / VW) * 100, 15), 85)}%`, transform: "translateX(-50%)" }}>
           <p className="text-a-ink-muted mb-1">{data[hoverIdx].date.replace(/-/g, ".")} · <span className="font-semibold text-a-blue tabular-nums">{data[hoverIdx].value.toLocaleString()}</span></p>
-          {hoveredLsRatio !== null && (
-            <p className="text-gray-400 tabular-nums">라라스윗 검색량: {Math.round(hoveredLsRatio * 1326.173).toLocaleString()}</p>
-          )}
+          {hoveredLsRatio !== null && (() => {
+            const abs = lsData?.find(d => d.date === data[hoverIdx!].date)?.value;
+            return <p className="text-gray-400 tabular-nums">라라스윗 검색량: {abs != null ? abs.toLocaleString() : Math.round(hoveredLsRatio * 1326.173).toLocaleString()}</p>;
+          })()}
           {hoveredPosts.length > 0 && (
             <div className="border-t border-a-hairline pt-1.5 mt-1 space-y-0.5">
               {hoveredPosts.map((p, i) => (
@@ -347,7 +348,7 @@ export default function MonitoringPage() {
   const [uploading, setUploading] = useState(false);
   const [filters, setFilters] = useState<Filters>(INIT_FILTERS);
   const [dateTooltip, setDateTooltip] = useState<{ date: string; x: number; y: number } | null>(null);
-  const [lsSearchData, setLsSearchData] = useState<{ date: string; ratio: number }[]>([]);
+  const [lsSearchData, setLsSearchData] = useState<{ date: string; ratio: number; value: number | null }[]>([]);
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [showHelp, setShowHelp] = useState(false);
