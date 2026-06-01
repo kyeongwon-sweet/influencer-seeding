@@ -330,7 +330,7 @@ export default function MonitoringPage() {
   ).sort();
 
   const hasFilter = filters.name !== "" || filters.project !== "" || filters.products.length > 0 || filters.type !== "all" || filters.channelType !== "all" || filters.category !== "all" || filters.dateFrom !== "" || filters.dateTo !== "";
-  const colSpan = 15;
+  const colSpan = 16;
 
   const lastMonitoredAt = posts.length > 0
     ? posts.reduce((latest, p) => {

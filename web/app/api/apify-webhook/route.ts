@@ -497,17 +497,26 @@ async function handleScreening(
       timestamp: item.date || item.publishedAt || item.uploadDate,
     }));
 
+    if (posts.length === 0) {
+      await supabase.from('jobs').update({ status: 'done' }).eq('id', jobId);
+      return;
+    }
+
     const profile = { followers: followerCount };
     const metrics = calcMetrics(profile, posts as Record<string, unknown>[]);
     const typeMetrics = calcTypeMetrics(profile, posts as Record<string, unknown>[], 'youtube');
     const { result: resultStatus, details } = evaluateCriteria(criteria, metrics);
 
-    await supabase.from('screening_metrics').insert({
+    const { error: ytMetricsErr } = await supabase.from('screening_metrics').insert({
       influencer_id: influencer.id,
       ...metrics,
       criteria_snapshot: { result: resultStatus, details },
       type_metrics: Object.keys(typeMetrics).length ? typeMetrics : null,
     });
+    if (ytMetricsErr) {
+      await supabase.from('jobs').update({ error: `screening_metrics insert 오류: ${ytMetricsErr.message}` }).eq('id', jobId);
+      return;
+    }
 
     // 채널명·캡션·썸네일 실제 데이터로 업데이트
     const firstItem = items[0];

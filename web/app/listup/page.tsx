@@ -315,6 +315,11 @@ export default function ListupPage() {
       return true;
     });
     const uniqueCount = records.length - deduped.length;
+    if (deduped.length === 0) {
+      toast("모든 항목이 이미 등록된 URL입니다.", "error");
+      setCsvImporting(false);
+      return;
+    }
     setCsvImporting(true);
     const res = await fetch("/api/influencers", {
       method: "POST",
@@ -336,7 +341,9 @@ export default function ListupPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ type: "screening", payload: { influencer_ids: savedIds } }),
         });
-      } catch { /* 무시 */ }
+      } catch {
+        toast("스크리닝 자동 시작에 실패했습니다. 스크리닝 탭에서 직접 실행해주세요.", "error");
+      }
     }
   }
 

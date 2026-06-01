@@ -30,10 +30,11 @@ export async function PATCH(
       .order("run_at", { ascending: false })
       .limit(1);
     if (existing && existing.length > 0) {
-      await supabase.from("screening_metrics")
+      const runAtVal = existing[0].run_at;
+      const updateQuery = supabase.from("screening_metrics")
         .update(metricsUpdate)
-        .eq("influencer_id", id)
-        .eq("run_at", existing[0].run_at);
+        .eq("influencer_id", id);
+      await (runAtVal == null ? updateQuery.is("run_at", null) : updateQuery.eq("run_at", runAtVal));
     } else {
       const { error } = await supabase.from("screening_metrics")
         .insert({ influencer_id: id, ...metricsUpdate });
