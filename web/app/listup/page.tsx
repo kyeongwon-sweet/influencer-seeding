@@ -61,10 +61,14 @@ function formatElapsed(s: number): string {
 
 function getThumbnailUrl(url: string | null | undefined): string | null {
   if (!url) return null;
+  // YouTube
   let m = url.match(/youtube\.com\/shorts\/([^/?&#]+)/);
   if (m) return `https://i.ytimg.com/vi/${m[1]}/mqdefault.jpg`;
   m = url.match(/[?&]v=([^&]+)/);
   if (m) return `https://i.ytimg.com/vi/${m[1]}/mqdefault.jpg`;
+  // Apify가 저장한 직접 이미지 URL (Instagram thumbnailUrl / displayUrl)
+  if (/cdninstagram\.com|fbcdn\.net|scontent/i.test(url)) return url;
+  if (/\.(jpg|jpeg|png|webp)(\?|$)/i.test(url)) return url;
   return null;
 }
 

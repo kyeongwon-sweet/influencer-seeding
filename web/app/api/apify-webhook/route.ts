@@ -418,7 +418,8 @@ async function handleScreening(
 
       const profile = {
         username: (posts[0]?.ownerUsername as string) || '',
-        followers: (posts[0]?.followersCount as number) || 0,
+        // Apify 응답 필드명: ownerFollowersCount 또는 followersCount
+        followers: (posts[0]?.ownerFollowersCount as number) || (posts[0]?.followersCount as number) || 0,
       };
       const metrics = calcMetrics(profile, posts);
       const typeMetrics = calcTypeMetrics(profile, posts, 'instagram');
@@ -433,7 +434,8 @@ async function handleScreening(
 
       // 채널명·캡션·썸네일 실제 데이터로 업데이트
       const realName = (posts[0]?.ownerFullName as string) || (posts[0]?.ownerUsername as string) || null;
-      const sampleUrl = (posts[0]?.url as string) || null;
+      // Apify가 반환하는 thumbnailUrl(릴스 커버) 또는 displayUrl(이미지) 우선 사용
+      const sampleUrl = (posts[0]?.thumbnailUrl as string) || (posts[0]?.displayUrl as string) || (posts[0]?.url as string) || null;
       const caption = (posts[0]?.caption as string)?.slice(0, 300) || null;
       const rawTs = posts[0]?.timestamp || posts[0]?.takenAtTimestamp;
       const postUploadedAt = typeof rawTs === 'number'
