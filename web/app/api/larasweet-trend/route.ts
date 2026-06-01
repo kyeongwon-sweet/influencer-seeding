@@ -1,9 +1,12 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 
-// 라라스윗 절대 검색량 기준점 (변경 금지)
-// 공식: 절대검색량 = DataLab 상대비율 × 1326.173
-const LARASWEET_BASE = 1326.173;
+// Solo 쿼리에서는 라라스윗 자체 피크 = 100 기준으로 정규화됨
+// 따라서 ratio × 1326.173 직접 사용 불가 (실제보다 ~40배 과대 추정)
+// 기준점 역산: FACTOR = 3748 / lsRatio_5_31 (해당 쿼리 응답에서 역산)
+// absolute = ratio × FACTOR → 5/31은 항상 3748이 되고 다른 날도 비례 정확
+const REF_DATE = "2026-05-31";
+const REF_ACTUAL = 3748;
 
 export async function GET(req: NextRequest) {
   const { userId } = await auth();
@@ -18,6 +21,10 @@ export async function GET(req: NextRequest) {
   const clientSecret = process.env.NAVER_CLIENT_SECRET;
   if (!clientId || !clientSecret) return NextResponse.json({ data: [] });
 
+  // REF_DATE가 쿼리 범위에 포함되도록 보정
+  const qStart = startDate < REF_DATE ? startDate : REF_DATE;
+  const qEnd   = endDate   > REF_DATE ? endDate   : REF_DATE;
+
   const res = await fetch("https://openapi.naver.com/v1/datalab/search", {
     method: "POST",
     headers: {
@@ -26,8 +33,8 @@ export async function GET(req: NextRequest) {
       "X-Naver-Client-Secret": clientSecret,
     },
     body: JSON.stringify({
-      startDate,
-      endDate,
+      startDate: qStart,
+      endDate:   qEnd,
       timeUnit: "date",
       keywordGroups: [
         { groupName: "라라스윗", keywords: ["라라스윗", "라라스윗아이스크림"] },
@@ -40,11 +47,17 @@ export async function GET(req: NextRequest) {
   const json = await res.json();
   const raw: { period: string; ratio: number }[] = json.results?.[0]?.data ?? [];
 
-  const data = raw.map(d => ({
-    date:  d.period.slice(0, 10),
-    ratio: d.ratio,
-    value: Math.round(d.ratio * LARASWEET_BASE),
-  }));
+  // REF_DATE ratio로 FACTOR 역산
+  const refPoint = raw.find(d => d.period.slice(0, 10) === REF_DATE);
+  const factor = refPoint && refPoint.ratio > 0 ? REF_ACTUAL / refPoint.ratio : null;
+
+  const data = raw
+    .filter(d => d.period.slice(0, 10) >= startDate && d.period.slice(0, 10) <= endDate)
+    .map(d => ({
+      date:  d.period.slice(0, 10),
+      ratio: d.ratio,
+      value: factor ? Math.round(d.ratio * factor) : null,
+    }));
 
   return NextResponse.json({ data });
 }
