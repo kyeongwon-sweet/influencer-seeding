@@ -23,7 +23,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { keyword, startDate, endDate } = await req.json() as {
+  const body = await req.json().catch(() => null);
+  if (!body) return NextResponse.json({ error: "요청 본문을 파싱할 수 없습니다." }, { status: 400 });
+  const { keyword, startDate, endDate } = body as {
     keyword: string;
     startDate: string;
     endDate: string;

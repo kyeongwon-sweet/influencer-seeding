@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
 
   const clientId = process.env.NAVER_CLIENT_ID;
   const clientSecret = process.env.NAVER_CLIENT_SECRET;
-  if (!clientId || !clientSecret) return NextResponse.json({ data: [] });
+  if (!clientId || !clientSecret) return NextResponse.json({ error: "NAVER_CLIENT_ID / NAVER_CLIENT_SECRET 환경변수가 설정되지 않았습니다." }, { status: 503 });
 
   // REF_DATE가 쿼리 범위에 포함되도록 보정
   const qStart = startDate < REF_DATE ? startDate : REF_DATE;

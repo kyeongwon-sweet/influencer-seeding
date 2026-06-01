@@ -481,10 +481,12 @@ export default function MonitoringPage() {
 
   useEffect(() => {
     if (!lsStartDate || !lsEndDate) return;
-    fetch(`/api/larasweet-trend?startDate=${lsStartDate}&endDate=${lsEndDate}`)
+    const controller = new AbortController();
+    fetch(`/api/larasweet-trend?startDate=${lsStartDate}&endDate=${lsEndDate}`, { signal: controller.signal })
       .then(r => r.ok ? r.json() : { data: [] })
       .then(json => setLsSearchData(json.data ?? []))
       .catch(() => {});
+    return () => controller.abort();
   }, [lsStartDate, lsEndDate]);
 
   useEffect(() => {
@@ -1033,7 +1035,7 @@ export default function MonitoringPage() {
                 />
               </div>
               {/* 증감 테이블 */}
-              <div className="flex-[2] flex flex-col self-start min-w-0">
+              <div className="flex-[2] flex flex-col self-start min-w-[220px]">
                 <div className="px-5 py-4 border-b border-a-hairline">
                   <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">일자별 증감</p>
                 </div>
@@ -1064,10 +1066,10 @@ export default function MonitoringPage() {
                         <table className="w-full">
                           <thead className="sticky top-0 z-10 bg-white border-b border-a-hairline">
                             <tr>
-                              <th className="px-5 py-2.5 text-left text-[10px] font-semibold text-a-ink-muted uppercase tracking-widest">날짜</th>
-                              <th className="px-4 py-2.5 text-right text-[10px] font-semibold text-a-ink-muted uppercase tracking-widest">조회수</th>
-                              <th className="px-4 py-2.5 text-right text-[10px] font-semibold text-a-ink-muted uppercase tracking-widest">좋아요</th>
-                              <th className="px-4 py-2.5 text-right text-[10px] font-semibold text-a-ink-muted uppercase tracking-widest">댓글</th>
+                              <th className="px-5 py-2.5 text-left text-[11px] font-semibold text-a-ink-muted">날짜</th>
+                              <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted">조회수</th>
+                              <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted">좋아요</th>
+                              <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted">댓글</th>
                             </tr>
                           </thead>
                           <tbody>

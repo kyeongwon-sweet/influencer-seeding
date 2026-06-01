@@ -362,7 +362,7 @@ export default function DashboardPage() {
                     <div className="text-[22px] font-bold tracking-tight text-a-ink leading-none tabular-nums whitespace-nowrap">
                       {fmtKpi(m.current)}
                     </div>
-                    <div className="text-[11px] text-a-ink-muted mt-2 whitespace-nowrap overflow-hidden">
+                    <div className="text-[11px] text-a-ink-muted mt-2 truncate">
                       목표 {fmtKpi(m.target)}
                     </div>
                     <div className={`text-xs font-semibold mt-0.5 ${pctColor}`}>

@@ -48,11 +48,17 @@ export async function POST(req: NextRequest) {
   const startDate = addDays(ad, -7);
   const endDate = addDays(ad, 7);
 
+  const clientId = process.env.NAVER_CLIENT_ID;
+  const clientSecret = process.env.NAVER_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    return NextResponse.json({ error: "NAVER_CLIENT_ID / NAVER_CLIENT_SECRET 환경변수가 설정되지 않았습니다." }, { status: 503 });
+  }
+
   const naverRes = await fetch(NAVER_API, {
     method: "POST",
     headers: {
-      "X-Naver-Client-Id": process.env.NAVER_CLIENT_ID!,
-      "X-Naver-Client-Secret": process.env.NAVER_CLIENT_SECRET!,
+      "X-Naver-Client-Id": clientId,
+      "X-Naver-Client-Secret": clientSecret,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -79,9 +85,10 @@ export async function POST(req: NextRequest) {
   const dataPoints: { period: string; ratio: number }[] =
     naverData.results?.[0]?.data ?? [];
 
-  // 전 7일: index 0-6 / 광고 당일: index 7 / 후 7일: index 8-14
-  const beforeData = dataPoints.slice(0, 7);
-  const afterData = dataPoints.slice(8, 15);
+  // 날짜 문자열 비교로 before/after 분리 — 고정 인덱스는 Naver 누락일 발생 시 어긋남
+  const adDateStr = fmtDate(ad);
+  const beforeData = dataPoints.filter(d => d.period.slice(0, 10) < adDateStr);
+  const afterData  = dataPoints.filter(d => d.period.slice(0, 10) > adDateStr);
 
   const beforeAvg = avg(beforeData);
   const afterAvg = avg(afterData);
