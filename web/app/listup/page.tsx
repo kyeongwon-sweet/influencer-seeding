@@ -39,8 +39,8 @@ type Filters = { name: string; platform: string; status: string; keyword: string
 const INIT_FILTERS: Filters = { name: "", platform: "all", status: "all", keyword: "all", uploadedFrom: "", uploadedTo: "" };
 
 // 드래그 리사이즈 가능한 열 기본 너비 (px)
-// [채널명, 플랫폼, 캡션, 발굴 키워드, 게시물, 유형, 업로드일, 팔로워, 조회수, 상태, 추가일, 특이사항]
-const INIT_COL_WIDTHS = [200, 80, 200, 130, 64, 72, 100, 120, 100, 84, 100, 160];
+// [채널명, 플랫폼, 캡션, 발굴 키워드, 업로드일, 팔로워, 조회수, 상태, 추가일, 특이사항]
+const INIT_COL_WIDTHS = [200, 80, 200, 130, 100, 90, 90, 84, 100, 160];
 
 function formatTimestamp(ts: string): string {
   const d = new Date(ts);
@@ -106,6 +106,9 @@ export default function ListupPage() {
   const [editNotes, setEditNotes] = useState<{ id: string; value: string } | null>(null);
   const [editKeyword, setEditKeyword] = useState<{ id: string; value: string } | null>(null);
   const [editRatio, setEditRatio] = useState<{ id: string; value: string } | null>(null);
+  const [editCaption, setEditCaption] = useState<{ id: string; value: string } | null>(null);
+  const [editDate, setEditDate] = useState<{ id: string; value: string } | null>(null);
+  const [editFollowers, setEditFollowers] = useState<{ id: string; value: string } | null>(null);
   const [showCsvImport, setShowCsvImport] = useState(false);
   const [csvText, setCsvText] = useState("");
   const [csvImporting, setCsvImporting] = useState(false);
@@ -295,10 +298,21 @@ export default function ListupPage() {
     });
     setCsvImporting(false);
     if (!res.ok) { toast("가져오기에 실패했습니다.", "error"); return; }
+    const savedData = await res.json();
+    const savedIds: string[] = Array.isArray(savedData) ? savedData.map((d: { id: string }) => d.id) : [];
     setShowCsvImport(false);
     setCsvText("");
     await loadInfluencers();
-    toast(`${records.length}명 추가됐습니다.`, "success");
+    toast(`${records.length}명 추가됐습니다. 스크리닝을 자동으로 시작합니다…`, "success");
+    if (savedIds.length > 0) {
+      try {
+        await fetch("/api/jobs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "screening", payload: { influencer_ids: savedIds } }),
+        });
+      } catch { /* 무시 */ }
+    }
   }
 
   function downloadCSV() {
@@ -381,6 +395,61 @@ export default function ListupPage() {
       toast("저장에 실패했습니다.", "error");
     }
     setEditKeyword(null);
+  }
+
+  async function patchCaption(id: string, value: string) {
+    const res = await fetch(`/api/influencers/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content_summary: value.trim() || null }),
+    });
+    if (res.ok) {
+      setInfluencers(prev => prev.map(i => i.id === id ? { ...i, content_summary: value.trim() || null } : i));
+    } else {
+      toast("저장에 실패했습니다.", "error");
+    }
+    setEditCaption(null);
+  }
+
+  async function patchDate(id: string, value: string) {
+    const res = await fetch(`/api/influencers/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ post_uploaded_at: value || null }),
+    });
+    if (res.ok) {
+      setInfluencers(prev => prev.map(i => i.id === id ? { ...i, post_uploaded_at: value || undefined } : i));
+    } else {
+      toast("저장에 실패했습니다.", "error");
+    }
+    setEditDate(null);
+  }
+
+  async function patchFollowers(id: string, value: string) {
+    const num = parseInt(value.replace(/,/g, ""), 10);
+    if (value.trim() && isNaN(num)) {
+      toast("숫자를 입력해 주세요.", "error");
+      return;
+    }
+    const newVal = value.trim() === "" ? null : num;
+    const res = await fetch(`/api/influencers/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ followers: newVal }),
+    });
+    if (res.ok) {
+      setInfluencers(prev => prev.map(i => {
+        if (i.id !== id) return i;
+        const metrics = i.screening_metrics ?? [];
+        const updated = metrics.length > 0
+          ? [{ ...metrics[0], followers: newVal }, ...metrics.slice(1)]
+          : [{ followers: newVal, avg_views_per_follower: null, total_avg_play_count: null }];
+        return { ...i, screening_metrics: updated };
+      }));
+      setEditFollowers(null);
+    } else {
+      toast("저장에 실패했습니다.", "error");
+    }
   }
 
   async function patchInfluencerName(id: string, name: string) {
@@ -824,18 +893,16 @@ export default function ListupPage() {
                     ))}
                     {rsTH("캡션", 2, false)}
                     {rsTH("발굴 키워드", 3)}
-                    {rsTH("게시물", 4, false)}
-                    {rsTH("유형", 5)}
-                    {rsTH("업로드일", 6)}
-                    {rsTH("팔로워", 7)}
-                    {rsTH("조회수", 8)}
+                    {rsTH("업로드일", 4)}
+                    {rsTH("팔로워", 5)}
+                    {rsTH("조회수", 6)}
                     {(() => {
                       const col = "상태";
                       const active = sortCol === col;
                       return (
                         <th
                           key={col}
-                          style={{ minWidth: colWidths[9] }}
+                          style={{ minWidth: colWidths[7] }}
                           className={`relative px-4 py-3 text-left text-[10px] font-medium uppercase tracking-wider whitespace-nowrap bg-white select-none group ${
                             active ? "text-a-ink" : "text-gray-400"
                           }`}
@@ -851,14 +918,14 @@ export default function ListupPage() {
                             <p className="text-[11px] text-a-ink-muted leading-relaxed">스크리닝에서 통과/탈락을 설정하면<br/>이 탭의 상태가 자동으로 반영됩니다.</p>
                           </div>
                           <div
-                            onMouseDown={e => startResize(e, 9)}
+                            onMouseDown={e => startResize(e, 7)}
                             className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-100 z-10"
                           />
                         </th>
                       );
                     })()}
-                    {rsTH("추가일", 10)}
-                    {rsTH("특이사항", 11, false)}
+                    {rsTH("추가일", 8)}
+                    {rsTH("특이사항", 9, false)}
                     <th className="px-4 py-3 bg-white"></th>
                   </tr>
                 </thead>
@@ -901,9 +968,29 @@ export default function ListupPage() {
                           {inf.platform === "instagram" ? "인스타" : "유튜브"}
                         </td>
                         <td className="px-4 py-3" style={{ minWidth: colWidths[2] }}>
-                          {inf.content_summary
-                            ? <span className="text-[11px] text-a-ink-muted line-clamp-2 block">{inf.content_summary}</span>
-                            : <span className="text-xs text-gray-300">-</span>}
+                          {editCaption?.id === inf.id ? (
+                            <textarea
+                              autoFocus
+                              rows={2}
+                              value={editCaption.value}
+                              onChange={e => setEditCaption(v => v ? { ...v, value: e.target.value } : null)}
+                              onBlur={() => patchCaption(inf.id, editCaption.value)}
+                              onKeyDown={e => { if (e.key === "Escape") setEditCaption(null); }}
+                              className="text-xs w-full bg-transparent border-b border-a-blue outline-none py-0.5 resize-none text-a-ink"
+                            />
+                          ) : (
+                            <span
+                              onClick={() => setEditCaption({ id: inf.id, value: inf.content_summary ?? "" })}
+                              className="cursor-pointer flex items-center gap-1 group/cap"
+                            >
+                              {inf.content_summary
+                                ? <span className="text-[11px] text-a-ink-muted line-clamp-2 block">{inf.content_summary}</span>
+                                : <span className="text-xs text-gray-300">-</span>}
+                              <svg width="10" height="10" viewBox="0 0 20 20" fill="none" className="opacity-0 group-hover/cap:opacity-40 transition-opacity flex-shrink-0">
+                                <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap">
                           {editKeyword?.id === inf.id ? (
@@ -933,25 +1020,60 @@ export default function ListupPage() {
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          {inf.sample_post_url
-                            ? <a href={inf.sample_post_url} target="_blank" rel="noreferrer"
-                                className="text-xs text-a-blue hover:underline">보기 →</a>
-                            : <span className="text-xs text-gray-300">-</span>}
-                        </td>
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          {inf.post_type
-                            ? <span className="text-xs bg-a-parchment text-a-ink-muted px-2 py-0.5 rounded-full">{inf.post_type}</span>
-                            : <span className="text-xs text-gray-300">-</span>}
-                        </td>
                         <td className="px-4 py-4 text-a-ink-muted text-xs whitespace-nowrap">
-                          {inf.post_uploaded_at
-                            ? new Date(inf.post_uploaded_at).toLocaleDateString("ko-KR")
-                            : <span className="text-gray-300">-</span>}
+                          {editDate?.id === inf.id ? (
+                            <input
+                              type="date"
+                              autoFocus
+                              value={editDate.value}
+                              onChange={e => setEditDate(v => v ? { ...v, value: e.target.value } : null)}
+                              onBlur={() => patchDate(inf.id, editDate.value)}
+                              onKeyDown={e => { if (e.key === "Escape") setEditDate(null); }}
+                              className="text-xs bg-transparent border-b border-a-blue outline-none py-0.5"
+                            />
+                          ) : (
+                            <span
+                              onClick={() => setEditDate({ id: inf.id, value: inf.post_uploaded_at ? new Date(inf.post_uploaded_at).toISOString().slice(0, 10) : "" })}
+                              className="cursor-pointer flex items-center gap-1 group/date"
+                            >
+                              {inf.post_uploaded_at
+                                ? <span>{new Date(inf.post_uploaded_at).toLocaleDateString("ko-KR")}</span>
+                                : <span className="text-gray-300">-</span>}
+                              <svg width="10" height="10" viewBox="0 0 20 20" fill="none" className="opacity-0 group-hover/date:opacity-40 transition-opacity flex-shrink-0">
+                                <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-4 text-xs whitespace-nowrap">
+                          {editFollowers?.id === inf.id ? (
+                            <input
+                              autoFocus
+                              value={editFollowers.value}
+                              onChange={e => setEditFollowers(v => v ? { ...v, value: e.target.value } : null)}
+                              onBlur={() => patchFollowers(inf.id, editFollowers.value)}
+                              onKeyDown={e => {
+                                if (e.key === "Enter") patchFollowers(inf.id, editFollowers.value);
+                                if (e.key === "Escape") setEditFollowers(null);
+                              }}
+                              placeholder="0"
+                              className="w-20 text-xs bg-transparent border-b border-a-blue outline-none py-0.5 tabular-nums"
+                            />
+                          ) : (
+                            <span
+                              onClick={() => setEditFollowers({ id: inf.id, value: inf.screening_metrics?.[0]?.followers != null ? String(inf.screening_metrics[0].followers) : "" })}
+                              className="cursor-pointer flex items-center gap-1 group/fol font-medium text-a-ink tabular-nums"
+                            >
+                              {fmtNum(inf.screening_metrics?.[0]?.followers)}
+                              <svg width="9" height="9" viewBox="0 0 20 20" fill="none" className="opacity-0 group-hover/fol:opacity-40 transition-opacity flex-shrink-0">
+                                <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-4 text-xs whitespace-nowrap">
                           <div className="flex flex-col gap-0.5">
-                            <span className="font-medium text-a-ink tabular-nums">{fmtNum(inf.screening_metrics?.[0]?.followers)}</span>
+                            <span className="font-medium text-a-ink tabular-nums">{fmtNum(inf.screening_metrics?.[0]?.total_avg_play_count)}</span>
                             {editRatio?.id === inf.id ? (
                               <input
                                 autoFocus
@@ -980,9 +1102,6 @@ export default function ListupPage() {
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-4 text-xs whitespace-nowrap">
-                          <span className="font-medium text-a-ink tabular-nums">{fmtNum(inf.screening_metrics?.[0]?.total_avg_play_count)}</span>
-                        </td>
                         <td className="px-4 py-4 whitespace-nowrap">
                           <span className={`text-xs px-2.5 py-1 rounded-full ${STATUS_CLS[inf.status] ?? STATUS_CLS.pending}`}>
                             {STATUS_LABEL[inf.status] ?? inf.status}
@@ -991,7 +1110,7 @@ export default function ListupPage() {
                         <td className="px-4 py-4 text-a-ink-muted text-xs whitespace-nowrap">
                           {new Date(inf.created_at).toLocaleDateString("ko-KR")}
                         </td>
-                        <td className="px-4 py-3" style={{ minWidth: colWidths[11] }}>
+                        <td className="px-4 py-3" style={{ minWidth: colWidths[9] }}>
                           {editNotes?.id === inf.id ? (
                             <textarea
                               autoFocus
