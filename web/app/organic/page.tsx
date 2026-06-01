@@ -481,7 +481,7 @@ export default function OrganicPage() {
         )}
       </header>
 
-      <div className="sticky top-11 z-[35] bg-white border-b border-a-hairline px-6 h-11 flex items-center justify-between">
+      <div className="sticky top-14 z-[35] bg-white border-b border-a-hairline px-6 h-11 flex items-center justify-between">
         <button onClick={() => setShowHelp(true)}
           className="flex items-center gap-1.5 text-xs text-a-ink-muted hover:text-a-ink transition">
           <svg width="13" height="13" viewBox="0 0 20 20" fill="none">

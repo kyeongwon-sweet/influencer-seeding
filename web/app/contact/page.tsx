@@ -536,7 +536,7 @@ export default function ContactPage() {
       </header>
 
       {/* Toolbar */}
-      <div className="sticky top-11 z-[35] bg-white border-b border-a-hairline px-6 h-11 flex items-center justify-between">
+      <div className="sticky top-14 z-[35] bg-white border-b border-a-hairline px-6 h-11 flex items-center justify-between">
         <div className="flex items-center gap-4">
           {lastScreeningAt && (
             <span className="text-xs text-a-ink-muted whitespace-nowrap">
@@ -843,7 +843,7 @@ export default function ContactPage() {
         <div className="fixed inset-0 z-[60] flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
             onClick={() => { setShowTemplates(false); setEditingTemplate(null); }} />
-          <div className="relative bg-white rounded-2xl shadow-xl w-[540px] max-w-[calc(100vw-32px)] max-h-[85vh] overflow-y-auto overflow-x-hidden p-7">
+          <div className="relative bg-white rounded-2xl shadow-xl w-[540px] max-w-[calc(100vw-32px)] max-h-[85vh] overflow-y-auto overflow-x-hidden p-7" style={{ wordBreak: 'break-word' }}>
             <div className="flex items-start justify-between mb-5">
               <div>
                 <p className="text-[10px] font-semibold text-a-blue tracking-[0.1em] uppercase mb-1">설정</p>

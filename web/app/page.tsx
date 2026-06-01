@@ -173,8 +173,8 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen">
-      <header className="bg-white border-b border-gray-100 h-11 px-6 flex items-center justify-between sticky top-0 z-40">
-        <span className="text-a-ink text-sm font-semibold tracking-tight">인플루언서 시딩 트래킹 대시보드</span>
+      <header className="bg-white border-b border-gray-100 h-14 px-6 flex items-center justify-between sticky top-0 z-40">
+        <span className="text-a-ink text-[20px] font-bold tracking-tight">인플루언서 시딩 트래킹 대시보드</span>
         <div className="flex items-center gap-2">
           <a
             href="https://www.youtube.com/shorts"
@@ -216,26 +216,6 @@ export default function DashboardPage() {
 
       <main className="px-8 py-8 w-full max-w-[860px] mx-auto space-y-5">
 
-        {/* 마지막 업데이트 시각 */}
-        {!loading && (lastListupAt || lastScreeningAt) && (
-          <div className="flex items-center gap-4 px-1">
-            {lastListupAt && (
-              <div className="flex items-center gap-1.5">
-                <span className="text-[11px] text-a-ink-muted">업데이트</span>
-                <span className="text-[11px] font-semibold text-a-ink tabular-nums">{formatTimestamp(lastListupAt)}</span>
-              </div>
-            )}
-            {lastListupAt && lastScreeningAt && (
-              <span className="text-a-hairline text-xs">·</span>
-            )}
-            {lastScreeningAt && (
-              <div className="flex items-center gap-1.5">
-                <span className="text-[11px] text-a-ink-muted">스크리닝</span>
-                <span className="text-[11px] font-semibold text-a-ink tabular-nums">{formatTimestamp(lastScreeningAt)}</span>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* 오늘의 인사이트 */}
         {!loading && (
