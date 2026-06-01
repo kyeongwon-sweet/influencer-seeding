@@ -1108,6 +1108,7 @@ export default function MonitoringPage() {
                             {/* 여백 행 */}
                             <tr><td colSpan={4} className="py-2" /></tr>
                             <tr><td colSpan={4} className="py-2" /></tr>
+                            <tr><td colSpan={4} className="py-2" /></tr>
                           </tbody>
                         </table>
                       </div>
