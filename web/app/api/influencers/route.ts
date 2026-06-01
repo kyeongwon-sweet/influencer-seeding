@@ -9,7 +9,7 @@ export async function GET() {
   const supabase = getServerSupabase();
   const { data, error } = await supabase
     .from("influencers")
-    .select("*, screening_metrics(avg_views_per_follower, run_at, kw_impact, kw_keywords)")
+    .select("*, screening_metrics(*)")
     .order("created_at", { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
