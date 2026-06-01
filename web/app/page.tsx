@@ -58,6 +58,7 @@ export default function DashboardPage() {
   const [organicMentions, setOrganicMentions] = useState<OrganicMention[]>([]);
   const [kpi, setKpi] = useState<KpiSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showAllJobs, setShowAllJobs] = useState(false);
 
   useEffect(() => {
     const t = AbortSignal.timeout(12000);
@@ -430,7 +431,7 @@ export default function DashboardPage() {
               </div>
             </div>
             <div className="divide-y divide-gray-50">
-              {jobs.map(job => {
+              {(showAllJobs ? jobs : jobs.slice(0, 10)).map(job => {
                 const js = JOB_STATUS_CONFIG[job.status] ?? { label: job.status, color: "text-a-ink-muted bg-a-divider" };
                 const count = job.status === "done"
                   ? job.payload?.added != null ? `${job.payload.added}건 추가`
@@ -459,6 +460,14 @@ export default function DashboardPage() {
                 );
               })}
             </div>
+            {jobs.length > 10 && (
+              <button
+                onClick={() => setShowAllJobs(prev => !prev)}
+                className="w-full py-3 text-xs text-a-ink-muted hover:text-a-ink hover:bg-a-parchment transition-colors border-t border-gray-50"
+              >
+                {showAllJobs ? "접기 ↑" : `+ 더보기 (${jobs.length - 10}개)`}
+              </button>
+            )}
           </div>
         )}
       </main>
