@@ -18,7 +18,7 @@ const STATUS_CONFIG = [
   { value: "reject",  label: "탈락",   dot: "bg-red-400" },
 ];
 
-const JOB_TYPE: Record<string, string> = { listup: "리스트업", organic: "무상 노출", screening: "스크리닝", monitoring: "모니터링" };
+const JOB_TYPE: Record<string, string> = { listup: "리스트업", organic: "무상 노출", organic_refresh: "무상 노출 조회수 갱신", screening: "스크리닝", monitoring: "모니터링" };
 
 const JOB_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   done:    { label: "완료",   color: "text-emerald-600 bg-emerald-50" },
