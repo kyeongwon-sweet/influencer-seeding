@@ -851,11 +851,12 @@ export default function ContactPage() {
             </div>
 
             {/* 주의사항 메모 */}
-            <div className="mb-5 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3">
-              <p className="text-[14px] font-bold text-red-600 mb-1">
+            <div className="mb-5 rounded-[10px] border border-gray-100 px-4 py-3"
+              style={{ background: "linear-gradient(135deg, #ffffff 0%, #f8f8fc 100%)", boxShadow: "0 1px 6px rgba(0,0,0,0.06)" }}>
+              <p className="text-[14px] font-bold text-a-ink mb-1">
                 ❗이전 협찬 히스토리를 모르는 건 당연한 것❗
               </p>
-              <p className="text-[12px] font-medium text-red-600 mb-2">
+              <p className="text-[12px] font-medium text-a-ink-muted mb-2">
                 → 이전 히스토리를 스스로 찾고 톤앤매너에 맞춰 소통하자
               </p>
               <ul className="space-y-0.5">
@@ -865,7 +866,7 @@ export default function ContactPage() {
                   "광고비 회신이 왔지만 처음처럼 물어보진 않았는지?",
                   "이전에 우리가 협찬제안을 했지만 답을 못해 어영부영 넘어가진 않았는지?",
                 ].map((item, i) => (
-                  <li key={i} className="flex items-start gap-1.5 text-[11px] text-red-700 leading-none">
+                  <li key={i} className="flex items-start gap-1.5 text-[11px] text-a-ink-muted leading-none">
                     <span className="flex-shrink-0">•</span>
                     <span>{item}</span>
                   </li>
@@ -880,7 +881,7 @@ export default function ContactPage() {
                 href="https://app.notion.com/p/lalasweet/35a3b344ce7f81eab025c062af02bba7"
                 target="_blank"
                 rel="noreferrer"
-                className="mt-2.5 flex items-center gap-1.5 text-[11px] text-red-700 hover:text-red-900 hover:underline transition-colors"
+                className="mt-2.5 flex items-center gap-1.5 text-[11px] text-a-blue hover:underline transition-colors"
               >
                 <span>✅</span>
                 <span className="font-medium">협찬 프로세스 체크리스트</span>
