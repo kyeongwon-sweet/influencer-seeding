@@ -428,12 +428,16 @@ async function handleScreening(
       const typeMetrics = calcTypeMetrics(profile, posts, 'instagram');
       const { result: resultStatus, details } = evaluateCriteria(criteria, metrics);
 
-      await supabase.from('screening_metrics').insert({
+      const { error: metricsErr } = await supabase.from('screening_metrics').insert({
         influencer_id: infId,
         ...metrics,
         criteria_snapshot: { result: resultStatus, details },
         type_metrics: Object.keys(typeMetrics).length ? typeMetrics : null,
       });
+      if (metricsErr) {
+        await supabase.from('jobs').update({ error: `screening_metrics insert 오류: ${metricsErr.message}` }).eq('id', jobId);
+        return;
+      }
 
       // 채널명·캡션·썸네일 실제 데이터로 업데이트
       const realName = (posts[0]?.ownerFullName as string) || (posts[0]?.ownerUsername as string) || null;
