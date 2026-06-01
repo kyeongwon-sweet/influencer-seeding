@@ -12,6 +12,21 @@ export async function PATCH(
   const { id } = await params;
   const body = await req.json();
   const supabase = getServerSupabase();
+
+  // avg_views_per_follower는 screening_metrics에 upsert (influencers 테이블 컬럼 아님)
+  if ("avg_views_per_follower" in body) {
+    const { avg_views_per_follower, ...rest } = body;
+    const { error } = await supabase
+      .from("screening_metrics")
+      .upsert({ influencer_id: id, avg_views_per_follower }, { onConflict: "influencer_id" });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (Object.keys(rest).length === 0) return NextResponse.json({ ok: true });
+    // 나머지 필드가 있으면 influencers도 업데이트
+    const { data, error: err2 } = await supabase.from("influencers").update(rest).eq("id", id).select().single();
+    if (err2) return NextResponse.json({ error: err2.message }, { status: 500 });
+    return NextResponse.json(data);
+  }
+
   const { data, error } = await supabase
     .from("influencers")
     .update(body)

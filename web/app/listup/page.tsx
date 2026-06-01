@@ -88,6 +88,7 @@ export default function ListupPage() {
   const [editName, setEditName] = useState<{ id: string; value: string } | null>(null);
   const [editNotes, setEditNotes] = useState<{ id: string; value: string } | null>(null);
   const [editKeyword, setEditKeyword] = useState<{ id: string; value: string } | null>(null);
+  const [editRatio, setEditRatio] = useState<{ id: string; value: string } | null>(null);
   const resizingRef = useRef<{ colIdx: number; startX: number; startW: number } | null>(null);
   const runningJobIdRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -269,6 +270,28 @@ export default function ListupPage() {
       setInfluencers(prev => prev.map(i => i.id === id ? { ...i, notes: notes || null } : i));
     }
     setEditNotes(null);
+  }
+
+  async function patchRatio(id: string, value: string) {
+    const num = parseFloat(value.replace(",", "."));
+    const res = await fetch(`/api/influencers/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ avg_views_per_follower: isNaN(num) ? null : num }),
+    });
+    if (res.ok) {
+      setInfluencers(prev => prev.map(i => {
+        if (i.id !== id) return i;
+        const metrics = i.screening_metrics ?? [];
+        const updated = metrics.length > 0
+          ? [{ ...metrics[0], avg_views_per_follower: isNaN(num) ? null : num }, ...metrics.slice(1)]
+          : [{ avg_views_per_follower: isNaN(num) ? null : num }];
+        return { ...i, screening_metrics: updated };
+      }));
+    } else {
+      toast("저장에 실패했습니다.", "error");
+    }
+    setEditRatio(null);
   }
 
   async function patchKeyword(id: string, keyword: string) {
@@ -831,9 +854,32 @@ export default function ListupPage() {
                             : <span className="text-gray-300">-</span>}
                         </td>
                         <td className="px-4 py-4 text-xs whitespace-nowrap">
-                          {ratio != null
-                            ? <span className="font-medium text-a-ink">{Number(ratio).toFixed(2)}</span>
-                            : <span className="text-gray-300">-</span>}
+                          {editRatio?.id === inf.id ? (
+                            <input
+                              autoFocus
+                              value={editRatio.value}
+                              onChange={e => setEditRatio(v => v ? { ...v, value: e.target.value } : null)}
+                              onBlur={() => patchRatio(inf.id, editRatio.value)}
+                              onKeyDown={e => {
+                                if (e.key === "Enter") patchRatio(inf.id, editRatio.value);
+                                if (e.key === "Escape") setEditRatio(null);
+                              }}
+                              placeholder="0.00"
+                              className="w-16 text-xs bg-transparent border-b border-a-blue outline-none py-0.5 tabular-nums"
+                            />
+                          ) : (
+                            <span
+                              onClick={() => setEditRatio({ id: inf.id, value: ratio != null ? String(ratio) : "" })}
+                              className="cursor-pointer group/ratio flex items-center gap-1"
+                            >
+                              {ratio != null
+                                ? <span className="font-medium text-a-ink">{Number(ratio).toFixed(2)}</span>
+                                : <span className="text-gray-300">-</span>}
+                              <svg width="10" height="10" viewBox="0 0 20 20" fill="none" className="opacity-0 group-hover/ratio:opacity-40 transition-opacity flex-shrink-0">
+                                <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap">
                           <span className={`text-xs px-2.5 py-1 rounded-full ${STATUS_CLS[inf.status] ?? STATUS_CLS.pending}`}>
