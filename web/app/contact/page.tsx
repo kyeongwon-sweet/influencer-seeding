@@ -274,6 +274,8 @@ export default function ContactPage() {
 
   const [loadingInf, setLoadingInf] = useState(true);
   const [loadingTrend, setLoadingTrend] = useState(false);
+  const [trendElapsed, setTrendElapsed] = useState(0);
+  const trendTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [trendError, setTrendError] = useState<string | null>(null);
   const [selectedKeyword, setSelectedKeyword] = useState("");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -344,6 +346,9 @@ export default function ContactPage() {
     setLoadingTrend(true);
     setTrendError(null);
     setTrendData([]);
+    setTrendElapsed(0);
+    if (trendTimerRef.current) clearInterval(trendTimerRef.current);
+    trendTimerRef.current = setInterval(() => setTrendElapsed(s => s + 1), 1000);
     const endDate = new Date().toISOString().slice(0, 10);
     const startDate = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
     const res = await fetch("/api/naver-trends", {
@@ -360,6 +365,7 @@ export default function ContactPage() {
       const { dates } = await res.json();
       setTrendData(dates);
     }
+    if (trendTimerRef.current) { clearInterval(trendTimerRef.current); trendTimerRef.current = null; }
     setLoadingTrend(false);
   }
 
@@ -567,8 +573,21 @@ export default function ContactPage() {
               {kwOptions.map(kw => <option key={kw} value={kw}>{kw}</option>)}
             </select>
             <button onClick={fetchTrend} disabled={!selectedKeyword || loadingTrend} className="btn-primary">
-              {loadingTrend ? "불러오는 중..." : "트렌드 조회"}
+              {loadingTrend ? (
+                <span className="flex items-center gap-1.5">
+                  <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25"/>
+                    <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
+                  </svg>
+                  조회 중
+                </span>
+              ) : "트렌드 조회"}
             </button>
+            {loadingTrend && (
+              <span className="text-xs text-a-ink-muted tabular-nums">
+                {trendElapsed < 60 ? `${trendElapsed}초` : `${Math.floor(trendElapsed / 60)}분 ${trendElapsed % 60}초`}
+              </span>
+            )}
             {selectedDate && (
               <button onClick={() => setSelectedDate(null)} className="btn-ghost py-1 ml-auto">
                 날짜 선택 해제
