@@ -37,14 +37,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, upserted: 0 });
   }
 
-  // URL 정규화
+  // URL 정규화 + 시트에서 직접 입력한 필드 포함
   const cleaned = rows.map((r: Record<string, unknown>) => ({
-    url:           String(r.url).replace(/\/$/, "") + "/",
-    project_name:  r.project_name || null,
-    channel_type:  r.channel_type || null,
-    cost:          r.cost != null ? Number(r.cost) : null,
-    product_name:  r.product_name || null,
-    reach_count:   r.reach_count != null ? Number(r.reach_count) : null,
+    url:             String(r.url).replace(/\/$/, "") + "/",
+    posted_at:       r.posted_at || null,
+    account_name:    r.account_name || null,
+    content_summary: r.content_summary || null,
+    channel_type:    r.channel_type || null,
+    project_name:    r.project_name || null,
+    product_name:    r.product_name || null,
+    cost:            r.cost != null ? Number(r.cost) : null,
+    reach_count:     r.reach_count != null ? Number(r.reach_count) : null,
   }));
 
   const supabase = getServerSupabase();
