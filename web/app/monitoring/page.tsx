@@ -209,11 +209,12 @@ function smoothCurvePath(pts: [number, number][]): string {
   return d;
 }
 
-function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate }: {
+function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData }: {
   data: { date: string; value: number }[];
   height?: number;
   gradId?: string;
   postsOnDate?: (date: string) => { name: string; url: string }[];
+  lsData?: { date: string; ratio: number }[];
 }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   if (data.length < 2) return <div className="flex items-center justify-center py-8 text-xs text-a-ink-muted">데이터 없음</div>;
@@ -237,6 +238,25 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate }: {
   const hoveredDate = hoverIdx !== null ? data[hoverIdx].date : null;
   const hoveredPosts = hoveredDate && postsOnDate ? postsOnDate(hoveredDate) : [];
 
+  // 라라스윗 검색량 점선 — 데이터 날짜를 주 차트에 맞춰 매핑 후 독립 정규화
+  const lsPath = (() => {
+    if (!lsData || lsData.length === 0) return null;
+    const lsMap = new Map(lsData.map(d => [d.date, d.ratio]));
+    const mapped = data.map((d, i) => ({ i, ratio: lsMap.get(d.date) ?? null })).filter(p => p.ratio !== null) as { i: number; ratio: number }[];
+    if (mapped.length < 2) return null;
+    const ratios = mapped.map(p => p.ratio);
+    const lsMin = Math.min(...ratios), lsMax = Math.max(...ratios);
+    const lsRange = lsMax - lsMin || 1;
+    const lsY = (r: number) => ch - ((r - lsMin) / lsRange) * ch;
+    return mapped.map((p, j) => `${j === 0 ? "M" : "L"}${xS(p.i).toFixed(1)},${lsY(p.ratio).toFixed(1)}`).join(" ");
+  })();
+
+  const hoveredLsRatio = (() => {
+    if (!lsData || hoverIdx === null) return null;
+    const date = data[hoverIdx].date;
+    return lsData.find(d => d.date === date)?.ratio ?? null;
+  })();
+
   return (
     <div className="relative w-full">
       <svg width="100%" viewBox={`0 0 ${VW} ${VH}`} style={{ overflow: "visible" }}
@@ -255,6 +275,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate }: {
             </g>
           ))}
           <path d={areaPath} fill={`url(#${gradId})`} />
+          {lsPath && <path d={lsPath} fill="none" stroke="#d1d5db" strokeWidth="1" strokeDasharray="3 2" />}
           <path d={linePath} fill="none" stroke="#3b82f6" strokeWidth="1.5"
             strokeLinejoin="round" strokeLinecap="round" />
           {data.map((_, i) => (
@@ -280,6 +301,9 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate }: {
         <div className="pointer-events-none absolute top-1 bg-white border border-a-hairline rounded-[10px] px-3 py-2.5 shadow-[0_4px_16px_rgba(0,0,0,0.10)] text-xs z-20"
           style={{ left: `${Math.min(Math.max(((pl + xS(hoverIdx)) / VW) * 100, 15), 85)}%`, transform: "translateX(-50%)" }}>
           <p className="text-a-ink-muted mb-1">{data[hoverIdx].date.replace(/-/g, ".")} · <span className="font-semibold text-a-blue tabular-nums">{data[hoverIdx].value.toLocaleString()}</span></p>
+          {hoveredLsRatio !== null && (
+            <p className="text-gray-400 tabular-nums">라라스윗 검색량: {Math.round(hoveredLsRatio * 1326.173).toLocaleString()}</p>
+          )}
           {hoveredPosts.length > 0 && (
             <div className="border-t border-a-hairline pt-1.5 mt-1 space-y-0.5">
               {hoveredPosts.map((p, i) => (
@@ -292,6 +316,18 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate }: {
               ))}
             </div>
           )}
+        </div>
+      )}
+      {lsPath && (
+        <div className="flex items-center gap-4 mt-1 px-1">
+          <div className="flex items-center gap-1.5">
+            <div className="w-5 h-[2px] bg-blue-500 rounded" />
+            <span className="text-[10px] text-a-ink-muted">조회수 (누적)</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <svg width="20" height="4" viewBox="0 0 20 4"><line x1="0" y1="2" x2="20" y2="2" stroke="#d1d5db" strokeWidth="1.5" strokeDasharray="3 2" /></svg>
+            <span className="text-[10px] text-a-ink-muted">라라스윗 검색 트렌드</span>
+          </div>
         </div>
       )}
     </div>
@@ -311,6 +347,7 @@ export default function MonitoringPage() {
   const [uploading, setUploading] = useState(false);
   const [filters, setFilters] = useState<Filters>(INIT_FILTERS);
   const [dateTooltip, setDateTooltip] = useState<{ date: string; x: number; y: number } | null>(null);
+  const [lsSearchData, setLsSearchData] = useState<{ date: string; ratio: number }[]>([]);
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [showHelp, setShowHelp] = useState(false);
@@ -438,6 +475,16 @@ export default function MonitoringPage() {
     }
     return result;
   }, [stickyColWidths]);
+
+  useEffect(() => {
+    if (chartData.length < 2) return;
+    const startDate = chartData[0].date;
+    const endDate = chartData[chartData.length - 1].date;
+    fetch(`/api/larasweet-trend?startDate=${startDate}&endDate=${endDate}`)
+      .then(r => r.ok ? r.json() : { data: [] })
+      .then(json => setLsSearchData(json.data ?? []))
+      .catch(() => {});
+  }, [chartData[0]?.date, chartData[chartData.length - 1]?.date]);
 
   useEffect(() => {
     loadPosts().finally(() => setLoading(false));
@@ -976,6 +1023,7 @@ export default function MonitoringPage() {
                   data={chartData}
                   height={140}
                   gradId="summaryGrad"
+                  lsData={lsSearchData}
                   postsOnDate={(date) =>
                     filteredPosts
                       .filter(p => p.posted_at?.slice(0, 10) === date)
