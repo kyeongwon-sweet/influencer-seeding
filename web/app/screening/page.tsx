@@ -746,7 +746,7 @@ export default function ScreeningPage() {
         </div>
 
         {/* 테이블 */}
-        <div className="bg-white rounded-[18px] border border-a-hairline">
+        <div className="bg-white rounded-[18px] border border-a-hairline overflow-hidden">
           <div className="overflow-x-auto" style={{ transform: "rotateX(180deg)" }}>
           <div style={{ transform: "rotateX(180deg)" }}>
           {loading ? (
