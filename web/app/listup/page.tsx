@@ -635,7 +635,7 @@ export default function ListupPage() {
     return (
       <th
         key={col}
-        style={{ minWidth: colWidths[colIdx] }}
+        style={{ minWidth: colWidths[colIdx], width: colWidths[colIdx] }}
         className={`relative px-4 py-3 text-left text-[10px] font-medium uppercase tracking-wider whitespace-nowrap bg-white select-none group ${
           sortable ? (active ? "text-a-ink" : "text-gray-400") : "text-gray-400"
         }`}
@@ -868,7 +868,7 @@ export default function ListupPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
                 <thead className="sticky top-0 z-30">
                   <tr className="border-b border-a-hairline">
                     <th className="pl-5 pr-2 py-3 w-9 bg-white">
@@ -910,7 +910,7 @@ export default function ListupPage() {
                       return (
                         <th
                           key={col}
-                          style={{ minWidth: colWidths[10] }}
+                          style={{ minWidth: colWidths[10], width: colWidths[10] }}
                           className={`relative px-4 py-3 text-left text-[10px] font-medium uppercase tracking-wider whitespace-nowrap bg-white select-none group ${
                             active ? "text-a-ink" : "text-gray-400"
                           }`}
@@ -950,7 +950,7 @@ export default function ListupPage() {
                             ? <img src={thumbUrl} alt="" width={48} height={36} className="rounded object-cover" style={{ width: 48, height: 36 }} />
                             : <span className="text-[10px] text-a-ink-muted font-medium">{inf.platform === "youtube" ? "YT" : "IG"}</span>}
                         </td>
-                        <td className="px-4 py-4">
+                        <td className="px-4 py-4 overflow-hidden" style={{ minWidth: colWidths[0], width: colWidths[0] }}>
                           <div style={{ width: colWidths[0] - 32, overflow: 'hidden', whiteSpace: 'nowrap' }}>
                             {editName?.id === inf.id ? (
                               <input autoFocus value={editName.value}
@@ -1025,7 +1025,7 @@ export default function ListupPage() {
                             );
                           })()}
                         </td>
-                        <td className="px-4 py-3" style={{ minWidth: colWidths[6] }}>
+                        <td className="px-4 py-3 overflow-hidden" style={{ minWidth: colWidths[6], width: colWidths[6] }}>
                           {editCaption?.id === inf.id ? (
                             <textarea
                               autoFocus
@@ -1135,7 +1135,7 @@ export default function ListupPage() {
                         <td className="px-4 py-4 text-a-ink-muted text-xs whitespace-nowrap">
                           {new Date(inf.created_at).toLocaleDateString("ko-KR")}
                         </td>
-                        <td className="px-4 py-3" style={{ minWidth: colWidths[9] }}>
+                        <td className="px-4 py-3 overflow-hidden" style={{ minWidth: colWidths[9], width: colWidths[9] }}>
                           {editNotes?.id === inf.id ? (
                             <textarea
                               autoFocus
