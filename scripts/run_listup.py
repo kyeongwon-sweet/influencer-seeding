@@ -99,10 +99,10 @@ def _run_instagram(db, keywords: list) -> int:
             product_type = item.get("productType", "")
             is_video = item.get("isVideo", False)
             media_type = item.get("type", "")
-            if product_type == "clips" or media_type == "GraphVideo" or is_video:
-                post_type = "릴스"
-            else:
-                post_type = "피드"
+            is_reels = product_type == "clips" or media_type == "GraphVideo" or is_video
+            if not is_reels:
+                continue  # 릴스만 수집
+            post_type = "릴스"
 
             raw_ts = item.get("timestamp") or item.get("takenAtTimestamp")
             if isinstance(raw_ts, (int, float)):
@@ -177,7 +177,9 @@ def _run_youtube(db, keywords: list) -> int:
                     except ValueError:
                         duration = 0
                 is_short = item.get("isShort") or "/shorts/" in (video_url or "") or int(duration) <= 60
-                post_type = "숏폼" if is_short else "롱폼"
+                if not is_short:
+                    continue  # 쇼츠만 수집
+                post_type = "숏폼"
 
                 raw_ts = item.get("date") or item.get("publishedAt") or item.get("uploadDate")
                 if isinstance(raw_ts, (int, float)):

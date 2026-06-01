@@ -269,7 +269,8 @@ async function handleListup(supabase: ReturnType<typeof getServerSupabase>, jobI
       const shortCode = item.shortCode as string | undefined;
       const postUrl = (item.url as string) || (shortCode ? `https://www.instagram.com/p/${shortCode}/` : null);
       const productType = item.productType as string;
-      const postType = productType === 'clips' || item.type === 'GraphVideo' || item.isVideo ? '릴스' : '피드';
+      const isReels = productType === 'clips' || item.type === 'GraphVideo' || item.isVideo;
+      if (!isReels) continue; // 릴스만 수집
 
       const rawTs = item.timestamp || item.takenAtTimestamp;
       const postUploadedAt = typeof rawTs === 'number'
@@ -287,7 +288,7 @@ async function handleListup(supabase: ReturnType<typeof getServerSupabase>, jobI
         source: 'listup',
         keyword,
         sample_post_url: postUrl,
-        post_type: postType,
+        post_type: '릴스',
         post_uploaded_at: postUploadedAt,
       };
     }
@@ -312,6 +313,7 @@ async function handleListup(supabase: ReturnType<typeof getServerSupabase>, jobI
         durationSec = duration;
       }
       const isShortVideo = item.isShort || (videoUrl || '').includes('/shorts/') || durationSec <= 60;
+      if (!isShortVideo) continue; // 쇼츠만 수집
 
       const rawTs = item.date || item.publishedAt || item.uploadDate;
       const postUploadedAt = typeof rawTs === 'number'
@@ -326,7 +328,7 @@ async function handleListup(supabase: ReturnType<typeof getServerSupabase>, jobI
         source: 'listup',
         keyword: null,
         sample_post_url: videoUrl || null,
-        post_type: isShortVideo ? '숏폼' : '롱폼',
+        post_type: '숏폼',
         post_uploaded_at: postUploadedAt,
       };
     }
@@ -497,6 +499,8 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
     for (const item of items) {
       // #광고·#협찬 태그 포함 게시물 제외
       if (isAd(item)) continue;
+      // 릴스만 수집
+      if (!isReel(item)) continue;
 
       const owner = (item.owner as Record<string, unknown>) || {};
       const followers = (item.ownerFollowersCount || owner.followersCount || 0) as number;
@@ -530,8 +534,16 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
     }
   } else if (platform === 'youtube') {
     for (const item of items) {
-      const url = normalizeYouTubeUrl(item.url as string);
-      if (!url) continue;
+      const rawUrl = item.url as string;
+      // 쇼츠만 수집 (URL에 /shorts/ 포함 여부로 판별)
+      if (!rawUrl || !rawUrl.includes('/shorts/')) continue;
+
+      // 비디오 URL 정리 (쿼리파라미터 제거, 채널 URL로 normalize하지 않음)
+      let cleanUrl: string;
+      try {
+        const u = new URL(rawUrl.startsWith('http') ? rawUrl : 'https://' + rawUrl);
+        cleanUrl = `https://www.youtube.com${u.pathname}`;
+      } catch { continue; }
 
       const subscribers = (item.channelSubscriberCount || item.numberOfSubscribers || item.subscriberCount || 0) as number;
       const viewCount = (item.viewCount || item.views || 0) as number;
@@ -549,7 +561,7 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
         : rawTs ? (rawTs as string).slice(0, 10) : null;
 
       rows.push({
-        url,
+        url: cleanUrl,
         account_name: channelName || null,
         platform: 'youtube',
         content_summary: (item.title as string) || null,
