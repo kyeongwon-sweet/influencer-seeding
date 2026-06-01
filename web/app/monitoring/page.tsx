@@ -281,12 +281,13 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate }: {
           style={{ left: `${Math.min(Math.max(((pl + xS(hoverIdx)) / VW) * 100, 15), 85)}%`, transform: "translateX(-50%)" }}>
           <p className="text-a-ink-muted mb-1">{data[hoverIdx].date.replace(/-/g, ".")} · <span className="font-semibold text-a-blue tabular-nums">{data[hoverIdx].value.toLocaleString()}</span></p>
           {hoveredPosts.length > 0 && (
-            <div className="border-t border-a-hairline pt-1.5 mt-1 space-y-1">
+            <div className="border-t border-a-hairline pt-1.5 mt-1 space-y-0.5">
               {hoveredPosts.map((p, i) => (
-                <div key={i} className="flex items-center gap-1.5">
-                  <span className="text-a-ink font-medium">{p.name}</span>
-                  <span className="text-gray-400">·</span>
-                  <a href={p.url} target="_blank" rel="noreferrer" className="text-a-blue pointer-events-auto hover:underline">게시물 →</a>
+                <div key={i}>
+                  <a href={p.url} target="_blank" rel="noreferrer"
+                    className="text-a-ink font-medium pointer-events-auto hover:text-a-blue hover:underline transition-colors">
+                    {p.name}
+                  </a>
                 </div>
               ))}
             </div>
@@ -914,7 +915,7 @@ export default function MonitoringPage() {
             {/* 차트 + 테이블 */}
             <div className="flex divide-x divide-a-hairline">
               {/* 차트 */}
-              <div className="flex-[3] px-5 py-4">
+              <div className="flex-[5] px-5 py-4">
                 <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest mb-2">조회수 트렌드 (누적)</p>
                 <LineChart
                   data={chartData}
@@ -928,7 +929,7 @@ export default function MonitoringPage() {
                 />
               </div>
               {/* 증감 테이블 */}
-              <div className="flex-[4] flex flex-col self-start min-w-0">
+              <div className="flex-[2] flex flex-col self-start min-w-0">
                 <div className="px-5 py-4 border-b border-a-hairline">
                   <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">일자별 조회수 증감</p>
                 </div>
