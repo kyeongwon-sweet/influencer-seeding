@@ -374,10 +374,10 @@ export default function DashboardPage() {
                 return (
                   <div key={i} className="flex-1 min-w-[90px] px-4 py-1">
                     <div className="text-[11px] text-a-ink-muted mb-1.5 whitespace-nowrap">{m.label}</div>
-                    <div className="text-[28px] font-bold tracking-tight text-a-ink leading-none tabular-nums">
+                    <div className="text-[22px] font-bold tracking-tight text-a-ink leading-none tabular-nums whitespace-nowrap overflow-hidden">
                       {fmtKpi(m.current)}
                     </div>
-                    <div className="text-[11px] text-a-ink-muted mt-2 whitespace-nowrap">
+                    <div className="text-[11px] text-a-ink-muted mt-2 whitespace-nowrap overflow-hidden">
                       목표 {fmtKpi(m.target)}
                     </div>
                     <div className={`text-xs font-semibold mt-0.5 ${pctColor}`}>
