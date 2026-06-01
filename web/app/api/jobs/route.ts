@@ -28,6 +28,11 @@ function getAppUrl() {
   return 'http://localhost:3000';
 }
 
+function webhookUrl(appUrl: string, params: string): string {
+  const secret = process.env.WEBHOOK_SECRET ?? '';
+  return `${appUrl}/api/apify-webhook?token=${encodeURIComponent(secret)}&${params}`;
+}
+
 export async function GET() {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -88,7 +93,7 @@ export async function POST(req: NextRequest) {
           await startActorRun(
             'apify/instagram-scraper',
             { directUrls: urls, resultsType: 'posts', resultsLimit: urls.length },
-            `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=monitoring`
+            webhookUrl(appUrl, `jobId=${job.id}&jobType=monitoring`)
           );
         }
 
@@ -116,12 +121,12 @@ export async function POST(req: NextRequest) {
                 resultsType: 'reels',   // 액터 레벨에서 릴스만 필터
                 keywordSearch: false,   // 해시태그 모드 (keyword 모드는 너무 느림)
               },
-              `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=listup&platform=instagram`
+              webhookUrl(appUrl, `jobId=${job.id}&jobType=listup&platform=instagram`)
             ).catch((e: unknown) => { startErrors.push(`인스타: ${e}`); }) : Promise.resolve(),
             ytKws.length > 0 ? startActorRun(
               'streamers/youtube-scraper',
               { searchQueries: ytKws, maxResultsShorts: 30, sortingOrder: 'views' },
-              `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=listup&platform=youtube`
+              webhookUrl(appUrl, `jobId=${job.id}&jobType=listup&platform=youtube`)
             ).catch((e: unknown) => { startErrors.push(`유튜브: ${e}`); }) : Promise.resolve(),
           ]);
           // 모든 플랫폼이 실패한 경우에만 잡을 실패 처리
@@ -142,12 +147,12 @@ export async function POST(req: NextRequest) {
           startActorRun(
             'apify/instagram-hashtag-scraper',
             { hashtags: ['라라스윗'], resultsLimit: 500, resultsType: 'reels' },
-            `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=organic&platform=instagram`
+            webhookUrl(appUrl, `jobId=${job.id}&jobType=organic&platform=instagram`)
           ).catch((e: unknown) => { startErrors.push(`인스타: ${e}`); }),
           startActorRun(
             'streamers/youtube-scraper',
             { searchQueries: ['라라스윗'], maxResultsShorts: 100, sortingOrder: 'relevance' },
-            `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=organic&platform=youtube`
+            webhookUrl(appUrl, `jobId=${job.id}&jobType=organic&platform=youtube`)
           ).catch((e: unknown) => { startErrors.push(`유튜브: ${e}`); }),
         ]);
         if (startErrors.length === 2) {
@@ -172,7 +177,7 @@ export async function POST(req: NextRequest) {
           await startActorRun(
             'apify/instagram-scraper',
             { directUrls: igUrls, resultsType: 'posts', resultsLimit: igUrls.length },
-            `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=organic_refresh`
+            webhookUrl(appUrl, `jobId=${job.id}&jobType=organic_refresh`)
           );
         }
 
@@ -204,14 +209,14 @@ export async function POST(req: NextRequest) {
             igUrls.length > 0 ? startActorRun(
               'apify/instagram-scraper',
               { directUrls: igUrls, resultsType: 'posts', resultsLimit: 60, addParentData: true },
-              `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=screening&platform=instagram`
+              webhookUrl(appUrl, `jobId=${job.id}&jobType=screening&platform=instagram`)
             ).catch((e: unknown) => { startErrors.push(`인스타 스크리닝: ${e}`); }) : Promise.resolve(),
             ...ytInfluencers.map((inf: { id: string; url: string }) => {
               const ytUrl = normalizeYouTubeUrl(inf.url) ?? inf.url;
               return startActorRun(
                 'streamers/youtube-scraper',
                 { startUrls: [{ url: ytUrl }], maxResultsShorts: 15 },
-                `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=screening&platform=youtube&influencerId=${inf.id}`
+                webhookUrl(appUrl, `jobId=${job.id}&jobType=screening&platform=youtube&influencerId=${inf.id}`)
               ).catch((e: unknown) => { startErrors.push(`유튜브(${inf.url}): ${e}`); });
             }),
           ]);

@@ -128,6 +128,13 @@ export async function POST(req: NextRequest) {
   const jobId = searchParams.get('jobId');
   const jobType = searchParams.get('jobType');
 
+  // 웹훅 토큰 검증 (WEBHOOK_SECRET 미설정 시 무조건 차단)
+  const webhookSecret = process.env.WEBHOOK_SECRET;
+  const token = searchParams.get('token');
+  if (!webhookSecret || token !== webhookSecret) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   if (!jobId || !jobType) {
     return NextResponse.json({ error: 'Missing params' }, { status: 400 });
   }
