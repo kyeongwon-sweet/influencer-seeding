@@ -22,11 +22,10 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json();
   const supabase = getServerSupabase();
-  const { data, error } = await supabase
-    .from("influencers")
-    .insert(body)
-    .select()
-    .single();
+  const isArray = Array.isArray(body);
+  const { data, error } = isArray
+    ? await supabase.from("influencers").insert(body).select()
+    : await supabase.from("influencers").insert(body).select().single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data, { status: 201 });

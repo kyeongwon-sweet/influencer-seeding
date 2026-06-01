@@ -3,13 +3,15 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
+import { normalizeYouTubeUrl } from "@/lib/url-utils";
 
 type Keyword = { id: string; keyword: string; platform: string; created_at: string };
-type ScreeningMetrics = { avg_views_per_follower: number | null };
+type ScreeningMetrics = { avg_views_per_follower: number | null; followers: number | null; total_avg_play_count: number | null };
 type Influencer = {
   id: string; name: string; url: string; platform: string; status: string; source: string;
   created_at: string; keyword?: string; sample_post_url?: string; post_type?: string;
-  post_uploaded_at?: string; notes?: string | null; screening_metrics?: ScreeningMetrics[];
+  post_uploaded_at?: string; notes?: string | null; content_summary?: string | null;
+  screening_metrics?: ScreeningMetrics[];
 };
 
 const PLATFORM_OPTIONS = [
@@ -37,8 +39,8 @@ type Filters = { name: string; platform: string; status: string; keyword: string
 const INIT_FILTERS: Filters = { name: "", platform: "all", status: "all", keyword: "all", uploadedFrom: "", uploadedTo: "" };
 
 // 드래그 리사이즈 가능한 열 기본 너비 (px)
-// [채널명, 플랫폼, 발굴 키워드, 게시물, 유형, 업로드일, 조회/팔로워, 상태, 추가일, 특이사항]
-const INIT_COL_WIDTHS = [200, 80, 130, 64, 72, 100, 120, 84, 100, 160];
+// [채널명, 플랫폼, 캡션, 발굴 키워드, 게시물, 유형, 업로드일, 팔로워, 조회수, 상태, 추가일, 특이사항]
+const INIT_COL_WIDTHS = [200, 80, 200, 130, 64, 72, 100, 120, 100, 84, 100, 160];
 
 function formatTimestamp(ts: string): string {
   const d = new Date(ts);
@@ -49,6 +51,21 @@ function formatTimestamp(ts: string): string {
 function formatElapsed(s: number): string {
   if (s < 60) return `${s}초`;
   return `${Math.floor(s / 60)}분 ${s % 60}초`;
+}
+
+function getThumbnailUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  let m = url.match(/youtube\.com\/shorts\/([^/?&#]+)/);
+  if (m) return `https://i.ytimg.com/vi/${m[1]}/mqdefault.jpg`;
+  m = url.match(/[?&]v=([^&]+)/);
+  if (m) return `https://i.ytimg.com/vi/${m[1]}/mqdefault.jpg`;
+  return null;
+}
+
+function fmtNum(v: number | null | undefined): string {
+  if (v == null) return "-";
+  if (v >= 10000) return Math.round(v / 10000) + "만";
+  return v.toLocaleString();
 }
 
 function FilterSelect({ value, onChange, children }: { value: string; onChange: (v: string) => void; children: React.ReactNode }) {
@@ -89,6 +106,9 @@ export default function ListupPage() {
   const [editNotes, setEditNotes] = useState<{ id: string; value: string } | null>(null);
   const [editKeyword, setEditKeyword] = useState<{ id: string; value: string } | null>(null);
   const [editRatio, setEditRatio] = useState<{ id: string; value: string } | null>(null);
+  const [showCsvImport, setShowCsvImport] = useState(false);
+  const [csvText, setCsvText] = useState("");
+  const [csvImporting, setCsvImporting] = useState(false);
   const resizingRef = useRef<{ colIdx: number; startX: number; startW: number } | null>(null);
   const runningJobIdRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -231,6 +251,54 @@ export default function ListupPage() {
     setAddingManual(false);
     await loadInfluencers();
     toast("계정이 추가됐습니다.", "success");
+  }
+
+  async function importCsv() {
+    const lines = csvText.split("\n").map(l => l.trim()).filter(Boolean);
+    const records: { name: string; url: string; platform: string; source: string; status: string; keyword: string | null }[] = [];
+    for (const line of lines) {
+      const parts = line.split(",").map(p => p.trim());
+      if (parts.length < 2) continue;
+      const keyword = parts[0] || null;
+      const rawUrl = parts.slice(1).join(",").trim();
+      if (!rawUrl) continue;
+      // skip header row
+      if (rawUrl.toLowerCase() === "url") continue;
+      let platform = "instagram";
+      let url = rawUrl;
+      let name = "";
+      if (rawUrl.includes("youtube.com") || rawUrl.includes("youtu.be")) {
+        platform = "youtube";
+        url = normalizeYouTubeUrl(rawUrl) ?? rawUrl;
+        // extract @handle or channel name from path
+        try {
+          const u = new URL(url);
+          const segs = u.pathname.split("/").filter(Boolean);
+          name = segs.find(s => s.startsWith("@")) ?? segs[segs.length - 1] ?? rawUrl;
+        } catch { name = rawUrl; }
+      } else {
+        // instagram: last non-empty path segment
+        try {
+          const u = new URL(rawUrl.startsWith("http") ? rawUrl : "https://" + rawUrl);
+          const segs = u.pathname.split("/").filter(Boolean);
+          name = segs[segs.length - 1] ?? rawUrl;
+        } catch { name = rawUrl; }
+      }
+      records.push({ name, url, platform, source: "listup", status: "pending", keyword });
+    }
+    if (records.length === 0) { toast("가져올 데이터가 없습니다.", "error"); return; }
+    setCsvImporting(true);
+    const res = await fetch("/api/influencers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(records),
+    });
+    setCsvImporting(false);
+    if (!res.ok) { toast("가져오기에 실패했습니다.", "error"); return; }
+    setShowCsvImport(false);
+    setCsvText("");
+    await loadInfluencers();
+    toast(`${records.length}명 추가됐습니다.`, "success");
   }
 
   function downloadCSV() {
@@ -460,9 +528,15 @@ export default function ListupPage() {
 
   const sortedInfluencers = [...filteredInfluencers].sort((a, b) => {
     if (!sortCol) return 0;
-    if (sortCol === "조회/팔로워") {
-      const av = a.screening_metrics?.[0]?.avg_views_per_follower ?? -1;
-      const bv = b.screening_metrics?.[0]?.avg_views_per_follower ?? -1;
+    if (sortCol === "팔로워") {
+      const av = a.screening_metrics?.[0]?.followers ?? -1;
+      const bv = b.screening_metrics?.[0]?.followers ?? -1;
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+      return sortDir === "asc" ? cmp : -cmp;
+    }
+    if (sortCol === "조회수") {
+      const av = a.screening_metrics?.[0]?.total_avg_play_count ?? -1;
+      const bv = b.screening_metrics?.[0]?.total_avg_play_count ?? -1;
       const cmp = av < bv ? -1 : av > bv ? 1 : 0;
       return sortDir === "asc" ? cmp : -cmp;
     }
@@ -543,6 +617,7 @@ export default function ListupPage() {
         </div>
         <div className="flex items-center gap-1.5">
           <button onClick={() => setShowAdd(true)} className="btn-secondary">+ 계정 추가</button>
+          <button onClick={() => setShowCsvImport(true)} className="btn-secondary">CSV 가져오기</button>
           {running && (
             <>
               <span className="text-xs text-a-ink-muted tabular-nums">{formatElapsed(elapsedSeconds)}</span>
@@ -726,6 +801,7 @@ export default function ListupPage() {
                       <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll}
                         className="w-3.5 h-3.5 accent-a-blue cursor-pointer" />
                     </th>
+                    <th className="px-2 py-3 w-[60px] bg-white text-[10px] font-medium uppercase tracking-wider text-gray-400" style={{ width: 60, minWidth: 60 }}></th>
                     {rsTH("채널명", 0)}
                     {rsTH("플랫폼", 1, true, (
                       <div>
@@ -746,18 +822,20 @@ export default function ListupPage() {
                         </div>
                       </div>
                     ))}
-                    {rsTH("발굴 키워드", 2)}
-                    {rsTH("게시물", 3, false)}
-                    {rsTH("유형", 4)}
-                    {rsTH("업로드일", 5)}
-                    {rsTH("조회/팔로워", 6)}
+                    {rsTH("캡션", 2, false)}
+                    {rsTH("발굴 키워드", 3)}
+                    {rsTH("게시물", 4, false)}
+                    {rsTH("유형", 5)}
+                    {rsTH("업로드일", 6)}
+                    {rsTH("팔로워", 7)}
+                    {rsTH("조회수", 8)}
                     {(() => {
                       const col = "상태";
                       const active = sortCol === col;
                       return (
                         <th
                           key={col}
-                          style={{ minWidth: colWidths[7] }}
+                          style={{ minWidth: colWidths[9] }}
                           className={`relative px-4 py-3 text-left text-[10px] font-medium uppercase tracking-wider whitespace-nowrap bg-white select-none group ${
                             active ? "text-a-ink" : "text-gray-400"
                           }`}
@@ -773,25 +851,31 @@ export default function ListupPage() {
                             <p className="text-[11px] text-a-ink-muted leading-relaxed">스크리닝에서 통과/탈락을 설정하면<br/>이 탭의 상태가 자동으로 반영됩니다.</p>
                           </div>
                           <div
-                            onMouseDown={e => startResize(e, 7)}
+                            onMouseDown={e => startResize(e, 9)}
                             className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-100 z-10"
                           />
                         </th>
                       );
                     })()}
-                    {rsTH("추가일", 8)}
-                    {rsTH("특이사항", 9, false)}
+                    {rsTH("추가일", 10)}
+                    {rsTH("특이사항", 11, false)}
                     <th className="px-4 py-3 bg-white"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {sortedInfluencers.map(inf => {
                     const ratio = inf.screening_metrics?.[0]?.avg_views_per_follower;
+                    const thumbUrl = getThumbnailUrl(inf.sample_post_url);
                     return (
                       <tr key={inf.id} className={`group border-b border-a-divider last:border-0 hover:bg-a-parchment/60 transition-colors ${selected.has(inf.id) ? "bg-blue-50/40" : ""}`}>
                         <td className="pl-5 pr-2 py-4 w-9">
                           <input type="checkbox" checked={selected.has(inf.id)} onChange={() => toggleSelect(inf.id)}
                             className="w-3.5 h-3.5 accent-a-blue cursor-pointer" />
+                        </td>
+                        <td className="px-2 py-3" style={{ width: 60, minWidth: 60 }}>
+                          {thumbUrl
+                            ? <img src={thumbUrl} alt="" width={48} height={36} className="rounded object-cover" style={{ width: 48, height: 36 }} />
+                            : <span className="text-[10px] text-a-ink-muted font-medium">{inf.platform === "youtube" ? "YT" : "IG"}</span>}
                         </td>
                         <td className="px-4 py-4">
                           <div style={{ width: colWidths[0] - 32, overflow: 'hidden', whiteSpace: 'nowrap' }}>
@@ -815,6 +899,11 @@ export default function ListupPage() {
                         </td>
                         <td className="px-4 py-4 text-a-ink-muted text-xs whitespace-nowrap">
                           {inf.platform === "instagram" ? "인스타" : "유튜브"}
+                        </td>
+                        <td className="px-4 py-3" style={{ minWidth: colWidths[2] }}>
+                          {inf.content_summary
+                            ? <span className="text-[11px] text-a-ink-muted line-clamp-2 block">{inf.content_summary}</span>
+                            : <span className="text-xs text-gray-300">-</span>}
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap">
                           {editKeyword?.id === inf.id ? (
@@ -861,32 +950,38 @@ export default function ListupPage() {
                             : <span className="text-gray-300">-</span>}
                         </td>
                         <td className="px-4 py-4 text-xs whitespace-nowrap">
-                          {editRatio?.id === inf.id ? (
-                            <input
-                              autoFocus
-                              value={editRatio.value}
-                              onChange={e => setEditRatio(v => v ? { ...v, value: e.target.value } : null)}
-                              onBlur={() => patchRatio(inf.id, editRatio.value)}
-                              onKeyDown={e => {
-                                if (e.key === "Enter") patchRatio(inf.id, editRatio.value);
-                                if (e.key === "Escape") setEditRatio(null);
-                              }}
-                              placeholder="0.00"
-                              className="w-16 text-xs bg-transparent border-b border-a-blue outline-none py-0.5 tabular-nums"
-                            />
-                          ) : (
-                            <span
-                              onClick={() => setEditRatio({ id: inf.id, value: ratio != null ? String(ratio) : "" })}
-                              className="cursor-pointer group/ratio flex items-center gap-1"
-                            >
-                              {ratio != null
-                                ? <span className="font-medium text-a-ink">{Number(ratio).toFixed(2)}</span>
-                                : <span className="text-gray-300">-</span>}
-                              <svg width="10" height="10" viewBox="0 0 20 20" fill="none" className="opacity-0 group-hover/ratio:opacity-40 transition-opacity flex-shrink-0">
-                                <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            </span>
-                          )}
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-medium text-a-ink tabular-nums">{fmtNum(inf.screening_metrics?.[0]?.followers)}</span>
+                            {editRatio?.id === inf.id ? (
+                              <input
+                                autoFocus
+                                value={editRatio.value}
+                                onChange={e => setEditRatio(v => v ? { ...v, value: e.target.value } : null)}
+                                onBlur={() => patchRatio(inf.id, editRatio.value)}
+                                onKeyDown={e => {
+                                  if (e.key === "Enter") patchRatio(inf.id, editRatio.value);
+                                  if (e.key === "Escape") setEditRatio(null);
+                                }}
+                                placeholder="0.00"
+                                className="w-16 text-xs bg-transparent border-b border-a-blue outline-none py-0.5 tabular-nums"
+                              />
+                            ) : (
+                              <span
+                                onClick={() => setEditRatio({ id: inf.id, value: ratio != null ? String(ratio) : "" })}
+                                className="cursor-pointer group/ratio flex items-center gap-0.5 text-a-ink-muted"
+                              >
+                                {ratio != null
+                                  ? <span className="text-[10px]">비율 {Number(ratio).toFixed(2)}</span>
+                                  : null}
+                                <svg width="9" height="9" viewBox="0 0 20 20" fill="none" className="opacity-0 group-hover/ratio:opacity-40 transition-opacity flex-shrink-0">
+                                  <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 text-xs whitespace-nowrap">
+                          <span className="font-medium text-a-ink tabular-nums">{fmtNum(inf.screening_metrics?.[0]?.total_avg_play_count)}</span>
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap">
                           <span className={`text-xs px-2.5 py-1 rounded-full ${STATUS_CLS[inf.status] ?? STATUS_CLS.pending}`}>
@@ -896,7 +991,7 @@ export default function ListupPage() {
                         <td className="px-4 py-4 text-a-ink-muted text-xs whitespace-nowrap">
                           {new Date(inf.created_at).toLocaleDateString("ko-KR")}
                         </td>
-                        <td className="px-4 py-3" style={{ minWidth: colWidths[9] }}>
+                        <td className="px-4 py-3" style={{ minWidth: colWidths[11] }}>
                           {editNotes?.id === inf.id ? (
                             <textarea
                               autoFocus
@@ -992,6 +1087,30 @@ export default function ListupPage() {
               <button onClick={addInfluencerManual} disabled={addingManual || !addForm.name || !addForm.url}
                 className="px-5 py-2 text-sm bg-a-blue text-white rounded-full hover:bg-a-blue-hover disabled:opacity-40 transition">
                 {addingManual ? "추가 중..." : "추가"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCsvImport && (
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-[22px] p-6 w-[480px] shadow-[0_8px_40px_rgba(0,0,0,0.12)]">
+            <h2 className="font-semibold tracking-tight mb-1">CSV 가져오기</h2>
+            <p className="text-xs text-a-ink-muted mb-4">형식: <code className="bg-a-parchment px-1 py-0.5 rounded text-[11px]">키워드,URL</code> (한 줄에 하나씩, 헤더 선택)</p>
+            <textarea
+              rows={10}
+              value={csvText}
+              onChange={e => setCsvText(e.target.value)}
+              placeholder={"키워드,URL\n뷰티,https://www.instagram.com/someuser/\n맛집,https://www.youtube.com/@channel/"}
+              className="w-full border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-xs font-mono placeholder:text-a-ink-muted focus:outline-none focus:border-a-blue focus:ring-1 focus:ring-a-blue transition resize-none"
+            />
+            <div className="flex gap-2 mt-4 justify-end">
+              <button onClick={() => { setShowCsvImport(false); setCsvText(""); }}
+                className="px-4 py-2 text-sm text-a-ink-muted hover:text-a-ink transition rounded-full">취소</button>
+              <button onClick={importCsv} disabled={csvImporting || !csvText.trim()}
+                className="px-5 py-2 text-sm bg-a-blue text-white rounded-full hover:bg-a-blue-hover disabled:opacity-40 transition">
+                {csvImporting ? "가져오는 중..." : "가져오기"}
               </button>
             </div>
           </div>
