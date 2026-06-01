@@ -294,7 +294,7 @@ async function handleListup(supabase: ReturnType<typeof getServerSupabase>, jobI
         ? new Date(rawTs * 1000).toISOString()
         : (rawTs as string) || null;
 
-      // 액터가 각 아이템에 hashtag 필드를 포함시킴
+      // keywordSearch:true 모드에서는 item.hashtag가 없음 → null
       const keyword = (item.hashtag as string) || null;
 
       accounts[username] = {

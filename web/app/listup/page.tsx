@@ -273,25 +273,32 @@ export default function ListupPage() {
   }
 
   async function patchRatio(id: string, value: string) {
-    const num = parseFloat(value.replace(",", "."));
+    // 쉼표 전체 제거 후 파싱 (1,234 → 1234)
+    const num = parseFloat(value.replace(/,/g, ""));
+    if (value.trim() && isNaN(num)) {
+      toast("숫자를 입력해 주세요.", "error");
+      return;
+    }
+    const newVal = value.trim() === "" ? null : num;
     const res = await fetch(`/api/influencers/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ avg_views_per_follower: isNaN(num) ? null : num }),
+      body: JSON.stringify({ avg_views_per_follower: newVal }),
     });
     if (res.ok) {
       setInfluencers(prev => prev.map(i => {
         if (i.id !== id) return i;
         const metrics = i.screening_metrics ?? [];
         const updated = metrics.length > 0
-          ? [{ ...metrics[0], avg_views_per_follower: isNaN(num) ? null : num }, ...metrics.slice(1)]
-          : [{ avg_views_per_follower: isNaN(num) ? null : num }];
+          ? [{ ...metrics[0], avg_views_per_follower: newVal }, ...metrics.slice(1)]
+          : [{ avg_views_per_follower: newVal }];
         return { ...i, screening_metrics: updated };
       }));
+      setEditRatio(null); // 성공 시에만 닫기
     } else {
       toast("저장에 실패했습니다.", "error");
+      // 실패 시 input 유지 (setEditRatio 호출 안 함)
     }
-    setEditRatio(null);
   }
 
   async function patchKeyword(id: string, keyword: string) {

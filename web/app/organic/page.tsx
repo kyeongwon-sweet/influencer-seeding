@@ -349,7 +349,7 @@ export default function OrganicPage() {
     const headers = ["계정명", "플랫폼", "URL", "내용요약", "언급제품", "업로드일", "조회수"];
     const rows = sorted.map(m => [
       m.account_name ?? "",
-      m.platform,
+      normPlatform(m.platform),
       m.url,
       m.content_summary ?? "",
       m.mentioned_product ?? "",
