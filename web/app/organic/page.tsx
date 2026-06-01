@@ -41,7 +41,7 @@ type CsvRow = {
   uploaded_at: string | null; view_count: number | null;
 };
 
-// [사용자이름, 플랫폼, 내용요약, 언급제품, 업로드일, 조회수, 유형, 특이사항]
+// [사용자이름, 플랫폼, 캡션, 언급제품, 업로드일, 조회수, 유형, 특이사항]
 const INIT_COL_WIDTHS = [180, 90, 300, 160, 100, 90, 90, 160];
 
 function getThumbnailUrl(url: string): string | null {
@@ -298,7 +298,7 @@ export default function OrganicPage() {
   }
 
   function downloadTemplate() {
-    const csv = "플랫폼,URL,계정명,내용요약,언급제품,업로드일,조회수\n인스타그램,https://www.instagram.com/p/xxxxx/,계정명,라라스윗 언급 내용,라라스윗 아이스크림,2024-01-01,10000";
+    const csv = "플랫폼,URL,계정명,캡션,언급제품,업로드일,조회수\n인스타그램,https://www.instagram.com/p/xxxxx/,계정명,라라스윗 언급 내용,라라스윗 아이스크림,2024-01-01,10000";
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -346,7 +346,7 @@ export default function OrganicPage() {
   }
 
   function downloadCSV() {
-    const headers = ["계정명", "플랫폼", "URL", "내용요약", "언급제품", "업로드일", "조회수"];
+    const headers = ["계정명", "플랫폼", "URL", "캡션", "언급제품", "업로드일", "조회수"];
     const rows = sorted.map(m => [
       m.account_name ?? "",
       normPlatform(m.platform),
@@ -599,7 +599,7 @@ export default function OrganicPage() {
                     <th className="px-2 py-3 bg-white w-16 text-[10px] font-medium text-gray-400 uppercase tracking-wider"></th>
                     {rsTH("사용자이름", 0)}
                     {rsTH("플랫폼", 1)}
-                    {rsTH("내용요약", 2, false)}
+                    {rsTH("캡션", 2, false)}
                     {rsTH("언급제품", 3)}
                     {rsTH("업로드일", 4)}
                     {rsTH("조회수", 5, true, true)}
@@ -888,7 +888,7 @@ export default function OrganicPage() {
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-white rounded-[22px] p-6 w-[480px] shadow-[0_8px_40px_rgba(0,0,0,0.12)]">
             <h2 className="font-semibold tracking-tight mb-1">CSV 일괄 업로드</h2>
-            <p className="text-xs text-a-ink-muted mb-4">컬럼 순서: 플랫폼, URL, 계정명, 내용요약, 언급제품, 업로드일, 조회수 (헤더 행 필수)</p>
+            <p className="text-xs text-a-ink-muted mb-4">컬럼 순서: 플랫폼, URL, 계정명, 캡션, 언급제품, 업로드일, 조회수 (헤더 행 필수)</p>
             <div className="flex items-center gap-2 mb-4">
               <button onClick={downloadTemplate}
                 className="text-xs px-3.5 py-1.5 rounded-full border border-a-hairline text-a-ink-muted hover:bg-a-parchment transition">
