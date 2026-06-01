@@ -36,7 +36,13 @@ type Filters = { name: string; project: string; products: string[]; type: string
 const INIT_FILTERS: Filters = { name: "", project: "", products: [], type: "all", channelType: "all", category: "all", dateFrom: "", dateTo: "" };
 type EditCell = { postId: string; field: "project_name" | "product_name" | "channel_type" | "cost" | "reach_count" | "account_name" | "posted_at" | "notes" | "content_summary"; value: string };
 const POST_TYPES = ["릴스", "피드", "숏폼", "롱폼"];
-const CHANNEL_TYPES = ["파워채널", "매거진", "먹스타", "인플루언서", "바이럴"];
+const CHANNEL_TYPES = [
+  "바이럴(배너)",
+  "바이럴(영상)",
+  "협찬(먹스타)",
+  "협찬(인플루언서)",
+  "협찬(파워채널/매거진)",
+];
 const CATEGORIES = [
   { value: "A",   desc: "찐팬서사 (꾸준함)" },
   { value: "B",   desc: "선망성" },
@@ -826,7 +832,14 @@ export default function MonitoringPage() {
               <thead className="sticky top-0 z-30">
                 <tr className="border-b border-a-hairline">
                   <TH col="증분량" w={stickyColWidths["증분량"]} leftPos={stickyLefts["증분량"]} onResize={e => startResize("증분량", e, true)} right {...sp("증분량")}>증분량</TH>
-                  <TH w={colWidths["채널분류"]} onResize={e => startResize("채널분류", e)} {...sp("채널분류")}>채널 분류</TH>
+                  <TH w={colWidths["채널분류"]} onResize={e => startResize("채널분류", e)} {...sp("채널분류")}>
+                    <span className="relative group/ct cursor-default">
+                      채널 분류
+                      <span className="hidden group-hover/ct:block absolute top-full left-0 mt-1 z-50 bg-gray-900 text-white text-[11px] rounded-[8px] px-3 py-2 whitespace-nowrap shadow-lg font-normal normal-case tracking-normal">
+                        {CHANNEL_TYPES.map((t, i) => <span key={i} className="block">{t}</span>)}
+                      </span>
+                    </span>
+                  </TH>
                   <TH w={colWidths["게시일"]} onResize={e => startResize("게시일", e)} {...sp("게시일")}>게시일</TH>
                   <TH w={colWidths["캡션"]} onResize={e => startResize("캡션", e)}>캡션</TH>
                   <TH w={colWidths["인플루언서"]} onResize={e => startResize("인플루언서", e)} {...sp("인플루언서")}>인플루언서</TH>
