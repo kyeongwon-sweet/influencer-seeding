@@ -1011,6 +1011,46 @@ export default function ListupPage() {
                             </span>
                           )}
                         </td>
+                        {/* 팔로워 (colIdx 3) */}
+                        <td className="px-4 py-4 text-xs whitespace-nowrap">
+                          {editFollowers?.id === inf.id ? (
+                            <input autoFocus value={editFollowers.value}
+                              onChange={e => setEditFollowers(v => v ? { ...v, value: e.target.value } : null)}
+                              onBlur={() => patchFollowers(inf.id, editFollowers.value)}
+                              onKeyDown={e => { if (e.key === "Enter") patchFollowers(inf.id, editFollowers.value); if (e.key === "Escape") setEditFollowers(null); }}
+                              placeholder="0" className="w-20 text-xs bg-transparent border-b border-a-blue outline-none py-0.5 tabular-nums" />
+                          ) : (
+                            <span onClick={() => setEditFollowers({ id: inf.id, value: inf.screening_metrics?.[0]?.followers != null ? String(inf.screening_metrics[0].followers) : "" })}
+                              className="cursor-pointer flex items-center gap-1 group/fol font-medium text-a-ink tabular-nums">
+                              {fmtNum(inf.screening_metrics?.[0]?.followers)}
+                              <svg width="9" height="9" viewBox="0 0 20 20" fill="none" className="opacity-0 group-hover/fol:opacity-40 transition-opacity flex-shrink-0">
+                                <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </span>
+                          )}
+                        </td>
+                        {/* 조회수 (colIdx 4) */}
+                        <td className="px-4 py-4 text-xs whitespace-nowrap">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-medium text-a-ink tabular-nums">{fmtNum(inf.screening_metrics?.[0]?.total_avg_play_count)}</span>
+                            {editRatio?.id === inf.id ? (
+                              <input autoFocus value={editRatio.value}
+                                onChange={e => setEditRatio(v => v ? { ...v, value: e.target.value } : null)}
+                                onBlur={() => patchRatio(inf.id, editRatio.value)}
+                                onKeyDown={e => { if (e.key === "Enter") patchRatio(inf.id, editRatio.value); if (e.key === "Escape") setEditRatio(null); }}
+                                placeholder="0.00" className="w-16 text-xs bg-transparent border-b border-a-blue outline-none py-0.5 tabular-nums" />
+                            ) : (
+                              <span onClick={() => setEditRatio({ id: inf.id, value: ratio != null ? String(ratio) : "" })}
+                                className="cursor-pointer group/ratio flex items-center gap-0.5 text-a-ink-muted">
+                                {ratio != null ? <span className="text-[10px]">비율 {Number(ratio).toFixed(2)}</span> : null}
+                                <svg width="9" height="9" viewBox="0 0 20 20" fill="none" className="opacity-0 group-hover/ratio:opacity-40 transition-opacity flex-shrink-0">
+                                  <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        {/* 참여수 (colIdx 5) */}
                         <td className="px-4 py-4 text-xs whitespace-nowrap">
                           {(() => {
                             const m = inf.screening_metrics?.[0];
@@ -1084,63 +1124,6 @@ export default function ListupPage() {
                               </svg>
                             </span>
                           )}
-                        </td>
-                        <td className="px-4 py-4 text-xs whitespace-nowrap">
-                          {editFollowers?.id === inf.id ? (
-                            <input
-                              autoFocus
-                              value={editFollowers.value}
-                              onChange={e => setEditFollowers(v => v ? { ...v, value: e.target.value } : null)}
-                              onBlur={() => patchFollowers(inf.id, editFollowers.value)}
-                              onKeyDown={e => {
-                                if (e.key === "Enter") patchFollowers(inf.id, editFollowers.value);
-                                if (e.key === "Escape") setEditFollowers(null);
-                              }}
-                              placeholder="0"
-                              className="w-20 text-xs bg-transparent border-b border-a-blue outline-none py-0.5 tabular-nums"
-                            />
-                          ) : (
-                            <span
-                              onClick={() => setEditFollowers({ id: inf.id, value: inf.screening_metrics?.[0]?.followers != null ? String(inf.screening_metrics[0].followers) : "" })}
-                              className="cursor-pointer flex items-center gap-1 group/fol font-medium text-a-ink tabular-nums"
-                            >
-                              {fmtNum(inf.screening_metrics?.[0]?.followers)}
-                              <svg width="9" height="9" viewBox="0 0 20 20" fill="none" className="opacity-0 group-hover/fol:opacity-40 transition-opacity flex-shrink-0">
-                                <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-4 text-xs whitespace-nowrap">
-                          <div className="flex flex-col gap-0.5">
-                            <span className="font-medium text-a-ink tabular-nums">{fmtNum(inf.screening_metrics?.[0]?.total_avg_play_count)}</span>
-                            {editRatio?.id === inf.id ? (
-                              <input
-                                autoFocus
-                                value={editRatio.value}
-                                onChange={e => setEditRatio(v => v ? { ...v, value: e.target.value } : null)}
-                                onBlur={() => patchRatio(inf.id, editRatio.value)}
-                                onKeyDown={e => {
-                                  if (e.key === "Enter") patchRatio(inf.id, editRatio.value);
-                                  if (e.key === "Escape") setEditRatio(null);
-                                }}
-                                placeholder="0.00"
-                                className="w-16 text-xs bg-transparent border-b border-a-blue outline-none py-0.5 tabular-nums"
-                              />
-                            ) : (
-                              <span
-                                onClick={() => setEditRatio({ id: inf.id, value: ratio != null ? String(ratio) : "" })}
-                                className="cursor-pointer group/ratio flex items-center gap-0.5 text-a-ink-muted"
-                              >
-                                {ratio != null
-                                  ? <span className="text-[10px]">비율 {Number(ratio).toFixed(2)}</span>
-                                  : null}
-                                <svg width="9" height="9" viewBox="0 0 20 20" fill="none" className="opacity-0 group-hover/ratio:opacity-40 transition-opacity flex-shrink-0">
-                                  <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                </svg>
-                              </span>
-                            )}
-                          </div>
                         </td>
                         <td className="px-4 py-4 text-a-ink-muted text-xs whitespace-nowrap">
                           {new Date(inf.created_at).toLocaleDateString("ko-KR")}
