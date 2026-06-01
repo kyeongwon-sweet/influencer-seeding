@@ -66,12 +66,10 @@ function getThumbnailUrl(url: string | null | undefined): string | null {
   if (m) return `https://i.ytimg.com/vi/${m[1]}/mqdefault.jpg`;
   m = url.match(/[?&]v=([^&]+)/);
   if (m) return `https://i.ytimg.com/vi/${m[1]}/mqdefault.jpg`;
-  // Instagram reel/post: shortcode로 썸네일 URL 구성
-  m = url.match(/instagram\.com\/(?:reels?|p|tv)\/([A-Za-z0-9_-]+)/);
-  if (m) return `https://www.instagram.com/p/${m[1]}/media/?size=m`;
-  // Apify가 저장한 직접 이미지 URL (cdninstagram, fbcdn 등)
+  // Apify가 저장한 직접 이미지 URL (cdninstagram, fbcdn 등) - 스크리닝 후 저장됨
   if (/cdninstagram\.com|fbcdn\.net|scontent/i.test(url)) return url;
   if (/\.(jpg|jpeg|png|webp)(\?|$)/i.test(url)) return url;
+  // Instagram 릴스/포스트 URL 자체는 썸네일 제공 불가 (인증 필요)
   return null;
 }
 

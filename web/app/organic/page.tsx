@@ -51,9 +51,6 @@ function getThumbnailUrl(url: string): string | null {
   if (m) return `https://i.ytimg.com/vi/${m[1]}/mqdefault.jpg`;
   m = url.match(/youtu\.be\/([^/?#]+)/);
   if (m) return `https://i.ytimg.com/vi/${m[1]}/mqdefault.jpg`;
-  // Instagram reel/post 썸네일
-  m = url.match(/instagram\.com\/(?:reels?|p|tv)\/([A-Za-z0-9_-]+)/);
-  if (m) return `https://www.instagram.com/p/${m[1]}/media/?size=m`;
   return null;
 }
 
