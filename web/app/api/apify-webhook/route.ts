@@ -507,8 +507,8 @@ async function handleOrganicRefresh(supabase: ReturnType<typeof getServerSupabas
 
 // ── 무상 노출 ────────────────────────────────────────────────────────
 
-const ORGANIC_MIN_FOLLOWERS = 10_000;
-const ORGANIC_MIN_VIEWS = 10_000;
+const ORGANIC_MIN_FOLLOWERS = 1_000;  // 팔로워 1천 이상 (이전 1만 → 완화)
+const ORGANIC_MIN_VIEWS = 1_000;      // 조회수 1천 이상 (이전 1만 → 완화)
 
 async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, jobId: string, items: Record<string, unknown>[], platform: string) {
   const rows: Record<string, unknown>[] = [];

@@ -141,12 +141,12 @@ export async function POST(req: NextRequest) {
         await Promise.all([
           startActorRun(
             'apify/instagram-hashtag-scraper',
-            { hashtags: ['라라스윗'], resultsLimit: 200, type: 'recent' },
+            { hashtags: ['라라스윗'], resultsLimit: 500, resultsType: 'reels' },
             `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=organic&platform=instagram`
           ).catch((e: unknown) => { startErrors.push(`인스타: ${e}`); }),
           startActorRun(
             'streamers/youtube-scraper',
-            { searchQueries: ['라라스윗'], maxResultsShorts: 30, sortingOrder: 'relevance' },
+            { searchQueries: ['라라스윗'], maxResultsShorts: 100, sortingOrder: 'relevance' },
             `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=organic&platform=youtube`
           ).catch((e: unknown) => { startErrors.push(`유튜브: ${e}`); }),
         ]);
