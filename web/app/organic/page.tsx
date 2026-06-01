@@ -545,7 +545,7 @@ export default function OrganicPage() {
           </select>
           {/* 언급 제품 다중 선택 칩 */}
           {productOptions.length > 0 && (
-            <div className="flex items-center gap-1.5 flex-wrap">
+            <div className="flex items-center gap-1.5 overflow-x-auto flex-nowrap scrollbar-none pb-0.5">
               {productOptions.map(p => {
                 const active = filters.products.includes(p);
                 return (
