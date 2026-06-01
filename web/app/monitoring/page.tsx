@@ -878,61 +878,61 @@ export default function MonitoringPage() {
         </div>
 
         {filteredPosts.length > 0 && (
-          <div className="bg-white rounded-[18px] border border-a-hairline p-5 mb-4">
-            <div className="flex items-center gap-8 mb-5 pb-5 border-b border-a-hairline">
-              <div>
-                <p className="text-xs text-a-ink-muted mb-1">조회수 합계</p>
-                <p className="text-3xl font-bold tabular-nums tracking-tight font-numeric">{totalPlayCount.toLocaleString()}</p>
-              </div>
-              <div className="w-px h-10 bg-a-hairline" />
-              <div>
-                <p className="text-xs text-a-ink-muted mb-1">좋아요 합계</p>
-                <p className="text-2xl font-bold tabular-nums tracking-tight font-numeric">{totalLikes.toLocaleString()}</p>
-              </div>
-              <div className="w-px h-10 bg-a-hairline" />
-              <div>
-                <p className="text-xs text-a-ink-muted mb-1">댓글 합계</p>
-                <p className="text-2xl font-bold tabular-nums tracking-tight font-numeric">{totalComments.toLocaleString()}</p>
-              </div>
+          <div className="bg-white rounded-[20px] shadow-[0_2px_16px_rgba(100,120,180,0.08)] mb-4 overflow-hidden">
+            {/* 요약 수치 */}
+            <div className="flex items-stretch border-b border-a-hairline">
+              {[
+                { label: "조회수 합계", value: totalPlayCount, color: "text-a-ink" },
+                { label: "좋아요 합계", value: totalLikes, color: "text-rose-500" },
+                { label: "댓글 합계", value: totalComments, color: "text-blue-500" },
+              ].map((item, i) => (
+                <div key={i} className={`flex-1 px-6 py-5 ${i > 0 ? "border-l border-a-hairline" : ""}`}>
+                  <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest mb-1.5">{item.label}</p>
+                  <p className={`text-[28px] font-bold tabular-nums tracking-tight leading-none ${item.color}`}>{item.value.toLocaleString()}</p>
+                </div>
+              ))}
             </div>
-            <div className="grid gap-6" style={{ gridTemplateColumns: "1fr 1fr" }}>
-              <div className="flex flex-col">
-                <p className="text-[11px] text-a-ink-muted mb-2">조회수 트렌드 (누적)</p>
-                <LineChart data={chartData} height={160} gradId="summaryGrad" />
+            {/* 차트 + 테이블 */}
+            <div className="flex divide-x divide-a-hairline">
+              {/* 차트 */}
+              <div className="flex-[3] px-6 py-5">
+                <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest mb-3">조회수 트렌드 (누적)</p>
+                <LineChart data={chartData} height={180} gradId="summaryGrad" />
               </div>
-              <div className="flex flex-col">
-                <p className="text-[11px] text-a-ink-muted mb-2">일자별 조회수 증감</p>
+              {/* 증감 테이블 */}
+              <div className="flex-[2] flex flex-col">
+                <div className="px-5 py-4 border-b border-a-hairline">
+                  <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">일자별 조회수 증감</p>
+                </div>
                 {deltaTableData.length === 0 ? (
-                  <div className="flex items-center justify-center h-[160px] text-xs text-a-ink-muted">측정 데이터 2일 이상 필요</div>
+                  <div className="flex items-center justify-center flex-1 text-sm text-a-ink-muted py-10">측정 데이터 2일 이상 필요</div>
                 ) : (
-                  <div className="flex-1 min-h-0 overflow-y-auto rounded-[10px] border border-a-hairline" style={{ maxHeight: 200 }}>
-                    <table className="w-full text-sm">
-                      <thead className="sticky top-0 bg-a-parchment/90 backdrop-blur-sm">
-                        <tr className="border-b border-a-hairline">
-                          <th className="px-3 py-2 text-left text-[11px] font-semibold text-a-ink-muted">날짜</th>
-                          <th className="px-3 py-2 text-right text-[11px] font-semibold text-a-ink-muted">조회수</th>
-                          <th className="px-3 py-2 text-right text-[11px] font-semibold text-a-ink-muted">좋아요</th>
-                          <th className="px-3 py-2 text-right text-[11px] font-semibold text-a-ink-muted">댓글</th>
+                  <div className="overflow-y-auto" style={{ maxHeight: 260 }}>
+                    <table className="w-full">
+                      <thead className="sticky top-0 z-10 bg-white border-b border-a-hairline">
+                        <tr>
+                          <th className="px-5 py-2.5 text-left text-[10px] font-semibold text-a-ink-muted uppercase tracking-widest w-16">날짜</th>
+                          <th className="px-4 py-2.5 text-right text-[10px] font-semibold text-a-ink-muted uppercase tracking-widest">조회수</th>
+                          <th className="px-4 py-2.5 text-right text-[10px] font-semibold text-a-ink-muted uppercase tracking-widest">좋아요</th>
+                          <th className="px-4 py-2.5 text-right text-[10px] font-semibold text-a-ink-muted uppercase tracking-widest">댓글</th>
                         </tr>
                       </thead>
                       <tbody>
                         {[{ date: dailyTotals[0].date, play: 0, likes: 0, comments: 0 }, ...deltaTableData].map((d, i) => {
-                          function deltaCell(v: number) {
+                          function deltaCell(v: number, accent = "text-red-500") {
                             const pos = v > 0, neg = v < 0;
                             return (
-                              <td className={`px-3 py-2.5 text-right tabular-nums font-semibold text-sm ${pos ? "text-red-500" : neg ? "text-emerald-600" : "text-gray-300"}`}>
+                              <td className={`px-4 py-3 text-right tabular-nums text-sm font-semibold ${pos ? accent : neg ? "text-emerald-600" : "text-gray-200"}`}>
                                 {pos ? "+" : ""}{v.toLocaleString()}
                               </td>
                             );
                           }
                           return (
-                            <tr key={i} className={`border-b border-a-divider last:border-0 ${i % 2 === 0 ? "" : "bg-a-parchment/30"}`}>
-                              <td className="px-3 py-2.5 text-sm font-medium text-a-ink-muted tabular-nums">
-                                {d.date.slice(5).replace("-", "/")}
-                              </td>
-                              {deltaCell(d.play)}
-                              {deltaCell(d.likes)}
-                              {deltaCell(d.comments)}
+                            <tr key={i} className="border-b border-a-divider last:border-0 hover:bg-a-parchment/50 transition-colors">
+                              <td className="px-5 py-3 text-sm font-bold text-a-ink tabular-nums">{d.date.slice(5).replace("-", "/")}</td>
+                              {deltaCell(d.play, "text-a-blue")}
+                              {deltaCell(d.likes, "text-rose-500")}
+                              {deltaCell(d.comments, "text-purple-500")}
                             </tr>
                           );
                         })}
