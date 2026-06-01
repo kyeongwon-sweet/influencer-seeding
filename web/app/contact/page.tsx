@@ -99,14 +99,18 @@ function TrendChart({ data, selectedDate, onSelect }: {
 
   const selIdx = selectedDate ? data.findIndex(d => d.date === selectedDate) : -1;
 
-  // One label per month — skip labels too close to the y-axis area
+  // One label per month — skip labels too close to the y-axis or previous label
   const monthLabels: { i: number; label: string }[] = [];
   let lastMonth = "";
+  let lastLabelX = -100;
+  const MIN_LABEL_GAP = 44; // 최소 레이블 간격 (px)
   data.forEach((d, i) => {
     const m = d.date.slice(0, 7);
     if (m !== lastMonth) {
-      if (xi(i) > PAD.left + 35) {
+      const x = xi(i);
+      if (x > PAD.left + 35 && x - lastLabelX >= MIN_LABEL_GAP) {
         monthLabels.push({ i, label: d.date.slice(5, 7) + "월" });
+        lastLabelX = x;
       }
       lastMonth = m;
     }
