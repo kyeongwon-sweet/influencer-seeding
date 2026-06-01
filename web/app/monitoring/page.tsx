@@ -662,7 +662,14 @@ export default function MonitoringPage() {
       case "조회수": av = sa?.play_count ?? -1; bv = sb?.play_count ?? -1; break;
       case "도달수": av = a.reach_count ?? -1; bv = b.reach_count ?? -1; break;
       case "비용": av = a.cost ?? -1; bv = b.cost ?? -1; break;
-
+      case "조회당비용":
+        av = (a.cost != null && sa?.play_count != null && sa.play_count > 0) ? a.cost / sa.play_count : Infinity;
+        bv = (b.cost != null && sb?.play_count != null && sb.play_count > 0) ? b.cost / sb.play_count : Infinity;
+        break;
+      case "도달당비용":
+        av = (a.cost != null && a.reach_count != null && a.reach_count > 0) ? a.cost / a.reach_count : Infinity;
+        bv = (b.cost != null && b.reach_count != null && b.reach_count > 0) ? b.cost / b.reach_count : Infinity;
+        break;
     }
     const cmp = av < bv ? -1 : av > bv ? 1 : 0;
     return sortDir === "asc" ? cmp : -cmp;
@@ -1093,9 +1100,9 @@ export default function MonitoringPage() {
                   <TH w={colWidths["프로젝트명"]} onResize={e => startResize("프로젝트명", e)} {...sp("프로젝트명")}>프로젝트명</TH>
                   <TH right w={colWidths["비용"]} onResize={e => startResize("비용", e)} {...sp("비용")}>비용</TH>
                   <TH right w={colWidths["조회수"]} onResize={e => startResize("조회수", e)} {...sp("조회수")}>조회수</TH>
-                  <TH right w={colWidths["조회당비용"]} onResize={e => startResize("조회당비용", e)}>조회당비용</TH>
+                  <TH right w={colWidths["조회당비용"]} onResize={e => startResize("조회당비용", e)} {...sp("조회당비용")}>조회당비용</TH>
                   <TH right w={colWidths["도달수"]} onResize={e => startResize("도달수", e)} {...sp("도달수")}>도달수</TH>
-                  <TH right w={colWidths["도달당비용"]} onResize={e => startResize("도달당비용", e)}>도달당비용</TH>
+                  <TH right w={colWidths["도달당비용"]} onResize={e => startResize("도달당비용", e)} {...sp("도달당비용")}>도달당비용</TH>
                   <TH className="text-center" w={colWidths["트렌드"]} onResize={e => startResize("트렌드", e)}>트렌드</TH>
                   <TH w={colWidths["특이사항"]} onResize={e => startResize("특이사항", e)}>특이사항</TH>
                   <TH w={colWidths["삭제"]}></TH>
