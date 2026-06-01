@@ -63,8 +63,6 @@ function fmt(v: number | null | undefined) {
 }
 
 function fmtSearch(v: number) {
-  if (v >= 10000) return (Math.round(v / 1000) / 10).toFixed(1).replace(/\.0$/, "") + "만";
-  if (v >= 1000) return Math.round(v / 100) / 10 + "천";
   return Math.round(v).toLocaleString();
 }
 
