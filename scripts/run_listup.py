@@ -73,7 +73,8 @@ def _run_instagram(db, keywords: list) -> int:
         run = client.actor(APIFY_HASHTAG_ACTOR).call(run_input={
             "hashtags": [keyword],
             "resultsLimit": RESULTS_PER_KEYWORD,
-            "type": "recent",  # 최신순
+            "resultsType": "reels",   # 릴스만
+            "keywordSearch": True,    # 캡션 전체 검색
         })
 
         items = list(client.dataset(run["defaultDatasetId"]).iterate_items())

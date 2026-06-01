@@ -726,7 +726,7 @@ export default function ListupPage() {
                         <div className="space-y-1.5">
                           <div className="flex gap-2">
                             <span className="text-[11px] text-a-ink-muted w-16 flex-shrink-0">인스타</span>
-                            <span className="text-[11px] text-a-ink leading-relaxed">해시태그로 최근 100개 릴스 수집<br/><span className="text-a-ink-muted">(제목·설명 포함 불가)</span></span>
+                            <span className="text-[11px] text-a-ink leading-relaxed">키워드로 릴스 최대 200개 수집<br/><span className="text-a-ink-muted">(캡션 텍스트 포함, 해시태그 없어도 탐색)</span></span>
                           </div>
                           <div className="flex gap-2">
                             <span className="text-[11px] text-a-ink-muted w-16 flex-shrink-0">유튜브</span>

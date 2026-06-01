@@ -110,7 +110,12 @@ export async function POST(req: NextRequest) {
           await Promise.all([
             igKws.length > 0 ? startActorRun(
               'apify/instagram-hashtag-scraper',
-              { hashtags: igKws, resultsLimit: 100, type: 'recent' },
+              {
+                hashtags: igKws,
+                resultsLimit: 200,
+                resultsType: 'reels',   // 액터 레벨에서 릴스만 필터
+                keywordSearch: true,    // 캡션 텍스트 전체 검색 (해시태그 미사용 게시물도 탐색)
+              },
               `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=listup&platform=instagram`
             ).catch((e: unknown) => { startErrors.push(`인스타: ${e}`); }) : Promise.resolve(),
             ytKws.length > 0 ? startActorRun(
