@@ -1060,7 +1060,7 @@ export default function MonitoringPage() {
                     const rows = [{ date: dailyTotals[0].date, play: 0, likes: 0, comments: 0 }, ...deltaTableData];
                     const reversed = [...rows].reverse();
                     return (
-                      <div className="overflow-y-auto" style={{ maxHeight: 220 }}>
+                      <div className="overflow-y-auto" style={{ maxHeight: 264 }}>
                         <table className="w-full">
                           <thead className="sticky top-0 z-10 bg-white border-b border-a-hairline">
                             <tr>
