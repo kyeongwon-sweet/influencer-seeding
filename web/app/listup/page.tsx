@@ -87,6 +87,7 @@ export default function ListupPage() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [editName, setEditName] = useState<{ id: string; value: string } | null>(null);
   const [editNotes, setEditNotes] = useState<{ id: string; value: string } | null>(null);
+  const [editKeyword, setEditKeyword] = useState<{ id: string; value: string } | null>(null);
   const resizingRef = useRef<{ colIdx: number; startX: number; startW: number } | null>(null);
   const runningJobIdRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -268,6 +269,20 @@ export default function ListupPage() {
       setInfluencers(prev => prev.map(i => i.id === id ? { ...i, notes: notes || null } : i));
     }
     setEditNotes(null);
+  }
+
+  async function patchKeyword(id: string, keyword: string) {
+    const res = await fetch(`/api/influencers/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keyword: keyword.trim() || null }),
+    });
+    if (res.ok) {
+      setInfluencers(prev => prev.map(i => i.id === id ? { ...i, keyword: keyword.trim() || undefined } : i));
+    } else {
+      toast("저장에 실패했습니다.", "error");
+    }
+    setEditKeyword(null);
   }
 
   async function patchInfluencerName(id: string, name: string) {
@@ -749,9 +764,29 @@ export default function ListupPage() {
                           {inf.platform === "instagram" ? "인스타" : "유튜브"}
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap">
-                          {inf.keyword
-                            ? <span className="text-xs bg-a-parchment text-a-ink-muted px-2 py-0.5 rounded-full">#{inf.keyword}</span>
-                            : <span className="text-xs text-gray-300">-</span>}
+                          {editKeyword?.id === inf.id ? (
+                            <input
+                              autoFocus
+                              value={editKeyword.value}
+                              onChange={e => setEditKeyword(v => v ? { ...v, value: e.target.value } : null)}
+                              onBlur={() => patchKeyword(inf.id, editKeyword.value)}
+                              onKeyDown={e => {
+                                if (e.key === "Enter") patchKeyword(inf.id, editKeyword.value);
+                                if (e.key === "Escape") setEditKeyword(null);
+                              }}
+                              placeholder="키워드 (# 제외)"
+                              className="text-xs w-24 bg-transparent border-b border-a-blue outline-none py-0.5"
+                            />
+                          ) : (
+                            <span
+                              onClick={() => setEditKeyword({ id: inf.id, value: inf.keyword ?? "" })}
+                              className="cursor-text"
+                            >
+                              {inf.keyword
+                                ? <span className="text-xs bg-a-parchment text-a-ink-muted px-2 py-0.5 rounded-full">#{inf.keyword}</span>
+                                : <span className="text-xs text-gray-300">-</span>}
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap">
                           {inf.sample_post_url
