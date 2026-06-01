@@ -1,9 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 
-// 라라스윗+라라스윗아이스크림 합산이 100일 때(2024/4/5)의 절대 검색량
+// 라라스윗+라라스윗아이스크림 합산이 100일 때(2026/5/31)의 절대 검색량
 // keyword-impact 캘리브레이션과 동일한 기준
-const LARASWEET_BASE = 1326.173;
+const LARASWEET_BASE = 3748;
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
