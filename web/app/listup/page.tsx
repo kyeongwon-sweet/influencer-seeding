@@ -451,13 +451,13 @@ export default function ListupPage() {
   });
 
   // 정렬 + 드래그 리사이즈 th
-  function rsTH(col: string, colIdx: number, sortable = true) {
+  function rsTH(col: string, colIdx: number, sortable = true, tooltip?: React.ReactNode) {
     const active = sortCol === col;
     return (
       <th
         key={col}
         style={{ minWidth: colWidths[colIdx] }}
-        className={`relative px-4 py-3 text-left text-[10px] font-medium uppercase tracking-wider whitespace-nowrap bg-white select-none ${
+        className={`relative px-4 py-3 text-left text-[10px] font-medium uppercase tracking-wider whitespace-nowrap bg-white select-none group ${
           sortable ? (active ? "text-a-ink" : "text-gray-400") : "text-gray-400"
         }`}
       >
@@ -469,6 +469,11 @@ export default function ListupPage() {
             </span>
           </span>
         ) : col}
+        {tooltip && (
+          <div className="hidden group-hover:block absolute top-full left-0 mt-1 z-50 bg-white border border-a-hairline rounded-[10px] shadow-lg px-3 py-2.5 text-left min-w-[260px] normal-case tracking-normal font-normal">
+            {tooltip}
+          </div>
+        )}
         <div
           onMouseDown={e => startResize(e, colIdx)}
           className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-100 z-10"
@@ -692,7 +697,25 @@ export default function ListupPage() {
                         className="w-3.5 h-3.5 accent-a-blue cursor-pointer" />
                     </th>
                     {rsTH("채널명", 0)}
-                    {rsTH("플랫폼", 1)}
+                    {rsTH("플랫폼", 1, true, (
+                      <div>
+                        <p className="text-[11px] font-semibold text-a-ink mb-2">수집 기준</p>
+                        <div className="space-y-1.5">
+                          <div className="flex gap-2">
+                            <span className="text-[11px] text-a-ink-muted w-20 flex-shrink-0">인스타그램</span>
+                            <span className="text-[11px] text-a-ink leading-relaxed">해시태그로 최근 100개 수집 → 릴스만 저장</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <span className="text-[11px] text-a-ink-muted w-20 flex-shrink-0">유튜브</span>
+                            <span className="text-[11px] text-a-ink leading-relaxed">검색어로 쇼츠만 최대 30개 수집</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <span className="text-[11px] text-a-ink-muted w-20 flex-shrink-0">중복 제거</span>
+                            <span className="text-[11px] text-a-ink leading-relaxed">DB에 있는 URL은 스킵</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                     {rsTH("발굴 키워드", 2)}
                     {rsTH("게시물", 3, false)}
                     {rsTH("유형", 4)}
