@@ -421,8 +421,22 @@ async function handleScreening(
         type_metrics: Object.keys(typeMetrics).length ? typeMetrics : null,
       });
 
-      if (resultStatus === 'pass' || resultStatus === 'reject') {
-        await supabase.from('influencers').update({ status: resultStatus }).eq('id', infId);
+      // 채널명·캡션·썸네일 실제 데이터로 업데이트
+      const realName = (posts[0]?.ownerFullName as string) || (posts[0]?.ownerUsername as string) || null;
+      const sampleUrl = (posts[0]?.url as string) || null;
+      const caption = (posts[0]?.caption as string)?.slice(0, 300) || null;
+      const rawTs = posts[0]?.timestamp || posts[0]?.takenAtTimestamp;
+      const postUploadedAt = typeof rawTs === 'number'
+        ? new Date((rawTs as number) * 1000).toISOString()
+        : (rawTs as string) || null;
+      const infUpdate: Record<string, unknown> = {};
+      if (realName) infUpdate.name = realName;
+      if (sampleUrl) infUpdate.sample_post_url = sampleUrl;
+      if (caption) infUpdate.content_summary = caption;
+      if (postUploadedAt) infUpdate.post_uploaded_at = postUploadedAt;
+      if (resultStatus === 'pass' || resultStatus === 'reject') infUpdate.status = resultStatus;
+      if (Object.keys(infUpdate).length > 0) {
+        await supabase.from('influencers').update(infUpdate).eq('id', infId);
       }
     }));
 
@@ -476,8 +490,18 @@ async function handleScreening(
       type_metrics: Object.keys(typeMetrics).length ? typeMetrics : null,
     });
 
-    if (resultStatus === 'pass' || resultStatus === 'reject') {
-      await supabase.from('influencers').update({ status: resultStatus }).eq('id', influencer.id);
+    // 채널명·캡션·썸네일 실제 데이터로 업데이트
+    const firstItem = items[0];
+    const realName = (firstItem?.channelName || firstItem?.channelTitle || firstItem?.author) as string | null || null;
+    const sampleUrl = (firstItem?.url as string) || null;
+    const caption = (firstItem?.title as string)?.slice(0, 300) || null;
+    const ytUpdate: Record<string, unknown> = {};
+    if (realName) ytUpdate.name = realName;
+    if (sampleUrl) ytUpdate.sample_post_url = sampleUrl;
+    if (caption) ytUpdate.content_summary = caption;
+    if (resultStatus === 'pass' || resultStatus === 'reject') ytUpdate.status = resultStatus;
+    if (Object.keys(ytUpdate).length > 0) {
+      await supabase.from('influencers').update(ytUpdate).eq('id', influencer.id);
     }
   }
 
