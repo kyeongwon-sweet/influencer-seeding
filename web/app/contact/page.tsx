@@ -811,6 +811,27 @@ export default function ContactPage() {
               </button>
             </div>
 
+            {/* 주의사항 메모 */}
+            <div className="mb-5 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3">
+              <p className="text-[12px] font-bold text-red-600 mb-2">
+                ❗이전 협찬 히스토리를 모르는 건 당연한 것❗<br/>
+                <span className="font-normal">→ 이전 히스토리를 스스로 찾고 톤앤매너에 맞춰 소통하자</span>
+              </p>
+              <ul className="space-y-1">
+                {[
+                  "기존 히스토리를 보면서 소통하자 → 인지셀메일 / 전환셀메일 / 컨택3계정 DM창",
+                  "혹시 이전에 컨택했는데 신규 문안으로 컨택하진 않았는지?",
+                  "광고비 회신이 왔지만 처음처럼 물어보진 않았는지?",
+                  "이전에 우리가 협찬제안을 했지만 답을 못해 어영부영 넘어가진 않았는지?",
+                ].map((item, i) => (
+                  <li key={i} className="flex items-start gap-1.5 text-[11px] text-red-700 leading-relaxed">
+                    <span className="mt-0.5 flex-shrink-0">•</span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
             {!editingTemplate ? (
               <>
                 <div className="space-y-2 mb-4">
