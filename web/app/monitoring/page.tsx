@@ -22,6 +22,7 @@ type Post = {
   cost: number | null;
   reach_count: number | null;
   notes: string | null;
+  content_summary: string | null;
   created_at: string;
   influencers: { id: string; name: string; platform: string; post_type: string | null; category?: string | null } | null;
   latest_stats: DailyStats | null;
@@ -33,7 +34,7 @@ type CsvRow = { url: string; project_name: string | null; product_name: string |
 
 type Filters = { name: string; project: string; products: string[]; type: string; channelType: string; category: string; dateFrom: string; dateTo: string };
 const INIT_FILTERS: Filters = { name: "", project: "", products: [], type: "all", channelType: "all", category: "all", dateFrom: "", dateTo: "" };
-type EditCell = { postId: string; field: "project_name" | "product_name" | "channel_type" | "cost" | "reach_count" | "account_name" | "posted_at" | "notes"; value: string };
+type EditCell = { postId: string; field: "project_name" | "product_name" | "channel_type" | "cost" | "reach_count" | "account_name" | "posted_at" | "notes" | "content_summary"; value: string };
 const POST_TYPES = ["릴스", "피드", "숏폼", "롱폼"];
 const CHANNEL_TYPES = ["파워채널", "매거진", "먹스타", "인플루언서", "바이럴"];
 const CATEGORIES = [
@@ -60,7 +61,7 @@ function getPostType(url: string): string {
   return "-";
 }
 
-const STICKY_COL_ORDER = ["증분량", "인플루언서", "프로젝트명", "상품명", "게시일", "유형"] as const;
+const STICKY_COL_ORDER = ["증분량"] as const;
 
 function getThumbnailUrl(url: string): string | null {
   let m = url.match(/youtube\.com\/shorts\/([^/?&#]+)/);
@@ -94,7 +95,7 @@ function TH({ children, right, col, onSort, sorted, className: cls, w, leftPos, 
   w?: number; leftPos?: number; onResize?: (e: React.MouseEvent) => void;
 }) {
   const isSticky = col !== undefined;
-  const isLast = col === "유형";
+  const isLast = col === "증분량";
   const sortable = onSort !== undefined;
   return (
     <th
@@ -126,7 +127,7 @@ function TD({ children, right, muted, col, highlighted, w, leftPos }: {
   w?: number; leftPos?: number;
 }) {
   const isSticky = col !== undefined;
-  const isLast = col === "유형";
+  const isLast = col === "증분량";
   return (
     <td
       style={isSticky ? { width: w, minWidth: w, left: leftPos } : w ? { minWidth: w } : undefined}
@@ -291,10 +292,10 @@ export default function MonitoringPage() {
 
   // column widths for drag-resize
   const [stickyColWidths, setStickyColWidths] = useState<Record<string, number>>({
-    "증분량": 80, "인플루언서": 180, "프로젝트명": 150, "상품명": 150, "게시일": 104, "유형": 72,
+    "증분량": 80,
   });
   const [colWidths, setColWidths] = useState<Record<string, number>>({
-    "채널분류": 100, "카테고리": 110, "조회수": 100, "도달수": 100, "비용": 120, "조회당비용": 110, "도달당비용": 110, "Trend": 90, "삭제": 60, "특이사항": 160,
+    "채널분류": 100, "게시일": 104, "캡션": 200, "인플루언서": 180, "상품명": 150, "프로젝트명": 150, "비용": 120, "조회수": 100, "조회당비용": 110, "도달수": 100, "도달당비용": 110, "트렌드": 90, "특이사항": 160, "삭제": 60,
   });
   const resizingRef = useRef<{ col: string; startX: number; startW: number; isSticky: boolean } | null>(null);
 
@@ -316,7 +317,7 @@ export default function MonitoringPage() {
   ).sort();
 
   const hasFilter = filters.name !== "" || filters.project !== "" || filters.products.length > 0 || filters.type !== "all" || filters.channelType !== "all" || filters.category !== "all" || filters.dateFrom !== "" || filters.dateTo !== "";
-  const colSpan = 16;
+  const colSpan = 15;
 
   const lastMonitoredAt = posts.length > 0
     ? posts.reduce((latest, p) => {
@@ -825,19 +826,18 @@ export default function MonitoringPage() {
               <thead className="sticky top-0 z-30">
                 <tr className="border-b border-a-hairline">
                   <TH col="증분량" w={stickyColWidths["증분량"]} leftPos={stickyLefts["증분량"]} onResize={e => startResize("증분량", e, true)} right {...sp("증분량")}>증분량</TH>
-                  <TH col="인플루언서" w={stickyColWidths["인플루언서"]} leftPos={stickyLefts["인플루언서"]} onResize={e => startResize("인플루언서", e, true)} {...sp("인플루언서")}>인플루언서</TH>
-                  <TH col="프로젝트명" w={stickyColWidths["프로젝트명"]} leftPos={stickyLefts["프로젝트명"]} onResize={e => startResize("프로젝트명", e, true)} {...sp("프로젝트명")}>프로젝트명</TH>
-                  <TH col="상품명" w={stickyColWidths["상품명"]} leftPos={stickyLefts["상품명"]} onResize={e => startResize("상품명", e, true)} {...sp("상품명")}>상품명</TH>
-                  <TH col="게시일" w={stickyColWidths["게시일"]} leftPos={stickyLefts["게시일"]} onResize={e => startResize("게시일", e, true)} {...sp("게시일")}>게시일</TH>
-                  <TH col="유형" w={stickyColWidths["유형"]} leftPos={stickyLefts["유형"]} onResize={e => startResize("유형", e, true)} {...sp("유형")}>유형</TH>
-                  <TH w={colWidths["채널분류"]} onResize={e => startResize("채널분류", e)} {...sp("채널분류")}>채널분류</TH>
-                  <TH w={colWidths["카테고리"]} onResize={e => startResize("카테고리", e)} {...sp("카테고리")}>카테고리</TH>
-                  <TH right w={colWidths["조회수"]} onResize={e => startResize("조회수", e)} {...sp("조회수")}>조회수</TH>
-                  <TH right w={colWidths["도달수"]} onResize={e => startResize("도달수", e)} {...sp("도달수")}>도달수</TH>
+                  <TH w={colWidths["채널분류"]} onResize={e => startResize("채널분류", e)} {...sp("채널분류")}>채널 분류</TH>
+                  <TH w={colWidths["게시일"]} onResize={e => startResize("게시일", e)} {...sp("게시일")}>게시일</TH>
+                  <TH w={colWidths["캡션"]} onResize={e => startResize("캡션", e)}>캡션</TH>
+                  <TH w={colWidths["인플루언서"]} onResize={e => startResize("인플루언서", e)} {...sp("인플루언서")}>인플루언서</TH>
+                  <TH w={colWidths["상품명"]} onResize={e => startResize("상품명", e)} {...sp("상품명")}>상품명</TH>
+                  <TH w={colWidths["프로젝트명"]} onResize={e => startResize("프로젝트명", e)} {...sp("프로젝트명")}>프로젝트명</TH>
                   <TH right w={colWidths["비용"]} onResize={e => startResize("비용", e)} {...sp("비용")}>비용</TH>
+                  <TH right w={colWidths["조회수"]} onResize={e => startResize("조회수", e)} {...sp("조회수")}>조회수</TH>
                   <TH right w={colWidths["조회당비용"]} onResize={e => startResize("조회당비용", e)}>조회당비용</TH>
+                  <TH right w={colWidths["도달수"]} onResize={e => startResize("도달수", e)} {...sp("도달수")}>도달수</TH>
                   <TH right w={colWidths["도달당비용"]} onResize={e => startResize("도달당비용", e)}>도달당비용</TH>
-                  <TH className="text-center" w={colWidths["Trend"]} onResize={e => startResize("Trend", e)}>트렌드</TH>
+                  <TH className="text-center" w={colWidths["트렌드"]} onResize={e => startResize("트렌드", e)}>트렌드</TH>
                   <TH w={colWidths["특이사항"]} onResize={e => startResize("특이사항", e)}>특이사항</TH>
                   <TH w={colWidths["삭제"]}></TH>
                 </tr>
@@ -860,7 +860,58 @@ export default function MonitoringPage() {
                           );
                         })()}
                       </TD>
-                      <TD col="인플루언서" w={stickyColWidths["인플루언서"]} leftPos={stickyLefts["인플루언서"]} highlighted={hl}>
+                      <TD muted w={colWidths["채널분류"]}>
+                        {editCell?.postId === post.id && editCell?.field === "channel_type" ? (
+                          <select autoFocus value={editCell.value}
+                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
+                            onBlur={() => patchPost(post.id, "channel_type", editCell.value)}
+                            onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "channel_type", editCell.value); if (e.key === "Escape") setEditCell(null); }}
+                            className="text-xs bg-transparent border-b border-a-blue outline-none py-0.5 w-full">
+                            <option value="">-</option>
+                            {CHANNEL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        ) : (
+                          <span onClick={() => setEditCell({ postId: post.id, field: "channel_type", value: post.channel_type ?? "" })}
+                            className="cursor-text hover:text-a-blue transition-colors">
+                            {post.channel_type ?? "-"}
+                          </span>
+                        )}
+                      </TD>
+                      <TD muted w={colWidths["게시일"]}>
+                        {editCell?.postId === post.id && editCell?.field === "posted_at" ? (
+                          <input autoFocus type="date" value={editCell.value}
+                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
+                            onBlur={() => patchPost(post.id, "posted_at", editCell.value)}
+                            onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "posted_at", editCell.value); if (e.key === "Escape") setEditCell(null); }}
+                            className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5" />
+                        ) : (
+                          <span onClick={() => setEditCell({ postId: post.id, field: "posted_at", value: post.posted_at ?? "" })}
+                            className="cursor-text hover:text-a-blue transition-colors">
+                            {post.posted_at ?? "-"}
+                          </span>
+                        )}
+                      </TD>
+                      <td style={{ minWidth: colWidths["캡션"] }} className="px-3 py-3">
+                        {editCell?.postId === post.id && editCell?.field === "content_summary" ? (
+                          <textarea
+                            autoFocus
+                            rows={2}
+                            value={editCell.value}
+                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
+                            onBlur={() => patchPost(post.id, "content_summary", editCell.value)}
+                            onKeyDown={e => { if (e.key === "Escape") setEditCell(null); }}
+                            className="text-xs w-full bg-transparent border-b border-a-blue outline-none py-0.5 resize-none text-a-ink"
+                          />
+                        ) : (
+                          <span
+                            onClick={() => setEditCell({ postId: post.id, field: "content_summary", value: post.content_summary ?? "" })}
+                            className="text-xs cursor-text text-a-ink-muted hover:text-a-ink transition-colors line-clamp-2 block"
+                          >
+                            {post.content_summary || <span className="text-gray-300">-</span>}
+                          </span>
+                        )}
+                      </td>
+                      <TD w={colWidths["인플루언서"]}>
                         {editCell?.postId === post.id && editCell?.field === "account_name" ? (
                           <input autoFocus value={editCell.value}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
@@ -882,7 +933,21 @@ export default function MonitoringPage() {
                           </div>
                         )}
                       </TD>
-                      <TD col="프로젝트명" w={stickyColWidths["프로젝트명"]} leftPos={stickyLefts["프로젝트명"]} highlighted={hl}>
+                      <TD muted w={colWidths["상품명"]}>
+                        {editCell?.postId === post.id && editCell?.field === "product_name" ? (
+                          <input autoFocus value={editCell.value}
+                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
+                            onBlur={() => patchPost(post.id, "product_name", editCell.value)}
+                            onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "product_name", editCell.value); if (e.key === "Escape") setEditCell(null); }}
+                            className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5" />
+                        ) : (
+                          <span onClick={() => setEditCell({ postId: post.id, field: "product_name", value: post.product_name ?? "" })}
+                            className="cursor-text hover:text-a-blue transition-colors">
+                            {post.product_name ?? "-"}
+                          </span>
+                        )}
+                      </TD>
+                      <TD muted w={colWidths["프로젝트명"]}>
                         {editCell?.postId === post.id && editCell?.field === "project_name" ? (
                           <input autoFocus value={editCell.value}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
@@ -896,69 +961,6 @@ export default function MonitoringPage() {
                           </span>
                         )}
                       </TD>
-                      <TD col="상품명" w={stickyColWidths["상품명"]} leftPos={stickyLefts["상품명"]} highlighted={hl}>
-                        {editCell?.postId === post.id && editCell?.field === "product_name" ? (
-                          <input autoFocus value={editCell.value}
-                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
-                            onBlur={() => patchPost(post.id, "product_name", editCell.value)}
-                            onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "product_name", editCell.value); if (e.key === "Escape") setEditCell(null); }}
-                            className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5" />
-                        ) : (
-                          <span onClick={() => setEditCell({ postId: post.id, field: "product_name", value: post.product_name ?? "" })}
-                            className="cursor-text text-a-ink-muted hover:text-a-blue transition-colors">
-                            {post.product_name ?? "-"}
-                          </span>
-                        )}
-                      </TD>
-                      <TD col="게시일" w={stickyColWidths["게시일"]} leftPos={stickyLefts["게시일"]} muted highlighted={hl}>
-                        {editCell?.postId === post.id && editCell?.field === "posted_at" ? (
-                          <input autoFocus type="date" value={editCell.value}
-                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
-                            onBlur={() => patchPost(post.id, "posted_at", editCell.value)}
-                            onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "posted_at", editCell.value); if (e.key === "Escape") setEditCell(null); }}
-                            className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5" />
-                        ) : (
-                          <span onClick={() => setEditCell({ postId: post.id, field: "posted_at", value: post.posted_at ?? "" })}
-                            className="cursor-text hover:text-a-blue transition-colors">
-                            {post.posted_at ?? "-"}
-                          </span>
-                        )}
-                      </TD>
-                      <TD col="유형" w={stickyColWidths["유형"]} leftPos={stickyLefts["유형"]} muted highlighted={hl}>{getPostType(post.url)}</TD>
-                      <TD muted w={colWidths["채널분류"]}>
-                        {editCell?.postId === post.id && editCell?.field === "channel_type" ? (
-                          <select autoFocus value={editCell.value}
-                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
-                            onBlur={() => patchPost(post.id, "channel_type", editCell.value)}
-                            onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "channel_type", editCell.value); if (e.key === "Escape") setEditCell(null); }}
-                            className="text-xs bg-transparent border-b border-a-blue outline-none py-0.5 w-full">
-                            <option value="">-</option>
-                            {CHANNEL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                          </select>
-                        ) : (
-                          <span onClick={() => setEditCell({ postId: post.id, field: "channel_type", value: post.channel_type ?? "" })}
-                            className="cursor-text hover:text-a-blue transition-colors">
-                            {post.channel_type ?? "-"}
-                          </span>
-                        )}
-                      </TD>
-                      <TD muted w={colWidths["카테고리"]}>{getCategoryLabel(post.influencers?.category)}</TD>
-                      <TD right muted w={colWidths["조회수"]}>{fmt(s?.play_count)}</TD>
-                      <td style={{ minWidth: colWidths["도달수"] }}
-                        className="px-3 py-4 text-xs tabular-nums text-right whitespace-nowrap cursor-text"
-                        onClick={() => editCell?.postId !== post.id && setEditCell({ postId: post.id, field: "reach_count", value: String(post.reach_count ?? "") })}>
-                        {editCell?.postId === post.id && editCell?.field === "reach_count" ? (
-                          <input autoFocus type="number" value={editCell.value}
-                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
-                            onBlur={() => patchPost(post.id, "reach_count", editCell.value)}
-                            onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "reach_count", editCell.value); if (e.key === "Escape") setEditCell(null); }}
-                            className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
-                        ) : (
-                          <span className="text-a-ink-muted hover:text-a-blue transition-colors">
-                            {post.reach_count != null ? post.reach_count.toLocaleString() : <span className="text-gray-300">-</span>}
-                          </span>
-                        )}
-                      </td>
                       <td style={{ minWidth: colWidths["비용"] }}
                         className="px-3 py-4 text-xs tabular-nums text-right whitespace-nowrap cursor-text"
                         onClick={() => editCell?.postId !== post.id && setEditCell({ postId: post.id, field: "cost", value: String(post.cost ?? "") })}>
@@ -974,17 +976,33 @@ export default function MonitoringPage() {
                           </span>
                         )}
                       </td>
+                      <TD right muted w={colWidths["조회수"]}>{fmt(s?.play_count)}</TD>
                       <TD right muted w={colWidths["조회당비용"]}>
                         {post.cost != null && s?.play_count != null && s.play_count > 0
                           ? (post.cost / s.play_count).toFixed(2) + "원"
                           : <span className="text-gray-300">-</span>}
                       </TD>
+                      <td style={{ minWidth: colWidths["도달수"] }}
+                        className="px-3 py-4 text-xs tabular-nums text-right whitespace-nowrap cursor-text"
+                        onClick={() => editCell?.postId !== post.id && setEditCell({ postId: post.id, field: "reach_count", value: String(post.reach_count ?? "") })}>
+                        {editCell?.postId === post.id && editCell?.field === "reach_count" ? (
+                          <input autoFocus type="number" value={editCell.value}
+                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
+                            onBlur={() => patchPost(post.id, "reach_count", editCell.value)}
+                            onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "reach_count", editCell.value); if (e.key === "Escape") setEditCell(null); }}
+                            className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
+                        ) : (
+                          <span className="text-a-ink-muted hover:text-a-blue transition-colors">
+                            {post.reach_count != null ? post.reach_count.toLocaleString() : <span className="text-gray-300">-</span>}
+                          </span>
+                        )}
+                      </td>
                       <TD right muted w={colWidths["도달당비용"]}>
                         {post.cost != null && post.reach_count != null && post.reach_count > 0
                           ? (post.cost / post.reach_count).toFixed(2) + "원"
                           : <span className="text-gray-300">-</span>}
                       </TD>
-                      <td style={{ minWidth: colWidths["Trend"] }} className="px-3 py-3 text-center">
+                      <td style={{ minWidth: colWidths["트렌드"] }} className="px-3 py-3 text-center">
                         <Sparkline stats={post.all_stats ?? []} postId={post.id} onClick={() => setTrendPost(post)} />
                       </td>
                       <td style={{ minWidth: colWidths["특이사항"] }} className="px-3 py-3">
