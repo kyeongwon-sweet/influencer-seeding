@@ -71,13 +71,7 @@ export default function Sidebar() {
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-[200px] bg-white flex flex-col z-50 shadow-[1px_0_0_0_#e4e8f0]">
-      <div className="px-5 h-14 flex items-center border-b border-gray-100 shrink-0">
-        <Link href="/">
-          <img src="/lalasweet-logo.png" alt="라라스윗" className="h-5 w-auto object-contain" />
-        </Link>
-      </div>
-
-      <nav className="flex-1 px-2.5 py-3 space-y-0.5 overflow-y-auto">
+      <nav className="flex-1 px-2.5 pt-4 pb-3 space-y-0.5 overflow-y-auto">
         {NAV.map(item => {
           const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
           return (

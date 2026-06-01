@@ -310,6 +310,7 @@ export default function MonitoringPage() {
   const [csvRows, setCsvRows] = useState<CsvRow[]>([]);
   const [uploading, setUploading] = useState(false);
   const [filters, setFilters] = useState<Filters>(INIT_FILTERS);
+  const [dateTooltip, setDateTooltip] = useState<{ date: string; x: number; y: number } | null>(null);
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [showHelp, setShowHelp] = useState(false);
@@ -405,6 +406,27 @@ export default function MonitoringPage() {
       comments: d.comments - dailyTotals[i].comments,
     }));
   }, [dailyTotals]);
+
+  // 날짜별 채널타입(바이럴/협찬) 조회수 증분
+  const typeBreakdownByDate = useMemo(() => {
+    if (dailyTotals.length < 2) return new Map<string, Record<string, number>>();
+    const dates = dailyTotals.map(d => d.date);
+    const result = new Map<string, Record<string, number>>();
+    for (let di = 1; di < dates.length; di++) {
+      const date = dates[di];
+      const prevDate = dates[di - 1];
+      const byType: Record<string, number> = {};
+      for (const post of filteredPosts) {
+        const ct = post.channel_type ?? '기타';
+        const group = ct.startsWith('바이럴') ? '바이럴' : ct.startsWith('협찬') ? '협찬' : '기타';
+        const cur  = (post.all_stats ?? []).find(s => s.measured_at === date)?.play_count ?? 0;
+        const prev = (post.all_stats ?? []).find(s => s.measured_at === prevDate)?.play_count ?? 0;
+        byType[group] = (byType[group] ?? 0) + (cur - prev);
+      }
+      result.set(date, byType);
+    }
+    return result;
+  }, [dailyTotals, filteredPosts]);
 
   // derive sticky left positions from current widths
   const stickyLefts = useMemo(() => {
@@ -759,6 +781,32 @@ export default function MonitoringPage() {
 
   return (
     <div className="min-h-screen">
+      {/* 날짜 채널타입 분류 툴팁 */}
+      {dateTooltip && (() => {
+        const breakdown = typeBreakdownByDate.get(dateTooltip.date);
+        const entries = breakdown
+          ? (['바이럴','협찬','기타'] as const).flatMap(t =>
+              breakdown[t] !== undefined && breakdown[t] !== 0 ? [[t, breakdown[t]] as const] : []
+            )
+          : [];
+        return (
+          <div
+            className="pointer-events-none fixed z-[9999] bg-white border border-a-hairline rounded-lg shadow-lg px-3 py-2 text-[12px]"
+            style={{ right: `calc(100vw - ${dateTooltip.x}px + 8px)`, top: dateTooltip.y, transform: 'translateY(-50%)' }}
+          >
+            {entries.length > 0 ? entries.map(([type, val]) => (
+              <div key={type} className="flex items-center gap-2">
+                <span className="text-a-ink-muted">{type}:</span>
+                <span className={val > 0 ? "text-a-blue font-semibold" : val < 0 ? "text-rose-500 font-semibold" : "text-gray-400"}>
+                  {val > 0 ? '+' : ''}{val.toLocaleString()}회
+                </span>
+              </div>
+            )) : (
+              <span className="text-a-ink-muted">조회수 데이터 없음</span>
+            )}
+          </div>
+        );
+      })()}
       <header className="bg-white border-b border-gray-100 h-11 px-6 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-3">
           <Link href="/" className="text-gray-400 hover:text-a-ink transition text-sm">←</Link>
@@ -931,7 +979,7 @@ export default function MonitoringPage() {
               {/* 증감 테이블 */}
               <div className="flex-[2] flex flex-col self-start min-w-0">
                 <div className="px-5 py-4 border-b border-a-hairline">
-                  <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">일자별 조회수 증감</p>
+                  <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">일자별 증감</p>
                 </div>
                 {deltaTableData.length === 0 ? (
                   <div className="flex items-center justify-center flex-1 text-sm text-a-ink-muted py-10">측정 데이터 2일 이상 필요</div>
@@ -981,7 +1029,14 @@ export default function MonitoringPage() {
                               }
                               return (
                                 <tr key={i} className="border-b border-a-divider last:border-0 hover:bg-a-parchment/50 transition-colors">
-                                  <td className={`px-5 py-3 text-sm font-bold tabular-nums whitespace-nowrap ${cls}`}>
+                                  <td
+                                    className={`px-5 py-3 text-sm font-bold tabular-nums whitespace-nowrap ${cls}`}
+                                    onMouseEnter={(e) => {
+                                      const r = e.currentTarget.getBoundingClientRect();
+                                      setDateTooltip({ date: d.date, x: r.left, y: r.top + r.height / 2 });
+                                    }}
+                                    onMouseLeave={() => setDateTooltip(null)}
+                                  >
                                     {d.date.slice(0,4) !== String(new Date().getFullYear()) && (
                                       <span className="text-[10px] font-normal text-gray-400 mr-0.5">'{d.date.slice(2,4)}.</span>
                                     )}

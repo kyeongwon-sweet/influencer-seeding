@@ -924,7 +924,12 @@ export default function ListupPage() {
                     ))}
                     {rsTH("발굴 키워드", 2)}
                     {rsTH("팔로워", 3)}
-                    {rsTH("조회수", 4)}
+                    {rsTH("조회수", 4, true, (
+                      <div>
+                        <p className="text-[11px] font-semibold text-a-ink mb-1">팔로워 대비 평균 조회수 비율</p>
+                        <p className="text-[11px] text-a-ink-muted leading-relaxed">스크리닝 당시 최근 게시물의 평균 조회수 ÷ 팔로워 수<br/>숫자가 높을수록 바이럴 파급력이 강한 계정</p>
+                      </div>
+                    ))}
                     {rsTH("참여수", 5)}
                     {rsTH("캡션", 6, false)}
                     {rsTH("업로드일", 7)}
@@ -1260,7 +1265,7 @@ export default function ListupPage() {
               rows={10}
               value={csvText}
               onChange={e => setCsvText(e.target.value)}
-              placeholder={"키워드,URL\n뷰티,https://www.instagram.com/someuser/\n맛집,https://www.youtube.com/@channel/"}
+              placeholder={"키워드,URL\n노을멜론,https://www.instagram.com/someuser/\n딸기주물럭,https://www.youtube.com/@channel/"}
               className="w-full border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-xs font-mono placeholder:text-a-ink-muted focus:outline-none focus:border-a-blue focus:ring-1 focus:ring-a-blue transition resize-none"
             />
             <div className="flex gap-2 mt-4 justify-end">

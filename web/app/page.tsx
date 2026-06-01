@@ -174,7 +174,10 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen">
       <header className="bg-white border-b border-gray-100 h-14 px-6 flex items-center justify-between sticky top-0 z-40">
-        <span className="text-a-ink text-[20px] font-bold tracking-tight">인플루언서 시딩 트래킹 대시보드</span>
+        <div className="flex items-center gap-3">
+          <img src="/lalasweet-logo.png" alt="라라스윗" className="h-5 w-auto object-contain" />
+          <span className="text-a-ink text-[20px] font-bold tracking-tight">인플루언서 시딩 트래킹 대시보드</span>
+        </div>
         <div className="flex items-center gap-2">
           <a
             href="https://www.youtube.com/shorts"
@@ -214,7 +217,7 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <main className="px-8 py-8 w-full max-w-[860px] mx-auto space-y-5">
+      <main className="px-10 py-8 w-full space-y-5">
 
 
         {/* 오늘의 인사이트 */}
