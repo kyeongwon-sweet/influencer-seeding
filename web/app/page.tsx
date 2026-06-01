@@ -217,7 +217,7 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <main className="px-10 py-8 w-full max-w-[1080px] space-y-5">
+      <main className="px-10 py-8 w-full max-w-[1080px] mx-auto space-y-5">
 
 
         {/* 오늘의 인사이트 */}
