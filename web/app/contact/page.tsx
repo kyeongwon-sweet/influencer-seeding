@@ -289,6 +289,8 @@ export default function ContactPage() {
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const [editForm, setEditForm] = useState({ name: "", content: "" });
   const [savingTemplate, setSavingTemplate] = useState(false);
+  const [templatePreview, setTemplatePreview] = useState(false);
+  const templateTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [editContactName, setEditContactName] = useState<{ id: string; value: string } | null>(null);
   const [editNotes, setEditNotes] = useState<{ id: string; value: string } | null>(null);
 
@@ -422,6 +424,43 @@ export default function ContactPage() {
   function startNew() {
     setEditingTemplate({ id: "", name: "", content: "" });
     setEditForm({ name: "", content: "" });
+    setTemplatePreview(false);
+  }
+
+  const TIMELINE_TABLE_HTML = `
+<table style="border-collapse:collapse;width:100%;font-size:13px;margin:12px 0">
+<thead>
+<tr style="background:#f8f0ff">
+<th style="border:1px solid #d4b8f0;padding:8px 12px;text-align:center;white-space:nowrap">단계</th>
+<th style="border:1px solid #d4b8f0;padding:8px 12px;text-align:left">내용</th>
+<th style="border:1px solid #d4b8f0;padding:8px 12px;text-align:center;white-space:nowrap">일정</th>
+</tr>
+</thead>
+<tbody>
+<tr><td style="border:1px solid #e0d0f8;padding:8px 12px;text-align:center">1</td><td style="border:1px solid #e0d0f8;padding:8px 12px">컨택 및 협의</td><td style="border:1px solid #e0d0f8;padding:8px 12px;text-align:center">D+0</td></tr>
+<tr style="background:#fdfaff"><td style="border:1px solid #e0d0f8;padding:8px 12px;text-align:center">2</td><td style="border:1px solid #e0d0f8;padding:8px 12px">계약서 작성 및 서명</td><td style="border:1px solid #e0d0f8;padding:8px 12px;text-align:center">D+3</td></tr>
+<tr><td style="border:1px solid #e0d0f8;padding:8px 12px;text-align:center">3</td><td style="border:1px solid #e0d0f8;padding:8px 12px">제품 발송</td><td style="border:1px solid #e0d0f8;padding:8px 12px;text-align:center">D+7</td></tr>
+<tr style="background:#fdfaff"><td style="border:1px solid #e0d0f8;padding:8px 12px;text-align:center">4</td><td style="border:1px solid #e0d0f8;padding:8px 12px">촬영 및 업로드</td><td style="border:1px solid #e0d0f8;padding:8px 12px;text-align:center">D+21</td></tr>
+<tr><td style="border:1px solid #e0d0f8;padding:8px 12px;text-align:center">5</td><td style="border:1px solid #e0d0f8;padding:8px 12px">성과 보고</td><td style="border:1px solid #e0d0f8;padding:8px 12px;text-align:center">D+28</td></tr>
+</tbody>
+</table>`;
+
+  function insertTable() {
+    const ta = templateTextareaRef.current;
+    if (!ta) {
+      setEditForm(p => ({ ...p, content: p.content + TIMELINE_TABLE_HTML }));
+      return;
+    }
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const before = editForm.content.slice(0, start);
+    const after = editForm.content.slice(end);
+    const newContent = before + TIMELINE_TABLE_HTML + after;
+    setEditForm(p => ({ ...p, content: newContent }));
+    setTimeout(() => {
+      ta.focus();
+      ta.setSelectionRange(start + TIMELINE_TABLE_HTML.length, start + TIMELINE_TABLE_HTML.length);
+    }, 0);
   }
 
   async function saveTemplate() {
@@ -890,15 +929,41 @@ export default function ContactPage() {
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <label className="text-xs font-semibold text-a-ink">문안 내용</label>
-                      <span className="text-[11px] text-a-ink-muted">{"{name}"} → 인플루언서 이름으로 자동 치환</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-a-ink-muted">{"{name}"} → 이름 자동 치환</span>
+                        <button type="button" onClick={insertTable}
+                          className="text-[11px] px-2.5 py-1 rounded-full border border-a-blue text-a-blue hover:bg-blue-50 transition whitespace-nowrap">
+                          📊 타임라인 표 삽입
+                        </button>
+                        <button type="button" onClick={() => setTemplatePreview(p => !p)}
+                          className={`text-[11px] px-2.5 py-1 rounded-full border transition whitespace-nowrap ${
+                            templatePreview ? "border-emerald-500 text-emerald-600 bg-emerald-50" : "border-a-hairline text-a-ink-muted hover:bg-a-parchment"
+                          }`}>
+                          {templatePreview ? "✏️ 편집" : "👁️ 미리보기"}
+                        </button>
+                      </div>
                     </div>
-                    <textarea
-                      value={editForm.content}
-                      onChange={e => setEditForm(p => ({ ...p, content: e.target.value }))}
-                      rows={10}
-                      className="border border-a-hairline rounded-[8px] px-3 py-2.5 text-xs w-full focus:outline-none focus:border-a-blue transition resize-none"
-                      placeholder="안녕하세요, {name}님! ..."
-                    />
+                    {templatePreview ? (
+                      <div
+                        className="border border-a-hairline rounded-[8px] px-3 py-2.5 text-xs w-full min-h-[200px] bg-a-parchment/30 prose-sm"
+                        style={{ fontSize: 12, lineHeight: 1.7 }}
+                        dangerouslySetInnerHTML={{ __html: editForm.content.replace(/\n/g, "<br/>") }}
+                      />
+                    ) : (
+                      <textarea
+                        ref={templateTextareaRef}
+                        value={editForm.content}
+                        onChange={e => setEditForm(p => ({ ...p, content: e.target.value }))}
+                        rows={10}
+                        className="border border-a-hairline rounded-[8px] px-3 py-2.5 text-xs w-full focus:outline-none focus:border-a-blue transition resize-none font-mono"
+                        placeholder="안녕하세요, {name}님! ..."
+                      />
+                    )}
+                    {editForm.content.includes('<table') && (
+                      <p className="text-[10px] text-a-ink-muted mt-1">
+                        💡 Gmail 등 HTML 이메일 편집기에 붙여넣으면 표 형태로 전송됩니다.
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="mt-5 flex justify-end gap-2">
