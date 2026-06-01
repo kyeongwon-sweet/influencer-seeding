@@ -30,8 +30,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "rows 배열이 없습니다" }, { status: 400 });
   }
 
-  // URL이 없는 행 제거
-  const rows = body.rows.filter((r: Record<string, unknown>) => r.url && String(r.url).startsWith("http"));
+  // URL이 없는 행 제거 (https://instagram.com 또는 https://youtube.com만 허용)
+  const ALLOWED_URL_RE = /^https:\/\/(www\.)?(instagram\.com|youtube\.com)\//;
+  const rows = body.rows.filter((r: Record<string, unknown>) => r.url && ALLOWED_URL_RE.test(String(r.url)));
   if (rows.length === 0) {
     return NextResponse.json({ ok: true, upserted: 0 });
   }
@@ -67,17 +68,22 @@ export async function POST(req: NextRequest) {
 
     if (igUrls.length > 0) {
       // job 생성 후 Apify 실행
-      const { data: job } = await supabase
+      const { data: job, error: jobError } = await supabase
         .from("jobs")
         .insert({ type: "monitoring", status: "pending", payload: {} })
         .select().single();
 
-      if (job) {
-        await startActorRun(
+      if (jobError || !job) {
+        // job 생성 실패해도 sync 자체는 성공으로 반환
+      } else {
+        const runError = await startActorRun(
           "apify/instagram-scraper",
           { directUrls: [...new Set(igUrls)], resultsType: "posts", resultsLimit: igUrls.length, addParentData: true },
           `${appUrl}/api/apify-webhook?token=${encodeURIComponent(webhookSecret)}&jobId=${job.id}&jobType=monitoring`
-        ).catch(() => { /* 실패해도 sync 자체는 성공 */ });
+        ).then(() => null).catch((e: unknown) => e);
+        if (runError) {
+          await supabase.from("jobs").update({ status: "failed", error: String(runError) }).eq("id", job.id);
+        }
       }
     }
   }

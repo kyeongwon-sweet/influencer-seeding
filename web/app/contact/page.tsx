@@ -294,6 +294,13 @@ export default function ContactPage() {
   const [editContactName, setEditContactName] = useState<{ id: string; value: string } | null>(null);
   const [editNotes, setEditNotes] = useState<{ id: string; value: string } | null>(null);
 
+  function sanitizeHtml(html: string): string {
+    return html
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '')
+      .replace(/javascript:/gi, '');
+  }
+
   useEffect(() => {
     loadInfluencers();
     loadKeywords();
@@ -961,7 +968,7 @@ export default function ContactPage() {
                       <div
                         className="border border-a-hairline rounded-[8px] px-3 py-2.5 text-xs w-full min-h-[200px] bg-a-parchment/30 prose-sm"
                         style={{ fontSize: 12, lineHeight: 1.7 }}
-                        dangerouslySetInnerHTML={{ __html: editForm.content.replace(/\n/g, "<br/>") }}
+                        dangerouslySetInnerHTML={{ __html: sanitizeHtml(editForm.content.replace(/\n/g, "<br/>")) }}
                       />
                     ) : (
                       <textarea

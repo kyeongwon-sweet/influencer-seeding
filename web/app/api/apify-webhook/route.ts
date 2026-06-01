@@ -408,6 +408,7 @@ async function handleScreening(
       const url = normalizeInstagramUrl(rawUrl) ?? (rawUrl.replace(/\/$/, '') + '/');
       const infId = infByUrl.get(url);
       if (!infId) return;
+      if (posts.length === 0) return;
 
       // 릴스/포스트 URL로 저장된 경우, 실제 프로필 URL로 업데이트
       const ownerUsername = (posts[0]?.ownerUsername as string) || '';

@@ -307,11 +307,19 @@ export default function ListupPage() {
       records.push({ name, url, platform, source: "listup", status: "pending", keyword });
     }
     if (records.length === 0) { toast("가져올 데이터가 없습니다.", "error"); return; }
+    // URL 중복 제거
+    const seenUrls = new Set<string>();
+    const deduped = records.filter(r => {
+      if (seenUrls.has(r.url)) return false;
+      seenUrls.add(r.url);
+      return true;
+    });
+    const uniqueCount = records.length - deduped.length;
     setCsvImporting(true);
     const res = await fetch("/api/influencers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(records),
+      body: JSON.stringify(deduped),
     });
     setCsvImporting(false);
     if (!res.ok) { toast("가져오기에 실패했습니다.", "error"); return; }
@@ -320,7 +328,7 @@ export default function ListupPage() {
     setShowCsvImport(false);
     setCsvText("");
     await loadInfluencers();
-    toast(`${records.length}명 추가됐습니다. 스크리닝을 자동으로 시작합니다…`, "success");
+    toast(`${deduped.length}명 추가됐습니다.${uniqueCount > 0 ? ` (중복 ${uniqueCount}개 제거)` : ""} 스크리닝을 자동으로 시작합니다…`, "success");
     if (savedIds.length > 0) {
       try {
         await fetch("/api/jobs", {

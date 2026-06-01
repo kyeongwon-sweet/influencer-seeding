@@ -56,6 +56,10 @@ export async function POST(req: NextRequest) {
   const userEmail = user?.emailAddresses?.[0]?.emailAddress ?? null;
 
   const { type, payload } = await req.json();
+  const VALID_JOB_TYPES = ['monitoring', 'listup', 'organic', 'organic_refresh', 'screening'] as const;
+  if (!VALID_JOB_TYPES.includes(type as typeof VALID_JOB_TYPES[number])) {
+    return NextResponse.json({ error: '허용되지 않는 작업 유형입니다.' }, { status: 400 });
+  }
   const supabase = getServerSupabase();
   const appUrl = getAppUrl();
 

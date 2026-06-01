@@ -45,6 +45,7 @@ function relativeTime(iso: string): string {
 
 function fmtKpi(v: number | null): string {
   if (v == null) return "-";
+  if (typeof v !== 'number' || isNaN(v)) return String(v);
   const abs = Math.abs(v);
   if (abs >= 100_000_000) return (v / 100_000_000).toFixed(1).replace(/\.0$/, "") + "억";
   if (abs >= 100_000)     return Math.round(v / 10_000) + "만";

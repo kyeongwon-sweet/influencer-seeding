@@ -25,14 +25,15 @@ export async function PATCH(
     // 가장 최근 행 UPDATE → 없으면 INSERT
     const { data: existing } = await supabase
       .from("screening_metrics")
-      .select("influencer_id")
+      .select("influencer_id, run_at")
       .eq("influencer_id", id)
       .order("run_at", { ascending: false })
       .limit(1);
     if (existing && existing.length > 0) {
       await supabase.from("screening_metrics")
         .update(metricsUpdate)
-        .eq("influencer_id", id);
+        .eq("influencer_id", id)
+        .eq("run_at", existing[0].run_at);
     } else {
       const { error } = await supabase.from("screening_metrics")
         .insert({ influencer_id: id, ...metricsUpdate });
