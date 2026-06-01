@@ -780,11 +780,14 @@ export default function ListupPage() {
                           ) : (
                             <span
                               onClick={() => setEditKeyword({ id: inf.id, value: inf.keyword ?? "" })}
-                              className="cursor-text"
+                              className="cursor-pointer flex items-center gap-1 group/kw"
                             >
                               {inf.keyword
                                 ? <span className="text-xs bg-a-parchment text-a-ink-muted px-2 py-0.5 rounded-full">#{inf.keyword}</span>
                                 : <span className="text-xs text-gray-300">-</span>}
+                              <svg width="10" height="10" viewBox="0 0 20 20" fill="none" className="opacity-0 group-hover/kw:opacity-40 transition-opacity flex-shrink-0">
+                                <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
                             </span>
                           )}
                         </td>
