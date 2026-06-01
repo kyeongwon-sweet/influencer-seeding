@@ -276,7 +276,8 @@ async function handleListup(supabase: ReturnType<typeof getServerSupabase>, jobI
         ? new Date(rawTs * 1000).toISOString()
         : (rawTs as string) || null;
 
-      const keyword = null; // 복수 키워드 통합 실행 시 추론 불가
+      // 액터가 각 아이템에 hashtag 필드를 포함시킴
+      const keyword = (item.hashtag as string) || null;
 
       accounts[username] = {
         name: (item.ownerFullName || (item.owner as Record<string, unknown>)?.fullName || username) as string,
