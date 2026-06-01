@@ -76,6 +76,7 @@ type Influencer = {
   status: string;
   category: string | null;
   notes: string | null;
+  keyword?: string | null;
   created_at: string;
   screening_metrics: Metrics[];
 };
@@ -772,7 +773,6 @@ export default function ScreeningPage() {
                   {sortTH("광고 평균 조회수", true)}
                   {sortTH("광고 효율", true)}
                   {sortTH("광고 최고 조회수", true)}
-                  {staticTH("광고 최고 게시물 URL")}
                   {staticTH("검색어")}
                   {staticTH("검색어 트렌드", true)}
                   {staticTH("통과 기준", false, true)}
@@ -849,33 +849,18 @@ export default function ScreeningPage() {
                           ? ((m.ad_avg_play_count - m.total_avg_play_count) / 10000).toFixed(2)
                           : "-"}
                       </td>
-                      <td style={{ minWidth: screenColWidths["광고 최고 조회수"] }} className="px-3 py-4 text-right tabular-nums text-a-ink whitespace-nowrap font-numeric">{fmt(m?.top_ad_play_count)}</td>
-                      <td style={{ minWidth: screenColWidths["광고 최고 게시물 URL"] }} className="px-3 py-4 whitespace-nowrap">
+                      <td style={{ minWidth: screenColWidths["광고 최고 조회수"] }} className="px-3 py-4 text-right tabular-nums text-a-ink whitespace-nowrap font-numeric">
                         {m?.top_ad_post_url
                           ? <a href={m.top_ad_post_url} target="_blank" rel="noreferrer"
-                              className="inline-flex items-center gap-1 text-xs text-a-blue hover:underline">
-                              <svg width="11" height="11" viewBox="0 0 14 14" fill="none">
-                                <path d="M5.5 2.5H2.5a1 1 0 00-1 1v8a1 1 0 001 1h8a1 1 0 001-1V9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                                <path d="M8.5 1.5h4m0 0v4m0-4L6 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                              링크
+                              className="hover:text-a-blue hover:underline transition-colors">
+                              {fmt(m?.top_ad_play_count)}
                             </a>
-                          : <span className="text-a-ink-muted">-</span>}
+                          : fmt(m?.top_ad_play_count)}
                       </td>
                       <td style={{ minWidth: screenColWidths["검색어"] }} className="px-3 py-4 whitespace-nowrap">
-                        {m ? (
-                          m.kw_keywords
-                            ? <button
-                                onClick={() => { setKwModal({ metricsId: m.id, infName: inf.name }); setKwForm({ keywords: m.kw_keywords!, adDate: m.kw_ad_date ?? "" }); }}
-                                className="text-xs text-a-ink hover:text-a-blue transition-colors">
-                                {m.kw_keywords}
-                              </button>
-                            : <button
-                                onClick={() => { setKwModal({ metricsId: m.id, infName: inf.name }); setKwForm({ keywords: "", adDate: "" }); }}
-                                className="text-xs text-a-blue hover:underline whitespace-nowrap">
-                                검색어 입력
-                              </button>
-                        ) : <span className="text-a-ink-muted">-</span>}
+                        {inf.keyword
+                          ? <span className="text-xs bg-a-parchment text-a-ink-muted px-2 py-0.5 rounded-full">#{inf.keyword}</span>
+                          : <span className="text-a-ink-muted text-xs">-</span>}
                       </td>
                       <td style={{ minWidth: screenColWidths["검색어 트렌드"] }} className="px-3 py-4 text-right tabular-nums whitespace-nowrap">
                         {(() => {
