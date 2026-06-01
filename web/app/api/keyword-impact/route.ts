@@ -4,9 +4,10 @@ import { getServerSupabase } from "@/lib/supabase-server";
 
 const NAVER_API = "https://openapi.naver.com/v1/datalab/search";
 
-// 네이버 Datalab 상대 비율(0~100) → 절대 검색량 변환 계수
-// 기준: '라라스윗'+'라라스윗아이스크림' 합산이 100인 2026-05-31의 실제 검색량 = 3,748건
-const ABSOLUTE_FACTOR = 3748 / 100; // = 37.48
+// 네이버 Datalab 상대 비율 → 절대 검색량 변환 계수
+// 기준: '라라스윗'+'라라스윗아이스크림' 기준 상수 1326.173
+// (예: 5/31 상대비율 2.82637 × 1326.173 = 3748건)
+const ABSOLUTE_FACTOR = 1326.173;
 
 function addDays(date: Date, days: number) {
   const d = new Date(date);

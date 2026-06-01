@@ -1,9 +1,10 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 
-// 라라스윗+라라스윗아이스크림 합산이 100일 때(2026/5/31)의 절대 검색량
-// keyword-impact 캘리브레이션과 동일한 기준
-const LARASWEET_BASE = 3748;
+// 네이버 Datalab 상대비율 → 절대 검색량 변환 계수 (keyword-impact와 동일)
+// 공식: 절대검색량 = 상대비율 × LARASWEET_BASE
+// (예: 5/31 상대비율 2.82637 × 1326.173 = 3748건)
+const LARASWEET_BASE = 1326.173;
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
@@ -62,18 +63,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "키워드 데이터를 받지 못했습니다." }, { status: 502 });
   }
 
-  // 동적 캘리브레이션:
-  // 조인 쿼리에서 라라스윗 최대 비율이 100이 아닐 수 있으므로
-  // 기간 내 라라스윗 최대값을 기준으로 스케일 계산
-  // → 라라스윗 피크 = 1326.173건, 키워드는 이에 비례
-  const lsRatios = (lsResult?.data ?? []).map(d => d.ratio);
-  const lsMaxRatio = Math.max(...lsRatios, 1);
-  const scale = LARASWEET_BASE / lsMaxRatio;
-
   const dates = kwResult.data.map((d, i) => ({
     date: d.period.slice(0, 10),
-    keywordAbsolute: Math.round(d.ratio * scale),
-    larasweetAbsolute: Math.round((lsResult?.data[i]?.ratio ?? 0) * scale),
+    keywordAbsolute: Math.round(d.ratio * LARASWEET_BASE),
+    larasweetAbsolute: Math.round((lsResult?.data[i]?.ratio ?? 0) * LARASWEET_BASE),
   }));
 
   return NextResponse.json({ dates });
