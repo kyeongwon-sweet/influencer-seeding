@@ -170,7 +170,8 @@ export default function OrganicPage() {
 
     if (!res.ok) {
       setRunning(false);
-      toast("수집 실행에 실패했습니다.", "error");
+      const errBody = await res.json().catch(() => null);
+      toast(`수집 실행 실패 (${res.status}): ${errBody?.error ?? "알 수 없는 오류"}`, "error");
       return;
     }
 
