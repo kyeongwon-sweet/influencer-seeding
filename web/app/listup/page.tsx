@@ -61,12 +61,15 @@ function formatElapsed(s: number): string {
 
 function getThumbnailUrl(url: string | null | undefined): string | null {
   if (!url) return null;
-  // YouTube
+  // YouTube shorts/video
   let m = url.match(/youtube\.com\/shorts\/([^/?&#]+)/);
   if (m) return `https://i.ytimg.com/vi/${m[1]}/mqdefault.jpg`;
   m = url.match(/[?&]v=([^&]+)/);
   if (m) return `https://i.ytimg.com/vi/${m[1]}/mqdefault.jpg`;
-  // Apify가 저장한 직접 이미지 URL (Instagram thumbnailUrl / displayUrl)
+  // Instagram reel/post: shortcode로 썸네일 URL 구성
+  m = url.match(/instagram\.com\/(?:reels?|p|tv)\/([A-Za-z0-9_-]+)/);
+  if (m) return `https://www.instagram.com/p/${m[1]}/media/?size=m`;
+  // Apify가 저장한 직접 이미지 URL (cdninstagram, fbcdn 등)
   if (/cdninstagram\.com|fbcdn\.net|scontent/i.test(url)) return url;
   if (/\.(jpg|jpeg|png|webp)(\?|$)/i.test(url)) return url;
   return null;
