@@ -836,7 +836,7 @@ export default function ContactPage() {
         <div className="fixed inset-0 z-[60] flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
             onClick={() => { setShowTemplates(false); setEditingTemplate(null); }} />
-          <div className="relative bg-white rounded-2xl shadow-xl w-[540px] max-h-[85vh] overflow-y-auto p-7">
+          <div className="relative bg-white rounded-2xl shadow-xl w-[540px] max-w-[calc(100vw-32px)] max-h-[85vh] overflow-y-auto overflow-x-hidden p-7">
             <div className="flex items-start justify-between mb-5">
               <div>
                 <p className="text-[10px] font-semibold text-a-blue tracking-[0.1em] uppercase mb-1">설정</p>
@@ -874,7 +874,7 @@ export default function ContactPage() {
               </ul>
               {/* 이미지 첨부: web/public/contact-history-example.png 파일을 넣으면 표시됨 */}
               <img src="/contact-history-example.png" alt="히스토리 예시"
-                className="mt-3 rounded-[6px] w-full object-contain"
+                className="mt-3 rounded-[6px] max-w-full object-contain block"
                 onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
               />
               <a
