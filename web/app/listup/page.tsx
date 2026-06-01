@@ -91,6 +91,7 @@ export default function ListupPage() {
   const runningJobIdRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const autoScreenAfterListup = useRef(false); // 리스트업 완료 후 자동 스크리닝 여부
 
   const uniqueKeywords = [...new Set(influencers.map(i => i.keyword).filter(Boolean))] as string[];
 
@@ -329,7 +330,19 @@ export default function ListupPage() {
         runningJobIdRef.current = null;
         setRunning(false);
         await loadInfluencers();
-        toast("리스트업이 완료됐습니다. 결과가 업데이트됐습니다.", "success");
+        const added = (cur as { payload?: { added?: number } }).payload?.added ?? 0;
+        if (added > 0 && autoScreenAfterListup.current) {
+          toast(`리스트업 완료: ${added}명 추가. 스크리닝을 자동으로 시작합니다…`, "success");
+          await fetch("/api/jobs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type: "screening", payload: {} }),
+          });
+          toast("스크리닝이 시작됐습니다. 스크리닝 탭에서 확인하세요.", "info");
+        } else {
+          toast(added > 0 ? `리스트업 완료: ${added}명 추가됐습니다.` : "리스트업 완료: 신규 계정 없음.", "success");
+        }
+        autoScreenAfterListup.current = false;
       } else if (cur?.status === "failed") {
         clearInterval(pollTimerRef.current!);
         clearInterval(elapsedTimerRef.current!);
@@ -349,6 +362,7 @@ export default function ListupPage() {
     setRunning(true);
     setShowTimeoutError(false);
     setElapsedSeconds(0);
+    autoScreenAfterListup.current = true; // 완료 시 자동 스크리닝 트리거
 
     const res = await fetch("/api/jobs", {
       method: "POST",
