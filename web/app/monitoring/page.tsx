@@ -879,40 +879,40 @@ export default function MonitoringPage() {
 
         {filteredPosts.length > 0 && (
           <div className="bg-white rounded-[18px] border border-a-hairline p-5 mb-4">
-            <div className="flex items-center gap-6 mb-5 pb-4 border-b border-a-hairline">
+            <div className="flex items-center gap-8 mb-5 pb-5 border-b border-a-hairline">
               <div>
-                <p className="text-[11px] text-a-ink-muted mb-0.5">조회수 합계</p>
-                <p className="text-2xl font-bold tabular-nums tracking-tight font-numeric">{totalPlayCount.toLocaleString()}</p>
+                <p className="text-xs text-a-ink-muted mb-1">조회수 합계</p>
+                <p className="text-3xl font-bold tabular-nums tracking-tight font-numeric">{totalPlayCount.toLocaleString()}</p>
               </div>
-              <div className="w-px h-8 bg-a-hairline" />
+              <div className="w-px h-10 bg-a-hairline" />
               <div>
-                <p className="text-[11px] text-a-ink-muted mb-0.5">좋아요 합계</p>
-                <p className="text-lg font-bold tabular-nums tracking-tight font-numeric">{totalLikes.toLocaleString()}</p>
+                <p className="text-xs text-a-ink-muted mb-1">좋아요 합계</p>
+                <p className="text-2xl font-bold tabular-nums tracking-tight font-numeric">{totalLikes.toLocaleString()}</p>
               </div>
-              <div className="w-px h-8 bg-a-hairline" />
+              <div className="w-px h-10 bg-a-hairline" />
               <div>
-                <p className="text-[11px] text-a-ink-muted mb-0.5">댓글 합계</p>
-                <p className="text-lg font-bold tabular-nums tracking-tight font-numeric">{totalComments.toLocaleString()}</p>
+                <p className="text-xs text-a-ink-muted mb-1">댓글 합계</p>
+                <p className="text-2xl font-bold tabular-nums tracking-tight font-numeric">{totalComments.toLocaleString()}</p>
               </div>
             </div>
-            <div className="grid gap-6" style={{ gridTemplateColumns: "3fr 2fr" }}>
+            <div className="grid gap-6" style={{ gridTemplateColumns: "1fr 1fr" }}>
               <div className="flex flex-col">
                 <p className="text-[11px] text-a-ink-muted mb-2">조회수 트렌드 (누적)</p>
-                <LineChart data={chartData} height={130} gradId="summaryGrad" />
+                <LineChart data={chartData} height={160} gradId="summaryGrad" />
               </div>
               <div className="flex flex-col">
                 <p className="text-[11px] text-a-ink-muted mb-2">일자별 조회수 증감</p>
                 {deltaTableData.length === 0 ? (
-                  <div className="flex items-center justify-center h-[130px] text-xs text-a-ink-muted">측정 데이터 2일 이상 필요</div>
+                  <div className="flex items-center justify-center h-[160px] text-xs text-a-ink-muted">측정 데이터 2일 이상 필요</div>
                 ) : (
-                  <div className="flex-1 min-h-0 overflow-y-auto rounded-[8px] border border-a-hairline">
-                    <table className="w-full text-xs">
-                      <thead className="sticky top-0 bg-a-parchment/80 backdrop-blur-sm">
+                  <div className="flex-1 min-h-0 overflow-y-auto rounded-[10px] border border-a-hairline" style={{ maxHeight: 200 }}>
+                    <table className="w-full text-sm">
+                      <thead className="sticky top-0 bg-a-parchment/90 backdrop-blur-sm">
                         <tr className="border-b border-a-hairline">
-                          <th className="px-2 py-1.5 text-left font-medium text-gray-400 uppercase tracking-wider">날짜</th>
-                          <th className="px-2 py-1.5 text-right font-medium text-gray-400 uppercase tracking-wider">조회수</th>
-                          <th className="px-2 py-1.5 text-right font-medium text-gray-400 uppercase tracking-wider">좋아요</th>
-                          <th className="px-2 py-1.5 text-right font-medium text-gray-400 uppercase tracking-wider">댓글</th>
+                          <th className="px-3 py-2 text-left text-[11px] font-semibold text-a-ink-muted">날짜</th>
+                          <th className="px-3 py-2 text-right text-[11px] font-semibold text-a-ink-muted">조회수</th>
+                          <th className="px-3 py-2 text-right text-[11px] font-semibold text-a-ink-muted">좋아요</th>
+                          <th className="px-3 py-2 text-right text-[11px] font-semibold text-a-ink-muted">댓글</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -920,14 +920,14 @@ export default function MonitoringPage() {
                           function deltaCell(v: number) {
                             const pos = v > 0, neg = v < 0;
                             return (
-                              <td className={`px-2 py-1.5 text-right tabular-nums font-medium ${pos ? "text-red-500" : neg ? "text-emerald-600" : "text-gray-300"}`}>
+                              <td className={`px-3 py-2.5 text-right tabular-nums font-semibold text-sm ${pos ? "text-red-500" : neg ? "text-emerald-600" : "text-gray-300"}`}>
                                 {pos ? "+" : ""}{v.toLocaleString()}
                               </td>
                             );
                           }
                           return (
-                            <tr key={i} className="border-b border-a-divider last:border-0">
-                              <td className="px-2 py-1.5 text-a-ink-muted tabular-nums">
+                            <tr key={i} className={`border-b border-a-divider last:border-0 ${i % 2 === 0 ? "" : "bg-a-parchment/30"}`}>
+                              <td className="px-3 py-2.5 text-sm font-medium text-a-ink-muted tabular-nums">
                                 {d.date.slice(5).replace("-", "/")}
                               </td>
                               {deltaCell(d.play)}
