@@ -1058,7 +1058,7 @@ export default function ListupPage() {
                             ) : (
                               <span onClick={() => setEditRatio({ id: inf.id, value: ratio != null ? String(ratio) : "" })}
                                 className="cursor-pointer group/ratio flex items-center gap-0.5 text-a-ink-muted">
-                                {ratio != null ? <span className="text-[10px]">비율 {Number(ratio).toFixed(2)}</span> : null}
+                                {ratio != null ? <span className="text-[10px]">팔로워 대비 {Number(ratio).toFixed(2)}</span> : null}
                                 <svg width="9" height="9" viewBox="0 0 20 20" fill="none" className="opacity-0 group-hover/ratio:opacity-40 transition-opacity flex-shrink-0">
                                   <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                                 </svg>
