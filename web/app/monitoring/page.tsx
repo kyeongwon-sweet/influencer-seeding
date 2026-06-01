@@ -297,6 +297,11 @@ export default function MonitoringPage() {
   const [editCell, setEditCell] = useState<EditCell | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [showTimeoutError, setShowTimeoutError] = useState(false);
+  const runningJobIdRef = useRef<string | null>(null);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // column widths for drag-resize
   const [stickyColWidths, setStickyColWidths] = useState<Record<string, number>>({
@@ -394,6 +399,11 @@ export default function MonitoringPage() {
 
   useEffect(() => {
     loadPosts().finally(() => setLoading(false));
+    checkAndResumeMonitoring();
+    return () => {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
+    };
   }, []);
 
   async function loadPosts() {
@@ -403,15 +413,84 @@ export default function MonitoringPage() {
     setPosts(Array.isArray(json) ? json : []);
   }
 
+  async function checkAndResumeMonitoring() {
+    try {
+      const res = await fetch("/api/jobs");
+      if (!res.ok) return;
+      const jobs: { id: string; type: string; status: string }[] = await res.json();
+      const inProgress = jobs.find(j => j.type === "monitoring" && j.status === "running");
+      if (!inProgress) return;
+      runningJobIdRef.current = inProgress.id;
+      setRunning(true);
+      setElapsedSeconds(0);
+      elapsedTimerRef.current = setInterval(() => setElapsedSeconds(s => s + 1), 1000);
+      startPollMonitoring(Date.now());
+    } catch { /* 무시 */ }
+  }
+
+  function startPollMonitoring(startTime: number) {
+    pollTimerRef.current = setInterval(async () => {
+      if (Date.now() - startTime >= 300_000) {
+        clearInterval(pollTimerRef.current!);
+        clearInterval(elapsedTimerRef.current!);
+        pollTimerRef.current = null; elapsedTimerRef.current = null;
+        runningJobIdRef.current = null;
+        setRunning(false);
+        setShowTimeoutError(true);
+        return;
+      }
+      await checkMonitoringJob();
+    }, 10_000);
+  }
+
+  async function checkMonitoringJob() {
+    try {
+      const jobRes = await fetch("/api/jobs");
+      const jobs: { id: string; status: string; error?: string }[] = await jobRes.json();
+      const cur = jobs.find(j => j.id === runningJobIdRef.current);
+      if (cur?.status === "done") {
+        clearInterval(pollTimerRef.current!);
+        clearInterval(elapsedTimerRef.current!);
+        pollTimerRef.current = null; elapsedTimerRef.current = null;
+        runningJobIdRef.current = null;
+        setRunning(false);
+        await loadPosts();
+        toast("모니터링 완료! 데이터가 업데이트됐습니다.", "success");
+      } else if (cur?.status === "failed") {
+        clearInterval(pollTimerRef.current!);
+        clearInterval(elapsedTimerRef.current!);
+        pollTimerRef.current = null; elapsedTimerRef.current = null;
+        runningJobIdRef.current = null;
+        setRunning(false);
+        toast(`모니터링 실패: ${cur.error ?? "알 수 없는 오류"}`, "error");
+      }
+    } catch { /* 폴링 오류 무시 */ }
+  }
+
   async function runMonitoring() {
+    if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
     setRunning(true);
-    await fetch("/api/jobs", {
+    setShowTimeoutError(false);
+    setElapsedSeconds(0);
+
+    const res = await fetch("/api/jobs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type: "monitoring", payload: {} }),
     });
-    setRunning(false);
-    toast("모니터링 수집이 시작됐습니다. 완료 후 새로고침 버튼을 눌러주세요.", "info");
+
+    if (!res.ok) {
+      setRunning(false);
+      toast("모니터링 실행에 실패했습니다.", "error");
+      return;
+    }
+
+    const { job } = await res.json();
+    runningJobIdRef.current = job.id;
+    toast("모니터링이 시작됐습니다. 완료 시 자동으로 업데이트됩니다.", "info");
+    elapsedTimerRef.current = setInterval(() => setElapsedSeconds(s => s + 1), 1000);
+    startPollMonitoring(Date.now());
   }
 
   async function refresh() {
@@ -698,8 +777,24 @@ export default function MonitoringPage() {
           <button onClick={() => setShowAdd(true)} className="btn-secondary">+ 게시물 추가</button>
           <button onClick={downloadCSV} disabled={filteredPosts.length === 0} className="btn-secondary">엑셀 다운로드</button>
           <button onClick={refresh} disabled={loading} className="btn-secondary">새로고침</button>
+          {running && (
+            <>
+              <span className="text-xs text-a-ink-muted tabular-nums">
+                {elapsedSeconds < 60 ? `${elapsedSeconds}초` : `${Math.floor(elapsedSeconds / 60)}분 ${elapsedSeconds % 60}초`}
+              </span>
+              <button onClick={checkMonitoringJob} className="btn-secondary">지금 확인</button>
+            </>
+          )}
           <button onClick={runMonitoring} disabled={running} className="btn-primary">
-            {running ? "실행 중..." : "지금 수집"}
+            {running ? (
+              <span className="flex items-center gap-1.5">
+                <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25"/>
+                  <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
+                </svg>
+                실행 중
+              </span>
+            ) : "지금 수집"}
           </button>
         </div>
       </div>
@@ -1266,6 +1361,34 @@ export default function MonitoringPage() {
         </div>
       )}
 
+      {showTimeoutError && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={() => setShowTimeoutError(false)} />
+          <div className="relative bg-white rounded-2xl shadow-xl w-[420px] p-7">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <p className="text-[10px] font-semibold text-red-500 tracking-[0.1em] uppercase mb-1">시간 초과</p>
+                <h2 className="font-bold text-[18px] text-a-ink tracking-tight">모니터링 지연 안내</h2>
+              </div>
+              <button onClick={() => setShowTimeoutError(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-black/[0.06] hover:bg-black/[0.10] transition-colors text-a-ink">
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                  <path d="M1 1l9 9M10 1L1 10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                </svg>
+              </button>
+            </div>
+            <p className="text-sm text-a-ink-muted leading-relaxed mb-5">
+              5분 내에 모니터링이 완료되지 않았습니다. 작업은 백그라운드에서 계속 실행 중입니다. 완료 후 새로고침 버튼을 눌러주세요.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowTimeoutError(false)}
+                className="text-xs px-4 py-2 rounded-full border border-a-hairline text-a-ink hover:bg-a-parchment transition">닫기</button>
+              <button onClick={() => { setShowTimeoutError(false); refresh(); }}
+                className="text-xs px-4 py-2 rounded-full bg-a-blue text-white hover:bg-a-blue-hover transition">새로고침</button>
+            </div>
+          </div>
+        </div>
+      )}
       <ToastContainer toasts={toasts} />
     </div>
   );
