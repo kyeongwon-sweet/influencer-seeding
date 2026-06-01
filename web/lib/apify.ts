@@ -7,11 +7,10 @@ export async function startActorRun(
   webhookUrl: string
 ): Promise<void> {
   const token = process.env.APIFY_API_TOKEN!;
-  // base64url: Node.js 버전에 따라 'base64url' 인코딩이 지원 안 될 수 있어 수동 변환
+  // payloadTemplate 미사용: Apify 기본 페이로드(resource.status, resource.defaultDatasetId)로 수신
   const webhooks = Buffer.from(JSON.stringify([{
     eventTypes: ['ACTOR.RUN.SUCCEEDED', 'ACTOR.RUN.FAILED'],
     requestUrl: webhookUrl,
-    payloadTemplate: '{"datasetId":"{{resource.defaultDatasetId}}","status":"{{resource.status}}"}',
   }])).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
 
   const res = await fetch(

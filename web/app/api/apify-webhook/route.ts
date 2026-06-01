@@ -132,11 +132,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing params' }, { status: 400 });
   }
 
-  const body = await req.json() as { datasetId: string; status: string };
+  // Apify 기본 페이로드: { resource: { status, defaultDatasetId, ... }, eventType, ... }
+  const body = await req.json() as {
+    resource?: { status: string; defaultDatasetId: string };
+    // 레거시 payloadTemplate 형식 대응
+    status?: string;
+    datasetId?: string;
+  };
   const supabase = getServerSupabase();
 
-  // Apify가 템플릿 변수를 치환 못한 경우({{resource.status}}) FAILED로 처리
-  const runStatus = (!body.status || body.status.startsWith('{{')) ? 'FAILED' : body.status;
+  const runStatus = body.resource?.status || body.status || 'FAILED';
+  const datasetId = body.resource?.defaultDatasetId || body.datasetId || '';
 
   if (runStatus !== 'SUCCEEDED') {
     await supabase.from('jobs').update({ status: 'failed', error: `Apify run: ${runStatus}` }).eq('id', jobId);
@@ -144,7 +150,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const items = await fetchDatasetItems(body.datasetId) as Record<string, unknown>[];
+    const items = await fetchDatasetItems(datasetId) as Record<string, unknown>[];
 
     if (jobType === 'monitoring') {
       await handleMonitoring(supabase, jobId, items);
