@@ -314,6 +314,7 @@ export default function ContactPage() {
     loadKeywords();
     loadTemplates();
     loadLastScreeningAt();
+    return () => { if (trendTimerRef.current) clearInterval(trendTimerRef.current); };
   }, []);
 
   async function loadInfluencers() {
@@ -355,24 +356,27 @@ export default function ContactPage() {
     setTrendElapsed(0);
     if (trendTimerRef.current) clearInterval(trendTimerRef.current);
     trendTimerRef.current = setInterval(() => setTrendElapsed(s => s + 1), 1000);
-    const endDate = new Date().toISOString().slice(0, 10);
-    const startDate = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
-    const res = await fetch("/api/naver-trends", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ keyword: selectedKeyword, startDate, endDate }),
-    });
-    if (res.status === 503) {
-      setTrendError("NAVER_CLIENT_ID / NAVER_CLIENT_SECRET 환경변수가 설정되지 않았습니다. Vercel 환경변수를 확인하세요.");
-    } else if (!res.ok) {
-      const e = await res.json().catch(() => ({}));
-      setTrendError((e as { error?: string }).error ?? "트렌드 데이터를 불러오는 데 실패했습니다.");
-    } else {
-      const { dates } = await res.json();
-      setTrendData(dates);
+    try {
+      const endDate = new Date().toISOString().slice(0, 10);
+      const startDate = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+      const res = await fetch("/api/naver-trends", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keyword: selectedKeyword, startDate, endDate }),
+      });
+      if (res.status === 503) {
+        setTrendError("NAVER_CLIENT_ID / NAVER_CLIENT_SECRET 환경변수가 설정되지 않았습니다. Vercel 환경변수를 확인하세요.");
+      } else if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        setTrendError((e as { error?: string }).error ?? "트렌드 데이터를 불러오는 데 실패했습니다.");
+      } else {
+        const { dates } = await res.json();
+        setTrendData(dates);
+      }
+    } finally {
+      if (trendTimerRef.current) { clearInterval(trendTimerRef.current); trendTimerRef.current = null; }
+      setLoadingTrend(false);
     }
-    if (trendTimerRef.current) { clearInterval(trendTimerRef.current); trendTimerRef.current = null; }
-    setLoadingTrend(false);
   }
 
   // ── Contact modal ──────────────────────────────────────────────────────────

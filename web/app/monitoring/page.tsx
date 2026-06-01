@@ -251,10 +251,9 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData 
     return mapped.map((p, j) => `${j === 0 ? "M" : "L"}${xS(p.i).toFixed(1)},${lsY(p.ratio).toFixed(1)}`).join(" ");
   })();
 
-  const hoveredLsRatio = (() => {
+  const hoveredLsEntry = (() => {
     if (!lsData || hoverIdx === null) return null;
-    const date = data[hoverIdx].date;
-    return lsData.find(d => d.date === date)?.ratio ?? null;
+    return lsData.find(d => d.date === data[hoverIdx].date) ?? null;
   })();
 
   return (
@@ -301,10 +300,9 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData 
         <div className="pointer-events-none absolute top-1 bg-white border border-a-hairline rounded-[10px] px-3 py-2.5 shadow-[0_4px_16px_rgba(0,0,0,0.10)] text-xs z-20"
           style={{ left: `${Math.min(Math.max(((pl + xS(hoverIdx)) / VW) * 100, 15), 85)}%`, transform: "translateX(-50%)" }}>
           <p className="text-a-ink-muted mb-1">{data[hoverIdx].date.replace(/-/g, ".")} · <span className="font-semibold text-a-blue tabular-nums">{data[hoverIdx].value.toLocaleString()}</span></p>
-          {hoveredLsRatio !== null && (() => {
-            const abs = lsData?.find(d => d.date === data[hoverIdx!].date)?.value;
-            return <p className="text-gray-400 tabular-nums">라라스윗 검색량: {abs != null ? abs.toLocaleString() : Math.round(hoveredLsRatio * 1326.173).toLocaleString()}</p>;
-          })()}
+          {hoveredLsEntry?.value != null && (
+            <p className="text-gray-400 tabular-nums">라라스윗 검색량: {hoveredLsEntry.value.toLocaleString()}</p>
+          )}
           {hoveredPosts.length > 0 && (
             <div className="border-t border-a-hairline pt-1.5 mt-1 space-y-0.5">
               {hoveredPosts.map((p, i) => (
@@ -448,18 +446,19 @@ export default function MonitoringPage() {
   // 날짜별 채널타입(바이럴/협찬) 조회수 증분
   const typeBreakdownByDate = useMemo(() => {
     if (dailyTotals.length < 2) return new Map<string, Record<string, number>>();
+    // O(M×S) 인덱스 빌드: post별 date→play_count Map
+    const postIndex = filteredPosts.map(post => ({
+      group: (() => { const ct = post.channel_type ?? '기타'; return ct.startsWith('바이럴') ? '바이럴' : ct.startsWith('협찬') ? '협찬' : '기타'; })(),
+      byDate: new Map((post.all_stats ?? []).map(s => [s.measured_at, s.play_count ?? 0])),
+    }));
     const dates = dailyTotals.map(d => d.date);
     const result = new Map<string, Record<string, number>>();
     for (let di = 1; di < dates.length; di++) {
-      const date = dates[di];
-      const prevDate = dates[di - 1];
+      const date = dates[di], prevDate = dates[di - 1];
       const byType: Record<string, number> = {};
-      for (const post of filteredPosts) {
-        const ct = post.channel_type ?? '기타';
-        const group = ct.startsWith('바이럴') ? '바이럴' : ct.startsWith('협찬') ? '협찬' : '기타';
-        const cur  = (post.all_stats ?? []).find(s => s.measured_at === date)?.play_count ?? 0;
-        const prev = (post.all_stats ?? []).find(s => s.measured_at === prevDate)?.play_count ?? 0;
-        byType[group] = (byType[group] ?? 0) + (cur - prev);
+      for (const { group, byDate } of postIndex) {
+        const delta = (byDate.get(date) ?? 0) - (byDate.get(prevDate) ?? 0);
+        byType[group] = (byType[group] ?? 0) + delta;
       }
       result.set(date, byType);
     }
@@ -477,15 +476,16 @@ export default function MonitoringPage() {
     return result;
   }, [stickyColWidths]);
 
+  const lsStartDate = chartData.length >= 2 ? chartData[0].date : null;
+  const lsEndDate   = chartData.length >= 2 ? chartData[chartData.length - 1].date : null;
+
   useEffect(() => {
-    if (chartData.length < 2) return;
-    const startDate = chartData[0].date;
-    const endDate = chartData[chartData.length - 1].date;
-    fetch(`/api/larasweet-trend?startDate=${startDate}&endDate=${endDate}`)
+    if (!lsStartDate || !lsEndDate) return;
+    fetch(`/api/larasweet-trend?startDate=${lsStartDate}&endDate=${lsEndDate}`)
       .then(r => r.ok ? r.json() : { data: [] })
       .then(json => setLsSearchData(json.data ?? []))
       .catch(() => {});
-  }, [chartData[0]?.date, chartData[chartData.length - 1]?.date]);
+  }, [lsStartDate, lsEndDate]);
 
   useEffect(() => {
     loadPosts().finally(() => setLoading(false));
