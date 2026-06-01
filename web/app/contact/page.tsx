@@ -876,6 +876,19 @@ export default function ContactPage() {
                 className="mt-3 rounded-[6px] w-full object-contain"
                 onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
               />
+              <a
+                href="https://app.notion.com/p/lalasweet/35a3b344ce7f81eab025c062af02bba7"
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2.5 flex items-center gap-1.5 text-[11px] text-red-700 hover:text-red-900 hover:underline transition-colors"
+              >
+                <span>✅</span>
+                <span className="font-medium">협찬 프로세스 체크리스트</span>
+                <svg width="10" height="10" viewBox="0 0 14 14" fill="none" className="opacity-60">
+                  <path d="M5.5 2.5H2.5a1 1 0 00-1 1v8a1 1 0 001 1h8a1 1 0 001-1V9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M8.5 1.5h4m0 0v4m0-4L6 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </a>
             </div>
 
             {!editingTemplate ? (
