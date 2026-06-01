@@ -271,7 +271,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData 
           {yTicks.map((tick, i) => (
             <g key={i}>
               <line x1={0} y1={yS(tick)} x2={cw} y2={yS(tick)} stroke="#e5e7eb" strokeWidth="1" strokeDasharray="4,4" />
-              <text x={-8} y={yS(tick)} textAnchor="end" dominantBaseline="middle" fontSize="10" fill="#9ca3af">{fmtY(tick)}</text>
+              <text x={-8} y={yS(tick)} textAnchor="end" dominantBaseline="middle" fontSize="8.5" fill="#9ca3af">{fmtY(tick)}</text>
             </g>
           ))}
           <path d={areaPath} fill={`url(#${gradId})`} />
