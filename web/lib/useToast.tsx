@@ -19,7 +19,7 @@ export function useToast() {
 export function ToastContainer({ toasts }: { toasts: ToastItem[] }) {
   if (toasts.length === 0) return null;
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] flex flex-col-reverse gap-2 items-center pointer-events-none">
+    <div className="fixed top-14 left-1/2 -translate-x-1/2 z-[200] flex flex-col gap-2 items-center pointer-events-none">
       {toasts.map(t => (
         <div
           key={t.id}
