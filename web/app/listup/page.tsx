@@ -286,11 +286,17 @@ export default function ListupPage() {
           name = segs.find(s => s.startsWith("@")) ?? segs[segs.length - 1] ?? rawUrl;
         } catch { name = rawUrl; }
       } else {
-        // instagram: last non-empty path segment
+        // instagram: 프로필 URL이면 username, 릴스/포스트 URL이면 임시로 shortcode 사용
         try {
           const u = new URL(rawUrl.startsWith("http") ? rawUrl : "https://" + rawUrl);
           const segs = u.pathname.split("/").filter(Boolean);
-          name = segs[segs.length - 1] ?? rawUrl;
+          const POST_SEGS = new Set(["reels", "reel", "p", "tv", "stories"]);
+          if (segs.length >= 2 && POST_SEGS.has(segs[0])) {
+            // 릴스/포스트 URL: shortcode를 임시 이름으로, 스크리닝 후 실제 이름으로 교체됨
+            name = `(로딩중) ${segs[1]}`;
+          } else {
+            name = segs[0] ?? rawUrl; // 프로필 URL: 첫 세그먼트가 username
+          }
         } catch { name = rawUrl; }
       }
       records.push({ name, url, platform, source: "listup", status: "pending", keyword });

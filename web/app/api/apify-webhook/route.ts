@@ -395,6 +395,7 @@ async function handleScreening(
     }
 
     // N+1 방지: 필요한 URL 목록으로 한 번에 조회
+    // normalizeInstagramUrl이 null을 반환하면(릴스/포스트 URL) raw URL 그대로 사용
     const urls = Object.keys(grouped).map(
       rawUrl => normalizeInstagramUrl(rawUrl) ?? (rawUrl.replace(/\/$/, '') + '/')
     );
@@ -407,6 +408,13 @@ async function handleScreening(
       const url = normalizeInstagramUrl(rawUrl) ?? (rawUrl.replace(/\/$/, '') + '/');
       const infId = infByUrl.get(url);
       if (!infId) return;
+
+      // 릴스/포스트 URL로 저장된 경우, 실제 프로필 URL로 업데이트
+      const ownerUsername = (posts[0]?.ownerUsername as string) || '';
+      if (ownerUsername && url.match(/\/(reels?|p|tv)\//)) {
+        const profileUrl = `https://www.instagram.com/${ownerUsername}/`;
+        await supabase.from('influencers').update({ url: profileUrl }).eq('id', infId);
+      }
 
       const profile = {
         username: (posts[0]?.ownerUsername as string) || '',
