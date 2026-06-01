@@ -907,38 +907,68 @@ export default function MonitoringPage() {
                 {deltaTableData.length === 0 ? (
                   <div className="flex items-center justify-center flex-1 text-sm text-a-ink-muted py-10">측정 데이터 2일 이상 필요</div>
                 ) : (
-                  <div className="overflow-y-auto" style={{ maxHeight: 260 }}>
-                    <table className="w-full">
-                      <thead className="sticky top-0 z-10 bg-white border-b border-a-hairline">
-                        <tr>
-                          <th className="px-5 py-2.5 text-left text-[10px] font-semibold text-a-ink-muted uppercase tracking-widest w-16">날짜</th>
-                          <th className="px-4 py-2.5 text-right text-[10px] font-semibold text-a-ink-muted uppercase tracking-widest">조회수</th>
-                          <th className="px-4 py-2.5 text-right text-[10px] font-semibold text-a-ink-muted uppercase tracking-widest">좋아요</th>
-                          <th className="px-4 py-2.5 text-right text-[10px] font-semibold text-a-ink-muted uppercase tracking-widest">댓글</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[{ date: dailyTotals[0].date, play: 0, likes: 0, comments: 0 }, ...deltaTableData].map((d, i) => {
-                          function deltaCell(v: number, accent = "text-red-500") {
-                            const pos = v > 0, neg = v < 0;
-                            return (
-                              <td className={`px-4 py-3 text-right tabular-nums text-sm font-semibold ${pos ? accent : neg ? "text-emerald-600" : "text-gray-200"}`}>
-                                {pos ? "+" : ""}{v.toLocaleString()}
-                              </td>
-                            );
-                          }
-                          return (
-                            <tr key={i} className="border-b border-a-divider last:border-0 hover:bg-a-parchment/50 transition-colors">
-                              <td className="px-5 py-3 text-sm font-bold text-a-ink tabular-nums">{d.date.slice(5).replace("-", "/")}</td>
-                              {deltaCell(d.play, "text-a-blue")}
-                              {deltaCell(d.likes, "text-rose-500")}
-                              {deltaCell(d.comments, "text-purple-500")}
+                  (() => {
+                    const KR_HOLIDAYS = new Set([
+                      '2025-01-01','2025-01-28','2025-01-29','2025-01-30',
+                      '2025-03-01','2025-05-05','2025-05-06','2025-06-06',
+                      '2025-08-15','2025-09-06','2025-09-07','2025-09-08',
+                      '2025-10-03','2025-10-09','2025-12-25',
+                      '2026-01-01','2026-02-17','2026-02-18','2026-02-19',
+                      '2026-03-01','2026-05-05','2026-06-06','2026-08-17',
+                    ]);
+                    const DAY_KO = ['일','월','화','수','목','금','토'];
+                    function dateColor(dateStr: string) {
+                      const d = new Date(dateStr);
+                      const dow = d.getDay();
+                      if (KR_HOLIDAYS.has(dateStr) || dow === 0) return 'text-[#8B1A2E]'; // 버건디
+                      if (dow === 6) return 'text-[#1a3c82]'; // 남색
+                      return 'text-a-ink';
+                    }
+                    const rows = [{ date: dailyTotals[0].date, play: 0, likes: 0, comments: 0 }, ...deltaTableData];
+                    const reversed = [...rows].reverse();
+                    return (
+                      <div className="overflow-y-auto" style={{ maxHeight: 260 }}>
+                        <table className="w-full">
+                          <thead className="sticky top-0 z-10 bg-white border-b border-a-hairline">
+                            <tr>
+                              <th className="px-5 py-2.5 text-left text-[10px] font-semibold text-a-ink-muted uppercase tracking-widest">날짜</th>
+                              <th className="px-4 py-2.5 text-right text-[10px] font-semibold text-a-ink-muted uppercase tracking-widest">조회수</th>
+                              <th className="px-4 py-2.5 text-right text-[10px] font-semibold text-a-ink-muted uppercase tracking-widest">좋아요</th>
+                              <th className="px-4 py-2.5 text-right text-[10px] font-semibold text-a-ink-muted uppercase tracking-widest">댓글</th>
                             </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                          </thead>
+                          <tbody>
+                            {reversed.map((d, i) => {
+                              const dow = new Date(d.date).getDay();
+                              const dayLabel = DAY_KO[dow];
+                              const cls = dateColor(d.date);
+                              function deltaCell(v: number, accent = "text-a-blue") {
+                                const pos = v > 0, neg = v < 0;
+                                return (
+                                  <td className={`px-4 py-3 text-right tabular-nums text-sm font-semibold ${pos ? accent : neg ? "text-emerald-600" : "text-gray-200"}`}>
+                                    {pos ? "+" : ""}{v.toLocaleString()}
+                                  </td>
+                                );
+                              }
+                              return (
+                                <tr key={i} className="border-b border-a-divider last:border-0 hover:bg-a-parchment/50 transition-colors">
+                                  <td className={`px-5 py-3 text-sm font-bold tabular-nums whitespace-nowrap ${cls}`}>
+                                    {d.date.slice(5).replace("-", "/")}
+                                    <span className={`ml-1.5 text-[11px] font-medium ${cls}`}>({dayLabel})</span>
+                                  </td>
+                                  {deltaCell(d.play, "text-a-blue")}
+                                  {deltaCell(d.likes, "text-rose-500")}
+                                  {deltaCell(d.comments, "text-purple-500")}
+                                </tr>
+                              );
+                            })}
+                            {/* 여백 행 */}
+                            <tr><td colSpan={4} className="py-2" /></tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })()
                 )}
               </div>
             </div>
