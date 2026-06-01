@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 
-
 export async function POST(req: NextRequest) {
   // Apps Script에서 보낸 Authorization: Bearer <CRON_SECRET> 검증
   const authHeader = req.headers.get("authorization");

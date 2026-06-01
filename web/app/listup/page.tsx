@@ -333,12 +333,20 @@ export default function ListupPage() {
         const added = (cur as { payload?: { added?: number } }).payload?.added ?? 0;
         if (added > 0 && autoScreenAfterListup.current) {
           toast(`리스트업 완료: ${added}명 추가. 스크리닝을 자동으로 시작합니다…`, "success");
-          await fetch("/api/jobs", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ type: "screening", payload: {} }),
-          });
-          toast("스크리닝이 시작됐습니다. 스크리닝 탭에서 확인하세요.", "info");
+          try {
+            const screenRes = await fetch("/api/jobs", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ type: "screening", payload: {} }),
+            });
+            if (screenRes.ok) {
+              toast("스크리닝이 시작됐습니다. 스크리닝 탭에서 확인하세요.", "info");
+            } else {
+              toast("스크리닝 자동 시작에 실패했습니다. 스크리닝 탭에서 직접 실행해주세요.", "error");
+            }
+          } catch {
+            toast("스크리닝 자동 시작에 실패했습니다. 스크리닝 탭에서 직접 실행해주세요.", "error");
+          }
         } else {
           toast(added > 0 ? `리스트업 완료: ${added}명 추가됐습니다.` : "리스트업 완료: 신규 계정 없음.", "success");
         }

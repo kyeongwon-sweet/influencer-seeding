@@ -149,6 +149,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  // datasetId 누락 시 즉시 실패 처리 (빈 문자열로 Apify API 호출하면 404)
+  if (!datasetId) {
+    await supabase.from('jobs').update({ status: 'failed', error: 'Apify webhook: datasetId 없음' }).eq('id', jobId);
+    return NextResponse.json({ ok: true });
+  }
+
   try {
     const items = await fetchDatasetItems(datasetId) as Record<string, unknown>[];
 
@@ -185,10 +191,6 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
   const today = new Date().toISOString().slice(0, 10);
   const { data: posts } = await supabase.from('sponsored_posts').select('id, url, posted_at, account_name, influencer_id');
 
-  // N+1 방지: 인플루언서 URL → id 맵을 미리 로드
-  const { data: allInfs } = await supabase.from('influencers').select('id, url');
-  const infUrlMap = new Map((allInfs || []).map((i: { id: string; url: string }) => [i.url, i.id]));
-
   const statsKey = (url: string) => {
     const m = (url || '').match(/\/(?:p|reel|tv)\/([A-Za-z0-9_-]+)/);
     return m ? m[1] : url.replace(/\/$/, '');
@@ -216,6 +218,21 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
       owner_username: item.ownerUsername || (owner.username as string) || null,
     };
   }
+
+  // statsByKey 빌드 후 필요한 username만 추려서 influencer 조회 (전체 로드 대신 targeted 쿼리)
+  const neededUrls = [...new Set(
+    (posts || [])
+      .filter(p => !p.influencer_id)
+      .map(p => {
+        const s = statsByKey[statsKey(p.url)];
+        return s?.owner_username ? `https://www.instagram.com/${s.owner_username}/` : null;
+      })
+      .filter(Boolean) as string[]
+  )];
+  const { data: matchedInfs } = neededUrls.length > 0
+    ? await supabase.from('influencers').select('id, url').in('url', neededUrls)
+    : { data: [] };
+  const infUrlMap = new Map((matchedInfs || []).map((i: { id: string; url: string }) => [i.url, i.id]));
 
   const rows = [];
   const pendingUpdates: { id: string; updates: Record<string, unknown> }[] = [];
@@ -376,10 +393,11 @@ async function handleScreening(
       .from('influencers').select('id, url').in('url', urls);
     const infByUrl = new Map((infRows || []).map((i: { id: string; url: string }) => [i.url, i.id]));
 
-    for (const [rawUrl, posts] of Object.entries(grouped)) {
+    // 각 인플루언서별 처리를 병렬로 실행 (순차 await 대신 Promise.all)
+    await Promise.all(Object.entries(grouped).map(async ([rawUrl, posts]) => {
       const url = normalizeInstagramUrl(rawUrl) ?? (rawUrl.replace(/\/$/, '') + '/');
       const infId = infByUrl.get(url);
-      if (!infId) continue;
+      if (!infId) return;
 
       const profile = {
         username: (posts[0]?.ownerUsername as string) || '',
@@ -399,7 +417,7 @@ async function handleScreening(
       if (resultStatus === 'pass' || resultStatus === 'reject') {
         await supabase.from('influencers').update({ status: resultStatus }).eq('id', infId);
       }
-    }
+    }));
 
   } else if (platform === 'youtube') {
     // influencerId 우선(직접 전달), 없으면 URL로 조회 (레거시 대응)
