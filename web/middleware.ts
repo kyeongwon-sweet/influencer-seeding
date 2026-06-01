@@ -4,6 +4,7 @@ const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/api/apify-webhook(.*)",
+  "/api/kpi/ingest(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, request) => {
