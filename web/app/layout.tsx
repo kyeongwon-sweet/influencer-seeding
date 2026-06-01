@@ -1,5 +1,6 @@
 import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import Sidebar from "@/components/Sidebar";
 
@@ -17,6 +18,7 @@ export default function RootLayout({
         <body className="antialiased font-sans text-a-ink">
           <Sidebar />
           <div className="ml-[200px]">{children}</div>
+          <Analytics />
         </body>
       </html>
     </ClerkProvider>
