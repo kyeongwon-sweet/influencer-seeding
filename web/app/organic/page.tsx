@@ -6,6 +6,18 @@ import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
 
 const PLATFORMS = ["인스타그램", "유튜브", "블로그", "틱톡", "스레드"];
 
+// DB에 영문으로 저장된 플랫폼값 → 한글 정규화
+const PLATFORM_KO: Record<string, string> = {
+  instagram: "인스타그램",
+  youtube: "유튜브",
+  blog: "블로그",
+  tiktok: "틱톡",
+  threads: "스레드",
+};
+function normPlatform(p: string): string {
+  return PLATFORM_KO[p.toLowerCase()] ?? p;
+}
+
 type Mention = {
   id: string;
   url: string;
@@ -381,7 +393,7 @@ export default function OrganicPage() {
 
   const filtered = mentions.filter(m => {
     if (filters.name && !(m.account_name ?? "").toLowerCase().includes(filters.name.toLowerCase())) return false;
-    if (filters.platform !== "all" && m.platform !== filters.platform) return false;
+    if (filters.platform !== "all" && normPlatform(m.platform) !== filters.platform) return false;
     if (filters.products.length > 0) {
       // 콤마로 구분된 복수 제품 지원: 선택된 제품 중 하나라도 포함되면 통과
       const mentionProds = (m.mentioned_product ?? "").split(",").map(p => p.trim()).filter(Boolean);
@@ -599,7 +611,8 @@ export default function OrganicPage() {
                 <tbody>
                   {sorted.map(m => {
                     const thumb = getThumbnailUrl(m.url);
-                    const platformShort = m.platform === "인스타그램" ? "IG" : m.platform === "유튜브" ? "YT" : m.platform === "블로그" ? "BL" : m.platform.slice(0, 2);
+                    const pKo = normPlatform(m.platform);
+                    const platformShort = pKo === "인스타그램" ? "IG" : pKo === "유튜브" ? "YT" : pKo === "블로그" ? "BL" : pKo.slice(0, 2);
                     return (
                     <tr key={m.id} className="group border-b border-a-divider last:border-0 hover:bg-a-parchment/60 transition-colors">
                       {/* 썸네일 */}
@@ -611,7 +624,7 @@ export default function OrganicPage() {
                           }
                         </a>
                       </td>
-                      <td style={{ minWidth: colWidths[0] }} className="px-4 py-4 whitespace-nowrap">
+                      <td style={{ minWidth: colWidths[0], width: colWidths[0] }} className="px-4 py-4 whitespace-nowrap overflow-hidden">
                         {editCell?.id === m.id && editCell.field === "account_name" ? (
                           <input autoFocus value={editCell.value}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
@@ -638,7 +651,7 @@ export default function OrganicPage() {
                         )}
                       </td>
                       <td style={{ minWidth: colWidths[1] }} className="px-4 py-4 text-xs text-a-ink-muted whitespace-nowrap">
-                        {m.platform}
+                        {pKo}
                       </td>
                       <td style={{ minWidth: colWidths[2] }} className="px-4 py-4 text-xs text-a-ink-muted max-w-[320px]">
                         {editCell?.id === m.id && editCell.field === "content_summary" ? (
