@@ -175,7 +175,7 @@ export async function POST(req: NextRequest) {
         const screened = (await supabase.from('screening_metrics').select('influencer_id')).data || [];
         const screenedIds = new Set(screened.map((s: { influencer_id: string }) => s.influencer_id));
 
-        const SCREENING_BATCH = 10; // 1회 최대 처리 채널 수 (비용 제한)
+        const SCREENING_BATCH = 5; // 1회 최대 처리 채널 수 (비용 제한)
         const unscreened = influencerIds?.length
           ? allInfluencers.filter((i: { id: string }) => influencerIds.includes(i.id))
           : allInfluencers.filter((i: { id: string }) => !screenedIds.has(i.id));
