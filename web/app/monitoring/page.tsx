@@ -209,7 +209,12 @@ function smoothCurvePath(pts: [number, number][]): string {
   return d;
 }
 
-function LineChart({ data, height = 160, gradId = "lcGrad" }: { data: { date: string; value: number }[]; height?: number; gradId?: string }) {
+function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate }: {
+  data: { date: string; value: number }[];
+  height?: number;
+  gradId?: string;
+  postsOnDate?: (date: string) => { name: string; url: string }[];
+}) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   if (data.length < 2) return <div className="flex items-center justify-center py-8 text-xs text-a-ink-muted">데이터 없음</div>;
   const pl = 52, pr = 8, pt = 8, pb = 22;
@@ -228,6 +233,10 @@ function LineChart({ data, height = 160, gradId = "lcGrad" }: { data: { date: st
   const xLabelIdxs = data.map((_, i) => i).filter(i => i % step === 0 || i === data.length - 1);
   const fmtY = (v: number) => v >= 10000 ? `${Math.round(v / 10000)}만` : v >= 1000 ? `${Math.round(v / 1000)}천` : Math.round(v).toLocaleString();
   const cellW = cw / Math.max(1, data.length - 1);
+
+  const hoveredDate = hoverIdx !== null ? data[hoverIdx].date : null;
+  const hoveredPosts = hoveredDate && postsOnDate ? postsOnDate(hoveredDate) : [];
+
   return (
     <div className="relative w-full">
       <svg width="100%" viewBox={`0 0 ${VW} ${VH}`} style={{ overflow: "visible" }}
@@ -268,10 +277,20 @@ function LineChart({ data, height = 160, gradId = "lcGrad" }: { data: { date: st
         </g>
       </svg>
       {hoverIdx !== null && (
-        <div className="pointer-events-none absolute top-2 bg-white border border-a-hairline rounded-[8px] px-3 py-2 shadow-sm text-xs z-10"
-          style={{ left: `${((pl + xS(hoverIdx)) / VW) * 100}%`, transform: "translateX(-50%)" }}>
-          <p className="text-a-ink-muted">{data[hoverIdx].date.replace(/-/g, "/")}</p>
-          <p className="font-semibold tabular-nums font-numeric">{data[hoverIdx].value.toLocaleString()}</p>
+        <div className="pointer-events-none absolute top-1 bg-white border border-a-hairline rounded-[10px] px-3 py-2.5 shadow-[0_4px_16px_rgba(0,0,0,0.10)] text-xs z-20"
+          style={{ left: `${Math.min(Math.max(((pl + xS(hoverIdx)) / VW) * 100, 15), 85)}%`, transform: "translateX(-50%)" }}>
+          <p className="text-a-ink-muted mb-1">{data[hoverIdx].date.replace(/-/g, ".")} · <span className="font-semibold text-a-blue tabular-nums">{data[hoverIdx].value.toLocaleString()}</span></p>
+          {hoveredPosts.length > 0 && (
+            <div className="border-t border-a-hairline pt-1.5 mt-1 space-y-1">
+              {hoveredPosts.map((p, i) => (
+                <div key={i} className="flex items-center gap-1.5">
+                  <span className="text-a-ink font-medium">{p.name}</span>
+                  <span className="text-gray-400">·</span>
+                  <a href={p.url} target="_blank" rel="noreferrer" className="text-a-blue pointer-events-auto hover:underline">게시물 →</a>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -895,12 +914,21 @@ export default function MonitoringPage() {
             {/* 차트 + 테이블 */}
             <div className="flex divide-x divide-a-hairline">
               {/* 차트 */}
-              <div className="flex-[5] px-6 py-4">
+              <div className="flex-[3] px-5 py-4">
                 <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest mb-2">조회수 트렌드 (누적)</p>
-                <LineChart data={chartData} height={160} gradId="summaryGrad" />
+                <LineChart
+                  data={chartData}
+                  height={140}
+                  gradId="summaryGrad"
+                  postsOnDate={(date) =>
+                    filteredPosts
+                      .filter(p => p.posted_at?.slice(0, 10) === date)
+                      .map(p => ({ name: p.account_name ?? p.influencers?.name ?? '-', url: p.url }))
+                  }
+                />
               </div>
               {/* 증감 테이블 */}
-              <div className="flex-[3] flex flex-col self-start min-w-0">
+              <div className="flex-[4] flex flex-col self-start min-w-0">
                 <div className="px-5 py-4 border-b border-a-hairline">
                   <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">일자별 조회수 증감</p>
                 </div>
@@ -953,6 +981,9 @@ export default function MonitoringPage() {
                               return (
                                 <tr key={i} className="border-b border-a-divider last:border-0 hover:bg-a-parchment/50 transition-colors">
                                   <td className={`px-5 py-3 text-sm font-bold tabular-nums whitespace-nowrap ${cls}`}>
+                                    {d.date.slice(0,4) !== String(new Date().getFullYear()) && (
+                                      <span className="text-[10px] font-normal text-gray-400 mr-0.5">'{d.date.slice(2,4)}.</span>
+                                    )}
                                     {d.date.slice(5).replace("-", "/")}
                                     <span className={`ml-1.5 text-[11px] font-medium ${cls}`}>({dayLabel})</span>
                                   </td>
