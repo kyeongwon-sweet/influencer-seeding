@@ -112,9 +112,9 @@ export async function POST(req: NextRequest) {
               'apify/instagram-hashtag-scraper',
               {
                 hashtags: igKws,
-                resultsLimit: 200,
+                resultsLimit: 50,       // 빠른 완료를 위해 50개
                 resultsType: 'reels',   // 액터 레벨에서 릴스만 필터
-                keywordSearch: true,    // 캡션 텍스트 전체 검색 (해시태그 미사용 게시물도 탐색)
+                keywordSearch: false,   // 해시태그 모드 (keyword 모드는 너무 느림)
               },
               `${appUrl}/api/apify-webhook?jobId=${job.id}&jobType=listup&platform=instagram`
             ).catch((e: unknown) => { startErrors.push(`인스타: ${e}`); }) : Promise.resolve(),
