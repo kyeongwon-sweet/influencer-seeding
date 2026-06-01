@@ -696,6 +696,7 @@ export default function MonitoringPage() {
           )}
           <button onClick={() => setShowUpload(true)} className="btn-secondary">CSV 업로드</button>
           <button onClick={() => setShowAdd(true)} className="btn-secondary">+ 게시물 추가</button>
+          <button onClick={downloadCSV} disabled={filteredPosts.length === 0} className="btn-secondary">엑셀 다운로드</button>
           <button onClick={refresh} disabled={loading} className="btn-secondary">새로고침</button>
           <button onClick={runMonitoring} disabled={running} className="btn-primary">
             {running ? "실행 중..." : "지금 수집"}
@@ -721,7 +722,7 @@ export default function MonitoringPage() {
             className={`filter-input w-28 ${filters.project ? "border-a-blue" : ""}`}
           />
           {productOptions.length > 0 && (
-            <div className="flex items-center gap-1.5 flex-wrap">
+            <div className="flex items-center gap-1.5 overflow-x-auto flex-nowrap scrollbar-none pb-0.5">
               {productOptions.map(p => {
                 const active = filters.products.includes(p);
                 return (
@@ -779,9 +780,6 @@ export default function MonitoringPage() {
               초기화
             </button>
           )}
-          <button onClick={downloadCSV} disabled={filteredPosts.length === 0} className="btn-secondary">
-            엑셀 다운로드
-          </button>
         </div>
 
         {filteredPosts.length > 0 && (
