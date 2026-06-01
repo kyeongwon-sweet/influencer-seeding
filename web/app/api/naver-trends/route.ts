@@ -1,14 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 
-// 기준점: 2026-05-31 라라스윗+라라스윗아이스크림 실제 검색량 3748
-// 해당 쿼리에서 반환된 lsRatio_5_31로 FACTOR를 역산 → 모든 날짜에 적용
-// FACTOR = 3748 / lsRatio_5_31
-// kwAbsolute = kwRatio × FACTOR
-// lsAbsolute = lsRatio × FACTOR
-const REF_DATE = "2026-05-31";
-const REF_LS_ACTUAL = 3748;
-const FALLBACK_BASE = 1326.173; // REF_DATE가 쿼리 범위 밖일 때 fallback
+// 라라스윗 절대 검색량 기준점 (변경 금지)
+// 공식: 절대검색량 = DataLab 상대비율 × 1326.173
+const LARASWEET_BASE = 1326.173;
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
@@ -30,20 +25,6 @@ export async function POST(req: NextRequest) {
     endDate: string;
   };
 
-  // REF_DATE가 쿼리 범위에 포함되도록 보정
-  const qStart = startDate < REF_DATE ? startDate : REF_DATE;
-  const qEnd   = endDate   > REF_DATE ? endDate   : REF_DATE;
-
-  const body = {
-    startDate: qStart,
-    endDate:   qEnd,
-    timeUnit: "date",
-    keywordGroups: [
-      { groupName: keyword, keywords: [keyword] },
-      { groupName: "라라스윗기준", keywords: ["라라스윗", "라라스윗아이스크림"] },
-    ],
-  };
-
   const res = await fetch("https://openapi.naver.com/v1/datalab/search", {
     method: "POST",
     headers: {
@@ -51,7 +32,15 @@ export async function POST(req: NextRequest) {
       "X-Naver-Client-Id": clientId,
       "X-Naver-Client-Secret": clientSecret,
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      startDate,
+      endDate,
+      timeUnit: "date",
+      keywordGroups: [
+        { groupName: keyword, keywords: [keyword] },
+        { groupName: "라라스윗기준", keywords: ["라라스윗", "라라스윗아이스크림"] },
+      ],
+    }),
   });
 
   if (!res.ok) {
@@ -70,22 +59,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "키워드 데이터를 받지 못했습니다." }, { status: 502 });
   }
 
-  // 해당 쿼리에서 REF_DATE의 lsRatio로 FACTOR 역산
-  const lsRefPoint = lsResult?.data.find(d => d.period.slice(0, 10) === REF_DATE);
-  const factor = lsRefPoint && lsRefPoint.ratio > 0
-    ? REF_LS_ACTUAL / lsRefPoint.ratio
-    : FALLBACK_BASE;
-
-  const dates = kwResult.data
-    .filter(d => d.period.slice(0, 10) >= startDate && d.period.slice(0, 10) <= endDate)
-    .map((d, i) => {
-      const lsRatio = lsResult?.data.find(s => s.period === d.period)?.ratio ?? 0;
-      return {
-        date: d.period.slice(0, 10),
-        keywordAbsolute: Math.round(d.ratio * factor),
-        larasweetAbsolute: Math.round(lsRatio * factor),
-      };
-    });
+  const dates = kwResult.data.map((d, i) => ({
+    date: d.period.slice(0, 10),
+    keywordAbsolute: Math.round(d.ratio * LARASWEET_BASE),
+    larasweetAbsolute: Math.round((lsResult?.data[i]?.ratio ?? 0) * LARASWEET_BASE),
+  }));
 
   return NextResponse.json({ dates });
 }

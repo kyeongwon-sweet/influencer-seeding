@@ -62,6 +62,12 @@ function fmt(v: number | null | undefined) {
   return v == null ? "-" : v.toLocaleString();
 }
 
+function fmtSearch(v: number) {
+  if (v >= 10000) return (Math.round(v / 1000) / 10).toFixed(1).replace(/\.0$/, "") + "만";
+  if (v >= 1000) return Math.round(v / 100) / 10 + "천";
+  return Math.round(v).toLocaleString();
+}
+
 function fmtPct(v: number | null | undefined) {
   return v == null ? "-" : (v * 100).toFixed(1) + "%";
 }
@@ -187,8 +193,8 @@ function TrendChart({ data, selectedDate, onSelect }: {
             }
           >
             <p className="font-medium mb-0.5">{hov.date}</p>
-            <p>검색량: <span className="font-semibold text-blue-300">{hov.keywordAbsolute.toLocaleString()}</span></p>
-            <p className="text-gray-400">라라스윗: {hov.larasweetAbsolute.toLocaleString()}</p>
+            <p>검색량: <span className="font-semibold text-blue-300">{fmtSearch(hov.keywordAbsolute)}</span></p>
+            <p className="text-gray-400">라라스윗: {fmtSearch(hov.larasweetAbsolute)}</p>
             <p className="text-gray-500 mt-1 text-[10px]">클릭하여 날짜 선택</p>
           </div>
         );
