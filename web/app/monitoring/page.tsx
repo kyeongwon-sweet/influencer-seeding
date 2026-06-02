@@ -217,6 +217,9 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData 
   lsData?: { date: string; ratio: number; value: number | null }[];
 }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const [pinnedIdx, setPinnedIdx] = useState<number | null>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+  const activeIdx = pinnedIdx ?? hoverIdx;
   if (data.length < 2) return <div className="flex items-center justify-center py-8 text-xs text-a-ink-muted">데이터 없음</div>;
   const pl = 52, pr = 8, pt = 8, pb = 22;
   const VW = 560, VH = height;
@@ -235,7 +238,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData 
   const fmtY = (v: number) => v >= 10000 ? `${Math.round(v / 10000)}만` : v >= 1000 ? `${Math.round(v / 1000)}천` : Math.round(v).toLocaleString();
   const cellW = cw / Math.max(1, data.length - 1);
 
-  const hoveredDate = hoverIdx !== null ? data[hoverIdx].date : null;
+  const hoveredDate = activeIdx !== null ? data[activeIdx].date : null;
   const hoveredPosts = hoveredDate && postsOnDate ? postsOnDate(hoveredDate) : [];
 
   // 라라스윗 검색량 점선 — 데이터 날짜를 주 차트에 맞춰 매핑 후 독립 정규화
@@ -252,14 +255,19 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData 
   })();
 
   const hoveredLsEntry = (() => {
-    if (!lsData || hoverIdx === null) return null;
-    return lsData.find(d => d.date === data[hoverIdx].date) ?? null;
+    if (!lsData || activeIdx === null) return null;
+    return lsData.find(d => d.date === data[activeIdx].date) ?? null;
   })();
 
   return (
     <div className="relative w-full">
       <svg width="100%" viewBox={`0 0 ${VW} ${VH}`} style={{ overflow: "visible" }}
-        onMouseLeave={() => setHoverIdx(null)}>
+        onMouseLeave={(e) => {
+          // 툴팁 위로 이동한 경우 hoverIdx 유지 (pinnedIdx가 처리)
+          if (tooltipRef.current?.contains(e.relatedTarget as Node)) return;
+          setHoverIdx(null);
+          setPinnedIdx(null);
+        }}>
         <defs>
           <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.08" />
@@ -280,13 +288,13 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData 
           {data.map((_, i) => (
             <rect key={i} x={Math.max(0, xS(i) - cellW / 2)} y={0}
               width={cellW} height={ch} fill="transparent"
-              onMouseEnter={() => setHoverIdx(i)} />
+              onMouseEnter={() => { setHoverIdx(i); setPinnedIdx(null); }} />
           ))}
-          {hoverIdx !== null && (
+          {activeIdx !== null && (
             <>
-              <line x1={xS(hoverIdx)} y1={0} x2={xS(hoverIdx)} y2={ch}
+              <line x1={xS(activeIdx)} y1={0} x2={xS(activeIdx)} y2={ch}
                 stroke="#3b82f6" strokeWidth="1" strokeDasharray="3,3" />
-              <circle cx={xS(hoverIdx)} cy={yS(data[hoverIdx].value)} r={3.5} fill="#3b82f6" />
+              <circle cx={xS(activeIdx)} cy={yS(data[activeIdx].value)} r={3.5} fill="#3b82f6" />
             </>
           )}
           {xLabelIdxs.map(i => (
@@ -296,10 +304,13 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData 
           ))}
         </g>
       </svg>
-      {hoverIdx !== null && (
-        <div className="pointer-events-none absolute top-1 bg-white border border-a-hairline rounded-[10px] px-3 py-2.5 shadow-[0_4px_16px_rgba(0,0,0,0.10)] text-xs z-20"
-          style={{ left: `${Math.min(Math.max(((pl + xS(hoverIdx)) / VW) * 100, 15), 85)}%`, transform: "translateX(-50%)" }}>
-          <p className="text-a-ink-muted mb-1">{data[hoverIdx].date.replace(/-/g, ".")} · <span className="font-semibold text-a-blue tabular-nums">{data[hoverIdx].value.toLocaleString()}</span></p>
+      {activeIdx !== null && (
+        <div ref={tooltipRef}
+          className="absolute top-1 bg-white border border-a-hairline rounded-[10px] px-3.5 py-2.5 shadow-[0_4px_16px_rgba(0,0,0,0.10)] text-xs z-20 min-w-[200px]"
+          style={{ left: `${Math.min(Math.max(((pl + xS(activeIdx)) / VW) * 100, 15), 85)}%`, transform: "translateX(-50%)" }}
+          onMouseEnter={() => setPinnedIdx(activeIdx)}
+          onMouseLeave={() => { setPinnedIdx(null); setHoverIdx(null); }}>
+          <p className="text-a-ink-muted mb-1">{data[activeIdx].date.replace(/-/g, ".")} · <span className="font-semibold text-a-blue tabular-nums">{data[activeIdx].value.toLocaleString()}</span></p>
           {hoveredLsEntry?.value != null && (
             <p className="text-gray-400 tabular-nums">라라스윗 검색량: {hoveredLsEntry.value.toLocaleString()}</p>
           )}
