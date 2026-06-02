@@ -181,8 +181,8 @@ export async function POST(req: NextRequest) {
           ).catch((e: unknown) => { startErrors.push(`블로그: ${e}`); }),
           // 스레드 (Threads)
           startActorRun(
-            'curious_coder/threads-scraper',
-            { searchQuery: KEYWORDS[0], maxItems: 100 },
+            'sachin-kumar-yadav/threads-search-scraper',
+            { keyword: KEYWORDS[0], maxResults: 100 },
             webhookUrl(appUrl, `jobId=${job.id}&jobType=organic&platform=threads`)
           ).catch((e: unknown) => { startErrors.push(`스레드: ${e}`); }),
         ]);
