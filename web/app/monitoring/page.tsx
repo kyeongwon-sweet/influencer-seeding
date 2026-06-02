@@ -1074,15 +1074,51 @@ export default function MonitoringPage() {
             {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.desc}</option>)}
           </select>
           <div className="w-px h-4 bg-a-hairline mx-0.5" />
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-[10px] text-a-ink-muted whitespace-nowrap">조회수 기간</span>
             <input type="date" value={filters.dateFrom}
-              onChange={e => setFilters(p => ({ ...p, dateFrom: e.target.value }))}
+              max={filters.dateTo || undefined}
+              onChange={e => {
+                const v = e.target.value;
+                setFilters(p => ({ ...p, dateFrom: v, dateTo: p.dateTo && v > p.dateTo ? v : p.dateTo }));
+              }}
               className={`filter-input ${filters.dateFrom ? "border-a-blue" : ""}`} />
             <span className="text-xs text-a-ink-muted">–</span>
             <input type="date" value={filters.dateTo}
-              onChange={e => setFilters(p => ({ ...p, dateTo: e.target.value }))}
+              min={filters.dateFrom || undefined}
+              onChange={e => {
+                const v = e.target.value;
+                setFilters(p => ({ ...p, dateTo: v, dateFrom: p.dateFrom && v < p.dateFrom ? v : p.dateFrom }));
+              }}
               className={`filter-input ${filters.dateTo ? "border-a-blue" : ""}`} />
+            {/* 빠른 선택 버튼 */}
+            {(() => {
+              const fmt = (d: Date) => d.toISOString().slice(0, 10);
+              const today = new Date();
+              const todayStr = fmt(today);
+              const presets: { label: string; from: string; to: string }[] = [
+                { label: "전체", from: "", to: "" },
+                { label: "오늘", from: todayStr, to: todayStr },
+                { label: "어제", from: fmt(new Date(today.getTime() - 86400000)), to: fmt(new Date(today.getTime() - 86400000)) },
+                { label: "이번주", from: fmt(new Date(today.getTime() - today.getDay() * 86400000)), to: todayStr },
+                { label: "지난주", from: fmt(new Date(today.getTime() - (today.getDay() + 7) * 86400000)), to: fmt(new Date(today.getTime() - (today.getDay() + 1) * 86400000)) },
+                { label: "이번달", from: `${todayStr.slice(0, 7)}-01`, to: todayStr },
+              ];
+              return (
+                <div className="flex items-center gap-1">
+                  {presets.map(p => {
+                    const active = filters.dateFrom === p.from && filters.dateTo === p.to;
+                    return (
+                      <button key={p.label}
+                        onClick={() => setFilters(prev => ({ ...prev, dateFrom: p.from, dateTo: p.to }))}
+                        className={`text-[10px] px-2 py-0.5 rounded-full border transition ${active ? "border-a-blue bg-blue-50 text-a-blue font-medium" : "border-a-hairline text-a-ink-muted hover:border-gray-400"}`}>
+                        {p.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
           <div className="flex-1" />
           {hasFilter && (
