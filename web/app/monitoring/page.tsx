@@ -1264,7 +1264,10 @@ export default function MonitoringPage() {
                         })()}
                       </TD>
                       <TD muted w={colWidths["카테고리"]}>
-                        {post.influencers?.category ?? <span className="text-gray-300">-</span>}
+                        {(() => {
+                          const cat = CATEGORIES.find(c => c.value === post.influencers?.category);
+                          return cat ? <span title={cat.value}>{cat.desc}</span> : <span className="text-gray-300">-</span>;
+                        })()}
                       </TD>
                       <TD muted w={colWidths["채널분류"]}>
                         {editCell?.postId === post.id && editCell?.field === "channel_type" ? (
