@@ -1262,7 +1262,21 @@ export default function MonitoringPage() {
                   <TH w={colWidths["프로젝트명"]} onResize={e => startResize("프로젝트명", e)} {...sp("프로젝트명")}>프로젝트명</TH>
                   <TH right w={colWidths["비용"]} onResize={e => startResize("비용", e)} {...sp("비용")}>비용</TH>
                   <TH right w={colWidths["조회수"]} onResize={e => startResize("조회수", e)} {...sp("조회수")}>조회수</TH>
-                  <TH right w={colWidths["조회당비용"]} onResize={e => startResize("조회당비용", e)} {...sp("조회당비용")}>조회당비용</TH>
+                  <TH right w={colWidths["조회당비용"]} onResize={e => startResize("조회당비용", e)} {...sp("조회당비용")}>
+                    <span className="group/cpr relative">
+                      조회당비용
+                      <div className="hidden group-hover/cpr:block absolute top-full right-0 mt-1.5 z-[9999] bg-white border border-a-hairline rounded-[10px] px-3.5 py-3 shadow-lg min-w-[200px] pointer-events-none text-left font-normal normal-case tracking-normal">
+                        <p className="text-[11px] font-semibold text-a-ink mb-2">조회당비용 (비용 ÷ 평균 조회수)</p>
+                        <div className="space-y-1 text-[11px]">
+                          <p><span className="font-semibold text-emerald-600">BEST</span> <span className="text-a-ink-muted">20원 미만</span></p>
+                          <p><span className="font-semibold text-blue-500">GOOD</span> <span className="text-a-ink-muted">20~24원</span></p>
+                          <p><span className="font-semibold text-amber-500">SOSO</span> <span className="text-a-ink-muted">25~29원</span></p>
+                          <p><span className="text-gray-400">BAD 30원 이상</span></p>
+                        </div>
+                        <p className="text-[10px] text-gray-400 mt-2">📌 도달 비용 효율 검토의 핵심 지표</p>
+                      </div>
+                    </span>
+                  </TH>
                   <TH right w={colWidths["도달수"]} onResize={e => startResize("도달수", e)} {...sp("도달수")}>도달수</TH>
                   <TH right w={colWidths["도달당비용"]} onResize={e => startResize("도달당비용", e)} {...sp("도달당비용")}>도달당비용</TH>
                   <TH className="text-center" w={colWidths["트렌드"]} onResize={e => startResize("트렌드", e)}>트렌드</TH>
@@ -1517,6 +1531,12 @@ export default function MonitoringPage() {
             <HelpItem label="조회수 —">영상 조회 횟수입니다. 릴스·숏폼에서 주요 지표입니다.</HelpItem>
             <HelpItem label="좋아요 / 댓글 —">게시물의 좋아요 수와 댓글 수입니다.</HelpItem>
             <HelpItem label="측정일 —">가장 최근 수집된 날짜입니다.</HelpItem>
+          </HelpSection>
+          <HelpSection title="📌 지표 평가 기준 (노션 2025ver)">
+            <HelpItem label="평균 조회수 —">BEST 10만↑ / GOOD 7만↑ / BAD 7만↓ (최근 5개 콘텐츠 기준, 알고리즘 떡상 건 제외)</HelpItem>
+            <HelpItem label="조회당비용 —">BEST 20원↓ / GOOD 20~24원 / SOSO 25~29원 / BAD 30원↑ (핵심 필수 지표)</HelpItem>
+            <HelpItem label="조회율 (알고리즘 계수) —">BEST 1↑ / GOOD 0↑ / BAD 음수 (평균 조회수 ÷ 팔로워)</HelpItem>
+            <HelpItem label="참여율 E.R —">BEST 1%↑ / SOSO 0.5%↑ / BAD 0.5%↓ ((댓글+좋아요)÷조회수)</HelpItem>
           </HelpSection>
           <HelpSection title="자동 수집">
             <p className="text-a-ink-muted leading-relaxed">GitHub Actions에 의해 매일 자동으로 수치를 수집합니다. 별도 실행 없이도 일별 데이터가 쌓입니다.</p>

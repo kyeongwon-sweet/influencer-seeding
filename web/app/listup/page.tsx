@@ -925,9 +925,25 @@ export default function ListupPage() {
                     {rsTH("발굴 키워드", 2)}
                     {rsTH("팔로워", 3)}
                     {rsTH("조회수", 4, true, (
-                      <div>
-                        <p className="text-[11px] font-semibold text-a-ink mb-1">팔로워 대비 평균 조회수 비율</p>
-                        <p className="text-[11px] text-a-ink-muted leading-relaxed">스크리닝 당시 최근 게시물의 평균 조회수 ÷ 팔로워 수<br/>숫자가 높을수록 바이럴 파급력이 강한 계정</p>
+                      <div className="space-y-3">
+                        <div>
+                          <p className="text-[11px] font-semibold text-a-ink mb-1">① 평균 조회수 (위 숫자)</p>
+                          <p className="text-[11px] text-a-ink-muted mb-1.5">최근 콘텐츠 5개 평균 (알고리즘 떡상 건 제외)</p>
+                          <div className="space-y-0.5 text-[11px]">
+                            <p><span className="font-semibold text-emerald-600">BEST</span> <span className="text-a-ink-muted">= 10만 이상</span></p>
+                            <p><span className="font-semibold text-blue-500">GOOD</span> <span className="text-a-ink-muted">= 7만 이상</span></p>
+                            <p><span className="text-gray-400">BAD = 7만 미만</span></p>
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-semibold text-a-ink mb-1">② 팔로워 대비 조회율 (아래 숫자)</p>
+                          <p className="text-[11px] text-a-ink-muted mb-1.5">평균 조회수 ÷ 팔로워 수 · 알고리즘 파급력 지표</p>
+                          <div className="space-y-0.5 text-[11px]">
+                            <p><span className="font-semibold text-emerald-600">BEST</span> <span className="text-a-ink-muted">= 1 이상</span></p>
+                            <p><span className="font-semibold text-blue-500">GOOD</span> <span className="text-a-ink-muted">= 0 이상</span></p>
+                            <p><span className="text-gray-400">BAD = 음수</span></p>
+                          </div>
+                        </div>
                       </div>
                     ))}
                     {rsTH("참여수", 5)}
