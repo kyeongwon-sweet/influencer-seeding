@@ -446,8 +446,8 @@ export default function MonitoringPage() {
 
     for (const post of filteredPosts) {
       const statsMap = new Map((post.all_stats ?? []).map(s => [s.measured_at, s]));
-      // Forward-fill: 데이터 없는 날은 이전 마지막 값 유지 (null → 0 처리 대신)
-      let lastPlay = 0, lastLikes = 0, lastComments = 0;
+      // Forward-fill: 데이터 없는 날은 이전 마지막 값 유지, null은 데이터 없음(기여 0)
+      let lastPlay: number | null = null, lastLikes: number | null = null, lastComments: number | null = null;
       for (const date of allDates) {
         if (statsMap.has(date)) {
           const s = statsMap.get(date)!;
@@ -457,9 +457,9 @@ export default function MonitoringPage() {
         }
         const e = totals.get(date)!;
         totals.set(date, {
-          play:     e.play     + lastPlay,
-          likes:    e.likes    + lastLikes,
-          comments: e.comments + lastComments,
+          play:     e.play     + (lastPlay     ?? 0),
+          likes:    e.likes    + (lastLikes    ?? 0),
+          comments: e.comments + (lastComments ?? 0),
         });
       }
     }
@@ -851,6 +851,8 @@ export default function MonitoringPage() {
   }
 
   async function patchPost(postId: string, field: string, value: string) {
+    // Escape 취소 후 onBlur 발화 방지: editCell이 이미 null이면 저장 안 함
+    if (!editCell) return;
     const isNumeric = field === "cost" || field === "reach_count";
     const payload = isNumeric
       ? { [field]: value === "" ? null : Number(value) }
@@ -1096,12 +1098,14 @@ export default function MonitoringPage() {
               const fmt = (d: Date) => d.toISOString().slice(0, 10);
               const today = new Date();
               const todayStr = fmt(today);
+              // 일요일(getDay=0)을 7로 처리해 월요일 시작 기준 올바르게 계산
+              const dayOfWeek = today.getDay() === 0 ? 7 : today.getDay();
               const presets = [
                 { label: "전체",   from: "",          to: "" },
                 { label: "오늘",   from: todayStr,    to: todayStr },
                 { label: "어제",   from: fmt(new Date(today.getTime() - 86400000)), to: fmt(new Date(today.getTime() - 86400000)) },
-                { label: "이번주", from: fmt(new Date(today.getTime() - today.getDay() * 86400000)), to: todayStr },
-                { label: "지난주", from: fmt(new Date(today.getTime() - (today.getDay() + 7) * 86400000)), to: fmt(new Date(today.getTime() - (today.getDay() + 1) * 86400000)) },
+                { label: "이번주", from: fmt(new Date(today.getTime() - (dayOfWeek - 1) * 86400000)), to: todayStr },
+                { label: "지난주", from: fmt(new Date(today.getTime() - (dayOfWeek + 6) * 86400000)), to: fmt(new Date(today.getTime() - dayOfWeek * 86400000)) },
                 { label: "이번달", from: `${todayStr.slice(0, 7)}-01`, to: todayStr },
               ];
               return presets.map(p => {
@@ -1402,7 +1406,7 @@ export default function MonitoringPage() {
                           <select autoFocus value={editCell.value}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
                             onBlur={() => patchPost(post.id, "channel_type", editCell.value)}
-                            onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "channel_type", editCell.value); if (e.key === "Escape") setEditCell(null); }}
+                            onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "channel_type", editCell.value); if (e.key === "Escape") { e.preventDefault(); setEditCell(null); }; }}
                             className="text-xs bg-transparent border-b border-a-blue outline-none py-0.5 w-full">
                             <option value="">-</option>
                             {CHANNEL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
@@ -1419,7 +1423,7 @@ export default function MonitoringPage() {
                           <input autoFocus type="date" value={editCell.value}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
                             onBlur={() => patchPost(post.id, "posted_at", editCell.value)}
-                            onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "posted_at", editCell.value); if (e.key === "Escape") setEditCell(null); }}
+                            onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "posted_at", editCell.value); if (e.key === "Escape") { e.preventDefault(); setEditCell(null); }; }}
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5" />
                         ) : (
                           <span onClick={() => setEditCell({ postId: post.id, field: "posted_at", value: post.posted_at ?? "" })}
@@ -1436,7 +1440,7 @@ export default function MonitoringPage() {
                             value={editCell.value}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
                             onBlur={() => patchPost(post.id, "content_summary", editCell.value)}
-                            onKeyDown={e => { if (e.key === "Escape") setEditCell(null); }}
+                            onKeyDown={e => { if (e.key === "Escape") { e.preventDefault(); setEditCell(null); }; }}
                             className="text-xs w-full bg-transparent border-b border-a-blue outline-none py-0.5 resize-none text-a-ink"
                           />
                         ) : (
@@ -1453,7 +1457,7 @@ export default function MonitoringPage() {
                           <input autoFocus value={editCell.value}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
                             onBlur={() => patchPost(post.id, "account_name", editCell.value)}
-                            onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "account_name", editCell.value); if (e.key === "Escape") setEditCell(null); }}
+                            onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "account_name", editCell.value); if (e.key === "Escape") { e.preventDefault(); setEditCell(null); }; }}
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5" />
                         ) : (
                           <div className="flex items-center gap-1 min-w-0 overflow-hidden">
@@ -1492,7 +1496,7 @@ export default function MonitoringPage() {
                           <input autoFocus value={editCell.value}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
                             onBlur={() => patchPost(post.id, "product_name", editCell.value)}
-                            onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "product_name", editCell.value); if (e.key === "Escape") setEditCell(null); }}
+                            onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "product_name", editCell.value); if (e.key === "Escape") { e.preventDefault(); setEditCell(null); }; }}
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5" />
                         ) : (
                           <span onClick={() => setEditCell({ postId: post.id, field: "product_name", value: post.product_name ?? "" })}
@@ -1506,7 +1510,7 @@ export default function MonitoringPage() {
                           <input autoFocus value={editCell.value}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
                             onBlur={() => patchPost(post.id, "project_name", editCell.value)}
-                            onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "project_name", editCell.value); if (e.key === "Escape") setEditCell(null); }}
+                            onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "project_name", editCell.value); if (e.key === "Escape") { e.preventDefault(); setEditCell(null); }; }}
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5" />
                         ) : (
                           <span onClick={() => setEditCell({ postId: post.id, field: "project_name", value: post.project_name ?? "" })}
@@ -1522,7 +1526,7 @@ export default function MonitoringPage() {
                           <input autoFocus type="number" value={editCell.value}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
                             onBlur={() => patchPost(post.id, "cost", editCell.value)}
-                            onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "cost", editCell.value); if (e.key === "Escape") setEditCell(null); }}
+                            onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "cost", editCell.value); if (e.key === "Escape") { e.preventDefault(); setEditCell(null); }; }}
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
                         ) : (
                           <span className="text-a-ink-muted hover:text-a-blue transition-colors">
@@ -1557,7 +1561,7 @@ export default function MonitoringPage() {
                           <input autoFocus type="number" value={editCell.value}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
                             onBlur={() => patchPost(post.id, "reach_count", editCell.value)}
-                            onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "reach_count", editCell.value); if (e.key === "Escape") setEditCell(null); }}
+                            onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "reach_count", editCell.value); if (e.key === "Escape") { e.preventDefault(); setEditCell(null); }; }}
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
                         ) : (
                           <span className="text-a-ink-muted hover:text-a-blue transition-colors">
@@ -1581,7 +1585,7 @@ export default function MonitoringPage() {
                             value={editCell.value}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
                             onBlur={() => patchPost(post.id, "notes", editCell.value)}
-                            onKeyDown={e => { if (e.key === "Escape") setEditCell(null); }}
+                            onKeyDown={e => { if (e.key === "Escape") { e.preventDefault(); setEditCell(null); }; }}
                             className="text-xs w-full bg-transparent border-b border-a-blue outline-none py-0.5 resize-none text-a-ink"
                           />
                         ) : (

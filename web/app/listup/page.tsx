@@ -266,8 +266,7 @@ export default function ListupPage() {
     const inHandle = handle(url);
     for (const entry of blacklist) {
       const storedHandle = entry.url ? handle(entry.url) : "";
-      if ((storedHandle && inHandle && storedHandle === inHandle) ||
-          (entry.url && url && entry.url.includes(inHandle) && inHandle.length > 2)) {
+      if (storedHandle && inHandle && storedHandle === inHandle) {
         return { blocked: true, reason: entry.reason ?? "사유 없음" };
       }
     }

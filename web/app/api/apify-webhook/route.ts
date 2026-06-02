@@ -231,9 +231,9 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
     const owner = (item.owner as Record<string, unknown>) || {};
     statsByKey[statsKey(url)] = {
       url,
-      play_count: item.videoPlayCount || item.videoViewCount || null,
-      likes_count: item.likesCount || item.likes || null,
-      comments_count: item.commentsCount || item.comments || null,
+      play_count: (item.videoPlayCount ?? item.videoViewCount) ?? null,
+      likes_count: (item.likesCount ?? item.likes) ?? null,
+      comments_count: (item.commentsCount ?? item.comments) ?? null,
       posted_at: postedAt,
       account_name: item.ownerFullName || (owner.fullName as string) || item.ownerUsername || (owner.username as string) || null,
       owner_username: item.ownerUsername || (owner.username as string) || null,

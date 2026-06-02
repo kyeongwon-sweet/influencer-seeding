@@ -171,7 +171,7 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen">
-      <header className="bg-white border-b border-gray-100 h-14 px-6 flex items-center justify-between sticky top-0 z-40">
+      <header className="bg-white border-b border-gray-100 h-11 px-6 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-3">
           <img src="/lalasweet-logo.png" alt="라라스윗" className="h-5 w-auto object-contain" />
           <span className="text-a-ink text-[20px] font-bold tracking-tight">인플루언서 시딩 트래킹 대시보드</span>
