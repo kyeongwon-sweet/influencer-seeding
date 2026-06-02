@@ -353,6 +353,7 @@ export default function MonitoringPage() {
   const [showHelp, setShowHelp] = useState(false);
   const [trendPost, setTrendPost] = useState<Post | null>(null);
   const [editCell, setEditCell] = useState<EditCell | null>(null);
+  const [editCategory, setEditCategory] = useState<{ postId: string; infId: string; value: string } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -848,6 +849,22 @@ export default function MonitoringPage() {
       toast("저장에 실패했습니다.", "error");
     }
     setEditCell(null);
+  }
+
+  async function patchCategory(postId: string, infId: string, value: string) {
+    const res = await fetch(`/api/influencers/${infId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ category: value || null }),
+    });
+    if (res.ok) {
+      setPosts(prev => prev.map(p => p.id === postId
+        ? { ...p, influencers: p.influencers ? { ...p.influencers, category: value || null } : null }
+        : p));
+    } else {
+      toast("저장에 실패했습니다.", "error");
+    }
+    setEditCategory(null);
   }
 
   function startResize(col: string, e: React.MouseEvent, isSticky = false) {
@@ -1380,10 +1397,21 @@ export default function MonitoringPage() {
                         )}
                       </TD>
                       <TD muted w={colWidths["카테고리"]}>
-                        {(() => {
-                          const cat = CATEGORIES.find(c => c.value === post.influencers?.category);
-                          return cat ? <span title={cat.value}>{cat.desc}</span> : <span className="text-gray-300">-</span>;
-                        })()}
+                        {editCategory?.postId === post.id ? (
+                          <select autoFocus value={editCategory.value}
+                            onChange={e => setEditCategory(v => v ? { ...v, value: e.target.value } : null)}
+                            onBlur={() => patchCategory(post.id, editCategory.infId, editCategory.value)}
+                            onKeyDown={e => { if (e.key === "Enter") patchCategory(post.id, editCategory.infId, editCategory.value); if (e.key === "Escape") setEditCategory(null); }}
+                            className="text-xs bg-transparent border-b border-a-blue outline-none py-0.5 w-full">
+                            <option value="">-</option>
+                            {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.desc}</option>)}
+                          </select>
+                        ) : (
+                          <span onClick={() => post.influencers && setEditCategory({ postId: post.id, infId: post.influencers.id, value: post.influencers.category ?? "" })}
+                            className="cursor-text hover:text-a-blue transition-colors">
+                            {(() => { const cat = CATEGORIES.find(c => c.value === post.influencers?.category); return cat ? cat.desc : <span className="text-gray-300">-</span>; })()}
+                          </span>
+                        )}
                       </TD>
                       <TD muted w={colWidths["상품명"]}>
                         {editCell?.postId === post.id && editCell?.field === "product_name" ? (
