@@ -25,7 +25,13 @@ function isAd(post: Record<string, unknown>): boolean {
 }
 
 function isReel(post: Record<string, unknown>): boolean {
-  return post.productType === 'clips';
+  // profile-scraper: productType === 'clips'
+  // hashtag-scraper: type === 'Video' or isVideo === true
+  return post.productType === 'clips'
+    || post.type === 'Video'
+    || post.type === 'GraphSidecar' // 슬라이드 릴스
+    || post.isVideo === true
+    || post.mediaType === 'VIDEO';
 }
 
 function isShort(post: Record<string, unknown>): boolean {
