@@ -366,7 +366,7 @@ export default function MonitoringPage() {
     "증분량": 80,
   });
   const [colWidths, setColWidths] = useState<Record<string, number>>({
-    "채널분류": 100, "게시일": 104, "캡션": 200, "인플루언서": 180, "상품명": 150, "프로젝트명": 150, "비용": 120, "조회수": 100, "조회당비용": 110, "도달수": 100, "도달당비용": 110, "트렌드": 90, "특이사항": 160, "삭제": 60,
+    "채널분류": 100, "카테고리": 80, "게시일": 104, "캡션": 200, "인플루언서": 180, "상품명": 150, "프로젝트명": 150, "비용": 120, "조회수": 100, "조회당비용": 110, "도달수": 100, "도달당비용": 110, "트렌드": 90, "특이사항": 160, "삭제": 60,
   });
   const resizingRef = useRef<{ col: string; startX: number; startW: number; isSticky: boolean } | null>(null);
 
@@ -388,7 +388,7 @@ export default function MonitoringPage() {
   ).sort();
 
   const hasFilter = filters.name !== "" || filters.project !== "" || filters.products.length > 0 || filters.type !== "all" || filters.channelType !== "all" || filters.category !== "all" || filters.dateFrom !== "" || filters.dateTo !== "";
-  const colSpan = 16;
+  const colSpan = 17;
 
   const lastMonitoredAt = posts.length > 0
     ? posts.reduce((latest, p) => {
@@ -1045,8 +1045,16 @@ export default function MonitoringPage() {
               {/* 증감 테이블 */}
               <div className="flex-[3] flex flex-col self-start min-w-[220px]">
                 <div className="px-5 py-4 border-b border-a-hairline">
-                  <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">일자별 증감</p>
+                  <p className="text-[11px] font-medium text-a-ink-muted">일자별 증감</p>
                 </div>
+                {deltaTableData.some(d => d.play < 0) && (
+                  <div className="mx-3 mt-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-[8px] text-[11px] text-amber-700 flex items-start gap-1.5">
+                    <span>⚠️</span>
+                    <span>
+                      누적 조회수가 감소한 날짜가 있습니다 ({deltaTableData.filter(d => d.play < 0).map(d => d.date.slice(5).replace("-", "/")).join(", ")}) — 데이터 오류를 확인하세요.
+                    </span>
+                  </div>
+                )}
                 {deltaTableData.length === 0 ? (
                   <div className="flex items-center justify-center flex-1 text-sm text-a-ink-muted py-10">측정 데이터 2일 이상 필요</div>
                 ) : (
@@ -1209,6 +1217,7 @@ export default function MonitoringPage() {
                       onChange={toggleSelectAll} />
                   </th>
                   <TH col="증분량" w={stickyColWidths["증분량"]} leftPos={stickyLefts["증분량"]} onResize={e => startResize("증분량", e, true)} right {...sp("증분량")}>증분량</TH>
+                  <TH w={colWidths["카테고리"]} onResize={e => startResize("카테고리", e)} {...sp("카테고리")}>카테고리</TH>
                   <TH w={colWidths["채널분류"]} onResize={e => startResize("채널분류", e)} {...sp("채널분류")}>
                     <span className="relative group/ct cursor-default">
                       채널 분류
@@ -1253,6 +1262,9 @@ export default function MonitoringPage() {
                             </span>
                           );
                         })()}
+                      </TD>
+                      <TD muted w={colWidths["카테고리"]}>
+                        {post.influencers?.category ?? <span className="text-gray-300">-</span>}
                       </TD>
                       <TD muted w={colWidths["채널분류"]}>
                         {editCell?.postId === post.id && editCell?.field === "channel_type" ? (
