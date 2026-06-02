@@ -1555,16 +1555,17 @@ export default function MonitoringPage() {
             <HelpItem label="지금 수집 —">등록된 모든 게시물의 현재 수치를 즉시 수집합니다. GitHub Actions 자동 수집과 별개로 수동으로도 실행 가능합니다.</HelpItem>
             <HelpItem label="새로고침 —">화면 데이터를 DB에서 다시 불러옵니다.</HelpItem>
           </HelpSection>
-          <HelpSection title="표시 지표">
-            <HelpItem label="조회수 —">영상 조회 횟수입니다. 릴스·숏폼에서 주요 지표입니다.</HelpItem>
-            <HelpItem label="좋아요 / 댓글 —">게시물의 좋아요 수와 댓글 수입니다.</HelpItem>
-            <HelpItem label="측정일 —">가장 최근 수집된 날짜입니다.</HelpItem>
+          <HelpSection title="표시 지표 정의">
+            <HelpItem label="조회수 (재생수) —">videoPlayCount. 인스타그램 공개 조회수로 같은 사람이 여러 번 봐도 모두 카운트됩니다.</HelpItem>
+            <HelpItem label="좋아요 / 댓글 —">likesCount / commentsCount. 게시물의 좋아요·댓글 수입니다.</HelpItem>
+            <HelpItem label="조회당비용 —">비용 ÷ videoPlayCount (재생수)</HelpItem>
+            <HelpItem label="도달당비용 —">비용 ÷ 도달수(reach_count). 실제 도달 인원 기준 효율입니다.</HelpItem>
           </HelpSection>
-          <HelpSection title="📌 지표 평가 기준 (노션 2025ver)">
-            <HelpItem label="평균 조회수 —">BEST 10만↑ / GOOD 7만↑ / BAD 7만↓ (최근 5개 콘텐츠 기준, 알고리즘 떡상 건 제외)</HelpItem>
-            <HelpItem label="조회당비용 —">BEST 20원↓ / GOOD 20~24원 / SOSO 25~29원 / BAD 30원↑ (핵심 필수 지표)</HelpItem>
-            <HelpItem label="조회율 (알고리즘 계수) —">BEST 1↑ / GOOD 0↑ / BAD 음수 (평균 조회수 ÷ 팔로워)</HelpItem>
-            <HelpItem label="참여율 E.R —">BEST 1%↑ / SOSO 0.5%↑ / BAD 0.5%↓ ((댓글+좋아요)÷조회수)</HelpItem>
+          <HelpSection title="📌 지표 평가 기준 (2025ver)">
+            <HelpItem label="평균 조회수 —">BEST 10만↑ / GOOD 7만↑ / BAD 7만↓ · 최근 1개월 릴스 기준, 알고리즘 떡상 건 제외</HelpItem>
+            <HelpItem label="조회당비용 —">BEST 20원↓ / GOOD 20~24원 / SOSO 25~29원 / BAD 30원↑ · 핵심 필수 지표</HelpItem>
+            <HelpItem label="조회율 (팔로워 대비) —">BEST 1↑ / GOOD 0↑ / BAD 음수 · videoPlayCount ÷ followersCount</HelpItem>
+            <HelpItem label="참여율 E.R —">BEST 1%↑ / SOSO 0.5%↑ / BAD 0.5%↓ · (댓글+좋아요) ÷ videoPlayCount × 100</HelpItem>
           </HelpSection>
           <HelpSection title="자동 수집">
             <p className="text-a-ink-muted leading-relaxed">GitHub Actions에 의해 매일 자동으로 수치를 수집합니다. 별도 실행 없이도 일별 데이터가 쌓입니다.</p>

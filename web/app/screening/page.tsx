@@ -545,17 +545,41 @@ export default function ScreeningPage() {
 
   // 열 정의 툴팁 (인스타 / 유튜브)
   const COL_DEFS: Record<string, { ig?: string; yt?: string; both?: string }> = {
-    "팔로워 수":        { both: "계정 팔로워(구독자) 수" },
-    "알고리즘 계수":    { ig: "평균 재생수 ÷ 팔로워 수\n\n[기준] BEST = 1 이상 / GOOD = 0 이상 / BAD = 음수\n알고리즘 파급력을 나타내는 지표", yt: "평균 재생수 ÷ 구독자 수\n\n[기준] BEST = 1 이상 / GOOD = 0 이상 / BAD = 음수" },
-    "100만뷰 개수":     { ig: "최근 1개월 릴스 중 재생수 ≥ 1,000,000 게시물 수", yt: "최근 30일 Shorts 중 조회수 ≥ 1,000,000 개수" },
-    "총 평균 조회수":   { ig: "최근 콘텐츠 5개 평균 재생수 (알고리즘 떡상 건 제외)\n\n[기준] BEST = 10만↑ / GOOD = 7만↑ / BAD = 7만↓\n※ 가장 중요한 필수 검토 지표", yt: "최근 콘텐츠 5개 평균 viewCount\n\n[기준] BEST = 10만↑ / GOOD = 7만↑ / BAD = 7만↓" },
-    "총 평균 도달수":   { ig: "videoViewCount 평균\n(중복 제거 시청자 수, 1인=1)", yt: "유튜브 미제공" },
-    "댓글 비율":        { ig: "commentsCount / videoPlayCount × 100\n게시물별 비율의 평균", yt: "commentsCount / viewCount × 100\n게시물별 비율의 평균" },
-    "광고 비율":        { ig: "광고 게시물(#광고) / 총 게시물 × 100", yt: "광고 게시물(#광고 #협찬 #AD #Sponsored) / 총 게시물 × 100" },
-    "광고 평균 조회수": { ig: "광고 릴스(#광고)의 평균 재생수", yt: "광고 Shorts의 평균 viewCount" },
-    "광고 효율":        { both: "(광고 평균 재생수 − 일반 평균 재생수) ÷ 10,000\n양수 = 광고 게시물이 일반보다 더 많이 퍼짐" },
-    "광고 최고 조회수": { ig: "광고 릴스(#광고) 중 최고 재생수", yt: "최근 30일 광고 Shorts 중 최고 viewCount" },
-    "검색어 트렌드":    { both: "광고 전후 네이버 검색량 변화율\n(후 7일 평균 − 전 7일 평균) ÷ 전 7일 평균 × 100" },
+    "팔로워 수":        { ig: "인스타그램 팔로워 수 (followersCount)", yt: "유튜브 구독자 수 (channelSubscriberCount)" },
+    "알고리즘 계수":    {
+      ig: "팔로워 대비 평균 재생수\n= videoPlayCount 평균 ÷ followersCount\n\n[기준] BEST = 1↑ / GOOD = 0↑ / BAD = 음수\n알고리즘 파급력을 나타내는 지표",
+      yt: "팔로워 대비 평균 재생수\n= 평균 viewCount ÷ 구독자 수\n\n[기준] BEST = 1↑ / GOOD = 0↑ / BAD = 음수",
+    },
+    "100만뷰 개수":     {
+      ig: "최근 1개월 릴스 중 videoPlayCount ≥ 1,000,000 게시물 수\n※ 1개라도 있으면 O",
+      yt: "최근 30일 Shorts 중 viewCount ≥ 1,000,000 개수\n※ 1개라도 있으면 O",
+    },
+    "총 평균 조회수":   {
+      ig: "재생수(videoPlayCount) 평균\n= 인스타그램 앱 공개 조회수. 같은 사람이 여러 번 봐도 모두 카운트\n기준: 최근 1개월 릴스\n\n[기준] BEST = 10만↑ / GOOD = 7만↑ / BAD = 7만↓\n※ 가장 중요한 필수 검토 지표",
+      yt: "viewCount 평균\n기준: 최근 30일 Shorts\n\n[기준] BEST = 10만↑ / GOOD = 7만↑ / BAD = 7만↓",
+    },
+    "총 평균 도달수":   {
+      ig: "순조회수(videoViewCount) 평균\n= 중복 제거 시청자 수 (unique viewers), 한 사람이 10번 봐도 1로 집계\n※ 인스타그램 앱에서는 공개되지 않는 내부 지표",
+      yt: "유튜브 미제공",
+    },
+    "댓글 비율":        {
+      ig: "commentsCount / videoPlayCount × 100\n게시물별 비율의 평균 (방식 B)\n= #댓글 / #재생 (게시물마다 계산 후 평균)",
+      yt: "commentsCount / viewCount × 100\n게시물별 비율의 평균 (방식 B)\n기준: 최근 30일 Shorts",
+    },
+    "광고 비율":        {
+      ig: "광고 게시물(#광고) / 최근 1개월 총 릴스 × 100",
+      yt: "광고 Shorts(#광고 #협찬 #AD #Sponsored) / 최근 30일 총 Shorts × 100",
+    },
+    "광고 평균 조회수": {
+      ig: "최근 1개월 내 광고 릴스(#광고)의 videoPlayCount 평균",
+      yt: "최근 30일 광고 Shorts(#광고 #협찬 #AD #Sponsored)의 viewCount 평균",
+    },
+    "광고 효율":        { both: "(광고 평균 재생수 − 일반 평균 재생수) ÷ 10,000\n양수 = 광고 게시물이 일반보다 더 퍼짐\n음수 = 광고 때 성과 하락" },
+    "광고 최고 조회수": {
+      ig: "최근 1개월 광고 릴스(#광고) 중 최고 videoPlayCount",
+      yt: "최근 30일 광고 Shorts 중 최고 viewCount",
+    },
+    "검색어 트렌드":    { both: "광고 전후 네이버 검색량 변화율\n= (후 7일 평균 − 전 7일 평균) ÷ 전 7일 평균 × 100" },
   };
 
   function ColTooltip({ col }: { col: string }) {
