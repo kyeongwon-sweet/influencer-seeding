@@ -391,8 +391,14 @@ export default function MonitoringPage() {
     if (filters.type !== "all" && getPostType(post.url) !== filters.type) return false;
     if (filters.channelType !== "all" && (post.channel_type ?? "").replace(/\s+/g, "") !== filters.channelType.replace(/\s+/g, "")) return false;
     if (filters.category !== "all" && (post.influencers?.category ?? null) !== filters.category) return false;
-    if (filters.dateFrom && (!post.posted_at || post.posted_at < filters.dateFrom)) return false;
-    if (filters.dateTo && (!post.posted_at || post.posted_at > filters.dateTo)) return false;
+    // 날짜 필터: 조회수 측정일 기준 (해당 기간에 측정 데이터가 있는 게시물만 표시)
+    if (filters.dateFrom || filters.dateTo) {
+      const hasData = (post.all_stats ?? []).some(s =>
+        (!filters.dateFrom || s.measured_at >= filters.dateFrom) &&
+        (!filters.dateTo   || s.measured_at <= filters.dateTo)
+      );
+      if (!hasData) return false;
+    }
     return true;
   });
 
@@ -1069,6 +1075,7 @@ export default function MonitoringPage() {
           </select>
           <div className="w-px h-4 bg-a-hairline mx-0.5" />
           <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-a-ink-muted whitespace-nowrap">조회수 기간</span>
             <input type="date" value={filters.dateFrom}
               onChange={e => setFilters(p => ({ ...p, dateFrom: e.target.value }))}
               className={`filter-input ${filters.dateFrom ? "border-a-blue" : ""}`} />
@@ -1332,7 +1339,13 @@ export default function MonitoringPage() {
               </thead>
               <tbody>
                 {sortedPosts.map(post => {
-                  const s = post.latest_stats;
+                  // 날짜 필터 시 해당 기간 마지막 측정값, 없으면 latest_stats
+                  const s = (filters.dateFrom || filters.dateTo)
+                    ? ((post.all_stats ?? []).filter(st =>
+                        (!filters.dateFrom || st.measured_at >= filters.dateFrom) &&
+                        (!filters.dateTo   || st.measured_at <= filters.dateTo)
+                      ).slice(-1)[0] ?? post.latest_stats)
+                    : post.latest_stats;
                   const displayName = post.account_name ?? post.influencers?.name ?? "-";
                   const hl = hasNotableChange(post);
                   return (
