@@ -169,14 +169,14 @@ export async function POST(req: NextRequest) {
           ).catch((e: unknown) => { startErrors.push(`틱톡: ${e}`); }),
           // X (트위터)
           startActorRun(
-            'apify/twitter-scraper',
-            { searchTerms: KEYWORDS, maxItems: 100, sort: 'Latest' },
+            'apidojo/twitter-scraper-lite',
+            { searchTerms: KEYWORDS, maxResults: 100 },
             webhookUrl(appUrl, `jobId=${job.id}&jobType=organic&platform=twitter`)
           ).catch((e: unknown) => { startErrors.push(`X: ${e}`); }),
           // 네이버 블로그
           startActorRun(
-            'dtrungtin/naver-blog-scraper',
-            { searchKeyword: KEYWORDS[0], maxItems: 50 },
+            'oxygenated_quagmire/naver-blog-searcher',
+            { keyword: KEYWORDS[0], maxResults: 50 },
             webhookUrl(appUrl, `jobId=${job.id}&jobType=organic&platform=blog`)
           ).catch((e: unknown) => { startErrors.push(`블로그: ${e}`); }),
           // 스레드 (Threads)
