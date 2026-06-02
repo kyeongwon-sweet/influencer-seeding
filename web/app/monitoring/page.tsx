@@ -1091,6 +1091,30 @@ export default function MonitoringPage() {
                 setFilters(p => ({ ...p, dateTo: v, dateFrom: p.dateFrom && v < p.dateFrom ? v : p.dateFrom }));
               }}
               className={`filter-input ${filters.dateTo ? "border-a-blue" : ""}`} />
+            {/* 빠른 선택 버튼 — 날짜 인풋 바로 우측 */}
+            {(() => {
+              const fmt = (d: Date) => d.toISOString().slice(0, 10);
+              const today = new Date();
+              const todayStr = fmt(today);
+              const presets = [
+                { label: "전체",   from: "",          to: "" },
+                { label: "오늘",   from: todayStr,    to: todayStr },
+                { label: "어제",   from: fmt(new Date(today.getTime() - 86400000)), to: fmt(new Date(today.getTime() - 86400000)) },
+                { label: "이번주", from: fmt(new Date(today.getTime() - today.getDay() * 86400000)), to: todayStr },
+                { label: "지난주", from: fmt(new Date(today.getTime() - (today.getDay() + 7) * 86400000)), to: fmt(new Date(today.getTime() - (today.getDay() + 1) * 86400000)) },
+                { label: "이번달", from: `${todayStr.slice(0, 7)}-01`, to: todayStr },
+              ];
+              return presets.map(p => {
+                const active = filters.dateFrom === p.from && filters.dateTo === p.to;
+                return (
+                  <button key={p.label}
+                    onClick={() => setFilters(prev => ({ ...prev, dateFrom: p.from, dateTo: p.to }))}
+                    className={`text-[11px] px-2.5 py-0.5 rounded-full border transition-all whitespace-nowrap ${active ? "border-a-blue bg-a-blue text-white font-medium" : "border-a-hairline text-a-ink-muted hover:border-a-blue hover:text-a-blue"}`}>
+                    {p.label}
+                  </button>
+                );
+              });
+            })()}
           </div>
           <div className="flex-1" />
           {hasFilter && (
@@ -1099,40 +1123,6 @@ export default function MonitoringPage() {
             </button>
           )}
         </div>
-        {/* 조회수 기간 빠른 선택 버튼 — 필터 바 아래 별도 행 */}
-        {(() => {
-          const fmt = (d: Date) => d.toISOString().slice(0, 10);
-          const today = new Date();
-          const todayStr = fmt(today);
-          const yesterday = fmt(new Date(today.getTime() - 86400000));
-          const weekStart = fmt(new Date(today.getTime() - today.getDay() * 86400000));
-          const lastWeekStart = fmt(new Date(today.getTime() - (today.getDay() + 7) * 86400000));
-          const lastWeekEnd = fmt(new Date(today.getTime() - (today.getDay() + 1) * 86400000));
-          const monthStart = `${todayStr.slice(0, 7)}-01`;
-          const presets = [
-            { label: "전체",   from: "",          to: "" },
-            { label: "오늘",   from: todayStr,    to: todayStr },
-            { label: "어제",   from: yesterday,   to: yesterday },
-            { label: "이번주", from: weekStart,   to: todayStr },
-            { label: "지난주", from: lastWeekStart, to: lastWeekEnd },
-            { label: "이번달", from: monthStart,  to: todayStr },
-          ];
-          return (
-            <div className="flex items-center gap-1.5 px-4 py-2 bg-white rounded-[10px] border border-a-hairline mb-3">
-              <span className="text-[10px] text-a-ink-muted mr-1 whitespace-nowrap">조회수 기간</span>
-              {presets.map(p => {
-                const active = filters.dateFrom === p.from && filters.dateTo === p.to;
-                return (
-                  <button key={p.label}
-                    onClick={() => setFilters(prev => ({ ...prev, dateFrom: p.from, dateTo: p.to }))}
-                    className={`text-[11px] px-3 py-1 rounded-full border transition-all ${active ? "border-a-blue bg-a-blue text-white font-medium" : "border-a-hairline text-a-ink-muted hover:border-a-blue hover:text-a-blue bg-white"}`}>
-                    {p.label}
-                  </button>
-                );
-              })}
-            </div>
-          );
-        })()}
 
         {filteredPosts.length > 0 && (
           <div className="bg-white rounded-[20px] shadow-[0_2px_16px_rgba(100,120,180,0.08)] mb-4 overflow-hidden">
