@@ -161,10 +161,10 @@ export async function POST(req: NextRequest) {
             { searchQueries: KEYWORDS, maxResultsShorts: 100, sortingOrder: 'relevance' },
             webhookUrl(appUrl, `jobId=${job.id}&jobType=organic&platform=youtube`)
           ).catch((e: unknown) => { startErrors.push(`유튜브: ${e}`); }),
-          // 틱톡
+          // 틱톡 (Advanced Search API)
           startActorRun(
-            'clockworks/tiktok-scraper',
-            { searchQueries: KEYWORDS, maxItems: 100, searchSection: 'videos' },
+            'navi/advanced-search-tiktok-api',
+            { keyword: KEYWORDS[0], numResults: 100 },
             webhookUrl(appUrl, `jobId=${job.id}&jobType=organic&platform=tiktok`)
           ).catch((e: unknown) => { startErrors.push(`틱톡: ${e}`); }),
           // X (트위터)
