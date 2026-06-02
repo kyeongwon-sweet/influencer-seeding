@@ -627,6 +627,81 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
         source: 'apify',
       });
     }
+  } else if (platform === 'tiktok') {
+    for (const item of items) {
+      if (isAd(item)) continue;
+      const url = (item.webVideoUrl || item.url) as string;
+      if (!url) continue;
+      const viewCount = (item.playCount || item.plays || 0) as number;
+      if (viewCount > 0 && viewCount < ORGANIC_MIN_VIEWS) continue;
+      const rawTs = item.createTime || item.createTimeISO;
+      const uploadedAt = typeof rawTs === 'number'
+        ? new Date(rawTs * 1000).toISOString().slice(0, 10)
+        : rawTs ? (rawTs as string).slice(0, 10) : null;
+      rows.push({
+        url,
+        account_name: (item.authorMeta as { name?: string } | undefined)?.name || (item.author as string) || null,
+        platform: 'tiktok',
+        content_summary: (item.text as string)?.slice(0, 300) || null,
+        uploaded_at: uploadedAt,
+        view_count: viewCount || null,
+        source: 'apify',
+      });
+    }
+  } else if (platform === 'twitter') {
+    for (const item of items) {
+      if (isAd(item)) continue;
+      const url = (item.url || item.tweetUrl) as string;
+      if (!url) continue;
+      const viewCount = (item.viewCount || item.views || 0) as number;
+      const rawTs = item.createdAt || item.created_at;
+      const uploadedAt = rawTs ? new Date(rawTs as string).toISOString().slice(0, 10) : null;
+      rows.push({
+        url,
+        account_name: (item.author as { userName?: string } | undefined)?.userName || (item.username as string) || null,
+        platform: 'x',
+        content_summary: (item.fullText || item.text as string)?.slice(0, 300) || null,
+        uploaded_at: uploadedAt,
+        view_count: viewCount || null,
+        source: 'apify',
+      });
+    }
+  } else if (platform === 'blog') {
+    for (const item of items) {
+      if (isAd(item)) continue;
+      const url = (item.url || item.link) as string;
+      if (!url) continue;
+      const rawTs = item.date || item.publishedAt;
+      const uploadedAt = rawTs ? (rawTs as string).slice(0, 10) : null;
+      rows.push({
+        url,
+        account_name: (item.author || item.blogName) as string || null,
+        platform: 'blog',
+        content_summary: ((item.title || item.description) as string)?.slice(0, 300) || null,
+        uploaded_at: uploadedAt,
+        view_count: null,
+        source: 'apify',
+      });
+    }
+  } else if (platform === 'threads') {
+    for (const item of items) {
+      if (isAd(item)) continue;
+      const url = (item.url || item.permalink) as string;
+      if (!url) continue;
+      const rawTs = item.takenAt || item.timestamp;
+      const uploadedAt = typeof rawTs === 'number'
+        ? new Date(rawTs * 1000).toISOString().slice(0, 10)
+        : rawTs ? (rawTs as string).slice(0, 10) : null;
+      rows.push({
+        url,
+        account_name: (item.username || item.ownerUsername) as string || null,
+        platform: 'threads',
+        content_summary: (item.caption || item.text as string)?.slice(0, 300) || null,
+        uploaded_at: uploadedAt,
+        view_count: null,
+        source: 'apify',
+      });
+    }
   } else if (platform === 'youtube') {
     for (const item of items) {
       const rawUrl = item.url as string;

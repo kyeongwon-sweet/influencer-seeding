@@ -146,24 +146,52 @@ export async function POST(req: NextRequest) {
 
       } else if (type === 'organic') {
         await supabase.from('jobs').update({ status: 'running' }).eq('id', job.id);
+        const KEYWORDS = ['라라스윗', 'lalasweet'];
         const startErrors: string[] = [];
         await Promise.all([
+          // 인스타그램 릴스
           startActorRun(
             'apify/instagram-hashtag-scraper',
-            { hashtags: ['라라스윗'], resultsLimit: 500, resultsType: 'reels' },
+            { hashtags: KEYWORDS, resultsLimit: 300, resultsType: 'reels' },
             webhookUrl(appUrl, `jobId=${job.id}&jobType=organic&platform=instagram`)
           ).catch((e: unknown) => { startErrors.push(`인스타: ${e}`); }),
+          // 유튜브 숏츠
           startActorRun(
             'streamers/youtube-scraper',
-            { searchQueries: ['라라스윗'], maxResultsShorts: 100, sortingOrder: 'relevance' },
+            { searchQueries: KEYWORDS, maxResultsShorts: 100, sortingOrder: 'relevance' },
             webhookUrl(appUrl, `jobId=${job.id}&jobType=organic&platform=youtube`)
           ).catch((e: unknown) => { startErrors.push(`유튜브: ${e}`); }),
+          // 틱톡
+          startActorRun(
+            'clockworks/tiktok-scraper',
+            { searchQueries: KEYWORDS, maxItems: 100, searchSection: 'videos' },
+            webhookUrl(appUrl, `jobId=${job.id}&jobType=organic&platform=tiktok`)
+          ).catch((e: unknown) => { startErrors.push(`틱톡: ${e}`); }),
+          // X (트위터)
+          startActorRun(
+            'apify/twitter-scraper',
+            { searchTerms: KEYWORDS, maxItems: 100, sort: 'Latest' },
+            webhookUrl(appUrl, `jobId=${job.id}&jobType=organic&platform=twitter`)
+          ).catch((e: unknown) => { startErrors.push(`X: ${e}`); }),
+          // 네이버 블로그
+          startActorRun(
+            'dtrungtin/naver-blog-scraper',
+            { searchKeyword: KEYWORDS[0], maxItems: 50 },
+            webhookUrl(appUrl, `jobId=${job.id}&jobType=organic&platform=blog`)
+          ).catch((e: unknown) => { startErrors.push(`블로그: ${e}`); }),
+          // 스레드 (Threads)
+          startActorRun(
+            'curious_coder/threads-scraper',
+            { searchQuery: KEYWORDS[0], maxItems: 100 },
+            webhookUrl(appUrl, `jobId=${job.id}&jobType=organic&platform=threads`)
+          ).catch((e: unknown) => { startErrors.push(`스레드: ${e}`); }),
         ]);
-        if (startErrors.length === 2) {
+        // 전체 실패 시에만 에러, 일부 성공이면 경고만
+        if (startErrors.length === 6) {
           throw new Error(startErrors.join(' | '));
         }
         if (startErrors.length > 0) {
-          await supabase.from('jobs').update({ error: startErrors.join(' | ') }).eq('id', job.id);
+          await supabase.from('jobs').update({ error: `일부 플랫폼 실패: ${startErrors.join(' | ')}` }).eq('id', job.id);
         }
 
       } else if (type === 'organic_refresh') {
