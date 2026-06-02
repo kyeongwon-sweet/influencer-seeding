@@ -1346,7 +1346,27 @@ export default function MonitoringPage() {
                   <TH w={colWidths["게시일"]} onResize={e => startResize("게시일", e)} {...sp("게시일")}>게시일</TH>
                   <TH w={colWidths["캡션"]} onResize={e => startResize("캡션", e)}>캡션</TH>
                   <TH w={colWidths["인플루언서"]} onResize={e => startResize("인플루언서", e)} {...sp("인플루언서")}>인플루언서</TH>
-                  <TH w={colWidths["카테고리"]} onResize={e => startResize("카테고리", e)} {...sp("카테고리")}>카테고리</TH>
+                  <TH w={colWidths["카테고리"]} onResize={e => startResize("카테고리", e)} {...sp("카테고리")}>
+                    <span className="group/cat relative cursor-default">
+                      카테고리
+                      <div className="hidden group-hover/cat:block absolute top-full left-0 mt-1.5 z-[9999] bg-white border border-a-hairline rounded-[12px] shadow-lg p-4 min-w-[580px] normal-case tracking-normal font-normal pointer-events-none">
+                        <p className="text-[11px] font-semibold text-a-ink mb-3">인플루언서 카테고리 분류 기준</p>
+                        <div className="grid grid-cols-4 gap-3 text-[11px]">
+                          {[
+                            { label: "A. 찐팬서사 (꾸준함)", color: "bg-blue-50 text-blue-700", desc: "과거부터 디저트를 즐겨먹는 유명인이 라라스윗을 언급함으로, 제품에 대한 심리적 진입장벽을 낮추어 검색률/구매 전환율을 높일 것" },
+                            { label: "B. 선망성", color: "bg-purple-50 text-purple-700", desc: "철저한 자기관리로 선망을 받는 셀럽이 라라스윗을 언급해, 소비자들은 다이어트 간식 완성 아이템으로 검색이 상승할 것" },
+                            { label: "C. 맛잘알", color: "bg-green-50 text-green-700", desc: "유명 맛잘알 인플루언서가 일반 고칼로리 디저트와 비교해 긍정 평가를 내릴 경우, 저당 제품 특유의 '대체제스러운 맛' 의구심을 해소하고 전환율을 높일 것" },
+                            { label: "D. 친근감", color: "bg-amber-50 text-amber-700", desc: "평소 시청자와 일상을 공유하는 친근한 이미지의 유튜버가 라라스윗을 실제로 먹는 생활 밀착형 모습을 보일 경우 전환율을 높일 것" },
+                          ].map(c => (
+                            <div key={c.label} className="space-y-1.5">
+                              <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full ${c.color}`}>{c.label}</span>
+                              <p className="text-a-ink-muted leading-relaxed">{c.desc}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </span>
+                  </TH>
                   <TH w={colWidths["상품명"]} onResize={e => startResize("상품명", e)} {...sp("상품명")}>상품명</TH>
                   <TH w={colWidths["프로젝트명"]} onResize={e => startResize("프로젝트명", e)} {...sp("프로젝트명")}>프로젝트명</TH>
                   <TH right w={colWidths["비용"]} onResize={e => startResize("비용", e)} {...sp("비용")}>비용</TH>
