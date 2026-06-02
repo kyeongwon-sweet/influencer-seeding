@@ -413,18 +413,39 @@ export default function MonitoringPage() {
   const totalComments = filteredPosts.reduce((s, p) => s + (p.latest_stats?.comments_count ?? 0), 0);
 
   const dailyTotals = useMemo(() => {
-    const map = new Map<string, { play: number; likes: number; comments: number }>();
+    // 전체 날짜 목록 수집
+    const allDatesSet = new Set<string>();
     for (const post of filteredPosts) {
-      for (const s of post.all_stats ?? []) {
-        const e = map.get(s.measured_at) ?? { play: 0, likes: 0, comments: 0 };
-        map.set(s.measured_at, {
-          play:     e.play     + (s.play_count     ?? 0),
-          likes:    e.likes    + (s.likes_count    ?? 0),
-          comments: e.comments + (s.comments_count ?? 0),
+      for (const s of post.all_stats ?? []) allDatesSet.add(s.measured_at);
+    }
+    const allDates = [...allDatesSet].sort();
+    if (allDates.length === 0) return [];
+
+    const totals = new Map<string, { play: number; likes: number; comments: number }>(
+      allDates.map(d => [d, { play: 0, likes: 0, comments: 0 }])
+    );
+
+    for (const post of filteredPosts) {
+      const statsMap = new Map((post.all_stats ?? []).map(s => [s.measured_at, s]));
+      // Forward-fill: 데이터 없는 날은 이전 마지막 값 유지 (null → 0 처리 대신)
+      let lastPlay = 0, lastLikes = 0, lastComments = 0;
+      for (const date of allDates) {
+        if (statsMap.has(date)) {
+          const s = statsMap.get(date)!;
+          lastPlay     = s.play_count     ?? lastPlay;
+          lastLikes    = s.likes_count    ?? lastLikes;
+          lastComments = s.comments_count ?? lastComments;
+        }
+        const e = totals.get(date)!;
+        totals.set(date, {
+          play:     e.play     + lastPlay,
+          likes:    e.likes    + lastLikes,
+          comments: e.comments + lastComments,
         });
       }
     }
-    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, v]) => ({ date, ...v }));
+
+    return allDates.map(date => ({ date, ...totals.get(date)! }));
   }, [filteredPosts]);
 
   const deltaChartData = useMemo(() => {
@@ -444,15 +465,23 @@ export default function MonitoringPage() {
     }));
   }, [dailyTotals]);
 
-  // 날짜별 채널타입(바이럴/협찬) 조회수 증분
+  // 날짜별 채널타입(바이럴/협찬) 조회수 증분 — forward-fill 적용
   const typeBreakdownByDate = useMemo(() => {
     if (dailyTotals.length < 2) return new Map<string, Record<string, number>>();
-    // O(M×S) 인덱스 빌드: post별 date→play_count Map
-    const postIndex = filteredPosts.map(post => ({
-      group: (() => { const ct = post.channel_type ?? '기타'; return ct.startsWith('바이럴') ? '바이럴' : ct.startsWith('협찬') ? '협찬' : '기타'; })(),
-      byDate: new Map((post.all_stats ?? []).map(s => [s.measured_at, s.play_count ?? 0])),
-    }));
     const dates = dailyTotals.map(d => d.date);
+    // O(M×S) 인덱스 빌드: post별 date→play_count Map (forward-fill)
+    const postIndex = filteredPosts.map(post => {
+      const group = (() => { const ct = post.channel_type ?? '기타'; return ct.startsWith('바이럴') ? '바이럴' : ct.startsWith('협찬') ? '협찬' : '기타'; })();
+      const rawMap = new Map((post.all_stats ?? []).map(s => [s.measured_at, s.play_count]));
+      // 날짜 순서로 forward-fill
+      const byDate = new Map<string, number>();
+      let last = 0;
+      for (const date of dates) {
+        if (rawMap.has(date)) last = rawMap.get(date) ?? last;
+        byDate.set(date, last);
+      }
+      return { group, byDate };
+    });
     const result = new Map<string, Record<string, number>>();
     for (let di = 1; di < dates.length; di++) {
       const date = dates[di], prevDate = dates[di - 1];
