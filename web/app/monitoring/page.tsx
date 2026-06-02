@@ -1346,24 +1346,7 @@ export default function MonitoringPage() {
                   <TH w={colWidths["게시일"]} onResize={e => startResize("게시일", e)} {...sp("게시일")}>게시일</TH>
                   <TH w={colWidths["캡션"]} onResize={e => startResize("캡션", e)}>캡션</TH>
                   <TH w={colWidths["인플루언서"]} onResize={e => startResize("인플루언서", e)} {...sp("인플루언서")}>인플루언서</TH>
-                  <TH w={colWidths["카테고리"]} onResize={e => startResize("카테고리", e)} {...sp("카테고리")}>
-                    <span className="group/cat relative cursor-default">
-                      카테고리
-                      <div className="hidden group-hover/cat:block absolute top-full left-0 mt-1.5 z-[9999] bg-white border border-a-hairline rounded-[260px] rounded-[10px] shadow-lg py-2.5 w-[260px] normal-case tracking-normal font-normal pointer-events-none">
-                        {[
-                          { label: "A. 찐팬서사", color: "bg-blue-50 text-blue-700", desc: "심리적 진입장벽 낮춰 전환율↑" },
-                          { label: "B. 선망성",    color: "bg-purple-50 text-purple-700", desc: "라이프스타일 완성 아이템으로 검색↑" },
-                          { label: "C. 맛잘알",    color: "bg-green-50 text-green-700", desc: "'대체제 맛' 의구심 해소, 전환율↑" },
-                          { label: "D. 친근감",    color: "bg-amber-50 text-amber-700", desc: "생활 밀착형 실제 섭취로 전환율↑" },
-                        ].map(c => (
-                          <div key={c.label} className="flex items-start gap-2 px-3 py-1.5">
-                            <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full mt-0.5 ${c.color}`}>{c.label}</span>
-                            <span className="text-[11px] text-a-ink-muted leading-snug">{c.desc}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </span>
-                  </TH>
+                  <TH w={colWidths["카테고리"]} onResize={e => startResize("카테고리", e)} {...sp("카테고리")} title="A. 찐팬서사(심리적 진입장벽 낮춤) B. 선망성(라이프스타일 완성) C. 맛잘알(대체제 맛 의구심 해소) D. 친근감(생활 밀착형 섭취)">카테고리</TH>
                   <TH w={colWidths["상품명"]} onResize={e => startResize("상품명", e)} {...sp("상품명")}>상품명</TH>
                   <TH w={colWidths["프로젝트명"]} onResize={e => startResize("프로젝트명", e)} {...sp("프로젝트명")}>프로젝트명</TH>
                   <TH right w={colWidths["비용"]} onResize={e => startResize("비용", e)} {...sp("비용")}>비용</TH>
