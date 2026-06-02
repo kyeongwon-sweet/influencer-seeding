@@ -270,7 +270,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData 
           {yTicks.map((tick, i) => (
             <g key={i}>
               <line x1={0} y1={yS(tick)} x2={cw} y2={yS(tick)} stroke="#e5e7eb" strokeWidth="1" strokeDasharray="4,4" />
-              <text x={-8} y={yS(tick)} textAnchor="end" dominantBaseline="middle" fontSize="8.5" fill="#9ca3af">{fmtY(tick)}</text>
+              <text x={-8} y={yS(tick)} textAnchor="end" dominantBaseline="middle" fontSize="7" fill="#9ca3af">{fmtY(tick)}</text>
             </g>
           ))}
           <path d={areaPath} fill={`url(#${gradId})`} />
@@ -290,7 +290,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData 
             </>
           )}
           {xLabelIdxs.map(i => (
-            <text key={i} x={xS(i)} y={ch + 14} textAnchor="middle" fontSize="8.5" fill="#9ca3af">
+            <text key={i} x={xS(i)} y={ch + 14} textAnchor="middle" fontSize="7" fill="#9ca3af">
               {data[i].date.slice(5).replace("-", "/")}
             </text>
           ))}
@@ -1028,7 +1028,7 @@ export default function MonitoringPage() {
             {/* 차트 + 테이블 */}
             <div className="flex divide-x divide-a-hairline">
               {/* 차트 */}
-              <div className="flex-[5] px-5 py-4">
+              <div className="flex-[4] px-5 py-4">
                 <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest mb-2">조회수 트렌드 (누적)</p>
                 <LineChart
                   data={chartData}
@@ -1043,7 +1043,7 @@ export default function MonitoringPage() {
                 />
               </div>
               {/* 증감 테이블 */}
-              <div className="flex-[2] flex flex-col self-start min-w-[220px]">
+              <div className="flex-[3] flex flex-col self-start min-w-[220px]">
                 <div className="px-5 py-4 border-b border-a-hairline">
                   <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">일자별 증감</p>
                 </div>
