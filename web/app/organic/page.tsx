@@ -521,14 +521,14 @@ export default function OrganicPage() {
         </div>
       </div>
 
-      {/* 운영 가이드 메모 */}
-      <div className="mx-6 mt-5 mb-4 bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 rounded-lg px-5 py-4">
-        <p className="text-[13px] font-bold text-blue-800 mb-2.5">💬 무상 노출 대응 가이드</p>
-        <ul className="text-[13px] text-blue-700 space-y-1.5 list-none leading-relaxed">
-          <li className="font-semibold">• 우리가 언급된 자컨/콘텐츠에 감사댓글 + 공계 샤라웃</li>
-          <li className="pl-4 text-blue-600">주력 인물들에게만 좋아요+답글 달기</li>
-          <li className="pl-4 text-blue-600">귀여운 말투, 밈/유행에 업혀가기</li>
-          <li className="pl-4 text-blue-600">최대한 빠르게 달기</li>
+      {/* 무상 노출 가이드 */}
+      <div className="mx-6 mt-5 mb-4 bg-white border border-gray-200 rounded-lg px-5 py-4 shadow-sm">
+        <p className="text-sm font-semibold text-a-ink mb-2.5">무상 노출 가이드</p>
+        <ul className="text-[13px] text-a-ink-muted space-y-1 list-none leading-relaxed">
+          <li>• 우리가 언급된 자컨/콘텐츠에 감사댓글 달고, 공계로 샤라웃</li>
+          <li className="pl-4">주력 인물들에게만 좋아요+답글 달기</li>
+          <li className="pl-4">귀여운 말투, 밈/유행에 업혀가기</li>
+          <li className="pl-4">최대한 빠르게 달기</li>
         </ul>
       </div>
 
