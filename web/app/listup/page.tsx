@@ -113,6 +113,7 @@ export default function ListupPage() {
   const [colWidths, setColWidths] = useState<number[]>(INIT_COL_WIDTHS);
   const [showTimeoutError, setShowTimeoutError] = useState(false);
   const [blacklist, setBlacklist] = useState<{ account_name: string | null; url: string | null; reason: string | null }[]>([]);
+  const [blacklistAlert, setBlacklistAlert] = useState<{ reason: string; url?: string } | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [editName, setEditName] = useState<{ id: string; value: string } | null>(null);
   const [editNotes, setEditNotes] = useState<{ id: string; value: string } | null>(null);
@@ -276,7 +277,7 @@ export default function ListupPage() {
   async function addInfluencerManual() {
     if (!addForm.name || !addForm.url) return;
     const bl = checkBlacklist(addForm.url);
-    if (bl.blocked) { alert(`블랙 리스트입니다 (사유: ${bl.reason})`); return; }
+    if (bl.blocked) { setBlacklistAlert({ reason: bl.reason, url: addForm.url }); return; }
     setAddingManual(true);
     const platform = addForm.url.toLowerCase().includes("youtube") ? "youtube" : "instagram";
     await fetch("/api/influencers", {
@@ -329,7 +330,7 @@ export default function ListupPage() {
         } catch { name = rawUrl; }
       }
       const bl = checkBlacklist(url);
-      if (bl.blocked) { alert(`블랙 리스트입니다 (사유: ${bl.reason})\n[${url}]`); continue; }
+      if (bl.blocked) { setBlacklistAlert({ reason: bl.reason, url }); continue; }
       records.push({ name, url, platform, source: "listup", status: "pending", keyword });
     }
     if (records.length === 0) { toast("가져올 데이터가 없습니다.", "error"); return; }
@@ -715,6 +716,33 @@ export default function ListupPage() {
 
   return (
     <div className="min-h-screen">
+      {/* 블랙리스트 알림 모달 */}
+      {blacklistAlert && (
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[100]" onClick={() => setBlacklistAlert(null)}>
+          <div className="bg-white rounded-[20px] shadow-[0_8px_40px_rgba(0,0,0,0.18)] p-6 w-[440px] mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-lg">🚫</span>
+              <h2 className="text-base font-bold text-red-600">블랙리스트</h2>
+            </div>
+            {blacklistAlert.url && (
+              <p className="text-xs text-a-ink-muted mb-2 break-all">{blacklistAlert.url}</p>
+            )}
+            <p className="text-sm text-a-ink mb-1">
+              <span className="font-medium">사유:</span> {blacklistAlert.reason}
+            </p>
+            <a
+              href="https://app.notion.com/p/lalasweet/2025ver-1903b344ce7f80ad9c3fcc9b415419ce"
+              target="_blank" rel="noreferrer"
+              className="inline-block mt-3 text-xs text-a-blue hover:underline"
+            >
+              📋 인플루언서 리스트업 정량 기준 (노션) →
+            </a>
+            <div className="flex justify-end mt-4">
+              <button onClick={() => setBlacklistAlert(null)} className="btn-secondary">확인</button>
+            </div>
+          </div>
+        </div>
+      )}
       <header className="bg-white border-b border-gray-100 h-11 px-6 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-3">
           <Link href="/" className="text-gray-400 hover:text-a-ink transition text-sm">←</Link>
