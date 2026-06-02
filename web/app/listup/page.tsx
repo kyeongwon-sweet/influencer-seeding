@@ -719,25 +719,27 @@ export default function ListupPage() {
       {/* 블랙리스트 알림 모달 */}
       {blacklistAlert && (
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[100]" onClick={() => setBlacklistAlert(null)}>
-          <div className="bg-white rounded-[20px] shadow-[0_8px_40px_rgba(0,0,0,0.18)] p-6 w-[440px] mx-4" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-2 mb-3">
+          <div className="bg-white rounded-[20px] shadow-[0_8px_40px_rgba(0,0,0,0.18)] p-6 w-[400px] mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-4">
               <span className="text-lg">🚫</span>
               <h2 className="text-base font-bold text-red-600">블랙리스트</h2>
             </div>
-            {blacklistAlert.url && (
-              <p className="text-xs text-a-ink-muted mb-2 break-all">{blacklistAlert.url}</p>
-            )}
-            <p className="text-sm text-a-ink mb-1">
-              <span className="font-medium">사유:</span> {blacklistAlert.reason}
-            </p>
-            <a
-              href="https://app.notion.com/p/lalasweet/2025ver-1903b344ce7f80ad9c3fcc9b415419ce"
-              target="_blank" rel="noreferrer"
-              className="inline-block mt-3 text-xs text-a-blue hover:underline"
-            >
-              📋 인플루언서 리스트업 정량 기준 (노션) →
-            </a>
-            <div className="flex justify-end mt-4">
+            <div className="text-center space-y-2">
+              {blacklistAlert.url && (
+                <p className="text-xs text-a-ink-muted break-all">{blacklistAlert.url}</p>
+              )}
+              <p className="text-sm text-a-ink">
+                <span className="font-medium">사유:</span> {blacklistAlert.reason}
+              </p>
+              <a
+                href="https://app.notion.com/p/lalasweet/2025ver-1903b344ce7f80ad9c3fcc9b415419ce"
+                target="_blank" rel="noreferrer"
+                className="inline-block pt-1 text-xs text-a-blue hover:underline"
+              >
+                📋 인플루언서 리스트업 정량 기준 (노션) →
+              </a>
+            </div>
+            <div className="flex justify-center mt-5">
               <button onClick={() => setBlacklistAlert(null)} className="btn-secondary">확인</button>
             </div>
           </div>
