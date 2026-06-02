@@ -354,6 +354,7 @@ export default function MonitoringPage() {
   const [trendPost, setTrendPost] = useState<Post | null>(null);
   const [editCell, setEditCell] = useState<EditCell | null>(null);
   const [editCategory, setEditCategory] = useState<{ postId: string; infId: string; value: string } | null>(null);
+  const [editPlayCount, setEditPlayCount] = useState<{ postId: string; value: string } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -849,6 +850,23 @@ export default function MonitoringPage() {
       toast("저장에 실패했습니다.", "error");
     }
     setEditCell(null);
+  }
+
+  async function patchPlayCount(postId: string, value: string) {
+    const play_count = value === "" ? null : Number(value);
+    const res = await fetch(`/api/sponsored-posts/${postId}/stats`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ play_count }),
+    });
+    if (res.ok) {
+      setPosts(prev => prev.map(p => p.id === postId
+        ? { ...p, latest_stats: p.latest_stats ? { ...p.latest_stats, play_count } : { measured_at: new Date().toISOString().slice(0, 10), play_count, likes_count: null, comments_count: null } }
+        : p));
+    } else {
+      toast("저장에 실패했습니다.", "error");
+    }
+    setEditPlayCount(null);
   }
 
   async function patchCategory(postId: string, infId: string, value: string) {
@@ -1456,7 +1474,21 @@ export default function MonitoringPage() {
                           </span>
                         )}
                       </td>
-                      <TD right muted w={colWidths["조회수"]}>{fmt(s?.play_count)}</TD>
+                      <td style={{ minWidth: colWidths["조회수"] }}
+                        className="px-3 py-4 text-xs tabular-nums text-right whitespace-nowrap">
+                        {editPlayCount?.postId === post.id ? (
+                          <input autoFocus type="number" value={editPlayCount.value}
+                            onChange={e => setEditPlayCount(v => v ? { ...v, value: e.target.value } : null)}
+                            onBlur={() => patchPlayCount(post.id, editPlayCount.value)}
+                            onKeyDown={e => { if (e.key === "Enter") patchPlayCount(post.id, editPlayCount.value); if (e.key === "Escape") setEditPlayCount(null); }}
+                            className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
+                        ) : (
+                          <span onClick={() => setEditPlayCount({ postId: post.id, value: String(s?.play_count ?? "") })}
+                            className="text-a-ink-muted hover:text-a-blue transition-colors cursor-text">
+                            {fmt(s?.play_count)}
+                          </span>
+                        )}
+                      </td>
                       <TD right muted w={colWidths["조회당비용"]}>
                         {post.cost != null && s?.play_count != null && s.play_count > 0
                           ? (post.cost / s.play_count).toFixed(2) + "원"
