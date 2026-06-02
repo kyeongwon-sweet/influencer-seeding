@@ -377,7 +377,7 @@ export default function MonitoringPage() {
     if (filters.project && !(post.project_name ?? "").toLowerCase().includes(filters.project.toLowerCase())) return false;
     if (filters.products.length > 0 && !filters.products.includes(post.product_name ?? "")) return false;
     if (filters.type !== "all" && getPostType(post.url) !== filters.type) return false;
-    if (filters.channelType !== "all" && post.channel_type !== filters.channelType) return false;
+    if (filters.channelType !== "all" && (post.channel_type ?? "").replace(/\s+/g, "") !== filters.channelType.replace(/\s+/g, "")) return false;
     if (filters.category !== "all" && (post.influencers?.category ?? null) !== filters.category) return false;
     if (filters.dateFrom && (!post.posted_at || post.posted_at < filters.dateFrom)) return false;
     if (filters.dateTo && (!post.posted_at || post.posted_at > filters.dateTo)) return false;
