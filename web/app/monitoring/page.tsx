@@ -611,7 +611,7 @@ export default function MonitoringPage() {
         product_name: form.product_name || null,
         project_name: form.project_name || null,
         channel_type: form.channel_type || null,
-        cost: form.cost ? Number(form.cost) : null,
+        cost: form.cost !== "" ? Number(form.cost) : null,
       }),
     });
     setAdding(false);
@@ -658,8 +658,8 @@ export default function MonitoringPage() {
           url: cols[3] ?? "",
           account_name: cols[4] || null,
           posted_at: cols[5] || null,
-          cost: cols[6] ? Number(cols[6]) : null,
-          reach_count: cols[7] ? Number(cols[7]) : null,
+          cost: cols[6] !== undefined && cols[6] !== "" ? Number(cols[6]) : null,
+          reach_count: cols[7] !== undefined && cols[7] !== "" ? Number(cols[7]) : null,
         };
       }).filter(r => r.url);
       setCsvRows(rows);
