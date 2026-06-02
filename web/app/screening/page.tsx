@@ -148,6 +148,7 @@ export default function ScreeningPage() {
   const [kwRunning, setKwRunning] = useState(false);
   const [lastListupAt, setLastListupAt] = useState<string | null>(null);
   const [showTimeoutError, setShowTimeoutError] = useState(false);
+  const [blacklist, setBlacklist] = useState<{ account_name: string | null; url: string | null; reason: string | null }[]>([]);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const runningJobIdRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -190,6 +191,7 @@ export default function ScreeningPage() {
   }
 
   useEffect(() => {
+    fetch("/api/blacklist").then(r => r.ok ? r.json() : []).then(setBlacklist).catch(() => {});
     load();
     loadCriteria();
     checkAndResumeScreening();
@@ -805,6 +807,12 @@ export default function ScreeningPage() {
                               className="w-full text-sm font-medium bg-transparent border-b border-a-blue outline-none py-0.5" />
                           ) : (
                             <div className="flex items-center gap-1">
+                              {(() => {
+                                const handle = (s: string) => { try { const u = new URL(s); const p = u.pathname.split("/").filter(Boolean); return u.hostname.includes("youtube") ? (p.find(x => x.startsWith("@"))?.slice(1) ?? "") : (p[0] ?? ""); } catch { return ""; } };
+                                const infHandle = handle(inf.url ?? "");
+                                const bl = blacklist.find(b => { const bh = handle(b.url ?? ""); return bh && infHandle && bh.toLowerCase() === infHandle.toLowerCase(); });
+                                return bl ? <span title={`블랙리스트: ${bl.reason}`} className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-600 shrink-0 cursor-help">블랙</span> : null;
+                              })()}
                               <a href={inf.url} target="_blank" rel="noreferrer"
                                 className="inline-flex items-center gap-1 font-medium hover:text-a-blue transition-colors group/link min-w-0">
                                 <span className="truncate">{inf.name}</span>

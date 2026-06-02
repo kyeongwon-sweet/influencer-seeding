@@ -112,6 +112,7 @@ export default function ListupPage() {
   const [lastListupAt, setLastListupAt] = useState<string | null>(null);
   const [colWidths, setColWidths] = useState<number[]>(INIT_COL_WIDTHS);
   const [showTimeoutError, setShowTimeoutError] = useState(false);
+  const [blacklist, setBlacklist] = useState<{ account_name: string | null; url: string | null; reason: string | null }[]>([]);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [editName, setEditName] = useState<{ id: string; value: string } | null>(null);
   const [editNotes, setEditNotes] = useState<{ id: string; value: string } | null>(null);
@@ -148,6 +149,7 @@ export default function ListupPage() {
   const hasFilter = filters.name !== "" || filters.platform !== "all" || filters.status !== "all" || filters.keyword !== "all" || filters.uploadedFrom !== "" || filters.uploadedTo !== "";
 
   useEffect(() => {
+    fetch("/api/blacklist").then(r => r.ok ? r.json() : []).then(setBlacklist).catch(() => {});
     Promise.all([loadKeywords(), loadInfluencers()]).finally(() => setLoading(false));
     checkAndResumeListup();
     return () => {
@@ -251,8 +253,30 @@ export default function ListupPage() {
     }
   }
 
+  function checkBlacklist(url: string): { blocked: boolean; reason: string } {
+    const handle = (s: string) => {
+      try {
+        const u = new URL(s);
+        const parts = u.pathname.split("/").filter(Boolean);
+        if (u.hostname.includes("youtube")) { const at = parts.find(p => p.startsWith("@")); return at ? at.slice(1).toLowerCase() : ""; }
+        return (parts[0] ?? "").toLowerCase();
+      } catch { return s.toLowerCase(); }
+    };
+    const inHandle = handle(url);
+    for (const entry of blacklist) {
+      const storedHandle = entry.url ? handle(entry.url) : "";
+      if ((storedHandle && inHandle && storedHandle === inHandle) ||
+          (entry.url && url && entry.url.includes(inHandle) && inHandle.length > 2)) {
+        return { blocked: true, reason: entry.reason ?? "사유 없음" };
+      }
+    }
+    return { blocked: false, reason: "" };
+  }
+
   async function addInfluencerManual() {
     if (!addForm.name || !addForm.url) return;
+    const bl = checkBlacklist(addForm.url);
+    if (bl.blocked) { alert(`블랙 리스트입니다 (사유: ${bl.reason})`); return; }
     setAddingManual(true);
     const platform = addForm.url.toLowerCase().includes("youtube") ? "youtube" : "instagram";
     await fetch("/api/influencers", {
@@ -304,6 +328,8 @@ export default function ListupPage() {
           }
         } catch { name = rawUrl; }
       }
+      const bl = checkBlacklist(url);
+      if (bl.blocked) { alert(`블랙 리스트입니다 (사유: ${bl.reason})\n[${url}]`); continue; }
       records.push({ name, url, platform, source: "listup", status: "pending", keyword });
     }
     if (records.length === 0) { toast("가져올 데이터가 없습니다.", "error"); return; }
