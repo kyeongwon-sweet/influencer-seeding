@@ -5,8 +5,6 @@ import { normalizeYouTubeUrl, normalizeInstagramUrl } from "@/lib/url-utils";
 
 // ── 지표 계산 (metrics.py 포팅) ─────────────────────────────────────
 
-// 무조건 제외 키워드 (캡션 + 해시태그 텍스트 모두 체크)
-const AD_HARD_EXCLUDE = ['#광고', 'ad', '협찬', 'sponsored'];
 // 화이트리스트: 해당 키워드 있으면 자발적 언급으로 간주 → 광고 여부 체크 없이 수집
 const ORGANIC_WHITELIST = ['내돈내산'];
 
@@ -18,8 +16,12 @@ function isAd(post: Record<string, unknown>): boolean {
   // 내돈내산 있으면 자발적 언급 → 비광고
   if (ORGANIC_WHITELIST.some(k => fullText.includes(k))) return false;
 
-  // 캡션·해시태그 어디에든 광고 키워드 있으면 제외
-  return AD_HARD_EXCLUDE.some(k => fullText.includes(k.toLowerCase()));
+  // (광고) 또는 #광고 패턴만 제외 ("광고 아님" 같은 경우는 통과)
+  if (fullText.includes('(광고)') || fullText.includes('#광고')) return true;
+
+  // 기존: #협찬 #ad #sponsored 해시태그 제외
+  const adHashtags = new Set(['협찬', 'ad', 'sponsored']);
+  return hashtags.some(h => adHashtags.has(h));
 }
 
 function isReel(post: Record<string, unknown>): boolean {

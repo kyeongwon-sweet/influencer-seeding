@@ -392,6 +392,10 @@ export default function OrganicPage() {
   }
 
   const filtered = mentions.filter(m => {
+    // (광고) 또는 #광고 패턴만 제외 (내돈내산 있으면 통과)
+    const cap = (m.content_summary ?? '').toLowerCase();
+    if (!cap.includes('내돈내산') && (cap.includes('(광고)') || cap.includes('#광고'))) return false;
+
     if (filters.name && !(m.account_name ?? "").toLowerCase().includes(filters.name.toLowerCase())) return false;
     if (filters.platform !== "all" && normPlatform(m.platform) !== filters.platform) return false;
     if (filters.products.length > 0) {
