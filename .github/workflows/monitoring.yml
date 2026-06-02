@@ -28,3 +28,8 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           JOB_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
         run: cd scripts && python run_monitoring.py
+
+      - name: Collect brand metrics (YouTube + Instagram)
+        run: |
+          curl -s -X POST "${{ secrets.APP_URL }}/api/brand-metrics/collect" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
