@@ -393,6 +393,10 @@ export default function DashboardPage() {
                         {count && <span className="text-xs text-a-ink-muted">{count}</span>}
                       </div>
                       <div className="flex items-center gap-3 flex-shrink-0">
+                        {job.user_email
+                          ? <span className="text-[11px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-500 font-medium whitespace-nowrap">직접 실행</span>
+                          : <span className="text-[11px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-400 font-medium whitespace-nowrap">자동 실행</span>
+                        }
                         {job.user_email && (
                           <span className="text-xs text-gray-400 hidden sm:block truncate max-w-[140px]">{job.user_email}</span>
                         )}
