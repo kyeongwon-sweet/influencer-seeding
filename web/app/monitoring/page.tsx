@@ -1217,7 +1217,6 @@ export default function MonitoringPage() {
                       onChange={toggleSelectAll} />
                   </th>
                   <TH col="증분량" w={stickyColWidths["증분량"]} leftPos={stickyLefts["증분량"]} onResize={e => startResize("증분량", e, true)} right {...sp("증분량")}>증분량</TH>
-                  <TH w={colWidths["카테고리"]} onResize={e => startResize("카테고리", e)} {...sp("카테고리")}>카테고리</TH>
                   <TH w={colWidths["채널분류"]} onResize={e => startResize("채널분류", e)} {...sp("채널분류")}>
                     <span className="relative group/ct cursor-default">
                       채널 분류
@@ -1229,6 +1228,7 @@ export default function MonitoringPage() {
                   <TH w={colWidths["게시일"]} onResize={e => startResize("게시일", e)} {...sp("게시일")}>게시일</TH>
                   <TH w={colWidths["캡션"]} onResize={e => startResize("캡션", e)}>캡션</TH>
                   <TH w={colWidths["인플루언서"]} onResize={e => startResize("인플루언서", e)} {...sp("인플루언서")}>인플루언서</TH>
+                  <TH w={colWidths["카테고리"]} onResize={e => startResize("카테고리", e)} {...sp("카테고리")}>카테고리</TH>
                   <TH w={colWidths["상품명"]} onResize={e => startResize("상품명", e)} {...sp("상품명")}>상품명</TH>
                   <TH w={colWidths["프로젝트명"]} onResize={e => startResize("프로젝트명", e)} {...sp("프로젝트명")}>프로젝트명</TH>
                   <TH right w={colWidths["비용"]} onResize={e => startResize("비용", e)} {...sp("비용")}>비용</TH>
@@ -1261,12 +1261,6 @@ export default function MonitoringPage() {
                               {delta > 0 ? "+" : ""}{delta.toLocaleString()}
                             </span>
                           );
-                        })()}
-                      </TD>
-                      <TD muted w={colWidths["카테고리"]}>
-                        {(() => {
-                          const cat = CATEGORIES.find(c => c.value === post.influencers?.category);
-                          return cat ? <span title={cat.value}>{cat.desc}</span> : <span className="text-gray-300">-</span>;
                         })()}
                       </TD>
                       <TD muted w={colWidths["채널분류"]}>
@@ -1341,6 +1335,12 @@ export default function MonitoringPage() {
                             </button>
                           </div>
                         )}
+                      </TD>
+                      <TD muted w={colWidths["카테고리"]}>
+                        {(() => {
+                          const cat = CATEGORIES.find(c => c.value === post.influencers?.category);
+                          return cat ? <span title={cat.value}>{cat.desc}</span> : <span className="text-gray-300">-</span>;
+                        })()}
                       </TD>
                       <TD muted w={colWidths["상품명"]}>
                         {editCell?.postId === post.id && editCell?.field === "product_name" ? (
