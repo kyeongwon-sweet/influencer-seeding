@@ -1118,13 +1118,14 @@ export default function MonitoringPage() {
             { label: "이번달", from: monthStart,  to: todayStr },
           ];
           return (
-            <div className="flex items-center gap-1.5 px-5 pb-1.5">
+            <div className="flex items-center gap-1.5 px-4 py-2 bg-white rounded-[10px] border border-a-hairline mb-3">
+              <span className="text-[10px] text-a-ink-muted mr-1 whitespace-nowrap">조회수 기간</span>
               {presets.map(p => {
                 const active = filters.dateFrom === p.from && filters.dateTo === p.to;
                 return (
                   <button key={p.label}
                     onClick={() => setFilters(prev => ({ ...prev, dateFrom: p.from, dateTo: p.to }))}
-                    className={`text-[11px] px-2.5 py-0.5 rounded-full border transition ${active ? "border-a-blue bg-blue-50 text-a-blue font-medium" : "border-a-hairline text-a-ink-muted hover:border-gray-400"}`}>
+                    className={`text-[11px] px-3 py-1 rounded-full border transition-all ${active ? "border-a-blue bg-a-blue text-white font-medium" : "border-a-hairline text-a-ink-muted hover:border-a-blue hover:text-a-blue bg-white"}`}>
                     {p.label}
                   </button>
                 );
