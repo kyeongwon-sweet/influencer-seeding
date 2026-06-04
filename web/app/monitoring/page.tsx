@@ -1236,11 +1236,11 @@ export default function MonitoringPage() {
             <option value="all">전체 유형</option>
             {POST_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
-          <div className="relative -ml-4">
+          <div className="relative">
             <button
               onClick={() => setShowChannelTypeDropdown(!showChannelTypeDropdown)}
               className={`filter-select w-32 ${filters.channelTypes.length > 0 ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
-              style={{ padding: "6px 26px 6px 0" }}
+              style={{ padding: "6px 26px 6px 0", marginLeft: "-12px" }}
             >
               {filters.channelTypes.length === 0
                 ? "전체 채널분류"
