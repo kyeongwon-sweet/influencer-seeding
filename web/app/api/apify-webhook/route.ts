@@ -605,24 +605,28 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
     for (const item of items) {
       // #광고·#협찬 태그 포함 게시물 제외
       if (isAd(item)) continue;
-      // 릴스만 수집
-      if (!isReel(item)) continue;
 
       const owner = (item.owner as Record<string, unknown>) || {};
       const followers = (item.ownerFollowersCount || owner.followersCount || 0) as number;
-      const viewCount = (item.videoPlayCount || item.videoViewCount || 0) as number;
       const username = (item.ownerUsername || owner.username) as string;
       const bio = ((owner.biography as string) || '').toLowerCase();
 
       if (!username) continue;
 
-      // 필터 1: 50만 이상 팔로워 + 50만 이상 뷰 + 아이돌/연예인
+      // 필터: 50만+ 팔로워 또는 아이돌/연예인이어야 수집 (릴스 + 피드 모두)
       const hasSufficientFollowers = followers >= ORGANIC_MIN_FOLLOWERS;
-      const hasSufficientViews = viewCount >= ORGANIC_MIN_VIEWS;
       const isCelebrity_ = isCelebrity(username, followers, bio);
 
-      // 50만+ 팔로워 또는 50만+ 뷰 또는 아이돌/연예인이어야 수집
-      if (!hasSufficientFollowers && !hasSufficientViews && !isCelebrity_) continue;
+      if (!hasSufficientFollowers && !isCelebrity_) continue;
+
+      // 릴스: 조회수 추출, 피드: 좋아요 사용
+      let viewCount = 0;
+      if (isReel(item)) {
+        viewCount = (item.videoPlayCount || item.videoViewCount || 0) as number;
+      } else {
+        // 피드: 좋아요로 대체 (조회수 없음)
+        viewCount = (item.likesCount || item.likes || 0) as number;
+      }
       const shortCode = item.shortCode as string | undefined;
       const url = (item.url as string) || (shortCode ? `https://www.instagram.com/p/${shortCode}/` : null);
       if (!url) continue;
@@ -632,6 +636,7 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
         ? new Date(rawTs * 1000).toISOString().slice(0, 10)
         : rawTs ? (rawTs as string).slice(0, 10) : null;
 
+      const postType = isReel(item) ? 'reel' : 'feed';
       rows.push({
         url,
         account_name: username,
@@ -641,15 +646,25 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
         view_count: viewCount > 0 ? viewCount : null,
         source: 'apify',
       });
+      console.log(`[LOG] Instagram ${postType} 수집: ${username} - ${viewCount} views/likes`);
     }
   } else if (platform === 'tiktok') {
+    console.log(`[LOG] TikTok 처리 시작: ${items.length}개 아이템`);
+    let tiktokCount = 0;
     for (const item of items) {
       if (isAd(item)) continue;
       const url = (item.webVideoUrl || item.url) as string;
-      if (!url) continue;
+      if (!url) {
+        console.log(`[WARN] TikTok URL 없음`);
+        continue;
+      }
       const viewCount = (item.playCount || item.plays || 0) as number;
       // 50만 이상 뷰 필터
-      if (viewCount < ORGANIC_MIN_VIEWS) continue;
+      if (viewCount < ORGANIC_MIN_VIEWS) {
+        console.log(`[WARN] TikTok 뷰 부족: ${viewCount} < ${ORGANIC_MIN_VIEWS}`);
+        continue;
+      }
+      tiktokCount++;
       const rawTs = item.createTime || item.createTimeISO;
       const uploadedAt = typeof rawTs === 'number'
         ? new Date(rawTs * 1000).toISOString().slice(0, 10)
@@ -664,6 +679,7 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
         source: 'apify',
       });
     }
+    console.log(`[LOG] TikTok 수집 완료: ${tiktokCount}건 저장`);
   } else if (platform === 'twitter') {
     for (const item of items) {
       if (isAd(item)) continue;
@@ -689,6 +705,7 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
       if (isAd(item)) continue;
       const url = (item.url || item.link) as string;
       if (!url) continue;
+      const viewCount = (item.viewCount || item.views || item.readCount || 0) as number;
       const rawTs = item.date || item.publishedAt;
       const uploadedAt = rawTs ? (rawTs as string).slice(0, 10) : null;
       rows.push({
@@ -697,7 +714,7 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
         platform: 'blog',
         content_summary: ((item.title || item.description) as string)?.slice(0, 300) || null,
         uploaded_at: uploadedAt,
-        view_count: null,
+        view_count: viewCount || null,
         source: 'apify',
       });
     }
@@ -706,10 +723,11 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
       if (isAd(item)) continue;
       const url = (item.url || item.permalink) as string;
       if (!url) continue;
-      const viewCount = (item.likeCount || item.likes || 0) as number;  // Threads는 조회수 대신 좋아요 사용
-      // 50만 이상 뷰/좋아요 필터
-      if (viewCount < ORGANIC_MIN_VIEWS) continue;
-      const rawTs = item.takenAt || item.timestamp;
+      const viewCount = (item.viewCount || item.views || 0) as number;
+      const likeCount = (item.likeCount || item.likes || 0) as number;
+      // 필터 완화: 조회수 10만 이상 OR 좋아요 1만 이상 (Threads는 데이터 적음)
+      if (viewCount < 100_000 && likeCount < 10_000) continue;
+      const rawTs = item.takenAt || item.timestamp || item.createdAt;
       const uploadedAt = typeof rawTs === 'number'
         ? new Date(rawTs * 1000).toISOString().slice(0, 10)
         : rawTs ? (rawTs as string).slice(0, 10) : null;
@@ -719,7 +737,7 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
         platform: 'threads',
         content_summary: (item.caption || item.text as string)?.slice(0, 300) || null,
         uploaded_at: uploadedAt,
-        view_count: null,
+        view_count: viewCount || likeCount || null,
         source: 'apify',
       });
     }
