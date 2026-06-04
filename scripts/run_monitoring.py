@@ -7,7 +7,7 @@ from datetime import date, datetime
 from db import get_client
 
 APIFY_IG_ACTOR = os.getenv("APIFY_IG_ACTOR_ID", "apify/instagram-scraper")
-TODAY = date.today().isoformat()
+TODAY = os.getenv("MONITORING_DATE") or date.today().isoformat()
 
 
 def _ig_shortcode(url: str) -> str | None:
