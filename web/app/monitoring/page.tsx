@@ -1268,8 +1268,8 @@ export default function MonitoringPage() {
           <div className="relative">
             <button
               onClick={() => setShowChannelTypeDropdown(!showChannelTypeDropdown)}
-              className={`filter-select w-32 ${filters.channelTypes.length > 0 ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
-              style={{ padding: "6px 26px 6px 0", marginLeft: "-16px !important" }}
+              className={`filter-select w-32 -ml-4 ${filters.channelTypes.length > 0 ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
+              style={{ padding: "6px 26px 6px 0" }}
             >
               {filters.channelTypes.length === 0
                 ? "전체 채널분류"
