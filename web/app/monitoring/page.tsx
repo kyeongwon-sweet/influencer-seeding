@@ -2030,16 +2030,12 @@ export default function MonitoringPage() {
                 className="text-a-ink-muted hover:text-a-ink text-xl leading-none transition">×</button>
             </div>
             <p className="text-[11px] text-a-ink-muted mb-3">
-              {(trendPost.all_stats ?? []).some(s => s.play_count != null) ? "조회수 · 광고비 트렌드" : "좋아요 트렌드"}
+              조회수 트렌드
             </p>
             <div className="flex items-center gap-3 mb-3 text-xs">
               <div className="flex items-center gap-1.5">
                 <div className="w-2 h-0.5 bg-a-blue" />
                 <span className="text-a-ink-muted">조회수</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-2 h-0.5 bg-orange-600" />
-                <span className="text-a-ink-muted">광고비</span>
               </div>
               {trendLoading && <span className="text-gray-300">로딩 중...</span>}
             </div>
