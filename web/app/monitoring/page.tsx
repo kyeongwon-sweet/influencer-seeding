@@ -1424,38 +1424,42 @@ export default function MonitoringPage() {
               ))}
             </div>
             {/* 차트 + 테이블 */}
-            <div className="flex divide-x divide-a-hairline">
+            <div className="flex divide-x divide-a-hairline gap-0">
               {/* 차트 */}
-              <div className="flex-1 px-6 py-5 min-w-0">
-                <div className="flex items-center justify-between mb-3 gap-4">
-                  <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest whitespace-nowrap">조회수 트렌드 (누적)</p>
-                  <div className="flex items-center gap-3 text-xs flex-shrink-0">
+              <div className="flex-[2] px-6 py-5">
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">조회수 트렌드 (누적)</p>
+                  </div>
+                  <div className="flex items-center gap-4">
                     <div className="flex items-center gap-1.5">
                       <div className="w-2 h-0.5 bg-a-blue" />
-                      <span className="text-a-ink-muted">조회수</span>
+                      <span className="text-xs text-a-ink-muted">조회수</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <div className="w-2 h-0.5 bg-gray-400" />
-                      <span className="text-a-ink-muted">광고비</span>
+                      <span className="text-xs text-a-ink-muted">광고비</span>
                     </div>
                   </div>
                 </div>
-                <LineChart
-                  data={chartData}
-                  height={160}
-                  gradId="summaryGrad"
-                  lsData={lsSearchData}
-                  secondaryData={mainAdCosts.length > 0 ? mainAdCosts.map(d => ({date: d.date, value: d.total_cost})) : undefined}
-                  secondaryColor="#b3b3b3"
-                  postsOnDate={(date) =>
-                    filteredPosts
-                      .filter(p => p.posted_at?.slice(0, 10) === date)
-                      .map(p => ({ name: p.account_name ?? p.influencers?.name ?? '-', url: p.url }))
-                  }
-                />
+                <div className="mt-4">
+                  <LineChart
+                    data={chartData}
+                    height={180}
+                    gradId="summaryGrad"
+                    lsData={lsSearchData}
+                    secondaryData={mainAdCosts.length > 0 ? mainAdCosts.map(d => ({date: d.date, value: d.total_cost})) : undefined}
+                    secondaryColor="#b3b3b3"
+                    postsOnDate={(date) =>
+                      filteredPosts
+                        .filter(p => p.posted_at?.slice(0, 10) === date)
+                        .map(p => ({ name: p.account_name ?? p.influencers?.name ?? '-', url: p.url }))
+                    }
+                  />
+                </div>
               </div>
               {/* 증감 테이블 */}
-              <div className="flex-1 flex flex-col self-start min-w-[250px]">
+              <div className="flex-1 flex flex-col self-start">
                 <div className="px-5 py-4 border-b border-a-hairline">
                   <p className="text-[11px] font-medium text-a-ink-muted">일자별 증감</p>
                 </div>
