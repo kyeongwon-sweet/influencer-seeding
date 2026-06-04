@@ -32,8 +32,8 @@ type Post = {
 
 type CsvRow = { url: string; project_name: string | null; product_name: string | null; channel_type: string | null; account_name: string | null; posted_at: string | null; cost: number | null; reach_count: number | null };
 
-type Filters = { name: string; project: string; products: string[]; type: string; channelType: string; category: string; dateFrom: string; dateTo: string };
-const INIT_FILTERS: Filters = { name: "", project: "", products: [], type: "all", channelType: "all", category: "all", dateFrom: "", dateTo: "" };
+type Filters = { name: string; project: string; products: string[]; type: string; channelTypes: string[]; category: string; dateFrom: string; dateTo: string };
+const INIT_FILTERS: Filters = { name: "", project: "", products: [], type: "all", channelTypes: [], category: "all", dateFrom: "", dateTo: "" };
 type EditCell = { postId: string; field: "project_name" | "product_name" | "channel_type" | "cost" | "reach_count" | "account_name" | "posted_at" | "notes" | "content_summary"; value: string };
 const POST_TYPES = ["릴스", "피드", "숏폼", "롱폼"];
 const CHANNEL_TYPES = [
@@ -389,7 +389,7 @@ export default function MonitoringPage() {
     if (filters.project && !(post.project_name ?? "").toLowerCase().includes(filters.project.toLowerCase())) return false;
     if (filters.products.length > 0 && !filters.products.includes(post.product_name ?? "")) return false;
     if (filters.type !== "all" && getPostType(post.url) !== filters.type) return false;
-    if (filters.channelType !== "all" && (post.channel_type ?? "").replace(/\s+/g, "") !== filters.channelType.replace(/\s+/g, "")) return false;
+    if (filters.channelTypes.length > 0 && !filters.channelTypes.some(ct => (post.channel_type ?? "").replace(/\s+/g, "") === ct.replace(/\s+/g, ""))) return false;
     if (filters.category !== "all" && (post.influencers?.category ?? null) !== filters.category) return false;
     // 날짜 필터: 조회수 측정일 기준 (해당 기간에 측정 데이터가 있는 게시물만 표시)
     if (filters.dateFrom || filters.dateTo) {
@@ -406,7 +406,7 @@ export default function MonitoringPage() {
     new Set(posts.map(p => p.product_name).filter((p): p is string => Boolean(p)))
   ).sort();
 
-  const hasFilter = filters.name !== "" || filters.project !== "" || filters.products.length > 0 || filters.type !== "all" || filters.channelType !== "all" || filters.category !== "all" || filters.dateFrom !== "" || filters.dateTo !== "";
+  const hasFilter = filters.name !== "" || filters.project !== "" || filters.products.length > 0 || filters.type !== "all" || filters.channelTypes.length > 0 || filters.category !== "all" || filters.dateFrom !== "" || filters.dateTo !== "";
   const colSpan = 17;
 
   const lastMonitoredAt = posts.length > 0
@@ -864,7 +864,13 @@ export default function MonitoringPage() {
     });
     if (res.ok) {
       const stored = isNumeric ? (value === "" ? null : Number(value)) : (value || null);
-      setPosts(prev => prev.map(p => p.id === postId ? { ...p, [field]: stored } : p));
+      const now = new Date().toISOString();
+      setPosts(prev => prev.map(p => p.id === postId ? {
+        ...p,
+        [field]: stored,
+        // 편집 시 마지막 업데이트 시간 갱신
+        latest_stats: p.latest_stats ? { ...p.latest_stats, measured_at: now } : { measured_at: now, play_count: null, likes_count: null, comments_count: null }
+      } : p));
     } else {
       toast("저장에 실패했습니다.", "error");
     }
@@ -976,6 +982,22 @@ export default function MonitoringPage() {
             </svg>
             사용 안내
           </button>
+          <button onClick={async () => {
+            const res = await fetch("/api/sponsored-posts?normalize=true");
+            const data = await res.json();
+            if (res.ok) {
+              toast(`${data.updated}개 URL 정규화 완료 (전체 ${data.total}개)`, "success");
+              refresh();
+            } else {
+              toast(data.error || "URL 정규화 실패", "error");
+            }
+          }}
+            className="flex items-center gap-1.5 text-xs text-a-ink-muted hover:text-a-ink transition">
+            <svg width="13" height="13" viewBox="0 0 20 20" fill="none">
+              <path d="M10 2v16M2 10h16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            URL 정규화
+          </button>
           {lastMonitoredAt && (
             <span className="text-xs text-a-ink-muted whitespace-nowrap">
               마지막 업데이트 <span className="font-medium text-a-ink">{formatTimestamp(lastMonitoredAt)}</span>
@@ -1059,14 +1081,35 @@ export default function MonitoringPage() {
             <option value="all">전체 유형</option>
             {POST_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
-          <select
-            value={filters.channelType}
-            onChange={e => setFilters(p => ({ ...p, channelType: e.target.value }))}
-            className={`filter-select ${filters.channelType !== "all" ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
-          >
-            <option value="all">전체 채널분류</option>
-            {CHANNEL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
+          <div className={`filter-select-group ${filters.channelTypes.length > 0 ? "border-a-blue text-a-blue bg-blue-50" : ""}`}>
+            <label className="filter-label">채널분류</label>
+            <div className="filter-checkbox-group">
+              <label key="all-ch" className="filter-checkbox">
+                <input
+                  type="checkbox"
+                  checked={filters.channelTypes.length === 0}
+                  onChange={() => setFilters(p => ({ ...p, channelTypes: [] }))}
+                />
+                전체
+              </label>
+              {CHANNEL_TYPES.map(t => (
+                <label key={t} className="filter-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={filters.channelTypes.includes(t)}
+                    onChange={e => {
+                      if (e.target.checked) {
+                        setFilters(p => ({ ...p, channelTypes: [...p.channelTypes, t] }));
+                      } else {
+                        setFilters(p => ({ ...p, channelTypes: p.channelTypes.filter(x => x !== t) }));
+                      }
+                    }}
+                  />
+                  {t}
+                </label>
+              ))}
+            </div>
+          </div>
           <select
             value={filters.category}
             onChange={e => setFilters(p => ({ ...p, category: e.target.value }))}

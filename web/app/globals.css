@@ -37,6 +37,22 @@ body {
   .filter-input {
     @apply border border-a-hairline rounded-[8px] px-3 py-1.5 text-xs bg-white text-a-ink placeholder:text-a-ink-muted focus:outline-none focus:border-a-blue transition;
   }
+  .filter-select-group {
+    @apply border border-a-hairline rounded-[8px] bg-white text-a-ink transition;
+    padding: 8px 10px;
+  }
+  .filter-label {
+    @apply block text-xs font-medium text-a-ink-muted mb-2;
+  }
+  .filter-checkbox-group {
+    @apply flex flex-wrap gap-2;
+  }
+  .filter-checkbox {
+    @apply inline-flex items-center gap-2 text-xs cursor-pointer text-a-ink hover:text-a-blue transition;
+  }
+  .filter-checkbox input {
+    @apply w-3.5 h-3.5 accent-a-blue cursor-pointer;
+  }
 
   /* ── Selects (appearance-none + custom arrow) ─ */
   .filter-select {

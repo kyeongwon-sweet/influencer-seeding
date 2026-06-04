@@ -2,7 +2,56 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 
-export async function GET() {
+// UTM 등 트래킹 파라미터 제거 → 정규화된 URL 반환
+function cleanPostUrl(raw: string): string {
+  try {
+    const u = new URL(raw);
+    // path만 유지 (쿼리 스트링 전체 제거)
+    const path = u.pathname.endsWith("/") ? u.pathname : u.pathname + "/";
+    return `${u.origin}${path}`;
+  } catch { return raw; }
+}
+
+export async function GET(req: NextRequest) {
+  // URL 정규화 마이그레이션 엔드포인트
+  const url = new URL(req.url);
+  if (url.searchParams.has('normalize')) {
+    const { userId } = await auth();
+    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const supabase = getServerSupabase();
+
+    // 모든 게시물 조회
+    const { data: posts, error: fetchError } = await supabase
+      .from("sponsored_posts")
+      .select("id, url");
+
+    if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
+
+    const postsArray = posts ?? [];
+    let updatedCount = 0;
+
+    // 각 게시물의 URL 정규화
+    for (const post of postsArray) {
+      const cleaned = cleanPostUrl(post.url);
+      if (post.url !== cleaned) {
+        const { error } = await supabase
+          .from("sponsored_posts")
+          .update({ url: cleaned })
+          .eq("id", post.id);
+
+        if (!error) updatedCount++;
+      }
+    }
+
+    return NextResponse.json({
+      message: `${updatedCount}개 URL 정규화 완료`,
+      updated: updatedCount,
+      total: postsArray.length
+    });
+  }
+
+  // 기본 GET 요청
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -35,16 +84,6 @@ export async function GET() {
   });
 
   return NextResponse.json(result);
-}
-
-// UTM 등 트래킹 파라미터 제거 → 정규화된 URL 반환
-function cleanPostUrl(raw: string): string {
-  try {
-    const u = new URL(raw);
-    // path만 유지 (쿼리 스트링 전체 제거)
-    const path = u.pathname.endsWith("/") ? u.pathname : u.pathname + "/";
-    return `${u.origin}${path}`;
-  } catch { return raw; }
 }
 
 export async function POST(req: NextRequest) {

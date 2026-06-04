@@ -598,155 +598,132 @@ function isCelebrity(username: string, followers: number, bio: string = ''): boo
   return CELEBRITY_KEYWORDS.some(k => text.includes(k));
 }
 
+// Helper: 날짜 파싱 (다양한 형식 지원)
+function parseDate(rawTs: unknown): string | null {
+  if (!rawTs) return null;
+  if (typeof rawTs === 'number') {
+    return new Date(rawTs * 1000).toISOString().slice(0, 10);
+  }
+  if (typeof rawTs === 'string') {
+    return rawTs.slice(0, 10);
+  }
+  return null;
+}
+
+// Helper: 공통 처리 로직
+function buildRow(item: Record<string, unknown>, platform: string, url: string, overrides?: Partial<Record<string, unknown>>) {
+  return {
+    url,
+    account_name: overrides?.account_name || null,
+    platform,
+    content_summary: overrides?.content_summary || null,
+    uploaded_at: overrides?.uploaded_at || null,
+    view_count: overrides?.view_count || null,
+    source: 'apify',
+    ...overrides,
+  };
+}
+
 async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, jobId: string, items: Record<string, unknown>[], platform: string) {
   const rows: Record<string, unknown>[] = [];
+  let collectedCount = 0;
 
-  if (platform === 'tiktok') {
-    console.log(`[LOG] TikTok 처리 시작: ${items.length}개 아이템`);
-    let tiktokCount = 0;
-    for (const item of items) {
-      if (isAd(item)) continue;
-      const url = (item.webVideoUrl || item.url) as string;
-      if (!url) {
-        console.log(`[WARN] TikTok URL 없음`);
-        continue;
-      }
-      const viewCount = (item.playCount || item.plays || 0) as number;
-      // 50만 이상 뷰 필터
-      if (viewCount < ORGANIC_MIN_VIEWS) {
-        console.log(`[WARN] TikTok 뷰 부족: ${viewCount} < ${ORGANIC_MIN_VIEWS}`);
-        continue;
-      }
-      tiktokCount++;
-      const rawTs = item.createTime || item.createTimeISO;
-      const uploadedAt = typeof rawTs === 'number'
-        ? new Date(rawTs * 1000).toISOString().slice(0, 10)
-        : rawTs ? (rawTs as string).slice(0, 10) : null;
-      rows.push({
-        url,
-        account_name: (item.authorMeta as { name?: string } | undefined)?.name || (item.author as string) || null,
-        platform: 'tiktok',
-        content_summary: (item.text as string)?.slice(0, 300) || null,
-        uploaded_at: uploadedAt,
-        view_count: viewCount || null,
-        source: 'apify',
-      });
-    }
-    console.log(`[LOG] TikTok 수집 완료: ${tiktokCount}건 저장`);
-  } else if (platform === 'twitter') {
-    for (const item of items) {
-      if (isAd(item)) continue;
-      const url = (item.url || item.tweetUrl) as string;
-      if (!url) continue;
-      const viewCount = (item.viewCount || item.views || 0) as number;
-      // 50만 이상 뷰 필터
-      if (viewCount < ORGANIC_MIN_VIEWS) continue;
-      const rawTs = item.createdAt || item.created_at;
-      const uploadedAt = rawTs ? new Date(rawTs as string).toISOString().slice(0, 10) : null;
-      rows.push({
-        url,
-        account_name: (item.author as { userName?: string } | undefined)?.userName || (item.username as string) || null,
-        platform: 'x',
-        content_summary: (item.fullText || item.text as string)?.slice(0, 300) || null,
-        uploaded_at: uploadedAt,
-        view_count: viewCount || null,
-        source: 'apify',
-      });
-    }
-  } else if (platform === 'blog') {
-    for (const item of items) {
-      if (isAd(item)) continue;
-      const url = (item.url || item.link) as string;
-      if (!url) continue;
-      const viewCount = (item.viewCount || item.views || item.readCount || 0) as number;
-      const rawTs = item.date || item.publishedAt;
-      const uploadedAt = rawTs ? (rawTs as string).slice(0, 10) : null;
-      rows.push({
-        url,
-        account_name: (item.author || item.blogName) as string || null,
-        platform: 'blog',
-        content_summary: ((item.title || item.description) as string)?.slice(0, 300) || null,
-        uploaded_at: uploadedAt,
-        view_count: viewCount || null,
-        source: 'apify',
-      });
-    }
-  } else if (platform === 'threads') {
-    for (const item of items) {
-      if (isAd(item)) continue;
-      const url = (item.url || item.permalink) as string;
-      if (!url) continue;
-      const viewCount = (item.viewCount || item.views || 0) as number;
-      const likeCount = (item.likeCount || item.likes || 0) as number;
-      // 필터 완화: 조회수 10만 이상 OR 좋아요 1만 이상 (Threads는 데이터 적음)
-      if (viewCount < 100_000 && likeCount < 10_000) continue;
-      const rawTs = item.takenAt || item.timestamp || item.createdAt;
-      const uploadedAt = typeof rawTs === 'number'
-        ? new Date(rawTs * 1000).toISOString().slice(0, 10)
-        : rawTs ? (rawTs as string).slice(0, 10) : null;
-      rows.push({
-        url,
-        account_name: (item.username || item.ownerUsername) as string || null,
-        platform: 'threads',
-        content_summary: (item.caption || item.text as string)?.slice(0, 300) || null,
-        uploaded_at: uploadedAt,
-        view_count: viewCount || likeCount || null,
-        source: 'apify',
-      });
-    }
-  } else if (platform === 'youtube') {
-    for (const item of items) {
-      const rawUrl = item.url as string;
-      // 쇼츠만 수집 (URL에 /shorts/ 포함 여부로 판별)
-      if (!rawUrl || !rawUrl.includes('/shorts/')) continue;
+  console.log(`[LOG] ${platform.toUpperCase()} 처리 시작: ${items.length}개`);
 
-      // 비디오 URL 정리 (쿼리파라미터 제거, 채널 URL로 normalize하지 않음)
-      let cleanUrl: string;
-      try {
-        const u = new URL(rawUrl.startsWith('http') ? rawUrl : 'https://' + rawUrl);
-        cleanUrl = `https://www.youtube.com${u.pathname}`;
-      } catch { continue; }
+  for (const item of items) {
+    // 공통 필터: 광고 확인
+    if (isAd(item)) continue;
 
-      const title = (item.title as string) || '';
-      const description = ((item.description || item.details) as string) || '';
-      const thumbnail = (item.thumbnail as string) || '';
-      const comments = ((item.comments || []) as any[]).map(c => (c.text || c.comment || '')).join(' ');
-      const textContent = (title + ' ' + description + ' ' + thumbnail + ' ' + comments).toLowerCase();
+    let url: string | null = null;
+    let viewCount = 0;
+    let accountName: string | null = null;
+    let contentSummary: string | null = null;
+    let uploadedAt: string | null = null;
 
-      // 필터 1: 제목/설명/썸네일/댓글에 "라라스윗" 또는 "lalasweet" 포함
-      const hasKeyword = textContent.includes('라라스윗') || textContent.includes('lalasweet');
-      if (!hasKeyword) {
-        console.log(`[LOG] YouTube Shorts 제외 - 키워드 없음: "${title}"`);
-        continue;
+    try {
+      // 플랫폼별 처리
+      if (platform === 'tiktok') {
+        url = (item.webVideoUrl || item.url) as string;
+        if (!url) continue;
+        viewCount = (item.playCount || item.plays || 0) as number;
+        if (viewCount < ORGANIC_MIN_VIEWS) continue;
+        accountName = (item.authorMeta as { name?: string } | undefined)?.name || (item.author as string) || null;
+        contentSummary = (item.text as string)?.slice(0, 300) || null;
+        uploadedAt = parseDate(item.createTime || item.createTimeISO);
+
+      } else if (platform === 'twitter') {
+        url = (item.url || item.tweetUrl) as string;
+        if (!url) continue;
+        viewCount = (item.viewCount || item.views || 0) as number;
+        if (viewCount < ORGANIC_MIN_VIEWS) continue;
+        accountName = (item.author as { userName?: string } | undefined)?.userName || (item.username as string) || null;
+        contentSummary = (item.fullText || item.text as string)?.slice(0, 300) || null;
+        uploadedAt = parseDate(item.createdAt || item.created_at);
+
+      } else if (platform === 'blog') {
+        url = (item.url || item.link) as string;
+        if (!url) continue;
+        viewCount = (item.viewCount || item.views || item.readCount || 0) as number;
+        accountName = (item.author || item.blogName) as string || null;
+        contentSummary = ((item.title || item.description) as string)?.slice(0, 300) || null;
+        uploadedAt = parseDate(item.date || item.publishedAt);
+
+      } else if (platform === 'threads') {
+        url = (item.url || item.permalink) as string;
+        if (!url) continue;
+        viewCount = (item.viewCount || item.views || 0) as number;
+        const likeCount = (item.likeCount || item.likes || 0) as number;
+        if (viewCount < 100_000 && likeCount < 10_000) continue;
+        accountName = (item.username || item.ownerUsername) as string || null;
+        contentSummary = (item.caption || item.text as string)?.slice(0, 300) || null;
+        uploadedAt = parseDate(item.takenAt || item.timestamp || item.createdAt);
+        viewCount = viewCount || likeCount;
+
+      } else if (platform === 'youtube') {
+        const rawUrl = item.url as string;
+        if (!rawUrl || !rawUrl.includes('/shorts/')) continue;
+
+        try {
+          const u = new URL(rawUrl.startsWith('http') ? rawUrl : 'https://' + rawUrl);
+          url = `https://www.youtube.com${u.pathname}`;
+        } catch {
+          continue;
+        }
+
+        const title = (item.title as string) || '';
+        const description = ((item.description || item.details) as string) || '';
+        const textContent = (title + ' ' + description).toLowerCase();
+
+        // YouTube만 키워드 필터 적용
+        if (!textContent.includes('라라스윗') && !textContent.includes('lalasweet')) {
+          continue;
+        }
+
+        viewCount = (item.viewCount || item.views || 0) as number;
+        if (viewCount < 10_000) continue;
+
+        accountName = (item.channelName || item.channelTitle || item.author) as string || null;
+        contentSummary = title || null;
+        uploadedAt = parseDate(item.date || item.publishedAt || item.uploadDate);
       }
 
-      const viewCount = (item.viewCount || item.views || 0) as number;
-
-      // 필터 2: 조회수 1만 이상
-      if (!viewCount || viewCount < 10_000) {
-        console.log(`[LOG] YouTube Shorts 제외 - 조회수 부족: "${title}" (${viewCount})`);
-        continue;
+      // 저장
+      if (url) {
+        rows.push(buildRow(item, platform === 'twitter' ? 'x' : platform, url, {
+          account_name: accountName,
+          content_summary: contentSummary,
+          uploaded_at: uploadedAt,
+          view_count: viewCount || null,
+        }));
+        collectedCount++;
       }
-
-      console.log(`[LOG] YouTube Shorts 수집됨: "${title}" (${viewCount} views)`);
-      const channelName = (item.channelName || item.channelTitle || item.author) as string;
-
-      const rawTs = item.date || item.publishedAt || item.uploadDate;
-      const uploadedAt = typeof rawTs === 'number'
-        ? new Date(rawTs * 1000).toISOString().slice(0, 10)
-        : rawTs ? (rawTs as string).slice(0, 10) : null;
-
-      rows.push({
-        url: cleanUrl,
-        account_name: channelName || null,
-        platform: 'youtube',
-        content_summary: (item.title as string) || null,
-        uploaded_at: uploadedAt,
-        view_count: viewCount || null,
-        source: 'apify',
-      });
+    } catch (e) {
+      console.error(`[ERROR] ${platform} 처리 실패:`, e);
+      continue;
     }
   }
+
+  console.log(`[LOG] ${platform.toUpperCase()} 수집 완료: ${collectedCount}건 저장`);
 
   if (rows.length > 0) {
     await supabase.from('organic_mentions').upsert(rows, { onConflict: 'url', ignoreDuplicates: false });

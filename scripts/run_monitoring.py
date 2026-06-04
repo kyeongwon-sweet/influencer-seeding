@@ -16,10 +16,19 @@ def _ig_shortcode(url: str) -> str | None:
     return m.group(1) if m else None
 
 
+def _normalize_url(url: str) -> str:
+    """URL 정규화: 쿼리 파라미터, 해시 제거, trailing slash 제거"""
+    # 쿼리 파라미터와 해시 제거 (? 또는 # 이후 모두 제거)
+    normalized = re.sub(r'[?#].*$', '', url)
+    return normalized.rstrip("/")
+
+
 def _stats_key(url: str) -> str:
-    """매칭 키: 인스타그램이면 숏코드, 아니면 trailing slash 제거한 URL"""
+    """매칭 키: 인스타그램이면 숏코드, 아니면 정규화된 URL"""
     sc = _ig_shortcode(url)
-    return sc if sc else url.rstrip("/")
+    if sc:
+        return sc
+    return _normalize_url(url)
 
 
 def run():
@@ -152,7 +161,7 @@ def _fetch_stats(urls: list) -> list:
     print(f"[LOG] Apify 응답 아이템: {len(items)}개")
 
     result = []
-    for item in items:
+    for idx, item in enumerate(items):
         shortcode = item.get("shortCode") or item.get("shortcode")
         url = (
             item.get("url")
@@ -177,13 +186,42 @@ def _fetch_stats(urls: list) -> list:
             or owner_username
         )
 
-        # 조회수: 릴스(videoPlayCount) → 동영상(videoViewCount) → views → None
+        # 조회수 추출 (필드별 우선순위)
+        # - 릴스: videoPlayCount, videoViewCount
+        # - 일반 포스트: impressions (Instagram 인사이트)
+        # - 폴백: views (legacy field)
         play_count = (
             item.get("videoPlayCount")
             or item.get("videoViewCount")
+            or item.get("impressions")  # 일반 포스트의 임프레션 (조회수)
             or item.get("views")
+            or item.get("count")  # 일부 버전의 조회수 필드
             or None
         )
+
+        # 📊 상세 로깅: 조회수 필드 분석
+        available_count_fields = {
+            "videoPlayCount": item.get("videoPlayCount"),
+            "videoViewCount": item.get("videoViewCount"),
+            "impressions": item.get("impressions"),
+            "views": item.get("views"),
+            "count": item.get("count"),
+        }
+        non_none_fields = {k: v for k, v in available_count_fields.items() if v is not None}
+
+        # 조회수가 없는 게시물 기록
+        if not play_count:
+            post_type_indicators = []
+            if item.get("videoPlayCount") or item.get("videoViewCount"):
+                post_type_indicators.append("Reel/Video")
+            else:
+                post_type_indicators.append("Post")
+
+            if idx < 3:  # 처음 3개만 상세 로깅
+                print(f"[DEBUG] 조회수 미제공 ({post_type_indicators[0]}): {url}")
+                print(f"        계정: {account_name}")
+                print(f"        가능한 조회수 필드: {non_none_fields or 'NONE'}")
+                print(f"        모든 필드 키: {list(item.keys())}\n")
 
         result.append({
             "url": url,
