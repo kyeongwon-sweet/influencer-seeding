@@ -885,8 +885,9 @@ export default function MonitoringPage() {
       body: JSON.stringify({ play_count }),
     });
     if (res.ok) {
+      const now = new Date().toISOString();
       setPosts(prev => prev.map(p => p.id === postId
-        ? { ...p, latest_stats: p.latest_stats ? { ...p.latest_stats, play_count } : { measured_at: new Date().toISOString().slice(0, 10), play_count, likes_count: null, comments_count: null } }
+        ? { ...p, latest_stats: p.latest_stats ? { ...p.latest_stats, play_count, measured_at: now } : { measured_at: now, play_count, likes_count: null, comments_count: null } }
         : p));
     } else {
       toast("저장에 실패했습니다.", "error");
@@ -901,8 +902,14 @@ export default function MonitoringPage() {
       body: JSON.stringify({ category: value || null }),
     });
     if (res.ok) {
+      const now = new Date().toISOString();
       setPosts(prev => prev.map(p => p.id === postId
-        ? { ...p, influencers: p.influencers ? { ...p.influencers, category: value || null } : null }
+        ? {
+          ...p,
+          influencers: p.influencers ? { ...p.influencers, category: value || null } : null,
+          // 편집 시 마지막 업데이트 시간 갱신
+          latest_stats: p.latest_stats ? { ...p.latest_stats, measured_at: now } : { measured_at: now, play_count: null, likes_count: null, comments_count: null }
+        }
         : p));
     } else {
       toast("저장에 실패했습니다.", "error");
