@@ -864,7 +864,7 @@ export default function MonitoringPage() {
     });
     if (res.ok) {
       const stored = isNumeric ? (value === "" ? null : Number(value)) : (value || null);
-      const now = new Date().toISOString();
+      const now = new Date().toISOString().slice(0, 10); // 서버와 일관성: DATE 형식만
       setPosts(prev => prev.map(p => p.id === postId ? {
         ...p,
         [field]: stored,
@@ -885,7 +885,7 @@ export default function MonitoringPage() {
       body: JSON.stringify({ play_count }),
     });
     if (res.ok) {
-      const now = new Date().toISOString();
+      const now = new Date().toISOString().slice(0, 10); // 서버와 일관성: DATE 형식만
       setPosts(prev => prev.map(p => p.id === postId
         ? { ...p, latest_stats: p.latest_stats ? { ...p.latest_stats, play_count, measured_at: now } : { measured_at: now, play_count, likes_count: null, comments_count: null } }
         : p));
@@ -902,7 +902,7 @@ export default function MonitoringPage() {
       body: JSON.stringify({ category: value || null }),
     });
     if (res.ok) {
-      const now = new Date().toISOString();
+      const now = new Date().toISOString().slice(0, 10); // 서버와 일관성: DATE 형식만
       setPosts(prev => prev.map(p => p.id === postId
         ? {
           ...p,

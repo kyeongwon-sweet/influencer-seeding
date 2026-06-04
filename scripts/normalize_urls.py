@@ -3,19 +3,13 @@
 sponsored_posts의 URL을 정규화하는 스크립트
 쿼리 파라미터(?...) 및 해시(#...) 제거
 """
-import re
 import os
 from dotenv import load_dotenv
 from db import get_client
+from url_utils import normalize_url
 
 load_dotenv()
 db = get_client()
-
-
-def normalize_url(url: str) -> str:
-    """URL 정규화: 쿼리 파라미터, 해시 제거, trailing slash 제거"""
-    normalized = re.sub(r'[?#].*$', '', url)
-    return normalized.rstrip("/")
 
 
 def main():

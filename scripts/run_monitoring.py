@@ -5,6 +5,7 @@ import re
 import json
 from datetime import date, datetime
 from db import get_client
+from url_utils import normalize_url
 
 APIFY_IG_ACTOR = os.getenv("APIFY_IG_ACTOR_ID", "apify/instagram-scraper")
 TODAY = os.getenv("MONITORING_DATE") or date.today().isoformat()
@@ -16,19 +17,12 @@ def _ig_shortcode(url: str) -> str | None:
     return m.group(1) if m else None
 
 
-def _normalize_url(url: str) -> str:
-    """URL 정규화: 쿼리 파라미터, 해시 제거, trailing slash 제거"""
-    # 쿼리 파라미터와 해시 제거 (? 또는 # 이후 모두 제거)
-    normalized = re.sub(r'[?#].*$', '', url)
-    return normalized.rstrip("/")
-
-
 def _stats_key(url: str) -> str:
     """매칭 키: 인스타그램이면 숏코드, 아니면 정규화된 URL"""
     sc = _ig_shortcode(url)
     if sc:
         return sc
-    return _normalize_url(url)
+    return normalize_url(url)  # url_utils에서 import
 
 
 def run():
