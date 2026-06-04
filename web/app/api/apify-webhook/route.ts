@@ -584,8 +584,19 @@ async function handleOrganicRefresh(supabase: ReturnType<typeof getServerSupabas
 
 // ── 무상 노출 ────────────────────────────────────────────────────────
 
-const ORGANIC_MIN_FOLLOWERS = 1_000;  // 팔로워 1천 이상 (이전 1만 → 완화)
-const ORGANIC_MIN_VIEWS = 1_000;      // 조회수 1천 이상 (이전 1만 → 완화)
+const ORGANIC_MIN_FOLLOWERS = 500_000;  // 50만 이상 인플루언서
+const ORGANIC_MIN_VIEWS = 500_000;      // 50만 이상 뷰
+const CELEBRITY_MIN_FOLLOWERS = 1_000_000;  // 100만+ = 아이돌/연예인으로 간주
+const CELEBRITY_KEYWORDS = ['연예인', '아이돌', '배우', '가수', '탤런트', '방송인', '모델', '셀럽', '연예'];
+
+function isCelebrity(username: string, followers: number, bio: string = ''): boolean {
+  // 100만+ 팔로워 = 아이돌/연예인으로 간주
+  if (followers >= CELEBRITY_MIN_FOLLOWERS) return true;
+
+  // 또는 계정명/소개에 연예인 키워드 포함
+  const text = (username + ' ' + bio).toLowerCase();
+  return CELEBRITY_KEYWORDS.some(k => text.includes(k));
+}
 
 async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, jobId: string, items: Record<string, unknown>[], platform: string) {
   const rows: Record<string, unknown>[] = [];
@@ -600,14 +611,18 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
       const owner = (item.owner as Record<string, unknown>) || {};
       const followers = (item.ownerFollowersCount || owner.followersCount || 0) as number;
       const viewCount = (item.videoPlayCount || item.videoViewCount || 0) as number;
-
-      // 팔로워 1만 이상 (데이터 없으면 통과)
-      if (followers > 0 && followers < ORGANIC_MIN_FOLLOWERS) continue;
-      // 조회수 1만 이상 (데이터 없으면 통과)
-      if (viewCount > 0 && viewCount < ORGANIC_MIN_VIEWS) continue;
-
       const username = (item.ownerUsername || owner.username) as string;
+      const bio = ((owner.biography as string) || '').toLowerCase();
+
       if (!username) continue;
+
+      // 필터 1: 50만 이상 팔로워 + 50만 이상 뷰 + 아이돌/연예인
+      const hasSufficientFollowers = followers >= ORGANIC_MIN_FOLLOWERS;
+      const hasSufficientViews = viewCount >= ORGANIC_MIN_VIEWS;
+      const isCelebrity_ = isCelebrity(username, followers, bio);
+
+      // 50만+ 팔로워 또는 50만+ 뷰 또는 아이돌/연예인이어야 수집
+      if (!hasSufficientFollowers && !hasSufficientViews && !isCelebrity_) continue;
       const shortCode = item.shortCode as string | undefined;
       const url = (item.url as string) || (shortCode ? `https://www.instagram.com/p/${shortCode}/` : null);
       if (!url) continue;
@@ -633,7 +648,8 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
       const url = (item.webVideoUrl || item.url) as string;
       if (!url) continue;
       const viewCount = (item.playCount || item.plays || 0) as number;
-      if (viewCount > 0 && viewCount < ORGANIC_MIN_VIEWS) continue;
+      // 50만 이상 뷰 필터
+      if (viewCount < ORGANIC_MIN_VIEWS) continue;
       const rawTs = item.createTime || item.createTimeISO;
       const uploadedAt = typeof rawTs === 'number'
         ? new Date(rawTs * 1000).toISOString().slice(0, 10)
@@ -654,6 +670,8 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
       const url = (item.url || item.tweetUrl) as string;
       if (!url) continue;
       const viewCount = (item.viewCount || item.views || 0) as number;
+      // 50만 이상 뷰 필터
+      if (viewCount < ORGANIC_MIN_VIEWS) continue;
       const rawTs = item.createdAt || item.created_at;
       const uploadedAt = rawTs ? new Date(rawTs as string).toISOString().slice(0, 10) : null;
       rows.push({
@@ -688,6 +706,9 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
       if (isAd(item)) continue;
       const url = (item.url || item.permalink) as string;
       if (!url) continue;
+      const viewCount = (item.likeCount || item.likes || 0) as number;  // Threads는 조회수 대신 좋아요 사용
+      // 50만 이상 뷰/좋아요 필터
+      if (viewCount < ORGANIC_MIN_VIEWS) continue;
       const rawTs = item.takenAt || item.timestamp;
       const uploadedAt = typeof rawTs === 'number'
         ? new Date(rawTs * 1000).toISOString().slice(0, 10)
