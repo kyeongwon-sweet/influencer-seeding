@@ -161,10 +161,10 @@ export async function POST(req: NextRequest) {
             { searchTerms: KEYWORDS, maxResults: 100 },
             webhookUrl(appUrl, `jobId=${job.id}&jobType=organic&platform=twitter`)
           ).catch((e: unknown) => { startErrors.push(`X: ${e}`); }),
-          // 인스타그램
+          // 인스타그램 (검색 전용)
           startActorRun(
-            'apify/instagram-scraper',
-            { directUrls: [], searchQuery: KEYWORDS[0], resultsLimit: 100 },
+            'apify/instagram-search-scraper',
+            { searchQuery: KEYWORDS[0], resultsLimit: 100, searchType: 'posts' },
             webhookUrl(appUrl, `jobId=${job.id}&jobType=organic&platform=instagram`)
           ).catch((e: unknown) => { startErrors.push(`인스타: ${e}`); }),
           // TikTok
