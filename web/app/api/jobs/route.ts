@@ -149,45 +149,21 @@ export async function POST(req: NextRequest) {
         const KEYWORDS = ['라라스윗', 'lalasweet'];
         const startErrors: string[] = [];
         await Promise.all([
-          // 인스타그램 릴스
-          startActorRun(
-            'apify/instagram-hashtag-scraper',
-            { hashtags: KEYWORDS, resultsLimit: 300, resultsType: 'reels' },
-            webhookUrl(appUrl, `jobId=${job.id}&jobType=organic&platform=instagram`)
-          ).catch((e: unknown) => { startErrors.push(`인스타: ${e}`); }),
           // 유튜브 숏츠
           startActorRun(
             'streamers/youtube-scraper',
             { searchQueries: KEYWORDS, maxResultsShorts: 100, sortingOrder: 'relevance' },
             webhookUrl(appUrl, `jobId=${job.id}&jobType=organic&platform=youtube`)
           ).catch((e: unknown) => { startErrors.push(`유튜브: ${e}`); }),
-          // 틱톡 (Advanced Search API)
-          startActorRun(
-            'navi/advanced-search-tiktok-api',
-            { keyword: KEYWORDS[0], numResults: 100 },
-            webhookUrl(appUrl, `jobId=${job.id}&jobType=organic&platform=tiktok`)
-          ).catch((e: unknown) => { startErrors.push(`틱톡: ${e}`); }),
           // X (트위터)
           startActorRun(
             'apidojo/twitter-scraper-lite',
             { searchTerms: KEYWORDS, maxResults: 100 },
             webhookUrl(appUrl, `jobId=${job.id}&jobType=organic&platform=twitter`)
           ).catch((e: unknown) => { startErrors.push(`X: ${e}`); }),
-          // 네이버 블로그
-          startActorRun(
-            'oxygenated_quagmire/naver-blog-searcher',
-            { keyword: KEYWORDS[0], maxResults: 50 },
-            webhookUrl(appUrl, `jobId=${job.id}&jobType=organic&platform=blog`)
-          ).catch((e: unknown) => { startErrors.push(`블로그: ${e}`); }),
-          // 스레드 (Threads)
-          startActorRun(
-            'sachin-kumar-yadav/threads-search-scraper',
-            { keyword: KEYWORDS[0], maxResults: 100 },
-            webhookUrl(appUrl, `jobId=${job.id}&jobType=organic&platform=threads`)
-          ).catch((e: unknown) => { startErrors.push(`스레드: ${e}`); }),
         ]);
-        // 전체 실패 시에만 에러, 일부 성공이면 경고만
-        if (startErrors.length === 6) {
+        // 실패 시에만 에러
+        if (startErrors.length > 0) {
           throw new Error(startErrors.join(' | '));
         }
         if (startErrors.length > 0) {
