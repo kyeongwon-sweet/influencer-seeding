@@ -35,8 +35,11 @@ def run():
     except (json.JSONDecodeError, TypeError, ValueError):
         payload = {}
 
+    # json.loads("null")은 None을 반환하므로 명시적으로 체크
+    if payload is None:
+        payload = {}
     # payload가 dict가 아니면 기본값
-    if not isinstance(payload, dict):
+    elif not isinstance(payload, dict):
         payload = {}
 
     job_id = payload.get("job_id")
