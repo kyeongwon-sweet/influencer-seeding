@@ -2044,15 +2044,17 @@ export default function MonitoringPage() {
               <button onClick={() => setTrendPost(null)}
                 className="text-a-ink-muted hover:text-a-ink text-xl leading-none transition">×</button>
             </div>
-            <p className="text-[11px] text-a-ink-muted mb-3">
-              조회수 트렌드
-            </p>
-            <div className="flex items-center gap-3 mb-3 text-xs">
-              <div className="flex items-center gap-1.5">
-                <div className="w-2 h-0.5 bg-a-blue" />
-                <span className="text-a-ink-muted">조회수</span>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">
+                조회수 트렌드
+              </p>
+              <div className="flex items-center gap-3 text-xs">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2 h-0.5 bg-a-blue" />
+                  <span className="text-gray-500">조회수</span>
+                </div>
+                {trendLoading && <span className="text-gray-300">로딩 중...</span>}
               </div>
-              {trendLoading && <span className="text-gray-300">로딩 중...</span>}
             </div>
             <LineChart
               data={(trendPost.all_stats ?? [])
