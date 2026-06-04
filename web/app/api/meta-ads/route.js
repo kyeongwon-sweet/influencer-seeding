@@ -1,53 +1,25 @@
-import { NextRequest, NextResponse } from "next/server";
-
-export const runtime = 'nodejs';
-
 export async function GET(req) {
-  console.log("[META_ADS] GET 요청 수신", new Date().toISOString());
-
   try {
-    const token = process.env.META_BUSINESS_ACCESS_TOKEN;
-    const accountId = process.env.META_BUSINESS_ACCOUNT_ID;
-
-    console.log("[META_ADS] TOKEN 있음?", !!token);
-    console.log("[META_ADS] ACCOUNT_ID:", accountId);
-
-    if (!token || !accountId) {
-      console.error("[META_ADS] 환경변수 없음");
-      return NextResponse.json({
-        error: "환경변수 없음",
-        hasToken: !!token,
-        hasAccountId: !!accountId
-      }, { status: 400 });
-    }
-
+    // 간단한 테스트 응답
     const { searchParams } = new URL(req.url);
     const dateFrom = searchParams.get("date_from");
     const dateTo = searchParams.get("date_to");
 
-    console.log("[META_ADS] 날짜:", dateFrom, "~", dateTo);
+    // 임시 광고비 데이터
+    const result = [];
+    const from = new Date(dateFrom);
+    const to = new Date(dateTo);
 
-    if (!dateFrom || !dateTo) {
-      return NextResponse.json(
-        { error: "date_from, date_to 필수" },
-        { status: 400 }
-      );
+    let cost = 10000;
+    for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+      const dateStr = d.toISOString().split("T")[0];
+      cost += Math.random() * 5000;
+      result.push({ date: dateStr, total_cost: Math.round(cost) });
     }
 
-    // 테스트: 임시 데이터 반환
-    const result = [
-      { date: dateFrom, total_cost: 10000 },
-      { date: dateTo, total_cost: 25000 }
-    ];
-
-    console.log("[META_ADS] 응답:", result);
-    return NextResponse.json(result);
-
+    return Response.json(result);
   } catch (err) {
-    console.error("[META_ADS] 에러:", err instanceof Error ? err.message : err);
-    return NextResponse.json(
-      { error: "서버 에러", details: err instanceof Error ? err.message : "unknown" },
-      { status: 500 }
-    );
+    console.error("[API_ERROR]", err);
+    return Response.json({ error: "API 에러" }, { status: 500 });
   }
 }
