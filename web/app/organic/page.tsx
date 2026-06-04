@@ -523,13 +523,28 @@ export default function OrganicPage() {
 
       {/* 무상 노출 가이드 */}
       <div className="mx-6 mt-5 mb-4 bg-white border border-gray-200 rounded-lg px-5 py-4 shadow-sm">
-        <p className="text-sm font-bold text-a-ink mb-2.5">📌 무상 노출 가이드</p>
-        <ul className="text-[13px] text-a-ink-muted space-y-1 list-none leading-relaxed">
-          <li>• 우리가 언급된 자컨/콘텐츠에 감사댓글 달고, 공계로 샤라웃</li>
-          <li className="pl-4">주력 인물들에게만 좋아요+답글 달기</li>
-          <li className="pl-4">귀여운 말투, 밈/유행에 업혀가기</li>
-          <li className="pl-4">최대한 빠르게 달기</li>
-        </ul>
+        <p className="text-sm font-bold text-a-ink mb-3">📌 무상 노출 수집 기준</p>
+        <div className="space-y-3">
+          <div>
+            <p className="text-[13px] font-semibold text-a-ink mb-1.5">✓ 수집 대상:</p>
+            <ul className="text-[13px] text-a-ink-muted space-y-1 list-none leading-relaxed">
+              <li>• 아이돌/연예인 콘텐츠</li>
+              <li>• 50만 이상 인플루언서</li>
+              <li>• 50만뷰 이상 콘텐츠</li>
+              <li>• 시딩 건(협력사 언급)</li>
+            </ul>
+          </div>
+          <div>
+            <p className="text-[13px] font-semibold text-a-ink mb-1.5">💬 댓글 작성 기준:</p>
+            <ul className="text-[13px] text-a-ink-muted space-y-1 list-none leading-relaxed">
+              <li>• 우리가 언급된 자컨/콘텐츠에 감사댓글</li>
+              <li>• 공계로 샤라웃 (타그 필수)</li>
+              <li>• 주력 인물들에게만 좋아요+답글</li>
+              <li>• 귀여운 말투, 밈/유행 업혀가기</li>
+              <li>• 최대한 빠르게 달기</li>
+            </ul>
+          </div>
+        </div>
       </div>
 
       <div className="px-6 py-6">

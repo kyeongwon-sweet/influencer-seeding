@@ -21,7 +21,10 @@ def _stats_key(url: str) -> str:
 
 
 def run():
-    payload = json.loads(os.getenv("JOB_PAYLOAD", "{}"))
+    try:
+        payload = json.loads(os.getenv("JOB_PAYLOAD", "{}"))
+    except (json.JSONDecodeError, TypeError):
+        payload = {}
     job_id = payload.get("job_id")
 
     db = get_client()

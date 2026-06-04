@@ -14,7 +14,7 @@ export async function GET() {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const result = (data ?? []).map((post) => {
+  const result = (data ?? []).map((post: any) => {
     const stats = (post.post_daily_stats ?? []).sort(
       (a: { measured_at: string }, b: { measured_at: string }) =>
         new Date(b.measured_at).getTime() - new Date(a.measured_at).getTime()
