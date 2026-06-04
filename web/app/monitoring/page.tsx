@@ -2045,8 +2045,8 @@ export default function MonitoringPage() {
             </div>
             <LineChart
               data={(trendPost.all_stats ?? [])
-                .filter(s => pickMetric(s) != null)
-                .map(s => ({ date: s.measured_at, value: pickMetric(s)! }))}
+                .filter(s => s.play_count != null)
+                .map(s => ({ date: s.measured_at, value: s.play_count! }))}
               height={220}
               gradId="modalGrad"
             />
