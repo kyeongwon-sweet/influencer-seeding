@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = 'nodejs';
 
-export async function GET(req: NextRequest) {
+export async function GET(req) {
   console.log("[META_ADS] GET 요청 수신", new Date().toISOString());
 
   try {
