@@ -161,38 +161,29 @@ export async function POST(req: NextRequest) {
             { searchTerms: KEYWORDS, maxResults: 100 },
             webhookUrl(appUrl, `jobId=${job.id}&jobType=organic&platform=twitter`)
           ).catch((e: unknown) => { startErrors.push(`X: ${e}`); }),
-          // 인스타그램 (검색 전용)
-          startActorRun(
-            'apify/instagram-search-scraper',
-            { searchQuery: KEYWORDS[0], resultsLimit: 100, searchType: 'posts' },
-            webhookUrl(appUrl, `jobId=${job.id}&jobType=organic&platform=instagram`)
-          ).catch((e: unknown) => { startErrors.push(`인스타: ${e}`); }),
           // TikTok
           startActorRun(
-            'clockworksod/tiktok-scraper',
-            { searchTerm: KEYWORDS[0], searchLimit: 100 },
+            'clockworks/tiktok-scraper',
+            { searchTerm: KEYWORDS[0], maxResults: 100 },
             webhookUrl(appUrl, `jobId=${job.id}&jobType=organic&platform=tiktok`)
           ).catch((e: unknown) => { startErrors.push(`틱톡: ${e}`); }),
           // 네이버 블로그
           startActorRun(
-            'semocha/naver-blog-scraper',
+            'astromancer/naver-blog-scraper',
             { keyword: KEYWORDS[0], maxResults: 50 },
             webhookUrl(appUrl, `jobId=${job.id}&jobType=organic&platform=blog`)
           ).catch((e: unknown) => { startErrors.push(`블로그: ${e}`); }),
           // Threads
           startActorRun(
-            'vinyls/threads-scraper',
-            { query: KEYWORDS[0], resultsLimit: 100 },
+            'fututeshrub/meta-threads-scraper',
+            { searchQuery: KEYWORDS[0], maxResults: 100 },
             webhookUrl(appUrl, `jobId=${job.id}&jobType=organic&platform=threads`)
           ).catch((e: unknown) => { startErrors.push(`스레드: ${e}`); }),
         ]);
         // 일부 성공이면 계속 진행, 모두 실패하면 에러
-        const successCount = 6 - startErrors.length;
+        const successCount = 5 - startErrors.length;
         if (successCount === 0) {
           throw new Error('모든 플랫폼 수집 실패: ' + startErrors.join(' | '));
-        }
-        if (startErrors.length > 0) {
-          await supabase.from('jobs').update({ error: `일부 플랫폼 실패: ${startErrors.join(' | ')}` }).eq('id', job.id);
         }
         if (startErrors.length > 0) {
           await supabase.from('jobs').update({ error: `일부 플랫폼 실패: ${startErrors.join(' | ')}` }).eq('id', job.id);

@@ -601,54 +601,7 @@ function isCelebrity(username: string, followers: number, bio: string = ''): boo
 async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, jobId: string, items: Record<string, unknown>[], platform: string) {
   const rows: Record<string, unknown>[] = [];
 
-  if (platform === 'instagram') {
-    for (const item of items) {
-      // #광고·#협찬 태그 포함 게시물 제외
-      if (isAd(item)) continue;
-
-      const owner = (item.owner as Record<string, unknown>) || {};
-      const followers = (item.ownerFollowersCount || owner.followersCount || 0) as number;
-      const username = (item.ownerUsername || owner.username) as string;
-      const bio = ((owner.biography as string) || '').toLowerCase();
-
-      if (!username) continue;
-
-      // 필터: 50만+ 팔로워 또는 아이돌/연예인이어야 수집 (릴스 + 피드 모두)
-      const hasSufficientFollowers = followers >= ORGANIC_MIN_FOLLOWERS;
-      const isCelebrity_ = isCelebrity(username, followers, bio);
-
-      if (!hasSufficientFollowers && !isCelebrity_) continue;
-
-      // 릴스: 조회수 추출, 피드: 좋아요 사용
-      let viewCount = 0;
-      if (isReel(item)) {
-        viewCount = (item.videoPlayCount || item.videoViewCount || 0) as number;
-      } else {
-        // 피드: 좋아요로 대체 (조회수 없음)
-        viewCount = (item.likesCount || item.likes || 0) as number;
-      }
-      const shortCode = item.shortCode as string | undefined;
-      const url = (item.url as string) || (shortCode ? `https://www.instagram.com/p/${shortCode}/` : null);
-      if (!url) continue;
-
-      const rawTs = item.timestamp || item.takenAtTimestamp;
-      const uploadedAt = typeof rawTs === 'number'
-        ? new Date(rawTs * 1000).toISOString().slice(0, 10)
-        : rawTs ? (rawTs as string).slice(0, 10) : null;
-
-      const postType = isReel(item) ? 'reel' : 'feed';
-      rows.push({
-        url,
-        account_name: username,
-        platform: 'instagram',
-        content_summary: (item.caption as string)?.slice(0, 300) || null,
-        uploaded_at: uploadedAt,
-        view_count: viewCount > 0 ? viewCount : null,
-        source: 'apify',
-      });
-      console.log(`[LOG] Instagram ${postType} 수집: ${username} - ${viewCount} views/likes`);
-    }
-  } else if (platform === 'tiktok') {
+  if (platform === 'tiktok') {
     console.log(`[LOG] TikTok 처리 시작: ${items.length}개 아이템`);
     let tiktokCount = 0;
     for (const item of items) {
