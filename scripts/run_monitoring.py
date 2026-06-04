@@ -88,20 +88,21 @@ def run():
             if updates:
                 db.table("sponsored_posts").update(updates).eq("id", post["id"]).execute()
 
-            # 기존 데이터 조회 (누적값이므로 마이너스 방지)
+            # 기존 데이터 조회 (누적값 검증)
             existing_res = db.table("post_daily_stats").select("play_count, likes_count, comments_count").eq("post_id", post["id"]).order("measured_at", ascending=False).limit(1).execute()
             existing = existing_res.data[0] if existing_res.data else {}
 
-            # 조회수 검증: Apify 응답값이 있으면 사용, 없으면 기존값 유지
             play_count = s.get("play_count")
+
+            # 조회수 검증
             if play_count is None:
-                play_count = existing.get("play_count")
-                if play_count is None:
-                    print(f"  조회수 누락: {post['url']} (account={s.get('account_name')})")
-            # 마이너스 방지: 기존값보다 작으면 기존값 유지
+                # Apify가 조회수를 반환하지 않음 (게시물 타입상 조회수 없을 수 있음)
+                print(f"  ⚠️  조회수 없음: {post['url']} (account={s.get('account_name')})")
+                play_count = None
             elif existing.get("play_count") is not None and play_count < existing.get("play_count"):
-                print(f"  조회수 역행: {post['url']} ({existing.get('play_count')} → {play_count}), 기존값 유지")
-                play_count = existing.get("play_count")
+                # 누적값인데 줄어들었다 = 오류
+                print(f"  ❌ 오류: 조회수 역행 {post['url']} ({existing.get('play_count')} → {play_count})")
+                play_count = None  # 오류값이므로 NULL로 표시
 
             rows.append({
                 "post_id": post["id"],
