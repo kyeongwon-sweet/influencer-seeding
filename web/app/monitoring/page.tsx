@@ -1037,42 +1037,33 @@ export default function MonitoringPage() {
       // play_count가 있으면 reach_count 자동 계산 (play_count * 0.8)
       if (play_count !== null && play_count > 0) {
         reach_count = Math.round(play_count * 0.8);
-        const reachRes = await fetch(`/api/sponsored-posts/${postId}`, {
+        // reach_count 저장 (실패해도 UI는 업데이트)
+        fetch(`/api/sponsored-posts/${postId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ reach_count }),
-        });
-        if (reachRes.ok) {
-          // 도달당비용 계산: cost / reach_count (별도 저장 필요 없음, UI에서 계산)
-          setPosts(prev => prev.map(p => p.id === postId
-            ? {
-              ...p,
-              reach_count,
-              latest_stats: updatePostLatestStats(p, now, { play_count })
-            }
-            : p));
-        } else {
-          toast("도달수 저장에 실패했습니다.", "error");
-        }
+        }).catch(err => console.error("[reach_count 저장 오류]", err));
       } else {
         // play_count가 없으면 reach_count도 null로 설정
-        const clearRes = await fetch(`/api/sponsored-posts/${postId}`, {
+        fetch(`/api/sponsored-posts/${postId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ reach_count: null }),
-        });
-        if (clearRes.ok) {
-          setPosts(prev => prev.map(p => p.id === postId
-            ? {
-              ...p,
-              reach_count: null,
-              latest_stats: updatePostLatestStats(p, now, { play_count })
-            }
-            : p));
-        }
+        }).catch(err => console.error("[reach_count 초기화 오류]", err));
       }
+
+      // UI 항상 업데이트 (reach_count 저장 성공 여부와 무관)
+      setPosts(prev => prev.map(p => p.id === postId
+        ? {
+          ...p,
+          ...(reach_count !== null && { reach_count }),
+          latest_stats: updatePostLatestStats(p, now, { play_count })
+        }
+        : p));
+
+      toast("저장되었습니다.", "success");
     } else {
-      toast("저장에 실패했습니다.", "error");
+      toast("조회수 저장에 실패했습니다.", "error");
     }
     setEditPlayCount(null);
   }
