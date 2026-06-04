@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# 협찬 모니터링 Instagram 데이터 수집 및 통계 생성
 import os
 import re
 import json
