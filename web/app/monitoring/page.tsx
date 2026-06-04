@@ -437,7 +437,6 @@ export default function MonitoringPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [showHelp, setShowHelp] = useState(false);
   const [trendPost, setTrendPost] = useState<Post | null>(null);
-  const [trendAdCosts, setTrendAdCosts] = useState<{ date: string; total_cost: number }[]>([]);
   const [trendLoading, setTrendLoading] = useState(false);
   const [editCell, setEditCell] = useState<EditCell | null>(null);
   const [editCategory, setEditCategory] = useState<{ postId: string; infId: string; value: string } | null>(null);
@@ -656,35 +655,6 @@ export default function MonitoringPage() {
       .catch(() => setMainAdCosts([]));
   }, [chartData.length, chartData[0]?.date, chartData[chartData.length - 1]?.date]);
 
-  // trendPost 변경 시 광고비 데이터 로드
-  useEffect(() => {
-    if (!trendPost) {
-      setTrendAdCosts([]);
-      return;
-    }
-
-    const allStats = trendPost.all_stats ?? [];
-    if (allStats.length === 0) {
-      setTrendAdCosts([]);
-      return;
-    }
-
-    const dateFrom = allStats[0].measured_at;
-    const dateTo = allStats[allStats.length - 1].measured_at;
-
-    setTrendLoading(true);
-    fetch(`/api/meta-ads?date_from=${dateFrom}&date_to=${dateTo}`)
-      .then(r => r.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          setTrendAdCosts(data);
-        } else {
-          setTrendAdCosts([]);
-        }
-      })
-      .catch(() => setTrendAdCosts([]))
-      .finally(() => setTrendLoading(false));
-  }, [trendPost]);
 
   async function loadPosts() {
     const res = await fetch("/api/sponsored-posts");
@@ -2079,7 +2049,6 @@ export default function MonitoringPage() {
                 .map(s => ({ date: s.measured_at, value: pickMetric(s)! }))}
               height={220}
               gradId="modalGrad"
-              secondaryData={trendAdCosts.length > 0 ? trendAdCosts : undefined}
             />
           </div>
         </div>
