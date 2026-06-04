@@ -388,7 +388,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
             <p className="text-gray-400 tabular-nums">라라스윗 검색량: {hoveredLsEntry.value.toLocaleString()}</p>
           )}
           {hoveredPosts.length > 0 && (
-            <div className="border-t border-a-hairline pt-1.5 mt-1 space-y-0.5">
+            <div className="border-t border-a-hairline pt-1.5 mt-1 space-y-0.5 max-h-24 overflow-y-auto">
               {hoveredPosts.map((p, i) => (
                 <div key={i}>
                   <a href={p.url} target="_blank" rel="noreferrer"
