@@ -8,7 +8,12 @@ const ACCOUNT_ID = process.env.META_BUSINESS_ACCOUNT_ID ?? "";
 
 export async function GET(req: NextRequest) {
   try {
+    console.log("[META_ADS] 요청 시작");
+    console.log("[META_ADS] TOKEN 설정:", !!META_ACCESS_TOKEN);
+    console.log("[META_ADS] ACCOUNT_ID:", ACCOUNT_ID);
+
     if (!META_ACCESS_TOKEN || !ACCOUNT_ID) {
+      console.error("[META_ADS] 환경변수 누락");
       return NextResponse.json(
         { error: "Meta 환경변수 설정 필요" },
         { status: 500 }
