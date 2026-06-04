@@ -1012,22 +1012,6 @@ export default function MonitoringPage() {
             </svg>
             사용 안내
           </button>
-          <button onClick={async () => {
-            const res = await fetch("/api/sponsored-posts?normalize=true");
-            const data = await res.json();
-            if (res.ok) {
-              toast(`${data.updated}개 URL 정규화 완료 (전체 ${data.total}개)`, "success");
-              refresh();
-            } else {
-              toast(data.error || "URL 정규화 실패", "error");
-            }
-          }}
-            className="flex items-center gap-1.5 text-xs text-a-ink-muted hover:text-a-ink transition">
-            <svg width="13" height="13" viewBox="0 0 20 20" fill="none">
-              <path d="M10 2v16M2 10h16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            </svg>
-            URL 정규화
-          </button>
           {lastMonitoredAt && (
             <span className="text-xs text-a-ink-muted whitespace-nowrap">
               마지막 업데이트 <span className="font-medium text-a-ink">{formatTimestamp(lastMonitoredAt)}</span>
