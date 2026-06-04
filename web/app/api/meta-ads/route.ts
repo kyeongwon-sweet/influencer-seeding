@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const META_ACCESS_TOKEN = "EAATfjzfreQEBRdNMqv54Xc7qfYh6JlYZBfGrlkjJZBBJFr7MMBBiJzvCmKsHVB8TFjJ76hdCbyEezWOYjbMgnnjG53VCivHGloSZBZAsCYiZBnEKtYin9qYyRzcd4q3BihM9jTlnjqfI1MF2Csx5ZAAmMvnuMGBKxauUZBlDDVVunYMZAXTn06yLEHIbjUrrGFJnbtCao8ohWNBL4RsWQ9em7EmSXraKTDO8vaSZCcZBKr";
-const ACCOUNT_ID = "363574841093560";
+const META_ACCESS_TOKEN = process.env.META_BUSINESS_ACCESS_TOKEN ?? "";
+const ACCOUNT_ID = process.env.META_BUSINESS_ACCOUNT_ID ?? "";
 
 export async function GET(req: NextRequest) {
   try {
+    if (!META_ACCESS_TOKEN || !ACCOUNT_ID) {
+      return NextResponse.json(
+        { error: "Meta 환경변수 설정 필요" },
+        { status: 500 }
+      );
+    }
+
     const { searchParams } = new URL(req.url);
     const dateFrom = searchParams.get("date_from");
     const dateTo = searchParams.get("date_to");

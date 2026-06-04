@@ -87,6 +87,8 @@ export function getServerSupabase() {
 - `NAVER_CLIENT_ID` → 네이버 개발자센터 발급 (검색 트렌드)
 - `NAVER_CLIENT_SECRET` → 네이버 개발자센터 발급 (검색 트렌드)
 - `NOTION_API_TOKEN` → notion.so/my-integrations 발급 (무상 노출 노션 동기화)
+- `META_BUSINESS_ACCESS_TOKEN` → Meta Business 발급 (광고비 트렌드)
+- `META_BUSINESS_ACCOUNT_ID` → Meta Business 광고 계정 ID
 
 ### Python 스크립트 (`.env`)
 - `APIFY_API_TOKEN`
