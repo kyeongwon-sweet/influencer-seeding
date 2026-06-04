@@ -233,12 +233,13 @@ function smoothCurvePath(pts: [number, number][]): string {
   return d;
 }
 
-function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData }: {
+function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData, secondaryData }: {
   data: { date: string; value: number }[];
   height?: number;
   gradId?: string;
   postsOnDate?: (date: string) => { name: string; url: string }[];
   lsData?: { date: string; ratio: number; value: number | null }[];
+  secondaryData?: { date: string; value: number }[];
 }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [pinnedIdx, setPinnedIdx] = useState<number | null>(null);
@@ -283,6 +284,41 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData 
     return lsData.find(d => d.date === data[activeIdx].date) ?? null;
   })();
 
+  // Secondary data (오른쪽 Y축)
+  const secondaryPath = (() => {
+    if (!secondaryData || secondaryData.length === 0) return null;
+    const secMap = new Map(secondaryData.map(d => [d.date, d.value]));
+    const secVals = data.map(d => secMap.get(d.date)).filter(v => v != null) as number[];
+    if (secVals.length < 2) return null;
+    const secMin = Math.min(...secVals), secMax = Math.max(...secVals);
+    const secRange = secMax - secMin || 1;
+    const secYS = (v: number) => ch - ((v - secMin) / secRange) * ch;
+    const secPts: [number, number][] = data.map((d, i) => {
+      const v = secMap.get(d.date);
+      return [xS(i), v != null ? secYS(v) : -999];
+    }).filter(p => p[1] >= 0);
+    if (secPts.length < 2) return null;
+    return smoothCurvePath(secPts);
+  })();
+
+  const secondaryTicks = (() => {
+    if (!secondaryData || secondaryData.length === 0) return null;
+    const secMap = new Map(secondaryData.map(d => [d.date, d.value]));
+    const secVals = data.map(d => secMap.get(d.date)).filter(v => v != null) as number[];
+    if (secVals.length === 0) return null;
+    const secMin = Math.min(...secVals), secMax = Math.max(...secVals);
+    const secRange = secMax - secMin || 1;
+    const secYS = (v: number) => ch - ((v - secMin) / secRange) * ch;
+    return [0, 0.5, 1].map(t => ({ val: secMin + t * secRange, y: secYS(secMin + t * secRange) }));
+  })();
+
+  const fmtYSecondary = (v: number) => v >= 10000 ? `${Math.round(v / 10000)}만` : v >= 1000 ? `${Math.round(v / 1000)}천` : Math.round(v).toLocaleString();
+
+  const hoveredSecondaryValue = (() => {
+    if (!secondaryData || activeIdx === null) return null;
+    return secondaryData.find(d => d.date === data[activeIdx].date)?.value ?? null;
+  })();
+
   return (
     <div className="relative w-full">
       <svg width="100%" viewBox={`0 0 ${VW} ${VH}`} style={{ overflow: "visible" }}
@@ -305,10 +341,19 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData 
               <text x={-8} y={yS(tick)} textAnchor="end" dominantBaseline="middle" fontSize="7" fill="#9ca3af">{fmtY(tick)}</text>
             </g>
           ))}
+          {secondaryTicks && secondaryTicks.map((tick, i) => (
+            <g key={`sec-${i}`}>
+              <text x={cw + 8} y={tick.y} textAnchor="start" dominantBaseline="middle" fontSize="7" fill="#ea580c">{fmtYSecondary(tick.val)}</text>
+            </g>
+          ))}
           <path d={areaPath} fill={`url(#${gradId})`} />
           {lsPath && <path d={lsPath} fill="none" stroke="#d1d5db" strokeWidth="1" strokeDasharray="3 2" />}
           <path d={linePath} fill="none" stroke="#3b82f6" strokeWidth="1.5"
             strokeLinejoin="round" strokeLinecap="round" />
+          {secondaryPath && (
+            <path d={secondaryPath} fill="none" stroke="#ea580c" strokeWidth="1.5"
+              strokeLinejoin="round" strokeLinecap="round" />
+          )}
           {data.map((_, i) => (
             <rect key={i} x={Math.max(0, xS(i) - cellW / 2)} y={0}
               width={cellW} height={ch} fill="transparent"
@@ -335,6 +380,9 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData 
           onMouseEnter={() => setPinnedIdx(activeIdx)}
           onMouseLeave={() => { setPinnedIdx(null); setHoverIdx(null); }}>
           <p className="text-a-ink-muted mb-1">{data[activeIdx].date.replace(/-/g, ".")} · <span className="font-semibold text-a-blue tabular-nums">{data[activeIdx].value.toLocaleString()}</span></p>
+          {hoveredSecondaryValue != null && (
+            <p className="text-orange-600 tabular-nums">광고비: {hoveredSecondaryValue.toLocaleString()}원</p>
+          )}
           {hoveredLsEntry?.value != null && (
             <p className="text-gray-400 tabular-nums">라라스윗 검색량: {hoveredLsEntry.value.toLocaleString()}</p>
           )}
@@ -388,6 +436,8 @@ export default function MonitoringPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [showHelp, setShowHelp] = useState(false);
   const [trendPost, setTrendPost] = useState<Post | null>(null);
+  const [trendAdCosts, setTrendAdCosts] = useState<{ date: string; total_cost: number }[]>([]);
+  const [trendLoading, setTrendLoading] = useState(false);
   const [editCell, setEditCell] = useState<EditCell | null>(null);
   const [editCategory, setEditCategory] = useState<{ postId: string; infId: string; value: string } | null>(null);
   const [editPlayCount, setEditPlayCount] = useState<{ postId: string; value: string } | null>(null);
@@ -580,6 +630,36 @@ export default function MonitoringPage() {
       if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
     };
   }, []);
+
+  // trendPost 변경 시 광고비 데이터 로드
+  useEffect(() => {
+    if (!trendPost) {
+      setTrendAdCosts([]);
+      return;
+    }
+
+    const allStats = trendPost.all_stats ?? [];
+    if (allStats.length === 0) {
+      setTrendAdCosts([]);
+      return;
+    }
+
+    const dateFrom = allStats[0].measured_at;
+    const dateTo = allStats[allStats.length - 1].measured_at;
+
+    setTrendLoading(true);
+    fetch(`/api/meta-ads?date_from=${dateFrom}&date_to=${dateTo}`)
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setTrendAdCosts(data);
+        } else {
+          setTrendAdCosts([]);
+        }
+      })
+      .catch(() => setTrendAdCosts([]))
+      .finally(() => setTrendLoading(false));
+  }, [trendPost]);
 
   async function loadPosts() {
     const res = await fetch("/api/sponsored-posts");
@@ -1885,14 +1965,26 @@ export default function MonitoringPage() {
                 className="text-a-ink-muted hover:text-a-ink text-xl leading-none transition">×</button>
             </div>
             <p className="text-[11px] text-a-ink-muted mb-3">
-              {(trendPost.all_stats ?? []).some(s => s.play_count != null) ? "조회수 트렌드" : "좋아요 트렌드"}
+              {(trendPost.all_stats ?? []).some(s => s.play_count != null) ? "조회수 · 광고비 트렌드" : "좋아요 트렌드"}
             </p>
+            <div className="flex items-center gap-3 mb-3 text-xs">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-0.5 bg-a-blue" />
+                <span className="text-a-ink-muted">조회수</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-0.5 bg-orange-600" />
+                <span className="text-a-ink-muted">광고비</span>
+              </div>
+              {trendLoading && <span className="text-gray-300">로딩 중...</span>}
+            </div>
             <LineChart
               data={(trendPost.all_stats ?? [])
                 .filter(s => pickMetric(s) != null)
                 .map(s => ({ date: s.measured_at, value: pickMetric(s)! }))}
               height={220}
               gradId="modalGrad"
+              secondaryData={trendAdCosts.length > 0 ? trendAdCosts : undefined}
             />
           </div>
         </div>
