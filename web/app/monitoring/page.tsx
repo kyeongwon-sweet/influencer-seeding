@@ -1238,7 +1238,7 @@ export default function MonitoringPage() {
             <option value="all">전체 유형</option>
             {POST_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
-          <div className="relative -ml-1">
+          <div className="relative -ml-2">
             <button
               onClick={() => setShowChannelTypeDropdown(!showChannelTypeDropdown)}
               className={`filter-select w-32 ${filters.channelTypes.length > 0 ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
