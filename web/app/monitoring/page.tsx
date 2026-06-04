@@ -648,29 +648,36 @@ export default function MonitoringPage() {
   }, []);
 
   // 메인 차트용 광고비 데이터 로드
-  // 메인 차트용 날짜 범위 (메모이제이션)
-  const dateRange = useMemo(() => {
-    if (chartData.length < 2) return null;
-    return {
-      from: (typeof chartData[0].date === 'string' ? chartData[0].date : '').split('T')[0],
-      to: (typeof chartData[chartData.length - 1].date === 'string' ? chartData[chartData.length - 1].date : '').split('T')[0],
-    };
-  }, [chartData.length, chartData[0]?.date, chartData[chartData.length - 1]?.date]);
-
-  // 광고비 데이터 로드
   useEffect(() => {
-    if (!dateRange) {
+    if (chartData.length < 2) {
+      setMainAdCosts([]);
+      return;
+    }
+
+    // 날짜 안전하게 추출 (YYYY-MM-DD 형식)
+    const extractDate = (dateStr: any): string => {
+      if (typeof dateStr !== 'string') return '';
+      return dateStr.split('T')[0]; // ISO 형식에서 날짜만 추출
+    };
+
+    const dateFrom = extractDate(chartData[0].date);
+    const dateTo = extractDate(chartData[chartData.length - 1].date);
+
+    if (!dateFrom || !dateTo) {
       setMainAdCosts([]);
       return;
     }
 
     const url = new URL('/api/meta-ads', window.location.origin);
-    url.searchParams.set('date_from', dateRange.from);
-    url.searchParams.set('date_to', dateRange.to);
+    url.searchParams.set('date_from', dateFrom);
+    url.searchParams.set('date_to', dateTo);
+
+    console.log("[광고비 API 요청]", url.toString());
 
     fetch(url.toString())
       .then(r => r.json())
       .then(data => {
+        console.log("[광고비 API 응답]", data);
         if (Array.isArray(data)) {
           setMainAdCosts(data);
         } else {
@@ -682,7 +689,7 @@ export default function MonitoringPage() {
         console.error("[광고비 로드 오류]", err);
         setMainAdCosts([]);
       });
-  }, [dateRange]);
+  }, [chartData]);
 
 
   async function loadPosts() {
@@ -1093,15 +1100,20 @@ export default function MonitoringPage() {
       // 3️⃣ UI 업데이트
       setPosts(prev => prev.map(p => {
         if (p.id === postId) {
-          return {
+          const updated = {
             ...p,
-            reach_count: reach_count !== null ? reach_count : undefined,
             latest_stats: updatePostLatestStats(p, now, { play_count })
           };
+          // reach_count는 계산된 값으로 설정 (null도 명시적으로 설정)
+          if (reach_count !== null) {
+            updated.reach_count = reach_count;
+          }
+          return updated;
         }
         return p;
       }));
 
+      console.log(`[도달수 저장] postId=${postId}, reach_count=${reach_count}`);
       toast("저장되었습니다.", "success");
     } catch (err) {
       console.error("[patchPlayCount 오류]", err);
