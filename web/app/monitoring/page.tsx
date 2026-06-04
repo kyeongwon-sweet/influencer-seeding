@@ -1362,21 +1362,21 @@ export default function MonitoringPage() {
             {/* 차트 + 테이블 */}
             <div className="flex divide-x divide-a-hairline">
               {/* 차트 */}
-              <div className="flex-[4] px-5 py-4">
+              <div className="flex-[4] px-5 pr-10 py-4">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">조회수 트렌드 (누적)</p>
-                  {mainAdCosts.length > 0 && (
-                    <div className="flex items-center gap-3 text-xs">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-2 h-0.5 bg-a-blue" />
-                        <span className="text-gray-500">조회수</span>
-                      </div>
+                  <div className="flex items-center gap-3 text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-0.5 bg-a-blue" />
+                      <span className="text-gray-500">조회수</span>
+                    </div>
+                    {mainAdCosts.length > 0 && (
                       <div className="flex items-center gap-1.5">
                         <div className="w-2 h-0.5 bg-gray-400" />
                         <span className="text-gray-500">광고비</span>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
                 <LineChart
                   data={chartData}
