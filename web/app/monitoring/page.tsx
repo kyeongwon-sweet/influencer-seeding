@@ -666,7 +666,7 @@ export default function MonitoringPage() {
     const res = await fetch("/api/sponsored-posts");
     const json = await res.json();
     if (!res.ok) { toast("데이터 로드에 실패했습니다: " + (json?.error ?? "오류"), "error"); return; }
-    const newPosts = Array.isArray(json) ? json : [];
+    let newPosts = Array.isArray(json) ? json : [];
 
     // play_count 변화 감지 — 이전 저장된 값과 비교
     if (previousPlayCountsRef.current.size > 0) {
@@ -681,6 +681,23 @@ export default function MonitoringPage() {
 
       if (updated.size > 0) {
         setUpdatedPlayCounts(updated);
+
+        // 조회수가 있는 게시물에 자동으로 도달수 입력
+        for (const [postId, newCount] of updated) {
+          if (newCount !== null && newCount > 0) {
+            const reach_count = Math.round(newCount * 0.8);
+            await fetch(`/api/sponsored-posts/${postId}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ reach_count }),
+            }).catch(() => {});
+
+            // 로컬 상태 업데이트
+            newPosts = newPosts.map(p =>
+              p.id === postId ? { ...p, reach_count } : p
+            );
+          }
+        }
       }
       previousPlayCountsRef.current.clear();
     }
@@ -1017,8 +1034,27 @@ export default function MonitoringPage() {
     });
     if (res.ok) {
       const now = new Date().toISOString().slice(0, 10);
+      let reach_count = null;
+
+      // play_count가 있으면 reach_count 자동 계산 (play_count * 0.8)
+      if (play_count !== null) {
+        reach_count = Math.round(play_count * 0.8);
+        const reachRes = await fetch(`/api/sponsored-posts/${postId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reach_count }),
+        });
+        if (!reachRes.ok) {
+          toast("도달수 저장에 실패했습니다.", "error");
+        }
+      }
+
       setPosts(prev => prev.map(p => p.id === postId
-        ? { ...p, latest_stats: updatePostLatestStats(p, now, { play_count }) }
+        ? {
+          ...p,
+          ...(reach_count !== null && { reach_count }),
+          latest_stats: updatePostLatestStats(p, now, { play_count })
+        }
         : p));
     } else {
       toast("저장에 실패했습니다.", "error");
