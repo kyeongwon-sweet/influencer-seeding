@@ -445,7 +445,8 @@ export default function MonitoringPage() {
   const [deleting, setDeleting] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [showTimeoutError, setShowTimeoutError] = useState(false);
-  const [updatedPlayCounts, setUpdatedPlayCounts] = useState<Set<string>>(new Set());
+  const [updatedPlayCounts, setUpdatedPlayCounts] = useState<Map<string, number | null>>(new Map());
+  const [hoverUpdatedId, setHoverUpdatedId] = useState<string | null>(null);
   const previousPlayCountsRef = useRef<Map<string, number | null>>(new Map());
   const runningJobIdRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -669,19 +670,17 @@ export default function MonitoringPage() {
 
     // play_count 변화 감지 — 이전 저장된 값과 비교
     if (previousPlayCountsRef.current.size > 0) {
-      const updated = new Set<string>();
+      const updated = new Map<string, number | null>();
       newPosts.forEach(post => {
         const prevCount = previousPlayCountsRef.current.get(post.id);
         const newCount = post.latest_stats?.play_count ?? null;
         if (prevCount !== newCount && (prevCount !== null || newCount !== null)) {
-          updated.add(post.id);
+          updated.set(post.id, newCount);
         }
       });
 
       if (updated.size > 0) {
         setUpdatedPlayCounts(updated);
-        // 2초 후 표시 제거
-        setTimeout(() => setUpdatedPlayCounts(new Set()), 2000);
       }
       previousPlayCountsRef.current.clear();
     }
@@ -1721,13 +1720,24 @@ export default function MonitoringPage() {
                             onKeyDown={e => { if (e.key === "Enter") patchPlayCount(post.id, editPlayCount.value); if (e.key === "Escape") setEditPlayCount(null); }}
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
                         ) : (
-                          <div className="flex items-center justify-end gap-1.5">
+                          <div className="flex items-center justify-end gap-1.5 relative">
                             <span onClick={() => setEditPlayCount({ postId: post.id, value: String(s?.play_count ?? "") })}
                               className="text-a-ink-muted hover:text-a-blue transition-colors cursor-text">
                               {fmt(s?.play_count)}
                             </span>
                             {updatedPlayCounts.has(post.id) && (
-                              <div className="w-1.5 h-1.5 bg-red-500 rounded-full" title="새로운 값이 업데이트됨" />
+                              <div
+                                className="w-1.5 h-1.5 bg-red-500 rounded-full cursor-pointer hover:w-2 hover:h-2 transition-all"
+                                onMouseEnter={() => setHoverUpdatedId(post.id)}
+                                onMouseLeave={() => setHoverUpdatedId(null)}
+                                title="새로운 값 확인"
+                              />
+                            )}
+                            {hoverUpdatedId === post.id && (
+                              <div className="absolute bottom-full right-0 mb-2 bg-white border border-a-hairline rounded-[6px] px-2 py-1 text-xs whitespace-nowrap shadow-[0_4px_12px_rgba(0,0,0,0.10)] z-10">
+                                <p className="text-gray-500">새로 수집한 값</p>
+                                <p className="font-semibold text-red-500">{fmt(updatedPlayCounts.get(post.id))}</p>
+                              </div>
                             )}
                           </div>
                         )}
