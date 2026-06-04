@@ -1268,7 +1268,13 @@ export default function MonitoringPage() {
               className={`filter-select w-32 ${filters.channelTypes.length > 0 ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
               style={{ paddingLeft: 0 }}
             >
-              {filters.channelTypes.length === 0 ? "전체 채널분류" : `선택됨(${filters.channelTypes.length})`}
+              {filters.channelTypes.length === 0
+                ? "전체 채널분류"
+                : (() => {
+                    const text = filters.channelTypes.join(', ');
+                    return text.length > 16 ? text.slice(0, 16) + '...' : text;
+                  })()
+              }
             </button>
             {showChannelTypeDropdown && (
               <div className="absolute top-full left-0 mt-1 bg-white border border-a-hairline rounded-[8px] shadow-lg z-50 w-48">
