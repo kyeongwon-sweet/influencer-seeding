@@ -537,10 +537,11 @@ export default function OrganicPage() {
           <div>
             <p className="text-[13px] font-semibold text-a-ink mb-2">💬 댓글 작성:</p>
             <ul className="text-[13px] text-a-ink-muted space-y-1 list-none leading-relaxed">
-              <li>• 감사댓글</li>
-              <li>• 공계 샤라웃</li>
-              <li>• 주력층만 반응</li>
-              <li>• 빠르게 달기</li>
+              <li>• 우리가 언급된 자컨/콘텐츠에 감사댓글</li>
+              <li>• 공계로 샤라웃 (태그 필수!)</li>
+              <li>• 주력 인물들에게만 좋아요+답글</li>
+              <li>• 귀여운 말투, 밈, 유행 센스있게</li>
+              <li>• 최대한 빠르게 달기</li>
             </ul>
           </div>
         </div>
