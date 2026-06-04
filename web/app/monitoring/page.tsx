@@ -634,27 +634,27 @@ export default function MonitoringPage() {
   }, []);
 
   // 메인 차트용 광고비 데이터 로드
-  // 광고비 API 비활성화 (500 에러)
-  // useEffect(() => {
-  //   if (chartData.length < 2) {
-  //     setMainAdCosts([]);
-  //     return;
-  //   }
+  // 메인 차트용 광고비 데이터 로드
+  useEffect(() => {
+    if (chartData.length < 2) {
+      setMainAdCosts([]);
+      return;
+    }
 
-  //   const dateFrom = chartData[0].date;
-  //   const dateTo = chartData[chartData.length - 1].date;
+    const dateFrom = chartData[0].date;
+    const dateTo = chartData[chartData.length - 1].date;
 
-  //   fetch(`/api/meta-ads?date_from=${dateFrom}&date_to=${dateTo}`)
-  //     .then(r => r.json())
-  //     .then(data => {
-  //       if (Array.isArray(data)) {
-  //         setMainAdCosts(data);
-  //       } else {
-  //         setMainAdCosts([]);
-  //       }
-  //     })
-  //     .catch(() => setMainAdCosts([]));
-  // }, [chartData.length, chartData[0]?.date, chartData[chartData.length - 1]?.date]);
+    fetch(`/api/meta-ads?date_from=${dateFrom}&date_to=${dateTo}`)
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setMainAdCosts(data);
+        } else {
+          setMainAdCosts([]);
+        }
+      })
+      .catch(() => setMainAdCosts([]));
+  }, [chartData.length, chartData[0]?.date, chartData[chartData.length - 1]?.date]);
 
 
   async function loadPosts() {
@@ -1383,7 +1383,7 @@ export default function MonitoringPage() {
                   height={140}
                   gradId="summaryGrad"
                   lsData={lsSearchData}
-                  secondaryData={mainAdCosts.length > 0 ? mainAdCosts : undefined}
+                  secondaryData={mainAdCosts.length > 0 ? mainAdCosts.map(d => ({date: d.date, value: d.total_cost})) : undefined}
                   secondaryColor="#b3b3b3"
                   postsOnDate={(date) =>
                     filteredPosts
