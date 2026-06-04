@@ -22,9 +22,13 @@ def _stats_key(url: str) -> str:
 
 def run():
     try:
-        payload = json.loads(os.getenv("JOB_PAYLOAD", "{}"))
-    except (json.JSONDecodeError, TypeError):
+        payload = json.loads(os.getenv("JOB_PAYLOAD", "{}")) or {}
+    except (json.JSONDecodeError, TypeError, ValueError):
         payload = {}
+
+    if not isinstance(payload, dict):
+        payload = {}
+
     job_id = payload.get("job_id")
 
     db = get_client()
