@@ -19,17 +19,11 @@ export async function GET(req) {
     }
 
     // Meta Marketing API: 광고 계정의 일별 광고비 조회
-    // https://developers.facebook.com/docs/marketing-api/reference/ad-account/insights
-    const params = new URLSearchParams({
-      fields: 'spend,date_start',
-      date_preset: 'custom_date_range',
-      time_range: JSON.stringify({ since: dateFrom, until: dateTo }),
-      access_token: accessToken,
-    });
+    // time_range는 JSON으로 전달 (URLSearchParams에서 수동으로 인코딩)
+    const timeRange = JSON.stringify({ since: dateFrom, until: dateTo });
+    const url = `https://graph.facebook.com/v18.0/act_${accountId}/insights?fields=spend,date_start&time_range=${encodeURIComponent(timeRange)}&access_token=${encodeURIComponent(accessToken)}`;
 
-    const url = `https://graph.facebook.com/v18.0/act_${accountId}/insights?${params.toString()}`;
-
-    console.log("[META_API] 요청:", url.replace(accessToken, '***'));
+    console.log("[META_API] 요청 URL:", url.replace(accessToken, '***').replace(timeRange, '***'));
 
     const response = await fetch(url);
     const data = await response.json();
