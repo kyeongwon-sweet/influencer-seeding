@@ -61,6 +61,30 @@ function formatTimestamp(ts: string): string {
   return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function normalizeChannelType(value: string | null): string | null {
+  if (!value) return null;
+  // 공백 정규화: 연속된 공백을 단일 공백으로, 앞뒤 공백 제거
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function updatePostLatestStats(post: Post, now: string, overrides?: Partial<DailyStats>): DailyStats | null {
+  if (!post.latest_stats) {
+    return {
+      measured_at: now,
+      play_count: overrides?.play_count ?? null,
+      likes_count: overrides?.likes_count ?? null,
+      comments_count: overrides?.comments_count ?? null,
+    };
+  }
+  return {
+    ...post.latest_stats,
+    measured_at: now,
+    play_count: overrides?.play_count ?? post.latest_stats.play_count,
+    likes_count: overrides?.likes_count ?? post.latest_stats.likes_count,
+    comments_count: overrides?.comments_count ?? post.latest_stats.comments_count,
+  };
+}
+
 function getPostType(url: string): string {
   if (url.includes("instagram.com")) return url.includes("/reel/") ? "릴스" : "피드";
   if (url.includes("youtube.com") || url.includes("youtu.be")) return url.includes("/shorts/") ? "숏폼" : "롱폼";
@@ -703,7 +727,7 @@ export default function MonitoringPage() {
         return {
           project_name: cols[0] || null,
           product_name: cols[1] || null,
-          channel_type: cols[2] || null,
+          channel_type: normalizeChannelType(cols[2]),
           url: cols[3] ?? "",
           account_name: cols[4] || null,
           posted_at: cols[5] || null,
@@ -865,12 +889,11 @@ export default function MonitoringPage() {
     });
     if (res.ok) {
       const stored = isNumeric ? (value === "" ? null : Number(value)) : (value || null);
-      const now = new Date().toISOString().slice(0, 10); // 서버와 일관성: DATE 형식만
+      const now = new Date().toISOString().slice(0, 10);
       setPosts(prev => prev.map(p => p.id === postId ? {
         ...p,
         [field]: stored,
-        // 편집 시 마지막 업데이트 시간 갱신
-        latest_stats: p.latest_stats ? { ...p.latest_stats, measured_at: now } : { measured_at: now, play_count: null, likes_count: null, comments_count: null }
+        latest_stats: updatePostLatestStats(p, now)
       } : p));
     } else {
       toast("저장에 실패했습니다.", "error");
@@ -886,9 +909,9 @@ export default function MonitoringPage() {
       body: JSON.stringify({ play_count }),
     });
     if (res.ok) {
-      const now = new Date().toISOString().slice(0, 10); // 서버와 일관성: DATE 형식만
+      const now = new Date().toISOString().slice(0, 10);
       setPosts(prev => prev.map(p => p.id === postId
-        ? { ...p, latest_stats: p.latest_stats ? { ...p.latest_stats, play_count, measured_at: now } : { measured_at: now, play_count, likes_count: null, comments_count: null } }
+        ? { ...p, latest_stats: updatePostLatestStats(p, now, { play_count }) }
         : p));
     } else {
       toast("저장에 실패했습니다.", "error");
@@ -903,13 +926,12 @@ export default function MonitoringPage() {
       body: JSON.stringify({ category: value || null }),
     });
     if (res.ok) {
-      const now = new Date().toISOString().slice(0, 10); // 서버와 일관성: DATE 형식만
+      const now = new Date().toISOString().slice(0, 10);
       setPosts(prev => prev.map(p => p.id === postId
         ? {
           ...p,
           influencers: p.influencers ? { ...p.influencers, category: value || null } : null,
-          // 편집 시 마지막 업데이트 시간 갱신
-          latest_stats: p.latest_stats ? { ...p.latest_stats, measured_at: now } : { measured_at: now, play_count: null, likes_count: null, comments_count: null }
+          latest_stats: updatePostLatestStats(p, now)
         }
         : p));
     } else {
