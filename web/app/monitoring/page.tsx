@@ -1035,25 +1035,42 @@ export default function MonitoringPage() {
       let reach_count = null;
 
       // play_count가 있으면 reach_count 자동 계산 (play_count * 0.8)
-      if (play_count !== null) {
+      if (play_count !== null && play_count > 0) {
         reach_count = Math.round(play_count * 0.8);
         const reachRes = await fetch(`/api/sponsored-posts/${postId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ reach_count }),
         });
-        if (!reachRes.ok) {
+        if (reachRes.ok) {
+          // 도달당비용 계산: cost / reach_count (별도 저장 필요 없음, UI에서 계산)
+          setPosts(prev => prev.map(p => p.id === postId
+            ? {
+              ...p,
+              reach_count,
+              latest_stats: updatePostLatestStats(p, now, { play_count })
+            }
+            : p));
+        } else {
           toast("도달수 저장에 실패했습니다.", "error");
         }
-      }
-
-      setPosts(prev => prev.map(p => p.id === postId
-        ? {
-          ...p,
-          ...(reach_count !== null && { reach_count }),
-          latest_stats: updatePostLatestStats(p, now, { play_count })
+      } else {
+        // play_count가 없으면 reach_count도 null로 설정
+        const clearRes = await fetch(`/api/sponsored-posts/${postId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reach_count: null }),
+        });
+        if (clearRes.ok) {
+          setPosts(prev => prev.map(p => p.id === postId
+            ? {
+              ...p,
+              reach_count: null,
+              latest_stats: updatePostLatestStats(p, now, { play_count })
+            }
+            : p));
         }
-        : p));
+      }
     } else {
       toast("저장에 실패했습니다.", "error");
     }
