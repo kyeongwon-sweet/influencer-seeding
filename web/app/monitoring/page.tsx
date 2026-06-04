@@ -1025,47 +1025,62 @@ export default function MonitoringPage() {
 
   async function patchPlayCount(postId: string, value: string) {
     const play_count = value === "" ? null : Number(value);
-    const res = await fetch(`/api/sponsored-posts/${postId}/stats`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ play_count }),
-    });
-    if (res.ok) {
+
+    try {
+      // 1️⃣ 조회수 저장
+      const res = await fetch(`/api/sponsored-posts/${postId}/stats`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ play_count }),
+      });
+
+      if (!res.ok) {
+        toast("조회수 저장에 실패했습니다.", "error");
+        setEditPlayCount(null);
+        return;
+      }
+
       const now = new Date().toISOString().slice(0, 10);
       let reach_count = null;
 
-      // play_count가 있으면 reach_count 자동 계산 (play_count * 0.8)
+      // 2️⃣ 도달수 계산 및 저장
       if (play_count !== null && play_count > 0) {
         reach_count = Math.round(play_count * 0.8);
-        // reach_count 저장 (실패해도 UI는 업데이트)
-        fetch(`/api/sponsored-posts/${postId}`, {
+
+        // reach_count 저장 (비동기로 계속 진행)
+        await fetch(`/api/sponsored-posts/${postId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ reach_count }),
-        }).catch(err => console.error("[reach_count 저장 오류]", err));
-      } else {
-        // play_count가 없으면 reach_count도 null로 설정
-        fetch(`/api/sponsored-posts/${postId}`, {
+        });
+      } else if (play_count === null || play_count === 0) {
+        // play_count가 0이면 reach_count도 null로
+        await fetch(`/api/sponsored-posts/${postId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ reach_count: null }),
-        }).catch(err => console.error("[reach_count 초기화 오류]", err));
+        });
       }
 
-      // UI 항상 업데이트 (reach_count 저장 성공 여부와 무관)
-      setPosts(prev => prev.map(p => p.id === postId
-        ? {
-          ...p,
-          ...(reach_count !== null && { reach_count }),
-          latest_stats: updatePostLatestStats(p, now, { play_count })
+      // 3️⃣ UI 업데이트
+      setPosts(prev => prev.map(p => {
+        if (p.id === postId) {
+          return {
+            ...p,
+            reach_count: reach_count !== null ? reach_count : undefined,
+            latest_stats: updatePostLatestStats(p, now, { play_count })
+          };
         }
-        : p));
+        return p;
+      }));
 
       toast("저장되었습니다.", "success");
-    } else {
-      toast("조회수 저장에 실패했습니다.", "error");
+    } catch (err) {
+      console.error("[patchPlayCount 오류]", err);
+      toast("저장 중 오류가 발생했습니다.", "error");
+    } finally {
+      setEditPlayCount(null);
     }
-    setEditPlayCount(null);
   }
 
   async function patchCategory(postId: string, infId: string, value: string) {
