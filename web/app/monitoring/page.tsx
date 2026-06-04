@@ -1270,10 +1270,9 @@ export default function MonitoringPage() {
             >
               {filters.channelTypes.length === 0
                 ? "전체 채널분류"
-                : (() => {
-                    const text = filters.channelTypes.join(', ');
-                    return text.length > 16 ? text.slice(0, 16) + '...' : text;
-                  })()
+                : filters.channelTypes.length === 1
+                ? filters.channelTypes[0]
+                : `${filters.channelTypes[0]} 외 ${filters.channelTypes.length - 1}`
               }
             </button>
             {showChannelTypeDropdown && (
