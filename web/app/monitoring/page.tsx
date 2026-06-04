@@ -130,6 +130,20 @@ function TH({ children, right, col, onSort, sorted, className: cls, w, leftPos, 
   return (
     <th
       onClick={onSort}
+      role={sortable ? "button" : undefined}
+      tabIndex={sortable ? 0 : undefined}
+      onKeyDown={sortable ? (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSort?.();
+        }
+      } : undefined}
+      aria-sort={
+        !sortable ? "none" :
+        sorted === "asc" ? "ascending" :
+        sorted === "desc" ? "descending" :
+        "none"
+      }
       style={isSticky ? { width: w, minWidth: w, left: leftPos } : w ? { minWidth: w } : undefined}
       className={[
         "relative px-3 py-3 text-xs font-medium whitespace-nowrap select-none",
@@ -634,27 +648,25 @@ export default function MonitoringPage() {
   }, []);
 
   // 메인 차트용 광고비 데이터 로드
-  // 메인 차트용 광고비 데이터 로드
+  // 메인 차트용 날짜 범위 (메모이제이션)
+  const dateRange = useMemo(() => {
+    if (chartData.length < 2) return null;
+    return {
+      from: (typeof chartData[0].date === 'string' ? chartData[0].date : '').split('T')[0],
+      to: (typeof chartData[chartData.length - 1].date === 'string' ? chartData[chartData.length - 1].date : '').split('T')[0],
+    };
+  }, [chartData.length, chartData[0]?.date, chartData[chartData.length - 1]?.date]);
+
+  // 광고비 데이터 로드
   useEffect(() => {
-    if (chartData.length < 2) {
+    if (!dateRange) {
       setMainAdCosts([]);
       return;
     }
 
-    const dateFrom = chartData[0].date;
-    const dateTo = chartData[chartData.length - 1].date;
-
-    // dateFrom/dateTo를 YYYY-MM-DD 형식으로 정규화
-    const normalizedDateFrom = typeof dateFrom === 'string'
-      ? dateFrom.split('T')[0]
-      : dateFrom;
-    const normalizedDateTo = typeof dateTo === 'string'
-      ? dateTo.split('T')[0]
-      : dateTo;
-
     const url = new URL('/api/meta-ads', window.location.origin);
-    url.searchParams.set('date_from', normalizedDateFrom);
-    url.searchParams.set('date_to', normalizedDateTo);
+    url.searchParams.set('date_from', dateRange.from);
+    url.searchParams.set('date_to', dateRange.to);
 
     fetch(url.toString())
       .then(r => r.json())
@@ -670,7 +682,7 @@ export default function MonitoringPage() {
         console.error("[광고비 로드 오류]", err);
         setMainAdCosts([]);
       });
-  }, [chartData.length, chartData[0]?.date, chartData[chartData.length - 1]?.date]);
+  }, [dateRange]);
 
 
   async function loadPosts() {
@@ -1406,11 +1418,11 @@ export default function MonitoringPage() {
                   <div className="flex items-center gap-3 text-xs">
                     <div className="flex items-center gap-1.5">
                       <div className="w-2 h-0.5 bg-a-blue" />
-                      <span className="text-gray-500">조회수</span>
+                      <span className="text-a-ink-muted">조회수</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <div className="w-2 h-0.5 bg-gray-400" />
-                      <span className="text-gray-500">광고비</span>
+                      <span className="text-a-ink-muted">광고비</span>
                     </div>
                   </div>
                 </div>
@@ -1826,7 +1838,7 @@ export default function MonitoringPage() {
                             )}
                             {hoverUpdatedId === post.id && (
                               <div className="absolute bottom-full right-0 mb-2 bg-white border border-a-hairline rounded-[6px] px-2 py-1 text-xs whitespace-nowrap shadow-[0_4px_12px_rgba(0,0,0,0.10)] z-10">
-                                <p className="text-gray-500">새로 수집한 값</p>
+                                <p className="text-a-ink-muted">새로 수집한 값</p>
                                 <p className="font-semibold text-red-500">{fmt(updatedPlayCounts.get(post.id))}</p>
                               </div>
                             )}
@@ -1951,9 +1963,9 @@ export default function MonitoringPage() {
 
       {/* 게시물 추가 모달 */}
       {showAdd && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-labelledby="modal-add-title">
           <div className="bg-white rounded-[22px] p-6 w-96 shadow-[0_8px_40px_rgba(0,0,0,0.12)]">
-            <h2 className="font-semibold tracking-tight mb-4">게시물 추가</h2>
+            <h2 id="modal-add-title" className="font-semibold tracking-tight mb-4">게시물 추가</h2>
             <div className="space-y-3">
               <input placeholder="프로젝트명" value={form.project_name}
                 onChange={e => setForm(p => ({ ...p, project_name: e.target.value }))}
@@ -2072,7 +2084,7 @@ export default function MonitoringPage() {
               <div className="flex items-center gap-3 text-xs">
                 <div className="flex items-center gap-1.5">
                   <div className="w-2 h-0.5 bg-a-blue" />
-                  <span className="text-gray-500">조회수</span>
+                  <span className="text-a-ink-muted">조회수</span>
                 </div>
                 {trendLoading && <span className="text-gray-300">로딩 중...</span>}
               </div>
