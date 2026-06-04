@@ -50,19 +50,22 @@ def run():
         db.table("jobs").update({"status": "running"}).eq("id", job_id).execute()
 
     try:
+        print(f"[LOG] 협찬 모니터링 시작 - 날짜: {TODAY}")
         res = db.table("sponsored_posts").select("id, url, posted_at, account_name, influencer_id").execute()
         posts = res.data or []
+        print(f"[LOG] 추적 게시물: {len(posts)}개")
 
         if not posts:
-            print("추적 중인 게시물이 없습니다.")
+            print("[WARN] 추적 중인 게시물이 없습니다.")
             if job_id:
                 db.table("jobs").update({"status": "done"}).eq("id", job_id).execute()
             return
 
+        print(f"[LOG] Apify 데이터 수집 시작...")
         stats = _fetch_stats([p["url"] for p in posts])
         stats_by_key = {_stats_key(s["url"]): s for s in stats}
 
-        print(f"Apify 수집 결과: {len(stats)}건")
+        print(f"[LOG] Apify 수집 결과: {len(stats)}건 / {len(posts)}개 요청")
 
         rows = []
         for post in posts:
@@ -113,14 +116,21 @@ def run():
             })
 
         if rows:
-            db.table("post_daily_stats").upsert(rows, on_conflict="post_id,measured_at").execute()
+            print(f"[LOG] 데이터 저장 시작: {len(rows)}건")
+            result = db.table("post_daily_stats").upsert(rows, on_conflict="post_id,measured_at").execute()
+            print(f"[LOG] ✅ 데이터 저장 완료: {len(rows)}건")
+        else:
+            print(f"[WARN] 저장할 데이터가 없습니다 (매칭 실패 또는 조회수 오류)")
 
-        print(f"모니터링 완료: {len(rows)}건 저장")
+        print(f"[SUCCESS] 모니터링 완료: {len(rows)}건 저장")
 
         if job_id:
             db.table("jobs").update({"status": "done"}).eq("id", job_id).execute()
 
     except Exception as e:
+        print(f"[ERROR] 모니터링 실패: {str(e)}")
+        import traceback
+        print(f"[ERROR] Traceback:\n{traceback.format_exc()}")
         if job_id:
             db.table("jobs").update({"status": "failed", "error": str(e)}).eq("id", job_id).execute()
         raise
@@ -129,14 +139,17 @@ def run():
 def _fetch_stats(urls: list) -> list:
     from apify_client import ApifyClient
 
+    print(f"[LOG] Apify 액터 호출: {APIFY_IG_ACTOR}")
     client = ApifyClient(os.getenv("APIFY_API_TOKEN"))
     run = client.actor(APIFY_IG_ACTOR).call(run_input={
         "directUrls": urls,
         "resultsType": "posts",
         "resultsLimit": len(urls),
     })
+    print(f"[LOG] Apify 실행 ID: {run.get('id')}")
 
     items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
+    print(f"[LOG] Apify 응답 아이템: {len(items)}개")
 
     result = []
     for item in items:

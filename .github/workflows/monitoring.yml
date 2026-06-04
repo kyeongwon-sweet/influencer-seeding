@@ -4,6 +4,10 @@ on:
   schedule:
     - cron: "0 15 * * *"  # 매일 UTC 15:00 = KST 00:00 (자정)
   workflow_dispatch:
+    inputs:
+      monitoring_date:
+        description: 'monitoring date (YYYY-MM-DD, default: today)'
+        required: false
   repository_dispatch:
     types: [monitoring]
 
