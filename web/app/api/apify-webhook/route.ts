@@ -707,14 +707,32 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
         cleanUrl = `https://www.youtube.com${u.pathname}`;
       } catch { continue; }
 
+      const title = (item.title as string) || '';
+      const description = ((item.description || item.details) as string) || '';
+      const textContent = (title + ' ' + description).toLowerCase();
+
+      // 필터 1: 제목/설명에 "라라스윗" 또는 "lalasweet" 포함
+      const hasKeyword = textContent.includes('라라스윗') || textContent.includes('lalasweet');
+      if (!hasKeyword) {
+        console.log(`[LOG] YouTube Shorts 제외 - 키워드 없음: "${title}"`);
+        continue;
+      }
+
       const subscribers = (item.channelSubscriberCount || item.numberOfSubscribers || item.subscriberCount || 0) as number;
       const viewCount = (item.viewCount || item.views || 0) as number;
 
-      // 구독자 1만 이상 (데이터 없으면 통과)
-      if (subscribers > 0 && subscribers < ORGANIC_MIN_FOLLOWERS) continue;
-      // 조회수 1만 이상 (데이터 없으면 통과)
-      if (viewCount > 0 && viewCount < ORGANIC_MIN_VIEWS) continue;
+      // 필터 2: 조회수 10만 이상 필수
+      if (!viewCount || viewCount < 100_000) {
+        console.log(`[LOG] YouTube Shorts 제외 - 조회수 부족: "${title}" (${viewCount})`);
+        continue;
+      }
+      // 필터 3: 구독자 1만 이상
+      if (subscribers > 0 && subscribers < 10_000) {
+        console.log(`[LOG] YouTube Shorts 제외 - 구독자 부족: "${title}" (${subscribers})`);
+        continue;
+      }
 
+      console.log(`[LOG] YouTube Shorts 수집됨: "${title}" (${viewCount} views, ${subscribers} subs)`);
       const channelName = (item.channelName || item.channelTitle || item.author) as string;
 
       const rawTs = item.date || item.publishedAt || item.uploadDate;
