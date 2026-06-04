@@ -1114,12 +1114,9 @@ export default function MonitoringPage() {
           <div className="relative">
             <button
               onClick={() => setShowChannelTypeDropdown(!showChannelTypeDropdown)}
-              className={`filter-select flex items-center justify-between w-32 ${filters.channelTypes.length > 0 ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
+              className={`filter-select w-32 ${filters.channelTypes.length > 0 ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
             >
-              <span>{filters.channelTypes.length === 0 ? "전체 채널분류" : `선택됨(${filters.channelTypes.length})`}</span>
-              <svg width="10" height="6" viewBox="0 0 10 6" fill="none" className={`transition ${showChannelTypeDropdown ? "rotate-180" : ""}`}>
-                <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
+              {filters.channelTypes.length === 0 ? "전체 채널분류" : `선택됨(${filters.channelTypes.length})`}
             </button>
             {showChannelTypeDropdown && (
               <div className="absolute top-full left-0 mt-1 bg-white border border-a-hairline rounded-[8px] shadow-lg z-50 w-48">
