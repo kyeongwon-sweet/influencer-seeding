@@ -233,13 +233,14 @@ function smoothCurvePath(pts: [number, number][]): string {
   return d;
 }
 
-function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData, secondaryData }: {
+function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData, secondaryData, secondaryColor = "#ea580c" }: {
   data: { date: string; value: number }[];
   height?: number;
   gradId?: string;
   postsOnDate?: (date: string) => { name: string; url: string }[];
   lsData?: { date: string; ratio: number; value: number | null }[];
   secondaryData?: { date: string; value: number }[];
+  secondaryColor?: string;
 }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [pinnedIdx, setPinnedIdx] = useState<number | null>(null);
@@ -351,7 +352,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
           <path d={linePath} fill="none" stroke="#3b82f6" strokeWidth="1.5"
             strokeLinejoin="round" strokeLinecap="round" />
           {secondaryPath && (
-            <path d={secondaryPath} fill="none" stroke="#ea580c" strokeWidth="1.5"
+            <path d={secondaryPath} fill="none" stroke={secondaryColor} strokeWidth="1.5"
               strokeLinejoin="round" strokeLinecap="round" />
           )}
           {data.map((_, i) => (
@@ -447,6 +448,7 @@ export default function MonitoringPage() {
   const [showTimeoutError, setShowTimeoutError] = useState(false);
   const [updatedPlayCounts, setUpdatedPlayCounts] = useState<Map<string, number | null>>(new Map());
   const [hoverUpdatedId, setHoverUpdatedId] = useState<string | null>(null);
+  const [mainAdCosts, setMainAdCosts] = useState<{ date: string; total_cost: number }[]>([]);
   const previousPlayCountsRef = useRef<Map<string, number | null>>(new Map());
   const runningJobIdRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -631,6 +633,28 @@ export default function MonitoringPage() {
       if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
     };
   }, []);
+
+  // 메인 차트용 광고비 데이터 로드
+  useEffect(() => {
+    if (chartData.length < 2) {
+      setMainAdCosts([]);
+      return;
+    }
+
+    const dateFrom = chartData[0].date;
+    const dateTo = chartData[chartData.length - 1].date;
+
+    fetch(`/api/meta-ads?date_from=${dateFrom}&date_to=${dateTo}`)
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setMainAdCosts(data);
+        } else {
+          setMainAdCosts([]);
+        }
+      })
+      .catch(() => setMainAdCosts([]));
+  }, [chartData]);
 
   // trendPost 변경 시 광고비 데이터 로드
   useEffect(() => {
@@ -1361,12 +1385,28 @@ export default function MonitoringPage() {
             <div className="flex divide-x divide-a-hairline">
               {/* 차트 */}
               <div className="flex-[4] px-5 py-4">
-                <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest mb-2">조회수 트렌드 (누적)</p>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">조회수 트렌드 (누적)</p>
+                  {mainAdCosts.length > 0 && (
+                    <div className="flex items-center gap-3 text-xs">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-0.5 bg-a-blue" />
+                        <span className="text-gray-500">조회수</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-0.5 bg-gray-400" />
+                        <span className="text-gray-500">광고비</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <LineChart
                   data={chartData}
                   height={140}
                   gradId="summaryGrad"
                   lsData={lsSearchData}
+                  secondaryData={mainAdCosts.length > 0 ? mainAdCosts : undefined}
+                  secondaryColor="#b3b3b3"
                   postsOnDate={(date) =>
                     filteredPosts
                       .filter(p => p.posted_at?.slice(0, 10) === date)
