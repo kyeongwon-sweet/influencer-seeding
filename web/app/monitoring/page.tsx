@@ -644,16 +644,32 @@ export default function MonitoringPage() {
     const dateFrom = chartData[0].date;
     const dateTo = chartData[chartData.length - 1].date;
 
-    fetch(`/api/meta-ads?date_from=${dateFrom}&date_to=${dateTo}`)
+    // dateFrom/dateTo를 YYYY-MM-DD 형식으로 정규화
+    const normalizedDateFrom = typeof dateFrom === 'string'
+      ? dateFrom.split('T')[0]
+      : dateFrom;
+    const normalizedDateTo = typeof dateTo === 'string'
+      ? dateTo.split('T')[0]
+      : dateTo;
+
+    const url = new URL('/api/meta-ads', window.location.origin);
+    url.searchParams.set('date_from', normalizedDateFrom);
+    url.searchParams.set('date_to', normalizedDateTo);
+
+    fetch(url.toString())
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) {
           setMainAdCosts(data);
         } else {
+          console.warn("[광고비 로드] 예상치 못한 응답:", data);
           setMainAdCosts([]);
         }
       })
-      .catch(() => setMainAdCosts([]));
+      .catch(err => {
+        console.error("[광고비 로드 오류]", err);
+        setMainAdCosts([]);
+      });
   }, [chartData.length, chartData[0]?.date, chartData[chartData.length - 1]?.date]);
 
 
