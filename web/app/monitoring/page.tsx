@@ -1424,10 +1424,10 @@ export default function MonitoringPage() {
             {/* 차트 + 테이블 */}
             <div className="flex divide-x divide-a-hairline">
               {/* 차트 */}
-              <div className="flex-[4] px-5 pr-10 py-4">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">조회수 트렌드 (누적)</p>
-                  <div className="flex items-center gap-3 text-xs">
+              <div className="flex-1 px-6 py-5 min-w-0">
+                <div className="flex items-center justify-between mb-3 gap-4">
+                  <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest whitespace-nowrap">조회수 트렌드 (누적)</p>
+                  <div className="flex items-center gap-3 text-xs flex-shrink-0">
                     <div className="flex items-center gap-1.5">
                       <div className="w-2 h-0.5 bg-a-blue" />
                       <span className="text-a-ink-muted">조회수</span>
@@ -1440,7 +1440,7 @@ export default function MonitoringPage() {
                 </div>
                 <LineChart
                   data={chartData}
-                  height={140}
+                  height={160}
                   gradId="summaryGrad"
                   lsData={lsSearchData}
                   secondaryData={mainAdCosts.length > 0 ? mainAdCosts.map(d => ({date: d.date, value: d.total_cost})) : undefined}
@@ -1453,7 +1453,7 @@ export default function MonitoringPage() {
                 />
               </div>
               {/* 증감 테이블 */}
-              <div className="flex-[3] flex flex-col self-start min-w-[220px]">
+              <div className="flex-1 flex flex-col self-start min-w-[250px]">
                 <div className="px-5 py-4 border-b border-a-hairline">
                   <p className="text-[11px] font-medium text-a-ink-muted">일자별 증감</p>
                 </div>
