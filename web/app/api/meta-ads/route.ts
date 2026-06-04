@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// Clerk 인증 무시 (공개 API)
+export const runtime = 'nodejs';
+
 const META_ACCESS_TOKEN = process.env.META_BUSINESS_ACCESS_TOKEN ?? "";
 const ACCOUNT_ID = process.env.META_BUSINESS_ACCOUNT_ID ?? "";
 
