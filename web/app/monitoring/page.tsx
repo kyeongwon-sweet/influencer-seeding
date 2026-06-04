@@ -1241,7 +1241,8 @@ export default function MonitoringPage() {
           <div className="relative -ml-2">
             <button
               onClick={() => setShowChannelTypeDropdown(!showChannelTypeDropdown)}
-              className={`filter-select w-32 pl-0 ${filters.channelTypes.length > 0 ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
+              className={`filter-select w-32 ${filters.channelTypes.length > 0 ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
+              style={{ paddingLeft: 0 }}
             >
               {filters.channelTypes.length === 0 ? "전체 채널분류" : `선택됨(${filters.channelTypes.length})`}
             </button>
