@@ -1194,7 +1194,7 @@ export default function MonitoringPage() {
 
       <div className="p-6">
         {/* 필터 바 */}
-        <div className="bg-white rounded-[14px] border border-a-hairline px-4 py-2.5 mb-4 flex items-center gap-2 flex-wrap">
+        <div className="bg-white rounded-[14px] border border-a-hairline px-4 py-2.5 mb-4 flex items-center gap-3 flex-wrap">
           <input
             type="text"
             placeholder="인플루언서 검색"
@@ -1238,7 +1238,7 @@ export default function MonitoringPage() {
           <div className="relative">
             <button
               onClick={() => setShowChannelTypeDropdown(!showChannelTypeDropdown)}
-              className={`filter-select w-32 ${filters.channelTypes.length > 0 ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
+              className={`filter-select ${filters.channelTypes.length > 0 ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
               style={{ padding: "6px 26px 6px 0" }}
             >
               {filters.channelTypes.length === 0
