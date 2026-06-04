@@ -57,8 +57,8 @@ body {
   /* ── Selects (appearance-none + custom arrow) ─ */
   .filter-select {
     @apply border border-a-hairline rounded-[8px] text-xs bg-white text-a-ink focus:outline-none focus:border-a-blue transition appearance-none cursor-pointer;
-    padding: 12px 26px 12px 0;
-    height: 38px;
+    padding: 12px 26px 12px 12px;
+    height: 44px;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%237a7a7a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 9px center;
