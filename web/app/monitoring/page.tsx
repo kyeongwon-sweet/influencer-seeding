@@ -654,7 +654,7 @@ export default function MonitoringPage() {
         }
       })
       .catch(() => setMainAdCosts([]));
-  }, [chartData]);
+  }, [chartData.length, chartData[0]?.date, chartData[chartData.length - 1]?.date]);
 
   // trendPost 변경 시 광고비 데이터 로드
   useEffect(() => {
@@ -688,8 +688,11 @@ export default function MonitoringPage() {
 
   async function loadPosts() {
     const res = await fetch("/api/sponsored-posts");
+    if (!res.ok) {
+      toast("데이터 로드에 실패했습니다", "error");
+      return;
+    }
     const json = await res.json();
-    if (!res.ok) { toast("데이터 로드에 실패했습니다: " + (json?.error ?? "오류"), "error"); return; }
     let newPosts = Array.isArray(json) ? json : [];
 
     // play_count 변화 감지 — 이전 저장된 값과 비교
