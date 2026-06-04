@@ -1,0 +1,51 @@
+name: Monitoring Retry
+
+on:
+  schedule:
+    # 6/4 02:00 UTC = 6/4 11:00 KST, 6/4 05:00 UTC = 6/4 14:00 KST, 6/4 08:00 UTC = 6/4 17:00 KST
+    - cron: "0 2,5,8 * * *"  # 매 3시간마다 (UTC 02:00, 05:00, 08:00)
+  workflow_dispatch:
+
+jobs:
+  check-and-retry:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check yesterday data
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python << 'EOF'
+          import os
+          from datetime import date, timedelta
+          from db import get_client
+
+          db = get_client()
+          yesterday = (date.today() - timedelta(days=1)).isoformat()
+
+          result = db.table("post_daily_stats").select("id").eq("measured_at", yesterday).limit(1).execute()
+          if result.data:
+              print(f"✅ 어제({yesterday}) 데이터 존재: {len(result.data)}건")
+              exit(0)
+          else:
+              print(f"❌ 어제({yesterday}) 데이터 없음 → 재시도 필요")
+              exit(1)
+          EOF
+
+      - name: Trigger monitoring on missing data
+        if: failure()
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          event-type: monitoring
+          client-payload: '{"job_id": null}'

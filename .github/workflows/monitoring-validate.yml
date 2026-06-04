@@ -1,0 +1,73 @@
+name: Monitoring Validation
+
+on:
+  schedule:
+    - cron: "0 16 * * *"  # 매일 UTC 16:00 = KST 01:00 (오전 1시)
+  workflow_dispatch:
+
+jobs:
+  validate-daily-data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Validate and report data status
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python << 'EOF'
+          import os
+          from datetime import date, timedelta
+          from db import get_client
+
+          db = get_client()
+          yesterday = (date.today() - timedelta(days=1)).isoformat()
+          today = date.today().isoformat()
+
+          # 어제 데이터 확인
+          yesterday_result = db.table("post_daily_stats").select("id").eq("measured_at", yesterday).execute()
+          yesterday_count = len(yesterday_result.data) if yesterday_result.data else 0
+
+          # 오늘 데이터 확인
+          today_result = db.table("post_daily_stats").select("id").eq("measured_at", today).execute()
+          today_count = len(today_result.data) if today_result.data else 0
+
+          print(f"📊 데이터 현황")
+          print(f"  어제({yesterday}): {yesterday_count}건 {'✅' if yesterday_count > 0 else '❌'}")
+          print(f"  오늘({today}): {today_count}건")
+
+          # 어제 데이터가 없으면 경고
+          if yesterday_count == 0:
+              print(f"\n⚠️  주의: {yesterday} 데이터가 없습니다!")
+              print(f"원인: 협찬 모니터링 워크플로우 실패 또는 Apify 오류")
+              exit(1)
+
+          print("\n✅ 데이터 검증 완료")
+          exit(0)
+          EOF
+
+      - name: Create issue on missing data
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            const dateStr = yesterday.toISOString().split('T')[0];
+
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `⚠️ 협찬 모니터링: ${dateStr} 데이터 누락`,
+              body: `${dateStr}의 협찬 모니터링 데이터가 수집되지 않았습니다.\n\n**확인 사항:**\n- [ ] GitHub Actions 로그 확인\n- [ ] Apify 사용량 확인\n- [ ] 수동으로 데이터 수집\n\n[Run Monitoring 워크플로우](${context.payload.repository.html_url}/actions/workflows/monitoring.yml)`,
+              labels: ['monitoring', 'data-missing']
+            })
