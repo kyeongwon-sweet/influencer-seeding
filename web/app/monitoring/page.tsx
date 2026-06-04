@@ -1194,7 +1194,7 @@ export default function MonitoringPage() {
 
       <div className="p-6">
         {/* 필터 바 */}
-        <div className="bg-white rounded-[14px] border border-a-hairline px-4 py-2.5 mb-4 flex items-center gap-2 flex-wrap">
+        <div className="bg-white rounded-[14px] border border-a-hairline px-4 py-2.5 mb-4 flex items-center gap-1 flex-wrap">
           <input
             type="text"
             placeholder="인플루언서 검색"
