@@ -23,11 +23,19 @@ def _stats_key(url: str) -> str:
 
 
 def run():
+    # JOB_PAYLOAD 환경변수 처리 (None, "null", 비어있음 모두 처리)
+    job_payload_str = os.getenv("JOB_PAYLOAD", "{}")
+
+    # null 문자열이거나 비어있으면 {}로 기본값 설정
+    if not job_payload_str or job_payload_str.strip() in ("null", "None", ""):
+        job_payload_str = "{}"
+
     try:
-        payload = json.loads(os.getenv("JOB_PAYLOAD", "{}")) or {}
+        payload = json.loads(job_payload_str)
     except (json.JSONDecodeError, TypeError, ValueError):
         payload = {}
 
+    # payload가 dict가 아니면 기본값
     if not isinstance(payload, dict):
         payload = {}
 
