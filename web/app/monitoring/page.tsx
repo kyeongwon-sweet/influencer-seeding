@@ -1227,7 +1227,6 @@ export default function MonitoringPage() {
               })}
             </div>
           )}
-          <div className="w-px h-4 bg-a-hairline mx-2" />
           <select
             value={filters.type}
             onChange={e => setFilters(p => ({ ...p, type: e.target.value }))}
@@ -1239,7 +1238,7 @@ export default function MonitoringPage() {
           <div className="relative">
             <button
               onClick={() => setShowChannelTypeDropdown(!showChannelTypeDropdown)}
-              className={`filter-select w-32 -ml-3 ${filters.channelTypes.length > 0 ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
+              className={`filter-select w-32 ${filters.channelTypes.length > 0 ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
               style={{ padding: "6px 26px 6px 0" }}
             >
               {filters.channelTypes.length === 0
