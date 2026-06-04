@@ -395,6 +395,8 @@ export default function MonitoringPage() {
   const [deleting, setDeleting] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [showTimeoutError, setShowTimeoutError] = useState(false);
+  const [updatedPlayCounts, setUpdatedPlayCounts] = useState<Set<string>>(new Set());
+  const previousPlayCountsRef = useRef<Map<string, number | null>>(new Map());
   const runningJobIdRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -583,7 +585,28 @@ export default function MonitoringPage() {
     const res = await fetch("/api/sponsored-posts");
     const json = await res.json();
     if (!res.ok) { toast("데이터 로드에 실패했습니다: " + (json?.error ?? "오류"), "error"); return; }
-    setPosts(Array.isArray(json) ? json : []);
+    const newPosts = Array.isArray(json) ? json : [];
+
+    // play_count 변화 감지 — 이전 저장된 값과 비교
+    if (previousPlayCountsRef.current.size > 0) {
+      const updated = new Set<string>();
+      newPosts.forEach(post => {
+        const prevCount = previousPlayCountsRef.current.get(post.id);
+        const newCount = post.latest_stats?.play_count ?? null;
+        if (prevCount !== newCount && (prevCount !== null || newCount !== null)) {
+          updated.add(post.id);
+        }
+      });
+
+      if (updated.size > 0) {
+        setUpdatedPlayCounts(updated);
+        // 2초 후 표시 제거
+        setTimeout(() => setUpdatedPlayCounts(new Set()), 2000);
+      }
+      previousPlayCountsRef.current.clear();
+    }
+
+    setPosts(newPosts);
   }
 
   async function checkAndResumeMonitoring() {
@@ -646,6 +669,11 @@ export default function MonitoringPage() {
     setRunning(true);
     setShowTimeoutError(false);
     setElapsedSeconds(0);
+
+    // 수집 전에 현재 play_count들을 저장
+    previousPlayCountsRef.current = new Map(
+      posts.map(p => [p.id, p.latest_stats?.play_count ?? null])
+    );
 
     const res = await fetch("/api/jobs", {
       method: "POST",
@@ -1613,10 +1641,15 @@ export default function MonitoringPage() {
                             onKeyDown={e => { if (e.key === "Enter") patchPlayCount(post.id, editPlayCount.value); if (e.key === "Escape") setEditPlayCount(null); }}
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
                         ) : (
-                          <span onClick={() => setEditPlayCount({ postId: post.id, value: String(s?.play_count ?? "") })}
-                            className="text-a-ink-muted hover:text-a-blue transition-colors cursor-text">
-                            {fmt(s?.play_count)}
-                          </span>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <span onClick={() => setEditPlayCount({ postId: post.id, value: String(s?.play_count ?? "") })}
+                              className="text-a-ink-muted hover:text-a-blue transition-colors cursor-text">
+                              {fmt(s?.play_count)}
+                            </span>
+                            {updatedPlayCounts.has(post.id) && (
+                              <div className="w-1.5 h-1.5 bg-red-500 rounded-full" title="새로운 값이 업데이트됨" />
+                            )}
+                          </div>
                         )}
                       </td>
                       <TD right muted w={colWidths["조회당비용"]}>
