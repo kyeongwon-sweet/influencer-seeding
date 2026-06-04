@@ -350,6 +350,7 @@ export default function MonitoringPage() {
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const [showChannelTypeDropdown, setShowChannelTypeDropdown] = useState(false);
   const [form, setForm] = useState({ url: "", product_name: "", project_name: "", channel_type: "", cost: "" });
   const [adding, setAdding] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
@@ -1088,34 +1089,50 @@ export default function MonitoringPage() {
             <option value="all">전체 유형</option>
             {POST_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
-          <div className={`filter-select-group ${filters.channelTypes.length > 0 ? "border-a-blue text-a-blue bg-blue-50" : ""}`}>
-            <label className="filter-label">채널분류</label>
-            <div className="filter-checkbox-group">
-              <label key="all-ch" className="filter-checkbox">
-                <input
-                  type="checkbox"
-                  checked={filters.channelTypes.length === 0}
-                  onChange={() => setFilters(p => ({ ...p, channelTypes: [] }))}
-                />
-                전체
-              </label>
-              {CHANNEL_TYPES.map(t => (
-                <label key={t} className="filter-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={filters.channelTypes.includes(t)}
-                    onChange={e => {
-                      if (e.target.checked) {
-                        setFilters(p => ({ ...p, channelTypes: [...p.channelTypes, t] }));
-                      } else {
-                        setFilters(p => ({ ...p, channelTypes: p.channelTypes.filter(x => x !== t) }));
-                      }
-                    }}
-                  />
-                  {t}
-                </label>
-              ))}
-            </div>
+          <div className="relative">
+            <button
+              onClick={() => setShowChannelTypeDropdown(!showChannelTypeDropdown)}
+              className={`filter-select flex items-center justify-between w-32 ${filters.channelTypes.length > 0 ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
+            >
+              <span>{filters.channelTypes.length === 0 ? "전체 채널분류" : `선택됨(${filters.channelTypes.length})`}</span>
+              <svg width="10" height="6" viewBox="0 0 10 6" fill="none" className={`transition ${showChannelTypeDropdown ? "rotate-180" : ""}`}>
+                <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+            {showChannelTypeDropdown && (
+              <div className="absolute top-full left-0 mt-1 bg-white border border-a-hairline rounded-[8px] shadow-lg z-50 w-48">
+                <div className="p-3 space-y-2 max-h-64 overflow-y-auto">
+                  <label className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1.5 rounded text-xs">
+                    <input
+                      type="checkbox"
+                      checked={filters.channelTypes.length === 0}
+                      onChange={() => {
+                        setFilters(p => ({ ...p, channelTypes: [] }));
+                      }}
+                      className="w-3.5 h-3.5 accent-a-blue cursor-pointer"
+                    />
+                    전체
+                  </label>
+                  {CHANNEL_TYPES.map(t => (
+                    <label key={t} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1.5 rounded text-xs">
+                      <input
+                        type="checkbox"
+                        checked={filters.channelTypes.includes(t)}
+                        onChange={e => {
+                          if (e.target.checked) {
+                            setFilters(p => ({ ...p, channelTypes: [...p.channelTypes, t] }));
+                          } else {
+                            setFilters(p => ({ ...p, channelTypes: p.channelTypes.filter(x => x !== t) }));
+                          }
+                        }}
+                        className="w-3.5 h-3.5 accent-a-blue cursor-pointer"
+                      />
+                      {t}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           <select
             value={filters.category}
