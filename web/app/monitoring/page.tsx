@@ -352,7 +352,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
           <path d={linePath} fill="none" stroke="#3b82f6" strokeWidth="1.5"
             strokeLinejoin="round" strokeLinecap="round" />
           {secondaryPath && (
-            <path d={secondaryPath} fill="none" stroke={secondaryColor} strokeWidth="1.5"
+            <path d={secondaryPath} fill="none" stroke={secondaryColor} strokeWidth="1"
               strokeLinejoin="round" strokeLinecap="round" />
           )}
           {data.map((_, i) => (
@@ -1370,12 +1370,10 @@ export default function MonitoringPage() {
                       <div className="w-2 h-0.5 bg-a-blue" />
                       <span className="text-gray-500">조회수</span>
                     </div>
-                    {mainAdCosts.length > 0 && (
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-2 h-0.5 bg-gray-400" />
-                        <span className="text-gray-500">광고비</span>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-0.5 bg-gray-400" />
+                      <span className="text-gray-500">광고비</span>
+                    </div>
                   </div>
                 </div>
                 <LineChart
