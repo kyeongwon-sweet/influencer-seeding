@@ -16,9 +16,9 @@ export async function GET(req) {
     const accountId = process.env.META_BUSINESS_ACCOUNT_ID;
 
     if (!accessToken || !accountId) {
-      console.warn("[Meta Ads API] 환경변수 미설정 - Mock 데이터 반환");
-      // 환경변수 미설정 시 빈 배열 반환 (그래프 표시 안 함)
-      return Response.json([]);
+      const errorMsg = "META_BUSINESS_ACCESS_TOKEN 또는 META_BUSINESS_ACCOUNT_ID 환경변수가 설정되지 않았습니다";
+      console.error("[Meta Ads API]", errorMsg);
+      return Response.json({ error: errorMsg }, { status: 500 });
     }
 
     const timeRange = JSON.stringify({ since: dateFrom, until: dateTo });
