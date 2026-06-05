@@ -21,12 +21,17 @@ export async function GET(req) {
       return Response.json({ error: errorMsg }, { status: 500 });
     }
 
-    const timeRange = JSON.stringify({ since: dateFrom, until: dateTo });
-    const url = `https://graph.facebook.com/v18.0/act_${accountId}/insights?fields=spend,date_start&time_range=${encodeURIComponent(timeRange)}&access_token=${encodeURIComponent(accessToken)}`;
+    // Meta API 요청 URL 구성 (since/until 파라미터 분리)
+    const url = new URL(`https://graph.facebook.com/v18.0/act_${accountId}/insights`);
+    url.searchParams.append('fields', 'spend,date_start');
+    url.searchParams.append('since', dateFrom);
+    url.searchParams.append('until', dateTo);
+    url.searchParams.append('access_token', accessToken);
 
-    console.log("[Meta Ads API] 요청 URL:", url.replace(accessToken, "***"));
+    const urlStr = url.toString().replace(accessToken, "***");
+    console.log("[Meta Ads API] 요청 URL:", urlStr);
 
-    const response = await fetch(url);
+    const response = await fetch(url.toString());
     const data = await response.json();
 
     if (!response.ok) {
