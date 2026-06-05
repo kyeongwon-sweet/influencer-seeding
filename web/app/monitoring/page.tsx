@@ -1522,7 +1522,7 @@ export default function MonitoringPage() {
                     {lsSearchData && lsSearchData.length > 0 && (
                       <div className="flex items-center gap-1.5">
                         <svg width="10" height="3" viewBox="0 0 20 4"><line x1="0" y1="2" x2="20" y2="2" stroke="#d1d5db" strokeWidth="1.5" strokeDasharray="3 2" /></svg>
-                        <span className="text-xs text-a-ink-muted">라라스윗</span>
+                        <span className="text-xs text-a-ink-muted">검색량</span>
                       </div>
                     )}
                     <div className="flex items-center gap-1.5">
@@ -1843,7 +1843,7 @@ export default function MonitoringPage() {
                         ) : (
                           <span
                             onClick={() => setEditCell({ postId: post.id, field: "content_summary", value: post.content_summary ?? "" })}
-                            className="text-xs cursor-text text-a-ink-muted hover:text-a-ink transition-colors line-clamp-2 block"
+                            className="text-xs cursor-text text-a-ink-muted hover:text-a-ink transition-colors line-clamp-1 block"
                           >
                             {post.content_summary || <span className="text-gray-300">-</span>}
                           </span>
