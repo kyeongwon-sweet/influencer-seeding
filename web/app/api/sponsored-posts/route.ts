@@ -1,16 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
-
-// UTM 등 트래킹 파라미터 제거 → 정규화된 URL 반환
-function cleanPostUrl(raw: string): string {
-  try {
-    const u = new URL(raw);
-    // path만 유지 (쿼리 스트링 전체 제거)
-    const path = u.pathname.endsWith("/") ? u.pathname : u.pathname + "/";
-    return `${u.origin}${path}`;
-  } catch { return raw; }
-}
+import { normalizeUrl } from "@/lib/url-utils";
+import { logger } from "@/lib/logger";
 
 export async function GET(req: NextRequest) {
   // URL 정규화 마이그레이션 엔드포인트
@@ -33,7 +25,7 @@ export async function GET(req: NextRequest) {
 
     // 각 게시물의 URL 정규화
     for (const post of postsArray) {
-      const cleaned = cleanPostUrl(post.url);
+      const cleaned = normalizeUrl(post.url) || post.url;
       if (post.url !== cleaned) {
         const { error } = await supabase
           .from("sponsored_posts")
@@ -95,24 +87,61 @@ export async function POST(req: NextRequest) {
 
   if (Array.isArray(body)) {
     // URL 정규화 + 빈 URL 제거
+    // 목적: 쿼리 파라미터, trailing slash 등을 정규화해서 중복 방지
     const rows = body
-      .map(r => ({ ...r, url: r.url ? cleanPostUrl(r.url) : r.url }))
+      .map(r => ({ ...r, url: r.url ? (normalizeUrl(r.url) || r.url) : r.url }))
       .filter(r => r.url);
+
+    logger.info("sponsored-posts-api", "게시물 일괄 추가 시작", {
+      count: body.length,
+      afterNormalization: rows.length,
+      filtered: body.length - rows.length,
+    });
+
     // upsert: URL이 이미 있으면 새 컬럼값으로 업데이트, 없으면 삽입
     const { data, error } = await supabase
       .from("sponsored_posts")
       .upsert(rows, { onConflict: "url" })
       .select();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    if (error) {
+      logger.error("sponsored-posts-api", "게시물 일괄 추가 실패", {
+        error: error.message,
+        count: rows.length,
+      });
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    logger.info("sponsored-posts-api", "게시물 일괄 추가 완료", {
+      insertedCount: data.length,
+    });
+
     return NextResponse.json(data, { status: 201 });
   }
 
-  const cleaned = { ...body, url: body.url ? cleanPostUrl(body.url) : body.url };
+  const cleaned = { ...body, url: body.url ? (normalizeUrl(body.url) || body.url) : body.url };
+
+  logger.info("sponsored-posts-api", "게시물 추가 시작", {
+    url: cleaned.url,
+    hasNormalization: true,
+  });
   const { data, error } = await supabase
     .from("sponsored_posts")
     .insert(cleaned)
     .select()
     .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  if (error) {
+    logger.error("sponsored-posts-api", "게시물 추가 실패", {
+      error: error.message,
+      url: cleaned.url,
+    });
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  logger.info("sponsored-posts-api", "게시물 추가 완료", {
+    postId: data.id,
+  });
+
   return NextResponse.json(data, { status: 201 });
 }

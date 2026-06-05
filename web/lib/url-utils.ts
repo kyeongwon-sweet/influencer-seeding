@@ -1,7 +1,38 @@
 /**
  * URL 정규화 유틸리티
- * 모든 URL은 https://, trailing slash 포함, shorts/videos 접미사 제거된 형태로 저장
+ *
+ * 목적: 모든 페이지에서 일관된 URL 정규화
+ * 규칙:
+ * 1. 프로토콜: https://로 통일
+ * 2. Trailing slash: 반드시 포함 (마지막에 /)
+ * 3. 쿼리 파라미터: 모두 제거 (UTM, tracking 등)
+ * 4. 플랫폼별 특수 처리:
+ *    - YouTube: /shorts, /videos, /featured 등 제거
+ *    - Instagram: 프로필만 (포스트/릴스 URL → null)
+ *
+ * ⚠️ 중요: 모든 URL 비교는 이 함수로 정규화 후 진행!
  */
+
+/**
+ * 범용 URL 정규화 함수 (모든 페이지에서 사용)
+ * - 프로토콜 + trailing slash + 쿼리 제거 통일
+ * - 플랫폼별 추가 정규화는 별도 함수 사용
+ */
+export function normalizeUrl(url: string): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url.startsWith("http") ? url : "https://" + url);
+    // 프로토콜을 https로 강제
+    const origin = `https://${u.hostname}`;
+    // trailing slash 포함한 경로
+    let path = u.pathname.endsWith("/") ? u.pathname : u.pathname + "/";
+    // 경로가 비어있으면 /로
+    if (!path || path === "") path = "/";
+    return `${origin}${path}`;
+  } catch {
+    return null;
+  }
+}
 
 export function normalizeYouTubeUrl(url: string): string | null {
   if (!url) return null;
