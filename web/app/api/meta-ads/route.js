@@ -40,10 +40,13 @@ export async function GET(req) {
     }
 
     console.log("[Meta Ads API] 수신 데이터:", data.data.length, "건");
+    console.log("[Meta Ads API] 상세 데이터:", JSON.stringify(data.data.slice(0, 5), null, 2));
 
     const sorted = data.data
       .filter(item => item.date_start && item.spend)
       .sort((a, b) => new Date(a.date_start) - new Date(b.date_start));
+
+    console.log("[Meta Ads API] 필터링 후:", sorted.length, "건");
 
     let cumulative = 0;
     const result = sorted.map(item => {
