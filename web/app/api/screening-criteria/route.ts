@@ -7,15 +7,19 @@ export async function GET() {
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const supabase = getServerSupabase();
+
+  // ⚠️ 버그 수정: .single() → .maybeSingle()
+  // single(): 데이터 없으면 에러 (500 반환)
+  // maybeSingle(): 데이터 없으면 null 반환 (정상)
   const { data, error } = await supabase
     .from("screening_criteria")
     .select("*")
     .order("updated_at", { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data);
+  return NextResponse.json(data || {});
 }
 
 export async function PUT(req: NextRequest) {
