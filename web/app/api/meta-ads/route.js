@@ -34,13 +34,16 @@ export async function GET(req) {
       return Response.json({ error: "Meta API 오류", details: data.error }, { status: response.status });
     }
 
+    console.log("[Meta Ads API] 전체 응답:", JSON.stringify(data, null, 2));
+
     if (!data.data || !Array.isArray(data.data)) {
       console.log("[Meta Ads API] 데이터 없음");
       return Response.json([]);
     }
 
     console.log("[Meta Ads API] 수신 데이터:", data.data.length, "건");
-    console.log("[Meta Ads API] 상세 데이터:", JSON.stringify(data.data.slice(0, 5), null, 2));
+    console.log("[Meta Ads API] 각 항목의 필드명:", Object.keys(data.data[0] || {}));
+    console.log("[Meta Ads API] 상세 데이터:", JSON.stringify(data.data.slice(0, 10), null, 2));
 
     const sorted = data.data
       .filter(item => item.date_start && item.spend)
