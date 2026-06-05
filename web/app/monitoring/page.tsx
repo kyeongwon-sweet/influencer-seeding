@@ -503,13 +503,14 @@ export default function MonitoringPage() {
     if (filters.type !== "all" && getPostType(post.url) !== filters.type) return false;
     if (filters.channelTypes.length > 0 && !filters.channelTypes.some(ct => (post.channel_type ?? "").replace(/\s+/g, "") === ct.replace(/\s+/g, ""))) return false;
     if (filters.category !== "all" && (post.influencers?.category ?? null) !== filters.category) return false;
-    // 날짜 필터: 조회수 측정일 기준 (해당 기간에 측정 데이터가 있는 게시물만 표시)
+    // 날짜 필터: 조회수 측정일 기준 (해당 기간에 측정 데이터가 있거나 아직 데이터 없는 게시물 포함)
     if (filters.dateFrom || filters.dateTo) {
       const hasData = (post.all_stats ?? []).some(s =>
         (!filters.dateFrom || s.measured_at >= filters.dateFrom) &&
         (!filters.dateTo   || s.measured_at <= filters.dateTo)
       );
-      if (!hasData) return false;
+      const isNewPost = (post.all_stats ?? []).length === 0;  // 아직 수집되지 않은 게시물
+      if (!hasData && !isNewPost) return false;  // 데이터 없고 새 게시물도 아니면 제외
     }
     return true;
   });
