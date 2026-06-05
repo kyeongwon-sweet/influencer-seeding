@@ -1760,13 +1760,25 @@ export default function MonitoringPage() {
               </thead>
               <tbody>
                 {sortedPosts.map(post => {
-                  // 날짜 필터 시 해당 기간 마지막 측정값, 없으면 latest_stats
-                  const s = (filters.dateFrom || filters.dateTo)
-                    ? ((post.all_stats ?? []).filter(st =>
+                  // 날짜 필터 시 해당 기간의 측정값들을 추출
+                  const filteredStats = (filters.dateFrom || filters.dateTo)
+                    ? (post.all_stats ?? []).filter(st =>
                         (!filters.dateFrom || st.measured_at >= filters.dateFrom) &&
                         (!filters.dateTo   || st.measured_at <= filters.dateTo)
-                      ).slice(-1)[0] ?? post.latest_stats)
-                    : post.latest_stats;
+                      )
+                    : (post.all_stats ?? []);
+
+                  // 현재값: 필터 범위 내 마지막 측정값, 없으면 latest_stats
+                  const s = filteredStats.length > 0 ? filteredStats[filteredStats.length - 1] : post.latest_stats;
+
+                  // 이전값: 필터 범위 내 그 이전 값, 없으면 필터 범위 밖의 이전값
+                  // ⚠️ 중요: 필터 적용 시 필터 범위 내에서 prev를 재계산 (전체 데이터의 prev_stats 사용 금지)
+                  const prev = (filters.dateFrom || filters.dateTo)
+                    ? filteredStats.length > 1
+                      ? filteredStats[filteredStats.length - 2]  // 필터 범위 내 이전값
+                      : null  // 필터 범위 내 데이터가 1개면 비교 불가
+                    : post.prev_stats;  // 필터 미적용: 전체 데이터의 이전값 사용
+
                   const displayName = post.account_name ?? post.influencers?.name ?? "-";
                   const hl = hasNotableChange(post);
                   return (
@@ -1777,8 +1789,8 @@ export default function MonitoringPage() {
                       </td>
                       <TD col="증분량" w={stickyColWidths["증분량"]} leftPos={stickyLefts["증분량"]} right highlighted={hl}>
                         {(() => {
-                          if (s?.play_count == null || post.prev_stats == null) return <span className="text-gray-300">-</span>;
-                          const delta = s.play_count - (post.prev_stats.play_count ?? 0);
+                          if (s?.play_count == null || prev == null) return <span className="text-gray-300">-</span>;
+                          const delta = s.play_count - (prev.play_count ?? 0);
                           return (
                             <span className={`font-semibold ${delta > 0 ? "text-red-500" : delta < 0 ? "text-emerald-600" : "text-gray-300"}`}>
                               {delta > 0 ? "+" : ""}{delta.toLocaleString()}
