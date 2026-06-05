@@ -764,6 +764,9 @@ export default function ScreeningPage() {
           )}
         </div>
         <div className="flex items-center gap-1.5">
+          <button onClick={() => setShowUpload(true)} className="btn-secondary">
+            CSV 가져오기
+          </button>
           <button onClick={() => setShowCriteria(true)} className="btn-secondary">기준 설정</button>
           {running && (
             <>
@@ -844,9 +847,6 @@ export default function ScreeningPage() {
             <div className="w-px h-4 bg-a-hairline" />
             <button onClick={downloadCSV} disabled={filtered.length === 0} className="btn-secondary">
               엑셀 다운로드
-            </button>
-            <button onClick={() => setShowUpload(true)} className="btn-secondary">
-              CSV 가져오기
             </button>
           </div>
         </div>
