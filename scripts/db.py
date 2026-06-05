@@ -4,7 +4,12 @@ from supabase import create_client, Client
 from config import BASE_DIR
 from dotenv import load_dotenv
 
-load_dotenv(os.path.join(BASE_DIR, ".env"))
+# 로컬 .env 파일이 있으면 로드, 없으면 환경변수 사용 (GitHub Actions 호환)
+env_path = os.path.join(BASE_DIR, ".env")
+if os.path.exists(env_path):
+    load_dotenv(env_path)
+else:
+    load_dotenv()  # 환경변수 우선
 
 _client: Client | None = None
 
