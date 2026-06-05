@@ -32,8 +32,8 @@ type Post = {
 
 type CsvRow = { url: string; project_name: string | null; product_name: string | null; channel_type: string | null; account_name: string | null; posted_at: string | null; cost: number | null; reach_count: number | null };
 
-type Filters = { name: string; project: string; products: string[]; type: string; channelTypes: string[]; category: string; dateFrom: string; dateTo: string };
-const INIT_FILTERS: Filters = { name: "", project: "", products: [], type: "all", channelTypes: [], category: "all", dateFrom: "", dateTo: "" };
+type Filters = { name: string; project: string; products: string[]; type: string; channelTypes: string[]; dateFrom: string; dateTo: string; postedFrom: string; postedTo: string };
+const INIT_FILTERS: Filters = { name: "", project: "", products: [], type: "all", channelTypes: [], dateFrom: "", dateTo: "", postedFrom: "", postedTo: "" };
 type EditCell = { postId: string; field: "project_name" | "product_name" | "channel_type" | "cost" | "reach_count" | "account_name" | "posted_at" | "notes" | "content_summary"; value: string };
 const POST_TYPES = ["릴스", "피드", "숏폼", "롱폼"];
 const CHANNEL_TYPES = [
@@ -514,13 +514,16 @@ export default function MonitoringPage() {
   const filteredPosts = posts.filter(post => {
     const displayName = (post.account_name ?? post.influencers?.name ?? "").toLowerCase();
 
-    // 필터별 제외 로직 (순서: 이름 → 프로젝트 → 상품 → 타입 → 채널 → 카테고리 → 날짜)
+    // 필터별 제외 로직 (순서: 이름 → 프로젝트 → 상품 → 타입 → 채널 → 게시일 → 조회수기간)
     if (filters.name && !displayName.includes(filters.name.toLowerCase())) return false;
     if (filters.project && !(post.project_name ?? "").toLowerCase().includes(filters.project.toLowerCase())) return false;
     if (filters.products.length > 0 && !filters.products.includes(post.product_name ?? "")) return false;
     if (filters.type !== "all" && getPostType(post.url) !== filters.type) return false;
     if (filters.channelTypes.length > 0 && !filters.channelTypes.some(ct => (post.channel_type ?? "").replace(/\s+/g, "") === ct.replace(/\s+/g, ""))) return false;
-    if (filters.category !== "all" && (post.influencers?.category ?? null) !== filters.category) return false;
+
+    // 게시일 필터 (posted_at 기준)
+    if (filters.postedFrom && (!post.posted_at || post.posted_at < filters.postedFrom)) return false;
+    if (filters.postedTo && (!post.posted_at || post.posted_at > filters.postedTo)) return false;
 
     // 날짜 필터: 조회수 측정일 기준
     // ⚠️ Edge case 처리: 아직 조회수 데이터를 수집하지 않은 게시물(제로비)도 포함해야 함
@@ -543,7 +546,7 @@ export default function MonitoringPage() {
     new Set(posts.map(p => p.product_name).filter((p): p is string => Boolean(p)))
   ).sort();
 
-  const hasFilter = filters.name !== "" || filters.project !== "" || filters.products.length > 0 || filters.type !== "all" || filters.channelTypes.length > 0 || filters.category !== "all" || filters.dateFrom !== "" || filters.dateTo !== "";
+  const hasFilter = filters.name !== "" || filters.project !== "" || filters.products.length > 0 || filters.type !== "all" || filters.channelTypes.length > 0 || filters.dateFrom !== "" || filters.dateTo !== "" || filters.postedFrom !== "" || filters.postedTo !== "";
   const colSpan = 17;
 
   const lastMonitoredAt = posts.length > 0
@@ -1458,14 +1461,25 @@ export default function MonitoringPage() {
               </div>
             )}
           </div>
-          <select
-            value={filters.category}
-            onChange={e => setFilters(p => ({ ...p, category: e.target.value }))}
-            className={`filter-select ${filters.category !== "all" ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
-          >
-            <option value="all">전체 카테고리</option>
-            {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.desc}</option>)}
-          </select>
+          <div className="w-px h-4 bg-a-hairline mx-0.5" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-a-ink-muted whitespace-nowrap">게시일</span>
+            <input type="date" value={filters.postedFrom}
+              max={filters.postedTo || undefined}
+              onChange={e => {
+                const v = e.target.value;
+                setFilters(p => ({ ...p, postedFrom: v, postedTo: p.postedTo && v > p.postedTo ? v : p.postedTo }));
+              }}
+              className={`filter-input ${filters.postedFrom ? "border-a-blue" : ""}`} />
+            <span className="text-xs text-a-ink-muted">–</span>
+            <input type="date" value={filters.postedTo}
+              min={filters.postedFrom || undefined}
+              onChange={e => {
+                const v = e.target.value;
+                setFilters(p => ({ ...p, postedTo: v, postedFrom: p.postedFrom && v < p.postedFrom ? v : p.postedFrom }));
+              }}
+              className={`filter-input ${filters.postedTo ? "border-a-blue" : ""}`} />
+          </div>
           <div className="w-px h-4 bg-a-hairline mx-0.5" />
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] text-a-ink-muted whitespace-nowrap">조회수 기간</span>
