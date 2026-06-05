@@ -497,21 +497,29 @@ export default function MonitoringPage() {
 
   const filteredPosts = posts.filter(post => {
     const displayName = (post.account_name ?? post.influencers?.name ?? "").toLowerCase();
+
+    // 필터별 제외 로직 (순서: 이름 → 프로젝트 → 상품 → 타입 → 채널 → 카테고리 → 날짜)
     if (filters.name && !displayName.includes(filters.name.toLowerCase())) return false;
     if (filters.project && !(post.project_name ?? "").toLowerCase().includes(filters.project.toLowerCase())) return false;
     if (filters.products.length > 0 && !filters.products.includes(post.product_name ?? "")) return false;
     if (filters.type !== "all" && getPostType(post.url) !== filters.type) return false;
     if (filters.channelTypes.length > 0 && !filters.channelTypes.some(ct => (post.channel_type ?? "").replace(/\s+/g, "") === ct.replace(/\s+/g, ""))) return false;
     if (filters.category !== "all" && (post.influencers?.category ?? null) !== filters.category) return false;
-    // 날짜 필터: 조회수 측정일 기준 (해당 기간에 측정 데이터가 있거나 아직 데이터 없는 게시물 포함)
+
+    // 날짜 필터: 조회수 측정일 기준
+    // ⚠️ Edge case 처리: 아직 조회수 데이터를 수집하지 않은 게시물(제로비)도 포함해야 함
+    // - hasData: 필터 기간에 측정된 조회수 데이터가 있는가?
+    // - isNewPost: 아직 한 번도 수집되지 않은 새 게시물인가?
+    // - 결과: 데이터가 있거나 OR 새 게시물이면 표시, 둘 다 아니면 제외
     if (filters.dateFrom || filters.dateTo) {
       const hasData = (post.all_stats ?? []).some(s =>
         (!filters.dateFrom || s.measured_at >= filters.dateFrom) &&
         (!filters.dateTo   || s.measured_at <= filters.dateTo)
       );
-      const isNewPost = (post.all_stats ?? []).length === 0;  // 아직 수집되지 않은 게시물
-      if (!hasData && !isNewPost) return false;  // 데이터 없고 새 게시물도 아니면 제외
+      const isNewPost = (post.all_stats ?? []).length === 0;  // all_stats 없음 = 아직 수집 안 됨
+      if (!hasData && !isNewPost) return false;  // 기간 내 데이터 없고 신규 게시물도 아니면 제외
     }
+
     return true;
   });
 
