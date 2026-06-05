@@ -2,7 +2,8 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse, after } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { startActorRun } from "@/lib/apify";
-import { normalizeYouTubeUrl } from "@/lib/url-utils";
+import { normalizeYouTubeUrl, normalizeInstagramUrl, normalizeUrl } from "@/lib/url-utils";
+import { logger } from "@/lib/logger";
 
 /** 공통 설정 */
 const CONFIG = {
@@ -12,13 +13,24 @@ const CONFIG = {
 } as const;
 
 /** 인스타그램 URL을 Apify가 허용하는 형식으로 정규화. 실패 시 null 반환 */
+/**
+ * Instagram URL 정규화
+ * normalizeInstagramUrl + normalizeUrl 조합:
+ * 1. normalizeInstagramUrl: Instagram 프로필만 (포스트는 null)
+ * 2. normalizeUrl: 일반 정규화 (프로토콜, trailing slash, 쿼리)
+ * 3. APIFY_IG_URL_RE: Apify 검증
+ */
 function cleanInstagramUrl(url: string): string | null {
   try {
-    const u = new URL(url.startsWith('http') ? url : 'https://' + url);
-    if (!u.hostname.includes('instagram.com')) return null;
-    const path = u.pathname.replace(/\/$/, '') || '/';
-    const cleaned = `https://www.instagram.com${path}`;
-    return CONFIG.APIFY_IG_URL_RE.test(cleaned) ? cleaned : null;
+    // Instagram 프로필 정규화 (포스트 URL은 null)
+    const igProfile = normalizeInstagramUrl(url);
+    if (!igProfile) return null;
+
+    // 일반 정규화 (프로토콜, trailing slash, 쿼리 등)
+    const normalized = normalizeUrl(igProfile) || igProfile;
+
+    // Apify 포맷 검증
+    return CONFIG.APIFY_IG_URL_RE.test(normalized) ? normalized : null;
   } catch {
     return null;
   }
@@ -247,24 +259,47 @@ export async function POST(req: NextRequest) {
 
           if (igUrls.length > 0) {
             expectedCount++;
+            logger.info("jobs-api", "Instagram 스크리닝 시작", {
+              urlCount: igUrls.length,
+              urls: igUrls.slice(0, 3), // 처음 3개만 로깅
+            });
             actorRuns.push(
               startActorRun(
                 'apify/instagram-scraper',
                 { directUrls: igUrls, resultsType: 'posts', resultsLimit: 60, addParentData: true },
                 webhookUrl(appUrl, `jobId=${job.id}&jobType=screening&platform=instagram`)
-              ).catch((e: unknown) => { startErrors.push(`인스타: ${e}`); })
+              ).catch((e: unknown) => {
+                logger.error("jobs-api", "Instagram 스크리닝 실패", {
+                  urlCount: igUrls.length,
+                  error: String(e),
+                });
+                startErrors.push(`인스타: ${e}`);
+              })
             );
           }
 
           ytInfluencers.forEach((inf: { id: string; url: string }) => {
             expectedCount++;
-            const ytUrl = normalizeYouTubeUrl(inf.url) ?? inf.url;
+            // YouTube URL 정규화: normalizeYouTubeUrl (YouTube 특수처리) → normalizeUrl (일반 정규화)
+            // 목적: Apify에 전달할 URL을 정규화해서 데이터 일관성 보장
+            const ytUrl = normalizeUrl(normalizeYouTubeUrl(inf.url) ?? inf.url) ?? inf.url;
+            logger.info("jobs-api", "YouTube 스크리닝 시작", {
+              influencerId: inf.id,
+              originalUrl: inf.url,
+              normalizedUrl: ytUrl,
+            });
             actorRuns.push(
               startActorRun(
                 'streamers/youtube-scraper',
                 { startUrls: [{ url: ytUrl }], maxResultsShorts: 15 },
                 webhookUrl(appUrl, `jobId=${job.id}&jobType=screening&platform=youtube&influencerId=${inf.id}`)
-              ).catch((e: unknown) => { startErrors.push(`유튜브: ${e}`); })
+              ).catch((e: unknown) => {
+                logger.error("jobs-api", "YouTube 스크리닝 실패", {
+                  influencerId: inf.id,
+                  error: String(e),
+                });
+                startErrors.push(`유튜브: ${e}`);
+              })
             );
           });
 
