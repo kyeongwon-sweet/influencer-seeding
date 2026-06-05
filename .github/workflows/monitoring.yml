@@ -36,8 +36,19 @@ jobs:
           APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          JOB_PAYLOAD: '{}'
-        run: cd scripts && python run_monitoring.py
+          JOB_PAYLOAD: "{}"
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -e
+          echo "🔍 환경변수 확인..."
+          echo "  SUPABASE_URL: $([ -z "$SUPABASE_URL" ] && echo '❌' || echo '✅')"
+          echo "  SUPABASE_SERVICE_ROLE_KEY: $([ -z "$SUPABASE_SERVICE_ROLE_KEY" ] && echo '❌' || echo '✅')"
+          echo "  APIFY_API_TOKEN: $([ -z "$APIFY_API_TOKEN" ] && echo '❌' || echo '✅')"
+          echo "  JOB_PAYLOAD: '$JOB_PAYLOAD'"
+
+          echo ""
+          echo "📊 협찬 모니터링 시작..."
+          cd scripts && python run_monitoring.py
 
       - name: Collect brand metrics (YouTube + Instagram)
         run: |

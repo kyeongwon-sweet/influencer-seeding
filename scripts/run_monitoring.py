@@ -149,13 +149,24 @@ def run():
 def _fetch_stats(urls: list) -> list:
     from apify_client import ApifyClient
 
+    # ⚠️ Apify API 토큰 확인
+    apify_token = os.getenv("APIFY_API_TOKEN")
+    if not apify_token:
+        raise RuntimeError("[ERROR] APIFY_API_TOKEN 환경변수가 설정되지 않았습니다")
+
     print(f"[LOG] Apify 액터 호출: {APIFY_IG_ACTOR}")
-    client = ApifyClient(os.getenv("APIFY_API_TOKEN"))
-    run = client.actor(APIFY_IG_ACTOR).call(run_input={
-        "directUrls": urls,
-        "resultsType": "posts",
-        "resultsLimit": len(urls),
-    })
+    print(f"[LOG] 수집 대상 URL: {len(urls)}개")
+
+    try:
+        client = ApifyClient(apify_token)
+        run = client.actor(APIFY_IG_ACTOR).call(run_input={
+            "directUrls": urls,
+            "resultsType": "posts",
+            "resultsLimit": len(urls),
+        })
+    except Exception as e:
+        raise RuntimeError(f"[ERROR] Apify 액터 호출 실패: {str(e)}")
+
     print(f"[LOG] Apify 실행 ID: {run.get('id')}")
 
     items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
