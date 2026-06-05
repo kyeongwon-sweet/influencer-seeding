@@ -51,6 +51,22 @@ const CATEGORIES = [
   { value: "기타", desc: "기타" },
 ];
 
+/**
+ * 재발방지: 필터 범위 유틸리티
+ *
+ * 문제: chartData, dailyTotals, 게시물 증분 등이 서로 다른 범위의 데이터 사용
+ * 해결: 모든 데이터 계산이 이 함수를 통해 필터 범위를 일관되게 적용
+ */
+function isStatInDateRange(stat: DailyStats, dateFrom: string, dateTo: string): boolean {
+  if (dateFrom && stat.measured_at < dateFrom) return false;
+  if (dateTo && stat.measured_at > dateTo) return false;
+  return true;
+}
+
+function getFilteredStats(allStats: DailyStats[], dateFrom: string, dateTo: string): DailyStats[] {
+  return allStats.filter(s => isStatInDateRange(s, dateFrom, dateTo));
+}
+
 function fmt(v: number | null | undefined) {
   return v == null ? "-" : v.toLocaleString();
 }
@@ -562,12 +578,9 @@ export default function MonitoringPage() {
   const chartData = useMemo(() => {
     const map = new Map<string, number>();
     for (const post of filteredPosts) {
-      for (const s of post.all_stats ?? []) {
-        // 날짜 필터 적용: 필터 범위 내의 stats만 포함
-        // ⚠️ 중요: 필터 범위 밖의 날짜 데이터는 제외해야 chartData가 정확함
-        if (filters.dateFrom && s.measured_at < filters.dateFrom) continue;
-        if (filters.dateTo && s.measured_at > filters.dateTo) continue;
-
+      // ⚠️ 재발방지: getFilteredStats() 사용해서 날짜 범위 일관성 보장
+      const filteredStats = getFilteredStats(post.all_stats ?? [], filters.dateFrom, filters.dateTo);
+      for (const s of filteredStats) {
         const v = pickMetric(s);
         if (v != null) map.set(s.measured_at, (map.get(s.measured_at) ?? 0) + v);
       }
@@ -580,14 +593,12 @@ export default function MonitoringPage() {
   const totalComments = filteredPosts.reduce((s, p) => s + (p.latest_stats?.comments_count ?? 0), 0);
 
   const dailyTotals = useMemo(() => {
+    // ⚠️ 재발방지: getFilteredStats() 사용해서 필터 범위 일관성 보장
     // 전체 날짜 목록 수집 (필터 범위 내만)
-    // ⚠️ 날짜 필터 적용: 필터 범위 밖의 날짜는 제외
     const allDatesSet = new Set<string>();
     for (const post of filteredPosts) {
-      for (const s of post.all_stats ?? []) {
-        // 필터 범위 체크
-        if (filters.dateFrom && s.measured_at < filters.dateFrom) continue;
-        if (filters.dateTo && s.measured_at > filters.dateTo) continue;
+      const filteredStats = getFilteredStats(post.all_stats ?? [], filters.dateFrom, filters.dateTo);
+      for (const s of filteredStats) {
         allDatesSet.add(s.measured_at);
       }
     }
@@ -599,12 +610,8 @@ export default function MonitoringPage() {
     );
 
     for (const post of filteredPosts) {
-      // 필터 범위 내의 stats만 사용 (forward-fill 정확성 보장)
-      const filteredStats = (post.all_stats ?? []).filter(s => {
-        if (filters.dateFrom && s.measured_at < filters.dateFrom) return false;
-        if (filters.dateTo && s.measured_at > filters.dateTo) return false;
-        return true;
-      });
+      // ⚠️ 재발방지: getFilteredStats() 사용해서 필터 범위 일관성 보장
+      const filteredStats = getFilteredStats(post.all_stats ?? [], filters.dateFrom, filters.dateTo);
       const statsMap = new Map(filteredStats.map(s => [s.measured_at, s]));
 
       // Forward-fill: 필터 범위 내에서만 데이터 없는 날은 이전 마지막 값 유지
@@ -1779,12 +1786,10 @@ export default function MonitoringPage() {
               </thead>
               <tbody>
                 {sortedPosts.map(post => {
+                  // ⚠️ 재발방지: getFilteredStats() 사용해서 필터 범위 일관성 보장
                   // 날짜 필터 시 해당 기간의 측정값들을 추출
                   const filteredStats = (filters.dateFrom || filters.dateTo)
-                    ? (post.all_stats ?? []).filter(st =>
-                        (!filters.dateFrom || st.measured_at >= filters.dateFrom) &&
-                        (!filters.dateTo   || st.measured_at <= filters.dateTo)
-                      )
+                    ? getFilteredStats(post.all_stats ?? [], filters.dateFrom, filters.dateTo)
                     : (post.all_stats ?? []);
 
                   // 현재값: 필터 범위 내 마지막 측정값, 없으면 latest_stats
