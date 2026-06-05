@@ -648,13 +648,14 @@ export default function MonitoringPage() {
 
   const deltaTableData = useMemo(() => {
     if (dailyTotals.length < 2) return [];
+    const lsMap = new Map(lsSearchData.map(d => [d.date, d.value ?? 0]));
     return dailyTotals.slice(1).map((d, i) => ({
       date:     d.date,
       play:     d.play     - dailyTotals[i].play,
-      likes:    d.likes    - dailyTotals[i].likes,
+      search:   (lsMap.get(d.date) ?? 0) - (lsMap.get(dailyTotals[i].date) ?? 0),
       comments: d.comments - dailyTotals[i].comments,
     }));
-  }, [dailyTotals]);
+  }, [dailyTotals, lsSearchData]);
 
   // 날짜별 채널타입(바이럴/협찬) 조회수 증분 — forward-fill 적용
   const typeBreakdownByDate = useMemo(() => {
@@ -1627,7 +1628,7 @@ export default function MonitoringPage() {
                             <tr>
                               <th className="px-5 py-2.5 text-left text-[11px] font-semibold text-a-ink-muted">날짜</th>
                               <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted">조회수</th>
-                              <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted">좋아요</th>
+                              <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted">검색량</th>
                               <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted">댓글</th>
                             </tr>
                           </thead>
@@ -1661,7 +1662,7 @@ export default function MonitoringPage() {
                                     <span className={`ml-1.5 text-[11px] font-medium ${cls}`}>({dayLabel})</span>
                                   </td>
                                   {deltaCell(d.play, "text-a-blue")}
-                                  {deltaCell(d.likes, "text-rose-500")}
+                                  {deltaCell(d.search, "text-gray-500")}
                                   {deltaCell(d.comments, "text-purple-500")}
                                 </tr>
                               );
