@@ -301,12 +301,20 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
 
   // Secondary data (오른쪽 Y축)
   const secondaryPath = (() => {
-    if (!secondaryData || secondaryData.length === 0) return null;
+    if (!secondaryData || secondaryData.length === 0) {
+      console.log("[광고비] 데이터 없음");
+      return null;
+    }
     // 날짜 정규화: YYYY-MM-DD 형식만 추출 (시간 부분 제거)
     const normalizeDate = (d: string): string => d.split('T')[0];
     const secMap = new Map(secondaryData.map(d => [normalizeDate(d.date), d.value]));
+    console.log("[광고비] secMap:", Array.from(secMap.entries()));
     const secVals = data.map(d => secMap.get(normalizeDate(d.date))).filter(v => v != null) as number[];
-    if (secVals.length < 2) return null;
+    console.log("[광고비] 매칭 데이터:", secVals.length, "/", data.length);
+    if (secVals.length < 2) {
+      console.log("[광고비] 매칭 부족: ", secVals.length, "< 2");
+      return null;
+    }
     const secMin = Math.min(...secVals), secMax = Math.max(...secVals);
     const secRange = secMax - secMin || 1;
     const secYS = (v: number) => ch - ((v - secMin) / secRange) * ch;
