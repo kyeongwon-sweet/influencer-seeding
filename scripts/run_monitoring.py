@@ -238,4 +238,12 @@ def _fetch_stats(urls: list) -> list:
 
 
 if __name__ == "__main__":
-    run()
+    try:
+        run()
+    except Exception as e:
+        import traceback
+        print(f"\n❌ [ERROR] 모니터링 실패!")
+        print(f"오류: {str(e)}")
+        print(f"\n스택 트레이스:")
+        traceback.print_exc()
+        exit(1)
