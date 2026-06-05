@@ -1637,7 +1637,8 @@ export default function MonitoringPage() {
                               const dow = new Date(d.date).getDay();
                               const dayLabel = DAY_KO[dow];
                               const cls = dateColor(d.date);
-                              function deltaCell(v: number, accent = "text-a-blue") {
+                              function deltaCell(v: number | null | undefined, accent = "text-a-blue") {
+                                if (v == null) return <td className="px-4 py-3 text-right text-gray-300">-</td>;
                                 const pos = v > 0, neg = v < 0;
                                 return (
                                   <td className={`px-4 py-3 text-right tabular-nums text-sm font-semibold ${pos ? accent : neg ? "text-emerald-600" : "text-gray-200"}`}>
