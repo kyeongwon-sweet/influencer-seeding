@@ -714,18 +714,24 @@ export default function MonitoringPage() {
     console.log("[광고비 API 요청]", url.toString());
 
     fetch(url.toString())
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) {
+          throw new Error(`Meta API 오류: ${r.status} ${r.statusText}`);
+        }
+        return r.json();
+      })
       .then(data => {
         console.log("[광고비 API 응답]", data);
         if (Array.isArray(data)) {
+          console.log("[광고비 데이터]", data.length, "건 수신");
           setMainAdCosts(data);
         } else {
-          console.warn("[광고비 로드] 예상치 못한 응답:", data);
+          console.error("[광고비 로드] 예상치 못한 응답 형식:", data);
           setMainAdCosts([]);
         }
       })
       .catch(err => {
-        console.error("[광고비 로드 오류]", err);
+        console.error("[광고비 로드 오류]", err.message || err);
         setMainAdCosts([]);
       });
   }, [chartData]);
