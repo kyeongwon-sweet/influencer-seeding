@@ -405,7 +405,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
           ))}
           {secondaryTicks && secondaryTicks.map((tick, i) => (
             <g key={`sec-${i}`}>
-              <text x={-30} y={tick.y} textAnchor="end" dominantBaseline="middle" fontSize="6" fill="#666666">{fmtYSecondary(tick.val)}</text>
+              <text x={cw + 8} y={tick.y} textAnchor="start" dominantBaseline="middle" fontSize="6" fill="#666666">{fmtYSecondary(tick.val)}</text>
             </g>
           ))}
           <path d={areaPath} fill={`url(#${gradId})`} />
