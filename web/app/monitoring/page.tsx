@@ -648,11 +648,11 @@ export default function MonitoringPage() {
 
   const deltaTableData = useMemo(() => {
     if (dailyTotals.length < 2) return [];
-    const lsMap = new Map(lsSearchData.map(d => [d.date, d.value ?? 0]));
+    const lsMap = new Map((lsSearchData || []).map(d => [d.date, d.value ?? 0]));
     return dailyTotals.slice(1).map((d, i) => ({
       date:     d.date,
       play:     d.play     - dailyTotals[i].play,
-      search:   (lsMap.get(d.date) ?? 0) - (lsMap.get(dailyTotals[i].date) ?? 0),
+      search:   ((lsMap.get(d.date) ?? 0) - (lsMap.get(dailyTotals[i].date) ?? 0)) || 0,
       comments: d.comments - dailyTotals[i].comments,
     }));
   }, [dailyTotals, lsSearchData]);
