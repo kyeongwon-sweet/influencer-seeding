@@ -563,22 +563,33 @@ export default function MonitoringPage() {
     const map = new Map<string, number>();
     for (const post of filteredPosts) {
       for (const s of post.all_stats ?? []) {
+        // 날짜 필터 적용: 필터 범위 내의 stats만 포함
+        // ⚠️ 중요: 필터 범위 밖의 날짜 데이터는 제외해야 chartData가 정확함
+        if (filters.dateFrom && s.measured_at < filters.dateFrom) continue;
+        if (filters.dateTo && s.measured_at > filters.dateTo) continue;
+
         const v = pickMetric(s);
         if (v != null) map.set(s.measured_at, (map.get(s.measured_at) ?? 0) + v);
       }
     }
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, value]) => ({ date, value }));
-  }, [filteredPosts]);
+  }, [filteredPosts, filters]);
 
   const totalPlayCount = filteredPosts.reduce((s, p) => s + (p.latest_stats?.play_count ?? 0), 0);
   const totalLikes = filteredPosts.reduce((s, p) => s + (p.latest_stats?.likes_count ?? 0), 0);
   const totalComments = filteredPosts.reduce((s, p) => s + (p.latest_stats?.comments_count ?? 0), 0);
 
   const dailyTotals = useMemo(() => {
-    // 전체 날짜 목록 수집
+    // 전체 날짜 목록 수집 (필터 범위 내만)
+    // ⚠️ 날짜 필터 적용: 필터 범위 밖의 날짜는 제외
     const allDatesSet = new Set<string>();
     for (const post of filteredPosts) {
-      for (const s of post.all_stats ?? []) allDatesSet.add(s.measured_at);
+      for (const s of post.all_stats ?? []) {
+        // 필터 범위 체크
+        if (filters.dateFrom && s.measured_at < filters.dateFrom) continue;
+        if (filters.dateTo && s.measured_at > filters.dateTo) continue;
+        allDatesSet.add(s.measured_at);
+      }
     }
     const allDates = [...allDatesSet].sort();
     if (allDates.length === 0) return [];
@@ -588,8 +599,16 @@ export default function MonitoringPage() {
     );
 
     for (const post of filteredPosts) {
-      const statsMap = new Map((post.all_stats ?? []).map(s => [s.measured_at, s]));
-      // Forward-fill: 데이터 없는 날은 이전 마지막 값 유지, null은 데이터 없음(기여 0)
+      // 필터 범위 내의 stats만 사용 (forward-fill 정확성 보장)
+      const filteredStats = (post.all_stats ?? []).filter(s => {
+        if (filters.dateFrom && s.measured_at < filters.dateFrom) return false;
+        if (filters.dateTo && s.measured_at > filters.dateTo) return false;
+        return true;
+      });
+      const statsMap = new Map(filteredStats.map(s => [s.measured_at, s]));
+
+      // Forward-fill: 필터 범위 내에서만 데이터 없는 날은 이전 마지막 값 유지
+      // null은 데이터 없음(기여 0)
       let lastPlay: number | null = null, lastLikes: number | null = null, lastComments: number | null = null;
       for (const date of allDates) {
         if (statsMap.has(date)) {
