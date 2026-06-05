@@ -440,18 +440,6 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
           )}
         </div>
       )}
-      {lsPath && (
-        <div className="flex items-center gap-4 mt-1 px-1">
-          <div className="flex items-center gap-1.5">
-            <div className="w-5 h-[2px] bg-blue-500 rounded" />
-            <span className="text-[10px] text-a-ink-muted">조회수 (누적)</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <svg width="20" height="4" viewBox="0 0 20 4"><line x1="0" y1="2" x2="20" y2="2" stroke="#d1d5db" strokeWidth="1.5" strokeDasharray="3 2" /></svg>
-            <span className="text-[10px] text-a-ink-muted">라라스윗 네이버 데이터랩</span>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -1516,6 +1504,12 @@ export default function MonitoringPage() {
                       <div className="w-2 h-0.5 bg-a-blue" />
                       <span className="text-xs text-a-ink-muted">조회수</span>
                     </div>
+                    {lsSearchData && lsSearchData.length > 0 && (
+                      <div className="flex items-center gap-1.5">
+                        <svg width="10" height="3" viewBox="0 0 20 4"><line x1="0" y1="2" x2="20" y2="2" stroke="#d1d5db" strokeWidth="1.5" strokeDasharray="3 2" /></svg>
+                        <span className="text-xs text-a-ink-muted">라라스윗</span>
+                      </div>
+                    )}
                     <div className="flex items-center gap-1.5">
                       <div className="w-2 h-0.5 bg-gray-400" />
                       <span className="text-xs text-a-ink-muted">광고비</span>
