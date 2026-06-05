@@ -349,7 +349,13 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
     return [0, 0.5, 1].map(t => ({ val: secMin + t * secRange, y: secYS(secMin + t * secRange) }));
   })();
 
-  const fmtYSecondary = (v: number) => v >= 10000 ? `${Math.round(v / 10000)}만` : v >= 1000 ? `${Math.round(v / 1000)}천` : Math.round(v).toLocaleString();
+  const fmtYSecondary = (v: number) => {
+    if (v >= 10000000) return `${(v / 10000000).toFixed(1)}천만`;
+    if (v >= 1000000) return `${(v / 1000000).toFixed(1)}백만`;
+    if (v >= 10000) return `${Math.round(v / 10000)}만`;
+    if (v >= 1000) return `${Math.round(v / 1000)}천`;
+    return Math.round(v).toLocaleString();
+  };
 
   const hoveredSecondaryValue = (() => {
     if (!secondaryData || activeIdx === null) return null;
