@@ -2,7 +2,13 @@ import os
 from dotenv import load_dotenv
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-load_dotenv(os.path.join(BASE_DIR, ".env"))
+
+# 로컬 .env 파일이 있으면 로드, 없으면 환경변수 사용 (GitHub Actions 호환)
+env_path = os.path.join(BASE_DIR, ".env")
+if os.path.exists(env_path):
+    load_dotenv(env_path)
+else:
+    load_dotenv()  # 환경변수 우선
 
 # Google Sheets
 OAUTH_CREDENTIALS_PATH = os.getenv(

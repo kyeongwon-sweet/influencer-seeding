@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from db import get_client
 from url_utils import normalize_url
 
+# db.py import 전에 load_dotenv 호출하여 환경변수 로드
 load_dotenv()
 db = get_client()
 
