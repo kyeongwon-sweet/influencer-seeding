@@ -507,7 +507,7 @@ export default function MonitoringPage() {
     "증분량": 80,
   });
   const [colWidths, setColWidths] = useState<Record<string, number>>({
-    "채널분류": 100, "카테고리": 80, "게시일": 104, "캡션": 200, "인플루언서": 180, "상품명": 150, "프로젝트명": 150, "비용": 120, "조회수": 100, "조회당비용": 110, "도달수": 100, "도달당비용": 110, "트렌드": 90, "특이사항": 160, "삭제": 60,
+    "채널분류": 100, "카테고리": 80, "게시일": 104, "캡션": 120, "인플루언서": 180, "상품명": 150, "프로젝트명": 150, "비용": 120, "조회수": 100, "조회당비용": 110, "도달수": 100, "도달당비용": 110, "좋아요": 80, "댓글": 80, "트렌드": 90, "특이사항": 160, "삭제": 60,
   });
   const resizingRef = useRef<{ col: string; startX: number; startW: number; isSticky: boolean } | null>(null);
 
@@ -1793,6 +1793,8 @@ export default function MonitoringPage() {
                   </TH>
                   <TH right w={colWidths["도달수"]} onResize={e => startResize("도달수", e)} {...sp("도달수")}>도달수</TH>
                   <TH right w={colWidths["도달당비용"]} onResize={e => startResize("도달당비용", e)} {...sp("도달당비용")}>도달당비용</TH>
+                  <TH right w={colWidths["좋아요"]} onResize={e => startResize("좋아요", e)} {...sp("좋아요")}>좋아요</TH>
+                  <TH right w={colWidths["댓글"]} onResize={e => startResize("댓글", e)} {...sp("댓글")}>댓글</TH>
                   <TH className="text-center" w={colWidths["트렌드"]} onResize={e => startResize("트렌드", e)}>트렌드</TH>
                   <TH w={colWidths["특이사항"]} onResize={e => startResize("특이사항", e)}>특이사항</TH>
                   <TH w={colWidths["삭제"]}></TH>
@@ -1881,7 +1883,8 @@ export default function MonitoringPage() {
                         ) : (
                           <span
                             onClick={() => setEditCell({ postId: post.id, field: "content_summary", value: post.content_summary ?? "" })}
-                            className="text-xs cursor-text text-a-ink-muted hover:text-a-ink transition-colors line-clamp-1 block"
+                            className="text-xs cursor-text text-a-ink-muted hover:text-a-ink transition-colors block"
+                            style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                           >
                             {post.content_summary || <span className="text-gray-300">-</span>}
                           </span>
@@ -2024,6 +2027,12 @@ export default function MonitoringPage() {
                         {post.cost != null && post.reach_count != null && post.reach_count > 0
                           ? (post.cost / post.reach_count).toFixed(2) + "원"
                           : <span className="text-gray-300">-</span>}
+                      </TD>
+                      <TD right muted w={colWidths["좋아요"]}>
+                        {s?.likes_count != null ? s.likes_count.toLocaleString() : <span className="text-gray-300">-</span>}
+                      </TD>
+                      <TD right muted w={colWidths["댓글"]}>
+                        {s?.comments_count != null ? s.comments_count.toLocaleString() : <span className="text-gray-300">-</span>}
                       </TD>
                       <td style={{ minWidth: colWidths["트렌드"] }} className="px-3 py-3 text-center">
                         <Sparkline stats={post.all_stats ?? []} postId={post.id} onClick={() => setTrendPost(post)} />
