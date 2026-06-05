@@ -299,57 +299,6 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
     return lsData.find(d => d.date === data[activeIdx].date) ?? null;
   })();
 
-  // Secondary data (오른쪽 Y축)
-  const secondaryPath = (() => {
-    if (!secondaryData || secondaryData.length === 0) {
-      console.log("[광고비] 데이터 없음");
-      return null;
-    }
-    // 날짜 정규화: YYYY-MM-DD 형식만 추출 (시간 부분 제거)
-    const normalizeDate = (d: string): string => d.split('T')[0];
-    const secMap = new Map(secondaryData.map(d => [normalizeDate(d.date), d.value]));
-    console.log("[광고비] secMap:", Array.from(secMap.entries()));
-    const secVals = data.map(d => secMap.get(normalizeDate(d.date))).filter(v => v != null) as number[];
-    console.log("[광고비] 매칭 데이터:", secVals.length, "/", data.length);
-    if (secVals.length < 2) {
-      console.log("[광고비] 매칭 부족: ", secVals.length, "< 2");
-      return null;
-    }
-    const secMin = Math.min(...secVals), secMax = Math.max(...secVals);
-    const secRange = secMax - secMin || 1;
-    const secYS = (v: number) => ch - ((v - secMin) / secRange) * ch;
-    // secondaryData가 있는 모든 점을 포함 (필터링 안 함)
-    const secPts: [number, number][] = data.map((d, i) => {
-      const v = secMap.get(normalizeDate(d.date));
-      if (v == null) return null as any;
-      return [xS(i), secYS(v)];
-    }).filter(p => p !== null);
-    if (secPts.length < 2) return null;
-    return smoothCurvePath(secPts as [number, number][]);
-  })();
-
-  const secondaryTicks = (() => {
-    if (!secondaryData || secondaryData.length === 0) return null;
-    // 날짜 정규화: YYYY-MM-DD 형식만 추출 (시간 부분 제거)
-    const normalizeDate = (d: string): string => d.split('T')[0];
-    const secMap = new Map(secondaryData.map(d => [normalizeDate(d.date), d.value]));
-    const secVals = data.map(d => secMap.get(normalizeDate(d.date))).filter(v => v != null) as number[];
-    if (secVals.length === 0) return null;
-    const secMin = Math.min(...secVals), secMax = Math.max(...secVals);
-    const secRange = secMax - secMin || 1;
-    const secYS = (v: number) => ch - ((v - secMin) / secRange) * ch;
-    return [0, 0.5, 1].map(t => ({ val: secMin + t * secRange, y: secYS(secMin + t * secRange) }));
-  })();
-
-  const fmtYSecondary = (v: number) => v >= 10000 ? `${Math.round(v / 10000)}만` : v >= 1000 ? `${Math.round(v / 1000)}천` : Math.round(v).toLocaleString();
-
-  const hoveredSecondaryValue = (() => {
-    if (!secondaryData || activeIdx === null) return null;
-    // 날짜 정규화: YYYY-MM-DD 형식만 비교
-    const normalizeDate = (d: string): string => d.split('T')[0];
-    const hoveredDate = normalizeDate(data[activeIdx].date);
-    return secondaryData.find(d => normalizeDate(d.date) === hoveredDate)?.value ?? null;
-  })();
 
   return (
     <div className="relative w-full">
@@ -373,19 +322,10 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
               <text x={-8} y={yS(tick)} textAnchor="end" dominantBaseline="middle" fontSize="7" fill="#9ca3af">{fmtY(tick)}</text>
             </g>
           ))}
-          {secondaryTicks && secondaryTicks.map((tick, i) => (
-            <g key={`sec-${i}`}>
-              <text x={cw + 8} y={tick.y} textAnchor="start" dominantBaseline="middle" fontSize="7" fill="#b3b3b3">{fmtYSecondary(tick.val)}</text>
-            </g>
-          ))}
           <path d={areaPath} fill={`url(#${gradId})`} />
           {lsPath && <path d={lsPath} fill="none" stroke="#d1d5db" strokeWidth="1" strokeDasharray="3 2" />}
           <path d={linePath} fill="none" stroke="#3b82f6" strokeWidth="1.5"
             strokeLinejoin="round" strokeLinecap="round" />
-          {secondaryPath && (
-            <path d={secondaryPath} fill="none" stroke={secondaryColor} strokeWidth="1"
-              strokeLinejoin="round" strokeLinecap="round" />
-          )}
           {data.map((_, i) => (
             <rect key={i} x={Math.max(0, xS(i) - cellW / 2)} y={0}
               width={cellW} height={ch} fill="transparent"
@@ -412,9 +352,6 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
           onMouseEnter={() => setPinnedIdx(activeIdx)}
           onMouseLeave={() => { setPinnedIdx(null); setHoverIdx(null); }}>
           <p className="text-a-ink-muted mb-1">{data[activeIdx].date.replace(/-/g, ".")} · <span className="font-semibold text-a-blue tabular-nums">{data[activeIdx].value.toLocaleString()}</span></p>
-          {hoveredSecondaryValue != null && (
-            <p className="text-orange-600 tabular-nums">광고비: {hoveredSecondaryValue.toLocaleString()}원</p>
-          )}
           {hoveredLsEntry?.value != null && (
             <p className="text-gray-400 tabular-nums">라라스윗 검색량: {hoveredLsEntry.value.toLocaleString()}</p>
           )}
@@ -478,7 +415,6 @@ export default function MonitoringPage() {
   const [showTimeoutError, setShowTimeoutError] = useState(false);
   const [updatedPlayCounts, setUpdatedPlayCounts] = useState<Map<string, number | null>>(new Map());
   const [hoverUpdatedId, setHoverUpdatedId] = useState<string | null>(null);
-  const [mainAdCosts, setMainAdCosts] = useState<{ date: string; total_cost: number }[]>([]);
   const previousPlayCountsRef = useRef<Map<string, number | null>>(new Map());
   const runningJobIdRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -686,49 +622,6 @@ export default function MonitoringPage() {
     };
   }, []);
 
-  // 메인 차트용 광고비 데이터 로드
-  useEffect(() => {
-    if (chartData.length < 2) {
-      setMainAdCosts([]);
-      return;
-    }
-
-    // 날짜 안전하게 추출 (YYYY-MM-DD 형식)
-    const extractDate = (dateStr: any): string => {
-      if (typeof dateStr !== 'string') return '';
-      return dateStr.split('T')[0]; // ISO 형식에서 날짜만 추출
-    };
-
-    const dateFrom = extractDate(chartData[0].date);
-    const dateTo = extractDate(chartData[chartData.length - 1].date);
-
-    if (!dateFrom || !dateTo) {
-      setMainAdCosts([]);
-      return;
-    }
-
-    const url = new URL('/api/meta-ads', window.location.origin);
-    url.searchParams.set('date_from', dateFrom);
-    url.searchParams.set('date_to', dateTo);
-
-    console.log("[광고비 API 요청]", url.toString());
-
-    fetch(url.toString())
-      .then(r => r.json())
-      .then(data => {
-        console.log("[광고비 API 응답]", data);
-        if (Array.isArray(data)) {
-          setMainAdCosts(data);
-        } else {
-          console.warn("[광고비 로드] 예상치 못한 응답:", data);
-          setMainAdCosts([]);
-        }
-      })
-      .catch(err => {
-        console.error("[광고비 로드 오류]", err);
-        setMainAdCosts([]);
-      });
-  }, [chartData]);
 
 
   async function loadPosts() {
@@ -1497,15 +1390,9 @@ export default function MonitoringPage() {
               <div className="flex-[4] px-6 py-5">
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">조회수 트렌드 (누적)</p>
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-0.5 bg-a-blue" />
-                      <span className="text-xs text-a-ink-muted">조회수</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-0.5 bg-gray-400" />
-                      <span className="text-xs text-a-ink-muted">광고비</span>
-                    </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-0.5 bg-a-blue" />
+                    <span className="text-xs text-a-ink-muted">조회수</span>
                   </div>
                 </div>
                 <LineChart
@@ -1513,8 +1400,6 @@ export default function MonitoringPage() {
                   height={160}
                   gradId="summaryGrad"
                   lsData={lsSearchData}
-                  secondaryData={mainAdCosts.length > 0 ? mainAdCosts.map(d => ({date: d.date, value: d.total_cost})) : undefined}
-                  secondaryColor="#b3b3b3"
                   postsOnDate={(date) =>
                     filteredPosts
                       .filter(p => p.posted_at?.slice(0, 10) === date)
