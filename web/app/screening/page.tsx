@@ -145,6 +145,12 @@ export default function ScreeningPage() {
   const [snapshotModal, setSnapshotModal] = useState<CriteriaSnapshot | null>(null);
   const [kwModal, setKwModal] = useState<{ metricsId: string; infName: string } | null>(null);
   const [kwForm, setKwForm] = useState({ keywords: "", adDate: "" });
+
+  // CSV 업로드
+  const [showUpload, setShowUpload] = useState(false);
+  type CsvRow = { name: string; url: string; platform: string; status: string; category: string | null };
+  const [csvRows, setCsvRows] = useState<CsvRow[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [kwRunning, setKwRunning] = useState(false);
   const [lastListupAt, setLastListupAt] = useState<string | null>(null);
   const [showTimeoutError, setShowTimeoutError] = useState(false);
@@ -505,6 +511,76 @@ export default function ScreeningPage() {
     URL.revokeObjectURL(url);
   }
 
+  function parseCsvLine(line: string): string[] {
+    const result: string[] = [];
+    let cur = "", inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      if (line[i] === '"') {
+        if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
+        else inQ = !inQ;
+      } else if (line[i] === ',' && !inQ) {
+        result.push(cur.trim()); cur = "";
+      } else cur += line[i];
+    }
+    result.push(cur.trim());
+    return result;
+  }
+
+  function handleCsvFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const text = (ev.target?.result as string) ?? "";
+      const lines = text.replace(/\r/g, "").split("\n").filter(l => l.trim());
+      if (lines.length < 2) { alert("데이터가 없습니다. 헤더 포함 2줄 이상 필요합니다."); return; }
+      const rows: CsvRow[] = lines.slice(1).map(line => {
+        const cols = parseCsvLine(line);
+        const statusVal = cols[3] || "pending";
+        const validStatus = STATUS.some(s => s.value === statusVal) ? statusVal : "pending";
+        const catVal = cols[4] || null;
+        const validCat = catVal && CATEGORIES.some(c => c.value === catVal) ? catVal : null;
+        return {
+          name: cols[0] ?? "",
+          url: cols[1] ?? "",
+          platform: cols[2]?.toLowerCase() === "youtube" ? "youtube" : "instagram",
+          status: validStatus,
+          category: validCat,
+        };
+      }).filter(r => r.name && r.url);
+      setCsvRows(rows);
+    };
+    reader.readAsText(file, "utf-8");
+    e.target.value = "";
+  }
+
+  function downloadTemplate() {
+    const csv = "인플루언서명,URL,플랫폼(instagram/youtube),상태(pending/pass/hold/reject),카테고리(A/B/C/D/기타)\n홍길동,https://www.instagram.com/hongkil/,instagram,pending,A\n김유정,https://www.youtube.com/@kimyujung/,youtube,pending,B";
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "스크리닝_업로드_템플릿.csv";
+    a.click();
+  }
+
+  async function uploadCsvRows() {
+    if (csvRows.length === 0) return;
+    setUploading(true);
+    const res = await fetch("/api/influencers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(csvRows),
+    });
+    const resData = await res.json().catch(() => null);
+    setUploading(false);
+    if (!res.ok) { alert("업로드 실패: " + ((resData as { error?: string })?.error ?? "오류")); return; }
+    const inserted = Array.isArray(resData) ? resData.length : 0;
+    setCsvRows([]);
+    setShowUpload(false);
+    alert(`${inserted}개 업로드 완료`);
+    load();
+  }
+
   const filtered = list
     .filter(i => statusFilter === "all" || i.status === statusFilter)
     .filter(i => !searchName || i.name.toLowerCase().includes(searchName.toLowerCase()))
@@ -768,6 +844,9 @@ export default function ScreeningPage() {
             <div className="w-px h-4 bg-a-hairline" />
             <button onClick={downloadCSV} disabled={filtered.length === 0} className="btn-secondary">
               엑셀 다운로드
+            </button>
+            <button onClick={() => setShowUpload(true)} className="btn-secondary">
+              CSV 가져오기
             </button>
           </div>
         </div>
@@ -1177,6 +1256,67 @@ export default function ScreeningPage() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {showUpload && (
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50"
+          onClick={() => setShowUpload(false)}>
+          <div className="bg-white rounded-[22px] p-6 w-[600px] max-h-[80vh] overflow-y-auto shadow-[0_8px_40px_rgba(0,0,0,0.12)]"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between mb-4">
+              <h2 className="font-semibold tracking-tight">CSV 일괄 업로드</h2>
+              <button onClick={() => setShowUpload(false)} className="text-a-ink-muted hover:text-a-ink text-xl leading-none">×</button>
+            </div>
+            <p className="text-xs text-a-ink-muted mb-4">컬럼 순서: 인플루언서명, URL, 플랫폼, 상태, 카테고리</p>
+            <div className="flex items-center gap-2 mb-4">
+              <button onClick={downloadTemplate}
+                className="text-xs px-3.5 py-1.5 rounded-full border border-a-hairline text-a-ink-muted hover:bg-a-parchment transition">
+                템플릿 다운로드
+              </button>
+              <label className="text-xs px-3.5 py-1.5 rounded-full border border-a-blue text-a-blue bg-blue-50 hover:bg-blue-100 transition cursor-pointer">
+                파일 선택
+                <input type="file" accept=".csv" className="hidden" onChange={handleCsvFile} />
+              </label>
+            </div>
+            {csvRows.length > 0 && (
+              <div className="border border-a-hairline rounded-[10px] overflow-hidden mb-4">
+                <div className="px-3 py-2 bg-a-parchment/60 text-xs text-a-ink-muted border-b border-a-hairline">
+                  {csvRows.length}개 행 인식됨
+                </div>
+                <div className="max-h-48 overflow-y-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-a-hairline text-a-ink-muted">
+                        <th className="px-3 py-1.5 text-left font-medium">인플루언서명</th>
+                        <th className="px-3 py-1.5 text-left font-medium">URL</th>
+                        <th className="px-3 py-1.5 text-left font-medium">플랫폼</th>
+                        <th className="px-3 py-1.5 text-left font-medium">상태</th>
+                        <th className="px-3 py-1.5 text-left font-medium">카테고리</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {csvRows.map((r, i) => (
+                        <tr key={i} className="border-b border-a-divider last:border-0">
+                          <td className="px-3 py-1.5 text-a-ink">{r.name}</td>
+                          <td className="px-3 py-1.5 text-a-blue max-w-[120px] truncate text-xs">{r.url}</td>
+                          <td className="px-3 py-1.5 text-a-ink-muted text-xs">{r.platform}</td>
+                          <td className="px-3 py-1.5 text-a-ink-muted text-xs">{r.status}</td>
+                          <td className="px-3 py-1.5 text-a-ink-muted text-xs">{r.category ?? "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => { setShowUpload(false); setCsvRows([]); }} className="btn-ghost">취소</button>
+              <button onClick={uploadCsvRows} disabled={uploading || csvRows.length === 0} className="btn-primary px-5 py-2 text-sm">
+                {uploading ? "업로드 중..." : `${csvRows.length}개 등록`}
+              </button>
+            </div>
           </div>
         </div>
       )}
