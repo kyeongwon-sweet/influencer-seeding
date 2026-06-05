@@ -26,6 +26,13 @@ def _stats_key(url: str) -> str:
 
 
 def run():
+    print("[DEBUG] === 협찬 모니터링 시작 ===")
+    print(f"[DEBUG] 환경변수 확인:")
+    print(f"  - SUPABASE_URL: {'설정됨' if os.getenv('SUPABASE_URL') else '❌ 미설정'}")
+    print(f"  - SUPABASE_SERVICE_ROLE_KEY: {'설정됨' if os.getenv('SUPABASE_SERVICE_ROLE_KEY') else '❌ 미설정'}")
+    print(f"  - APIFY_API_TOKEN: {'설정됨' if os.getenv('APIFY_API_TOKEN') else '❌ 미설정'}")
+    print(f"  - JOB_PAYLOAD: {os.getenv('JOB_PAYLOAD', '{}')}\n")
+
     # JOB_PAYLOAD 환경변수 처리 (None, "null", 비어있음 모두 처리)
     job_payload_str = os.getenv("JOB_PAYLOAD", "{}")
 
