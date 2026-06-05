@@ -21,11 +21,12 @@ export async function GET(req) {
       return Response.json({ error: errorMsg }, { status: 500 });
     }
 
-    // Meta API 요청 URL 구성 (since/until 파라미터 분리)
+    // Meta API 요청 URL 구성 (날짜별 집계를 위해 time_increment=1 추가)
     const url = new URL(`https://graph.facebook.com/v18.0/act_${accountId}/insights`);
     url.searchParams.append('fields', 'spend,date_start');
     url.searchParams.append('since', dateFrom);
     url.searchParams.append('until', dateTo);
+    url.searchParams.append('time_increment', '1');  // 일 단위 데이터
     url.searchParams.append('access_token', accessToken);
 
     const urlStr = url.toString().replace(accessToken, "***");
