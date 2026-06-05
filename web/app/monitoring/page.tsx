@@ -302,15 +302,17 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
   // Secondary data (오른쪽 Y축)
   const secondaryPath = (() => {
     if (!secondaryData || secondaryData.length === 0) return null;
-    const secMap = new Map(secondaryData.map(d => [d.date, d.value]));
-    const secVals = data.map(d => secMap.get(d.date)).filter(v => v != null) as number[];
+    // 날짜 정규화: YYYY-MM-DD 형식만 추출 (시간 부분 제거)
+    const normalizeDate = (d: string): string => d.split('T')[0];
+    const secMap = new Map(secondaryData.map(d => [normalizeDate(d.date), d.value]));
+    const secVals = data.map(d => secMap.get(normalizeDate(d.date))).filter(v => v != null) as number[];
     if (secVals.length < 2) return null;
     const secMin = Math.min(...secVals), secMax = Math.max(...secVals);
     const secRange = secMax - secMin || 1;
     const secYS = (v: number) => ch - ((v - secMin) / secRange) * ch;
     // secondaryData가 있는 모든 점을 포함 (필터링 안 함)
     const secPts: [number, number][] = data.map((d, i) => {
-      const v = secMap.get(d.date);
+      const v = secMap.get(normalizeDate(d.date));
       if (v == null) return null as any;
       return [xS(i), secYS(v)];
     }).filter(p => p !== null);
@@ -320,8 +322,10 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
 
   const secondaryTicks = (() => {
     if (!secondaryData || secondaryData.length === 0) return null;
-    const secMap = new Map(secondaryData.map(d => [d.date, d.value]));
-    const secVals = data.map(d => secMap.get(d.date)).filter(v => v != null) as number[];
+    // 날짜 정규화: YYYY-MM-DD 형식만 추출 (시간 부분 제거)
+    const normalizeDate = (d: string): string => d.split('T')[0];
+    const secMap = new Map(secondaryData.map(d => [normalizeDate(d.date), d.value]));
+    const secVals = data.map(d => secMap.get(normalizeDate(d.date))).filter(v => v != null) as number[];
     if (secVals.length === 0) return null;
     const secMin = Math.min(...secVals), secMax = Math.max(...secVals);
     const secRange = secMax - secMin || 1;
@@ -333,7 +337,10 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
 
   const hoveredSecondaryValue = (() => {
     if (!secondaryData || activeIdx === null) return null;
-    return secondaryData.find(d => d.date === data[activeIdx].date)?.value ?? null;
+    // 날짜 정규화: YYYY-MM-DD 형식만 비교
+    const normalizeDate = (d: string): string => d.split('T')[0];
+    const hoveredDate = normalizeDate(data[activeIdx].date);
+    return secondaryData.find(d => normalizeDate(d.date) === hoveredDate)?.value ?? null;
   })();
 
   return (
@@ -2095,7 +2102,7 @@ export default function MonitoringPage() {
               <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">
                 조회수 트렌드
               </p>
-              <div className="flex items-center gap-3 text-xs">
+              <div className="flex items-center gap-4 text-xs">
                 <div className="flex items-center gap-1.5">
                   <div className="w-2 h-0.5 bg-a-blue" />
                   <span className="text-a-ink-muted">조회수</span>
