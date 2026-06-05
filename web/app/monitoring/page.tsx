@@ -311,9 +311,12 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
     console.log("[광고비] secMap:", Array.from(secMap.entries()));
     const secVals = data.map(d => secMap.get(normalizeDate(d.date))).filter(v => v != null) as number[];
     console.log("[광고비] 매칭 데이터:", secVals.length, "/", data.length);
-    if (secVals.length < 2) {
-      console.log("[광고비] 매칭 부족: ", secVals.length, "< 2");
+    if (secVals.length < 1) {
+      console.log("[광고비] 매칭 데이터 없음");
       return null;
+    }
+    if (secVals.length < 2) {
+      console.log("[광고비] 데이터 1개만 있음 (최소값 = 최대값으로 처리)");
     }
     const secMin = Math.min(...secVals), secMax = Math.max(...secVals);
     const secRange = secMax - secMin || 1;
@@ -324,7 +327,12 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
       if (v == null) return null as any;
       return [xS(i), secYS(v)];
     }).filter(p => p !== null);
-    if (secPts.length < 2) return null;
+    if (secPts.length === 0) return null;
+    if (secPts.length === 1) {
+      // 1개 포인트: 점 표시용 경로 (반경 2px 원)
+      const [x, y] = secPts[0];
+      return `M ${x} ${y - 2} A 2 2 0 0 1 ${x} ${y + 2} A 2 2 0 0 1 ${x} ${y - 2}`;
+    }
     return smoothCurvePath(secPts as [number, number][]);
   })();
 
