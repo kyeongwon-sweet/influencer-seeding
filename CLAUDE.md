@@ -99,3 +99,75 @@ export function getServerSupabase() {
 - `APIFY_API_TOKEN`
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
+
+---
+
+## 🚨 자동화 모니터링 재발방지 (매우 중요!)
+
+**문제 이력**: 주말/야간 자동 모니터링이 자꾸 중단되어 데이터 수집 실패
+
+### 원인 분석
+1. **빌드 실패 → 배포 불가**: 최신 코드가 컴파일되지 않아 배포 중단
+2. **배포 후 미검증**: 배포 후 정상 작동 여부 확인 안 함
+3. **경고 부족**: 자동화 실패해도 즉시 알림 없음
+
+### 재발방지 대책
+
+#### ✅ 1. 배포 전 빌드 테스트 (자동화)
+- GitHub Actions `build-test.yml` 워크플로우 추가
+- **main 브랜치 push 시 자동 빌드 테스트 실행**
+- 빌드 실패 → PR/push 블록됨
+
+#### ✅ 2. 모니터링 상태 점검 가이드
+- 파일: `MONITORING_STATUS_CHECK.md`
+- **목표**: 매주 월요일 오전, 배포 후 24시간 이내 점검
+- **체크 항목**:
+  - Vercel 배포 상태 (페이지 로드 가능?)
+  - GitHub Actions 실행 기록 (최근 24시간 성공?)
+  - Supabase 데이터 (어제 이상의 데이터 기록?)
+  - 배포된 코드 버전 (aadfba6 이상?)
+
+#### ✅ 3. 코드 안정성 강화
+**변수 호이스팅 에러 방지:**
+```typescript
+// ❌ 위험: 매 렌더링마다 재계산되는 변수
+const lsStartDate = chartData.length >= 2 ? chartData[0].date : null;
+
+useEffect(() => {
+  // ...
+}, [lsStartDate]); // 무한 루프 + 컴파일 에러
+
+// ✅ 안전: useMemo로 메모이제이션
+const { lsStartDate } = useMemo(() => ({
+  lsStartDate: chartData.length >= 2 ? chartData[0].date : null,
+}), [chartData]);
+
+useEffect(() => {
+  // ...
+}, [lsStartDate]); // 안정적
+```
+
+#### ✅ 4. 긴급 대응 절차
+**빌드 실패 발생 시:**
+```bash
+# 1단계: 문제 커밋 식별
+git log --oneline origin/main -5
+
+# 2단계: 이전 안정 버전으로 강제 복원
+git reset --hard 3beda71
+git push origin main --force
+
+# 3단계: 자동 재배포 (Vercel이 자동 감지)
+```
+
+### ⚠️ 절대 하지 말 것
+- ❌ 빌드 테스트 없이 main 브랜치에 푸시
+- ❌ 배포 후 상태 확인 없이 간과
+- ❌ 주말 자동화 실패를 그냥 방치
+- ❌ 환경변수 설정 확인 없이 "설정해주세요" 요청
+
+### ✅ 반드시 할 것
+- ✅ **배포 전**: `npm run build` 로컬 테스트 + CI 빌드 테스트 통과
+- ✅ **배포 후**: MONITORING_STATUS_CHECK.md 체크리스트 실행
+- ✅ **일주일마다**: GitHub Actions 실행 기록 확인
+- ✅ **문제 발생 시**: 먼저 확인하고 해결책 보고

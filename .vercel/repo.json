@@ -1,0 +1,11 @@
+{
+  "remoteName": "origin",
+  "projects": [
+    {
+      "id": "prj_OgItoanMBEmXzNmbn2TCqBV77uJs",
+      "name": "influencer-seeding",
+      "directory": ".",
+      "orgId": "team_iA9Ch7f4TCUWu9UYsMfXLHWW"
+    }
+  ]
+}

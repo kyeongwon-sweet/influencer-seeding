@@ -1,0 +1,41 @@
+name: Build Test (Pre-Deploy Check)
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: cd web && npm ci
+
+      - name: Run build
+        run: cd web && npm run build
+
+      - name: ✅ Build successful
+        if: success()
+        run: |
+          echo "🟢 빌드 성공"
+          echo "배포 준비 완료"
+
+      - name: ❌ Build failed
+        if: failure()
+        run: |
+          echo "🔴 빌드 실패!"
+          echo "❌ main 브랜치 배포 불가"
+          echo "원인: monitoring/page.tsx 또는 컴포넌트 에러"
+          exit 1
