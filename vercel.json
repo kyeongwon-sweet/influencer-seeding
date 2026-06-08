@@ -11,6 +11,10 @@
     {
       "path": "/api/monitoring/apify-collect",
       "schedule": "0 15 * * *"
+    },
+    {
+      "path": "/api/sponsored-posts/sync",
+      "schedule": "0 9 * * *"
     }
   ]
 }
