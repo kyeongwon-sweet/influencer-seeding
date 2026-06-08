@@ -528,14 +528,8 @@ export default function MonitoringPage() {
     if (filters.postedFrom && (!post.posted_at || post.posted_at < filters.postedFrom)) return false;
     if (filters.postedTo && (!post.posted_at || post.posted_at > filters.postedTo)) return false;
 
-    // 날짜 필터 (모니터링 기간) - 제로비는 제외 (조회수 데이터가 없으므로)
-    if (!isZeroPost && (filters.dateFrom || filters.dateTo)) {
-      const hasData = (post.all_stats ?? []).some(s =>
-        (!filters.dateFrom || s.measured_at >= filters.dateFrom) &&
-        (!filters.dateTo   || s.measured_at <= filters.dateTo)
-      );
-      if (!hasData) return false;
-    }
+    // 📌 조회수 기간 필터(dateFrom/dateTo)는 게시물을 제외하지 않음
+    // 대신 표시 데이터 범위만 필터링 (filteredStats에서 처리)
 
     return true;
   });
