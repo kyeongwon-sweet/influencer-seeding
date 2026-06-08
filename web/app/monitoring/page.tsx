@@ -1501,13 +1501,13 @@ export default function MonitoringPage() {
             {/* 요약 수치 */}
             <div className="flex items-stretch border-b border-a-hairline">
               {(() => {
-                // 일자별 증감 데이터
-                const todayDelta = deltaChartData.length > 0 ? deltaChartData[deltaChartData.length - 1].value : 0;
-                const b2bDelta = 0; // B2B 데이터는 추후 연결 예정
+                // 누적 데이터: 검색량 총합, B2B 매출
+                const searchTotalSum = chartData.length > 0 ? chartData[chartData.length - 1].value : 0;
+                const b2bTotal = 0; // B2B 데이터는 추후 연결 예정
                 return [
                   { label: "조회수 합계", value: totalPlayCount, color: "text-a-ink" },
-                  { label: "검색량 증감", value: todayDelta, color: "text-gray-600" },
-                  { label: "B2B 매출 증감", value: b2bDelta, color: "text-green-600" },
+                  { label: "검색량 총합", value: searchTotalSum, color: "text-gray-600" },
+                  { label: "B2B 매출", value: b2bTotal, color: "text-green-600" },
                 ];
               })().map((item, i) => (
                 <div key={i} className={`flex-1 px-6 py-5 ${i > 0 ? "border-l border-a-hairline" : ""}`}>
