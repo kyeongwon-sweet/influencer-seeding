@@ -4,5 +4,11 @@
       "src": "web/package.json",
       "use": "@vercel/next"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/monitoring/run",
+      "schedule": "0 15 * * *"
+    }
   ]
 }
