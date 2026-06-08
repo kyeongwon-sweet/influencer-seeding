@@ -1838,7 +1838,7 @@ export default function MonitoringPage() {
                           </span>
                         )}
                       </TD>
-                      <td style={{ minWidth: colWidths["캡션"] }} className="px-3 py-3">
+                      <TD muted w={colWidths["캡션"]}>
                         {editCell?.postId === post.id && editCell?.field === "content_summary" ? (
                           <textarea
                             autoFocus
@@ -1858,7 +1858,7 @@ export default function MonitoringPage() {
                             {post.content_summary || <span className="text-gray-300">-</span>}
                           </span>
                         )}
-                      </td>
+                      </TD>
                       <TD w={colWidths["인플루언서"]}>
                         {editCell?.postId === post.id && editCell?.field === "account_name" ? (
                           <input autoFocus value={editCell.value}
