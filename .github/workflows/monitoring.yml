@@ -29,7 +29,14 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: cd scripts && python normalize_urls.py
+        run: |
+          echo "🔍 Normalize URLs 환경변수 확인..."
+          echo "  SUPABASE_URL: ${#SUPABASE_URL} chars - $([ -z "$SUPABASE_URL" ] && echo '❌ 미설정' || echo '✅ 설정')"
+          echo "  SUPABASE_URL value: $SUPABASE_URL"
+          echo "  SUPABASE_SERVICE_ROLE_KEY: ${#SUPABASE_SERVICE_ROLE_KEY} chars - $([ -z "$SUPABASE_SERVICE_ROLE_KEY" ] && echo '❌ 미설정' || echo '✅ 설정')"
+          echo "  SUPABASE_SERVICE_ROLE_KEY (first 20 chars): ${SUPABASE_SERVICE_ROLE_KEY:0:20}..."
+          echo ""
+          cd scripts && python normalize_urls.py
 
       - name: Run monitoring
         env:
