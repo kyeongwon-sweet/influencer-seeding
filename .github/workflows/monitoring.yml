@@ -1,8 +1,8 @@
 name: Run Monitoring
 
 on:
-  schedule:
-    - cron: "0 15 * * *"  # 매일 UTC 15:00 = KST 00:00 (자정)
+  # ⚠️ GitHub Actions scheduling disabled - using Vercel Cron Jobs instead
+  # If you need to run manually, use workflow_dispatch below
   workflow_dispatch:
     inputs:
       monitoring_date:
