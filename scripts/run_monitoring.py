@@ -3,9 +3,32 @@
 import os
 import re
 import json
+import time
 from datetime import date, datetime
+from functools import wraps
 from db import get_client
 from url_utils import normalize_url
+
+
+def retry_on_network_error(max_retries=3, delay=5):
+    """네트워크 에러 시 자동 재시도 데코레이터"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    error_str = str(e).lower()
+                    if "name or service not known" in error_str or "connect" in error_str:
+                        if attempt < max_retries - 1:
+                            print(f"[WARN] 네트워크 에러 발생. {delay}초 후 재시도... ({attempt + 1}/{max_retries})")
+                            time.sleep(delay)
+                            continue
+                    raise
+            return None
+        return wrapper
+    return decorator
 
 APIFY_IG_ACTOR = os.getenv("APIFY_IG_ACTOR_ID", "apify/instagram-scraper")
 TODAY = os.getenv("MONITORING_DATE") or date.today().isoformat()
@@ -71,11 +94,17 @@ def run():
                 db.table("jobs").update({"status": "done"}).eq("id", job_id).execute()
             return
 
-        print(f"[LOG] Apify 데이터 수집 시작...")
-        stats = _fetch_stats([p["url"] for p in posts])
-        stats_by_key = {_stats_key(s["url"]): s for s in stats}
+        # Apify 호출 여부 제어 (SKIP_APIFY=1이면 스킵, 기본값: 호출)
+        skip_apify = os.getenv("SKIP_APIFY", "0").lower() in ("1", "true", "yes")
 
-        print(f"[LOG] Apify 수집 결과: {len(stats)}건 / {len(posts)}개 요청")
+        stats_by_key = {}
+        if skip_apify:
+            print(f"[LOG] ⏭️ Apify 데이터 수집 스킵 (SKIP_APIFY=1)")
+        else:
+            print(f"[LOG] Apify 데이터 수집 시작...")
+            stats = _fetch_stats([p["url"] for p in posts])
+            stats_by_key = {_stats_key(s["url"]): s for s in stats}
+            print(f"[LOG] Apify 수집 결과: {len(stats)}건 / {len(posts)}개 요청")
 
         rows = []
         for post in posts:
@@ -146,6 +175,7 @@ def run():
         raise
 
 
+@retry_on_network_error(max_retries=3, delay=10)
 def _fetch_stats(urls: list) -> list:
     from apify_client import ApifyClient
 

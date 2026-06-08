@@ -38,12 +38,12 @@ jobs:
           echo ""
           cd scripts && python normalize_urls.py
 
-      - name: Run monitoring
+      - name: Run monitoring (DB only, skip Apify)
         env:
-          APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           JOB_PAYLOAD: "{}"
+          SKIP_APIFY: "1"
           PYTHONUNBUFFERED: "1"
         run: |
           set -e
@@ -52,13 +52,27 @@ jobs:
           echo "  SUPABASE_URL: $([ -z "$SUPABASE_URL" ] && echo '❌ 미설정' || echo '✅ 설정됨')"
           echo "  SUPABASE_SERVICE_ROLE_KEY length: ${#SUPABASE_SERVICE_ROLE_KEY} chars"
           echo "  SUPABASE_SERVICE_ROLE_KEY: $([ -z "$SUPABASE_SERVICE_ROLE_KEY" ] && echo '❌ 미설정' || echo '✅ 설정됨')"
+          echo "  SKIP_APIFY: $SKIP_APIFY"
+          echo ""
+          echo "📊 협찬 모니터링 시작 (Apify 스킵)..."
+          cd scripts && python run_monitoring.py || (echo "❌ 실패: 위의 에러 메시지 확인" && exit 1)
+
+      - name: Collect Apify data (with retry)
+        continue-on-error: true
+        env:
+          APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          JOB_PAYLOAD: "{}"
+          SKIP_APIFY: "0"
+          PYTHONUNBUFFERED: "1"
+        run: |
+          echo "🔍 Apify 데이터 수집..."
           echo "  APIFY_API_TOKEN length: ${#APIFY_API_TOKEN} chars"
           echo "  APIFY_API_TOKEN: $([ -z "$APIFY_API_TOKEN" ] && echo '❌ 미설정' || echo '✅ 설정됨')"
-          echo "  JOB_PAYLOAD: '$JOB_PAYLOAD'"
-
           echo ""
-          echo "📊 협찬 모니터링 시작..."
-          cd scripts && python run_monitoring.py || (echo "❌ 실패: 위의 에러 메시지 확인" && exit 1)
+          echo "🚀 Apify 호출 시작 (자동 재시도 3회)..."
+          cd scripts && python run_monitoring.py || echo "⚠️ Apify 데이터 수집 실패 (선택사항이므로 계속 진행)"
 
       - name: Collect brand metrics (YouTube + Instagram)
         run: |
