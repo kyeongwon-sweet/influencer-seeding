@@ -24,10 +24,10 @@ def get_client() -> Client:
         print(f"\n[DEBUG] Supabase 연결 정보:")
         print(f"  URL 설정: {'✅ 설정' if url else '❌ 미설정'}")
         print(f"  URL 길이: {len(url) if url else 0}")
-        print(f"  URL 값: {url if url else 'NONE'}")
+        print(f"  URL 전체값: {url}")
         print(f"  KEY 설정: {'✅ 설정' if key else '❌ 미설정'}")
         print(f"  KEY 길이: {len(key) if key else 0}")
-        print(f"  KEY 첫 20자: {key[:20] if key else 'NONE'}...")
+        print(f"  KEY 전체값: {key}")
         print()
 
         if not url or not key:
