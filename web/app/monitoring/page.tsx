@@ -1935,27 +1935,6 @@ export default function MonitoringPage() {
                           </span>
                         )}
                       </TD>
-                      <TD muted w={colWidths["캡션"]}>
-                        {editCell?.postId === post.id && editCell?.field === "content_summary" ? (
-                          <textarea
-                            autoFocus
-                            rows={2}
-                            value={editCell.value}
-                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
-                            onBlur={() => patchPost(post.id, "content_summary", editCell.value)}
-                            onKeyDown={e => { if (e.key === "Escape") { e.preventDefault(); setEditCell(null); }; }}
-                            className="text-xs w-full bg-transparent border-b border-a-blue outline-none py-0.5 resize-none text-a-ink"
-                          />
-                        ) : (
-                          <span
-                            onClick={() => setEditCell({ postId: post.id, field: "content_summary", value: post.content_summary ?? "" })}
-                            className="text-xs cursor-text text-a-ink-muted hover:text-a-ink transition-colors block"
-                            style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                          >
-                            {post.content_summary || <span className="text-gray-300">-</span>}
-                          </span>
-                        )}
-                      </TD>
                       <TD w={colWidths["인플루언서"]}>
                         {editCell?.postId === post.id && editCell?.field === "account_name" ? (
                           <input autoFocus value={editCell.value}
@@ -2081,6 +2060,27 @@ export default function MonitoringPage() {
                         {post.cost != null && post.reach_count != null && post.reach_count > 0
                           ? (post.cost / post.reach_count).toFixed(2) + "원"
                           : <span className="text-gray-300">-</span>}
+                      </TD>
+                      <TD muted w={10}>
+                        {editCell?.postId === post.id && editCell?.field === "content_summary" ? (
+                          <textarea
+                            autoFocus
+                            rows={2}
+                            value={editCell.value}
+                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
+                            onBlur={() => patchPost(post.id, "content_summary", editCell.value)}
+                            onKeyDown={e => { if (e.key === "Escape") { e.preventDefault(); setEditCell(null); }; }}
+                            className="text-xs w-full bg-transparent border-b border-a-blue outline-none py-0.5 resize-none text-a-ink"
+                          />
+                        ) : (
+                          <span
+                            onClick={() => setEditCell({ postId: post.id, field: "content_summary", value: post.content_summary ?? "" })}
+                            className="text-xs cursor-text text-a-ink-muted hover:text-a-ink transition-colors block"
+                            style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                          >
+                            {post.content_summary || <span className="text-gray-300">-</span>}
+                          </span>
+                        )}
                       </TD>
                       <TD right muted w={colWidths["좋아요"]}>
                         {s?.likes_count != null ? s.likes_count.toLocaleString() : <span className="text-gray-300">-</span>}
