@@ -19,7 +19,26 @@ def get_client() -> Client:
     if _client is None:
         url = os.getenv("SUPABASE_URL")
         key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+        # 🔍 상세 진단
+        print(f"\n[DEBUG] Supabase 연결 정보:")
+        print(f"  URL 설정: {'✅ 설정' if url else '❌ 미설정'}")
+        print(f"  URL 길이: {len(url) if url else 0}")
+        print(f"  URL 값: {url if url else 'NONE'}")
+        print(f"  KEY 설정: {'✅ 설정' if key else '❌ 미설정'}")
+        print(f"  KEY 길이: {len(key) if key else 0}")
+        print(f"  KEY 첫 20자: {key[:20] if key else 'NONE'}...")
+        print()
+
         if not url or not key:
             raise RuntimeError("SUPABASE_URL 또는 SUPABASE_SERVICE_ROLE_KEY가 설정되지 않았습니다.")
-        _client = create_client(url, key)
+
+        try:
+            print(f"[DEBUG] create_client 시도...")
+            _client = create_client(url, key)
+            print(f"[DEBUG] ✅ Supabase 연결 성공")
+        except Exception as e:
+            print(f"[DEBUG] ❌ Supabase 연결 실패: {str(e)}")
+            raise
+
     return _client
