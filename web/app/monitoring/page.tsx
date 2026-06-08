@@ -443,7 +443,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
           onMouseLeave={() => { setPinnedIdx(null); setHoverIdx(null); }}>
           <p className="text-a-ink-muted mb-1">{data[activeIdx].date.replace(/-/g, ".")} · <span className="font-semibold text-a-blue tabular-nums">{data[activeIdx].value.toLocaleString()}</span></p>
           {hoveredSecondaryValue != null && (
-            <p className="text-orange-600 tabular-nums">광고비: {hoveredSecondaryValue.toLocaleString()}원</p>
+            <p className="text-orange-600 tabular-nums">전체 전환 광고비: {hoveredSecondaryValue.toLocaleString()}원</p>
           )}
           {hoveredLsEntry?.value != null && (
             <p className="text-gray-400 tabular-nums">라라스윗 검색량: {hoveredLsEntry.value.toLocaleString()}</p>
@@ -507,7 +507,7 @@ export default function MonitoringPage() {
     "증분량": 80,
   });
   const [colWidths, setColWidths] = useState<Record<string, number>>({
-    "채널분류": 100, "카테고리": 80, "게시일": 104, "캡션": 80, "인플루언서": 80, "상품명": 150, "프로젝트명": 150, "비용": 120, "조회수": 100, "조회당비용": 110, "도달수": 100, "도달당비용": 110, "좋아요": 80, "댓글": 80, "트렌드": 90, "특이사항": 160, "삭제": 60,
+    "채널분류": 100, "카테고리": 80, "게시일": 104, "캡션": 60, "인플루언서": 80, "상품명": 150, "프로젝트명": 150, "비용": 120, "조회수": 100, "조회당비용": 110, "도달수": 100, "도달당비용": 110, "좋아요": 80, "댓글": 80, "트렌드": 90, "특이사항": 160, "삭제": 60,
   });
   const resizingRef = useRef<{ col: string; startX: number; startW: number; isSticky: boolean } | null>(null);
 
@@ -1500,11 +1500,16 @@ export default function MonitoringPage() {
           <div className="bg-white rounded-[20px] shadow-[0_2px_16px_rgba(100,120,180,0.08)] mb-4 overflow-hidden">
             {/* 요약 수치 */}
             <div className="flex items-stretch border-b border-a-hairline">
-              {[
-                { label: "조회수 합계", value: totalPlayCount, color: "text-a-ink" },
-                { label: "좋아요 합계", value: totalLikes, color: "text-rose-500" },
-                { label: "댓글 합계", value: totalComments, color: "text-blue-500" },
-              ].map((item, i) => (
+              {(() => {
+                // 일자별 증감 데이터
+                const todayDelta = deltaChartData.length > 0 ? deltaChartData[deltaChartData.length - 1].value : 0;
+                const b2bDelta = 0; // B2B 데이터는 추후 연결 예정
+                return [
+                  { label: "조회수 합계", value: totalPlayCount, color: "text-a-ink" },
+                  { label: "검색량 증감", value: todayDelta, color: "text-gray-600" },
+                  { label: "B2B 매출 증감", value: b2bDelta, color: "text-green-600" },
+                ];
+              })().map((item, i) => (
                 <div key={i} className={`flex-1 px-6 py-5 ${i > 0 ? "border-l border-a-hairline" : ""}`}>
                   <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest mb-1.5">{item.label}</p>
                   <p className={`text-[28px] font-bold tabular-nums tracking-tight leading-none ${item.color}`}>{item.value.toLocaleString()}</p>
