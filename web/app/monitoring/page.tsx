@@ -524,13 +524,11 @@ export default function MonitoringPage() {
     if (filters.type !== "all" && getPostType(post.url) !== filters.type) return false;
     if (filters.channelTypes.length > 0 && !filters.channelTypes.some(ct => (post.channel_type ?? "").replace(/\s+/g, "") === ct.replace(/\s+/g, ""))) return false;
 
-    // 게시일 필터 (posted_at 기준) - 제로비는 제외
-    if (!isZeroPost) {
-      if (filters.postedFrom && (!post.posted_at || post.posted_at < filters.postedFrom)) return false;
-      if (filters.postedTo && (!post.posted_at || post.posted_at > filters.postedTo)) return false;
-    }
+    // 게시일 필터 (posted_at 기준)
+    if (filters.postedFrom && (!post.posted_at || post.posted_at < filters.postedFrom)) return false;
+    if (filters.postedTo && (!post.posted_at || post.posted_at > filters.postedTo)) return false;
 
-    // 2️⃣ 날짜 필터: 제로비는 제외 (조회수 데이터가 없으므로)
+    // 날짜 필터 (모니터링 기간) - 제로비는 제외 (조회수 데이터가 없으므로)
     if (!isZeroPost && (filters.dateFrom || filters.dateTo)) {
       const hasData = (post.all_stats ?? []).some(s =>
         (!filters.dateFrom || s.measured_at >= filters.dateFrom) &&
