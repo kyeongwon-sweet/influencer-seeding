@@ -514,30 +514,27 @@ export default function MonitoringPage() {
   const filteredPosts = posts.filter(post => {
     const displayName = (post.account_name ?? post.influencers?.name ?? "").toLowerCase();
 
-    // 🔴 제로비(조회수 없는 게시물) 판정: 필터 적용 전 먼저 확인
-    // 제로비는 다른 필터를 무시하고 항상 표시 (모니터링 필수)
-    const isZeroPost = (post.all_stats ?? []).length === 0 || (post.latest_stats?.play_count ?? 0) === 0;
+    // 제로비 판정: 조회수가 없거나 0
+    const isZeroPost = !post.latest_stats || post.latest_stats.play_count === 0 || post.latest_stats.play_count == null;
 
-    // 제로비가 아니면 다른 필터 적용
-    if (!isZeroPost) {
-      if (filters.name && !displayName.includes(filters.name.toLowerCase())) return false;
-      if (filters.project && !(post.project_name ?? "").toLowerCase().includes(filters.project.toLowerCase())) return false;
-      if (filters.products.length > 0 && !filters.products.includes(post.product_name ?? "")) return false;
-      if (filters.type !== "all" && getPostType(post.url) !== filters.type) return false;
-      if (filters.channelTypes.length > 0 && !filters.channelTypes.some(ct => (post.channel_type ?? "").replace(/\s+/g, "") === ct.replace(/\s+/g, ""))) return false;
+    // 1️⃣ 모든 게시물에 적용되는 필터 (제로비도 포함)
+    if (filters.name && !displayName.includes(filters.name.toLowerCase())) return false;
+    if (filters.project && !(post.project_name ?? "").toLowerCase().includes(filters.project.toLowerCase())) return false;
+    if (filters.products.length > 0 && !filters.products.includes(post.product_name ?? "")) return false;
+    if (filters.type !== "all" && getPostType(post.url) !== filters.type) return false;
+    if (filters.channelTypes.length > 0 && !filters.channelTypes.some(ct => (post.channel_type ?? "").replace(/\s+/g, "") === ct.replace(/\s+/g, ""))) return false;
 
-      // 게시일 필터 (posted_at 기준)
-      if (filters.postedFrom && (!post.posted_at || post.posted_at < filters.postedFrom)) return false;
-      if (filters.postedTo && (!post.posted_at || post.posted_at > filters.postedTo)) return false;
+    // 게시일 필터 (posted_at 기준)
+    if (filters.postedFrom && (!post.posted_at || post.posted_at < filters.postedFrom)) return false;
+    if (filters.postedTo && (!post.posted_at || post.posted_at > filters.postedTo)) return false;
 
-      // 날짜 필터: 조회수 측정일 기준
-      if (filters.dateFrom || filters.dateTo) {
-        const hasData = (post.all_stats ?? []).some(s =>
-          (!filters.dateFrom || s.measured_at >= filters.dateFrom) &&
-          (!filters.dateTo   || s.measured_at <= filters.dateTo)
-        );
-        if (!hasData) return false;
-      }
+    // 2️⃣ 날짜 필터: 제로비는 제외 (조회수 데이터가 없으므로)
+    if (!isZeroPost && (filters.dateFrom || filters.dateTo)) {
+      const hasData = (post.all_stats ?? []).some(s =>
+        (!filters.dateFrom || s.measured_at >= filters.dateFrom) &&
+        (!filters.dateTo   || s.measured_at <= filters.dateTo)
+      );
+      if (!hasData) return false;
     }
 
     return true;
