@@ -698,8 +698,10 @@ export default function MonitoringPage() {
     return result;
   }, [stickyColWidths]);
 
-  const lsStartDate = chartData.length >= 2 ? chartData[0].date : null;
-  const lsEndDate   = chartData.length >= 2 ? chartData[chartData.length - 1].date : null;
+  const { lsStartDate, lsEndDate } = useMemo(() => ({
+    lsStartDate: chartData.length >= 2 ? chartData[0].date : null,
+    lsEndDate: chartData.length >= 2 ? chartData[chartData.length - 1].date : null,
+  }), [chartData]);
 
   useEffect(() => {
     if (!lsStartDate || !lsEndDate) return;
