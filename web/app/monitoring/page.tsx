@@ -482,6 +482,7 @@ export default function MonitoringPage() {
   const [dateTooltip, setDateTooltip] = useState<{ date: string; x: number; y: number } | null>(null);
   const [lsSearchData, setLsSearchData] = useState<{ date: string; ratio: number; value: number | null }[]>([]);
   const [brandMetrics, setBrandMetrics] = useState<{ measured_at: string; yt_views: number | null; yt_unique_viewers: number | null; yt_search_views: number | null; ig_profile_views: number | null; ig_reach: number | null }[]>([]);
+  const [dailySummary, setDailySummary] = useState<{ date: string; play_count: number; likes_count: number; comments_count: number }[]>([]);
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [showHelp, setShowHelp] = useState(false);
@@ -707,6 +708,13 @@ export default function MonitoringPage() {
     fetch("/api/brand-metrics")
       .then(r => r.ok ? r.json() : [])
       .then(data => setBrandMetrics(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/daily-summary")
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setDailySummary(Array.isArray(data) ? data : []))
       .catch(() => {});
   }, []);
 
@@ -1552,6 +1560,47 @@ export default function MonitoringPage() {
                       .map(p => ({ name: p.account_name ?? p.influencers?.name ?? '-', url: p.url }))
                   }
                 />
+              </div>
+              {/* 일일 합계 */}
+              <div className="flex-1 flex flex-col self-start min-w-[200px]">
+                <div className="px-5 py-4 border-b border-a-hairline">
+                  <p className="text-[11px] font-medium text-a-ink-muted">일일 합계</p>
+                </div>
+                <div className="space-y-3 p-4">
+                  {dailySummary.length < 2 ? (
+                    <div className="text-xs text-a-ink-muted text-center py-4">데이터 없음</div>
+                  ) : (
+                    dailySummary.map((day, i) => (
+                      <div key={day.date} className="border-b border-a-hairline pb-3 last:border-0 last:pb-0">
+                        <div className="text-xs font-medium text-a-ink mb-2">{day.date.slice(5).replace("-", "/")}</div>
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-[11px]">
+                            <span className="text-a-ink-muted">조회수</span>
+                            <span className="font-semibold text-a-ink">{day.play_count.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between text-[11px]">
+                            <span className="text-a-ink-muted">좋아요</span>
+                            <span className="font-semibold text-a-ink">{day.likes_count.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between text-[11px]">
+                            <span className="text-a-ink-muted">댓글</span>
+                            <span className="font-semibold text-a-ink">{day.comments_count.toLocaleString()}</span>
+                          </div>
+                          {i > 0 && (
+                            <div className="pt-2 border-t border-a-hairline mt-2">
+                              <div className="flex justify-between text-[11px]">
+                                <span className="text-gray-400">증분 조회</span>
+                                <span className={`font-semibold ${(day.play_count - dailySummary[i-1].play_count) > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                                  {(day.play_count - dailySummary[i-1].play_count) > 0 ? '+' : ''}{(day.play_count - dailySummary[i-1].play_count).toLocaleString()}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
               {/* 증감 테이블 */}
               <div className="flex-[3] flex flex-col self-start min-w-[220px]">
