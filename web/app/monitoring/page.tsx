@@ -1472,7 +1472,7 @@ export default function MonitoringPage() {
                 const active = filters.dateFrom === p.from && filters.dateTo === p.to;
                 return (
                   <button key={p.label}
-                    onClick={() => setFilters(prev => ({ ...prev, dateFrom: p.from, dateTo: p.to }))}
+                    onClick={() => setFilters(prev => active ? { ...prev, dateFrom: "", dateTo: "" } : { ...prev, dateFrom: p.from, dateTo: p.to })}
                     className={`text-[11px] px-2.5 py-0.5 rounded-full border transition-all whitespace-nowrap ${active ? "border-a-blue bg-a-blue text-white font-medium" : "border-a-hairline text-a-ink-muted hover:border-a-blue hover:text-a-blue"}`}>
                     {p.label}
                   </button>
