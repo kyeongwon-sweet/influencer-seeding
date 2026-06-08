@@ -3,6 +3,10 @@
     {
       "path": "/api/marketing/sync",
       "schedule": "0 15 * * *"
+    },
+    {
+      "path": "/api/screening/collect",
+      "schedule": "30 15 * * *"
     }
   ]
 }
