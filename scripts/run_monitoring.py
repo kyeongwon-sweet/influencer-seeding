@@ -59,7 +59,19 @@ def run():
     print(f"  - SUPABASE_URL: {'설정됨' if os.getenv('SUPABASE_URL') else '❌ 미설정'}")
     print(f"  - SUPABASE_SERVICE_ROLE_KEY: {'설정됨' if os.getenv('SUPABASE_SERVICE_ROLE_KEY') else '❌ 미설정'}")
     print(f"  - APIFY_API_TOKEN: {'설정됨' if os.getenv('APIFY_API_TOKEN') else '❌ 미설정'}")
+    print(f"  - SKIP_APIFY: {os.getenv('SKIP_APIFY', '0')}")
     print(f"  - JOB_PAYLOAD: {os.getenv('JOB_PAYLOAD', '{}')}\n")
+
+    # 네트워크 연결 테스트
+    print("[DEBUG] 네트워크 연결 테스트...")
+    try:
+        import socket
+        socket.gethostbyname("supabase.co")
+        print("[DEBUG] ✅ DNS 해석 성공: supabase.co")
+    except socket.gaierror as e:
+        print(f"[DEBUG] ❌ DNS 해석 실패: {e}")
+    except Exception as e:
+        print(f"[DEBUG] ❌ 네트워크 테스트 실패: {e}")
 
     # JOB_PAYLOAD 환경변수 처리 (None, "null", 비어있음 모두 처리)
     job_payload_str = os.getenv("JOB_PAYLOAD", "{}")

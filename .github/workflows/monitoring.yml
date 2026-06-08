@@ -14,8 +14,25 @@ on:
 jobs:
   monitor:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Diagnose network connectivity
+        run: |
+          echo "🔍 네트워크 진단..."
+          echo "DNS 테스트:"
+          nslookup supabase.co || echo "nslookup 실패"
+          getent hosts supabase.co || echo "getent 실패"
+          ping -c 1 supabase.co || echo "ping 실패"
+          echo ""
+          echo "라우팅 정보:"
+          ip route || echo "ip route 실패"
+          echo ""
+          echo "활성 포트:"
+          netstat -tuln | head -10 || echo "netstat 실패"
 
       - uses: actions/setup-python@v5
         with:
