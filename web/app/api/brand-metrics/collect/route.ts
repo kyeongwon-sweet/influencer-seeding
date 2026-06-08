@@ -28,7 +28,7 @@ async function fetchYouTubeMetrics(dateStr: string) {
   url.searchParams.set("ids",       "channel==MINE");
   url.searchParams.set("startDate", dateStr);
   url.searchParams.set("endDate",   dateStr);
-  url.searchParams.set("metrics",   "views,uniqeViewers");
+  url.searchParams.set("metrics",   "views,uniqeViewers,search");
   url.searchParams.set("dimensions","day");
 
   const analyticsRes = await fetch(url.toString(), {
@@ -37,10 +37,14 @@ async function fetchYouTubeMetrics(dateStr: string) {
   if (!analyticsRes.ok) return null;
 
   const json = await analyticsRes.json();
-  const row = json.rows?.[0]; // [day, views, uniqeViewers]
+  const row = json.rows?.[0]; // [day, views, uniqeViewers, search]
   if (!row) return null;
 
-  return { yt_views: row[1] as number, yt_unique_viewers: row[2] as number };
+  return {
+    yt_views: row[1] as number,
+    yt_unique_viewers: row[2] as number,
+    yt_search_views: row[3] as number
+  };
 }
 
 // ── Instagram Graph API ────────────────────────────────────────────────────
@@ -101,7 +105,8 @@ export async function POST(req: NextRequest) {
   const row = {
     measured_at:       dateStr,
     yt_views:          yt?.yt_views          ?? null,
-    yt_unique_viewers: yt?.yt_unique_viewers  ?? null,
+    yt_unique_viewers: yt?.yt_unique_viewers ?? null,
+    yt_search_views:   yt?.yt_search_views   ?? null,
     ig_profile_views:  ig?.ig_profile_views  ?? null,
     ig_reach:          ig?.ig_reach          ?? null,
   };
