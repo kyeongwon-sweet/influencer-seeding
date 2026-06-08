@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
 
     console.log(`[LOG] 발견된 협찬 게시물: ${posts.length}개`);
 
-    // 2. URL에서 Instagram/YouTube 계정 추출 및 Apify 수집
+    // 2. directUrls를 사용해서 개별 게시물별 조회수 수집 (추정치 금지!)
     const { ApifyClient } = await import("apify-client");
     const client = new ApifyClient({ token: apiToken });
 
@@ -64,71 +64,82 @@ export async function POST(req: NextRequest) {
       comments_count: number | null;
     }> = [];
 
-    const today = new Date().toISOString().split("T")[0];
+    // KST 기준 오늘 날짜 (UTC-09:00 보정)
+    const now = new Date();
+    const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+    const today = kstNow.toISOString().split("T")[0];
 
-    for (const post of posts) {
-      try {
-        let username: string | null = null;
+    // Instagram 게시물만 필터링
+    const igPosts = posts.filter((p) => p.url.includes("instagram.com"));
 
-        // Instagram URL 파싱
-        if (post.url.includes("instagram.com")) {
-          const match = post.url.match(/instagram\.com\/([^/?]+)/);
-          username = match ? match[1] : null;
-        }
+    if (igPosts.length === 0) {
+      return NextResponse.json({
+        success: true,
+        message: "No Instagram posts found",
+        collected: 0,
+      });
+    }
 
-        if (!username) {
-          console.warn(`[WARN] 계정 파싱 실패: ${post.url}`);
-          continue;
-        }
+    console.log(`[LOG] Instagram 게시물: ${igPosts.length}개 (directUrls로 수집)`);
 
-        console.log(`[LOG] @${username} 데이터 수집 중...`);
+    try {
+      // directUrls로 모든 게시물을 한 번에 수집 (실제 조회수만)
+      const run = await client.actor("apify/instagram-scraper").call({
+        directUrls: igPosts.map((p) => p.url),
+        resultsType: "posts",
+        resultsLimit: 100,
+        addParentData: true,
+        maxRequestRetries: 1,
+      });
 
-        // Apify Instagram Scraper 호출
-        const run = await client.actor("apify/instagram-scraper").call({
-          usernames: [username],
-          resultsType: "posts",
-          resultsLimit: 50,
-        });
+      const items = await client.dataset(run.defaultDatasetId).listItems();
+      const resultItems = items.items || [];
 
-        const items = await client.dataset(run.defaultDatasetId).listItems();
-        const postItems = items.items || [];
+      console.log(`[LOG] Apify 응답: ${resultItems.length}개 게시물`);
 
-        if (postItems.length === 0) {
-          console.warn(`[WARN] @${username}의 게시물 없음`);
-          continue;
-        }
+      // URL → 조회수 매핑
+      const urlToStats: Record<
+        string,
+        { views: number; likes: number; comments: number }
+      > = {};
 
-        // 게시물에서 조회수/좋아요/댓글 합계 계산
-        let totalViews = 0;
-        let totalLikes = 0;
-        let totalComments = 0;
+      for (const item of resultItems) {
+        if (item.error) continue; // 에러 아이템 스킵
 
-        for (const item of postItems) {
-          totalViews += item.videoViewCount || item.viewCount || 0;
-          totalLikes += item.likeCount || 0;
-          totalComments += item.commentCount || 0;
-        }
+        const url = (item.url || "").split("?")[0];
+        const views = item.videoViewCount || item.viewCount || 0;
+        const likes = item.likeCount || 0;
+        const comments = item.commentsCount || item.commentCount || 0;
 
-        if (totalViews === 0 && totalLikes === 0 && totalComments === 0) {
-          console.warn(`[WARN] @${username}의 통계 없음`);
-          continue;
-        }
+        urlToStats[url] = { views, likes, comments };
+      }
+
+      // 각 게시물별로 개별 데이터 저장
+      for (const post of igPosts) {
+        const cleanUrl = post.url.split("?")[0];
+        const stats = urlToStats[cleanUrl] || {
+          views: 0,
+          likes: 0,
+          comments: 0,
+        };
 
         statsToInsert.push({
           post_id: post.id,
           measured_at: today,
-          play_count: totalViews > 0 ? totalViews : null,
-          likes_count: totalLikes > 0 ? totalLikes : null,
-          comments_count: totalComments > 0 ? totalComments : null,
+          play_count: stats.views > 0 ? stats.views : 0, // 0도 저장 (추정 금지)
+          likes_count: stats.likes > 0 ? stats.likes : 0,
+          comments_count: stats.comments > 0 ? stats.comments : 0,
         });
 
         console.log(
-          `[OK] @${username}: 조회=${totalViews}, 좋아요=${totalLikes}, 댓글=${totalComments}`
+          `[OK] ${cleanUrl.split("/").slice(-2).join("/")} (post_id=${post.id.substring(0, 8)}...): 조회=${stats.views}, 좋아요=${stats.likes}, 댓글=${stats.comments}`
         );
-      } catch (apifyError) {
-        console.warn(`[WARN] @${post.account_name} 수집 실패:`, apifyError);
-        continue;
       }
+    } catch (apifyError) {
+      console.error("[ERROR] Apify 수집 실패:", apifyError);
+      throw new Error(
+        `Apify collection failed: ${apifyError instanceof Error ? apifyError.message : "Unknown error"}`
+      );
     }
 
     // 3. Supabase에 저장

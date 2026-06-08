@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/monitoring/apify-collect",
-      "schedule": "0 9 * * *"
+      "schedule": "0 15 * * *"
     }
   ]
 }

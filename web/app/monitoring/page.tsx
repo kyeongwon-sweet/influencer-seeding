@@ -507,7 +507,7 @@ export default function MonitoringPage() {
     "증분량": 80,
   });
   const [colWidths, setColWidths] = useState<Record<string, number>>({
-    "채널분류": 100, "카테고리": 80, "게시일": 104, "캡션": 40, "인플루언서": 80, "상품명": 150, "프로젝트명": 150, "비용": 120, "조회수": 100, "조회당비용": 110, "도달수": 100, "도달당비용": 110, "좋아요": 80, "댓글": 80, "트렌드": 90, "특이사항": 160, "삭제": 60,
+    "채널분류": 100, "게시일": 104, "캡션": 40, "인플루언서": 80, "상품명": 150, "프로젝트명": 150, "비용": 120, "조회수": 100, "조회당비용": 110, "도달수": 100, "도달당비용": 110, "좋아요": 80, "댓글": 80, "트렌드": 90, "특이사항": 160, "삭제": 60,
   });
   const resizingRef = useRef<{ col: string; startX: number; startW: number; isSticky: boolean } | null>(null);
 
@@ -1836,9 +1836,8 @@ export default function MonitoringPage() {
                     </span>
                   </TH>
                   <TH w={colWidths["게시일"]} onResize={e => startResize("게시일", e)} {...sp("게시일")}>게시일</TH>
-                  <TH w={colWidths["캡션"]} onResize={e => startResize("캡션", e)}>캡션</TH>
+                  <TH w={40}>캡션</TH>
                   <TH w={colWidths["인플루언서"]} onResize={e => startResize("인플루언서", e)} {...sp("인플루언서")}>인플루언서</TH>
-                  <TH w={colWidths["카테고리"]} onResize={e => startResize("카테고리", e)} {...sp("카테고리")} title="A. 찐팬서사(심리적 진입장벽 낮춤) B. 선망성(라이프스타일 완성) C. 맛잘알(대체제 맛 의구심 해소) D. 친근감(생활 밀착형 섭취)">카테고리</TH>
                   <TH w={colWidths["상품명"]} onResize={e => startResize("상품명", e)} {...sp("상품명")}>상품명</TH>
                   <TH w={colWidths["프로젝트명"]} onResize={e => startResize("프로젝트명", e)} {...sp("프로젝트명")}>프로젝트명</TH>
                   <TH right w={colWidths["비용"]} onResize={e => startResize("비용", e)} {...sp("비용")}>비용</TH>
@@ -1977,23 +1976,6 @@ export default function MonitoringPage() {
                               </svg>
                             </button>
                           </div>
-                        )}
-                      </TD>
-                      <TD muted w={colWidths["카테고리"]}>
-                        {editCategory?.postId === post.id ? (
-                          <select autoFocus value={editCategory.value}
-                            onChange={e => setEditCategory(v => v ? { ...v, value: e.target.value } : null)}
-                            onBlur={() => patchCategory(post.id, editCategory.infId, editCategory.value)}
-                            onKeyDown={e => { if (e.key === "Enter") patchCategory(post.id, editCategory.infId, editCategory.value); if (e.key === "Escape") setEditCategory(null); }}
-                            className="text-xs bg-transparent border-b border-a-blue outline-none py-0.5 w-full">
-                            <option value="">-</option>
-                            {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.desc}</option>)}
-                          </select>
-                        ) : (
-                          <span onClick={() => post.influencers && setEditCategory({ postId: post.id, infId: post.influencers.id, value: post.influencers.category ?? "" })}
-                            className="cursor-text hover:text-a-blue transition-colors">
-                            {(() => { const cat = CATEGORIES.find(c => c.value === post.influencers?.category); return cat ? cat.desc : <span className="text-gray-300">-</span>; })()}
-                          </span>
                         )}
                       </TD>
                       <TD muted w={colWidths["상품명"]}>
