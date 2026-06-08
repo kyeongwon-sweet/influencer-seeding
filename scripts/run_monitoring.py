@@ -15,18 +15,23 @@ def retry_on_network_error(max_retries=3, delay=5):
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
+            last_error = None
             for attempt in range(max_retries):
                 try:
                     return func(*args, **kwargs)
                 except Exception as e:
+                    last_error = e
                     error_str = str(e).lower()
+                    # 네트워크 에러만 재시도 (DNS, 연결 실패 등)
                     if "name or service not known" in error_str or "connect" in error_str:
                         if attempt < max_retries - 1:
                             print(f"[WARN] 네트워크 에러 발생. {delay}초 후 재시도... ({attempt + 1}/{max_retries})")
                             time.sleep(delay)
                             continue
+                    # 네트워크 에러가 아니면 즉시 실패
                     raise
-            return None
+            # 모든 재시도 실패
+            raise last_error
         return wrapper
     return decorator
 
@@ -95,11 +100,12 @@ def run():
             return
 
         # Apify 호출 여부 제어 (SKIP_APIFY=1이면 스킵, 기본값: 호출)
+        # SKIP_APIFY=1일 때는 기존 데이터만 사용 (Apify 호출 없이 진행)
         skip_apify = os.getenv("SKIP_APIFY", "0").lower() in ("1", "true", "yes")
 
         stats_by_key = {}
         if skip_apify:
-            print(f"[LOG] ⏭️ Apify 데이터 수집 스킵 (SKIP_APIFY=1)")
+            print(f"[LOG] ⏭️ Apify 데이터 수집 스킵 (SKIP_APIFY=1) - 기존 데이터만 사용")
         else:
             print(f"[LOG] Apify 데이터 수집 시작...")
             stats = _fetch_stats([p["url"] for p in posts])
