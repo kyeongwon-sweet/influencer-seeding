@@ -79,9 +79,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
+  // Google Sheets Apps Script에서 인증 없이 호출 가능
+  // (GET은 Clerk 인증 필요, POST는 공개 인터페이스)
   const body = await req.json();
   const supabase = getServerSupabase();
 
