@@ -526,17 +526,18 @@ export default function MonitoringPage() {
     if (filters.postedTo && (!post.posted_at || post.posted_at > filters.postedTo)) return false;
 
     // 날짜 필터: 조회수 측정일 기준
-    // ⚠️ Edge case 처리: 아직 조회수 데이터를 수집하지 않은 게시물(제로비)도 포함해야 함
+    // ⚠️ Edge case 처리: 제로비(아직 조회수가 없는 게시물)도 포함해야 함
     // - hasData: 필터 기간에 측정된 조회수 데이터가 있는가?
-    // - isNewPost: 아직 한 번도 수집되지 않은 새 게시물인가?
-    // - 결과: 데이터가 있거나 OR 새 게시물이면 표시, 둘 다 아니면 제외
+    // - isZeroPost: 제로비(조회수가 아직 0이거나 데이터가 없는 게시물)인가?
+    // - 결과: 데이터가 있거나 OR 제로비면 표시, 둘 다 아니면 제외
     if (filters.dateFrom || filters.dateTo) {
       const hasData = (post.all_stats ?? []).some(s =>
         (!filters.dateFrom || s.measured_at >= filters.dateFrom) &&
         (!filters.dateTo   || s.measured_at <= filters.dateTo)
       );
-      const isNewPost = (post.all_stats ?? []).length === 0;  // all_stats 없음 = 아직 수집 안 됨
-      if (!hasData && !isNewPost) return false;  // 기간 내 데이터 없고 신규 게시물도 아니면 제외
+      // 제로비: (1) all_stats가 없거나 (2) 최신 조회수가 0이거나 null
+      const isZeroPost = (post.all_stats ?? []).length === 0 || (post.latest_stats?.play_count ?? 0) === 0;
+      if (!hasData && !isZeroPost) return false;  // 기간 내 데이터 없고 제로비도 아니면 제외
     }
 
     return true;
@@ -1836,7 +1837,6 @@ export default function MonitoringPage() {
                     </span>
                   </TH>
                   <TH w={colWidths["게시일"]} onResize={e => startResize("게시일", e)} {...sp("게시일")}>게시일</TH>
-                  <TH w={40}>캡션</TH>
                   <TH w={colWidths["인플루언서"]} onResize={e => startResize("인플루언서", e)} {...sp("인플루언서")}>인플루언서</TH>
                   <TH w={colWidths["상품명"]} onResize={e => startResize("상품명", e)} {...sp("상품명")}>상품명</TH>
                   <TH w={colWidths["프로젝트명"]} onResize={e => startResize("프로젝트명", e)} {...sp("프로젝트명")}>프로젝트명</TH>
@@ -1859,6 +1859,7 @@ export default function MonitoringPage() {
                   </TH>
                   <TH right w={colWidths["도달수"]} onResize={e => startResize("도달수", e)} {...sp("도달수")}>도달수</TH>
                   <TH right w={colWidths["도달당비용"]} onResize={e => startResize("도달당비용", e)} {...sp("도달당비용")}>도달당비용</TH>
+                  <TH w={10}>캡션</TH>
                   <TH right w={colWidths["좋아요"]} onResize={e => startResize("좋아요", e)} {...sp("좋아요")}>좋아요</TH>
                   <TH right w={colWidths["댓글"]} onResize={e => startResize("댓글", e)} {...sp("댓글")}>댓글</TH>
                   <TH className="text-center" w={colWidths["트렌드"]} onResize={e => startResize("트렌드", e)}>트렌드</TH>
@@ -1964,13 +1965,18 @@ export default function MonitoringPage() {
                             onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "account_name", editCell.value); if (e.key === "Escape") { e.preventDefault(); setEditCell(null); }; }}
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5" />
                         ) : (
-                          <div className="flex items-center gap-1 min-w-0 overflow-hidden">
+                          <div className="flex items-center gap-1 min-w-0 overflow-hidden group/influencer">
+                            <span className="font-medium text-left truncate min-w-0">{displayName}</span>
                             <button onClick={async () => {
-                              window.open(post.url, "_blank");
                               try { await navigator.clipboard.writeText(post.url); toast("링크가 복사됐습니다.", "success"); } catch {}
-                            }} className="font-medium hover:text-a-blue transition-colors text-left truncate min-w-0">{displayName}</button>
+                            }} className="opacity-0 group-hover/influencer:opacity-100 text-a-ink-muted hover:text-a-blue transition flex-shrink-0" title="링크 복사">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                                <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M9 3h6a2 2 0 012 2v0a2 2 0 01-2 2H9a2 2 0 01-2-2v0a2 2 0 012-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
                             <button onClick={() => setEditCell({ postId: post.id, field: "account_name", value: displayName === "-" ? "" : displayName })}
-                              className="opacity-0 group-hover:opacity-100 text-a-ink-muted hover:text-a-ink transition flex-shrink-0" title="이름 수정">
+                              className="opacity-0 group-hover/influencer:opacity-100 text-a-ink-muted hover:text-a-ink transition flex-shrink-0" title="이름 수정">
                               <svg width="11" height="11" viewBox="0 0 20 20" fill="none">
                                 <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                               </svg>
