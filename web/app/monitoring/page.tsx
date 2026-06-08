@@ -556,16 +556,6 @@ export default function MonitoringPage() {
       }, posts[0].latest_stats?.measured_at ?? posts[0].created_at)
     : null;
 
-  // 자동화 실패 감지: 24시간 이상 업데이트 없으면 경고
-  const [dismissAutomationWarning, setDismissAutomationWarning] = useState(false);
-  const shouldShowAutomationWarning = (() => {
-    if (dismissAutomationWarning || !lastMonitoredAt) return false;
-    const lastTime = new Date(lastMonitoredAt).getTime();
-    const now = Date.now();
-    const hoursSinceLastUpdate = (now - lastTime) / (1000 * 60 * 60);
-    return hoursSinceLastUpdate > 24;
-  })();
-
   const formatLastUpdate = (dateStr: string): string => {
     const d = new Date(dateStr);
     const now = new Date();
@@ -1344,36 +1334,6 @@ export default function MonitoringPage() {
       </div>
 
       <div className="p-6">
-        {/* 자동화 실패 경고 배너 */}
-        {shouldShowAutomationWarning && (
-          <div className="mb-4 bg-red-50 border border-red-200 rounded-[12px] p-4 flex items-start justify-between gap-4">
-            <div className="flex items-start gap-3 flex-1">
-              <div className="text-red-600 text-xl leading-none pt-0.5">⚠️</div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-red-900 mb-1">자동화 모니터링 중단</p>
-                <p className="text-xs text-red-700">
-                  마지막 자동 업데이트: <span className="font-medium">{lastMonitoredAt ? formatLastUpdate(lastMonitoredAt) : "알 수 없음"}</span>
-                </p>
-                <p className="text-xs text-red-700 mt-1">GitHub Actions 워크플로우가 제대로 작동하지 않을 수 있습니다.</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={runMonitoring}
-                disabled={running}
-                className="text-xs px-3 py-1.5 bg-red-600 text-white rounded-[6px] hover:bg-red-700 disabled:opacity-50 transition"
-              >
-                {running ? "수집 중..." : "수동 실행"}
-              </button>
-              <button
-                onClick={() => setDismissAutomationWarning(true)}
-                className="text-xs px-3 py-1.5 bg-white text-red-600 border border-red-200 rounded-[6px] hover:bg-red-50 transition"
-              >
-                닫기
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* 필터 바 */}
         <div className="bg-white rounded-[14px] border border-a-hairline px-4 py-2.5 mb-4 flex items-center gap-2.5 flex-wrap">
