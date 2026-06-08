@@ -514,30 +514,30 @@ export default function MonitoringPage() {
   const filteredPosts = posts.filter(post => {
     const displayName = (post.account_name ?? post.influencers?.name ?? "").toLowerCase();
 
-    // 필터별 제외 로직 (순서: 이름 → 프로젝트 → 상품 → 타입 → 채널 → 게시일 → 조회수기간)
-    if (filters.name && !displayName.includes(filters.name.toLowerCase())) return false;
-    if (filters.project && !(post.project_name ?? "").toLowerCase().includes(filters.project.toLowerCase())) return false;
-    if (filters.products.length > 0 && !filters.products.includes(post.product_name ?? "")) return false;
-    if (filters.type !== "all" && getPostType(post.url) !== filters.type) return false;
-    if (filters.channelTypes.length > 0 && !filters.channelTypes.some(ct => (post.channel_type ?? "").replace(/\s+/g, "") === ct.replace(/\s+/g, ""))) return false;
+    // 🔴 제로비(조회수 없는 게시물) 판정: 필터 적용 전 먼저 확인
+    // 제로비는 다른 필터를 무시하고 항상 표시 (모니터링 필수)
+    const isZeroPost = (post.all_stats ?? []).length === 0 || (post.latest_stats?.play_count ?? 0) === 0;
 
-    // 게시일 필터 (posted_at 기준)
-    if (filters.postedFrom && (!post.posted_at || post.posted_at < filters.postedFrom)) return false;
-    if (filters.postedTo && (!post.posted_at || post.posted_at > filters.postedTo)) return false;
+    // 제로비가 아니면 다른 필터 적용
+    if (!isZeroPost) {
+      if (filters.name && !displayName.includes(filters.name.toLowerCase())) return false;
+      if (filters.project && !(post.project_name ?? "").toLowerCase().includes(filters.project.toLowerCase())) return false;
+      if (filters.products.length > 0 && !filters.products.includes(post.product_name ?? "")) return false;
+      if (filters.type !== "all" && getPostType(post.url) !== filters.type) return false;
+      if (filters.channelTypes.length > 0 && !filters.channelTypes.some(ct => (post.channel_type ?? "").replace(/\s+/g, "") === ct.replace(/\s+/g, ""))) return false;
 
-    // 날짜 필터: 조회수 측정일 기준
-    // ⚠️ Edge case 처리: 제로비(아직 조회수가 없는 게시물)도 포함해야 함
-    // - hasData: 필터 기간에 측정된 조회수 데이터가 있는가?
-    // - isZeroPost: 제로비(조회수가 아직 0이거나 데이터가 없는 게시물)인가?
-    // - 결과: 데이터가 있거나 OR 제로비면 표시, 둘 다 아니면 제외
-    if (filters.dateFrom || filters.dateTo) {
-      const hasData = (post.all_stats ?? []).some(s =>
-        (!filters.dateFrom || s.measured_at >= filters.dateFrom) &&
-        (!filters.dateTo   || s.measured_at <= filters.dateTo)
-      );
-      // 제로비: (1) all_stats가 없거나 (2) 최신 조회수가 0이거나 null
-      const isZeroPost = (post.all_stats ?? []).length === 0 || (post.latest_stats?.play_count ?? 0) === 0;
-      if (!hasData && !isZeroPost) return false;  // 기간 내 데이터 없고 제로비도 아니면 제외
+      // 게시일 필터 (posted_at 기준)
+      if (filters.postedFrom && (!post.posted_at || post.posted_at < filters.postedFrom)) return false;
+      if (filters.postedTo && (!post.posted_at || post.posted_at > filters.postedTo)) return false;
+
+      // 날짜 필터: 조회수 측정일 기준
+      if (filters.dateFrom || filters.dateTo) {
+        const hasData = (post.all_stats ?? []).some(s =>
+          (!filters.dateFrom || s.measured_at >= filters.dateFrom) &&
+          (!filters.dateTo   || s.measured_at <= filters.dateTo)
+        );
+        if (!hasData) return false;
+      }
     }
 
     return true;
