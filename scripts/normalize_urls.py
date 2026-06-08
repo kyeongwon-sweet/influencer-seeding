@@ -12,6 +12,18 @@ from url_utils import normalize_url
 
 # db.py import 전에 load_dotenv 호출하여 환경변수 로드
 load_dotenv()
+
+# 🔍 환경변수 진단
+print("[DEBUG] 환경변수 확인:")
+print(f"  SUPABASE_URL length: {len(os.getenv('SUPABASE_URL', ''))} chars - {('✅ 설정' if os.getenv('SUPABASE_URL') else '❌ 미설정')}")
+print(f"  SUPABASE_SERVICE_ROLE_KEY length: {len(os.getenv('SUPABASE_SERVICE_ROLE_KEY', ''))} chars - {('✅ 설정' if os.getenv('SUPABASE_SERVICE_ROLE_KEY') else '❌ 미설정')}")
+
+url = os.getenv('SUPABASE_URL')
+key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+print(f"  SUPABASE_URL value: {url}")
+print(f"  SUPABASE_SERVICE_ROLE_KEY starts with: {key[:20] if key else 'NONE'}...")
+print()
+
 db = get_client()
 
 # Apify Instagram 정규표현식 (정확한 복사)
