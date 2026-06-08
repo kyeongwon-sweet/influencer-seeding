@@ -404,7 +404,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
             </g>
           ))}
           {secondaryTicks && secondaryTicks.map((tick, i) => (
-            <g key={`sec-${i}`}>
+            <g key={`sec-${i}`} opacity="0">
               <text x={cw + 8} y={tick.y} textAnchor="start" dominantBaseline="middle" fontSize="6" fill="#666666">{fmtYSecondary(tick.val)}</text>
             </g>
           ))}
@@ -507,7 +507,7 @@ export default function MonitoringPage() {
     "증분량": 80,
   });
   const [colWidths, setColWidths] = useState<Record<string, number>>({
-    "채널분류": 100, "카테고리": 80, "게시일": 104, "캡션": 60, "인플루언서": 180, "상품명": 150, "프로젝트명": 150, "비용": 120, "조회수": 100, "조회당비용": 110, "도달수": 100, "도달당비용": 110, "좋아요": 80, "댓글": 80, "트렌드": 90, "특이사항": 160, "삭제": 60,
+    "채널분류": 100, "카테고리": 80, "게시일": 104, "캡션": 80, "인플루언서": 80, "상품명": 150, "프로젝트명": 150, "비용": 120, "조회수": 100, "조회당비용": 110, "도달수": 100, "도달당비용": 110, "좋아요": 80, "댓글": 80, "트렌드": 90, "특이사항": 160, "삭제": 60,
   });
   const resizingRef = useRef<{ col: string; startX: number; startW: number; isSticky: boolean } | null>(null);
 
@@ -1530,7 +1530,7 @@ export default function MonitoringPage() {
                     )}
                     <div className="flex items-center gap-1.5">
                       <div className="w-2 h-0.5 bg-gray-400" />
-                      <span className="text-xs text-a-ink-muted">광고비</span>
+                      <span className="text-xs text-a-ink-muted">전체 전환 광고비</span>
                     </div>
                   </div>
                 </div>
