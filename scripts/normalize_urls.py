@@ -41,11 +41,16 @@ def is_valid_instagram_url(url: str) -> bool:
 def main():
     print("[LOG] sponsored_posts URL 정규화 및 검증 시작\n")
 
-    # 모든 게시물 조회
-    res = db.table("sponsored_posts").select("id, url").execute()
-    posts = res.data or []
-
-    print(f"[LOG] 총 {len(posts)}개 게시물\n")
+    try:
+        # 모든 게시물 조회
+        res = db.table("sponsored_posts").select("id, url").execute()
+        posts = res.data or []
+        print(f"[LOG] 총 {len(posts)}개 게시물\n")
+    except Exception as e:
+        print(f"[ERROR] Supabase 조회 실패: {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return
 
     updated_count = 0
     deleted_count = 0
