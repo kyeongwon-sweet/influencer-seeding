@@ -49,10 +49,10 @@ export async function GET(req: NextRequest) {
 
   const supabase = getServerSupabase();
 
-  // sponsored_posts + influencers 조회
+  // sponsored_posts 조회 (influencer_id가 NULL이므로 조인 불가)
   const { data: posts, error: postsError } = await supabase
     .from("sponsored_posts")
-    .select("*, influencers(id, name, platform, post_type, category, screening_metrics(*))")
+    .select("*")
     .order("created_at", { ascending: false });
 
   if (postsError) return NextResponse.json({ error: postsError.message }, { status: 500 });
@@ -80,18 +80,13 @@ export async function GET(req: NextRequest) {
       (a: { measured_at: string }, b: { measured_at: string }) =>
         new Date(b.measured_at).getTime() - new Date(a.measured_at).getTime()
     );
-    const screeningList = (post.influencers?.screening_metrics ?? []).sort(
-      (a: { run_at: string }, b: { run_at: string }) =>
-        new Date(b.run_at).getTime() - new Date(a.run_at).getTime()
-    );
     return {
       ...post,
       post_daily_stats: undefined,
+      influencers: null,
       latest_stats: stats[0] ?? null,
       prev_stats: stats[1] ?? null,
       all_stats: [...stats].reverse(),
-      influencers: post.influencers ? { ...post.influencers, screening_metrics: undefined } : null,
-      latest_metrics: screeningList[0] ?? null,
     };
   });
 
