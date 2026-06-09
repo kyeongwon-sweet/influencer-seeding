@@ -71,6 +71,12 @@ function detectSpike(series: { date: string; value: number }[]) {
   return { pct, latest, prev2 };
 }
 
+// "쫀득바 쫀득바"처럼 단어가 중복된 시트 컬럼명은 한 번만 표기
+function cleanProductName(name: string): string {
+  const p = name.split(" ");
+  return p.length === 2 && p[0] === p[1] ? p[0] : name;
+}
+
 export default function DashboardPage() {
   const [influencers, setInfluencers] = useState<Influencer[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -307,7 +313,7 @@ export default function DashboardPage() {
                     {productSpikes.map(({ name, spike }) => (
                       <div key={name} className="flex items-center justify-between gap-2 bg-red-50/60 rounded-[6px] px-2 py-1 -mx-1">
                         <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-xs font-semibold text-red-500 whitespace-nowrap truncate">🔥 {name} 급등</span>
+                          <span className="text-xs font-semibold text-red-500 whitespace-nowrap truncate">🔥 {cleanProductName(name)} 급등</span>
                           <span className="text-[10px] text-a-ink-muted truncate hidden sm:block">
                             · {fmtDateVal(spike.prev2.date, spike.prev2.value)} → {fmtDateVal(spike.latest.date, spike.latest.value)}
                           </span>
