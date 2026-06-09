@@ -50,6 +50,12 @@ function fmtKpi(v: number | null): string {
   return v.toLocaleString();
 }
 
+// 날짜+검색량 표기: "6/5(3,023)"
+function fmtDateVal(date: string, value: number): string {
+  const [, m, d] = date.split("-");
+  return `${Number(m)}/${Number(d)}(${Math.round(value).toLocaleString()})`;
+}
+
 // 검색량 급등 감지: 최신일 vs 전전일(2일 전), +30% 이상이면 반환
 function detectSpike(series: { date: string; value: number }[]) {
   if (series.length < 3) return null;
@@ -288,7 +294,7 @@ export default function DashboardPage() {
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="text-xs font-bold text-red-600 whitespace-nowrap">🔥 라라스윗 전체 급등</span>
                           <span className="text-[10px] text-a-ink-muted truncate hidden sm:block">
-                            · {brandSpike.prev2.date.slice(5).replace("-", "/")}→{brandSpike.latest.date.slice(5).replace("-", "/")}
+                            · {fmtDateVal(brandSpike.prev2.date, brandSpike.prev2.value)} → {fmtDateVal(brandSpike.latest.date, brandSpike.latest.value)}
                           </span>
                         </div>
                         <span className="text-xs font-semibold text-red-500 whitespace-nowrap flex-shrink-0">
@@ -301,7 +307,7 @@ export default function DashboardPage() {
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="text-xs font-semibold text-red-500 whitespace-nowrap truncate">🔥 {name} 급등</span>
                           <span className="text-[10px] text-a-ink-muted truncate hidden sm:block">
-                            · {spike.prev2.date.slice(5).replace("-", "/")}→{spike.latest.date.slice(5).replace("-", "/")}
+                            · {fmtDateVal(spike.prev2.date, spike.prev2.value)} → {fmtDateVal(spike.latest.date, spike.latest.value)}
                           </span>
                         </div>
                         <span className="text-xs font-semibold text-red-500 whitespace-nowrap flex-shrink-0">
