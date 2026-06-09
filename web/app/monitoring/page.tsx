@@ -533,7 +533,6 @@ export default function MonitoringPage() {
   const [lsSearchData, setLsSearchData] = useState<{ date: string; ratio: number; value: number | null }[]>([]);
   const [brandMetrics, setBrandMetrics] = useState<{ measured_at: string; yt_views: number | null; yt_unique_viewers: number | null; yt_search_views: number | null; ig_profile_views: number | null; ig_reach: number | null }[]>([]);
   const [productTrends, setProductTrends] = useState<{ products: string[]; data: { date: string; values: Record<string, number | null> }[] }>({ products: [], data: [] });
-  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [showHelp, setShowHelp] = useState(false);
@@ -781,6 +780,14 @@ export default function MonitoringPage() {
       return { id: col, label: cat ?? productLabel(col), members };
     });
   }, [productTrends.products]);
+
+  // 상단 상품 필터에서 선택된 상품 → 검색량 시리즈(라벨 매칭). 시트에 없는 상품은 라인 없음.
+  const activeProductSeries = useMemo(
+    () => filters.products
+      .map(p => productChips.find(c => c.label === p))
+      .filter((c): c is NonNullable<typeof c> => !!c),
+    [filters.products, productChips]
+  );
 
   useEffect(() => {
     loadPosts().finally(() => setLoading(false));
@@ -1609,32 +1616,20 @@ export default function MonitoringPage() {
                       <div className="w-2 h-0.5 bg-gray-400" />
                       <span className="text-xs text-a-ink-muted">전체 전환 광고비</span>
                     </div>
+                    {activeProductSeries.map(c => (
+                      <div key={c.id} className="flex items-center gap-1.5">
+                        <div className="w-2 h-0.5" style={{ backgroundColor: productColorOf(c.id) }} />
+                        <span className="text-xs text-a-ink-muted">{c.label}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
-                {productChips.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1.5 mb-3">
-                    <span className="text-[11px] text-a-ink-muted mr-0.5">상품 검색량</span>
-                    {productChips.map(chip => {
-                      const on = selectedProducts.has(chip.id);
-                      const color = productColorOf(chip.id);
-                      return (
-                        <button key={chip.id}
-                          onClick={() => setSelectedProducts(prev => { const s = new Set(prev); s.has(chip.id) ? s.delete(chip.id) : s.add(chip.id); return s; })}
-                          className={`text-[11px] px-2 py-0.5 rounded-full border transition ${on ? "" : "border-a-hairline text-a-ink-muted hover:border-gray-400"}`}
-                          style={on ? { borderColor: color, color, backgroundColor: color + "14" } : undefined}>
-                          {on && <span className="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle" style={{ backgroundColor: color }} />}
-                          {chip.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
                 <LineChart
                   data={chartData}
                   height={160}
                   gradId="summaryGrad"
                   lsData={lsSearchData}
-                  extraSeries={productChips.filter(c => selectedProducts.has(c.id)).map(c => ({
+                  extraSeries={activeProductSeries.map(c => ({
                     name: c.label,
                     color: productColorOf(c.id),
                     members: c.members.map(col => ({
