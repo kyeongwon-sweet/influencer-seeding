@@ -146,11 +146,11 @@ async function collect(req: NextRequest) {
         // ⚠️ 이상치 탐지: 조회수 감소 (누적이므로 절대 감소하면 안됨)
         const existing = existingMap.get(post.id);
         if (existing && existing.play_count > 0 && stats.views < existing.play_count) {
-          console.error(
-            `   ⚠️ ANOMALY: ${cleanUrl} → 조회수 감소 (기존: ${existing.play_count}, 신규: ${stats.views})`
+          console.warn(
+            `   ⚠️ ANOMALY DETECTED: ${cleanUrl} → 조회수 감소 (기존: ${existing.play_count}, 신규: ${stats.views}) - 강제 저장 (경고 전용)`
           );
           anomalyCount++;
-          continue; // 이상 데이터는 저장 안 함
+          // 경고만 하고 계속 저장함 (사용자 판단에 맡김)
         }
 
         statsToInsert.push({
