@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { ApifyClient } from "apify-client";
+import { createApifyClient } from "@/lib/apify";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -68,7 +68,7 @@ async function collect(req: NextRequest) {
     console.log(`[LOG] 📅 수집 날짜: ${measuredAt}`);
 
     // 3. directUrls를 사용해서 개별 게시물별 조회수 수집
-    const client = new ApifyClient({ token: apiToken });
+    const client = createApifyClient();
 
     const statsToInsert: Array<{
       post_id: string;

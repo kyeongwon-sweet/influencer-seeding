@@ -6,10 +6,11 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   // Vercel 배포 시 apify-client를 명시적으로 포함
-  // Turbopack 의존성 분석 우회
-  bundlePagesRouterDependencies: true,
-  // 서버 컴포넌트에서도 외부 패키지 포함
   serverComponentsExternalPackages: ['apify-client'],
+  experimental: {
+    // Turbopack 최적화 비활성화 (apify-client 감지 문제 해결)
+    turbopackRootModules: ['apify-client'],
+  },
 };
 
 export default nextConfig;

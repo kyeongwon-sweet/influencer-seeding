@@ -1,3 +1,7 @@
+// ApifyClient import - 서버 사이드 전용
+// 이를 통해 Turbopack이 apify-client를 detect하고 .nft.json에 포함하도록 강제
+import { ApifyClient } from "apify-client";
+
 const APIFY_BASE = 'https://api.apify.com/v2';
 
 /** Apify 액터를 비동기로 시작하고 완료 시 webhookUrl로 POST 요청을 보냄 */
@@ -40,4 +44,13 @@ export async function fetchDatasetItems(datasetId: string): Promise<unknown[]> {
   );
   if (!res.ok) throw new Error(`Dataset fetch 실패: ${res.status}`);
   return res.json();
+}
+
+/** ApifyClient 인스턴스 생성 (전용 함수로 Turbopack detection 강제) */
+export function createApifyClient(): InstanceType<typeof ApifyClient> {
+  const token = process.env.APIFY_API_TOKEN;
+  if (!token) {
+    throw new Error("APIFY_API_TOKEN not configured");
+  }
+  return new ApifyClient({ token });
 }
