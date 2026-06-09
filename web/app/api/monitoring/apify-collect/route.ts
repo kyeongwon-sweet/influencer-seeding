@@ -114,19 +114,44 @@ export async function POST(req: NextRequest) {
         urlToStats[url] = { views, likes, comments };
       }
 
+      // 직전(today 이전) 마지막 조회수 — 누적 단조성 검증용
+      const { data: priorStats } = await supabase
+        .from("post_daily_stats")
+        .select("post_id, play_count, measured_at")
+        .lt("measured_at", today)
+        .order("measured_at", { ascending: false });
+
+      const lastKnownPlay = new Map<string, number>();
+      for (const s of priorStats || []) {
+        if (!lastKnownPlay.has(s.post_id)) lastKnownPlay.set(s.post_id, s.play_count ?? 0);
+      }
+
+      let skipped = 0;
+
       // 각 게시물별로 개별 데이터 저장
       for (const post of igPosts) {
         const cleanUrl = post.url.split("?")[0];
-        const stats = urlToStats[cleanUrl] || {
-          views: 0,
-          likes: 0,
-          comments: 0,
-        };
+
+        // 🛡️ 재발방지: Apify 미반환 → 0으로 덮어쓰지 않고 건너뜀 (화면은 직전 값 유지)
+        if (!(cleanUrl in urlToStats)) {
+          console.warn(`[SKIP] Apify 미반환: ${cleanUrl} (post_id=${post.id.substring(0, 8)}) → 0 저장 안 함`);
+          skipped++;
+          continue;
+        }
+        const stats = urlToStats[cleanUrl];
+
+        // 🛡️ 재발방지: 누적 조회수 감소 = 수집 오류 → 저장 안 함
+        const prevPlay = lastKnownPlay.get(post.id);
+        if (prevPlay != null && stats.views < prevPlay) {
+          console.warn(`[SKIP] 조회수 감소 (기존: ${prevPlay}, 신규: ${stats.views}): ${cleanUrl} → 저장 안 함`);
+          skipped++;
+          continue;
+        }
 
         statsToInsert.push({
           post_id: post.id,
           measured_at: today,
-          play_count: stats.views > 0 ? stats.views : 0, // 0도 저장 (추정 금지)
+          play_count: stats.views > 0 ? stats.views : 0,
           likes_count: stats.likes > 0 ? stats.likes : 0,
           comments_count: stats.comments > 0 ? stats.comments : 0,
         });
@@ -134,6 +159,10 @@ export async function POST(req: NextRequest) {
         console.log(
           `[OK] ${cleanUrl.split("/").slice(-2).join("/")} (post_id=${post.id.substring(0, 8)}...): 조회=${stats.views}, 좋아요=${stats.likes}, 댓글=${stats.comments}`
         );
+      }
+
+      if (skipped > 0) {
+        console.warn(`[WARN] ${skipped}개 게시물 저장 제외 (미반환/조회수 감소)`);
       }
     } catch (apifyError) {
       console.error("[ERROR] Apify 수집 실패:", apifyError);

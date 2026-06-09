@@ -605,7 +605,8 @@ export default function MonitoringPage() {
       for (const date of allDates) {
         if (statsMap.has(date)) {
           const s = statsMap.get(date)!;
-          lastPlay     = s.play_count     ?? lastPlay;
+          // 🛡️ 누적 조회수는 감소 불가 — 수집 오류로 낮아진 값은 직전 값 유지
+          lastPlay     = s.play_count != null ? Math.max(lastPlay ?? s.play_count, s.play_count) : lastPlay;
           lastLikes    = s.likes_count    ?? lastLikes;
           lastComments = s.comments_count ?? lastComments;
         }

@@ -139,35 +139,38 @@ async function collect(req: NextRequest) {
         urlToStats[url] = { views, likes, comments };
       }
 
-      // 4️⃣ 기존 데이터와 비교해서 이상치 감지
-      const { data: existingStats } = await supabase
+      // 4️⃣ 직전(measuredAt 이전) 마지막 조회수 — 누적 단조성 검증용
+      const { data: priorStats } = await supabase
         .from("post_daily_stats")
-        .select("post_id, play_count, likes_count, comments_count")
-        .eq("measured_at", measuredAt);
+        .select("post_id, play_count, measured_at")
+        .lt("measured_at", measuredAt)
+        .order("measured_at", { ascending: false });
 
-      const existingMap = new Map(
-        (existingStats || []).map(s => [s.post_id, s])
-      );
+      const lastKnownPlay = new Map<string, number>();
+      for (const s of priorStats || []) {
+        if (!lastKnownPlay.has(s.post_id)) lastKnownPlay.set(s.post_id, s.play_count ?? 0);
+      }
 
-      let anomalyCount = 0;
+      let skipped = 0;
 
       // 5️⃣ 각 게시물별로 개별 데이터 저장 & 검증
       for (const post of igPosts) {
         const cleanUrl = post.url.split("?")[0];
-        const stats = urlToStats[cleanUrl] || {
-          views: 0,
-          likes: 0,
-          comments: 0,
-        };
 
-        // ⚠️ 이상치 탐지: 조회수 감소 (누적이므로 절대 감소하면 안됨)
-        const existing = existingMap.get(post.id);
-        if (existing && existing.play_count > 0 && stats.views < existing.play_count) {
-          console.warn(
-            `   ⚠️ ANOMALY DETECTED: ${cleanUrl} → 조회수 감소 (기존: ${existing.play_count}, 신규: ${stats.views}) - 강제 저장 (경고 전용)`
-          );
-          anomalyCount++;
-          // 경고만 하고 계속 저장함 (사용자 판단에 맡김)
+        // 🛡️ 재발방지: Apify 미반환 → 0으로 덮어쓰지 않고 건너뜀 (화면은 직전 값 유지)
+        if (!(cleanUrl in urlToStats)) {
+          console.warn(`   ⏭️ Apify 미반환: ${cleanUrl} → 0 저장 안 함 (직전 값 유지)`);
+          skipped++;
+          continue;
+        }
+        const stats = urlToStats[cleanUrl];
+
+        // 🛡️ 재발방지: 누적 조회수 감소 = 수집 오류 → 저장 안 함
+        const prevPlay = lastKnownPlay.get(post.id);
+        if (prevPlay != null && stats.views < prevPlay) {
+          console.warn(`   ⏭️ 누적 조회수 감소 (기존: ${prevPlay}, 신규: ${stats.views}): ${cleanUrl} → 저장 안 함`);
+          skipped++;
+          continue;
         }
 
         statsToInsert.push({
@@ -183,10 +186,8 @@ async function collect(req: NextRequest) {
         );
       }
 
-      if (anomalyCount > 0) {
-        console.warn(
-          `[WARN] ⚠️ ${anomalyCount}개 이상 데이터 감지됨 - 저장 전 검토 필요!`
-        );
+      if (skipped > 0) {
+        console.warn(`[WARN] ⏭️ ${skipped}개 게시물 저장 제외 (미반환/조회수 감소)`);
       }
     } catch (apifyError) {
       console.error("[ERROR] Apify 수집 실패:", apifyError);
