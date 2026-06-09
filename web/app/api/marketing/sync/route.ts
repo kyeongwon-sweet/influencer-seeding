@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
+import { normalizeUrl } from "@/lib/url-utils";
 
 /**
  * 마케팅 대시보드 → 협찬 모니터링 동기화 엔드포인트
@@ -62,7 +63,7 @@ export async function POST(req: NextRequest) {
     const channel_type = r.channel ? String(r.channel).trim() : null;
 
     return {
-      url: String(r.url).replace(/\/$/, "") + "/",  // 정규화: 끝에 / 추가
+      url: normalizeUrl(String(r.url)) || (String(r.url).replace(/\/$/, "") + "/"),  // 정규화(쿼리 제거 + 끝 /) — bulk/sync와 통일
       posted_at,
       channel_type,
       project_name: r.project_name ? String(r.project_name).trim() : null,
