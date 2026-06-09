@@ -404,6 +404,9 @@ async function handleScreening(
     .limit(1);
   const criteria = criteriaData?.[0] || {};
 
+  // insert 실패를 모아 마지막에 job 상태를 판정 (실패를 'done'으로 숨기지 않기 위함)
+  const insertErrors: string[] = [];
+
   if (platform === 'instagram') {
     // 인플루언서 URL별로 게시물 그룹핑
     const grouped: Record<string, Record<string, unknown>[]> = {};
@@ -453,7 +456,7 @@ async function handleScreening(
         type_metrics: Object.keys(typeMetrics).length ? typeMetrics : null,
       });
       if (metricsErr) {
-        await supabase.from('jobs').update({ error: `screening_metrics insert 오류: ${metricsErr.message}` }).eq('id', jobId);
+        insertErrors.push(metricsErr.message);
         return;
       }
 
@@ -532,7 +535,7 @@ async function handleScreening(
       type_metrics: Object.keys(typeMetrics).length ? typeMetrics : null,
     });
     if (ytMetricsErr) {
-      await supabase.from('jobs').update({ error: `screening_metrics insert 오류: ${ytMetricsErr.message}` }).eq('id', jobId);
+      await supabase.from('jobs').update({ status: 'failed', error: `screening_metrics insert 오류: ${ytMetricsErr.message}` }).eq('id', jobId);
       return;
     }
 
@@ -551,7 +554,11 @@ async function handleScreening(
     }
   }
 
-  await supabase.from('jobs').update({ status: 'done' }).eq('id', jobId);
+  if (insertErrors.length > 0) {
+    await supabase.from('jobs').update({ status: 'failed', error: `screening_metrics insert 오류: ${insertErrors.join(' | ')}` }).eq('id', jobId);
+  } else {
+    await supabase.from('jobs').update({ status: 'done' }).eq('id', jobId);
+  }
 }
 
 // ── 무상 노출 조회수 갱신 ────────────────────────────────────────────────
