@@ -96,7 +96,7 @@ async function collect(req: NextRequest) {
       const run = await client.actor("apify/instagram-scraper").call({
         directUrls: igPosts.map((p) => p.url),
         resultsType: "posts",
-        resultsLimit: 100,
+        resultsLimit: igPosts.length, // 전체 게시물 수집 (100 고정 시 100개 초과분 누락)
         addParentData: true,
         maxRequestRetries: 1,
       });
