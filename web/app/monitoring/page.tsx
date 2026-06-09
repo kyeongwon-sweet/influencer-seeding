@@ -334,13 +334,18 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
     });
     const mapped = summed.map((p, i) => ({ i, v: p.value })).filter(p => p.v !== null) as { i: number; v: number }[];
     let path: string | null = null;
-    if (mapped.length >= 2) {
+    let dots: [number, number][] = [];
+    if (mapped.length >= 1) {
       const vs = mapped.map(p => p.v);
       const mn = Math.min(...vs), mx = Math.max(...vs), rg = mx - mn || 1;
-      const y = (v: number) => ch - ((v - mn) / rg) * ch;
-      path = mapped.map((p, j) => `${j === 0 ? "M" : "L"}${xS(p.i).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ");
+      const allEqual = mn === mx; // 값이 1개거나 전부 동일 → 중앙 높이에 표시
+      const y = (v: number) => allEqual ? ch / 2 : ch - ((v - mn) / rg) * ch;
+      dots = mapped.map(p => [xS(p.i), y(p.v)] as [number, number]);
+      if (mapped.length >= 2) {
+        path = mapped.map((p, j) => `${j === 0 ? "M" : "L"}${xS(p.i).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ");
+      }
     }
-    return { name: s.name, color: s.color, memberMaps, summed, path };
+    return { name: s.name, color: s.color, memberMaps, summed, path, dots };
   });
 
   // Secondary data (오른쪽 Y축)
@@ -442,6 +447,9 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
             <path key={`extra-${i}`} d={s.path} fill="none" stroke={s.color} strokeWidth="1.25"
               strokeLinejoin="round" strokeLinecap="round" />
           ))}
+          {extraComputed.map((s, si) => s.dots.map((d, di) => (
+            <circle key={`xdot-${si}-${di}`} cx={d[0]} cy={d[1]} r={2.2} fill={s.color} />
+          )))}
           <path d={linePath} fill="none" stroke="#3b82f6" strokeWidth="1.5"
             strokeLinejoin="round" strokeLinecap="round" />
           {secondaryPath && (
