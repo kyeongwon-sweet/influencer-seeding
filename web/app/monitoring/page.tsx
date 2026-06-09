@@ -263,7 +263,15 @@ function smoothCurvePath(pts: [number, number][]): string {
   return d;
 }
 
-function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData, secondaryData, secondaryColor = "#ea580c" }: {
+// 상품별 검색량 라인 색상 팔레트
+const PRODUCT_COLORS = ["#16a34a", "#9333ea", "#ea580c", "#0891b2", "#db2777", "#65a30d", "#7c3aed", "#0d9488", "#c2410c", "#be123c"];
+// "쫀득바 쫀득바"처럼 동일 단어가 반복된 헤더는 한 번만 표시
+function productLabel(name: string): string {
+  const parts = name.split(" ");
+  return parts.length === 2 && parts[0] === parts[1] ? parts[0] : name;
+}
+
+function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData, secondaryData, secondaryColor = "#ea580c", extraSeries }: {
   data: { date: string; value: number }[];
   height?: number;
   gradId?: string;
@@ -271,6 +279,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
   lsData?: { date: string; ratio: number; value: number | null }[];
   secondaryData?: { date: string; value: number }[];
   secondaryColor?: string;
+  extraSeries?: { name: string; color: string; data: { date: string; value: number | null }[] }[];
 }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [pinnedIdx, setPinnedIdx] = useState<number | null>(null);
@@ -314,6 +323,18 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
     if (!lsData || activeIdx === null) return null;
     return lsData.find(d => d.date === data[activeIdx].date) ?? null;
   })();
+
+  // 상품별 검색량 라인 — 각 시리즈를 주 차트 날짜에 맞춰 매핑 후 독립 정규화
+  const extraPaths = (extraSeries ?? []).map(s => {
+    const m = new Map(s.data.filter(d => d.value != null).map(d => [d.date, d.value as number]));
+    const mapped = data.map((d, i) => ({ i, v: m.get(d.date) ?? null })).filter(p => p.v !== null) as { i: number; v: number }[];
+    if (mapped.length < 2) return { name: s.name, color: s.color, path: null as string | null };
+    const vs = mapped.map(p => p.v);
+    const mn = Math.min(...vs), mx = Math.max(...vs), rg = mx - mn || 1;
+    const y = (v: number) => ch - ((v - mn) / rg) * ch;
+    const path = mapped.map((p, j) => `${j === 0 ? "M" : "L"}${xS(p.i).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ");
+    return { name: s.name, color: s.color, path };
+  });
 
   // Secondary data (오른쪽 Y축)
   const secondaryPath = (() => {
@@ -410,6 +431,10 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
           ))}
           <path d={areaPath} fill={`url(#${gradId})`} />
           {lsPath && <path d={lsPath} fill="none" stroke="#d1d5db" strokeWidth="1" strokeDasharray="3 2" />}
+          {extraPaths.map((s, i) => s.path && (
+            <path key={`extra-${i}`} d={s.path} fill="none" stroke={s.color} strokeWidth="1.25"
+              strokeLinejoin="round" strokeLinecap="round" />
+          ))}
           <path d={linePath} fill="none" stroke="#3b82f6" strokeWidth="1.5"
             strokeLinejoin="round" strokeLinecap="round" />
           {secondaryPath && (
@@ -482,6 +507,8 @@ export default function MonitoringPage() {
   const [dateTooltip, setDateTooltip] = useState<{ date: string; x: number; y: number } | null>(null);
   const [lsSearchData, setLsSearchData] = useState<{ date: string; ratio: number; value: number | null }[]>([]);
   const [brandMetrics, setBrandMetrics] = useState<{ measured_at: string; yt_views: number | null; yt_unique_viewers: number | null; yt_search_views: number | null; ig_profile_views: number | null; ig_reach: number | null }[]>([]);
+  const [productTrends, setProductTrends] = useState<{ products: string[]; data: { date: string; values: Record<string, number | null> }[] }>({ products: [], data: [] });
+  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [showHelp, setShowHelp] = useState(false);
@@ -702,6 +729,20 @@ export default function MonitoringPage() {
       .then(data => setBrandMetrics(Array.isArray(data) ? data : []))
       .catch(() => {});
   }, []);
+
+  // 상품별 검색량 (Google Sheet)
+  useEffect(() => {
+    fetch("/api/product-search-trends")
+      .then(r => r.ok ? r.json() : { products: [], data: [] })
+      .then(d => setProductTrends({
+        products: Array.isArray(d?.products) ? d.products : [],
+        data: Array.isArray(d?.data) ? d.data : [],
+      }))
+      .catch(() => {});
+  }, []);
+
+  const productColorOf = (name: string) =>
+    PRODUCT_COLORS[Math.max(0, productTrends.products.indexOf(name)) % PRODUCT_COLORS.length];
 
   useEffect(() => {
     loadPosts().finally(() => setLoading(false));
@@ -1532,11 +1573,34 @@ export default function MonitoringPage() {
                     </div>
                   </div>
                 </div>
+                {productTrends.products.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5 mb-3">
+                    <span className="text-[11px] text-a-ink-muted mr-0.5">상품 검색량</span>
+                    {productTrends.products.map(name => {
+                      const on = selectedProducts.has(name);
+                      const color = productColorOf(name);
+                      return (
+                        <button key={name}
+                          onClick={() => setSelectedProducts(prev => { const s = new Set(prev); s.has(name) ? s.delete(name) : s.add(name); return s; })}
+                          className={`text-[11px] px-2 py-0.5 rounded-full border transition ${on ? "" : "border-a-hairline text-a-ink-muted hover:border-gray-400"}`}
+                          style={on ? { borderColor: color, color, backgroundColor: color + "14" } : undefined}>
+                          {on && <span className="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle" style={{ backgroundColor: color }} />}
+                          {productLabel(name)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
                 <LineChart
                   data={chartData}
                   height={160}
                   gradId="summaryGrad"
                   lsData={lsSearchData}
+                  extraSeries={[...selectedProducts].map(name => ({
+                    name: productLabel(name),
+                    color: productColorOf(name),
+                    data: productTrends.data.map(row => ({ date: row.date, value: row.values[name] ?? null })),
+                  }))}
                   secondaryData={mainAdCosts.length > 0 ? mainAdCosts.map(d => ({date: d.date, value: d.total_cost})) : undefined}
                   secondaryColor="#b3b3b3"
                   postsOnDate={(date) =>
