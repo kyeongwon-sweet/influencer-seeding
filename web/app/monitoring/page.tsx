@@ -135,10 +135,10 @@ function hasNotableChange(post: Post): boolean {
   return (l.play_count ?? 0) > (p.play_count ?? 0) || (l.comments_count ?? 0) > (p.comments_count ?? 0);
 }
 
-function TH({ children, right, col, onSort, sorted, className: cls, w, leftPos, onResize }: {
+function TH({ children, right, col, onSort, sorted, className: cls, w, leftPos, onResize, fixed }: {
   children?: React.ReactNode; right?: boolean; col?: string;
   onSort?: () => void; sorted?: "asc" | "desc" | null; className?: string;
-  w?: number; leftPos?: number; onResize?: (e: React.MouseEvent) => void;
+  w?: number; leftPos?: number; onResize?: (e: React.MouseEvent) => void; fixed?: boolean;
 }) {
   const isSticky = col !== undefined;
   const isLast = col === "증분량";
@@ -160,7 +160,7 @@ function TH({ children, right, col, onSort, sorted, className: cls, w, leftPos, 
         sorted === "desc" ? "descending" :
         "none"
       }
-      style={isSticky ? { width: w, minWidth: w, left: leftPos } : w ? { minWidth: w } : undefined}
+      style={isSticky ? { width: w, minWidth: w, left: leftPos } : fixed && w ? { width: w, minWidth: w, maxWidth: w } : w ? { minWidth: w } : undefined}
       className={[
         "relative px-3 py-3 text-xs font-medium whitespace-nowrap select-none",
         right ? "text-right" : "text-left",
@@ -182,15 +182,15 @@ function TH({ children, right, col, onSort, sorted, className: cls, w, leftPos, 
   );
 }
 
-function TD({ children, right, muted, col, highlighted, w, leftPos }: {
+function TD({ children, right, muted, col, highlighted, w, leftPos, fixed }: {
   children: React.ReactNode; right?: boolean; muted?: boolean; col?: string; highlighted?: boolean;
-  w?: number; leftPos?: number;
+  w?: number; leftPos?: number; fixed?: boolean;
 }) {
   const isSticky = col !== undefined;
   const isLast = col === "증분량";
   return (
     <td
-      style={isSticky ? { width: w, minWidth: w, left: leftPos } : w ? { minWidth: w } : undefined}
+      style={isSticky ? { width: w, minWidth: w, left: leftPos } : fixed && w ? { width: w, minWidth: w, maxWidth: w } : w ? { minWidth: w } : undefined}
       className={[
         "px-3 py-4 text-xs tabular-nums whitespace-nowrap",
         right ? "text-right" : "text-left",
@@ -1960,7 +1960,7 @@ export default function MonitoringPage() {
                   </TH>
                   <TH right w={colWidths["도달수"]} onResize={e => startResize("도달수", e)} {...sp("도달수")}>도달수</TH>
                   <TH right w={colWidths["도달당비용"]} onResize={e => startResize("도달당비용", e)} {...sp("도달당비용")}>도달당비용</TH>
-                  <TH w={10}>캡션</TH>
+                  <TH w={10} fixed>캡션</TH>
                   <TH right w={colWidths["좋아요"]} onResize={e => startResize("좋아요", e)} {...sp("좋아요")}>좋아요</TH>
                   <TH right w={colWidths["댓글"]} onResize={e => startResize("댓글", e)} {...sp("댓글")}>댓글</TH>
                   <TH className="text-center" w={colWidths["트렌드"]} onResize={e => startResize("트렌드", e)}>트렌드</TH>
@@ -2163,7 +2163,7 @@ export default function MonitoringPage() {
                           ? (post.cost / post.reach_count).toFixed(2) + "원"
                           : <span className="text-gray-300">-</span>}
                       </TD>
-                      <TD muted w={10}>
+                      <TD muted w={10} fixed>
                         {editCell?.postId === post.id && editCell?.field === "content_summary" ? (
                           <textarea
                             autoFocus
