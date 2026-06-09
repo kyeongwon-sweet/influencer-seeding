@@ -49,10 +49,10 @@ export async function GET(req: NextRequest) {
 
   const supabase = getServerSupabase();
 
-  // sponsored_posts 조회
+  // sponsored_posts + influencers 조회
   const { data: posts, error: postsError } = await supabase
     .from("sponsored_posts")
-    .select("*")
+    .select("*, influencers(id, name, platform, post_type, category, screening_metrics(*))")
     .order("created_at", { ascending: false });
 
   if (postsError) return NextResponse.json({ error: postsError.message }, { status: 500 });
