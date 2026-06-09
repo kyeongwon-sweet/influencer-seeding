@@ -86,17 +86,27 @@ export async function GET(req: NextRequest) {
   }));
 
   const result = (data ?? []).map((post: any) => {
-    const stats = (post.post_daily_stats ?? []).sort(
+    // 과거→현재 정렬
+    const asc = (post.post_daily_stats ?? []).slice().sort(
       (a: { measured_at: string }, b: { measured_at: string }) =>
-        new Date(b.measured_at).getTime() - new Date(a.measured_at).getTime()
+        new Date(a.measured_at).getTime() - new Date(b.measured_at).getTime()
     );
+    // 🛡️ 누적 조회수는 감소 불가 — Apify 글리치/미완성 수집으로 낮아진 값은 직전 최대값으로 보정.
+    //    (게시물 단위 증분량이 음수로 표시되는 문제 방지)
+    let maxPlay = 0;
+    const mono = asc.map((s: any) => {
+      const play_count = s.play_count != null ? Math.max(maxPlay, Number(s.play_count)) : maxPlay;
+      maxPlay = play_count;
+      return { ...s, play_count };
+    });
+    const desc = [...mono].reverse();
     return {
       ...post,
       post_daily_stats: undefined,
       influencers: null,
-      latest_stats: stats[0] ?? null,
-      prev_stats: stats[1] ?? null,
-      all_stats: [...stats].reverse(),
+      latest_stats: desc[0] ?? null,
+      prev_stats: desc[1] ?? null,
+      all_stats: mono,
     };
   });
 
