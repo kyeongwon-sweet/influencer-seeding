@@ -279,7 +279,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
   lsData?: { date: string; ratio: number; value: number | null }[];
   secondaryData?: { date: string; value: number }[];
   secondaryColor?: string;
-  extraSeries?: { name: string; color: string; data: { date: string; value: number | null }[] }[];
+  extraSeries?: { name: string; color: string; members: { label: string; data: { date: string; value: number | null }[] }[] }[];
 }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [pinnedIdx, setPinnedIdx] = useState<number | null>(null);
@@ -324,16 +324,23 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
     return lsData.find(d => d.date === data[activeIdx].date) ?? null;
   })();
 
-  // 상품별 검색량 라인 — 각 시리즈를 주 차트 날짜에 맞춰 매핑 후 독립 정규화
-  const extraPaths = (extraSeries ?? []).map(s => {
-    const m = new Map(s.data.filter(d => d.value != null).map(d => [d.date, d.value as number]));
-    const mapped = data.map((d, i) => ({ i, v: m.get(d.date) ?? null })).filter(p => p.v !== null) as { i: number; v: number }[];
-    if (mapped.length < 2) return { name: s.name, color: s.color, path: null as string | null };
-    const vs = mapped.map(p => p.v);
-    const mn = Math.min(...vs), mx = Math.max(...vs), rg = mx - mn || 1;
-    const y = (v: number) => ch - ((v - mn) / rg) * ch;
-    const path = mapped.map((p, j) => `${j === 0 ? "M" : "L"}${xS(p.i).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ");
-    return { name: s.name, color: s.color, path };
+  // 상품별 검색량 — 카테고리는 구성 상품 합산, 각 시리즈 독립 정규화
+  const extraComputed = (extraSeries ?? []).map(s => {
+    const memberMaps = s.members.map(m => ({ label: m.label, map: new Map(m.data.map(d => [d.date, d.value])) }));
+    const summed = data.map(d => {
+      let sum = 0, any = false;
+      for (const mm of memberMaps) { const v = mm.map.get(d.date); if (v != null) { sum += v; any = true; } }
+      return { date: d.date, value: (any ? sum : null) as number | null };
+    });
+    const mapped = summed.map((p, i) => ({ i, v: p.value })).filter(p => p.v !== null) as { i: number; v: number }[];
+    let path: string | null = null;
+    if (mapped.length >= 2) {
+      const vs = mapped.map(p => p.v);
+      const mn = Math.min(...vs), mx = Math.max(...vs), rg = mx - mn || 1;
+      const y = (v: number) => ch - ((v - mn) / rg) * ch;
+      path = mapped.map((p, j) => `${j === 0 ? "M" : "L"}${xS(p.i).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ");
+    }
+    return { name: s.name, color: s.color, memberMaps, summed, path };
   });
 
   // Secondary data (오른쪽 Y축)
@@ -431,7 +438,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
           ))}
           <path d={areaPath} fill={`url(#${gradId})`} />
           {lsPath && <path d={lsPath} fill="none" stroke="#d1d5db" strokeWidth="1" strokeDasharray="3 2" />}
-          {extraPaths.map((s, i) => s.path && (
+          {extraComputed.map((s, i) => s.path && (
             <path key={`extra-${i}`} d={s.path} fill="none" stroke={s.color} strokeWidth="1.25"
               strokeLinejoin="round" strokeLinecap="round" />
           ))}
@@ -473,6 +480,24 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
           {hoveredLsEntry?.value != null && (
             <p className="text-gray-400 tabular-nums">라라스윗 검색량: {hoveredLsEntry.value.toLocaleString()}</p>
           )}
+          {extraComputed.map((s, i) => {
+            const date = data[activeIdx].date;
+            const total = s.summed.find(p => p.date === date)?.value;
+            if (total == null) return null;
+            return (
+              <div key={`xs-${i}`} className="mt-0.5">
+                <p className="tabular-nums font-medium" style={{ color: s.color }}>{s.name} 검색량: {total.toLocaleString()}</p>
+                {s.memberMaps.length > 1 && (
+                  <div className="pl-2 space-y-0.5">
+                    {s.memberMaps.map(mm => {
+                      const v = mm.map.get(date);
+                      return <p key={mm.label} className="text-[11px] text-a-ink-muted tabular-nums">· {mm.label} {v != null ? v.toLocaleString() : "-"}</p>;
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
           {hoveredPosts.length > 0 && (
             <div className="border-t border-a-hairline pt-1.5 mt-1 space-y-0.5 max-h-24 overflow-y-auto">
               {hoveredPosts.map((p, i) => (
@@ -659,12 +684,14 @@ export default function MonitoringPage() {
   const deltaTableData = useMemo(() => {
     if (dailyTotals.length < 2) return [];
     const lsMap = new Map((lsSearchData || []).map(d => [d.date, d.value ?? 0]));
+    // 오늘(아직 수집 중)은 미완성 데이터라 증감이 음수로 떠 혼란을 주므로 표에서 제외
+    const todayKST = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
     return dailyTotals.slice(1).map((d, i) => ({
       date:     d.date,
       play:     d.play     - dailyTotals[i].play,
       search:   ((lsMap.get(d.date) ?? 0) - (lsMap.get(dailyTotals[i].date) ?? 0)) || 0,
       comments: d.comments - dailyTotals[i].comments,
-    }));
+    })).filter(d => d.date < todayKST);
   }, [dailyTotals, lsSearchData]);
 
   // 날짜별 채널타입(바이럴/협찬) 조회수 증분 — forward-fill 적용
@@ -743,6 +770,17 @@ export default function MonitoringPage() {
 
   const productColorOf = (name: string) =>
     PRODUCT_COLORS[Math.max(0, productTrends.products.indexOf(name)) % PRODUCT_COLORS.length];
+
+  // 칩 정의: "X X" 형태는 카테고리 → "…X"로 끝나는 모든 상품 합산, 그 외는 단독
+  const productChips = useMemo(() => {
+    const cols = productTrends.products;
+    return cols.map(col => {
+      const p = col.split(" ");
+      const cat = p.length === 2 && p[0] === p[1] ? p[0] : null;
+      const members = cat ? cols.filter(c => productLabel(c).endsWith(cat)) : [col];
+      return { id: col, label: cat ?? productLabel(col), members };
+    });
+  }, [productTrends.products]);
 
   useEffect(() => {
     loadPosts().finally(() => setLoading(false));
@@ -1573,19 +1611,19 @@ export default function MonitoringPage() {
                     </div>
                   </div>
                 </div>
-                {productTrends.products.length > 0 && (
+                {productChips.length > 0 && (
                   <div className="flex flex-wrap items-center gap-1.5 mb-3">
                     <span className="text-[11px] text-a-ink-muted mr-0.5">상품 검색량</span>
-                    {productTrends.products.map(name => {
-                      const on = selectedProducts.has(name);
-                      const color = productColorOf(name);
+                    {productChips.map(chip => {
+                      const on = selectedProducts.has(chip.id);
+                      const color = productColorOf(chip.id);
                       return (
-                        <button key={name}
-                          onClick={() => setSelectedProducts(prev => { const s = new Set(prev); s.has(name) ? s.delete(name) : s.add(name); return s; })}
+                        <button key={chip.id}
+                          onClick={() => setSelectedProducts(prev => { const s = new Set(prev); s.has(chip.id) ? s.delete(chip.id) : s.add(chip.id); return s; })}
                           className={`text-[11px] px-2 py-0.5 rounded-full border transition ${on ? "" : "border-a-hairline text-a-ink-muted hover:border-gray-400"}`}
                           style={on ? { borderColor: color, color, backgroundColor: color + "14" } : undefined}>
                           {on && <span className="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle" style={{ backgroundColor: color }} />}
-                          {productLabel(name)}
+                          {chip.label}
                         </button>
                       );
                     })}
@@ -1596,10 +1634,13 @@ export default function MonitoringPage() {
                   height={160}
                   gradId="summaryGrad"
                   lsData={lsSearchData}
-                  extraSeries={[...selectedProducts].map(name => ({
-                    name: productLabel(name),
-                    color: productColorOf(name),
-                    data: productTrends.data.map(row => ({ date: row.date, value: row.values[name] ?? null })),
+                  extraSeries={productChips.filter(c => selectedProducts.has(c.id)).map(c => ({
+                    name: c.label,
+                    color: productColorOf(c.id),
+                    members: c.members.map(col => ({
+                      label: productLabel(col),
+                      data: productTrends.data.map(row => ({ date: row.date, value: row.values[col] ?? null })),
+                    })),
                   }))}
                   secondaryData={mainAdCosts.length > 0 ? mainAdCosts.map(d => ({date: d.date, value: d.total_cost})) : undefined}
                   secondaryColor="#b3b3b3"
