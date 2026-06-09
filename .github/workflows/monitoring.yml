@@ -1,15 +1,17 @@
-name: Run Monitoring
+name: Run Monitoring (DEPRECATED - Use Vercel Cron Jobs)
 
 on:
-  # ⚠️ GitHub Actions scheduling disabled - using Vercel Cron Jobs instead
-  # If you need to run manually, use workflow_dispatch below
+  # ⚠️ DEPRECATED: This workflow is disabled
+  # Monitoring is now handled by Vercel Cron Jobs (/api/monitoring/apify-collect at 15:00 UTC / 00:00 KST)
+  # To run monitoring, use the Vercel deployment instead
   workflow_dispatch:
     inputs:
       monitoring_date:
-        description: 'monitoring date (YYYY-MM-DD, default: today)'
+        description: '[DEPRECATED] Use Vercel instead - monitoring date (YYYY-MM-DD, default: today)'
         required: false
-  repository_dispatch:
-    types: [monitoring]
+  # repository_dispatch disabled to prevent accidental triggers
+  # repository_dispatch:
+  #   types: [monitoring]
 
 jobs:
   monitor:
