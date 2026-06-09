@@ -259,17 +259,17 @@ function parseMonthDay_(label) {
   return { mo: mo, da: da };
 }
 
-function postStats_(rows) {
+function postStats_(payload) {
   const res = UrlFetchApp.fetch(CONFIG.STATS_API_URL, {
     method: "post",
     contentType: "application/json",
-    payload: JSON.stringify(rows),
+    payload: JSON.stringify(payload), // { posts: [...], stats: [...] }
     muteHttpExceptions: true,
   });
   const code = res.getResponseCode();
   const body = res.getContentText();
   if (code !== 200) throw new Error(`API ${code}: ${body}`);
-  return JSON.parse(body); // { ok, inserted, matched_urls, missing_urls, missing_sample }
+  return JSON.parse(body); // { ok, inserted, created_posts, matched_urls, missing_urls, missing_sample }
 }
 
 function importStats() {
@@ -299,25 +299,40 @@ function importStats() {
       .getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, lastCol)
       .getValues();
 
-    const out = [];
+    const stats = [];
+    const postByKey = {}; // url-key → 광고 메타 (첫 행 우선). 없는 광고 생성용, 기존은 서버가 덮어쓰지 않음.
     values.forEach(row => {
       const url = String(row[fieldCols.url - 1] || "").trim();
       if (!url || !ALLOWED_URL_RE.test(url)) return; // URL 없거나 미지원
+
+      const key = urlKey_(url);
+      if (!postByKey[key]) {
+        const p = { url: url };
+        if (fieldCols.posted_at)       p.posted_at       = toDateStr_(row[fieldCols.posted_at - 1]);
+        if (fieldCols.account_name)    p.account_name    = String(row[fieldCols.account_name - 1] || "").trim() || null;
+        if (fieldCols.content_summary) p.content_summary = String(row[fieldCols.content_summary - 1] || "").trim() || null;
+        if (fieldCols.channel_type)    p.channel_type    = String(row[fieldCols.channel_type - 1] || "").trim() || null;
+        if (fieldCols.project_name)    p.project_name    = String(row[fieldCols.project_name - 1] || "").trim() || null;
+        if (fieldCols.product_name)    p.product_name    = String(row[fieldCols.product_name - 1] || "").trim() || null;
+        if (fieldCols.cost)            p.cost            = toNumber_(row[fieldCols.cost - 1]);
+        postByKey[key] = p;
+      }
+
       dateCols.forEach(dc => {
         const n = toNumber_(row[dc.col - 1]);
         if (n === null) return; // 빈칸/비숫자 → 측정 없음, 스킵
-        out.push({ url: url, measured_at: dc.date, play_count: n });
+        stats.push({ url: url, measured_at: dc.date, play_count: n });
       });
     });
 
-    if (out.length === 0) { safeAlert_("입력할 조회수 데이터가 없습니다."); return; }
+    if (stats.length === 0) { safeAlert_("입력할 조회수 데이터가 없습니다."); return; }
 
-    const res = postStats_(out);
-    let msg = `✅ 일자별 조회수 ${res.inserted}건 입력 완료.\n` +
-              `(날짜 ${dateCols.length}개 열 · 매칭된 게시물 ${res.matched_urls}개)`;
+    const posts = Object.keys(postByKey).map(k => postByKey[k]);
+    const res = postStats_({ posts: posts, stats: stats });
+    let msg = `✅ 일자별 조회수 ${res.inserted}건 입력 완료.\n(날짜 ${dateCols.length}개 열 · 매칭 게시물 ${res.matched_urls}개`;
+    msg += res.created_posts ? ` · 신규 광고 ${res.created_posts}개 자동 생성)` : `)`;
     if (res.missing_urls) {
-      msg += `\n\n⚠️ 사이트에 없는 URL ${res.missing_urls}개는 건너뜀.\n` +
-             `먼저 "✅ 신규 광고 추가"로 등록하세요.\n예: ${(res.missing_sample || []).join("\n     ")}`;
+      msg += `\n\n⚠️ 처리 못한 URL ${res.missing_urls}개 (예: ${(res.missing_sample || []).join(", ")})`;
     }
     safeAlert_(msg);
   } catch (e) {

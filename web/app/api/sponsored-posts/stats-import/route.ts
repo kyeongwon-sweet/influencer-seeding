@@ -6,46 +6,84 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /**
- * 구글 시트 Apps Script → 일자별 조회수(post_daily_stats) 수동 백필 (인증 불필요)
+ * 구글 시트 Apps Script → 일자별 조회수(post_daily_stats) 백필 (인증 불필요)
  *
- * 입력: [{ url, measured_at: "YYYY-MM-DD", play_count: number }, ...]  또는 { rows: [...] }
- * 처리: url 정규화 → sponsored_posts.id 매칭 → post_daily_stats 에 upsert
- *       (onConflict: post_id,measured_at → 같은 날짜는 덮어씀)
- *       (url, measured_at) 중복은 마지막 값으로 합침. 게시물 미등록 URL은 건너뛰고 보고.
+ * 입력: {
+ *   posts?: [{ url, posted_at?, account_name?, content_summary?, channel_type?, project_name?, product_name?, cost? }],
+ *   stats:  [{ url, measured_at: "YYYY-MM-DD", play_count: number }]
+ * }   (구버전 호환: stats 배열만 단독으로 보내도 됨)
+ *
+ * 처리:
+ *  1) posts 중 사이트에 "없는 URL만" 신규 생성 (insert-only).
+ *     → 이미 있는 광고 정보는 절대 덮어쓰지 않음 (ignoreDuplicates).
+ *  2) url → post_id 매칭 후 post_daily_stats upsert (onConflict post_id,measured_at).
  */
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
-  const list = Array.isArray(body) ? body : Array.isArray(body?.rows) ? body.rows : null;
-  if (!list) {
-    return NextResponse.json({ error: "행 배열(또는 {rows:[...]})이 필요합니다" }, { status: 400 });
+  const statsIn = Array.isArray(body)
+    ? body
+    : Array.isArray(body?.stats) ? body.stats
+    : Array.isArray(body?.rows) ? body.rows
+    : null;
+  if (!statsIn) {
+    return NextResponse.json({ error: "stats 배열이 필요합니다" }, { status: 400 });
   }
+  const postsIn: Array<Record<string, unknown>> = Array.isArray(body?.posts) ? body.posts : [];
 
-  // 정규화 + (url, measured_at) 중복 제거 (마지막 값 우선)
+  // 조회수: 정규화 + (url, measured_at) 중복 제거 (마지막 값 우선)
   const byKey = new Map<string, { url: string; measured_at: string; play_count: number }>();
-  for (const r of list as Array<Record<string, unknown>>) {
+  for (const r of statsIn as Array<Record<string, unknown>>) {
     if (!r || !r.url || !r.measured_at) continue;
     const url = normalizeUrl(String(r.url)) || String(r.url);
-    const measured_at = String(r.measured_at);
     if (r.play_count === null || r.play_count === undefined || r.play_count === "") continue;
     const play_count = Number(r.play_count);
     if (!Number.isFinite(play_count)) continue;
-    byKey.set(`${url}|${measured_at}`, { url, measured_at, play_count });
+    byKey.set(`${url}|${String(r.measured_at)}`, { url, measured_at: String(r.measured_at), play_count });
   }
   const items = [...byKey.values()];
-  if (items.length === 0) return NextResponse.json({ ok: true, inserted: 0, matched_urls: 0, missing_urls: 0 });
+
+  // 광고 메타: 정규화 + url 중복 제거 (첫 값 우선)
+  const POST_FIELDS = ["posted_at", "account_name", "content_summary", "channel_type", "project_name", "product_name", "cost"];
+  const postByUrl = new Map<string, Record<string, unknown>>();
+  for (const p of postsIn) {
+    if (!p || !p.url) continue;
+    const url = normalizeUrl(String(p.url)) || String(p.url);
+    if (postByUrl.has(url)) continue;
+    const clean: Record<string, unknown> = { url };
+    for (const f of POST_FIELDS) if (p[f] !== undefined) clean[f] = p[f];
+    postByUrl.set(url, clean);
+  }
 
   const supabase = getServerSupabase();
 
-  // url → post_id 매핑
-  const urls = [...new Set(items.map(i => i.url))];
-  const { data: posts, error: pe } = await supabase
-    .from("sponsored_posts")
-    .select("id, url")
-    .in("url", urls);
+  const allUrls = [...new Set([...items.map(i => i.url), ...postByUrl.keys()])];
+  if (allUrls.length === 0) return NextResponse.json({ ok: true, inserted: 0, created_posts: 0, matched_urls: 0, missing_urls: 0 });
+
+  // 1) 기존 URL 조회
+  const { data: existing, error: ee } = await supabase
+    .from("sponsored_posts").select("url").in("url", allUrls);
+  if (ee) return NextResponse.json({ error: ee.message }, { status: 500 });
+  const existingUrls = new Set((existing ?? []).map((e: { url: string }) => e.url));
+
+  // 2) 없는 광고만 신규 생성 (기존은 절대 건드리지 않음)
+  let created = 0;
+  const toCreate = [...postByUrl.values()].filter(p => !existingUrls.has(String(p.url)));
+  if (toCreate.length > 0) {
+    const { data: ins, error: ie } = await supabase
+      .from("sponsored_posts")
+      .upsert(toCreate, { onConflict: "url", ignoreDuplicates: true })
+      .select("id");
+    if (ie) return NextResponse.json({ error: ie.message }, { status: 500 });
+    created = (ins ?? []).length;
+  }
+
+  // 3) url → id 매핑 (신규 포함해 다시 조회)
+  const { data: posts2, error: pe } = await supabase
+    .from("sponsored_posts").select("id, url").in("url", allUrls);
   if (pe) return NextResponse.json({ error: pe.message }, { status: 500 });
+  const idByUrl = new Map((posts2 ?? []).map((p: { id: string; url: string }) => [p.url, p.id]));
 
-  const idByUrl = new Map((posts ?? []).map((p: { id: string; url: string }) => [p.url, p.id]));
-
+  // 4) 조회수 upsert
   const statsRows: Array<{ post_id: string; measured_at: string; play_count: number }> = [];
   const missing = new Set<string>();
   for (const it of items) {
@@ -67,7 +105,8 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     inserted,
-    matched_urls: urls.length - missing.size,
+    created_posts: created,
+    matched_urls: [...new Set(items.map(i => i.url))].length - missing.size,
     missing_urls: missing.size,
     missing_sample: [...missing].slice(0, 5),
   });
