@@ -55,6 +55,12 @@ const FIELD_BY_HEADER = {
 // 사이트가 허용하는 URL (인스타 / 유튜브 / 틱톡, 서브도메인 포함). 서버 필터와 동일.
 const ALLOWED_URL_RE = /^https:\/\/([a-z0-9-]+\.)?(instagram\.com|youtube\.com|youtu\.be|tiktok\.com)\//i;
 
+// 필드 → 표시용 컬럼명 (빈칸 검사 보고용)
+const FIELD_LABEL = {
+  posted_at: "업로드일", url: "게시물URL", account_name: "채널명", content_summary: "캡션",
+  channel_type: "채널 분류", project_name: "프로젝트명", product_name: "상품명", cost: "비용",
+};
+
 // ═══════════════════════════════════════════════════════════════
 // 메뉴
 // ═══════════════════════════════════════════════════════════════
@@ -66,6 +72,8 @@ function onOpen() {
     .addSeparator()
     .addItem("📊 일자별 조회수 입력 (I~AE열)", "importStats")
     .addItem("♻️ 전체 다시 추가", "syncAll")
+    .addSeparator()
+    .addItem("🔎 빈칸 검사 (A~H)", "checkBlanks")
     .addItem("🔍 설정 확인", "checkSetup")
     .addSeparator()
     .addItem("⏰ 매일 9:30 자동 추가 켜기", "installDailyTrigger")
@@ -199,6 +207,55 @@ function noteExtra_(skipped, dupCount) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// 빈칸 검사 (A~H 필수 컬럼)
+// ═══════════════════════════════════════════════════════════════
+/** 값이 하나라도 있는 행 중, A~H에 빈칸이 있는 행 목록. [{row, missing:[컬럼명]}] */
+function scanBlanks_() {
+  const sheet = getSheet_();
+  const fieldCols = buildFieldCols_(sheet);
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < CONFIG.DATA_START_ROW) return [];
+
+  const values = sheet
+    .getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, lastCol)
+    .getValues();
+  const fields = Object.keys(fieldCols);
+  const cell = (row, f) => String(row[fieldCols[f] - 1] == null ? "" : row[fieldCols[f] - 1]).trim();
+
+  const blanks = [];
+  values.forEach((row, i) => {
+    // 완전히 빈 행(아래쪽 여백 등)은 검사 제외 — A~H 중 하나라도 값이 있어야 검사 대상
+    if (!fields.some(f => cell(row, f) !== "")) return;
+    const missing = fields.filter(f => cell(row, f) === "").map(f => FIELD_LABEL[f] || f);
+    if (missing.length) blanks.push({ row: CONFIG.DATA_START_ROW + i, missing: missing });
+  });
+  return blanks;
+}
+
+/** 액션 결과창에 덧붙일 짧은 빈칸 경고 (없으면 빈 문자열) */
+function blankNote_() {
+  try {
+    const blanks = scanBlanks_();
+    if (!blanks.length) return "";
+    const ex = blanks.slice(0, 5).map(b => `${b.row}행(${b.missing.join("·")})`).join(", ");
+    return `\n\n⚠️ A~H에 빈칸이 있는 행 ${blanks.length}개: ${ex}${blanks.length > 5 ? " 외…" : ""}\n('🔎 빈칸 검사'로 전체 확인)`;
+  } catch (e) { return ""; }
+}
+
+/** 메뉴: A~H 빈칸 전체 검사 */
+function checkBlanks() {
+  try {
+    const blanks = scanBlanks_();
+    if (blanks.length === 0) { safeAlert_("✅ 빈칸 없음 — 값이 있는 모든 행의 A~H가 채워져 있습니다."); return; }
+    const lines = blanks.slice(0, 20).map(b => `  ${b.row}행: ${b.missing.join(", ")}`).join("\n");
+    safeAlert_(`⚠️ 빈칸이 있는 행 ${blanks.length}개\n(A~H 중 비어있는 칸)\n\n${lines}${blanks.length > 20 ? `\n  … 외 ${blanks.length - 20}행` : ""}`);
+  } catch (e) {
+    safeAlert_("❌ 오류\n" + e.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // 전송 (/bulk 로 행 배열 POST, 인증 불필요)
 // ═══════════════════════════════════════════════════════════════
 function postRows_(rows) {
@@ -232,7 +289,7 @@ function runSync_(onlyNew) {
     }
     const count = postRows_(rows);
     markRegistered_(getSheet_(), statusCol, rowNums);
-    safeAlert_(`✅ ${count}개 광고를 사이트에 추가했습니다.` + noteExtra_(skipped, dupCount));
+    safeAlert_(`✅ ${count}개 광고를 사이트에 추가했습니다.` + noteExtra_(skipped, dupCount) + blankNote_());
   } catch (e) {
     safeAlert_("❌ 오류\n" + e.message);
     Logger.log(e.stack || e.message);
@@ -334,7 +391,7 @@ function importStats() {
     if (res.missing_urls) {
       msg += `\n\n⚠️ 처리 못한 URL ${res.missing_urls}개 (예: ${(res.missing_sample || []).join(", ")})`;
     }
-    safeAlert_(msg);
+    safeAlert_(msg + blankNote_());
   } catch (e) {
     safeAlert_("❌ 오류\n" + e.message);
     Logger.log(e.stack || e.message);
