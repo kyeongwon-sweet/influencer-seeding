@@ -67,8 +67,7 @@ export async function GET(req: NextRequest) {
 
     return {
       ...post,
-      all_stats: stats ?? [],
-      latest_stats: stats?.[0] ?? null,
+      post_daily_stats: stats ?? [],
     };
   }));
 
