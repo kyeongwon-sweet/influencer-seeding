@@ -30,8 +30,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "rows 배열이 없습니다" }, { status: 400 });
   }
 
-  // URL이 없는 행 제거 (https://instagram.com 또는 https://youtube.com만 허용)
-  const ALLOWED_URL_RE = /^https:\/\/(www\.)?(instagram\.com|youtube\.com)\//;
+  // URL이 없는 행 제거 (instagram / youtube / tiktok 허용, 서브도메인 포함: www, m, vt, vm 등)
+  const ALLOWED_URL_RE = /^https:\/\/([a-z0-9-]+\.)?(instagram\.com|youtube\.com|youtu\.be|tiktok\.com)\//i;
   const rows = body.rows.filter((r: Record<string, unknown>) => r.url && ALLOWED_URL_RE.test(String(r.url)));
   if (rows.length === 0) {
     return NextResponse.json({ ok: true, upserted: 0 });
