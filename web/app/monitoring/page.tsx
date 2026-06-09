@@ -1588,12 +1588,13 @@ export default function MonitoringPage() {
             {/* 요약 수치 */}
             <div className="flex items-stretch border-b border-a-hairline">
               {(() => {
-                // 누적 데이터: 검색량 총합, B2B 매출
-                const searchTotalSum = chartData.length > 0 ? chartData[chartData.length - 1].value : 0;
+                // 라라스윗 검색량 총합 = 조회 기간 동안의 일자별 절대검색량(사이트 보정값) 합계
+                // (차트 점선 '검색량'과 동일 기준. chartData는 조회수라 검색량과 무관 → lsSearchData 사용)
+                const searchTotalSum = (lsSearchData ?? []).reduce((acc, d) => acc + (d.value ?? 0), 0);
                 const b2bTotal = 0; // B2B 데이터는 추후 연결 예정
                 return [
                   { label: "조회수 합계", value: totalPlayCount, color: "text-a-ink" },
-                  { label: "검색량 총합", value: searchTotalSum, color: "text-gray-600" },
+                  { label: "라라스윗 검색량 총합", value: searchTotalSum, color: "text-gray-600" },
                   { label: "B2B 매출", value: b2bTotal, color: "text-green-600" },
                 ];
               })().map((item, i) => (
