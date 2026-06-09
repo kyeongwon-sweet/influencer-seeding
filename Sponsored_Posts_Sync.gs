@@ -143,14 +143,14 @@ function collectRows_(onlyNew) {
 
   const lastRow = sheet.getLastRow();
   const lastCol = sheet.getLastColumn();
-  let skipped = 0;
-  if (lastRow < CONFIG.DATA_START_ROW) return { rows: [], rowNums: [], statusCol, skipped };
+  let skipped = 0, dupCount = 0;
+  if (lastRow < CONFIG.DATA_START_ROW) return { rows: [], rowNums: [], statusCol, skipped, dupCount };
 
   const values = sheet
     .getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, lastCol)
     .getValues();
 
-  const rows = [];
+  const byKey = {}; // 정규화된 URL → 전송 객체 (첫 행 우선, 중복 제거)
   const rowNums = [];
 
   values.forEach((row, i) => {
@@ -172,15 +172,26 @@ function collectRows_(onlyNew) {
     if (fieldCols.product_name)    obj.product_name    = String(row[fieldCols.product_name - 1] || "").trim() || null;
     if (fieldCols.cost)            obj.cost            = toNumber_(row[fieldCols.cost - 1]);
 
-    rows.push(obj);
+    const key = urlKey_(rawUrl);
+    if (byKey[key]) { dupCount++; rowNums.push(rowNum); return; } // 같은 URL 중복 → 전송 1번만, 행은 등록 처리
+    byKey[key] = obj;
     rowNums.push(rowNum);
   });
 
-  return { rows, rowNums, statusCol, skipped };
+  const rows = Object.keys(byKey).map(k => byKey[k]);
+  return { rows, rowNums, statusCol, skipped, dupCount };
 }
 
-function skipNote_(skipped) {
-  return skipped ? `\n\n⚠️ 지원 플랫폼(IG/YT/TikTok) URL이 아니어서 제외됨: ${skipped}건` : "";
+/** 중복 판정용 URL 키: 쿼리스트링·끝슬래시 제거 + 소문자 (서버 정규화와 동일 기준) */
+function urlKey_(u) {
+  return String(u).split("?")[0].replace(/\/+$/, "").toLowerCase();
+}
+
+function noteExtra_(skipped, dupCount) {
+  let s = "";
+  if (dupCount) s += `\n\n🔁 시트 내 중복 URL ${dupCount}건은 1건으로 합쳐 전송(중복 추가 방지).`;
+  if (skipped)  s += `\n⚠️ 지원 플랫폼(IG/YT/TikTok) URL이 아니어서 제외됨: ${skipped}건`;
+  return s;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -210,14 +221,14 @@ function markRegistered_(sheet, statusCol, rowNums) {
 // ═══════════════════════════════════════════════════════════════
 function runSync_(onlyNew) {
   try {
-    const { rows, rowNums, statusCol, skipped } = collectRows_(onlyNew);
+    const { rows, rowNums, statusCol, skipped, dupCount } = collectRows_(onlyNew);
     if (rows.length === 0) {
-      safeAlert_((onlyNew ? "추가할 신규 광고가 없습니다." : "추가할 광고가 없습니다.") + skipNote_(skipped));
+      safeAlert_((onlyNew ? "추가할 신규 광고가 없습니다." : "추가할 광고가 없습니다.") + noteExtra_(skipped, dupCount));
       return;
     }
     const count = postRows_(rows);
     markRegistered_(getSheet_(), statusCol, rowNums);
-    safeAlert_(`✅ ${count}개 광고를 사이트에 추가했습니다.` + skipNote_(skipped));
+    safeAlert_(`✅ ${count}개 광고를 사이트에 추가했습니다.` + noteExtra_(skipped, dupCount));
   } catch (e) {
     safeAlert_("❌ 오류\n" + e.message);
     Logger.log(e.stack || e.message);
@@ -229,12 +240,12 @@ function syncAll()  { runSync_(false); }
 
 function previewNew() {
   try {
-    const { rows, skipped } = collectRows_(true);
-    if (rows.length === 0) { safeAlert_("추가할 신규 광고가 없습니다." + skipNote_(skipped)); return; }
+    const { rows, skipped, dupCount } = collectRows_(true);
+    if (rows.length === 0) { safeAlert_("추가할 신규 광고가 없습니다." + noteExtra_(skipped, dupCount)); return; }
     const sample = rows.slice(0, 5)
       .map((r, i) => `${i + 1}. ${r.url}\n   채널:${r.account_name || "-"} / 분류:${r.channel_type || "-"} / 프로젝트:${r.project_name || "-"} / 비용:${r.cost != null ? r.cost : "-"}`)
       .join("\n");
-    safeAlert_(`총 ${rows.length}개 추가 예정 (상위 5개 미리보기)\n\n${sample}` + skipNote_(skipped));
+    safeAlert_(`총 ${rows.length}개 추가 예정 (상위 5개 미리보기)\n\n${sample}` + noteExtra_(skipped, dupCount));
   } catch (e) {
     safeAlert_("❌ 오류\n" + e.message);
   }

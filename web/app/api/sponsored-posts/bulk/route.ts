@@ -25,9 +25,17 @@ export async function POST(req: NextRequest) {
   }
 
   // URL 정규화 + 빈 URL 제거 (쿼리스트링/trailing slash 정규화로 중복 방지)
+  // + 같은 배치 내 중복 URL 제거 (Postgres upsert "cannot affect row a second time" 방지)
+  const seen = new Set<string>();
   const rows = list
     .map((r: Record<string, unknown>) => ({ ...r, url: r.url ? (normalizeUrl(String(r.url)) || r.url) : r.url }))
-    .filter((r: Record<string, unknown>) => r.url);
+    .filter((r: Record<string, unknown>) => {
+      if (!r.url) return false;
+      const key = String(r.url);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 
   if (rows.length === 0) {
     return NextResponse.json({ ok: true, upserted: 0 });
