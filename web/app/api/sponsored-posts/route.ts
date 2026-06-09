@@ -57,20 +57,26 @@ export async function GET(req: NextRequest) {
 
   if (postsError) return NextResponse.json({ error: postsError.message }, { status: 500 });
 
-  // 모든 post_daily_stats를 한 번에 조회 후 post별 그룹핑 (N+1 쿼리 방지)
+  // 모든 post_daily_stats를 페이지네이션으로 전부 조회 후 post별 그룹핑
+  // (N+1 쿼리 방지 + Supabase 기본 1000행 상한으로 과거 데이터가 잘리는 문제 방지)
   const ids = (posts ?? []).map((p) => p.id);
   const statsByPost = new Map<string, any[]>();
   if (ids.length > 0) {
-    const { data: allStats, error: statsError } = await supabase
-      .from("post_daily_stats")
-      .select("*")
-      .in("post_id", ids)
-      .order("measured_at", { ascending: false });
-    if (statsError) return NextResponse.json({ error: statsError.message }, { status: 500 });
-    for (const s of allStats ?? []) {
-      const arr = statsByPost.get(s.post_id) ?? [];
-      arr.push(s);
-      statsByPost.set(s.post_id, arr);
+    const PAGE = 1000;
+    for (let from = 0; ; from += PAGE) {
+      const { data: page, error: statsError } = await supabase
+        .from("post_daily_stats")
+        .select("*")
+        .in("post_id", ids)
+        .order("measured_at", { ascending: false })
+        .range(from, from + PAGE - 1);
+      if (statsError) return NextResponse.json({ error: statsError.message }, { status: 500 });
+      for (const s of page ?? []) {
+        const arr = statsByPost.get(s.post_id) ?? [];
+        arr.push(s);
+        statsByPost.set(s.post_id, arr);
+      }
+      if (!page || page.length < PAGE) break;
     }
   }
 
