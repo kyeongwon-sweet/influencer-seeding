@@ -3,7 +3,7 @@
  * 광고 데이터 시트 → 협찬 모니터링 사이트 추가 (Google Apps Script)
  * ═══════════════════════════════════════════════════════════════
  *
- * 동작: 시트의 광고 행을 읽어 → 사이트(/api/sponsored-posts/sync)에 추가(upsert)
+ * 동작: 시트의 광고 행을 읽어 → 사이트(/api/sponsored-posts/bulk)에 추가(upsert)
  *       조회수 수집은 사이트(/monitoring)가 자동으로 수행함.
  *
  * 시트 컬럼 (gid=1937186871, 1행 헤더):
@@ -30,11 +30,14 @@
 const CONFIG = {
   SHEET_GID: 1937186871,
   API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/bulk",
+  STATS_API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/stats-import",
   HEADER_ROW: 1,
   DATA_START_ROW: 2,
   STATUS_HEADER: "등록상태",
   TRIGGER_HOUR: 9,
   TRIGGER_MINUTE: 30,
+  STATS_FIRST_COL: 9,   // 일자별 조회수 시작 열 (I열). 헤더가 날짜로 파싱되는 열만 자동 인식.
+  STATS_YEAR: 2026,     // 날짜 헤더(예: "5. 17 (일)", "6.1")에 붙일 연도
 };
 
 // 헤더명(공백 제거·소문자) → API 필드 매핑
@@ -61,6 +64,7 @@ function onOpen() {
     .addItem("👀 전송 미리보기 (신규)", "previewNew")
     .addItem("✅ 신규 광고 추가", "syncNew")
     .addSeparator()
+    .addItem("📊 일자별 조회수 입력 (I~AE열)", "importStats")
     .addItem("♻️ 전체 다시 추가", "syncAll")
     .addItem("🔍 설정 확인", "checkSetup")
     .addSeparator()
@@ -237,6 +241,84 @@ function runSync_(onlyNew) {
 
 function syncNew()  { runSync_(true); }
 function syncAll()  { runSync_(false); }
+
+// ═══════════════════════════════════════════════════════════════
+// 일자별 조회수 입력 (I~AE열 → post_daily_stats 백필)
+// ═══════════════════════════════════════════════════════════════
+/** 날짜 헤더("5. 17 (일)", "6.1", Date 값) → "YYYY-MM-DD". 파싱 불가면 null. */
+function parseStatDate_(label) {
+  let mo, da;
+  if (label instanceof Date && !isNaN(label.getTime())) {
+    mo = label.getMonth() + 1; da = label.getDate();
+  } else {
+    const m = String(label == null ? "" : label).match(/(\d{1,2})\D+(\d{1,2})/);
+    if (!m) return null;
+    mo = +m[1]; da = +m[2];
+  }
+  if (mo < 1 || mo > 12 || da < 1 || da > 31) return null;
+  return `${CONFIG.STATS_YEAR}-${("0" + mo).slice(-2)}-${("0" + da).slice(-2)}`;
+}
+
+function postStats_(rows) {
+  const res = UrlFetchApp.fetch(CONFIG.STATS_API_URL, {
+    method: "post",
+    contentType: "application/json",
+    payload: JSON.stringify(rows),
+    muteHttpExceptions: true,
+  });
+  const code = res.getResponseCode();
+  const body = res.getContentText();
+  if (code !== 200) throw new Error(`API ${code}: ${body}`);
+  return JSON.parse(body); // { ok, inserted, matched_urls, missing_urls, missing_sample }
+}
+
+function importStats() {
+  try {
+    const sheet = getSheet_();
+    const fieldCols = buildFieldCols_(sheet);
+    const lastRow = sheet.getLastRow();
+    const lastCol = sheet.getLastColumn();
+    const header = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+
+    // 날짜 컬럼 자동 인식 (I열~, 헤더가 날짜로 파싱되는 열만 → AF/AG 등 자동 제외)
+    const dateCols = [];
+    for (let c = CONFIG.STATS_FIRST_COL; c <= lastCol; c++) {
+      const d = parseStatDate_(header[c - 1]);
+      if (d) dateCols.push({ col: c, date: d });
+    }
+    if (dateCols.length === 0) { safeAlert_("날짜 컬럼(I~AE)을 찾지 못했습니다. 헤더를 확인하세요."); return; }
+    if (lastRow < CONFIG.DATA_START_ROW) { safeAlert_("데이터 행이 없습니다."); return; }
+
+    const values = sheet
+      .getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, lastCol)
+      .getValues();
+
+    const out = [];
+    values.forEach(row => {
+      const url = String(row[fieldCols.url - 1] || "").trim();
+      if (!url || !ALLOWED_URL_RE.test(url)) return; // URL 없거나 미지원
+      dateCols.forEach(dc => {
+        const n = toNumber_(row[dc.col - 1]);
+        if (n === null) return; // 빈칸/비숫자 → 측정 없음, 스킵
+        out.push({ url: url, measured_at: dc.date, play_count: n });
+      });
+    });
+
+    if (out.length === 0) { safeAlert_("입력할 조회수 데이터가 없습니다."); return; }
+
+    const res = postStats_(out);
+    let msg = `✅ 일자별 조회수 ${res.inserted}건 입력 완료.\n` +
+              `(날짜 ${dateCols.length}개 열 · 매칭된 게시물 ${res.matched_urls}개)`;
+    if (res.missing_urls) {
+      msg += `\n\n⚠️ 사이트에 없는 URL ${res.missing_urls}개는 건너뜀.\n` +
+             `먼저 "✅ 신규 광고 추가"로 등록하세요.\n예: ${(res.missing_sample || []).join("\n     ")}`;
+    }
+    safeAlert_(msg);
+  } catch (e) {
+    safeAlert_("❌ 오류\n" + e.message);
+    Logger.log(e.stack || e.message);
+  }
+}
 
 function previewNew() {
   try {
