@@ -107,9 +107,9 @@ export async function POST(req: NextRequest) {
         if (item.error) continue; // 에러 아이템 스킵
 
         const url = (item.url || "").split("?")[0];
-        const views = item.videoViewCount || item.viewCount || 0;
-        const likes = item.likeCount || 0;
-        const comments = item.commentsCount || item.commentCount || 0;
+        const views = item.videoPlayCount || item.videoViewCount || item.impressions || item.viewCount || item.count || 0;
+        const likes = item.likesCount || item.likeCount || 0;
+        const comments = item.commentsCount || item.commentCount || item.comments || 0;
 
         urlToStats[url] = { views, likes, comments };
       }

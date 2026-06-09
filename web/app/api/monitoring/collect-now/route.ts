@@ -119,9 +119,9 @@ async function collect(req: NextRequest) {
         }
 
         const url = (item.url || "").split("?")[0];
-        const views = item.videoViewCount || item.viewCount || 0;
-        const likes = item.likeCount || 0;
-        const comments = item.commentsCount || item.commentCount || 0;
+        const views = item.videoPlayCount || item.videoViewCount || item.impressions || item.viewCount || item.count || 0;
+        const likes = item.likesCount || item.likeCount || 0;
+        const comments = item.commentsCount || item.commentCount || item.comments || 0;
 
         // 🔍 음수 조회수 감지 (Apify 버그 추적)
         if (views < 0) {
