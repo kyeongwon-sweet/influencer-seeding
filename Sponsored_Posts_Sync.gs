@@ -36,8 +36,8 @@ const CONFIG = {
   STATUS_HEADER: "등록상태",
   TRIGGER_HOUR: 9,
   TRIGGER_MINUTE: 30,
-  STATS_FIRST_COL: 9,   // 일자별 조회수 시작 열 (I열). 헤더가 날짜로 파싱되는 열만 자동 인식.
-  STATS_YEAR: 2026,     // 날짜 헤더(예: "5. 17 (일)", "6.1")에 붙일 연도
+  STATS_FIRST_COL: 9,        // 일자별 조회수 시작 열 (I열). 끝 열은 자동(데이터가 AE 넘어 늘어나도 OK).
+  STATS_START_YEAR: 2026,    // 가장 왼쪽 날짜 열의 연도. 월이 줄면(예: 12→1) 자동으로 +1년 처리.
 };
 
 // 헤더명(공백 제거·소문자) → API 필드 매핑
@@ -245,8 +245,8 @@ function syncAll()  { runSync_(false); }
 // ═══════════════════════════════════════════════════════════════
 // 일자별 조회수 입력 (I~AE열 → post_daily_stats 백필)
 // ═══════════════════════════════════════════════════════════════
-/** 날짜 헤더("5. 17 (일)", "6.1", Date 값) → "YYYY-MM-DD". 파싱 불가면 null. */
-function parseStatDate_(label) {
+/** 날짜 헤더("5. 17 (일)", "6.1", Date 값) → {mo, da}. 파싱 불가면 null. */
+function parseMonthDay_(label) {
   let mo, da;
   if (label instanceof Date && !isNaN(label.getTime())) {
     mo = label.getMonth() + 1; da = label.getDate();
@@ -256,7 +256,7 @@ function parseStatDate_(label) {
     mo = +m[1]; da = +m[2];
   }
   if (mo < 1 || mo > 12 || da < 1 || da > 31) return null;
-  return `${CONFIG.STATS_YEAR}-${("0" + mo).slice(-2)}-${("0" + da).slice(-2)}`;
+  return { mo: mo, da: da };
 }
 
 function postStats_(rows) {
@@ -280,13 +280,19 @@ function importStats() {
     const lastCol = sheet.getLastColumn();
     const header = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
 
-    // 날짜 컬럼 자동 인식 (I열~, 헤더가 날짜로 파싱되는 열만 → AF/AG 등 자동 제외)
+    // 날짜 컬럼 자동 인식 (I열~ 마지막 열까지 스캔 → AE 넘어 늘어나도 자동 반영,
+    // 수정금지/등록상태 등 비-날짜 열은 자동 제외). 월이 줄면 해 넘김(+1년) 처리.
     const dateCols = [];
+    let year = CONFIG.STATS_START_YEAR;
+    let prevMonth = null;
     for (let c = CONFIG.STATS_FIRST_COL; c <= lastCol; c++) {
-      const d = parseStatDate_(header[c - 1]);
-      if (d) dateCols.push({ col: c, date: d });
+      const md = parseMonthDay_(header[c - 1]);
+      if (!md) continue;
+      if (prevMonth !== null && md.mo < prevMonth) year++; // 12→1 등 해 넘어감
+      prevMonth = md.mo;
+      dateCols.push({ col: c, date: `${year}-${("0" + md.mo).slice(-2)}-${("0" + md.da).slice(-2)}` });
     }
-    if (dateCols.length === 0) { safeAlert_("날짜 컬럼(I~AE)을 찾지 못했습니다. 헤더를 확인하세요."); return; }
+    if (dateCols.length === 0) { safeAlert_("날짜 컬럼(I열~)을 찾지 못했습니다. 헤더를 확인하세요."); return; }
     if (lastRow < CONFIG.DATA_START_ROW) { safeAlert_("데이터 행이 없습니다."); return; }
 
     const values = sheet
