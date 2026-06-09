@@ -5,7 +5,7 @@ import { createApifyClient } from "@/lib/apify";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-async function fetchInstagramMetrics(username: string, apiToken: string) {
+async function fetchInstagramMetrics(username: string) {
   try {
     const client = createApifyClient();
 
@@ -45,9 +45,9 @@ async function fetchInstagramMetrics(username: string, apiToken: string) {
     let videoDurations: number[] = [];
 
     for (const post of posts) {
-      const views = post.likesCount || 0;
-      const likes = post.commentsCount || 0;
-      const comments = post.viewsCount || 0;
+      const views = post.viewsCount || 0;
+      const likes = post.likesCount || 0;
+      const comments = post.commentsCount || post.commentCount || 0;
 
       totalViews += views;
       totalLikes += likes;
