@@ -1586,7 +1586,7 @@ export default function MonitoringPage() {
                           <thead className="sticky top-0 z-10 bg-white border-b border-a-hairline">
                             <tr>
                               <th className="px-5 py-2.5 text-left text-[11px] font-semibold text-a-ink-muted">날짜</th>
-                              <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted">조회수</th>
+                              <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted">누적 조회수</th>
                               <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted">검색량</th>
                               <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted">댓글</th>
                             </tr>
