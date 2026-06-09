@@ -50,6 +50,19 @@ function fmtKpi(v: number | null): string {
   return v.toLocaleString();
 }
 
+// 검색량 급등 감지: 최신일 vs 전전일(2일 전), +30% 이상이면 반환
+function detectSpike(series: { date: string; value: number }[]) {
+  if (series.length < 3) return null;
+  const sorted = [...series].sort((a, b) => a.date.localeCompare(b.date));
+  const latest = sorted[sorted.length - 1];
+  const target = new Date(new Date(latest.date + "T00:00:00").getTime() - 2 * 86400000).toISOString().slice(0, 10);
+  const prev2 = sorted.find(x => x.date === target) ?? sorted[sorted.length - 3];
+  if (!prev2 || prev2.value <= 0) return null;
+  const pct = ((latest.value - prev2.value) / prev2.value) * 100;
+  if (pct < 30) return null;
+  return { pct, latest, prev2 };
+}
+
 export default function DashboardPage() {
   const [influencers, setInfluencers] = useState<Influencer[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -57,6 +70,7 @@ export default function DashboardPage() {
   const [organicMentions, setOrganicMentions] = useState<OrganicMention[]>([]);
   const [kpi, setKpi] = useState<KpiSnapshot | null>(null);
   const [brandSearch, setBrandSearch] = useState<{ date: string; value: number }[]>([]);
+  const [productTrends, setProductTrends] = useState<{ products: string[]; rows: { date: string; values: Record<string, number | null> }[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAllJobs, setShowAllJobs] = useState(false);
 
@@ -74,7 +88,7 @@ export default function DashboardPage() {
       fetch("/api/kpi", { signal: t }).then(r => r.json()).then((data: KpiSnapshot | null) => {
         if (data?.id) setKpi(data);
       }),
-      fetch("/api/product-search-trends", { signal: t }).then(r => r.json()).then((d: { brandKey?: string; data?: { date: string; values: Record<string, number | null> }[] }) => {
+      fetch("/api/product-search-trends", { signal: t }).then(r => r.json()).then((d: { brandKey?: string; products?: string[]; data?: { date: string; values: Record<string, number | null> }[] }) => {
         if (d?.brandKey && Array.isArray(d.data)) {
           const key = d.brandKey;
           setBrandSearch(
@@ -82,6 +96,7 @@ export default function DashboardPage() {
               .map(row => ({ date: row.date, value: row.values[key] }))
               .filter((x): x is { date: string; value: number } => x.value != null)
           );
+          setProductTrends({ products: d.products ?? [], rows: d.data });
         }
       }),
     ]).finally(() => setLoading(false));
@@ -126,17 +141,19 @@ export default function DashboardPage() {
   const recentOrganic = organicMentions.filter(m => m.created_at >= sevenDaysAgo).slice(0, 3);
 
   // 라라스윗 전체 검색량 급등: 최신일 vs 전전일(2일 전), +30% 이상이면 노출
-  const brandSpike = (() => {
-    if (brandSearch.length < 3) return null;
-    const sorted = [...brandSearch].sort((a, b) => a.date.localeCompare(b.date));
-    const latest = sorted[sorted.length - 1];
-    const target = new Date(new Date(latest.date + "T00:00:00").getTime() - 2 * 86400000).toISOString().slice(0, 10);
-    const prev2 = sorted.find(x => x.date === target) ?? sorted[sorted.length - 3];
-    if (!prev2 || prev2.value <= 0) return null;
-    const pct = ((latest.value - prev2.value) / prev2.value) * 100;
-    if (pct < 30) return null;
-    return { pct, latest, prev2 };
-  })();
+  const brandSpike = detectSpike(brandSearch);
+
+  // 상품별 검색량 급등: 동일 기준(+30%)으로 감지, 상승률 높은 순 최대 3개
+  const productSpikes = (productTrends?.products ?? [])
+    .map(name => {
+      const series = (productTrends?.rows ?? [])
+        .map(row => ({ date: row.date, value: row.values[name] }))
+        .filter((x): x is { date: string; value: number } => x.value != null);
+      return { name, spike: detectSpike(series) };
+    })
+    .filter((x): x is { name: string; spike: NonNullable<ReturnType<typeof detectSpike>> } => x.spike != null)
+    .sort((a, b) => b.spike.pct - a.spike.pct)
+    .slice(0, 3);
 
   const menuItems = [
     {
@@ -264,7 +281,7 @@ export default function DashboardPage() {
               </div>
               <div>
                 <p className="text-[11px] font-bold text-a-ink mb-2">🔍 검색량 특이치</p>
-                {(brandSpike || kwSpikes.length > 0) ? (
+                {(brandSpike || productSpikes.length > 0 || kwSpikes.length > 0) ? (
                   <div className="space-y-1">
                     {brandSpike && (
                       <div className="flex items-center justify-between gap-2 bg-red-50 rounded-[6px] px-2 py-1 -mx-1">
@@ -279,6 +296,19 @@ export default function DashboardPage() {
                         </span>
                       </div>
                     )}
+                    {productSpikes.map(({ name, spike }) => (
+                      <div key={name} className="flex items-center justify-between gap-2 bg-red-50/60 rounded-[6px] px-2 py-1 -mx-1">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-xs font-semibold text-red-500 whitespace-nowrap truncate">🔥 {name} 급등</span>
+                          <span className="text-[10px] text-a-ink-muted truncate hidden sm:block">
+                            · {spike.prev2.date.slice(5).replace("-", "/")}→{spike.latest.date.slice(5).replace("-", "/")}
+                          </span>
+                        </div>
+                        <span className="text-xs font-semibold text-red-500 whitespace-nowrap flex-shrink-0">
+                          +{spike.pct.toFixed(0)}%
+                        </span>
+                      </div>
+                    ))}
                     {kwSpikes.map(({ inf, kw_impact, kw_keywords }, i) => (
                       <div key={i} className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 min-w-0">
