@@ -112,12 +112,28 @@ async function collect(req: NextRequest) {
       > = {};
 
       for (const item of resultItems) {
-        if (item.error) continue;
+        if (item.error) {
+          console.warn(`   ⚠️ Apify ERROR: ${item.url} → ${item.error}`);
+          continue;
+        }
 
         const url = (item.url || "").split("?")[0];
         const views = item.videoViewCount || item.viewCount || 0;
         const likes = item.likeCount || 0;
         const comments = item.commentsCount || item.commentCount || 0;
+
+        // 🔍 음수 조회수 감지 (Apify 버그 추적)
+        if (views < 0) {
+          console.error(
+            `   🔴 NEGATIVE VIEWS DETECTED: ${url}`
+          );
+          console.error(
+            `      Raw Apify data: videoViewCount=${item.videoViewCount}, viewCount=${item.viewCount}`
+          );
+          console.error(
+            `      All fields: ${JSON.stringify(item, null, 2)}`
+          );
+        }
 
         urlToStats[url] = { views, likes, comments };
       }
