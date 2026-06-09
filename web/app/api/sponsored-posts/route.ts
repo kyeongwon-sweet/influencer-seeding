@@ -48,10 +48,31 @@ export async function GET(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const supabase = getServerSupabase();
-  const { data, error } = await supabase
+
+  // sponsored_posts 조회
+  const { data: posts, error: postsError } = await supabase
     .from("sponsored_posts")
-    .select("*, influencers(id, name, platform, post_type, category, screening_metrics(*)), post_daily_stats(*)")
+    .select("*")
     .order("created_at", { ascending: false });
+
+  if (postsError) return NextResponse.json({ error: postsError.message }, { status: 500 });
+
+  // 각 sponsored_post의 post_id 기반으로 post_daily_stats 조회
+  const data = await Promise.all((posts ?? []).map(async (post) => {
+    const { data: stats } = await supabase
+      .from("post_daily_stats")
+      .select("*")
+      .eq("post_id", post.id)
+      .order("measured_at", { ascending: false });
+
+    return {
+      ...post,
+      all_stats: stats ?? [],
+      latest_stats: stats?.[0] ?? null,
+    };
+  }));
+
+  const error = null;
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
