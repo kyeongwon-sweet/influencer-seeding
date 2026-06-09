@@ -404,6 +404,7 @@ function importStats() {
     let msg = `✅ 일자별 조회수 ${res.inserted}건 입력 완료.\n(날짜 ${dateCols.length}개 열 · 매칭 게시물 ${res.matched_urls}개`;
     msg += res.created_posts ? ` · 신규 광고 ${res.created_posts}개 자동 생성)` : `)`;
     if (future) msg += `\n⏭️ 업로드일이 오늘 이후인 행 ${future}건 제외(아직 게시 전).`;
+    if (res.dropped_decrease) msg += `\n🛡️ 누적 조회수가 직전보다 낮은(수집 오류) ${res.dropped_decrease}건은 저장 제외.`;
     if (res.missing_urls) {
       msg += `\n\n⚠️ 처리 못한 URL ${res.missing_urls}개 (예: ${(res.missing_sample || []).join(", ")})`;
     }
