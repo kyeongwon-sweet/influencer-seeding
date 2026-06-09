@@ -596,7 +596,12 @@ export default function ScreeningPage() {
   }
 
   const sorted = [...filtered].sort((a, b) => {
-    if (!sortCol) return 0;
+    if (!sortCol) {
+      // 기본 정렬: 데이터가 수집된 채널을 먼저 노출 (그 안에서는 기존 순서 유지)
+      const aHas = (a.screening_metrics ?? []).length > 0 ? 1 : 0;
+      const bHas = (b.screening_metrics ?? []).length > 0 ? 1 : 0;
+      return bHas - aHas;
+    }
     const ma = latest(a);
     const mb = latest(b);
     let av: string | number = "", bv: string | number = "";
