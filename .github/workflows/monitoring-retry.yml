@@ -1,13 +1,17 @@
-name: Monitoring Retry
+name: Monitoring Backup & Retry
+
+# Vercel Cron(매일 자정 KST, /api/monitoring/apify-collect)이 누락·실패했을 때를 대비한 백업.
+# "오늘(KST) 데이터가 없을 때만" 수집하므로, Vercel이 정상 동작한 날에는 추가 Apify 비용이 없음.
+# 수집기(run_monitoring.py)에는 누적 조회수 역행 방지 가드가 내장돼 있고 upsert라 멱등.
 
 on:
   schedule:
-    # 6/4 02:00 UTC = 6/4 11:00 KST, 6/4 05:00 UTC = 6/4 14:00 KST, 6/4 08:00 UTC = 6/4 17:00 KST
-    - cron: "0 2,5,8 * * *"  # 매 3시간마다 (UTC 02:00, 05:00, 08:00)
+    - cron: "20 15 * * *"    # 15:20 UTC = 00:20 KST — 자정 수집 직후 1차 백업
+    - cron: "0 2,5,8 * * *"  # 02/05/08 UTC = 11/14/17 KST — 주간 재시도
   workflow_dispatch:
 
 jobs:
-  check-and-retry:
+  check-and-collect:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,32 +24,33 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Check yesterday data
+      - name: Check today (KST) data
+        id: check
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          python << 'EOF'
+          export TODAY_KST=$(date -u -d '+9 hours' +%F)
+          STATUS=$(python << 'EOF'
           import os
-          from datetime import date, timedelta
           from db import get_client
-
           db = get_client()
-          yesterday = (date.today() - timedelta(days=1)).isoformat()
-
-          result = db.table("post_daily_stats").select("id").eq("measured_at", yesterday).limit(1).execute()
-          if result.data:
-              print(f"✅ 어제({yesterday}) 데이터 존재: {len(result.data)}건")
-              exit(0)
-          else:
-              print(f"❌ 어제({yesterday}) 데이터 없음 → 재시도 필요")
-              exit(1)
+          today = os.environ["TODAY_KST"]
+          r = db.table("post_daily_stats").select("id").eq("measured_at", today).limit(1).execute()
+          print("ok" if r.data else "missing")
           EOF
+          )
+          echo "오늘(KST) ${TODAY_KST} → ${STATUS}"
+          echo "status=${STATUS}" >> "$GITHUB_OUTPUT"
 
-      - name: Trigger monitoring on missing data
-        if: failure()
-        uses: peter-evans/repository-dispatch@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          event-type: monitoring
-          client-payload: '{"job_id": null}'
+      - name: Collect on missing data (백업 수집)
+        if: steps.check.outputs.status == 'missing'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
+          SKIP_APIFY: "0"
+        run: |
+          export MONITORING_DATE=$(date -u -d '+9 hours' +%F)
+          echo "백업 수집 대상(KST): ${MONITORING_DATE}"
+          cd scripts && python run_monitoring.py
