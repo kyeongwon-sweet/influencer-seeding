@@ -2062,7 +2062,14 @@ export default function MonitoringPage() {
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5" />
                         ) : (
                           <div className="flex items-center gap-1 min-w-0 overflow-hidden group/influencer">
-                            <span className="font-medium text-left truncate min-w-0">{displayName}</span>
+                            {post.url ? (
+                              <a href={post.url} target="_blank" rel="noreferrer"
+                                className="font-medium text-left truncate min-w-0 hover:text-a-blue hover:underline transition-colors">
+                                {displayName}
+                              </a>
+                            ) : (
+                              <span className="font-medium text-left truncate min-w-0">{displayName}</span>
+                            )}
                             <button onClick={async () => {
                               try { await navigator.clipboard.writeText(post.url); toast("링크가 복사됐습니다.", "success"); } catch {}
                             }} className="opacity-0 group-hover/influencer:opacity-100 text-a-ink-muted hover:text-a-blue transition flex-shrink-0" title="링크 복사">
