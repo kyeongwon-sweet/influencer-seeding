@@ -147,7 +147,22 @@ useEffect(() => {
 }, [lsStartDate]); // 안정적
 ```
 
-#### ✅ 4. 긴급 대응 절차
+#### ✅ 4. 데이터 수집 검증 강화
+**Apify 수집 시 반드시 확인:**
+1. **사전 검증** (수집 전):
+   - 기존 데이터 조회 → 마지막 기록 확인
+   
+2. **사후 검증** (수집 후):
+   - 조회수는 누적이므로 **절대 감소하면 안됨** ❌
+   - 이상치 감지: `신규 조회수 < 기존 조회수` → 수집 오류 ⚠️
+   - 0이 아닌데 갑자기 0으로 떨어지면 → 게시물 삭제 또는 API 오류
+   
+3. **오류 처리**:
+   - 이상 데이터는 자동으로 저장 안 함
+   - 콘솔에 경고 기록
+   - Slack 알람 (추가 예정)
+
+#### ✅ 5. 긴급 대응 절차
 **빌드 실패 발생 시:**
 ```bash
 # 1단계: 문제 커밋 식별
@@ -158,6 +173,19 @@ git reset --hard 3beda71
 git push origin main --force
 
 # 3단계: 자동 재배포 (Vercel이 자동 감지)
+```
+
+**데이터 수집 오류 발생 시:**
+```bash
+# 1단계: Supabase에서 잘못된 데이터 확인
+SELECT measured_at, COUNT(*) FROM post_daily_stats 
+WHERE measured_at = '2026-06-06' GROUP BY measured_at;
+
+# 2단계: 이상 데이터 삭제
+DELETE FROM post_daily_stats WHERE measured_at = '2026-06-06';
+
+# 3단계: 재수집
+curl "https://influencer-seeding-mu.vercel.app/api/monitoring/collect-now?date=2026-06-06"
 ```
 
 ### ⚠️ 절대 하지 말 것

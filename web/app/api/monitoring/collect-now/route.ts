@@ -122,7 +122,19 @@ async function collect(req: NextRequest) {
         urlToStats[url] = { views, likes, comments };
       }
 
-      // 각 게시물별로 개별 데이터 저장
+      // 4️⃣ 기존 데이터와 비교해서 이상치 감지
+      const { data: existingStats } = await supabase
+        .from("post_daily_stats")
+        .select("post_id, play_count, likes_count, comments_count")
+        .eq("measured_at", measuredAt);
+
+      const existingMap = new Map(
+        (existingStats || []).map(s => [s.post_id, s])
+      );
+
+      let anomalyCount = 0;
+
+      // 5️⃣ 각 게시물별로 개별 데이터 저장 & 검증
       for (const post of igPosts) {
         const cleanUrl = post.url.split("?")[0];
         const stats = urlToStats[cleanUrl] || {
@@ -130,6 +142,16 @@ async function collect(req: NextRequest) {
           likes: 0,
           comments: 0,
         };
+
+        // ⚠️ 이상치 탐지: 조회수 감소 (누적이므로 절대 감소하면 안됨)
+        const existing = existingMap.get(post.id);
+        if (existing && existing.play_count > 0 && stats.views < existing.play_count) {
+          console.error(
+            `   ⚠️ ANOMALY: ${cleanUrl} → 조회수 감소 (기존: ${existing.play_count}, 신규: ${stats.views})`
+          );
+          anomalyCount++;
+          continue; // 이상 데이터는 저장 안 함
+        }
 
         statsToInsert.push({
           post_id: post.id,
@@ -141,6 +163,12 @@ async function collect(req: NextRequest) {
 
         console.log(
           `   ✓ ${cleanUrl.split("/").slice(-2).join("/")} → 조회=${stats.views}, 좋아요=${stats.likes}, 댓글=${stats.comments}`
+        );
+      }
+
+      if (anomalyCount > 0) {
+        console.warn(
+          `[WARN] ⚠️ ${anomalyCount}개 이상 데이터 감지됨 - 저장 전 검토 필요!`
         );
       }
     } catch (apifyError) {
