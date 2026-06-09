@@ -5,6 +5,7 @@ import { normalizeUrl } from "@/lib/url-utils";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const maxDuration = 300; // 다건 삭제/병합 — 타임아웃 방지
 
 /**
  * 중복 게시물 정리 (정규화 URL 기준). 관리자(Clerk 로그인) 전용.
