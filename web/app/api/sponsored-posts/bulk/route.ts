@@ -1,0 +1,45 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getServerSupabase } from "@/lib/supabase-server";
+import { normalizeUrl } from "@/lib/url-utils";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+/**
+ * 구글 시트 Apps Script → 협찬 게시물 일괄 추가 (인증 불필요, 공개 인터페이스)
+ *
+ * 부모 라우트 `/api/sponsored-posts` 가 Vercel/Turbopack 라우팅 manifest 누락으로
+ * 404가 되는 문제를 우회하기 위한 자식 라우트. (자식 라우트는 정상 배포됨)
+ *
+ * 요청 body: 행 배열  [{ url, posted_at?, account_name?, content_summary?,
+ *   channel_type?, project_name?, product_name?, cost? }, ...]
+ * 또는 { rows: [...] } 형태도 허용.
+ *
+ * 플랫폼 제한 없음 (instagram / youtube / tiktok 등 모든 URL). URL만 정규화 후 upsert.
+ */
+export async function POST(req: NextRequest) {
+  const body = await req.json().catch(() => null);
+  const list = Array.isArray(body) ? body : Array.isArray(body?.rows) ? body.rows : null;
+  if (!list) {
+    return NextResponse.json({ error: "행 배열(또는 {rows:[...]})이 필요합니다" }, { status: 400 });
+  }
+
+  // URL 정규화 + 빈 URL 제거 (쿼리스트링/trailing slash 정규화로 중복 방지)
+  const rows = list
+    .map((r: Record<string, unknown>) => ({ ...r, url: r.url ? (normalizeUrl(String(r.url)) || r.url) : r.url }))
+    .filter((r: Record<string, unknown>) => r.url);
+
+  if (rows.length === 0) {
+    return NextResponse.json({ ok: true, upserted: 0 });
+  }
+
+  const supabase = getServerSupabase();
+  const { data, error } = await supabase
+    .from("sponsored_posts")
+    .upsert(rows, { onConflict: "url" })
+    .select();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  return NextResponse.json({ ok: true, upserted: (data ?? []).length }, { status: 200 });
+}

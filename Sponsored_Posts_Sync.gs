@@ -15,14 +15,10 @@
  *               성공하면 등록상태에 타임스탬프를 기록 → 매일 새로 추가된 광고만 올라감.
  *
  * ───────────────────────────────────────────────────────────────
- * [최초 1회 설정]
+ * [최초 1회 설정]  ※ 시크릿/키 설정 필요 없음 (무인증 공개 엔드포인트 사용)
  * 1) 확장 프로그램 → Apps Script 에 이 파일 내용을 붙여넣기 → 💾 저장
- * 2) ⚙ 프로젝트 설정 → "스크립트 속성" → 속성 추가
- *      속성: CRON_SECRET / 값: (Vercel 환경변수 CRON_SECRET 과 동일. 기존: lala2024secret)
- * 3) 시트 새로고침 → 상단 "🚀 광고 모니터링" 메뉴
- * 4) (자동화) 메뉴 → "⏰ 매일 9:30 자동 추가 켜기" 1회 클릭 → 권한 승인
- *
- * ※ 틱톡 추가가 동작하려면 사이트 백엔드(/sync URL 필터에 tiktok 허용)가 배포되어야 합니다.
+ * 2) 시트 새로고침 → 상단 "🚀 광고 모니터링" 메뉴
+ * 3) (자동화) 메뉴 → "⏰ 매일 9:30 자동 추가 켜기" 1회 클릭 → 권한 승인
  * ───────────────────────────────────────────────────────────────
  */
 
@@ -31,7 +27,7 @@
 // ═══════════════════════════════════════════════════════════════
 const CONFIG = {
   SHEET_GID: 1937186871,
-  API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/sync",
+  API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/bulk",
   HEADER_ROW: 1,
   DATA_START_ROW: 2,
   STATUS_HEADER: "등록상태",
@@ -88,14 +84,6 @@ function getSheet_() {
   const sheet = ss.getSheets().find(s => s.getSheetId() === CONFIG.SHEET_GID);
   if (!sheet) throw new Error(`gid=${CONFIG.SHEET_GID} 탭을 찾을 수 없습니다.`);
   return sheet;
-}
-
-function getSecret_() {
-  const secret = PropertiesService.getScriptProperties().getProperty("CRON_SECRET");
-  if (!secret) {
-    throw new Error("CRON_SECRET 미설정.\n⚙ 프로젝트 설정 → 스크립트 속성에 CRON_SECRET 을 추가하세요.");
-  }
-  return secret;
 }
 
 /** 헤더 → 컬럼 인덱스(1-based) 매핑. {field: colIndex} */
@@ -194,14 +182,13 @@ function skipNote_(skipped) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 전송 (/sync 로 {rows} POST, Bearer 인증)
+// 전송 (/bulk 로 행 배열 POST, 인증 불필요)
 // ═══════════════════════════════════════════════════════════════
 function postRows_(rows) {
   const res = UrlFetchApp.fetch(CONFIG.API_URL, {
     method: "post",
     contentType: "application/json",
-    headers: { Authorization: "Bearer " + getSecret_() },
-    payload: JSON.stringify({ rows: rows }),
+    payload: JSON.stringify(rows), // 배열 그대로
     muteHttpExceptions: true,
   });
   const code = res.getResponseCode();
@@ -253,7 +240,6 @@ function previewNew() {
 
 function checkSetup() {
   try {
-    getSecret_();
     const sheet = getSheet_();
     const fieldCols = buildFieldCols_(sheet);
     safeAlert_(`✅ 설정 정상\n탭: ${sheet.getName()}\n인식된 필드: ${Object.keys(fieldCols).join(", ")}`);
