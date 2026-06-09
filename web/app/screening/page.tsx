@@ -133,6 +133,7 @@ export default function ScreeningPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkStatus, setBulkStatus] = useState("pass");
   const [applying, setApplying] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [showHelp, setShowHelp] = useState(false);
@@ -440,6 +441,18 @@ export default function ScreeningPage() {
     toast(`${selected.size}개 계정을 '${label}'로 변경했습니다.`, "success");
     setSelected(new Set());
     setApplying(false);
+  }
+
+  async function deleteSelected() {
+    if (selected.size === 0) return;
+    const count = selected.size;
+    if (!confirm(`선택한 ${count}개 계정을 삭제하시겠습니까?`)) return;
+    setDeleting(true);
+    await Promise.all([...selected].map(id => fetch(`/api/influencers/${id}`, { method: "DELETE" })));
+    setList(prev => prev.filter(i => !selected.has(i.id)));
+    toast(`${count}개 계정을 삭제했습니다.`, "success");
+    setSelected(new Set());
+    setDeleting(false);
   }
 
   function toggleSelect(id: string) {
@@ -845,6 +858,10 @@ export default function ScreeningPage() {
             </select>
             <button onClick={applyBulkStatus} disabled={applying || selected.size === 0} className="btn-primary">
               {applying ? "변경 중..." : "상태 변경"}
+            </button>
+            <button onClick={deleteSelected} disabled={deleting || selected.size === 0}
+              className="text-xs px-3 py-1.5 rounded-full border border-red-300 text-red-500 hover:bg-red-50 disabled:opacity-40 transition">
+              {deleting ? "삭제 중..." : "삭제"}
             </button>
             {selected.size > 0 && (
               <button onClick={() => setSelected(new Set())} className="btn-ghost py-1">해제</button>
