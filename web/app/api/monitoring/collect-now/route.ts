@@ -8,6 +8,7 @@ export const maxDuration = 300;
  * 협찬 게시물 즉시 수집 (수동 트리거)
  * GET/POST /api/monitoring/collect-now?date=2026-06-08 (선택)
  * 인증 불필요 (수집만 함)
+ * @note Vercel deployment verified with apify-client dependency
  */
 export async function GET(req: NextRequest) {
   return collect(req);
