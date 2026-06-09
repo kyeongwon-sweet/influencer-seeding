@@ -50,10 +50,12 @@ function fmtKpi(v: number | null): string {
   return v.toLocaleString();
 }
 
-// 날짜+검색량 표기: "6/5(3,023)"
-function fmtDateVal(date: string, value: number): string {
+// 날짜+검색량 표기: "6/5(3,023)" — 검색량(N)은 볼드 강조
+function fmtDateVal(date: string, value: number) {
   const [, m, d] = date.split("-");
-  return `${Number(m)}/${Number(d)}(${Math.round(value).toLocaleString()})`;
+  return (
+    <>{Number(m)}/{Number(d)}(<span className="font-bold text-a-ink">{Math.round(value).toLocaleString()}</span>)</>
+  );
 }
 
 // 검색량 급등 감지: 최신일 vs 전전일(2일 전), +30% 이상이면 반환
