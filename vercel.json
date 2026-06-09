@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/monitoring/apify-collect",
-      "schedule": "0 15 * * *"
+      "schedule": "5 15 * * *"
     },
     {
       "path": "/api/sponsored-posts/sync",

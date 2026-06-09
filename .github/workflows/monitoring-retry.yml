@@ -6,7 +6,7 @@ name: Monitoring Backup & Retry
 
 on:
   schedule:
-    - cron: "20 15 * * *"    # 15:20 UTC = 00:20 KST — 자정 수집 직후 1차 백업
+    - cron: "15 15 * * *"    # 15:15 UTC = 00:15 KST — 자정 수집(00:05) 직후 1차 백업
     - cron: "0 2,5,8 * * *"  # 02/05/08 UTC = 11/14/17 KST — 주간 재시도
   workflow_dispatch:
 
