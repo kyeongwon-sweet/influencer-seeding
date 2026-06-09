@@ -8,7 +8,7 @@ import { logger } from "@/lib/logger";
 /** 공통 설정 */
 const CONFIG = {
   APIFY_IG_URL_RE: /^(https:\/\/|\/)(www\.)?instagram\.com\/[A-Za-z0-9\-._]+(\/.*)?$/,
-  SCREENING_BATCH: 5,
+  SCREENING_BATCH: 20,
   ORGANIC_KEYWORDS: ['라라스윗', 'lalasweet'],
 } as const;
 

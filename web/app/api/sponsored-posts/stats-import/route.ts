@@ -79,13 +79,63 @@ export async function POST(req: NextRequest) {
     created = (ins ?? []).length;
   }
 
-  // 3) 조회수 upsert
-  const statsRows: Array<{ post_id: string; measured_at: string; play_count: number }> = [];
+  // 3) 게시물 매칭 (미등록 URL은 건너뜀)
   const missing = new Set<string>();
+  const incomingByPost = new Map<string, Array<{ measured_at: string; play_count: number }>>();
   for (const it of items) {
     const pid = idByUrl.get(it.url);
     if (!pid) { missing.add(it.url); continue; }
-    statsRows.push({ post_id: pid, measured_at: it.measured_at, play_count: it.play_count });
+    const arr = incomingByPost.get(pid) ?? [];
+    arr.push({ measured_at: it.measured_at, play_count: it.play_count });
+    incomingByPost.set(pid, arr);
+  }
+  const postIds = [...incomingByPost.keys()];
+
+  // 4) 기존 post_daily_stats 조회 (누적 감소 판정 기준) — 페이지네이션으로 전량
+  const existingByPost = new Map<string, Array<{ measured_at: string; play_count: number }>>();
+  if (postIds.length > 0) {
+    const PAGE = 1000;
+    for (let from = 0; ; from += PAGE) {
+      const { data: page, error: pe2 } = await supabase
+        .from("post_daily_stats")
+        .select("post_id, measured_at, play_count")
+        .in("post_id", postIds)
+        .range(from, from + PAGE - 1);
+      if (pe2) return NextResponse.json({ error: pe2.message }, { status: 500 });
+      for (const s of (page ?? []) as Array<{ post_id: string; measured_at: string; play_count: number | null }>) {
+        const arr = existingByPost.get(s.post_id) ?? [];
+        arr.push({ measured_at: s.measured_at, play_count: Number(s.play_count ?? 0) });
+        existingByPost.set(s.post_id, arr);
+      }
+      if (!page || page.length < PAGE) break;
+    }
+  }
+
+  // 5) 누적 감소 가드: 기존+신규를 날짜순 병합해, "그보다 이른 날짜들의 최대"보다 낮은
+  //    신규 값은 dip(수집/입력 오류)으로 보고 저장하지 않음. (과거의 정상적인 낮은 값은 보존)
+  const statsRows: Array<{ post_id: string; measured_at: string; play_count: number }> = [];
+  let droppedDecrease = 0;
+  for (const pid of postIds) {
+    const incomingArr = incomingByPost.get(pid) ?? [];
+    const incomingDates = new Set(incomingArr.map(x => x.measured_at));
+    const timeline = [
+      ...(existingByPost.get(pid) ?? []).filter(e => !incomingDates.has(e.measured_at)).map(e => ({ ...e, incoming: false })),
+      ...incomingArr.map(e => ({ ...e, incoming: true })),
+    ].sort((a, b) => (a.measured_at < b.measured_at ? -1 : a.measured_at > b.measured_at ? 1 : 0));
+
+    let maxSoFar = 0;
+    for (const e of timeline) {
+      if (e.incoming) {
+        if (e.play_count >= maxSoFar) {
+          statsRows.push({ post_id: pid, measured_at: e.measured_at, play_count: e.play_count });
+          maxSoFar = e.play_count;
+        } else {
+          droppedDecrease++; // 이른 날짜 최대보다 낮음 = 누적 감소 → 저장 안 함
+        }
+      } else if (e.play_count > maxSoFar) {
+        maxSoFar = e.play_count;
+      }
+    }
   }
 
   let inserted = 0;
@@ -102,6 +152,7 @@ export async function POST(req: NextRequest) {
     ok: true,
     inserted,
     created_posts: created,
+    dropped_decrease: droppedDecrease,
     matched_urls: [...new Set(items.map(i => i.url))].length - missing.size,
     missing_urls: missing.size,
     missing_sample: [...missing].slice(0, 5),
