@@ -57,23 +57,27 @@ export async function GET(req: NextRequest) {
 
   if (postsError) return NextResponse.json({ error: postsError.message }, { status: 500 });
 
-  // 각 sponsored_post의 post_id 기반으로 post_daily_stats 조회
-  const data = await Promise.all((posts ?? []).map(async (post) => {
-    const { data: stats } = await supabase
+  // 모든 post_daily_stats를 한 번에 조회 후 post별 그룹핑 (N+1 쿼리 방지)
+  const ids = (posts ?? []).map((p) => p.id);
+  const statsByPost = new Map<string, any[]>();
+  if (ids.length > 0) {
+    const { data: allStats, error: statsError } = await supabase
       .from("post_daily_stats")
       .select("*")
-      .eq("post_id", post.id)
+      .in("post_id", ids)
       .order("measured_at", { ascending: false });
+    if (statsError) return NextResponse.json({ error: statsError.message }, { status: 500 });
+    for (const s of allStats ?? []) {
+      const arr = statsByPost.get(s.post_id) ?? [];
+      arr.push(s);
+      statsByPost.set(s.post_id, arr);
+    }
+  }
 
-    return {
-      ...post,
-      post_daily_stats: stats ?? [],
-    };
+  const data = (posts ?? []).map((post) => ({
+    ...post,
+    post_daily_stats: statsByPost.get(post.id) ?? [],
   }));
-
-  const error = null;
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const result = (data ?? []).map((post: any) => {
     const stats = (post.post_daily_stats ?? []).sort(

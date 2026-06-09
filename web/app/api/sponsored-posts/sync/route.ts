@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { startActorRun } from "@/lib/apify";
+import { normalizeUrl, ALLOWED_POST_URL_RE } from "@/lib/url-utils";
 
 /**
  * Google Sheets → 협찬 모니터링 동기화 엔드포인트
@@ -30,16 +31,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "rows 배열이 없습니다" }, { status: 400 });
   }
 
-  // URL이 없는 행 제거 (instagram / youtube / tiktok 허용, 서브도메인 포함: www, m, vt, vm 등)
-  const ALLOWED_URL_RE = /^https:\/\/([a-z0-9-]+\.)?(instagram\.com|youtube\.com|youtu\.be|tiktok\.com)\//i;
-  const rows = body.rows.filter((r: Record<string, unknown>) => r.url && ALLOWED_URL_RE.test(String(r.url)));
+  // 허용 플랫폼 URL만 (instagram / youtube / tiktok, 서브도메인 포함). 공유 상수 사용.
+  const rows = body.rows.filter((r: Record<string, unknown>) => r.url && ALLOWED_POST_URL_RE.test(String(r.url)));
   if (rows.length === 0) {
     return NextResponse.json({ ok: true, upserted: 0 });
   }
 
-  // URL 정규화 + 시트에서 직접 입력한 필드 포함
+  // URL 정규화 (bulk·stats-import와 동일한 normalizeUrl 사용 → 일관성) + 시트 입력 필드 포함
   const cleaned = rows.map((r: Record<string, unknown>) => ({
-    url:             String(r.url).replace(/\/$/, "") + "/",
+    url:             normalizeUrl(String(r.url)) || String(r.url),
     posted_at:       r.posted_at || null,
     account_name:    r.account_name || null,
     content_summary: r.content_summary || null,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { normalizeUrl } from "@/lib/url-utils";
+import { normalizeUrl, ALLOWED_POST_URL_RE } from "@/lib/url-utils";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -24,16 +24,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "행 배열(또는 {rows:[...]})이 필요합니다" }, { status: 400 });
   }
 
-  // URL 정규화 + 빈 URL 제거 (쿼리스트링/trailing slash 정규화로 중복 방지)
-  // + 같은 배치 내 중복 URL 제거 (Postgres upsert "cannot affect row a second time" 방지)
+  // 필드 명시 매핑 + 빈값→null 정제(""의 date/numeric 캐스트 오류·임의 키 방지)
+  // + URL 정규화 + 허용 플랫폼만 + 같은 배치 내 중복 URL 제거
   const seen = new Set<string>();
-  const rows = list
-    .map((r: Record<string, unknown>) => ({ ...r, url: r.url ? (normalizeUrl(String(r.url)) || r.url) : r.url }))
-    .filter((r: Record<string, unknown>) => {
-      if (!r.url) return false;
-      const key = String(r.url);
-      if (seen.has(key)) return false;
-      seen.add(key);
+  const rows = (list as Array<Record<string, unknown>>)
+    .map(r => ({
+      url:             r.url ? (normalizeUrl(String(r.url)) || String(r.url)) : "",
+      posted_at:       r.posted_at || null,
+      account_name:    r.account_name || null,
+      content_summary: r.content_summary || null,
+      channel_type:    r.channel_type || null,
+      project_name:    r.project_name || null,
+      product_name:    r.product_name || null,
+      cost:            r.cost != null && r.cost !== "" ? Number(r.cost) : null,
+    }))
+    .filter(r => {
+      if (!r.url || !ALLOWED_POST_URL_RE.test(r.url)) return false;
+      if (seen.has(r.url)) return false;
+      seen.add(r.url);
       return true;
     });
 

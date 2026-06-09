@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { normalizeUrl } from "@/lib/url-utils";
+import { normalizeUrl, ALLOWED_POST_URL_RE } from "@/lib/url-utils";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -48,9 +48,10 @@ export async function POST(req: NextRequest) {
   for (const p of postsIn) {
     if (!p || !p.url) continue;
     const url = normalizeUrl(String(p.url)) || String(p.url);
+    if (!ALLOWED_POST_URL_RE.test(url)) continue; // 허용 플랫폼만 신규 생성
     if (postByUrl.has(url)) continue;
     const clean: Record<string, unknown> = { url };
-    for (const f of POST_FIELDS) if (p[f] !== undefined) clean[f] = p[f];
+    for (const f of POST_FIELDS) if (p[f] !== undefined && p[f] !== "") clean[f] = p[f]; // ""→ 제외(date/numeric 캐스트 오류 방지)
     postByUrl.set(url, clean);
   }
 
@@ -59,31 +60,26 @@ export async function POST(req: NextRequest) {
   const allUrls = [...new Set([...items.map(i => i.url), ...postByUrl.keys()])];
   if (allUrls.length === 0) return NextResponse.json({ ok: true, inserted: 0, created_posts: 0, matched_urls: 0, missing_urls: 0 });
 
-  // 1) 기존 URL 조회
+  // 1) 기존 URL → id 조회 (한 번만)
   const { data: existing, error: ee } = await supabase
-    .from("sponsored_posts").select("url").in("url", allUrls);
+    .from("sponsored_posts").select("id, url").in("url", allUrls);
   if (ee) return NextResponse.json({ error: ee.message }, { status: 500 });
-  const existingUrls = new Set((existing ?? []).map((e: { url: string }) => e.url));
+  const idByUrl = new Map<string, string>((existing ?? []).map((e: { id: string; url: string }) => [e.url, e.id]));
 
-  // 2) 없는 광고만 신규 생성 (기존은 절대 건드리지 않음)
+  // 2) 없는 광고만 신규 생성 (기존은 절대 건드리지 않음). 새로 만든 id를 매핑에 합침 → 재조회 불필요.
   let created = 0;
-  const toCreate = [...postByUrl.values()].filter(p => !existingUrls.has(String(p.url)));
+  const toCreate = [...postByUrl.values()].filter(p => !idByUrl.has(String(p.url)));
   if (toCreate.length > 0) {
     const { data: ins, error: ie } = await supabase
       .from("sponsored_posts")
       .upsert(toCreate, { onConflict: "url", ignoreDuplicates: true })
-      .select("id");
+      .select("id, url");
     if (ie) return NextResponse.json({ error: ie.message }, { status: 500 });
+    for (const row of (ins ?? []) as Array<{ id: string; url: string }>) idByUrl.set(row.url, row.id);
     created = (ins ?? []).length;
   }
 
-  // 3) url → id 매핑 (신규 포함해 다시 조회)
-  const { data: posts2, error: pe } = await supabase
-    .from("sponsored_posts").select("id, url").in("url", allUrls);
-  if (pe) return NextResponse.json({ error: pe.message }, { status: 500 });
-  const idByUrl = new Map((posts2 ?? []).map((p: { id: string; url: string }) => [p.url, p.id]));
-
-  // 4) 조회수 upsert
+  // 3) 조회수 upsert
   const statsRows: Array<{ post_id: string; measured_at: string; play_count: number }> = [];
   const missing = new Set<string>();
   for (const it of items) {
