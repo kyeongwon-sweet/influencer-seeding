@@ -87,8 +87,8 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // 5) 실행: 패자 통계를 keeper로 누락 날짜만 병합 → 패자 삭제
-  let deleted = 0, mergedStats = 0;
+  // 5) 실행: 패자 통계를 keeper로 누락 날짜만 병합 → 패자 삭제 → keeper URL 정규화
+  let deleted = 0, mergedStats = 0, normalizedKeepers = 0;
   for (const g of plan) {
     for (const loser of g.losers) {
       const { data: ls } = await supabase
@@ -113,7 +113,13 @@ export async function GET(req: NextRequest) {
       if (de) return NextResponse.json({ error: de.message, deleted_so_far: deleted }, { status: 500 });
       deleted++;
     }
+    // 패자 삭제 후 keeper URL을 정규화형으로 통일 → 다음 등록 시 재중복 방지
+    if (g.keep.url !== g.key) {
+      const { error: ue } = await supabase.from("sponsored_posts").update({ url: g.key }).eq("id", g.keep.id);
+      if (ue) return NextResponse.json({ error: ue.message, deleted_so_far: deleted }, { status: 500 });
+      normalizedKeepers++;
+    }
   }
 
-  return NextResponse.json({ ok: true, dry_run: false, duplicate_groups: plan.length, deleted_posts: deleted, merged_stats: mergedStats });
+  return NextResponse.json({ ok: true, dry_run: false, duplicate_groups: plan.length, deleted_posts: deleted, merged_stats: mergedStats, normalized_keepers: normalizedKeepers });
 }
