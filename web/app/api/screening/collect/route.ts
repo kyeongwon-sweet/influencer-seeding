@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { ApifyClient } from "apify-client";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 async function fetchInstagramMetrics(username: string, apiToken: string) {
   try {
-    const { ApifyClient } = await import("apify-client");
     const client = new ApifyClient({ token: apiToken });
 
     console.log(`[LOG] @${username} 프로필 및 게시물 데이터 수집 중...`);

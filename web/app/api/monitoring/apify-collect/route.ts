@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { ApifyClient } from "apify-client";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -53,7 +54,6 @@ export async function POST(req: NextRequest) {
     console.log(`[LOG] 발견된 협찬 게시물: ${posts.length}개`);
 
     // 2. directUrls를 사용해서 개별 게시물별 조회수 수집 (추정치 금지!)
-    const { ApifyClient } = await import("apify-client");
     const client = new ApifyClient({ token: apiToken });
 
     const statsToInsert: Array<{

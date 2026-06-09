@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { ApifyClient } from "apify-client";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -92,7 +93,6 @@ export async function POST(req: NextRequest) {
         // Instagram 데이터 수집 (Apify)
         if (username && !isYoutube) {
           try {
-            const { ApifyClient } = await import("apify-client");
             const client = new ApifyClient({ token: apifyToken });
 
             const run = await client.actor("apify/instagram-scraper").call({
