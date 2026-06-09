@@ -141,6 +141,11 @@ function toNumber_(v) {
   return isNaN(n) ? null : n;
 }
 
+/** 스크립트 시간대 기준 오늘 (YYYY-MM-DD). 업로드일이 이보다 크면 미래 = 아직 게시 전. */
+function todayStr_() {
+  return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
+}
+
 // ═══════════════════════════════════════════════════════════════
 // 행 읽기
 // ═══════════════════════════════════════════════════════════════
@@ -155,8 +160,9 @@ function collectRows_(onlyNew) {
 
   const lastRow = sheet.getLastRow();
   const lastCol = sheet.getLastColumn();
-  let skipped = 0, dupCount = 0;
-  if (lastRow < CONFIG.DATA_START_ROW) return { rows: [], rowNums: [], statusCol, skipped, dupCount };
+  const today = todayStr_();
+  let skipped = 0, dupCount = 0, future = 0;
+  if (lastRow < CONFIG.DATA_START_ROW) return { rows: [], rowNums: [], statusCol, skipped, dupCount, future };
 
   const values = sheet
     .getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, lastCol)
@@ -175,8 +181,11 @@ function collectRows_(onlyNew) {
 
     if (!ALLOWED_URL_RE.test(rawUrl)) { skipped++; return; } // 지원 안 되는 URL
 
+    const postedAt = fieldCols.posted_at ? toDateStr_(row[fieldCols.posted_at - 1]) : null;
+    if (postedAt && postedAt > today) { future++; return; } // 업로드일이 오늘 이후 → 아직 게시 전, 제외
+
     const obj = { url: rawUrl };
-    if (fieldCols.posted_at)       obj.posted_at       = toDateStr_(row[fieldCols.posted_at - 1]);
+    if (fieldCols.posted_at)       obj.posted_at       = postedAt;
     if (fieldCols.account_name)    obj.account_name    = String(row[fieldCols.account_name - 1] || "").trim() || null;
     if (fieldCols.content_summary) obj.content_summary = String(row[fieldCols.content_summary - 1] || "").trim() || null;
     if (fieldCols.channel_type)    obj.channel_type    = String(row[fieldCols.channel_type - 1] || "").trim() || null;
@@ -191,7 +200,7 @@ function collectRows_(onlyNew) {
   });
 
   const rows = Object.keys(byKey).map(k => byKey[k]);
-  return { rows, rowNums, statusCol, skipped, dupCount };
+  return { rows, rowNums, statusCol, skipped, dupCount, future };
 }
 
 /** 중복 판정용 URL 키: 쿼리스트링·끝슬래시 제거 + 소문자 (서버 정규화와 동일 기준) */
@@ -199,9 +208,10 @@ function urlKey_(u) {
   return String(u).split("?")[0].replace(/\/+$/, "").toLowerCase();
 }
 
-function noteExtra_(skipped, dupCount) {
+function noteExtra_(skipped, dupCount, future) {
   let s = "";
   if (dupCount) s += `\n\n🔁 시트 내 중복 URL ${dupCount}건은 1건으로 합쳐 전송(중복 추가 방지).`;
+  if (future)   s += `\n⏭️ 업로드일이 오늘 이후인 행 ${future}건 제외(아직 게시 전).`;
   if (skipped)  s += `\n⚠️ 지원 플랫폼(IG/YT/TikTok) URL이 아니어서 제외됨: ${skipped}건`;
   return s;
 }
@@ -282,14 +292,14 @@ function markRegistered_(sheet, statusCol, rowNums) {
 // ═══════════════════════════════════════════════════════════════
 function runSync_(onlyNew) {
   try {
-    const { rows, rowNums, statusCol, skipped, dupCount } = collectRows_(onlyNew);
+    const { rows, rowNums, statusCol, skipped, dupCount, future } = collectRows_(onlyNew);
     if (rows.length === 0) {
-      safeAlert_((onlyNew ? "추가할 신규 광고가 없습니다." : "추가할 광고가 없습니다.") + noteExtra_(skipped, dupCount));
+      safeAlert_((onlyNew ? "추가할 신규 광고가 없습니다." : "추가할 광고가 없습니다.") + noteExtra_(skipped, dupCount, future));
       return;
     }
     const count = postRows_(rows);
     markRegistered_(getSheet_(), statusCol, rowNums);
-    safeAlert_(`✅ ${count}개 광고를 사이트에 추가했습니다.` + noteExtra_(skipped, dupCount) + blankNote_());
+    safeAlert_(`✅ ${count}개 광고를 사이트에 추가했습니다.` + noteExtra_(skipped, dupCount, future) + blankNote_());
   } catch (e) {
     safeAlert_("❌ 오류\n" + e.message);
     Logger.log(e.stack || e.message);
@@ -356,11 +366,16 @@ function importStats() {
       .getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, lastCol)
       .getValues();
 
+    const today = todayStr_();
+    let future = 0;
     const stats = [];
     const postByKey = {}; // url-key → 광고 메타 (첫 행 우선). 없는 광고 생성용, 기존은 서버가 덮어쓰지 않음.
     values.forEach(row => {
       const url = String(row[fieldCols.url - 1] || "").trim();
       if (!url || !ALLOWED_URL_RE.test(url)) return; // URL 없거나 미지원
+
+      const postedAt = fieldCols.posted_at ? toDateStr_(row[fieldCols.posted_at - 1]) : null;
+      if (postedAt && postedAt > today) { future++; return; } // 업로드일이 오늘 이후 → 아직 게시 전, 제외
 
       const key = urlKey_(url);
       if (!postByKey[key]) {
@@ -388,6 +403,7 @@ function importStats() {
     const res = postStats_({ posts: posts, stats: stats });
     let msg = `✅ 일자별 조회수 ${res.inserted}건 입력 완료.\n(날짜 ${dateCols.length}개 열 · 매칭 게시물 ${res.matched_urls}개`;
     msg += res.created_posts ? ` · 신규 광고 ${res.created_posts}개 자동 생성)` : `)`;
+    if (future) msg += `\n⏭️ 업로드일이 오늘 이후인 행 ${future}건 제외(아직 게시 전).`;
     if (res.missing_urls) {
       msg += `\n\n⚠️ 처리 못한 URL ${res.missing_urls}개 (예: ${(res.missing_sample || []).join(", ")})`;
     }
@@ -400,12 +416,12 @@ function importStats() {
 
 function previewNew() {
   try {
-    const { rows, skipped, dupCount } = collectRows_(true);
-    if (rows.length === 0) { safeAlert_("추가할 신규 광고가 없습니다." + noteExtra_(skipped, dupCount)); return; }
+    const { rows, skipped, dupCount, future } = collectRows_(true);
+    if (rows.length === 0) { safeAlert_("추가할 신규 광고가 없습니다." + noteExtra_(skipped, dupCount, future)); return; }
     const sample = rows.slice(0, 5)
       .map((r, i) => `${i + 1}. ${r.url}\n   채널:${r.account_name || "-"} / 분류:${r.channel_type || "-"} / 프로젝트:${r.project_name || "-"} / 비용:${r.cost != null ? r.cost : "-"}`)
       .join("\n");
-    safeAlert_(`총 ${rows.length}개 추가 예정 (상위 5개 미리보기)\n\n${sample}` + noteExtra_(skipped, dupCount));
+    safeAlert_(`총 ${rows.length}개 추가 예정 (상위 5개 미리보기)\n\n${sample}` + noteExtra_(skipped, dupCount, future));
   } catch (e) {
     safeAlert_("❌ 오류\n" + e.message);
   }
