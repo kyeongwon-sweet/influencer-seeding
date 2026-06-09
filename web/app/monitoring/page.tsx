@@ -271,6 +271,13 @@ function productLabel(name: string): string {
   return parts.length === 2 && parts[0] === parts[1] ? parts[0] : name;
 }
 
+// 도달수: 수동 입력값이 있으면 그 값, 없으면 조회수의 80% 자동 추정
+function effectiveReach(reachCount: number | null | undefined, playCount: number | null | undefined): number | null {
+  if (reachCount != null) return reachCount;
+  if (playCount != null && playCount > 0) return Math.round(playCount * 0.8);
+  return null;
+}
+
 function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData, secondaryData, secondaryColor = "#ea580c", extraSeries }: {
   data: { date: string; value: number }[];
   height?: number;
@@ -1113,16 +1120,18 @@ export default function MonitoringPage() {
       case "유형": av = getPostType(a.url); bv = getPostType(b.url); break;
       case "게시일": av = a.posted_at ?? ""; bv = b.posted_at ?? ""; break;
       case "조회수": av = sa?.play_count ?? -1; bv = sb?.play_count ?? -1; break;
-      case "도달수": av = a.reach_count ?? -1; bv = b.reach_count ?? -1; break;
+      case "도달수": av = effectiveReach(a.reach_count, sa?.play_count) ?? -1; bv = effectiveReach(b.reach_count, sb?.play_count) ?? -1; break;
       case "비용": av = a.cost ?? -1; bv = b.cost ?? -1; break;
       case "조회당비용":
         av = (a.cost != null && sa?.play_count != null && sa.play_count > 0) ? a.cost / sa.play_count : Infinity;
         bv = (b.cost != null && sb?.play_count != null && sb.play_count > 0) ? b.cost / sb.play_count : Infinity;
         break;
-      case "도달당비용":
-        av = (a.cost != null && a.reach_count != null && a.reach_count > 0) ? a.cost / a.reach_count : Infinity;
-        bv = (b.cost != null && b.reach_count != null && b.reach_count > 0) ? b.cost / b.reach_count : Infinity;
+      case "도달당비용": {
+        const ra = effectiveReach(a.reach_count, sa?.play_count), rb = effectiveReach(b.reach_count, sb?.play_count);
+        av = (a.cost != null && ra != null && ra > 0) ? a.cost / ra : Infinity;
+        bv = (b.cost != null && rb != null && rb > 0) ? b.cost / rb : Infinity;
         break;
+      }
     }
     const cmp = av < bv ? -1 : av > bv ? 1 : 0;
     return sortDir === "asc" ? cmp : -cmp;
@@ -1138,7 +1147,7 @@ export default function MonitoringPage() {
     const rows = sortedPosts.map(post => {
       const s = post.latest_stats;
       const play = s?.play_count ?? null;
-      const reach = post.reach_count ?? null;
+      const reach = effectiveReach(post.reach_count, play);
       const cost = post.cost ?? null;
       const cpr = cost != null && play != null && play > 0 ? (cost / play).toFixed(2) : "";
       const cpreach = cost != null && reach != null && reach > 0 ? (cost / reach).toFixed(2) : "";
@@ -2153,15 +2162,26 @@ export default function MonitoringPage() {
                             onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "reach_count", editCell.value); if (e.key === "Escape") { e.preventDefault(); setEditCell(null); }; }}
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
                         ) : (
-                          <span className="text-a-ink-muted hover:text-a-blue transition-colors">
-                            {post.reach_count != null ? post.reach_count.toLocaleString() : <span className="text-gray-300">-</span>}
-                          </span>
+                          (() => {
+                            const eff = effectiveReach(post.reach_count, s?.play_count);
+                            if (eff == null) return <span className="text-gray-300">-</span>;
+                            const isAuto = post.reach_count == null;
+                            return (
+                              <span className={`hover:text-a-blue transition-colors ${isAuto ? "text-gray-400" : "text-a-ink-muted"}`}
+                                title={isAuto ? "조회수의 80% 자동 추정" : undefined}>
+                                {eff.toLocaleString()}
+                              </span>
+                            );
+                          })()
                         )}
                       </td>
                       <TD right muted w={colWidths["도달당비용"]}>
-                        {post.cost != null && post.reach_count != null && post.reach_count > 0
-                          ? (post.cost / post.reach_count).toFixed(2) + "원"
-                          : <span className="text-gray-300">-</span>}
+                        {(() => {
+                          const eff = effectiveReach(post.reach_count, s?.play_count);
+                          return post.cost != null && eff != null && eff > 0
+                            ? (post.cost / eff).toFixed(2) + "원"
+                            : <span className="text-gray-300">-</span>;
+                        })()}
                       </TD>
                       <TD muted w={10} fixed>
                         {editCell?.postId === post.id && editCell?.field === "content_summary" ? (
