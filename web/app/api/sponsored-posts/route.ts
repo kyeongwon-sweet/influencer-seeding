@@ -6,8 +6,8 @@ import { logger } from "@/lib/logger";
 
 export async function GET(req: NextRequest) {
   // URL 정규화 마이그레이션 엔드포인트
-  const url = new URL(req.url);
-  if (url.searchParams.has('normalize')) {
+  // (req.url 은 Vercel 런타임에서 쿼리가 누락될 수 있어 req.nextUrl 사용)
+  if (req.nextUrl.searchParams.has('normalize')) {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
