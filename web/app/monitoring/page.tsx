@@ -573,7 +573,7 @@ export default function MonitoringPage() {
     "증분량": 80,
   });
   const [colWidths, setColWidths] = useState<Record<string, number>>({
-    "채널분류": 100, "게시일": 104, "캡션": 10, "인플루언서": 80, "상품명": 150, "프로젝트명": 150, "비용": 120, "조회수": 100, "조회당비용": 110, "도달수": 100, "도달당비용": 110, "좋아요": 80, "댓글": 80, "트렌드": 90, "특이사항": 160, "삭제": 60,
+    "채널분류": 100, "게시일": 104, "캡션": 40, "인플루언서": 80, "상품명": 150, "프로젝트명": 150, "비용": 120, "조회수": 100, "조회당비용": 110, "도달수": 100, "도달당비용": 110, "좋아요": 80, "댓글": 80, "트렌드": 90, "특이사항": 160, "삭제": 60,
   });
   const resizingRef = useRef<{ col: string; startX: number; startW: number; isSticky: boolean } | null>(null);
 
@@ -1967,9 +1967,16 @@ export default function MonitoringPage() {
                       </div>
                     </span>
                   </TH>
-                  <TH right w={colWidths["도달수"]} onResize={e => startResize("도달수", e)} {...sp("도달수")}>도달수</TH>
+                  <TH right w={colWidths["도달수"]} onResize={e => startResize("도달수", e)} {...sp("도달수")}>
+                    <span className="group/reach relative">
+                      도달수
+                      <div className="hidden group-hover/reach:block absolute top-full right-0 mt-1.5 z-[9999] bg-white border border-a-hairline rounded-[10px] px-3.5 py-3 shadow-lg min-w-[180px] pointer-events-none text-left font-normal normal-case tracking-normal">
+                        <p className="text-[11px] text-a-ink-muted">조회수 × 80%로, 추정치입니다.</p>
+                      </div>
+                    </span>
+                  </TH>
                   <TH right w={colWidths["도달당비용"]} onResize={e => startResize("도달당비용", e)} {...sp("도달당비용")}>도달당비용</TH>
-                  <TH w={10} fixed>캡션</TH>
+                  <TH w={40} fixed>캡션</TH>
                   <TH right w={colWidths["좋아요"]} onResize={e => startResize("좋아요", e)} {...sp("좋아요")}>좋아요</TH>
                   <TH right w={colWidths["댓글"]} onResize={e => startResize("댓글", e)} {...sp("댓글")}>댓글</TH>
                   <TH className="text-center" w={colWidths["트렌드"]} onResize={e => startResize("트렌드", e)}>트렌드</TH>
@@ -2183,7 +2190,7 @@ export default function MonitoringPage() {
                             : <span className="text-gray-300">-</span>;
                         })()}
                       </TD>
-                      <TD muted w={10} fixed>
+                      <TD muted w={40} fixed>
                         {editCell?.postId === post.id && editCell?.field === "content_summary" ? (
                           <textarea
                             autoFocus
