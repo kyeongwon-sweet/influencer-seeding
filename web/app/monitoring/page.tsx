@@ -24,6 +24,7 @@ type Post = {
   notes: string | null;
   content_summary: string | null;
   created_at: string;
+  ended_at: string | null;
   influencers: { id: string; name: string; platform: string; post_type: string | null; category?: string | null } | null;
   latest_stats: DailyStats | null;
   prev_stats: DailyStats | null;
@@ -2069,6 +2070,10 @@ export default function MonitoringPage() {
                               </a>
                             ) : (
                               <span className="font-medium text-left truncate min-w-0">{displayName}</span>
+                            )}
+                            {post.ended_at && (
+                              <span title={`${post.ended_at} 이후 수집 중단 — 게시물 삭제 추정 (이전 데이터는 보존)`}
+                                className="flex-shrink-0 text-[10px] leading-none px-1 py-0.5 rounded bg-gray-100 text-gray-400 border border-gray-200">종료</span>
                             )}
                             <button onClick={async () => {
                               try { await navigator.clipboard.writeText(post.url); toast("링크가 복사됐습니다.", "success"); } catch {}

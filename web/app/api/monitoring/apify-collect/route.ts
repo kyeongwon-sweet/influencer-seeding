@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     // 1. 모든 협찬 게시물 조회
     const { data: posts, error: postsError } = await supabase
       .from("sponsored_posts")
-      .select("id, account_name, url, posted_at");
+      .select("id, account_name, url, posted_at, ended_at");
 
     if (postsError) {
       throw new Error(`Failed to fetch posts: ${postsError.message}`);
@@ -64,13 +64,15 @@ export async function POST(req: NextRequest) {
       comments_count: number | null;
     }> = [];
 
+    let endedMarked = 0;
+
     // KST 기준 오늘 날짜 (UTC-09:00 보정)
     const now = new Date();
     const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
     const today = kstNow.toISOString().split("T")[0];
 
-    // Instagram 게시물만 필터링
-    const igPosts = posts.filter((p) => p.url.includes("instagram.com"));
+    // Instagram 게시물만 필터링 (이미 '종료(ended_at)' 처리된 글은 수집 제외 — 비용↓, 0 노이즈 제거)
+    const igPosts = posts.filter((p) => p.url.includes("instagram.com") && !p.ended_at);
 
     if (igPosts.length === 0) {
       return NextResponse.json({
@@ -114,16 +116,22 @@ export async function POST(req: NextRequest) {
         urlToStats[url] = { views, likes, comments };
       }
 
-      // 직전(today 이전) 마지막 조회수 — 누적 단조성 검증용
-      const { data: priorStats } = await supabase
-        .from("post_daily_stats")
-        .select("post_id, play_count, measured_at")
-        .lt("measured_at", today)
-        .order("measured_at", { ascending: false });
-
+      // 직전(today 이전) 마지막 조회수·날짜 — 누적 단조성 검증 + 자동 '종료' 감지용
+      // (전체 페이지네이션: 1000행 상한으로 오래된 글이 누락되면 감지가 안 되므로 전부 조회)
       const lastKnownPlay = new Map<string, number>();
-      for (const s of priorStats || []) {
-        if (!lastKnownPlay.has(s.post_id)) lastKnownPlay.set(s.post_id, s.play_count ?? 0);
+      const lastMeasuredAt = new Map<string, string>();
+      for (let from = 0; ; from += 1000) {
+        const { data: page } = await supabase
+          .from("post_daily_stats")
+          .select("post_id, play_count, measured_at")
+          .lt("measured_at", today)
+          .order("measured_at", { ascending: false })
+          .range(from, from + 999);
+        for (const s of page || []) {
+          if (!lastKnownPlay.has(s.post_id)) lastKnownPlay.set(s.post_id, s.play_count ?? 0);
+          if (!lastMeasuredAt.has(s.post_id)) lastMeasuredAt.set(s.post_id, s.measured_at);
+        }
+        if (!page || page.length < 1000) break;
       }
 
       let skipped = 0;
@@ -164,6 +172,25 @@ export async function POST(req: NextRequest) {
       if (skipped > 0) {
         console.warn(`[WARN] ${skipped}개 게시물 저장 제외 (미반환/조회수 감소)`);
       }
+
+      // 🛑 자동 '종료' 감지: 이전 조회수>0였는데 ENDED_DAYS일째 Apify 미반환 → 삭제 추정.
+      //    ended_at 기록(데이터는 보존, 향후 수집 제외). 일시적 스크랩 실패 오탐 방지를 위해 7일 기준.
+      const ENDED_DAYS = 7;
+      for (const post of igPosts) {
+        const cleanUrl = post.url.split("?")[0];
+        if (cleanUrl in urlToStats) continue; // 오늘 정상 수집됨 → 살아있음
+        const prevPlay = lastKnownPlay.get(post.id);
+        const last = lastMeasuredAt.get(post.id);
+        if (!prevPlay || prevPlay <= 0 || !last) continue; // 이전 실데이터 없으면 종료 판단 안 함
+        const gapDays = Math.floor((Date.parse(today) - Date.parse(last)) / 86400000);
+        if (gapDays < ENDED_DAYS) continue;
+        const { error: endErr } = await supabase
+          .from("sponsored_posts").update({ ended_at: last }).eq("id", post.id);
+        if (!endErr) {
+          endedMarked++;
+          console.warn(`[ENDED] ${cleanUrl} (post_id=${post.id.substring(0, 8)}): ${gapDays}일째 미반환 → 종료 처리(ended_at=${last})`);
+        }
+      }
     } catch (apifyError) {
       console.error("[ERROR] Apify 수집 실패:", apifyError);
       throw new Error(
@@ -194,6 +221,7 @@ export async function POST(req: NextRequest) {
       message: "Apify data collection completed",
       posts_processed: posts.length,
       stats_collected: statsToInsert.length,
+      ended_marked: endedMarked,
       measured_at: today,
     });
   } catch (error) {
