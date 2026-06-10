@@ -50,9 +50,10 @@ export async function GET(req) {
     // 참고: https://developers.facebook.com/docs/marketing-api/insights
     const url = new URL(`https://graph.facebook.com/v18.0/act_${accountId}/insights`);
     url.searchParams.append('fields', 'spend,date_start');
-    url.searchParams.append('since', dateFrom);
-    url.searchParams.append('until', dateTo);
-    url.searchParams.append('time_increment', '1');  // ← 없으면 버그 발생!
+    // ⚠️ since/until을 따로 넘기면 Meta Insights가 무시하고 기본 구간만 반환함.
+    //    반드시 time_range JSON으로 전달해야 요청한 날짜 범위가 적용됨.
+    url.searchParams.append('time_range', JSON.stringify({ since: dateFrom, until: dateTo }));
+    url.searchParams.append('time_increment', '1');  // ← 없으면 기간 누적 1건만 반환
     url.searchParams.append('access_token', accessToken);
 
     // 3. API 요청
