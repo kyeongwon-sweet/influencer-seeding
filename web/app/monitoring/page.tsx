@@ -1685,6 +1685,12 @@ export default function MonitoringPage() {
                         <span className="text-xs text-a-ink-muted">인스타 유입(도달)</span>
                       </div>
                     )}
+                    {brandMetrics.some(d => d.ig_profile_views != null) && (
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-0.5" style={{ backgroundColor: "#b8a6d9" }} />
+                        <span className="text-xs text-a-ink-muted">인스타 프로필 방문</span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <LineChart
@@ -1708,6 +1714,15 @@ export default function MonitoringPage() {
                       members: [{
                         label: "인스타 도달",
                         data: brandMetrics.map(d => ({ date: d.measured_at, value: d.ig_reach })),
+                      }],
+                    }] : []),
+                    // 라라스윗 공식 인스타 프로필 방문 — brandMetrics.ig_profile_views
+                    ...(brandMetrics.some(d => d.ig_profile_views != null) ? [{
+                      name: "인스타 프로필 방문",
+                      color: "#b8a6d9",
+                      members: [{
+                        label: "인스타 프로필 방문",
+                        data: brandMetrics.map(d => ({ date: d.measured_at, value: d.ig_profile_views })),
                       }],
                     }] : []),
                   ]}
