@@ -1674,6 +1674,12 @@ export default function MonitoringPage() {
                         <span className="text-xs text-a-ink-muted">{c.label}</span>
                       </div>
                     ))}
+                    {brandMetrics.some(d => d.ig_reach != null) && (
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-0.5" style={{ backgroundColor: "#E1306C" }} />
+                        <span className="text-xs text-a-ink-muted">인스타 유입(도달)</span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <LineChart
@@ -1681,14 +1687,25 @@ export default function MonitoringPage() {
                   height={160}
                   gradId="summaryGrad"
                   lsData={lsSearchData}
-                  extraSeries={activeProductSeries.map(c => ({
-                    name: c.label,
-                    color: productColorOf(c.id),
-                    members: c.members.map(col => ({
-                      label: productLabel(col),
-                      data: productTrends.data.map(row => ({ date: row.date, value: row.values[col] ?? null })),
+                  extraSeries={[
+                    ...activeProductSeries.map(c => ({
+                      name: c.label,
+                      color: productColorOf(c.id),
+                      members: c.members.map(col => ({
+                        label: productLabel(col),
+                        data: productTrends.data.map(row => ({ date: row.date, value: row.values[col] ?? null })),
+                      })),
                     })),
-                  }))}
+                    // 라라스윗 공식 인스타 유입(도달) — brandMetrics.ig_reach, 데이터 있을 때만
+                    ...(brandMetrics.some(d => d.ig_reach != null) ? [{
+                      name: "인스타 유입(도달)",
+                      color: "#E1306C",
+                      members: [{
+                        label: "인스타 도달",
+                        data: brandMetrics.map(d => ({ date: d.measured_at, value: d.ig_reach })),
+                      }],
+                    }] : []),
+                  ]}
                   secondaryData={mainAdCosts.length > 0 ? mainAdCosts.map(d => ({date: d.date, value: d.total_cost})) : undefined}
                   secondaryColor="#b3b3b3"
                   postsOnDate={(date) =>
