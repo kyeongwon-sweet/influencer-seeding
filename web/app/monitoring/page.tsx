@@ -561,7 +561,7 @@ export default function MonitoringPage() {
   const [filters, setFilters] = useState<Filters>(INIT_FILTERS);
   const [dateTooltip, setDateTooltip] = useState<{ date: string; x: number; y: number } | null>(null);
   const [lsSearchData, setLsSearchData] = useState<{ date: string; ratio: number; value: number | null }[]>([]);
-  const [brandMetrics, setBrandMetrics] = useState<{ measured_at: string; yt_views: number | null; yt_unique_viewers: number | null; yt_search_views: number | null; ig_profile_views: number | null; ig_reach: number | null }[]>([]);
+  const [brandMetrics, setBrandMetrics] = useState<{ measured_at: string; yt_views: number | null; yt_unique_viewers: number | null; yt_search_views: number | null; ig_profile_views: number | null }[]>([]);
   const [productTrends, setProductTrends] = useState<{ products: string[]; data: { date: string; values: Record<string, number | null> }[] }>({ products: [], data: [] });
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");

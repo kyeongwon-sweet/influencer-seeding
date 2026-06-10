@@ -63,10 +63,10 @@ async function fetchInstagramMetrics(dateStr: string) {
   // Facebook 로그인 경로(graph.facebook.com)로 인사이트 조회.
   // INSTAGRAM_USER_ID = Facebook 페이지에 연결된 IG 비즈니스 계정 ID,
   // INSTAGRAM_ACCESS_TOKEN = 해당 권한(instagram_manage_insights 등)을 가진 장기 토큰.
-  // reach(도달), profile_views(프로필 방문) 모두 metric_type=total_value 필수.
+  // profile_views(프로필 방문) 조회. metric_type=total_value 필수.
   // ※ profile_views는 폐기가 아니라 total_value 형식 요구로 변경된 것 (Business Suite '프로필 방문'과 동일).
   const url = new URL(`https://graph.facebook.com/v23.0/${userId}/insights`);
-  url.searchParams.set("metric",       "reach,profile_views");
+  url.searchParams.set("metric",       "profile_views");
   url.searchParams.set("metric_type",  "total_value");
   url.searchParams.set("period",       "day");
   url.searchParams.set("since",        String(since));
@@ -85,7 +85,6 @@ async function fetchInstagramMetrics(dateStr: string) {
   }
 
   return {
-    ig_reach:         metrics["reach"] ?? null,
     ig_profile_views: metrics["profile_views"] ?? null,
   };
 }
@@ -118,7 +117,6 @@ export async function POST(req: NextRequest) {
       yt_unique_viewers: yt?.yt_unique_viewers ?? null,
       yt_search_views:   yt?.yt_search_views   ?? null,
       ig_profile_views:  ig?.ig_profile_views  ?? null,
-      ig_reach:          ig?.ig_reach          ?? null,
     });
   }
 
