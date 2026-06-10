@@ -5,6 +5,12 @@ import { createApifyClient } from "@/lib/apify";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
+// 인스타 shortcode 추출 — Apify는 /reel/을 /p/로 반환하므로 전체 URL이 아닌 shortcode로 매칭
+function igShortcode(url: string): string | null {
+  const m = (url || "").match(/\/(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)/);
+  return m ? m[1] : null;
+}
+
 /**
  * Apify를 사용해서 협찬 게시물의 실시간 조회수/좋아요/댓글 수집
  * POST /api/monitoring/apify-collect
@@ -109,12 +115,13 @@ export async function POST(req: NextRequest) {
       for (const item of resultItems) {
         if (item.error) continue; // 에러 아이템 스킵
 
-        const url = (item.url || "").split("?")[0];
+        const sc = igShortcode(item.url);
+        if (!sc) continue;
         const views = item.videoPlayCount || item.videoViewCount || item.impressions || item.viewCount || item.count || 0;
         const likes = item.likesCount || item.likeCount || 0;
         const comments = item.commentsCount || item.commentCount || item.comments || 0;
 
-        urlToStats[url] = { views, likes, comments };
+        urlToStats[sc] = { views, likes, comments };
       }
 
       // 직전(today 이전) 마지막 조회수·날짜 — 누적 단조성 검증 + 자동 '종료' 감지용
@@ -140,14 +147,16 @@ export async function POST(req: NextRequest) {
       // 각 게시물별로 개별 데이터 저장
       for (const post of igPosts) {
         const cleanUrl = post.url.split("?")[0];
+        const sc = igShortcode(post.url);
 
         // 🛡️ 재발방지: Apify 미반환 → 0으로 덮어쓰지 않고 건너뜀 (화면은 직전 값 유지)
-        if (!(cleanUrl in urlToStats)) {
+        // 매칭은 shortcode 기준 (Apify가 /reel/을 /p/로 반환 → 전체 URL 매칭은 실패)
+        if (!sc || !(sc in urlToStats)) {
           console.warn(`[SKIP] Apify 미반환: ${cleanUrl} (post_id=${post.id.substring(0, 8)}) → 0 저장 안 함`);
           skipped++;
           continue;
         }
-        const stats = urlToStats[cleanUrl];
+        const stats = urlToStats[sc];
 
         // 🛡️ 재발방지: 누적 조회수 감소 = 수집 오류 → 저장 안 함
         const prevPlay = lastKnownPlay.get(post.id);
