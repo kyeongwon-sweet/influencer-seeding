@@ -416,7 +416,16 @@ function importStats() {
     if (res.meta_filled) msg += `\n📝 기존 광고의 빈 항목 ${res.meta_filled}건을 시트 값으로 채움(채널 분류 등).`;
     if (res.ended_marked) msg += `\n🛑 캡션 '삭제/보관' ${res.ended_marked}건 → '종료' 처리됨.`;
     if (future) msg += `\n⏭️ 업로드일이 오늘 이후인 행 ${future}건 제외(아직 게시 전).`;
-    if (res.dropped_decrease) msg += `\n🛡️ 누적 조회수가 직전보다 낮은(수집 오류) ${res.dropped_decrease}건은 저장 제외.`;
+    if (res.dropped_decrease) {
+      msg += `\n🛡️ 누적 조회수가 직전보다 낮은(수집 오류) ${res.dropped_decrease}건은 저장 제외.`;
+      if (res.dropped_sample && res.dropped_sample.length) {
+        const ex = res.dropped_sample.slice(0, 8).map(function(d) {
+          const tail = String(d.url || "").split("/").filter(String).slice(-2).join("/");
+          return `  · ${tail} ${d.date}: 입력 ${d.value} < 기존 ${d.blocked_by}(${d.blocked_date})`;
+        }).join("\n");
+        msg += `\n(예시 — 입력값이 기존값보다 낮아 막힘):\n${ex}`;
+      }
+    }
     if (res.missing_urls) {
       msg += `\n\n⚠️ 처리 못한 URL ${res.missing_urls}개 (예: ${(res.missing_sample || []).join(", ")})`;
     }

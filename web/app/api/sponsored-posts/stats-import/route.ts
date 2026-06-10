@@ -156,6 +156,9 @@ export async function POST(req: NextRequest) {
   //    신규 값은 dip(수집/입력 오류)으로 보고 저장하지 않음. (과거의 정상적인 낮은 값은 보존)
   const statsRows: Array<{ post_id: string; measured_at: string; play_count: number }> = [];
   let droppedDecrease = 0;
+  // 진단용: 제외된 건 샘플(어떤 글의 어느 날짜 값이, 어느 날짜의 어떤 값에 막혔는지)
+  const urlByPid = new Map<string, string>([...idByUrl.entries()].map(([u, id]) => [id, u]));
+  const droppedSample: Array<{ url: string; date: string; value: number; blocked_by: number; blocked_date: string }> = [];
   for (const pid of postIds) {
     const incomingArr = incomingByPost.get(pid) ?? [];
     const incomingDates = new Set(incomingArr.map(x => x.measured_at));
@@ -165,16 +168,28 @@ export async function POST(req: NextRequest) {
     ].sort((a, b) => (a.measured_at < b.measured_at ? -1 : a.measured_at > b.measured_at ? 1 : 0));
 
     let maxSoFar = 0;
+    let maxDate = "";
     for (const e of timeline) {
       if (e.incoming) {
         if (e.play_count >= maxSoFar) {
           statsRows.push({ post_id: pid, measured_at: e.measured_at, play_count: e.play_count });
           maxSoFar = e.play_count;
+          maxDate = e.measured_at;
         } else {
           droppedDecrease++; // 이른 날짜 최대보다 낮음 = 누적 감소 → 저장 안 함
+          if (droppedSample.length < 20) {
+            droppedSample.push({
+              url: urlByPid.get(pid) ?? pid,
+              date: e.measured_at,
+              value: e.play_count,
+              blocked_by: maxSoFar,
+              blocked_date: maxDate,
+            });
+          }
         }
       } else if (e.play_count > maxSoFar) {
         maxSoFar = e.play_count;
+        maxDate = e.measured_at;
       }
     }
   }
@@ -196,6 +211,7 @@ export async function POST(req: NextRequest) {
     meta_filled: metaFilled,
     ended_marked: endedMarked,
     dropped_decrease: droppedDecrease,
+    dropped_sample: droppedSample,
     matched_urls: [...new Set(items.map(i => i.url))].length - missing.size,
     missing_urls: missing.size,
     missing_sample: [...missing].slice(0, 5),
