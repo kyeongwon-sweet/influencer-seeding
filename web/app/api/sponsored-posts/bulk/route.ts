@@ -57,5 +57,21 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ ok: true, upserted: (data ?? []).length }, { status: 200 });
+  // 캡션이 '삭제' 마커인 행 → '종료'(ended_at) 처리. 이미 종료된 건은 날짜 유지(중복 방지).
+  const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const endedUrls = rows
+    .filter(r => String(r.content_summary ?? "").trim() === "삭제")
+    .map(r => r.url);
+  let endedMarked = 0;
+  if (endedUrls.length > 0) {
+    const { data: upd } = await supabase
+      .from("sponsored_posts")
+      .update({ ended_at: today })
+      .in("url", endedUrls)
+      .is("ended_at", null)
+      .select("id");
+    endedMarked = (upd ?? []).length;
+  }
+
+  return NextResponse.json({ ok: true, upserted: (data ?? []).length, ended_marked: endedMarked }, { status: 200 });
 }

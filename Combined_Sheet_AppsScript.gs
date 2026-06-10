@@ -284,7 +284,10 @@ function postRows_(rows) {
   const body = res.getContentText();
   if (code !== 200) throw new Error(`API ${code}: ${body}`);
   const data = JSON.parse(body);
-  return data.upserted != null ? data.upserted : rows.length; // 추가된 건수
+  return {
+    count: data.upserted != null ? data.upserted : rows.length, // 추가된 건수
+    ended: data.ended_marked || 0,                              // 캡션 '삭제' → 종료 처리 건수
+  };
 }
 
 function markRegistered_(sheet, statusCol, rowNums) {
@@ -302,9 +305,11 @@ function runSync_(onlyNew) {
       safeAlert_((onlyNew ? "추가할 신규 광고가 없습니다." : "추가할 광고가 없습니다.") + noteExtra_(skipped, dupCount, future));
       return;
     }
-    const count = postRows_(rows);
+    const { count, ended } = postRows_(rows);
     markRegistered_(getSheet_(), statusCol, rowNums);
-    safeAlert_(`✅ ${count}개 광고를 사이트에 추가했습니다.` + noteExtra_(skipped, dupCount, future) + blankNote_());
+    let okMsg = `✅ ${count}개 광고를 사이트에 추가했습니다.`;
+    if (ended) okMsg += `\n🛑 캡션 '삭제' ${ended}건 → '종료' 처리됨.`;
+    safeAlert_(okMsg + noteExtra_(skipped, dupCount, future) + blankNote_());
   } catch (e) {
     safeAlert_("❌ 오류\n" + e.message);
     Logger.log(e.stack || e.message);
@@ -409,6 +414,7 @@ function importStats() {
     let msg = `✅ 일자별 조회수 ${res.inserted}건 입력 완료.\n(날짜 ${dateCols.length}개 열 · 매칭 게시물 ${res.matched_urls}개`;
     msg += res.created_posts ? ` · 신규 광고 ${res.created_posts}개 자동 생성)` : `)`;
     if (res.meta_filled) msg += `\n📝 기존 광고의 빈 항목 ${res.meta_filled}건을 시트 값으로 채움(채널 분류 등).`;
+    if (res.ended_marked) msg += `\n🛑 캡션 '삭제' ${res.ended_marked}건 → '종료' 처리됨.`;
     if (future) msg += `\n⏭️ 업로드일이 오늘 이후인 행 ${future}건 제외(아직 게시 전).`;
     if (res.dropped_decrease) msg += `\n🛡️ 누적 조회수가 직전보다 낮은(수집 오류) ${res.dropped_decrease}건은 저장 제외.`;
     if (res.missing_urls) {

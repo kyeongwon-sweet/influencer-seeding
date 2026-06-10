@@ -104,6 +104,22 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // 2-c) 캡션이 '삭제' 마커인 글 → '종료'(ended_at) 처리. 이미 종료된 건은 날짜 유지.
+  const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const endedUrls = [...postByUrl.entries()]
+    .filter(([, m]) => String(m.content_summary ?? "").trim() === "삭제")
+    .map(([u]) => u);
+  let endedMarked = 0;
+  if (endedUrls.length > 0) {
+    const { data: upd } = await supabase
+      .from("sponsored_posts")
+      .update({ ended_at: today })
+      .in("url", endedUrls)
+      .is("ended_at", null)
+      .select("id");
+    endedMarked = (upd ?? []).length;
+  }
+
   // 3) 게시물 매칭 (미등록 URL은 건너뜀)
   const missing = new Set<string>();
   const incomingByPost = new Map<string, Array<{ measured_at: string; play_count: number }>>();
@@ -178,6 +194,7 @@ export async function POST(req: NextRequest) {
     inserted,
     created_posts: created,
     meta_filled: metaFilled,
+    ended_marked: endedMarked,
     dropped_decrease: droppedDecrease,
     matched_urls: [...new Set(items.map(i => i.url))].length - missing.size,
     missing_urls: missing.size,
