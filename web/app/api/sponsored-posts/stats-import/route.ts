@@ -60,11 +60,16 @@ export async function POST(req: NextRequest) {
   const allUrls = [...new Set([...items.map(i => i.url), ...postByUrl.keys()])];
   if (allUrls.length === 0) return NextResponse.json({ ok: true, inserted: 0, created_posts: 0, matched_urls: 0, missing_urls: 0 });
 
-  // 1) 기존 URL → id 조회 (한 번만)
+  // 1) 기존 URL → id + 현재 메타 조회 (한 번만) — '빈 값만 채우기' 비교용으로 메타도 함께 조회
   const { data: existing, error: ee } = await supabase
-    .from("sponsored_posts").select("id, url").in("url", allUrls);
+    .from("sponsored_posts")
+    .select(`id, url, ${POST_FIELDS.join(", ")}`)
+    .in("url", allUrls);
   if (ee) return NextResponse.json({ error: ee.message }, { status: 500 });
   const idByUrl = new Map<string, string>((existing ?? []).map((e: { id: string; url: string }) => [e.url, e.id]));
+  const existingByUrl = new Map<string, Record<string, unknown>>(
+    (existing ?? []).map((e: Record<string, unknown>) => [String(e.url), e])
+  );
 
   // 2) 없는 광고만 신규 생성 (기존은 절대 건드리지 않음). 새로 만든 id를 매핑에 합침 → 재조회 불필요.
   let created = 0;
@@ -77,6 +82,26 @@ export async function POST(req: NextRequest) {
     if (ie) return NextResponse.json({ error: ie.message }, { status: 500 });
     for (const row of (ins ?? []) as Array<{ id: string; url: string }>) idByUrl.set(row.url, row.id);
     created = (ins ?? []).length;
+  }
+
+  // 2-b) '빈 값만 채우기': 기존 게시물 중 사이트 값이 비어있는(null/"") 필드만 시트 값으로 채움.
+  //      이미 값이 있는 필드는 절대 안 건드림 → 사이트에서 직접 수정한 값 보존.
+  let metaFilled = 0;
+  for (const [url, meta] of postByUrl) {
+    const ex = existingByUrl.get(url);
+    if (!ex) continue; // 신규 생성분은 이미 전체 메타로 만들어짐
+    const upd: Record<string, unknown> = {};
+    for (const f of POST_FIELDS) {
+      const cur = ex[f];
+      const curEmpty = cur === null || cur === undefined || cur === "";
+      // meta[f]는 시트의 비어있지 않은 값만 들어있음(위 clean 생성 기준)
+      if (curEmpty && meta[f] !== undefined) upd[f] = meta[f];
+    }
+    if (Object.keys(upd).length > 0) {
+      const { error: ue } = await supabase
+        .from("sponsored_posts").update(upd).eq("id", String(ex.id));
+      if (!ue) metaFilled++;
+    }
   }
 
   // 3) 게시물 매칭 (미등록 URL은 건너뜀)
@@ -152,6 +177,7 @@ export async function POST(req: NextRequest) {
     ok: true,
     inserted,
     created_posts: created,
+    meta_filled: metaFilled,
     dropped_decrease: droppedDecrease,
     matched_urls: [...new Set(items.map(i => i.url))].length - missing.size,
     missing_urls: missing.size,
