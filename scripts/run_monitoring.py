@@ -53,6 +53,34 @@ def _stats_key(url: str) -> str:
     return normalize_url(url)  # url_utils에서 import
 
 
+def _yt_id(url: str):
+    """유튜브 영상 ID 추출 (shorts/watch/youtu.be)"""
+    m = re.search(r'(?:shorts/|watch\?v=|youtu\.be/)([A-Za-z0-9_-]{6,})', url or "")
+    return m.group(1) if m else None
+
+
+def _fetch_youtube(urls: list) -> dict:
+    """유튜브 영상 조회수 수집 (streamers/youtube-scraper). 반환: {video_id: {views,likes,comments}}"""
+    from apify_client import ApifyClient
+    client = ApifyClient(os.getenv("APIFY_API_TOKEN"))
+    run = client.actor("streamers/youtube-scraper").call(run_input={
+        "startUrls": [{"url": u} for u in urls],
+        "maxResults": 1,
+        "maxResultStreams": 0,
+        "maxResultsShorts": 0,
+    })
+    out = {}
+    for it in client.dataset(run["defaultDatasetId"]).iterate_items():
+        vid = _yt_id(it.get("url") or "")
+        if vid:
+            out[vid] = {
+                "views": it.get("viewCount"),
+                "likes": it.get("likes"),
+                "comments": it.get("commentsCount"),
+            }
+    return out
+
+
 def run():
     print("[DEBUG] === 협찬 모니터링 시작 ===")
     print(f"[DEBUG] 환경변수 확인:")
@@ -171,6 +199,32 @@ def run():
                 "likes_count": s.get("likes_count") or existing.get("likes_count"),
                 "comments_count": s.get("comments_count") or existing.get("comments_count"),
             })
+
+        # YouTube 수집 (인스타 액터로는 불가 → 전용 액터). IG 루프에서 매칭 실패로 건너뛴 유튜브 글을 채움
+        yt_posts = [p for p in posts if ("youtube.com" in (p.get("url") or "") or "youtu.be" in (p.get("url") or ""))]
+        if yt_posts and not skip_apify:
+            try:
+                yt_stats = _fetch_youtube([p["url"] for p in yt_posts])
+                print(f"[LOG] 유튜브 수집: {len(yt_stats)}건 / {len(yt_posts)}개 요청")
+                for post in yt_posts:
+                    s = yt_stats.get(_yt_id(post["url"]))
+                    if not s:
+                        continue
+                    existing_res = db.table("post_daily_stats").select("play_count, likes_count, comments_count").eq("post_id", post["id"]).order("measured_at", ascending=False).limit(1).execute()
+                    existing = existing_res.data[0] if existing_res.data else {}
+                    play = s.get("views")
+                    if play is not None and existing.get("play_count") is not None and play < existing.get("play_count"):
+                        print(f"  ❌ 유튜브 조회수 역행 {post['url']} → NULL 처리")
+                        play = None
+                    rows.append({
+                        "post_id": post["id"],
+                        "measured_at": TODAY,
+                        "play_count": play,
+                        "likes_count": s.get("likes") or existing.get("likes_count"),
+                        "comments_count": s.get("comments") or existing.get("comments_count"),
+                    })
+            except Exception as e:
+                print(f"[WARN] 유튜브 수집 실패: {e}")
 
         if rows:
             print(f"[LOG] 데이터 저장 시작: {len(rows)}건")
