@@ -50,12 +50,48 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = getServerSupabase();
-  const { data, error } = await supabase
-    .from("sponsored_posts")
-    .upsert(rows, { onConflict: "url" })
-    .select();
+  const META = ["posted_at", "account_name", "content_summary", "channel_type", "project_name", "product_name", "cost"];
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  // 기존 게시물(id+메타) 조회 — '빈 값만 채우기' 비교용
+  const { data: existing, error: ee } = await supabase
+    .from("sponsored_posts")
+    .select(`id, url, ${META.join(", ")}`)
+    .in("url", rows.map(r => r.url));
+  if (ee) return NextResponse.json({ error: ee.message }, { status: 500 });
+  const existingByUrl = new Map<string, Record<string, unknown>>(
+    (existing ?? []).map((e: Record<string, unknown>) => [String(e.url), e])
+  );
+
+  // 신규 URL → 전체 메타로 생성
+  const toCreate = rows.filter(r => !existingByUrl.has(r.url));
+  let created = 0;
+  if (toCreate.length > 0) {
+    const { data: ins, error: ie } = await supabase
+      .from("sponsored_posts")
+      .upsert(toCreate, { onConflict: "url", ignoreDuplicates: true })
+      .select("id");
+    if (ie) return NextResponse.json({ error: ie.message }, { status: 500 });
+    created = (ins ?? []).length;
+  }
+
+  // 기존 게시물 → 빈 필드만 시트 값으로 채움. 값이 있으면 유지(절대 안 지움) → 사이트 인라인 수정값 보존.
+  let metaFilled = 0;
+  for (const r of rows) {
+    const ex = existingByUrl.get(r.url);
+    if (!ex) continue;
+    const upd: Record<string, unknown> = {};
+    for (const f of META) {
+      const cur = ex[f];
+      const curEmpty = cur === null || cur === undefined || cur === "";
+      const val = (r as Record<string, unknown>)[f];
+      const valPresent = val !== null && val !== undefined && val !== "";
+      if (curEmpty && valPresent) upd[f] = val;
+    }
+    if (Object.keys(upd).length > 0) {
+      const { error: ue } = await supabase.from("sponsored_posts").update(upd).eq("id", String(ex.id));
+      if (!ue) metaFilled++;
+    }
+  }
 
   // 캡션에 '삭제' 또는 '보관'이 포함된 행 → '종료'(ended_at) 처리. 이미 종료된 건은 날짜 유지(중복 방지).
   const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().split("T")[0];
@@ -73,5 +109,5 @@ export async function POST(req: NextRequest) {
     endedMarked = (upd ?? []).length;
   }
 
-  return NextResponse.json({ ok: true, upserted: (data ?? []).length, ended_marked: endedMarked }, { status: 200 });
+  return NextResponse.json({ ok: true, upserted: rows.length, created, meta_filled: metaFilled, ended_marked: endedMarked }, { status: 200 });
 }

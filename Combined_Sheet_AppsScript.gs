@@ -285,8 +285,9 @@ function postRows_(rows) {
   if (code !== 200) throw new Error(`API ${code}: ${body}`);
   const data = JSON.parse(body);
   return {
-    count: data.upserted != null ? data.upserted : rows.length, // 추가된 건수
-    ended: data.ended_marked || 0,                              // 캡션 '삭제' → 종료 처리 건수
+    count: data.upserted != null ? data.upserted : rows.length, // 처리(전송) 건수
+    ended: data.ended_marked || 0,                              // 캡션 '삭제/보관' → 종료 처리 건수
+    filled: data.meta_filled || 0,                              // 기존 광고의 빈 항목을 시트 값으로 채운 건수
   };
 }
 
@@ -305,9 +306,10 @@ function runSync_(onlyNew) {
       safeAlert_((onlyNew ? "추가할 신규 광고가 없습니다." : "추가할 광고가 없습니다.") + noteExtra_(skipped, dupCount, future));
       return;
     }
-    const { count, ended } = postRows_(rows);
+    const { count, ended, filled } = postRows_(rows);
     markRegistered_(getSheet_(), statusCol, rowNums);
-    let okMsg = `✅ ${count}개 광고를 사이트에 추가했습니다.`;
+    let okMsg = `✅ ${count}개 광고를 사이트에 반영했습니다.`;
+    if (filled) okMsg += `\n📝 기존 광고의 빈 항목 ${filled}건을 시트 값으로 채움(채널 분류·비용 등).`;
     if (ended) okMsg += `\n🛑 캡션 '삭제/보관' ${ended}건 → '종료' 처리됨.`;
     safeAlert_(okMsg + noteExtra_(skipped, dupCount, future) + blankNote_());
   } catch (e) {
