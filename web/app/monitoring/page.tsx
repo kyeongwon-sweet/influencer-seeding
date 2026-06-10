@@ -265,6 +265,9 @@ function smoothCurvePath(pts: [number, number][]): string {
   return d;
 }
 
+// "전체 전환 광고비" 클릭 시 이동할 Meta 광고 관리자 링크
+const META_ADS_MANAGER_URL = "https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=363574841093560&attribution_windows=default&business_id=447480832673184&columns=name%2Cdelivery%2Crecommendations_guidance%2Cresults%2Ccost_per_result%2Cbudget%2Cspend%2Cimpressions%2Creach%2Cfrequency%2Ccpm%2Cactions%3Aomni_purchase%2Cschedule%2Cend_time%2Cattribution_setting%2Cbid%2Clast_significant_edit%2Cquality_score_organic%2Cquality_score_ectr%2Cquality_score_ecvr%2Ccampaign_name%2Cpurchase_roas%3Aomni_purchase&date=2023-05-10_2026-06-11%2Cmaximum&global_scope_id=447480832673184&insights_comparison_date=&insights_date=2023-05-10_2026-06-11%2Cmaximum&treenav=true&comparison_date=";
+
 // 상품별 검색량 라인 색상 팔레트
 const PRODUCT_COLORS = ["#16a34a", "#9333ea", "#ea580c", "#0891b2", "#db2777", "#65a30d", "#7c3aed", "#0d9488", "#c2410c", "#be123c"];
 // "쫀득바 쫀득바"처럼 동일 단어가 반복된 헤더는 한 번만 표시
@@ -492,7 +495,10 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
           onMouseLeave={() => { setPinnedIdx(null); setHoverIdx(null); }}>
           <p className="text-a-ink-muted mb-1">{data[activeIdx].date.replace(/-/g, ".")} · <span className="font-semibold text-a-blue tabular-nums">{data[activeIdx].value.toLocaleString()}</span></p>
           {hoveredSecondaryValue != null && (
-            <p className="text-orange-600 tabular-nums">전체 전환 광고비: {hoveredSecondaryValue.toLocaleString()}원</p>
+            <a href={META_ADS_MANAGER_URL} target="_blank" rel="noreferrer"
+              className="text-orange-600 tabular-nums hover:underline pointer-events-auto inline-flex items-center gap-0.5">
+              전체 전환 광고비: {hoveredSecondaryValue.toLocaleString()}원 ↗
+            </a>
           )}
           {hoveredLsEntry?.value != null && (
             <p className="text-gray-400 tabular-nums">라라스윗 검색량: {hoveredLsEntry.value.toLocaleString()}</p>
@@ -1646,7 +1652,8 @@ export default function MonitoringPage() {
                     )}
                     <div className="flex items-center gap-1.5">
                       <div className="w-2 h-0.5 bg-gray-400" />
-                      <span className="text-xs text-a-ink-muted">전체 전환 광고비</span>
+                      <a href={META_ADS_MANAGER_URL} target="_blank" rel="noreferrer"
+                        className="text-xs text-a-ink-muted hover:text-a-ink hover:underline">전체 전환 광고비 ↗</a>
                     </div>
                     {activeProductSeries.map(c => (
                       <div key={c.id} className="flex items-center gap-1.5">
