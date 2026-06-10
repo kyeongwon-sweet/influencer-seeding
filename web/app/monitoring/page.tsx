@@ -499,13 +499,13 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
           <p className="text-a-ink-muted mb-1">{data[activeIdx].date.replace(/-/g, ".")} · <span className="font-semibold text-a-blue tabular-nums">{data[activeIdx].value.toLocaleString()}</span></p>
           {hoveredSecondaryValue != null && (
             <a href={META_ADS_MANAGER_URL} target="_blank" rel="noreferrer"
-              className="text-orange-600 tabular-nums hover:underline pointer-events-auto inline-flex items-center gap-0.5">
+              className="text-orange-600 tabular-nums hover:underline pointer-events-auto flex items-center gap-0.5">
               전체 전환 광고비: {hoveredSecondaryValue.toLocaleString()}원 ↗
             </a>
           )}
           {hoveredLsEntry?.value != null && (
             <a href={NAVER_DATALAB_URL} target="_blank" rel="noreferrer"
-              className="text-gray-400 tabular-nums hover:underline pointer-events-auto inline-flex items-center gap-0.5">
+              className="text-gray-400 tabular-nums hover:underline pointer-events-auto flex items-center gap-0.5">
               라라스윗 검색량: {hoveredLsEntry.value.toLocaleString()} ↗
             </a>
           )}
