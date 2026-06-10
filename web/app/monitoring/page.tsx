@@ -9,6 +9,7 @@ type DailyStats = {
   play_count: number | null;
   likes_count: number | null;
   comments_count: number | null;
+  created_at?: string | null; // 적재(수집) 시각 — 마지막 업데이트 표시용
 };
 
 type Post = {
@@ -608,12 +609,11 @@ export default function MonitoringPage() {
   const hasFilter = filters.name !== "" || filters.project !== "" || filters.products.length > 0 || filters.type !== "all" || filters.channelTypes.length > 0 || filters.dateFrom !== "" || filters.dateTo !== "" || filters.postedFrom !== "" || filters.postedTo !== "";
   const colSpan = 17;
 
-  const lastMonitoredAt = posts.length > 0
-    ? posts.reduce((latest, p) => {
-        const t = p.latest_stats?.measured_at ?? p.created_at;
-        return t > latest ? t : latest;
-      }, posts[0].latest_stats?.measured_at ?? posts[0].created_at)
-    : null;
+  // 마지막 수집 시각 = 최신 측정행의 적재 시각(created_at) 중 최대값 (게시물 추가 시각 아님)
+  const lastMonitoredAt = posts.reduce<string | null>((latest, p) => {
+    const t = p.latest_stats?.created_at ?? null;
+    return t && (!latest || t > latest) ? t : latest;
+  }, null);
 
   const formatLastUpdate = (dateStr: string): string => {
     const d = new Date(dateStr);
