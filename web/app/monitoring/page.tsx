@@ -1681,7 +1681,7 @@ export default function MonitoringPage() {
                     ))}
                     {brandMetrics.some(d => d.ig_reach != null) && (
                       <div className="flex items-center gap-1.5">
-                        <div className="w-2 h-0.5" style={{ backgroundColor: "#9ca3af" }} />
+                        <div className="w-2 h-0.5" style={{ backgroundColor: "#dbe0e6" }} />
                         <span className="text-xs text-a-ink-muted">인스타 유입(도달)</span>
                       </div>
                     )}
@@ -1704,7 +1704,7 @@ export default function MonitoringPage() {
                     // 라라스윗 공식 인스타 유입(도달) — brandMetrics.ig_reach, 데이터 있을 때만
                     ...(brandMetrics.some(d => d.ig_reach != null) ? [{
                       name: "인스타 유입(도달)",
-                      color: "#9ca3af",
+                      color: "#dbe0e6",
                       members: [{
                         label: "인스타 도달",
                         data: brandMetrics.map(d => ({ date: d.measured_at, value: d.ig_reach })),
