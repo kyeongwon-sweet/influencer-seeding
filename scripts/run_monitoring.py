@@ -211,6 +211,9 @@ def _fetch_stats(urls: list) -> list:
             "directUrls": urls,
             "resultsType": "posts",
             "resultsLimit": len(urls),
+            "maxRequestRetries": 3,
+            # 데이터센터 IP는 인스타에 차단됨 → 레지덴셜 프록시로 릴스 조회수 수집
+            "proxy": {"useApifyProxy": True, "apifyProxyGroups": ["RESIDENTIAL"]},
         })
     except Exception as e:
         raise RuntimeError(f"[ERROR] Apify 액터 호출 실패: {str(e)}")
