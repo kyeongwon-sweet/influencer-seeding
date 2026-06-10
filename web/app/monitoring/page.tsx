@@ -908,6 +908,19 @@ export default function MonitoringPage() {
       previousPlayCountsRef.current.clear();
     }
 
+    // '오늘'(KST, 아직 수집 중) 데이터는 미완성이라 모든 화면에서 제외(전일자까지만 노출).
+    // all_stats에서 오늘을 빼고 latest/prev를 재계산 → 표·합계·메인 그래프·증감표가 모두 일관되게 적용됨.
+    const todayKST = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    newPosts = newPosts.map(p => {
+      const stats = (p.all_stats ?? []).filter(s => s.measured_at < todayKST);
+      return {
+        ...p,
+        all_stats: stats,
+        latest_stats: stats.length ? stats[stats.length - 1] : null,
+        prev_stats: stats.length > 1 ? stats[stats.length - 2] : null,
+      };
+    });
+
     setPosts(newPosts);
   }
 
