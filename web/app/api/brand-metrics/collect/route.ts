@@ -58,8 +58,13 @@ async function fetchInstagramMetrics(dateStr: string) {
   const since = Math.floor(new Date(dateStr + "T00:00:00+09:00").getTime() / 1000);
   const until = since + 86400;
 
-  const url = new URL(`https://graph.instagram.com/v19.0/${userId}/insights`);
-  url.searchParams.set("metric",       "profile_views,reach");
+  // Facebook 로그인 경로(graph.facebook.com)로 인사이트 조회.
+  // INSTAGRAM_USER_ID = Facebook 페이지에 연결된 IG 비즈니스 계정 ID,
+  // INSTAGRAM_ACCESS_TOKEN = 해당 권한(instagram_manage_insights 등)을 가진 장기 토큰.
+  // ⚠️ profile_views는 2025-01-08 폐기 → reach(도달=유입 지표) 사용. metric_type=total_value 필수.
+  const url = new URL(`https://graph.facebook.com/v23.0/${userId}/insights`);
+  url.searchParams.set("metric",       "reach");
+  url.searchParams.set("metric_type",  "total_value");
   url.searchParams.set("period",       "day");
   url.searchParams.set("since",        String(since));
   url.searchParams.set("until",        String(until));
@@ -71,15 +76,14 @@ async function fetchInstagramMetrics(dateStr: string) {
   const json = await res.json();
   const metrics: Record<string, number> = {};
   for (const item of json.data ?? []) {
-    const value = item.values?.find((v: { end_time: string }) =>
-      v.end_time?.slice(0, 10) === dateStr
-    )?.value ?? null;
+    // metric_type=total_value 응답은 item.total_value.value 형태
+    const value = item.total_value?.value ?? null;
     if (value !== null) metrics[item.name] = value;
   }
 
   return {
-    ig_profile_views: metrics["profile_views"] ?? null,
-    ig_reach:         metrics["reach"]         ?? null,
+    ig_reach:         metrics["reach"] ?? null,
+    ig_profile_views: null, // profile_views 지표 폐기됨 (컬럼은 유지)
   };
 }
 
