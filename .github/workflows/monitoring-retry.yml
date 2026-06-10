@@ -1,17 +1,18 @@
 name: Monitoring Backup & Retry
 
-# Vercel Cron(매일 자정 KST, /api/monitoring/apify-collect)이 누락·실패했을 때를 대비한 백업.
-# "오늘(KST) 데이터가 없을 때만" 수집하므로, Vercel이 정상 동작한 날에는 추가 Apify 비용이 없음.
-# 수집기(run_monitoring.py)에는 누적 조회수 역행 방지 가드가 내장돼 있고 upsert라 멱등.
+# Vercel Cron(00:05 KST, apify-collect)은 300초 제한으로 일부 게시물만 수집됨.
+# 00:15 KST에 시간제한 없는 GitHub Actions에서 run_monitoring.py로 '완전 수집'해 보강(top-up).
+#   run_monitoring.py: 레지덴셜 프록시 + shortcode 매칭 + 누적 역행 가드 + upsert(멱등)
+# 주간(11/14/17 KST)은 그날 데이터가 아예 없을 때만 재수집(완전 실패 대비).
 
 on:
   schedule:
-    - cron: "15 15 * * *"    # 15:15 UTC = 00:15 KST — 자정 수집(00:05) 직후 1차 백업
-    - cron: "0 2,5,8 * * *"  # 02/05/08 UTC = 11/14/17 KST — 주간 재시도
+    - cron: "15 15 * * *"    # 00:15 KST — 자정 수집 직후 '완전 수집'(무조건 top-up)
+    - cron: "0 2,5,8 * * *"  # 11/14/17 KST — 데이터 없을 때만 재수집
   workflow_dispatch:
 
 jobs:
-  check-and-collect:
+  collect:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,16 +36,26 @@ jobs:
           import os
           from db import get_client
           db = get_client()
-          today = os.environ["TODAY_KST"]
-          r = db.table("post_daily_stats").select("id").eq("measured_at", today).limit(1).execute()
+          r = db.table("post_daily_stats").select("id").eq("measured_at", os.environ["TODAY_KST"]).limit(1).execute()
           print("ok" if r.data else "missing")
           EOF
           )
-          echo "오늘(KST) ${TODAY_KST} → ${STATUS}"
+          echo "오늘(${TODAY_KST}) → ${STATUS}"
           echo "status=${STATUS}" >> "$GITHUB_OUTPUT"
 
-      - name: Collect on missing data (백업 수집)
-        if: steps.check.outputs.status == 'missing'
+      - name: Decide collect
+        id: decide
+        run: |
+          if [ "${{ github.event.schedule }}" = "15 15 * * *" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ steps.check.outputs.status }}" = "missing" ]; then
+            echo "자정 완전수집(top-up) 또는 누락 재수집 → 수집"
+            echo "go=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "이미 데이터 있음(주간) → 건너뜀"
+            echo "go=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Collect (full, run_monitoring.py)
+        if: steps.decide.outputs.go == '1'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -52,5 +63,5 @@ jobs:
           SKIP_APIFY: "0"
         run: |
           export MONITORING_DATE=$(date -u -d '+9 hours' +%F)
-          echo "백업 수집 대상(KST): ${MONITORING_DATE}"
+          echo "수집 대상(KST): ${MONITORING_DATE}"
           cd scripts && python run_monitoring.py
