@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
+import { MIN_ENTRY_DATE, maxDateKST, isValidEntryDate } from "@/lib/dateRule";
 
 type Metrics = {
   id: string;
@@ -238,6 +239,10 @@ export default function ScreeningPage() {
     if (!kwModal) return;
     const kwCount = kwForm.keywords.split(",").map(k => k.trim()).filter(Boolean).length;
     if (!kwForm.adDate || kwCount === 0) return;
+    if (!isValidEntryDate(kwForm.adDate)) {
+      toast("광고 날짜가 올바르지 않습니다. (2020-01-01 ~ 오늘 범위로 입력)", "error");
+      return;
+    }
     setKwRunning(true);
     const res = await fetch("/api/keyword-impact", {
       method: "POST",
@@ -1134,7 +1139,7 @@ export default function ScreeningPage() {
               <div className="space-y-4">
                 <div>
                   <label className="text-xs font-semibold text-a-ink block mb-1.5">광고 날짜</label>
-                  <input type="date" value={kwForm.adDate}
+                  <input type="date" value={kwForm.adDate} min={MIN_ENTRY_DATE} max={maxDateKST()}
                     onChange={e => setKwForm(p => ({ ...p, adDate: e.target.value }))}
                     className="filter-input w-full" />
                 </div>

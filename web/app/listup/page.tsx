@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
 import { normalizeYouTubeUrl } from "@/lib/url-utils";
+import { MIN_ENTRY_DATE, maxDateKST, isValidEntryDate } from "@/lib/dateRule";
 
 type Keyword = { id: string; keyword: string; platform: string; created_at: string };
 type ScreeningMetrics = {
@@ -470,6 +471,10 @@ export default function ListupPage() {
   }
 
   async function patchDate(id: string, value: string) {
+    if (value && !isValidEntryDate(value)) {
+      toast("업로드일이 올바르지 않습니다. (2020-01-01 ~ 오늘 범위로 입력)", "error");
+      return;
+    }
     const res = await fetch(`/api/influencers/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -1197,6 +1202,7 @@ export default function ListupPage() {
                             <input
                               type="date"
                               autoFocus
+                              min={MIN_ENTRY_DATE} max={maxDateKST()}
                               value={editDate.value}
                               onChange={e => setEditDate(v => v ? { ...v, value: e.target.value } : null)}
                               onBlur={() => patchDate(inf.id, editDate.value)}

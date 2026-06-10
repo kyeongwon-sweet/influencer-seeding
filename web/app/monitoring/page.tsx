@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
+import { MIN_ENTRY_DATE, maxDateKST, isValidEntryDate } from "@/lib/dateRule";
 
 type DailyStats = {
   measured_at: string;
@@ -1091,7 +1092,7 @@ export default function MonitoringPage() {
           channel_type: normalizeChannelType(cols[2]),
           url: cols[3] ?? "",
           account_name: cols[4] || null,
-          posted_at: cols[5] || null,
+          posted_at: isValidEntryDate(cols[5] || "") ? cols[5] : null,
           cost: cols[6] !== undefined && cols[6] !== "" ? Number(cols[6]) : null,
           reach_count: cols[7] !== undefined && cols[7] !== "" ? Number(cols[7]) : null,
         };
@@ -1241,6 +1242,10 @@ export default function MonitoringPage() {
   async function patchPost(postId: string, field: string, value: string) {
     // Escape 취소 후 onBlur 발화 방지: editCell이 이미 null이면 저장 안 함
     if (!editCell) return;
+    if (field === "posted_at" && value && !isValidEntryDate(value)) {
+      toast("게시일이 올바르지 않습니다. (2020-01-01 ~ 오늘 범위로 입력)", "error");
+      return;
+    }
     const isNumeric = field === "cost" || field === "reach_count";
     const payload = isNumeric
       ? { [field]: value === "" ? null : Number(value) }
@@ -2092,7 +2097,7 @@ export default function MonitoringPage() {
                       </TD>
                       <TD muted w={colWidths["게시일"]}>
                         {editCell?.postId === post.id && editCell?.field === "posted_at" ? (
-                          <input autoFocus type="date" value={editCell.value}
+                          <input autoFocus type="date" value={editCell.value} min={MIN_ENTRY_DATE} max={maxDateKST()}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
                             onBlur={() => patchPost(post.id, "posted_at", editCell.value)}
                             onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "posted_at", editCell.value); if (e.key === "Escape") { e.preventDefault(); setEditCell(null); }; }}

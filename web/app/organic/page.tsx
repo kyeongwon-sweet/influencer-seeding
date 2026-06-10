@@ -303,7 +303,7 @@ export default function OrganicPage() {
           account_name: cols[2] || null,
           content_summary: cols[3] || null,
           mentioned_product: cols[4] || null,
-          uploaded_at: cols[5] || null,
+          uploaded_at: isValidUploadDate(cols[5] || "") ? cols[5] : null,
           view_count: cols[6] ? Number(cols[6]) : null,
         };
       }).filter(r => r.url);
