@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 
+export const maxDuration = 60; // 백필(?days=N) 시 여러 날 순차 수집 여유
+
 // ── YouTube Analytics ──────────────────────────────────────────────────────
 async function fetchYouTubeMetrics(dateStr: string) {
   const clientId     = process.env.GOOGLE_CLIENT_ID;
@@ -96,30 +98,34 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // 어제 날짜 (KST)
-  const kstNow  = new Date(Date.now() + 9 * 3600 * 1000);
-  kstNow.setDate(kstNow.getDate() - 1);
-  const dateStr = kstNow.toISOString().slice(0, 10);
+  // ?days=N → 최근 N일 백필 (기본 1 = 어제만 / 크론 동작 유지, 최대 30)
+  const daysParam = Number(new URL(req.url).searchParams.get("days") ?? "1");
+  const days = Math.min(30, Math.max(1, Number.isFinite(daysParam) ? daysParam : 1));
 
-  const [yt, ig] = await Promise.all([
-    fetchYouTubeMetrics(dateStr),
-    fetchInstagramMetrics(dateStr),
-  ]);
-
-  const row = {
-    measured_at:       dateStr,
-    yt_views:          yt?.yt_views          ?? null,
-    yt_unique_viewers: yt?.yt_unique_viewers ?? null,
-    yt_search_views:   yt?.yt_search_views   ?? null,
-    ig_profile_views:  ig?.ig_profile_views  ?? null,
-    ig_reach:          ig?.ig_reach          ?? null,
-  };
+  const rows: Record<string, unknown>[] = [];
+  for (let back = 1; back <= days; back++) {
+    const kst = new Date(Date.now() + 9 * 3600 * 1000);
+    kst.setDate(kst.getDate() - back);
+    const dateStr = kst.toISOString().slice(0, 10);
+    const [yt, ig] = await Promise.all([
+      fetchYouTubeMetrics(dateStr),
+      fetchInstagramMetrics(dateStr),
+    ]);
+    rows.push({
+      measured_at:       dateStr,
+      yt_views:          yt?.yt_views          ?? null,
+      yt_unique_viewers: yt?.yt_unique_viewers ?? null,
+      yt_search_views:   yt?.yt_search_views   ?? null,
+      ig_profile_views:  ig?.ig_profile_views  ?? null,
+      ig_reach:          ig?.ig_reach          ?? null,
+    });
+  }
 
   const supabase = getServerSupabase();
   const { error } = await supabase
     .from("brand_daily_metrics")
-    .upsert(row, { onConflict: "measured_at" });
+    .upsert(rows, { onConflict: "measured_at" });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, date: dateStr, ...row });
+  return NextResponse.json({ ok: true, collected: rows.length, rows });
 }

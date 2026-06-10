@@ -15,6 +15,10 @@
     {
       "path": "/api/sponsored-posts/sync",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/brand-metrics/collect",
+      "schedule": "45 15 * * *"
     }
   ]
 }
