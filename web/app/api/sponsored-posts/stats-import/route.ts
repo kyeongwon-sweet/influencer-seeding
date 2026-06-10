@@ -104,10 +104,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 2-c) 캡션이 '삭제' 마커인 글 → '종료'(ended_at) 처리. 이미 종료된 건은 날짜 유지.
+  // 2-c) 캡션에 '삭제' 또는 '보관'이 포함된 글 → '종료'(ended_at) 처리. 이미 종료된 건은 날짜 유지.
   const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().split("T")[0];
   const endedUrls = [...postByUrl.entries()]
-    .filter(([, m]) => String(m.content_summary ?? "").trim() === "삭제")
+    .filter(([, m]) => /삭제|보관/.test(String(m.content_summary ?? "")))
     .map(([u]) => u);
   let endedMarked = 0;
   if (endedUrls.length > 0) {
