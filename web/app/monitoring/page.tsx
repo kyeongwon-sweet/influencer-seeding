@@ -1817,55 +1817,6 @@ export default function MonitoringPage() {
           </div>
         )}
 
-        {/* Instagram 유입수 차트 */}
-        {(() => {
-          const data = brandMetrics.map(d => ({
-            measured_at: d.measured_at,
-            ig_profile_views: d.ig_profile_views ?? 0,
-          })).filter(d => d.ig_profile_views > 0);
-          if (data.length < 2) return null;
-
-          const max = Math.max(...data.map(d => d.ig_profile_views)) || 1;
-          const VW = 900, H = 160, PAD = { t: 12, b: 28, l: 52, r: 8 };
-          const iW = VW - PAD.l - PAD.r, iH = H - PAD.t - PAD.b;
-          const xi = (i: number) => PAD.l + (data.length > 1 ? (i / (data.length - 1)) * iW : iW / 2);
-          const yi = (v: number) => PAD.t + iH - (v / max) * iH;
-          const step = Math.max(1, Math.ceil(data.length / 6));
-          const xLabels = data.map((_, i) => i).filter(i => i % step === 0 || i === data.length - 1);
-
-          const points = data.map((d, i) => [xi(i), yi(d.ig_profile_views)] as [number, number]);
-          const path = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
-          const areaPath = `${path} L ${points[points.length - 1][0]},${H - PAD.b} L ${PAD.l},${H - PAD.b} Z`;
-
-          return (
-            <div className="bg-white rounded-[20px] shadow-[0_2px_16px_rgba(100,120,180,0.08)] mb-4 overflow-hidden">
-              <div className="px-6 pt-5 pb-1 flex items-center gap-3 flex-wrap">
-                <p className="text-[11px] font-semibold text-a-ink-muted uppercase tracking-widest">라라스윗 인스타그램 유입수</p>
-              </div>
-              <div className="px-4 pb-4">
-                <svg viewBox={`0 0 ${VW} ${H}`} className="w-full" style={{ display: "block" }}>
-                  {[0, 0.5, 1].map((t, i) => (
-                    <line key={i} x1={PAD.l} x2={VW - PAD.r} y1={PAD.t + iH * (1 - t)} y2={PAD.t + iH * (1 - t)} stroke="#f3f4f6" strokeWidth="1" />
-                  ))}
-                  <defs>
-                    <linearGradient id="igGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#C13584" stopOpacity="0.08" />
-                      <stop offset="100%" stopColor="#C13584" stopOpacity="0" />
-                    </linearGradient>
-                  </defs>
-                  <path d={areaPath} fill="url(#igGrad)" />
-                  <path d={path} fill="none" stroke="#C13584" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-                  {xLabels.map(i => (
-                    <text key={i} x={xi(i)} y={H - 8} textAnchor="middle" fontSize="8.5" fill="#9ca3af">
-                      {data[i].measured_at.slice(5).replace("-", "/")}
-                    </text>
-                  ))}
-                </svg>
-              </div>
-            </div>
-          );
-        })()}
-
         {/* YouTube 검색량 차트 */}
         {(() => {
           const data = brandMetrics.map(d => ({
