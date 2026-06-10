@@ -98,7 +98,8 @@ async function collect(req: NextRequest) {
         resultsType: "posts",
         resultsLimit: igPosts.length, // 전체 게시물 수집 (100 고정 시 100개 초과분 누락)
         addParentData: true,
-        maxRequestRetries: 1,
+        maxRequestRetries: 3,
+        proxy: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"] }, // 인스타 차단 회피 → 릴스 조회수 수집
       });
 
       const items = await client.dataset(run.defaultDatasetId).listItems();
