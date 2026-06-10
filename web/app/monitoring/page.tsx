@@ -576,6 +576,7 @@ export default function MonitoringPage() {
   const [showTimeoutError, setShowTimeoutError] = useState(false);
   const [updatedPlayCounts, setUpdatedPlayCounts] = useState<Map<string, number | null>>(new Map());
   const [hoverUpdatedId, setHoverUpdatedId] = useState<string | null>(null);
+  const [collectedAtLabel, setCollectedAtLabel] = useState<string>("");
   const [mainAdCosts, setMainAdCosts] = useState<{ date: string; total_cost: number }[]>([]);
   const previousPlayCountsRef = useRef<Map<string, number | null>>(new Map());
   const runningJobIdRef = useRef<string | null>(null);
@@ -899,6 +900,11 @@ export default function MonitoringPage() {
 
       if (updated.size > 0) {
         setUpdatedPlayCounts(updated);
+        // 수집 시각 라벨 (KST) — 툴팁에 "M/D HH:mm 수집 데이터"로 표시
+        const k = new Date(Date.now() + 9 * 60 * 60 * 1000);
+        setCollectedAtLabel(
+          `${k.getUTCMonth() + 1}/${k.getUTCDate()} ${String(k.getUTCHours()).padStart(2, "0")}:${String(k.getUTCMinutes()).padStart(2, "0")} 수집 데이터`
+        );
 
         // 조회수가 있는 게시물에 자동으로 도달수 입력
         for (const [postId, newCount] of updated) {
@@ -2186,8 +2192,7 @@ export default function MonitoringPage() {
                             )}
                             {hoverUpdatedId === post.id && (
                               <div className="absolute bottom-full right-0 mb-2 bg-white border border-a-hairline rounded-[6px] px-2 py-1 text-xs whitespace-nowrap shadow-[0_4px_12px_rgba(0,0,0,0.10)] z-10">
-                                <p className="text-a-ink-muted">새로 수집한 값</p>
-                                <p className="font-semibold text-red-500">{fmt(updatedPlayCounts.get(post.id))}</p>
+                                <p className="font-semibold text-red-500">{collectedAtLabel}</p>
                               </div>
                             )}
                           </div>
