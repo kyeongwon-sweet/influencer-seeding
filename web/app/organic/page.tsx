@@ -70,6 +70,14 @@ function formatElapsed(s: number): string {
   return `${Math.floor(s / 60)}분 ${s % 60}초`;
 }
 
+// 업로드일 유효 범위: YYYY-MM-DD + 2020-01-01 ~ 오늘(KST). 비정상 날짜(5자리 연도·미래 등) 입력 방지
+function maxUploadDate(): string {
+  return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+function isValidUploadDate(s: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) && s >= "2020-01-01" && s <= maxUploadDate();
+}
+
 export default function OrganicPage() {
   const { toasts, show: toast } = useToast();
   const [mentions, setMentions] = useState<Mention[]>([]);
@@ -203,6 +211,10 @@ export default function OrganicPage() {
 
   async function addMention() {
     if (!addForm.url) return;
+    if (addForm.uploaded_at && !isValidUploadDate(addForm.uploaded_at)) {
+      toast("업로드일이 올바르지 않습니다. (2020-01-01 ~ 오늘 범위로 입력)", "error");
+      return;
+    }
     setAdding(true);
     const res = await fetch("/api/organic-mentions", {
       method: "POST",
@@ -241,6 +253,10 @@ export default function OrganicPage() {
   }
 
   async function patchMentionField(id: string, field: string, value: string) {
+    if (field === "uploaded_at" && value && !isValidUploadDate(value)) {
+      toast("업로드일이 올바르지 않습니다. (2020-01-01 ~ 오늘 범위로 입력)", "error");
+      return;
+    }
     const isNumeric = field === "view_count";
     const parsed = isNumeric ? (value === "" ? null : Number(value)) : (value || null);
     const res = await fetch(`/api/organic-mentions/${id}`, {
@@ -744,7 +760,7 @@ export default function OrganicPage() {
                       </td>
                       <td style={{ minWidth: colWidths[4] }} className="px-4 py-4 text-xs text-a-ink-muted whitespace-nowrap">
                         {editCell?.id === m.id && editCell.field === "uploaded_at" ? (
-                          <input autoFocus type="date" value={editCell.value}
+                          <input autoFocus type="date" value={editCell.value} min="2020-01-01" max={maxUploadDate()}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
                             onBlur={() => patchMentionField(m.id, "uploaded_at", editCell.value)}
                             onKeyDown={e => { if (e.key === "Enter") patchMentionField(m.id, "uploaded_at", editCell.value); if (e.key === "Escape") setEditCell(null); }}
@@ -890,7 +906,7 @@ export default function OrganicPage() {
               <div className="flex gap-2">
                 <div className="flex-1">
                   <label className="text-[11px] text-a-ink-muted mb-1 block">업로드일</label>
-                  <input type="date" value={addForm.uploaded_at}
+                  <input type="date" value={addForm.uploaded_at} min="2020-01-01" max={maxUploadDate()}
                     onChange={e => setAddForm(p => ({ ...p, uploaded_at: e.target.value }))}
                     className="w-full border border-a-hairline rounded-[10px] px-3 py-2 text-sm focus:outline-none focus:border-a-blue transition" />
                 </div>
