@@ -14,6 +14,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/monitoring/apify-collect(.*)",
   "/api/brand-metrics/collect(.*)",
   "/api/youtube-trends/collect(.*)",
+  "/api/youtube-trends/webhook(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, request) => {
