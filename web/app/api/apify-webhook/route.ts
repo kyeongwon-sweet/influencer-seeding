@@ -8,6 +8,13 @@ import { normalizeYouTubeUrl, normalizeInstagramUrl } from "@/lib/url-utils";
 // 화이트리스트: 해당 키워드 있으면 자발적 언급으로 간주 → 광고 여부 체크 없이 수집
 const ORGANIC_WHITELIST = ['내돈내산'];
 
+// 리스트업 제외: 계정명/사용자명에 브랜드·공식 신호 단어가 있으면 수집하지 않음
+const BRAND_EXCLUDE_KEYWORDS = ['official', '공식', '은행', 'bank', '카드', 'card', '페이', 'pay', '보험', '증권', '그룹', 'corp'];
+function isBrandAccount(...names: (string | null | undefined)[]): boolean {
+  const text = names.filter(Boolean).join(' ').toLowerCase();
+  return BRAND_EXCLUDE_KEYWORDS.some(k => text.includes(k));
+}
+
 function isAd(post: Record<string, unknown>): boolean {
   const caption  = ((post.caption  as string) || '').toLowerCase();
   const hashtags = ((post.hashtags as string[]) || []).map(h => h.toLowerCase());
@@ -311,6 +318,7 @@ async function handleListup(supabase: ReturnType<typeof getServerSupabase>, jobI
     for (const item of items) {
       const username = (item.ownerUsername || (item.owner as Record<string, unknown>)?.username || item.username) as string;
       if (!username || accounts[username]) continue;
+      if (isBrandAccount(username, item.ownerFullName as string)) continue; // 브랜드/공식 계정 제외
 
       const shortCode = item.shortCode as string | undefined;
       const postUrl = (item.url as string) || (shortCode ? `https://www.instagram.com/p/${shortCode}/` : null);
@@ -344,6 +352,7 @@ async function handleListup(supabase: ReturnType<typeof getServerSupabase>, jobI
       const rawChannelUrl = (item.channelUrl || item.authorUrl || (item.channelId ? `https://www.youtube.com/channel/${item.channelId}` : null)) as string;
       const channelName = (item.channelName || item.channelTitle || item.author) as string;
       if (!rawChannelUrl || !channelName) continue;
+      if (isBrandAccount(channelName, rawChannelUrl)) continue; // 브랜드/공식 계정 제외
 
       const normalizedUrl = normalizeYouTubeUrl(rawChannelUrl);
       if (!normalizedUrl) continue;
