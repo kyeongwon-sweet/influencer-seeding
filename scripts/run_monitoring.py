@@ -202,6 +202,7 @@ def run():
 
         # YouTube 수집 (인스타 액터로는 불가 → 전용 액터). IG 루프에서 매칭 실패로 건너뛴 유튜브 글을 채움
         yt_posts = [p for p in posts if ("youtube.com" in (p.get("url") or "") or "youtu.be" in (p.get("url") or ""))]
+        yt_failed = False
         if yt_posts and not skip_apify:
             try:
                 yt_stats = _fetch_youtube([p["url"] for p in yt_posts])
@@ -224,7 +225,9 @@ def run():
                         "comments_count": s.get("comments") or existing.get("comments_count"),
                     })
             except Exception as e:
-                print(f"[WARN] 유튜브 수집 실패: {e}")
+                # 무음 실패 방지: 에러를 명시하고 아래에서 작업을 실패로 표시(IG는 정상 저장됨)
+                print(f"[ERROR] 유튜브 수집 실패: {e}")
+                yt_failed = True
 
         if rows:
             print(f"[LOG] 데이터 저장 시작: {len(rows)}건")
@@ -237,6 +240,11 @@ def run():
 
         if job_id:
             db.table("jobs").update({"status": "done"}).eq("id", job_id).execute()
+
+        # 유튜브 수집이 통째로 실패했으면 작업을 실패로 표시해 GitHub Actions에서 가시화.
+        # (IG 데이터는 위에서 이미 저장됨. 11/14/17시 status='missing' 재수집이 복구.)
+        if yt_failed:
+            raise RuntimeError("유튜브 수집 실패 — 재수집 대상")
 
     except Exception as e:
         print(f"[ERROR] 모니터링 실패: {str(e)}")

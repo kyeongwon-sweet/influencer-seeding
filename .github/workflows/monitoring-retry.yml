@@ -36,8 +36,16 @@ jobs:
           import os
           from db import get_client
           db = get_client()
-          r = db.table("post_daily_stats").select("id").eq("measured_at", os.environ["TODAY_KST"]).limit(1).execute()
-          print("ok" if r.data else "missing")
+          today = os.environ["TODAY_KST"]
+          any_rows = db.table("post_daily_stats").select("id").eq("measured_at", today).limit(1).execute()
+          # 유튜브는 별도 액터로 수집되므로 IG가 성공해도 유튜브가 비면 '재수집 대상'으로 본다.
+          posts = db.table("sponsored_posts").select("id, url").execute()
+          yt_ids = [p["id"] for p in (posts.data or []) if "youtube.com" in (p["url"] or "") or "youtu.be" in (p["url"] or "")]
+          yt_ok = True
+          if yt_ids:
+              yr = db.table("post_daily_stats").select("post_id").eq("measured_at", today).in_("post_id", yt_ids).limit(1).execute()
+              yt_ok = bool(yr.data)
+          print("ok" if (any_rows.data and yt_ok) else "missing")
           EOF
           )
           echo "오늘(${TODAY_KST}) → ${STATUS}"
