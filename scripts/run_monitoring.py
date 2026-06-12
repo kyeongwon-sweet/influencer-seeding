@@ -148,9 +148,11 @@ def run():
             print(f"[LOG] ⏭️ Apify 데이터 수집 스킵 (SKIP_APIFY=1) - 기존 데이터만 사용")
         else:
             print(f"[LOG] Apify 데이터 수집 시작...")
-            stats = _fetch_stats([p["url"] for p in posts])
+            # 인스타 액터에는 instagram.com URL만 전달 (유튜브/틱톡이 섞이면 액터가 입력 검증 실패 → 호출 전체 실패)
+            ig_urls = [p["url"] for p in posts if "instagram.com" in (p.get("url") or "")]
+            stats = _fetch_stats(ig_urls)
             stats_by_key = {_stats_key(s["url"]): s for s in stats}
-            print(f"[LOG] Apify 수집 결과: {len(stats)}건 / {len(posts)}개 요청")
+            print(f"[LOG] Apify 수집 결과: {len(stats)}건 / {len(ig_urls)}개 요청(인스타)")
 
         rows = []
         for post in posts:
