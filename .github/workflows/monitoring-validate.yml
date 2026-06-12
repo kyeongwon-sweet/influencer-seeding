@@ -5,6 +5,11 @@ on:
     - cron: "0 16 * * *"  # 매일 UTC 16:00 = KST 01:00 (오전 1시)
   workflow_dispatch:
 
+# 데이터 누락 시 이슈 자동 생성에 필요 (없으면 "Resource not accessible by integration")
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   validate-daily-data:
     runs-on: ubuntu-latest
@@ -24,14 +29,16 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          python << 'EOF'
+          cd scripts && python << 'EOF'
           import os
-          from datetime import date, timedelta
+          from datetime import datetime, timedelta, timezone
           from db import get_client
 
           db = get_client()
-          yesterday = (date.today() - timedelta(days=1)).isoformat()
-          today = date.today().isoformat()
+          # 수집은 KST 기준이므로 검증도 KST 기준으로 (UTC date.today()는 하루 어긋남)
+          kst_now = datetime.now(timezone.utc) + timedelta(hours=9)
+          yesterday = (kst_now.date() - timedelta(days=1)).isoformat()
+          today = kst_now.date().isoformat()
 
           # 어제 데이터 확인
           yesterday_result = db.table("post_daily_stats").select("id").eq("measured_at", yesterday).execute()
