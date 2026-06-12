@@ -207,22 +207,28 @@ def run():
             try:
                 yt_stats = _fetch_youtube([p["url"] for p in yt_posts])
                 print(f"[LOG] 유튜브 수집: {len(yt_stats)}건 / {len(yt_posts)}개 요청")
+                # 직전(오늘 이전) 누적값을 일괄 조회 (게시물별 개별 쿼리 대신 한 번에)
+                prev_res = db.table("post_daily_stats").select("post_id, play_count, likes_count, comments_count, measured_at").in_("post_id", [p["id"] for p in yt_posts]).lt("measured_at", TODAY).order("measured_at", ascending=False).execute()
+                last_stat = {}
+                for r in (prev_res.data or []):
+                    last_stat.setdefault(r["post_id"], r)
                 for post in yt_posts:
                     s = yt_stats.get(_yt_id(post["url"]))
                     if not s:
                         continue
-                    existing_res = db.table("post_daily_stats").select("play_count, likes_count, comments_count").eq("post_id", post["id"]).order("measured_at", ascending=False).limit(1).execute()
-                    existing = existing_res.data[0] if existing_res.data else {}
+                    existing = last_stat.get(post["id"], {})
                     play = s.get("views")
                     if play is not None and existing.get("play_count") is not None and play < existing.get("play_count"):
                         print(f"  ❌ 유튜브 조회수 역행 {post['url']} → NULL 처리")
                         play = None
+                    likes, comments = s.get("likes"), s.get("comments")
                     rows.append({
                         "post_id": post["id"],
                         "measured_at": TODAY,
                         "play_count": play,
-                        "likes_count": s.get("likes") or existing.get("likes_count"),
-                        "comments_count": s.get("comments") or existing.get("comments_count"),
+                        # 실제 0을 stale 값으로 덮어쓰지 않도록 None일 때만 폴백
+                        "likes_count": likes if likes is not None else existing.get("likes_count"),
+                        "comments_count": comments if comments is not None else existing.get("comments_count"),
                     })
             except Exception as e:
                 # 무음 실패 방지: 에러를 명시하고 아래에서 작업을 실패로 표시(IG는 정상 저장됨)
