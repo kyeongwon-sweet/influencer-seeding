@@ -562,6 +562,7 @@ export default function MonitoringPage() {
   const [dateTooltip, setDateTooltip] = useState<{ date: string; x: number; y: number } | null>(null);
   const [lsSearchData, setLsSearchData] = useState<{ date: string; ratio: number; value: number | null }[]>([]);
   const [brandMetrics, setBrandMetrics] = useState<{ measured_at: string; yt_views: number | null; yt_unique_viewers: number | null; yt_search_views: number | null; ig_profile_views: number | null }[]>([]);
+  const [ytTrends, setYtTrends] = useState<{ measured_at: string; keyword: string; value: number | null }[]>([]);
   const [productTrends, setProductTrends] = useState<{ products: string[]; data: { date: string; values: Record<string, number | null> }[] }>({ products: [], data: [] });
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -783,6 +784,10 @@ export default function MonitoringPage() {
     fetch("/api/brand-metrics")
       .then(r => r.ok ? r.json() : [])
       .then(data => setBrandMetrics(Array.isArray(data) ? data : []))
+      .catch(() => {});
+    fetch("/api/youtube-trends")
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setYtTrends(Array.isArray(data) ? data : []))
       .catch(() => {});
   }, []);
 
@@ -1685,6 +1690,12 @@ export default function MonitoringPage() {
                         <span className="text-xs text-a-ink-muted">인스타 프로필 방문</span>
                       </div>
                     )}
+                    {Array.from(new Set(ytTrends.map(t => t.keyword))).map((kw, i) => (
+                      <div key={`yt-${kw}`} className="flex items-center gap-1.5">
+                        <div className="w-2 h-0.5" style={{ backgroundColor: ["#ff6b6b", "#f59f00"][i % 2] }} />
+                        <span className="text-xs text-a-ink-muted">유튜브: {kw}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
                 <LineChart
@@ -1710,6 +1721,15 @@ export default function MonitoringPage() {
                         data: brandMetrics.map(d => ({ date: d.measured_at, value: d.ig_profile_views })),
                       }],
                     }] : []),
+                    // 유튜브 검색 트렌드 — 키워드별 (Google Trends gprop=youtube, 상대값 0~100)
+                    ...Array.from(new Set(ytTrends.map(t => t.keyword))).map((kw, i) => ({
+                      name: `유튜브: ${kw}`,
+                      color: ["#ff6b6b", "#f59f00"][i % 2],
+                      members: [{
+                        label: kw,
+                        data: ytTrends.filter(t => t.keyword === kw).map(t => ({ date: t.measured_at, value: t.value })),
+                      }],
+                    })),
                   ]}
                   secondaryData={mainAdCosts.length > 0 ? mainAdCosts.map(d => ({date: d.date, value: d.total_cost})) : undefined}
                   secondaryColor="#b3b3b3"
