@@ -32,7 +32,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           export TODAY_KST=$(date -u -d '+9 hours' +%F)
-          STATUS=$(python << 'EOF'
+          STATUS=$(cd scripts && python << 'EOF'
           import os
           from db import get_client
           db = get_client()
