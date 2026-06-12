@@ -179,7 +179,7 @@ def run():
                 db.table("sponsored_posts").update(updates).eq("id", post["id"]).execute()
 
             # 기존 데이터 조회 (누적값 검증)
-            existing_res = db.table("post_daily_stats").select("play_count, likes_count, comments_count").eq("post_id", post["id"]).order("measured_at", ascending=False).limit(1).execute()
+            existing_res = db.table("post_daily_stats").select("play_count, likes_count, comments_count").eq("post_id", post["id"]).order("measured_at", desc=True).limit(1).execute()
             existing = existing_res.data[0] if existing_res.data else {}
 
             play_count = s.get("play_count")
@@ -210,7 +210,7 @@ def run():
                 yt_stats = _fetch_youtube([p["url"] for p in yt_posts])
                 print(f"[LOG] 유튜브 수집: {len(yt_stats)}건 / {len(yt_posts)}개 요청")
                 # 직전(오늘 이전) 누적값을 일괄 조회 (게시물별 개별 쿼리 대신 한 번에)
-                prev_res = db.table("post_daily_stats").select("post_id, play_count, likes_count, comments_count, measured_at").in_("post_id", [p["id"] for p in yt_posts]).lt("measured_at", TODAY).order("measured_at", ascending=False).execute()
+                prev_res = db.table("post_daily_stats").select("post_id, play_count, likes_count, comments_count, measured_at").in_("post_id", [p["id"] for p in yt_posts]).lt("measured_at", TODAY).order("measured_at", desc=True).execute()
                 last_stat = {}
                 for r in (prev_res.data or []):
                     last_stat.setdefault(r["post_id"], r)
