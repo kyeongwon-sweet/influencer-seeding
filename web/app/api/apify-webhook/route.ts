@@ -475,7 +475,10 @@ async function handleScreening(
       if (sampleThumb) infUpdate.sample_thumbnail_url = sampleThumb;
       if (caption) infUpdate.content_summary = caption;
       if (postUploadedAt) infUpdate.post_uploaded_at = postUploadedAt;
-      if (resultStatus === 'pass' || resultStatus === 'reject') infUpdate.status = resultStatus;
+      // 브랜드 공식(인증/파란체크) 계정은 후보에서 제외 — 자동 '탈락'
+      const isVerified = posts.some(p => p.verified === true);
+      if (isVerified) infUpdate.status = 'reject';
+      else if (resultStatus === 'pass' || resultStatus === 'reject') infUpdate.status = resultStatus;
       if (Object.keys(infUpdate).length > 0) {
         await supabase.from('influencers').update(infUpdate).eq('id', infId);
       }
