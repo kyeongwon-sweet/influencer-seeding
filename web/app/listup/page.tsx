@@ -1066,7 +1066,7 @@ export default function ListupPage() {
                                 onKeyDown={e => { if (e.key === "Enter") patchInfluencerName(inf.id, editName.value); if (e.key === "Escape") setEditName(null); }}
                                 className="w-full text-sm font-medium bg-transparent border-b border-a-blue outline-none py-0.5" />
                             ) : (
-                              <a href={inf.url} target="_blank" rel="noreferrer"
+                              <a href={inf.sample_post_url || inf.url} target="_blank" rel="noreferrer"
                                 className="inline-flex items-center gap-1 font-medium hover:text-a-blue transition-colors group/link">
                                 {inf.name}
                                 <svg width="10" height="10" viewBox="0 0 14 14" fill="none" className="opacity-0 group-hover/link:opacity-50 flex-shrink-0 transition-opacity">
