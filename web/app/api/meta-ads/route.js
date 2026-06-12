@@ -25,6 +25,14 @@ export async function GET(req) {
       dateTo,
     });
 
+    // 오늘은 Meta가 계속 갱신하는 잠정치 → 제외하고 "어제"까지만 집계 (값 안정화)
+    const kstToday = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+    const yesterday = new Date(new Date(kstToday + "T00:00:00Z").getTime() - 86400000).toISOString().slice(0, 10);
+    const effectiveTo = dateTo < kstToday ? dateTo : yesterday;
+    if (effectiveTo < dateFrom) {
+      return Response.json([]);
+    }
+
     // 2. 환경변수 검증
     const accessToken = process.env.META_BUSINESS_ACCESS_TOKEN;
     const accountId = process.env.META_BUSINESS_ACCOUNT_ID;
@@ -52,7 +60,7 @@ export async function GET(req) {
     url.searchParams.append('fields', 'spend,date_start');
     // ⚠️ since/until을 따로 넘기면 Meta Insights가 무시하고 기본 구간만 반환함.
     //    반드시 time_range JSON으로 전달해야 요청한 날짜 범위가 적용됨.
-    url.searchParams.append('time_range', JSON.stringify({ since: dateFrom, until: dateTo }));
+    url.searchParams.append('time_range', JSON.stringify({ since: dateFrom, until: effectiveTo }));
     url.searchParams.append('time_increment', '1');  // ← 없으면 기간 누적 1건만 반환
     url.searchParams.append('access_token', accessToken);
 
@@ -60,7 +68,8 @@ export async function GET(req) {
     const urlStr = url.toString().replace(accessToken, "***");
     console.log(`[${MODULE}] 🔗 API 요청`, { url: urlStr });
 
-    const response = await fetch(url.toString());
+    // 1시간 캐싱 — 같은 요청은 재호출 않고 캐시 응답 (잦은 변동 완화)
+    const response = await fetch(url.toString(), { next: { revalidate: 3600 } });
     const data = await response.json();
 
     // 4. 응답 상태 검증
