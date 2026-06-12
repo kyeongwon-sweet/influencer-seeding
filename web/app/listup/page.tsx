@@ -16,7 +16,7 @@ type ScreeningMetrics = {
 };
 type Influencer = {
   id: string; name: string; url: string; platform: string; status: string; source: string;
-  created_at: string; keyword?: string; sample_post_url?: string; post_type?: string;
+  created_at: string; keyword?: string; sample_post_url?: string; sample_thumbnail_url?: string; post_type?: string;
   post_uploaded_at?: string; notes?: string | null; content_summary?: string | null;
   screening_metrics?: ScreeningMetrics[];
 };
@@ -1045,7 +1045,7 @@ export default function ListupPage() {
                 <tbody>
                   {sortedInfluencers.map(inf => {
                     const ratio = inf.screening_metrics?.[0]?.avg_views_per_follower;
-                    const thumbUrl = getThumbnailUrl(inf.sample_post_url);
+                    const thumbUrl = getThumbnailUrl(inf.sample_thumbnail_url || inf.sample_post_url);
                     return (
                       <tr key={inf.id} className={`group border-b border-a-divider last:border-0 hover:bg-a-parchment/60 transition-colors ${selected.has(inf.id) ? "bg-blue-50/40" : ""}`}>
                         <td className="pl-5 pr-2 py-4 w-9">

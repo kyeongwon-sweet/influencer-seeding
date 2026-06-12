@@ -334,6 +334,7 @@ async function handleListup(supabase: ReturnType<typeof getServerSupabase>, jobI
         source: 'listup',
         keyword,
         sample_post_url: postUrl,
+        sample_thumbnail_url: (item.displayUrl as string) || null,
         post_type: '릴스',
         post_uploaded_at: postUploadedAt,
       };
@@ -462,8 +463,8 @@ async function handleScreening(
 
       // 채널명·캡션·썸네일 실제 데이터로 업데이트
       const realName = (posts[0]?.ownerFullName as string) || (posts[0]?.ownerUsername as string) || null;
-      // Apify가 반환하는 thumbnailUrl(릴스 커버) 또는 displayUrl(이미지) 우선 사용
-      const sampleUrl = (posts[0]?.thumbnailUrl as string) || (posts[0]?.displayUrl as string) || (posts[0]?.url as string) || null;
+      // 썸네일 이미지(릴스 커버/이미지)는 별도 필드에 저장 — sample_post_url(게시물 permalink, 리스트업이 저장한 매칭 게시물)은 덮지 않음
+      const sampleThumb = (posts[0]?.thumbnailUrl as string) || (posts[0]?.displayUrl as string) || null;
       const caption = (posts[0]?.caption as string)?.slice(0, 300) || null;
       const rawTs = posts[0]?.timestamp || posts[0]?.takenAtTimestamp;
       const postUploadedAt = typeof rawTs === 'number'
@@ -471,7 +472,7 @@ async function handleScreening(
         : (rawTs as string) || null;
       const infUpdate: Record<string, unknown> = {};
       if (realName) infUpdate.name = realName;
-      if (sampleUrl) infUpdate.sample_post_url = sampleUrl;
+      if (sampleThumb) infUpdate.sample_thumbnail_url = sampleThumb;
       if (caption) infUpdate.content_summary = caption;
       if (postUploadedAt) infUpdate.post_uploaded_at = postUploadedAt;
       if (resultStatus === 'pass' || resultStatus === 'reject') infUpdate.status = resultStatus;
@@ -542,11 +543,10 @@ async function handleScreening(
     // 채널명·캡션·썸네일 실제 데이터로 업데이트
     const firstItem = items[0];
     const realName = (firstItem?.channelName || firstItem?.channelTitle || firstItem?.author) as string | null || null;
-    const sampleUrl = (firstItem?.url as string) || null;
     const caption = (firstItem?.title as string)?.slice(0, 300) || null;
     const ytUpdate: Record<string, unknown> = {};
     if (realName) ytUpdate.name = realName;
-    if (sampleUrl) ytUpdate.sample_post_url = sampleUrl;
+    // sample_post_url(리스트업이 저장한 매칭 영상)은 덮지 않음
     if (caption) ytUpdate.content_summary = caption;
     if (resultStatus === 'pass' || resultStatus === 'reject') ytUpdate.status = resultStatus;
     if (Object.keys(ytUpdate).length > 0) {
