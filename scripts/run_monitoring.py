@@ -81,6 +81,35 @@ def _fetch_youtube(urls: list) -> dict:
     return out
 
 
+def _tt_id(url: str):
+    """틱톡 영상 ID 추출"""
+    m = re.search(r'/video/(\d+)', url or "")
+    return m.group(1) if m else None
+
+
+def _fetch_tiktok(urls: list) -> dict:
+    """틱톡 영상 조회수 수집 (clockworks/tiktok-scraper). 반환: {video_id: {views,likes,comments}}"""
+    from apify_client import ApifyClient
+    client = ApifyClient(os.getenv("APIFY_API_TOKEN"))
+    run = client.actor("clockworks/tiktok-scraper").call(run_input={
+        "postURLs": urls,
+        "resultsPerPage": 1,
+        "shouldDownloadVideos": False,
+        "shouldDownloadCovers": False,
+        "shouldDownloadSubtitles": False,
+    })
+    out = {}
+    for it in client.dataset(run["defaultDatasetId"]).iterate_items():
+        vid = _tt_id(it.get("webVideoUrl") or it.get("submittedVideoUrl") or "")
+        if vid:
+            out[vid] = {
+                "views": it.get("playCount"),
+                "likes": it.get("diggCount"),
+                "comments": it.get("commentCount"),
+            }
+    return out
+
+
 def run():
     print("[DEBUG] === 협찬 모니터링 시작 ===")
     print(f"[DEBUG] 환경변수 확인:")
@@ -237,6 +266,40 @@ def run():
                 print(f"[ERROR] 유튜브 수집 실패: {e}")
                 yt_failed = True
 
+        # TikTok 수집 (전용 액터). playCount 0 = 접근불가(삭제/비공개/지역제한)로 보고 저장 안 함(직전 값 유지)
+        tt_posts = [p for p in posts if "tiktok.com" in (p.get("url") or "")]
+        tt_failed = False
+        if tt_posts and not skip_apify:
+            try:
+                tt_stats = _fetch_tiktok([p["url"] for p in tt_posts])
+                got = sum(1 for s in tt_stats.values() if (s.get("views") or 0) > 0)
+                print(f"[LOG] 틱톡 수집: 실값 {got}건 / {len(tt_posts)}개 요청")
+                prev_res = db.table("post_daily_stats").select("post_id, play_count, likes_count, comments_count, measured_at").in_("post_id", [p["id"] for p in tt_posts]).lt("measured_at", TODAY).order("measured_at", desc=True).execute()
+                last_stat = {}
+                for r in (prev_res.data or []):
+                    last_stat.setdefault(r["post_id"], r)
+                for post in tt_posts:
+                    s = tt_stats.get(_tt_id(post["url"]))
+                    play = s.get("views") if s else None
+                    # 🛡️ 0/미반환은 접근불가 → 저장 안 함(0으로 덮어쓰면 누적 붕괴, 직전 값 유지)
+                    if not play or play <= 0:
+                        continue
+                    existing = last_stat.get(post["id"], {})
+                    if existing.get("play_count") is not None and play < existing.get("play_count"):
+                        print(f"  ❌ 틱톡 조회수 역행 {post['url']} → NULL 처리")
+                        play = None
+                    likes, comments = s.get("likes"), s.get("comments")
+                    rows.append({
+                        "post_id": post["id"],
+                        "measured_at": TODAY,
+                        "play_count": play,
+                        "likes_count": likes if likes is not None else existing.get("likes_count"),
+                        "comments_count": comments if comments is not None else existing.get("comments_count"),
+                    })
+            except Exception as e:
+                print(f"[ERROR] 틱톡 수집 실패: {e}")
+                tt_failed = True
+
         if rows:
             print(f"[LOG] 데이터 저장 시작: {len(rows)}건")
             result = db.table("post_daily_stats").upsert(rows, on_conflict="post_id,measured_at").execute()
@@ -249,10 +312,10 @@ def run():
         if job_id:
             db.table("jobs").update({"status": "done"}).eq("id", job_id).execute()
 
-        # 유튜브 수집이 통째로 실패했으면 작업을 실패로 표시해 GitHub Actions에서 가시화.
+        # 유튜브/틱톡 수집이 통째로 실패했으면 작업을 실패로 표시해 GitHub Actions에서 가시화.
         # (IG 데이터는 위에서 이미 저장됨. 11/14/17시 status='missing' 재수집이 복구.)
-        if yt_failed:
-            raise RuntimeError("유튜브 수집 실패 — 재수집 대상")
+        if yt_failed or tt_failed:
+            raise RuntimeError(f"수집 일부 실패(유튜브={yt_failed}, 틱톡={tt_failed}) — 재수집 대상")
 
     except Exception as e:
         print(f"[ERROR] 모니터링 실패: {str(e)}")
