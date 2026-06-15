@@ -1962,7 +1962,7 @@ export default function MonitoringPage() {
                   <TH w={colWidths["게시일"]} onResize={e => startResize("게시일", e)} {...sp("게시일")}>게시일</TH>
                   <TH w={colWidths["인플루언서"]} onResize={e => startResize("인플루언서", e)} {...sp("인플루언서")}>인플루언서</TH>
                   <TH w={colWidths["상품명"]} onResize={e => startResize("상품명", e)} {...sp("상품명")}>상품명</TH>
-                  <TH w={colWidths["프로젝트명"]} onResize={e => startResize("프로젝트명", e)} {...sp("프로젝트명")}>프로젝트명</TH>
+                  <TH w={colWidths["프로젝트명"]} fixed onResize={e => startResize("프로젝트명", e)} {...sp("프로젝트명")}>프로젝트명</TH>
                   <TH right w={colWidths["비용"]} onResize={e => startResize("비용", e)} {...sp("비용")}>비용</TH>
                   <TH right w={colWidths["조회수"]} onResize={e => startResize("조회수", e)} {...sp("조회수")}>조회수</TH>
                   <TH right w={colWidths["조회당비용"]} onResize={e => startResize("조회당비용", e)} {...sp("조회당비용")}>
@@ -2119,7 +2119,7 @@ export default function MonitoringPage() {
                           </span>
                         )}
                       </TD>
-                      <TD muted w={colWidths["프로젝트명"]}>
+                      <TD muted w={colWidths["프로젝트명"]} fixed>
                         {editCell?.postId === post.id && editCell?.field === "project_name" ? (
                           <input autoFocus value={editCell.value}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
@@ -2128,7 +2128,7 @@ export default function MonitoringPage() {
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5" />
                         ) : (
                           <span onClick={() => setEditCell({ postId: post.id, field: "project_name", value: post.project_name ?? "" })}
-                            className="cursor-text text-a-ink-muted hover:text-a-blue transition-colors">
+                            className="block truncate cursor-text text-a-ink-muted hover:text-a-blue transition-colors">
                             {post.project_name ?? "-"}
                           </span>
                         )}
