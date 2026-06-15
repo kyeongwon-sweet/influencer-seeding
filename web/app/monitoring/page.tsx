@@ -1960,8 +1960,8 @@ export default function MonitoringPage() {
                     </span>
                   </TH>
                   <TH w={colWidths["게시일"]} onResize={e => startResize("게시일", e)} {...sp("게시일")}>게시일</TH>
-                  <TH w={colWidths["인플루언서"]} onResize={e => startResize("인플루언서", e)} {...sp("인플루언서")}>인플루언서</TH>
-                  <TH w={colWidths["상품명"]} onResize={e => startResize("상품명", e)} {...sp("상품명")}>상품명</TH>
+                  <TH w={colWidths["인플루언서"]} fixed onResize={e => startResize("인플루언서", e)} {...sp("인플루언서")}>인플루언서</TH>
+                  <TH w={colWidths["상품명"]} fixed onResize={e => startResize("상품명", e)} {...sp("상품명")}>상품명</TH>
                   <TH w={colWidths["프로젝트명"]} fixed onResize={e => startResize("프로젝트명", e)} {...sp("프로젝트명")}>프로젝트명</TH>
                   <TH right w={colWidths["비용"]} onResize={e => startResize("비용", e)} {...sp("비용")}>비용</TH>
                   <TH right w={colWidths["조회수"]} onResize={e => startResize("조회수", e)} {...sp("조회수")}>조회수</TH>
@@ -1993,7 +1993,7 @@ export default function MonitoringPage() {
                   <TH right w={colWidths["좋아요"]} onResize={e => startResize("좋아요", e)} {...sp("좋아요")}>좋아요</TH>
                   <TH right w={colWidths["댓글"]} onResize={e => startResize("댓글", e)} {...sp("댓글")}>댓글</TH>
                   <TH className="text-center" w={colWidths["트렌드"]} onResize={e => startResize("트렌드", e)}>트렌드</TH>
-                  <TH w={colWidths["특이사항"]} onResize={e => startResize("특이사항", e)}>특이사항</TH>
+                  <TH w={colWidths["특이사항"]} fixed onResize={e => startResize("특이사항", e)}>특이사항</TH>
                   <TH w={colWidths["삭제"]}></TH>
                 </tr>
               </thead>
@@ -2067,7 +2067,7 @@ export default function MonitoringPage() {
                           </span>
                         )}
                       </TD>
-                      <TD w={colWidths["인플루언서"]}>
+                      <TD w={colWidths["인플루언서"]} fixed>
                         {editCell?.postId === post.id && editCell?.field === "account_name" ? (
                           <input autoFocus value={editCell.value}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
@@ -2105,7 +2105,7 @@ export default function MonitoringPage() {
                           </div>
                         )}
                       </TD>
-                      <TD muted w={colWidths["상품명"]}>
+                      <TD muted w={colWidths["상품명"]} fixed>
                         {editCell?.postId === post.id && editCell?.field === "product_name" ? (
                           <input autoFocus value={editCell.value}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
@@ -2114,7 +2114,7 @@ export default function MonitoringPage() {
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5" />
                         ) : (
                           <span onClick={() => setEditCell({ postId: post.id, field: "product_name", value: post.product_name ?? "" })}
-                            className="cursor-text hover:text-a-blue transition-colors">
+                            className="block truncate cursor-text hover:text-a-blue transition-colors">
                             {post.product_name ?? "-"}
                           </span>
                         )}
@@ -2244,7 +2244,7 @@ export default function MonitoringPage() {
                       <td style={{ minWidth: colWidths["트렌드"] }} className="px-3 py-3 text-center">
                         <Sparkline stats={post.all_stats ?? []} postId={post.id} onClick={() => setTrendPost(post)} />
                       </td>
-                      <td style={{ minWidth: colWidths["특이사항"] }} className="px-3 py-3">
+                      <td style={{ width: colWidths["특이사항"], minWidth: colWidths["특이사항"], maxWidth: colWidths["특이사항"] }} className="px-3 py-3">
                         {editCell?.postId === post.id && editCell?.field === "notes" ? (
                           <textarea
                             autoFocus
