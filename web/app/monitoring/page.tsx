@@ -177,9 +177,12 @@ function TH({ children, right, col, onSort, sorted, className: cls, w, leftPos, 
       {sortable && <span className={`ml-1 ${sorted ? "text-a-blue" : "opacity-20"}`}>{sorted === "asc" ? "↑" : sorted === "desc" ? "↓" : "↕"}</span>}
       {onResize && (
         <div
-          className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-a-blue/30"
+          className="group/rz absolute right-0 top-0 h-full w-2.5 cursor-col-resize flex justify-end z-20"
           onMouseDown={e => { e.stopPropagation(); onResize(e); }}
-        />
+          title="드래그하여 열 너비 조절"
+        >
+          <div className="w-0.5 h-full bg-gray-200 group-hover/rz:bg-a-blue transition-colors" />
+        </div>
       )}
     </th>
   );
