@@ -1973,7 +1973,7 @@ export default function MonitoringPage() {
                     </span>
                   </TH>
                   <TH right w={colWidths["도달당비용"]} onResize={e => startResize("도달당비용", e)} {...sp("도달당비용")}>도달당비용</TH>
-                  <TH w={200} fixed>캡션</TH>
+                  <TH w={colWidths["캡션"]} fixed onResize={e => startResize("캡션", e)}>캡션</TH>
                   <TH right w={colWidths["좋아요"]} onResize={e => startResize("좋아요", e)} {...sp("좋아요")}>좋아요</TH>
                   <TH right w={colWidths["댓글"]} onResize={e => startResize("댓글", e)} {...sp("댓글")}>댓글</TH>
                   <TH className="text-center" w={colWidths["트렌드"]} onResize={e => startResize("트렌드", e)}>트렌드</TH>
@@ -2197,7 +2197,7 @@ export default function MonitoringPage() {
                             : <span className="text-gray-300">-</span>;
                         })()}
                       </TD>
-                      <TD muted w={200} fixed>
+                      <TD muted w={colWidths["캡션"]} fixed>
                         {editCell?.postId === post.id && editCell?.field === "content_summary" ? (
                           <textarea
                             autoFocus
