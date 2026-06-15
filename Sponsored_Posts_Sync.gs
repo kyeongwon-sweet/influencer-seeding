@@ -52,8 +52,8 @@ const FIELD_BY_HEADER = {
   "비용": "cost",
 };
 
-// 사이트가 허용하는 URL (인스타 / 유튜브 / 틱톡, 서브도메인 포함). 서버 필터와 동일.
-const ALLOWED_URL_RE = /^https:\/\/([a-z0-9-]+\.)?(instagram\.com|youtube\.com|youtu\.be|tiktok\.com)\//i;
+// 사이트가 허용하는 URL (인스타 / 유튜브 / 틱톡 / 페이스북 / 스레드, 서브도메인 포함). 서버 필터와 동일.
+const ALLOWED_URL_RE = /^https:\/\/([a-z0-9-]+\.)?(instagram\.com|youtube\.com|youtu\.be|tiktok\.com|facebook\.com|threads\.com|threads\.net)\//i;
 
 // 필드 → 표시용 컬럼명 (빈칸 검사 보고용)
 const FIELD_LABEL = {

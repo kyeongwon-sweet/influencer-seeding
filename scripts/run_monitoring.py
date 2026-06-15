@@ -110,6 +110,53 @@ def _fetch_tiktok(urls: list) -> dict:
     return out
 
 
+def _th_code(url: str):
+    """스레드 게시물 코드 추출 (/post/CODE)"""
+    m = re.search(r'/post/([A-Za-z0-9_-]+)', url or "")
+    return m.group(1) if m else None
+
+
+def _fetch_threads(urls: list) -> dict:
+    """스레드 좋아요/답글 수집 (logical_scrapers/threads-post-scraper). 조회수 없음. 반환: {code: {likes,comments}}"""
+    from apify_client import ApifyClient
+    client = ApifyClient(os.getenv("APIFY_API_TOKEN"))
+    run = client.actor("logical_scrapers/threads-post-scraper").call(run_input={
+        "startUrls": [{"url": u} for u in urls],
+    })
+    out = {}
+    for it in client.dataset(run["defaultDatasetId"]).iterate_items():
+        th = it.get("thread") or {}
+        code = th.get("code") or _th_code(th.get("url") or "")
+        if code:
+            out[code] = {"likes": th.get("like_count"), "comments": th.get("reply_count")}
+    return out
+
+
+def _fb_key(url: str):
+    """페이스북 게시물 식별자 (pfbid 또는 숫자 id)"""
+    m = re.search(r'pfbid[0-9A-Za-z]+', url or "")
+    if m:
+        return m.group(0)
+    m = re.search(r'/(?:posts|videos)/(\d+)', url or "")
+    return m.group(1) if m else None
+
+
+def _fetch_facebook(urls: list) -> dict:
+    """페이스북 좋아요/공유 수집 (apify/facebook-posts-scraper). 일반 게시물은 조회수 없음(영상만). 반환: {key: {likes,comments}}"""
+    from apify_client import ApifyClient
+    client = ApifyClient(os.getenv("APIFY_API_TOKEN"))
+    run = client.actor("apify/facebook-posts-scraper").call(run_input={
+        "startUrls": [{"url": u} for u in urls],
+        "resultsLimit": max(len(urls), 5),
+    })
+    out = {}
+    for it in client.dataset(run["defaultDatasetId"]).iterate_items():
+        key = _fb_key(it.get("url") or it.get("facebookUrl") or "") or it.get("postId")
+        if key:
+            out[key] = {"likes": it.get("likes"), "comments": it.get("comments")}
+    return out
+
+
 def run():
     print("[DEBUG] === 협찬 모니터링 시작 ===")
     print(f"[DEBUG] 환경변수 확인:")
@@ -300,6 +347,50 @@ def run():
                 print(f"[ERROR] 틱톡 수집 실패: {e}")
                 tt_failed = True
 
+        # Threads 수집 (전용 액터). 조회수 없음 → 좋아요/답글만 (play_count는 미설정)
+        th_posts = [p for p in posts if ("threads.com" in (p.get("url") or "") or "threads.net" in (p.get("url") or ""))]
+        th_failed = False
+        if th_posts and not skip_apify:
+            try:
+                th_stats = _fetch_threads([p["url"] for p in th_posts])
+                print(f"[LOG] 스레드 수집: {len(th_stats)}건 / {len(th_posts)}개 요청")
+                for post in th_posts:
+                    s = th_stats.get(_th_code(post["url"]))
+                    if not s:
+                        continue
+                    rows.append({
+                        "post_id": post["id"],
+                        "measured_at": TODAY,
+                        "play_count": None,  # 스레드는 조회수 미제공
+                        "likes_count": s.get("likes"),
+                        "comments_count": s.get("comments"),
+                    })
+            except Exception as e:
+                print(f"[ERROR] 스레드 수집 실패: {e}")
+                th_failed = True
+
+        # Facebook 수집 (전용 액터). 일반 게시물은 조회수 없음(영상만) → 좋아요만 (댓글 미반환)
+        fb_posts = [p for p in posts if "facebook.com" in (p.get("url") or "")]
+        fb_failed = False
+        if fb_posts and not skip_apify:
+            try:
+                fb_stats = _fetch_facebook([p["url"] for p in fb_posts])
+                print(f"[LOG] 페이스북 수집: {len(fb_stats)}건 / {len(fb_posts)}개 요청")
+                for post in fb_posts:
+                    s = fb_stats.get(_fb_key(post["url"]))
+                    if not s:
+                        continue
+                    rows.append({
+                        "post_id": post["id"],
+                        "measured_at": TODAY,
+                        "play_count": None,  # 일반 게시물은 조회수 없음
+                        "likes_count": s.get("likes"),
+                        "comments_count": s.get("comments"),
+                    })
+            except Exception as e:
+                print(f"[ERROR] 페이스북 수집 실패: {e}")
+                fb_failed = True
+
         if rows:
             print(f"[LOG] 데이터 저장 시작: {len(rows)}건")
             result = db.table("post_daily_stats").upsert(rows, on_conflict="post_id,measured_at").execute()
@@ -314,8 +405,8 @@ def run():
 
         # 유튜브/틱톡 수집이 통째로 실패했으면 작업을 실패로 표시해 GitHub Actions에서 가시화.
         # (IG 데이터는 위에서 이미 저장됨. 11/14/17시 status='missing' 재수집이 복구.)
-        if yt_failed or tt_failed:
-            raise RuntimeError(f"수집 일부 실패(유튜브={yt_failed}, 틱톡={tt_failed}) — 재수집 대상")
+        if yt_failed or tt_failed or fb_failed or th_failed:
+            raise RuntimeError(f"수집 일부 실패(유튜브={yt_failed}, 틱톡={tt_failed}, 페북={fb_failed}, 스레드={th_failed}) — 재수집 대상")
 
     except Exception as e:
         print(f"[ERROR] 모니터링 실패: {str(e)}")
