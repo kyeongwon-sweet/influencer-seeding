@@ -24,13 +24,10 @@ export async function POST(req: NextRequest) {
 
   const webhookUrl = `${getAppUrl()}/api/youtube-trends/webhook?token=${encodeURIComponent(process.env.WEBHOOK_SECRET ?? "")}`;
 
-  // 키워드별로 개별 실행 — 한 실행에 여러 URL을 넣으면 일부만 산출되는 경우가 있어 분리.
-  // 각 실행 완료 시 webhook이 해당 키워드 데이터를 upsert.
-  for (const kw of KEYWORDS) {
-    const startUrls = [{
-      url: `https://trends.google.com/trends/explore?date=today%203-m&geo=KR&gprop=youtube&q=${encodeURIComponent(kw)}`,
-    }];
-    await startActorRun("apify/google-trends-scraper", { startUrls, maxItems: 5 }, webhookUrl);
-  }
-  return NextResponse.json({ ok: true, started: KEYWORDS.length });
+  // 모든 키워드를 한 실행에 함께 — 동시에 별도 run을 띄우면 Google Trends가 차단해 빈 결과가 됨.
+  const startUrls = KEYWORDS.map((kw) => ({
+    url: `https://trends.google.com/trends/explore?date=today%203-m&geo=KR&gprop=youtube&q=${encodeURIComponent(kw)}`,
+  }));
+  await startActorRun("apify/google-trends-scraper", { startUrls, maxItems: 50 }, webhookUrl);
+  return NextResponse.json({ ok: true, started: true });
 }
