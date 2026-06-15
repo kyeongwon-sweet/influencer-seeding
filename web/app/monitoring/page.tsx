@@ -567,7 +567,7 @@ export default function MonitoringPage() {
   const [brandMetrics, setBrandMetrics] = useState<{ measured_at: string; yt_views: number | null; yt_unique_viewers: number | null; yt_search_views: number | null; ig_profile_views: number | null }[]>([]);
   const [ytTrends, setYtTrends] = useState<{ measured_at: string; keyword: string; value: number | null }[]>([]);
   const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set()); // 범례 클릭으로 숨긴 시리즈
-  const [productTrends, setProductTrends] = useState<{ products: string[]; data: { date: string; values: Record<string, number | null> }[] }>({ products: [], data: [] });
+  const [productTrends, setProductTrends] = useState<{ brandKey: string; products: string[]; data: { date: string; values: Record<string, number | null> }[] }>({ brandKey: "", products: [], data: [] });
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [showHelp, setShowHelp] = useState(false);
@@ -774,15 +774,16 @@ export default function MonitoringPage() {
     lsEndDate: chartData.length >= 2 ? chartData[chartData.length - 1].date : null,
   }), [chartData]);
 
+  // 라라스윗 검색량 = 상품 검색량 시트의 브랜드 전체(B열) 컬럼으로 통일 (네이버 실시간 추정값 대신)
   useEffect(() => {
-    if (!lsStartDate || !lsEndDate) return;
-    const controller = new AbortController();
-    fetch(`/api/larasweet-trend?startDate=${lsStartDate}&endDate=${lsEndDate}`, { signal: controller.signal })
-      .then(r => r.ok ? r.json() : { data: [] })
-      .then(json => setLsSearchData(json.data ?? []))
-      .catch(() => {});
-    return () => controller.abort();
-  }, [lsStartDate, lsEndDate]);
+    const key = productTrends.brandKey;
+    if (!key || !lsStartDate || !lsEndDate) { setLsSearchData([]); return; }
+    const rows = productTrends.data
+      .filter(r => r.date >= lsStartDate && r.date <= lsEndDate)
+      .map(r => { const v = r.values[key]; return v == null ? null : { date: r.date, ratio: v, value: v }; })
+      .filter((x): x is { date: string; ratio: number; value: number } => x !== null);
+    setLsSearchData(rows);
+  }, [productTrends, lsStartDate, lsEndDate]);
 
   useEffect(() => {
     fetch("/api/brand-metrics")
@@ -800,6 +801,7 @@ export default function MonitoringPage() {
     fetch("/api/product-search-trends")
       .then(r => r.ok ? r.json() : { products: [], data: [] })
       .then(d => setProductTrends({
+        brandKey: typeof d?.brandKey === "string" ? d.brandKey : "",
         products: Array.isArray(d?.products) ? d.products : [],
         data: Array.isArray(d?.data) ? d.data : [],
       }))
