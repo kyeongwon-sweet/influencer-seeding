@@ -287,7 +287,7 @@ function effectiveReach(reachCount: number | null | undefined, playCount: number
   return null;
 }
 
-function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData, secondaryData, secondaryColor = "#ea580c", extraSeries }: {
+function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData, secondaryData, secondaryColor = "#ea580c", extraSeries, hidePrimary }: {
   data: { date: string; value: number }[];
   height?: number;
   gradId?: string;
@@ -296,6 +296,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
   secondaryData?: { date: string; value: number }[];
   secondaryColor?: string;
   extraSeries?: { name: string; color: string; members: { label: string; data: { date: string; value: number | null }[] }[] }[];
+  hidePrimary?: boolean;
 }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [pinnedIdx, setPinnedIdx] = useState<number | null>(null);
@@ -457,7 +458,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
               <text x={cw + 8} y={tick.y} textAnchor="start" dominantBaseline="middle" fontSize="6" fill="#666666">{fmtYSecondary(tick.val)}</text>
             </g>
           ))}
-          <path d={areaPath} fill={`url(#${gradId})`} />
+          {!hidePrimary && <path d={areaPath} fill={`url(#${gradId})`} />}
           {lsPath && <path d={lsPath} fill="none" stroke="#d1d5db" strokeWidth="1" strokeDasharray="3 2" />}
           {extraComputed.map((s, i) => s.path && (
             <path key={`extra-${i}`} d={s.path} fill="none" stroke={s.color} strokeWidth="1.25"
@@ -466,8 +467,10 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
           {extraComputed.map((s, si) => s.dots.map((d, di) => (
             <circle key={`xdot-${si}-${di}`} cx={d[0]} cy={d[1]} r={2.2} fill={s.color} />
           )))}
-          <path d={linePath} fill="none" stroke="#3b82f6" strokeWidth="1.5"
-            strokeLinejoin="round" strokeLinecap="round" />
+          {!hidePrimary && (
+            <path d={linePath} fill="none" stroke="#3b82f6" strokeWidth="1.5"
+              strokeLinejoin="round" strokeLinecap="round" />
+          )}
           {secondaryPath && (
             <path d={secondaryPath} fill="none" stroke={secondaryColor} strokeWidth="1"
               strokeLinejoin="round" strokeLinecap="round" />
@@ -481,7 +484,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
             <>
               <line x1={xS(activeIdx)} y1={0} x2={xS(activeIdx)} y2={ch}
                 stroke="#3b82f6" strokeWidth="1" strokeDasharray="3,3" />
-              <circle cx={xS(activeIdx)} cy={yS(data[activeIdx].value)} r={3.5} fill="#3b82f6" />
+              {!hidePrimary && <circle cx={xS(activeIdx)} cy={yS(data[activeIdx].value)} r={3.5} fill="#3b82f6" />}
             </>
           )}
           {xLabelIdxs.map(i => (
@@ -563,6 +566,7 @@ export default function MonitoringPage() {
   const [lsSearchData, setLsSearchData] = useState<{ date: string; ratio: number; value: number | null }[]>([]);
   const [brandMetrics, setBrandMetrics] = useState<{ measured_at: string; yt_views: number | null; yt_unique_viewers: number | null; yt_search_views: number | null; ig_profile_views: number | null }[]>([]);
   const [ytTrends, setYtTrends] = useState<{ measured_at: string; keyword: string; value: number | null }[]>([]);
+  const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set()); // 범례 클릭으로 숨긴 시리즈
   const [productTrends, setProductTrends] = useState<{ products: string[]; data: { date: string; values: Record<string, number | null> }[] }>({ products: [], data: [] });
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -882,6 +886,14 @@ export default function MonitoringPage() {
         setMainAdCosts([]);
       });
   }, [chartData]);
+
+  // 범례 클릭 토글 (해당 시리즈 숨김/표시)
+  const seriesHidden = (k: string) => hiddenSeries.has(k);
+  const toggleSeries = (k: string) => setHiddenSeries(prev => {
+    const s = new Set(prev);
+    if (s.has(k)) s.delete(k); else s.add(k);
+    return s;
+  });
 
 
   async function loadPosts() {
@@ -1662,39 +1674,51 @@ export default function MonitoringPage() {
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">조회수 트렌드 (누적)</p>
                   <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-1.5">
+                    <button type="button" onClick={() => toggleSeries("조회수")}
+                      className={`flex items-center gap-1.5 transition-opacity ${seriesHidden("조회수") ? "opacity-30" : ""}`}>
                       <div className="w-2 h-0.5 bg-a-blue" />
                       <span className="text-xs text-a-ink-muted">조회수</span>
-                    </div>
+                    </button>
                     {lsSearchData && lsSearchData.length > 0 && (
-                      <div className="flex items-center gap-1.5">
-                        <svg width="10" height="3" viewBox="0 0 20 4"><line x1="0" y1="2" x2="20" y2="2" stroke="#d1d5db" strokeWidth="1.5" strokeDasharray="3 2" /></svg>
+                      <div className="flex items-center gap-1">
+                        <button type="button" onClick={() => toggleSeries("검색량")}
+                          className={`flex items-center gap-1.5 transition-opacity ${seriesHidden("검색량") ? "opacity-30" : ""}`}>
+                          <svg width="10" height="3" viewBox="0 0 20 4"><line x1="0" y1="2" x2="20" y2="2" stroke="#d1d5db" strokeWidth="1.5" strokeDasharray="3 2" /></svg>
+                          <span className="text-xs text-a-ink-muted">검색량</span>
+                        </button>
                         <a href={NAVER_DATALAB_URL} target="_blank" rel="noreferrer"
-                          className="text-xs text-a-ink-muted hover:text-a-ink hover:underline">검색량 ↗</a>
+                          className="text-[10px] text-a-ink-muted hover:text-a-ink">↗</a>
                       </div>
                     )}
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-0.5 bg-gray-400" />
+                    <div className="flex items-center gap-1">
+                      <button type="button" onClick={() => toggleSeries("전체 전환 광고비")}
+                        className={`flex items-center gap-1.5 transition-opacity ${seriesHidden("전체 전환 광고비") ? "opacity-30" : ""}`}>
+                        <div className="w-2 h-0.5 bg-gray-400" />
+                        <span className="text-xs text-a-ink-muted">전체 전환 광고비</span>
+                      </button>
                       <a href={META_ADS_MANAGER_URL} target="_blank" rel="noreferrer"
-                        className="text-xs text-a-ink-muted hover:text-a-ink hover:underline">전체 전환 광고비 ↗</a>
+                        className="text-[10px] text-a-ink-muted hover:text-a-ink">↗</a>
                     </div>
                     {activeProductSeries.map(c => (
-                      <div key={c.id} className="flex items-center gap-1.5">
+                      <button type="button" key={c.id} onClick={() => toggleSeries(c.label)}
+                        className={`flex items-center gap-1.5 transition-opacity ${seriesHidden(c.label) ? "opacity-30" : ""}`}>
                         <div className="w-2 h-0.5" style={{ backgroundColor: productColorOf(c.id) }} />
                         <span className="text-xs text-a-ink-muted">{c.label}</span>
-                      </div>
+                      </button>
                     ))}
                     {brandMetrics.some(d => d.ig_profile_views != null) && (
-                      <div className="flex items-center gap-1.5">
+                      <button type="button" onClick={() => toggleSeries("인스타 프로필 방문")}
+                        className={`flex items-center gap-1.5 transition-opacity ${seriesHidden("인스타 프로필 방문") ? "opacity-30" : ""}`}>
                         <div className="w-2 h-0.5" style={{ backgroundColor: "#9ca3af" }} />
                         <span className="text-xs text-a-ink-muted">인스타 프로필 방문</span>
-                      </div>
+                      </button>
                     )}
                     {Array.from(new Set(ytTrends.map(t => t.keyword))).map((kw, i) => (
-                      <div key={`yt-${kw}`} className="flex items-center gap-1.5">
-                        <div className="w-2 h-0.5" style={{ backgroundColor: ["#ff6b6b", "#f59f00"][i % 2] }} />
+                      <button type="button" key={`yt-${kw}`} onClick={() => toggleSeries(`유튜브: ${kw}`)}
+                        className={`flex items-center gap-1.5 transition-opacity ${seriesHidden(`유튜브: ${kw}`) ? "opacity-30" : ""}`}>
+                        <div className="w-2 h-0.5" style={{ backgroundColor: ["#d1d5db", "#f59f00"][i % 2] }} />
                         <span className="text-xs text-a-ink-muted">유튜브: {kw}</span>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -1702,7 +1726,8 @@ export default function MonitoringPage() {
                   data={chartData}
                   height={160}
                   gradId="summaryGrad"
-                  lsData={lsSearchData}
+                  hidePrimary={seriesHidden("조회수")}
+                  lsData={seriesHidden("검색량") ? undefined : lsSearchData}
                   extraSeries={[
                     ...activeProductSeries.map(c => ({
                       name: c.label,
@@ -1724,14 +1749,14 @@ export default function MonitoringPage() {
                     // 유튜브 검색 트렌드 — 키워드별 (Google Trends gprop=youtube, 상대값 0~100)
                     ...Array.from(new Set(ytTrends.map(t => t.keyword))).map((kw, i) => ({
                       name: `유튜브: ${kw}`,
-                      color: ["#ff6b6b", "#f59f00"][i % 2],
+                      color: ["#d1d5db", "#f59f00"][i % 2],
                       members: [{
                         label: kw,
                         data: ytTrends.filter(t => t.keyword === kw).map(t => ({ date: t.measured_at, value: t.value })),
                       }],
                     })),
-                  ]}
-                  secondaryData={mainAdCosts.length > 0 ? mainAdCosts.map(d => ({date: d.date, value: d.total_cost})) : undefined}
+                  ].filter(s => !seriesHidden(s.name))}
+                  secondaryData={!seriesHidden("전체 전환 광고비") && mainAdCosts.length > 0 ? mainAdCosts.map(d => ({date: d.date, value: d.total_cost})) : undefined}
                   secondaryColor="#b3b3b3"
                   postsOnDate={(date) =>
                     filteredPosts
