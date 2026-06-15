@@ -131,6 +131,7 @@ export default function ListupPage() {
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoScreenAfterListup = useRef(false); // 리스트업 완료 후 자동 스크리닝 여부
+  const lastCheckedIdx = useRef<number | null>(null); // 체크박스 Ctrl/Shift 범위 선택 기준점
 
   const uniqueKeywords = [...new Set(influencers.map(i => i.keyword).filter(Boolean))] as string[];
 
@@ -243,6 +244,18 @@ export default function ListupPage() {
       s.has(id) ? s.delete(id) : s.add(id);
       return s;
     });
+  }
+
+  // 체크박스 클릭: Ctrl/Shift(또는 Cmd) + 클릭 시, 직전 클릭~현재 사이를 전체 선택
+  function handleRowCheck(idx: number, id: string, e: React.MouseEvent) {
+    if ((e.shiftKey || e.ctrlKey || e.metaKey) && lastCheckedIdx.current !== null) {
+      const [a, b] = [lastCheckedIdx.current, idx].sort((x, y) => x - y);
+      const rangeIds = sortedInfluencers.slice(a, b + 1).map(r => r.id);
+      setSelected(prev => { const s = new Set(prev); rangeIds.forEach(rid => s.add(rid)); return s; });
+    } else {
+      toggleSelect(id);
+    }
+    lastCheckedIdx.current = idx;
   }
 
   function toggleSelectAll() {
@@ -1043,13 +1056,14 @@ export default function ListupPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedInfluencers.map(inf => {
+                  {sortedInfluencers.map((inf, rowIdx) => {
                     const ratio = inf.screening_metrics?.[0]?.avg_views_per_follower;
                     const thumbUrl = getThumbnailUrl(inf.sample_thumbnail_url || inf.sample_post_url);
                     return (
                       <tr key={inf.id} className={`group border-b border-a-divider last:border-0 hover:bg-a-parchment/60 transition-colors ${selected.has(inf.id) ? "bg-blue-50/40" : ""}`}>
                         <td className="pl-5 pr-2 py-4 w-9">
-                          <input type="checkbox" checked={selected.has(inf.id)} onChange={() => toggleSelect(inf.id)}
+                          <input type="checkbox" checked={selected.has(inf.id)} onChange={() => {}}
+                            onClick={(e) => handleRowCheck(rowIdx, inf.id, e)}
                             className="w-3.5 h-3.5 accent-a-blue cursor-pointer" />
                         </td>
                         <td className="px-2 py-3" style={{ width: 60, minWidth: 60 }}>
