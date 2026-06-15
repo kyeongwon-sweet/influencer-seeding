@@ -1718,7 +1718,7 @@ export default function MonitoringPage() {
                     {Array.from(new Set(ytTrends.map(t => t.keyword))).map((kw, i) => (
                       <button type="button" key={`yt-${kw}`} onClick={() => toggleSeries(`유튜브 ${kw} 검색량`)}
                         className={`flex items-center gap-1.5 transition-opacity ${seriesHidden(`유튜브 ${kw} 검색량`) ? "opacity-30" : ""}`}>
-                        <div className="w-2 h-0.5" style={{ backgroundColor: ["#d1d5db", "#f59f00"][i % 2] }} />
+                        <div className="w-2 h-0.5" style={{ backgroundColor: ["#d1d5db", "#d1d5db"][i % 2] }} />
                         <span className="text-xs text-a-ink-muted">유튜브 {kw} 검색량</span>
                       </button>
                     ))}
@@ -1751,7 +1751,7 @@ export default function MonitoringPage() {
                     // 유튜브 검색 트렌드 — 키워드별 (Google Trends gprop=youtube, 상대값 0~100)
                     ...Array.from(new Set(ytTrends.map(t => t.keyword))).map((kw, i) => ({
                       name: `유튜브 ${kw} 검색량`,
-                      color: ["#d1d5db", "#f59f00"][i % 2],
+                      color: ["#d1d5db", "#d1d5db"][i % 2],
                       members: [{
                         label: kw,
                         data: ytTrends.filter(t => t.keyword === kw).map(t => ({ date: t.measured_at, value: t.value })),
