@@ -577,6 +577,7 @@ export default function MonitoringPage() {
   const [editCategory, setEditCategory] = useState<{ postId: string; infId: string; value: string } | null>(null);
   const [editPlayCount, setEditPlayCount] = useState<{ postId: string; value: string } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const lastCheckedIdx = useRef<number | null>(null); // 체크박스 Ctrl/Shift 범위 선택 기준점
   const [deleting, setDeleting] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [showTimeoutError, setShowTimeoutError] = useState(false);
@@ -1257,6 +1258,18 @@ export default function MonitoringPage() {
 
   function toggleSelect(id: string) {
     setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  }
+
+  // 체크박스 클릭: Ctrl/Shift(또는 Cmd) + 클릭 시 직전 클릭~현재 사이를 전체 선택
+  function handleRowCheck(idx: number, id: string, e: React.MouseEvent) {
+    if ((e.shiftKey || e.ctrlKey || e.metaKey) && lastCheckedIdx.current !== null) {
+      const [a, b] = [lastCheckedIdx.current, idx].sort((x, y) => x - y);
+      const rangeIds = sortedPosts.slice(a, b + 1).map(r => r.id);
+      setSelected(prev => { const s = new Set(prev); rangeIds.forEach(rid => s.add(rid)); return s; });
+    } else {
+      toggleSelect(id);
+    }
+    lastCheckedIdx.current = idx;
   }
 
   function toggleSelectAll() {
@@ -1982,7 +1995,7 @@ export default function MonitoringPage() {
                 </tr>
               </thead>
               <tbody>
-                {sortedPosts.map(post => {
+                {sortedPosts.map((post, rowIdx) => {
                   // ⚠️ 재발방지: getFilteredStats() 사용해서 필터 범위 일관성 보장
                   // 날짜 필터 시 해당 기간의 측정값들을 추출
                   const filteredStats = (filters.dateFrom || filters.dateTo)
@@ -2006,7 +2019,8 @@ export default function MonitoringPage() {
                     <tr key={post.id} className={`group border-b border-a-divider last:border-0 transition-colors ${selected.has(post.id) ? "bg-blue-50/40" : hl ? "bg-yellow-50/60 hover:bg-yellow-100/50" : "hover:bg-a-parchment/60"}`}>
                       <td className="pl-3 pr-1 py-3 sticky z-10 bg-inherit" style={{ left: 0, width: 36, minWidth: 36 }}>
                         <input type="checkbox" className="w-3.5 h-3.5 accent-a-blue cursor-pointer"
-                          checked={selected.has(post.id)} onChange={() => toggleSelect(post.id)} />
+                          checked={selected.has(post.id)} onChange={() => {}}
+                          onClick={(e) => handleRowCheck(rowIdx, post.id, e)} />
                       </td>
                       <TD col="증분량" w={stickyColWidths["증분량"]} leftPos={stickyLefts["증분량"]} right highlighted={hl}>
                         {(() => {
