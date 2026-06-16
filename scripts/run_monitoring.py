@@ -357,16 +357,23 @@ def run():
             try:
                 th_stats = _fetch_threads([p["url"] for p in th_posts])
                 print(f"[LOG] 스레드 수집: {len(th_stats)}건 / {len(th_posts)}개 요청")
+                prev_res = db.table("post_daily_stats").select("post_id, likes_count, comments_count, measured_at").in_("post_id", [p["id"] for p in th_posts]).lt("measured_at", TODAY).order("measured_at", desc=True).execute()
+                last_stat = {}
+                for r in (prev_res.data or []):
+                    last_stat.setdefault(r["post_id"], r)
                 for post in th_posts:
                     s = th_stats.get(_th_code(post["url"]))
                     if not s:
                         continue
+                    existing = last_stat.get(post["id"], {})
+                    likes, comments = s.get("likes"), s.get("comments")
                     rows.append({
                         "post_id": post["id"],
                         "measured_at": TODAY,
                         "play_count": None,  # 스레드는 조회수 미제공
-                        "likes_count": s.get("likes"),
-                        "comments_count": s.get("comments"),
+                        # 액터가 필드 누락 시 None으로 덮어쓰지 않도록 직전값 폴백
+                        "likes_count": likes if likes is not None else existing.get("likes_count"),
+                        "comments_count": comments if comments is not None else existing.get("comments_count"),
                     })
             except Exception as e:
                 print(f"[ERROR] 스레드 수집 실패: {e}")
@@ -379,16 +386,23 @@ def run():
             try:
                 fb_stats = _fetch_facebook([p["url"] for p in fb_posts])
                 print(f"[LOG] 페이스북 수집: {len(fb_stats)}건 / {len(fb_posts)}개 요청")
+                prev_res = db.table("post_daily_stats").select("post_id, likes_count, comments_count, measured_at").in_("post_id", [p["id"] for p in fb_posts]).lt("measured_at", TODAY).order("measured_at", desc=True).execute()
+                last_stat = {}
+                for r in (prev_res.data or []):
+                    last_stat.setdefault(r["post_id"], r)
                 for post in fb_posts:
                     s = fb_stats.get(_fb_key(post["url"]))
                     if not s:
                         continue
+                    existing = last_stat.get(post["id"], {})
+                    likes, comments = s.get("likes"), s.get("comments")
                     rows.append({
                         "post_id": post["id"],
                         "measured_at": TODAY,
                         "play_count": None,  # 일반 게시물은 조회수 없음
-                        "likes_count": s.get("likes"),
-                        "comments_count": s.get("comments"),
+                        # 액터가 필드 누락 시 None으로 덮어쓰지 않도록 직전값 폴백
+                        "likes_count": likes if likes is not None else existing.get("likes_count"),
+                        "comments_count": comments if comments is not None else existing.get("comments_count"),
                     })
             except Exception as e:
                 print(f"[ERROR] 페이스북 수집 실패: {e}")

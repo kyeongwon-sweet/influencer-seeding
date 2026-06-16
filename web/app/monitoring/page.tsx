@@ -1808,7 +1808,7 @@ export default function MonitoringPage() {
                       members: [{
                         label: "B2B 최종이익",
                         data: b2bDaily
-                          .filter(d => d.date <= new Date().toISOString().slice(0, 10))
+                          .filter(d => d.date <= new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10))
                           .map(d => ({ date: d.date, value: d.total_contribution })),
                       }],
                     }] : []),
