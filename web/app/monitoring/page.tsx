@@ -476,7 +476,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
             <path key={`extra-${i}`} d={s.path} fill="none" stroke={s.color} strokeWidth="1.25"
               strokeLinejoin="round" strokeLinecap="round" />
           ))}
-          {extraComputed.map((s, si) => s.dots.map((d, di) => (
+          {extraComputed.map((s, si) => !s.path && s.dots.map((d, di) => (
             <circle key={`xdot-${si}-${di}`} cx={d[0]} cy={d[1]} r={2.2} fill={s.color} />
           )))}
           {!hidePrimary && (
