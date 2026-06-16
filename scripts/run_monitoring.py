@@ -404,10 +404,12 @@ def run():
         if job_id:
             db.table("jobs").update({"status": "done"}).eq("id", job_id).execute()
 
-        # 유튜브/틱톡 수집이 통째로 실패했으면 작업을 실패로 표시해 GitHub Actions에서 가시화.
-        # (IG 데이터는 위에서 이미 저장됨. 11/14/17시 status='missing' 재수집이 복구.)
+        # 부가 플랫폼(유튜브/틱톡/페북/스레드) 일부 실패는 '경고'만 남기고 작업은 성공 처리한다.
+        # (핵심 IG 수집·저장이 되면 성공. 빈 플랫폼은 다음 자동 수집에서 보완.
+        #  진짜 장애 — IG 수집/DB 저장 실패 — 는 바깥 except에서 여전히 실패로 잡혀 알림이 온다.)
+        # → 데이터는 멀쩡한데 부가 액터 일시 오류로 매일 '빨간 실패' 알림이 오던 노이즈 제거.
         if yt_failed or tt_failed or fb_failed or th_failed:
-            raise RuntimeError(f"수집 일부 실패(유튜브={yt_failed}, 틱톡={tt_failed}, 페북={fb_failed}, 스레드={th_failed}) — 재수집 대상")
+            print(f"[WARN] 일부 플랫폼 수집 실패(유튜브={yt_failed}, 틱톡={tt_failed}, 페북={fb_failed}, 스레드={th_failed}) — 데이터는 저장됨, 작업은 성공 처리")
 
     except Exception as e:
         print(f"[ERROR] 모니터링 실패: {str(e)}")
