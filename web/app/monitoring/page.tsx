@@ -1708,9 +1708,9 @@ export default function MonitoringPage() {
             <div className="flex divide-x divide-a-hairline">
               {/* 차트 */}
               <div className="flex-[4] px-6 py-5">
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
                   <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">조회수 트렌드 (누적)</p>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-x-4 gap-y-1.5 flex-wrap justify-end">
                     <button type="button" onClick={() => toggleSeries("조회수")}
                       className={`flex items-center gap-1.5 transition-opacity ${seriesHidden("조회수") ? "opacity-30" : ""}`}>
                       <div className="w-2 h-0.5 bg-a-blue" />
