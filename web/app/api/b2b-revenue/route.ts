@@ -14,5 +14,6 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ rows: data ?? [] });
+  // 공유 데이터(일 1회 갱신) → CDN 캐시로 함수 호출·전송량 절감 (인증은 미들웨어가 선검사)
+  return NextResponse.json({ rows: data ?? [] }, { headers: { "Cache-Control": "s-maxage=300, stale-while-revalidate=900" } });
 }
