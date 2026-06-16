@@ -1,0 +1,9 @@
+# Netlify 임시 배포용 설정 (Vercel 무료 한도 초과 시 백업 호스팅).
+# Next.js 앱은 web/ 하위에 있으므로 base를 web으로 지정.
+[build]
+  base = "web"
+  command = "npm run build"
+
+# Next.js(App Router·미들웨어·API 라우트) 지원 플러그인. Netlify가 자동 설치.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
