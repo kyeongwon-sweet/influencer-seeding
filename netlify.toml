@@ -3,6 +3,8 @@
 [build]
   base = "web"
   command = "npm run build"
+  # publish는 base와 달라야 함(같으면 next 플러그인 실패). base 기준 Next 출력 디렉터리.
+  publish = ".next"
 
 # Next.js(App Router·미들웨어·API 라우트) 지원 플러그인. Netlify가 자동 설치.
 [[plugins]]
