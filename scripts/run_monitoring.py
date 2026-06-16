@@ -206,9 +206,11 @@ def run():
 
     try:
         print(f"[LOG] 협찬 모니터링 시작 - 날짜: {TODAY}")
-        res = db.table("sponsored_posts").select("id, url, posted_at, account_name, influencer_id").execute()
-        posts = res.data or []
-        print(f"[LOG] 추적 게시물: {len(posts)}개")
+        res = db.table("sponsored_posts").select("id, url, posted_at, account_name, influencer_id, ended_at").execute()
+        all_posts = res.data or []
+        # 종료(ended_at) 처리된 글은 스크랩 제외 — Apify 사용량 절감(한도 재초과 방지), Vercel 라우트와 동일
+        posts = [p for p in all_posts if not p.get("ended_at")]
+        print(f"[LOG] 추적 게시물: {len(posts)}개 (종료 제외 {len(all_posts) - len(posts)}개)")
 
         if not posts:
             print("[WARN] 추적 중인 게시물이 없습니다.")
@@ -404,12 +406,11 @@ def run():
         if job_id:
             db.table("jobs").update({"status": "done"}).eq("id", job_id).execute()
 
-        # 부가 플랫폼(유튜브/틱톡/페북/스레드) 일부 실패는 '경고'만 남기고 작업은 성공 처리한다.
-        # (핵심 IG 수집·저장이 되면 성공. 빈 플랫폼은 다음 자동 수집에서 보완.
-        #  진짜 장애 — IG 수집/DB 저장 실패 — 는 바깥 except에서 여전히 실패로 잡혀 알림이 온다.)
-        # → 데이터는 멀쩡한데 부가 액터 일시 오류로 매일 '빨간 실패' 알림이 오던 노이즈 제거.
+        # 부가 플랫폼 수집이 실패하면 작업을 실패로 표시해 알림이 오게 한다(알람은 끄지 않는다).
+        # 실패의 실제 원인(예: Apify 월 한도 초과)을 보고 근본 해결하기 위함.
+        # (IG 데이터는 위에서 이미 저장됨. status='missing'이면 11/14/17시 재수집이 복구.)
         if yt_failed or tt_failed or fb_failed or th_failed:
-            print(f"[WARN] 일부 플랫폼 수집 실패(유튜브={yt_failed}, 틱톡={tt_failed}, 페북={fb_failed}, 스레드={th_failed}) — 데이터는 저장됨, 작업은 성공 처리")
+            raise RuntimeError(f"수집 일부 실패(유튜브={yt_failed}, 틱톡={tt_failed}, 페북={fb_failed}, 스레드={th_failed}) — 원인 확인 필요")
 
     except Exception as e:
         print(f"[ERROR] 모니터링 실패: {str(e)}")
