@@ -19,14 +19,25 @@ function base64url(input: Buffer | string): string {
 
 let _cached: { token: string; exp: number } | null = null;
 
+// Vercel 환경변수에 붙여넣을 때 따옴표 포함·줄바꿈 깨짐 등으로 PEM이 손상되는 경우가 많아,
+// 어떤 형태로 들어와도 base64 본문만 추출해 표준 PKCS8 PEM으로 재구성한다.
+function normalizePrivateKey(raw: string): string {
+  const body = raw
+    .replace(/-----BEGIN [^-]+-----/g, "")
+    .replace(/-----END [^-]+-----/g, "")
+    .replace(/\\n/g, "")      // 리터럴 \n
+    .replace(/[\s"']/g, "");  // 실제 공백/줄바꿈/따옴표
+  const lines = body.match(/.{1,64}/g) ?? [];
+  return `-----BEGIN PRIVATE KEY-----\n${lines.join("\n")}\n-----END PRIVATE KEY-----\n`;
+}
+
 async function getAccessToken(): Promise<string> {
   const email = process.env.GOOGLE_SA_CLIENT_EMAIL;
-  let key = process.env.GOOGLE_SA_PRIVATE_KEY;
-  if (!email || !key) {
+  const rawKey = process.env.GOOGLE_SA_PRIVATE_KEY;
+  if (!email || !rawKey) {
     throw new Error("GOOGLE_SA_CLIENT_EMAIL / GOOGLE_SA_PRIVATE_KEY 환경변수가 설정되지 않았습니다.");
   }
-  // Vercel 환경변수에 줄바꿈이 \n 리터럴로 저장되는 경우 복원
-  key = key.replace(/\\n/g, "\n");
+  const key = normalizePrivateKey(rawKey);
 
   const now = Math.floor(Date.now() / 1000);
   if (_cached && _cached.exp - 60 > now) return _cached.token;
