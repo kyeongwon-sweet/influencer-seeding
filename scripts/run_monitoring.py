@@ -151,7 +151,8 @@ def _fetch_facebook(urls: list) -> dict:
     })
     out = {}
     for it in client.dataset(run["defaultDatasetId"]).iterate_items():
-        key = _fb_key(it.get("url") or it.get("facebookUrl") or "") or it.get("postId")
+        # facebookUrl이 입력 pfbid를 보존(url 필드는 FB가 다른 pfbid로 재생성하므로 매칭 실패)
+        key = _fb_key(it.get("facebookUrl") or it.get("url") or "") or it.get("postId")
         if key:
             out[key] = {"likes": it.get("likes"), "comments": it.get("comments")}
     return out
