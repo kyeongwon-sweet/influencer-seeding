@@ -316,11 +316,13 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
   const pl = 52, pr = 8, pt = 8, pb = 22;
   const VW = 560, VH = height;
   const cw = VW - pl - pr, ch = VH - pt - pb;
+  // 봉우리(+부드러운 곡선이 위로 솟구치는 부분)가 상단에 닿아 잘리지 않도록 상단 여유 확보
+  const chTop = Math.round(ch * 0.1);
   const vals = data.map(d => d.value);
   const min = Math.min(...vals), max = Math.max(...vals);
   const range = max - min || 1;
   const xS = (i: number) => (i / (data.length - 1)) * cw;
-  const yS = (v: number) => ch - ((v - min) / range) * ch;
+  const yS = (v: number) => ch - ((v - min) / range) * (ch - chTop);
   const pts: [number, number][] = data.map((d, i) => [xS(i), yS(d.value)]);
   const linePath = smoothCurvePath(pts);
   const areaPath = `${linePath} L ${xS(data.length - 1).toFixed(2)},${ch} L 0,${ch} Z`;
@@ -342,7 +344,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
     const ratios = mapped.map(p => p.ratio);
     const lsMin = Math.min(...ratios), lsMax = Math.max(...ratios);
     const lsRange = lsMax - lsMin || 1;
-    const lsY = (r: number) => ch - ((r - lsMin) / lsRange) * ch;
+    const lsY = (r: number) => ch - ((r - lsMin) / lsRange) * (ch - chTop);
     return mapped.map((p, j) => `${j === 0 ? "M" : "L"}${xS(p.i).toFixed(1)},${lsY(p.ratio).toFixed(1)}`).join(" ");
   })();
 
@@ -366,7 +368,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
       const vs = mapped.map(p => p.v);
       const mn = Math.min(...vs), mx = Math.max(...vs), rg = mx - mn || 1;
       const allEqual = mn === mx; // 값이 1개거나 전부 동일 → 중앙 높이에 표시
-      const y = (v: number) => allEqual ? ch / 2 : ch - ((v - mn) / rg) * ch;
+      const y = (v: number) => allEqual ? ch / 2 : ch - ((v - mn) / rg) * (ch - chTop);
       dots = mapped.map(p => [xS(p.i), y(p.v)] as [number, number]);
       if (mapped.length >= 2) {
         path = mapped.map((p, j) => `${j === 0 ? "M" : "L"}${xS(p.i).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ");
