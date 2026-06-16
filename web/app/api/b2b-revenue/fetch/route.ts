@@ -41,8 +41,9 @@ export async function GET(req: NextRequest) {
     const bi = has(rows[i], "B2B 발주량");
     if (ci >= 0 && bi >= 0) {
       hdr = i; cCVS = ci; cB2B = bi;
+      // '날짜' 헤더가 비어있는 시트가 있어(CVS 발주량 왼쪽 열이 날짜) → 못 찾으면 cCVS-1로 폴백
       const di = has(rows[i], "날짜");
-      cDate = di >= 0 ? di : 0;
+      cDate = di >= 0 ? di : ci - 1;
       break;
     }
   }
