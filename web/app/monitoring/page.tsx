@@ -1927,14 +1927,13 @@ export default function MonitoringPage() {
                     const b2bMap = new Map(b2bDaily.map(d => [d.date, d.total_contribution]));
                     return (
                       <div className="overflow-y-auto" style={{ maxHeight: 264 }}>
-                        <table className="w-full">
+                        <table className="mx-auto">
                           <thead className="sticky top-0 z-10 bg-white border-b border-a-hairline">
                             <tr>
-                              <th className="pl-5 pr-2 py-2.5 text-left text-[11px] font-semibold text-a-ink-muted">날짜</th>
-                              <th className="px-2 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted whitespace-nowrap">누적 조회수</th>
-                              <th className="w-full" aria-hidden="true" />
-                              <th className="px-2 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted">검색량</th>
-                              <th className="pl-2 pr-5 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted whitespace-nowrap">B2B 최종이익</th>
+                              <th className="pl-5 pr-3 py-2.5 text-left text-[11px] font-semibold text-a-ink-muted">날짜</th>
+                              <th className="px-3 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted whitespace-nowrap">누적 조회수</th>
+                              <th className="px-3 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted">검색량</th>
+                              <th className="pl-3 pr-5 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted whitespace-nowrap">B2B 최종이익</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1943,10 +1942,10 @@ export default function MonitoringPage() {
                               const dayLabel = DAY_KO[dow];
                               const cls = dateColor(d.date);
                               function deltaCell(v: number | null | undefined, accent = "text-a-blue") {
-                                if (v == null) return <td className="px-2 py-3 text-right text-gray-300">-</td>;
+                                if (v == null) return <td className="px-3 py-3 text-right text-gray-300">-</td>;
                                 const pos = v > 0, neg = v < 0;
                                 return (
-                                  <td className={`px-2 py-3 text-right tabular-nums text-sm font-semibold ${pos ? accent : neg ? "text-emerald-600" : "text-gray-200"}`}>
+                                  <td className={`px-3 py-3 text-right tabular-nums text-sm font-semibold ${pos ? accent : neg ? "text-emerald-600" : "text-gray-200"}`}>
                                     {pos ? "+" : ""}{v.toLocaleString()}
                                   </td>
                                 );
@@ -1954,7 +1953,7 @@ export default function MonitoringPage() {
                               return (
                                 <tr key={i} className="border-b border-a-divider last:border-0 hover:bg-a-parchment/50 transition-colors">
                                   <td
-                                    className={`pl-5 pr-2 py-3 text-sm font-bold tabular-nums whitespace-nowrap ${cls}`}
+                                    className={`pl-5 pr-3 py-3 text-sm font-bold tabular-nums whitespace-nowrap ${cls}`}
                                     onMouseEnter={(e) => {
                                       const r = e.currentTarget.getBoundingClientRect();
                                       setDateTooltip({ date: d.date, x: r.left, y: r.top + r.height / 2 });
@@ -1968,14 +1967,13 @@ export default function MonitoringPage() {
                                     <span className={`ml-1.5 text-[11px] font-medium ${cls}`}>({dayLabel})</span>
                                   </td>
                                   {deltaCell(d.play, "text-a-blue")}
-                                  <td aria-hidden="true" />
                                   {deltaCell(d.search, "text-gray-500")}
                                   {(() => {
                                     const v = b2bMap.get(d.date);
-                                    if (v == null) return <td className="pl-2 pr-5 py-3 text-right text-gray-300">-</td>;
+                                    if (v == null) return <td className="pl-3 pr-5 py-3 text-right text-gray-300">-</td>;
                                     return (
                                       <td
-                                        className={`pl-2 pr-5 py-3 text-right tabular-nums text-sm font-semibold cursor-help ${v < 0 ? "text-[#c0392b]" : "text-emerald-700"}`}
+                                        className={`pl-3 pr-5 py-3 text-right tabular-nums text-sm font-semibold cursor-help ${v < 0 ? "text-[#c0392b]" : "text-emerald-700"}`}
                                         onMouseEnter={(e) => {
                                           const r = e.currentTarget.getBoundingClientRect();
                                           setB2bTip({ date: d.date, x: r.left, y: r.top + r.height / 2 });
@@ -1990,9 +1988,9 @@ export default function MonitoringPage() {
                               );
                             })}
                             {/* 여백 행 */}
-                            <tr><td colSpan={5} className="py-2" /></tr>
-                            <tr><td colSpan={5} className="py-2" /></tr>
-                            <tr><td colSpan={5} className="py-2" /></tr>
+                            <tr><td colSpan={4} className="py-2" /></tr>
+                            <tr><td colSpan={4} className="py-2" /></tr>
+                            <tr><td colSpan={4} className="py-2" /></tr>
                           </tbody>
                         </table>
                       </div>
