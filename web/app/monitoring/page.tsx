@@ -245,12 +245,12 @@ function Sparkline({ stats, postId, onClick }: { stats: DailyStats[]; postId: st
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
         <defs>
           <linearGradient id={gId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.25" />
-            <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.02" />
+            <stop offset="0%" stopColor={CHART.primary} stopOpacity="0.25" />
+            <stop offset="100%" stopColor={CHART.primary} stopOpacity="0.02" />
           </linearGradient>
         </defs>
         <polygon points={area} fill={`url(#${gId})`} />
-        <polyline points={line} fill="none" stroke="#3b82f6" strokeWidth="1.5"
+        <polyline points={line} fill="none" stroke={CHART.primary} strokeWidth="1.5"
           strokeLinejoin="round" strokeLinecap="round" />
       </svg>
     </button>
@@ -464,15 +464,15 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
         }}>
         <defs>
           <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.08" />
-            <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
+            <stop offset="0%" stopColor={CHART.primary} stopOpacity="0.08" />
+            <stop offset="100%" stopColor={CHART.primary} stopOpacity="0" />
           </linearGradient>
         </defs>
         <g transform={`translate(${pl},${pt})`}>
           {yTicks.map((tick, i) => (
             <g key={i}>
-              <line x1={0} y1={yS(tick)} x2={cw} y2={yS(tick)} stroke="#e5e7eb" strokeWidth="1" strokeDasharray="4,4" />
-              <text x={-8} y={yS(tick)} textAnchor="end" dominantBaseline="middle" fontSize="7" fill="#9ca3af">{fmtY(tick)}</text>
+              <line x1={0} y1={yS(tick)} x2={cw} y2={yS(tick)} stroke={CHART.grid} strokeWidth="1" strokeDasharray="4,4" />
+              <text x={-8} y={yS(tick)} textAnchor="end" dominantBaseline="middle" fontSize="7" fill={CHART.axis}>{fmtY(tick)}</text>
             </g>
           ))}
           {secondaryTicks && secondaryTicks.map((tick, i) => (
@@ -497,7 +497,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
             <circle key={`xdot-${si}-${di}`} cx={d[0]} cy={d[1]} r={2.2} fill={s.color} />
           )))}
           {!hidePrimary && (
-            <path d={linePath} fill="none" stroke="#3b82f6" strokeWidth="2.5"
+            <path d={linePath} fill="none" stroke={CHART.primary} strokeWidth="2.5"
               strokeLinejoin="round" strokeLinecap="round" />
           )}
           {secondaryPath && (
@@ -512,12 +512,12 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
           {activeIdx !== null && (
             <>
               <line x1={xS(activeIdx)} y1={0} x2={xS(activeIdx)} y2={ch}
-                stroke="#3b82f6" strokeWidth="1" strokeDasharray="3,3" />
-              {!hidePrimary && <circle cx={xS(activeIdx)} cy={yS(data[activeIdx].value)} r={3.5} fill="#3b82f6" />}
+                stroke={CHART.primary} strokeWidth="1" strokeDasharray="3,3" />
+              {!hidePrimary && <circle cx={xS(activeIdx)} cy={yS(data[activeIdx].value)} r={3.5} fill={CHART.primary} />}
             </>
           )}
           {xLabelIdxs.map(i => (
-            <text key={i} x={xS(i)} y={ch + 14} textAnchor="middle" fontSize="7" fill="#9ca3af">
+            <text key={i} x={xS(i)} y={ch + 14} textAnchor="middle" fontSize="7" fill={CHART.axis}>
               {data[i].date.slice(5).replace("-", "/")}
             </text>
           ))}
@@ -1485,7 +1485,7 @@ export default function MonitoringPage() {
           : [];
         return (
           <div
-            className="pointer-events-none fixed z-[9999] bg-white border border-a-hairline rounded-lg shadow-lg px-3 py-2 text-[12px]"
+            className="pointer-events-none fixed z-[9999] bg-white border border-a-hairline rounded-lg shadow-lg px-3 py-2 text-xs"
             style={{ right: `calc(100vw - ${dateTooltip.x}px + 8px)`, top: dateTooltip.y, transform: 'translateY(-50%)' }}
           >
             {entries.length > 0 ? entries.map(([type, val]) => (
@@ -1518,7 +1518,7 @@ export default function MonitoringPage() {
         );
         return (
           <div
-            className="pointer-events-none fixed z-[9999] bg-white border border-a-hairline rounded-lg shadow-lg px-3 py-2.5 text-[12px] min-w-[230px]"
+            className="pointer-events-none fixed z-[9999] bg-white border border-a-hairline rounded-lg shadow-lg px-3 py-2.5 text-xs min-w-[230px]"
             style={{ right: `calc(100vw - ${b2bTip.x}px + 8px)`, top: b2bTip.y, transform: 'translateY(-50%)' }}
           >
             <div className="flex items-center justify-between gap-4 pb-1.5 mb-1.5 border-b border-a-hairline text-[11px] font-semibold">
@@ -1852,14 +1852,14 @@ export default function MonitoringPage() {
                               {brandMetrics.some(d => d.ig_profile_views != null) && (
                                 <button type="button" onClick={() => toggleSeries("인스타 프로필 방문")}
                                   className={`flex items-center gap-1.5 w-full transition-opacity ${seriesHidden("인스타 프로필 방문") ? "opacity-30" : ""}`}>
-                                  <div className="w-2 h-0.5" style={{ backgroundColor: "#9ca3af" }} />
+                                  <div className="w-2 h-0.5" style={{ backgroundColor: CHART.axis }} />
                                   <span className="text-xs text-a-ink-muted">인스타 프로필 방문</span>
                                 </button>
                               )}
                               {Array.from(new Set(ytTrends.map(t => t.keyword))).map((kw, i) => (
                                 <button type="button" key={`yt-${kw}`} onClick={() => toggleSeries(`유튜브 ${kw} 검색량`)}
                                   className={`flex items-center gap-1.5 w-full transition-opacity ${seriesHidden(`유튜브 ${kw} 검색량`) ? "opacity-30" : ""}`}>
-                                  <div className="w-2 h-0.5" style={{ backgroundColor: ["#d1d5db", "#cbd5e1"][i % 2] }} />
+                                  <div className="w-2 h-0.5" style={{ backgroundColor: CHART.youtube[i % 2] }} />
                                   <span className="text-xs text-a-ink-muted">유튜브 {kw} 검색량</span>
                                 </button>
                               ))}
@@ -1888,7 +1888,7 @@ export default function MonitoringPage() {
                     // 라라스윗 공식 인스타 프로필 방문 — brandMetrics.ig_profile_views
                     ...(brandMetrics.some(d => d.ig_profile_views != null) ? [{
                       name: "인스타 프로필 방문",
-                      color: "#9ca3af",
+                      color: CHART.axis,
                       members: [{
                         label: "인스타 프로필 방문",
                         data: brandMetrics.map(d => ({ date: d.measured_at, value: d.ig_profile_views })),
@@ -1897,7 +1897,7 @@ export default function MonitoringPage() {
                     // 유튜브 검색 트렌드 — 키워드별 (Google Trends gprop=youtube, 상대값 0~100)
                     ...Array.from(new Set(ytTrends.map(t => t.keyword))).map((kw, i) => ({
                       name: `유튜브 ${kw} 검색량`,
-                      color: ["#d1d5db", "#cbd5e1"][i % 2],
+                      color: CHART.youtube[i % 2],
                       members: [{
                         label: kw,
                         data: ytTrends.filter(t => t.keyword === kw).map(t => ({ date: t.measured_at, value: t.value })),
@@ -1916,7 +1916,7 @@ export default function MonitoringPage() {
                     }] : []),
                   ].filter(s => !seriesHidden(s.name))}
                   secondaryData={!seriesHidden("전체 전환 광고비") && mainAdCosts.length > 0 ? mainAdCosts.map(d => ({date: d.date, value: d.total_cost})) : undefined}
-                  secondaryColor="#b3b3b3"
+                  secondaryColor={CHART.secondary}
                   postsOnDate={(date) =>
                     filteredPosts
                       .filter(p => p.posted_at?.slice(0, 10) === date)
@@ -2076,7 +2076,7 @@ export default function MonitoringPage() {
                   <path d={areaPath} fill="url(#ytSearchGrad)" />
                   <path d={path} fill="none" stroke="#FF0000" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
                   {xLabels.map(i => (
-                    <text key={i} x={xi(i)} y={H - 8} textAnchor="middle" fontSize="8.5" fill="#9ca3af">
+                    <text key={i} x={xi(i)} y={H - 8} textAnchor="middle" fontSize="8.5" fill={CHART.axis}>
                       {data[i].measured_at.slice(5).replace("-", "/")}
                     </text>
                   ))}
