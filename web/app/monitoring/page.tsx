@@ -1960,19 +1960,19 @@ export default function MonitoringPage() {
                         {showOtherSeries && (
                           <>
                             <div className="fixed inset-0 z-20" onClick={() => setShowOtherSeries(false)} />
-                            <div className="absolute right-0 top-full mt-1.5 z-30 bg-white border border-a-hairline rounded-lg shadow-lg p-2.5 space-y-2 min-w-[180px]">
+                            <div className="absolute right-0 top-full mt-1.5 z-30 bg-white border border-a-hairline rounded-lg shadow-lg p-2.5 space-y-2 w-max">
                               {brandMetrics.some(d => d.ig_profile_views != null) && (
                                 <button type="button" onClick={() => toggleSeries("인스타 프로필 방문")}
                                   className={`flex items-center gap-1.5 w-full transition-opacity ${seriesHidden("인스타 프로필 방문") ? "opacity-30" : ""}`}>
-                                  <div className="w-2 h-0.5" style={{ backgroundColor: CHART.axis }} />
-                                  <span className="text-xs text-a-ink-muted">인스타 프로필 방문</span>
+                                  <div className="w-2 h-0.5 flex-shrink-0" style={{ backgroundColor: CHART.axis }} />
+                                  <span className="text-xs text-a-ink-muted whitespace-nowrap">인스타 프로필 방문</span>
                                 </button>
                               )}
                               {Array.from(new Set(ytTrends.map(t => t.keyword))).map((kw, i) => (
                                 <button type="button" key={`yt-${kw}`} onClick={() => toggleSeries(`유튜브 ${kw} 검색량`)}
                                   className={`flex items-center gap-1.5 w-full transition-opacity ${seriesHidden(`유튜브 ${kw} 검색량`) ? "opacity-30" : ""}`}>
-                                  <div className="w-2 h-0.5" style={{ backgroundColor: CHART.youtube[i % 2] }} />
-                                  <span className="text-xs text-a-ink-muted">유튜브 {kw} 검색량</span>
+                                  <div className="w-2 h-0.5 flex-shrink-0" style={{ backgroundColor: CHART.youtube[i % 2] }} />
+                                  <span className="text-xs text-a-ink-muted whitespace-nowrap">유튜브 {kw} 검색량</span>
                                 </button>
                               ))}
                             </div>
