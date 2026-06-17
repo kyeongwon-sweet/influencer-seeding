@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
+import { platformLabel } from "@/lib/platform";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -640,7 +641,7 @@ export default function ContactPage() {
                       <InfluencerName inf={inf} />
 
                       <span className="text-[11px] text-a-ink-muted shrink-0">
-                        {inf.platform === "instagram" ? "인스타" : "유튜브"}
+                        {platformLabel(inf.platform)}
                       </span>
 
                       {m?.total_avg_play_count != null ? (
@@ -723,7 +724,7 @@ export default function ContactPage() {
                           )}
                         </td>
                         <td className="px-3 py-3 text-xs text-a-ink-muted whitespace-nowrap">
-                          {inf.platform === "instagram" ? "인스타" : "유튜브"}
+                          {platformLabel(inf.platform)}
                         </td>
                         <td className="px-3 py-3 text-xs text-a-ink-muted whitespace-nowrap">
                           {inf.keyword ?? "-"}

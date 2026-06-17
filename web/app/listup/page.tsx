@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
+import { platformLabel } from "@/lib/platform";
 import { normalizeYouTubeUrl } from "@/lib/url-utils";
 import { MIN_ENTRY_DATE, maxDateKST, isValidEntryDate } from "@/lib/dateRule";
 
@@ -1069,7 +1070,7 @@ export default function ListupPage() {
                         <td className="px-2 py-3" style={{ width: 60, minWidth: 60 }}>
                           {thumbUrl
                             ? <img src={thumbUrl} alt="" width={48} height={36} className="rounded object-cover" style={{ width: 48, height: 36 }} />
-                            : <span className="text-[10px] text-a-ink-muted font-medium">{inf.platform === "youtube" ? "YT" : "IG"}</span>}
+                            : <span className="text-[10px] text-a-ink-muted font-medium">{platformLabel(inf.platform)}</span>}
                         </td>
                         <td className="px-4 py-4 overflow-hidden" style={{ minWidth: colWidths[0], width: colWidths[0] }}>
                           <div style={{ width: colWidths[0] - 32, overflow: 'hidden', whiteSpace: 'nowrap' }}>
@@ -1092,7 +1093,7 @@ export default function ListupPage() {
                           </div>
                         </td>
                         <td className="px-4 py-4 text-a-ink-muted text-xs whitespace-nowrap">
-                          {inf.platform === "instagram" ? "인스타" : "유튜브"}
+                          {platformLabel(inf.platform)}
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap">
                           {editKeyword?.id === inf.id ? (

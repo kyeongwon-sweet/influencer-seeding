@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
+import { platformLabel } from "@/lib/platform";
 import { MIN_ENTRY_DATE, maxDateKST, isValidEntryDate } from "@/lib/dateRule";
 
 type Metrics = {
@@ -499,7 +500,7 @@ export default function ScreeningPage() {
       })();
       return [
         inf.name, inf.url,
-        inf.platform === "instagram" ? "인스타" : "유튜브",
+        platformLabel(inf.platform),
         m?.followers ?? "",
         m?.avg_views_per_follower?.toFixed(2) ?? "",
         m?.count_1m_view ?? "",
@@ -962,7 +963,7 @@ export default function ScreeningPage() {
                         </div>
                       </td>
                       <td style={{ minWidth: screenColWidths["플랫폼"] }} className="px-3 py-4 text-a-ink-muted text-xs whitespace-nowrap">
-                        {inf.platform === "instagram" ? "인스타" : "유튜브"}
+                        {platformLabel(inf.platform)}
                       </td>
                       <td style={{ minWidth: screenColWidths["팔로워 수"] }} className="px-3 py-4 text-right tabular-nums whitespace-nowrap">
                         {hasNoMetrics

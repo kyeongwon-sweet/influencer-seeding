@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
+import { platformLabel } from "@/lib/platform";
 
 const PLATFORMS = ["인스타그램", "유튜브", "블로그", "틱톡", "스레드"];
 
@@ -657,8 +658,7 @@ export default function OrganicPage() {
                 <tbody>
                   {sorted.map(m => {
                     const thumb = getThumbnailUrl(m.url);
-                    const pKo = normPlatform(m.platform);
-                    const platformShort = pKo === "인스타그램" ? "IG" : pKo === "유튜브" ? "YT" : pKo === "블로그" ? "BL" : pKo.slice(0, 2);
+                    const platformShort = platformLabel(m.platform);
                     return (
                     <tr key={m.id} className="group border-b border-a-divider last:border-0 hover:bg-a-parchment/60 transition-colors">
                       {/* 썸네일 */}
@@ -697,7 +697,7 @@ export default function OrganicPage() {
                         )}
                       </td>
                       <td style={{ minWidth: colWidths[1] }} className="px-4 py-4 text-xs text-a-ink-muted whitespace-nowrap">
-                        {pKo}
+                        {platformLabel(m.platform)}
                       </td>
                       <td style={{ minWidth: colWidths[2] }} className="px-4 py-4 text-xs text-a-ink-muted max-w-[320px]">
                         {editCell?.id === m.id && editCell.field === "content_summary" ? (
