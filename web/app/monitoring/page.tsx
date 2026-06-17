@@ -1441,6 +1441,44 @@ export default function MonitoringPage() {
           </div>
         );
       })()}
+      {b2bTip && (() => {
+        const r = b2bDaily.find(x => x.date === b2bTip.date);
+        if (!r) return null;
+        const won = (v: number | null) => v == null ? "-" : `${v.toLocaleString()}원`;
+        const cnt = (v: number | null) => v == null ? "-" : v.toLocaleString();
+        const Row = ({ label, d, j, won: asWon = true }: { label: string; d: number | null; j: number | null; won?: boolean }) => (
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-a-ink-muted">{label}</span>
+            <span className="tabular-nums">
+              <span className="text-rose-600">{asWon ? won(d) : cnt(d)}</span>
+              <span className="text-gray-300 mx-1">/</span>
+              <span className="text-emerald-700">{asWon ? won(j) : cnt(j)}</span>
+            </span>
+          </div>
+        );
+        return (
+          <div
+            className="pointer-events-none fixed z-[9999] bg-white border border-a-hairline rounded-lg shadow-lg px-3 py-2.5 text-[12px] min-w-[230px]"
+            style={{ right: `calc(100vw - ${b2bTip.x}px + 8px)`, top: b2bTip.y, transform: 'translateY(-50%)' }}
+          >
+            <div className="flex items-center justify-between gap-4 pb-1.5 mb-1.5 border-b border-a-hairline text-[11px] font-semibold">
+              <span>{b2bTip.date.slice(5).replace("-", "/")}</span>
+              <span><span className="text-rose-600">듬뿍바</span> <span className="text-gray-300">/</span> <span className="text-emerald-700">쫀득바</span></span>
+            </div>
+            <div className="space-y-0.5">
+              <Row label="발주량" d={r.dumbuk_order} j={r.jjondeuk_order} won={false} />
+              <Row label="이익" d={r.dumbuk_profit} j={r.jjondeuk_profit} />
+              <Row label="전환 손익" d={r.dumbuk_conv_pl} j={r.jjondeuk_conv_pl} />
+              <Row label="인지 광고비" d={r.dumbuk_ad_cost} j={r.jjondeuk_ad_cost} />
+              <Row label="본부공헌이익" d={r.dumbuk_contribution} j={r.jjondeuk_contribution} />
+            </div>
+            <div className="flex items-center justify-between gap-4 pt-1.5 mt-1.5 border-t border-a-hairline font-semibold">
+              <span className="text-a-ink">최종 이익</span>
+              <span className={`tabular-nums ${(r.total_contribution ?? 0) < 0 ? "text-[#c0392b]" : "text-a-ink"}`}>{won(r.total_contribution)}</span>
+            </div>
+          </div>
+        );
+      })()}
       <header className="bg-white border-b border-gray-100 h-11 px-6 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-3">
           <Link href="/" className="text-gray-400 hover:text-a-ink transition text-sm">←</Link>
@@ -1845,8 +1883,7 @@ export default function MonitoringPage() {
                               <th className="px-5 py-2.5 text-left text-[11px] font-semibold text-a-ink-muted">날짜</th>
                               <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted">누적 조회수</th>
                               <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted">검색량</th>
-                              <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted">댓글</th>
-                              {b2bDaily.length > 0 && <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted whitespace-nowrap">B2B 최종이익</th>}
+                              <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted whitespace-nowrap">B2B 최종이익</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1881,19 +1918,29 @@ export default function MonitoringPage() {
                                   </td>
                                   {deltaCell(d.play, "text-a-blue")}
                                   {deltaCell(d.search, "text-gray-500")}
-                                  {deltaCell(d.comments, "text-purple-500")}
-                                  {b2bDaily.length > 0 && (() => {
+                                  {(() => {
                                     const v = b2bMap.get(d.date);
                                     if (v == null) return <td className="px-4 py-3 text-right text-gray-300">-</td>;
-                                    return <td className={`px-4 py-3 text-right tabular-nums text-sm font-semibold ${v < 0 ? "text-[#c0392b]" : "text-emerald-700"}`}>{v.toLocaleString()}</td>;
+                                    return (
+                                      <td
+                                        className={`px-4 py-3 text-right tabular-nums text-sm font-semibold cursor-help ${v < 0 ? "text-[#c0392b]" : "text-emerald-700"}`}
+                                        onMouseEnter={(e) => {
+                                          const r = e.currentTarget.getBoundingClientRect();
+                                          setB2bTip({ date: d.date, x: r.left, y: r.top + r.height / 2 });
+                                        }}
+                                        onMouseLeave={() => setB2bTip(null)}
+                                      >
+                                        {v.toLocaleString()}
+                                      </td>
+                                    );
                                   })()}
                                 </tr>
                               );
                             })}
                             {/* 여백 행 */}
-                            <tr><td colSpan={b2bDaily.length > 0 ? 5 : 4} className="py-2" /></tr>
-                            <tr><td colSpan={b2bDaily.length > 0 ? 5 : 4} className="py-2" /></tr>
-                            <tr><td colSpan={b2bDaily.length > 0 ? 5 : 4} className="py-2" /></tr>
+                            <tr><td colSpan={4} className="py-2" /></tr>
+                            <tr><td colSpan={4} className="py-2" /></tr>
+                            <tr><td colSpan={4} className="py-2" /></tr>
                           </tbody>
                         </table>
                       </div>
