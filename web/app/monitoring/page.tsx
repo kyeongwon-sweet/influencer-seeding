@@ -1627,24 +1627,6 @@ export default function MonitoringPage() {
             onChange={e => setFilters(p => ({ ...p, project: e.target.value }))}
             className={`filter-input w-28 ${filters.project ? "border-a-blue" : ""}`}
           />
-          {productOptions.length > 0 && (
-            <div className="flex items-center gap-1.5 overflow-x-auto flex-nowrap scrollbar-none pb-0.5">
-              {productOptions.map(p => {
-                const active = filters.products.includes(p);
-                return (
-                  <button key={p}
-                    onClick={() => setFilters(prev => ({
-                      ...prev,
-                      products: active ? prev.products.filter(x => x !== p) : [...prev.products, p],
-                    }))}
-                    className={`text-xs px-2.5 py-1 rounded-full border transition ${
-                      active ? "border-a-blue bg-blue-50 text-a-blue font-medium" : "border-a-hairline text-a-ink-muted hover:border-gray-400"
-                    }`}
-                  >{p}</button>
-                );
-              })}
-            </div>
-          )}
           <select
             value={filters.type}
             onChange={e => setFilters(p => ({ ...p, type: e.target.value }))}
@@ -1700,6 +1682,24 @@ export default function MonitoringPage() {
               </div>
             )}
           </div>
+          {productOptions.length > 0 && (
+            <div className="flex items-center gap-1.5 overflow-x-auto flex-nowrap scrollbar-none pb-0.5">
+              {productOptions.map(p => {
+                const active = filters.products.includes(p);
+                return (
+                  <button key={p}
+                    onClick={() => setFilters(prev => ({
+                      ...prev,
+                      products: active ? prev.products.filter(x => x !== p) : [...prev.products, p],
+                    }))}
+                    className={`text-xs px-2.5 py-1 rounded-full border transition ${
+                      active ? "border-a-blue bg-blue-50 text-a-blue font-medium" : "border-a-hairline text-a-ink-muted hover:border-gray-400"
+                    }`}
+                  >{p}</button>
+                );
+              })}
+            </div>
+          )}
           <div className="w-px h-4 bg-a-hairline mx-0.5" />
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] text-a-ink-muted whitespace-nowrap">게시일</span>
