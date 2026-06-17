@@ -2073,7 +2073,7 @@ export default function MonitoringPage() {
                     const reversed = [...rows].reverse();
                     const b2bMap = new Map(b2bDaily.map(d => [d.date, d.total_contribution]));
                     return (
-                      <div className="overflow-y-auto" style={{ maxHeight: 264 }}>
+                      <div className="overflow-y-auto" style={{ maxHeight: 380 }}>
                         <table className="mx-auto">
                           <thead className="sticky top-0 z-10 bg-white border-b border-a-hairline">
                             <tr>
