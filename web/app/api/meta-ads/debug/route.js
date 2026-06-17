@@ -24,8 +24,31 @@ export async function GET(req) {
 
   const res = await fetch(url.toString(), { cache: "no-store" });
   const data = await res.json();
+
+  // 메인 라우트(/api/meta-ads)의 effectiveTo 로직 재현
+  const kstToday = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+  const yest = new Date(new Date(kstToday + "T00:00:00Z").getTime() - 86400000).toISOString().slice(0, 10);
+  const effectiveTo = until < kstToday ? until : yest;
+
+  // 메인 라우트 파이프라인 그대로: until=effectiveTo로 재요청 → 일별 매핑
+  const mainUrl = new URL(`https://graph.facebook.com/v18.0/act_${account}/insights`);
+  mainUrl.searchParams.append('fields', 'spend,date_start');
+  mainUrl.searchParams.append('time_range', JSON.stringify({ since, until: effectiveTo }));
+  mainUrl.searchParams.append('time_increment', '1');
+  mainUrl.searchParams.append('access_token', token);
+  const mres = await fetch(mainUrl.toString(), { cache: "no-store" });
+  const mdata = await mres.json();
+  const mainResult = (Array.isArray(mdata.data) ? mdata.data : [])
+    .filter(it => it.date_start && it.spend)
+    .sort((a, b) => new Date(a.date_start) - new Date(b.date_start))
+    .map(it => ({ date: it.date_start.split("T")[0], cost: Math.round((parseFloat(it.spend) || 0) * 100) / 100 }));
+
   return Response.json({
+    mainResult_count: mainResult.length,
+    mainResult_range: mainResult.length ? `${mainResult[0].date} ~ ${mainResult[mainResult.length-1].date}` : "none",
+    mainResult,
     requested: { since, until },
+    kstToday, effectiveTo,
     account_tail: String(account).slice(-4),
     http: res.status,
     error: data.error ?? null,
