@@ -1785,19 +1785,36 @@ export default function MonitoringPage() {
                 // (차트 점선 '검색량'과 동일 기준. chartData는 조회수라 검색량과 무관 → lsSearchData 사용)
                 const searchTotalSum = (lsSearchData ?? []).reduce((acc, d) => acc + (d.value ?? 0), 0);
                 // B2B 최종이익(본부공헌이익 합) 월 누계 — 오늘까지 실데이터만(미래 계획행 제외)
-                const today = new Date().toISOString().slice(0, 10);
+                const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
                 const b2bTotal = b2bDaily
                   .filter(d => d.date <= today)
                   .reduce((acc, d) => acc + (d.total_contribution ?? 0), 0);
+                // 전주 대비: 최근 7일 합 vs 직전 7일 합 (일별 흐름값 기준)
+                const addDays = (s: string, n: number) => { const d = new Date(s + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+                const cutLast = addDays(today, -6), cutPrior = addDays(today, -13);
+                const wow = (daily: { date: string; v: number }[]) => {
+                  let last = 0, prior = 0;
+                  for (const x of daily) {
+                    if (x.date >= cutLast && x.date <= today) last += x.v;
+                    else if (x.date >= cutPrior && x.date < cutLast) prior += x.v;
+                  }
+                  return prior === 0 ? null : (last - prior) / Math.abs(prior) * 100;
+                };
+                const playInc = dailyTotals.map((d, i) => ({ date: d.date, v: i > 0 ? d.play - dailyTotals[i - 1].play : 0 }));
                 return [
-                  { label: "조회수 합계", value: totalPlayCount, color: "text-a-ink", suffix: "" },
-                  { label: "라라스윗 검색량 총합", value: searchTotalSum, color: "text-gray-600", suffix: "" },
-                  { label: "B2B 최종이익", value: b2bTotal, color: b2bTotal < 0 ? "text-rose-600" : "text-green-600", suffix: "원" },
+                  { label: "조회수 합계", value: totalPlayCount, color: "text-a-ink", suffix: "", delta: wow(playInc) },
+                  { label: "라라스윗 검색량 총합", value: searchTotalSum, color: "text-gray-600", suffix: "", delta: wow((lsSearchData ?? []).map(d => ({ date: d.date, v: d.value ?? 0 }))) },
+                  { label: "B2B 최종이익", value: b2bTotal, color: b2bTotal < 0 ? "text-rose-600" : "text-green-600", suffix: "원", delta: wow(b2bDaily.map(d => ({ date: d.date, v: d.total_contribution ?? 0 }))) },
                 ];
               })().map((item, i) => (
                 <div key={i} className={`flex-1 px-6 py-5 ${i > 0 ? "border-l border-a-hairline" : ""}`}>
                   <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest mb-1.5">{item.label}</p>
                   <p className={`text-[28px] font-bold tabular-nums tracking-tight leading-none ${item.color}`}>{item.value.toLocaleString()}{item.suffix}</p>
+                  {item.delta != null && (
+                    <p className={`mt-1 text-[11px] font-medium tabular-nums ${item.delta > 0 ? "text-emerald-600" : item.delta < 0 ? "text-rose-500" : "text-gray-400"}`}>
+                      {item.delta > 0 ? "▲" : item.delta < 0 ? "▼" : ""} {item.delta > 0 ? "+" : ""}{item.delta.toFixed(1)}% <span className="text-gray-400 font-normal">전주 대비</span>
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
