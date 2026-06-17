@@ -117,14 +117,12 @@ export async function GET(req) {
       filteredCount: sorted.length,
     });
 
-    // 7. 누적값 계산 및 반환
-    let cumulative = 0;
+    // 7. 일별 광고비 반환 (누적 아님 — 그 날 사용 비용만)
     const result = sorted.map((item) => {
       const spend = parseFloat(item.spend) || 0;
-      cumulative += spend;
       return {
         date: item.date_start.split("T")[0], // YYYY-MM-DD 형식
-        total_cost: Math.round(cumulative * 100) / 100,
+        total_cost: Math.round(spend * 100) / 100,
       };
     });
 
