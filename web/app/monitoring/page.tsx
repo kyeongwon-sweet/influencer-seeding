@@ -284,6 +284,15 @@ const NAVER_DATALAB_URL = "https://datalab.naver.com/keyword/trendResult.naver?h
 
 // 상품별 검색량 라인 색상 팔레트
 const PRODUCT_COLORS = ["#16a34a", "#9333ea", "#ea580c", "#0891b2", "#db2777", "#65a30d", "#7c3aed", "#0d9488", "#c2410c", "#be123c"];
+
+// 차트 구조 색상(라인/축/격자) 중앙화 — 값은 기존과 동일(렌더 무변경), 한 곳에서 관리해 변경 누락 방지
+const CHART = {
+  primary: "#3b82f6",              // 조회수 라인·면적·강조점
+  axis: "#9ca3af",                 // 축 라벨, 인스타 프로필 방문선 등 회색
+  grid: "#e5e7eb",                 // 격자선
+  secondary: "#b3b3b3",            // 보조축(전체 전환 광고비)
+  youtube: ["#d1d5db", "#cbd5e1"], // 유튜브 검색량 2색(아이스크림/라라스윗)
+};
 // "쫀득바 쫀득바"처럼 동일 단어가 반복된 헤더는 한 번만 표시
 function productLabel(name: string): string {
   const parts = name.split(" ");
@@ -516,7 +525,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
       </svg>
       {activeIdx !== null && (
         <div ref={tooltipRef}
-          className="absolute top-1 bg-white border border-a-hairline rounded-[10px] px-3.5 py-2.5 shadow-[0_4px_16px_rgba(0,0,0,0.10)] text-xs z-20 min-w-[250px]"
+          className="absolute top-1 bg-white border border-a-hairline rounded-[10px] px-3.5 py-2.5 shadow-[0_4px_16px_rgba(0,0,0,0.10)] text-xs z-20 min-w-[250px] w-max whitespace-nowrap"
           style={{ left: `${Math.min(Math.max(((pl + xS(activeIdx)) / VW) * 100, 15), 85)}%`, transform: "translateX(-50%)" }}
           onMouseEnter={() => setPinnedIdx(activeIdx)}
           onMouseLeave={() => { setPinnedIdx(null); setHoverIdx(null); }}>
@@ -552,7 +561,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
               <div className="mt-1">
                 <button type="button" onClick={() => setTipOtherOpen(o => !o)}
                   className="text-a-ink-muted hover:text-a-ink pointer-events-auto flex items-center gap-1">
-                  그외 <span className="text-[9px] leading-none">{tipOtherOpen ? "▲" : "▼"}</span>
+                  그 외 <span className="text-[9px] leading-none">{tipOtherOpen ? "▲" : "▼"}</span>
                 </button>
                 {tipOtherOpen && (
                   <div className="mt-0.5 space-y-0.5">
@@ -1834,7 +1843,7 @@ export default function MonitoringPage() {
                       <div className="relative">
                         <button type="button" onClick={() => setShowOtherSeries(v => !v)}
                           className="flex items-center gap-1 text-xs text-a-ink-muted hover:text-a-ink">
-                          그외 <span className="text-[9px] leading-none">▼</span>
+                          그 외 <span className="text-[9px] leading-none">▼</span>
                         </button>
                         {showOtherSeries && (
                           <>
