@@ -584,6 +584,7 @@ export default function MonitoringPage() {
   const [filters, setFilters] = useState<Filters>(INIT_FILTERS);
   const [dateTooltip, setDateTooltip] = useState<{ date: string; x: number; y: number } | null>(null);
   const [b2bTip, setB2bTip] = useState<{ date: string; x: number; y: number } | null>(null);
+  const [showOtherSeries, setShowOtherSeries] = useState(false); // 범례 '그외' 드롭다운(인스타·유튜브)
   const [lsSearchData, setLsSearchData] = useState<{ date: string; ratio: number; value: number | null }[]>([]);
   const [brandMetrics, setBrandMetrics] = useState<{ measured_at: string; yt_views: number | null; yt_unique_viewers: number | null; yt_search_views: number | null; ig_profile_views: number | null }[]>([]);
   const [ytTrends, setYtTrends] = useState<{ measured_at: string; keyword: string; value: number | null }[]>([]);
@@ -829,6 +830,22 @@ export default function MonitoringPage() {
       .then(d => setB2bDaily(Array.isArray(d?.rows) ? d.rows : []))
       .catch(() => {});
   }, []);
+
+  // '그외' 시리즈(인스타 프로필 방문 / 유튜브 검색량)는 기본 숨김 — 데이터 첫 로드 시 1회만 적용
+  const otherSeriesInit = useRef(false);
+  useEffect(() => {
+    if (otherSeriesInit.current) return;
+    const hasIg = brandMetrics.some(d => d.ig_profile_views != null);
+    const ytKeywords = Array.from(new Set(ytTrends.map(t => t.keyword)));
+    if (!hasIg && ytKeywords.length === 0) return;
+    otherSeriesInit.current = true;
+    setHiddenSeries(prev => {
+      const next = new Set(prev);
+      if (hasIg) next.add("인스타 프로필 방문");
+      ytKeywords.forEach(kw => next.add(`유튜브 ${kw} 검색량`));
+      return next;
+    });
+  }, [brandMetrics, ytTrends]);
 
   // 상품별 검색량 (Google Sheet)
   useEffect(() => {
@@ -1742,11 +1759,13 @@ export default function MonitoringPage() {
                 <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
                   <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">조회수 트렌드 (누적)</p>
                   <div className="flex items-center gap-x-4 gap-y-1.5 flex-wrap justify-end">
+                    {/* 1. 조회수 */}
                     <button type="button" onClick={() => toggleSeries("조회수")}
                       className={`flex items-center gap-1.5 transition-opacity ${seriesHidden("조회수") ? "opacity-30" : ""}`}>
                       <div className="w-3 h-1 rounded-sm bg-a-blue" />
                       <span className="text-xs font-semibold text-a-ink">조회수</span>
                     </button>
+                    {/* 2. 검색량 */}
                     {lsSearchData && lsSearchData.length > 0 && (
                       <div className="flex items-center gap-1">
                         <button type="button" onClick={() => toggleSeries("검색량")}
@@ -1758,6 +1777,15 @@ export default function MonitoringPage() {
                           className="text-[10px] text-a-ink-muted hover:text-a-ink">↗</a>
                       </div>
                     )}
+                    {/* 3. B2B 최종이익 */}
+                    {b2bDaily.some(d => d.total_contribution != null) && (
+                      <button type="button" onClick={() => toggleSeries("B2B 최종이익")}
+                        className={`flex items-center gap-1.5 transition-opacity ${seriesHidden("B2B 최종이익") ? "opacity-30" : ""}`}>
+                        <div className="w-3 h-1 rounded-sm" style={{ backgroundColor: "#16a34a" }} />
+                        <span className="text-xs font-semibold text-a-ink">B2B 최종이익</span>
+                      </button>
+                    )}
+                    {/* 4. 전체 전환 광고비 */}
                     <div className="flex items-center gap-1">
                       <button type="button" onClick={() => toggleSeries("전체 전환 광고비")}
                         className={`flex items-center gap-1.5 transition-opacity ${seriesHidden("전체 전환 광고비") ? "opacity-30" : ""}`}>
@@ -1767,6 +1795,7 @@ export default function MonitoringPage() {
                       <a href={META_ADS_MANAGER_URL} target="_blank" rel="noreferrer"
                         className="text-[10px] text-a-ink-muted hover:text-a-ink">↗</a>
                     </div>
+                    {/* 5. 상품별 검색량 (상품 필터 선택 시) */}
                     {activeProductSeries.map(c => (
                       <button type="button" key={c.id} onClick={() => toggleSeries(c.label)}
                         className={`flex items-center gap-1.5 transition-opacity ${seriesHidden(c.label) ? "opacity-30" : ""}`}>
@@ -1774,26 +1803,35 @@ export default function MonitoringPage() {
                         <span className="text-xs text-a-ink-muted">{c.label}</span>
                       </button>
                     ))}
-                    {brandMetrics.some(d => d.ig_profile_views != null) && (
-                      <button type="button" onClick={() => toggleSeries("인스타 프로필 방문")}
-                        className={`flex items-center gap-1.5 transition-opacity ${seriesHidden("인스타 프로필 방문") ? "opacity-30" : ""}`}>
-                        <div className="w-2 h-0.5" style={{ backgroundColor: "#9ca3af" }} />
-                        <span className="text-xs text-a-ink-muted">인스타 프로필 방문</span>
-                      </button>
-                    )}
-                    {Array.from(new Set(ytTrends.map(t => t.keyword))).map((kw, i) => (
-                      <button type="button" key={`yt-${kw}`} onClick={() => toggleSeries(`유튜브 ${kw} 검색량`)}
-                        className={`flex items-center gap-1.5 transition-opacity ${seriesHidden(`유튜브 ${kw} 검색량`) ? "opacity-30" : ""}`}>
-                        <div className="w-2 h-0.5" style={{ backgroundColor: ["#d1d5db", "#cbd5e1"][i % 2] }} />
-                        <span className="text-xs text-a-ink-muted">유튜브 {kw} 검색량</span>
-                      </button>
-                    ))}
-                    {b2bDaily.some(d => d.total_contribution != null) && (
-                      <button type="button" onClick={() => toggleSeries("B2B 최종이익")}
-                        className={`flex items-center gap-1.5 transition-opacity ${seriesHidden("B2B 최종이익") ? "opacity-30" : ""}`}>
-                        <div className="w-3 h-1 rounded-sm" style={{ backgroundColor: "#16a34a" }} />
-                        <span className="text-xs font-semibold text-a-ink">B2B 최종이익</span>
-                      </button>
+                    {/* 6. 그외 (클릭 시 인스타 프로필 방문 / 유튜브 검색량 토글) */}
+                    {(brandMetrics.some(d => d.ig_profile_views != null) || ytTrends.length > 0) && (
+                      <div className="relative">
+                        <button type="button" onClick={() => setShowOtherSeries(v => !v)}
+                          className="flex items-center gap-1 text-xs text-a-ink-muted hover:text-a-ink">
+                          그외 <span className="text-[9px] leading-none">▼</span>
+                        </button>
+                        {showOtherSeries && (
+                          <>
+                            <div className="fixed inset-0 z-20" onClick={() => setShowOtherSeries(false)} />
+                            <div className="absolute right-0 top-full mt-1.5 z-30 bg-white border border-a-hairline rounded-lg shadow-lg p-2.5 space-y-2 min-w-[180px]">
+                              {brandMetrics.some(d => d.ig_profile_views != null) && (
+                                <button type="button" onClick={() => toggleSeries("인스타 프로필 방문")}
+                                  className={`flex items-center gap-1.5 w-full transition-opacity ${seriesHidden("인스타 프로필 방문") ? "opacity-30" : ""}`}>
+                                  <div className="w-2 h-0.5" style={{ backgroundColor: "#9ca3af" }} />
+                                  <span className="text-xs text-a-ink-muted">인스타 프로필 방문</span>
+                                </button>
+                              )}
+                              {Array.from(new Set(ytTrends.map(t => t.keyword))).map((kw, i) => (
+                                <button type="button" key={`yt-${kw}`} onClick={() => toggleSeries(`유튜브 ${kw} 검색량`)}
+                                  className={`flex items-center gap-1.5 w-full transition-opacity ${seriesHidden(`유튜브 ${kw} 검색량`) ? "opacity-30" : ""}`}>
+                                  <div className="w-2 h-0.5" style={{ backgroundColor: ["#d1d5db", "#cbd5e1"][i % 2] }} />
+                                  <span className="text-xs text-a-ink-muted">유튜브 {kw} 검색량</span>
+                                </button>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
