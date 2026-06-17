@@ -95,9 +95,10 @@ export async function GET(req: NextRequest) {
     //    (게시물 단위 증분량이 음수로 표시되는 문제 방지)
     let maxPlay = 0;
     const mono = asc.map((s: any) => {
-      const play_count = s.play_count != null ? Math.max(maxPlay, Number(s.play_count)) : maxPlay;
+      const playCollected = s.play_count != null; // 원본 수집 여부 (mono 보정 전)
+      const play_count = playCollected ? Math.max(maxPlay, Number(s.play_count)) : maxPlay;
       maxPlay = play_count;
-      return { ...s, play_count };
+      return { ...s, play_count, play_collected: playCollected };
     });
     const desc = [...mono].reverse();
     return {

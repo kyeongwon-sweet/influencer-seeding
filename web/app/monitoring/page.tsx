@@ -11,6 +11,7 @@ type DailyStats = {
   likes_count: number | null;
   comments_count: number | null;
   created_at?: string | null; // 적재(수집) 시각 — 마지막 업데이트 표시용
+  play_collected?: boolean;   // 원본 조회수가 실제 수집됐는지 (mono 보정 전) — 당일 반영 판정용
 };
 
 type Post = {
@@ -1059,11 +1060,14 @@ export default function MonitoringPage() {
       previousPlayCountsRef.current.clear();
     }
 
-    // '오늘'(KST, 아직 수집 중) 데이터는 미완성이라 모든 화면에서 제외(전일자까지만 노출).
-    // all_stats에서 오늘을 빼고 latest/prev를 재계산 → 표·합계·메인 그래프·증감표가 모두 일관되게 적용됨.
+    // '오늘'(KST)은 수집 중이라 기본적으로 제외(전일자까지만 노출) — 미완성 null로 인한 증감 왜곡 방지.
+    // 단, 이 게시물의 오늘 값이 '실제 수집 완료'된 경우(play_collected 또는 likes 존재)에는 당일 값을 즉시 반영.
     const todayKST = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
     newPosts = newPosts.map(p => {
-      const stats = (p.all_stats ?? []).filter(s => s.measured_at < todayKST);
+      const all = p.all_stats ?? [];
+      const today = all.find(s => s.measured_at === todayKST);
+      const todayCollected = !!today && (today.play_collected === true || today.likes_count != null);
+      const stats = todayCollected ? all : all.filter(s => s.measured_at < todayKST);
       return {
         ...p,
         all_stats: stats,
