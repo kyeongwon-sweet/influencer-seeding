@@ -40,8 +40,8 @@ TODAY = os.getenv("MONITORING_DATE") or date.today().isoformat()
 
 
 def _ig_shortcode(url: str) -> str | None:
-    """Instagram URL에서 숏코드 추출 (/p/, /reel/, /tv/ 모두 처리)"""
-    m = re.search(r'/(?:p|reel|tv)/([A-Za-z0-9_-]+)', url or "")
+    """Instagram URL에서 숏코드 추출 (/p/, /reel/, /reels/, /tv/ 모두 처리)"""
+    m = re.search(r'/(?:p|reels|reel|tv)/([A-Za-z0-9_-]+)', url or "")
     return m.group(1) if m else None
 
 
