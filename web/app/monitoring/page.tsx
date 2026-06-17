@@ -1991,11 +1991,6 @@ export default function MonitoringPage() {
                     const rows = [{ date: dailyTotals[0].date, play: 0, likes: 0, comments: 0 }, ...deltaTableData];
                     const reversed = [...rows].reverse();
                     const b2bMap = new Map(b2bDaily.map(d => [d.date, d.total_contribution]));
-                    // 총합계: 기간 내 조회수 증가 합 / 검색량 증감 합 / B2B 최종이익 합
-                    const sumPlay = rows.reduce((s, d) => s + (d.play || 0), 0);
-                    const sumSearch = rows.reduce((s, d) => s + ((d as { search?: number }).search ?? 0), 0);
-                    const sumB2b = rows.reduce((s, d) => s + (b2bMap.get(d.date) ?? 0), 0);
-                    const hasB2bInRange = rows.some(d => b2bMap.get(d.date) != null);
                     return (
                       <div className="overflow-y-auto" style={{ maxHeight: 264 }}>
                         <table className="mx-auto">
@@ -2008,13 +2003,6 @@ export default function MonitoringPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {/* 총합계 (기간 합계) 고정 행 */}
-                            <tr className="bg-[#FFF0E6] sticky top-[37px] z-[9]">
-                              <td className="pl-5 pr-3 py-2.5 text-left text-sm font-bold whitespace-nowrap text-[#B84A00]">총합계</td>
-                              <td className="px-3 py-2.5 text-right tabular-nums text-sm font-bold text-[#B84A00]">{sumPlay > 0 ? "+" : ""}{sumPlay.toLocaleString()}</td>
-                              <td className="px-3 py-2.5 text-right tabular-nums text-sm font-bold text-[#B84A00]">{sumSearch > 0 ? "+" : ""}{sumSearch.toLocaleString()}</td>
-                              <td className="pl-3 pr-5 py-2.5 text-right tabular-nums text-sm font-bold text-[#B84A00]">{hasB2bInRange ? `${sumB2b.toLocaleString()}원` : "-"}</td>
-                            </tr>
                             {reversed.map((d, i) => {
                               const dow = new Date(d.date).getDay();
                               const dayLabel = DAY_KO[dow];
