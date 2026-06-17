@@ -626,6 +626,8 @@ export default function MonitoringPage() {
   const [b2bDaily, setB2bDaily] = useState<B2bDaily[]>([]); // B2B 일자별 현황 (본부공헌이익)
   const [lastUpdate, setLastUpdate] = useState<{ at: string | null; byEmail: string | null }>({ at: null, byEmail: null }); // 진짜 마지막 적재 시각 + 출처
   const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set()); // 범례 클릭으로 숨긴 시리즈
+  const [summaryDim, setSummaryDim] = useState<"project_name" | "product_name" | "channel_type">("project_name"); // 성과 요약 그룹 축
+  const [summarySort, setSummarySort] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "play", dir: "desc" });
   const [productTrends, setProductTrends] = useState<{ brandKey: string; products: string[]; data: { date: string; values: Record<string, number | null> }[] }>({ brandKey: "", products: [], data: [] });
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -2112,6 +2114,87 @@ export default function MonitoringPage() {
                     </text>
                   ))}
                 </svg>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* 프로젝트명별(캠페인별) 성과 요약 — 프로젝트명/상품명/채널분류로 묶어 다축 분석 */}
+        {filteredPosts.length > 0 && (() => {
+          const dimLabel: Record<string, string> = { project_name: "프로젝트명", product_name: "상품명", channel_type: "채널 분류" };
+          const groups = new Map<string, { count: number; play: number; likes: number; comments: number; cost: number }>();
+          for (const p of filteredPosts) {
+            const key = (p[summaryDim] as string | null)?.trim() || "(미지정)";
+            const g = groups.get(key) ?? { count: 0, play: 0, likes: 0, comments: 0, cost: 0 };
+            g.count += 1;
+            g.play += p.latest_stats?.play_count ?? 0;
+            g.likes += p.latest_stats?.likes_count ?? 0;
+            g.comments += p.latest_stats?.comments_count ?? 0;
+            g.cost += p.cost ?? 0;
+            groups.set(key, g);
+          }
+          const list = Array.from(groups.entries()).map(([name, g]) => ({ name, ...g, cpv: g.play > 0 ? g.cost / g.play : 0 }));
+          const { key: sk, dir } = summarySort;
+          const numOf = (r: typeof list[number], k: string) => (r as unknown as Record<string, number>)[k] ?? 0;
+          list.sort((a, b) => sk === "name"
+            ? (dir === "asc" ? a.name.localeCompare(b.name, "ko") : b.name.localeCompare(a.name, "ko"))
+            : (dir === "asc" ? numOf(a, sk) - numOf(b, sk) : numOf(b, sk) - numOf(a, sk)));
+          const tot = list.reduce((t, r) => ({ count: t.count + r.count, play: t.play + r.play, likes: t.likes + r.likes, comments: t.comments + r.comments, cost: t.cost + r.cost }), { count: 0, play: 0, likes: 0, comments: 0, cost: 0 });
+          const totCpv = tot.play > 0 ? tot.cost / tot.play : 0;
+          const onSort = (key: string) => () => setSummarySort(s => s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "desc" });
+          const arrow = (key: string) => summarySort.key === key ? (summarySort.dir === "asc" ? " ↑" : " ↓") : "";
+          const cols: { key: string; label: string; fmt: (r: typeof list[number]) => string }[] = [
+            { key: "count", label: "게시물", fmt: r => `${r.count}` },
+            { key: "play", label: "누적 조회수", fmt: r => r.play.toLocaleString() },
+            { key: "likes", label: "좋아요", fmt: r => r.likes.toLocaleString() },
+            { key: "comments", label: "댓글", fmt: r => r.comments.toLocaleString() },
+            { key: "cost", label: "비용", fmt: r => `₩${Math.round(r.cost).toLocaleString()}` },
+            { key: "cpv", label: "조회당 비용", fmt: r => r.cpv > 0 ? `₩${r.cpv.toFixed(1)}` : "-" },
+          ];
+          return (
+            <div className="bg-white rounded-[20px] shadow-[0_2px_16px_rgba(100,120,180,0.08)] mb-4 overflow-hidden">
+              <div className="px-6 pt-5 pb-3 flex items-center gap-3 flex-wrap">
+                <p className="text-[11px] font-semibold text-a-ink-muted uppercase tracking-widest">성과 요약</p>
+                <div className="flex items-center gap-1">
+                  {(["project_name", "product_name", "channel_type"] as const).map(d => (
+                    <button key={d} type="button" onClick={() => setSummaryDim(d)}
+                      className={`px-2.5 py-1 rounded-full text-[11px] transition-colors ${summaryDim === d ? "bg-a-blue text-white" : "bg-gray-100 text-a-ink-muted hover:bg-gray-200"}`}>
+                      {dimLabel[d]}
+                    </button>
+                  ))}
+                </div>
+                <span className="text-[11px] text-a-ink-muted ml-auto">{list.length}개 · 헤더 클릭 정렬</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="border-y border-a-hairline bg-gray-50/60">
+                      <th onClick={onSort("name")} className="px-4 py-2.5 text-left text-[11px] font-semibold text-a-ink-muted whitespace-nowrap cursor-pointer select-none">{dimLabel[summaryDim]}{arrow("name")}</th>
+                      {cols.map(c => (
+                        <th key={c.key} onClick={onSort(c.key)} className="px-4 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted whitespace-nowrap cursor-pointer select-none">{c.label}{arrow(c.key)}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="bg-[#FFF0E6] text-[#B84A00] font-bold border-b border-a-hairline">
+                      <td className="px-4 py-2.5 text-left text-sm whitespace-nowrap">총합계</td>
+                      <td className="px-4 py-2.5 text-right text-sm tabular-nums">{tot.count}</td>
+                      <td className="px-4 py-2.5 text-right text-sm tabular-nums">{tot.play.toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-right text-sm tabular-nums">{tot.likes.toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-right text-sm tabular-nums">{tot.comments.toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-right text-sm tabular-nums">₩{Math.round(tot.cost).toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-right text-sm tabular-nums">{totCpv > 0 ? `₩${totCpv.toFixed(1)}` : "-"}</td>
+                    </tr>
+                    {list.map(r => (
+                      <tr key={r.name} className="border-b border-a-divider last:border-0 hover:bg-a-parchment/40 transition-colors">
+                        <td className="px-4 py-2.5 text-left text-xs text-a-ink max-w-[260px] truncate" title={r.name}>{r.name}</td>
+                        {cols.map(c => (
+                          <td key={c.key} className="px-4 py-2.5 text-right text-xs tabular-nums text-a-ink-muted">{c.fmt(r)}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           );
