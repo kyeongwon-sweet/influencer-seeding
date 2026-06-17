@@ -310,6 +310,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
 }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [pinnedIdx, setPinnedIdx] = useState<number | null>(null);
+  const [tipOtherOpen, setTipOtherOpen] = useState(false); // 툴팁 '그외' 토글
   const tooltipRef = useRef<HTMLDivElement>(null);
   const activeIdx = pinnedIdx ?? hoverIdx;
   if (data.length < 2) return <div className="flex items-center justify-center py-8 text-xs text-a-ink-muted">데이터 없음</div>;
@@ -519,38 +520,63 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
           style={{ left: `${Math.min(Math.max(((pl + xS(activeIdx)) / VW) * 100, 15), 85)}%`, transform: "translateX(-50%)" }}
           onMouseEnter={() => setPinnedIdx(activeIdx)}
           onMouseLeave={() => { setPinnedIdx(null); setHoverIdx(null); }}>
-          <p className="text-a-ink-muted mb-1">{data[activeIdx].date.replace(/-/g, ".")} · <span className="font-semibold text-a-blue tabular-nums">{data[activeIdx].value.toLocaleString()}</span></p>
+          {/* 1. 날짜 (검정 볼드) · 조회수 */}
+          <p className="font-bold text-a-ink mb-1">{data[activeIdx].date.replace(/-/g, ".")} · <span className="text-a-blue tabular-nums">{data[activeIdx].value.toLocaleString()}</span></p>
+          {/* 2. 라라스윗 검색량 */}
+          {hoveredLsEntry?.value != null && (
+            <a href={NAVER_DATALAB_URL} target="_blank" rel="noreferrer"
+              className="text-gray-500 tabular-nums hover:underline pointer-events-auto flex items-center gap-0.5">
+              라라스윗 검색량: {hoveredLsEntry.value.toLocaleString()} ↗
+            </a>
+          )}
+          {/* 3. B2B 최종이익 */}
+          {(() => {
+            const b = extraComputed.find(s => s.name === "B2B 최종이익");
+            const v = b?.summed.find(p => p.date === data[activeIdx].date)?.value;
+            if (v == null) return null;
+            return <p className="tabular-nums font-medium" style={{ color: b!.color }}>B2B 최종이익: {v.toLocaleString()}원</p>;
+          })()}
+          {/* 4. 전체 전환 광고비 */}
           {hoveredSecondaryValue != null && (
             <a href={META_ADS_MANAGER_URL} target="_blank" rel="noreferrer"
               className="text-orange-600 tabular-nums hover:underline pointer-events-auto flex items-center gap-0.5">
               전체 전환 광고비: {hoveredSecondaryValue.toLocaleString()}원 ↗
             </a>
           )}
-          {hoveredLsEntry?.value != null && (
-            <a href={NAVER_DATALAB_URL} target="_blank" rel="noreferrer"
-              className="text-gray-400 tabular-nums hover:underline pointer-events-auto flex items-center gap-0.5">
-              라라스윗 검색량: {hoveredLsEntry.value.toLocaleString()} ↗
-            </a>
-          )}
-          {extraComputed.map((s, i) => {
+          {/* 5. 그외 (토글) — 유튜브 검색량 / 인스타 프로필 방문 / 상품별 */}
+          {(() => {
             const date = data[activeIdx].date;
-            const total = s.summed.find(p => p.date === date)?.value;
-            if (total == null) return null;
-            const isMoney = s.name === "B2B 최종이익"; // 금액(원), 그 외는 검색량
+            const others = extraComputed.filter(s => s.name !== "B2B 최종이익" && s.summed.find(p => p.date === date)?.value != null);
+            if (others.length === 0) return null;
             return (
-              <div key={`xs-${i}`} className="mt-0.5">
-                <p className="tabular-nums font-medium" style={{ color: s.color }}>{isMoney ? `${s.name}: ${total.toLocaleString()}원` : `${s.name} 검색량: ${total.toLocaleString()}`}</p>
-                {s.memberMaps.length > 1 && (
-                  <div className="pl-2 space-y-0.5">
-                    {s.memberMaps.map(mm => {
-                      const v = mm.map.get(date);
-                      return <p key={mm.label} className="text-[11px] text-a-ink-muted tabular-nums">· {mm.label} {v != null ? v.toLocaleString() : "-"}</p>;
+              <div className="mt-1">
+                <button type="button" onClick={() => setTipOtherOpen(o => !o)}
+                  className="text-a-ink-muted hover:text-a-ink pointer-events-auto flex items-center gap-1">
+                  그외 <span className="text-[9px] leading-none">{tipOtherOpen ? "▲" : "▼"}</span>
+                </button>
+                {tipOtherOpen && (
+                  <div className="mt-0.5 space-y-0.5">
+                    {others.map((s, i) => {
+                      const total = s.summed.find(p => p.date === date)!.value!;
+                      return (
+                        <div key={`xo-${i}`}>
+                          <p className="tabular-nums" style={{ color: s.color }}>{s.name}: {total.toLocaleString()}</p>
+                          {s.memberMaps.length > 1 && (
+                            <div className="pl-2 space-y-0.5">
+                              {s.memberMaps.map(mm => {
+                                const v = mm.map.get(date);
+                                return <p key={mm.label} className="text-[11px] text-a-ink-muted tabular-nums">· {mm.label} {v != null ? v.toLocaleString() : "-"}</p>;
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
                     })}
                   </div>
                 )}
               </div>
             );
-          })}
+          })()}
           {hoveredPosts.length > 0 && (
             <div className="border-t border-a-hairline pt-1.5 mt-1 space-y-0.5 max-h-24 overflow-y-auto">
               {hoveredPosts.map((p, i) => (
