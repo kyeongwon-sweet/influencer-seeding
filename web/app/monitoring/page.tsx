@@ -42,8 +42,8 @@ type B2bDaily = {
   total_order: number | null; total_contribution: number | null;
 };
 
-type Filters = { name: string; project: string; products: string[]; type: string; channelTypes: string[]; dateFrom: string; dateTo: string; postedFrom: string; postedTo: string };
-const INIT_FILTERS: Filters = { name: "", project: "", products: [], type: "all", channelTypes: [], dateFrom: "", dateTo: "", postedFrom: "", postedTo: "" };
+type Filters = { name: string; project: string; products: string[]; type: string; channelTypes: string[]; pdNames: string[]; dateFrom: string; dateTo: string; postedFrom: string; postedTo: string };
+const INIT_FILTERS: Filters = { name: "", project: "", products: [], type: "all", channelTypes: [], pdNames: [], dateFrom: "", dateTo: "", postedFrom: "", postedTo: "" };
 type EditCell = { postId: string; field: "project_name" | "product_name" | "channel_type" | "cost" | "reach_count" | "account_name" | "posted_at" | "notes" | "content_summary"; value: string };
 const POST_TYPES = ["릴스", "피드", "숏폼", "롱폼"];
 const CHANNEL_TYPES = [
@@ -225,6 +225,43 @@ function getCategoryLabel(val: string | null | undefined): string {
 
 function pickMetric(s: DailyStats): number | null {
   return s.play_count ?? s.likes_count;
+}
+
+// 소재명 규칙(파일명 생성기)으로 작성된 project_name을 17개 차원으로 파싱.
+// 예: [26.06]F_V_DB혼_바이럴_상시_바이럴형_CU단독강조_var1.릴스_퀄리티근황.X_1P_황경원_260615_빙과_이수현
+const PROJECT_PARSE_COLS = [
+  "제작월", "채널구분", "영상/이미지 구분", "제품코드", "광고종류", "스킴명", "대분류 포맷",
+  "소분류 연출", "배리에이션 여부", "지면 유형", "상세연출(소재구분)", "프로젝트",
+  "파트 구분", "마케터", "집행시작일", "본부 구분", "PD/디자이너",
+] as const;
+
+function parseProjectName(name: string | null | undefined): Record<string, string> {
+  const r: Record<string, string> = {};
+  for (const c of PROJECT_PARSE_COLS) r[c] = "";
+  if (!name || !name.startsWith("[")) return r;
+  const parts = name.split("_");
+  if (parts.length < 3) return r;
+  const m = parts[0].match(/(\[.+?\])(.*)/);
+  if (m) { r["제작월"] = m[1]; r["채널구분"] = m[2]; }
+  if (parts.length > 1) r["영상/이미지 구분"] = parts[1];
+  if (parts.length > 2) r["제품코드"] = parts[2];
+  if (parts.length > 3) r["광고종류"] = parts[3];
+  if (parts.length > 4) r["스킴명"] = parts[4];
+  if (parts.length > 5) r["대분류 포맷"] = parts[5];
+  if (parts.length > 6) r["소분류 연출"] = parts[6];
+  if (parts.length > 7) { const kl = parts[7].split("."); r["배리에이션 여부"] = kl[0]; r["지면 유형"] = kl.slice(1).join("."); }
+  if (parts.length > 8) { const mn = parts[8].split("."); r["상세연출(소재구분)"] = mn[0]; r["프로젝트"] = mn.slice(1).join("."); }
+  if (parts.length > 9) r["파트 구분"] = parts[9];
+  if (parts.length > 10) r["마케터"] = parts[10];
+  if (parts.length > 11) r["집행시작일"] = parts[11];
+  if (parts.length > 12) r["본부 구분"] = parts[12];
+  if (parts.length > 13) r["PD/디자이너"] = parts.slice(13).join("_").replace(/\.(mp4|mov|png|jpe?g)$/i, "");
+  return r;
+}
+
+// 게시물의 PD/디자이너 (파싱 불가 시 빈 문자열)
+function pdOf(projectName: string | null | undefined): string {
+  return parseProjectName(projectName)["PD/디자이너"].trim();
 }
 
 function Sparkline({ stats, postId, onClick }: { stats: DailyStats[]; postId: string; onClick: () => void }) {
@@ -611,6 +648,7 @@ export default function MonitoringPage() {
   const [running, setRunning] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [showChannelTypeDropdown, setShowChannelTypeDropdown] = useState(false);
+  const [showPdDropdown, setShowPdDropdown] = useState(false);
   const [form, setForm] = useState({ url: "", product_name: "", project_name: "", channel_type: "", cost: "" });
   const [adding, setAdding] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
@@ -670,6 +708,7 @@ export default function MonitoringPage() {
     if (filters.products.length > 0 && !filters.products.includes(post.product_name ?? "")) return false;
     if (filters.type !== "all" && getPostType(post.url) !== filters.type) return false;
     if (filters.channelTypes.length > 0 && !filters.channelTypes.some(ct => (post.channel_type ?? "").replace(/\s+/g, "") === ct.replace(/\s+/g, ""))) return false;
+    if (filters.pdNames.length > 0 && !filters.pdNames.includes(pdOf(post.project_name))) return false;
 
     // 게시일 필터 (posted_at 기준)
     if (filters.postedFrom && (!post.posted_at || post.posted_at < filters.postedFrom)) return false;
@@ -685,7 +724,12 @@ export default function MonitoringPage() {
     new Set(posts.map(p => p.product_name).filter((p): p is string => Boolean(p)))
   ).sort();
 
-  const hasFilter = filters.name !== "" || filters.project !== "" || filters.products.length > 0 || filters.type !== "all" || filters.channelTypes.length > 0 || filters.dateFrom !== "" || filters.dateTo !== "" || filters.postedFrom !== "" || filters.postedTo !== "";
+  // PD/디자이너 옵션 — project_name이 파싱되는 게시물만 (빈 값 제외)
+  const pdOptions = Array.from(
+    new Set(posts.map(p => pdOf(p.project_name)).filter((v): v is string => Boolean(v)))
+  ).sort((a, b) => a.localeCompare(b, "ko"));
+
+  const hasFilter = filters.name !== "" || filters.project !== "" || filters.products.length > 0 || filters.type !== "all" || filters.channelTypes.length > 0 || filters.pdNames.length > 0 || filters.dateFrom !== "" || filters.dateTo !== "" || filters.postedFrom !== "" || filters.postedTo !== "";
   const colSpan = 17;
 
   // 마지막 수집 시각 = 최신 측정행의 적재 시각(created_at) 중 최대값 (게시물 추가 시각 아님)
@@ -1682,6 +1726,43 @@ export default function MonitoringPage() {
               </div>
             )}
           </div>
+          {pdOptions.length > 0 && (
+            <div className="relative">
+              <button
+                onClick={() => setShowPdDropdown(!showPdDropdown)}
+                className={`filter-select ${filters.pdNames.length > 0 ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
+              >
+                {filters.pdNames.length === 0
+                  ? "전체 PD/디자이너"
+                  : filters.pdNames.length === 1
+                  ? filters.pdNames[0]
+                  : `${filters.pdNames[0]} 외 ${filters.pdNames.length - 1}`}
+              </button>
+              {showPdDropdown && (
+                <div className="absolute top-full left-0 mt-1 bg-white border border-a-hairline rounded-[8px] shadow-lg z-50 w-48">
+                  <div className="p-3 space-y-2 max-h-64 overflow-y-auto">
+                    <label className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1.5 rounded text-xs">
+                      <input type="checkbox" checked={filters.pdNames.length === 0}
+                        onChange={() => setFilters(p => ({ ...p, pdNames: [] }))}
+                        className="w-3.5 h-3.5 accent-a-blue cursor-pointer" />
+                      전체
+                    </label>
+                    {pdOptions.map(name => (
+                      <label key={name} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1.5 rounded text-xs">
+                        <input type="checkbox" checked={filters.pdNames.includes(name)}
+                          onChange={e => {
+                            if (e.target.checked) setFilters(p => ({ ...p, pdNames: [...p.pdNames, name] }));
+                            else setFilters(p => ({ ...p, pdNames: p.pdNames.filter(x => x !== name) }));
+                          }}
+                          className="w-3.5 h-3.5 accent-a-blue cursor-pointer" />
+                        {name}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           {productOptions.length > 0 && (
             <div className="flex items-center gap-1.5 overflow-x-auto flex-nowrap scrollbar-none pb-0.5">
               {productOptions.map(p => {
