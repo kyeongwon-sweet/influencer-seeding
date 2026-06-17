@@ -1,6 +1,7 @@
+import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { fetchSheetTabValues } from "@/lib/google-sheets";
+import { fetchSheetTabValues, normalizePrivateKey } from "@/lib/google-sheets";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -23,6 +24,26 @@ export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
   if (secret && authHeader !== `Bearer ${secret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // 임시 진단: 비밀 노출 없이 키 상태만 확인 (?debug=key)
+  if (req.nextUrl.searchParams.get("debug") === "key") {
+    const raw = process.env.GOOGLE_SA_PRIVATE_KEY ?? "";
+    const email = process.env.GOOGLE_SA_CLIENT_EMAIL ?? "";
+    let signOk = false, signErr = "";
+    let bodyLen = 0;
+    try {
+      const norm = normalizePrivateKey(raw);
+      bodyLen = norm.replace(/-----[^-]+-----/g, "").replace(/\s/g, "").length;
+      const s = crypto.createSign("RSA-SHA256"); s.update("x"); s.sign(norm);
+      signOk = true;
+    } catch (e) { signErr = e instanceof Error ? e.message : String(e); }
+    return NextResponse.json({
+      emailSet: !!email, emailTail: email.slice(-30),
+      rawLen: raw.length, hasBegin: raw.includes("BEGIN"), hasEnd: raw.includes("END"),
+      hasLiteralBackslashN: raw.includes("\\n"), hasRealNewline: raw.includes("\n"),
+      startsWithQuote: raw.trim().startsWith('"'), base64BodyLen: bodyLen, signOk, signErr,
+    });
   }
 
   let rows: (string | number | null)[][];

@@ -21,7 +21,7 @@ let _cached: { token: string; exp: number } | null = null;
 
 // Vercel 환경변수에 붙여넣을 때 따옴표 포함·줄바꿈 깨짐 등으로 PEM이 손상되는 경우가 많아,
 // 어떤 형태로 들어와도 base64 본문만 추출해 표준 PKCS8 PEM으로 재구성한다.
-function normalizePrivateKey(raw: string): string {
+export function normalizePrivateKey(raw: string): string {
   const body = raw
     .replace(/-----BEGIN [^-]+-----/g, "")
     .replace(/-----END [^-]+-----/g, "")
