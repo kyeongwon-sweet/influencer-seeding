@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createApifyClient } from "@/lib/apify";
+import { notifyJob } from "@/lib/slack";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -209,6 +210,7 @@ export async function POST(req: NextRequest) {
 
     console.log(`[SUCCESS] 데이터 수집 완료: ${metrics.length}명`);
 
+    await notifyJob("스크리닝", "ok", `${metrics.length}명 수집`);
     return NextResponse.json({
       success: true,
       message: "Screening metrics collected",
@@ -217,6 +219,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error("[ERROR] 스크리닝 수집 실패:", error);
+    await notifyJob("스크리닝", "fail", error instanceof Error ? error.message : "Unknown error");
     return NextResponse.json(
       {
         success: false,

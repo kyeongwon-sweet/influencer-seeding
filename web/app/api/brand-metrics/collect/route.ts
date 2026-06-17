@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
+import { notifyJob } from "@/lib/slack";
 
 export const maxDuration = 60; // 백필(?days=N) 시 여러 날 순차 수집 여유
 
@@ -125,6 +126,10 @@ export async function POST(req: NextRequest) {
     .from("brand_daily_metrics")
     .upsert(rows, { onConflict: "measured_at" });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    await notifyJob("브랜드 지표", "fail", `DB 저장 실패: ${error.message}`);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  await notifyJob("브랜드 지표", "ok", `${rows.length}일 수집 (인스타/유튜브)`);
   return NextResponse.json({ ok: true, collected: rows.length, rows });
 }

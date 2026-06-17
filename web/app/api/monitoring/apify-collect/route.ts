@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createApifyClient } from "@/lib/apify";
+import { notifyJob } from "@/lib/slack";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -226,6 +227,7 @@ export async function POST(req: NextRequest) {
       console.log(`[SUCCESS] 데이터 수집 완료: ${statsToInsert.length}개`);
     }
 
+    await notifyJob("협찬 모니터링", "ok", `${statsToInsert.length}건 수집${endedMarked ? `, 종료 처리 ${endedMarked}건` : ""} (${today})`);
     return NextResponse.json({
       success: true,
       message: "Apify data collection completed",
@@ -236,6 +238,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error("[ERROR] Apify 수집 실패:", error);
+    await notifyJob("협찬 모니터링", "fail", error instanceof Error ? error.message : "Unknown error");
     return NextResponse.json(
       {
         success: false,

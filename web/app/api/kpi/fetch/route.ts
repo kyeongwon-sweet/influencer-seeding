@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
+import { notifyJob } from "@/lib/slack";
 
 const SPREADSHEET_ID = "1QpUgPdiZGXtgXnRnDld99Kp1qP0rRbqwyv0aYbJ_Omo";
 const SHEET_GID = 1808124579;
@@ -89,7 +90,11 @@ export async function GET(req: NextRequest) {
 
   const supabase = getServerSupabase();
   const { error } = await supabase.from("kpi_snapshots").insert({ month_label: monthLabel, metrics });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    await notifyJob("KPI 스냅샷", "fail", `DB 저장 실패: ${error.message}`);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
+  await notifyJob("KPI 스냅샷", "ok", `${monthLabel} ${metrics.length}개 지표`);
   return NextResponse.json({ ok: true, month_label: monthLabel, metrics });
 }

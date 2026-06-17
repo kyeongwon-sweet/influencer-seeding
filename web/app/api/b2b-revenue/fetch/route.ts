@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { fetchSheetTabValues } from "@/lib/google-sheets";
+import { notifyJob } from "@/lib/slack";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -29,7 +30,9 @@ export async function GET(req: NextRequest) {
   try {
     rows = await fetchSheetTabValues(SPREADSHEET_ID, SHEET_GID, "A1:AB200");
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 502 });
+    const msg = e instanceof Error ? e.message : String(e);
+    await notifyJob("B2B 매출", "fail", `시트 조회 실패: ${msg}`);
+    return NextResponse.json({ error: msg }, { status: 502 });
   }
 
   // 일자별 표 헤더: 'CVS 발주량' 과 'B2B 발주량' 을 동시에 가진 행 (요약표와 구분됨)
@@ -48,6 +51,7 @@ export async function GET(req: NextRequest) {
     }
   }
   if (hdr < 0) {
+    await notifyJob("B2B 매출", "fail", "일자별 표 헤더('CVS 발주량'+'B2B 발주량')를 찾지 못함");
     return NextResponse.json({ error: "일자별 표 헤더('CVS 발주량'+'B2B 발주량')를 찾지 못했습니다." }, { status: 500 });
   }
 
@@ -88,12 +92,17 @@ export async function GET(req: NextRequest) {
   }
 
   if (records.length === 0) {
+    await notifyJob("B2B 매출", "fail", "일자별 데이터 행을 찾지 못함");
     return NextResponse.json({ error: "일자별 데이터 행을 찾지 못했습니다." }, { status: 500 });
   }
 
   const supabase = getServerSupabase();
   const { error } = await supabase.from("b2b_daily_metrics").upsert(records, { onConflict: "date" });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    await notifyJob("B2B 매출", "fail", `DB 저장 실패: ${error.message}`);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
+  await notifyJob("B2B 매출", "ok", `${records.length}일 (${records[0].date} ~ ${records[records.length - 1].date})`);
   return NextResponse.json({ ok: true, count: records.length, first: records[0].date, last: records[records.length - 1].date });
 }
