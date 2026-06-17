@@ -575,6 +575,7 @@ export default function MonitoringPage() {
   const [uploading, setUploading] = useState(false);
   const [filters, setFilters] = useState<Filters>(INIT_FILTERS);
   const [dateTooltip, setDateTooltip] = useState<{ date: string; x: number; y: number } | null>(null);
+  const [b2bTip, setB2bTip] = useState<{ date: string; x: number; y: number } | null>(null);
   const [lsSearchData, setLsSearchData] = useState<{ date: string; ratio: number; value: number | null }[]>([]);
   const [brandMetrics, setBrandMetrics] = useState<{ measured_at: string; yt_views: number | null; yt_unique_viewers: number | null; yt_search_views: number | null; ig_profile_views: number | null }[]>([]);
   const [ytTrends, setYtTrends] = useState<{ measured_at: string; keyword: string; value: number | null }[]>([]);
@@ -612,7 +613,7 @@ export default function MonitoringPage() {
   });
   const resizingRef = useRef<{ col: string; startX: number; startW: number; isSticky: boolean } | null>(null);
 
-  const filteredPosts = posts.filter(post => {
+  const filteredPosts = useMemo(() => posts.filter(post => {
     const displayName = (post.account_name ?? post.influencers?.name ?? "").toLowerCase();
 
     // 제로비 판정: 조회수가 없거나 0
@@ -633,7 +634,7 @@ export default function MonitoringPage() {
     // 대신 표시 데이터 범위만 필터링 (filteredStats에서 처리)
 
     return true;
-  });
+  }), [posts, filters]);
 
   const productOptions = Array.from(
     new Set(posts.map(p => p.product_name).filter((p): p is string => Boolean(p)))
@@ -864,55 +865,33 @@ export default function MonitoringPage() {
     };
   }, []);
 
-  // 메인 차트용 광고비 데이터 로드
+  // 광고비 조회 기간(YYYY-MM-DD 문자열). chartData 배열 참조가 아닌 '값'에 의존시켜
+  // effect 무한 재요청(루프) 방지 — 87K 폭주 사고의 근본 수정.
+  const { adFrom, adTo } = useMemo(() => ({
+    adFrom: chartData.length >= 2 ? (chartData[0].date || "").split('T')[0] : "",
+    adTo: chartData.length >= 2 ? (chartData[chartData.length - 1].date || "").split('T')[0] : "",
+  }), [chartData]);
+
+  // 메인 차트용 광고비 데이터 로드 (날짜 범위가 실제로 바뀔 때만 호출)
   useEffect(() => {
-    if (chartData.length < 2) {
+    if (!adFrom || !adTo) {
       setMainAdCosts([]);
       return;
     }
-
-    // 날짜 안전하게 추출 (YYYY-MM-DD 형식)
-    const extractDate = (dateStr: any): string => {
-      if (typeof dateStr !== 'string') return '';
-      return dateStr.split('T')[0]; // ISO 형식에서 날짜만 추출
-    };
-
-    const dateFrom = extractDate(chartData[0].date);
-    const dateTo = extractDate(chartData[chartData.length - 1].date);
-
-    if (!dateFrom || !dateTo) {
-      setMainAdCosts([]);
-      return;
-    }
-
     const url = new URL('/api/meta-ads', window.location.origin);
-    url.searchParams.set('date_from', dateFrom);
-    url.searchParams.set('date_to', dateTo);
-
-    console.log("[광고비 API 요청]", url.toString());
-
+    url.searchParams.set('date_from', adFrom);
+    url.searchParams.set('date_to', adTo);
     fetch(url.toString())
       .then(r => {
-        if (!r.ok) {
-          throw new Error(`Meta API 오류: ${r.status} ${r.statusText}`);
-        }
+        if (!r.ok) throw new Error(`Meta API 오류: ${r.status} ${r.statusText}`);
         return r.json();
       })
-      .then(data => {
-        console.log("[광고비 API 응답]", data);
-        if (Array.isArray(data)) {
-          console.log("[광고비 데이터]", data.length, "건 수신");
-          setMainAdCosts(data);
-        } else {
-          console.error("[광고비 로드] 예상치 못한 응답 형식:", data);
-          setMainAdCosts([]);
-        }
-      })
+      .then(data => setMainAdCosts(Array.isArray(data) ? data : []))
       .catch(err => {
         console.error("[광고비 로드 오류]", err.message || err);
         setMainAdCosts([]);
       });
-  }, [chartData]);
+  }, [adFrom, adTo]);
 
   // 범례 클릭 토글 (해당 시리즈 숨김/표시)
   const seriesHidden = (k: string) => hiddenSeries.has(k);
