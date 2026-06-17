@@ -1857,6 +1857,7 @@ export default function MonitoringPage() {
                     }
                     const rows = [{ date: dailyTotals[0].date, play: 0, likes: 0, comments: 0 }, ...deltaTableData];
                     const reversed = [...rows].reverse();
+                    const b2bMap = new Map(b2bDaily.map(d => [d.date, d.total_contribution]));
                     return (
                       <div className="overflow-y-auto" style={{ maxHeight: 264 }}>
                         <table className="w-full">
@@ -1866,6 +1867,7 @@ export default function MonitoringPage() {
                               <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted">누적 조회수</th>
                               <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted">검색량</th>
                               <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted">댓글</th>
+                              {b2bDaily.length > 0 && <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted whitespace-nowrap">B2B 최종이익</th>}
                             </tr>
                           </thead>
                           <tbody>
@@ -1901,13 +1903,18 @@ export default function MonitoringPage() {
                                   {deltaCell(d.play, "text-a-blue")}
                                   {deltaCell(d.search, "text-gray-500")}
                                   {deltaCell(d.comments, "text-purple-500")}
+                                  {b2bDaily.length > 0 && (() => {
+                                    const v = b2bMap.get(d.date);
+                                    if (v == null) return <td className="px-4 py-3 text-right text-gray-300">-</td>;
+                                    return <td className={`px-4 py-3 text-right tabular-nums text-sm font-semibold ${v < 0 ? "text-[#c0392b]" : "text-emerald-700"}`}>{v.toLocaleString()}</td>;
+                                  })()}
                                 </tr>
                               );
                             })}
                             {/* 여백 행 */}
-                            <tr><td colSpan={4} className="py-2" /></tr>
-                            <tr><td colSpan={4} className="py-2" /></tr>
-                            <tr><td colSpan={4} className="py-2" /></tr>
+                            <tr><td colSpan={b2bDaily.length > 0 ? 5 : 4} className="py-2" /></tr>
+                            <tr><td colSpan={b2bDaily.length > 0 ? 5 : 4} className="py-2" /></tr>
+                            <tr><td colSpan={b2bDaily.length > 0 ? 5 : 4} className="py-2" /></tr>
                           </tbody>
                         </table>
                       </div>
@@ -1963,71 +1970,6 @@ export default function MonitoringPage() {
                     </text>
                   ))}
                 </svg>
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* B2B 일자별 현황 (마케팅T 대시보드 시트 연동) */}
-        {b2bDaily.length > 0 && (() => {
-          const todayStr = new Date().toISOString().slice(0, 10);
-          const DAY_KO = ["일", "월", "화", "수", "목", "금", "토"];
-          const fmt = (v: number | null) => v == null ? "-" : v.toLocaleString();
-          const numCell = (v: number | null, opts?: { strong?: boolean }) => (
-            <td className={`px-3 py-2 text-right text-xs tabular-nums whitespace-nowrap ${v != null && v < 0 ? "text-[#c0392b]" : opts?.strong ? "text-a-ink font-semibold" : "text-a-ink-muted"}`}>
-              {fmt(v)}
-            </td>
-          );
-          return (
-            <div className="bg-white rounded-[20px] shadow-[0_2px_16px_rgba(100,120,180,0.08)] mb-4 overflow-hidden">
-              <div className="px-6 pt-5 pb-3 flex items-center gap-3 flex-wrap">
-                <p className="text-[11px] font-semibold text-a-ink-muted uppercase tracking-widest">B2B 일자별 현황</p>
-                <span className="text-[11px] text-a-ink-muted">최종 이익 = 듬뿍바 + 쫀득바 본부공헌이익 합</span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr className="border-b border-a-hairline">
-                      <th rowSpan={2} className="px-3 py-2 text-left text-[11px] font-semibold text-a-ink-muted whitespace-nowrap sticky left-0 bg-white z-10">날짜</th>
-                      <th colSpan={5} className="px-3 py-1.5 text-center text-[11px] font-semibold text-a-ink border-l border-a-hairline bg-rose-50/40">듬뿍바</th>
-                      <th colSpan={5} className="px-3 py-1.5 text-center text-[11px] font-semibold text-a-ink border-l border-a-hairline bg-emerald-50/40">쫀득바</th>
-                      <th rowSpan={2} className="px-3 py-2 text-right text-[11px] font-semibold text-a-ink border-l border-a-hairline whitespace-nowrap">최종 이익</th>
-                    </tr>
-                    <tr className="border-b border-a-hairline text-[10px] text-a-ink-muted">
-                      {["CVS 발주량", "이익", "전환 손익", "인지 광고비", "본부공헌이익"].map((h, i) => (
-                        <th key={`d-${i}`} className={`px-3 py-1.5 text-right font-medium whitespace-nowrap ${i === 0 ? "border-l border-a-hairline" : ""}`}>{h}</th>
-                      ))}
-                      {["B2B 발주량", "이익", "전환 손익", "인지 광고비", "본부공헌이익"].map((h, i) => (
-                        <th key={`j-${i}`} className={`px-3 py-1.5 text-right font-medium whitespace-nowrap ${i === 0 ? "border-l border-a-hairline" : ""}`}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {b2bDaily.map(d => {
-                      const dow = new Date(d.date).getDay();
-                      const dcls = dow === 0 ? "text-[#8B1A2E]" : dow === 6 ? "text-[#1a3c82]" : "text-a-ink";
-                      const isFuture = d.date > todayStr;
-                      return (
-                        <tr key={d.date} className={`border-b border-a-divider last:border-0 hover:bg-a-parchment/40 transition-colors ${isFuture ? "opacity-45" : ""}`}>
-                          <td className={`px-3 py-2 text-left text-xs font-semibold whitespace-nowrap sticky left-0 bg-white z-10 ${dcls}`}>
-                            {d.date.slice(5).replace("-", "/")}<span className="ml-1 text-[10px] font-medium">({DAY_KO[dow]})</span>
-                          </td>
-                          {numCell(d.dumbuk_order)}
-                          {numCell(d.dumbuk_profit)}
-                          {numCell(d.dumbuk_conv_pl)}
-                          {numCell(d.dumbuk_ad_cost)}
-                          {numCell(d.dumbuk_contribution)}
-                          {numCell(d.jjondeuk_order)}
-                          {numCell(d.jjondeuk_profit)}
-                          {numCell(d.jjondeuk_conv_pl)}
-                          {numCell(d.jjondeuk_ad_cost)}
-                          {numCell(d.jjondeuk_contribution)}
-                          {numCell(d.total_contribution, { strong: true })}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
               </div>
             </div>
           );
