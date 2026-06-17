@@ -624,6 +624,7 @@ export default function MonitoringPage() {
   const [brandMetrics, setBrandMetrics] = useState<{ measured_at: string; yt_views: number | null; yt_unique_viewers: number | null; yt_search_views: number | null; ig_profile_views: number | null }[]>([]);
   const [ytTrends, setYtTrends] = useState<{ measured_at: string; keyword: string; value: number | null }[]>([]);
   const [b2bDaily, setB2bDaily] = useState<B2bDaily[]>([]); // B2B 일자별 현황 (본부공헌이익)
+  const [lastUpdate, setLastUpdate] = useState<{ at: string | null; byEmail: string | null }>({ at: null, byEmail: null }); // 진짜 마지막 적재 시각 + 출처
   const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set()); // 범례 클릭으로 숨긴 시리즈
   const [productTrends, setProductTrends] = useState<{ brandKey: string; products: string[]; data: { date: string; values: Record<string, number | null> }[] }>({ brandKey: "", products: [], data: [] });
   const [sortCol, setSortCol] = useState<string | null>(null);
@@ -863,6 +864,10 @@ export default function MonitoringPage() {
     fetch("/api/b2b-revenue")
       .then(r => r.ok ? r.json() : { rows: [] })
       .then(d => setB2bDaily(Array.isArray(d?.rows) ? d.rows : []))
+      .catch(() => {});
+    fetch("/api/monitoring/last-update")
+      .then(r => r.ok ? r.json() : { at: null, byEmail: null })
+      .then(d => setLastUpdate({ at: d?.at ?? null, byEmail: d?.byEmail ?? null }))
       .catch(() => {});
   }, []);
 
@@ -1560,9 +1565,14 @@ export default function MonitoringPage() {
             </svg>
             사용 안내
           </button>
-          {lastMonitoredAt && (
+          {(lastUpdate.at ?? lastMonitoredAt) && (
             <span className="text-xs text-a-ink-muted whitespace-nowrap">
-              마지막 업데이트 <span className="font-medium text-a-ink">{formatTimestamp(lastMonitoredAt)}</span>
+              마지막 업데이트 <span className="font-medium text-a-ink">{formatTimestamp(lastUpdate.at ?? lastMonitoredAt!)}</span>
+              <span className="ml-1.5">
+                {lastUpdate.byEmail
+                  ? <span className="text-a-ink-muted">· {lastUpdate.byEmail.split("@")[0]}</span>
+                  : <span className="text-emerald-600">· 자동 실행</span>}
+              </span>
             </span>
           )}
         </div>
