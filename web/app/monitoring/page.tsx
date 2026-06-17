@@ -1957,8 +1957,8 @@ export default function MonitoringPage() {
                   }
                 />
               </div>
-              {/* 증감 테이블 */}
-              <div className="flex-none w-[430px] flex flex-col self-start">
+              {/* 증감 테이블 — 내용폭에 맞춰 고정(여백 최소화), 그래프가 나머지 차지 */}
+              <div className="flex-none w-max flex flex-col self-start">
                 <div className="px-5 py-4 border-b border-a-hairline">
                   <p className="text-[11px] font-medium text-a-ink-muted">일자별 증감</p>
                 </div>
