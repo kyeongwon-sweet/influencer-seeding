@@ -471,16 +471,23 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
             </g>
           ))}
           {!hidePrimary && <path d={areaPath} fill={`url(#${gradId})`} />}
-          {lsPath && <path d={lsPath} fill="none" stroke="#d1d5db" strokeWidth="1" strokeDasharray="3 2" />}
-          {extraComputed.map((s, i) => s.path && (
-            <path key={`extra-${i}`} d={s.path} fill="none" stroke={s.color} strokeWidth="1.25"
-              strokeLinejoin="round" strokeLinecap="round" />
-          ))}
+          {lsPath && <path d={lsPath} fill="none" stroke="#f59e0b" strokeWidth="2.5" strokeDasharray="5 3" strokeLinecap="round" />}
+          {extraComputed.map((s, i) => {
+            if (!s.path) return null;
+            const important = s.name === "B2B 최종이익";
+            const faint = s.name === "인스타 프로필 방문" || s.name.startsWith("유튜브");
+            return (
+              <path key={`extra-${i}`} d={s.path} fill="none" stroke={s.color}
+                strokeWidth={important ? 2.5 : faint ? 1 : 1.5}
+                opacity={important ? 1 : faint ? 0.4 : 0.85}
+                strokeLinejoin="round" strokeLinecap="round" />
+            );
+          })}
           {extraComputed.map((s, si) => !s.path && s.dots.map((d, di) => (
             <circle key={`xdot-${si}-${di}`} cx={d[0]} cy={d[1]} r={2.2} fill={s.color} />
           )))}
           {!hidePrimary && (
-            <path d={linePath} fill="none" stroke="#3b82f6" strokeWidth="1.5"
+            <path d={linePath} fill="none" stroke="#3b82f6" strokeWidth="2.5"
               strokeLinejoin="round" strokeLinecap="round" />
           )}
           {secondaryPath && (
@@ -1733,15 +1740,15 @@ export default function MonitoringPage() {
                   <div className="flex items-center gap-x-4 gap-y-1.5 flex-wrap justify-end">
                     <button type="button" onClick={() => toggleSeries("조회수")}
                       className={`flex items-center gap-1.5 transition-opacity ${seriesHidden("조회수") ? "opacity-30" : ""}`}>
-                      <div className="w-2 h-0.5 bg-a-blue" />
-                      <span className="text-xs text-a-ink-muted">조회수</span>
+                      <div className="w-3 h-1 rounded-sm bg-a-blue" />
+                      <span className="text-xs font-semibold text-a-ink">조회수</span>
                     </button>
                     {lsSearchData && lsSearchData.length > 0 && (
                       <div className="flex items-center gap-1">
                         <button type="button" onClick={() => toggleSeries("검색량")}
                           className={`flex items-center gap-1.5 transition-opacity ${seriesHidden("검색량") ? "opacity-30" : ""}`}>
-                          <svg width="10" height="3" viewBox="0 0 20 4"><line x1="0" y1="2" x2="20" y2="2" stroke="#d1d5db" strokeWidth="1.5" strokeDasharray="3 2" /></svg>
-                          <span className="text-xs text-a-ink-muted">검색량</span>
+                          <svg width="12" height="4" viewBox="0 0 20 4"><line x1="0" y1="2" x2="20" y2="2" stroke="#f59e0b" strokeWidth="3" strokeDasharray="5 3" strokeLinecap="round" /></svg>
+                          <span className="text-xs font-semibold text-a-ink">검색량</span>
                         </button>
                         <a href={NAVER_DATALAB_URL} target="_blank" rel="noreferrer"
                           className="text-[10px] text-a-ink-muted hover:text-a-ink">↗</a>
@@ -1780,8 +1787,8 @@ export default function MonitoringPage() {
                     {b2bDaily.some(d => d.total_contribution != null) && (
                       <button type="button" onClick={() => toggleSeries("B2B 최종이익")}
                         className={`flex items-center gap-1.5 transition-opacity ${seriesHidden("B2B 최종이익") ? "opacity-30" : ""}`}>
-                        <div className="w-2 h-0.5" style={{ backgroundColor: "#16a34a" }} />
-                        <span className="text-xs text-a-ink-muted">B2B 최종이익</span>
+                        <div className="w-3 h-1 rounded-sm" style={{ backgroundColor: "#16a34a" }} />
+                        <span className="text-xs font-semibold text-a-ink">B2B 최종이익</span>
                       </button>
                     )}
                   </div>
