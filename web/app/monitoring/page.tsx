@@ -1755,7 +1755,7 @@ export default function MonitoringPage() {
             {/* 차트 + 테이블 */}
             <div className="flex divide-x divide-a-hairline">
               {/* 차트 */}
-              <div className="flex-[4] px-6 py-5">
+              <div className="flex-1 min-w-0 px-6 py-5">
                 <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
                   <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">조회수 트렌드 (누적)</p>
                   <div className="flex items-center gap-x-4 gap-y-1.5 flex-wrap justify-end">
@@ -1890,7 +1890,7 @@ export default function MonitoringPage() {
                 />
               </div>
               {/* 증감 테이블 */}
-              <div className="flex-[3] flex flex-col self-start min-w-[220px]">
+              <div className="flex-none w-[430px] flex flex-col self-start">
                 <div className="px-5 py-4 border-b border-a-hairline">
                   <p className="text-[11px] font-medium text-a-ink-muted">일자별 증감</p>
                 </div>
