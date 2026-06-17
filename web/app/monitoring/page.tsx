@@ -2203,8 +2203,7 @@ export default function MonitoringPage() {
         })()}
 
         <div className="bg-white rounded-[18px] border border-a-hairline overflow-hidden">
-          <div className="overflow-x-auto" style={{ transform: "rotateX(180deg)" }}>
-          <div style={{ transform: "rotateX(180deg)" }}>
+          <div className="overflow-auto max-h-[calc(100vh-120px)]">
           {loading ? (
             <div className="p-8 text-center text-a-ink-muted text-sm">로딩 중...</div>
           ) : (
@@ -2565,7 +2564,6 @@ export default function MonitoringPage() {
               </tbody>
             </table>
           )}
-          </div>
           </div>
         </div>
       </div>
