@@ -1012,7 +1012,7 @@ export default function MonitoringPage() {
 
 
   async function loadPosts() {
-    const res = await fetch("/api/sponsored-posts");
+    const res = await fetch("/api/sponsored-posts", { cache: "no-store" });
     if (!res.ok) {
       toast("데이터 로드에 실패했습니다", "error");
       return;

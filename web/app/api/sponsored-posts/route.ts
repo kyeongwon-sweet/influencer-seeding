@@ -110,7 +110,9 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  return NextResponse.json(result);
+  // 사용자별 실시간 데이터 — 엣지/브라우저 캐시 금지.
+  // (기본 응답이 public이라 Vercel CDN이 옛 값을 HIT으로 내주는 문제 방지)
+  return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(req: NextRequest) {
