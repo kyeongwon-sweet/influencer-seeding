@@ -102,3 +102,6 @@ export async function POST(req: NextRequest) {
     }, { status: 500 });
   }
 }
+
+// Vercel 크론은 GET으로 호출 → POST와 동일 처리 (body 없으면 null로 처리됨)
+export const GET = POST;

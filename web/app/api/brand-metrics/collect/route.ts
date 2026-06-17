@@ -133,3 +133,6 @@ export async function POST(req: NextRequest) {
   await notifyJob("브랜드 지표", "ok", `${rows.length}일 수집 (인스타/유튜브)`);
   return NextResponse.json({ ok: true, collected: rows.length, rows });
 }
+
+// Vercel 크론은 GET으로 호출 → POST와 동일 처리 (body 미사용, ?days= 쿼리만 사용)
+export const GET = POST;

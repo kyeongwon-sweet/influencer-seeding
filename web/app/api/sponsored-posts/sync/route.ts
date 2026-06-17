@@ -93,3 +93,6 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ ok: true, upserted: cleaned.length, message: "저장 완료. 게시물 상세 정보를 자동 수집합니다." });
 }
+
+// Vercel 크론은 GET으로 호출 → POST와 동일 처리 (body 없으면 null로 처리됨)
+export const GET = POST;

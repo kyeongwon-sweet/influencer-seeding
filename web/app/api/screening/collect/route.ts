@@ -229,3 +229,6 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+// Vercel 크론은 GET으로 호출 → POST와 동일 처리 (body 미사용)
+export const GET = POST;

@@ -31,3 +31,6 @@ export async function POST(req: NextRequest) {
   await startActorRun("apify/google-trends-scraper", { startUrls, maxItems: 50 }, webhookUrl);
   return NextResponse.json({ ok: true, started: true });
 }
+
+// Vercel 크론은 GET으로 호출 → POST와 동일 처리 (body 미사용)
+export const GET = POST;
