@@ -62,6 +62,9 @@ export async function GET(req) {
     //    반드시 time_range JSON으로 전달해야 요청한 날짜 범위가 적용됨.
     url.searchParams.append('time_range', JSON.stringify({ since: dateFrom, until: effectiveTo }));
     url.searchParams.append('time_increment', '1');  // ← 없으면 기간 누적 1건만 반환
+    // ⚠️ Meta 기본 페이지 한도=25 → time_increment=1로 25일 초과 시 잘림(예: 6/10에서 끊김).
+    //    충분히 큰 limit으로 한 페이지에 받기.
+    url.searchParams.append('limit', '500');
     url.searchParams.append('access_token', accessToken);
 
     // 3. API 요청
