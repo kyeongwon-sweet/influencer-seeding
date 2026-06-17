@@ -529,9 +529,10 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
             const date = data[activeIdx].date;
             const total = s.summed.find(p => p.date === date)?.value;
             if (total == null) return null;
+            const isMoney = s.name === "B2B 최종이익"; // 금액(원), 그 외는 검색량
             return (
               <div key={`xs-${i}`} className="mt-0.5">
-                <p className="tabular-nums font-medium" style={{ color: s.color }}>{s.name} 검색량: {total.toLocaleString()}</p>
+                <p className="tabular-nums font-medium" style={{ color: s.color }}>{isMoney ? `${s.name}: ${total.toLocaleString()}원` : `${s.name} 검색량: ${total.toLocaleString()}`}</p>
                 {s.memberMaps.length > 1 && (
                   <div className="pl-2 space-y-0.5">
                     {s.memberMaps.map(mm => {
