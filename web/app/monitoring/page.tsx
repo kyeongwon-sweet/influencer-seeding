@@ -1752,16 +1752,20 @@ export default function MonitoringPage() {
                 { label: "지난주", from: fmt(new Date(today.getTime() - (dayOfWeek + 6) * 86400000)), to: fmt(new Date(today.getTime() - dayOfWeek * 86400000)) },
                 { label: "이번달", from: `${todayStr.slice(0, 7)}-01`, to: todayStr },
               ];
-              return presets.map(p => {
-                const active = filters.dateFrom === p.from && filters.dateTo === p.to;
-                return (
-                  <button key={p.label}
-                    onClick={() => setFilters(prev => active ? { ...prev, dateFrom: "", dateTo: "" } : { ...prev, dateFrom: p.from, dateTo: p.to })}
-                    className={`text-[11px] px-2.5 py-0.5 rounded-full border transition-all whitespace-nowrap ${active ? "border-a-blue bg-a-blue text-white font-medium" : "border-a-hairline text-a-ink-muted hover:border-a-blue hover:text-a-blue"}`}>
-                    {p.label}
-                  </button>
-                );
-              });
+              return (
+                <div className="flex rounded-[10px] border border-a-hairline bg-a-parchment/60 p-0.5 gap-0.5">
+                  {presets.map(p => {
+                    const active = filters.dateFrom === p.from && filters.dateTo === p.to;
+                    return (
+                      <button key={p.label}
+                        onClick={() => setFilters(prev => active ? { ...prev, dateFrom: "", dateTo: "" } : { ...prev, dateFrom: p.from, dateTo: p.to })}
+                        className={`px-3.5 py-1.5 rounded-[7px] text-xs transition whitespace-nowrap ${active ? "bg-white shadow-sm text-a-ink font-semibold" : "text-a-ink-muted hover:text-a-ink"}`}>
+                        {p.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
             })()}
           </div>
           <div className="flex-1" />
