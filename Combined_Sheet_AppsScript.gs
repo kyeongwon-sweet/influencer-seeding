@@ -217,7 +217,7 @@ function noteExtra_(skipped, dupCount, future) {
   let s = "";
   if (dupCount) s += `\n\n🔁 시트 내 중복 URL ${dupCount}건은 1건으로 합쳐 전송(중복 추가 방지).`;
   if (future)   s += `\n⏭️ 업로드일이 오늘 이후인 행 ${future}건 제외(아직 게시 전).`;
-  if (skipped)  s += `\n⚠️ 지원 플랫폼(IG/YT/TikTok) URL이 아니어서 제외됨: ${skipped}건`;
+  if (skipped)  s += `\n⚠️ 지원 플랫폼(IG/YT/TikTok/FB/Threads) URL이 아니어서 제외됨: ${skipped}건`;
   return s;
 }
 
