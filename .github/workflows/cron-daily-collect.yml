@@ -34,10 +34,19 @@ jobs:
           curl -sS "${{ secrets.APP_URL }}/api/brand-metrics/collect" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" -w "\nHTTP %{http_code}\n"
 
-      - name: 유튜브 검색 트렌드 (youtube-trends/collect)
+      # 유튜브 트렌드: 키워드별 순차 실행(동시 실행 시 Google 차단·단일 run 시 1개 누락 회피).
+      # kw=0 띄우고 ~14분 대기(액터 완료 후) → kw=1. 액터→webhook이 비동기로 DB 기록.
+      - name: 유튜브 트렌드 키워드1 (kw=0)
         continue-on-error: true
         run: |
-          curl -sS "${{ secrets.APP_URL }}/api/youtube-trends/collect" \
+          curl -sS "${{ secrets.APP_URL }}/api/youtube-trends/collect?kw=0" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" -w "\nHTTP %{http_code}\n"
+      - name: 액터 완료 대기 (동시 실행 회피)
+        run: sleep 840
+      - name: 유튜브 트렌드 키워드2 (kw=1)
+        continue-on-error: true
+        run: |
+          curl -sS "${{ secrets.APP_URL }}/api/youtube-trends/collect?kw=1" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" -w "\nHTTP %{http_code}\n"
 
       - name: B2B 발주량 (b2b-revenue/fetch)
