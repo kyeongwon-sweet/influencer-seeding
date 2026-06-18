@@ -17,10 +17,18 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="ko">
+        <head>
+          {/* 사이드바 너비를 페인트 전에 복원해 본문이 깜빡이지 않게 함 */}
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `try{var c=localStorage.getItem('sidebar-collapsed')==='1';var w=Number(localStorage.getItem('sidebar-w'))||200;if(w<160)w=160;if(w>360)w=360;document.documentElement.style.setProperty('--sidebar-w',(c?56:w)+'px');}catch(e){}`,
+            }}
+          />
+        </head>
         <body className="antialiased font-sans text-a-ink">
           <Sidebar />
           <GlobalActions />
-          <div className="ml-[200px]">{children}</div>
+          <div className="sidebar-content" style={{ marginLeft: "var(--sidebar-w, 200px)" }}>{children}</div>
           <Analytics />
           <SpeedInsights />
         </body>

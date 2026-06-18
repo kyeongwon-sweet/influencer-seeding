@@ -1,6 +1,9 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+const MIN_W = 160, MAX_W = 360, DEFAULT_W = 200, COLLAPSED_W = 56;
 
 const NAV = [
   {
@@ -68,32 +71,107 @@ const NAV = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const [width, setWidth] = useState(DEFAULT_W);
+  const [collapsed, setCollapsed] = useState(false);
+  const widthRef = useRef(DEFAULT_W);
+
+  // 저장된 너비/접힘 상태 복원
+  useEffect(() => {
+    const w = Number(localStorage.getItem("sidebar-w"));
+    if (w >= MIN_W && w <= MAX_W) { setWidth(w); widthRef.current = w; }
+    setCollapsed(localStorage.getItem("sidebar-collapsed") === "1");
+  }, []);
+
+  const effectiveW = collapsed ? COLLAPSED_W : width;
+
+  // 본문 여백(--sidebar-w)과 동기화
+  useEffect(() => {
+    document.documentElement.style.setProperty("--sidebar-w", `${effectiveW}px`);
+  }, [effectiveW]);
+
+  const toggleCollapsed = () => {
+    setCollapsed(c => {
+      const next = !c;
+      localStorage.setItem("sidebar-collapsed", next ? "1" : "0");
+      return next;
+    });
+  };
+
+  // 오른쪽 경계 드래그로 너비 조절
+  const onDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    document.body.classList.add("sb-dragging"); // 드래그 중 transition 비활성(즉시 추종)
+    const onMove = (ev: MouseEvent) => {
+      const w = Math.min(MAX_W, Math.max(MIN_W, ev.clientX));
+      widthRef.current = w;
+      setWidth(w);
+    };
+    const onUp = () => {
+      document.body.classList.remove("sb-dragging");
+      localStorage.setItem("sidebar-w", String(widthRef.current));
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, []);
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-[200px] bg-white flex flex-col z-50 shadow-[1px_0_0_0_#e4e8f0]">
-      <nav className="flex-1 px-2.5 pt-4 pb-3 space-y-0.5 overflow-y-auto">
+    <aside
+      className="sidebar-aside fixed left-0 top-0 h-screen bg-white flex flex-col z-50 shadow-[1px_0_0_0_#e4e8f0]"
+      style={{ width: effectiveW, minWidth: COLLAPSED_W }}
+    >
+      {/* 접기/펴기 토글 */}
+      <div className={`flex items-center ${collapsed ? "justify-center" : "justify-end"} px-2 pt-3 pb-1`}>
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          title={collapsed ? "메뉴 펼치기" : "메뉴 접기"}
+          className="w-7 h-7 flex items-center justify-center rounded-[7px] text-gray-400 hover:text-a-ink hover:bg-gray-100 transition-colors"
+        >
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+            {collapsed
+              ? <path d="M7 4l6 6-6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              : <path d="M13 4l-6 6 6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />}
+          </svg>
+        </button>
+      </div>
+
+      <nav className="flex-1 px-2.5 pt-1 pb-3 space-y-0.5 overflow-y-auto overflow-x-hidden">
         {NAV.map(item => {
           const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-2.5 px-3 py-2 rounded-[8px] text-sm transition-colors ${
+              title={collapsed ? item.label : undefined}
+              className={`flex items-center gap-2.5 ${collapsed ? "justify-center px-0" : "px-3"} py-2 rounded-[8px] text-sm transition-colors ${
                 isActive
                   ? "bg-blue-50 text-a-blue font-medium"
                   : "text-gray-400 hover:text-a-ink hover:bg-gray-50"
               }`}
             >
               <span className="shrink-0">{item.icon}</span>
-              <span className="truncate">{item.label}</span>
+              {!collapsed && <span className="truncate">{item.label}</span>}
             </Link>
           );
         })}
       </nav>
 
-      <div className="px-5 py-4 border-t border-gray-100 shrink-0">
-        <p className="text-[11px] text-gray-300 tracking-wide">트래킹 대시보드 v1</p>
-      </div>
+      {!collapsed && (
+        <div className="px-5 py-4 border-t border-gray-100 shrink-0">
+          <p className="text-[11px] text-gray-300 tracking-wide">트래킹 대시보드 v1</p>
+        </div>
+      )}
+
+      {/* 드래그 리사이즈 핸들 (접힘 상태에선 숨김) */}
+      {!collapsed && (
+        <div
+          onMouseDown={onDragStart}
+          title="드래그하여 너비 조절"
+          className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-a-blue/20 active:bg-a-blue/30 transition-colors"
+        />
+      )}
     </aside>
   );
 }
