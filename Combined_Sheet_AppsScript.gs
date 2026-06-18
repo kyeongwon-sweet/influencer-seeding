@@ -75,6 +75,7 @@ function onOpen() {
     .addItem("♻️ 전체 다시 추가", "syncAll")
     .addSeparator()
     .addItem("🔎 빈칸 검사 (A~H)", "checkBlanks")
+    .addItem("🔁 중복 URL 검사", "checkDuplicates")
     .addItem("🔍 설정 확인", "checkSetup")
     .addSeparator()
     .addItem("⏰ 매일 9:30 자동 추가 켜기", "installDailyTrigger")
@@ -458,6 +459,38 @@ function checkSetup() {
     safeAlert_(`✅ 설정 정상\n탭: ${sheet.getName()}\n인식된 필드: ${Object.keys(fieldCols).join(", ")}`);
   } catch (e) {
     safeAlert_("❌ 설정 오류\n" + e.message);
+  }
+}
+
+// 🔁 중복 URL 검사 — 같은 게시물URL이 여러 행에 있으면 첫 행만 전송되고 나머지는 무시됨.
+// 어느 행이 어느 행과 중복인지(전송/무시) 행 번호로 보여준다.
+function checkDuplicates() {
+  try {
+    const sheet = getSheet_();
+    const fieldCols = buildFieldCols_(sheet);
+    const lastRow = sheet.getLastRow();
+    if (lastRow < CONFIG.DATA_START_ROW) { safeAlert_("데이터 행이 없습니다."); return; }
+    const lastCol = sheet.getLastColumn();
+    const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, lastCol).getValues();
+
+    const byKey = {}; // urlKey → [{row, url}]
+    values.forEach((row, i) => {
+      const rawUrl = String(row[fieldCols.url - 1] || "").trim();
+      if (!rawUrl || !ALLOWED_URL_RE.test(rawUrl)) return;
+      const key = urlKey_(rawUrl);
+      (byKey[key] = byKey[key] || []).push({ row: CONFIG.DATA_START_ROW + i, url: rawUrl });
+    });
+
+    const dups = Object.keys(byKey).map(k => byKey[k]).filter(g => g.length > 1);
+    if (dups.length === 0) { safeAlert_("✅ 중복 URL 없음 — 모든 행의 게시물URL이 고유합니다."); return; }
+
+    const lines = dups.slice(0, 15).map(g => {
+      const rows = g.map(e => e.row);
+      return `· 전송 ${rows[0]}행 / 무시 ${rows.slice(1).join(",")}행\n   ${g[0].url}`;
+    }).join("\n");
+    safeAlert_(`🔁 중복 URL ${dups.length}건\n(같은 URL이 여러 행 → 첫 행만 전송, 나머지 무시)\n무시되는 행의 URL을 그 게시물의 실제 주소로 바꾸세요.\n\n${lines}${dups.length > 15 ? `\n… 외 ${dups.length - 15}건` : ""}`);
+  } catch (e) {
+    safeAlert_("❌ 오류\n" + e.message);
   }
 }
 
