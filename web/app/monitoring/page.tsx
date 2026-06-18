@@ -429,11 +429,11 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
     if (extraSeries) extraSeries = extraSeries.map(s => ({ ...s, members: s.members.map(m => ({ ...m, data: movingAvg(m.data, "value") })) }));
   }
   if (data.length < 2) return <div className="flex items-center justify-center py-8 text-xs text-a-ink-muted">데이터 없음</div>;
-  const pl = 38, pr = 6, pt = 4, pb = 18;
+  const pl = 38, pr = 6, pt = 2, pb = 18;
   const VW = 900, VH = height;
   const cw = VW - pl - pr, ch = VH - pt - pb;
   // 봉우리(+부드러운 곡선이 위로 솟구치는 부분)가 상단에 닿아 잘리지 않도록 상단 여유 확보
-  const chTop = Math.round(ch * 0.05);
+  const chTop = Math.round(ch * 0.02);
   const vals = data.map(d => d.value);
   const [min, max] = padDomain(Math.min(...vals), Math.max(...vals));
   const range = max - min || 1;
@@ -2107,8 +2107,8 @@ export default function MonitoringPage() {
             {/* 차트 + 테이블 */}
             <div className={`flex divide-x divide-a-hairline ${chartCollapsed ? "hidden" : ""}`}>
               {/* 차트 */}
-              <div className="flex-1 min-w-0 px-4 py-3">
-                <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+              <div className="flex-1 min-w-0 px-4 pt-1 pb-3">
+                <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
                   <div className="flex items-center gap-2">
                     <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">조회수 트렌드 (일별 증분)</p>
                     <button type="button" onClick={() => setSmooth(v => !v)}
