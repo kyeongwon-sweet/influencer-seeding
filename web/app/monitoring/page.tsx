@@ -539,7 +539,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
           {lsPath && <path d={lsPath} fill="none" stroke="#f59e0b" strokeWidth="2.5" strokeDasharray="5 3" strokeLinecap="round" />}
           {extraComputed.map((s, i) => {
             if (!s.path) return null;
-            const important = s.name === "B2B 최종이익";
+            const important = s.name === "B2B 발주량";
             const faint = s.name === "인스타 프로필 방문" || s.name.startsWith("유튜브");
             return (
               <path key={`extra-${i}`} d={s.path} fill="none" stroke={s.color}
@@ -593,12 +593,24 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
               라라스윗 검색량: {hoveredLsEntry.value.toLocaleString()} ↗
             </a>
           )}
-          {/* 3. B2B 최종이익 */}
+          {/* 3. B2B 발주량 (듬뿍바 발주량 N + 쫀득바 발주량 N) */}
           {(() => {
-            const b = extraComputed.find(s => s.name === "B2B 최종이익");
-            const v = b?.summed.find(p => p.date === data[activeIdx].date)?.value;
+            const b = extraComputed.find(s => s.name === "B2B 발주량");
+            if (!b) return null;
+            const date = data[activeIdx].date;
+            const v = b.summed.find(p => p.date === date)?.value;
             if (v == null) return null;
-            return <p className="tabular-nums font-medium" style={{ color: b!.color }}>B2B 최종이익: {v.toLocaleString()}원</p>;
+            return (
+              <div>
+                <p className="tabular-nums font-medium" style={{ color: b.color }}>B2B 발주량: {v.toLocaleString()}</p>
+                <div className="pl-2">
+                  {b.memberMaps.map(mm => {
+                    const mv = mm.map.get(date);
+                    return <p key={mm.label} className="text-[11px] text-a-ink-muted tabular-nums">· {mm.label} {mv != null ? mv.toLocaleString() : "-"}</p>;
+                  })}
+                </div>
+              </div>
+            );
           })()}
           {/* 4. 전체 전환 광고비 */}
           {hoveredSecondaryValue != null && (
@@ -610,7 +622,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
           {/* 5. 그외 (토글) — 유튜브 검색량 / 인스타 프로필 방문 / 상품별 */}
           {(() => {
             const date = data[activeIdx].date;
-            const others = extraComputed.filter(s => s.name !== "B2B 최종이익" && s.summed.find(p => p.date === date)?.value != null);
+            const others = extraComputed.filter(s => s.name !== "B2B 발주량" && s.summed.find(p => p.date === date)?.value != null);
             if (others.length === 0) return null;
             return (
               <div className="mt-1">
@@ -800,6 +812,16 @@ export default function MonitoringPage() {
     }
     return { delta, cost, views };
   }, [filteredPosts, filters.dateFrom, filters.dateTo]);
+
+  // B2B 발주량: 상품 필터가 한 카테고리(듬뿍/쫀득)면 해당 카테고리 CVS 발주량만, 아니면 듬뿍+쫀득 합계
+  const b2bCategory = useMemo<"듬뿍" | "쫀득" | "total">(() => {
+    const prods = filters.products;
+    if (prods.length === 0) return "total";
+    const cats = new Set(prods.map(p => p.includes("쫀득") ? "쫀득" : p.includes("듬뿍") ? "듬뿍" : "기타"));
+    if (cats.size === 1) { const c = [...cats][0]; if (c === "쫀득") return "쫀득"; if (c === "듬뿍") return "듬뿍"; }
+    return "total";
+  }, [filters.products]);
+  const b2bOrderOf = (d: B2bDaily) => b2bCategory === "쫀득" ? d.jjondeuk_order : b2bCategory === "듬뿍" ? d.dumbuk_order : d.total_order;
 
   const dailyTotals = useMemo(() => {
     // ⚠️ 재발방지: getFilteredStats() 사용해서 필터 범위 일관성 보장
@@ -1927,11 +1949,11 @@ export default function MonitoringPage() {
                 // 라라스윗 검색량 총합 = 조회 기간 동안의 일자별 절대검색량(사이트 보정값) 합계
                 // (차트 점선 '검색량'과 동일 기준. chartData는 조회수라 검색량과 무관 → lsSearchData 사용)
                 const searchTotalSum = (lsSearchData ?? []).reduce((acc, d) => acc + (d.value ?? 0), 0);
-                // B2B 최종이익(본부공헌이익 합) 월 누계 — 오늘까지 실데이터만(미래 계획행 제외)
+                // B2B 발주량 월 누계 — 오늘까지 실데이터만(미래 계획행 제외), 카테고리 필터 반영
                 const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
                 const b2bTotal = b2bDaily
                   .filter(d => d.date <= today)
-                  .reduce((acc, d) => acc + (d.total_contribution ?? 0), 0);
+                  .reduce((acc, d) => acc + (b2bOrderOf(d) ?? 0), 0);
                 // 전주 대비: 최근 7일 합 vs 직전 7일 합 (일별 흐름값 기준)
                 const addDays = (s: string, n: number) => { const d = new Date(s + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
                 const cutLast = addDays(today, -6), cutPrior = addDays(today, -13);
@@ -1947,7 +1969,7 @@ export default function MonitoringPage() {
                 return [
                   { label: "조회수 합계", value: totalPlayCount, color: "text-a-ink", suffix: "", delta: wow(playInc) },
                   { label: "라라스윗 검색량 총합", value: searchTotalSum, color: "text-gray-600", suffix: "", delta: wow((lsSearchData ?? []).map(d => ({ date: d.date, v: d.value ?? 0 }))) },
-                  { label: "B2B 최종이익", value: b2bTotal, color: b2bTotal < 0 ? "text-rose-600" : "text-green-600", suffix: "원", delta: wow(b2bDaily.map(d => ({ date: d.date, v: d.total_contribution ?? 0 }))) },
+                  { label: "B2B 발주량", value: b2bTotal, color: "text-green-600", suffix: "", delta: wow(b2bDaily.map(d => ({ date: d.date, v: b2bOrderOf(d) ?? 0 }))) },
                 ];
               })().map((item, i) => (
                 <div key={i} className={`flex-1 px-6 py-5 ${i > 0 ? "border-l border-a-hairline" : ""}`}>
@@ -1994,12 +2016,12 @@ export default function MonitoringPage() {
                           className="text-[10px] text-a-ink-muted hover:text-a-ink">↗</a>
                       </div>
                     )}
-                    {/* 3. B2B 최종이익 */}
-                    {b2bDaily.some(d => d.total_contribution != null) && (
-                      <button type="button" onClick={() => toggleSeries("B2B 최종이익")}
-                        className={`flex items-center gap-1.5 transition-opacity ${seriesHidden("B2B 최종이익") ? "opacity-30" : ""}`}>
+                    {/* 3. B2B 발주량 */}
+                    {b2bDaily.some(d => d.total_order != null) && (
+                      <button type="button" onClick={() => toggleSeries("B2B 발주량")}
+                        className={`flex items-center gap-1.5 transition-opacity ${seriesHidden("B2B 발주량") ? "opacity-30" : ""}`}>
                         <div className="w-3 h-1 rounded-sm" style={{ backgroundColor: "#16a34a" }} />
-                        <span className="text-xs font-semibold text-a-ink">B2B 최종이익</span>
+                        <span className="text-xs font-semibold text-a-ink">B2B 발주량</span>
                       </button>
                     )}
                     {/* 4. 전체 전환 광고비 */}
@@ -2085,16 +2107,24 @@ export default function MonitoringPage() {
                         data: ytTrends.filter(t => t.keyword === kw).map(t => ({ date: t.measured_at, value: t.value })),
                       }],
                     })),
-                    // B2B 최종이익 (본부공헌이익 합) — 미래 계획행 제외, 오늘까지만
-                    ...(b2bDaily.some(d => d.total_contribution != null) ? [{
-                      name: "B2B 최종이익",
+                    // B2B 발주량 (듬뿍바+쫀득바 CVS 발주량) — 미래 계획행 제외, 오늘까지만. 카테고리 필터 시 해당 항목만.
+                    ...(b2bDaily.some(d => d.total_order != null) ? [{
+                      name: "B2B 발주량",
                       color: "#16a34a",
-                      members: [{
-                        label: "B2B 최종이익",
-                        data: b2bDaily
-                          .filter(d => d.date <= new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10))
-                          .map(d => ({ date: d.date, value: d.total_contribution })),
-                      }],
+                      members: [
+                        ...(b2bCategory !== "쫀득" ? [{
+                          label: "듬뿍바 발주량",
+                          data: b2bDaily
+                            .filter(d => d.date <= new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10))
+                            .map(d => ({ date: d.date, value: d.dumbuk_order })),
+                        }] : []),
+                        ...(b2bCategory !== "듬뿍" ? [{
+                          label: "쫀득바 발주량",
+                          data: b2bDaily
+                            .filter(d => d.date <= new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10))
+                            .map(d => ({ date: d.date, value: d.jjondeuk_order })),
+                        }] : []),
+                      ],
                     }] : []),
                   ].filter(s => !seriesHidden(s.name))}
                   secondaryData={!seriesHidden("전체 전환 광고비") && mainAdCosts.length > 0 ? mainAdCosts.map(d => ({date: d.date, value: d.total_cost})) : undefined}
@@ -2141,7 +2171,7 @@ export default function MonitoringPage() {
                     }
                     const rows = [{ date: dailyTotals[0].date, play: 0, likes: 0, comments: 0 }, ...deltaTableData];
                     const reversed = [...rows].reverse();
-                    const b2bMap = new Map(b2bDaily.map(d => [d.date, d.total_contribution]));
+                    const b2bMap = new Map(b2bDaily.map(d => [d.date, b2bOrderOf(d)]));
                     return (
                       <div className="overflow-y-auto" style={{ maxHeight: 380 }}>
                         <table className="mx-auto">
@@ -2150,7 +2180,7 @@ export default function MonitoringPage() {
                               <th className="pl-5 pr-3 py-2.5 text-left text-[11px] font-semibold text-a-ink-muted">날짜</th>
                               <th className="px-3 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted whitespace-nowrap">누적 조회수</th>
                               <th className="px-3 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted">검색량</th>
-                              <th className="pl-3 pr-5 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted whitespace-nowrap">B2B 최종이익</th>
+                              <th className="pl-3 pr-5 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted whitespace-nowrap">B2B 발주량</th>
                             </tr>
                           </thead>
                           <tbody>
