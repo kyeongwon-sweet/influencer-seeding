@@ -43,9 +43,10 @@ export async function POST(req: NextRequest) {
       .from("sponsored_posts")
       .select("url, ended_at");
     // 인스타 게시물만, 종료(ended) 제외 — 비용↓·노이즈↓
+    // ⚠️ shortcode 없는 프로필형 URL(.../username/reels/)은 제외 — 액터가 계정 게시물을 통째로 긁어 과수집됨
     const urls = [...new Set(
       ((posts ?? []) as { url: string; ended_at: string | null }[])
-        .filter((p) => (p.url || "").includes("instagram.com") && !p.ended_at)
+        .filter((p) => (p.url || "").includes("instagram.com") && !p.ended_at && /\/(?:p|reel|reels|tv)\/[A-Za-z0-9_-]+/.test(p.url || ""))
         .map((p) => p.url)
     )];
 
