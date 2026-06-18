@@ -20,12 +20,6 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: 채널분류·비용 시트 동기화 (marketing/sync)
-        continue-on-error: true
-        run: |
-          curl -sS "${{ secrets.APP_URL }}/api/marketing/sync" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" -w "\nHTTP %{http_code}\n"
-
       - name: 협찬 전체 수집 (IG+YT+틱톡+페북+스레드)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
