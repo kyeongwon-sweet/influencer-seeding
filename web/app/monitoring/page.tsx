@@ -430,7 +430,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
   }
   if (data.length < 2) return <div className="flex items-center justify-center py-8 text-xs text-a-ink-muted">데이터 없음</div>;
   const pl = 38, pr = 6, pt = 4, pb = 18;
-  const VW = 560, VH = height;
+  const VW = 900, VH = height;
   const cw = VW - pl - pr, ch = VH - pt - pb;
   // 봉우리(+부드러운 곡선이 위로 솟구치는 부분)가 상단에 닿아 잘리지 않도록 상단 여유 확보
   const chTop = Math.round(ch * 0.05);
@@ -584,7 +584,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
           {yTicks.map((tick, i) => (
             <g key={i}>
               <line x1={0} y1={yS(tick)} x2={cw} y2={yS(tick)} stroke={CHART.grid} strokeWidth="1" strokeDasharray="4,4" />
-              <text x={-6} y={yS(tick)} textAnchor="end" dominantBaseline="middle" fontSize="7" fill={CHART.axis}>{fmtY(tick)}</text>
+              <text x={-6} y={yS(tick)} textAnchor="end" dominantBaseline="middle" fontSize="9" fill={CHART.axis}>{fmtY(tick)}</text>
             </g>
           ))}
           {secondaryTicks && secondaryTicks.map((tick, i) => (
@@ -629,7 +629,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
             </>
           )}
           {xLabelIdxs.map(i => (
-            <text key={i} x={xS(i)} y={ch + 14} textAnchor="middle" fontSize="7" fill={CHART.axis}>
+            <text key={i} x={xS(i)} y={ch + 14} textAnchor="middle" fontSize="9" fill={CHART.axis}>
               {data[i].date.slice(5).replace("-", "/")}
             </text>
           ))}
