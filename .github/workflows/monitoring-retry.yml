@@ -1,14 +1,13 @@
 name: Monitoring Backup & Retry
 
-# Vercel Cron(00:05 KST, apify-collect)은 300초 제한으로 일부 게시물만 수집됨.
-# 00:15 KST에 시간제한 없는 GitHub Actions에서 run_monitoring.py로 '완전 수집'해 보강(top-up).
+# 주 수집기는 Vercel Cron(00:05 KST, apify-collect 비동기 kickoff → webhook handleMonitoring 적재).
+# 이 워크플로우는 '안전망': 그날 데이터가 아예 없을 때만 run_monitoring.py로 재수집(Vercel 실패 대비).
 #   run_monitoring.py: 레지덴셜 프록시 + shortcode 매칭 + 누적 역행 가드 + upsert(멱등)
-# 주간(11/14/17 KST)은 그날 데이터가 아예 없을 때만 재수집(완전 실패 대비).
+# ⚠️ 무조건 top-up(00:15) 크론은 제거 — Vercel 크론과 중복 스크랩 → Apify 중복 과금 방지.
 
 on:
   schedule:
-    - cron: "15 15 * * *"    # 00:15 KST — 자정 수집 직후 '완전 수집'(무조건 top-up)
-    - cron: "0 2,5,8 * * *"  # 11/14/17 KST — 데이터 없을 때만 재수집
+    - cron: "0 2,5,8 * * *"  # 11/14/17 KST — 데이터 없을 때만 재수집(안전망)
   workflow_dispatch:
 
 jobs:

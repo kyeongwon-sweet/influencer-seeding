@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { fetchDatasetItems } from "@/lib/apify";
 import { normalizeYouTubeUrl, normalizeInstagramUrl } from "@/lib/url-utils";
+import { notifyJob } from "@/lib/slack";
 
 // ── 지표 계산 (metrics.py 포팅) ─────────────────────────────────────
 
@@ -223,7 +224,7 @@ export async function POST(req: NextRequest) {
 
 async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, jobId: string, items: Record<string, unknown>[]) {
   const today = new Date().toISOString().slice(0, 10);
-  const { data: posts } = await supabase.from('sponsored_posts').select('id, url, posted_at, account_name, influencer_id');
+  const { data: posts } = await supabase.from('sponsored_posts').select('id, url, posted_at, account_name, influencer_id, ended_at');
 
   const statsKey = (url: string) => {
     const m = (url || '').match(/\/(?:p|reel|tv)\/([A-Za-z0-9_-]+)/);
@@ -269,12 +270,44 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
     : { data: [] };
   const infUrlMap = new Map((matchedInfs || []).map((i: { id: string; url: string }) => [i.url, i.id]));
 
+  // 🛡️ 안전장치용: today 이전 마지막 조회수·측정일 (전체 페이지네이션 — 1000행 상한으로 과거 누락 방지)
+  const lastKnownPlay = new Map<string, number>();
+  const lastMeasuredAt = new Map<string, string>();
+  for (let from = 0; ; from += 1000) {
+    const { data: page } = await supabase
+      .from('post_daily_stats')
+      .select('post_id, play_count, measured_at')
+      .lt('measured_at', today)
+      .order('measured_at', { ascending: false })
+      .range(from, from + 999);
+    for (const s of (page ?? []) as { post_id: string; play_count: number | null; measured_at: string }[]) {
+      if (!lastKnownPlay.has(s.post_id)) lastKnownPlay.set(s.post_id, s.play_count ?? 0);
+      if (!lastMeasuredAt.has(s.post_id)) lastMeasuredAt.set(s.post_id, s.measured_at);
+    }
+    if (!page || page.length < 1000) break;
+  }
+
+  const ENDED_DAYS = 7;
   const rows = [];
   const pendingUpdates: { id: string; updates: Record<string, unknown> }[] = [];
+  const endedUpdates: { id: string; ended_at: string }[] = [];
+  let skipped = 0;
   for (const post of posts || []) {
     const key = statsKey(post.url);
     const s = statsByKey[key];
-    if (!s) continue;
+
+    if (!s) {
+      // 🛑 미반환 → 자동 종료 감지: 이전 실데이터(>0) 있고 ENDED_DAYS 경과 + 아직 종료 안 됨
+      if (!post.ended_at) {
+        const prevPlay = lastKnownPlay.get(post.id);
+        const last = lastMeasuredAt.get(post.id);
+        if (prevPlay && prevPlay > 0 && last) {
+          const gapDays = Math.floor((Date.parse(today) - Date.parse(last)) / 86400000);
+          if (gapDays >= ENDED_DAYS) endedUpdates.push({ id: post.id, ended_at: last });
+        }
+      }
+      continue;
+    }
 
     const updates: Record<string, unknown> = {};
     if (!post.posted_at && s.posted_at) updates.posted_at = s.posted_at;
@@ -289,7 +322,13 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
       pendingUpdates.push({ id: post.id, updates });
     }
 
-    rows.push({ post_id: post.id, measured_at: today, play_count: s.play_count, likes_count: s.likes_count, comments_count: s.comments_count });
+    // 🛡️ 단조 보정: 신규 조회수가 없거나(미반환) 직전값보다 작으면(수집 오류) 저장 스킵 → 직전값 유지
+    const newPlay = s.play_count;
+    const prevPlay = lastKnownPlay.get(post.id);
+    if (newPlay == null) { skipped++; continue; }
+    if (prevPlay != null && Number(newPlay) < prevPlay) { skipped++; continue; }
+
+    rows.push({ post_id: post.id, measured_at: today, play_count: newPlay, likes_count: s.likes_count, comments_count: s.comments_count });
   }
 
   // N+1 방지: 병렬 업데이트
@@ -300,10 +339,23 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
       )
     );
   }
+  if (endedUpdates.length > 0) {
+    await Promise.all(
+      endedUpdates.map(({ id, ended_at }) =>
+        supabase.from('sponsored_posts').update({ ended_at }).eq('id', id)
+      )
+    );
+  }
   if (rows.length > 0) {
     await supabase.from('post_daily_stats').upsert(rows, { onConflict: 'post_id,measured_at' });
   }
-  await supabase.from('jobs').update({ status: 'done', payload: { saved: rows.length } }).eq('id', jobId);
+  await supabase.from('jobs').update({ status: 'done', payload: { saved: rows.length, skipped, ended: endedUpdates.length } }).eq('id', jobId);
+
+  // 자동 수집(크론, user_email 없음)만 Slack 통지 — 수동 버튼 노이즈 방지
+  const { data: jobRow } = await supabase.from('jobs').select('user_email').eq('id', jobId).single();
+  if (!(jobRow as { user_email: string | null } | null)?.user_email) {
+    await notifyJob('협찬 모니터링', 'ok', `${rows.length}건 적재${endedUpdates.length ? `, 종료 ${endedUpdates.length}건` : ''}${skipped ? `, 스킵 ${skipped}` : ''}`);
+  }
 }
 
 // ── 리스트업 ────────────────────────────────────────────────────────
