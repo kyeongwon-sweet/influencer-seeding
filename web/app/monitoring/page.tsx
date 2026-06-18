@@ -659,6 +659,7 @@ export default function MonitoringPage() {
   const [dateTooltip, setDateTooltip] = useState<{ date: string; x: number; y: number } | null>(null);
   const [b2bTip, setB2bTip] = useState<{ date: string; x: number; y: number } | null>(null);
   const [showOtherSeries, setShowOtherSeries] = useState(false); // 범례 '그외' 드롭다운(인스타·유튜브)
+  const [chartCollapsed, setChartCollapsed] = useState(false); // 메인 그래프(차트+증감표) 접기 — 기본 펼침
   const [lsSearchData, setLsSearchData] = useState<{ date: string; ratio: number; value: number | null }[]>([]);
   const [brandMetrics, setBrandMetrics] = useState<{ measured_at: string; yt_views: number | null; yt_unique_viewers: number | null; yt_search_views: number | null; ig_profile_views: number | null }[]>([]);
   const [ytTrends, setYtTrends] = useState<{ measured_at: string; keyword: string; value: number | null }[]>([]);
@@ -1903,8 +1904,16 @@ export default function MonitoringPage() {
                 </div>
               ))}
             </div>
+            {/* 메인 그래프 접기/펼치기 (기본 펼침) */}
+            <div className="flex justify-end px-6 py-2">
+              <button type="button" onClick={() => setChartCollapsed(v => !v)}
+                className="flex items-center gap-1 text-xs text-a-ink-muted hover:text-a-ink transition-colors">
+                {chartCollapsed ? "그래프 펼치기" : "그래프 접기"}
+                <span className="text-[9px] leading-none">{chartCollapsed ? "▼" : "▲"}</span>
+              </button>
+            </div>
             {/* 차트 + 테이블 */}
-            <div className="flex divide-x divide-a-hairline">
+            <div className={`flex divide-x divide-a-hairline ${chartCollapsed ? "hidden" : ""}`}>
               {/* 차트 */}
               <div className="flex-1 min-w-0 px-6 py-5">
                 <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
