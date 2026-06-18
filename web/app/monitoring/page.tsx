@@ -1914,10 +1914,14 @@ export default function MonitoringPage() {
               const todayStr = fmt(today);
               // 일요일(getDay=0)을 7로 처리해 월요일 시작 기준 올바르게 계산
               const dayOfWeek = today.getDay() === 0 ? 7 : today.getDay();
+              // 주말: 가장 최근 '완료된' 금~일 (월요일에 누르면 직전 금/토/일 3일). 일요일이면 지난주 주말.
+              const lastSun = new Date(today.getTime() - (today.getDay() === 0 ? 7 : today.getDay()) * 86400000);
+              const lastFri = new Date(lastSun.getTime() - 2 * 86400000);
               const presets = [
                 { label: "전체",   from: "",          to: "" },
                 // '오늘'은 수집 중이라 미완성 — 표가 전일자까지만 노출하므로 프리셋에서 제외
                 { label: "어제",   from: fmt(new Date(today.getTime() - 86400000)), to: fmt(new Date(today.getTime() - 86400000)) },
+                { label: "주말",   from: fmt(lastFri), to: fmt(lastSun) },
                 { label: "이번주", from: fmt(new Date(today.getTime() - (dayOfWeek - 1) * 86400000)), to: todayStr },
                 { label: "지난주", from: fmt(new Date(today.getTime() - (dayOfWeek + 6) * 86400000)), to: fmt(new Date(today.getTime() - dayOfWeek * 86400000)) },
                 { label: "이번달", from: `${todayStr.slice(0, 7)}-01`, to: todayStr },
