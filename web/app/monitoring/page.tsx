@@ -1380,6 +1380,32 @@ export default function MonitoringPage() {
     URL.revokeObjectURL(url);
   }
 
+  // 증분량 합계 셀 복사 — 필터된 모든 게시물의 "계정명 \t 값(▲)" 목록.
+  // 값: 영상=조회수, 배너=도달수. 천 단위 내림(예: 78,098 → 78,000).
+  async function copyIncrementList() {
+    const hasDate = filters.dateFrom || filters.dateTo;
+    const lines = sortedPosts.map(post => {
+      const fs = hasDate ? getFilteredStats(post.all_stats ?? [], filters.dateFrom, filters.dateTo) : (post.all_stats ?? []);
+      const s = fs.length > 0 ? fs[fs.length - 1] : post.latest_stats;
+      const prev = hasDate ? (fs.length > 1 ? fs[fs.length - 2] : null) : post.prev_stats;
+      const play = s?.play_count ?? null;
+      const isBanner = (post.channel_type ?? "").includes("배너");
+      const value = isBanner ? effectiveReach(post.reach_count, play) : play;
+      if (value == null) return null;
+      const delta = (play != null && prev?.play_count != null) ? play - prev.play_count : 0;
+      const arrow = delta > 0 ? "▲" : delta < 0 ? "▼" : "";
+      const account = post.account_name ?? post.influencers?.name ?? "";
+      const floored = Math.floor(value / 1000) * 1000; // 천 단위 내림
+      return `${account}\t${floored.toLocaleString()}${arrow ? " " + arrow : ""}`;
+    }).filter((l): l is string => l !== null);
+    try {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      toast(`${lines.length}개 항목을 복사했습니다`, "success");
+    } catch {
+      toast("복사에 실패했습니다", "error");
+    }
+  }
+
   async function deletePost(id: string) {
     if (!confirm("게시물을 삭제하시겠습니까?")) return;
     await fetch(`/api/sponsored-posts/${id}`, { method: "DELETE" });
@@ -2308,7 +2334,11 @@ export default function MonitoringPage() {
                 {hasFilter && sortedPosts.length > 0 && (
                   <tr className="border-b-2 border-a-hairline bg-blue-50 text-xs font-semibold">
                     <td className="pl-3 pr-1 py-2.5 sticky z-10 bg-blue-50" style={{ left: 0, width: 36, minWidth: 36 }} />
-                    <td className="px-3 py-2.5 text-right tabular-nums sticky z-10 bg-blue-50" style={{ left: stickyLefts["증분량"], width: stickyColWidths["증분량"], minWidth: stickyColWidths["증분량"] }}>
+                    <td className="px-3 py-2.5 text-right tabular-nums sticky z-10 bg-blue-50 group/cp relative" style={{ left: stickyLefts["증분량"], width: stickyColWidths["증분량"], minWidth: stickyColWidths["증분량"] }}>
+                      <button type="button" onClick={copyIncrementList} title="필터된 계정·조회수/도달수 목록 복사"
+                        className="opacity-0 group-hover/cp:opacity-100 transition-opacity absolute left-1.5 top-1/2 -translate-y-1/2 text-a-ink-muted hover:text-a-blue">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                      </button>
                       <span className={tableTotals.delta > 0 ? "text-red-500" : tableTotals.delta < 0 ? "text-emerald-600" : "text-gray-400"}>
                         {tableTotals.delta > 0 ? "+" : ""}{tableTotals.delta.toLocaleString()}
                       </span>
