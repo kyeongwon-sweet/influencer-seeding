@@ -1970,19 +1970,34 @@ export default function MonitoringPage() {
                   return prior === 0 ? null : (last - prior) / Math.abs(prior) * 100;
                 };
                 const playInc = dailyTotals.map((d, i) => ({ date: d.date, v: i > 0 ? d.play - dailyTotals[i - 1].play : 0 }));
+                // B2B 발주량 듬뿍바/쫀득바 분해 합 (호버 툴팁용) — 오늘까지 실데이터만
+                const pastB2b = b2bDaily.filter(d => d.date <= today);
+                const dumbukSum = pastB2b.reduce((a, d) => a + (d.dumbuk_order ?? 0), 0);
+                const jjondeukSum = pastB2b.reduce((a, d) => a + (d.jjondeuk_order ?? 0), 0);
+                const b2bTooltip: React.ReactNode = (
+                  <div className="space-y-0.5">
+                    {b2bCategory !== "쫀득" && <div className="flex justify-between gap-5"><span className="text-a-ink-muted">듬뿍바 발주량</span><span className="tabular-nums text-a-ink font-semibold">{dumbukSum.toLocaleString()}</span></div>}
+                    {b2bCategory !== "듬뿍" && <div className="flex justify-between gap-5"><span className="text-a-ink-muted">쫀득바 발주량</span><span className="tabular-nums text-a-ink font-semibold">{jjondeukSum.toLocaleString()}</span></div>}
+                  </div>
+                );
                 return [
-                  { label: "조회수 합계", value: totalPlayCount, color: "text-a-ink", suffix: "", delta: wow(playInc) },
-                  { label: "라라스윗 검색량 총합", value: searchTotalSum, color: "text-gray-600", suffix: "", delta: wow((lsSearchData ?? []).map(d => ({ date: d.date, v: d.value ?? 0 }))) },
-                  { label: "B2B 발주량", value: b2bTotal, color: "text-green-600", suffix: "", delta: wow(b2bDaily.map(d => ({ date: d.date, v: b2bOrderOf(d) ?? 0 }))) },
+                  { label: "조회수 합계", value: totalPlayCount, color: "text-a-ink", suffix: "", delta: wow(playInc), tooltip: null as React.ReactNode },
+                  { label: "라라스윗 검색량 총합", value: searchTotalSum, color: "text-gray-600", suffix: "", delta: wow((lsSearchData ?? []).map(d => ({ date: d.date, v: d.value ?? 0 }))), tooltip: null as React.ReactNode },
+                  { label: "B2B 발주량", value: b2bTotal, color: "text-green-600", suffix: "", delta: wow(b2bDaily.map(d => ({ date: d.date, v: b2bOrderOf(d) ?? 0 }))), tooltip: b2bTooltip },
                 ];
               })().map((item, i) => (
-                <div key={i} className={`flex-1 px-6 py-5 ${i > 0 ? "border-l border-a-hairline" : ""}`}>
+                <div key={i} className={`flex-1 px-6 py-5 relative group/kpi ${i > 0 ? "border-l border-a-hairline" : ""} ${item.tooltip ? "cursor-help" : ""}`}>
                   <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest mb-1.5">{item.label}</p>
                   <p className={`text-[28px] font-bold tabular-nums tracking-tight leading-none ${item.color}`}>{item.value.toLocaleString()}{item.suffix}</p>
                   {item.delta != null && (
                     <p className={`mt-1 text-[11px] font-medium tabular-nums ${item.delta > 0 ? "text-emerald-600" : item.delta < 0 ? "text-rose-500" : "text-gray-400"}`}>
                       {item.delta > 0 ? "▲" : item.delta < 0 ? "▼" : ""} {item.delta > 0 ? "+" : ""}{item.delta.toFixed(1)}% <span className="text-gray-400 font-normal">전주 대비</span>
                     </p>
+                  )}
+                  {item.tooltip && (
+                    <div className="hidden group-hover/kpi:block absolute left-6 top-[58px] z-30 bg-white border border-a-hairline rounded-lg shadow-lg px-3 py-2 text-xs whitespace-nowrap">
+                      {item.tooltip}
+                    </div>
                   )}
                 </div>
               ))}
