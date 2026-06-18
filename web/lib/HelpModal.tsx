@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 export function HelpModal({ title, onClose, children }: {
   title: string;
@@ -7,8 +8,12 @@ export function HelpModal({ title, onClose, children }: {
   children: React.ReactNode;
 }) {
   const drawerRef = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
+    if (!mounted) return;
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", handler);
     const frame = requestAnimationFrame(() => {
@@ -18,10 +23,13 @@ export function HelpModal({ title, onClose, children }: {
       window.removeEventListener("keydown", handler);
       cancelAnimationFrame(frame);
     };
-  }, [onClose]);
+  }, [mounted, onClose]);
 
-  return (
-    <div className="fixed inset-0 z-[70] flex justify-end">
+  if (!mounted) return null;
+
+  // 포털로 body 직속 렌더 → 부모 쌓임 맥락에 갇히지 않아 상단 헤더(GlobalActions) 위에 확실히 표시됨.
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex justify-end">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
       <div
         ref={drawerRef}
@@ -56,7 +64,8 @@ export function HelpModal({ title, onClose, children }: {
           {children}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
