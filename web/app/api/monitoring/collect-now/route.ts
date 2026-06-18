@@ -85,7 +85,8 @@ async function collect(req: NextRequest) {
     }> = [];
 
     // Instagram 게시물만 필터링
-    const igPosts = posts.filter((p) => p.url.includes("instagram.com"));
+    // ⚠️ shortcode 없는 프로필형 URL(.../username/reels/)은 제외 — 액터가 계정 게시물을 통째로 긁어 과수집됨
+    const igPosts = posts.filter((p) => p.url.includes("instagram.com") && igShortcode(p.url));
 
     if (igPosts.length === 0) {
       return NextResponse.json({

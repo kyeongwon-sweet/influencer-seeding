@@ -228,7 +228,13 @@ def run():
         else:
             print(f"[LOG] Apify 데이터 수집 시작...")
             # 인스타 액터에는 instagram.com URL만 전달 (유튜브/틱톡이 섞이면 액터가 입력 검증 실패 → 호출 전체 실패)
-            ig_urls = [p["url"] for p in posts if "instagram.com" in (p.get("url") or "")]
+            # ⚠️ shortcode 없는 프로필형 URL(예: .../username/reels/)은 제외 — 액터가 그 계정 게시물을
+            #    resultsLimit만큼 통째로 긁어 과수집(건당 비용 폭증)됨. 매칭도 shortcode 기준이라 어차피 불가.
+            ig_all = [p["url"] for p in posts if "instagram.com" in (p.get("url") or "")]
+            ig_urls = [u for u in ig_all if _ig_shortcode(u)]
+            skipped = [u for u in ig_all if not _ig_shortcode(u)]
+            if skipped:
+                print(f"[WARN] shortcode 없는 IG URL {len(skipped)}개 제외(프로필형 과수집 방지): {skipped}")
             stats = _fetch_stats(ig_urls)
             stats_by_key = {_stats_key(s["url"]): s for s in stats}
             print(f"[LOG] Apify 수집 결과: {len(stats)}건 / {len(ig_urls)}개 요청(인스타)")

@@ -230,5 +230,5 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// Vercel 크론은 GET으로 호출 → POST와 동일 처리 (body 미사용)
-export const GET = POST;
+// 스크리닝은 온디맨드(스크리닝 페이지에서 수동 POST)만 — 비용 큰 IG 수집이라 자동 일일 크론은 두지 않음.
+// (Vercel 크론은 GET 호출이므로 GET 핸들러 없음 = 자동 실행 안 됨)

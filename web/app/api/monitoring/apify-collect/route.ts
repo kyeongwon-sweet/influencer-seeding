@@ -79,7 +79,8 @@ export async function POST(req: NextRequest) {
     const today = kstNow.toISOString().split("T")[0];
 
     // Instagram 게시물만 필터링 (이미 '종료(ended_at)' 처리된 글은 수집 제외 — 비용↓, 0 노이즈 제거)
-    const igPosts = posts.filter((p) => p.url.includes("instagram.com") && !p.ended_at);
+    // ⚠️ shortcode 없는 프로필형 URL(.../username/reels/)은 제외 — 액터가 계정 게시물을 통째로 긁어 과수집됨
+    const igPosts = posts.filter((p) => p.url.includes("instagram.com") && !p.ended_at && igShortcode(p.url));
 
     if (igPosts.length === 0) {
       return NextResponse.json({

@@ -5,10 +5,6 @@
       "schedule": "0 15 * * *"
     },
     {
-      "path": "/api/screening/collect",
-      "schedule": "30 15 * * *"
-    },
-    {
       "path": "/api/monitoring/apify-collect",
       "schedule": "5 15 * * *"
     },
