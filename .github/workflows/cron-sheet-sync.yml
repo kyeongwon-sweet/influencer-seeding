@@ -1,0 +1,16 @@
+name: Sheet Sync (Vercel 크론 대체)
+
+# Vercel 크론 sponsored-posts/sync 이전 — 게시물 시트 동기화(수집 전 게시물 준비).
+on:
+  schedule:
+    - cron: "0 9 * * *"   # 18:00 KST
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 게시물 시트 동기화 (sponsored-posts/sync)
+        run: |
+          curl -sS "${{ secrets.APP_URL }}/api/sponsored-posts/sync" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" -w "\nHTTP %{http_code}\n"

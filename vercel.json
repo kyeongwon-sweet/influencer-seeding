@@ -1,28 +1,3 @@
 {
-  "crons": [
-    {
-      "path": "/api/marketing/sync",
-      "schedule": "0 15 * * *"
-    },
-    {
-      "path": "/api/monitoring/apify-collect",
-      "schedule": "5 15 * * *"
-    },
-    {
-      "path": "/api/sponsored-posts/sync",
-      "schedule": "0 9 * * *"
-    },
-    {
-      "path": "/api/brand-metrics/collect",
-      "schedule": "45 15 * * *"
-    },
-    {
-      "path": "/api/youtube-trends/collect",
-      "schedule": "50 15 * * *"
-    },
-    {
-      "path": "/api/b2b-revenue/fetch",
-      "schedule": "55 15 * * *"
-    }
-  ]
+  "crons": []
 }
