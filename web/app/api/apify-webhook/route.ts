@@ -298,8 +298,9 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
 
     if (!s) {
       // 🛑 미반환 → 자동 종료 감지: 이전 실데이터(>0) 있고 ENDED_DAYS 경과 + 아직 종료 안 됨
-      // 단, '위성채널' 프로젝트 소재는 자동 종료 제외(요청)
-      if (!post.ended_at && !((post.project_name as string | null) ?? "").includes("위성채널")) {
+      // 단, '위성채널'·'온드미디어' 프로젝트 소재는 자동 종료 제외(요청)
+      const pn = (post.project_name as string | null) ?? "";
+      if (!post.ended_at && !pn.includes("위성채널") && !pn.includes("온드미디어")) {
         const prevPlay = lastKnownPlay.get(post.id);
         const last = lastMeasuredAt.get(post.id);
         if (prevPlay && prevPlay > 0 && last) {
