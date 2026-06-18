@@ -249,7 +249,3 @@ export async function POST(req: NextRequest) {
     );
   }
 }
-
-// Vercel 크론은 GET으로 호출 → POST-only면 405로 조용히 실패(자정 수집 누락 원인).
-// GET=POST 별칭으로 정시 실행 보장.
-export const GET = POST;
