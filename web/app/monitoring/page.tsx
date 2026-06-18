@@ -226,7 +226,8 @@ function getCategoryLabel(val: string | null | undefined): string {
 }
 
 function pickMetric(s: DailyStats): number | null {
-  return s.play_count ?? s.likes_count;
+  // 조회수(재생수)만 사용 — 재생수가 없는 게시물을 좋아요로 대체하지 않음(지표 혼선 방지)
+  return s.play_count;
 }
 
 // 소재명 규칙(파일명 생성기)으로 작성된 project_name을 17개 차원으로 파싱.
@@ -503,23 +504,12 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
 
   // Secondary data (오른쪽 Y축)
   const secondaryPath = (() => {
-    if (!secondaryData || secondaryData.length === 0) {
-      console.log("[광고비] 데이터 없음");
-      return null;
-    }
+    if (!secondaryData || secondaryData.length === 0) return null;
     // 날짜 정규화: YYYY-MM-DD 형식만 추출 (시간 부분 제거)
     const normalizeDate = (d: string): string => d.split('T')[0];
     const secMap = new Map(secondaryData.map(d => [normalizeDate(d.date), d.value]));
-    console.log("[광고비] secMap:", Array.from(secMap.entries()));
     const secVals = data.map(d => secMap.get(normalizeDate(d.date))).filter(v => v != null) as number[];
-    console.log("[광고비] 매칭 데이터:", secVals.length, "/", data.length);
-    if (secVals.length < 1) {
-      console.log("[광고비] 매칭 데이터 없음");
-      return null;
-    }
-    if (secVals.length < 2) {
-      console.log("[광고비] 데이터 1개만 있음 (최소값 = 최대값으로 처리)");
-    }
+    if (secVals.length < 1) return null;
     const secMin = Math.min(...secVals), secMax = Math.max(...secVals);
     const secRange = secMax - secMin || 1;
     const secYS = (v: number) => ch - ((v - secMin) / secRange) * (ch - chTop); // 다른 선과 동일하게 상단 여유 확보(맨 위 붙어 넘침 방지)
@@ -1048,23 +1038,31 @@ export default function MonitoringPage() {
     setLsSearchData(rows);
   }, [productTrends, lsStartDate, lsEndDate]);
 
+  // 보조 그래프 데이터(검색량·B2B·광고비 등) 로드 실패 시 1회만 알림 (토스트 도배 방지)
+  const auxErrShown = useRef(false);
+  const auxFail = () => {
+    if (auxErrShown.current) return;
+    auxErrShown.current = true;
+    toast("일부 그래프 데이터를 불러오지 못했어요", "error");
+  };
+
   useEffect(() => {
     fetch("/api/brand-metrics")
       .then(r => r.ok ? r.json() : [])
       .then(data => setBrandMetrics(Array.isArray(data) ? data : []))
-      .catch(() => {});
+      .catch(auxFail);
     fetch("/api/youtube-trends")
       .then(r => r.ok ? r.json() : [])
       .then(data => setYtTrends(Array.isArray(data) ? data : []))
-      .catch(() => {});
+      .catch(auxFail);
     fetch("/api/b2b-revenue")
       .then(r => r.ok ? r.json() : { rows: [] })
       .then(d => setB2bDaily(Array.isArray(d?.rows) ? d.rows : []))
-      .catch(() => {});
+      .catch(auxFail);
     fetch("/api/monitoring/last-update")
       .then(r => r.ok ? r.json() : { at: null, byEmail: null })
       .then(d => setLastUpdate({ at: d?.at ?? null, byEmail: d?.byEmail ?? null }))
-      .catch(() => {});
+      .catch(auxFail);
   }, []);
 
   // '그외' 시리즈(인스타 프로필 방문 / 유튜브 검색량)는 기본 숨김 — 데이터 첫 로드 시 1회만 적용
@@ -1092,7 +1090,7 @@ export default function MonitoringPage() {
         products: Array.isArray(d?.products) ? d.products : [],
         data: Array.isArray(d?.data) ? d.data : [],
       }))
-      .catch(() => {});
+      .catch(auxFail);
   }, []);
 
   const productColorOf = (name: string) =>
@@ -1216,9 +1214,9 @@ export default function MonitoringPage() {
     const todayKST = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
     newPosts = newPosts.map(p => {
       const all = p.all_stats ?? [];
-      const today = all.find(s => s.measured_at === todayKST);
+      const today = all.find((s: DailyStats) => s.measured_at === todayKST);
       const todayCollected = !!today && (today.play_collected === true || today.likes_count != null);
-      const stats = todayCollected ? all : all.filter(s => s.measured_at < todayKST);
+      const stats = todayCollected ? all : all.filter((s: DailyStats) => s.measured_at < todayKST);
       return {
         ...p,
         all_stats: stats,
@@ -2891,7 +2889,7 @@ export default function MonitoringPage() {
 
       {/* 게시물 추가 모달 */}
       {showAdd && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-labelledby="modal-add-title">
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-[70]" role="dialog" aria-modal="true" aria-labelledby="modal-add-title">
           <div className="bg-white rounded-[22px] p-6 w-96 shadow-[0_8px_40px_rgba(0,0,0,0.12)]">
             <h2 id="modal-add-title" className="font-semibold tracking-tight mb-4">게시물 추가</h2>
             <div className="space-y-3">
@@ -2927,7 +2925,7 @@ export default function MonitoringPage() {
       )}
 
       {showUpload && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-[70]">
           <div className="bg-white rounded-[22px] p-6 w-[820px] shadow-[0_8px_40px_rgba(0,0,0,0.12)]">
             <h2 className="font-semibold tracking-tight mb-1">CSV 일괄 업로드</h2>
             <p className="text-xs text-a-ink-muted mb-4">컬럼 순서: 프로젝트명, 상품명, 채널분류, 게시물URL, 인플루언서명, 게시일, 비용, 도달수 (5~8번째 컬럼 생략 가능)</p>
@@ -2989,7 +2987,7 @@ export default function MonitoringPage() {
       )}
 
       {trendPost && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50"
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-[70]"
           onClick={() => setTrendPost(null)}>
           <div className="bg-white rounded-[22px] p-6 w-[680px] shadow-[0_8px_40px_rgba(0,0,0,0.12)]"
             onClick={e => e.stopPropagation()}>
@@ -3029,7 +3027,7 @@ export default function MonitoringPage() {
       )}
 
       {showTimeoutError && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={() => setShowTimeoutError(false)} />
           <div className="relative bg-white rounded-2xl shadow-xl w-[420px] p-7">
             <div className="flex items-start justify-between mb-4">
