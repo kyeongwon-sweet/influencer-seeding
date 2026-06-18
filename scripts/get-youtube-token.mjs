@@ -40,6 +40,7 @@ const authUrl =
   });
 
 const server = http.createServer(async (req, res) => {
+  res.setHeader("Content-Type", "text/html; charset=utf-8"); // 한글 깨짐 방지
   const url = new URL(req.url, REDIRECT);
   const code = url.searchParams.get("code");
   const err = url.searchParams.get("error");
