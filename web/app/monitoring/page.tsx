@@ -801,7 +801,7 @@ export default function MonitoringPage() {
   // 필터 적용 시 표 상단 합계 행 — 행 렌더링과 동일한 s/prev 로직으로 증분량·비용·조회수 합산
   const tableTotals = useMemo(() => {
     const hasDate = filters.dateFrom || filters.dateTo;
-    let delta = 0, cost = 0, views = 0;
+    let delta = 0, cost = 0, views = 0, reach = 0, likes = 0, comments = 0;
     for (const post of filteredPosts) {
       const fs = hasDate ? getFilteredStats(post.all_stats ?? [], filters.dateFrom, filters.dateTo) : (post.all_stats ?? []);
       const s = fs.length > 0 ? fs[fs.length - 1] : post.latest_stats;
@@ -809,8 +809,12 @@ export default function MonitoringPage() {
       if (s?.play_count != null && prev?.play_count != null) delta += s.play_count - prev.play_count;
       cost += post.cost ?? 0;
       if (s?.play_count != null) views += s.play_count;
+      const r = effectiveReach(post.reach_count, s?.play_count);
+      if (r != null) reach += r;
+      if (s?.likes_count != null) likes += s.likes_count;
+      if (s?.comments_count != null) comments += s.comments_count;
     }
-    return { delta, cost, views };
+    return { delta, cost, views, reach, likes, comments };
   }, [filteredPosts, filters.dateFrom, filters.dateTo]);
 
   // B2B 발주량: 상품 필터가 한 카테고리(듬뿍/쫀득)면 해당 카테고리 CVS 발주량만, 아니면 듬뿍+쫀득 합계
@@ -2380,11 +2384,11 @@ export default function MonitoringPage() {
                     <td className="px-3 py-2.5 text-right tabular-nums text-a-ink">{tableTotals.cost.toLocaleString()}원</td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-a-blue">{tableTotals.views.toLocaleString()}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-a-ink">{tableTotals.views > 0 ? `${(tableTotals.cost / tableTotals.views).toFixed(2)}원` : "-"}</td>{/* 전체 평균 조회당비용 = 비용합계 ÷ 조회수합계 */}
-                    <td />{/* 도달수 */}
-                    <td />{/* 도달당비용 */}
+                    <td className="px-3 py-2.5 text-right tabular-nums text-a-ink">{tableTotals.reach.toLocaleString()}</td>{/* 도달수 합계 */}
+                    <td className="px-3 py-2.5 text-right tabular-nums text-a-ink">{tableTotals.reach > 0 ? `${(tableTotals.cost / tableTotals.reach).toFixed(2)}원` : "-"}</td>{/* 전체 평균 도달당비용 = 비용합계 ÷ 도달수합계 */}
                     <td />{/* 캡션 */}
-                    <td />{/* 좋아요 */}
-                    <td />{/* 댓글 */}
+                    <td className="px-3 py-2.5 text-right tabular-nums text-a-ink">{tableTotals.likes.toLocaleString()}</td>{/* 좋아요 합계 */}
+                    <td className="px-3 py-2.5 text-right tabular-nums text-a-ink">{tableTotals.comments.toLocaleString()}</td>{/* 댓글 합계 */}
                     <td />{/* 트렌드 */}
                     <td />{/* 특이사항 */}
                     <td />{/* 삭제 */}
