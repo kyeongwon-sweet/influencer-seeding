@@ -1415,9 +1415,9 @@ export default function MonitoringPage() {
       const value = isBanner ? effectiveReach(post.reach_count, play) : play;
       if (value == null) return null;
       const delta = (play != null && prev?.play_count != null) ? play - prev.play_count : 0;
-      const arrow = delta > 0 ? "▲" : delta < 0 ? "▼" : "";
+      const arrow = delta > 0 ? "▲" : delta < 0 ? "▼" : "-";
       const account = post.account_name ?? post.influencers?.name ?? "";
-      return `${account}\t${value.toLocaleString()}${arrow ? " " + arrow : ""}`;
+      return `${account}\t${value.toLocaleString()} ${arrow}`;
     }).filter((l): l is string => l !== null);
     try {
       await navigator.clipboard.writeText(lines.join("\n"));
