@@ -786,6 +786,21 @@ export default function MonitoringPage() {
   const totalLikes = filteredPosts.reduce((s, p) => s + (p.latest_stats?.likes_count ?? 0), 0);
   const totalComments = filteredPosts.reduce((s, p) => s + (p.latest_stats?.comments_count ?? 0), 0);
 
+  // 필터 적용 시 표 상단 합계 행 — 행 렌더링과 동일한 s/prev 로직으로 증분량·비용·조회수 합산
+  const tableTotals = useMemo(() => {
+    const hasDate = filters.dateFrom || filters.dateTo;
+    let delta = 0, cost = 0, views = 0;
+    for (const post of filteredPosts) {
+      const fs = hasDate ? getFilteredStats(post.all_stats ?? [], filters.dateFrom, filters.dateTo) : (post.all_stats ?? []);
+      const s = fs.length > 0 ? fs[fs.length - 1] : post.latest_stats;
+      const prev = hasDate ? (fs.length > 1 ? fs[fs.length - 2] : null) : post.prev_stats;
+      if (s?.play_count != null && prev?.play_count != null) delta += s.play_count - prev.play_count;
+      cost += post.cost ?? 0;
+      if (s?.play_count != null) views += s.play_count;
+    }
+    return { delta, cost, views };
+  }, [filteredPosts, filters.dateFrom, filters.dateTo]);
+
   const dailyTotals = useMemo(() => {
     // ⚠️ 재발방지: getFilteredStats() 사용해서 필터 범위 일관성 보장
     // 전체 날짜 목록 수집 (필터 범위 내만)
@@ -2289,6 +2304,33 @@ export default function MonitoringPage() {
                 </tr>
               </thead>
               <tbody>
+                {/* 필터 선택 시: 헤더 바로 아래 합계 행 (증분량·비용·조회수 합계 / 조회당비용은 합계 안 함) */}
+                {hasFilter && sortedPosts.length > 0 && (
+                  <tr className="border-b-2 border-a-hairline bg-blue-50 text-xs font-semibold">
+                    <td className="pl-3 pr-1 py-2.5 sticky z-10 bg-blue-50" style={{ left: 0, width: 36, minWidth: 36 }} />
+                    <td className="px-3 py-2.5 text-right tabular-nums sticky z-10 bg-blue-50" style={{ left: stickyLefts["증분량"], width: stickyColWidths["증분량"], minWidth: stickyColWidths["증분량"] }}>
+                      <span className={tableTotals.delta > 0 ? "text-red-500" : tableTotals.delta < 0 ? "text-emerald-600" : "text-gray-400"}>
+                        {tableTotals.delta > 0 ? "+" : ""}{tableTotals.delta.toLocaleString()}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-a-ink-muted whitespace-nowrap">합계 ({sortedPosts.length}건)</td>
+                    <td />{/* 게시일 */}
+                    <td />{/* 인플루언서 */}
+                    <td />{/* 상품명 */}
+                    <td />{/* 프로젝트명 */}
+                    <td className="px-3 py-2.5 text-right tabular-nums text-a-ink">{tableTotals.cost.toLocaleString()}원</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-a-blue">{tableTotals.views.toLocaleString()}</td>
+                    <td />{/* 조회당비용 (합계 X) */}
+                    <td />{/* 도달수 */}
+                    <td />{/* 도달당비용 */}
+                    <td />{/* 캡션 */}
+                    <td />{/* 좋아요 */}
+                    <td />{/* 댓글 */}
+                    <td />{/* 트렌드 */}
+                    <td />{/* 특이사항 */}
+                    <td />{/* 삭제 */}
+                  </tr>
+                )}
                 {sortedPosts.map((post, rowIdx) => {
                   // ⚠️ 재발방지: getFilteredStats() 사용해서 필터 범위 일관성 보장
                   // 날짜 필터 시 해당 기간의 측정값들을 추출
