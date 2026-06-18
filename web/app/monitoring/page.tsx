@@ -432,11 +432,11 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
     if (extraSeries) extraSeries = extraSeries.map(s => ({ ...s, members: s.members.map(m => ({ ...m, data: movingAvg(m.data, "value") })) }));
   }
   if (data.length < 2) return <div className="flex items-center justify-center py-8 text-xs text-a-ink-muted">데이터 없음</div>;
-  const pl = 38, pr = 6, pt = 4, pb = 26;
+  const pl = 38, pr = 6, pt = 4, pb = 30;
   const VW = 560, VH = height;
   const cw = VW - pl - pr, ch = VH - pt - pb;
-  // 상단 여유는 작게(오버슛 클램프+overflow hidden으로 넘침 방지). 하단(pb)은 x라벨 여유 위해 확대.
-  const chTop = Math.round(ch * 0.04);
+  // 봉우리가 천장에 닿지 않게 상단 헤드룸 확보(12%). 하단(pb)은 x라벨 여유 위해 확대. (오버슛 클램프+overflow hidden 병행)
+  const chTop = Math.round(ch * 0.12);
   const vals = data.map(d => d.value);
   const [min, max] = padDomain(Math.min(...vals), Math.max(...vals));
   const range = max - min || 1;
@@ -1045,6 +1045,26 @@ export default function MonitoringPage() {
     auxErrShown.current = true;
     toast("일부 그래프 데이터를 불러오지 못했어요", "error");
   };
+
+  // 그래프 높이를 오른쪽 '일자별 증감' 표 높이에 맞춰 자동 조정.
+  // (고정 높이는 조회 기간에 따라 표 길이가 바뀌면 넘치거나 비는 문제가 있어 동적 계산)
+  const chartColRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLDivElement>(null);
+  const [chartVH, setChartVH] = useState(175);
+  useEffect(() => {
+    const col = chartColRef.current, tb = tableRef.current;
+    if (!col || !tb || typeof ResizeObserver === "undefined") return;
+    const recompute = () => {
+      const w = col.clientWidth - 32; // px-4 좌우 패딩 제외 → SVG 실제 렌더 폭
+      const h = tb.clientHeight;       // 표 높이에 맞춤
+      // 렌더 높이 = w × VH / VW(560). 렌더 높이를 h로 맞추려면 VH = h × 560 / w. [120,360]로 캡.
+      if (w > 20 && h > 20) setChartVH(Math.max(120, Math.min(360, Math.round((h * 560) / w))));
+    };
+    const ro = new ResizeObserver(recompute);
+    ro.observe(col); ro.observe(tb);
+    recompute();
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     fetch("/api/brand-metrics")
@@ -2107,7 +2127,7 @@ export default function MonitoringPage() {
             {/* 차트 + 테이블 */}
             <div className={`flex divide-x divide-a-hairline ${chartCollapsed ? "hidden" : ""}`}>
               {/* 차트 */}
-              <div className="flex-1 min-w-0 px-4 pt-1 pb-3">
+              <div ref={chartColRef} className="flex-1 min-w-0 px-4 pt-1 pb-3">
                 <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
                   <div className="flex items-center gap-2">
                     <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">조회수 트렌드 (일별 증분)</p>
@@ -2197,7 +2217,7 @@ export default function MonitoringPage() {
                 </div>
                 <LineChart
                   data={playDeltaData.length >= 2 ? playDeltaData : chartData}
-                  height={175}
+                  height={chartVH}
                   gradId="summaryGrad"
                   smooth={smooth}
                   hidePrimary={seriesHidden("조회수")}
@@ -2297,7 +2317,7 @@ export default function MonitoringPage() {
                 })()}
               </div>
               {/* 증감 테이블 — 내용폭에 맞춰 고정(여백 최소화), 그래프가 나머지 차지 */}
-              <div className="flex-none w-max flex flex-col self-start">
+              <div ref={tableRef} className="flex-none w-max flex flex-col self-start">
                 <div className="px-5 py-4 border-b border-a-hairline">
                   <p className="text-[11px] font-medium text-a-ink-muted">일자별 증감</p>
                 </div>
