@@ -224,7 +224,7 @@ export async function POST(req: NextRequest) {
 
 async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, jobId: string, items: Record<string, unknown>[]) {
   const today = new Date().toISOString().slice(0, 10);
-  const { data: posts } = await supabase.from('sponsored_posts').select('id, url, posted_at, account_name, influencer_id, ended_at');
+  const { data: posts } = await supabase.from('sponsored_posts').select('id, url, posted_at, account_name, influencer_id, ended_at, project_name');
 
   const statsKey = (url: string) => {
     const m = (url || '').match(/\/(?:p|reel|tv)\/([A-Za-z0-9_-]+)/);
@@ -298,7 +298,8 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
 
     if (!s) {
       // 🛑 미반환 → 자동 종료 감지: 이전 실데이터(>0) 있고 ENDED_DAYS 경과 + 아직 종료 안 됨
-      if (!post.ended_at) {
+      // 단, '위성채널' 프로젝트 소재는 자동 종료 제외(요청)
+      if (!post.ended_at && !((post.project_name as string | null) ?? "").includes("위성채널")) {
         const prevPlay = lastKnownPlay.get(post.id);
         const last = lastMeasuredAt.get(post.id);
         if (prevPlay && prevPlay > 0 && last) {
