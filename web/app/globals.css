@@ -11,7 +11,9 @@
 }
 
 /* 사이드바 접기/펴기·너비 변경 시 본문/사이드바 부드럽게 (드래그 중엔 즉시 추종) */
-.sidebar-aside { transition: width 0.18s ease; }
+/* 너비는 --sidebar-w 변수로만 제어 — React 리렌더가 인라인 width를 재적용해 transition을
+   매 프레임 리셋하는 문제(Clerk 리렌더 등)를 피하려고 CSS 변수로 분리 */
+.sidebar-aside { width: var(--sidebar-w, 200px); min-width: 56px; transition: width 0.18s ease; }
 .sidebar-content { transition: margin-left 0.18s ease; }
 body.sb-dragging .sidebar-aside,
 body.sb-dragging .sidebar-content { transition: none; }

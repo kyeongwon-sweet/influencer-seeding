@@ -119,7 +119,6 @@ export default function Sidebar() {
   return (
     <aside
       className="sidebar-aside fixed left-0 top-0 h-screen bg-white flex flex-col z-50 shadow-[1px_0_0_0_#e4e8f0]"
-      style={{ width: effectiveW, minWidth: COLLAPSED_W }}
     >
       {/* 접기/펴기 토글 */}
       <div className={`flex items-center ${collapsed ? "justify-center" : "justify-end"} px-2 pt-3 pb-1`}>
