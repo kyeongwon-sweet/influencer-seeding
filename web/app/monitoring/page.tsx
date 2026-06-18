@@ -344,6 +344,17 @@ function effectiveReach(reachCount: number | null | undefined, playCount: number
   return null;
 }
 
+// 변화폭이 매우 작을 때(필터로 2~3일만 남는 등) min→max를 차트 높이 전체로 늘리면
+// 0.x% 변화가 거대한 기울기로 과장돼 그래프가 깨져 보임. 최소 도메인 폭(최댓값의 frac)을 확보해 완만하게.
+// 정상 뷰는 변화폭이 이미 커서 영향 없음.
+function padDomain(min: number, max: number, frac = 0.06): [number, number] {
+  const span = max - min;
+  const minSpan = Math.abs(max) * frac;
+  if (span >= minSpan || minSpan === 0) return [min, max];
+  const c = (min + max) / 2, h = minSpan / 2;
+  return [c - h, c + h];
+}
+
 function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData, secondaryData, secondaryColor = "#ea580c", extraSeries, hidePrimary }: {
   data: { date: string; value: number }[];
   height?: number;
@@ -367,7 +378,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
   // 봉우리(+부드러운 곡선이 위로 솟구치는 부분)가 상단에 닿아 잘리지 않도록 상단 여유 확보
   const chTop = Math.round(ch * 0.1);
   const vals = data.map(d => d.value);
-  const min = Math.min(...vals), max = Math.max(...vals);
+  const [min, max] = padDomain(Math.min(...vals), Math.max(...vals));
   const range = max - min || 1;
   const xS = (i: number) => (i / (data.length - 1)) * cw;
   const yS = (v: number) => ch - ((v - min) / range) * (ch - chTop);
@@ -377,7 +388,11 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
   const yTicks = [0, 0.5, 1].map(t => min + t * range);
   const step = Math.max(1, Math.ceil(data.length / 6));
   const xLabelIdxs = data.map((_, i) => i).filter(i => i % step === 0 || i === data.length - 1);
-  const fmtY = (v: number) => v >= 10000 ? `${Math.round(v / 10000)}만` : v >= 1000 ? `${Math.round(v / 1000)}천` : Math.round(v).toLocaleString();
+  // 틱 간격이 좁으면 만/천 반올림 시 라벨이 중복(예: 127만·127만)되므로 간격에 맞춰 소수 1자리 표시
+  const yStep = range / 2;
+  const fmtY = (v: number) => v >= 10000 ? `${(v / 10000).toFixed(yStep < 10000 ? 1 : 0)}만`
+    : v >= 1000 ? `${(v / 1000).toFixed(yStep < 1000 ? 1 : 0)}천`
+    : Math.round(v).toLocaleString();
   const cellW = cw / Math.max(1, data.length - 1);
 
   const hoveredDate = activeIdx !== null ? data[activeIdx].date : null;
@@ -414,8 +429,10 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
     let dots: [number, number][] = [];
     if (mapped.length >= 1) {
       const vs = mapped.map(p => p.v);
-      const mn = Math.min(...vs), mx = Math.max(...vs), rg = mx - mn || 1;
-      const allEqual = mn === mx; // 값이 1개거나 전부 동일 → 중앙 높이에 표시
+      const rawMn = Math.min(...vs), rawMx = Math.max(...vs);
+      const allEqual = rawMn === rawMx; // 값이 1개거나 전부 동일 → 중앙 높이에 표시
+      const [mn, mx] = padDomain(rawMn, rawMx); // 작은 변화가 높이 전체로 과장되지 않게
+      const rg = mx - mn || 1;
       const y = (v: number) => allEqual ? ch / 2 : ch - ((v - mn) / rg) * (ch - chTop);
       dots = mapped.map(p => [xS(p.i), y(p.v)] as [number, number]);
       if (mapped.length >= 2) {
