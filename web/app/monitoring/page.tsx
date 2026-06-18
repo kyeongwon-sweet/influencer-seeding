@@ -429,11 +429,11 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
     if (extraSeries) extraSeries = extraSeries.map(s => ({ ...s, members: s.members.map(m => ({ ...m, data: movingAvg(m.data, "value") })) }));
   }
   if (data.length < 2) return <div className="flex items-center justify-center py-8 text-xs text-a-ink-muted">데이터 없음</div>;
-  const pl = 52, pr = 8, pt = 8, pb = 22;
+  const pl = 38, pr = 6, pt = 4, pb = 18;
   const VW = 560, VH = height;
   const cw = VW - pl - pr, ch = VH - pt - pb;
   // 봉우리(+부드러운 곡선이 위로 솟구치는 부분)가 상단에 닿아 잘리지 않도록 상단 여유 확보
-  const chTop = Math.round(ch * 0.1);
+  const chTop = Math.round(ch * 0.05);
   const vals = data.map(d => d.value);
   const [min, max] = padDomain(Math.min(...vals), Math.max(...vals));
   const range = max - min || 1;
@@ -584,7 +584,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
           {yTicks.map((tick, i) => (
             <g key={i}>
               <line x1={0} y1={yS(tick)} x2={cw} y2={yS(tick)} stroke={CHART.grid} strokeWidth="1" strokeDasharray="4,4" />
-              <text x={-8} y={yS(tick)} textAnchor="end" dominantBaseline="middle" fontSize="7" fill={CHART.axis}>{fmtY(tick)}</text>
+              <text x={-6} y={yS(tick)} textAnchor="end" dominantBaseline="middle" fontSize="7" fill={CHART.axis}>{fmtY(tick)}</text>
             </g>
           ))}
           {secondaryTicks && secondaryTicks.map((tick, i) => (
@@ -2097,7 +2097,7 @@ export default function MonitoringPage() {
               ))}
             </div>
             {/* 메인 그래프 접기/펼치기 (기본 펼침) */}
-            <div className="flex justify-end px-6 py-2">
+            <div className="flex justify-end px-6 pt-2 pb-0.5">
               <button type="button" onClick={() => setChartCollapsed(v => !v)}
                 className="flex items-center gap-1 text-xs text-a-ink-muted hover:text-a-ink transition-colors">
                 {chartCollapsed ? "그래프 펼치기" : "그래프 접기"}
@@ -2107,7 +2107,7 @@ export default function MonitoringPage() {
             {/* 차트 + 테이블 */}
             <div className={`flex divide-x divide-a-hairline ${chartCollapsed ? "hidden" : ""}`}>
               {/* 차트 */}
-              <div className="flex-1 min-w-0 px-6 py-5">
+              <div className="flex-1 min-w-0 px-4 py-3">
                 <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
                   <div className="flex items-center gap-2">
                     <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">조회수 트렌드 (일별 증분)</p>
