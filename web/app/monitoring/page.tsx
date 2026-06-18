@@ -2632,10 +2632,14 @@ export default function MonitoringPage() {
                         )}
                       </TD>
                       <TD right muted w={colWidths["좋아요"]}>
-                        {s?.likes_count != null && s.likes_count >= 0 ? s.likes_count.toLocaleString() : <span className="text-gray-300" title={s?.likes_count != null && s.likes_count < 0 ? "비공개" : undefined}>-</span>}
+                        {s?.likes_count == null ? <span className="text-gray-300">-</span>
+                          : s.likes_count < 0 ? <span className="text-gray-400 text-[11px]" title="작성자가 좋아요 수를 숨김">비공개</span>
+                          : s.likes_count.toLocaleString()}
                       </TD>
                       <TD right muted w={colWidths["댓글"]}>
-                        {s?.comments_count != null && s.comments_count >= 0 ? s.comments_count.toLocaleString() : <span className="text-gray-300">-</span>}
+                        {s?.comments_count == null ? <span className="text-gray-300">-</span>
+                          : s.comments_count < 0 ? <span className="text-gray-400 text-[11px]" title="댓글 비공개/사용 안 함">비공개</span>
+                          : s.comments_count.toLocaleString()}
                       </TD>
                       <td style={{ minWidth: colWidths["트렌드"] }} className="px-3 py-3 text-center">
                         <Sparkline stats={post.all_stats ?? []} postId={post.id} onClick={() => setTrendPost(post)} />
