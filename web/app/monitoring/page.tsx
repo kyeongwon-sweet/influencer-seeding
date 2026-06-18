@@ -356,7 +356,55 @@ function padDomain(min: number, max: number, frac = 0.06): [number, number] {
   return [c - h, c + h];
 }
 
-function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData, secondaryData, secondaryColor = "#ea580c", extraSeries, hidePrimary }: {
+// 7일 이동평균(trailing) — 일별 노이즈를 줄여 추세·상관을 또렷하게. null은 평균에서 제외.
+function movingAvg<T extends Record<string, unknown>>(rows: T[], field: keyof T, win = 7): T[] {
+  return rows.map((r, i) => {
+    const slice = rows.slice(Math.max(0, i - win + 1), i + 1)
+      .map(x => x[field] as number | null).filter((v): v is number => v != null);
+    if (slice.length === 0) return r;
+    return { ...r, [field]: slice.reduce((a, b) => a + b, 0) / slice.length };
+  });
+}
+
+// 피어슨 상관계수 (-1~1). 표본 2개 미만이거나 분산 0이면 null.
+function pearson(xs: number[], ys: number[]): number | null {
+  const n = Math.min(xs.length, ys.length);
+  if (n < 2) return null;
+  let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+  for (let i = 0; i < n; i++) { sx += xs[i]; sy += ys[i]; sxx += xs[i] * xs[i]; syy += ys[i] * ys[i]; sxy += xs[i] * ys[i]; }
+  const cov = n * sxy - sx * sy;
+  const dx = Math.sqrt(n * sxx - sx * sx), dy = Math.sqrt(n * syy - sy * sy);
+  if (dx === 0 || dy === 0) return null;
+  return cov / (dx * dy);
+}
+
+// 두 일별 시리즈(date→value)를 lag(일)만큼 어긋나게 정렬해 공통 날짜의 (x,y) 쌍 반환.
+// lag>0 : x가 y보다 lag일 선행(예: 광고비 → lag일 뒤 검색량).
+function alignedPairs(x: Map<string, number>, y: Map<string, number>, lag: number): [number[], number[]] {
+  const xs: number[] = [], ys: number[] = [];
+  for (const [d, xv] of x) {
+    const yd = new Date(d + "T00:00:00Z");
+    yd.setUTCDate(yd.getUTCDate() + lag);
+    const yKey = yd.toISOString().slice(0, 10);
+    const yv = y.get(yKey);
+    if (yv != null) { xs.push(xv); ys.push(yv); }
+  }
+  return [xs, ys];
+}
+
+// lag -maxLag..+maxLag 중 |상관|이 가장 큰 시차와 그 계수. (선행/지연 효과 탐지)
+function bestLag(x: Map<string, number>, y: Map<string, number>, maxLag = 3): { lag: number; r: number } | null {
+  let best: { lag: number; r: number } | null = null;
+  for (let lag = -maxLag; lag <= maxLag; lag++) {
+    const [xs, ys] = alignedPairs(x, y, lag);
+    const r = pearson(xs, ys);
+    if (r == null) continue;
+    if (!best || Math.abs(r) > Math.abs(best.r)) best = { lag, r };
+  }
+  return best;
+}
+
+function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData, secondaryData, secondaryColor = "#ea580c", extraSeries, hidePrimary, smooth }: {
   data: { date: string; value: number }[];
   height?: number;
   gradId?: string;
@@ -366,12 +414,20 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
   secondaryColor?: string;
   extraSeries?: { name: string; color: string; members: { label: string; data: { date: string; value: number | null }[] }[] }[];
   hidePrimary?: boolean;
+  smooth?: boolean;
 }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [pinnedIdx, setPinnedIdx] = useState<number | null>(null);
   const [tipOtherOpen, setTipOtherOpen] = useState(false); // 툴팁 '그외' 토글
   const tooltipRef = useRef<HTMLDivElement>(null);
   const activeIdx = pinnedIdx ?? hoverIdx;
+  // 7일 이동평균 — 모든 시리즈에 한 곳에서 적용(원본 prop만 교체, 이하 계산은 그대로).
+  if (smooth) {
+    data = movingAvg(data, "value");
+    if (lsData) lsData = movingAvg(movingAvg(lsData, "ratio"), "value");
+    if (secondaryData) secondaryData = movingAvg(secondaryData, "value");
+    if (extraSeries) extraSeries = extraSeries.map(s => ({ ...s, members: s.members.map(m => ({ ...m, data: movingAvg(m.data, "value") })) }));
+  }
   if (data.length < 2) return <div className="flex items-center justify-center py-8 text-xs text-a-ink-muted">데이터 없음</div>;
   const pl = 52, pr = 8, pt = 8, pb = 22;
   const VW = 560, VH = height;
@@ -585,8 +641,8 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
           style={{ left: `${Math.min(Math.max(((pl + xS(activeIdx)) / VW) * 100, 15), 85)}%`, transform: "translateX(-50%)" }}
           onMouseEnter={() => setPinnedIdx(activeIdx)}
           onMouseLeave={() => { setPinnedIdx(null); setHoverIdx(null); }}>
-          {/* 1. 날짜 (검정 볼드) · 조회수 */}
-          <p className="font-bold text-a-ink mb-1">{data[activeIdx].date.replace(/-/g, ".")} · <span className="text-a-blue tabular-nums">{data[activeIdx].value.toLocaleString()}</span></p>
+          {/* 1. 날짜 (검정 볼드) · 조회수 일별 증분 */}
+          <p className="font-bold text-a-ink mb-1">{data[activeIdx].date.replace(/-/g, ".")} · <span className="text-a-blue tabular-nums">조회수 +{data[activeIdx].value.toLocaleString()}</span></p>
           {/* 2. 라라스윗 검색량 */}
           {hoveredLsEntry?.value != null && (
             <a href={NAVER_DATALAB_URL} target="_blank" rel="noreferrer"
@@ -689,6 +745,8 @@ export default function MonitoringPage() {
   const [dateTooltip, setDateTooltip] = useState<{ date: string; x: number; y: number } | null>(null);
   const [b2bTip, setB2bTip] = useState<{ date: string; x: number; y: number } | null>(null);
   const [showOtherSeries, setShowOtherSeries] = useState(false); // 범례 '그외' 드롭다운(인스타·유튜브)
+  const [smooth, setSmooth] = useState(false); // 7일 이동평균(추세·상관 또렷하게)
+  const [showCorr, setShowCorr] = useState(false); // 상관·시차 분석 패널
   const [chartCollapsed, setChartCollapsed] = useState(false); // 메인 그래프(차트+증감표) 접기 — 기본 펼침
   const [lsSearchData, setLsSearchData] = useState<{ date: string; ratio: number; value: number | null }[]>([]);
   const [brandMetrics, setBrandMetrics] = useState<{ measured_at: string; yt_views: number | null; yt_unique_viewers: number | null; yt_search_views: number | null; ig_profile_views: number | null }[]>([]);
@@ -879,6 +937,37 @@ export default function MonitoringPage() {
       value: d.value - chartData[i].value,
     }));
   }, [chartData]);
+
+  // 메인 그래프 조회수 선 = 일별 증분(누적 아님). 광고비·검색량·B2B 와 같은 '하루치 흐름'으로 맞춰 상관관계가 보이게 함.
+  // dailyTotals(전일 forward-fill + 단조보정)에서 파생 → 일자별 증감 표의 '조회수' 값과 정확히 일치.
+  const playDeltaData = useMemo(() => {
+    const todayKST = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    return dailyTotals.slice(1)
+      .map((d, i) => ({ date: d.date, value: d.play - dailyTotals[i].play }))
+      .filter(d => d.date < todayKST); // 오늘(수집 중)은 미완성이라 제외
+  }, [dailyTotals]);
+
+  // 상관·시차 분석: 4개 일별 흐름(광고비·조회수증분·검색량·B2B)의 공통 날짜에서 피어슨 상관 + 최적 시차.
+  const correlations = useMemo(() => {
+    const play = new Map(playDeltaData.map(d => [d.date, d.value]));
+    const search = new Map((lsSearchData ?? []).filter(d => d.value != null).map(d => [d.date, d.value as number]));
+    const ad = new Map(mainAdCosts.map(d => [d.date, d.total_cost]));
+    const b2b = new Map(
+      b2bDaily.filter(d => b2bOrderOf(d) != null).map(d => [d.date, b2bOrderOf(d) as number])
+    );
+    const series: Record<string, Map<string, number>> = { 광고비: ad, 검색량: search, 조회수: play, B2B: b2b };
+    const r = (a: string, b: string) => {
+      const [xs, ys] = alignedPairs(series[a], series[b], 0);
+      return { r: pearson(xs, ys), n: Math.min(xs.length, ys.length) };
+    };
+    const pairs = [
+      ["광고비", "검색량"], ["광고비", "조회수"], ["광고비", "B2B"],
+      ["검색량", "조회수"], ["검색량", "B2B"], ["조회수", "B2B"],
+    ].map(([a, b]) => ({ a, b, ...r(a, b) }));
+    // 광고비 → 각 지표 선행효과(며칠 뒤 반응?)
+    const lags = ["검색량", "조회수", "B2B"].map(b => ({ b, ...(bestLag(ad, series[b], 3) ?? { lag: 0, r: NaN }) }));
+    return { pairs, lags };
+  }, [playDeltaData, lsSearchData, mainAdCosts, b2bDaily, b2bCategory]);
 
   const deltaTableData = useMemo(() => {
     if (dailyTotals.length < 2) return [];
@@ -2020,7 +2109,15 @@ export default function MonitoringPage() {
               {/* 차트 */}
               <div className="flex-1 min-w-0 px-6 py-5">
                 <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-                  <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">조회수 트렌드 (누적)</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">조회수 트렌드 (일별 증분)</p>
+                    <button type="button" onClick={() => setSmooth(v => !v)}
+                      className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${smooth ? "bg-a-blue/10 border-a-blue/40 text-a-blue" : "border-a-hairline text-a-ink-muted hover:text-a-ink"}`}
+                      title="7일 이동평균으로 일별 노이즈를 줄여 추세·상관을 또렷하게">7일 평균</button>
+                    <button type="button" onClick={() => setShowCorr(v => !v)}
+                      className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${showCorr ? "bg-a-blue/10 border-a-blue/40 text-a-blue" : "border-a-hairline text-a-ink-muted hover:text-a-ink"}`}
+                      title="4개 지표의 상관계수와 광고비 선행효과(시차) 분석">상관분석</button>
+                  </div>
                   <div className="flex items-center gap-x-4 gap-y-1.5 flex-wrap justify-end">
                     {/* 1. 조회수 */}
                     <button type="button" onClick={() => toggleSeries("조회수")}
@@ -2099,9 +2196,10 @@ export default function MonitoringPage() {
                   </div>
                 </div>
                 <LineChart
-                  data={chartData}
+                  data={playDeltaData.length >= 2 ? playDeltaData : chartData}
                   height={160}
                   gradId="summaryGrad"
+                  smooth={smooth}
                   hidePrimary={seriesHidden("조회수")}
                   lsData={seriesHidden("검색량") ? undefined : lsSearchData}
                   extraSeries={[
@@ -2159,6 +2257,44 @@ export default function MonitoringPage() {
                       .map(p => ({ name: p.account_name ?? p.influencers?.name ?? '-', url: p.url }))
                   }
                 />
+                {showCorr && (() => {
+                  // 상관계수 색/세기 표기 — 절대값 기준, 부호로 방향
+                  const fmtR = (r: number | null) => r == null || Number.isNaN(r) ? "—" : `${r > 0 ? "+" : ""}${r.toFixed(2)}`;
+                  const strength = (r: number | null) => r == null || Number.isNaN(r) ? "표본 부족"
+                    : Math.abs(r) >= 0.7 ? "강함" : Math.abs(r) >= 0.4 ? "중간" : "약함";
+                  const rColor = (r: number | null) => r == null || Number.isNaN(r) ? "text-a-ink-muted"
+                    : Math.abs(r) < 0.4 ? "text-a-ink-muted" : r > 0 ? "text-green-600" : "text-red-500";
+                  const lagLabel = (lag: number) => lag === 0 ? "당일" : lag > 0 ? `${lag}일 뒤` : `${-lag}일 전`;
+                  return (
+                    <div className="mt-4 pt-3 border-t border-a-hairline">
+                      <p className="text-[11px] font-medium text-a-ink-muted mb-2">상관 분석 <span className="font-normal">· 선택 기간 일별 흐름{smooth ? " · 7일 평균" : ""}</span></p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1.5 mb-3">
+                        {correlations.pairs.map(p => (
+                          <div key={`${p.a}-${p.b}`} className="flex items-center justify-between gap-2 text-xs">
+                            <span className="text-a-ink-muted">{p.a} ↔ {p.b}</span>
+                            <span className={`tabular-nums font-semibold ${rColor(p.r)}`} title={`표본 ${p.n}일`}>
+                              {fmtR(p.r)} <span className="text-[10px] font-normal text-a-ink-muted">{strength(p.r)}</span>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-[11px] font-medium text-a-ink-muted mb-1.5">광고비 선행효과 <span className="font-normal">(가장 강한 시차)</span></p>
+                      <div className="flex flex-wrap gap-x-5 gap-y-1">
+                        {correlations.lags.map(l => (
+                          <div key={l.b} className="flex items-center gap-1.5 text-xs">
+                            <span className="text-a-ink-muted">광고비 → {l.b}:</span>
+                            {Number.isNaN(l.r) ? <span className="text-a-ink-muted">표본 부족</span> : (
+                              <span className="tabular-nums"><span className="font-semibold text-a-ink">{lagLabel(l.lag)}</span> <span className={rColor(l.r)}>{fmtR(l.r)}</span></span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-[10px] text-a-ink-muted mt-2 leading-relaxed">
+                        ※ 상관계수는 인과가 아닌 동행성. ±0.7↑ 강함 · ±0.4↑ 중간. 선행효과는 광고비 집행이 며칠 뒤 해당 지표에 가장 강하게 동행하는지(−3~+3일)를 뜻합니다.
+                      </p>
+                    </div>
+                  );
+                })()}
               </div>
               {/* 증감 테이블 — 내용폭에 맞춰 고정(여백 최소화), 그래프가 나머지 차지 */}
               <div className="flex-none w-max flex flex-col self-start">
