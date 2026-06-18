@@ -2320,7 +2320,7 @@ export default function MonitoringPage() {
                     <td />{/* 프로젝트명 */}
                     <td className="px-3 py-2.5 text-right tabular-nums text-a-ink">{tableTotals.cost.toLocaleString()}원</td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-a-blue">{tableTotals.views.toLocaleString()}</td>
-                    <td />{/* 조회당비용 (합계 X) */}
+                    <td className="px-3 py-2.5 text-right tabular-nums text-a-ink">{tableTotals.views > 0 ? `${(tableTotals.cost / tableTotals.views).toFixed(2)}원` : "-"}</td>{/* 전체 평균 조회당비용 = 비용합계 ÷ 조회수합계 */}
                     <td />{/* 도달수 */}
                     <td />{/* 도달당비용 */}
                     <td />{/* 캡션 */}
