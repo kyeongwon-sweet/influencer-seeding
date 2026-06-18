@@ -307,9 +307,11 @@ function smoothCurvePath(pts: [number, number][]): string {
     const p2 = pts[i + 1];
     const p3 = pts[Math.min(pts.length - 1, i + 2)];
     const cp1x = p1[0] + (p2[0] - p0[0]) * t;
-    const cp1y = p1[1] + (p2[1] - p0[1]) * t;
     const cp2x = p2[0] - (p3[0] - p1[0]) * t;
-    const cp2y = p2[1] - (p3[1] - p1[1]) * t;
+    // 세로 제어점은 구간 양 끝값 사이로 클램프 → 봉우리/골이 데이터 점 위/아래로 솟는 오버슛(상단 넘침) 방지
+    const yLo = Math.min(p1[1], p2[1]), yHi = Math.max(p1[1], p2[1]);
+    const cp1y = Math.max(yLo, Math.min(yHi, p1[1] + (p2[1] - p0[1]) * t));
+    const cp2y = Math.max(yLo, Math.min(yHi, p2[1] - (p3[1] - p1[1]) * t));
     d += ` C ${cp1x.toFixed(2)},${cp1y.toFixed(2)} ${cp2x.toFixed(2)},${cp2y.toFixed(2)} ${p2[0].toFixed(2)},${p2[1].toFixed(2)}`;
   }
   return d;
@@ -429,11 +431,11 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
     if (extraSeries) extraSeries = extraSeries.map(s => ({ ...s, members: s.members.map(m => ({ ...m, data: movingAvg(m.data, "value") })) }));
   }
   if (data.length < 2) return <div className="flex items-center justify-center py-8 text-xs text-a-ink-muted">데이터 없음</div>;
-  const pl = 38, pr = 6, pt = 2, pb = 18;
+  const pl = 38, pr = 6, pt = 4, pb = 26;
   const VW = 560, VH = height;
   const cw = VW - pl - pr, ch = VH - pt - pb;
-  // 봉우리(+부드러운 곡선이 위로 솟구치는 부분)가 상단에 닿아 잘리지 않도록 상단 여유 확보
-  const chTop = Math.round(ch * 0.02);
+  // 상단 여유는 작게(오버슛 클램프+overflow hidden으로 넘침 방지). 하단(pb)은 x라벨 여유 위해 확대.
+  const chTop = Math.round(ch * 0.04);
   const vals = data.map(d => d.value);
   const [min, max] = padDomain(Math.min(...vals), Math.max(...vals));
   const range = max - min || 1;
@@ -520,7 +522,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
     }
     const secMin = Math.min(...secVals), secMax = Math.max(...secVals);
     const secRange = secMax - secMin || 1;
-    const secYS = (v: number) => ch - ((v - secMin) / secRange) * ch;
+    const secYS = (v: number) => ch - ((v - secMin) / secRange) * (ch - chTop); // 다른 선과 동일하게 상단 여유 확보(맨 위 붙어 넘침 방지)
     // secondaryData가 있는 모든 점을 포함 (필터링 안 함)
     const secPts: [number, number][] = data.map((d, i) => {
       const v = secMap.get(normalizeDate(d.date));
@@ -567,7 +569,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
 
   return (
     <div className="relative w-full">
-      <svg width="100%" viewBox={`0 0 ${VW} ${VH}`} style={{ overflow: "visible" }}
+      <svg width="100%" viewBox={`0 0 ${VW} ${VH}`} style={{ overflow: "hidden", display: "block" }}
         onMouseLeave={(e) => {
           // 툴팁 위로 이동한 경우 hoverIdx 유지 (pinnedIdx가 처리)
           if (tooltipRef.current?.contains(e.relatedTarget as Node)) return;
