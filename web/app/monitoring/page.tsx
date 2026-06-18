@@ -178,7 +178,7 @@ function TH({ children, right, col, onSort, sorted, className: cls, w, leftPos, 
         sortable ? `cursor-pointer transition-colors ${sorted ? "text-a-ink" : "text-a-ink-muted hover:text-a-ink"}` : "text-a-ink-muted",
         isSticky ? "sticky z-40 bg-white" : "bg-white",
         // 헤더 하단선: sticky th에서 border-b는 안 칠해질 수 있어 inset box-shadow로 그림 (isLast는 좌측 그림자와 합성)
-        isLast ? "shadow-[2px_0_5px_rgba(0,0,0,0.06),inset_0_-1px_0_#e0e0e0]" : "shadow-[inset_0_-1px_0_#e0e0e0]",
+        isLast ? "shadow-[2px_0_5px_rgba(0,0,0,0.06),inset_0_-1.5px_0_#d1d5db]" : "shadow-[inset_0_-1.5px_0_#d1d5db]",
         cls ?? "",
       ].join(" ")}
     >
@@ -2326,7 +2326,7 @@ export default function MonitoringPage() {
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-30">
                 <tr className="border-b border-a-hairline">
-                  <th className="pl-3 pr-1 py-3 sticky z-40 bg-white shadow-[inset_0_-1px_0_#e0e0e0]" style={{ left: 0, width: 36, minWidth: 36 }}>
+                  <th className="pl-3 pr-1 py-3 sticky z-40 bg-white shadow-[inset_0_-1.5px_0_#d1d5db]" style={{ left: 0, width: 36, minWidth: 36 }}>
                     <input type="checkbox" className="w-3.5 h-3.5 accent-a-blue cursor-pointer"
                       checked={filteredPosts.length > 0 && filteredPosts.every(p => selected.has(p.id))}
                       onChange={toggleSelectAll} />
