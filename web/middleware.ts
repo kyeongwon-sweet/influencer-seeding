@@ -16,6 +16,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/youtube-trends/collect(.*)",
   "/api/youtube-trends/webhook(.*)",
   "/api/b2b-revenue/fetch(.*)",
+  "/api/brand-metrics/debug(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, request) => {
