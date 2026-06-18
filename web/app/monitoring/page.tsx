@@ -1381,7 +1381,7 @@ export default function MonitoringPage() {
   }
 
   // 증분량 합계 셀 복사 — 필터된 모든 게시물의 "계정명 \t 값(▲)" 목록.
-  // 값: 영상=조회수, 배너=도달수. 천 단위 내림(예: 78,098 → 78,000).
+  // 값: 영상=조회수, 배너=도달수 (정확한 값, 반올림/내림 없음).
   async function copyIncrementList() {
     const hasDate = filters.dateFrom || filters.dateTo;
     const lines = sortedPosts.map(post => {
@@ -1395,8 +1395,7 @@ export default function MonitoringPage() {
       const delta = (play != null && prev?.play_count != null) ? play - prev.play_count : 0;
       const arrow = delta > 0 ? "▲" : delta < 0 ? "▼" : "";
       const account = post.account_name ?? post.influencers?.name ?? "";
-      const floored = Math.floor(value / 1000) * 1000; // 천 단위 내림
-      return `${account}\t${floored.toLocaleString()}${arrow ? " " + arrow : ""}`;
+      return `${account}\t${value.toLocaleString()}${arrow ? " " + arrow : ""}`;
     }).filter((l): l is string => l !== null);
     try {
       await navigator.clipboard.writeText(lines.join("\n"));
