@@ -811,8 +811,8 @@ export default function MonitoringPage() {
       if (s?.play_count != null) views += s.play_count;
       const r = effectiveReach(post.reach_count, s?.play_count);
       if (r != null) reach += r;
-      if (s?.likes_count != null) likes += s.likes_count;
-      if (s?.comments_count != null) comments += s.comments_count;
+      if (s?.likes_count != null && s.likes_count >= 0) likes += s.likes_count; // 음수(-1)=인스타 좋아요 비공개 → 제외
+      if (s?.comments_count != null && s.comments_count >= 0) comments += s.comments_count;
     }
     return { delta, cost, views, reach, likes, comments };
   }, [filteredPosts, filters.dateFrom, filters.dateTo]);
@@ -2632,10 +2632,10 @@ export default function MonitoringPage() {
                         )}
                       </TD>
                       <TD right muted w={colWidths["좋아요"]}>
-                        {s?.likes_count != null ? s.likes_count.toLocaleString() : <span className="text-gray-300">-</span>}
+                        {s?.likes_count != null && s.likes_count >= 0 ? s.likes_count.toLocaleString() : <span className="text-gray-300" title={s?.likes_count != null && s.likes_count < 0 ? "비공개" : undefined}>-</span>}
                       </TD>
                       <TD right muted w={colWidths["댓글"]}>
-                        {s?.comments_count != null ? s.comments_count.toLocaleString() : <span className="text-gray-300">-</span>}
+                        {s?.comments_count != null && s.comments_count >= 0 ? s.comments_count.toLocaleString() : <span className="text-gray-300">-</span>}
                       </TD>
                       <td style={{ minWidth: colWidths["트렌드"] }} className="px-3 py-3 text-center">
                         <Sparkline stats={post.all_stats ?? []} postId={post.id} onClick={() => setTrendPost(post)} />
