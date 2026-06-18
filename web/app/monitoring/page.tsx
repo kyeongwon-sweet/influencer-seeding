@@ -173,7 +173,7 @@ function TH({ children, right, col, onSort, sorted, className: cls, w, leftPos, 
       }
       style={isSticky ? { width: w, minWidth: w, left: leftPos } : fixed && w ? { width: w, minWidth: w, maxWidth: w } : w ? { minWidth: w } : undefined}
       className={[
-        "relative px-3 py-3 text-xs font-medium whitespace-nowrap select-none border-b border-a-divider",
+        "relative px-3 py-3 text-xs font-medium whitespace-nowrap select-none border-b border-a-hairline",
         right ? "text-right" : "text-left",
         sortable ? `cursor-pointer transition-colors ${sorted ? "text-a-ink" : "text-a-ink-muted hover:text-a-ink"}` : "text-a-ink-muted",
         isSticky ? "sticky z-40 bg-white" : "bg-white",
@@ -2324,8 +2324,8 @@ export default function MonitoringPage() {
           ) : (
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-30">
-                <tr className="border-b border-a-divider">
-                  <th className="pl-3 pr-1 py-3 sticky z-40 bg-white border-b border-a-divider" style={{ left: 0, width: 36, minWidth: 36 }}>
+                <tr className="border-b border-a-hairline">
+                  <th className="pl-3 pr-1 py-3 sticky z-40 bg-white border-b border-a-hairline" style={{ left: 0, width: 36, minWidth: 36 }}>
                     <input type="checkbox" className="w-3.5 h-3.5 accent-a-blue cursor-pointer"
                       checked={filteredPosts.length > 0 && filteredPosts.every(p => selected.has(p.id))}
                       onChange={toggleSelectAll} />
