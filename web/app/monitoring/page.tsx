@@ -2197,7 +2197,7 @@ export default function MonitoringPage() {
                 </div>
                 <LineChart
                   data={playDeltaData.length >= 2 ? playDeltaData : chartData}
-                  height={200}
+                  height={175}
                   gradId="summaryGrad"
                   smooth={smooth}
                   hidePrimary={seriesHidden("조회수")}
