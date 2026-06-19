@@ -225,6 +225,14 @@ function getCategoryLabel(val: string | null | undefined): string {
   return cat ? cat.desc : val;
 }
 
+// 증분량(조회수): 직전 측정이 있으면 차이, 없고 '업로드 첫 측정'(그 이전 측정 자체가 없음)이면 0에서 시작 → 그날 전체.
+// 필터로 직전만 잘렸고 이전 측정이 존재하면 계산 불가(null → '-').
+function viewIncrement(post: Post, s: DailyStats | null | undefined, prev: DailyStats | null | undefined): number | null {
+  if (!s || s.play_count == null) return null;
+  if (prev?.play_count != null) return s.play_count - prev.play_count;
+  const hasEarlier = (post.all_stats ?? []).some(x => x.measured_at < s.measured_at && x.play_count != null);
+  return hasEarlier ? null : s.play_count;
+}
 function pickMetric(s: DailyStats): number | null {
   // 조회수(재생수)만 사용 — 재생수가 없는 게시물을 좋아요로 대체하지 않음(지표 혼선 방지)
   return s.play_count;
@@ -943,7 +951,7 @@ export default function MonitoringPage() {
       const fs = hasDate ? getFilteredStats(post.all_stats ?? [], filters.dateFrom, filters.dateTo) : (post.all_stats ?? []);
       const s = fs.length > 0 ? fs[fs.length - 1] : post.latest_stats;
       const prev = hasDate ? (fs.length > 1 ? fs[fs.length - 2] : null) : post.prev_stats;
-      if (s?.play_count != null && prev?.play_count != null) delta += s.play_count - prev.play_count;
+      const inc = viewIncrement(post, s, prev); if (inc != null) delta += inc;
       cost += post.cost ?? 0;
       if (s?.play_count != null) views += s.play_count;
       const r = effectiveReach(post.reach_count, s?.play_count);
@@ -1057,7 +1065,9 @@ export default function MonitoringPage() {
 
     // 다중 상관 — 여러 지표가 '조회수'·'B2B 발주량'을 함께 얼마나 설명하는지(R²)
     const buildModel = (targetKey: string, target: Map<string, number>, predNames: string[]) => {
-      const preds = predNames.filter(n => names.includes(n));
+      // 예측지표를 '대상(조회수·B2B)과 가장 강하게 동행하는(|상관| 큰)' 순으로 정렬해 노출. (정렬은 R²에 영향 없음)
+      const corrAbs = (n: string) => { const [xs, ys] = alignedPairs(target, series[n], 0); return Math.abs(pearson(xs, ys) ?? 0); };
+      const preds = predNames.filter(n => names.includes(n)).sort((a, b) => corrAbs(b) - corrAbs(a));
       const { Y, X } = alignMulti(target, preds.map(n => series[n]));
       return { target: targetKey, preds, r2: multipleR2(Y, X), n: Y.length };
     };
@@ -1560,8 +1570,8 @@ export default function MonitoringPage() {
       case "프로젝트명": av = (a.project_name ?? "").toLowerCase(); bv = (b.project_name ?? "").toLowerCase(); break;
       case "상품명": av = (a.product_name ?? "").toLowerCase(); bv = (b.product_name ?? "").toLowerCase(); break;
       case "증분량":
-        av = (!a.latest_stats || !a.prev_stats) ? -Infinity : (a.latest_stats.play_count ?? 0) - (a.prev_stats.play_count ?? 0);
-        bv = (!b.latest_stats || !b.prev_stats) ? -Infinity : (b.latest_stats.play_count ?? 0) - (b.prev_stats.play_count ?? 0);
+        av = viewIncrement(a, a.latest_stats, a.prev_stats) ?? -Infinity;
+        bv = viewIncrement(b, b.latest_stats, b.prev_stats) ?? -Infinity;
         break;
       case "채널분류": av = (a.channel_type ?? "").toLowerCase(); bv = (b.channel_type ?? "").toLowerCase(); break;
       case "카테고리": av = (a.influencers?.category ?? "").toLowerCase(); bv = (b.influencers?.category ?? "").toLowerCase(); break;
@@ -1606,7 +1616,7 @@ export default function MonitoringPage() {
         post.channel_type ?? "",
         getPostType(post.url),
         post.posted_at ?? "",
-        (play != null && post.prev_stats?.play_count != null) ? (play - post.prev_stats.play_count) : "",
+        (viewIncrement(post, s, post.prev_stats) ?? ""),
         play ?? "",
         reach ?? "",
         cost ?? "",
@@ -1640,7 +1650,7 @@ export default function MonitoringPage() {
       const isBanner = (post.channel_type ?? "").includes("배너");
       const value = isBanner ? effectiveReach(post.reach_count, play) : play;
       if (value == null) return null;
-      const delta = (play != null && prev?.play_count != null) ? play - prev.play_count : 0;
+      const delta = viewIncrement(post, s, prev) ?? 0;
       const arrow = delta > 0 ? "▲" : delta < 0 ? "▼" : "-";
       const account = post.account_name ?? post.influencers?.name ?? "";
       return `${account}\t${value.toLocaleString()} ${arrow}`;
@@ -2768,8 +2778,8 @@ export default function MonitoringPage() {
                       </td>
                       <TD col="증분량" w={stickyColWidths["증분량"]} leftPos={stickyLefts["증분량"]} right highlighted={hl}>
                         {(() => {
-                          if (s?.play_count == null || prev == null) return <span className="text-gray-300">-</span>;
-                          const delta = s.play_count - (prev.play_count ?? 0);
+                          if (viewIncrement(post, s, prev) == null) return <span className="text-gray-300">-</span>;
+                          const delta = viewIncrement(post, s, prev) ?? 0;
                           return (
                             <span className={`font-semibold ${delta > 0 ? "text-red-500" : delta < 0 ? "text-emerald-600" : "text-gray-300"}`}>
                               {delta > 0 ? "+" : ""}{delta.toLocaleString()}
