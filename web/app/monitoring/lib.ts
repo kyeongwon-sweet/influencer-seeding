@@ -42,7 +42,7 @@ export type B2bDaily = {
 
 export type Filters = { name: string; project: string; products: string[]; type: string; channelTypes: string[]; pdNames: string[]; dateFrom: string; dateTo: string; postedFrom: string; postedTo: string };
 export const INIT_FILTERS: Filters = { name: "", project: "", products: [], type: "all", channelTypes: [], pdNames: [], dateFrom: "", dateTo: "", postedFrom: "", postedTo: "" };
-export type EditCell = { postId: string; field: "project_name" | "product_name" | "channel_type" | "cost" | "reach_count" | "account_name" | "posted_at" | "notes" | "content_summary"; value: string };
+export type EditCell = { postId: string; field: "project_name" | "product_name" | "channel_type" | "cost" | "reach_count" | "account_name" | "posted_at" | "notes" | "content_summary" | "likes_count" | "comments_count"; value: string; measuredAt?: string };
 export const POST_TYPES = ["릴스", "피드", "숏폼", "롱폼"];
 export const CHANNEL_TYPES = [
   "바이럴(배너)",

@@ -1315,6 +1315,30 @@ export default function MonitoringPage() {
     setSelected(allSelected ? new Set() : new Set(ids));
   }
 
+  // 좋아요/댓글 수동 수정(post_daily_stats). measuredAt = 표에 보이는 측정일.
+  async function patchStat(postId: string, measuredAt: string, field: "likes_count" | "comments_count", value: string) {
+    if (!editCell) return;
+    if (!measuredAt) { setEditCell(null); return; }
+    const num = value.trim() === "" ? null : Math.round(Number(value));
+    if (num != null && Number.isNaN(num)) { toast("숫자를 입력하세요.", "error"); setEditCell(null); return; }
+    const res = await fetch(`/api/sponsored-posts/${postId}/stats`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ measured_at: measuredAt, [field]: num }),
+    });
+    if (res.ok) {
+      setPosts(prev => prev.map(p => {
+        if (p.id !== postId) return p;
+        const all = (p.all_stats ?? []).map(st => st.measured_at === measuredAt ? { ...st, [field]: num } : st);
+        const latest = p.latest_stats && p.latest_stats.measured_at === measuredAt ? { ...p.latest_stats, [field]: num } : p.latest_stats;
+        return { ...p, all_stats: all, latest_stats: latest };
+      }));
+    } else {
+      toast("저장에 실패했습니다.", "error");
+    }
+    setEditCell(null);
+  }
+
   async function patchPost(postId: string, field: string, value: string) {
     // Escape 취소 후 onBlur 발화 방지: editCell이 이미 null이면 저장 안 함
     if (!editCell) return;
@@ -2604,16 +2628,36 @@ export default function MonitoringPage() {
                           </span>
                         )}
                       </TD>
-                      <TD right muted w={colWidths["좋아요"]}>
-                        {s?.likes_count == null ? <span className="text-gray-300">-</span>
-                          : s.likes_count < 0 ? <span className="text-gray-400 text-[11px]" title="작성자가 좋아요 수를 숨김">비공개</span>
-                          : s.likes_count.toLocaleString()}
-                      </TD>
-                      <TD right muted w={colWidths["댓글"]}>
-                        {s?.comments_count == null ? <span className="text-gray-300">-</span>
-                          : s.comments_count < 0 ? <span className="text-gray-400 text-[11px]" title="댓글 비공개/사용 안 함">비공개</span>
-                          : s.comments_count.toLocaleString()}
-                      </TD>
+                      <td style={{ minWidth: colWidths["좋아요"] }}
+                        className="px-3 py-4 text-xs tabular-nums text-right whitespace-nowrap cursor-text text-a-ink-muted"
+                        onDoubleClick={() => s && editCell?.postId !== post.id && setEditCell({ postId: post.id, field: "likes_count", value: s.likes_count != null && s.likes_count >= 0 ? String(s.likes_count) : "", measuredAt: s.measured_at })}>
+                        {editCell?.postId === post.id && editCell?.field === "likes_count" ? (
+                          <input autoFocus type="number" value={editCell.value}
+                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
+                            onBlur={() => patchStat(post.id, editCell.measuredAt ?? "", "likes_count", editCell.value)}
+                            onKeyDown={e => { if (e.key === "Enter") patchStat(post.id, editCell.measuredAt ?? "", "likes_count", editCell.value); if (e.key === "Escape") { e.preventDefault(); setEditCell(null); }; }}
+                            className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
+                        ) : (
+                          s?.likes_count == null ? <span className="text-gray-300">-</span>
+                            : s.likes_count < 0 ? <span className="text-gray-400 text-[11px]" title="작성자가 좋아요 수를 숨김 (더블클릭해 수동 입력)">비공개</span>
+                            : s.likes_count.toLocaleString()
+                        )}
+                      </td>
+                      <td style={{ minWidth: colWidths["댓글"] }}
+                        className="px-3 py-4 text-xs tabular-nums text-right whitespace-nowrap cursor-text text-a-ink-muted"
+                        onDoubleClick={() => s && editCell?.postId !== post.id && setEditCell({ postId: post.id, field: "comments_count", value: s.comments_count != null && s.comments_count >= 0 ? String(s.comments_count) : "", measuredAt: s.measured_at })}>
+                        {editCell?.postId === post.id && editCell?.field === "comments_count" ? (
+                          <input autoFocus type="number" value={editCell.value}
+                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
+                            onBlur={() => patchStat(post.id, editCell.measuredAt ?? "", "comments_count", editCell.value)}
+                            onKeyDown={e => { if (e.key === "Enter") patchStat(post.id, editCell.measuredAt ?? "", "comments_count", editCell.value); if (e.key === "Escape") { e.preventDefault(); setEditCell(null); }; }}
+                            className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
+                        ) : (
+                          s?.comments_count == null ? <span className="text-gray-300">-</span>
+                            : s.comments_count < 0 ? <span className="text-gray-400 text-[11px]" title="댓글 비공개/사용 안 함 (더블클릭해 수동 입력)">비공개</span>
+                            : s.comments_count.toLocaleString()
+                        )}
+                      </td>
                       <td style={{ minWidth: colWidths["트렌드"] }} className="px-3 py-3 text-center">
                         <Sparkline stats={post.all_stats ?? []} postId={post.id} onClick={() => setTrendPost(post)} />
                       </td>
