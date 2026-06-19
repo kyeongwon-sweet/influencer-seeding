@@ -6,7 +6,11 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /**
- * 구글 시트 Apps Script → 협찬 게시물 일괄 추가 (인증 불필요, 공개 인터페이스)
+ * 구글 시트 Apps Script → 협찬 게시물 일괄 추가
+ *
+ * 인증: Authorization: Bearer <CRON_SECRET> (sponsored-posts/sync 와 동일 패턴).
+ *   CRON_SECRET 미설정 시 무조건 차단(fail-closed). 시트 외 호출자가 성과 지표를
+ *   조작/종료 처리하는 것을 막는다.
  *
  * 부모 라우트 `/api/sponsored-posts` 가 Vercel/Turbopack 라우팅 manifest 누락으로
  * 404가 되는 문제를 우회하기 위한 자식 라우트. (자식 라우트는 정상 배포됨)
@@ -18,6 +22,11 @@ export const runtime = "nodejs";
  * 플랫폼 제한 없음 (instagram / youtube / tiktok 등 모든 URL). URL만 정규화 후 upsert.
  */
 export async function POST(req: NextRequest) {
+  const secret = process.env.CRON_SECRET;
+  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const body = await req.json().catch(() => null);
   const list = Array.isArray(body) ? body : Array.isArray(body?.rows) ? body.rows : null;
   if (!list) {

@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl, ALLOWED_POST_URL_RE } from "@/lib/url-utils";
+import { filterMonotonicStats, type GuardInput } from "@/lib/stats-guard";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /**
- * 구글 시트 Apps Script → 일자별 조회수(post_daily_stats) 백필 (인증 불필요)
+ * 구글 시트 Apps Script → 일자별 조회수(post_daily_stats) 백필
+ *
+ * 인증: Authorization: Bearer <CRON_SECRET>. 미설정 시 무조건 차단(fail-closed).
+ *   조회수는 누계라 한 번 외부에서 오염되면 그래프가 영구히 깨지므로 반드시 보호.
  *
  * 입력: {
  *   posts?: [{ url, posted_at?, account_name?, content_summary?, channel_type?, project_name?, product_name?, cost? }],
@@ -19,6 +23,11 @@ export const runtime = "nodejs";
  *  2) url → post_id 매칭 후 post_daily_stats upsert (onConflict post_id,measured_at).
  */
 export async function POST(req: NextRequest) {
+  const secret = process.env.CRON_SECRET;
+  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const body = await req.json().catch(() => null);
   const statsIn = Array.isArray(body)
     ? body
@@ -122,18 +131,18 @@ export async function POST(req: NextRequest) {
 
   // 3) 게시물 매칭 (미등록 URL은 건너뜀)
   const missing = new Set<string>();
-  const incomingByPost = new Map<string, Array<{ measured_at: string; play_count: number }>>();
+  const incoming: GuardInput[] = [];
+  const postIdSet = new Set<string>();
   for (const it of items) {
     const pid = idByUrl.get(it.url);
     if (!pid) { missing.add(it.url); continue; }
-    const arr = incomingByPost.get(pid) ?? [];
-    arr.push({ measured_at: it.measured_at, play_count: it.play_count });
-    incomingByPost.set(pid, arr);
+    incoming.push({ post_id: pid, measured_at: it.measured_at, play_count: it.play_count });
+    postIdSet.add(pid);
   }
-  const postIds = [...incomingByPost.keys()];
+  const postIds = [...postIdSet];
 
   // 4) 기존 post_daily_stats 조회 (누적 감소 판정 기준) — 페이지네이션으로 전량
-  const existingByPost = new Map<string, Array<{ measured_at: string; play_count: number }>>();
+  const existingStats: GuardInput[] = [];
   if (postIds.length > 0) {
     const PAGE = 1000;
     for (let from = 0; ; from += PAGE) {
@@ -144,55 +153,24 @@ export async function POST(req: NextRequest) {
         .range(from, from + PAGE - 1);
       if (pe2) return NextResponse.json({ error: pe2.message }, { status: 500 });
       for (const s of (page ?? []) as Array<{ post_id: string; measured_at: string; play_count: number | null }>) {
-        const arr = existingByPost.get(s.post_id) ?? [];
-        arr.push({ measured_at: s.measured_at, play_count: Number(s.play_count ?? 0) });
-        existingByPost.set(s.post_id, arr);
+        existingStats.push({ post_id: s.post_id, measured_at: s.measured_at, play_count: Number(s.play_count ?? 0) });
       }
       if (!page || page.length < PAGE) break;
     }
   }
 
-  // 5) 누적 감소 가드: 기존+신규를 날짜순 병합해, "그보다 이른 날짜들의 최대"보다 낮은
-  //    신규 값은 dip(수집/입력 오류)으로 보고 저장하지 않음. (과거의 정상적인 낮은 값은 보존)
-  const statsRows: Array<{ post_id: string; measured_at: string; play_count: number }> = [];
-  let droppedDecrease = 0;
+  // 5) 누적 감소 가드 (lib/stats-guard.ts — 테스트로 검증되는 순수 함수)
+  const { kept: statsRows, dropped } = filterMonotonicStats(incoming, existingStats);
+  const droppedDecrease = dropped.length;
   // 진단용: 제외된 건 샘플(어떤 글의 어느 날짜 값이, 어느 날짜의 어떤 값에 막혔는지)
   const urlByPid = new Map<string, string>([...idByUrl.entries()].map(([u, id]) => [id, u]));
-  const droppedSample: Array<{ url: string; date: string; value: number; blocked_by: number; blocked_date: string }> = [];
-  for (const pid of postIds) {
-    const incomingArr = incomingByPost.get(pid) ?? [];
-    const incomingDates = new Set(incomingArr.map(x => x.measured_at));
-    const timeline = [
-      ...(existingByPost.get(pid) ?? []).filter(e => !incomingDates.has(e.measured_at)).map(e => ({ ...e, incoming: false })),
-      ...incomingArr.map(e => ({ ...e, incoming: true })),
-    ].sort((a, b) => (a.measured_at < b.measured_at ? -1 : a.measured_at > b.measured_at ? 1 : 0));
-
-    let maxSoFar = 0;
-    let maxDate = "";
-    for (const e of timeline) {
-      if (e.incoming) {
-        if (e.play_count >= maxSoFar) {
-          statsRows.push({ post_id: pid, measured_at: e.measured_at, play_count: e.play_count });
-          maxSoFar = e.play_count;
-          maxDate = e.measured_at;
-        } else {
-          droppedDecrease++; // 이른 날짜 최대보다 낮음 = 누적 감소 → 저장 안 함
-          if (droppedSample.length < 20) {
-            droppedSample.push({
-              url: urlByPid.get(pid) ?? pid,
-              date: e.measured_at,
-              value: e.play_count,
-              blocked_by: maxSoFar,
-              blocked_date: maxDate,
-            });
-          }
-        }
-      } else if (e.play_count > maxSoFar) {
-        maxSoFar = e.play_count;
-        maxDate = e.measured_at;
-      }
-    }
-  }
+  const droppedSample = dropped.slice(0, 20).map(d => ({
+    url: urlByPid.get(d.post_id) ?? d.post_id,
+    date: d.measured_at,
+    value: d.play_count,
+    blocked_by: d.blocked_by,
+    blocked_date: d.blocked_date,
+  }));
 
   let inserted = 0;
   if (statsRows.length > 0) {

@@ -266,12 +266,20 @@ function checkBlanks() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 전송 (/bulk 로 행 배열 POST, 인증 불필요)
+// 전송 (/bulk 로 행 배열 POST, Bearer 인증)
 // ═══════════════════════════════════════════════════════════════
+// 스크립트 속성 CRON_SECRET 을 Bearer 토큰으로 전송. (파일 > 프로젝트 속성 > 스크립트 속성)
+function authHeaders_() {
+  const secret = PropertiesService.getScriptProperties().getProperty("CRON_SECRET");
+  if (!secret) throw new Error("스크립트 속성 'CRON_SECRET' 이 설정되지 않았습니다. (프로젝트 설정 > 스크립트 속성)");
+  return { Authorization: "Bearer " + secret };
+}
+
 function postRows_(rows) {
   const res = UrlFetchApp.fetch(CONFIG.API_URL, {
     method: "post",
     contentType: "application/json",
+    headers: authHeaders_(),
     payload: JSON.stringify(rows),
     muteHttpExceptions: true,
   });
@@ -330,6 +338,7 @@ function postStats_(payload) {
   const res = UrlFetchApp.fetch(CONFIG.STATS_API_URL, {
     method: "post",
     contentType: "application/json",
+    headers: authHeaders_(),
     payload: JSON.stringify(payload), // { posts: [...], stats: [...] }
     muteHttpExceptions: true,
   });
