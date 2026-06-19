@@ -947,19 +947,27 @@ export default function MonitoringPage() {
     const b2b = new Map(
       b2bDaily.filter(d => b2bOrderOf(d) != null).map(d => [d.date, b2bOrderOf(d) as number])
     );
-    const series: Record<string, Map<string, number>> = { 광고비: ad, 검색량: search, 조회수: play, B2B: b2b };
+    // 인스타 프로필 방문 · 유튜브 검색량(키워드 합산)
+    const igVisit = new Map(brandMetrics.filter(d => d.ig_profile_views != null).map(d => [d.measured_at, d.ig_profile_views as number]));
+    const ytSearch = new Map<string, number>();
+    for (const t of ytTrends) { if (t.value != null) ytSearch.set(t.measured_at, (ytSearch.get(t.measured_at) ?? 0) + t.value); }
+    const series: Record<string, Map<string, number>> = { 광고비: ad, 검색량: search, 조회수: play, B2B: b2b, 인스타방문: igVisit, 유튜브검색: ytSearch };
+    // 데이터가 2일 이상 있는 지표만 분석 대상 (인스타·유튜브는 데이터 없으면 제외)
+    const names = ["광고비", "검색량", "조회수", "B2B"];
+    if (igVisit.size >= 2) names.push("인스타방문");
+    if (ytSearch.size >= 2) names.push("유튜브검색");
     const r = (a: string, b: string) => {
       const [xs, ys] = alignedPairs(series[a], series[b], 0);
       return { r: pearson(xs, ys), n: Math.min(xs.length, ys.length) };
     };
-    const pairs = [
-      ["광고비", "검색량"], ["광고비", "조회수"], ["광고비", "B2B"],
-      ["검색량", "조회수"], ["검색량", "B2B"], ["조회수", "B2B"],
-    ].map(([a, b]) => ({ a, b, ...r(a, b) }));
+    const pairs: { a: string; b: string; r: number | null; n: number }[] = [];
+    for (let i = 0; i < names.length; i++)
+      for (let j = i + 1; j < names.length; j++)
+        pairs.push({ a: names[i], b: names[j], ...r(names[i], names[j]) });
     // 광고비 → 각 지표 선행효과(며칠 뒤 반응?)
-    const lags = ["검색량", "조회수", "B2B"].map(b => ({ b, ...(bestLag(ad, series[b], 3) ?? { lag: 0, r: NaN }) }));
+    const lags = names.filter(n => n !== "광고비").map(b => ({ b, ...(bestLag(ad, series[b], 3) ?? { lag: 0, r: NaN }) }));
     return { pairs, lags };
-  }, [playDeltaData, lsSearchData, mainAdCosts, b2bDaily, b2bCategory]);
+  }, [playDeltaData, lsSearchData, mainAdCosts, b2bDaily, b2bCategory, brandMetrics, ytTrends]);
 
   const deltaTableData = useMemo(() => {
     if (dailyTotals.length < 2) return [];
