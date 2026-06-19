@@ -191,7 +191,12 @@ export function parseProjectName(name: string | null | undefined): Record<string
   if (parts.length > 10) r["마케터"] = parts[10];
   if (parts.length > 11) r["집행시작일"] = parts[11];
   if (parts.length > 12) r["본부 구분"] = parts[12];
-  if (parts.length > 13) r["PD/디자이너"] = parts.slice(13).join("_").replace(/\.(mp4|mov|png|jpe?g)$/i, "");
+  if (parts.length > 13) {
+    // PD/디자이너: 소재명이 파일명으로 오염된 경우 정리 — 확장자·사본표시 제거 후 마지막 토큰(이름)만 추출.
+    // 예) "260616_빙과_김민우 (1).zip" → "김민우", "빙과_홍정민" → "홍정민", "홍정민.zip" → "홍정민"
+    const tail = parts.slice(13).join("_").trim().replace(/\.(mp4|mov|png|jpe?g|gif|webp|zip|pdf)$/i, "");
+    r["PD/디자이너"] = (tail.split("_").pop() ?? "").trim().replace(/\s*\(\d+\)\s*$/, "").trim();
+  }
   return r;
 }
 
