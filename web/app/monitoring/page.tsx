@@ -2139,7 +2139,13 @@ export default function MonitoringPage() {
         </div>
 
         {filteredPosts.length > 0 && (
-          <div className="bg-white rounded-[20px] shadow-[0_2px_16px_rgba(100,120,180,0.08)] mb-4 overflow-hidden">
+          <div className="relative bg-white rounded-[20px] shadow-[0_2px_16px_rgba(100,120,180,0.08)] mb-4 overflow-hidden">
+            {/* 그래프 접기/펼치기 — 카드 우측 상단 */}
+            <button type="button" onClick={() => setChartCollapsed(v => !v)}
+              className="absolute top-3 right-5 z-20 flex items-center gap-1 text-xs text-a-ink-muted hover:text-a-ink transition-colors">
+              {chartCollapsed ? "그래프 펼치기" : "그래프 접기"}
+              <span className="text-[9px] leading-none">{chartCollapsed ? "▼" : "▲"}</span>
+            </button>
             {/* 요약 수치 */}
             <div className="flex items-stretch border-b border-a-hairline">
               {(() => {
@@ -2194,14 +2200,6 @@ export default function MonitoringPage() {
                   )}
                 </div>
               ))}
-            </div>
-            {/* 메인 그래프 접기/펼치기 (기본 펼침) */}
-            <div className="flex justify-end px-6 pt-2 pb-0.5">
-              <button type="button" onClick={() => setChartCollapsed(v => !v)}
-                className="flex items-center gap-1 text-xs text-a-ink-muted hover:text-a-ink transition-colors">
-                {chartCollapsed ? "그래프 펼치기" : "그래프 접기"}
-                <span className="text-[9px] leading-none">{chartCollapsed ? "▼" : "▲"}</span>
-              </button>
             </div>
             {/* 차트 + 테이블 */}
             <div className={`flex divide-x divide-a-hairline ${chartCollapsed ? "hidden" : ""}`}>
