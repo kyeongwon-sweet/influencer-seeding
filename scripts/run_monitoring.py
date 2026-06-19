@@ -238,8 +238,19 @@ def run():
 
     try:
         print(f"[LOG] 협찬 모니터링 시작 - 날짜: {TODAY}")
-        res = db.table("sponsored_posts").select("id, url, posted_at, account_name, influencer_id, ended_at").execute()
-        all_posts = res.data or []
+        # 전체 게시물 로딩 — PostgREST 기본 1000행 제한을 페이지네이션으로 우회.
+        # (게시물이 1000개를 넘어도 초과분이 조용히 누락되지 않도록 전부 수집)
+        all_posts = []
+        _start, _PAGE = 0, 1000
+        while True:
+            _res = db.table("sponsored_posts").select(
+                "id, url, posted_at, account_name, influencer_id, ended_at"
+            ).range(_start, _start + _PAGE - 1).execute()
+            _chunk = _res.data or []
+            all_posts.extend(_chunk)
+            if len(_chunk) < _PAGE:
+                break
+            _start += _PAGE
         # 종료(ended_at) 처리된 글은 스크랩 제외 — Apify 사용량 절감(한도 재초과 방지), Vercel 라우트와 동일
         posts = [p for p in all_posts if not p.get("ended_at")]
         print(f"[LOG] 추적 게시물: {len(posts)}개 (종료 제외 {len(all_posts) - len(posts)}개)")
