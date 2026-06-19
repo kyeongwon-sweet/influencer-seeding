@@ -1867,7 +1867,9 @@ export default function MonitoringPage() {
                   </div>
                 );
                 return [
-                  { label: "조회수 합계", value: totalPlayCount, color: "text-a-ink", suffix: "", delta: wow(playInc), tooltip: null as React.ReactNode },
+                  { label: "조회수 합계", value: totalPlayCount, color: "text-a-ink", suffix: "", delta: wow(playInc), tooltip: (
+                    <div className="text-a-ink-muted leading-relaxed">바이럴(배너) 소재는 조회수 대신 <span className="font-semibold text-a-ink">도달수</span>가 합산됩니다.</div>
+                  ) as React.ReactNode },
                   { label: "라라스윗 검색량 총합", value: searchTotalSum, color: "text-gray-600", suffix: "", delta: wow((lsSearchData ?? []).map(d => ({ date: d.date, v: d.value ?? 0 }))), tooltip: null as React.ReactNode },
                   { label: "B2B 발주량", value: b2bTotal, color: "text-green-600", suffix: "", delta: wow(b2bDaily.map(d => ({ date: d.date, v: b2bOrderOf(d) ?? 0 }))), tooltip: b2bTooltip },
                 ];
