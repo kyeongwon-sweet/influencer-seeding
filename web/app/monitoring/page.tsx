@@ -1318,23 +1318,24 @@ export default function MonitoringPage() {
   // 좋아요/댓글 수동 수정(post_daily_stats). measuredAt = 표에 보이는 측정일.
   async function patchStat(postId: string, measuredAt: string, field: "likes_count" | "comments_count", value: string) {
     if (!editCell) return;
-    if (!measuredAt) { setEditCell(null); return; }
     const num = value.trim() === "" ? null : Math.round(Number(value));
     if (num != null && Number.isNaN(num)) { toast("숫자를 입력하세요.", "error"); setEditCell(null); return; }
     const res = await fetch(`/api/sponsored-posts/${postId}/stats`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ measured_at: measuredAt, [field]: num }),
+      body: JSON.stringify(measuredAt ? { measured_at: measuredAt, [field]: num } : { [field]: num }),
     });
+    const data = await res.json().catch(() => ({} as { measured_at?: string; error?: string }));
     if (res.ok) {
+      const md = data?.measured_at ?? measuredAt;
       setPosts(prev => prev.map(p => {
         if (p.id !== postId) return p;
-        const all = (p.all_stats ?? []).map(st => st.measured_at === measuredAt ? { ...st, [field]: num } : st);
-        const latest = p.latest_stats && p.latest_stats.measured_at === measuredAt ? { ...p.latest_stats, [field]: num } : p.latest_stats;
+        const all = (p.all_stats ?? []).map(st => st.measured_at === md ? { ...st, [field]: num } : st);
+        const latest = p.latest_stats && p.latest_stats.measured_at === md ? { ...p.latest_stats, [field]: num } : p.latest_stats;
         return { ...p, all_stats: all, latest_stats: latest };
       }));
     } else {
-      toast("저장에 실패했습니다.", "error");
+      toast(data?.error ?? "저장에 실패했습니다.", "error");
     }
     setEditCell(null);
   }
@@ -2630,7 +2631,7 @@ export default function MonitoringPage() {
                       </TD>
                       <td style={{ minWidth: colWidths["좋아요"] }}
                         className="px-3 py-4 text-xs tabular-nums text-right whitespace-nowrap cursor-text text-a-ink-muted"
-                        onDoubleClick={() => s && editCell?.postId !== post.id && setEditCell({ postId: post.id, field: "likes_count", value: s.likes_count != null && s.likes_count >= 0 ? String(s.likes_count) : "", measuredAt: s.measured_at })}>
+                        onDoubleClick={() => s && setEditCell({ postId: post.id, field: "likes_count", value: s.likes_count != null && s.likes_count >= 0 ? String(s.likes_count) : "", measuredAt: s.measured_at })}>
                         {editCell?.postId === post.id && editCell?.field === "likes_count" ? (
                           <input autoFocus type="number" value={editCell.value}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
@@ -2645,7 +2646,7 @@ export default function MonitoringPage() {
                       </td>
                       <td style={{ minWidth: colWidths["댓글"] }}
                         className="px-3 py-4 text-xs tabular-nums text-right whitespace-nowrap cursor-text text-a-ink-muted"
-                        onDoubleClick={() => s && editCell?.postId !== post.id && setEditCell({ postId: post.id, field: "comments_count", value: s.comments_count != null && s.comments_count >= 0 ? String(s.comments_count) : "", measuredAt: s.measured_at })}>
+                        onDoubleClick={() => s && setEditCell({ postId: post.id, field: "comments_count", value: s.comments_count != null && s.comments_count >= 0 ? String(s.comments_count) : "", measuredAt: s.measured_at })}>
                         {editCell?.postId === post.id && editCell?.field === "comments_count" ? (
                           <input autoFocus type="number" value={editCell.value}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
