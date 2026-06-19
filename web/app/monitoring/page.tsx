@@ -2328,7 +2328,14 @@ export default function MonitoringPage() {
                   <TH w={colWidths["상품명"]} fixed onResize={e => startResize("상품명", e)} {...sp("상품명")}>상품명</TH>
                   <TH w={colWidths["프로젝트명"]} fixed onResize={e => startResize("프로젝트명", e)} {...sp("프로젝트명")}>프로젝트명</TH>
                   <TH right w={colWidths["비용"]} onResize={e => startResize("비용", e)} {...sp("비용")}>비용</TH>
-                  <TH right w={colWidths["조회수"]} onResize={e => startResize("조회수", e)} {...sp("조회수")}>조회수</TH>
+                  <TH right w={colWidths["조회수"]} onResize={e => startResize("조회수", e)} {...sp("조회수")}>
+                    <span className="group/views relative">
+                      조회수
+                      <div className="hidden group-hover/views:block absolute top-full right-0 mt-1.5 z-[9999] bg-white border border-a-hairline rounded-[10px] px-3 py-2 shadow-lg w-[210px] pointer-events-none text-left font-normal normal-case tracking-normal whitespace-normal text-[11px] text-a-ink-muted leading-relaxed">
+                        바이럴(배너) 소재는 조회수 대신 <span className="font-semibold text-a-ink">도달수</span>가 합산됩니다.
+                      </div>
+                    </span>
+                  </TH>
                   <TH right w={colWidths["조회당비용"]} onResize={e => startResize("조회당비용", e)} {...sp("조회당비용")}>
                     <span className="group/cpr relative">
                       조회당비용
