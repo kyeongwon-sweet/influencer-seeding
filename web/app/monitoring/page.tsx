@@ -2238,7 +2238,7 @@ export default function MonitoringPage() {
               <div ref={chartColRef} className="flex-1 min-w-0 self-start px-4 pt-1 pb-4">
                 <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
                   <div className="flex items-center gap-2">
-                    <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">조회수 트렌드 ({smooth ? "주별 합계" : "일별 증분"})</p>
+                    <p className="text-[16px] font-bold text-a-ink tracking-tight">조회수 트렌드 ({smooth ? "주별 합계" : "일별 증분"})</p>
                     <button type="button" onClick={() => setSmooth(v => !v)}
                       className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${smooth ? "bg-a-blue/10 border-a-blue/40 text-a-blue" : "border-a-hairline text-a-ink-muted hover:text-a-ink"}`}
                       title="주 단위(N월 N주차)로 묶어 합계로 표시">주별 합계</button>
