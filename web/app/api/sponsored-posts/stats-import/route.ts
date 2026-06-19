@@ -80,6 +80,12 @@ export async function POST(req: NextRequest) {
     (existing ?? []).map((e: Record<string, unknown>) => [String(e.url), e])
   );
 
+  // 🛡️ 비용(cost)이 조회수로 잘못 들어온 행 차단용: url → cost (기존 메타 우선, 없으면 시트 메타).
+  //    시트 날짜칸에 비용이 적힌 오염 데이터가 play_count로 적재돼 누적 그래프가 영구히 깨지는 것을 막는다.
+  const costByUrl = new Map<string, number>();
+  for (const [u, ex] of existingByUrl) { const c = Number(ex.cost); if (Number.isFinite(c) && c > 0) costByUrl.set(u, c); }
+  for (const [u, m] of postByUrl) { const c = Number(m.cost); if (Number.isFinite(c) && c > 0 && !costByUrl.has(u)) costByUrl.set(u, c); }
+
   // 2) 없는 광고만 신규 생성 (기존은 절대 건드리지 않음). 새로 만든 id를 매핑에 합침 → 재조회 불필요.
   let created = 0;
   const toCreate = [...postByUrl.values()].filter(p => !idByUrl.has(String(p.url)));
@@ -131,11 +137,14 @@ export async function POST(req: NextRequest) {
 
   // 3) 게시물 매칭 (미등록 URL은 건너뜀)
   const missing = new Set<string>();
+  const costAsViews: Array<{ url: string; date: string; value: number }> = [];
   const incoming: GuardInput[] = [];
   const postIdSet = new Set<string>();
   for (const it of items) {
     const pid = idByUrl.get(it.url);
     if (!pid) { missing.add(it.url); continue; }
+    // 🛡️ 조회수 == 그 게시물의 비용 → 비용이 조회수 칸에 잘못 들어온 오염으로 보고 제외
+    if (costByUrl.get(it.url) === it.play_count) { costAsViews.push({ url: it.url, date: it.measured_at, value: it.play_count }); continue; }
     incoming.push({ post_id: pid, measured_at: it.measured_at, play_count: it.play_count });
     postIdSet.add(pid);
   }
@@ -190,6 +199,8 @@ export async function POST(req: NextRequest) {
     ended_marked: endedMarked,
     dropped_decrease: droppedDecrease,
     dropped_sample: droppedSample,
+    cost_as_views: costAsViews.length,
+    cost_as_views_sample: costAsViews.slice(0, 10),
     matched_urls: [...new Set(items.map(i => i.url))].length - missing.size,
     missing_urls: missing.size,
     missing_sample: [...missing].slice(0, 5),
