@@ -369,6 +369,36 @@ function movingAvg<T extends Record<string, unknown>>(rows: T[], field: keyof T,
   });
 }
 
+// 주차 키: "YYYY-MM-DD" → "YYYY-MM-W" (W=해당 월의 주차, ceil(일/7)). 같은 주의 데이터는 같은 키.
+function weekKeyOf(date: string): string {
+  const [y, m, d] = date.split("T")[0].split("-");
+  return `${y}-${m}-${Math.ceil(parseInt(d, 10) / 7)}`;
+}
+// 주차 키 → "5월 3주차" 라벨.
+function weekLabelOf(key: string): string {
+  const [, m, w] = key.split("-");
+  return `${parseInt(m, 10)}월 ${w}주차`;
+}
+// 주단위 합계 버킷 — date를 주차 키로 묶어 지정 필드를 합산(전부 null이면 null). 입력은 날짜 오름차순 가정.
+function weeklySum<T extends Record<string, unknown>>(rows: T[], fields: (keyof T)[]): T[] {
+  const groups = new Map<string, T[]>();
+  const order: string[] = [];
+  for (const r of rows) {
+    const k = weekKeyOf(r["date"] as string);
+    const g = groups.get(k);
+    if (g) g.push(r); else { groups.set(k, [r]); order.push(k); }
+  }
+  return order.map(k => {
+    const grp = groups.get(k)!;
+    const out = { ...grp[0], date: k } as T;
+    for (const f of fields) {
+      const nums = grp.map(x => x[f] as number | null).filter((v): v is number => v != null);
+      (out as Record<string, unknown>)[f as string] = nums.length ? nums.reduce((a, b) => a + b, 0) : null;
+    }
+    return out;
+  });
+}
+
 // 피어슨 상관계수 (-1~1). 표본 2개 미만이거나 분산 0이면 null.
 function pearson(xs: number[], ys: number[]): number | null {
   const n = Math.min(xs.length, ys.length);
@@ -477,12 +507,13 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
   const [tipOtherOpen, setTipOtherOpen] = useState(false); // 툴팁 '그외' 토글
   const tooltipRef = useRef<HTMLDivElement>(null);
   const activeIdx = pinnedIdx ?? hoverIdx;
-  // 7일 이동평균 — 모든 시리즈에 한 곳에서 적용(원본 prop만 교체, 이하 계산은 그대로).
+  // 주별 합계 — 모든 시리즈를 같은 주차 키로 묶어 합산(원본 prop만 교체, 이하 계산은 그대로).
+  // date가 주차 키("YYYY-MM-W")로 바뀌므로 라벨/툴팁은 weekLabelOf로 표기, 시리즈 간 정렬은 그대로 키 일치.
   if (smooth) {
-    data = movingAvg(data, "value");
-    if (lsData) lsData = movingAvg(movingAvg(lsData, "ratio"), "value");
-    if (secondaryData) secondaryData = movingAvg(secondaryData, "value");
-    if (extraSeries) extraSeries = extraSeries.map(s => ({ ...s, members: s.members.map(m => ({ ...m, data: movingAvg(m.data, "value") })) }));
+    data = weeklySum(data, ["value"]);
+    if (lsData) lsData = weeklySum(lsData, ["ratio", "value"]);
+    if (secondaryData) secondaryData = weeklySum(secondaryData, ["value"]);
+    if (extraSeries) extraSeries = extraSeries.map(s => ({ ...s, members: s.members.map(m => ({ ...m, data: weeklySum(m.data, ["value"]) })) }));
   }
   if (data.length < 2) return <div className="flex items-center justify-center py-8 text-xs text-a-ink-muted">데이터 없음</div>;
   const pl = 38, pr = 6, pt = 4, pb = 30;
@@ -675,7 +706,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
           )}
           {xLabelIdxs.map(i => (
             <text key={i} x={xS(i)} y={ch + 14} textAnchor="middle" fontSize="7" fill={CHART.axis}>
-              {data[i].date.slice(5).replace("-", "/")}
+              {smooth ? weekLabelOf(data[i].date) : data[i].date.slice(5).replace("-", "/")}
             </text>
           ))}
         </g>
@@ -687,7 +718,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
           onMouseEnter={() => setPinnedIdx(activeIdx)}
           onMouseLeave={() => { setPinnedIdx(null); setHoverIdx(null); }}>
           {/* 1. 날짜 (검정 볼드) · 조회수 일별 증분 */}
-          <p className="font-bold text-a-ink mb-1">{data[activeIdx].date.replace(/-/g, ".")} · <span className="text-a-blue tabular-nums">조회수 +{data[activeIdx].value.toLocaleString()}</span></p>
+          <p className="font-bold text-a-ink mb-1">{smooth ? weekLabelOf(data[activeIdx].date) : data[activeIdx].date.replace(/-/g, ".")} · <span className="text-a-blue tabular-nums">조회수 +{data[activeIdx].value.toLocaleString()}</span></p>
           {/* 2. 라라스윗 검색량 */}
           {hoveredLsEntry?.value != null && (
             <a href={NAVER_DATALAB_URL} target="_blank" rel="noreferrer"
@@ -790,7 +821,7 @@ export default function MonitoringPage() {
   const [dateTooltip, setDateTooltip] = useState<{ date: string; x: number; y: number } | null>(null);
   const [b2bTip, setB2bTip] = useState<{ date: string; x: number; y: number } | null>(null);
   const [showOtherSeries, setShowOtherSeries] = useState(false); // 범례 '그외' 드롭다운(인스타·유튜브)
-  const [smooth, setSmooth] = useState(false); // 7일 이동평균(추세·상관 또렷하게)
+  const [smooth, setSmooth] = useState(false); // 주별 합계 보기(주차 버킷, N월 N주차)
   const [showCorr, setShowCorr] = useState(false); // 상관·시차 분석 패널
   const [chartCollapsed, setChartCollapsed] = useState(false); // 메인 그래프(차트+증감표) 접기 — 기본 펼침
   const [lsSearchData, setLsSearchData] = useState<{ date: string; ratio: number; value: number | null }[]>([]);
@@ -2207,10 +2238,10 @@ export default function MonitoringPage() {
               <div ref={chartColRef} className="flex-1 min-w-0 px-4 pt-1 pb-3">
                 <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
                   <div className="flex items-center gap-2">
-                    <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">조회수 트렌드 (일별 증분)</p>
+                    <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">조회수 트렌드 ({smooth ? "주별 합계" : "일별 증분"})</p>
                     <button type="button" onClick={() => setSmooth(v => !v)}
                       className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${smooth ? "bg-a-blue/10 border-a-blue/40 text-a-blue" : "border-a-hairline text-a-ink-muted hover:text-a-ink"}`}
-                      title="7일 이동평균으로 일별 노이즈를 줄여 추세·상관을 또렷하게">7일 평균</button>
+                      title="주 단위(N월 N주차)로 묶어 합계로 표시">주별 합계</button>
                     <button type="button" onClick={() => setShowCorr(v => !v)}
                       className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${showCorr ? "bg-a-blue/10 border-a-blue/40 text-a-blue" : "border-a-hairline text-a-ink-muted hover:text-a-ink"}`}
                       title="4개 지표의 상관계수와 광고비 선행효과(시차) 분석">상관분석</button>
@@ -2350,7 +2381,10 @@ export default function MonitoringPage() {
                   secondaryColor={CHART.secondary}
                   postsOnDate={(date) =>
                     filteredPosts
-                      .filter(p => p.posted_at?.slice(0, 10) === date)
+                      .filter(p => {
+                        const pd = p.posted_at?.slice(0, 10);
+                        return pd ? (smooth ? weekKeyOf(pd) === date : pd === date) : false;
+                      })
                       .map(p => ({ name: p.account_name ?? p.influencers?.name ?? '-', url: p.url }))
                   }
                 />
@@ -2481,7 +2515,7 @@ export default function MonitoringPage() {
               return (
                 <div className="px-6 pb-5 pt-4 border-t border-a-hairline">
                   <p className="text-xs font-semibold text-a-ink mb-3">
-                    상관 분석 <span className="font-normal text-a-ink-muted">· 선택 기간 일별 흐름{smooth ? " · 7일 평균" : ""}</span>
+                    상관 분석 <span className="font-normal text-a-ink-muted">· 선택 기간 일별 흐름</span>
                   </p>
 
                   {correlations.models.length > 0 && (
