@@ -1,11 +1,19 @@
 name: Daily Collect (Vercel 크론 대체)
 
 # Vercel 크론을 GitHub Actions로 이전(무료) — Vercel Hobby 다운그레이드용.
-# 00:00 KST(15:00 UTC) 클러스터: 채널/비용 동기화 → 전체 수집(run_monitoring) → 브랜드지표·유튜브트렌드·B2B.
+# 00:00 KST 목표 수집: 전체 수집(run_monitoring) → 브랜드지표·유튜브트렌드·B2B.
 # 협찬 수집은 run_monitoring.py로 직접 수행(IG+YT+틱톡+페북+스레드). Vercel 함수 시간제한 영향 없음.
+#
+# ⏱ GitHub 스케줄 지연 대응(2026-06-19):
+#   - 정각(:00)은 GitHub 부하 피크라 수 시간 지연됨 → 비혼잡 분(:41)으로 이동.
+#   - 15:41/17:41/19:41 UTC 3개 창으로 분산: 한 창이 늦어도 다음 창이 더 일찍 실행될 확률↑.
+#   - 게이트: '오늘(UTC) 이미 수집됨'이면 무거운 IG·유튜브 수집을 건너뜀 → 중복 Apify 과금 방지.
+#     (먼저 도는 창이 수집 → 이후 창은 스킵. measured_at은 기존 UTC 날짜 규칙 유지.)
 on:
   schedule:
-    - cron: "0 15 * * *"   # 00:00 KST
+    - cron: "41 15 * * *"   # 00:41 KST (주 실행)
+    - cron: "41 17 * * *"   # 02:41 KST (지연 백업)
+    - cron: "41 19 * * *"   # 04:41 KST (지연 백업)
   workflow_dispatch:
 
 jobs:
@@ -20,7 +28,46 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # 오늘(UTC) 데이터가 이미 있으면(IG + 유튜브) 이번 창은 무거운 수집을 건너뛴다.
+      # run_monitoring.py는 date.today()=runner UTC 날짜로 적재하므로 게이트도 UTC로 본다.
+      - name: Check today (UTC) data
+        id: check
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          export TODAY=$(date -u +%F)
+          STATUS=$(cd scripts && python << 'EOF' | tail -n1
+          import os
+          from db import get_client
+          db = get_client()
+          today = os.environ["TODAY"]
+          any_rows = db.table("post_daily_stats").select("id").eq("measured_at", today).limit(1).execute()
+          posts = db.table("sponsored_posts").select("id, url").execute()
+          yt_ids = [p["id"] for p in (posts.data or []) if "youtube.com" in (p["url"] or "") or "youtu.be" in (p["url"] or "")]
+          yt_ok = True
+          if yt_ids:
+              yr = db.table("post_daily_stats").select("post_id").eq("measured_at", today).in_("post_id", yt_ids).limit(1).execute()
+              yt_ok = bool(yr.data)
+          print("ok" if (any_rows.data and yt_ok) else "missing")
+          EOF
+          )
+          echo "오늘(UTC ${TODAY}) → ${STATUS}"
+          echo "status=${STATUS}" >> "$GITHUB_OUTPUT"
+
+      - name: Decide collect
+        id: decide
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ steps.check.outputs.status }}" = "missing" ]; then
+            echo "수집 진행(누락 또는 수동 실행)"
+            echo "go=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "이미 오늘 수집됨 → 이번 창 건너뜀"
+            echo "go=0" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: 협찬 전체 수집 (IG+YT+틱톡+페북+스레드)
+        if: steps.decide.outputs.go == '1'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -29,6 +76,7 @@ jobs:
         run: cd scripts && python run_monitoring.py
 
       - name: 브랜드 지표 (brand-metrics/collect)
+        if: steps.decide.outputs.go == '1'
         continue-on-error: true
         run: |
           curl -sS "${{ secrets.APP_URL }}/api/brand-metrics/collect" \
@@ -37,19 +85,23 @@ jobs:
       # 유튜브 트렌드: 키워드별 순차 실행(동시 실행 시 Google 차단·단일 run 시 1개 누락 회피).
       # kw=0 띄우고 ~14분 대기(액터 완료 후) → kw=1. 액터→webhook이 비동기로 DB 기록.
       - name: 유튜브 트렌드 키워드1 (kw=0)
+        if: steps.decide.outputs.go == '1'
         continue-on-error: true
         run: |
           curl -sS "${{ secrets.APP_URL }}/api/youtube-trends/collect?kw=0" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" -w "\nHTTP %{http_code}\n"
       - name: 액터 완료 대기 (동시 실행 회피)
+        if: steps.decide.outputs.go == '1'
         run: sleep 840
       - name: 유튜브 트렌드 키워드2 (kw=1)
+        if: steps.decide.outputs.go == '1'
         continue-on-error: true
         run: |
           curl -sS "${{ secrets.APP_URL }}/api/youtube-trends/collect?kw=1" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" -w "\nHTTP %{http_code}\n"
 
       - name: B2B 발주량 (b2b-revenue/fetch)
+        if: steps.decide.outputs.go == '1'
         continue-on-error: true
         run: |
           curl -sS "${{ secrets.APP_URL }}/api/b2b-revenue/fetch" \
