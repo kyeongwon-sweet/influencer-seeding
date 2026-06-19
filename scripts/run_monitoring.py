@@ -87,6 +87,38 @@ def _tt_id(url: str):
     return m.group(1) if m else None
 
 
+def _tt_canonical(url: str) -> str:
+    """틱톡 단축/비표준 URL(vt.tiktok.com 등)을 /video/ID 표준 URL로 해석. 이미 표준이면 그대로.
+    리다이렉트 Location 헤더만 따라가 본문 요청·차단을 피한다. 실패 시 원본 반환."""
+    if not url or _tt_id(url):
+        return url
+    import urllib.request, urllib.error, urllib.parse
+
+    class _NoFollow(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *args, **kwargs):
+            return None
+
+    opener = urllib.request.build_opener(_NoFollow)
+    cur = url
+    for _ in range(5):
+        try:
+            req = urllib.request.Request(cur, method="HEAD",
+                                         headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+            opener.open(req, timeout=10)
+            break  # 2xx 도달 — 더 이상 리다이렉트 없음
+        except urllib.error.HTTPError as e:
+            loc = e.headers.get("Location")
+            if not loc:
+                break
+            cur = urllib.parse.urljoin(cur, loc)
+            if _tt_id(cur):
+                return cur
+        except Exception as e:
+            print(f"  [WARN] 틱톡 단축 URL 해석 실패 {url}: {e}")
+            return url
+    return cur if _tt_id(cur) else url
+
+
 def _fetch_tiktok(urls: list) -> dict:
     """틱톡 영상 조회수 수집 (clockworks/tiktok-scraper). 반환: {video_id: {views,likes,comments}}"""
     from apify_client import ApifyClient
@@ -327,7 +359,9 @@ def run():
         tt_failed = False
         if tt_posts and not skip_apify:
             try:
-                tt_stats = _fetch_tiktok([p["url"] for p in tt_posts])
+                # 단축/비표준 URL(vt.tiktok.com 등)을 /video/ID 표준형으로 해석 → 결과 매칭 실패 방지
+                tt_canon = {p["url"]: _tt_canonical(p["url"]) for p in tt_posts}
+                tt_stats = _fetch_tiktok([tt_canon[p["url"]] for p in tt_posts])
                 got = sum(1 for s in tt_stats.values() if (s.get("views") or 0) > 0)
                 print(f"[LOG] 틱톡 수집: 실값 {got}건 / {len(tt_posts)}개 요청")
                 prev_res = db.table("post_daily_stats").select("post_id, play_count, likes_count, comments_count, measured_at").in_("post_id", [p["id"] for p in tt_posts]).lt("measured_at", TODAY).order("measured_at", desc=True).execute()
@@ -335,7 +369,7 @@ def run():
                 for r in (prev_res.data or []):
                     last_stat.setdefault(r["post_id"], r)
                 for post in tt_posts:
-                    s = tt_stats.get(_tt_id(post["url"]))
+                    s = tt_stats.get(_tt_id(tt_canon[post["url"]]))
                     play = s.get("views") if s else None
                     # 🛡️ 0/미반환은 접근불가 → 저장 안 함(0으로 덮어쓰면 누적 붕괴, 직전 값 유지)
                     if not play or play <= 0:
