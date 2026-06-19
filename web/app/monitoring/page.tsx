@@ -452,7 +452,7 @@ function solveLinear(A: number[][], b: number[]): number[] | null {
       for (let c = col; c <= n; c++) M[r][c] -= f * M[col][c];
     }
   }
-  return M.map((row, i) => row[n] / row[i][i]);
+  return M.map((row, i) => row[n] / row[i]); // row[i] = 대각원소 M[i][i] (소거 완료 후). 과거 row[i][i] 오타로 항상 NaN이었음
 }
 
 // 타깃 맵과 예측변수 맵들을 '모두 값이 있는 공통 날짜'로 정렬.
@@ -460,8 +460,9 @@ function alignMulti(target: Map<string, number>, preds: Map<string, number>[]): 
   const Y: number[] = [];
   const X: number[][] = preds.map(() => []);
   for (const [d, yv] of target) {
+    if (!Number.isFinite(yv)) continue;
     const vals = preds.map(m => m.get(d));
-    if (vals.every(v => v != null)) { Y.push(yv); vals.forEach((v, i) => X[i].push(v as number)); }
+    if (vals.every(v => v != null && Number.isFinite(v))) { Y.push(yv); vals.forEach((v, i) => X[i].push(v as number)); }
   }
   return { Y, X };
 }
@@ -487,7 +488,8 @@ function multipleR2(Y: number[], Xs: number[][]): number | null {
     ssr += (Y[i] - pred) ** 2; sst += (Y[i] - ybar) ** 2;
   }
   if (sst === 0) return null;
-  return Math.max(0, Math.min(1, 1 - ssr / sst));
+  const r2 = Math.max(0, Math.min(1, 1 - ssr / sst));
+  return Number.isFinite(r2) ? r2 : null;
 }
 
 function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData, secondaryData, secondaryColor = "#ea580c", extraSeries, hidePrimary, smooth }: {
@@ -516,7 +518,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
     if (extraSeries) extraSeries = extraSeries.map(s => ({ ...s, members: s.members.map(m => ({ ...m, data: weeklySum(m.data, ["value"]) })) }));
   }
   if (data.length < 2) return <div className="flex items-center justify-center py-8 text-xs text-a-ink-muted">데이터 없음</div>;
-  const pl = 38, pr = 6, pt = 4, pb = 30;
+  const pl = 38, pr = 18, pt = 4, pb = 30;
   const VW = 560, VH = height;
   const cw = VW - pl - pr, ch = VH - pt - pb;
   // 봉우리가 천장에 닿지 않게 상단 헤드룸 확보(12%). 하단(pb)은 x라벨 여유 위해 확대. (오버슛 클램프+overflow hidden 병행)
