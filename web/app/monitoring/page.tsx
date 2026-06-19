@@ -1213,7 +1213,7 @@ export default function MonitoringPage() {
   });
 
   function downloadCSV() {
-    const headers = ["인플루언서", "프로젝트명", "상품명", "채널분류", "유형", "게시일", "증분량", "조회수", "도달수", "비용(원)", "조회당비용(원)", "도달당비용(원)", "링크"];
+    const headers = ["업로드일", "인플루언서", "링크", "프로젝트명", "상품명", "채널분류", "유형", "증분량", "조회수", "도달수", "비용(원)", "조회당비용(원)", "도달당비용(원)"];
     const rows = sortedPosts.map(post => {
       const s = post.latest_stats;
       const play = s?.play_count ?? null;
@@ -1222,19 +1222,19 @@ export default function MonitoringPage() {
       const cpr = cost != null && play != null && play > 0 ? (cost / play).toFixed(2) : "";
       const cpreach = cost != null && reach != null && reach > 0 ? (cost / reach).toFixed(2) : "";
       return [
+        post.posted_at ?? "",
         post.account_name ?? post.influencers?.name ?? "",
+        post.url ?? "",
         post.project_name ?? "",
         post.product_name ?? "",
         post.channel_type ?? "",
         getPostType(post.url),
-        post.posted_at ?? "",
         (viewIncrement(post, s, post.prev_stats) ?? ""),
         play ?? "",
         reach ?? "",
         cost ?? "",
         cpr,
         cpreach,
-        post.url ?? "",
       ];
     });
     const csv = [headers, ...rows]
