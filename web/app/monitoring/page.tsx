@@ -1595,9 +1595,11 @@ export default function MonitoringPage() {
 
   // 증분량 합계 셀 복사 — 필터된 모든 게시물의 "계정명 \t 값(▲)" 목록.
   // 값: 영상=조회수, 배너=도달수 (정확한 값, 반올림/내림 없음).
+  // '종료'(ended_at) 처리된 게시물은 복사에서 제외.
   async function copyIncrementList() {
     const hasDate = filters.dateFrom || filters.dateTo;
     const lines = sortedPosts.map(post => {
+      if (post.ended_at) return null;
       const fs = hasDate ? getFilteredStats(post.all_stats ?? [], filters.dateFrom, filters.dateTo) : (post.all_stats ?? []);
       const s = fs.length > 0 ? fs[fs.length - 1] : post.latest_stats;
       const prev = hasDate ? (fs.length > 1 ? fs[fs.length - 2] : null) : post.prev_stats;
@@ -2674,14 +2676,16 @@ export default function MonitoringPage() {
                 {hasFilter && sortedPosts.length > 0 && (
                   <tr className="border-b-2 border-a-hairline bg-blue-50 text-xs font-semibold">
                     <td className="pl-3 pr-1 py-2.5 sticky z-10 bg-blue-50" style={{ left: 0, width: 36, minWidth: 36 }} />
-                    <td className="px-3 py-2.5 text-right tabular-nums sticky z-10 bg-blue-50 group/cp relative" style={{ left: stickyLefts["증분량"], width: stickyColWidths["증분량"], minWidth: stickyColWidths["증분량"] }}>
-                      <button type="button" onClick={copyIncrementList} title="필터된 계정·조회수/도달수 목록 복사"
-                        className="opacity-0 group-hover/cp:opacity-100 transition-opacity absolute left-1.5 top-1/2 -translate-y-1/2 text-a-ink-muted hover:text-a-blue">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                      </button>
-                      <span className={tableTotals.delta > 0 ? "text-red-500" : tableTotals.delta < 0 ? "text-emerald-600" : "text-gray-400"}>
-                        {tableTotals.delta > 0 ? "+" : ""}{tableTotals.delta.toLocaleString()}
-                      </span>
+                    <td className="px-3 py-2.5 tabular-nums sticky z-10 bg-blue-50 group/cp" style={{ left: stickyLefts["증분량"], width: stickyColWidths["증분량"], minWidth: stickyColWidths["증분량"] }}>
+                      <div className="flex items-center justify-end gap-2 whitespace-nowrap">
+                        <span className={tableTotals.delta > 0 ? "text-red-500" : tableTotals.delta < 0 ? "text-emerald-600" : "text-gray-400"}>
+                          {tableTotals.delta > 0 ? "+" : ""}{tableTotals.delta.toLocaleString()}
+                        </span>
+                        <button type="button" onClick={copyIncrementList} title="필터된 계정·조회수/도달수 목록 복사 (종료 게시물 제외)"
+                          className="opacity-0 group-hover/cp:opacity-100 transition-opacity flex-shrink-0 text-a-ink-muted hover:text-a-blue">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        </button>
+                      </div>
                     </td>
                     <td className="px-3 py-2.5 text-a-ink-muted whitespace-nowrap">합계 ({sortedPosts.length}건)</td>
                     <td />{/* 게시일 */}
