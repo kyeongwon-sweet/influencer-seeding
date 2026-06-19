@@ -50,12 +50,21 @@ export async function GET(req: NextRequest) {
   const supabase = getServerSupabase();
 
   // sponsored_posts 조회 (influencer_id가 NULL이므로 조인 불가)
-  const { data: posts, error: postsError } = await supabase
-    .from("sponsored_posts")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (postsError) return NextResponse.json({ error: postsError.message }, { status: 500 });
+  // 게시물도 페이지네이션으로 전부 조회 (Supabase 기본 1000행 상한 우회 — 게시물 1000개 초과 시 누락 방지)
+  const posts: any[] = [];
+  {
+    const PAGE = 1000;
+    for (let from = 0; ; from += PAGE) {
+      const { data: page, error: postsError } = await supabase
+        .from("sponsored_posts")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .range(from, from + PAGE - 1);
+      if (postsError) return NextResponse.json({ error: postsError.message }, { status: 500 });
+      posts.push(...(page ?? []));
+      if (!page || page.length < PAGE) break;
+    }
+  }
 
   // 모든 post_daily_stats를 페이지네이션으로 전부 조회 후 post별 그룹핑
   // (N+1 쿼리 방지 + Supabase 기본 1000행 상한으로 과거 데이터가 잘리는 문제 방지)
