@@ -1624,6 +1624,8 @@ export default function MonitoringPage() {
               }
             </button>
             {showChannelTypeDropdown && (
+              <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowChannelTypeDropdown(false)} />
               <div className="absolute top-full left-0 mt-1 bg-white border border-a-hairline rounded-[8px] shadow-lg z-50 w-48">
                 <div className="p-3 space-y-2 max-h-64 overflow-y-auto">
                   <label className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1.5 rounded text-xs">
@@ -1656,6 +1658,7 @@ export default function MonitoringPage() {
                   ))}
                 </div>
               </div>
+              </>
             )}
           </div>
           {pdOptions.length > 0 && (
@@ -1671,6 +1674,8 @@ export default function MonitoringPage() {
                   : `${filters.pdNames[0]} 외 ${filters.pdNames.length - 1}`}
               </button>
               {showPdDropdown && (
+                <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowPdDropdown(false)} />
                 <div className="absolute top-full left-0 mt-1 bg-white border border-a-hairline rounded-[8px] shadow-lg z-50 w-48">
                   <div className="p-3 space-y-2 max-h-64 overflow-y-auto">
                     <label className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1.5 rounded text-xs">
@@ -1692,6 +1697,7 @@ export default function MonitoringPage() {
                     ))}
                   </div>
                 </div>
+                </>
               )}
             </div>
           )}
