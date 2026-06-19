@@ -407,6 +407,59 @@ function bestLag(x: Map<string, number>, y: Map<string, number>, maxLag = 3): { 
   return best;
 }
 
+// 선형연립방정식 Ax=b 풀이 (가우스 소거, 부분 피벗). 특이행렬이면 null.
+function solveLinear(A: number[][], b: number[]): number[] | null {
+  const n = b.length;
+  const M = A.map((row, i) => [...row, b[i]]);
+  for (let col = 0; col < n; col++) {
+    let piv = col;
+    for (let r = col + 1; r < n; r++) if (Math.abs(M[r][col]) > Math.abs(M[piv][col])) piv = r;
+    if (Math.abs(M[piv][col]) < 1e-9) return null;
+    [M[col], M[piv]] = [M[piv], M[col]];
+    for (let r = 0; r < n; r++) {
+      if (r === col) continue;
+      const f = M[r][col] / M[col][col];
+      for (let c = col; c <= n; c++) M[r][c] -= f * M[col][c];
+    }
+  }
+  return M.map((row, i) => row[n] / row[i][i]);
+}
+
+// 타깃 맵과 예측변수 맵들을 '모두 값이 있는 공통 날짜'로 정렬.
+function alignMulti(target: Map<string, number>, preds: Map<string, number>[]): { Y: number[]; X: number[][] } {
+  const Y: number[] = [];
+  const X: number[][] = preds.map(() => []);
+  for (const [d, yv] of target) {
+    const vals = preds.map(m => m.get(d));
+    if (vals.every(v => v != null)) { Y.push(yv); vals.forEach((v, i) => X[i].push(v as number)); }
+  }
+  return { Y, X };
+}
+
+// 다중 회귀 결정계수 R² (여러 예측변수가 타깃을 함께 설명하는 정도 0~1). 표본 부족/특이면 null.
+function multipleR2(Y: number[], Xs: number[][]): number | null {
+  const n = Y.length, k = Xs.length;
+  if (k === 0 || n < k + 3) return null; // 예측변수 + 절편 + 최소 여유
+  const p = k + 1; // 절편 포함 열 수
+  const XtX = Array.from({ length: p }, () => new Array(p).fill(0));
+  const XtY = new Array(p).fill(0);
+  for (let i = 0; i < n; i++) {
+    const row = [1, ...Xs.map(c => c[i])];
+    for (let a = 0; a < p; a++) { XtY[a] += row[a] * Y[i]; for (let b = 0; b < p; b++) XtX[a][b] += row[a] * row[b]; }
+  }
+  const beta = solveLinear(XtX, XtY);
+  if (!beta) return null;
+  const ybar = Y.reduce((s, v) => s + v, 0) / n;
+  let ssr = 0, sst = 0;
+  for (let i = 0; i < n; i++) {
+    const row = [1, ...Xs.map(c => c[i])];
+    const pred = row.reduce((s, v, j) => s + v * beta[j], 0);
+    ssr += (Y[i] - pred) ** 2; sst += (Y[i] - ybar) ** 2;
+  }
+  if (sst === 0) return null;
+  return Math.max(0, Math.min(1, 1 - ssr / sst));
+}
+
 function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData, secondaryData, secondaryColor = "#ea580c", extraSeries, hidePrimary, smooth }: {
   data: { date: string; value: number }[];
   height?: number;
@@ -964,9 +1017,25 @@ export default function MonitoringPage() {
     for (let i = 0; i < names.length; i++)
       for (let j = i + 1; j < names.length; j++)
         pairs.push({ a: names[i], b: names[j], ...r(names[i], names[j]) });
+    // 유의미한(중간 이상 |r|≥0.4) 쌍만 강한 순으로 — 약한 상관은 숨겨 가독성 확보
+    const strongPairs = pairs
+      .filter(p => p.r != null && !Number.isNaN(p.r) && Math.abs(p.r) >= 0.4)
+      .sort((a, b) => Math.abs(b.r!) - Math.abs(a.r!));
+
+    // 다중 상관 — 여러 지표가 '조회수'·'B2B 발주량'을 함께 얼마나 설명하는지(R²)
+    const buildModel = (targetKey: string, target: Map<string, number>, predNames: string[]) => {
+      const preds = predNames.filter(n => names.includes(n));
+      const { Y, X } = alignMulti(target, preds.map(n => series[n]));
+      return { target: targetKey, preds, r2: multipleR2(Y, X), n: Y.length };
+    };
+    const models = [
+      buildModel("조회수", play, ["광고비", "검색량", "인스타방문", "유튜브검색"]),
+      buildModel("B2B 발주량", b2b, ["광고비", "검색량", "조회수"]),
+    ].filter(m => m.preds.length >= 2 && m.r2 != null);
+
     // 광고비 → 각 지표 선행효과(며칠 뒤 반응?)
     const lags = names.filter(n => n !== "광고비").map(b => ({ b, ...(bestLag(ad, series[b], 3) ?? { lag: 0, r: NaN }) }));
-    return { pairs, lags };
+    return { pairs: strongPairs, hiddenWeak: pairs.length - strongPairs.length, models, lags };
   }, [playDeltaData, lsSearchData, mainAdCosts, b2bDaily, b2bCategory, brandMetrics, ytTrends]);
 
   const deltaTableData = useMemo(() => {
@@ -2411,29 +2480,63 @@ export default function MonitoringPage() {
               const lagLabel = (lag: number) => lag === 0 ? "당일" : lag > 0 ? `${lag}일 뒤` : `${-lag}일 전`;
               return (
                 <div className="px-6 pb-5 pt-4 border-t border-a-hairline">
-                  <p className="text-xs font-semibold text-a-ink mb-2.5">
+                  <p className="text-xs font-semibold text-a-ink mb-3">
                     상관 분석 <span className="font-normal text-a-ink-muted">· 선택 기간 일별 흐름{smooth ? " · 7일 평균" : ""}</span>
                   </p>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-4">
-                    {correlations.pairs.map(p => (
-                      <div key={`${p.a}-${p.b}`} className="rounded-[10px] border border-a-hairline bg-white px-3 py-2.5" title={`표본 ${p.n}일`}>
-                        <div className="flex items-center justify-between gap-1.5 mb-1.5">
-                          <span className="text-[11px] text-a-ink-muted truncate">{p.a}<span className="mx-0.5 text-gray-300">↔</span>{p.b}</span>
-                          <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${badgeCls(p.r)}`}>{strength(p.r)}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-[17px] font-bold tabular-nums leading-none ${rColor(p.r)}`}>{fmtR(p.r)}</span>
-                          <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                            <div className="h-full rounded-full" style={{ width: `${absPct(p.r)}%`, backgroundColor: barColor(p.r) }} />
+
+                  {correlations.models.length > 0 && (
+                    <>
+                      <p className="text-[11px] font-semibold text-a-ink-muted mb-2">함께 보는 설명력 <span className="font-normal">· 여러 지표가 결합해 설명하는 정도(R²)</span></p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+                        {correlations.models.map(m => {
+                          const pct = Math.round((m.r2 ?? 0) * 100);
+                          const col = pct >= 50 ? "#16a34a" : pct >= 25 ? "#f59e0b" : "#cbd5e1";
+                          const tcol = pct >= 50 ? "text-green-600" : pct >= 25 ? "text-amber-500" : "text-gray-500";
+                          return (
+                            <div key={m.target} className="rounded-[10px] border border-a-hairline bg-white px-3.5 py-3" title={`표본 ${m.n}일`}>
+                              <div className="text-[11px] text-a-ink-muted mb-1.5 truncate">
+                                <span className="font-semibold text-a-ink">{m.target}</span> <span className="text-gray-300">←</span> {m.preds.join(" · ")}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className={`text-[18px] font-bold tabular-nums leading-none ${tcol}`}>{pct}%</span>
+                                <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                                  <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: col }} />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+
+                  <p className="text-[11px] font-semibold text-a-ink-muted mb-2">강한 1:1 상관 <span className="font-normal">· 중간 이상만(|r|≥0.4)</span></p>
+                  {correlations.pairs.length === 0 ? (
+                    <p className="text-xs text-a-ink-muted mb-1">선택 기간에 중간 이상(|r|≥0.4) 상관이 없어요.</p>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 mb-1">
+                      {correlations.pairs.map(p => (
+                        <div key={`${p.a}-${p.b}`} className="rounded-[10px] border border-a-hairline bg-white px-3 py-2.5" title={`표본 ${p.n}일`}>
+                          <div className="flex items-center justify-between gap-1.5 mb-1.5">
+                            <span className="text-[11px] text-a-ink-muted truncate">{p.a}<span className="mx-0.5 text-gray-300">↔</span>{p.b}</span>
+                            <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${badgeCls(p.r)}`}>{strength(p.r)}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[17px] font-bold tabular-nums leading-none ${rColor(p.r)}`}>{fmtR(p.r)}</span>
+                            <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                              <div className="h-full rounded-full" style={{ width: `${absPct(p.r)}%`, backgroundColor: barColor(p.r) }} />
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-xs font-semibold text-a-ink mb-2.5">
-                    광고비 선행효과 <span className="font-normal text-a-ink-muted">· 가장 강한 시차</span>
-                  </p>
-                  <div className="grid grid-cols-3 gap-2">
+                      ))}
+                    </div>
+                  )}
+                  {correlations.hiddenWeak > 0 && (
+                    <p className="text-[10px] text-a-ink-muted mb-4">약한 상관(|r|&lt;0.4) {correlations.hiddenWeak}개는 숨겼어요.</p>
+                  )}
+
+                  <p className="text-[11px] font-semibold text-a-ink-muted mb-2 mt-1">광고비 선행효과 <span className="font-normal">· 가장 강한 시차</span></p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
                     {correlations.lags.map(l => (
                       <div key={l.b} className="rounded-[10px] border border-a-hairline bg-white px-3 py-2.5">
                         <div className="text-[11px] text-a-ink-muted mb-1 truncate">광고비 <span className="text-gray-300">→</span> {l.b}</div>
@@ -2449,7 +2552,7 @@ export default function MonitoringPage() {
                     ))}
                   </div>
                   <p className="text-[10px] text-a-ink-muted mt-3 leading-relaxed">
-                    ※ 상관계수는 인과가 아닌 동행성을 뜻해요. <span className="text-green-600 font-medium">±0.7↑ 강함</span> · <span className="text-a-ink">±0.4↑ 중간</span>. 막대는 상관의 세기(절대값), 색은 방향(<span className="text-green-600">＋ 같이</span>/<span className="text-red-500">－ 반대</span>)예요. 선행효과는 광고비 집행이 며칠 뒤 해당 지표에 가장 강하게 동행하는지(−3~+3일)를 뜻해요.
+                    ※ <b>설명력(R²)</b>은 여러 지표가 함께 해당 결과의 변동을 몇 % 설명하는지예요(100%=완전). <b>상관계수</b>는 인과가 아닌 동행성으로 <span className="text-green-600 font-medium">±0.7↑ 강함</span>·<span className="text-a-ink">±0.4↑ 중간</span>, 막대는 세기(절대값), 색은 방향(<span className="text-green-600">＋같이</span>/<span className="text-red-500">－반대</span>). <b>선행효과</b>는 광고비 집행이 며칠 뒤 해당 지표에 가장 강하게 동행하는지(−3~+3일)예요.
                   </p>
                 </div>
               );
