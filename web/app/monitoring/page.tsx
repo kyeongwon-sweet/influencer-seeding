@@ -2235,7 +2235,7 @@ export default function MonitoringPage() {
             {/* 차트 + 테이블 */}
             <div className={`flex divide-x divide-a-hairline ${chartCollapsed ? "hidden" : ""}`}>
               {/* 차트 */}
-              <div ref={chartColRef} className="flex-1 min-w-0 px-4 pt-1 pb-3">
+              <div ref={chartColRef} className="flex-1 min-w-0 self-start px-4 pt-1 pb-4">
                 <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
                   <div className="flex items-center gap-2">
                     <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest">조회수 트렌드 ({smooth ? "주별 합계" : "일별 증분"})</p>
