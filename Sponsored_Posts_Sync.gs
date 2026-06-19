@@ -452,21 +452,21 @@ function checkSetup() {
 // ═══════════════════════════════════════════════════════════════
 function installDailyTrigger() {
   ScriptApp.getProjectTriggers()
-    .filter(t => t.getHandlerFunction() === "syncNew")
+    .filter(t => ["syncNew", "syncAll"].includes(t.getHandlerFunction()))
     .forEach(t => ScriptApp.deleteTrigger(t));
 
-  ScriptApp.newTrigger("syncNew")
+  ScriptApp.newTrigger("syncAll")
     .timeBased()
     .everyDays(1)
     .atHour(CONFIG.TRIGGER_HOUR)
     .nearMinute(CONFIG.TRIGGER_MINUTE)
     .create();
 
-  safeAlert_(`✅ 매일 오전 ${CONFIG.TRIGGER_HOUR}:${CONFIG.TRIGGER_MINUTE} (±15분) 자동 추가를 켰습니다.\n버튼 없이 신규 광고가 매일 자동으로 사이트에 추가됩니다.`);
+  safeAlert_(`✅ 매일 오전 ${CONFIG.TRIGGER_HOUR}:${CONFIG.TRIGGER_MINUTE} (±15분) 자동 추가를 켰습니다.\n버튼 없이 신규 광고 추가 + 시트에서 수정한 정보가 매일 자동 반영됩니다. (대시보드에서 직접 고친 항목은 보존)`);
 }
 
 function removeDailyTrigger() {
-  const triggers = ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === "syncNew");
+  const triggers = ScriptApp.getProjectTriggers().filter(t => ["syncNew", "syncAll"].includes(t.getHandlerFunction()));
   triggers.forEach(t => ScriptApp.deleteTrigger(t));
   safeAlert_(`⏹ 자동 추가를 껐습니다. (${triggers.length}개 트리거 제거)`);
 }

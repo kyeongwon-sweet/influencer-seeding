@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
   // 기존 게시물(id+메타) 조회 — '빈 값만 채우기' 비교용
   const { data: existing, error: ee } = await supabase
     .from("sponsored_posts")
-    .select(`id, url, ${META.join(", ")}`)
+    .select(`id, url, manual_fields, ${META.join(", ")}`)
     .in("url", rows.map(r => r.url));
   if (ee) return NextResponse.json({ error: ee.message }, { status: 500 });
   const existingByUrl = new Map<string, Record<string, unknown>>(
@@ -83,18 +83,19 @@ export async function POST(req: NextRequest) {
     created = (ins ?? []).length;
   }
 
-  // 기존 게시물 → 빈 필드만 시트 값으로 채움. 값이 있으면 유지(절대 안 지움) → 사이트 인라인 수정값 보존.
+  // 기존 게시물 → 비어있지 않은 시트 값으로 덮어씀(시트가 정본).
+  // 단, ① 대시보드에서 직접 수정한 필드(manual_fields)는 보존, ② 시트 값이 비면 기존 값 유지(지우지 않음).
   let metaFilled = 0;
   for (const r of rows) {
     const ex = existingByUrl.get(r.url);
     if (!ex) continue;
+    const manual = Array.isArray(ex.manual_fields) ? (ex.manual_fields as string[]) : [];
     const upd: Record<string, unknown> = {};
     for (const f of META) {
-      const cur = ex[f];
-      const curEmpty = cur === null || cur === undefined || cur === "";
+      if (manual.includes(f)) continue; // 수동 수정 필드 → 보존(덮지 않음)
       const val = (r as Record<string, unknown>)[f];
       const valPresent = val !== null && val !== undefined && val !== "";
-      if (curEmpty && valPresent) upd[f] = val;
+      if (valPresent) upd[f] = val; // 시트 값이 있으면 덮기 (비면 기존 유지)
     }
     if (Object.keys(upd).length > 0) {
       const { error: ue } = await supabase.from("sponsored_posts").update(upd).eq("id", String(ex.id));

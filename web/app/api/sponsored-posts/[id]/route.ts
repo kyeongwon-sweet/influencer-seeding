@@ -29,6 +29,17 @@ export async function PATCH(
   const supabase = getServerSupabase();
   const { error } = await supabase.from("sponsored_posts").update(updates).eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // 대시보드에서 직접 수정한 필드를 manual_fields에 누적 → 시트 자동 동기화가 덮어쓰지 않게 보존.
+  // (manual_fields 컬럼이 아직 없으면 graceful skip — 마이그레이션 전 호환)
+  const { data: cur, error: selErr } = await supabase
+    .from("sponsored_posts").select("manual_fields").eq("id", id).single();
+  if (!selErr) {
+    const manual = new Set<string>(((cur as { manual_fields?: string[] } | null)?.manual_fields) ?? []);
+    for (const k of Object.keys(updates)) manual.add(k);
+    await supabase.from("sponsored_posts").update({ manual_fields: [...manual] }).eq("id", id);
+  }
+
   return NextResponse.json({ ok: true });
 }
 
