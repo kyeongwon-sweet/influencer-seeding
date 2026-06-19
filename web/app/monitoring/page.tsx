@@ -2554,7 +2554,7 @@ export default function MonitoringPage() {
                           <div className="flex items-center justify-end gap-1.5 relative">
                             <span onClick={() => setEditPlayCount({ postId: post.id, value: String(s?.play_count ?? "") })}
                               className="text-a-ink-muted hover:text-a-blue transition-colors cursor-text">
-                              {fmt(s?.play_count)}
+                              {(post.channel_type ?? "").includes("배너") ? <span className="text-gray-300">-</span> : fmt(s?.play_count)}
                             </span>
                             {updatedPlayCounts.has(post.id) && (
                               <div
@@ -2573,7 +2573,7 @@ export default function MonitoringPage() {
                         )}
                       </td>
                       <TD right muted w={colWidths["조회당비용"]}>
-                        {post.cost != null && s?.play_count != null && s.play_count > 0
+                        {!(post.channel_type ?? "").includes("배너") && post.cost != null && s?.play_count != null && s.play_count > 0
                           ? (post.cost / s.play_count).toFixed(2) + "원"
                           : <span className="text-gray-300">-</span>}
                       </TD>
@@ -2588,12 +2588,14 @@ export default function MonitoringPage() {
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
                         ) : (
                           (() => {
-                            const eff = effectiveReach(post.reach_count, s?.play_count);
+                            const isBanner = (post.channel_type ?? "").includes("배너");
+                            // 배너=시트 일별 숫자(play_count)를 도달수로 1:1 사용. 그 외=reach_count(없으면 조회수×0.8 추정).
+                            const eff = isBanner ? (s?.play_count ?? null) : effectiveReach(post.reach_count, s?.play_count);
                             if (eff == null) return <span className="text-gray-300">-</span>;
-                            const isAuto = post.reach_count == null;
+                            const isAuto = !isBanner && post.reach_count == null;
                             return (
                               <span className={`hover:text-a-blue transition-colors ${isAuto ? "text-gray-400" : "text-a-ink-muted"}`}
-                                title={isAuto ? "조회수의 80% 자동 추정" : undefined}>
+                                title={isBanner ? "배너 도달수(시트 입력값)" : (isAuto ? "조회수의 80% 자동 추정" : undefined)}>
                                 {eff.toLocaleString()}
                               </span>
                             );
@@ -2602,7 +2604,8 @@ export default function MonitoringPage() {
                       </td>
                       <TD right muted w={colWidths["도달당비용"]}>
                         {(() => {
-                          const eff = effectiveReach(post.reach_count, s?.play_count);
+                          const isBanner = (post.channel_type ?? "").includes("배너");
+                          const eff = isBanner ? (s?.play_count ?? null) : effectiveReach(post.reach_count, s?.play_count);
                           return post.cost != null && eff != null && eff > 0
                             ? (post.cost / eff).toFixed(2) + "원"
                             : <span className="text-gray-300">-</span>;
