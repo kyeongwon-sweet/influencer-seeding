@@ -1213,7 +1213,7 @@ export default function MonitoringPage() {
   });
 
   function downloadCSV() {
-    const headers = ["인플루언서", "프로젝트명", "상품명", "채널분류", "유형", "게시일", "증분량", "조회수", "도달수", "비용(원)", "조회당비용(원)", "도달당비용(원)"];
+    const headers = ["인플루언서", "프로젝트명", "상품명", "채널분류", "유형", "게시일", "증분량", "조회수", "도달수", "비용(원)", "조회당비용(원)", "도달당비용(원)", "링크"];
     const rows = sortedPosts.map(post => {
       const s = post.latest_stats;
       const play = s?.play_count ?? null;
@@ -1234,6 +1234,7 @@ export default function MonitoringPage() {
         cost ?? "",
         cpr,
         cpreach,
+        post.url ?? "",
       ];
     });
     const csv = [headers, ...rows]
