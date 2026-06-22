@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import SidebarMemo from "./SidebarMemo";
 
 const MIN_W = 160, MAX_W = 360, DEFAULT_W = 200, COLLAPSED_W = 56;
 
@@ -136,7 +137,7 @@ export default function Sidebar() {
         </button>
       </div>
 
-      <nav className="flex-1 px-2.5 pt-1 pb-3 space-y-0.5 overflow-y-auto overflow-x-hidden">
+      <nav className="px-2.5 pt-1 pb-3 space-y-0.5 overflow-x-hidden shrink-0">
         {NAV.map(item => {
           const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
           return (
@@ -156,6 +157,11 @@ export default function Sidebar() {
           );
         })}
       </nav>
+
+      {/* 모니터링 페이지에선 사이드바 빈 공간에 팀 공유 메모를 기본 노출. 그 외엔 스페이서로 푸터를 하단 고정 */}
+      {!collapsed && pathname.startsWith("/monitoring")
+        ? <SidebarMemo />
+        : <div className="flex-1" />}
 
       {!collapsed && (
         <div className="px-5 py-4 border-t border-gray-100 shrink-0">
