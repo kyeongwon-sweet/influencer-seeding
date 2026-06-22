@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
       .from("sponsored_posts")
       .select(`id, url, manual_fields, ${META.join(", ")}`)
       .in("url", allUrls.slice(i, i + 80));
-    if (ee) return NextResponse.json({ error: ee.message }, { status: 500 });
+    if (ee) return NextResponse.json({ error: `[조회] ${ee.message} | code=${ee.code ?? ""} | details=${ee.details ?? ""} | hint=${ee.hint ?? ""}` }, { status: 500 });
     for (const e of (existing ?? []) as Array<Record<string, unknown>>) existingByUrl.set(String(e.url), e);
   }
 
@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
       .from("sponsored_posts")
       .upsert(toCreate, { onConflict: "url", ignoreDuplicates: true })
       .select("id");
-    if (ie) return NextResponse.json({ error: ie.message }, { status: 500 });
+    if (ie) return NextResponse.json({ error: `[신규생성] ${ie.message} | code=${ie.code ?? ""} | details=${ie.details ?? ""} | hint=${ie.hint ?? ""}` }, { status: 500 });
     created = (ins ?? []).length;
   }
 
