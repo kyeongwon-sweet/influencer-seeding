@@ -313,7 +313,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
             <circle key={`xdot-${si}-${di}`} cx={d[0]} cy={d[1]} r={2.2} fill={s.color} />
           )))}
           {!hidePrimary && (
-            <path d={linePath} fill="none" stroke={CHART.primary} strokeWidth="2.5"
+            <path d={linePath} fill="none" stroke={CHART.primary} strokeWidth="2"
               strokeLinejoin="round" strokeLinecap="round" />
           )}
           {secondaryPath && (
