@@ -642,14 +642,28 @@ export default function MonitoringPage() {
     }));
   }, [chartData]);
 
+  // 오늘(KST) 수집 '완료' 판정 — 오늘 실수집 게시물 수가 어제의 80% 이상이면 정기수집이 끝난 걸로 보고 오늘을 그래프/증감표에 포함.
+  // (소수 게시물만 적재된 부분 상태는 제외: 합계 그래프가 오늘만 뚝 떨어져 보이는 왜곡 방지)
+  const todayComplete = useMemo(() => {
+    const todayKST = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const yKey = new Date(new Date(todayKST + "T00:00:00Z").getTime() - 86400000).toISOString().slice(0, 10);
+    let todayN = 0, yN = 0;
+    for (const p of filteredPosts) {
+      const all = p.all_stats ?? [];
+      if (all.some(s => s.measured_at === todayKST && s.play_count != null)) todayN++;
+      if (all.some(s => s.measured_at === yKey && s.play_count != null)) yN++;
+    }
+    return yN > 0 && todayN >= yN * 0.8;
+  }, [filteredPosts]);
+
   // 메인 그래프 조회수 선 = 일별 증분(누적 아님). 광고비·검색량·B2B 와 같은 '하루치 흐름'으로 맞춰 상관관계가 보이게 함.
   // dailyTotals(전일 forward-fill + 단조보정)에서 파생 → 일자별 증감 표의 '조회수' 값과 정확히 일치.
   const playDeltaData = useMemo(() => {
     const todayKST = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
     return dailyTotals.slice(1)
       .map((d, i) => ({ date: d.date, value: d.play - dailyTotals[i].play }))
-      .filter(d => d.date < todayKST); // 오늘(수집 중)은 미완성이라 제외
-  }, [dailyTotals]);
+      .filter(d => d.date < todayKST || (d.date === todayKST && todayComplete)); // 오늘은 수집 완료 시에만 포함
+  }, [dailyTotals, todayComplete]);
 
   // 상관·시차 분석: 4개 일별 흐름(광고비·조회수증분·검색량·B2B)의 공통 날짜에서 피어슨 상관 + 최적 시차.
   const correlations = useMemo(() => {
@@ -716,8 +730,8 @@ export default function MonitoringPage() {
       play:     d.play     - dailyTotals[i].play,
       search:   lsSearchDelta(d.date),
       comments: d.comments - dailyTotals[i].comments,
-    })).filter(d => d.date < todayKST);
-  }, [dailyTotals, lsSearchData]);
+    })).filter(d => d.date < todayKST || (d.date === todayKST && todayComplete)); // 오늘은 수집 완료 시에만 포함
+  }, [dailyTotals, lsSearchData, todayComplete]);
 
   // 날짜별 채널타입(바이럴/협찬) 조회수 증분 — forward-fill 적용
   const typeBreakdownByDate = useMemo(() => {
