@@ -5,7 +5,7 @@ import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
 import { platformLabel } from "@/lib/platform";
 
-const PLATFORMS = ["인스타그램", "유튜브", "블로그", "틱톡", "스레드"];
+const PLATFORMS = ["인스타그램", "유튜브", "블로그", "틱톡", "스레드", "트위터"];
 
 // DB에 영문으로 저장된 플랫폼값 → 한글 정규화
 const PLATFORM_KO: Record<string, string> = {
@@ -14,6 +14,8 @@ const PLATFORM_KO: Record<string, string> = {
   blog: "블로그",
   tiktok: "틱톡",
   threads: "스레드",
+  twitter: "트위터",
+  x: "트위터",
 };
 function normPlatform(p: string): string {
   return PLATFORM_KO[p.toLowerCase()] ?? p;
