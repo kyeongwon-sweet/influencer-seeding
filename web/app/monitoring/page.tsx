@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
+import MemoPanel from "./MemoPanel";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
 import { MIN_ENTRY_DATE, maxDateKST, isValidEntryDate } from "@/lib/dateRule";
 import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, INIT_FILTERS, POST_TYPES, CHANNEL_TYPES, CATEGORIES, STICKY_COL_ORDER, PROJECT_PARSE_COLS, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, isStatInDateRange, getFilteredStats, fmt, formatTimestamp, normalizeChannelType, updatePostLatestStats, getPostType, getThumbnailUrl, isRecentPost, hasNotableChange, getCategoryLabel, viewIncrement, pickMetric, parseProjectName, pdOf, smoothCurvePath, productLabel, effectiveReach, padDomain, movingAvg, weekKeyOf, weekLabelOf, weeklySum, pearson, alignedPairs, bestLag, solveLinear, alignMulti, multipleR2 } from "./lib";
@@ -1725,7 +1726,7 @@ export default function MonitoringPage() {
                 className={`filter-select ${filters.pdNames.length > 0 ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
               >
                 {filters.pdNames.length === 0
-                  ? "전체 PD/디자이너"
+                  ? "PD/디자이너"
                   : filters.pdNames.length === 1
                   ? filters.pdNames[0]
                   : `${filters.pdNames[0]} 외 ${filters.pdNames.length - 1}`}
@@ -2969,6 +2970,7 @@ export default function MonitoringPage() {
         </div>
       )}
       <ToastContainer toasts={toasts} />
+      <MemoPanel />
     </div>
   );
 }
