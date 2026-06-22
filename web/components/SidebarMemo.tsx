@@ -1,19 +1,40 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 
-type Memo = { id: string; content: string; author: string | null; created_at: string; updated_at: string };
+type Memo = { id: string; content: string; author: string | null; image?: string | null; created_at: string; updated_at: string };
 
 function fmtTime(iso: string): string {
   const k = new Date(new Date(iso).getTime() + 9 * 3600 * 1000); // KST
   return `${k.getUTCMonth() + 1}/${k.getUTCDate()} ${String(k.getUTCHours()).padStart(2, "0")}:${String(k.getUTCMinutes()).padStart(2, "0")}`;
 }
 
+// 붙여넣은 이미지를 작게 축소해 data URI로. (가로/세로 최대 480px, JPEG) — DB 인라인 저장용
+async function resizeToDataUrl(file: File, max = 480, quality = 0.72): Promise<string> {
+  const bmp = await createImageBitmap(file);
+  const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const w = Math.max(1, Math.round(bmp.width * scale)), h = Math.max(1, Math.round(bmp.height * scale));
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  c.getContext("2d")!.drawImage(bmp, 0, 0, w, h);
+  bmp.close?.();
+  return c.toDataURL("image/jpeg", quality);
+}
+
 // 사이드바에 고정 노출되는 팀 공유 메모(포스트잇). /api/memos 사용.
 export default function SidebarMemo() {
   const [memos, setMemos] = useState<Memo[]>([]);
   const [draft, setDraft] = useState("");
+  const [draftImg, setDraftImg] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
   const [err, setErr] = useState(false);
+
+  async function onPaste(e: React.ClipboardEvent) {
+    const item = Array.from(e.clipboardData.items).find(i => i.type.startsWith("image/"));
+    if (!item) return;
+    const file = item.getAsFile();
+    if (!file) return;
+    e.preventDefault();
+    try { setDraftImg(await resizeToDataUrl(file)); } catch { setErr(true); }
+  }
 
   const load = useCallback(async () => {
     try {
@@ -30,10 +51,11 @@ export default function SidebarMemo() {
 
   async function add() {
     const content = draft.trim();
-    if (!content) return;
-    setDraft("");
-    const r = await fetch("/api/memos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content }) });
-    if (r.ok) { const m = await r.json(); setMemos(prev => [m, ...prev]); } else { setDraft(content); setErr(true); }
+    if (!content && !draftImg) return;
+    const img = draftImg;
+    setDraft(""); setDraftImg(null);
+    const r = await fetch("/api/memos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content, image: img }) });
+    if (r.ok) { const m = await r.json(); setMemos(prev => [m, ...prev]); } else { setDraft(content); setDraftImg(img); setErr(true); }
   }
   async function del(id: string) {
     setMemos(prev => prev.filter(x => x.id !== id));
@@ -70,6 +92,10 @@ export default function SidebarMemo() {
               <p onClick={() => setEditing({ id: m.id, text: m.content })}
                 className="text-[12px] text-a-ink whitespace-pre-wrap break-words leading-snug cursor-text">{m.content}</p>
             )}
+            {m.image && (
+              <img src={m.image} alt="첨부 이미지" onClick={() => window.open(m.image!, "_blank")}
+                className="mt-1 max-h-28 w-auto rounded border border-amber-200 object-contain cursor-zoom-in" />
+            )}
             <div className="flex items-center justify-between mt-1 gap-1">
               <span className="text-[10px] text-amber-700/55 truncate">{m.author || "익명"} · {fmtTime(m.created_at)}</span>
               <button onClick={() => del(m.id)} title="삭제"
@@ -80,9 +106,16 @@ export default function SidebarMemo() {
       </div>
 
       <div className="shrink-0 p-2.5">
-        <textarea value={draft} onChange={e => setDraft(e.target.value)}
+        {draftImg && (
+          <div className="relative inline-block mb-1">
+            <img src={draftImg} alt="붙여넣은 이미지" className="max-h-16 w-auto rounded border border-gray-200" />
+            <button onClick={() => setDraftImg(null)} title="이미지 제거"
+              className="absolute -top-1.5 -right-1.5 w-4 h-4 grid place-items-center rounded-full bg-gray-700 hover:bg-gray-900 text-white text-[10px] leading-none">×</button>
+          </div>
+        )}
+        <textarea value={draft} onChange={e => setDraft(e.target.value)} onPaste={onPaste}
           onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) add(); }}
-          placeholder="메모… (⌘/Ctrl+Enter)"
+          placeholder="메모… (이미지 붙여넣기 가능 · ⌘/Ctrl+Enter)"
           className="w-full text-[12px] text-a-ink bg-white border border-gray-200 rounded-[7px] px-2 py-1.5 resize-none outline-none focus:border-amber-400 leading-snug" rows={2} />
         <button onClick={add} disabled={!draft.trim()}
           className="mt-1 w-full text-[11px] font-medium bg-amber-300 hover:bg-amber-400 disabled:opacity-40 text-amber-900 rounded-[6px] py-1 transition-colors">추가</button>
