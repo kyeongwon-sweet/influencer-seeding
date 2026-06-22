@@ -2203,16 +2203,16 @@ export default function MonitoringPage() {
               const lagLabel = (lag: number) => lag === 0 ? "당일" : lag > 0 ? `${lag}일 뒤` : `${-lag}일 전`;
               return (
                 <div className="px-6 pb-5 pt-4 border-t border-a-hairline">
-                  <p className="text-xs font-semibold text-a-ink mb-1.5">
+                  <p className="text-base font-semibold text-a-ink mb-1.5">
                     상관 분석 <span className="font-normal text-a-ink-muted">· 선택 기간 일별 흐름</span>
                   </p>
-                  <p className="text-[10px] text-a-ink-muted mb-3 leading-relaxed">
+                  <p className="text-[12px] text-a-ink-muted mb-3 leading-relaxed">
                     ※ <b>설명력(R²)</b>은 여러 지표가 함께 해당 결과의 변동을 몇 % 설명하는지예요(100%=완전). <b>상관계수</b>는 인과가 아닌 동행성으로 <span className="text-green-600 font-medium">±0.7↑ 강함</span>·<span className="text-a-ink">±0.4↑ 중간</span>, 막대는 세기(절대값), 색은 방향(<span className="text-green-600">＋같이</span>/<span className="text-red-500">－반대</span>). <b>선행효과</b>는 광고비 집행이 며칠 뒤 해당 지표에 가장 강하게 동행하는지(−3~+3일)예요.
                   </p>
 
                   {correlations.models.length > 0 && (
                     <>
-                      <p className="text-[11px] font-semibold text-a-ink-muted mb-2">함께 보는 설명력 <span className="font-normal">· 여러 지표가 결합해 설명하는 정도(R²)</span></p>
+                      <p className="text-[13px] font-semibold text-a-ink-muted mb-2">함께 보는 설명력 <span className="font-normal">· 여러 지표가 결합해 설명하는 정도(R²)</span></p>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
                         {correlations.models.map(m => {
                           const pct = Math.round((m.r2 ?? 0) * 100);
@@ -2220,11 +2220,11 @@ export default function MonitoringPage() {
                           const tcol = pct >= 50 ? "text-green-600" : pct >= 25 ? "text-amber-500" : "text-gray-500";
                           return (
                             <div key={m.target} className="rounded-[10px] border border-a-hairline bg-white px-3.5 py-3" title={`표본 ${m.n}일`}>
-                              <div className="text-[11px] text-a-ink-muted mb-1.5 truncate">
+                              <div className="text-[13px] text-a-ink-muted mb-1.5 truncate">
                                 <span className="font-semibold text-a-ink">{m.target}</span> <span className="text-gray-300">←</span> {m.preds.join(" · ")}
                               </div>
                               <div className="flex items-center gap-2">
-                                <span className={`text-[18px] font-bold tabular-nums leading-none ${tcol}`}>{pct}%</span>
+                                <span className={`text-[22px] font-bold tabular-nums leading-none ${tcol}`}>{pct}%</span>
                                 <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
                                   <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: col }} />
                                 </div>
@@ -2236,19 +2236,19 @@ export default function MonitoringPage() {
                     </>
                   )}
 
-                  <p className="text-[11px] font-semibold text-a-ink-muted mb-2">강한 1:1 상관 <span className="font-normal">· 중간 이상만(|r|≥0.4)</span></p>
+                  <p className="text-[13px] font-semibold text-a-ink-muted mb-2">강한 1:1 상관 <span className="font-normal">· 중간 이상만(|r|≥0.4)</span></p>
                   {correlations.pairs.length === 0 ? (
-                    <p className="text-xs text-a-ink-muted mb-1">선택 기간에 중간 이상(|r|≥0.4) 상관이 없어요.</p>
+                    <p className="text-[13px] text-a-ink-muted mb-1">선택 기간에 중간 이상(|r|≥0.4) 상관이 없어요.</p>
                   ) : (
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 mb-1">
                       {correlations.pairs.map(p => (
                         <div key={`${p.a}-${p.b}`} className="rounded-[10px] border border-a-hairline bg-white px-3 py-2.5" title={`표본 ${p.n}일`}>
                           <div className="flex items-center justify-between gap-1.5 mb-1.5">
-                            <span className="text-[11px] text-a-ink-muted truncate">{p.a}<span className="mx-0.5 text-gray-300">↔</span>{p.b}</span>
-                            <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${badgeCls(p.r)}`}>{strength(p.r)}</span>
+                            <span className="text-[13px] text-a-ink-muted truncate">{p.a}<span className="mx-0.5 text-gray-300">↔</span>{p.b}</span>
+                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${badgeCls(p.r)}`}>{strength(p.r)}</span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className={`text-[17px] font-bold tabular-nums leading-none ${rColor(p.r)}`}>{fmtR(p.r)}</span>
+                            <span className={`text-[20px] font-bold tabular-nums leading-none ${rColor(p.r)}`}>{fmtR(p.r)}</span>
                             <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
                               <div className="h-full rounded-full" style={{ width: `${absPct(p.r)}%`, backgroundColor: barColor(p.r) }} />
                             </div>
@@ -2258,20 +2258,20 @@ export default function MonitoringPage() {
                     </div>
                   )}
                   {correlations.hiddenWeak > 0 && (
-                    <p className="text-[10px] text-a-ink-muted mb-4">약한 상관(|r|&lt;0.4) {correlations.hiddenWeak}개는 숨겼어요.</p>
+                    <p className="text-[12px] text-a-ink-muted mb-4">약한 상관(|r|&lt;0.4) {correlations.hiddenWeak}개는 숨겼어요.</p>
                   )}
 
-                  <p className="text-[11px] font-semibold text-a-ink-muted mb-2 mt-1">광고비 선행효과 <span className="font-normal">· 가장 강한 시차</span></p>
+                  <p className="text-[13px] font-semibold text-a-ink-muted mb-2 mt-1">광고비 선행효과 <span className="font-normal">· 가장 강한 시차</span></p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
                     {correlations.lags.map(l => (
                       <div key={l.b} className="rounded-[10px] border border-a-hairline bg-white px-3 py-2.5">
-                        <div className="text-[11px] text-a-ink-muted mb-1 truncate">광고비 <span className="text-gray-300">→</span> {l.b}</div>
+                        <div className="text-[13px] text-a-ink-muted mb-1 truncate">광고비 <span className="text-gray-300">→</span> {l.b}</div>
                         {Number.isNaN(l.r) ? (
-                          <span className="text-xs text-a-ink-muted">표본 부족</span>
+                          <span className="text-[13px] text-a-ink-muted">표본 부족</span>
                         ) : (
                           <div className="flex items-baseline gap-1.5">
-                            <span className="text-[15px] font-bold text-a-ink leading-none">{lagLabel(l.lag)}</span>
-                            <span className={`text-xs font-medium tabular-nums ${rColor(l.r)}`}>{fmtR(l.r)}</span>
+                            <span className="text-[17px] font-bold text-a-ink leading-none">{lagLabel(l.lag)}</span>
+                            <span className={`text-[13px] font-medium tabular-nums ${rColor(l.r)}`}>{fmtR(l.r)}</span>
                           </div>
                         )}
                       </div>
