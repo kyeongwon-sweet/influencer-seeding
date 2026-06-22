@@ -2408,7 +2408,7 @@ export default function MonitoringPage() {
               <tbody>
                 {/* 필터 선택 시: 헤더 바로 아래 합계 행 (증분량·비용·조회수 합계 / 조회당비용은 합계 안 함) */}
                 {hasFilter && sortedPosts.length > 0 && (
-                  <tr className="border-b-2 border-a-hairline bg-blue-50 text-xs font-semibold">
+                  <tr className="border-y-2 border-a-blue/30 bg-blue-50 text-xs font-semibold">
                     <td className="pl-3 pr-1 py-2.5 sticky z-10 bg-blue-50" style={{ left: 0, width: 36, minWidth: 36 }} />
                     <td className="px-3 py-2.5 tabular-nums sticky z-10 bg-blue-50 group/cp" style={{ left: stickyLefts["증분량"], width: stickyColWidths["증분량"], minWidth: stickyColWidths["증분량"] }}>
                       <div className="flex items-center justify-end gap-2 whitespace-nowrap">
@@ -2468,7 +2468,7 @@ export default function MonitoringPage() {
                       </td>
                       <TD col="증분량" w={stickyColWidths["증분량"]} leftPos={stickyLefts["증분량"]} right highlighted={hl}>
                         {(() => {
-                          if (viewIncrement(post, s, prev) == null) return <span className="text-gray-300">-</span>;
+                          if (viewIncrement(post, s, prev) == null) return <span className="text-gray-300">—</span>;
                           const delta = viewIncrement(post, s, prev) ?? 0;
                           return (
                             <span className={`font-semibold ${delta > 0 ? "text-red-500" : delta < 0 ? "text-blue-600" : "text-gray-300"}`}>
@@ -2585,7 +2585,7 @@ export default function MonitoringPage() {
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
                         ) : (
                           <span className="text-a-ink-muted hover:text-a-blue transition-colors">
-                            {post.cost != null ? post.cost.toLocaleString() + "원" : <span className="text-gray-300">-</span>}
+                            {post.cost != null ? post.cost.toLocaleString() + "원" : <span className="text-gray-300">—</span>}
                           </span>
                         )}
                       </td>
@@ -2601,7 +2601,7 @@ export default function MonitoringPage() {
                           <div className="flex items-center justify-end gap-1.5 relative">
                             <span onClick={() => setEditPlayCount({ postId: post.id, value: String(s?.play_count ?? "") })}
                               className="text-a-ink-muted hover:text-a-blue transition-colors cursor-text">
-                              {(post.channel_type ?? "").includes("배너") ? <span className="text-gray-300">-</span> : fmt(s?.play_count)}
+                              {(post.channel_type ?? "").includes("배너") ? <span className="text-gray-300">—</span> : fmt(s?.play_count)}
                             </span>
                             {updatedPlayCounts.has(post.id) && (
                               <div
@@ -2622,7 +2622,7 @@ export default function MonitoringPage() {
                       <TD right muted w={colWidths["조회당비용"]}>
                         {!(post.channel_type ?? "").includes("배너") && post.cost != null && s?.play_count != null && s.play_count > 0
                           ? (post.cost / s.play_count).toFixed(2) + "원"
-                          : <span className="text-gray-300">-</span>}
+                          : <span className="text-gray-300">—</span>}
                       </TD>
                       <td style={{ minWidth: colWidths["도달수"] }}
                         className="px-3 py-4 text-xs tabular-nums text-right whitespace-nowrap cursor-text"
@@ -2638,7 +2638,7 @@ export default function MonitoringPage() {
                             const isBanner = (post.channel_type ?? "").includes("배너");
                             // 배너=시트 일별 숫자(play_count)를 도달수로 1:1 사용. 그 외=reach_count(없으면 조회수×0.8 추정).
                             const eff = isBanner ? (s?.play_count ?? null) : effectiveReach(post.reach_count, s?.play_count);
-                            if (eff == null) return <span className="text-gray-300">-</span>;
+                            if (eff == null) return <span className="text-gray-300">—</span>;
                             const isAuto = !isBanner && post.reach_count == null;
                             return (
                               <span className={`hover:text-a-blue transition-colors ${isAuto ? "text-gray-400" : "text-a-ink-muted"}`}
@@ -2655,7 +2655,7 @@ export default function MonitoringPage() {
                           const eff = isBanner ? (s?.play_count ?? null) : effectiveReach(post.reach_count, s?.play_count);
                           return post.cost != null && eff != null && eff > 0
                             ? (post.cost / eff).toFixed(2) + "원"
-                            : <span className="text-gray-300">-</span>;
+                            : <span className="text-gray-300">—</span>;
                         })()}
                       </TD>
                       <TD muted w={colWidths["캡션"]} fixed>
@@ -2675,7 +2675,7 @@ export default function MonitoringPage() {
                             className="text-xs cursor-text text-a-ink-muted hover:text-a-ink transition-colors block"
                             style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                           >
-                            {post.content_summary || <span className="text-gray-300">-</span>}
+                            {post.content_summary || <span className="text-gray-300">—</span>}
                           </span>
                         )}
                       </TD>
@@ -2689,7 +2689,7 @@ export default function MonitoringPage() {
                             onKeyDown={e => { if (e.key === "Enter") patchStat(post.id, editCell.measuredAt ?? "", "likes_count", editCell.value); if (e.key === "Escape") { e.preventDefault(); setEditCell(null); }; }}
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
                         ) : (
-                          s?.likes_count == null ? <span className="text-gray-300">-</span>
+                          s?.likes_count == null ? <span className="text-gray-300">—</span>
                             : s.likes_count < 0 ? <span className="text-gray-400 text-[11px]" title="작성자가 좋아요 수를 숨김 (더블클릭해 수동 입력)">비공개</span>
                             : s.likes_count.toLocaleString()
                         )}
@@ -2704,7 +2704,7 @@ export default function MonitoringPage() {
                             onKeyDown={e => { if (e.key === "Enter") patchStat(post.id, editCell.measuredAt ?? "", "comments_count", editCell.value); if (e.key === "Escape") { e.preventDefault(); setEditCell(null); }; }}
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
                         ) : (
-                          s?.comments_count == null ? <span className="text-gray-300">-</span>
+                          s?.comments_count == null ? <span className="text-gray-300">—</span>
                             : s.comments_count < 0 ? <span className="text-gray-400 text-[11px]" title="댓글 비공개/사용 안 함 (더블클릭해 수동 입력)">비공개</span>
                             : s.comments_count.toLocaleString()
                         )}
@@ -2728,7 +2728,7 @@ export default function MonitoringPage() {
                             onClick={() => setEditCell({ postId: post.id, field: "notes", value: post.notes ?? "" })}
                             className="text-xs cursor-text text-a-ink-muted hover:text-a-ink transition-colors line-clamp-2 block"
                           >
-                            {post.notes || <span className="text-gray-300">-</span>}
+                            {post.notes || <span className="text-gray-300">—</span>}
                           </span>
                         )}
                       </td>
