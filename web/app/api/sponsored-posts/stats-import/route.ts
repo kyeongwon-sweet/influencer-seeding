@@ -157,24 +157,33 @@ export async function POST(req: NextRequest) {
 
   // 4) 기존 post_daily_stats 조회 (누적 감소 판정 기준) — 페이지네이션으로 전량
   const existingStats: GuardInput[] = [];
+  const manualSet = new Set<string>(); // 대시보드에서 수동수정된 (post_id|measured_at) → 동기화가 덮지 않고 보존
   if (postIds.length > 0) {
     const PAGE = 1000;
     for (let from = 0; ; from += PAGE) {
       const { data: page, error: pe2 } = await supabase
         .from("post_daily_stats")
-        .select("post_id, measured_at, play_count")
+        .select("post_id, measured_at, play_count, manual")
         .in("post_id", postIds)
         .range(from, from + PAGE - 1);
       if (pe2) return NextResponse.json({ error: pe2.message }, { status: 500 });
-      for (const s of (page ?? []) as Array<{ post_id: string; measured_at: string; play_count: number | null }>) {
+      for (const s of (page ?? []) as Array<{ post_id: string; measured_at: string; play_count: number | null; manual: boolean | null }>) {
         existingStats.push({ post_id: s.post_id, measured_at: s.measured_at, play_count: Number(s.play_count ?? 0) });
+        if (s.manual) manualSet.add(`${s.post_id}|${s.measured_at}`);
       }
       if (!page || page.length < PAGE) break;
     }
   }
 
+  // 4-b) 대시보드 수동수정 조회수 보존: 그 (게시물·날짜)는 시트 값으로 덮지 않고 건너뜀.
+  let manualSkipped = 0;
+  const incomingProtected = incoming.filter(i => {
+    if (manualSet.has(`${i.post_id}|${i.measured_at}`)) { manualSkipped++; return false; }
+    return true;
+  });
+
   // 5) 누적 감소 가드 (lib/stats-guard.ts — 테스트로 검증되는 순수 함수)
-  const { kept: statsRows, dropped } = filterMonotonicStats(incoming, existingStats);
+  const { kept: statsRows, dropped } = filterMonotonicStats(incomingProtected, existingStats);
   const droppedDecrease = dropped.length;
   // 진단용: 제외된 건 샘플(어떤 글의 어느 날짜 값이, 어느 날짜의 어떤 값에 막혔는지)
   const urlByPid = new Map<string, string>([...idByUrl.entries()].map(([u, id]) => [id, u]));
@@ -202,6 +211,7 @@ export async function POST(req: NextRequest) {
     created_posts: created,
     meta_filled: metaFilled,
     ended_marked: endedMarked,
+    manual_skipped: manualSkipped,
     dropped_decrease: droppedDecrease,
     dropped_sample: droppedSample,
     cost_as_views: costAsViews.length,

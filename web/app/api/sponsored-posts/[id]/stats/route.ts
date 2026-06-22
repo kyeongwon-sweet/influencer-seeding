@@ -17,12 +17,14 @@ export async function PATCH(
   if (!body) return NextResponse.json({ error: "잘못된 요청" }, { status: 400 });
 
   const toNum = (v: unknown) => v === "" || v == null ? null : Math.round(Number(v));
-  const updates: Record<string, number | null> = {};
+  const updates: Record<string, number | boolean | null> = {};
   for (const key of ["play_count", "likes_count", "comments_count"]) {
     if (key in body) updates[key] = toNum(body[key]);
   }
   if (Object.keys(updates).length === 0)
     return NextResponse.json({ error: "수정할 필드가 없습니다" }, { status: 400 });
+  // 조회수를 직접 수정하면 그 (게시물·날짜) 행을 '수동수정'으로 표시 → 시트 동기화가 덮지 않고 보존.
+  if ("play_count" in body) updates.manual = true;
 
   const supabase = getServerSupabase();
   let targetDate: string | null = body.measured_at ?? null;
