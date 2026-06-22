@@ -70,15 +70,20 @@ export async function POST(req: NextRequest) {
   if (allUrls.length === 0) return NextResponse.json({ ok: true, inserted: 0, created_posts: 0, matched_urls: 0, missing_urls: 0 });
 
   // 1) 기존 URL → id + 현재 메타 조회 (한 번만) — '빈 값만 채우기' 비교용으로 메타도 함께 조회
-  const { data: existing, error: ee } = await supabase
-    .from("sponsored_posts")
-    .select(`id, url, ${POST_FIELDS.join(", ")}`)
-    .in("url", allUrls);
-  if (ee) return NextResponse.json({ error: ee.message }, { status: 500 });
-  const idByUrl = new Map<string, string>((existing ?? []).map((e: { id: string; url: string }) => [e.url, e.id]));
-  const existingByUrl = new Map<string, Record<string, unknown>>(
-    (existing ?? []).map((e: Record<string, unknown>) => [String(e.url), e])
-  );
+  // ⚠️ URL이 많으면 .in() 쿼리 URL 길이 한도 초과로 400(Bad Request) → 80개씩 청크로 조회.
+  const idByUrl = new Map<string, string>();
+  const existingByUrl = new Map<string, Record<string, unknown>>();
+  for (let i = 0; i < allUrls.length; i += 80) {
+    const { data: existing, error: ee } = await supabase
+      .from("sponsored_posts")
+      .select(`id, url, ${POST_FIELDS.join(", ")}`)
+      .in("url", allUrls.slice(i, i + 80));
+    if (ee) return NextResponse.json({ error: ee.message }, { status: 500 });
+    for (const e of (existing ?? []) as Array<Record<string, unknown>>) {
+      idByUrl.set(String(e.url), String(e.id));
+      existingByUrl.set(String(e.url), e);
+    }
+  }
 
   // 🛡️ 비용(cost)이 조회수로 잘못 들어온 행 차단용: url → cost (기존 메타 우선, 없으면 시트 메타).
   //    시트 날짜칸에 비용이 적힌 오염 데이터가 play_count로 적재돼 누적 그래프가 영구히 깨지는 것을 막는다.

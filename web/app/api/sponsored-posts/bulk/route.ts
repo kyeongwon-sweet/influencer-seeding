@@ -61,15 +61,18 @@ export async function POST(req: NextRequest) {
   const supabase = getServerSupabase();
   const META = ["posted_at", "account_name", "content_summary", "channel_type", "project_name", "product_name", "cost"];
 
-  // 기존 게시물(id+메타) 조회 — '빈 값만 채우기' 비교용
-  const { data: existing, error: ee } = await supabase
-    .from("sponsored_posts")
-    .select(`id, url, manual_fields, ${META.join(", ")}`)
-    .in("url", rows.map(r => r.url));
-  if (ee) return NextResponse.json({ error: ee.message }, { status: 500 });
-  const existingByUrl = new Map<string, Record<string, unknown>>(
-    (existing ?? []).map((e: Record<string, unknown>) => [String(e.url), e])
-  );
+  // 기존 게시물(id+메타) 조회 — '빈 값만 채우기' 비교용.
+  // ⚠️ URL이 많으면 .in() 쿼리 URL 길이 한도 초과로 400(Bad Request) → 80개씩 청크로 조회.
+  const existingByUrl = new Map<string, Record<string, unknown>>();
+  const allUrls = rows.map(r => r.url);
+  for (let i = 0; i < allUrls.length; i += 80) {
+    const { data: existing, error: ee } = await supabase
+      .from("sponsored_posts")
+      .select(`id, url, manual_fields, ${META.join(", ")}`)
+      .in("url", allUrls.slice(i, i + 80));
+    if (ee) return NextResponse.json({ error: ee.message }, { status: 500 });
+    for (const e of (existing ?? []) as Array<Record<string, unknown>>) existingByUrl.set(String(e.url), e);
+  }
 
   // 신규 URL → 전체 메타로 생성
   const toCreate = rows.filter(r => !existingByUrl.has(r.url));
