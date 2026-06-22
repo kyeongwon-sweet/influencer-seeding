@@ -2206,9 +2206,11 @@ export default function MonitoringPage() {
                   <p className="text-base font-semibold text-a-ink mb-1.5">
                     상관 분석 <span className="font-normal text-a-ink-muted">· 선택 기간 일별 흐름</span>
                   </p>
-                  <p className="text-[12px] text-a-ink-muted mb-3 leading-relaxed">
-                    ※ <b>설명력(R²)</b>은 여러 지표가 함께 해당 결과의 변동을 몇 % 설명하는지예요(100%=완전). <b>상관계수</b>는 인과가 아닌 동행성으로 <span className="text-green-600 font-medium">±0.7↑ 강함</span>·<span className="text-a-ink">±0.4↑ 중간</span>, 막대는 세기(절대값), 색은 방향(<span className="text-green-600">＋같이</span>/<span className="text-red-500">－반대</span>). <b>선행효과</b>는 광고비 집행이 며칠 뒤 해당 지표에 가장 강하게 동행하는지(−3~+3일)예요.
-                  </p>
+                  <div className="text-[12px] text-a-ink-muted mb-3 leading-relaxed space-y-1">
+                    <p>※ <b className="text-a-ink">설명력(R²)</b> — 여러 지표가 합쳐 결과의 변동을 몇 % 설명하는지 (100%=완전).</p>
+                    <p><b className="text-a-ink">상관계수</b> — 인과가 아닌 동행성. <span className="text-green-600 font-medium">±0.7↑ 강함</span> · <span className="text-a-ink">±0.4↑ 중간</span>, 막대=세기, 색=방향(<span className="text-green-600">＋같이</span>/<span className="text-red-500">－반대</span>).</p>
+                    <p><b className="text-a-ink">선행효과</b> — 광고비 집행이 며칠 뒤 해당 지표에 가장 강하게 동행하는지 (−3~+3일).</p>
+                  </div>
 
                   {correlations.models.length > 0 && (
                     <>
