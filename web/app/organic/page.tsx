@@ -96,7 +96,7 @@ export default function OrganicPage() {
   const [showUpload, setShowUpload] = useState(false);
   const [csvRows, setCsvRows] = useState<CsvRow[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [editCell, setEditCell] = useState<{ id: string; field: "mentioned_product" | "exposure_type" | "account_name" | "content_summary" | "uploaded_at" | "view_count" | "notes"; value: string } | null>(null);
+  const [editCell, setEditCell] = useState<{ id: string; field: "mentioned_product" | "exposure_type" | "account_name" | "content_summary" | "uploaded_at" | "view_count" | "notes" | "platform"; value: string } | null>(null);
   const [showHelp, setShowHelp] = useState(false);
   const [importingNotion, setImportingNotion] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -698,8 +698,30 @@ export default function OrganicPage() {
                           </div>
                         )}
                       </td>
-                      <td style={{ minWidth: colWidths[1] }} className="px-4 py-4 text-xs text-a-ink-muted whitespace-nowrap">
-                        {platformLabel(m.platform)}
+                      <td style={{ minWidth: colWidths[1] }} className="px-4 py-4 text-xs text-a-ink-muted whitespace-nowrap"
+                        onDoubleClick={() => setEditCell({ id: m.id, field: "platform", value: normPlatform(m.platform) })}>
+                        {editCell?.id === m.id && editCell.field === "platform" ? (
+                          <select autoFocus value={editCell.value}
+                            onChange={e => patchMentionField(m.id, "platform", e.target.value)}
+                            onBlur={() => setEditCell(null)}
+                            onKeyDown={e => { if (e.key === "Escape") setEditCell(null); }}
+                            className="text-xs bg-transparent border-b border-a-blue outline-none py-0.5">
+                            {!PLATFORMS.includes(normPlatform(m.platform)) && m.platform && (
+                              <option value={m.platform}>{platformLabel(m.platform)}</option>
+                            )}
+                            {PLATFORMS.map(pl => <option key={pl} value={pl}>{pl}</option>)}
+                          </select>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <span>{platformLabel(m.platform)}</span>
+                            <button onClick={() => setEditCell({ id: m.id, field: "platform", value: normPlatform(m.platform) })}
+                              className="opacity-0 group-hover:opacity-100 text-a-ink-muted hover:text-a-ink transition flex-shrink-0" title="플랫폼 수정">
+                              <svg width="11" height="11" viewBox="0 0 20 20" fill="none">
+                                <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                          </div>
+                        )}
                       </td>
                       <td style={{ minWidth: colWidths[2] }} className="px-4 py-4 text-xs text-a-ink-muted max-w-[320px]">
                         {editCell?.id === m.id && editCell.field === "content_summary" ? (
@@ -710,7 +732,7 @@ export default function OrganicPage() {
                             rows={2}
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 resize-none leading-relaxed" />
                         ) : (
-                          <div className="flex items-start gap-1">
+                          <div className="flex items-start gap-1 cursor-text" onDoubleClick={() => setEditCell({ id: m.id, field: "content_summary", value: m.content_summary ?? "" })}>
                             <span className="line-clamp-2 leading-relaxed flex-1">{m.content_summary ?? "-"}</span>
                             <button onClick={() => setEditCell({ id: m.id, field: "content_summary", value: m.content_summary ?? "" })}
                               className="opacity-0 group-hover:opacity-100 text-a-ink-muted hover:text-a-ink transition flex-shrink-0 mt-0.5" title="내용 수정">
@@ -768,7 +790,7 @@ export default function OrganicPage() {
                             onKeyDown={e => { if (e.key === "Enter") patchMentionField(m.id, "uploaded_at", editCell.value); if (e.key === "Escape") setEditCell(null); }}
                             className="text-xs bg-transparent border-b border-a-blue outline-none py-0.5" />
                         ) : (
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1 cursor-text" onDoubleClick={() => setEditCell({ id: m.id, field: "uploaded_at", value: m.uploaded_at?.slice(0, 10) ?? "" })}>
                             <span>{formatDate(m.uploaded_at)}</span>
                             <button onClick={() => setEditCell({ id: m.id, field: "uploaded_at", value: m.uploaded_at?.slice(0, 10) ?? "" })}
                               className="opacity-0 group-hover:opacity-100 text-a-ink-muted hover:text-a-ink transition flex-shrink-0" title="업로드일 수정">
@@ -787,7 +809,7 @@ export default function OrganicPage() {
                             onKeyDown={e => { if (e.key === "Enter") patchMentionField(m.id, "view_count", editCell.value); if (e.key === "Escape") setEditCell(null); }}
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
                         ) : (
-                          <div className="flex items-center justify-end gap-1">
+                          <div className="flex items-center justify-end gap-1 cursor-text" onDoubleClick={() => setEditCell({ id: m.id, field: "view_count", value: m.view_count != null ? String(m.view_count) : "" })}>
                             <button onClick={() => setEditCell({ id: m.id, field: "view_count", value: m.view_count != null ? String(m.view_count) : "" })}
                               className="opacity-0 group-hover:opacity-100 text-a-ink-muted hover:text-a-ink transition flex-shrink-0" title="조회수 수정">
                               <svg width="11" height="11" viewBox="0 0 20 20" fill="none">
