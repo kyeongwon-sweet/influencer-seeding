@@ -288,7 +288,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
           {yTicks.map((tick, i) => (
             <g key={i}>
               <line x1={0} y1={yS(tick)} x2={cw} y2={yS(tick)} stroke={CHART.grid} strokeWidth="1" strokeDasharray="4,4" />
-              <text x={-6} y={yS(tick)} textAnchor="end" dominantBaseline="middle" fontSize="7" fill={CHART.axis}>{fmtY(tick)}</text>
+              <text x={-6} y={yS(tick)} textAnchor="end" dominantBaseline="middle" fontSize="8" fill={CHART.axis}>{fmtY(tick)}</text>
             </g>
           ))}
           {secondaryTicks && secondaryTicks.map((tick, i) => (
@@ -333,7 +333,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
             </>
           )}
           {xLabelIdxs.map(i => (
-            <text key={i} x={xS(i)} y={ch + 14} textAnchor="middle" fontSize="7" fill={CHART.axis}>
+            <text key={i} x={xS(i)} y={ch + 14} textAnchor="middle" fontSize="8" fill={CHART.axis}>
               {smooth ? weekLabelOf(data[i].date) : data[i].date.slice(5).replace("-", "/")}
             </text>
           ))}
@@ -389,7 +389,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
               <div className="mt-1">
                 <button type="button" onClick={() => setTipOtherOpen(o => !o)}
                   className="text-a-ink-muted hover:text-a-ink pointer-events-auto flex items-center gap-1">
-                  그 외 <span className="text-[9px] leading-none">{tipOtherOpen ? "▲" : "▼"}</span>
+                  그 외 <span className="text-[11px] leading-none">{tipOtherOpen ? "▲" : "▼"}</span>
                 </button>
                 {tipOtherOpen && (
                   <div className="mt-0.5 space-y-0.5">
@@ -1529,7 +1529,7 @@ export default function MonitoringPage() {
             {entries.length > 0 ? entries.map(([type, val]) => (
               <div key={type} className="flex items-center gap-2">
                 <span className="text-a-ink-muted">{type}:</span>
-                <span className={val > 0 ? "text-a-blue font-semibold" : val < 0 ? "text-rose-500 font-semibold" : "text-gray-400"}>
+                <span className={val > 0 ? "text-red-500 font-semibold" : val < 0 ? "text-blue-600 font-semibold" : "text-gray-400"}>
                   {val > 0 ? '+' : ''}{val.toLocaleString()}회
                 </span>
               </div>
@@ -1778,7 +1778,7 @@ export default function MonitoringPage() {
           )}
           <div className="w-px h-4 bg-a-hairline mx-0.5" />
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-a-ink-muted whitespace-nowrap">게시일</span>
+            <span className="text-[11px] text-a-ink-muted whitespace-nowrap">게시일</span>
             <input type="date" value={filters.postedFrom}
               max={filters.postedTo || undefined}
               onChange={e => {
@@ -1797,7 +1797,7 @@ export default function MonitoringPage() {
           </div>
           <div className="w-px h-4 bg-a-hairline mx-0.5" />
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-a-ink-muted whitespace-nowrap">조회수 기간</span>
+            <span className="text-[11px] text-a-ink-muted whitespace-nowrap">조회수 기간</span>
             <input type="date" value={filters.dateFrom}
               max={filters.dateTo || undefined}
               onChange={e => {
@@ -1862,7 +1862,7 @@ export default function MonitoringPage() {
             <button type="button" onClick={() => setChartCollapsed(v => !v)}
               className="absolute top-3 right-5 z-20 flex items-center gap-1 text-xs text-a-ink-muted hover:text-a-ink transition-colors">
               {chartCollapsed ? "그래프 펼치기" : "그래프 접기"}
-              <span className="text-[9px] leading-none">{chartCollapsed ? "▼" : "▲"}</span>
+              <span className="text-[11px] leading-none">{chartCollapsed ? "▼" : "▲"}</span>
             </button>
             {/* 요약 수치 */}
             <div className="flex items-stretch border-b border-a-hairline">
@@ -1909,7 +1909,7 @@ export default function MonitoringPage() {
                   <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest mb-1.5">{item.label}</p>
                   <p className={`text-[28px] font-bold tabular-nums tracking-tight leading-none ${item.color}`}>{item.value.toLocaleString()}{item.suffix}</p>
                   {item.delta != null && (
-                    <p className={`mt-1 text-[11px] font-medium tabular-nums ${item.delta > 0 ? "text-emerald-600" : item.delta < 0 ? "text-rose-500" : "text-gray-400"}`}>
+                    <p className={`mt-1 text-[11px] font-medium tabular-nums ${item.delta > 0 ? "text-red-500" : item.delta < 0 ? "text-blue-600" : "text-gray-400"}`}>
                       {item.delta > 0 ? "▲" : item.delta < 0 ? "▼" : ""} {item.delta > 0 ? "+" : ""}{item.delta.toFixed(1)}% <span className="text-gray-400 font-normal">전주 대비</span>
                     </p>
                   )}
@@ -1929,10 +1929,10 @@ export default function MonitoringPage() {
                   <div className="flex items-center gap-2">
                     <p className="text-[13px] font-semibold text-a-ink tracking-tight">조회수 트렌드 ({smooth ? "주별 합계" : "일별 증분"})</p>
                     <button type="button" onClick={() => setSmooth(v => !v)}
-                      className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${smooth ? "bg-a-blue/10 border-a-blue/40 text-a-blue" : "border-a-hairline text-a-ink-muted hover:text-a-ink"}`}
+                      className={`text-[11px] px-1.5 py-0.5 rounded border transition-colors ${smooth ? "bg-a-blue/10 border-a-blue/40 text-a-blue" : "border-a-hairline text-a-ink-muted hover:text-a-ink"}`}
                       title="주 단위(N월 N주차)로 묶어 합계로 표시">주별 합계</button>
                     <button type="button" onClick={() => setShowCorr(v => !v)}
-                      className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${showCorr ? "bg-a-blue/10 border-a-blue/40 text-a-blue" : "border-a-hairline text-a-ink-muted hover:text-a-ink"}`}
+                      className={`text-[11px] px-1.5 py-0.5 rounded border transition-colors ${showCorr ? "bg-a-blue/10 border-a-blue/40 text-a-blue" : "border-a-hairline text-a-ink-muted hover:text-a-ink"}`}
                       title="4개 지표의 상관계수와 광고비 선행효과(시차) 분석">상관분석</button>
                   </div>
                   <div className="flex items-center gap-x-4 gap-y-1.5 flex-wrap justify-end">
@@ -1951,7 +1951,7 @@ export default function MonitoringPage() {
                           <span className="text-xs font-semibold text-a-ink">검색량</span>
                         </button>
                         <a href={NAVER_DATALAB_URL} target="_blank" rel="noreferrer"
-                          className="text-[10px] text-a-ink-muted hover:text-a-ink">↗</a>
+                          className="text-[11px] text-a-ink-muted hover:text-a-ink">↗</a>
                       </div>
                     )}
                     {/* 3. B2B 발주량 */}
@@ -1970,7 +1970,7 @@ export default function MonitoringPage() {
                         <span className="text-xs text-a-ink-muted">전체 전환 광고비</span>
                       </button>
                       <a href={META_ADS_MANAGER_URL} target="_blank" rel="noreferrer"
-                        className="text-[10px] text-a-ink-muted hover:text-a-ink">↗</a>
+                        className="text-[11px] text-a-ink-muted hover:text-a-ink">↗</a>
                     </div>
                     {/* 5. 상품별 검색량 (상품 필터 선택 시) */}
                     {activeProductSeries.map(c => (
@@ -1985,7 +1985,7 @@ export default function MonitoringPage() {
                       <div className="relative">
                         <button type="button" onClick={() => setShowOtherSeries(v => !v)}
                           className="flex items-center gap-1 text-xs text-a-ink-muted hover:text-a-ink">
-                          그 외 <span className="text-[9px] leading-none">▼</span>
+                          그 외 <span className="text-[11px] leading-none">▼</span>
                         </button>
                         {showOtherSeries && (
                           <>
@@ -2130,11 +2130,11 @@ export default function MonitoringPage() {
                               const dow = new Date(d.date).getDay();
                               const dayLabel = DAY_KO[dow];
                               const cls = dateColor(d.date);
-                              function deltaCell(v: number | null | undefined, accent = "text-a-blue") {
-                                if (v == null) return <td className="px-3 py-3 text-right text-gray-300">-</td>;
+                              function deltaCell(v: number | null | undefined, accent = "text-red-500", negClass = "text-blue-600") {
+                                if (v == null) return <td className="px-3 py-3 text-right text-gray-300">—</td>;
                                 const pos = v > 0, neg = v < 0;
                                 return (
-                                  <td className={`px-3 py-3 text-right tabular-nums text-sm font-semibold ${pos ? accent : neg ? "text-emerald-600" : "text-gray-200"}`}>
+                                  <td className={`px-3 py-3 text-right tabular-nums text-sm font-semibold ${pos ? accent : neg ? negClass : "text-gray-200"}`}>
                                     {pos ? "+" : ""}{v.toLocaleString()}
                                   </td>
                                 );
@@ -2150,13 +2150,13 @@ export default function MonitoringPage() {
                                     onMouseLeave={() => setDateTooltip(null)}
                                   >
                                     {d.date.slice(0,4) !== String(new Date().getFullYear()) && (
-                                      <span className="text-[10px] font-normal text-gray-400 mr-0.5">'{d.date.slice(2,4)}.</span>
+                                      <span className="text-[11px] font-normal text-gray-400 mr-0.5">'{d.date.slice(2,4)}.</span>
                                     )}
                                     {d.date.slice(5).replace("-", "/")}
                                     <span className={`ml-1.5 text-[11px] font-medium ${cls}`}>({dayLabel})</span>
                                   </td>
-                                  {deltaCell(d.play, "text-a-blue")}
-                                  {deltaCell(d.search, "text-gray-500")}
+                                  {deltaCell(d.play, "text-red-500", "text-blue-600")}
+                                  {deltaCell(d.search, "text-gray-500", "text-gray-400")}
                                   {(() => {
                                     const v = b2bMap.get(d.date);
                                     if (v == null) return <td className="pl-3 pr-5 py-3 text-right text-gray-300">-</td>;
@@ -2245,7 +2245,7 @@ export default function MonitoringPage() {
                         <div key={`${p.a}-${p.b}`} className="rounded-[10px] border border-a-hairline bg-white px-3 py-2.5" title={`표본 ${p.n}일`}>
                           <div className="flex items-center justify-between gap-1.5 mb-1.5">
                             <span className="text-[13px] text-a-ink-muted truncate">{p.a}<span className="mx-0.5 text-gray-300">↔</span>{p.b}</span>
-                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${badgeCls(p.r)}`}>{strength(p.r)}</span>
+                            <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${badgeCls(p.r)}`}>{strength(p.r)}</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <span className={`text-[20px] font-bold tabular-nums leading-none ${rColor(p.r)}`}>{fmtR(p.r)}</span>
@@ -2384,7 +2384,7 @@ export default function MonitoringPage() {
                           <p><span className="font-semibold text-amber-500">SOSO</span> <span className="text-a-ink-muted">25~29원</span></p>
                           <p><span className="text-gray-400">BAD 30원 이상</span></p>
                         </div>
-                        <p className="text-[10px] text-gray-400 mt-2">📌 도달 비용 효율 검토의 핵심 지표</p>
+                        <p className="text-[11px] text-gray-400 mt-2">📌 도달 비용 효율 검토의 핵심 지표</p>
                       </div>
                     </span>
                   </TH>
@@ -2412,7 +2412,7 @@ export default function MonitoringPage() {
                     <td className="pl-3 pr-1 py-2.5 sticky z-10 bg-blue-50" style={{ left: 0, width: 36, minWidth: 36 }} />
                     <td className="px-3 py-2.5 tabular-nums sticky z-10 bg-blue-50 group/cp" style={{ left: stickyLefts["증분량"], width: stickyColWidths["증분량"], minWidth: stickyColWidths["증분량"] }}>
                       <div className="flex items-center justify-end gap-2 whitespace-nowrap">
-                        <span className={tableTotals.delta > 0 ? "text-red-500" : tableTotals.delta < 0 ? "text-emerald-600" : "text-gray-400"}>
+                        <span className={tableTotals.delta > 0 ? "text-red-500" : tableTotals.delta < 0 ? "text-blue-600" : "text-gray-400"}>
                           {tableTotals.delta > 0 ? "+" : ""}{tableTotals.delta.toLocaleString()}
                         </span>
                         <button type="button" onClick={copyIncrementList} title="필터된 계정·조회수/도달수 목록 복사 (종료 게시물 제외)"
@@ -2471,7 +2471,7 @@ export default function MonitoringPage() {
                           if (viewIncrement(post, s, prev) == null) return <span className="text-gray-300">-</span>;
                           const delta = viewIncrement(post, s, prev) ?? 0;
                           return (
-                            <span className={`font-semibold ${delta > 0 ? "text-red-500" : delta < 0 ? "text-emerald-600" : "text-gray-300"}`}>
+                            <span className={`font-semibold ${delta > 0 ? "text-red-500" : delta < 0 ? "text-blue-600" : "text-gray-300"}`}>
                               {delta > 0 ? "+" : ""}{delta.toLocaleString()}
                             </span>
                           );
@@ -2527,7 +2527,7 @@ export default function MonitoringPage() {
                             )}
                             {post.ended_at && (
                               <span title={`${post.ended_at} 이후 수집 중단 — 게시물 삭제 추정 (이전 데이터는 보존)`}
-                                className="flex-shrink-0 text-[10px] leading-none px-1 py-0.5 rounded bg-gray-100 text-gray-400 border border-gray-200">종료</span>
+                                className="flex-shrink-0 text-[11px] leading-none px-1 py-0.5 rounded bg-gray-100 text-gray-400 border border-gray-200">종료</span>
                             )}
                             <button onClick={async () => {
                               try { await navigator.clipboard.writeText(post.url); toast("링크가 복사됐습니다.", "success"); } catch {}
@@ -2944,7 +2944,7 @@ export default function MonitoringPage() {
           <div className="relative bg-white rounded-2xl shadow-xl w-[420px] p-7">
             <div className="flex items-start justify-between mb-4">
               <div>
-                <p className="text-[10px] font-semibold text-red-500 tracking-[0.1em] uppercase mb-1">시간 초과</p>
+                <p className="text-[11px] font-semibold text-red-500 tracking-[0.1em] uppercase mb-1">시간 초과</p>
                 <h2 className="font-bold text-[18px] text-a-ink tracking-tight">모니터링 지연 안내</h2>
               </div>
               <button onClick={() => setShowTimeoutError(false)}
