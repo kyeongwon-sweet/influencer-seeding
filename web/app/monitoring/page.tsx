@@ -969,11 +969,20 @@ export default function MonitoringPage() {
       const today = all.find((s: DailyStats) => s.measured_at === todayKST);
       const todayCollected = !!today && (today.play_collected === true || today.likes_count != null);
       const stats = todayCollected ? all : all.filter((s: DailyStats) => s.measured_at < todayKST);
+      const latest = stats.length ? stats[stats.length - 1] : null;
+      // 증분량 기준 = '달력 하루'(어제자정~오늘자정): '직전 행'이 아니라 '최신 날짜 −1일' 측정으로 비교.
+      // 그 전날 측정이 없으면 null → 표에 빈칸(수집시각·건너뛴 날 노이즈 제거). 최초 측정(이전 전무)은 viewIncrement에서 전체값 표시.
+      const prevDayKey = latest
+        ? new Date(new Date(latest.measured_at + "T00:00:00Z").getTime() - 86400000).toISOString().slice(0, 10)
+        : null;
+      const prevDay = prevDayKey
+        ? (stats.find((s: DailyStats) => s.measured_at === prevDayKey && s.play_count != null) ?? null)
+        : null;
       return {
         ...p,
         all_stats: stats,
-        latest_stats: stats.length ? stats[stats.length - 1] : null,
-        prev_stats: stats.length > 1 ? stats[stats.length - 2] : null,
+        latest_stats: latest,
+        prev_stats: prevDay,
       };
     });
 
