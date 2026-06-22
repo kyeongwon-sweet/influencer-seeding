@@ -718,10 +718,12 @@ export default function MonitoringPage() {
     // 검색량 증감은 "실제 전날" 기준 — 표에서 일부 날짜(수집 누락)가 빠져도 정확하게,
     // lsSearchData(모든 날짜 보유)에서 직전일 값과 비교한다. (직전 표 행과 비교하면 누락일이 합산돼 왜곡됨)
     const lsSorted = [...(lsSearchData || [])].sort((a, b) => a.date.localeCompare(b.date));
-    const lsSearchDelta = (date: string) => {
+    const lsSearchDelta = (date: string): number | null => {
       const idx = lsSorted.findIndex(s => s.date === date);
-      if (idx <= 0) return 0;
-      return (lsSorted[idx].value ?? 0) - (lsSorted[idx - 1].value ?? 0);
+      if (idx <= 0) return null;                          // 시트에 해당일 없음(미수집) 또는 직전일 없어 증감 계산 불가
+      const cur = lsSorted[idx].value, prev = lsSorted[idx - 1].value;
+      if (cur == null || prev == null) return null;       // 값이 비어 증감 계산 불가 → '–'(미수집)
+      return cur - prev;                                  // 실제 증감(값 같으면 0 그대로 표시)
     };
     // 오늘(아직 수집 중)은 미완성 데이터라 증감이 음수로 떠 혼란을 주므로 표에서 제외
     const todayKST = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
