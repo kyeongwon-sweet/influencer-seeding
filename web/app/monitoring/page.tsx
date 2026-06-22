@@ -153,7 +153,13 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
   const areaPath = `${linePath} L ${xS(data.length - 1).toFixed(2)},${ch} L 0,${ch} Z`;
   const yTicks = [0, 0.5, 1].map(t => min + t * range);
   const step = Math.max(1, Math.ceil(data.length / 6));
-  const xLabelIdxs = data.map((_, i) => i).filter(i => i % step === 0 || i === data.length - 1);
+  // 스텝 간격 라벨 + 마지막 날짜 항상 표시. 단 마지막이 직전 라벨과 너무 가까우면(겹침) 직전 것을 제거.
+  const xLabelIdxs = data.map((_, i) => i).filter(i => i % step === 0);
+  const lastIdx = data.length - 1;
+  if (xLabelIdxs[xLabelIdxs.length - 1] !== lastIdx) {
+    if (lastIdx - xLabelIdxs[xLabelIdxs.length - 1] < step * 0.6) xLabelIdxs.pop();
+    xLabelIdxs.push(lastIdx);
+  }
   // 틱 간격이 좁으면 만/천 반올림 시 라벨이 중복(예: 127만·127만)되므로 간격에 맞춰 소수 1자리 표시
   const yStep = range / 2;
   const fmtY = (v: number) => v >= 10000 ? `${(v / 10000).toFixed(yStep < 10000 ? 1 : 0)}만`
@@ -2275,7 +2281,13 @@ export default function MonitoringPage() {
           const xi = (i: number) => PAD.l + (data.length > 1 ? (i / (data.length - 1)) * iW : iW / 2);
           const yi = (v: number) => PAD.t + iH - (v / max) * iH;
           const step = Math.max(1, Math.ceil(data.length / 6));
-          const xLabels = data.map((_, i) => i).filter(i => i % step === 0 || i === data.length - 1);
+          // 스텝 간격 라벨 + 마지막 날짜. 마지막이 직전 라벨과 겹치면 직전 제거.
+          const xLabels = data.map((_, i) => i).filter(i => i % step === 0);
+          const lastLabelIdx = data.length - 1;
+          if (xLabels[xLabels.length - 1] !== lastLabelIdx) {
+            if (lastLabelIdx - xLabels[xLabels.length - 1] < step * 0.6) xLabels.pop();
+            xLabels.push(lastLabelIdx);
+          }
 
           const points = data.map((d, i) => [xi(i), yi(d.yt_search_views)] as [number, number]);
           const path = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
