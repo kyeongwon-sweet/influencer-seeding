@@ -193,7 +193,7 @@ export async function POST(req: NextRequest) {
           ).catch((e: unknown) => { startErrors.push(`X: ${e}`); }),
           startActorRun(
             'clockworks/tiktok-scraper',
-            { searchTerm: CONFIG.ORGANIC_KEYWORDS[0], maxResults: 100 },
+            { searchQueries: CONFIG.ORGANIC_KEYWORDS, maxResults: 100 },
             webhookUrl(appUrl, `jobId=${job.id}&jobType=organic&platform=tiktok`)
           ).catch((e: unknown) => { startErrors.push(`틱톡: ${e}`); }),
           startActorRun(
