@@ -79,7 +79,7 @@ jobs:
         if: steps.decide.outputs.go == '1'
         continue-on-error: true
         run: |
-          curl -sS "${{ secrets.APP_URL }}/api/brand-metrics/collect" \
+          curl -sS "https://influencer-seeding-mu.vercel.app/api/brand-metrics/collect?days=7" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" -w "\nHTTP %{http_code}\n"
 
       # 유튜브 트렌드: 키워드별 순차 실행(동시 실행 시 Google 차단·단일 run 시 1개 누락 회피).
@@ -88,7 +88,7 @@ jobs:
         if: steps.decide.outputs.go == '1'
         continue-on-error: true
         run: |
-          curl -sS "${{ secrets.APP_URL }}/api/youtube-trends/collect?kw=0" \
+          curl -sS "https://influencer-seeding-mu.vercel.app/api/youtube-trends/collect?kw=0" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" -w "\nHTTP %{http_code}\n"
       - name: 액터 완료 대기 (동시 실행 회피)
         if: steps.decide.outputs.go == '1'
@@ -97,12 +97,12 @@ jobs:
         if: steps.decide.outputs.go == '1'
         continue-on-error: true
         run: |
-          curl -sS "${{ secrets.APP_URL }}/api/youtube-trends/collect?kw=1" \
+          curl -sS "https://influencer-seeding-mu.vercel.app/api/youtube-trends/collect?kw=1" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" -w "\nHTTP %{http_code}\n"
 
       - name: B2B 발주량 (b2b-revenue/fetch)
         if: steps.decide.outputs.go == '1'
         continue-on-error: true
         run: |
-          curl -sS "${{ secrets.APP_URL }}/api/b2b-revenue/fetch" \
+          curl -sS "https://influencer-seeding-mu.vercel.app/api/b2b-revenue/fetch" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" -w "\nHTTP %{http_code}\n"
