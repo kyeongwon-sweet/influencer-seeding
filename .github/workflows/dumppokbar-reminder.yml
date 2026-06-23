@@ -1,0 +1,27 @@
+name: Dumppokbar Search Reminder
+# 매일 오전 8시(KST) 여믄봇이 이서영에게 듬뿍바 검색 리마인드 DM
+on:
+  schedule:
+    - cron: '0 23 * * *'      # 23:00 UTC = 08:00 KST 매일
+  workflow_dispatch: {}        # 수동 실행(테스트)용
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Slack DM as 여믄봇
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import urllib.request as U, urllib.parse as P, json, os
+          T = os.environ['SLACK_BOT_TOKEN']
+          url = 'https://search.naver.com/search.naver?where=nexearch&sm=top_hty&fbm=0&ie=utf8&query=%EB%9D%BC%EB%9D%BC%EC%8A%A4%EC%9C%97+%EB%93%AC%EB%BF%8D%EB%B0%94&ackey=2qmfiqqo'
+          text = '<' + url + '|[라라스윗 듬뿍바]> 검색했나요? 🤔❓❓'
+          data = P.urlencode({'channel': 'U0B2PNXSFPD', 'text': text, 'unfurl_links': 'false'}).encode()
+          req = U.Request('https://slack.com/api/chat.postMessage', data=data,
+                          headers={'Authorization': 'Bearer ' + T,
+                                   'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8'})
+          r = json.load(U.urlopen(req, timeout=30))
+          print('RESULT ok=', r.get('ok'), 'error=', r.get('error'))
+          assert r.get('ok'), r
+          PY
