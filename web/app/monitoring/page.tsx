@@ -499,6 +499,7 @@ export default function MonitoringPage() {
     // 1️⃣ 모든 게시물에 적용되는 필터 (제로비도 포함)
     if (filters.name && !displayName.includes(filters.name.toLowerCase())) return false;
     if (filters.project && !(post.project_name ?? "").toLowerCase().includes(filters.project.toLowerCase())) return false;
+    if (filters.caption && !(post.content_summary ?? "").toLowerCase().includes(filters.caption.toLowerCase())) return false;
     if (filters.products.length > 0 && !filters.products.includes(post.product_name ?? "")) return false;
     if (filters.type !== "all" && getPostType(post.url) !== filters.type) return false;
     if (filters.channelTypes.length > 0 && !filters.channelTypes.some(ct => (post.channel_type ?? "").replace(/\s+/g, "") === ct.replace(/\s+/g, ""))) return false;
@@ -523,7 +524,7 @@ export default function MonitoringPage() {
     new Set(posts.map(p => pdOf(p.project_name)).filter((v): v is string => Boolean(v)))
   ).sort((a, b) => a.localeCompare(b, "ko"));
 
-  const hasFilter = filters.name !== "" || filters.project !== "" || filters.products.length > 0 || filters.type !== "all" || filters.channelTypes.length > 0 || filters.pdNames.length > 0 || filters.dateFrom !== "" || filters.dateTo !== "" || filters.postedFrom !== "" || filters.postedTo !== "";
+  const hasFilter = filters.name !== "" || filters.project !== "" || filters.caption !== "" || filters.products.length > 0 || filters.type !== "all" || filters.channelTypes.length > 0 || filters.pdNames.length > 0 || filters.dateFrom !== "" || filters.dateTo !== "" || filters.postedFrom !== "" || filters.postedTo !== "";
   const colSpan = 17;
 
   // 마지막 수집 시각 = 최신 측정행의 적재 시각(created_at) 중 최대값 (게시물 추가 시각 아님)
@@ -1645,6 +1646,13 @@ export default function MonitoringPage() {
             value={filters.project}
             onChange={e => setFilters(p => ({ ...p, project: e.target.value }))}
             className={`filter-input w-28 ${filters.project ? "border-a-blue" : ""}`}
+          />
+          <input
+            type="text"
+            placeholder="캡션 검색"
+            value={filters.caption}
+            onChange={e => setFilters(p => ({ ...p, caption: e.target.value }))}
+            className={`filter-input w-32 ${filters.caption ? "border-a-blue" : ""}`}
           />
           <select
             value={filters.type}
