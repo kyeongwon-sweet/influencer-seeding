@@ -102,3 +102,28 @@ export async function fetchSheetTabValues(
   const json = (await res.json()) as { values?: (string | number | null)[][] };
   return json.values ?? [];
 }
+
+// 스프레드시트의 모든 탭 제목 목록.
+export async function getSheetTitles(spreadsheetId: string): Promise<string[]> {
+  const token = await getAccessToken();
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets(properties(title))`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+  if (!res.ok) throw new Error(`스프레드시트 메타 조회 실패 (${res.status}): ${await res.text()}`);
+  const json = (await res.json()) as { sheets: { properties: { title: string } }[] };
+  return json.sheets.map((s) => s.properties.title);
+}
+
+// 탭 '제목'으로 셀 값을 2차원 배열로 가져온다. (gid 대신 이름 사용)
+export async function fetchSheetTabValuesByTitle(
+  spreadsheetId: string,
+  title: string,
+  a1Range = "A1:AB200"
+): Promise<(string | number | null)[][]> {
+  const token = await getAccessToken();
+  const range = encodeURIComponent(`${title}!${a1Range}`);
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=FORMATTED_STRING`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+  if (!res.ok) throw new Error(`시트 값 조회 실패 (${res.status}): ${await res.text()}`);
+  const json = (await res.json()) as { values?: (string | number | null)[][] };
+  return json.values ?? [];
+}
