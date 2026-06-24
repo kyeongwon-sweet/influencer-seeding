@@ -106,3 +106,10 @@ jobs:
         run: |
           curl -sS "https://influencer-seeding-mu.vercel.app/api/b2b-revenue/fetch" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" -w "\nHTTP %{http_code}\n"
+
+      - name: KPI 현황 (kpi/fetch — 인지_쫀득바/듬뿍바 [N월 현황])
+        if: steps.decide.outputs.go == '1'
+        continue-on-error: true
+        run: |
+          curl -sS "https://influencer-seeding-mu.vercel.app/api/kpi/fetch" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" -w "\nHTTP %{http_code}\n"
