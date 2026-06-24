@@ -7,7 +7,7 @@ type OrganicMention = { id: string; created_at: string; platform: string; accoun
 type Job = { id: string; type: string; status: string; payload?: { added?: number; screened?: number }; user_email?: string; created_at: string; error?: string };
 type DailyStats = { play_count: number | null; comments_count: number | null; measured_at: string };
 type SponsoredPost = { id: string; url: string | null; account_name: string | null; project_name: string | null; influencers: { name: string } | null; latest_stats: DailyStats | null; prev_stats: DailyStats | null };
-type KpiMetric = { label: string; target: number | null; current: number | null; achievement: number | null };
+type KpiMetric = { product?: string; label: string; target: number | null; current: number | null; achievement: number | null };
 type KpiSnapshot = { id: string; fetched_at: string; month_label: string | null; metrics: KpiMetric[] };
 
 const STATUS_CONFIG = [
@@ -376,7 +376,7 @@ export default function DashboardPage() {
                 </p>
               </div>
               <a
-                href="https://docs.google.com/spreadsheets/d/1QpUgPdiZGXtgXnRnDld99Kp1qP0rRbqwyv0aYbJ_Omo/edit?gid=1808124579#gid=1808124579"
+                href="https://docs.google.com/spreadsheets/d/1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s/edit?gid=201954698#gid=201954698"
                 target="_blank"
                 rel="noreferrer"
                 className="text-[11px] text-a-blue hover:underline whitespace-nowrap"
@@ -394,28 +394,44 @@ export default function DashboardPage() {
             <div className="px-7 pb-7 pt-3 flex gap-4">
               {[...Array(7)].map((_, i) => <div key={i} className="h-16 flex-1 bg-a-divider rounded-lg animate-pulse" />)}
             </div>
-          ) : kpi ? (
-            <div className="flex divide-x divide-a-hairline px-4 pb-7 pt-3 overflow-x-auto">
-              {kpi.metrics.map((m, i) => {
-                const pct = m.achievement;
-                const pctColor = pct == null ? "text-a-ink-muted" : pct >= 100 ? "text-emerald-600" : pct >= 70 ? "text-amber-500" : "text-red-500";
-                return (
-                  <div key={i} className="flex-1 min-w-[120px] px-4 py-1">
-                    <div className="text-[11px] text-a-ink-muted mb-1.5 whitespace-nowrap">{m.label}</div>
-                    <div className="text-[22px] font-bold tracking-tight text-a-ink leading-none tabular-nums whitespace-nowrap">
-                      {fmtKpi(m.current)}
-                    </div>
-                    <div className="text-[11px] text-a-ink-muted mt-2 truncate">
-                      목표 {fmtKpi(m.target)}
-                    </div>
-                    <div className={`text-xs font-semibold mt-0.5 ${pctColor}`}>
-                      {pct != null ? `${pct}%` : "-"}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
+          ) : kpi && kpi.metrics.length ? (() => {
+            const products = [...new Set(kpi.metrics.map(m => m.product ?? ""))];
+            const labels = kpi.metrics.filter(m => (m.product ?? "") === products[0]).map(m => m.label);
+            const cell = (p: string, label: string) => kpi.metrics.find(m => (m.product ?? "") === p && m.label === label);
+            return (
+              <div className="px-4 pb-6 pt-2 overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="border-b border-a-hairline">
+                      <th className="sticky left-0 bg-white px-3 py-2 text-left text-[11px] font-semibold text-a-ink-muted whitespace-nowrap z-10">제품</th>
+                      {labels.map(l => (
+                        <th key={l} className="px-3 py-2 text-right text-[11px] font-medium text-a-ink-muted whitespace-nowrap">{l.replace(/^\*/, "")}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {products.map(p => (
+                      <tr key={p} className="border-b border-a-divider last:border-0 hover:bg-a-parchment/40 transition-colors">
+                        <td className="sticky left-0 bg-white px-3 py-3 text-sm font-bold text-a-ink whitespace-nowrap z-10">{p}</td>
+                        {labels.map(l => {
+                          const m = cell(p, l);
+                          const pct = m?.achievement ?? null;
+                          const pctColor = pct == null ? "text-gray-300" : pct >= 100 ? "text-emerald-600" : pct >= 70 ? "text-amber-500" : "text-red-500";
+                          return (
+                            <td key={l} className="px-3 py-3 text-right whitespace-nowrap align-top">
+                              <div className="text-sm font-bold tabular-nums text-a-ink leading-none">{fmtKpi(m?.current ?? null)}</div>
+                              <div className="text-[10px] text-a-ink-muted mt-1.5">목표 {fmtKpi(m?.target ?? null)}</div>
+                              <div className={`text-[11px] font-semibold mt-0.5 ${pctColor}`}>{pct != null ? `${pct}%` : "-"}</div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })() : (
             <div className="px-7 pb-7 pt-3 text-sm text-a-ink-muted">
               KPI 데이터가 없습니다.{" "}
               <span className="text-[11px]">Supabase에 <code className="bg-a-parchment px-1 rounded">kpi_snapshots</code> 테이블 생성 후 <code className="bg-a-parchment px-1 rounded">/api/kpi/fetch</code>를 호출해 주세요.</span>
