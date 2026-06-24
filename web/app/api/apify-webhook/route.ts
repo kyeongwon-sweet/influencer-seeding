@@ -17,8 +17,13 @@ function isBrandAccount(...names: (string | null | undefined)[]): boolean {
 }
 
 function isAd(post: Record<string, unknown>): boolean {
-  const caption  = ((post.caption  as string) || '').toLowerCase();
-  const hashtags = ((post.hashtags as string[]) || []).map(h => h.toLowerCase());
+  // 캡션 필드는 플랫폼마다 다름 (IG=caption, 틱톡=text, 트위터=fullText/text)
+  const caption = String(post.caption ?? post.text ?? post.fullText ?? '').toLowerCase();
+  // 해시태그: IG는 문자열 배열, 틱톡/트위터는 객체 배열({name|title|text}) → 형태 무관하게 문자열 추출
+  const hashtags = (Array.isArray(post.hashtags) ? post.hashtags : [])
+    .map((h) => (typeof h === 'string' ? h : String((h as Record<string, unknown>)?.name ?? (h as Record<string, unknown>)?.title ?? (h as Record<string, unknown>)?.text ?? '')))
+    .filter(Boolean)
+    .map((h) => h.toLowerCase());
   const fullText = caption + ' ' + hashtags.join(' ');
 
   // 내돈내산 있으면 자발적 언급 → 비광고
