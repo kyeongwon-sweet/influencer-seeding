@@ -381,7 +381,7 @@ export default function DashboardPage() {
                 rel="noreferrer"
                 className="text-[11px] text-a-blue hover:underline whitespace-nowrap"
               >
-                마케팅 현황과 연동 →
+                대시보드와 연동 →
               </a>
             </div>
             {kpi?.fetched_at && (
