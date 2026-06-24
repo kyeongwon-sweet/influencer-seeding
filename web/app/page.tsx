@@ -398,30 +398,52 @@ export default function DashboardPage() {
             const products = [...new Set(kpi.metrics.map(m => m.product ?? ""))];
             const labels = kpi.metrics.filter(m => (m.product ?? "") === products[0]).map(m => m.label);
             const cell = (p: string, label: string) => kpi.metrics.find(m => (m.product ?? "") === p && m.label === label);
+            const PROD_DOT = ["#f59e0b", "#3b82f6", "#8b5cf6", "#ec4899"];
+            const tier = (pct: number) => pct >= 100
+              ? { pill: "bg-emerald-50 text-emerald-700", bar: "#10b981" }
+              : pct >= 70 ? { pill: "bg-amber-50 text-amber-600", bar: "#f59e0b" }
+              : { pill: "bg-red-50 text-red-500", bar: "#ef4444" };
             return (
-              <div className="px-4 pb-6 pt-2 overflow-x-auto">
-                <table className="w-full border-collapse">
+              <div className="px-4 pb-6 pt-1 overflow-x-auto">
+                <table className="border-separate border-spacing-0">
                   <thead>
-                    <tr className="border-b border-a-hairline">
-                      <th className="sticky left-0 bg-white px-3 py-2 text-left text-[11px] font-semibold text-a-ink-muted whitespace-nowrap z-10">제품</th>
+                    <tr>
+                      <th className="sticky left-0 bg-white px-4 py-2.5 text-left text-[11px] font-semibold text-a-ink-muted whitespace-nowrap z-10 border-b border-r border-a-hairline">제품</th>
                       {labels.map(l => (
-                        <th key={l} className="px-3 py-2 text-right text-[11px] font-medium text-a-ink-muted whitespace-nowrap">{l.replace(/^\*/, "")}</th>
+                        <th key={l} className="bg-a-parchment/30 px-3.5 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted whitespace-nowrap border-b border-a-hairline">{l.replace(/^\*/, "")}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {products.map(p => (
-                      <tr key={p} className="border-b border-a-divider last:border-0 hover:bg-a-parchment/40 transition-colors">
-                        <td className="sticky left-0 bg-white px-3 py-3 text-sm font-bold text-a-ink whitespace-nowrap z-10">{p}</td>
+                    {products.map((p, pi) => (
+                      <tr key={p} className="group">
+                        <td className="sticky left-0 bg-white group-hover:bg-a-parchment/40 px-4 py-3.5 whitespace-nowrap z-10 border-b border-r border-a-divider transition-colors">
+                          <span className="inline-flex items-center gap-2 text-sm font-bold text-a-ink">
+                            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: PROD_DOT[pi % PROD_DOT.length] }} />
+                            {p}
+                          </span>
+                        </td>
                         {labels.map(l => {
                           const m = cell(p, l);
                           const pct = m?.achievement ?? null;
-                          const pctColor = pct == null ? "text-gray-300" : pct >= 100 ? "text-emerald-600" : pct >= 70 ? "text-amber-500" : "text-red-500";
+                          const hasGoal = m?.target != null && m.target > 0 && pct != null;
+                          const t = pct != null ? tier(pct) : null;
                           return (
-                            <td key={l} className="px-3 py-3 text-right whitespace-nowrap align-top">
-                              <div className="text-sm font-bold tabular-nums text-a-ink leading-none">{fmtKpi(m?.current ?? null)}</div>
-                              <div className="text-[10px] text-a-ink-muted mt-1.5">목표 {fmtKpi(m?.target ?? null)}</div>
-                              <div className={`text-[11px] font-semibold mt-0.5 ${pctColor}`}>{pct != null ? `${pct}%` : "-"}</div>
+                            <td key={l} className="px-3.5 py-3.5 text-right whitespace-nowrap align-top border-b border-a-divider group-hover:bg-a-parchment/20 transition-colors">
+                              <div className="text-[15px] font-bold tabular-nums text-a-ink leading-none">{fmtKpi(m?.current ?? null)}</div>
+                              {hasGoal && t ? (
+                                <>
+                                  <div className="text-[10px] text-a-ink-muted mt-2">목표 {fmtKpi(m!.target)}</div>
+                                  <div className="mt-1.5 flex flex-col items-end gap-1">
+                                    <span className={`inline-block px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none ${t.pill}`}>{pct}%</span>
+                                    <div className="w-full h-1 rounded-full bg-gray-100 overflow-hidden">
+                                      <div className="h-full rounded-full" style={{ width: `${Math.min(100, Math.max(0, pct!))}%`, backgroundColor: t.bar }} />
+                                    </div>
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="text-[10px] text-gray-300 mt-2">실적</div>
+                              )}
                             </td>
                           );
                         })}
