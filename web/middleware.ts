@@ -5,6 +5,8 @@ const isPublicRoute = createRouteMatcher([
   "/sign-up(.*)",
   "/api/apify-webhook(.*)",
   "/api/kpi/ingest(.*)",
+  "/api/kpi/fetch(.*)",
+  "/api/kpi/debug(.*)",
   "/api/sponsored-posts/sync(.*)",
   "/api/sponsored-posts/bulk(.*)",
   "/api/sponsored-posts/stats-import(.*)",
