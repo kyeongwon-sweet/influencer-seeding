@@ -460,6 +460,18 @@ def run():
                 fb_failed = True
 
         if rows:
+            # 🛡️ 수집 도중 삭제된 게시물 행 제거 — 없는 post_id가 섞이면 FK 위반으로 upsert 전체가 실패한다.
+            row_pids = list({r["post_id"] for r in rows})
+            valid = set()
+            for i in range(0, len(row_pids), 200):
+                vr = db.table("sponsored_posts").select("id").in_("id", row_pids[i:i + 200]).execute()
+                for x in (vr.data or []):
+                    valid.add(x["id"])
+            before = len(rows)
+            rows = [r for r in rows if r["post_id"] in valid]
+            if len(rows) < before:
+                print(f"[WARN] 수집 중 삭제된 게시물 행 {before - len(rows)}건 제외(FK 보호)")
+        if rows:
             print(f"[LOG] 데이터 저장 시작: {len(rows)}건")
             result = db.table("post_daily_stats").upsert(rows, on_conflict="post_id,measured_at").execute()
             print(f"[LOG] ✅ 데이터 저장 완료: {len(rows)}건")
