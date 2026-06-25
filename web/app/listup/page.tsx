@@ -51,9 +51,9 @@ const INIT_FILTERS: Filters = { name: "", platform: "all", status: "all", keywor
 const INIT_COL_WIDTHS = [200, 80, 130, 90, 90, 90, 200, 100, 100, 160, 84];
 
 function formatTimestamp(ts: string): string {
-  const d = new Date(ts);
+  const d = new Date(new Date(ts).getTime() + 9 * 60 * 60 * 1000); // KST 고정
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getUTCFullYear()}.${pad(d.getUTCMonth() + 1)}.${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
 }
 
 function formatElapsed(s: number): string {
@@ -397,11 +397,11 @@ export default function ListupPage() {
       inf.keyword ? `#${inf.keyword}` : "",
       inf.sample_post_url ?? "",
       inf.post_type ?? "",
-      inf.post_uploaded_at ? new Date(inf.post_uploaded_at).toLocaleDateString("ko-KR") : "",
+      inf.post_uploaded_at ? new Date(inf.post_uploaded_at).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" }) : "",
       inf.screening_metrics?.[0]?.avg_views_per_follower != null
         ? String(inf.screening_metrics[0].avg_views_per_follower) : "",
       STATUS_LABEL[inf.status] ?? inf.status,
-      new Date(inf.created_at).toLocaleDateString("ko-KR"),
+      new Date(inf.created_at).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" }),
     ]);
     const csv = [headers, ...rows]
       .map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(","))
@@ -1230,7 +1230,7 @@ export default function ListupPage() {
                               className="cursor-pointer flex items-center gap-1 group/date"
                             >
                               {inf.post_uploaded_at
-                                ? <span>{new Date(inf.post_uploaded_at).toLocaleDateString("ko-KR")}</span>
+                                ? <span>{new Date(inf.post_uploaded_at).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" })}</span>
                                 : <span className="text-gray-300">-</span>}
                               <svg width="10" height="10" viewBox="0 0 20 20" fill="none" className="opacity-0 group-hover/date:opacity-40 transition-opacity flex-shrink-0">
                                 <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -1239,7 +1239,7 @@ export default function ListupPage() {
                           )}
                         </td>
                         <td className="px-4 py-4 text-a-ink-muted text-xs whitespace-nowrap">
-                          {new Date(inf.created_at).toLocaleDateString("ko-KR")}
+                          {new Date(inf.created_at).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" })}
                         </td>
                         <td className="px-4 py-3 overflow-hidden" style={{ minWidth: colWidths[9], width: colWidths[9] }}>
                           {editNotes?.id === inf.id ? (
