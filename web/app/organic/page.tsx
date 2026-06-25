@@ -639,7 +639,7 @@ export default function OrganicPage() {
 
         {/* 테이블 */}
         <div className="bg-white rounded-[18px] border border-a-hairline overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 220px)" }}>
             {loading ? (
               <div className="p-8 text-center text-a-ink-muted text-sm">로딩 중...</div>
             ) : (
