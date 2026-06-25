@@ -1,0 +1,22 @@
+name: KPI 현황 갱신 (매일 오전 10시)
+
+# 홈 6월 KPI 카드 데이터 갱신 — 마케팅T [인지_쫀득바]/[인지_듬뿍바] [N월 현황] 시트 읽기(서비스계정).
+# 시트만 읽는 가벼운 작업(Apify 비용 없음)이라 무거운 일일수집과 분리해 매일 오전 10시에 단독 실행.
+# 매일 오전 10시(KST) = 01:00 UTC. GitHub 정각(:00) 부하 지연 회피 위해 :05분으로 둠 → 실제 ~10:05 전후.
+on:
+  schedule:
+    - cron: "5 1 * * *"   # 10:05 KST
+  workflow_dispatch:
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: KPI fetch (kpi/fetch)
+        run: |
+          code=$(curl -sS -o /tmp/kpi.out -w "%{http_code}" \
+            "https://influencer-seeding-mu.vercel.app/api/kpi/fetch" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          cat /tmp/kpi.out; echo ""
+          echo "HTTP ${code}"
+          [ "${code}" = "200" ] || exit 1
