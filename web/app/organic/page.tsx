@@ -591,6 +591,7 @@ export default function OrganicPage() {
             <option value="all">전체 유형</option>
             <option value="무가시딩">무가시딩</option>
             <option value="오가닉">오가닉 노출</option>
+            <option value="연예인 언급">연예인 언급</option>
           </select>
           {/* 언급 제품 다중 선택 칩 */}
           {productOptions.length > 0 && (
@@ -831,6 +832,7 @@ export default function OrganicPage() {
                             <option value="">-</option>
                             <option value="무가시딩">무가시딩</option>
                             <option value="오가닉">오가닉</option>
+                            <option value="연예인 언급">연예인 언급</option>
                           </select>
                         ) : (
                           <span
