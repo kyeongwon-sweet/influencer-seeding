@@ -639,12 +639,12 @@ export default function OrganicPage() {
 
         {/* 테이블 */}
         <div className="bg-white rounded-[18px] border border-a-hairline overflow-hidden">
-          <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 220px)" }}>
+          <div className="overflow-auto max-h-[calc(100vh-120px)]">
             {loading ? (
               <div className="p-8 text-center text-a-ink-muted text-sm">로딩 중...</div>
             ) : (
               <table className="w-full text-sm">
-                <thead className="sticky top-0 z-30">
+                <thead className="sticky top-0 z-30 bg-white">
                   <tr className="border-b border-a-hairline">
                     <th className="px-2 py-3 bg-white w-16 text-[10px] font-medium text-gray-400 uppercase tracking-wider"></th>
                     {rsTH("사용자이름", 0)}
