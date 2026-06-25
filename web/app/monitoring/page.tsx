@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
 import { MIN_ENTRY_DATE, maxDateKST, isValidEntryDate } from "@/lib/dateRule";
-import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, INIT_FILTERS, POST_TYPES, CHANNEL_TYPES, CATEGORIES, STICKY_COL_ORDER, PROJECT_PARSE_COLS, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, isStatInDateRange, getFilteredStats, fmt, formatTimestamp, normalizeChannelType, updatePostLatestStats, getPostType, getThumbnailUrl, isRecentPost, hasNotableChange, getCategoryLabel, viewIncrement, pickMetric, parseProjectName, pdOf, smoothCurvePath, productLabel, effectiveReach, padDomain, movingAvg, weekKeyOf, weekLabelOf, weeklySum, pearson, alignedPairs, bestLag, solveLinear, alignMulti, multipleR2 } from "./lib";
+import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, INIT_FILTERS, POST_TYPES, CHANNEL_TYPES, CATEGORIES, STICKY_COL_ORDER, PROJECT_PARSE_COLS, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, isStatInDateRange, getFilteredStats, fmt, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, getPostType, getThumbnailUrl, isRecentPost, hasNotableChange, getCategoryLabel, viewIncrement, pickMetric, parseProjectName, pdOf, smoothCurvePath, productLabel, effectiveReach, padDomain, movingAvg, weekKeyOf, weekLabelOf, weeklySum, pearson, alignedPairs, bestLag, solveLinear, alignMulti, multipleR2 } from "./lib";
 
 
 function TH({ children, right, col, onSort, sorted, className: cls, w, leftPos, onResize, fixed }: {
@@ -1670,8 +1670,8 @@ export default function MonitoringPage() {
               {filters.channelTypes.length === 0
                 ? "전체 채널분류"
                 : filters.channelTypes.length === 1
-                ? filters.channelTypes[0]
-                : `${filters.channelTypes[0]} 외 ${filters.channelTypes.length - 1}`
+                ? fmtChannelType(filters.channelTypes[0])
+                : `${fmtChannelType(filters.channelTypes[0])} 외 ${filters.channelTypes.length - 1}`
               }
             </button>
             {showChannelTypeDropdown && (
@@ -1704,7 +1704,7 @@ export default function MonitoringPage() {
                         }}
                         className="w-3.5 h-3.5 accent-a-blue cursor-pointer"
                       />
-                      {t}
+                      {fmtChannelType(t)}
                     </label>
                   ))}
                 </div>
@@ -2352,7 +2352,7 @@ export default function MonitoringPage() {
                     <span className="relative group/ct cursor-default">
                       채널 분류
                       <span className="hidden group-hover/ct:block absolute top-full left-0 mt-1 z-50 bg-gray-900 text-white text-[11px] rounded-[8px] px-3 py-2 whitespace-nowrap shadow-lg font-normal normal-case tracking-normal">
-                        {CHANNEL_TYPES.map((t, i) => <span key={i} className="block">{t}</span>)}
+                        {CHANNEL_TYPES.map((t, i) => <span key={i} className="block">{fmtChannelType(t)}</span>)}
                       </span>
                     </span>
                   </TH>
@@ -2481,12 +2481,12 @@ export default function MonitoringPage() {
                             onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "channel_type", editCell.value); if (e.key === "Escape") { e.preventDefault(); setEditCell(null); }; }}
                             className="text-xs bg-transparent border-b border-a-blue outline-none py-0.5 w-full">
                             <option value="">-</option>
-                            {CHANNEL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                            {CHANNEL_TYPES.map(t => <option key={t} value={t}>{fmtChannelType(t)}</option>)}
                           </select>
                         ) : (
                           <span onClick={() => setEditCell({ postId: post.id, field: "channel_type", value: post.channel_type ?? "" })}
                             className="cursor-text hover:text-a-blue transition-colors">
-                            {post.channel_type ?? "-"}
+                            {post.channel_type ? fmtChannelType(post.channel_type) : "-"}
                           </span>
                         )}
                       </TD>
@@ -2811,7 +2811,7 @@ export default function MonitoringPage() {
                 onChange={e => setForm(p => ({ ...p, channel_type: e.target.value }))}
                 className="w-full border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-sm text-a-ink focus:outline-none focus:border-a-blue focus:ring-1 focus:ring-a-blue transition">
                 <option value="">채널 분류 선택</option>
-                {CHANNEL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                {CHANNEL_TYPES.map(t => <option key={t} value={t}>{fmtChannelType(t)}</option>)}
               </select>
               <input placeholder="게시물 URL" value={form.url}
                 onChange={e => setForm(p => ({ ...p, url: e.target.value }))}

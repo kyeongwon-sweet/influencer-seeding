@@ -93,6 +93,11 @@ export function normalizeChannelType(value: string | null): string | null {
   return value.trim().replace(/\s+/g, " ");
 }
 
+// 표시 전용: 괄호 앞에 공백 추가 ("바이럴(배너)" → "바이럴 (배너)"). 저장값은 그대로, 화면에만 적용(필터 매칭은 공백 무시).
+export function fmtChannelType(ct: string | null | undefined): string {
+  return (ct ?? "").replace(/\s*\(/g, " (");
+}
+
 export function updatePostLatestStats(post: Post, now: string, overrides?: Partial<DailyStats>): DailyStats | null {
   if (!post.latest_stats) {
     return {
