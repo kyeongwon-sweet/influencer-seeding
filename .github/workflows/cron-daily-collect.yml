@@ -33,15 +33,17 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # 오늘(UTC) 데이터가 이미 있으면(IG + 유튜브) 이번 창은 무거운 수집을 건너뛴다.
-      # run_monitoring.py는 date.today()=runner UTC 날짜로 적재하므로 게이트도 UTC로 본다.
-      - name: Check today (UTC) data
+      # 오늘(KST) 데이터가 이미 있으면(IG + 유튜브) 이번 창은 무거운 수집을 건너뛴다.
+      # KST 자정 직후 창(15:41 UTC=00:41 KST)이 UTC 어제로 적재돼 KST '오늘'이 비던 문제 →
+      # measured_at·게이트를 KST 날짜 기준으로 통일(아래 MONITORING_DATE=kdate).
+      - name: Check today (KST) data
         id: check
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          export TODAY=$(date -u +%F)
+          export TODAY=$(TZ=Asia/Seoul date +%F)
+          echo "kdate=${TODAY}" >> "$GITHUB_OUTPUT"
           STATUS=$(cd scripts && python << 'EOF' | tail -n1
           import os
           from db import get_client
@@ -57,7 +59,7 @@ jobs:
           print("ok" if (any_rows.data and yt_ok) else "missing")
           EOF
           )
-          echo "오늘(UTC ${TODAY}) → ${STATUS}"
+          echo "오늘(KST ${TODAY}) → ${STATUS}"
           echo "status=${STATUS}" >> "$GITHUB_OUTPUT"
 
       - name: Decide collect
@@ -78,6 +80,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
           PYTHONUNBUFFERED: "1"
+          MONITORING_DATE: ${{ steps.check.outputs.kdate }}   # KST 날짜로 적재(UTC 어제로 밀리는 문제 방지)
         run: cd scripts && python run_monitoring.py
 
       - name: 브랜드 지표 (brand-metrics/collect)
