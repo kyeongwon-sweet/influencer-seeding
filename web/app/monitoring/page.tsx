@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
 import { MIN_ENTRY_DATE, maxDateKST, isValidEntryDate } from "@/lib/dateRule";
-import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, INIT_FILTERS, POST_TYPES, CHANNEL_TYPES, CATEGORIES, STICKY_COL_ORDER, PROJECT_PARSE_COLS, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, isStatInDateRange, getFilteredStats, fmt, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, getPostType, getThumbnailUrl, isRecentPost, hasNotableChange, getCategoryLabel, viewIncrement, pickMetric, parseProjectName, pdOf, smoothCurvePath, productLabel, effectiveReach, padDomain, movingAvg, weekKeyOf, weekLabelOf, weeklySum, pearson, alignedPairs, bestLag, solveLinear, alignMulti, multipleR2 } from "./lib";
+import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, INIT_FILTERS, POST_TYPES, CHANNEL_TYPES, CATEGORIES, STICKY_COL_ORDER, PROJECT_PARSE_COLS, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, isStatInDateRange, getFilteredStats, fmt, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, getPostType, getThumbnailUrl, isRecentPost, hasNotableChange, getCategoryLabel, viewIncrement, pickMetric, parseProjectName, pdOf, smoothCurvePath, productLabel, effectiveReach, padDomain, movingAvg, weekKeyOf, weekLabelOf, weeklySum, pearson, alignedPairs, bestLag, solveLinear, alignMulti, multipleR2, parseCsvLine } from "./lib";
 
 
 function TH({ children, right, col, onSort, sorted, className: cls, w, leftPos, onResize, fixed }: {
@@ -1116,20 +1116,6 @@ export default function MonitoringPage() {
     toast("게시물이 추가됐습니다.", "success");
   }
 
-  function parseCsvLine(line: string): string[] {
-    const result: string[] = [];
-    let cur = "", inQ = false;
-    for (let i = 0; i < line.length; i++) {
-      if (line[i] === '"') {
-        if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
-        else inQ = !inQ;
-      } else if (line[i] === ',' && !inQ) {
-        result.push(cur.trim()); cur = "";
-      } else cur += line[i];
-    }
-    result.push(cur.trim());
-    return result;
-  }
 
   function handleCsvFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -2370,19 +2356,7 @@ export default function MonitoringPage() {
                     </span>
                   </TH>
                   <TH right w={colWidths["조회당비용"]} onResize={e => startResize("조회당비용", e)} {...sp("조회당비용")}>
-                    <span className="group/cpr relative">
-                      조회당비용
-                      <div className="hidden group-hover/cpr:block absolute top-full right-0 mt-1.5 z-[9999] bg-white border border-a-hairline rounded-[10px] px-3.5 py-3 shadow-lg min-w-[200px] pointer-events-none text-left font-normal normal-case tracking-normal">
-                        <p className="text-[11px] font-semibold text-a-ink mb-2">조회당비용 (비용 ÷ 평균 조회수)</p>
-                        <div className="space-y-1 text-[11px]">
-                          <p><span className="font-semibold text-emerald-600">BEST</span> <span className="text-a-ink-muted">20원 미만</span></p>
-                          <p><span className="font-semibold text-blue-500">GOOD</span> <span className="text-a-ink-muted">20~24원</span></p>
-                          <p><span className="font-semibold text-amber-500">SOSO</span> <span className="text-a-ink-muted">25~29원</span></p>
-                          <p><span className="text-gray-400">BAD 30원 이상</span></p>
-                        </div>
-                        <p className="text-[11px] text-gray-400 mt-2">📌 도달 비용 효율 검토의 핵심 지표</p>
-                      </div>
-                    </span>
+                    조회당비용
                   </TH>
                   <TH right w={colWidths["도달수"]} onResize={e => startResize("도달수", e)} {...sp("도달수")}>
                     <span className="group/reach relative">
@@ -2782,12 +2756,6 @@ export default function MonitoringPage() {
             <HelpItem label="좋아요 / 댓글 —">likesCount / commentsCount. 게시물의 좋아요·댓글 수입니다.</HelpItem>
             <HelpItem label="조회당비용 —">비용 ÷ videoPlayCount (재생수)</HelpItem>
             <HelpItem label="도달당비용 —">비용 ÷ 도달수(reach_count). 실제 도달 인원 기준 효율입니다.</HelpItem>
-          </HelpSection>
-          <HelpSection title="📌 지표 평가 기준 (2025ver)">
-            <HelpItem label="평균 조회수 —">BEST 10만↑ / GOOD 7만↑ / BAD 7만↓ · 최근 1개월 릴스 기준, 알고리즘 떡상 건 제외</HelpItem>
-            <HelpItem label="조회당비용 —">BEST 20원↓ / GOOD 20~24원 / SOSO 25~29원 / BAD 30원↑ · 핵심 필수 지표</HelpItem>
-            <HelpItem label="조회율 (팔로워 대비) —">BEST 1↑ / GOOD 0↑ / BAD 음수 · videoPlayCount ÷ followersCount</HelpItem>
-            <HelpItem label="참여율 E.R —">BEST 1%↑ / SOSO 0.5%↑ / BAD 0.5%↓ · (댓글+좋아요) ÷ videoPlayCount × 100</HelpItem>
           </HelpSection>
           <HelpSection title="자동 수집">
             <p className="text-a-ink-muted leading-relaxed">GitHub Actions에 의해 매일 자동으로 수치를 수집합니다. 별도 실행 없이도 일별 데이터가 쌓입니다.</p>

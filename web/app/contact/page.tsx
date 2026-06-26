@@ -693,7 +693,33 @@ export default function ContactPage() {
                     <th className="px-3 py-3 text-xs font-medium text-a-ink-muted text-left whitespace-nowrap">발굴 키워드</th>
                     <th className="px-3 py-3 text-xs font-medium text-a-ink-muted text-right whitespace-nowrap">팔로워</th>
                     <th className="px-3 py-3 text-xs font-medium text-a-ink-muted text-right whitespace-nowrap">알고리즘 계수</th>
-                    <th className="px-3 py-3 text-xs font-medium text-a-ink-muted text-right whitespace-nowrap">평균 조회수</th>
+                    <th className="px-3 py-3 text-xs font-medium text-a-ink-muted text-right whitespace-nowrap">
+                      <span className="group/avp relative inline-block cursor-help border-b border-dotted border-a-hairline">
+                        평균 조회수
+                        <div className="hidden group-hover/avp:block absolute top-full right-0 mt-1.5 z-[9999] bg-white border border-a-hairline rounded-[10px] shadow-lg px-3.5 py-3 min-w-[240px] text-left font-normal normal-case tracking-normal">
+                          <div className="space-y-3">
+                            <div>
+                              <p className="text-[11px] font-semibold text-a-ink mb-1">① 평균 조회수</p>
+                              <p className="text-[11px] text-a-ink-muted mb-1.5">최근 콘텐츠 평균 (알고리즘 떡상 건 제외)</p>
+                              <div className="space-y-0.5 text-[11px]">
+                                <p><span className="font-semibold text-emerald-600">BEST</span> <span className="text-a-ink-muted">= 10만 이상</span></p>
+                                <p><span className="font-semibold text-blue-500">GOOD</span> <span className="text-a-ink-muted">= 7만 이상</span></p>
+                                <p><span className="text-gray-400">BAD = 7만 미만</span></p>
+                              </div>
+                            </div>
+                            <div>
+                              <p className="text-[11px] font-semibold text-a-ink mb-1">② 팔로워 대비 조회율</p>
+                              <p className="text-[11px] text-a-ink-muted mb-1.5">평균 조회수 ÷ 팔로워 · 알고리즘 파급력 지표</p>
+                              <div className="space-y-0.5 text-[11px]">
+                                <p><span className="font-semibold text-emerald-600">BEST</span> <span className="text-a-ink-muted">= 1 이상</span></p>
+                                <p><span className="font-semibold text-blue-500">GOOD</span> <span className="text-a-ink-muted">= 0 이상</span></p>
+                                <p><span className="text-gray-400">BAD = 음수</span></p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </span>
+                    </th>
                     <th className="px-3 py-3 text-xs font-medium text-a-ink-muted text-left whitespace-nowrap">업로드일</th>
                     <th className="px-3 py-3 text-xs font-medium text-a-ink-muted text-left whitespace-nowrap" style={{ minWidth: 160 }}>특이사항</th>
                     <th className="px-3 py-3 text-xs font-medium text-a-ink-muted text-center whitespace-nowrap">컨택</th>
