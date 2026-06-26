@@ -8,8 +8,8 @@ function fmtTime(iso: string): string {
   return `${k.getUTCMonth() + 1}/${k.getUTCDate()} ${String(k.getUTCHours()).padStart(2, "0")}:${String(k.getUTCMinutes()).padStart(2, "0")}`;
 }
 
-// 붙여넣은 이미지를 작게 축소해 data URI로. (가로/세로 최대 480px, JPEG) — DB 인라인 저장용
-async function resizeToDataUrl(file: File, max = 480, quality = 0.72): Promise<string> {
+// 붙여넣은 이미지를 data URI로. 가독성 위해 최대 1600px·JPEG q0.88(스크린샷 텍스트도 읽힘) — DB 인라인 저장
+async function resizeToDataUrl(file: File, max = 1600, quality = 0.88): Promise<string> {
   const bmp = await createImageBitmap(file);
   const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
   const w = Math.max(1, Math.round(bmp.width * scale)), h = Math.max(1, Math.round(bmp.height * scale));

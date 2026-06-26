@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
   const content = String(body?.content ?? "").trim();
   // 붙여넣기 이미지(data URI). 작은 이미지만 — 너무 크면 거부(DB 보호). 클라에서 축소해서 보냄.
   const image = typeof body?.image === "string" && body.image.startsWith("data:image/") ? body.image : null;
-  if (image && image.length > 700_000) return NextResponse.json({ error: "이미지가 너무 큽니다" }, { status: 413 });
+  if (image && image.length > 1_800_000) return NextResponse.json({ error: "이미지가 너무 큽니다" }, { status: 413 });
   if (!content && !image) return NextResponse.json({ error: "내용이 비어 있습니다" }, { status: 400 });
 
   const u = await currentUser();
