@@ -24,9 +24,9 @@ export async function POST(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const body = await req.json().catch(() => null);
   const content = String(body?.content ?? "").trim();
-  // 붙여넣기 이미지(data URI). 작은 이미지만 — 너무 크면 거부(DB 보호). 클라에서 축소해서 보냄.
+  // 붙여넣기 이미지(data URI) → Supabase Storage 업로드 후 URL만 DB에 저장(원본급 화질, DB 비대화 방지).
   const image = typeof body?.image === "string" && body.image.startsWith("data:image/") ? body.image : null;
-  if (image && image.length > 1_800_000) return NextResponse.json({ error: "이미지가 너무 큽니다" }, { status: 413 });
+  if (image && image.length > 6_000_000) return NextResponse.json({ error: "이미지가 너무 큽니다" }, { status: 413 }); // ~4.5MB(API 본문 한도)
   if (!content && !image) return NextResponse.json({ error: "내용이 비어 있습니다" }, { status: 400 });
 
   const u = await currentUser();
@@ -34,8 +34,19 @@ export async function POST(req: NextRequest) {
     || u?.emailAddresses?.[0]?.emailAddress || "익명").toString();
 
   const sb = getServerSupabase();
+  let imageUrl: string | null = null;
+  if (image) {
+    const m = image.match(/^data:(image\/[a-z+]+);base64,(.+)$/);
+    if (!m) return NextResponse.json({ error: "이미지 형식 오류" }, { status: 400 });
+    const ext = m[1] === "image/png" ? "png" : m[1] === "image/gif" ? "gif" : m[1] === "image/webp" ? "webp" : "jpg";
+    const buf = Buffer.from(m[2], "base64");
+    const path = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+    const up = await sb.storage.from("memo-images").upload(path, buf, { contentType: m[1], upsert: false });
+    if (up.error) return NextResponse.json({ error: "이미지 업로드 실패: " + up.error.message }, { status: 500 });
+    imageUrl = sb.storage.from("memo-images").getPublicUrl(path).data.publicUrl;
+  }
   const row: Record<string, unknown> = { content, author };
-  if (image) row.image = image; // 이미지 있을 때만 — image 컬럼 없으면 텍스트 메모는 영향 없음(이미지 메모만 ALTER 필요)
+  if (imageUrl) row.image = imageUrl; // Storage 공개 URL (구버전 base64도 src에서 그대로 표시됨)
   const { data, error } = await sb.from("memos").insert(row).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);
