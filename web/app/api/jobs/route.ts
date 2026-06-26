@@ -114,11 +114,15 @@ export async function POST(req: NextRequest) {
     }
     try {
       if (type === 'monitoring') {
-        const { data: posts } = await supabase.from('sponsored_posts').select('url');
+        // ⚠️ 추적 대상은 게시물(릴스/피드) URL인데, cleanInstagramUrl은 '프로필' URL만 통과시키고
+        //    포스트 URL을 전부 null로 버려 수동수집이 사실상 0건이 되던 버그가 있었음.
+        //    apify-collect 와 동일 필터로 통일: 인스타 + 미종료 + shortcode 있는 게시물 URL.
+        const { data: posts } = await supabase.from('sponsored_posts').select('url, ended_at');
         const urls = [...new Set(
           (posts || [])
-            .map((p: { url: string }) => cleanInstagramUrl(p.url))
-            .filter((u): u is string => u !== null)
+            .filter((p: { url: string; ended_at: string | null }) =>
+              (p.url || '').includes('instagram.com') && !p.ended_at && /\/(?:p|reel|reels|tv)\/[A-Za-z0-9_-]+/.test(p.url || ''))
+            .map((p: { url: string }) => p.url)
         )];
 
         if (urls.length === 0) {
