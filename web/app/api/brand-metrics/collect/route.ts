@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { notifyJob } from "@/lib/slack";
 
@@ -93,9 +94,7 @@ async function fetchInstagramMetrics(dateStr: string) {
 // ── Handler ────────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   // Vercel Cron 또는 GitHub Actions에서 호출 — CRON_SECRET으로 인증
-  const authHeader = req.headers.get("authorization");
-  const secret     = process.env.CRON_SECRET;
-  if (secret && authHeader !== `Bearer ${secret}`) {
+  if (checkCronAuth(req) === "bad") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl, ALLOWED_POST_URL_RE } from "@/lib/url-utils";
 
@@ -22,8 +23,7 @@ export const runtime = "nodejs";
  * 플랫폼 제한 없음 (instagram / youtube / tiktok 등 모든 URL). URL만 정규화 후 upsert.
  */
 export async function POST(req: NextRequest) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
+  if (checkCronAuth(req) !== "ok") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

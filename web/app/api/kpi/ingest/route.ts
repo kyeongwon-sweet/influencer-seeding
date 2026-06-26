@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
 
 export async function POST(req: NextRequest) {
   // Apps Script에서 보낸 Authorization: Bearer <CRON_SECRET> 검증
-  const authHeader = req.headers.get("authorization");
-  const secret = process.env.CRON_SECRET;
   // secret이 없으면 잘못된 서버 설정 → 무조건 차단
-  if (!secret || authHeader !== `Bearer ${secret}`) {
+  if (checkCronAuth(req) !== "ok") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

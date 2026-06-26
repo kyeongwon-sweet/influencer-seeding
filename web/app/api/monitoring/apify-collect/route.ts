@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { startActorRun } from "@/lib/apify";
 import { notifyJob } from "@/lib/slack";
@@ -19,9 +20,7 @@ function getAppUrl() {
  * Vercel 크론(GET) + 수동(POST) 모두 동일 처리.
  */
 export async function POST(req: NextRequest) {
-  const authHeader = req.headers.get("authorization");
-  const secret = process.env.CRON_SECRET;
-  if (!secret || authHeader !== `Bearer ${secret}`) {
+  if (checkCronAuth(req) !== "ok") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   if (!process.env.APIFY_API_TOKEN) {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { checkCronAuth } from "@/lib/cron-auth";
 import { startActorRun } from "@/lib/apify";
 
 // 유튜브 검색 트렌드를 볼 키워드 (Google Trends gprop=youtube, 상대값 0~100)
@@ -13,9 +14,7 @@ function getAppUrl() {
 // Apify google-trends-scraper는 콜드 실행 시 수 분~10분 걸려 동기 대기가 불가 →
 // 비동기로 시작하고, 완료되면 /api/youtube-trends/webhook 이 결과를 저장한다.
 export async function POST(req: NextRequest) {
-  const authHeader = req.headers.get("authorization");
-  const secret = process.env.CRON_SECRET;
-  if (secret && authHeader !== `Bearer ${secret}`) {
+  if (checkCronAuth(req) === "bad") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   if (!process.env.APIFY_API_TOKEN) {

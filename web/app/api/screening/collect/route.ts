@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { checkCronAuth } from "@/lib/cron-auth";
 import { createClient } from "@supabase/supabase-js";
 import { createApifyClient } from "@/lib/apify";
 import { notifyJob } from "@/lib/slack";
@@ -104,10 +105,8 @@ async function fetchInstagramMetrics(username: string) {
 
 export async function POST(req: NextRequest) {
   try {
-    const authHeader = req.headers.get("authorization");
-    const secret = process.env.CRON_SECRET;
 
-    if (!secret || authHeader !== `Bearer ${secret}`) {
+    if (checkCronAuth(req) !== "ok") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

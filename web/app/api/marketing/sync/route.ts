@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl } from "@/lib/url-utils";
 
@@ -22,10 +23,8 @@ import { normalizeUrl } from "@/lib/url-utils";
  * }
  */
 export async function POST(req: NextRequest) {
-  const authHeader = req.headers.get("authorization");
-  const secret = process.env.CRON_SECRET;
 
-  if (!secret || authHeader !== `Bearer ${secret}`) {
+  if (checkCronAuth(req) !== "ok") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

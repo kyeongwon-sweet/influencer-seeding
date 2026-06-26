@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { fetchSheetTabValues } from "@/lib/google-sheets";
 import { notifyJob } from "@/lib/slack";
@@ -20,9 +21,7 @@ function toNum(v: string | number | null | undefined): number | null {
 }
 
 export async function GET(req: NextRequest) {
-  const authHeader = req.headers.get("authorization");
-  const secret = process.env.CRON_SECRET;
-  if (secret && authHeader !== `Bearer ${secret}`) {
+  if (checkCronAuth(req) === "bad") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

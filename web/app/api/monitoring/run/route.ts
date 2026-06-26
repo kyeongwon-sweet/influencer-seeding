@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { checkCronAuth } from "@/lib/cron-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   try {
-    const authHeader = req.headers.get("authorization");
-    const secret = process.env.CRON_SECRET;
 
     // 인증 확인
-    if (!secret || authHeader !== `Bearer ${secret}`) {
+    if (checkCronAuth(req) !== "ok") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

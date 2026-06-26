@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl, ALLOWED_POST_URL_RE } from "@/lib/url-utils";
 import { filterMonotonicStats, type GuardInput } from "@/lib/stats-guard";
@@ -23,8 +24,7 @@ export const runtime = "nodejs";
  *  2) url → post_id 매칭 후 post_daily_stats upsert (onConflict post_id,measured_at).
  */
 export async function POST(req: NextRequest) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
+  if (checkCronAuth(req) !== "ok") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
