@@ -190,6 +190,33 @@ def _fetch_facebook(urls: list) -> dict:
     return out
 
 
+def _tw_id(url: str):
+    """트윗 status ID 추출 (x.com·twitter.com 공통). 호스트 앵커로 vox.com 등 오매칭 방지."""
+    m = re.search(r'https?://(?:[\w-]+\.)?(?:twitter|x)\.com/[^/]+/status/(\d+)', url or "", re.I)
+    return m.group(1) if m else None
+
+
+def _fetch_twitter(urls: list) -> dict:
+    """트위터(X) 조회수 수집 (apidojo/tweet-scraper). 반환: {tweet_id: {views,likes,comments}}.
+    X가 조회수(impressions)를 제한적으로 노출 → 없으면 views=None(그날치 건너뜀)."""
+    from apify_client import ApifyClient
+    client = ApifyClient(os.getenv("APIFY_API_TOKEN"))
+    run = client.actor("apidojo/tweet-scraper").call(run_input={
+        "startUrls": urls,
+        "maxItems": max(len(urls), 1),
+    })
+    out = {}
+    for it in client.dataset(run["defaultDatasetId"]).iterate_items():
+        tid = _tw_id(it.get("url") or it.get("twitterUrl") or it.get("tweetUrl") or "")
+        if tid:
+            out[tid] = {
+                "views": it.get("viewCount") or it.get("views") or it.get("viewsCount"),
+                "likes": it.get("likeCount") or it.get("favoriteCount"),
+                "comments": it.get("replyCount"),
+            }
+    return out
+
+
 def run():
     print("[DEBUG] === 협찬 모니터링 시작 ===")
     print(f"[DEBUG] 환경변수 확인:")
@@ -459,6 +486,40 @@ def run():
                 print(f"[ERROR] 페이스북 수집 실패: {e}")
                 fb_failed = True
 
+        # 트위터(X) 수집 (apidojo/tweet-scraper). 조회수 있음 → 틱톡과 동일 처리(역행 가드 포함).
+        tw_posts = [p for p in posts if _tw_id(p.get("url") or "")]
+        tw_failed = False
+        if tw_posts and not skip_apify:
+            try:
+                tw_stats = _fetch_twitter([p["url"] for p in tw_posts])
+                got = sum(1 for s in tw_stats.values() if (s.get("views") or 0) > 0)
+                print(f"[LOG] 트위터 수집: 실값 {got}건 / {len(tw_posts)}개 요청")
+                prev_res = db.table("post_daily_stats").select("post_id, play_count, likes_count, comments_count, measured_at").in_("post_id", [p["id"] for p in tw_posts]).lt("measured_at", TODAY).order("measured_at", desc=True).execute()
+                last_stat = {}
+                for r in (prev_res.data or []):
+                    last_stat.setdefault(r["post_id"], r)
+                for post in tw_posts:
+                    s = tw_stats.get(_tw_id(post["url"]))
+                    play = s.get("views") if s else None
+                    # 🛡️ 0/미반환(X 조회수 미노출)은 접근불가 → 저장 안 함(직전 값 유지)
+                    if not play or play <= 0:
+                        continue
+                    existing = last_stat.get(post["id"], {})
+                    if existing.get("play_count") is not None and play < existing.get("play_count"):
+                        print(f"  ❌ 트위터 조회수 역행 {post['url']} → NULL 처리")
+                        play = None
+                    likes, comments = s.get("likes"), s.get("comments")
+                    rows.append({
+                        "post_id": post["id"],
+                        "measured_at": TODAY,
+                        "play_count": play,
+                        "likes_count": likes if likes is not None else existing.get("likes_count"),
+                        "comments_count": comments if comments is not None else existing.get("comments_count"),
+                    })
+            except Exception as e:
+                print(f"[ERROR] 트위터 수집 실패: {e}")
+                tw_failed = True
+
         if rows:
             # 🛡️ 수집 도중 삭제된 게시물 행 제거 — 없는 post_id가 섞이면 FK 위반으로 upsert 전체가 실패한다.
             row_pids = list({r["post_id"] for r in rows})
@@ -486,8 +547,8 @@ def run():
         # 부가 플랫폼 수집이 실패하면 작업을 실패로 표시해 알림이 오게 한다(알람은 끄지 않는다).
         # 실패의 실제 원인(예: Apify 월 한도 초과)을 보고 근본 해결하기 위함.
         # (IG 데이터는 위에서 이미 저장됨. status='missing'이면 11/14/17시 재수집이 복구.)
-        if yt_failed or tt_failed or fb_failed or th_failed:
-            raise RuntimeError(f"수집 일부 실패(유튜브={yt_failed}, 틱톡={tt_failed}, 페북={fb_failed}, 스레드={th_failed}) — 원인 확인 필요")
+        if yt_failed or tt_failed or fb_failed or th_failed or tw_failed:
+            raise RuntimeError(f"수집 일부 실패(유튜브={yt_failed}, 틱톡={tt_failed}, 페북={fb_failed}, 스레드={th_failed}, 트위터={tw_failed}) — 원인 확인 필요")
 
     except Exception as e:
         print(f"[ERROR] 모니터링 실패: {str(e)}")

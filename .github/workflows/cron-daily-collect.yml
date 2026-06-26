@@ -73,7 +73,7 @@ jobs:
             echo "go=0" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: 협찬 전체 수집 (IG+YT+틱톡+페북+스레드)
+      - name: 협찬 전체 수집 (IG+YT+틱톡+페북+스레드+트위터)
         if: steps.decide.outputs.go == '1' && github.event.inputs.api_only != 'true'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
