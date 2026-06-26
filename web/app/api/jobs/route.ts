@@ -4,6 +4,7 @@ import { getServerSupabase } from "@/lib/supabase-server";
 import { startActorRun } from "@/lib/apify";
 import { normalizeYouTubeUrl, normalizeInstagramUrl, normalizeUrl } from "@/lib/url-utils";
 import { logger } from "@/lib/logger";
+import { activeIgPostUrls, isSuspiciousUrlCount } from "@/lib/ig-post-urls";
 
 /** 공통 설정 */
 const CONFIG = {
@@ -114,18 +115,17 @@ export async function POST(req: NextRequest) {
     }
     try {
       if (type === 'monitoring') {
-        // ⚠️ 추적 대상은 게시물(릴스/피드) URL인데, cleanInstagramUrl은 '프로필' URL만 통과시키고
-        //    포스트 URL을 전부 null로 버려 수동수집이 사실상 0건이 되던 버그가 있었음.
-        //    apify-collect 와 동일 필터로 통일: 인스타 + 미종료 + shortcode 있는 게시물 URL.
+        // 게시물 URL 필터는 공유 헬퍼 사용(경로별 드리프트 방지). 과거 cleanInstagramUrl(프로필 전용)을
+        // 잘못 써서 포스트 URL이 전부 버려져 수동수집이 0건이던 버그(2026-06-26) 재발방지.
         const { data: posts } = await supabase.from('sponsored_posts').select('url, ended_at');
-        const urls = [...new Set(
-          (posts || [])
-            .filter((p: { url: string; ended_at: string | null }) =>
-              (p.url || '').includes('instagram.com') && !p.ended_at && /\/(?:p|reel|reels|tv)\/[A-Za-z0-9_-]+/.test(p.url || ''))
-            .map((p: { url: string }) => p.url)
-        )];
+        const rows = (posts || []) as { url: string | null; ended_at: string | null }[];
+        const urls = activeIgPostUrls(rows);
 
-        if (urls.length === 0) {
+        // 재발방지 가드: 게시물이 많은데 URL이 비정상적으로 적으면 조용한 success 금지 → 실패 처리(UI 노출)
+        if (isSuspiciousUrlCount(rows, urls.length)) {
+          logger.warn(`[monitoring] 수집 URL 비정상: ${urls.length}건 (게시물 ${rows.length}건) — 필터 점검 필요`);
+          await supabase.from('jobs').update({ status: 'failed', error: `수집 URL이 비정상적으로 적음(${urls.length}건) — URL 필터 점검 필요` }).eq('id', job.id);
+        } else if (urls.length === 0) {
           await supabase.from('jobs').update({ status: 'done' }).eq('id', job.id);
         } else {
           await supabase.from('jobs').update({ status: 'running' }).eq('id', job.id);

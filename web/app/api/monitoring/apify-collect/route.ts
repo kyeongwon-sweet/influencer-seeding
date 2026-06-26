@@ -3,6 +3,7 @@ import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { startActorRun } from "@/lib/apify";
 import { notifyJob } from "@/lib/slack";
+import { activeIgPostUrls } from "@/lib/ig-post-urls";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -41,13 +42,9 @@ export async function POST(req: NextRequest) {
     const { data: posts } = await supabase
       .from("sponsored_posts")
       .select("url, ended_at");
-    // 인스타 게시물만, 종료(ended) 제외 — 비용↓·노이즈↓
-    // ⚠️ shortcode 없는 프로필형 URL(.../username/reels/)은 제외 — 액터가 계정 게시물을 통째로 긁어 과수집됨
-    const urls = [...new Set(
-      ((posts ?? []) as { url: string; ended_at: string | null }[])
-        .filter((p) => (p.url || "").includes("instagram.com") && !p.ended_at && /\/(?:p|reel|reels|tv)\/[A-Za-z0-9_-]+/.test(p.url || ""))
-        .map((p) => p.url)
-    )];
+    // 인스타 게시물만, 종료(ended) 제외, shortcode 있는 URL만(프로필형 과수집 방지).
+    // 공유 헬퍼 사용 — /api/jobs monitoring 과 동일 로직(경로별 드리프트 방지).
+    const urls = activeIgPostUrls((posts ?? []) as { url: string | null; ended_at: string | null }[]);
 
     if (urls.length === 0) {
       await supabase.from("jobs").update({ status: "done", payload: { saved: 0 } }).eq("id", jobId);
