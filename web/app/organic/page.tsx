@@ -543,7 +543,7 @@ export default function OrganicPage() {
       </div>
 
       {/* 무상 노출 가이드 */}
-      <div className="mx-6 mt-5 mb-4 bg-white border border-gray-200 rounded-lg px-5 py-4 shadow-sm">
+      <div className="mx-6 mt-5 mb-2 bg-white border border-gray-200 rounded-lg px-5 py-4 shadow-sm">
         <p className="text-sm font-bold text-a-ink mb-4">📌 무상 노출 기준</p>
         <div className="grid grid-cols-2 gap-6">
           <div>
@@ -568,7 +568,7 @@ export default function OrganicPage() {
         </div>
       </div>
 
-      <div className="px-6 py-6">
+      <div className="px-6 pt-3 pb-6">
         {/* 필터 바 */}
         <div className="bg-white rounded-[14px] border border-a-hairline px-4 py-2.5 mb-3 flex items-center gap-2 flex-wrap">
           <input
