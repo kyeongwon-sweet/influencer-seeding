@@ -12,7 +12,7 @@
  *
  * 설정:
  * 1. 프로젝트 설정 → 스크립트 속성
- * 2. 속성 추가: VERCEL_CRON_SECRET = lala2024secret
+ * 2. 속성 추가: VERCEL_CRON_SECRET = <발급받은_시크릿_값>
  * 3. 트리거 설정: 매일 자정 실행
  */
 
@@ -50,7 +50,7 @@ function getCronSecret() {
 2. "스크립트 속성" 섹션 → "속성 추가"
 3. 입력:
    - 속성: VERCEL_CRON_SECRET
-   - 값: lala2024secret
+   - 값: <발급받은_시크릿_값>
 4. 저장 클릭
 5. Google Sheets 새로고침 후 메뉴 다시 시도
     `;
@@ -257,7 +257,7 @@ function showHelp() {
    → 메뉴: 🔄 협찬 모니터링 동기화 → 🔍 설정 확인
 
 [필수 설정]
-프로젝트 설정 → 스크립트 속성 → VERCEL_CRON_SECRET = lala2024secret
+프로젝트 설정 → 스크립트 속성 → VERCEL_CRON_SECRET = <발급받은_시크릿_값>
 
 [자동 트리거 설정]
 1. 좌측 메뉴 → "트리거" 클릭

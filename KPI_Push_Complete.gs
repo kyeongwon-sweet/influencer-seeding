@@ -81,7 +81,7 @@ function getCronSecret() {
 2. "스크립트 속성" 섹션에서 "속성 추가" 클릭
 3. 다음과 같이 입력:
    - 속성: CRON_SECRET
-   - 값: lala2024secret
+   - 값: <발급받은_시크릿_값>
 4. 저장 버튼 클릭
 5. 다시 함수 실행
     `;
@@ -398,10 +398,10 @@ showHelp()
 2. "속성 추가" 클릭
 3. 다음 입력:
    속성: CRON_SECRET
-   값: lala2024secret
+   값: <발급받은_시크릿_값>
 4. 저장 클릭
 
-또는 코드에서 setCronSecret("lala2024secret") 실행
+또는 코드에서 setCronSecret("<발급받은_시크릿_값>") 실행
 
 📊 데이터 범위:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -430,7 +430,7 @@ showHelp()
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 - "CRON_SECRET not configured" 에러
-  → setCronSecret("lala2024secret") 실행
+  → setCronSecret("<발급받은_시크릿_값>") 실행
 
 - "Sheet not found" 에러
   → SHEET_ID, SHEET_GID 확인

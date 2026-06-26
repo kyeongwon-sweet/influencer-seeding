@@ -11,7 +11,7 @@
  *
  * 설정:
  * 1. 프로젝트 설정 → 스크립트 속성
- * 2. 속성 추가: CRON_SECRET = lala2024secret
+ * 2. 속성 추가: CRON_SECRET = <발급받은_시크릿_값>
  * 3. 저장 후 Google Sheets 새로고침
  */
 
@@ -49,7 +49,7 @@ function getCronSecret() {
 2. "스크립트 속성" 섹션 → "속성 추가"
 3. 입력:
    - 속성: CRON_SECRET
-   - 값: lala2024secret
+   - 값: <발급받은_시크릿_값>
 4. 저장 클릭
 5. Google Sheets 새로고침 후 메뉴 다시 시도
     `;
@@ -280,7 +280,7 @@ function showHelp() {
    → API 연결 테스트
 
 [필수 설정]
-프로젝트 설정 → 스크립트 속성 → CRON_SECRET = lala2024secret
+프로젝트 설정 → 스크립트 속성 → CRON_SECRET = <발급받은_시크릿_값>
   `;
   Logger.log(help);
   SpreadsheetApp.getUi().alert(help);

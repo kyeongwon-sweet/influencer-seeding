@@ -9,7 +9,7 @@ function getCronSecret() {
   if (!secret) {
     Logger.log("❌ CRON_SECRET이 설정되지 않았습니다");
     Logger.log("1. 프로젝트 설정 → 스크립트 속성");
-    Logger.log("2. 속성 추가: CRON_SECRET = lala2024secret");
+    Logger.log("2. 속성 추가: CRON_SECRET = <발급받은_시크릿_값>");
     throw new Error("CRON_SECRET missing");
   }
   return secret;
@@ -127,7 +127,7 @@ function pushKpi() {
  * 1. 프로젝트 설정 (좌측 메뉴) → 스크립트 속성
  * 2. 속성 추가:
  *    - 속성: CRON_SECRET
- *    - 값: lala2024secret
+ *    - 값: <발급받은_시크릿_값>
  *
  * 3. 함수 실행:
  *    - testKpiEndpoint() 먼저 테스트
