@@ -466,7 +466,7 @@ export default function OrganicPage() {
       <th
         key={col}
         style={{ minWidth: colWidths[colIdx] }}
-        className={`relative px-4 py-3 ${right ? "text-right" : "text-left"} text-[10px] font-medium uppercase tracking-wider whitespace-nowrap bg-white select-none ${
+        className={`relative px-4 py-3 ${right ? "text-right" : "text-left"} text-xs font-medium whitespace-nowrap bg-white select-none ${
           sortable ? (active ? "text-a-ink" : "text-gray-400") : "text-gray-400"
         }`}
       >

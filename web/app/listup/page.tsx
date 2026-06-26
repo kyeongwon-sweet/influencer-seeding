@@ -707,7 +707,7 @@ export default function ListupPage() {
       <th
         key={col}
         style={{ minWidth: colWidths[colIdx], width: colWidths[colIdx] }}
-        className={`relative px-4 py-3 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap bg-white select-none group ${
+        className={`relative px-4 py-3 text-left text-xs font-medium whitespace-nowrap bg-white select-none group ${
           sortable ? (active ? "text-a-ink" : "text-gray-400") : "text-gray-400"
         }`}
       >
@@ -975,7 +975,7 @@ export default function ListupPage() {
                       <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll}
                         className="w-3.5 h-3.5 accent-a-blue cursor-pointer" />
                     </th>
-                    <th className="px-2 py-3 w-[60px] bg-white text-[10px] font-medium uppercase tracking-wider text-gray-400" style={{ width: 60, minWidth: 60 }}></th>
+                    <th className="px-2 py-3 w-[60px] bg-white text-xs font-medium text-gray-400" style={{ width: 60, minWidth: 60 }}></th>
                     {rsTH("채널명", 0)}
                     {rsTH("플랫폼", 1, true, (
                       <div>
@@ -1032,7 +1032,7 @@ export default function ListupPage() {
                         <th
                           key={col}
                           style={{ minWidth: colWidths[10], width: colWidths[10] }}
-                          className={`relative px-4 py-3 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap bg-white select-none group ${
+                          className={`relative px-4 py-3 text-left text-xs font-medium whitespace-nowrap bg-white select-none group ${
                             active ? "text-a-ink" : "text-gray-400"
                           }`}
                         >
