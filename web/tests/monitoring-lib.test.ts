@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   pearson, solveLinear, multipleR2, movingAvg, weekKeyOf, weekLabelOf,
-  padDomain, effectiveReach, alignedPairs, bestLag, getPostType,
+  padDomain, effectiveReach, alignedPairs, bestLag, getPostType, parseCsvLine,
 } from "../app/monitoring/lib.ts";
 
 const close = (a: number, b: number, eps = 1e-9) => Math.abs(a - b) < eps;
@@ -65,6 +65,13 @@ test("alignedPairs / bestLag: lag 정렬 + 최적 시차 탐지", () => {
   assert.deepEqual(ys, [1, 2, 3]);
   const best = bestLag(x, y, 3);
   assert.ok(best && best.lag === 1 && close(Math.abs(best.r), 1));
+});
+
+test("parseCsvLine: 따옴표·이스케이프·쉼표 처리", () => {
+  assert.deepEqual(parseCsvLine("a,b,c"), ["a", "b", "c"]);
+  assert.deepEqual(parseCsvLine('a, "b,c" , d'), ["a", "b,c", "d"]); // 따옴표 안 쉼표 보존 + trim
+  assert.deepEqual(parseCsvLine('"he said ""hi"""'), ['he said "hi"']); // 이스케이프 ""
+  assert.deepEqual(parseCsvLine("x,,z"), ["x", "", "z"]); // 빈 셀
 });
 
 test("getPostType: 플랫폼/형식 판별", () => {

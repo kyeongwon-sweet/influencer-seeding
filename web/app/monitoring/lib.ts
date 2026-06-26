@@ -406,3 +406,19 @@ export function multipleR2(Y: number[], Xs: number[][]): number | null {
   const r2 = Math.max(0, Math.min(1, 1 - ssr / sst));
   return Number.isFinite(r2) ? r2 : null;
 }
+
+// CSV 한 줄 파싱 — 따옴표 안의 쉼표/이스케이프("") 처리. 각 셀은 trim.
+export function parseCsvLine(line: string): string[] {
+  const result: string[] = [];
+  let cur = "", inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === '"') {
+      if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
+      else inQ = !inQ;
+    } else if (line[i] === ',' && !inQ) {
+      result.push(cur.trim()); cur = "";
+    } else cur += line[i];
+  }
+  result.push(cur.trim());
+  return result;
+}
