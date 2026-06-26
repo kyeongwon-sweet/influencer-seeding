@@ -707,7 +707,7 @@ export default function ListupPage() {
       <th
         key={col}
         style={{ minWidth: colWidths[colIdx], width: colWidths[colIdx] }}
-        className={`relative px-4 py-3 text-left text-[10px] font-medium uppercase tracking-wider whitespace-nowrap bg-white select-none group ${
+        className={`relative px-4 py-3 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap bg-white select-none group ${
           sortable ? (active ? "text-a-ink" : "text-gray-400") : "text-gray-400"
         }`}
       >
@@ -1032,7 +1032,7 @@ export default function ListupPage() {
                         <th
                           key={col}
                           style={{ minWidth: colWidths[10], width: colWidths[10] }}
-                          className={`relative px-4 py-3 text-left text-[10px] font-medium uppercase tracking-wider whitespace-nowrap bg-white select-none group ${
+                          className={`relative px-4 py-3 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap bg-white select-none group ${
                             active ? "text-a-ink" : "text-gray-400"
                           }`}
                         >
