@@ -270,7 +270,9 @@ export default function OrganicPage() {
     if (res.ok) {
       setMentions(prev => prev.map(m => m.id === id ? { ...m, [field]: parsed } : m));
     } else {
-      toast("저장에 실패했습니다.", "error");
+      const err = await res.json().catch(() => null);
+      console.error("[organic PATCH 실패]", field, res.status, err);
+      toast(`저장 실패 (${res.status}): ${err?.error ?? "알 수 없음"}`, "error");
     }
     setEditCell(null);
   }
