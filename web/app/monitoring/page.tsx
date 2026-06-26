@@ -452,6 +452,7 @@ export default function MonitoringPage() {
   const [smooth, setSmooth] = useState(false); // 주별 합계 보기(주차 버킷, N월 N주차)
   const [showCorr, setShowCorr] = useState(false); // 상관·시차 분석 패널
   const [chartCollapsed, setChartCollapsed] = useState(false); // 메인 그래프(차트+증감표) 접기 — 기본 펼침
+  const [view, setView] = useState<"분석" | "목록">("목록");
   const [lsSearchData, setLsSearchData] = useState<{ date: string; ratio: number; value: number | null }[]>([]);
   const [brandMetrics, setBrandMetrics] = useState<{ measured_at: string; yt_views: number | null; yt_unique_viewers: number | null; yt_search_views: number | null; ig_profile_views: number | null }[]>([]);
   const [ytTrends, setYtTrends] = useState<{ measured_at: string; keyword: string; value: number | null }[]>([]);
@@ -1620,6 +1621,16 @@ export default function MonitoringPage() {
         {/* 필터 바 */}
         <FiltersBar filters={filters} setFilters={setFilters} pdOptions={pdOptions} productOptions={productOptions} hasFilter={hasFilter} />
 
+        {/* 분석/목록 보기 전환 */}
+        <div className="flex rounded-[10px] border border-a-hairline bg-a-parchment/60 p-0.5 gap-0.5 w-fit mb-4">
+          {(["분석", "목록"] as const).map(v => (
+            <button key={v} onClick={() => setView(v)}
+              className={`px-4 py-1.5 rounded-[7px] text-xs transition ${view === v ? "bg-white shadow-sm text-a-ink font-semibold" : "text-a-ink-muted hover:text-a-ink"}`}>
+              {v === "분석" ? "분석" : "목록"}
+            </button>
+          ))}
+        </div>
+        {view === "분석" && (<>
         {filteredPosts.length > 0 && (
           <div className="relative bg-white rounded-[20px] shadow-[0_2px_16px_rgba(100,120,180,0.08)] mb-4 overflow-hidden">
             {/* 그래프 접기/펼치기 — 카드 우측 상단 */}
@@ -2010,7 +2021,9 @@ export default function MonitoringPage() {
             </div>
           );
         })()}
+        </>)}
 
+        {view === "목록" && (
         <div className="bg-white rounded-[18px] border border-a-hairline overflow-hidden">
           <div className="overflow-auto max-h-[calc(100vh-120px)]">
           {loading ? (
@@ -2430,6 +2443,7 @@ export default function MonitoringPage() {
           )}
           </div>
         </div>
+        )}
       </div>
 
       {showHelp && (
