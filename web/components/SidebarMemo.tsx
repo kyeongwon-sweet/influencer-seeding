@@ -124,9 +124,10 @@ export default function SidebarMemo() {
       </div>
     </div>
     {zoomImg && (
-      <div className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-6 cursor-zoom-out"
+      <div className="fixed inset-0 z-[100] bg-black/80 p-4 cursor-zoom-out"
         onClick={() => setZoomImg(null)}>
-        <img src={zoomImg} alt="첨부 이미지 확대" className="max-w-[92vw] max-h-[92vh] rounded-lg shadow-2xl object-contain" />
+        {/* w-full h-full + object-contain: 작은 이미지도 화면을 채우도록 확대(비율 유지) */}
+        <img src={zoomImg} alt="첨부 이미지 확대" className="w-full h-full object-contain" />
       </div>
     )}
     </>
