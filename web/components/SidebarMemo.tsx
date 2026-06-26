@@ -26,6 +26,7 @@ export default function SidebarMemo() {
   const [draftImg, setDraftImg] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
   const [err, setErr] = useState(false);
+  const [zoomImg, setZoomImg] = useState<string | null>(null);
 
   async function onPaste(e: React.ClipboardEvent) {
     const item = Array.from(e.clipboardData.items).find(i => i.type.startsWith("image/"));
@@ -71,6 +72,7 @@ export default function SidebarMemo() {
   }
 
   return (
+    <>
     <div className="flex-1 min-h-0 flex flex-col border-t border-gray-100 mt-1">
       <div className="flex items-center justify-between px-3.5 pt-2.5 pb-1.5 shrink-0">
         <span className="text-[11px] font-semibold text-gray-500 tracking-wide">📝 메모 <span className="font-normal text-gray-300">· 팀 공유</span></span>
@@ -93,7 +95,7 @@ export default function SidebarMemo() {
                 className="text-[12px] text-a-ink whitespace-pre-wrap break-words leading-snug cursor-text">{m.content}</p>
             )}
             {m.image && (
-              <img src={m.image} alt="첨부 이미지" onClick={() => window.open(m.image!, "_blank")}
+              <img src={m.image} alt="첨부 이미지" onClick={() => setZoomImg(m.image!)}
                 className="mt-1 max-h-28 w-auto rounded border border-amber-200 object-contain cursor-zoom-in" />
             )}
             <div className="flex items-center justify-between mt-1 gap-1">
@@ -121,5 +123,12 @@ export default function SidebarMemo() {
           className="mt-1 w-full text-[11px] font-medium bg-amber-300 hover:bg-amber-400 disabled:opacity-40 text-amber-900 rounded-[6px] py-1 transition-colors">추가</button>
       </div>
     </div>
+    {zoomImg && (
+      <div className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-6 cursor-zoom-out"
+        onClick={() => setZoomImg(null)}>
+        <img src={zoomImg} alt="첨부 이미지 확대" className="max-w-[92vw] max-h-[92vh] rounded-lg shadow-2xl object-contain" />
+      </div>
+    )}
+    </>
   );
 }
