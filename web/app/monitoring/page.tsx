@@ -122,7 +122,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
   lsData?: { date: string; ratio: number; value: number | null }[];
   secondaryData?: { date: string; value: number }[];
   secondaryColor?: string;
-  extraSeries?: { name: string; color: string; members: { label: string; data: { date: string; value: number | null }[] }[] }[];
+  extraSeries?: { name: string; color: string; group?: string; members: { label: string; data: { date: string; value: number | null }[] }[] }[];
   hidePrimary?: boolean;
   smooth?: boolean;
 }) {
@@ -190,31 +190,46 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
     return lsData.find(d => d.date === data[activeIdx].date) ?? null;
   })();
 
-  // 상품별 검색량 — 카테고리는 구성 상품 합산, 각 시리즈 독립 정규화
-  const extraComputed = (extraSeries ?? []).map(s => {
-    const memberMaps = s.members.map(m => ({ label: m.label, map: new Map(m.data.map(d => [d.date, d.value])) }));
-    const summed = data.map(d => {
-      let sum = 0, any = false;
-      for (const mm of memberMaps) { const v = mm.map.get(d.date); if (v != null) { sum += v; any = true; } }
-      return { date: d.date, value: (any ? sum : null) as number | null };
+  // 상품별 검색량 등 — 같은 group(예: 검색량 계열)은 공통 세로축(공유 max)으로 정규화해
+  // 절대값이 작은 시리즈(예: 골드키위 5)가 화면을 꽉 채우는 왜곡을 방지. group 없으면 시리즈별 독립 정규화.
+  const extraComputed = (() => {
+    const series = extraSeries ?? [];
+    // 1) 각 시리즈의 합산(summed) 값 먼저 계산
+    const base = series.map(s => {
+      const memberMaps = s.members.map(m => ({ label: m.label, map: new Map(m.data.map(d => [d.date, d.value])) }));
+      const summed = data.map(d => {
+        let sum = 0, any = false;
+        for (const mm of memberMaps) { const v = mm.map.get(d.date); if (v != null) { sum += v; any = true; } }
+        return { date: d.date, value: (any ? sum : null) as number | null };
+      });
+      return { s, memberMaps, summed };
     });
-    const mapped = summed.map((p, i) => ({ i, v: p.value })).filter(p => p.v !== null) as { i: number; v: number }[];
-    let path: string | null = null;
-    let dots: [number, number][] = [];
-    if (mapped.length >= 1) {
-      const vs = mapped.map(p => p.v);
-      const rawMn = Math.min(...vs), rawMx = Math.max(...vs);
-      const allEqual = rawMn === rawMx; // 값이 1개거나 전부 동일 → 중앙 높이에 표시
-      const [mn, mx] = padDomain(rawMn, rawMx); // 작은 변화가 높이 전체로 과장되지 않게
-      const rg = mx - mn || 1;
-      const y = (v: number) => allEqual ? ch / 2 : ch - ((v - mn) / rg) * (ch - chTop);
-      dots = mapped.map(p => [xS(p.i), y(p.v)] as [number, number]);
-      if (mapped.length >= 2) {
-        path = mapped.map((p, j) => `${j === 0 ? "M" : "L"}${xS(p.i).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ");
+    // 2) group별 공통 도메인(그 그룹 모든 시리즈 값을 통틀어 min/max)
+    const groupVals: Record<string, number[]> = {};
+    for (const b of base) if (b.s.group) for (const p of b.summed) if (p.value != null) (groupVals[b.s.group] ??= []).push(p.value);
+    const groupDomain: Record<string, [number, number]> = {};
+    for (const g in groupVals) if (groupVals[g].length) groupDomain[g] = padDomain(Math.min(...groupVals[g]), Math.max(...groupVals[g]));
+    // 3) 정규화 (group 있으면 공통 도메인, 없으면 시리즈별)
+    return base.map(({ s, memberMaps, summed }) => {
+      const mapped = summed.map((p, i) => ({ i, v: p.value })).filter(p => p.v !== null) as { i: number; v: number }[];
+      let path: string | null = null;
+      let dots: [number, number][] = [];
+      if (mapped.length >= 1) {
+        const vs = mapped.map(p => p.v);
+        const shared = s.group ? groupDomain[s.group] : undefined;
+        const rawMn = Math.min(...vs), rawMx = Math.max(...vs);
+        const allEqual = !shared && rawMn === rawMx; // 단일/동일값(독립일 때만) → 중앙
+        const [mn, mx] = shared ?? padDomain(rawMn, rawMx);
+        const rg = mx - mn || 1;
+        const y = (v: number) => allEqual ? ch / 2 : ch - ((v - mn) / rg) * (ch - chTop);
+        dots = mapped.map(p => [xS(p.i), y(p.v)] as [number, number]);
+        if (mapped.length >= 2) {
+          path = mapped.map((p, j) => `${j === 0 ? "M" : "L"}${xS(p.i).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ");
+        }
       }
-    }
-    return { name: s.name, color: s.color, memberMaps, summed, path, dots };
-  });
+      return { name: s.name, color: s.color, memberMaps, summed, path, dots };
+    });
+  })();
 
   // Secondary data (오른쪽 Y축)
   const secondaryPath = (() => {
@@ -1798,6 +1813,7 @@ export default function MonitoringPage() {
                     ...activeProductSeries.map(c => ({
                       name: c.label,
                       color: productColorOf(c.id),
+                      group: "search",   // 상품별 검색량끼리 공통 세로축(절대값 비례)
                       members: c.members.map(col => ({
                         label: productLabel(col),
                         data: productTrends.data.map(row => ({ date: row.date, value: row.values[col] ?? null })),
