@@ -32,6 +32,7 @@ type Mention = {
   view_count: number | null;
   exposure_type: string | null;
   notes: string | null;
+  thumbnail_url: string | null;
   created_at: string;
 };
 
@@ -677,7 +678,7 @@ export default function OrganicPage() {
                 </thead>
                 <tbody>
                   {sorted.map(m => {
-                    const thumb = getThumbnailUrl(m.url);
+                    const thumb = m.thumbnail_url || getThumbnailUrl(m.url);
                     const platformShort = platformLabel(m.platform);
                     return (
                     <tr key={m.id} className="group border-b border-a-divider last:border-0 hover:bg-a-parchment/60 transition-colors">
