@@ -35,10 +35,11 @@ export function normalizeUrl(url: string): string | null {
 }
 
 /**
- * 협찬 게시물 추가 시 허용하는 플랫폼 URL (인스타 / 유튜브 / 틱톡 / 페이스북 / 스레드 / X(트위터) / 카카오 숏폼, 서브도메인 포함).
+ * 협찬 게시물 추가 시 허용하는 플랫폼 URL (인스타 / 유튜브 / 틱톡 / 페이스북 / 스레드 / X(트위터) / 카카오 숏폼 / 네이버 클립, 다단계 서브도메인 포함).
  * sync · bulk · stats-import 및 Apps Script(Sponsored_Posts_Sync.gs)가 동일 기준 사용.
+ * 서브도메인은 `*`(0개 이상) — 네이버 클립이 m.blog.naver.com처럼 2단계라 필요. 도메인 뒤 `/` 앵커로 evil-naver.com 등은 차단됨.
  */
-export const ALLOWED_POST_URL_RE = /^https:\/\/([a-z0-9-]+\.)?(instagram\.com|youtube\.com|youtu\.be|tiktok\.com|facebook\.com|threads\.com|threads\.net|x\.com|twitter\.com|t\.co|kakao\.com)\//i;
+export const ALLOWED_POST_URL_RE = /^https:\/\/([a-z0-9-]+\.)*(instagram\.com|youtube\.com|youtu\.be|tiktok\.com|facebook\.com|threads\.com|threads\.net|x\.com|twitter\.com|t\.co|kakao\.com|naver\.com)\//i;
 
 export function normalizeYouTubeUrl(url: string): string | null {
   if (!url) return null;

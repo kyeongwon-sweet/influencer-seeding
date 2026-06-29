@@ -31,13 +31,14 @@ test("ALLOWED_POST_URL_RE: 허용 플랫폼만 통과", () => {
     "https://www.tiktok.com/@a/video/1/",
     "https://www.threads.net/@a/post/1/",
     "https://shortform.kakao.com/contents/ABC/",
+    "https://m.blog.naver.com/aeirmeki/clip/15032187/", // 네이버 클립(2단계 서브도메인)
   ]) {
     assert.ok(ALLOWED_POST_URL_RE.test(u), `통과해야 함: ${u}`);
   }
   for (const u of [
     "https://example.com/x/",
     "http://instagram.com/p/ABC/", // http는 불허(정규화 후 https만)
-    "https://naver.com/",
+    "https://evil-naver.com/x/", // 도메인 위장 차단(naver.com 허용이 오용되지 않음)
   ]) {
     assert.ok(!ALLOWED_POST_URL_RE.test(u), `막아야 함: ${u}`);
   }

@@ -52,8 +52,8 @@ const FIELD_BY_HEADER = {
   "비용": "cost",
 };
 
-// 사이트가 허용하는 URL (인스타 / 유튜브 / 틱톡 / 페이스북 / 스레드 / X(트위터) / 카카오 숏폼, 서브도메인 포함). 서버 필터와 동일.
-const ALLOWED_URL_RE = /^https:\/\/([a-z0-9-]+\.)?(instagram\.com|youtube\.com|youtu\.be|tiktok\.com|facebook\.com|threads\.com|threads\.net|x\.com|twitter\.com|t\.co|kakao\.com)\//i;
+// 사이트가 허용하는 URL (인스타 / 유튜브 / 틱톡 / 페이스북 / 스레드 / X(트위터) / 카카오 숏폼 / 네이버 클립, 다단계 서브도메인 포함). 서버 필터와 동일.
+const ALLOWED_URL_RE = /^https:\/\/([a-z0-9-]+\.)*(instagram\.com|youtube\.com|youtu\.be|tiktok\.com|facebook\.com|threads\.com|threads\.net|x\.com|twitter\.com|t\.co|kakao\.com|naver\.com)\//i;
 
 // 필드 → 표시용 컬럼명 (빈칸 검사 보고용)
 const FIELD_LABEL = {
@@ -218,7 +218,7 @@ function noteExtra_(skipped, dupCount, future) {
   let s = "";
   if (dupCount) s += `\n\n🔁 시트 내 중복 URL ${dupCount}건은 1건으로 합쳐 전송(중복 추가 방지).`;
   if (future)   s += `\n⏭️ 업로드일이 오늘 이후인 행 ${future}건 제외(아직 게시 전).`;
-  if (skipped)  s += `\n⚠️ 지원 플랫폼(IG/YT/TikTok/FB/Threads/X/카카오) URL이 아니어서 제외됨: ${skipped}건`;
+  if (skipped)  s += `\n⚠️ 지원 플랫폼(IG/YT/TikTok/FB/Threads/X/카카오/네이버) URL이 아니어서 제외됨: ${skipped}건`;
   return s;
 }
 
