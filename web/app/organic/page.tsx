@@ -570,73 +570,88 @@ export default function OrganicPage() {
 
       <div className="px-6 pt-3 pb-6">
         {/* 필터 바 */}
-        <div className="bg-white rounded-[14px] border border-a-hairline px-4 py-2.5 mb-3 flex items-center gap-2 flex-wrap">
-          <input
-            type="text"
-            placeholder="계정명 검색"
-            value={filters.name}
-            onChange={e => setFilters(p => ({ ...p, name: e.target.value }))}
-            className={`filter-input w-32 ${filters.name ? "border-a-blue" : ""}`}
-          />
-          <select
-            value={filters.platform}
-            onChange={e => setFilters(p => ({ ...p, platform: e.target.value }))}
-            className={`filter-select ${filters.platform !== "all" ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
-          >
-            <option value="all">전체 플랫폼</option>
-            {PLATFORMS.map(p => <option key={p} value={p}>{p}</option>)}
-          </select>
-          {/* 유형 필터 드롭다운 */}
-          <select value={filters.exposureType}
-            onChange={e => setFilters(p => ({ ...p, exposureType: e.target.value }))}
-            className={`filter-select ${filters.exposureType !== "all" ? "border-a-blue text-a-blue bg-blue-50" : ""}`}>
-            <option value="all">전체 유형</option>
-            <option value="무가시딩">무가시딩</option>
-            <option value="오가닉">오가닉 노출</option>
-            <option value="연예인 언급">연예인 언급</option>
-          </select>
-          {/* 언급 제품 다중 선택 칩 */}
+        <div className="bg-white rounded-[14px] border border-a-hairline px-4 py-2.5 mb-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <input
+              type="text"
+              placeholder="계정명 검색"
+              value={filters.name}
+              onChange={e => setFilters(p => ({ ...p, name: e.target.value }))}
+              className={`filter-input w-32 ${filters.name ? "border-a-blue" : ""}`}
+            />
+            <select
+              value={filters.platform}
+              onChange={e => setFilters(p => ({ ...p, platform: e.target.value }))}
+              className={`filter-select ${filters.platform !== "all" ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
+            >
+              <option value="all">전체 플랫폼</option>
+              {PLATFORMS.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+            {/* 유형 필터 드롭다운 */}
+            <select value={filters.exposureType}
+              onChange={e => setFilters(p => ({ ...p, exposureType: e.target.value }))}
+              className={`filter-select ${filters.exposureType !== "all" ? "border-a-blue text-a-blue bg-blue-50" : ""}`}>
+              <option value="all">전체 유형</option>
+              <option value="무가시딩">무가시딩</option>
+              <option value="오가닉">오가닉 노출</option>
+              <option value="연예인 언급">연예인 언급</option>
+            </select>
+            <div className="w-px h-4 bg-a-hairline mx-0.5" />
+            <div className="flex items-center gap-1.5">
+              <input type="date" value={filters.dateFrom}
+                onChange={e => setFilters(p => ({ ...p, dateFrom: e.target.value }))}
+                className={`filter-input ${filters.dateFrom ? "border-a-blue" : ""}`} />
+              <span className="text-xs text-a-ink-muted">–</span>
+              <input type="date" value={filters.dateTo}
+                onChange={e => setFilters(p => ({ ...p, dateTo: e.target.value }))}
+                className={`filter-input ${filters.dateTo ? "border-a-blue" : ""}`} />
+            </div>
+            <div className="flex-1" />
+            {hasFilter && (
+              <button onClick={() => setFilters(INIT_FILTERS)} className="btn-ghost py-1">초기화</button>
+            )}
+            <button onClick={downloadCSV} disabled={filtered.length === 0} className="btn-secondary">
+              엑셀 다운로드
+            </button>
+          </div>
+          {/* 언급 제품 필터 — 독립 행, 줄바꿈 흐름 */}
           {productOptions.length > 0 && (
-            <div className="flex items-center gap-1.5 overflow-x-auto flex-nowrap scrollbar-none pb-0.5">
-              {productOptions.map(p => {
-                const active = filters.products.includes(p);
-                return (
-                  <button key={p}
-                    onClick={() => setFilters(prev => ({
-                      ...prev,
-                      products: active
-                        ? prev.products.filter(x => x !== p)
-                        : [...prev.products, p],
-                    }))}
-                    className={`text-xs px-2.5 py-1 rounded-full border transition ${
-                      active
-                        ? "border-a-blue bg-blue-50 text-a-blue font-medium"
-                        : "border-a-hairline text-a-ink-muted hover:border-gray-400"
-                    }`}
-                  >
-                    {p}
-                  </button>
-                );
-              })}
+            <div className="flex items-start gap-2.5 mt-2.5 pt-2.5 border-t border-a-hairline">
+              <span className="text-xs font-medium text-a-ink-muted shrink-0 pt-1.5">제품</span>
+              <div className="flex flex-wrap gap-1.5 flex-1">
+                <button
+                  onClick={() => setFilters(prev => ({ ...prev, products: [] }))}
+                  className={`text-xs px-3 py-1 rounded-full border whitespace-nowrap shrink-0 transition ${
+                    filters.products.length === 0
+                      ? "border-a-blue bg-blue-50 text-a-blue font-medium"
+                      : "border-a-hairline text-a-ink-muted hover:border-gray-400 hover:text-a-ink"
+                  }`}
+                >
+                  전체
+                </button>
+                {productOptions.map(p => {
+                  const active = filters.products.includes(p);
+                  return (
+                    <button key={p}
+                      onClick={() => setFilters(prev => ({
+                        ...prev,
+                        products: active
+                          ? prev.products.filter(x => x !== p)
+                          : [...prev.products, p],
+                      }))}
+                      className={`text-xs px-3 py-1 rounded-full border whitespace-nowrap shrink-0 transition ${
+                        active
+                          ? "border-a-blue bg-blue-50 text-a-blue font-medium"
+                          : "border-a-hairline text-a-ink-muted hover:border-gray-400 hover:text-a-ink"
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
-          <div className="w-px h-4 bg-a-hairline mx-0.5" />
-          <div className="flex items-center gap-1.5">
-            <input type="date" value={filters.dateFrom}
-              onChange={e => setFilters(p => ({ ...p, dateFrom: e.target.value }))}
-              className={`filter-input ${filters.dateFrom ? "border-a-blue" : ""}`} />
-            <span className="text-xs text-a-ink-muted">–</span>
-            <input type="date" value={filters.dateTo}
-              onChange={e => setFilters(p => ({ ...p, dateTo: e.target.value }))}
-              className={`filter-input ${filters.dateTo ? "border-a-blue" : ""}`} />
-          </div>
-          <div className="flex-1" />
-          {hasFilter && (
-            <button onClick={() => setFilters(INIT_FILTERS)} className="btn-ghost py-1">초기화</button>
-          )}
-          <button onClick={downloadCSV} disabled={filtered.length === 0} className="btn-secondary">
-            엑셀 다운로드
-          </button>
         </div>
 
         {/* 테이블 */}
