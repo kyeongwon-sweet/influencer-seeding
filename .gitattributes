@@ -1,0 +1,2 @@
+# Git 훅은 sh로 실행되므로 CRLF면 "bad interpreter"로 깨짐 → LF 강제
+.githooks/** text eol=lf

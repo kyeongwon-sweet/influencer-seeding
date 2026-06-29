@@ -1,0 +1,22 @@
+#!/bin/sh
+# 푸시 전 타입체크 게이트 — import 누락 등 런타임 크래시(client-side exception)가
+# main에 도달해 배포 실패가 되는 것을 막음. (2026-06-29 LineChart import 누락 사고 재발방지)
+# 비상 우회: git push --no-verify
+root="$(git rev-parse --show-toplevel)"
+
+# node_modules 없으면(예: 막 clone, docs 전용 worktree) 검사 불가 → 건너뜀(거짓 차단 방지)
+if [ ! -d "$root/web/node_modules" ]; then
+  echo "[pre-push] web/node_modules 없음 — 타입체크 건너뜀(npm install 후 적용)"
+  exit 0
+fi
+
+echo "[pre-push] 타입체크(tsc --noEmit) 실행 중…"
+# --incremental false: tsbuildinfo 캐시로 인한 거짓 통과(에러 누락) 방지
+if ! ( cd "$root/web" && npx tsc --noEmit --incremental false ); then
+  echo ""
+  echo "❌ [pre-push] 타입에러 발견 — 푸시 중단. 위 에러를 고치고 다시 푸시하세요."
+  echo "   (비상 우회가 꼭 필요하면: git push --no-verify)"
+  exit 1
+fi
+echo "✅ [pre-push] 타입체크 통과"
+exit 0
