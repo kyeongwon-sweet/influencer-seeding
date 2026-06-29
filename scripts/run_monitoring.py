@@ -196,15 +196,24 @@ def _tw_id(url: str):
     return m.group(1) if m else None
 
 
+def _tw_norm(url: str):
+    """트위터 status URL 정규화 → 'https://x.com/<handle>/status/<id>' 표준형.
+    ⚠️ twitter-scraper-lite는 끝 슬래시('.../status/123/')·쿼리가 붙은 URL을 'Unsupported URL'로 거부해 0건 반환한다(2026-06-29 확인). 표준형으로 잘라서 넘긴다."""
+    m = re.search(r'(https?://(?:[\w-]+\.)?(?:twitter|x)\.com/[^/]+/status/\d+)', url or "", re.I)
+    return m.group(1) if m else (url or "").split("?")[0].split("#")[0].rstrip("/")
+
+
 def _fetch_twitter(urls: list) -> dict:
     """트위터(X) 조회수 수집 (apidojo/twitter-scraper-lite). 반환: {tweet_id: {views,likes,comments}}.
     ⚠️ apidojo/tweet-scraper는 이 트윗들에 noResults만 반환 → twitter-scraper-lite로 교체(2026-06-29 검증, viewCount O).
+    ⚠️ startUrls는 끝 슬래시/쿼리를 떼고 표준형으로 넘겨야 한다(_tw_norm) — 안 그러면 'Unsupported URL'로 0건.
     X가 조회수(impressions)를 제한적으로 노출 → 없으면 views=None(그날치 건너뜀)."""
     from apify_client import ApifyClient
     client = ApifyClient(os.getenv("APIFY_API_TOKEN"))
+    clean = [_tw_norm(u) for u in urls]
     run = client.actor("apidojo/twitter-scraper-lite").call(run_input={
-        "startUrls": urls,
-        "maxItems": max(len(urls), 1),
+        "startUrls": clean,
+        "maxItems": max(len(clean), 1),
     })
     out = {}
     for it in client.dataset(run["defaultDatasetId"]).iterate_items():
