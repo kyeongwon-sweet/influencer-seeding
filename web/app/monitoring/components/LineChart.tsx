@@ -1,6 +1,6 @@
 "use client";
 import { useRef, useState } from "react";
-import { CHART, weeklySum, weekLabelOf, padDomain, smoothCurvePath } from "../lib";
+import { CHART, weeklySum, weekLabelOf, padDomain, smoothCurvePath, NAVER_DATALAB_URL, META_ADS_MANAGER_URL } from "../lib";
 
 export default function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData, secondaryData, secondaryColor = "#ea580c", extraSeries, hidePrimary, smooth }: {
   data: { date: string; value: number }[];
