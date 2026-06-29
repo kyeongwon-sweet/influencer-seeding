@@ -281,7 +281,7 @@ def run():
         _start, _PAGE = 0, 1000
         while True:
             _res = db.table("sponsored_posts").select(
-                "id, url, posted_at, account_name, influencer_id, ended_at"
+                "id, url, posted_at, account_name, influencer_id, ended_at, content_summary"
             ).range(_start, _start + _PAGE - 1).execute()
             _chunk = _res.data or []
             all_posts.extend(_chunk)
@@ -332,6 +332,9 @@ def run():
                 updates["posted_at"] = s["posted_at"]
             if not post.get("account_name") and s.get("account_name"):
                 updates["account_name"] = s["account_name"]
+            # 시트에 캡션이 없으면 스크랩한 캡션으로 채움(비어 있을 때만 — 수동/시트 캡션 보존). webhook과 동일.
+            if not post.get("content_summary") and s.get("content_summary"):
+                updates["content_summary"] = s["content_summary"]
 
             # influencer_id 자동 연결 (스크리닝 지표 표시용)
             if not post.get("influencer_id") and s.get("owner_username"):
@@ -670,6 +673,7 @@ def _fetch_stats(urls: list) -> list:
             "posted_at": posted_at,
             "account_name": account_name,
             "owner_username": owner_username,
+            "content_summary": (item.get("caption") or "")[:300] or None,
         })
 
     return result
