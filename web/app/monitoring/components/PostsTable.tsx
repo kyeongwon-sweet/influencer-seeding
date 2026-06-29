@@ -1,4 +1,5 @@
 "use client";
+import { memo } from "react";
 // 게시물 표 — monitoring/page.tsx 에서 추출. 모든 상태/핸들러는 부모(MonitoringPage) 소유(props).
 // 인라인 편집/정렬/선택/열 리사이즈는 전부 부모 함수를 props로 받아 그대로 호출 → 동작 동일.
 import { type Post, type EditCell, type DailyStats, type Filters, getFilteredStats, hasNotableChange, viewIncrement, fmt, fmtChannelType, effectiveReach, pickMetric, CHANNEL_TYPES, INIT_FILTERS, CHART } from "../lib";
@@ -145,7 +146,7 @@ type Props = {
   collectedAtLabel: string;
 };
 
-export default function PostsTable(props: Props) {
+function PostsTable(props: Props) {
   const { loading, posts, filteredPosts, sortedPosts, tableTotals, filters, hasFilter, setFilters, editCell, setEditCell, patchPost, patchStat, patchPlayCount, editPlayCount, setEditPlayCount, selected, toggleSelectAll, handleRowCheck, sp, startResize, colWidths, stickyColWidths, stickyLefts, colSpan, copyIncrementList, deletePost, toast, setTrendPost, updatedPlayCounts, hoverUpdatedId, setHoverUpdatedId, collectedAtLabel } = props;
   return (
         <div className="bg-white rounded-[18px] border border-a-hairline overflow-hidden">
@@ -569,3 +570,7 @@ export default function PostsTable(props: Props) {
         </div>
   );
 }
+
+// 핸들러 props가 부모에서 정체성 고정(useStableHandlers)되어 있어, 데이터 props가 안 바뀌면
+// 부모 리렌더 시에도 표 전체(모든 행+미니그래프)를 다시 그리지 않음.
+export default memo(PostsTable);

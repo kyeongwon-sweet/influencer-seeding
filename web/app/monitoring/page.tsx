@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ElapsedTimer, useStableHandlers } from "./perf-utils";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
@@ -48,7 +49,6 @@ export default function MonitoringPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const lastCheckedIdx = useRef<number | null>(null); // 체크박스 Ctrl/Shift 범위 선택 기준점
   const [deleting, setDeleting] = useState(false);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [showTimeoutError, setShowTimeoutError] = useState(false);
   const [updatedPlayCounts, setUpdatedPlayCounts] = useState<Map<string, number | null>>(new Map());
   const [hoverUpdatedId, setHoverUpdatedId] = useState<string | null>(null);
@@ -57,7 +57,6 @@ export default function MonitoringPage() {
   const previousPlayCountsRef = useRef<Map<string, number | null>>(new Map());
   const runningJobIdRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // column widths for drag-resize
   const [stickyColWidths, setStickyColWidths] = useState<Record<string, number>>({
@@ -93,23 +92,23 @@ export default function MonitoringPage() {
     return true;
   }), [posts, filters]);
 
-  const productOptions = Array.from(
+  const productOptions = useMemo(() => Array.from(
     new Set(posts.map(p => p.product_name).filter((p): p is string => Boolean(p)))
-  ).sort();
+  ).sort(), [posts]);
 
   // PD/디자이너 옵션 — project_name이 파싱되는 게시물만 (빈 값 제외)
-  const pdOptions = Array.from(
+  const pdOptions = useMemo(() => Array.from(
     new Set(posts.map(p => pdOf(p.project_name)).filter((v): v is string => Boolean(v)))
-  ).sort((a, b) => a.localeCompare(b, "ko"));
+  ).sort((a, b) => a.localeCompare(b, "ko")), [posts]);
 
   const hasFilter = filters.name !== "" || filters.project !== "" || filters.caption !== "" || filters.products.length > 0 || filters.type !== "all" || filters.channelTypes.length > 0 || filters.pdNames.length > 0 || filters.dateFrom !== "" || filters.dateTo !== "" || filters.postedFrom !== "" || filters.postedTo !== "";
   const colSpan = 17;
 
   // 마지막 수집 시각 = 최신 측정행의 적재 시각(created_at) 중 최대값 (게시물 추가 시각 아님)
-  const lastMonitoredAt = posts.reduce<string | null>((latest, p) => {
+  const lastMonitoredAt = useMemo(() => posts.reduce<string | null>((latest, p) => {
     const t = p.latest_stats?.created_at ?? null;
     return t && (!latest || t > latest) ? t : latest;
-  }, null);
+  }, null), [posts]);
 
   const formatLastUpdate = (dateStr: string): string => {
     const d = new Date(dateStr);
@@ -136,9 +135,11 @@ export default function MonitoringPage() {
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, value]) => ({ date, value }));
   }, [filteredPosts, filters]);
 
-  const totalPlayCount = filteredPosts.reduce((s, p) => s + (p.latest_stats?.play_count ?? 0), 0);
-  const totalLikes = filteredPosts.reduce((s, p) => s + (p.latest_stats?.likes_count ?? 0), 0);
-  const totalComments = filteredPosts.reduce((s, p) => s + (p.latest_stats?.comments_count ?? 0), 0);
+  const { totalPlayCount, totalLikes, totalComments } = useMemo(() => ({
+    totalPlayCount: filteredPosts.reduce((s, p) => s + (p.latest_stats?.play_count ?? 0), 0),
+    totalLikes: filteredPosts.reduce((s, p) => s + (p.latest_stats?.likes_count ?? 0), 0),
+    totalComments: filteredPosts.reduce((s, p) => s + (p.latest_stats?.comments_count ?? 0), 0),
+  }), [filteredPosts]);
 
   // 필터 적용 시 표 상단 합계 행 — 행 렌더링과 동일한 s/prev 로직으로 증분량·비용·조회수 합산
   const tableTotals = useMemo(() => {
@@ -459,7 +460,6 @@ export default function MonitoringPage() {
     checkAndResumeMonitoring();
     return () => {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
-      if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
     };
   }, []);
 
@@ -585,8 +585,6 @@ export default function MonitoringPage() {
       if (!inProgress) return;
       runningJobIdRef.current = inProgress.id;
       setRunning(true);
-      setElapsedSeconds(0);
-      elapsedTimerRef.current = setInterval(() => setElapsedSeconds(s => s + 1), 1000);
       startPollMonitoring(Date.now());
     } catch { /* 무시 */ }
   }
@@ -595,8 +593,7 @@ export default function MonitoringPage() {
     pollTimerRef.current = setInterval(async () => {
       if (Date.now() - startTime >= 300_000) {
         clearInterval(pollTimerRef.current!);
-        clearInterval(elapsedTimerRef.current!);
-        pollTimerRef.current = null; elapsedTimerRef.current = null;
+        pollTimerRef.current = null;
         runningJobIdRef.current = null;
         setRunning(false);
         setShowTimeoutError(true);
@@ -613,16 +610,14 @@ export default function MonitoringPage() {
       const cur = jobs.find(j => j.id === runningJobIdRef.current);
       if (cur?.status === "done") {
         clearInterval(pollTimerRef.current!);
-        clearInterval(elapsedTimerRef.current!);
-        pollTimerRef.current = null; elapsedTimerRef.current = null;
+        pollTimerRef.current = null;
         runningJobIdRef.current = null;
         setRunning(false);
         await loadPosts();
         toast("모니터링 완료! 데이터가 업데이트됐습니다.", "success");
       } else if (cur?.status === "failed") {
         clearInterval(pollTimerRef.current!);
-        clearInterval(elapsedTimerRef.current!);
-        pollTimerRef.current = null; elapsedTimerRef.current = null;
+        pollTimerRef.current = null;
         runningJobIdRef.current = null;
         setRunning(false);
         toast(`모니터링 실패: ${cur.error ?? "알 수 없는 오류"}`, "error");
@@ -632,10 +627,8 @@ export default function MonitoringPage() {
 
   async function runMonitoring() {
     if (pollTimerRef.current) clearInterval(pollTimerRef.current);
-    if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
     setRunning(true);
     setShowTimeoutError(false);
-    setElapsedSeconds(0);
 
     // 수집 전에 현재 play_count들을 저장
     previousPlayCountsRef.current = new Map(
@@ -657,7 +650,6 @@ export default function MonitoringPage() {
     const { job } = await res.json();
     runningJobIdRef.current = job.id;
     toast("모니터링이 시작됐습니다. 완료 시 자동으로 업데이트됩니다.", "info");
-    elapsedTimerRef.current = setInterval(() => setElapsedSeconds(s => s + 1), 1000);
     startPollMonitoring(Date.now());
   }
 
@@ -755,7 +747,7 @@ export default function MonitoringPage() {
     setSortCol(col);
   }
 
-  const sortedPosts = [...filteredPosts].sort((a, b) => {
+  const sortedPosts = useMemo(() => [...filteredPosts].sort((a, b) => {
     if (!sortCol) return 0;
     const sa = a.latest_stats, sb = b.latest_stats;
     let av: string | number = "", bv: string | number = "";
@@ -787,7 +779,7 @@ export default function MonitoringPage() {
     }
     const cmp = av < bv ? -1 : av > bv ? 1 : 0;
     return sortDir === "asc" ? cmp : -cmp;
-  });
+  }), [filteredPosts, sortCol, sortDir]);
 
   const sp = (col: string) => ({
     onSort: () => handleSort(col),
@@ -1062,6 +1054,14 @@ export default function MonitoringPage() {
     window.addEventListener("mouseup", onUp);
   }
 
+  // 표(PostsTable)에 넘기는 핸들러들을 정체성 고정 → React.memo(PostsTable)가 실제로 동작.
+  // (이게 없으면 매 렌더마다 새 함수라 memo가 무력화됨)
+  const tableHandlers = useStableHandlers({
+    setFilters, setEditCell, patchPost, patchStat, patchPlayCount, setEditPlayCount,
+    toggleSelectAll, handleRowCheck, sp, startResize, copyIncrementList, deletePost,
+    toast, setTrendPost, setHoverUpdatedId,
+  });
+
   return (
     <div className="min-h-screen">
       {/* 날짜 채널타입 분류 툴팁 */}
@@ -1173,9 +1173,7 @@ export default function MonitoringPage() {
           <button onClick={refresh} disabled={loading} className="btn-secondary">새로고침</button>
           {running && (
             <>
-              <span className="text-xs text-a-ink-muted tabular-nums">
-                {elapsedSeconds < 60 ? `${elapsedSeconds}초` : `${Math.floor(elapsedSeconds / 60)}분 ${elapsedSeconds % 60}초`}
-              </span>
+              <ElapsedTimer />
               <button onClick={checkMonitoringJob} className="btn-secondary">지금 확인</button>
             </>
           )}
@@ -1590,7 +1588,7 @@ export default function MonitoringPage() {
           );
         })()}
 
-          <PostsTable loading={loading} posts={posts} filteredPosts={filteredPosts} sortedPosts={sortedPosts} tableTotals={tableTotals} filters={filters} hasFilter={hasFilter} setFilters={setFilters} editCell={editCell} setEditCell={setEditCell} patchPost={patchPost} patchStat={patchStat} patchPlayCount={patchPlayCount} editPlayCount={editPlayCount} setEditPlayCount={setEditPlayCount} selected={selected} toggleSelectAll={toggleSelectAll} handleRowCheck={handleRowCheck} sp={sp} startResize={startResize} colWidths={colWidths} stickyColWidths={stickyColWidths} stickyLefts={stickyLefts} colSpan={colSpan} copyIncrementList={copyIncrementList} deletePost={deletePost} toast={toast} setTrendPost={setTrendPost} updatedPlayCounts={updatedPlayCounts} hoverUpdatedId={hoverUpdatedId} setHoverUpdatedId={setHoverUpdatedId} collectedAtLabel={collectedAtLabel} />
+          <PostsTable loading={loading} posts={posts} filteredPosts={filteredPosts} sortedPosts={sortedPosts} tableTotals={tableTotals} filters={filters} hasFilter={hasFilter} editCell={editCell} editPlayCount={editPlayCount} selected={selected} colWidths={colWidths} stickyColWidths={stickyColWidths} stickyLefts={stickyLefts} colSpan={colSpan} updatedPlayCounts={updatedPlayCounts} hoverUpdatedId={hoverUpdatedId} collectedAtLabel={collectedAtLabel} {...tableHandlers} />
       </div>
 
       {showHelp && (
