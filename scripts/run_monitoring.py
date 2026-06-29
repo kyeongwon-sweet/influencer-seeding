@@ -197,11 +197,12 @@ def _tw_id(url: str):
 
 
 def _fetch_twitter(urls: list) -> dict:
-    """트위터(X) 조회수 수집 (apidojo/tweet-scraper). 반환: {tweet_id: {views,likes,comments}}.
+    """트위터(X) 조회수 수집 (apidojo/twitter-scraper-lite). 반환: {tweet_id: {views,likes,comments}}.
+    ⚠️ apidojo/tweet-scraper는 이 트윗들에 noResults만 반환 → twitter-scraper-lite로 교체(2026-06-29 검증, viewCount O).
     X가 조회수(impressions)를 제한적으로 노출 → 없으면 views=None(그날치 건너뜀)."""
     from apify_client import ApifyClient
     client = ApifyClient(os.getenv("APIFY_API_TOKEN"))
-    run = client.actor("apidojo/tweet-scraper").call(run_input={
+    run = client.actor("apidojo/twitter-scraper-lite").call(run_input={
         "startUrls": urls,
         "maxItems": max(len(urls), 1),
     })
