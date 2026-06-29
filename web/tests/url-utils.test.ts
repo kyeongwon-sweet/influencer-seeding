@@ -30,6 +30,7 @@ test("ALLOWED_POST_URL_RE: 허용 플랫폼만 통과", () => {
     "https://youtu.be/X/",
     "https://www.tiktok.com/@a/video/1/",
     "https://www.threads.net/@a/post/1/",
+    "https://shortform.kakao.com/contents/ABC/",
   ]) {
     assert.ok(ALLOWED_POST_URL_RE.test(u), `통과해야 함: ${u}`);
   }
