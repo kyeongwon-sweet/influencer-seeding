@@ -110,7 +110,7 @@ async function collect(req: NextRequest) {
       });
 
       const items = await client.dataset(run.defaultDatasetId).listItems();
-      const resultItems = items.items || [];
+      const resultItems = (items.items || []) as any[]; // Apify 외부 JSON — 필드 동적
 
       console.log(`[LOG] 📊 Apify 응답: ${resultItems.length}개 게시물`);
 

@@ -1499,7 +1499,7 @@ export default function MonitoringPage() {
                                     <span className={`ml-1.5 text-[11px] font-medium ${cls}`}>({dayLabel})</span>
                                   </td>
                                   {deltaCell(d.play, "text-red-500", "text-blue-600")}
-                                  {deltaCell(d.search, "text-gray-500", "text-gray-400")}
+                                  {deltaCell("search" in d ? d.search : null, "text-gray-500", "text-gray-400")}
                                   {(() => {
                                     const v = b2bMap.get(d.date);
                                     if (v == null) return <td className="pl-3 pr-5 py-3 text-right text-gray-300">-</td>;

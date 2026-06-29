@@ -230,7 +230,7 @@ export async function POST(req: NextRequest) {
 async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, jobId: string, items: Record<string, unknown>[]) {
   // KST 날짜로 적재 — GHA(run_monitoring, MONITORING_DATE=KST)·대시보드 todayKST와 일치(UTC로 잡으면 KST 새벽 수집이 어제로 밀림)
   const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const { data: posts } = await supabase.from('sponsored_posts').select('id, url, posted_at, account_name, influencer_id, ended_at, project_name');
+  const { data: posts } = await supabase.from('sponsored_posts').select('id, url, posted_at, account_name, influencer_id, ended_at, project_name, content_summary');
 
   const statsKey = (url: string) => {
     const m = (url || '').match(/\/(?:p|reel|tv)\/([A-Za-z0-9_-]+)/);
@@ -736,7 +736,7 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
         viewCount = (item.viewCount || item.views || 0) as number;
         if (viewCount < ORGANIC_MIN_VIEWS) continue;
         accountName = (item.author as { userName?: string } | undefined)?.userName || (item.username as string) || null;
-        contentSummary = (item.fullText || item.text as string)?.slice(0, 300) || null;
+        contentSummary = ((item.fullText || item.text) as string)?.slice(0, 300) || null;
         uploadedAt = parseDate(item.createdAt || item.created_at);
 
       } else if (platform === 'blog') {
@@ -754,7 +754,7 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
         const likeCount = (item.likeCount || item.likes || 0) as number;
         if (viewCount < 100_000 && likeCount < 10_000) continue;
         accountName = (item.username || item.ownerUsername) as string || null;
-        contentSummary = (item.caption || item.text as string)?.slice(0, 300) || null;
+        contentSummary = ((item.caption || item.text) as string)?.slice(0, 300) || null;
         uploadedAt = parseDate(item.takenAt || item.timestamp || item.createdAt);
         viewCount = viewCount || likeCount;
 

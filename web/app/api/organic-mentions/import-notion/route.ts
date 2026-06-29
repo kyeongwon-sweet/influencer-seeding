@@ -26,27 +26,29 @@ type NotionPropertyValue =
 
 type NotionPage = { properties: Record<string, NotionPropertyValue> };
 
+// NotionPropertyValue 유니온에 catch-all 멤버가 있어 prop.type 가드 후에도 속성이 unknown으로 좁혀짐 →
+// 타입 가드 통과 후 해당 변형으로 명시 단언(런타임 안전, Notion 응답 구조는 가드로 보장).
 function getText(prop: NotionPropertyValue | undefined): string | null {
   if (!prop) return null;
-  if (prop.type === "title") return prop.title[0]?.plain_text ?? null;
-  if (prop.type === "rich_text") return prop.rich_text[0]?.plain_text ?? null;
+  if (prop.type === "title") return (prop as { title: { plain_text: string }[] }).title[0]?.plain_text ?? null;
+  if (prop.type === "rich_text") return (prop as { rich_text: { plain_text: string }[] }).rich_text[0]?.plain_text ?? null;
   return null;
 }
 function getUrl(prop: NotionPropertyValue | undefined): string | null {
   if (!prop || prop.type !== "url") return null;
-  return prop.url ?? null;
+  return (prop as { url: string | null }).url ?? null;
 }
 function getNumber(prop: NotionPropertyValue | undefined): number | null {
   if (!prop || prop.type !== "number") return null;
-  return prop.number ?? null;
+  return (prop as { number: number | null }).number ?? null;
 }
 function getSelect(prop: NotionPropertyValue | undefined): string {
   if (!prop || prop.type !== "select") return "";
-  return prop.select?.name ?? "";
+  return (prop as { select: { name: string } | null }).select?.name ?? "";
 }
 function getMultiSelect(prop: NotionPropertyValue | undefined): string | null {
   if (!prop || prop.type !== "multi_select") return null;
-  const names = prop.multi_select.map((s) => s.name).join(", ");
+  const names = (prop as { multi_select: { name: string }[] }).multi_select.map((s) => s.name).join(", ");
   return names || null;
 }
 

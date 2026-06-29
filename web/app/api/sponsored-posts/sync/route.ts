@@ -65,8 +65,8 @@ export async function POST(req: NextRequest) {
   if (process.env.APIFY_API_TOKEN) {
     // Instagram URL만 Apify 스크래핑
     const igUrls = cleaned
-      .map(r => r.url)
-      .filter(u => u.includes("instagram.com"));
+      .map((r: { url: string }) => r.url)
+      .filter((u: string) => u.includes("instagram.com"));
 
     if (igUrls.length > 0) {
       // job 생성 후 Apify 실행

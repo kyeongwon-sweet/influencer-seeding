@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
 
         // 재발방지 가드: 게시물이 많은데 URL이 비정상적으로 적으면 조용한 success 금지 → 실패 처리(UI 노출)
         if (isSuspiciousUrlCount(rows, urls.length)) {
-          logger.warn(`[monitoring] 수집 URL 비정상: ${urls.length}건 (게시물 ${rows.length}건) — 필터 점검 필요`);
+          logger.warn("monitoring", `수집 URL 비정상: ${urls.length}건 (게시물 ${rows.length}건) — 필터 점검 필요`);
           await supabase.from('jobs').update({ status: 'failed', error: `수집 URL이 비정상적으로 적음(${urls.length}건) — URL 필터 점검 필요` }).eq('id', job.id);
         } else if (urls.length === 0) {
           await supabase.from('jobs').update({ status: 'done' }).eq('id', job.id);

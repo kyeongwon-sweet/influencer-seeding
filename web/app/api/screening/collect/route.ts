@@ -23,7 +23,7 @@ async function fetchInstagramMetrics(username: string) {
     const profileItems = await client.dataset(profileRun.defaultDatasetId).listItems();
     if (profileItems.items.length === 0) return null;
 
-    const profile = profileItems.items[0];
+    const profile = profileItems.items[0] as any; // Apify 외부 JSON — 필드 동적
     const totalPosts = profile.postsCount || 0;
     const followers = profile.followersCount || 0;
 
@@ -35,7 +35,7 @@ async function fetchInstagramMetrics(username: string) {
     });
 
     const postsData = await client.dataset(postsRun.defaultDatasetId).listItems();
-    const posts = postsData.items || [];
+    const posts = (postsData.items || []) as any[]; // Apify 외부 JSON — 필드 동적
 
     console.log(`[LOG] @${username}: ${totalPosts} posts, ${posts.length} collected`);
 
@@ -157,7 +157,7 @@ export async function POST(req: NextRequest) {
       }
 
       const username = match[1];
-      const data = await fetchInstagramMetrics(username, apiToken);
+      const data = await fetchInstagramMetrics(username);
 
       if (!data) {
         console.warn(`[WARN] @${username} 데이터 수집 실패`);

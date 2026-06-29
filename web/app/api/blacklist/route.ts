@@ -10,7 +10,8 @@ export type BlacklistEntry = {
 };
 
 // URL에서 username 추출 (인스타·유튜브 공통)
-export function extractHandle(url: string): string {
+// route.ts는 핸들러(GET/POST 등)만 export 가능 — 내부 헬퍼는 비export.
+function extractHandle(url: string): string {
   try {
     const u = new URL(url);
     const parts = u.pathname.split("/").filter(Boolean);

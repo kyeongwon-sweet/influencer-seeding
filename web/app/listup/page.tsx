@@ -447,7 +447,7 @@ export default function ListupPage() {
         const updated = metrics.length > 0
           ? [{ ...metrics[0], avg_views_per_follower: newVal }, ...metrics.slice(1)]
           : [{ avg_views_per_follower: newVal }];
-        return { ...i, screening_metrics: updated };
+        return { ...i, screening_metrics: updated } as Influencer;
       }));
       setEditRatio(null); // 성공 시에만 닫기
     } else {
@@ -521,7 +521,7 @@ export default function ListupPage() {
         const updated = metrics.length > 0
           ? [{ ...metrics[0], followers: newVal }, ...metrics.slice(1)]
           : [{ followers: newVal, avg_views_per_follower: null, total_avg_play_count: null }];
-        return { ...i, screening_metrics: updated };
+        return { ...i, screening_metrics: updated } as Influencer;
       }));
       setEditFollowers(null);
     } else {

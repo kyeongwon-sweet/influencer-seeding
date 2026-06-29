@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
       .select(`id, url, ${POST_FIELDS.join(", ")}`)
       .in("url", allUrls.slice(i, i + 80));
     if (ee) return NextResponse.json({ error: ee.message }, { status: 500 });
-    for (const e of (existing ?? []) as Array<Record<string, unknown>>) {
+    for (const e of (existing ?? []) as unknown as Array<Record<string, unknown>>) {
       idByUrl.set(String(e.url), String(e.id));
       existingByUrl.set(String(e.url), e);
     }

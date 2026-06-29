@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
       .select(`id, url, manual_fields, ${META.join(", ")}`)
       .in("url", allUrls.slice(i, i + 80));
     if (ee) return NextResponse.json({ error: `[조회] ${ee.message} | code=${ee.code ?? ""} | details=${ee.details ?? ""} | hint=${ee.hint ?? ""}` }, { status: 500 });
-    for (const e of (existing ?? []) as Array<Record<string, unknown>>) existingByUrl.set(String(e.url), e);
+    for (const e of (existing ?? []) as unknown as Array<Record<string, unknown>>) existingByUrl.set(String(e.url), e);
   }
 
   // 신규 URL → 전체 메타로 생성
