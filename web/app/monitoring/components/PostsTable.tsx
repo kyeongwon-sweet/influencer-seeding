@@ -1,5 +1,5 @@
 "use client";
-import { memo } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 // 게시물 표 — monitoring/page.tsx 에서 추출. 모든 상태/핸들러는 부모(MonitoringPage) 소유(props).
 // 인라인 편집/정렬/선택/열 리사이즈는 전부 부모 함수를 props로 받아 그대로 호출 → 동작 동일.
 import { type Post, type EditCell, type DailyStats, type Filters, getFilteredStats, hasNotableChange, viewIncrement, fmt, fmtChannelType, effectiveReach, pickMetric, CHANNEL_TYPES, INIT_FILTERS, CHART } from "../lib";
@@ -148,13 +148,35 @@ type Props = {
 
 function PostsTable(props: Props) {
   const { loading, posts, filteredPosts, sortedPosts, tableTotals, filters, hasFilter, setFilters, editCell, setEditCell, patchPost, patchStat, patchPlayCount, editPlayCount, setEditPlayCount, selected, toggleSelectAll, handleRowCheck, sp, startResize, colWidths, stickyColWidths, stickyLefts, colSpan, copyIncrementList, deletePost, toast, setTrendPost, updatedPlayCounts, hoverUpdatedId, setHoverUpdatedId, collectedAtLabel } = props;
+
+  // 가로 스크롤바를 표 맨 위(열제목 위)에도 둠 — 본문 스크롤과 양방향 동기화.
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const bodyScrollRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
+  const [scrollW, setScrollW] = useState(0);
+  useEffect(() => {
+    const body = bodyScrollRef.current, table = tableRef.current;
+    if (!body || !table) return;
+    const update = () => setScrollW(body.scrollWidth);
+    update();
+    const ro = new ResizeObserver(update); // 열 리사이즈/내용 변화 시 폭 재측정
+    ro.observe(table);
+    return () => ro.disconnect();
+  }, [sortedPosts, colWidths, stickyColWidths, loading]);
+  const syncFromTop = () => { if (bodyScrollRef.current && topScrollRef.current) bodyScrollRef.current.scrollLeft = topScrollRef.current.scrollLeft; };
+  const syncFromBody = () => { if (bodyScrollRef.current && topScrollRef.current) topScrollRef.current.scrollLeft = bodyScrollRef.current.scrollLeft; };
+
   return (
         <div className="bg-white rounded-[18px] border border-a-hairline overflow-hidden">
-          <div className="overflow-auto max-h-[calc(100vh-120px)]">
+          {/* 상단 가로 스크롤바 (열제목 위) — 본문과 동기화 */}
+          <div ref={topScrollRef} onScroll={syncFromTop} className="overflow-x-auto overflow-y-hidden" style={{ scrollbarWidth: "thin" }}>
+            <div style={{ width: scrollW || 1, height: 1 }} />
+          </div>
+          <div ref={bodyScrollRef} onScroll={syncFromBody} className="overflow-auto max-h-[calc(100vh-120px)]">
           {loading ? (
             <div className="p-8 text-center text-a-ink-muted text-sm">로딩 중...</div>
           ) : (
-            <table className="w-full text-sm">
+            <table ref={tableRef} className="w-full text-sm">
               <thead className="sticky top-0 z-30">
                 <tr className="border-b border-a-hairline">
                   <th className="pl-3 pr-1 py-3 sticky z-40 bg-white shadow-[inset_0_-1.5px_0_#d1d5db]" style={{ left: 0, width: 36, minWidth: 36 }}>
