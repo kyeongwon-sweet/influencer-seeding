@@ -146,13 +146,13 @@ def main():
         "",
     ]
     for ct, s in sorted(by_channel.items(), key=lambda x: x[1], reverse=True):
-        lines.append(f"• {_ital_paren(ct)} +{f(s)}")
+        lines.append(f"• {_ital_paren(ct)} *+{f(s)}*")
     lines += ["", "◾ *급상승 TOP 10*", ""]
     for rank, it in enumerate(items[:10], 1):
         prod = f"[{it['product']}] " if it["product"] else ""
         label = f"<{it['url']}|{_esc(it['name'])}>" if it["url"] else _esc(it["name"])
         date = it["posted_at"] or "업로드일 미상"
-        lines.append(f"{rank}. {prod}{label} _({it['platform']})_ +{f(it['inc'])}  `{date}`")
+        lines.append(f"{rank}. {prod}{label} _({it['platform']})_ *+{f(it['inc'])}*  `{date}`")
     text = "\n".join(lines)
 
     data = urllib.parse.urlencode({"channel": CHANNEL, "text": text, "unfurl_links": "false"}).encode()
