@@ -223,7 +223,7 @@ function PostsTable(props: Props) {
                   <TH right w={colWidths["좋아요"]} onResize={e => startResize("좋아요", e)} {...sp("좋아요")}>좋아요</TH>
                   <TH right w={colWidths["댓글"]} onResize={e => startResize("댓글", e)} {...sp("댓글")}>댓글</TH>
                   <TH className="text-center" w={colWidths["트렌드"]} onResize={e => startResize("트렌드", e)}>트렌드</TH>
-                  <TH w={colWidths["특이사항"]} fixed onResize={e => startResize("특이사항", e)}>특이사항</TH>
+                  <TH w={colWidths["특이사항"]} fixed>특이사항</TH>
                   <TH w={colWidths["삭제"]}></TH>
                 </tr>
               </thead>
