@@ -319,6 +319,31 @@ def run():
             stats_by_key = {_stats_key(s["url"]): s for s in stats}
             print(f"[LOG] Apify 수집 결과: {len(stats)}건 / {len(ig_urls)}개 요청(인스타)")
 
+            # 🛟 IG 폴백: 인스타가 기본 액터(apify/instagram-scraper) 요청을 차단하면 no_items만 와서 조회수가 대량 누락된다.
+            # 릴스/tv는 정상 시 거의 항상 play_count가 있으므로, 릴스 조회수가 대량 누락이면 '차단'으로 보고 막힌 건만 data-slayer로 재시도.
+            reels = [u for u in ig_urls if re.search(r'/(?:reel|reels|tv)/', u)]
+            reel_missing = [u for u in reels if not (stats_by_key.get(_stats_key(u)) or {}).get("play_count")]
+            if reels and len(reel_missing) / len(reels) >= 0.4:
+                missing = [u for u in ig_urls if not (stats_by_key.get(_stats_key(u)) or {}).get("play_count")]
+                print(f"[WARN] IG 릴스 조회수 누락 {len(reel_missing)}/{len(reels)} → 기본 액터 차단 추정, data-slayer 폴백 {len(missing)}건 호출")
+                fb = _fetch_ig_fallback(missing)
+                merged = 0
+                for u in missing:
+                    m = fb.get(_ig_shortcode(u) or "")
+                    if not m:
+                        continue
+                    key = _stats_key(u)
+                    cur = stats_by_key.get(key) or {"url": u}
+                    if m.get("play_count") is not None:
+                        cur["play_count"] = m["play_count"]
+                        merged += 1
+                    if m.get("likes_count") is not None:
+                        cur["likes_count"] = m["likes_count"]
+                    if m.get("comments_count") is not None:
+                        cur["comments_count"] = m["comments_count"]
+                    stats_by_key[key] = cur
+                print(f"[LOG] data-slayer 폴백 보강 완료: 조회수 {merged}건 채움")
+
         rows = []
         for post in posts:
             key = _stats_key(post["url"])
@@ -570,6 +595,32 @@ def run():
         if job_id:
             db.table("jobs").update({"status": "failed", "error": str(e)}).eq("id", job_id).execute()
         raise
+
+
+def _fetch_ig_fallback(urls: list) -> dict:
+    """기본 IG 액터(apify/instagram-scraper)가 인스타 차단으로 no_items만 반환할 때, data-slayer/instagram-post-details로 조회수 보강.
+    반환: {shortcode: {play_count, likes_count, comments_count}}.
+    ⚠️ metrics.play_count는 기존 videoPlayCount 시리즈와 연속됨(2026-06-29 실측 비율 1.000). 비용↑(~2.7배)이라 차단 감지 시에만 호출한다."""
+    from apify_client import ApifyClient
+    client = ApifyClient(os.getenv("APIFY_API_TOKEN"))
+    out = {}
+    for i in range(0, len(urls), 40):
+        chunk = urls[i:i + 40]
+        try:
+            run = client.actor("data-slayer/instagram-post-details").call(run_input={"postUrls": chunk})
+            for it in client.dataset(run["defaultDatasetId"]).iterate_items():
+                code = it.get("code") or it.get("shortcode") or it.get("shortCode")
+                if not code:
+                    continue
+                m = it.get("metrics") or {}
+                out[code] = {
+                    "play_count": m.get("play_count"),
+                    "likes_count": m.get("like_count"),
+                    "comments_count": m.get("comment_count"),
+                }
+        except Exception as e:
+            print(f"  [WARN] data-slayer 폴백 배치 실패: {e}")
+    return out
 
 
 @retry_on_network_error(max_retries=3, delay=10)
