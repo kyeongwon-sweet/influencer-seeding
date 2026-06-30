@@ -8,6 +8,10 @@ on:
     - cron: "5 1 * * *"   # 10:05 KST
   workflow_dispatch:
 
+# 배포 URL은 여기 한 곳에서만 관리. ⚠️ -mu(프로덕션 도메인)만 — -kwhwang-s-projects는 배포보호(SSO) 302로 차단됨.
+env:
+  APP_URL: "https://influencer-seeding-mu.vercel.app"
+
 jobs:
   fetch:
     runs-on: ubuntu-latest
@@ -15,8 +19,8 @@ jobs:
       - name: KPI fetch (kpi/fetch)
         run: |
           code=$(curl -sS -o /tmp/kpi.out -w "%{http_code}" \
-            "https://influencer-seeding-mu.vercel.app/api/kpi/fetch" \
+            "$APP_URL/api/kpi/fetch" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
           cat /tmp/kpi.out; echo ""
           echo "HTTP ${code}"
-          [ "${code}" = "200" ] || exit 1
+          [ "${code:0:1}" = "2" ] || { echo "::error::kpi/fetch 실패 HTTP=$code — 배포/URL 확인($APP_URL)"; exit 1; }

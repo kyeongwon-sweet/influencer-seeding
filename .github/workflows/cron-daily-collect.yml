@@ -25,6 +25,11 @@ on:
         type: boolean
         default: false
 
+# 배포 URL은 여기 한 곳에서만 관리(프로젝트 이전·alias 변경 시 이 줄만 수정).
+# ⚠️ -mu(프로덕션 도메인)만 사용 — -kwhwang-s-projects는 Vercel 배포보호(SSO)로 302되어 cron 차단됨(2026-06-30 확인).
+env:
+  APP_URL: "https://influencer-seeding-mu.vercel.app"
+
 jobs:
   collect:
     if: ${{ github.event.inputs.status_test != 'true' }}
@@ -114,8 +119,10 @@ jobs:
         if: steps.decide.outputs.go == '1'
         continue-on-error: true
         run: |
-          curl -sS "https://influencer-seeding-mu.vercel.app/api/brand-metrics/collect?days=7" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" -w "\nHTTP %{http_code}\n"
+          code=$(curl -sS -o /tmp/o -w "%{http_code}" "$APP_URL/api/brand-metrics/collect?days=7" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          cat /tmp/o; echo "HTTP $code"
+          [ "${code:0:1}" = "2" ] || { echo "::error::brand-metrics 실패 HTTP=$code — 배포/URL 확인($APP_URL)"; exit 1; }
 
       # 유튜브 트렌드: 키워드별 순차 실행(동시 실행 시 Google 차단·단일 run 시 1개 누락 회피).
       # kw=0 띄우고 ~14분 대기(액터 완료 후) → kw=1. 액터→webhook이 비동기로 DB 기록.
@@ -123,8 +130,10 @@ jobs:
         if: steps.decide.outputs.go == '1'
         continue-on-error: true
         run: |
-          curl -sS "https://influencer-seeding-mu.vercel.app/api/youtube-trends/collect?kw=0" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" -w "\nHTTP %{http_code}\n"
+          code=$(curl -sS -o /tmp/o -w "%{http_code}" "$APP_URL/api/youtube-trends/collect?kw=0" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          cat /tmp/o; echo "HTTP $code"
+          [ "${code:0:1}" = "2" ] || { echo "::error::youtube-trends kw=0 실패 HTTP=$code — 배포/URL 확인($APP_URL)"; exit 1; }
       - name: 액터 완료 대기 (동시 실행 회피)
         if: steps.decide.outputs.go == '1'
         run: sleep 840
@@ -132,15 +141,19 @@ jobs:
         if: steps.decide.outputs.go == '1'
         continue-on-error: true
         run: |
-          curl -sS "https://influencer-seeding-mu.vercel.app/api/youtube-trends/collect?kw=1" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" -w "\nHTTP %{http_code}\n"
+          code=$(curl -sS -o /tmp/o -w "%{http_code}" "$APP_URL/api/youtube-trends/collect?kw=1" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          cat /tmp/o; echo "HTTP $code"
+          [ "${code:0:1}" = "2" ] || { echo "::error::youtube-trends kw=1 실패 HTTP=$code — 배포/URL 확인($APP_URL)"; exit 1; }
 
       - name: B2B 발주량 (b2b-revenue/fetch)
         if: steps.decide.outputs.go == '1'
         continue-on-error: true
         run: |
-          curl -sS "https://influencer-seeding-mu.vercel.app/api/b2b-revenue/fetch" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" -w "\nHTTP %{http_code}\n"
+          code=$(curl -sS -o /tmp/o -w "%{http_code}" "$APP_URL/api/b2b-revenue/fetch" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          cat /tmp/o; echo "HTTP $code"
+          [ "${code:0:1}" = "2" ] || { echo "::error::b2b-revenue 실패 HTTP=$code — 배포/URL 확인($APP_URL)"; exit 1; }
 
   # 수동 검증용: 수집 없이 상태 알럿(정상 가정)만 황경원 DM으로 발송 — 미측정 점검 포함.
   status-test:
