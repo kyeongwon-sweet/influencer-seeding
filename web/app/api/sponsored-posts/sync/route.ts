@@ -3,6 +3,7 @@ import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { startActorRun } from "@/lib/apify";
 import { normalizeUrl, ALLOWED_POST_URL_RE } from "@/lib/url-utils";
+import { normalizeChannelType } from "@/app/monitoring/lib";
 
 /**
  * Google Sheets → 협찬 모니터링 동기화 엔드포인트
@@ -42,7 +43,7 @@ export async function POST(req: NextRequest) {
     posted_at:       r.posted_at || null,
     account_name:    r.account_name || null,
     content_summary: r.content_summary || null,
-    channel_type:    r.channel_type || null,
+    channel_type:    normalizeChannelType(r.channel_type ? String(r.channel_type) : null),
     project_name:    r.project_name || null,
     product_name:    r.product_name || null,
     cost:            r.cost != null ? Number(r.cost) : null,

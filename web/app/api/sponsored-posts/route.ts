@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl } from "@/lib/url-utils";
 import { logger } from "@/lib/logger";
+import { normalizeChannelType } from "@/app/monitoring/lib";
 
 export async function GET(req: NextRequest) {
   // URL 정규화 마이그레이션 엔드포인트
@@ -135,7 +136,7 @@ export async function POST(req: NextRequest) {
     // URL 정규화 + 빈 URL 제거
     // 목적: 쿼리 파라미터, trailing slash 등을 정규화해서 중복 방지
     const rows = body
-      .map(r => ({ ...r, url: r.url ? (normalizeUrl(r.url) || r.url) : r.url }))
+      .map(r => ({ ...r, url: r.url ? (normalizeUrl(r.url) || r.url) : r.url, ...(r.channel_type ? { channel_type: normalizeChannelType(String(r.channel_type)) } : {}) }))
       .filter(r => r.url);
 
     logger.info("sponsored-posts-api", "게시물 일괄 추가 시작", {
@@ -166,6 +167,7 @@ export async function POST(req: NextRequest) {
   }
 
   const cleaned = { ...body, url: body.url ? (normalizeUrl(body.url) || body.url) : body.url };
+  if (cleaned.channel_type) cleaned.channel_type = normalizeChannelType(String(cleaned.channel_type));
 
   logger.info("sponsored-posts-api", "게시물 추가 시작", {
     url: cleaned.url,

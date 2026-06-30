@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
+import { normalizeChannelType } from "@/app/monitoring/lib";
 
 export async function PATCH(
   req: NextRequest,
@@ -17,6 +18,7 @@ export async function PATCH(
   for (const key of allowed) {
     if (key in body) updates[key] = body[key] || null;
   }
+  if (typeof updates.channel_type === "string") updates.channel_type = normalizeChannelType(updates.channel_type);
   for (const key of allowedNumeric) {
     if (key in body) {
       const v = body[key];

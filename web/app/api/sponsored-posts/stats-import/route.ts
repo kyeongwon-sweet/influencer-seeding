@@ -3,6 +3,7 @@ import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl, ALLOWED_POST_URL_RE } from "@/lib/url-utils";
 import { filterMonotonicStats, type GuardInput } from "@/lib/stats-guard";
+import { normalizeChannelType } from "@/app/monitoring/lib";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -60,7 +61,7 @@ export async function POST(req: NextRequest) {
     if (!ALLOWED_POST_URL_RE.test(url)) continue; // 허용 플랫폼만 신규 생성
     if (postByUrl.has(url)) continue;
     const clean: Record<string, unknown> = { url };
-    for (const f of POST_FIELDS) if (p[f] !== undefined && p[f] !== "") clean[f] = p[f]; // ""→ 제외(date/numeric 캐스트 오류 방지)
+    for (const f of POST_FIELDS) if (p[f] !== undefined && p[f] !== "") clean[f] = f === "channel_type" ? normalizeChannelType(String(p[f])) : p[f]; // ""→ 제외(date/numeric 캐스트 오류 방지)
     postByUrl.set(url, clean);
   }
 

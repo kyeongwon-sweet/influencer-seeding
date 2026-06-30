@@ -90,8 +90,9 @@ export function formatTimestamp(ts: string): string {
 
 export function normalizeChannelType(value: string | null): string | null {
   if (!value) return null;
-  // 공백 정규화: 연속된 공백을 단일 공백으로, 앞뒤 공백 제거
-  return value.trim().replace(/\s+/g, " ");
+  // 표준 표기로 정규화: 연속/앞뒤 공백 정리 + 괄호 앞 공백 보장("바이럴(영상)"→"바이럴 (영상)").
+  // 저장 시점에 적용해 시트·드롭다운·CSV 어디서 와도 표기가 통일됨(필터 매칭 누락 방지).
+  return value.trim().replace(/\s+/g, " ").replace(/\s*\(/g, " (");
 }
 
 // 표시 전용: 괄호 앞에 공백 추가 ("바이럴(배너)" → "바이럴 (배너)"). 저장값은 그대로, 화면에만 적용(필터 매칭은 공백 무시).

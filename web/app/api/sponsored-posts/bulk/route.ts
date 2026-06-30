@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl, ALLOWED_POST_URL_RE } from "@/lib/url-utils";
+import { normalizeChannelType } from "@/app/monitoring/lib";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -42,7 +43,7 @@ export async function POST(req: NextRequest) {
       posted_at:       r.posted_at || null,
       account_name:    r.account_name || null,
       content_summary: r.content_summary || null,
-      channel_type:    r.channel_type || null,
+      channel_type:    normalizeChannelType(r.channel_type ? String(r.channel_type) : null),
       project_name:    r.project_name || null,
       product_name:    r.product_name || null,
       cost:            r.cost != null && r.cost !== "" ? Number(r.cost) : null,
