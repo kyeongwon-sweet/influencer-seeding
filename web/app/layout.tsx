@@ -4,7 +4,6 @@ import "./globals.css";
 import Sidebar from "@/components/Sidebar";
 import GlobalActions from "@/components/GlobalActions";
 import { Analytics } from "@vercel/analytics/next";
-import { SpeedInsights } from "@vercel/speed-insights/next";
 
 export const metadata: Metadata = {
   title: "인플루언서 시딩 트래킹 대시보드",
@@ -30,7 +29,6 @@ export default function RootLayout({
           <GlobalActions />
           <div className="sidebar-content" style={{ marginLeft: "var(--sidebar-w, 200px)" }}>{children}</div>
           <Analytics />
-          <SpeedInsights />
         </body>
       </html>
     </ClerkProvider>
