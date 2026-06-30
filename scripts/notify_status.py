@@ -3,6 +3,7 @@
 # cron-daily-collect.yml의 수집 직후 always() 단계에서 실행 — 수집 성공/실패 무관하게 발송.
 import os
 import json
+import re
 import urllib.parse
 import urllib.request
 from datetime import date
@@ -80,6 +81,40 @@ def main():
         text = (f"*❌ 협찬 데이터 수집 실패/이상* ({target} KST)\n"
                 f"오늘 적재: {total:,}건 · 조회수 {with_play:,}건\n"
                 f"사유(수집 로그 끝부분):\n```{reason[:1500]}```")
+
+    # 활성인데 오늘 미측정 게시물 점검 (수집 누락·잘못된 URL 조기 발견)
+    today_ids = {r["post_id"] for r in rows}
+    active, off = [], 0
+    while True:
+        res = db.table("sponsored_posts").select("id, url, account_name, created_at, ended_at").range(off, off + 999).execute()
+        chunk = res.data or []
+        active.extend(chunk)
+        if len(chunk) < 1000:
+            break
+        off += 1000
+    active = [a for a in active if not a.get("ended_at")]
+    waiting = manual = 0
+    check = []  # (account, 사유, url)
+    for a in active:
+        if a["id"] in today_ids:
+            continue
+        u = (a.get("url") or "").lower()
+        if str(a.get("created_at"))[:10] == target:
+            waiting += 1            # 오늘 등록 → 다음 수집에서 측정(정상)
+        elif "naver.com" in u or "kakao.com" in u:
+            manual += 1             # 전용 수집기 없음(수동 입력 전용)
+        elif "instagram.com" in u and not re.search(r"/(?:p|reels|reel|tv)/[A-Za-z0-9_-]+", u):
+            check.append((a.get("account_name"), "URL오류(게시물 링크 아님)", a.get("url")))
+        else:
+            check.append((a.get("account_name"), "미측정", a.get("url")))
+    unmeasured = waiting + manual + len(check)
+    if unmeasured:
+        text += f"\n\n⚠️ 오늘 미측정 활성 {unmeasured}건 (신규대기 {waiting} · 수동전용 {manual} · 점검 {len(check)})"
+        for nm, reason, url in check[:8]:
+            tail = (url or "").rstrip("/").split("/")[-1]
+            text += f"\n  · {nm} [{reason}] {tail}"
+        if len(check) > 8:
+            text += f"\n  … 외 {len(check) - 8}건"
 
     data = urllib.parse.urlencode({"channel": USER, "text": text}).encode()
     req = urllib.request.Request(SLACK_API, data=data,
