@@ -93,10 +93,9 @@ jobs:
           set -o pipefail
           python run_monitoring.py 2>&1 | tee "$RUNNER_TEMP/collect.log"
 
-      # 수집 직후 상태(정상/실패+사유)를 여믄봇이 황경원 DM으로 즉시 발송.
-      # always() — 수집이 실패해도 알림. continue-on-error — Slack 실패가 잡 결과를 바꾸지 않음.
-      # (증분 데이터 리포트는 별도 워크플로 daily-increment-report.yml가 09:30 KST에 채널로 발송)
-      - name: 수집 상태 알럿 (황경원 DM)
+      # 정상 수집 시 상태 요약은 09:30 리포트 '댓글'로만 게시(daily-increment-report.yml).
+      # 여기선 '수집 실패 시에만' 황경원 DM으로 즉시 알림(ONLY_ON_FAILURE) — 실패 blind spot 방지.
+      - name: 수집 실패 시 알럿 (황경원 DM)
         if: always() && steps.decide.outputs.go == '1' && github.event.inputs.api_only != 'true'
         continue-on-error: true
         env:
@@ -107,6 +106,7 @@ jobs:
           COLLECT_OUTCOME: ${{ steps.collect.outcome }}
           COLLECT_LOG: ${{ runner.temp }}/collect.log
           STATUS_USER: U0B2Y0ZC8QZ   # 황경원 Slack user id (DM)
+          ONLY_ON_FAILURE: "1"        # 정상이면 발송 안 함(상태는 리포트 댓글로만)
           PYTHONUNBUFFERED: "1"
         run: cd scripts && python notify_status.py
 

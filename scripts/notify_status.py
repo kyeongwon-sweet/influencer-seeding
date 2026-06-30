@@ -64,6 +64,10 @@ def main():
     plat_str = " · ".join(f"{k} {v}" for k, v in sorted(by_plat.items(), key=lambda x: -x[1])) or "-"
 
     ok = (outcome == "success") and total > 0
+    if os.getenv("ONLY_ON_FAILURE") == "1" and ok:
+        # 정상 수집이면 발송 안 함(상태는 리포트 댓글로만). 실패일 때만 즉시 알림.
+        print("[status] 정상 수집 → ONLY_ON_FAILURE 모드라 발송 생략")
+        return
     if ok:
         text = (f"*✅ 협찬 데이터 정상 수집* ({target} KST)\n"
                 f"총 {total:,}건 적재 · 조회수 {with_play:,}건\n"
@@ -121,8 +125,12 @@ def main():
     ch = os.getenv("SLACK_CHANNEL") or os.getenv("STATUS_USER")
     if not ch:
         raise SystemExit("SLACK_CHANNEL 또는 STATUS_USER 필요")
-    payload = {"channel": ch, "text": text}
     tts = os.getenv("SLACK_THREAD_TS")
+    if ch[:1] in ("C", "G") and not tts:
+        # 채널(C/G) 대상인데 답글 대상(thread_ts) 없음 → top-level 채널 게시가 되므로 발송 생략.
+        print("[status] 채널+thread_ts 없음 → top-level 방지 위해 발송 생략")
+        return
+    payload = {"channel": ch, "text": text}
     if tts:
         payload["thread_ts"] = tts   # 리포트 메시지의 '댓글(스레드 답글)'로 게시
     data = urllib.parse.urlencode(payload).encode()
