@@ -90,15 +90,15 @@ def main():
             if r["post_id"] not in prev and r.get("play_count") is not None:
                 prev[r["post_id"]] = r["play_count"]
 
-    # 게시물 메타(이름/플랫폼)
+    # 게시물 메타(이름/플랫폼/상품군/업로드일/채널분류)
     meta = {}
     for chunk in _chunks(post_ids, 100):
-        res = db.table("sponsored_posts").select("id, url, account_name").in_("id", chunk).execute()
+        res = db.table("sponsored_posts").select("id, url, account_name, product_name, posted_at, channel_type").in_("id", chunk).execute()
         for r in (res.data or []):
             meta[r["id"]] = r
 
     # 증분 계산 — 양(+)의 증분만
-    items = []  # (inc, name, platform, is_new, url)
+    items = []
     for pid, tv in today.items():
         pv = prev.get(pid)
         inc = tv - pv if pv is not None else tv
@@ -106,30 +106,41 @@ def main():
             continue
         m = meta.get(pid, {})
         url = (m.get("url") or "").strip()
-        name = (m.get("account_name") or "").strip() or url.rstrip("/").split("/")[-1] or "?"
-        items.append((inc, name, _platform(url), pv is None, url))
+        items.append({
+            "inc": inc,
+            "name": (m.get("account_name") or "").strip() or url.rstrip("/").split("/")[-1] or "?",
+            "platform": _platform(url),
+            "url": url,
+            "product": (m.get("product_name") or "").strip(),
+            "posted_at": str(m.get("posted_at"))[:10] if m.get("posted_at") else "",
+            "channel_type": (m.get("channel_type") or "").strip() or "미분류",
+            "is_new": pv is None,
+        })
 
     if not items:
         print(f"[notify] {target} 증가분 없음 → 발송 생략")
         return
 
-    total = sum(i[0] for i in items)
-    by_platform = {}
-    for inc, _name, plat, _new, _url in items:
-        by_platform[plat] = by_platform.get(plat, 0) + inc
-    items.sort(key=lambda x: x[0], reverse=True)
+    total = sum(it["inc"] for it in items)
+    by_channel = {}
+    for it in items:
+        by_channel[it["channel_type"]] = by_channel.get(it["channel_type"], 0) + it["inc"]
+    items.sort(key=lambda x: x["inc"], reverse=True)
 
     def f(n): return f"{n:,}"
 
     lines = [f"*📈 협찬 조회수 일일 증분 ({target} KST)*",
              f"오늘 총 증분: *+{f(total)}*  (증가 게시물 {len(items)}건, 전체 합산)",
-             "", "*플랫폼별*"]
-    for plat, s in sorted(by_platform.items(), key=lambda x: x[1], reverse=True):
-        lines.append(f"• {plat}: +{f(s)}")
+             "", "*채널분류별*"]
+    for ct, s in sorted(by_channel.items(), key=lambda x: x[1], reverse=True):
+        lines.append(f"• {ct}: +{f(s)}")
     lines += ["", "*🔥 급상승 TOP 10*"]
-    for rank, (inc, name, plat, is_new, url) in enumerate(items[:10], 1):
-        label = f"<{url}|{_esc(name)}>" if url else _esc(name)
-        lines.append(f"{rank}. {label} ({plat}) +{f(inc)}{' (신규)' if is_new else ''}")
+    for rank, it in enumerate(items[:10], 1):
+        prod = f"[{it['product']}] " if it["product"] else ""
+        label = f"<{it['url']}|{_esc(it['name'])}>" if it["url"] else _esc(it["name"])
+        date = it["posted_at"] or "업로드일 미상"
+        lines.append(f"{rank}. {prod}{label} ({it['platform']})")
+        lines.append(f"   +{f(it['inc'])} ({date}{' · 신규' if it['is_new'] else ''})")
     text = "\n".join(lines)
 
     data = urllib.parse.urlencode({"channel": CHANNEL, "text": text, "unfurl_links": "false"}).encode()
