@@ -133,14 +133,15 @@ def main():
     def f(n): return f"{n:,}"
 
     lines = [
-        f"📈 *협찬 조회수 일일 증분* ({target} KST)",
-        f"오늘 총 증분 +{f(total)} (증가 {len(items)}건)",
+        f"📈 *인지 조회수 일일 증분* `({target})`",
+        f"오늘 총 증분 +{f(total)}",
         "",
-        "*채널분류별*",
+        "◾ *채널분류별*",
+        "",
     ]
     for ct, s in sorted(by_channel.items(), key=lambda x: x[1], reverse=True):
         lines.append(f"• {ct} +{f(s)}")
-    lines += ["", "*급상승 TOP 10*"]
+    lines += ["", "◾ *급상승 TOP 10*", ""]
     for rank, it in enumerate(items[:10], 1):
         prod = f"[{it['product']}] " if it["product"] else ""
         label = f"<{it['url']}|{_esc(it['name'])}>" if it["url"] else _esc(it["name"])
