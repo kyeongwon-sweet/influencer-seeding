@@ -39,17 +39,6 @@ def _esc(s: str) -> str:
     return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def _ch_emoji(ct: str) -> str:
-    """채널분류명 → 이모지(키워드 매칭). 먹스타는 협찬보다 먼저 검사."""
-    c = ct or ""
-    if "바이럴" in c: return "🔥"
-    if "온드" in c: return "🏠"
-    if "무상" in c: return "🎁"
-    if "먹스타" in c: return "🍽️"
-    if "협찬" in c: return "🤝"
-    return "🔹"
-
-
 def _fetch_day(db, target):
     """target일의 {post_id: play_count} (null 제외)."""
     out, start = {}, 0
@@ -135,27 +124,28 @@ def main():
     total = sum(it["inc"] for it in items)
     by_channel = {}
     for it in items:
-        by_channel[it["channel_type"]] = by_channel.get(it["channel_type"], 0) + it["inc"]
+        ct = it["channel_type"]
+        if "무상시딩" in ct:  # 영상/피드 등 하위 구분을 하나로 합산
+            ct = "무상시딩 (영상+피드)"
+        by_channel[ct] = by_channel.get(ct, 0) + it["inc"]
     items.sort(key=lambda x: x["inc"], reverse=True)
 
     def f(n): return f"{n:,}"
 
     lines = [
-        f"📈  *협찬 조회수 일일 증분*   `{target} (KST)`",
-        f"오늘 총 증분  `+{f(total)}`   ·   증가 게시물 *{len(items)}*건",
+        f"📈 *협찬 조회수 일일 증분* ({target} KST)",
+        f"오늘 총 증분 +{f(total)} (증가 {len(items)}건)",
         "",
-        "*📊 채널분류별*",
+        "*채널분류별*",
     ]
     for ct, s in sorted(by_channel.items(), key=lambda x: x[1], reverse=True):
-        lines.append(f"{_ch_emoji(ct)}  *{ct}*  `+{f(s)}`")
-    lines += ["", "━━━━━━━━━━━━━━", "*🔥 급상승 TOP 10*"]
+        lines.append(f"• {ct} +{f(s)}")
+    lines += ["", "*급상승 TOP 10*"]
     for rank, it in enumerate(items[:10], 1):
         prod = f"[{it['product']}] " if it["product"] else ""
         label = f"<{it['url']}|{_esc(it['name'])}>" if it["url"] else _esc(it["name"])
         date = it["posted_at"] or "업로드일 미상"
-        new = " 🆕" if it["is_new"] else ""
-        lines.append(f"*{rank}.* {prod}{label}  _{it['platform']}_")
-        lines.append(f"　　`+{f(it['inc'])}`   ·   {date}{new}")
+        lines.append(f"{rank}. {prod}{label}({it['platform']}) +{f(it['inc'])}  `{date}`")
     text = "\n".join(lines)
 
     data = urllib.parse.urlencode({"channel": CHANNEL, "text": text, "unfurl_links": "false"}).encode()
