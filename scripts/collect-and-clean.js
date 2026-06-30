@@ -5,7 +5,7 @@
  * API 엔드포인트로 삭제 → 깨끗한 재수집
  */
 
-const APP_URL = 'https://influencer-seeding-kwhwang-s-projects.vercel.app';
+const APP_URL = 'https://influencer-seeding-mu.vercel.app';
 
 async function deleteDate(date) {
   try {
@@ -70,7 +70,7 @@ async function main() {
   }
 
   console.log('\n✅ 데이터 수집 완료!');
-  console.log('📊 모니터링 페이지에서 06/06-08 확인하세요: https://influencer-seeding-kwhwang-s-projects.vercel.app/monitoring');
+  console.log('📊 모니터링 페이지에서 06/06-08 확인하세요: https://influencer-seeding-mu.vercel.app/monitoring');
 }
 
 main().catch(e => {

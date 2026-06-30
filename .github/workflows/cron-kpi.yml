@@ -15,7 +15,7 @@ jobs:
       - name: KPI fetch (kpi/fetch)
         run: |
           code=$(curl -sS -o /tmp/kpi.out -w "%{http_code}" \
-            "https://influencer-seeding-kwhwang-s-projects.vercel.app/api/kpi/fetch" \
+            "https://influencer-seeding-mu.vercel.app/api/kpi/fetch" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
           cat /tmp/kpi.out; echo ""
           echo "HTTP ${code}"
