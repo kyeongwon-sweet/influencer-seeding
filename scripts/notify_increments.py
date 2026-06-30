@@ -39,6 +39,12 @@ def _esc(s: str) -> str:
     return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+def _ital_paren(s: str) -> str:
+    """채널분류명의 끝 괄호부('협찬 (인플루언서)' → '협찬 _(인플루언서)_')를 기울임 처리."""
+    i = (s or "").find("(")
+    return s if i == -1 else f"{s[:i]}_{s[i:]}_"
+
+
 def _fetch_day(db, target):
     """target일의 {post_id: play_count} (null 제외)."""
     out, start = {}, 0
@@ -134,19 +140,19 @@ def main():
 
     lines = [
         f"📈 *인지 조회수 일일 증분* `({target})`",
-        f"오늘 총 증분 +{f(total)}",
+        f"오늘 총 증분 *+{f(total)}*",
         "",
         "◾ *채널분류별*",
         "",
     ]
     for ct, s in sorted(by_channel.items(), key=lambda x: x[1], reverse=True):
-        lines.append(f"• {ct} +{f(s)}")
+        lines.append(f"• {_ital_paren(ct)} +{f(s)}")
     lines += ["", "◾ *급상승 TOP 10*", ""]
     for rank, it in enumerate(items[:10], 1):
         prod = f"[{it['product']}] " if it["product"] else ""
         label = f"<{it['url']}|{_esc(it['name'])}>" if it["url"] else _esc(it["name"])
         date = it["posted_at"] or "업로드일 미상"
-        lines.append(f"{rank}. {prod}{label}({it['platform']}) +{f(it['inc'])}  `{date}`")
+        lines.append(f"{rank}. {prod}{label} _({it['platform']})_ +{f(it['inc'])}  `{date}`")
     text = "\n".join(lines)
 
     data = urllib.parse.urlencode({"channel": CHANNEL, "text": text, "unfurl_links": "false"}).encode()
