@@ -71,5 +71,5 @@ export async function GET() {
   // 개별 상품 목록 = 브랜드 전체 컬럼 제외
   const products = productCols.filter(name => name !== BRAND_KEY);
 
-  return NextResponse.json({ brandKey: BRAND_KEY, products, data });
+  return NextResponse.json({ brandKey: BRAND_KEY, products, data }, { headers: { "Cache-Control": "s-maxage=300, stale-while-revalidate=900" } });
 }

@@ -36,5 +36,5 @@ export async function GET() {
     .limit(1);
 
   const byEmail = (jobs?.[0] as { user_email?: string } | undefined)?.user_email ?? null;
-  return NextResponse.json({ at, byEmail });
+  return NextResponse.json({ at, byEmail }, { headers: { "Cache-Control": "s-maxage=300, stale-while-revalidate=900" } });
 }

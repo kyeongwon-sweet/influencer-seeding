@@ -29,5 +29,5 @@ export async function GET() {
     .maybeSingle();
 
   if (error) return NextResponse.json({ error: error.message, code: error.code }, { status: 500 });
-  return NextResponse.json(data);
+  return NextResponse.json(data, { headers: { "Cache-Control": "s-maxage=300, stale-while-revalidate=900" } });
 }
