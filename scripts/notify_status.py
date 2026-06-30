@@ -93,7 +93,7 @@ def main():
             break
         off += 1000
     active = [a for a in active if not a.get("ended_at")]
-    waiting = manual = 0
+    waiting = uncollectable = 0
     check = []  # (account, 사유, url)
     for a in active:
         if a["id"] in today_ids:
@@ -101,15 +101,16 @@ def main():
         u = (a.get("url") or "").lower()
         if str(a.get("created_at"))[:10] == target:
             waiting += 1            # 오늘 등록 → 다음 수집에서 측정(정상)
-        elif "naver.com" in u or "kakao.com" in u:
-            manual += 1             # 전용 수집기 없음(수동 입력 전용)
+        elif ("threads." in u or "facebook.com" in u       # 조회수 없는 플랫폼
+              or "naver.com" in u or "kakao.com" in u):     # 전용 수집기 없음(수동 입력)
+            uncollectable += 1      # 수집 불가(정상 — 신경 안 써도 됨)
         elif "instagram.com" in u and not re.search(r"/(?:p|reels|reel|tv)/[A-Za-z0-9_-]+", u):
             check.append((a.get("account_name"), "URL오류(게시물 링크 아님)", a.get("url")))
         else:
             check.append((a.get("account_name"), "미측정", a.get("url")))
-    unmeasured = waiting + manual + len(check)
+    unmeasured = waiting + uncollectable + len(check)
     if unmeasured:
-        text += f"\n\n⚠️ 오늘 미측정 활성 {unmeasured}건 (신규대기 {waiting} · 수동전용 {manual} · 점검 {len(check)})"
+        text += f"\n\n⚠️ 오늘 미측정 활성 {unmeasured}건 (신규대기 {waiting} · 수집불가 {uncollectable} · 점검 {len(check)})"
         for nm, reason, url in check[:8]:
             tail = (url or "").rstrip("/").split("/")[-1]
             text += f"\n  · {nm} [{reason}] {tail}"
