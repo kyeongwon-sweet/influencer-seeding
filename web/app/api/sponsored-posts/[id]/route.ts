@@ -36,7 +36,8 @@ export async function PATCH(
     .from("sponsored_posts").select("manual_fields").eq("id", id).single();
   if (!selErr) {
     const manual = new Set<string>(((cur as { manual_fields?: string[] } | null)?.manual_fields) ?? []);
-    for (const k of Object.keys(updates)) manual.add(k);
+    // 캡션은 시트값 우선 정책 → manual로 잠그지 않음(시트 동기화가 항상 덮을 수 있게).
+    for (const k of Object.keys(updates)) if (k !== "content_summary") manual.add(k);
     await supabase.from("sponsored_posts").update({ manual_fields: [...manual] }).eq("id", id);
   }
 

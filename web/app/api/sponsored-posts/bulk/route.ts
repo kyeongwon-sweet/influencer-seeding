@@ -95,7 +95,8 @@ export async function POST(req: NextRequest) {
     const manual = Array.isArray(ex.manual_fields) ? (ex.manual_fields as string[]) : [];
     const upd: Record<string, unknown> = {};
     for (const f of META) {
-      if (manual.includes(f)) continue; // 수동 수정 필드 → 보존(덮지 않음)
+      // 캡션은 항상 시트값 우선(정본) → manual_fields여도 비어있지 않은 시트값으로 덮음.
+      if (f !== "content_summary" && manual.includes(f)) continue; // 그 외 수동 수정 필드 → 보존(덮지 않음)
       const val = (r as Record<string, unknown>)[f];
       const valPresent = val !== null && val !== undefined && val !== "";
       if (valPresent) upd[f] = val; // 시트 값이 있으면 덮기 (비면 기존 유지)

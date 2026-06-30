@@ -115,7 +115,8 @@ export async function POST(req: NextRequest) {
       const cur = ex[f];
       const curEmpty = cur === null || cur === undefined || cur === "";
       // meta[f]는 시트의 비어있지 않은 값만 들어있음(위 clean 생성 기준)
-      if (curEmpty && meta[f] !== undefined) upd[f] = meta[f];
+      // 캡션은 시트값 우선(정본) → 비어있지 않아도 시트 값으로 덮음. 그 외는 '빈 값만 채우기'.
+      if (meta[f] !== undefined && (curEmpty || f === "content_summary")) upd[f] = meta[f];
     }
     if (Object.keys(upd).length > 0) {
       const { error: ue } = await supabase
