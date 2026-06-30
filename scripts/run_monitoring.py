@@ -60,7 +60,8 @@ def _yt_id(url: str):
 
 
 def _fetch_youtube(urls: list) -> dict:
-    """유튜브 영상 조회수 수집 (streamers/youtube-scraper). 반환: {video_id: {views,likes,comments}}"""
+    """유튜브 영상 조회수 수집 (streamers/youtube-scraper). 반환: {video_id: {views,likes,comments,title}}.
+    유튜브는 '캡션'이 따로 없어 영상 제목(title)을 캡션(content_summary)으로 쓴다."""
     from apify_client import ApifyClient
     client = ApifyClient(os.getenv("APIFY_API_TOKEN"))
     run = client.actor("streamers/youtube-scraper").call(run_input={
@@ -77,6 +78,7 @@ def _fetch_youtube(urls: list) -> dict:
                 "views": it.get("viewCount"),
                 "likes": it.get("likes"),
                 "comments": it.get("commentsCount"),
+                "title": it.get("title"),
             }
     return out
 
@@ -414,6 +416,9 @@ def run():
                     if not s:
                         continue
                     existing = last_stat.get(post["id"], {})
+                    # 유튜브 캡션 = 영상 제목 (비어 있을 때만 채움 — 수동/시트 캡션 보존)
+                    if not post.get("content_summary") and s.get("title"):
+                        db.table("sponsored_posts").update({"content_summary": s["title"][:300]}).eq("id", post["id"]).execute()
                     play = s.get("views")
                     if play is not None and existing.get("play_count") is not None and play < existing.get("play_count"):
                         print(f"  ❌ 유튜브 조회수 역행 {post['url']} → NULL 처리")
