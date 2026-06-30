@@ -20,9 +20,15 @@ on:
         description: "API만 실행(IG 스크랩 건너뜀) — brand/youtube/b2b만 복구(Apify 거의 0)"
         type: boolean
         default: false
+      notify_test:
+        description: "조회수 증분 슬랙 알림만 테스트(수집 안 함, 최신 측정일 기준 발송)"
+        type: boolean
+        default: false
 
 jobs:
   collect:
+    # notify_test(수동) 시에는 수집 작업 전체를 건너뛰고 아래 notify-test 잡만 실행.
+    if: ${{ github.event.inputs.notify_test != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -83,6 +89,19 @@ jobs:
           MONITORING_DATE: ${{ steps.check.outputs.kdate }}   # KST 날짜로 적재(UTC 어제로 밀리는 문제 방지)
         run: cd scripts && python run_monitoring.py
 
+      # 수집 직후 조회수 증분 요약을 여믄봇이 #빙과_마케팅_리포트로 발송.
+      # 수집과 분리(continue-on-error) — Slack 실패가 수집/이후 단계를 막지 않음.
+      - name: 조회수 증분 슬랙 알림 (#빙과_마케팅_리포트)
+        if: steps.decide.outputs.go == '1' && github.event.inputs.api_only != 'true'
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          MONITORING_DATE: ${{ steps.check.outputs.kdate }}
+          PYTHONUNBUFFERED: "1"
+        run: cd scripts && python notify_increments.py
+
       - name: 브랜드 지표 (brand-metrics/collect)
         if: steps.decide.outputs.go == '1'
         continue-on-error: true
@@ -114,3 +133,23 @@ jobs:
         run: |
           curl -sS "https://influencer-seeding-mu.vercel.app/api/b2b-revenue/fetch" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" -w "\nHTTP %{http_code}\n"
+
+  # 수동 검증용: 수집 없이 최신 측정일 기준 증분 알림만 발송(여믄봇 채널 멤버십·메시지 형식 확인).
+  notify-test:
+    if: ${{ github.event.inputs.notify_test == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: 조회수 증분 슬랙 알림 테스트 (#빙과_마케팅_리포트)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          PYTHONUNBUFFERED: "1"
+        run: cd scripts && python notify_increments.py

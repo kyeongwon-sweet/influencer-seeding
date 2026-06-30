@@ -1,0 +1,137 @@
+#!/usr/bin/env python3
+# 일일 조회수 증분 → 슬랙(#빙과_마케팅_리포트, 여믄봇) 발송.
+# cron-daily-collect.yml의 수집 직후 단계에서 실행. 수집과 분리(continue-on-error)라
+# Slack 발송 실패가 수집 자체를 망치지 않는다.
+#
+# 증분 = (오늘 measured_at play_count) - (직전 측정일 play_count). 직전값 없으면 신규로 보고 오늘값 전체.
+# 누적 역행 가드는 run_monitoring가 이미 처리(역행 시 NULL) → 여기선 양(+)의 증분만 합산/노출.
+import os
+import json
+import urllib.parse
+import urllib.request
+from datetime import date
+from db import get_client
+
+CHANNEL = os.getenv("SLACK_CHANNEL", "C0B4F7GBX17")  # #빙과_마케팅_리포트
+SLACK_API = "https://slack.com/api/chat.postMessage"
+
+
+def _platform(url: str) -> str:
+    u = (url or "").lower()
+    if "instagram.com" in u: return "인스타"
+    if "youtube.com" in u or "youtu.be" in u: return "유튜브"
+    if "tiktok.com" in u: return "틱톡"
+    if "x.com" in u or "twitter.com" in u or "t.co/" in u: return "X"
+    if "facebook.com" in u: return "페북"
+    if "threads.com" in u or "threads.net" in u: return "스레드"
+    if "kakao.com" in u: return "카카오"
+    if "naver.com" in u: return "네이버"
+    return "기타"
+
+
+def _chunks(lst, n):
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
+
+
+def _fetch_day(db, target):
+    """target일의 {post_id: play_count} (null 제외)."""
+    out, start = {}, 0
+    while True:
+        res = db.table("post_daily_stats").select("post_id, play_count").eq("measured_at", target).range(start, start + 999).execute()
+        rows = res.data or []
+        for r in rows:
+            if r.get("play_count") is not None:
+                out[r["post_id"]] = r["play_count"]
+        if len(rows) < 1000:
+            break
+        start += 1000
+    return out
+
+
+def _latest_date(db):
+    res = db.table("post_daily_stats").select("measured_at").order("measured_at", desc=True).limit(1).execute()
+    return res.data[0]["measured_at"] if res.data else None
+
+
+def main():
+    token = os.environ["SLACK_BOT_TOKEN"]
+    db = get_client()
+
+    # 대상 날짜: 수집 워크플로가 넘긴 MONITORING_DATE(KST). 데이터 없으면(수동 테스트 등) 최신 측정일로 폴백.
+    target = os.getenv("MONITORING_DATE") or None
+    today = _fetch_day(db, target) if target else {}
+    if not today:
+        target = _latest_date(db)
+        if not target:
+            print("[notify] post_daily_stats 데이터 없음 → 발송 생략")
+            return
+        today = _fetch_day(db, target)
+    if not today:
+        print(f"[notify] {target} 조회수 데이터 없음 → 발송 생략")
+        return
+
+    post_ids = list(today.keys())
+
+    # 직전(target 이전) 측정값 — post별 가장 최근 1건
+    prev = {}
+    for chunk in _chunks(post_ids, 100):
+        res = (db.table("post_daily_stats")
+               .select("post_id, play_count, measured_at")
+               .in_("post_id", chunk).lt("measured_at", target)
+               .order("measured_at", desc=True).execute())
+        for r in (res.data or []):
+            if r["post_id"] not in prev and r.get("play_count") is not None:
+                prev[r["post_id"]] = r["play_count"]
+
+    # 게시물 메타(이름/플랫폼)
+    meta = {}
+    for chunk in _chunks(post_ids, 100):
+        res = db.table("sponsored_posts").select("id, url, account_name").in_("id", chunk).execute()
+        for r in (res.data or []):
+            meta[r["id"]] = r
+
+    # 증분 계산 — 양(+)의 증분만
+    items = []  # (inc, name, platform, is_new)
+    for pid, tv in today.items():
+        pv = prev.get(pid)
+        inc = tv - pv if pv is not None else tv
+        if inc <= 0:
+            continue
+        m = meta.get(pid, {})
+        name = (m.get("account_name") or "").strip() or (m.get("url") or "").rstrip("/").split("/")[-1] or "?"
+        items.append((inc, name, _platform(m.get("url")), pv is None))
+
+    if not items:
+        print(f"[notify] {target} 증가분 없음 → 발송 생략")
+        return
+
+    total = sum(i[0] for i in items)
+    by_platform = {}
+    for inc, _, plat, _new in items:
+        by_platform[plat] = by_platform.get(plat, 0) + inc
+    items.sort(key=lambda x: x[0], reverse=True)
+
+    def f(n): return f"{n:,}"
+
+    lines = [f"*📈 협찬 조회수 일일 증분 ({target} KST)*",
+             f"오늘 총 증분: *+{f(total)}*  (증가 게시물 {len(items)}건, 전체 합산)",
+             "", "*플랫폼별*"]
+    for plat, s in sorted(by_platform.items(), key=lambda x: x[1], reverse=True):
+        lines.append(f"• {plat}: +{f(s)}")
+    lines += ["", "*🔥 급상승 TOP 10*"]
+    for rank, (inc, name, plat, is_new) in enumerate(items[:10], 1):
+        lines.append(f"{rank}. {name} ({plat}) +{f(inc)}{' (신규)' if is_new else ''}")
+    text = "\n".join(lines)
+
+    data = urllib.parse.urlencode({"channel": CHANNEL, "text": text, "unfurl_links": "false"}).encode()
+    req = urllib.request.Request(SLACK_API, data=data,
+                                 headers={"Authorization": "Bearer " + token,
+                                          "Content-Type": "application/x-www-form-urlencoded; charset=utf-8"})
+    r = json.load(urllib.request.urlopen(req, timeout=30))
+    print("[notify] ok=", r.get("ok"), "error=", r.get("error"), "channel=", CHANNEL, "date=", target)
+    assert r.get("ok"), r
+
+
+if __name__ == "__main__":
+    main()
