@@ -12,7 +12,7 @@ import urllib.request
 from datetime import date
 from db import get_client
 
-CHANNEL = os.getenv("SLACK_CHANNEL", "C0B4F7GBX17")  # #빙과_마케팅_리포트
+CHANNEL = os.getenv("SLACK_CHANNEL") or "C0B4F7GBX17"  # 기본 #빙과_마케팅_리포트 (빈값이면 폴백). DM 미리보기 시 user id 주입
 SLACK_API = "https://slack.com/api/chat.postMessage"
 
 
