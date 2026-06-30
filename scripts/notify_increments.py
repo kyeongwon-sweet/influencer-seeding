@@ -147,7 +147,7 @@ def main():
     ]
     for ct, s in sorted(by_channel.items(), key=lambda x: x[1], reverse=True):
         lines.append(f"• {_ital_paren(ct)} *+{f(s)}*")
-    lines += ["", "◾ *급상승 TOP 10*", ""]
+    lines += ["", "◾ *급상승 TOP 10* 🔥", ""]
     for rank, it in enumerate(items[:10], 1):
         prod = f"[{it['product']}] " if it["product"] else ""
         label = f"<{it['url']}|{_esc(it['name'])}>" if it["url"] else _esc(it["name"])
