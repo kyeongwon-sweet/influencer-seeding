@@ -1464,7 +1464,7 @@ export default function MonitoringPage() {
                               <th className="pl-5 pr-3 py-2.5 text-left text-[13px] font-semibold text-a-ink-muted">날짜</th>
                               <th className="px-3 py-2.5 text-right text-[13px] font-semibold text-a-ink-muted whitespace-nowrap">누적 조회수</th>
                               <th className="px-3 py-2.5 text-right text-[13px] font-semibold text-a-ink-muted">검색량</th>
-                              <th className="pl-3 pr-5 py-2.5 text-right text-[13px] font-semibold text-green-600 whitespace-nowrap">B2B 발주량</th>
+                              <th className="pl-3 pr-5 py-2.5 text-right text-[13px] font-semibold text-a-ink-muted whitespace-nowrap">B2B 발주량</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1504,7 +1504,7 @@ export default function MonitoringPage() {
                                     if (v == null) return <td className="pl-3 pr-5 py-3 text-right text-gray-300">-</td>;
                                     return (
                                       <td
-                                        className={`pl-3 pr-5 py-3 text-right tabular-nums text-sm font-semibold cursor-help ${v < 0 ? "text-blue-600" : "text-red-500"}`}
+                                        className={`pl-3 pr-5 py-3 text-right tabular-nums text-sm font-semibold cursor-help ${v < 0 ? "text-red-500" : "text-green-600"}`}
                                         onMouseEnter={(e) => {
                                           const r = e.currentTarget.getBoundingClientRect();
                                           setB2bTip({ date: d.date, x: r.left, y: r.top + r.height / 2 });
