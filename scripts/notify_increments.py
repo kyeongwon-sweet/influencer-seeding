@@ -34,6 +34,11 @@ def _chunks(lst, n):
         yield lst[i:i + n]
 
 
+def _esc(s: str) -> str:
+    """Slack 링크 텍스트용 이스케이프(<url|text>의 text에 &<> 들어가면 깨짐)."""
+    return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def _fetch_day(db, target):
     """target일의 {post_id: play_count} (null 제외)."""
     out, start = {}, 0
@@ -93,15 +98,16 @@ def main():
             meta[r["id"]] = r
 
     # 증분 계산 — 양(+)의 증분만
-    items = []  # (inc, name, platform, is_new)
+    items = []  # (inc, name, platform, is_new, url)
     for pid, tv in today.items():
         pv = prev.get(pid)
         inc = tv - pv if pv is not None else tv
         if inc <= 0:
             continue
         m = meta.get(pid, {})
-        name = (m.get("account_name") or "").strip() or (m.get("url") or "").rstrip("/").split("/")[-1] or "?"
-        items.append((inc, name, _platform(m.get("url")), pv is None))
+        url = (m.get("url") or "").strip()
+        name = (m.get("account_name") or "").strip() or url.rstrip("/").split("/")[-1] or "?"
+        items.append((inc, name, _platform(url), pv is None, url))
 
     if not items:
         print(f"[notify] {target} 증가분 없음 → 발송 생략")
@@ -109,7 +115,7 @@ def main():
 
     total = sum(i[0] for i in items)
     by_platform = {}
-    for inc, _, plat, _new in items:
+    for inc, _name, plat, _new, _url in items:
         by_platform[plat] = by_platform.get(plat, 0) + inc
     items.sort(key=lambda x: x[0], reverse=True)
 
@@ -121,8 +127,9 @@ def main():
     for plat, s in sorted(by_platform.items(), key=lambda x: x[1], reverse=True):
         lines.append(f"• {plat}: +{f(s)}")
     lines += ["", "*🔥 급상승 TOP 10*"]
-    for rank, (inc, name, plat, is_new) in enumerate(items[:10], 1):
-        lines.append(f"{rank}. {name} ({plat}) +{f(inc)}{' (신규)' if is_new else ''}")
+    for rank, (inc, name, plat, is_new, url) in enumerate(items[:10], 1):
+        label = f"<{url}|{_esc(name)}>" if url else _esc(name)
+        lines.append(f"{rank}. {label} ({plat}) +{f(inc)}{' (신규)' if is_new else ''}")
     text = "\n".join(lines)
 
     data = urllib.parse.urlencode({"channel": CHANNEL, "text": text, "unfurl_links": "false"}).encode()
