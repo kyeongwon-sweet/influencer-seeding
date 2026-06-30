@@ -341,6 +341,8 @@ def run():
                         cur["likes_count"] = m["likes_count"]
                     if m.get("comments_count") is not None:
                         cur["comments_count"] = m["comments_count"]
+                    if m.get("content_summary") and not cur.get("content_summary"):
+                        cur["content_summary"] = m["content_summary"]
                     stats_by_key[key] = cur
                 print(f"[LOG] data-slayer 폴백 보강 완료: 조회수 {merged}건 채움")
 
@@ -599,8 +601,9 @@ def run():
 
 def _fetch_ig_fallback(urls: list) -> dict:
     """기본 IG 액터(apify/instagram-scraper)가 인스타 차단으로 no_items만 반환할 때, data-slayer/instagram-post-details로 조회수 보강.
-    반환: {shortcode: {play_count, likes_count, comments_count}}.
-    ⚠️ metrics.play_count는 기존 videoPlayCount 시리즈와 연속됨(2026-06-29 실측 비율 1.000). 비용↑(~2.7배)이라 차단 감지 시에만 호출한다."""
+    반환: {shortcode: {play_count, likes_count, comments_count, content_summary}}.
+    ⚠️ metrics.play_count는 기존 videoPlayCount 시리즈와 연속됨(2026-06-29 실측 비율 1.000). 비용↑(~2.7배)이라 차단 감지 시에만 호출한다.
+    ⚠️ data-slayer의 caption은 객체({text,...}) — apify(문자열)와 형식이 달라 .text를 꺼낸다."""
     from apify_client import ApifyClient
     client = ApifyClient(os.getenv("APIFY_API_TOKEN"))
     out = {}
@@ -613,10 +616,13 @@ def _fetch_ig_fallback(urls: list) -> dict:
                 if not code:
                     continue
                 m = it.get("metrics") or {}
+                cap = it.get("caption")
+                cap_text = cap.get("text") if isinstance(cap, dict) else (cap if isinstance(cap, str) else None)
                 out[code] = {
                     "play_count": m.get("play_count"),
                     "likes_count": m.get("like_count"),
                     "comments_count": m.get("comment_count"),
+                    "content_summary": (cap_text or "")[:300] or None,
                 }
         except Exception as e:
             print(f"  [WARN] data-slayer 폴백 배치 실패: {e}")
