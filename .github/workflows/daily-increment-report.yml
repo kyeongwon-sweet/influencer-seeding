@@ -1,0 +1,32 @@
+name: Daily Increment Report (09:30 KST)
+
+# 매일 오전 9:30 KST에 협찬 조회수 일일 증분 요약을 여믄봇이 #빙과_마케팅_리포트로 발송.
+# 데이터는 자정 수집(cron-daily-collect.yml)이 이미 적재해 둔 '오늘(KST)' measured_at 기준.
+# 수집 자체의 정상/실패 알럿은 수집 직후 황경원 DM으로 별도 발송됨(cron-daily-collect.yml).
+on:
+  schedule:
+    - cron: "30 0 * * *"   # 00:30 UTC = 09:30 KST (매일, 주말·공휴일 포함)
+  workflow_dispatch: {}     # 수동 테스트용
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: 조회수 증분 리포트 (#빙과_마케팅_리포트)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          # 예약 발송은 오늘(KST) 데이터만(없으면 생략 — 어제값 재발송 방지). 수동 실행은 폴백 허용(테스트 편의).
+          STRICT_DATE: ${{ github.event_name == 'schedule' && '1' || '' }}
+          PYTHONUNBUFFERED: "1"
+        run: |
+          export MONITORING_DATE=$(TZ=Asia/Seoul date +%F)
+          cd scripts && python notify_increments.py

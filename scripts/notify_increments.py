@@ -58,17 +58,18 @@ def main():
     token = os.environ["SLACK_BOT_TOKEN"]
     db = get_client()
 
-    # 대상 날짜: 수집 워크플로가 넘긴 MONITORING_DATE(KST). 데이터 없으면(수동 테스트 등) 최신 측정일로 폴백.
+    # 대상 날짜: 수집 워크플로가 넘긴 MONITORING_DATE(KST).
+    # STRICT_DATE=1(예약 9:30 발송)이면 그 날짜만 — 데이터 없으면 생략(어제값 재발송 방지).
+    # 비-strict(수동 테스트)이면 데이터 없을 때 최신 측정일로 폴백.
     target = os.getenv("MONITORING_DATE") or None
+    strict = os.getenv("STRICT_DATE") == "1"
     today = _fetch_day(db, target) if target else {}
-    if not today:
+    if not today and not strict:
         target = _latest_date(db)
-        if not target:
-            print("[notify] post_daily_stats 데이터 없음 → 발송 생략")
-            return
-        today = _fetch_day(db, target)
+        if target:
+            today = _fetch_day(db, target)
     if not today:
-        print(f"[notify] {target} 조회수 데이터 없음 → 발송 생략")
+        print(f"[notify] {target} 조회수 데이터 없음 → 발송 생략 (strict={strict})")
         return
 
     post_ids = list(today.keys())
