@@ -17,7 +17,7 @@ const config: Config = {
         "a-blue-sky":     "#2997ff",
         "a-ink":          "#1d1d1f",
         "a-ink-secondary":"#333333",
-        "a-ink-muted":    "#7a7a7a",
+        "a-ink-muted":    "#6e6e73",
         "a-canvas":       "#ffffff",
         "a-parchment":    "#f5f5f7",
         "a-pearl":        "#fafafc",

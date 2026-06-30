@@ -1160,7 +1160,7 @@ export default function MonitoringPage() {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
           {selected.size > 0 && (
             <button onClick={deleteSelected} disabled={deleting}
               className="text-xs px-3 py-1.5 rounded-full border border-red-300 text-red-500 hover:bg-red-50 disabled:opacity-40 transition">
@@ -1503,7 +1503,7 @@ export default function MonitoringPage() {
                                     if (v == null) return <td className="pl-3 pr-5 py-3 text-right text-gray-300">-</td>;
                                     return (
                                       <td
-                                        className={`pl-3 pr-5 py-3 text-right tabular-nums text-sm font-semibold cursor-help ${v < 0 ? "text-[#c0392b]" : "text-emerald-700"}`}
+                                        className={`pl-3 pr-5 py-3 text-right tabular-nums text-sm font-semibold cursor-help ${v < 0 ? "text-blue-600" : "text-red-500"}`}
                                         onMouseEnter={(e) => {
                                           const r = e.currentTarget.getBoundingClientRect();
                                           setB2bTip({ date: d.date, x: r.left, y: r.top + r.height / 2 });
