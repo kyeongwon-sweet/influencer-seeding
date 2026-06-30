@@ -56,9 +56,9 @@ function TH({ children, right, col, onSort, sorted, className: cls, w, leftPos, 
   );
 }
 
-function TD({ children, right, muted, col, highlighted, w, leftPos, fixed }: {
+function TD({ children, right, muted, col, highlighted, w, leftPos, fixed, groupStart }: {
   children: React.ReactNode; right?: boolean; muted?: boolean; col?: string; highlighted?: boolean;
-  w?: number; leftPos?: number; fixed?: boolean;
+  w?: number; leftPos?: number; fixed?: boolean; groupStart?: boolean;
 }) {
   const isSticky = col !== undefined;
   const isLast = col === "증분량";
@@ -71,6 +71,7 @@ function TD({ children, right, muted, col, highlighted, w, leftPos, fixed }: {
         muted ? "text-a-ink-muted" : "text-a-ink",
         isSticky ? `sticky z-10 ${highlighted ? "bg-yellow-50 group-hover:bg-yellow-100/60" : "bg-white group-hover:bg-a-parchment"}` : "",
         isLast ? "shadow-[2px_0_5px_rgba(0,0,0,0.06)]" : "",
+        groupStart ? "border-l border-a-hairline" : "",
       ].join(" ")}
     >
       {children}
@@ -185,7 +186,7 @@ function PostsTable(props: Props) {
                       onChange={toggleSelectAll} />
                   </th>
                   <TH col="증분량" w={stickyColWidths["증분량"]} leftPos={stickyLefts["증분량"]} onResize={e => startResize("증분량", e, true)} right {...sp("증분량")}>증분량</TH>
-                  <TH w={colWidths["채널분류"]} onResize={e => startResize("채널분류", e)} {...sp("채널분류")}>
+                  <TH className="border-l border-a-hairline" w={colWidths["채널분류"]} onResize={e => startResize("채널분류", e)} {...sp("채널분류")}>
                     <span className="relative group/ct cursor-default">
                       채널 분류
                       <span className="hidden group-hover/ct:block absolute top-full left-0 mt-1 z-50 bg-gray-900 text-white text-[11px] rounded-[8px] px-3 py-2 whitespace-nowrap shadow-lg font-normal normal-case tracking-normal">
@@ -197,7 +198,7 @@ function PostsTable(props: Props) {
                   <TH w={colWidths["인플루언서"]} fixed onResize={e => startResize("인플루언서", e)} {...sp("인플루언서")}>인플루언서</TH>
                   <TH w={colWidths["상품명"]} fixed onResize={e => startResize("상품명", e)} {...sp("상품명")}>상품명</TH>
                   <TH w={colWidths["프로젝트명"]} fixed onResize={e => startResize("프로젝트명", e)} {...sp("프로젝트명")}>프로젝트명</TH>
-                  <TH right w={colWidths["비용"]} onResize={e => startResize("비용", e)} {...sp("비용")}>비용</TH>
+                  <TH className="border-l border-a-hairline" right w={colWidths["비용"]} onResize={e => startResize("비용", e)} {...sp("비용")}>비용(원)</TH>
                   <TH right w={colWidths["조회수"]} onResize={e => startResize("조회수", e)} {...sp("조회수")}>
                     <span className="group/views relative">
                       조회수
@@ -207,7 +208,7 @@ function PostsTable(props: Props) {
                     </span>
                   </TH>
                   <TH right w={colWidths["조회당비용"]} onResize={e => startResize("조회당비용", e)} {...sp("조회당비용")}>
-                    조회당비용
+                    조회당비용(원)
                   </TH>
                   <TH right w={colWidths["도달수"]} onResize={e => startResize("도달수", e)} {...sp("도달수")}>
                     <span className="group/reach relative">
@@ -217,8 +218,8 @@ function PostsTable(props: Props) {
                       </div>
                     </span>
                   </TH>
-                  <TH right w={colWidths["도달당비용"]} onResize={e => startResize("도달당비용", e)} {...sp("도달당비용")}>도달당비용</TH>
-                  <TH w={colWidths["캡션"]} fixed onResize={e => startResize("캡션", e)}>캡션</TH>
+                  <TH right w={colWidths["도달당비용"]} onResize={e => startResize("도달당비용", e)} {...sp("도달당비용")}>도달당비용(원)</TH>
+                  <TH className="border-l border-a-hairline" w={colWidths["캡션"]} fixed onResize={e => startResize("캡션", e)}>캡션</TH>
                   <TH right w={colWidths["좋아요"]} onResize={e => startResize("좋아요", e)} {...sp("좋아요")}>좋아요</TH>
                   <TH right w={colWidths["댓글"]} onResize={e => startResize("댓글", e)} {...sp("댓글")}>댓글</TH>
                   <TH className="text-center" w={colWidths["트렌드"]} onResize={e => startResize("트렌드", e)}>트렌드</TH>
@@ -242,17 +243,17 @@ function PostsTable(props: Props) {
                         </button>
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 text-a-ink-muted whitespace-nowrap">합계 ({sortedPosts.length}건)</td>
+                    <td className="px-3 py-2.5 text-a-ink-muted whitespace-nowrap border-l border-a-hairline">합계 ({sortedPosts.length}건)</td>
                     <td />{/* 게시일 */}
                     <td />{/* 인플루언서 */}
                     <td />{/* 상품명 */}
                     <td />{/* 프로젝트명 */}
-                    <td className="px-3 py-2.5 text-right tabular-nums text-a-ink">{tableTotals.cost.toLocaleString()}원</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-a-ink border-l border-a-hairline">{tableTotals.cost.toLocaleString()}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-a-blue">{tableTotals.views.toLocaleString()}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums text-a-ink">{tableTotals.views > 0 ? `${(tableTotals.cost / tableTotals.views).toFixed(2)}원` : "-"}</td>{/* 전체 평균 조회당비용 = 비용합계 ÷ 조회수합계 */}
+                    <td className="px-3 py-2.5 text-right tabular-nums text-a-ink">{tableTotals.views > 0 ? (tableTotals.cost / tableTotals.views).toFixed(2) : "-"}</td>{/* 전체 평균 조회당비용 = 비용합계 ÷ 조회수합계 */}
                     <td className="px-3 py-2.5 text-right tabular-nums text-a-ink">{tableTotals.reach.toLocaleString()}</td>{/* 도달수 합계 */}
-                    <td className="px-3 py-2.5 text-right tabular-nums text-a-ink">{tableTotals.reach > 0 ? `${(tableTotals.cost / tableTotals.reach).toFixed(2)}원` : "-"}</td>{/* 전체 평균 도달당비용 = 비용합계 ÷ 도달수합계 */}
-                    <td />{/* 캡션 */}
+                    <td className="px-3 py-2.5 text-right tabular-nums text-a-ink">{tableTotals.reach > 0 ? (tableTotals.cost / tableTotals.reach).toFixed(2) : "-"}</td>{/* 전체 평균 도달당비용 = 비용합계 ÷ 도달수합계 */}
+                    <td className="border-l border-a-hairline" />{/* 캡션 */}
                     <td className="px-3 py-2.5 text-right tabular-nums text-a-ink">{tableTotals.likes.toLocaleString()}</td>{/* 좋아요 합계 */}
                     <td className="px-3 py-2.5 text-right tabular-nums text-a-ink">{tableTotals.comments.toLocaleString()}</td>{/* 댓글 합계 */}
                     <td />{/* 트렌드 */}
@@ -298,7 +299,7 @@ function PostsTable(props: Props) {
                           );
                         })()}
                       </TD>
-                      <TD muted w={colWidths["채널분류"]}>
+                      <TD muted groupStart w={colWidths["채널분류"]}>
                         {editCell?.postId === post.id && editCell?.field === "channel_type" ? (
                           <select autoFocus value={editCell.value}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
@@ -396,7 +397,7 @@ function PostsTable(props: Props) {
                         )}
                       </TD>
                       <td style={{ minWidth: colWidths["비용"] }}
-                        className="px-3 py-4 text-xs tabular-nums text-right whitespace-nowrap cursor-text"
+                        className="px-3 py-4 text-xs tabular-nums text-right whitespace-nowrap cursor-text border-l border-a-hairline"
                         onClick={() => editCell?.postId !== post.id && setEditCell({ postId: post.id, field: "cost", value: String(post.cost ?? "") })}>
                         {editCell?.postId === post.id && editCell?.field === "cost" ? (
                           <input autoFocus type="number" value={editCell.value}
@@ -406,7 +407,7 @@ function PostsTable(props: Props) {
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
                         ) : (
                           <span className="text-a-ink-muted hover:text-a-blue transition-colors">
-                            {post.cost != null ? post.cost.toLocaleString() + "원" : <span className="text-gray-300">—</span>}
+                            {post.cost != null ? post.cost.toLocaleString() : <span className="text-gray-300">—</span>}
                           </span>
                         )}
                       </td>
@@ -442,7 +443,7 @@ function PostsTable(props: Props) {
                       </td>
                       <TD right muted w={colWidths["조회당비용"]}>
                         {!(post.channel_type ?? "").includes("배너") && post.cost != null && s?.play_count != null && s.play_count > 0
-                          ? (post.cost / s.play_count).toFixed(2) + "원"
+                          ? (post.cost / s.play_count).toFixed(2)
                           : <span className="text-gray-300">—</span>}
                       </TD>
                       <td style={{ minWidth: colWidths["도달수"] }}
@@ -475,11 +476,11 @@ function PostsTable(props: Props) {
                           const isBanner = (post.channel_type ?? "").includes("배너");
                           const eff = isBanner ? (s?.play_count ?? null) : effectiveReach(post.reach_count, s?.play_count);
                           return post.cost != null && eff != null && eff > 0
-                            ? (post.cost / eff).toFixed(2) + "원"
+                            ? (post.cost / eff).toFixed(2)
                             : <span className="text-gray-300">—</span>;
                         })()}
                       </TD>
-                      <TD muted w={colWidths["캡션"]} fixed>
+                      <TD muted groupStart w={colWidths["캡션"]} fixed>
                         {editCell?.postId === post.id && editCell?.field === "content_summary" ? (
                           <textarea
                             autoFocus
