@@ -36,7 +36,8 @@ export default function MonitoringPage() {
   const [ytTrends, setYtTrends] = useState<{ measured_at: string; keyword: string; value: number | null }[]>([]);
   const [b2bDaily, setB2bDaily] = useState<B2bDaily[]>([]); // B2B 일자별 현황 (본부공헌이익)
   const [lastUpdate, setLastUpdate] = useState<{ at: string | null; byEmail: string | null }>({ at: null, byEmail: null }); // 진짜 마지막 적재 시각 + 출처
-  const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set()); // 범례 클릭으로 숨긴 시리즈
+  // 기본은 조회수만 표시(차트 정돈) — 검색량·B2B·광고비는 범례 칩으로 켜서 봄. 그외(인스타·유튜브)는 아래 effect에서 추가 숨김.
+  const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set(["검색량", "B2B 발주량", "전체 전환 광고비"])); // 범례 클릭으로 숨긴 시리즈
   const [productTrends, setProductTrends] = useState<{ brandKey: string; products: string[]; data: { date: string; values: Record<string, number | null> }[] }>({ brandKey: "", products: [], data: [] });
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
