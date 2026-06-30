@@ -24,7 +24,8 @@ jobs:
           cache: "pip"
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: 조회수 증분 리포트 (#빙과_마케팅_리포트)
+      - name: 조회수 증분 리포트 발송 + ts 캡처 (#빙과_마케팅_리포트)
+        id: report
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -33,7 +34,31 @@ jobs:
           SLACK_CHANNEL: ${{ github.event.inputs.to_dm == 'true' && 'U0B2Y0ZC8QZ' || '' }}
           # 예약 발송은 오늘(KST) 데이터만(없으면 생략 — 어제값 재발송 방지). 수동 실행은 폴백 허용(테스트 편의).
           STRICT_DATE: ${{ github.event_name == 'schedule' && '1' || '' }}
+          TS_OUT: ${{ runner.temp }}/report_ts.txt
           PYTHONUNBUFFERED: "1"
         run: |
           export MONITORING_DATE=$(TZ=Asia/Seoul date +%F)
           cd scripts && python notify_increments.py
+          if [ -f "$RUNNER_TEMP/report_ts.txt" ]; then echo "ts=$(cat "$RUNNER_TEMP/report_ts.txt")" >> "$GITHUB_OUTPUT"; fi
+
+      # 리포트 게시 ~15분 후(예약 시 ≈09:45 KST) 상태 요약을 그 리포트의 '댓글(스레드 답글)'로 게시.
+      # 수동 실행은 10초만 대기(빠른 검증). 리포트가 실제 게시됐을 때(ts 있음)만 실행.
+      - name: 댓글 전 대기 (09:45)
+        if: steps.report.outputs.ts != ''
+        run: sleep ${{ github.event_name == 'schedule' && '900' || '10' }}
+
+      - name: 상태 알럿을 리포트 댓글로 (여믄봇)
+        if: steps.report.outputs.ts != ''
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          # 리포트가 간 곳과 동일 채널의 그 메시지에 답글.
+          SLACK_CHANNEL: ${{ github.event.inputs.to_dm == 'true' && 'U0B2Y0ZC8QZ' || 'C0B4F7GBX17' }}
+          SLACK_THREAD_TS: ${{ steps.report.outputs.ts }}
+          COLLECT_OUTCOME: success
+          PYTHONUNBUFFERED: "1"
+        run: |
+          export MONITORING_DATE=$(TZ=Asia/Seoul date +%F)
+          cd scripts && python notify_status.py

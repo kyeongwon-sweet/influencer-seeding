@@ -160,7 +160,12 @@ def main():
                                  headers={"Authorization": "Bearer " + token,
                                           "Content-Type": "application/x-www-form-urlencoded; charset=utf-8"})
     r = json.load(urllib.request.urlopen(req, timeout=30))
-    print("[notify] ok=", r.get("ok"), "error=", r.get("error"), "channel=", CHANNEL, "date=", target)
+    ts = r.get("ts")
+    ts_out = os.getenv("TS_OUT")          # 워크플로가 답글(thread_ts)용으로 ts를 읽어가는 파일
+    if ts_out and ts:
+        with open(ts_out, "w", encoding="utf-8") as fh:
+            fh.write(ts)
+    print("[notify] ok=", r.get("ok"), "error=", r.get("error"), "channel=", CHANNEL, "ts=", ts, "date=", target)
     assert r.get("ok"), r
 
 

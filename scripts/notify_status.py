@@ -9,8 +9,9 @@ import urllib.request
 from datetime import date
 from db import get_client
 
-USER = os.environ["STATUS_USER"]   # 황경원 Slack user id (DM 대상)
 SLACK_API = "https://slack.com/api/chat.postMessage"
+# 발송 대상: SLACK_CHANNEL(채널/스레드 답글) 우선, 없으면 STATUS_USER(황경원 DM).
+# SLACK_THREAD_TS 있으면 그 메시지의 '댓글(스레드 답글)'로 게시.
 
 
 def _platform(url: str) -> str:
@@ -117,12 +118,19 @@ def main():
         if len(check) > 8:
             text += f"\n  … 외 {len(check) - 8}건"
 
-    data = urllib.parse.urlencode({"channel": USER, "text": text}).encode()
+    ch = os.getenv("SLACK_CHANNEL") or os.getenv("STATUS_USER")
+    if not ch:
+        raise SystemExit("SLACK_CHANNEL 또는 STATUS_USER 필요")
+    payload = {"channel": ch, "text": text}
+    tts = os.getenv("SLACK_THREAD_TS")
+    if tts:
+        payload["thread_ts"] = tts   # 리포트 메시지의 '댓글(스레드 답글)'로 게시
+    data = urllib.parse.urlencode(payload).encode()
     req = urllib.request.Request(SLACK_API, data=data,
                                  headers={"Authorization": "Bearer " + token,
                                           "Content-Type": "application/x-www-form-urlencoded; charset=utf-8"})
     r = json.load(urllib.request.urlopen(req, timeout=30))
-    print("[status] ok=", r.get("ok"), "error=", r.get("error"), "outcome=", outcome, "total=", total)
+    print("[status] ok=", r.get("ok"), "error=", r.get("error"), "ch=", ch, "thread=", tts, "outcome=", outcome, "total=", total)
     assert r.get("ok"), r
 
 
