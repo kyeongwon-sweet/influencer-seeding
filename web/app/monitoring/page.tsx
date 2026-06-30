@@ -1461,10 +1461,10 @@ export default function MonitoringPage() {
                         <table className="mx-auto">
                           <thead className="sticky top-0 z-10 bg-white border-b border-a-hairline">
                             <tr>
-                              <th className="pl-5 pr-3 py-2.5 text-left text-[11px] font-semibold text-a-ink-muted">날짜</th>
-                              <th className="px-3 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted whitespace-nowrap">누적 조회수</th>
-                              <th className="px-3 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted">검색량</th>
-                              <th className="pl-3 pr-5 py-2.5 text-right text-[11px] font-semibold text-a-ink-muted whitespace-nowrap">B2B 발주량</th>
+                              <th className="pl-5 pr-3 py-2.5 text-left text-[13px] font-semibold text-a-ink-muted">날짜</th>
+                              <th className="px-3 py-2.5 text-right text-[13px] font-semibold text-a-ink-muted whitespace-nowrap">누적 조회수</th>
+                              <th className="px-3 py-2.5 text-right text-[13px] font-semibold text-a-ink-muted">검색량</th>
+                              <th className="pl-3 pr-5 py-2.5 text-right text-[13px] font-semibold text-green-600 whitespace-nowrap">B2B 발주량</th>
                             </tr>
                           </thead>
                           <tbody>
