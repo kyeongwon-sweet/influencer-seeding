@@ -52,6 +52,7 @@ export const CHANNEL_TYPES = [
   "협찬(파워채널/매거진)",
   "무상시딩 (영상)",
   "무상시딩 (피드)",
+  "온드미디어",
 ];
 export const CATEGORIES = [
   { value: "A",   desc: "찐팬서사 (꾸준함)" },
