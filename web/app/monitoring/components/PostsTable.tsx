@@ -169,7 +169,7 @@ function PostsTable(props: Props) {
   return (
         <div className="bg-white rounded-[18px] border border-a-hairline overflow-hidden">
           {/* 상단 가로 스크롤바 (열제목 위) — 본문과 동기화 */}
-          <div ref={topScrollRef} onScroll={syncFromTop} className="overflow-x-auto overflow-y-hidden" style={{ scrollbarWidth: "thin" }}>
+          <div ref={topScrollRef} onScroll={syncFromTop} className="overflow-x-auto overflow-y-hidden">
             <div style={{ width: scrollW || 1, height: 1 }} />
           </div>
           <div ref={bodyScrollRef} onScroll={syncFromBody} className="overflow-auto max-h-[calc(100vh-120px)]">
