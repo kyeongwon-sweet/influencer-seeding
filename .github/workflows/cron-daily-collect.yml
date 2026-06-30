@@ -20,9 +20,14 @@ on:
         description: "API만 실행(IG 스크랩 건너뜀) — brand/youtube/b2b만 복구(Apify 거의 0)"
         type: boolean
         default: false
+      status_test:
+        description: "수집 안 하고 상태 알럿(황경원 DM)만 테스트 발송"
+        type: boolean
+        default: false
 
 jobs:
   collect:
+    if: ${{ github.event.inputs.status_test != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -136,3 +141,27 @@ jobs:
         run: |
           curl -sS "https://influencer-seeding-mu.vercel.app/api/b2b-revenue/fetch" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" -w "\nHTTP %{http_code}\n"
+
+  # 수동 검증용: 수집 없이 상태 알럿(정상 가정)만 황경원 DM으로 발송 — 미측정 점검 포함.
+  status-test:
+    if: ${{ github.event.inputs.status_test == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: 수집 상태 알럿 테스트 (황경원 DM)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          COLLECT_OUTCOME: success
+          STATUS_USER: U0B2Y0ZC8QZ
+          PYTHONUNBUFFERED: "1"
+        run: |
+          export MONITORING_DATE=$(TZ=Asia/Seoul date +%F)
+          cd scripts && python notify_status.py
