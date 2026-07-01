@@ -6,6 +6,19 @@ import SidebarMemo from "./SidebarMemo";
 
 const MIN_W = 160, MAX_W = 360, DEFAULT_W = 200, COLLAPSED_W = 56;
 
+// 코드 마지막 수정(배포) 시각 — next.config가 빌드 시 커밋 시각을 인라인. KST로 포맷(sv-SE=ISO형).
+const BUILD_TIME = (() => {
+  const raw = process.env.NEXT_PUBLIC_BUILD_TIME;
+  if (!raw) return "";
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleString("sv-SE", {
+    timeZone: "Asia/Seoul",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit",
+  });
+})();
+
 const NAV = [
   {
     href: "/",
@@ -166,6 +179,9 @@ export default function Sidebar() {
       {!collapsed && (
         <div className="px-5 py-4 border-t border-gray-100 shrink-0">
           <p className="text-[11px] text-gray-300 tracking-wide">트래킹 대시보드 v1</p>
+          {BUILD_TIME && (
+            <p className="text-[10px] text-gray-300 tracking-wide mt-0.5">코드 업데이트: {BUILD_TIME}</p>
+          )}
         </div>
       )}
 
