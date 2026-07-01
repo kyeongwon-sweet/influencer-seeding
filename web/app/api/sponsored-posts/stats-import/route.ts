@@ -160,20 +160,27 @@ export async function POST(req: NextRequest) {
   // 4) 기존 post_daily_stats 조회 (누적 감소 판정 기준) — 페이지네이션으로 전량
   const existingStats: GuardInput[] = [];
   const manualSet = new Set<string>(); // 대시보드에서 수동수정된 (post_id|measured_at) → 동기화가 덮지 않고 보존
-  if (postIds.length > 0) {
-    const PAGE = 1000;
-    for (let from = 0; ; from += PAGE) {
-      const { data: page, error: pe2 } = await supabase
-        .from("post_daily_stats")
-        .select("post_id, measured_at, play_count, manual")
-        .in("post_id", postIds)
-        .range(from, from + PAGE - 1);
-      if (pe2) return NextResponse.json({ error: pe2.message }, { status: 500 });
-      for (const s of (page ?? []) as Array<{ post_id: string; measured_at: string; play_count: number | null; manual: boolean | null }>) {
-        existingStats.push({ post_id: s.post_id, measured_at: s.measured_at, play_count: Number(s.play_count ?? 0) });
-        if (s.manual) manualSet.add(`${s.post_id}|${s.measured_at}`);
+  // ⚠️ .in("post_id", postIds)를 통째로 쓰면 시트가 대량 배치를 보낼 때 id 목록이 쿼리 URL 한도를 넘어
+  //    0행/에러가 됨(sponsored-posts 500 버그와 동일 계열) → id를 청크로 나눠 조회.
+  //    (mono가드 정합성 때문에 조회 에러 시엔 500으로 실패시켜 부분 쓰기 방지 — degrade 안 함)
+  {
+    const ID_CHUNK = 150;
+    for (let c = 0; c < postIds.length; c += ID_CHUNK) {
+      const batch = postIds.slice(c, c + ID_CHUNK);
+      const PAGE = 1000;
+      for (let from = 0; ; from += PAGE) {
+        const { data: page, error: pe2 } = await supabase
+          .from("post_daily_stats")
+          .select("post_id, measured_at, play_count, manual")
+          .in("post_id", batch)
+          .range(from, from + PAGE - 1);
+        if (pe2) return NextResponse.json({ error: pe2.message }, { status: 500 });
+        for (const s of (page ?? []) as Array<{ post_id: string; measured_at: string; play_count: number | null; manual: boolean | null }>) {
+          existingStats.push({ post_id: s.post_id, measured_at: s.measured_at, play_count: Number(s.play_count ?? 0) });
+          if (s.manual) manualSet.add(`${s.post_id}|${s.measured_at}`);
+        }
+        if (!page || page.length < PAGE) break;
       }
-      if (!page || page.length < PAGE) break;
     }
   }
 
