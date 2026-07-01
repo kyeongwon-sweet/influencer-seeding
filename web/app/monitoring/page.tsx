@@ -406,21 +406,7 @@ export default function MonitoringPage() {
       .catch(auxFail);
   }, []);
 
-  // '그외' 시리즈(인스타 프로필 방문 / 유튜브 검색량)는 기본 숨김 — 데이터 첫 로드 시 1회만 적용
-  const otherSeriesInit = useRef(false);
-  useEffect(() => {
-    if (otherSeriesInit.current) return;
-    const hasIg = brandMetrics.some(d => d.ig_profile_views != null);
-    const ytKeywords = Array.from(new Set(ytTrends.map(t => t.keyword)));
-    if (!hasIg && ytKeywords.length === 0) return;
-    otherSeriesInit.current = true;
-    setHiddenSeries(prev => {
-      const next = new Set(prev);
-      if (hasIg) next.add("인스타 프로필 방문");
-      ytKeywords.forEach(kw => next.add(`유튜브 ${kw} 검색량`));
-      return next;
-    });
-  }, [brandMetrics, ytTrends]);
+  // '그외' 시리즈(인스타 프로필 방문 / 유튜브 검색량)는 기본 노출(ON). 별도 초기 숨김 처리 없음.
 
   // 상품별 검색량 (Google Sheet)
   useEffect(() => {
@@ -1359,7 +1345,8 @@ export default function MonitoringPage() {
                   gradId="summaryGrad"
                   smooth={smooth}
                   hidePrimary={seriesHidden("조회수")}
-                  lsData={seriesHidden("검색량") ? undefined : lsSearchData}
+                  hiddenLines={hiddenSeries}
+                  lsData={lsSearchData}
                   extraSeries={[
                     ...activeProductSeries.map(c => ({
                       name: c.label,
@@ -1407,8 +1394,8 @@ export default function MonitoringPage() {
                         }] : []),
                       ],
                     }] : []),
-                  ].filter(s => !seriesHidden(s.name))}
-                  secondaryData={!seriesHidden("전체 전환 광고비") && mainAdCosts.length > 0 ? mainAdCosts.map(d => ({date: d.date, value: d.total_cost})) : undefined}
+                  ]}
+                  secondaryData={mainAdCosts.length > 0 ? mainAdCosts.map(d => ({date: d.date, value: d.total_cost})) : undefined}
                   secondaryColor={CHART.secondary}
                   postsOnDate={(date) =>
                     filteredPosts

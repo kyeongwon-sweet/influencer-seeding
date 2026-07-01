@@ -2,7 +2,7 @@
 import { useRef, useState } from "react";
 import { CHART, weeklySum, weekLabelOf, padDomain, smoothCurvePath, NAVER_DATALAB_URL, META_ADS_MANAGER_URL } from "../lib";
 
-export default function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData, secondaryData, secondaryColor = "#ea580c", extraSeries, hidePrimary, smooth }: {
+export default function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData, secondaryData, secondaryColor = "#ea580c", extraSeries, hidePrimary, hiddenLines, smooth }: {
   data: { date: string; value: number }[];
   height?: number;
   gradId?: string;
@@ -12,6 +12,8 @@ export default function LineChart({ data, height = 160, gradId = "lcGrad", posts
   secondaryColor?: string;
   extraSeries?: { name: string; color: string; group?: string; members: { label: string; data: { date: string; value: number | null }[] }[] }[];
   hidePrimary?: boolean;
+  // 선(라인)만 숨길 시리즈 이름 집합("검색량"·"전체 전환 광고비"·extraSeries 이름). 데이터는 그대로 받아 툴팁엔 계속 노출.
+  hiddenLines?: Set<string>;
   smooth?: boolean;
 }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
@@ -202,9 +204,9 @@ export default function LineChart({ data, height = 160, gradId = "lcGrad", posts
             </g>
           ))}
           {!hidePrimary && <path d={areaPath} fill={`url(#${gradId})`} />}
-          {lsPath && <path d={lsPath} fill="none" stroke="#f59e0b" strokeWidth="2.5" strokeDasharray="5 3" strokeLinecap="round" />}
+          {lsPath && !hiddenLines?.has("검색량") && <path d={lsPath} fill="none" stroke="#f59e0b" strokeWidth="2.5" strokeDasharray="5 3" strokeLinecap="round" />}
           {extraComputed.map((s, i) => {
-            if (!s.path) return null;
+            if (!s.path || hiddenLines?.has(s.name)) return null;
             const important = s.name === "B2B 발주량";
             const faint = s.name === "인스타 프로필 방문" || s.name.startsWith("유튜브");
             return (
@@ -214,14 +216,14 @@ export default function LineChart({ data, height = 160, gradId = "lcGrad", posts
                 strokeLinejoin="round" strokeLinecap="round" />
             );
           })}
-          {extraComputed.map((s, si) => !s.path && s.dots.map((d, di) => (
+          {extraComputed.map((s, si) => !s.path && !hiddenLines?.has(s.name) && s.dots.map((d, di) => (
             <circle key={`xdot-${si}-${di}`} cx={d[0]} cy={d[1]} r={2.2} fill={s.color} />
           )))}
           {!hidePrimary && (
             <path d={linePath} fill="none" stroke={CHART.primary} strokeWidth="2"
               strokeLinejoin="round" strokeLinecap="round" />
           )}
-          {secondaryPath && (
+          {secondaryPath && !hiddenLines?.has("전체 전환 광고비") && (
             <path d={secondaryPath} fill="none" stroke={secondaryColor} strokeWidth="1"
               strokeLinejoin="round" strokeLinecap="round" />
           )}
