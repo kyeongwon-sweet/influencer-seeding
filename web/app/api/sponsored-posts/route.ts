@@ -61,7 +61,8 @@ export async function GET(req: NextRequest) {
         .select("*")
         .order("created_at", { ascending: false })
         .range(from, from + PAGE - 1);
-      if (postsError) return NextResponse.json({ error: postsError.message }, { status: 500 });
+      // graceful degrade: 한 페이지 조회가 실패해도 500으로 대시보드 전체를 죽이지 않고, 지금까지 모은 것으로 진행.
+      if (postsError) { console.error("[sponsored-posts] posts 조회 실패:", postsError.message); break; }
       posts.push(...(page ?? []));
       if (!page || page.length < PAGE) break;
     }
@@ -82,7 +83,8 @@ export async function GET(req: NextRequest) {
         .select("*")
         .order("measured_at", { ascending: false })
         .range(from, from + PAGE - 1);
-      if (statsError) return NextResponse.json({ error: statsError.message }, { status: 500 });
+      // graceful degrade: 통계 조회가 실패해도 500 대신 있는 데이터로 진행(게시물은 뜨고 인사이트만 비게).
+      if (statsError) { console.error("[sponsored-posts] stats 조회 실패(있는 데이터로 진행):", statsError.message); break; }
       for (const s of page ?? []) {
         const arr = statsByPost.get(s.post_id) ?? [];
         arr.push(s);
