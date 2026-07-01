@@ -105,7 +105,7 @@ export default function FiltersBar({ filters, setFilters, pdOptions, productOpti
             className={`filter-select ${filters.companies.length > 0 ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
           >
             {filters.companies.length === 0
-              ? "전체 업체"
+              ? "업체명"
               : filters.companies.length === 1
               ? filters.companies[0]
               : `${filters.companies[0]} 외 ${filters.companies.length - 1}`}
