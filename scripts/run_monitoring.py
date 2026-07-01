@@ -387,9 +387,11 @@ def run():
                 print(f"  ⚠️  조회수 없음: {post['url']} (account={s.get('account_name')})")
                 play_count = None
             elif existing.get("play_count") is not None and play_count < existing.get("play_count"):
-                # 누적값인데 줄어들었다 = 오류
-                print(f"  ❌ 오류: 조회수 역행 {post['url']} ({existing.get('play_count')} → {play_count})")
-                play_count = None  # 오류값이므로 NULL로 표시
+                # 누적값인데 줄어들었다 = 오류(글리치) 또는 IG 정상 미세감소(중복/봇 필터링 지터).
+                # NULL로 버리면 성숙 게시물에 톱니형 결측이 생기고 유효값이 사라지므로,
+                # 직전 최대값으로 clamp(하향 무시) — 표시 레이어의 monotonic과 동일하게 누적 불변식 유지.
+                print(f"  ⚠️  조회수 역행 clamp {post['url']} ({play_count} → {existing.get('play_count')} 유지)")
+                play_count = existing.get("play_count")
 
             rows.append({
                 "post_id": post["id"],
@@ -421,8 +423,9 @@ def run():
                         db.table("sponsored_posts").update({"content_summary": s["title"][:300]}).eq("id", post["id"]).execute()
                     play = s.get("views")
                     if play is not None and existing.get("play_count") is not None and play < existing.get("play_count"):
-                        print(f"  ❌ 유튜브 조회수 역행 {post['url']} → NULL 처리")
-                        play = None
+                        # 미세 감소는 정상 지터 → NULL 대신 직전 최대값 유지(clamp)
+                        print(f"  ⚠️  유튜브 조회수 역행 clamp {post['url']} ({play} → {existing.get('play_count')} 유지)")
+                        play = existing.get("play_count")
                     likes, comments = s.get("likes"), s.get("comments")
                     rows.append({
                         "post_id": post["id"],
@@ -459,8 +462,9 @@ def run():
                         continue
                     existing = last_stat.get(post["id"], {})
                     if existing.get("play_count") is not None and play < existing.get("play_count"):
-                        print(f"  ❌ 틱톡 조회수 역행 {post['url']} → NULL 처리")
-                        play = None
+                        # 미세 감소는 정상 지터 → NULL 대신 직전 최대값 유지(clamp)
+                        print(f"  ⚠️  틱톡 조회수 역행 clamp {post['url']} ({play} → {existing.get('play_count')} 유지)")
+                        play = existing.get("play_count")
                     likes, comments = s.get("likes"), s.get("comments")
                     rows.append({
                         "post_id": post["id"],
@@ -551,8 +555,9 @@ def run():
                         continue
                     existing = last_stat.get(post["id"], {})
                     if existing.get("play_count") is not None and play < existing.get("play_count"):
-                        print(f"  ❌ 트위터 조회수 역행 {post['url']} → NULL 처리")
-                        play = None
+                        # 미세 감소는 정상 지터 → NULL 대신 직전 최대값 유지(clamp)
+                        print(f"  ⚠️  트위터 조회수 역행 clamp {post['url']} ({play} → {existing.get('play_count')} 유지)")
+                        play = existing.get("play_count")
                     likes, comments = s.get("likes"), s.get("comments")
                     rows.append({
                         "post_id": post["id"],
