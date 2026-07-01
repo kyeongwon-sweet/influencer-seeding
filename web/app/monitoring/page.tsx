@@ -82,6 +82,7 @@ export default function MonitoringPage() {
     if (filters.products.length > 0 && !filters.products.includes(post.product_name ?? "")) return false;
     if (filters.type !== "all" && getPostType(post.url) !== filters.type) return false;
     if (filters.channelTypes.length > 0 && !filters.channelTypes.some(ct => (post.channel_type ?? "").replace(/\s+/g, "") === ct.replace(/\s+/g, ""))) return false;
+    if (filters.companies.length > 0 && !filters.companies.includes(post.company_name?.trim() || companyForAccount(post.account_name ?? post.influencers?.name) || "")) return false;
     if (filters.pdNames.length > 0 && !filters.pdNames.includes(pdOf(post.project_name))) return false;
 
     // 게시일 필터 (posted_at 기준)
@@ -98,12 +99,16 @@ export default function MonitoringPage() {
     new Set(posts.map(p => p.product_name).filter((p): p is string => Boolean(p)))
   ).sort(), [posts]);
 
+  const companyOptions = useMemo(() => Array.from(
+    new Set(posts.map(p => p.company_name?.trim() || companyForAccount(p.account_name ?? p.influencers?.name) || "").filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b, "ko")), [posts]);
+
   // PD/디자이너 옵션 — project_name이 파싱되는 게시물만 (빈 값 제외)
   const pdOptions = useMemo(() => Array.from(
     new Set(posts.map(p => pdOf(p.project_name)).filter((v): v is string => Boolean(v)))
   ).sort((a, b) => a.localeCompare(b, "ko")), [posts]);
 
-  const hasFilter = filters.name !== "" || filters.project !== "" || filters.caption !== "" || filters.products.length > 0 || filters.type !== "all" || filters.channelTypes.length > 0 || filters.pdNames.length > 0 || filters.dateFrom !== "" || filters.dateTo !== "" || filters.postedFrom !== "" || filters.postedTo !== "";
+  const hasFilter = filters.name !== "" || filters.project !== "" || filters.caption !== "" || filters.products.length > 0 || filters.type !== "all" || filters.channelTypes.length > 0 || filters.companies.length > 0 || filters.pdNames.length > 0 || filters.dateFrom !== "" || filters.dateTo !== "" || filters.postedFrom !== "" || filters.postedTo !== "";
   const colSpan = 17;
 
   // 마지막 수집 시각 = 최신 측정행의 적재 시각(created_at) 중 최대값 (게시물 추가 시각 아님)
@@ -1183,7 +1188,7 @@ export default function MonitoringPage() {
       <div className="p-6">
 
         {/* 필터 바 */}
-        <FiltersBar filters={filters} setFilters={setFilters} pdOptions={pdOptions} productOptions={productOptions} hasFilter={hasFilter} />
+        <FiltersBar filters={filters} setFilters={setFilters} pdOptions={pdOptions} productOptions={productOptions} companyOptions={companyOptions} hasFilter={hasFilter} />
 
         {filteredPosts.length > 0 && (
           <div className="relative bg-white rounded-[20px] shadow-[0_2px_16px_rgba(100,120,180,0.08)] mb-4 overflow-hidden">

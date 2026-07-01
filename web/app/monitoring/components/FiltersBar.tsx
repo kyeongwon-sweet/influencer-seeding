@@ -9,11 +9,13 @@ type Props = {
   setFilters: React.Dispatch<React.SetStateAction<Filters>>;
   pdOptions: string[];
   productOptions: string[];
+  companyOptions: string[];
   hasFilter: boolean;
 };
 
-export default function FiltersBar({ filters, setFilters, pdOptions, productOptions, hasFilter }: Props) {
+export default function FiltersBar({ filters, setFilters, pdOptions, productOptions, companyOptions, hasFilter }: Props) {
   const [showChannelTypeDropdown, setShowChannelTypeDropdown] = useState(false);
+  const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
   const [showPdDropdown, setShowPdDropdown] = useState(false);
   return (
     <div className="bg-white rounded-[14px] border border-a-hairline px-4 py-2.5 mb-4 flex items-center gap-2.5 flex-wrap">
@@ -96,6 +98,46 @@ export default function FiltersBar({ filters, setFilters, pdOptions, productOpti
           </>
         )}
       </div>
+      {companyOptions.length > 0 && (
+        <div className="relative">
+          <button
+            onClick={() => setShowCompanyDropdown(!showCompanyDropdown)}
+            className={`filter-select ${filters.companies.length > 0 ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
+          >
+            {filters.companies.length === 0
+              ? "전체 업체"
+              : filters.companies.length === 1
+              ? filters.companies[0]
+              : `${filters.companies[0]} 외 ${filters.companies.length - 1}`}
+          </button>
+          {showCompanyDropdown && (
+            <>
+            <div className="fixed inset-0 z-40" onClick={() => setShowCompanyDropdown(false)} />
+            <div className="absolute top-full left-0 mt-1 bg-white border border-a-hairline rounded-[8px] shadow-lg z-50 w-48">
+              <div className="p-3 space-y-2 max-h-64 overflow-y-auto">
+                <label className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1.5 rounded text-xs">
+                  <input type="checkbox" checked={filters.companies.length === 0}
+                    onChange={() => setFilters(p => ({ ...p, companies: [] }))}
+                    className="w-3.5 h-3.5 accent-a-blue cursor-pointer" />
+                  전체
+                </label>
+                {companyOptions.map(c => (
+                  <label key={c} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1.5 rounded text-xs">
+                    <input type="checkbox" checked={filters.companies.includes(c)}
+                      onChange={e => {
+                        if (e.target.checked) setFilters(p => ({ ...p, companies: [...p.companies, c] }));
+                        else setFilters(p => ({ ...p, companies: p.companies.filter(x => x !== c) }));
+                      }}
+                      className="w-3.5 h-3.5 accent-a-blue cursor-pointer" />
+                    {c}
+                  </label>
+                ))}
+              </div>
+            </div>
+            </>
+          )}
+        </div>
+      )}
       {pdOptions.length > 0 && (
         <div className="relative">
           <button
