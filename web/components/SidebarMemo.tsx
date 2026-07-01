@@ -46,8 +46,15 @@ export default function SidebarMemo() {
 
   useEffect(() => {
     load();
-    const t = setInterval(load, 20000); // 팀원 메모 반영
-    return () => clearInterval(t);
+    // 팀원 메모 반영: 보이는 탭에서만 60초 폴링(20→60 완화), 숨겨지면 정지·복귀 시 즉시 갱신.
+    // (숨은 탭이 24시간 폴링하던 낭비 제거 — Vercel 함수 호출 절감)
+    let t: ReturnType<typeof setInterval> | null = null;
+    const start = () => { if (!t) t = setInterval(load, 60000); };
+    const stop = () => { if (t) { clearInterval(t); t = null; } };
+    const onVis = () => { if (document.hidden) stop(); else { load(); start(); } };
+    if (!document.hidden) start();
+    document.addEventListener("visibilitychange", onVis);
+    return () => { stop(); document.removeEventListener("visibilitychange", onVis); };
   }, [load]);
 
   async function add() {
