@@ -74,10 +74,12 @@ export async function GET(req: NextRequest) {
   if (ids.length > 0) {
     const PAGE = 1000;
     for (let from = 0; ; from += PAGE) {
+      // ⚠️ .in("post_id", ids) 쓰지 말 것 — 게시물 수백 개면 id 목록이 쿼리 URL 한도를 넘어
+      //    PostgREST가 0행을 반환(2026-07-01 확인: 638개 id → 통계 0행 → 홈 인사이트 전부 '특이사항 없음').
+      //    ids=전체 게시물이라 필터가 어차피 불필요 → 전량 조회 후 아래에서 post_id로 그룹핑.
       const { data: page, error: statsError } = await supabase
         .from("post_daily_stats")
         .select("*")
-        .in("post_id", ids)
         .order("measured_at", { ascending: false })
         .range(from, from + PAGE - 1);
       if (statsError) return NextResponse.json({ error: statsError.message }, { status: 500 });
