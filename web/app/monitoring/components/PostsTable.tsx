@@ -4,6 +4,7 @@ import { memo, useEffect, useRef, useState } from "react";
 // 인라인 편집/정렬/선택/열 리사이즈는 전부 부모 함수를 props로 받아 그대로 호출 → 동작 동일.
 import { type Post, type EditCell, type DailyStats, type Filters, getFilteredStats, hasNotableChange, viewIncrement, fmt, fmtChannelType, effectiveReach, pickMetric, CHANNEL_TYPES, INIT_FILTERS, CHART } from "../lib";
 import { MIN_ENTRY_DATE, maxDateKST } from "@/lib/dateRule";
+import { companyForAccount } from "@/lib/companyMap";
 
 function TH({ children, right, col, onSort, sorted, className: cls, w, leftPos, onResize, fixed }: {
   children?: React.ReactNode; right?: boolean; col?: string;
@@ -370,7 +371,7 @@ function PostsTable(props: Props) {
                           </div>
                         )}
                       </TD>
-                      <TD muted w={colWidths["업체명"]} fixed>{post.company_name ?? "-"}</TD>
+                      <TD muted w={colWidths["업체명"]} fixed>{post.company_name?.trim() || companyForAccount(post.account_name ?? post.influencers?.name) || "-"}</TD>
                       <TD muted w={colWidths["상품명"]} fixed>
                         {editCell?.postId === post.id && editCell?.field === "product_name" ? (
                           <input autoFocus value={editCell.value}

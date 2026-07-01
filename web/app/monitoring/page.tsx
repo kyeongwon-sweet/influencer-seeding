@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
 import { MIN_ENTRY_DATE, maxDateKST, isValidEntryDate } from "@/lib/dateRule";
+import { companyForAccount } from "@/lib/companyMap";
 import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, INIT_FILTERS, CHANNEL_TYPES, CATEGORIES, STICKY_COL_ORDER, PROJECT_PARSE_COLS, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, isStatInDateRange, getFilteredStats, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, getPostType, viewIncrement, pickMetric, pdOf, productLabel, effectiveReach, weekKeyOf, pearson, alignedPairs, bestLag, solveLinear, alignMulti, multipleR2, parseCsvLine } from "./lib";
 import CorrelationPanel from "./components/CorrelationPanel";
 import FiltersBar from "./components/FiltersBar";
@@ -740,7 +741,7 @@ export default function MonitoringPage() {
     let av: string | number = "", bv: string | number = "";
     switch (sortCol) {
       case "인플루언서": av = (a.account_name ?? a.influencers?.name ?? "").toLowerCase(); bv = (b.account_name ?? b.influencers?.name ?? "").toLowerCase(); break;
-      case "업체명": av = (a.company_name ?? "").toLowerCase(); bv = (b.company_name ?? "").toLowerCase(); break;
+      case "업체명": av = (a.company_name?.trim() || companyForAccount(a.account_name ?? a.influencers?.name) || "").toLowerCase(); bv = (b.company_name?.trim() || companyForAccount(b.account_name ?? b.influencers?.name) || "").toLowerCase(); break;
       case "프로젝트명": av = (a.project_name ?? "").toLowerCase(); bv = (b.project_name ?? "").toLowerCase(); break;
       case "상품명": av = (a.product_name ?? "").toLowerCase(); bv = (b.product_name ?? "").toLowerCase(); break;
       case "증분량":
