@@ -371,7 +371,24 @@ function PostsTable(props: Props) {
                           </div>
                         )}
                       </TD>
-                      <TD muted w={colWidths["업체명"]} fixed>{post.company_name?.trim() || companyForAccount(post.account_name ?? post.influencers?.name) || "-"}</TD>
+                      <TD muted w={colWidths["업체명"]} fixed>
+                        {editCell?.postId === post.id && editCell?.field === "company_name" ? (
+                          <input autoFocus value={editCell.value}
+                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
+                            onBlur={() => patchPost(post.id, "company_name", editCell.value)}
+                            onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "company_name", editCell.value); if (e.key === "Escape") { e.preventDefault(); setEditCell(null); }; }}
+                            className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5" />
+                        ) : (() => {
+                          // 표시값 = 수동 업체명 우선, 없으면 계정→업체명 자동매핑. 편집 시작 시 이 표시값을 seed해 보이는 대로 수정 가능.
+                          const company = post.company_name?.trim() || companyForAccount(post.account_name ?? post.influencers?.name) || "";
+                          return (
+                            <span onClick={() => setEditCell({ postId: post.id, field: "company_name", value: company })}
+                              className="block truncate cursor-text hover:text-a-blue transition-colors">
+                              {company || "-"}
+                            </span>
+                          );
+                        })()}
+                      </TD>
                       <TD muted w={colWidths["상품명"]} fixed>
                         {editCell?.postId === post.id && editCell?.field === "product_name" ? (
                           <input autoFocus value={editCell.value}
