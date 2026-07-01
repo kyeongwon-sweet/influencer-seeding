@@ -6,7 +6,7 @@ import GlobalActions from "@/components/GlobalActions";
 import { Analytics } from "@vercel/analytics/next";
 
 export const metadata: Metadata = {
-  title: "인플루언서 시딩 트래킹 대시보드",
+  title: "인지 트래킹 대시보드",
   description: "라라스윗 인플루언서 시딩 관리",
 };
 
