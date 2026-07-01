@@ -89,31 +89,38 @@ export default function DashboardPage() {
   const [showAllJobs, setShowAllJobs] = useState(false);
 
   useEffect(() => {
-    const t = AbortSignal.timeout(12000);
-    Promise.allSettled([
-      fetch("/api/influencers", { signal: t }).then(r => r.json()).then(setInfluencers),
-      fetch("/api/jobs", { signal: t }).then(r => r.json()).then(setJobs),
-      fetch("/api/sponsored-posts", { signal: t }).then(r => r.json()).then((data: SponsoredPost[]) => {
-        if (Array.isArray(data)) setPosts(data);
-      }),
-      fetch("/api/organic-mentions", { signal: t }).then(r => r.json()).then((data: OrganicMention[]) => {
-        if (Array.isArray(data)) setOrganicMentions(data);
-      }),
-      fetch("/api/kpi", { signal: t }).then(r => r.json()).then((data: KpiSnapshot | null) => {
-        if (data?.id) setKpi(data);
-      }),
-      fetch("/api/product-search-trends", { signal: t }).then(r => r.json()).then((d: { brandKey?: string; products?: string[]; data?: { date: string; values: Record<string, number | null> }[] }) => {
-        if (d?.brandKey && Array.isArray(d.data)) {
-          const key = d.brandKey;
-          setBrandSearch(
-            d.data
-              .map(row => ({ date: row.date, value: row.values[key] }))
-              .filter((x): x is { date: string; value: number } => x.value != null)
-          );
-          setProductTrends({ products: d.products ?? [], rows: d.data });
-        }
-      }),
-    ]).finally(() => setLoading(false));
+    const loadAll = () => {
+      const t = AbortSignal.timeout(12000);
+      return Promise.allSettled([
+        fetch("/api/influencers", { signal: t }).then(r => r.json()).then(setInfluencers),
+        fetch("/api/jobs", { signal: t }).then(r => r.json()).then(setJobs),
+        fetch("/api/sponsored-posts", { signal: t }).then(r => r.json()).then((data: SponsoredPost[]) => {
+          if (Array.isArray(data)) setPosts(data);
+        }),
+        fetch("/api/organic-mentions", { signal: t }).then(r => r.json()).then((data: OrganicMention[]) => {
+          if (Array.isArray(data)) setOrganicMentions(data);
+        }),
+        fetch("/api/kpi", { signal: t }).then(r => r.json()).then((data: KpiSnapshot | null) => {
+          if (data?.id) setKpi(data);
+        }),
+        fetch("/api/product-search-trends", { signal: t }).then(r => r.json()).then((d: { brandKey?: string; products?: string[]; data?: { date: string; values: Record<string, number | null> }[] }) => {
+          if (d?.brandKey && Array.isArray(d.data)) {
+            const key = d.brandKey;
+            setBrandSearch(
+              d.data
+                .map(row => ({ date: row.date, value: row.values[key] }))
+                .filter((x): x is { date: string; value: number } => x.value != null)
+            );
+            setProductTrends({ products: d.products ?? [], rows: d.data });
+          }
+        }),
+      ]);
+    };
+    loadAll().finally(() => setLoading(false));
+    // 탭 복귀 시 재요청 — 마운트 1회만 fetch하면 새 수집분이 반영 안 돼 인사이트('특이사항 없음' 등)가 낡은 채 남는 문제 방지.
+    const onVis = () => { if (!document.hidden) loadAll(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
 
   const lastListupAt = influencers.length > 0
