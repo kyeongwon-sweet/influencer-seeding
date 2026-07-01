@@ -191,12 +191,12 @@ def main():
         f"📈 *인지 조회수 일일 증분* `({target})`",
         f"오늘 총 증분 *+{f(total)}*",
         "", DIV, "",
-        "◾ *채널분류별*",
+        "◾ *채널분류별*  `CPV는 누적 기준`",
         "",
     ]
     for ct, s in sorted(by_channel.items(), key=lambda x: x[1], reverse=True):
         lines.append(f"• {_ital_paren(ct)} *+{f(s)}*  {_cpv(cost_by_ch.get(ct, 0), cumviews_by_ch.get(ct, 0), ct)}")
-    lines += ["", DIV, "", "◾ *급상승 TOP 10* 🔥", ""]
+    lines += ["", DIV, "", "◾ *급상승 TOP 10* 🔥  `CPV는 누적 기준`", ""]
     for rank, it in enumerate(items[:10], 1):
         prod = f"[{it['product']}] " if it["product"] else ""
         label = f"<{it['url']}|{_esc(it['name'])}>" if it["url"] else _esc(it["name"])
