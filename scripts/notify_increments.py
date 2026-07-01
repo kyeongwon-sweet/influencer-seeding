@@ -45,6 +45,27 @@ def _ital_paren(s: str) -> str:
     return s if i == -1 else f"{s[:i]}_{s[i:]}_"
 
 
+def _already_posted(token: str, channel: str, target: str) -> bool:
+    """채널에 오늘(target) 리포트가 이미 있으면 True (백업 창 중복 발송 방지).
+    조회 실패/스코프 없으면 False(발송 진행) — 막지 않음."""
+    try:
+        req = urllib.request.Request(
+            f"https://slack.com/api/conversations.history?channel={channel}&limit=20",
+            headers={"Authorization": "Bearer " + token})
+        d = json.load(urllib.request.urlopen(req, timeout=20))
+    except Exception as e:
+        print("[notify] 중복조회 실패(발송 진행):", e)
+        return False
+    if not d.get("ok"):
+        print("[notify] 중복조회 ok=False(발송 진행):", d.get("error"))
+        return False
+    for m in d.get("messages", []):
+        t = m.get("text", "")
+        if "일일 증분" in t and f"({target})" in t:
+            return True
+    return False
+
+
 def _fetch_day(db, target):
     """target일의 {post_id: play_count} (null 제외)."""
     out, start = {}, 0
@@ -81,6 +102,11 @@ def main():
             today = _fetch_day(db, target)
     if not today:
         print(f"[notify] {target} 조회수 데이터 없음 → 발송 생략 (strict={strict})")
+        return
+
+    # 중복 방지: 채널 발송 + DEDUP=1인데 오늘 리포트가 이미 있으면 생략(백업 창 대비).
+    if os.getenv("DEDUP") == "1" and CHANNEL[:1] in ("C", "G") and _already_posted(token, CHANNEL, target):
+        print(f"[notify] {target} 리포트 이미 게시됨 → 중복 방지 생략")
         return
 
     post_ids = list(today.keys())

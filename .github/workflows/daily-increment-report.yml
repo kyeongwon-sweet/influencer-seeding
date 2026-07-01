@@ -5,7 +5,8 @@ name: Daily Increment Report (09:30 KST)
 # 수집 자체의 정상/실패 알럿은 수집 직후 황경원 DM으로 별도 발송됨(cron-daily-collect.yml).
 on:
   schedule:
-    - cron: "30 0 * * *"   # 00:30 UTC = 09:30 KST (매일, 주말·공휴일 포함)
+    - cron: "30 0 * * *"   # 00:30 UTC = 09:30 KST (주 실행, 매일·주말·공휴일 포함)
+    - cron: "30 1 * * *"   # 01:30 UTC = 10:30 KST (백업 — 첫 창을 GitHub이 건너뛰면 커버. 중복은 DEDUP로 방지)
   workflow_dispatch:        # 수동 테스트용
     inputs:
       to_dm:
@@ -34,6 +35,8 @@ jobs:
           SLACK_CHANNEL: ${{ github.event.inputs.to_dm == 'true' && 'U0B2Y0ZC8QZ' || '' }}
           # 예약 발송은 오늘(KST) 데이터만(없으면 생략 — 어제값 재발송 방지). 수동 실행은 폴백 허용(테스트 편의).
           STRICT_DATE: ${{ github.event_name == 'schedule' && '1' || '' }}
+          # 채널 발송(=to_dm 아님) 시 하루 1회만: 오늘 리포트가 이미 있으면 생략(백업 창 중복 방지).
+          DEDUP: ${{ github.event.inputs.to_dm == 'true' && '' || '1' }}
           TS_OUT: ${{ runner.temp }}/report_ts.txt
           PYTHONUNBUFFERED: "1"
         run: |
