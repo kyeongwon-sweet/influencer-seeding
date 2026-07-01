@@ -125,7 +125,7 @@ def main():
     # 게시물 메타(이름/플랫폼/상품군/업로드일/채널분류)
     meta = {}
     for chunk in _chunks(post_ids, 100):
-        res = db.table("sponsored_posts").select("id, url, account_name, product_name, posted_at, channel_type").in_("id", chunk).execute()
+        res = db.table("sponsored_posts").select("id, url, account_name, product_name, posted_at, channel_type, cost").in_("id", chunk).execute()
         for r in (res.data or []):
             meta[r["id"]] = r
 
@@ -147,6 +147,8 @@ def main():
             "posted_at": str(m.get("posted_at"))[:10] if m.get("posted_at") else "",
             "channel_type": (m.get("channel_type") or "").strip() or "미분류",
             "is_new": pv is None,
+            "cost": m.get("cost") or 0,
+            "cum": tv or 0,          # 누적 조회수(오늘 play_count)
         })
 
     if not items:
@@ -154,31 +156,52 @@ def main():
         return
 
     total = sum(it["inc"] for it in items)
+
+    def _norm_ch(ct):
+        return "무상시딩 (영상+피드)" if "무상시딩" in (ct or "") else ((ct or "").strip() or "미분류")
+
     by_channel = {}
     for it in items:
-        ct = it["channel_type"]
-        if "무상시딩" in ct:  # 영상/피드 등 하위 구분을 하나로 합산
-            ct = "무상시딩 (영상+피드)"
+        ct = _norm_ch(it["channel_type"])
         by_channel[ct] = by_channel.get(ct, 0) + it["inc"]
+
+    # CPV(누적 조회당 비용): 채널별 Σ비용 / Σ누적조회수 — 오늘 측정된 게시물 전체 기준(대시보드 조회당비용과 동일)
+    cost_by_ch, cumviews_by_ch = {}, {}
+    for pid, tv in today.items():
+        m = meta.get(pid, {})
+        ct = _norm_ch(m.get("channel_type"))
+        cost_by_ch[ct] = cost_by_ch.get(ct, 0) + (m.get("cost") or 0)
+        cumviews_by_ch[ct] = cumviews_by_ch.get(ct, 0) + (tv or 0)
+
     items.sort(key=lambda x: x["inc"], reverse=True)
 
     def f(n): return f"{n:,}"
 
+    def _cpv(cost, views, ct):
+        if "배너" in (ct or ""):
+            return "(인사이트 요청 중)"   # 배너는 조회수 지표 별도 → CPV 미산정
+        if not cost:
+            return "무상"                # 무상시딩·비용 0
+        if not views:
+            return "CPV -"
+        return f"CPV {cost / views:,.1f}원"
+
+    DIV = "──────────────────────────────"
     lines = [
         f"📈 *인지 조회수 일일 증분* `({target})`",
         f"오늘 총 증분 *+{f(total)}*",
-        "",
+        "", DIV, "",
         "◾ *채널분류별*",
         "",
     ]
     for ct, s in sorted(by_channel.items(), key=lambda x: x[1], reverse=True):
-        lines.append(f"• {_ital_paren(ct)} *+{f(s)}*")
-    lines += ["", "◾ *급상승 TOP 10* 🔥", ""]
+        lines.append(f"• {_ital_paren(ct)} *+{f(s)}*  {_cpv(cost_by_ch.get(ct, 0), cumviews_by_ch.get(ct, 0), ct)}")
+    lines += ["", DIV, "", "◾ *급상승 TOP 10* 🔥", ""]
     for rank, it in enumerate(items[:10], 1):
         prod = f"[{it['product']}] " if it["product"] else ""
         label = f"<{it['url']}|{_esc(it['name'])}>" if it["url"] else _esc(it["name"])
         date = it["posted_at"] or "업로드일 미상"
-        lines.append(f"{rank}. {prod}{label} _({it['platform']})_ *+{f(it['inc'])}*  `{date}`")
+        lines.append(f"{rank}. {prod}{label} _({it['platform']})_ *+{f(it['inc'])}*  {_cpv(it['cost'], it['cum'], it['channel_type'])}  `{date}`")
     text = "\n".join(lines)
 
     data = urllib.parse.urlencode({"channel": CHANNEL, "text": text, "unfurl_links": "false"}).encode()
