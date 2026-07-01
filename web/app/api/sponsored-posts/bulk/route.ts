@@ -17,7 +17,7 @@ export const runtime = "nodejs";
  * 부모 라우트 `/api/sponsored-posts` 가 Vercel/Turbopack 라우팅 manifest 누락으로
  * 404가 되는 문제를 우회하기 위한 자식 라우트. (자식 라우트는 정상 배포됨)
  *
- * 요청 body: 행 배열  [{ url, posted_at?, account_name?, content_summary?,
+ * 요청 body: 행 배열  [{ url, posted_at?, account_name?, company_name?, content_summary?,
  *   channel_type?, project_name?, product_name?, cost? }, ...]
  * 또는 { rows: [...] } 형태도 허용.
  *
@@ -42,6 +42,7 @@ export async function POST(req: NextRequest) {
       url:             r.url ? (normalizeUrl(String(r.url)) || String(r.url)) : "",
       posted_at:       r.posted_at || null,
       account_name:    r.account_name || null,
+      company_name:    r.company_name || null,
       content_summary: r.content_summary || null,
       channel_type:    normalizeChannelType(r.channel_type ? String(r.channel_type) : null),
       project_name:    r.project_name || null,
@@ -60,7 +61,7 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = getServerSupabase();
-  const META = ["posted_at", "account_name", "content_summary", "channel_type", "project_name", "product_name", "cost"];
+  const META = ["posted_at", "account_name", "company_name", "content_summary", "channel_type", "project_name", "product_name", "cost"];
 
   // 기존 게시물(id+메타) 조회 — '빈 값만 채우기' 비교용.
   // ⚠️ URL이 많으면 .in() 쿼리 URL 길이 한도 초과로 400(Bad Request) → 80개씩 청크로 조회.

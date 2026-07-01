@@ -18,6 +18,7 @@ export type Post = {
   product_name: string | null;
   project_name: string | null;
   account_name: string | null;
+  company_name: string | null;
   channel_type: string | null;
   cost: number | null;
   reach_count: number | null;

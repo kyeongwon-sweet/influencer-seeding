@@ -45,6 +45,7 @@ const FIELD_BY_HEADER = {
   "업로드일": "posted_at",
   "게시물url": "url",
   "채널명": "account_name",
+  "업체명": "company_name",
   "캡션": "content_summary",
   "채널분류": "channel_type",
   "프로젝트명": "project_name",
@@ -59,6 +60,7 @@ const ALLOWED_URL_RE = /^https:\/\/([a-z0-9-]+\.)*(instagram\.com|youtube\.com|y
 const FIELD_LABEL = {
   posted_at: "업로드일", url: "게시물URL", account_name: "채널명", content_summary: "캡션",
   channel_type: "채널 분류", project_name: "프로젝트명", product_name: "상품명", cost: "비용",
+  company_name: "업체명",
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -193,6 +195,7 @@ function collectRows_(onlyNew) {
     const obj = { url: rawUrl };
     if (fieldCols.posted_at)       obj.posted_at       = postedAt;
     if (fieldCols.account_name)    obj.account_name    = String(row[fieldCols.account_name - 1] || "").trim() || null;
+    if (fieldCols.company_name)    obj.company_name    = String(row[fieldCols.company_name - 1] || "").trim() || null;
     if (fieldCols.content_summary) obj.content_summary = String(row[fieldCols.content_summary - 1] || "").trim() || null;
     if (fieldCols.channel_type)    obj.channel_type    = String(row[fieldCols.channel_type - 1] || "").trim() || null;
     if (fieldCols.project_name)    obj.project_name    = String(row[fieldCols.project_name - 1] || "").trim() || null;
@@ -404,6 +407,7 @@ function importStats() {
         const p = { url: url };
         if (fieldCols.posted_at)       p.posted_at       = toDateStr_(row[fieldCols.posted_at - 1]);
         if (fieldCols.account_name)    p.account_name    = String(row[fieldCols.account_name - 1] || "").trim() || null;
+        if (fieldCols.company_name)    p.company_name    = String(row[fieldCols.company_name - 1] || "").trim() || null;
         if (fieldCols.content_summary) p.content_summary = String(row[fieldCols.content_summary - 1] || "").trim() || null;
         if (fieldCols.channel_type)    p.channel_type    = String(row[fieldCols.channel_type - 1] || "").trim() || null;
         if (fieldCols.project_name)    p.project_name    = String(row[fieldCols.project_name - 1] || "").trim() || null;

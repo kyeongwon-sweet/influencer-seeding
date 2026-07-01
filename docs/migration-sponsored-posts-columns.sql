@@ -8,3 +8,5 @@ ALTER TABLE sponsored_posts
   ADD COLUMN IF NOT EXISTS channel_type  text,
   ADD COLUMN IF NOT EXISTS cost          numeric,
   ADD COLUMN IF NOT EXISTS reach_count   bigint;
+
+ALTER TABLE sponsored_posts ADD COLUMN IF NOT EXISTS company_name text; -- 업체명 (2026-07-01)

@@ -18,6 +18,7 @@ import { normalizeChannelType } from "@/app/monitoring/lib";
  *   channel_type?: string,
  *   cost?: number,
  *   product_name?: string,   // 선택
+ *   company_name?: string,   // 선택
  *   reach_count?: number,    // 선택
  * }> }
  */
@@ -42,6 +43,7 @@ export async function POST(req: NextRequest) {
     url:             normalizeUrl(String(r.url)) || String(r.url),
     posted_at:       r.posted_at || null,
     account_name:    r.account_name || null,
+    company_name:    r.company_name || null,
     content_summary: r.content_summary || null,
     channel_type:    normalizeChannelType(r.channel_type ? String(r.channel_type) : null),
     project_name:    r.project_name || null,

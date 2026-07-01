@@ -196,6 +196,7 @@ function PostsTable(props: Props) {
                   </TH>
                   <TH w={colWidths["게시일"]} onResize={e => startResize("게시일", e)} {...sp("게시일")}>게시일</TH>
                   <TH w={colWidths["인플루언서"]} fixed onResize={e => startResize("인플루언서", e)} {...sp("인플루언서")}>인플루언서</TH>
+                  <TH w={colWidths["업체명"]} fixed onResize={e => startResize("업체명", e)} {...sp("업체명")}>업체명</TH>
                   <TH w={colWidths["상품명"]} fixed onResize={e => startResize("상품명", e)} {...sp("상품명")}>상품명</TH>
                   <TH w={colWidths["프로젝트명"]} fixed onResize={e => startResize("프로젝트명", e)} {...sp("프로젝트명")}>프로젝트명</TH>
                   <TH className="border-l border-a-divider" right w={colWidths["비용"]} onResize={e => startResize("비용", e)} {...sp("비용")}>비용(원)</TH>
@@ -246,6 +247,7 @@ function PostsTable(props: Props) {
                     <td className="px-3 py-2.5 text-a-ink-muted whitespace-nowrap border-l border-a-divider">합계 ({sortedPosts.length}건)</td>
                     <td />{/* 게시일 */}
                     <td />{/* 인플루언서 */}
+                    <td />{/* 업체명 */}
                     <td />{/* 상품명 */}
                     <td />{/* 프로젝트명 */}
                     <td className="px-3 py-2.5 text-right tabular-nums text-a-ink border-l border-a-divider">{tableTotals.cost.toLocaleString()}</td>
@@ -368,6 +370,7 @@ function PostsTable(props: Props) {
                           </div>
                         )}
                       </TD>
+                      <TD muted w={colWidths["업체명"]} fixed>{post.company_name ?? "-"}</TD>
                       <TD muted w={colWidths["상품명"]} fixed>
                         {editCell?.postId === post.id && editCell?.field === "product_name" ? (
                           <input autoFocus value={editCell.value}

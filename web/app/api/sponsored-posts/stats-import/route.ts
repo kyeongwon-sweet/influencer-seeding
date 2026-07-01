@@ -15,7 +15,7 @@ export const runtime = "nodejs";
  *   조회수는 누계라 한 번 외부에서 오염되면 그래프가 영구히 깨지므로 반드시 보호.
  *
  * 입력: {
- *   posts?: [{ url, posted_at?, account_name?, content_summary?, channel_type?, project_name?, product_name?, cost? }],
+ *   posts?: [{ url, posted_at?, account_name?, company_name?, content_summary?, channel_type?, project_name?, product_name?, cost? }],
  *   stats:  [{ url, measured_at: "YYYY-MM-DD", play_count: number }]
  * }   (구버전 호환: stats 배열만 단독으로 보내도 됨)
  *
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
   const items = [...byKey.values()];
 
   // 광고 메타: 정규화 + url 중복 제거 (첫 값 우선)
-  const POST_FIELDS = ["posted_at", "account_name", "content_summary", "channel_type", "project_name", "product_name", "cost"];
+  const POST_FIELDS = ["posted_at", "account_name", "company_name", "content_summary", "channel_type", "project_name", "product_name", "cost"];
   const postByUrl = new Map<string, Record<string, unknown>>();
   for (const p of postsIn) {
     if (!p || !p.url) continue;

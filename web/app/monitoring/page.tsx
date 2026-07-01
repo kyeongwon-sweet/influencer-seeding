@@ -64,7 +64,7 @@ export default function MonitoringPage() {
     "증분량": 80,
   });
   const [colWidths, setColWidths] = useState<Record<string, number>>({
-    "채널분류": 78, "게시일": 104, "캡션": 200, "인플루언서": 130, "상품명": 110, "프로젝트명": 150, "비용": 120, "조회수": 100, "조회당비용": 110, "도달수": 100, "도달당비용": 110, "좋아요": 80, "댓글": 80, "트렌드": 90, "특이사항": 160, "삭제": 60,
+    "채널분류": 78, "게시일": 104, "캡션": 200, "인플루언서": 130, "업체명": 120, "상품명": 110, "프로젝트명": 150, "비용": 120, "조회수": 100, "조회당비용": 110, "도달수": 100, "도달당비용": 110, "좋아요": 80, "댓글": 80, "트렌드": 90, "특이사항": 160, "삭제": 60,
   });
   const resizingRef = useRef<{ col: string; startX: number; startW: number; isSticky: boolean } | null>(null);
 
@@ -740,6 +740,7 @@ export default function MonitoringPage() {
     let av: string | number = "", bv: string | number = "";
     switch (sortCol) {
       case "인플루언서": av = (a.account_name ?? a.influencers?.name ?? "").toLowerCase(); bv = (b.account_name ?? b.influencers?.name ?? "").toLowerCase(); break;
+      case "업체명": av = (a.company_name ?? "").toLowerCase(); bv = (b.company_name ?? "").toLowerCase(); break;
       case "프로젝트명": av = (a.project_name ?? "").toLowerCase(); bv = (b.project_name ?? "").toLowerCase(); break;
       case "상품명": av = (a.product_name ?? "").toLowerCase(); bv = (b.product_name ?? "").toLowerCase(); break;
       case "증분량":
