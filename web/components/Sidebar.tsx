@@ -134,28 +134,27 @@ export default function Sidebar() {
     <aside
       className="sidebar-aside fixed left-0 top-0 h-screen bg-white flex flex-col z-50 shadow-[1px_0_0_0_#e4e8f0]"
     >
-      {/* 접기/펴기 토글 */}
-      <div className={`flex items-center ${collapsed ? "justify-center" : "justify-end"} px-2 pt-3 pb-1`}>
-        <button
-          type="button"
-          onClick={toggleCollapsed}
-          title={collapsed ? "메뉴 펼치기" : "메뉴 접기"}
-          className="w-7 h-7 flex items-center justify-center rounded-[7px] text-gray-400 hover:text-a-ink hover:bg-gray-100 transition-colors"
-        >
-          <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-            {collapsed
-              ? <path d="M7 4l6 6-6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-              : <path d="M13 4l-6 6 6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />}
-          </svg>
-        </button>
-      </div>
+      {/* 접힌 상태에선 상단에 펼치기 토글만 노출(홈 오른쪽에 둘 공간이 없으므로). 펼친 상태의 토글은 아래 홈 행 오른쪽에 배치. */}
+      {collapsed && (
+        <div className="flex justify-center pt-2 pb-0.5 shrink-0">
+          <button
+            type="button"
+            onClick={toggleCollapsed}
+            title="메뉴 펼치기"
+            className="w-7 h-7 flex items-center justify-center rounded-[7px] text-gray-400 hover:text-a-ink hover:bg-gray-100 transition-colors"
+          >
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+              <path d="M7 4l6 6-6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </div>
+      )}
 
-      <nav className="px-2.5 pt-1 pb-3 space-y-0.5 overflow-x-hidden shrink-0">
+      <nav className={`px-2.5 ${collapsed ? "pt-1" : "pt-3"} pb-3 space-y-0.5 overflow-x-hidden shrink-0`}>
         {NAV.map(item => {
           const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-          return (
+          const link = (
             <Link
-              key={item.href}
               href={item.href}
               title={collapsed ? item.label : undefined}
               className={`flex items-center gap-2.5 ${collapsed ? "justify-center px-0" : "px-3"} py-2 rounded-[8px] text-sm transition-colors ${
@@ -168,6 +167,25 @@ export default function Sidebar() {
               {!collapsed && <span className="truncate">{item.label}</span>}
             </Link>
           );
+          // 펼친 상태에선 홈 행 오른쪽에 '접기' 토글을 붙여 상단 여백을 없앰.
+          if (!collapsed && item.href === "/") {
+            return (
+              <div key={item.href} className="flex items-center gap-1">
+                <div className="flex-1 min-w-0">{link}</div>
+                <button
+                  type="button"
+                  onClick={toggleCollapsed}
+                  title="메뉴 접기"
+                  className="shrink-0 w-7 h-7 flex items-center justify-center rounded-[7px] text-gray-400 hover:text-a-ink hover:bg-gray-100 transition-colors"
+                >
+                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                    <path d="M13 4l-6 6 6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              </div>
+            );
+          }
+          return <div key={item.href}>{link}</div>;
         })}
       </nav>
 
