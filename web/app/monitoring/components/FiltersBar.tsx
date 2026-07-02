@@ -179,7 +179,7 @@ export default function FiltersBar({ filters, setFilters, pdOptions, productOpti
         </div>
       )}
       {productOptions.length > 0 && (
-        <div className="flex items-center gap-1.5 overflow-x-auto flex-nowrap scrollbar-none pb-0.5 basis-full min-w-0">
+        <div className="flex items-center gap-1.5 overflow-x-auto flex-nowrap scrollbar-none pb-0.5 flex-1 min-w-0">
           {productOptions.map(p => {
             const active = filters.products.includes(p);
             return (
@@ -196,7 +196,8 @@ export default function FiltersBar({ filters, setFilters, pdOptions, productOpti
           })}
         </div>
       )}
-      <div className="w-px h-4 bg-a-hairline mx-0.5" />
+      {/* 강제 줄바꿈: 상품 칩까지를 1행에 두고, 날짜 필터는 항상 2행으로 내려 필터바를 2줄로 고정 */}
+      <div className="basis-full h-0" aria-hidden />
       <div className="flex items-center gap-1.5">
         <span className="text-[11px] text-a-ink-muted whitespace-nowrap">게시일</span>
         <input type="date" value={filters.postedFrom}
