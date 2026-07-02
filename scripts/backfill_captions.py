@@ -5,6 +5,7 @@
 # 실행: cron-daily-collect.yml 수집 직후 단계. 대상 = 캡션 빈 활성 IG만(평소 소량 → Apify 비용 작음).
 import os
 import re
+import time
 from db import get_client
 
 
@@ -46,12 +47,19 @@ def backfill():
                 out[code] = text.strip()[:300]
         return out
 
-    cap = _fetch([t["url"] for t in targets])
-    # data-slayer가 한 런에서 일부 게시물을 누락하는 경우가 있어 못 받은 건만 1회 재시도.
-    missed = [t for t in targets if not cap.get(_sc(t["url"]))]
-    if missed:
-        print(f"[caption] 1차 미수신 {len(missed)}건 → 재시도")
-        cap.update(_fetch([m["url"] for m in missed]))
+    # data-slayer가 한 런에서 일부 게시물 캡션을 누락하는 경우가 있어 못 받은 건만 재시도.
+    # 최대 MAX_ROUNDS 라운드, 한 라운드가 하나도 못 채우면(진짜 삭제/비공개/캡션없음) 중단.
+    MAX_ROUNDS = 4
+    cap = {}
+    pending = list(targets)
+    for rnd in range(1, MAX_ROUNDS + 1):
+        got = _fetch([t["url"] for t in pending])
+        cap.update(got)
+        pending = [t for t in pending if not cap.get(_sc(t["url"]))]
+        print(f"[caption] {rnd}라운드: 신규 {len(got)}건, 남은 미수신 {len(pending)}건")
+        if not pending or not got:  # 다 채웠거나, 더 이상 진전 없으면 중단
+            break
+        time.sleep(5)  # IG 부하 완화용 짧은 대기 후 재시도
     updated = 0
     for a in targets:
         t = cap.get(_sc(a["url"]))
