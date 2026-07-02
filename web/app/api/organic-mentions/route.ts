@@ -15,7 +15,8 @@ export async function GET() {
     .order("uploaded_at", { ascending: false, nullsFirst: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data, { headers: { "Cache-Control": "s-maxage=300, stale-while-revalidate=900" } });
+  // 편집 가능한 공유 목록이라 5분 캐시는 수정 반영이 늦음 → 30초로 단축(비용은 거의 그대로, 최신성↑).
+  return NextResponse.json(data, { headers: { "Cache-Control": "s-maxage=30, stale-while-revalidate=60" } });
 }
 
 export async function POST(req: NextRequest) {
