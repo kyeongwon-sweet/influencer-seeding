@@ -260,6 +260,8 @@ def _fetch_twitter(urls: list) -> dict:
                 "views": it.get("viewCount") or it.get("views") or it.get("viewsCount"),
                 "likes": it.get("likeCount") or it.get("favoriteCount"),
                 "comments": it.get("replyCount"),
+                # 트윗 본문 → 캡션(content_summary). 액터가 fullText/text로 반환(실측 확인). 300자 제한.
+                "content_summary": (it.get("fullText") or it.get("text") or "")[:300] or None,
             }
     return out
 
@@ -571,6 +573,9 @@ def run():
                 last_stat = _prev_stats(db, [p["id"] for p in tw_posts])
                 for post in tw_posts:
                     s = tw_stats.get(_tw_id(post["url"]))
+                    # 캡션 자동채움 — 트윗 본문을 content_summary가 비어있을 때만(시트/수동 보존). 조회수 유무와 무관.
+                    if s and not post.get("content_summary") and s.get("content_summary"):
+                        db.table("sponsored_posts").update({"content_summary": s["content_summary"]}).eq("id", post["id"]).execute()
                     play = s.get("views") if s else None
                     # 🛡️ 0/미반환(X 조회수 미노출)은 접근불가 → 저장 안 함(직전 값 유지)
                     if not play or play <= 0:
