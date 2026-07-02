@@ -20,7 +20,7 @@ export default function MonitoringPage() {
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ url: "", product_name: "", project_name: "", channel_type: "", cost: "" });
+  const [form, setForm] = useState({ url: "", product_name: "", project_name: "", channel_type: "", cost: "", content_summary: "" });
   const [adding, setAdding] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [csvRows, setCsvRows] = useState<CsvRow[]>([]);
@@ -736,6 +736,7 @@ export default function MonitoringPage() {
         project_name: form.project_name || null,
         channel_type: form.channel_type || null,
         cost: form.cost !== "" ? Number(form.cost) : null,
+        content_summary: form.content_summary.trim() || null,
       }),
     });
     setAdding(false);
@@ -744,7 +745,7 @@ export default function MonitoringPage() {
       toast(`추가 실패: ${(err as { error?: string }).error ?? "오류가 발생했습니다."}`, "error");
       return;
     }
-    setForm({ url: "", product_name: "", project_name: "", channel_type: "", cost: "" });
+    setForm({ url: "", product_name: "", project_name: "", channel_type: "", cost: "", content_summary: "" });
     setShowAdd(false);
     await loadPosts();
     toast("게시물이 추가됐습니다.", "success");
@@ -1678,7 +1679,15 @@ export default function MonitoringPage() {
       {showAdd && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-[70]" role="dialog" aria-modal="true" aria-labelledby="modal-add-title">
           <div className="bg-white rounded-[22px] p-6 w-96 shadow-[0_8px_40px_rgba(0,0,0,0.12)]">
-            <h2 id="modal-add-title" className="font-semibold tracking-tight mb-4">게시물 추가</h2>
+            <div className="flex items-start justify-between mb-4">
+              <h2 id="modal-add-title" className="font-semibold tracking-tight">게시물 추가</h2>
+              <button
+                onClick={() => { setShowAdd(false); setForm({ url: "", product_name: "", project_name: "", channel_type: "", cost: "", content_summary: "" }); }}
+                aria-label="닫기"
+                className="-mr-1.5 -mt-1.5 p-1.5 rounded-lg text-a-ink-muted hover:text-a-ink hover:bg-a-parchment transition">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+              </button>
+            </div>
             <div className="space-y-3">
               <input placeholder="프로젝트명" value={form.project_name}
                 onChange={e => setForm(p => ({ ...p, project_name: e.target.value }))}
@@ -1686,22 +1695,31 @@ export default function MonitoringPage() {
               <input placeholder="상품명" value={form.product_name}
                 onChange={e => setForm(p => ({ ...p, product_name: e.target.value }))}
                 className="w-full border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-sm placeholder:text-a-ink-muted focus:outline-none focus:border-a-blue focus:ring-1 focus:ring-a-blue transition" />
-              <select value={form.channel_type}
-                onChange={e => setForm(p => ({ ...p, channel_type: e.target.value }))}
-                className="w-full border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-sm text-a-ink focus:outline-none focus:border-a-blue focus:ring-1 focus:ring-a-blue transition">
-                <option value="">채널 분류 선택</option>
-                {CHANNEL_TYPES.map(t => <option key={t} value={t}>{fmtChannelType(t)}</option>)}
-              </select>
+              <div className="relative">
+                <select value={form.channel_type}
+                  onChange={e => setForm(p => ({ ...p, channel_type: e.target.value }))}
+                  className="w-full appearance-none bg-white border border-a-hairline rounded-[10px] pl-3.5 pr-9 py-2.5 text-sm text-a-ink focus:outline-none focus:border-a-blue focus:ring-1 focus:ring-a-blue transition">
+                  <option value="">채널 분류 선택</option>
+                  {CHANNEL_TYPES.map(t => <option key={t} value={t}>{fmtChannelType(t)}</option>)}
+                </select>
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-a-ink-muted">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+                </span>
+              </div>
               <input placeholder="게시물 URL" value={form.url}
                 onChange={e => setForm(p => ({ ...p, url: e.target.value }))}
                 className="w-full border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-sm placeholder:text-a-ink-muted focus:outline-none focus:border-a-blue focus:ring-1 focus:ring-a-blue transition" />
               <input placeholder="비용 (원, 선택)" type="number" value={form.cost}
                 onChange={e => setForm(p => ({ ...p, cost: e.target.value }))}
                 className="w-full border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-sm placeholder:text-a-ink-muted focus:outline-none focus:border-a-blue focus:ring-1 focus:ring-a-blue transition" />
+              <textarea placeholder="캡션 (비워두면 수집 시 자동으로 가져옵니다)" value={form.content_summary}
+                onChange={e => setForm(p => ({ ...p, content_summary: e.target.value }))}
+                rows={2}
+                className="w-full border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-sm placeholder:text-a-ink-muted focus:outline-none focus:border-a-blue focus:ring-1 focus:ring-a-blue transition resize-none" />
               <p className="text-xs text-a-ink-muted">인플루언서 계정명과 게시일은 수집 실행 시 자동으로 가져옵니다.</p>
             </div>
             <div className="flex gap-2 mt-5 justify-end">
-              <button onClick={() => { setShowAdd(false); setForm({ url: "", product_name: "", project_name: "", channel_type: "", cost: "" }); }}
+              <button onClick={() => { setShowAdd(false); setForm({ url: "", product_name: "", project_name: "", channel_type: "", cost: "", content_summary: "" }); }}
                 className="btn-ghost">취소</button>
               <button onClick={addPost} disabled={adding || !form.url} className="btn-primary px-5 py-2 text-sm">
                 {adding ? "추가 중..." : "추가"}
