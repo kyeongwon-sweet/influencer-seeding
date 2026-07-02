@@ -33,11 +33,12 @@ function fmtAgo(ms: number | null): string {
   return `${d}일 전`;
 }
 
-// 최근 활동 요약: "1.2.3.4 · Chrome · macOS · Seoul KR"
+// "IP (브라우저 · 기기)" 형식. 예: "1.2.3.4 (Chrome · macOS)"
 function fmtActivity(a: Activity | null): string {
   if (!a) return "-";
-  const loc = [a.city, a.country].filter(Boolean).join(" ");
-  return [a.ip, a.browser, a.device, loc].filter(Boolean).join(" · ") || "-";
+  const meta = [a.browser, a.device].filter(Boolean).join(" · ");
+  if (a.ip) return meta ? `${a.ip} (${meta})` : a.ip;
+  return meta || "-";
 }
 
 export default function AdminUsersPage() {
@@ -140,18 +141,18 @@ export default function AdminUsersPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-white text-a-ink-muted text-xs border-b border-a-divider">
-              <th className="text-left font-medium px-4 py-2.5">이메일</th>
-              <th className="text-left font-medium px-3 py-2.5">이름</th>
+              <th className="text-left font-medium px-4 py-2.5">이름</th>
+              <th className="text-left font-medium px-3 py-2.5">이메일</th>
               <th className="text-left font-medium px-3 py-2.5 whitespace-nowrap">최근 활동 시각</th>
-              <th className="text-left font-medium px-3 py-2.5">최근 활동</th>
+              <th className="text-left font-medium px-3 py-2.5">IP 정보 (브라우저 · 기기)</th>
               <th className="text-right font-medium px-4 py-2.5">상태 / 작업</th>
             </tr>
           </thead>
           <tbody>
             {users.map(u => (
               <tr key={u.id} className="border-t border-a-divider hover:bg-a-parchment/60 transition-colors">
-                <td className="px-4 py-3 text-a-ink">{u.email || "(이메일없음)"}</td>
-                <td className="px-3 py-3 text-a-ink-muted">{u.name ?? "-"}</td>
+                <td className="px-4 py-3 text-a-ink">{u.name ?? "-"}</td>
+                <td className="px-3 py-3 text-a-ink-muted">{u.email || "(이메일없음)"}</td>
                 <td className="px-3 py-3 text-a-ink-muted whitespace-nowrap">
                   {fmtDateTime(u.activity?.at ?? u.lastSignInAt)}
                   {u.activity?.at && <span className="text-a-ink-muted/60"> ({fmtAgo(u.activity.at)})</span>}
