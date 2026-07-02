@@ -140,6 +140,7 @@ type Props = {
   colSpan: number;
   copyIncrementList: () => void;
   deletePost: (id: string) => void;
+  endPost: (id: string, end: boolean) => void;
   toast: (message: string, type?: "success" | "error" | "info") => void;
   setTrendPost: (post: Post) => void;
   updatedPlayCounts: Map<string, number | null>;
@@ -149,7 +150,7 @@ type Props = {
 };
 
 function PostsTable(props: Props) {
-  const { loading, posts, filteredPosts, sortedPosts, tableTotals, filters, hasFilter, setFilters, editCell, setEditCell, patchPost, patchStat, patchPlayCount, editPlayCount, setEditPlayCount, selected, toggleSelectAll, handleRowCheck, sp, startResize, colWidths, stickyColWidths, stickyLefts, colSpan, copyIncrementList, deletePost, toast, setTrendPost, updatedPlayCounts, hoverUpdatedId, setHoverUpdatedId, collectedAtLabel } = props;
+  const { loading, posts, filteredPosts, sortedPosts, tableTotals, filters, hasFilter, setFilters, editCell, setEditCell, patchPost, patchStat, patchPlayCount, editPlayCount, setEditPlayCount, selected, toggleSelectAll, handleRowCheck, sp, startResize, colWidths, stickyColWidths, stickyLefts, colSpan, copyIncrementList, deletePost, endPost, toast, setTrendPost, updatedPlayCounts, hoverUpdatedId, setHoverUpdatedId, collectedAtLabel } = props;
 
   // 가로 스크롤바를 표 맨 위(열제목 위)에도 둠 — 본문 스크롤과 양방향 동기화.
   const topScrollRef = useRef<HTMLDivElement>(null);
@@ -584,6 +585,10 @@ function PostsTable(props: Props) {
                             <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                           </svg>
                         </button>
+                        <button onClick={() => endPost(post.id, !post.ended_at)}
+                          className="text-a-ink-muted hover:text-a-ink text-xs transition opacity-0 group-hover:opacity-100 mr-2"
+                          title={post.ended_at ? "트래킹 종료 해제" : "트래킹 종료 (자동 수집 제외, 기존 데이터 보존)"}>
+                          {post.ended_at ? "종료 해제" : "종료"}</button>
                         <button onClick={() => deletePost(post.id)}
                           className="text-a-ink-muted hover:text-red-500 text-xs transition opacity-0 group-hover:opacity-100">삭제</button>
                       </td>

@@ -931,6 +931,37 @@ export default function MonitoringPage() {
     toast(`${selected.size}건 삭제됐습니다.`, "success");
   }
 
+  // 트래킹 종료/해제 — ended_at 설정(오늘, KST)/해제(null). 종료 시 자동 수집 제외, 기존 데이터는 보존.
+  async function endPost(id: string, end: boolean) {
+    if (end && !confirm("이 게시물의 트래킹을 종료하시겠습니까?\n(이후 자동 수집에서 제외, 기존 데이터는 보존)")) return;
+    const ended_at = end ? new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10) : null;
+    await fetch(`/api/sponsored-posts/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ended_at }),
+    });
+    setPosts(prev => prev.map(p => p.id === id ? { ...p, ended_at } : p));
+    toast(end ? "종료 처리됐습니다." : "종료 해제됐습니다.", "success");
+  }
+
+  async function endSelected() {
+    if (selected.size === 0) return;
+    const ids = [...selected].filter(id => !posts.find(p => p.id === id)?.ended_at);
+    if (ids.length === 0) { toast("이미 모두 종료된 게시물입니다.", "error"); return; }
+    if (!confirm(`선택한 ${ids.length}건의 트래킹을 종료하시겠습니까?\n(이후 자동 수집에서 제외, 기존 데이터는 보존)`)) return;
+    const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    setDeleting(true);
+    await Promise.all(ids.map(id => fetch(`/api/sponsored-posts/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ended_at: today }),
+    })));
+    setPosts(prev => prev.map(p => ids.includes(p.id) ? { ...p, ended_at: today } : p));
+    setSelected(new Set());
+    setDeleting(false);
+    toast(`${ids.length}건 종료 처리됐습니다.`, "success");
+  }
+
   function toggleSelect(id: string) {
     setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
   }
@@ -1121,7 +1152,7 @@ export default function MonitoringPage() {
   // (이게 없으면 매 렌더마다 새 함수라 memo가 무력화됨)
   const tableHandlers = useStableHandlers({
     setFilters, setEditCell, patchPost, patchStat, patchPlayCount, setEditPlayCount,
-    toggleSelectAll, handleRowCheck, sp, startResize, copyIncrementList, deletePost,
+    toggleSelectAll, handleRowCheck, sp, startResize, copyIncrementList, deletePost, endPost,
     toast, setTrendPost, setHoverUpdatedId,
   });
 
@@ -1224,6 +1255,12 @@ export default function MonitoringPage() {
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {selected.size > 0 && (
+            <button onClick={endSelected} disabled={deleting}
+              className="text-xs px-3 py-1.5 rounded-full border border-gray-300 text-a-ink-muted hover:bg-gray-50 disabled:opacity-40 transition">
+              선택 종료 ({selected.size})
+            </button>
+          )}
           {selected.size > 0 && (
             <button onClick={deleteSelected} disabled={deleting}
               className="text-xs px-3 py-1.5 rounded-full border border-red-300 text-red-500 hover:bg-red-50 disabled:opacity-40 transition">
