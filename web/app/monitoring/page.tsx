@@ -1301,12 +1301,6 @@ export default function MonitoringPage() {
 
         {filteredPosts.length > 0 && (
           <div className="relative bg-white rounded-[20px] shadow-[0_2px_16px_rgba(100,120,180,0.08)] mb-4 overflow-hidden">
-            {/* 그래프 접기/펼치기 — 카드 우측 상단 */}
-            <button type="button" onClick={() => setChartCollapsed(v => !v)}
-              className="absolute top-3 right-5 z-20 flex items-center gap-1 text-xs text-a-ink-muted hover:text-a-ink transition-colors">
-              {chartCollapsed ? "그래프 펼치기" : "그래프 접기"}
-              <span className="text-[11px] leading-none">{chartCollapsed ? "▼" : "▲"}</span>
-            </button>
             {/* 요약 수치 */}
             <div className="flex items-stretch border-b border-a-hairline">
               {(() => {
@@ -1580,6 +1574,12 @@ export default function MonitoringPage() {
               </div>
             </div>
             {showCorr && <CorrelationPanel data={correlations} />}
+            {/* 그래프 접기/펼치기 — 카드 하단 (접혀도 펼쳐도 항상 하단에 노출) */}
+            <button type="button" onClick={() => setChartCollapsed(v => !v)}
+              className="w-full flex items-center justify-center gap-1 border-t border-a-hairline py-2 text-xs text-a-ink-muted hover:text-a-ink hover:bg-a-parchment/40 transition-colors">
+              {chartCollapsed ? "그래프 펼치기" : "그래프 접기"}
+              <span className="text-[11px] leading-none">{chartCollapsed ? "▼" : "▲"}</span>
+            </button>
           </div>
         )}
 
