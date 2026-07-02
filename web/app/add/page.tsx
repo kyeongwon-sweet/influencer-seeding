@@ -64,8 +64,13 @@ export default function MobileAddPage() {
           <div>
             <label className="block text-xs font-medium text-a-ink-muted mb-1">게시물 URL <span className="text-rose-500">*필수</span></label>
             <input ref={urlRef} inputMode="url" autoCapitalize="off" autoCorrect="off" spellCheck={false}
-              placeholder="https://www.instagram.com/p/..." value={form.url} onChange={set("url")}
+              placeholder="https://www.instagram.com/reel/DZPNjIZIzRe/" value={form.url} onChange={set("url")}
               className={inputCls} />
+            <div className="mt-1.5 space-y-0.5 text-[11px] leading-snug break-all">
+              <p className="text-rose-500">✕ https://www.instagram.com/reel/DZPNjIZIzRe/?utm_source=ig_web_copy_link&igsh=NTc4MTIwNjQ2YQ==</p>
+              <p className="text-rose-500">✕ https://www.instagram.com/reel/DZPNjIZIzRe</p>
+              <p className="text-emerald-600">✓ https://www.instagram.com/reel/DZPNjIZIzRe/</p>
+            </div>
           </div>
 
           <div>
