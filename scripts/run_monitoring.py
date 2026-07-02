@@ -4,7 +4,7 @@ import os
 import re
 import json
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from functools import wraps
 from db import get_client
 from url_utils import normalize_url
@@ -608,6 +608,25 @@ def run():
             print(f"[LOG] 데이터 저장 시작: {len(rows)}건")
             result = db.table("post_daily_stats").upsert(rows, on_conflict="post_id,measured_at").execute()
             print(f"[LOG] ✅ 데이터 저장 완료: {len(rows)}건")
+
+            # 🔁 역방향 자동 baseline: 이번에 '처음' 수집된(과거 stat이 전혀 없는) 게시물은
+            #    전날(TODAY-1)에 play_count=0 baseline 행을 자동 추가한다.
+            #    → 뒤늦게 대시보드에 추가된 게시물의 누적 조회수가 '첫 수집일(=추가한 날)'에
+            #      전량 증분으로 잡히고, 홈 급상승(측정 2회 미만 제외)에도 걸리지 않는다.
+            #      전날에 0을 넣는 것이라 과거 날짜 누적합/증분은 불변(그래프 소급 변화 없음).
+            play_pids = list({r["post_id"] for r in rows if r.get("play_count") is not None})
+            seen = set()
+            for i in range(0, len(play_pids), 200):
+                pr = (db.table("post_daily_stats").select("post_id")
+                      .in_("post_id", play_pids[i:i + 200]).lt("measured_at", TODAY).execute())
+                for x in (pr.data or []):
+                    seen.add(x["post_id"])
+            yesterday = (date.fromisoformat(TODAY) - timedelta(days=1)).isoformat()
+            baseline = [{"post_id": pid, "measured_at": yesterday, "play_count": 0}
+                        for pid in play_pids if pid not in seen]
+            if baseline:
+                db.table("post_daily_stats").upsert(baseline, on_conflict="post_id,measured_at").execute()
+                print(f"[LOG] 🔁 역방향 baseline 자동추가: {len(baseline)}건 (전날 {yesterday} play_count=0)")
         else:
             print(f"[WARN] 저장할 데이터가 없습니다 (매칭 실패 또는 조회수 오류)")
 
