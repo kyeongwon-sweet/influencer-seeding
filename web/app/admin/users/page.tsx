@@ -88,7 +88,7 @@ export default function AdminUsersPage() {
   );
 
   return (
-    <div className="max-w-3xl mx-auto p-6 md:p-10">
+    <div className="min-h-screen px-6 py-8">
       <h1 className="text-xl font-semibold text-a-ink flex items-center gap-2">
         유저 관리
         <span className="text-[11px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">관리자만 노출</span>
@@ -112,10 +112,10 @@ export default function AdminUsersPage() {
       )}
 
       {/* 사용자 목록 */}
-      <div className="mt-5 border border-gray-200 rounded-xl overflow-hidden">
+      <div className="mt-5 border border-gray-200 rounded-xl overflow-hidden bg-white">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 text-a-ink-muted text-xs">
+            <tr className="bg-white text-a-ink-muted text-xs border-b border-a-divider">
               <th className="text-left font-medium px-4 py-2.5">이메일</th>
               <th className="text-left font-medium px-3 py-2.5">이름</th>
               <th className="text-left font-medium px-3 py-2.5 whitespace-nowrap">최근 접속일</th>
@@ -124,7 +124,7 @@ export default function AdminUsersPage() {
           </thead>
           <tbody>
             {users.map(u => (
-              <tr key={u.id} className="border-t border-gray-100">
+              <tr key={u.id} className="border-t border-a-divider hover:bg-a-parchment/60 transition-colors">
                 <td className="px-4 py-3 text-a-ink">{u.email || "(이메일없음)"}</td>
                 <td className="px-3 py-3 text-a-ink-muted">{u.name ?? "-"}</td>
                 <td className="px-3 py-3 text-a-ink-muted whitespace-nowrap">{fmtDate(u.lastSignInAt)}</td>
