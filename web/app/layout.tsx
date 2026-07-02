@@ -1,8 +1,7 @@
 import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata } from "next";
 import "./globals.css";
-import Sidebar from "@/components/Sidebar";
-import GlobalActions from "@/components/GlobalActions";
+import AppShell from "@/components/AppShell";
 import { Analytics } from "@vercel/analytics/next";
 
 export const metadata: Metadata = {
@@ -25,9 +24,7 @@ export default function RootLayout({
           />
         </head>
         <body className="antialiased font-sans text-a-ink">
-          <Sidebar />
-          <GlobalActions />
-          <div className="sidebar-content" style={{ marginLeft: "var(--sidebar-w, 200px)" }}>{children}</div>
+          <AppShell>{children}</AppShell>
           <Analytics />
         </body>
       </html>
