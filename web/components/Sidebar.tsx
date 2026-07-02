@@ -2,6 +2,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useUser } from "@clerk/nextjs";
+import { isAdminEmail } from "@/lib/admin";
 import SidebarMemo from "./SidebarMemo";
 
 const MIN_W = 160, MAX_W = 360, DEFAULT_W = 200, COLLAPSED_W = 56;
@@ -85,6 +87,8 @@ const NAV = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { user } = useUser();
+  const isAdmin = isAdminEmail(user?.primaryEmailAddress?.emailAddress ?? user?.emailAddresses?.[0]?.emailAddress);
   const [width, setWidth] = useState(DEFAULT_W);
   const [collapsed, setCollapsed] = useState(false);
   const widthRef = useRef(DEFAULT_W);
@@ -187,6 +191,26 @@ export default function Sidebar() {
           }
           return <div key={item.href}>{link}</div>;
         })}
+        {/* 관리자(대시보드 생성자)에게만 노출 — 유저 차단/초대 */}
+        {isAdmin && (
+          <Link
+            href="/admin/users"
+            title={collapsed ? "유저 관리" : undefined}
+            className={`flex items-center gap-2.5 ${collapsed ? "justify-center px-0" : "px-3"} py-2 rounded-[8px] text-sm transition-colors ${
+              pathname.startsWith("/admin")
+                ? "bg-blue-50 text-a-blue font-medium"
+                : "text-gray-400 hover:text-a-ink hover:bg-gray-50"
+            }`}
+          >
+            <span className="shrink-0">
+              <svg width="15" height="15" viewBox="0 0 20 20" fill="none">
+                <path d="M10 2.5l6 2.2v4.3c0 3.6-2.5 6.4-6 7.5-3.5-1.1-6-3.9-6-7.5V4.7l6-2.2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+                <path d="M7.5 10l1.7 1.7 3.3-3.4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </span>
+            {!collapsed && <span className="truncate">유저 관리</span>}
+          </Link>
+        )}
       </nav>
 
       {/* 모니터링 페이지에선 사이드바 빈 공간에 팀 공유 메모를 기본 노출. 그 외엔 스페이서로 푸터를 하단 고정 */}
