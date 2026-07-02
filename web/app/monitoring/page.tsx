@@ -148,11 +148,13 @@ export default function MonitoringPage() {
     totalComments: filteredPosts.reduce((s, p) => s + (p.latest_stats?.comments_count ?? 0), 0),
   }), [filteredPosts]);
 
-  // 필터 적용 시 표 상단 합계 행 — 행 렌더링과 동일한 s/prev 로직으로 증분량·비용·조회수 합산
+  // 표 상단 합계 행 — 행 렌더링과 동일한 s/prev 로직으로 증분량·비용·조회수 합산.
+  // 체크박스로 선택한 행이 있으면 그 선택분만 합산(선택 없으면 필터된 전체).
   const tableTotals = useMemo(() => {
     const hasDate = filters.dateFrom || filters.dateTo;
+    const rows = selected.size > 0 ? filteredPosts.filter(p => selected.has(p.id)) : filteredPosts;
     let delta = 0, cost = 0, views = 0, reach = 0, likes = 0, comments = 0;
-    for (const post of filteredPosts) {
+    for (const post of rows) {
       const fs = hasDate ? getFilteredStats(post.all_stats ?? [], filters.dateFrom, filters.dateTo) : (post.all_stats ?? []);
       const s = fs.length > 0 ? fs[fs.length - 1] : post.latest_stats;
       const prev = hasDate ? (fs.length > 1 ? fs[fs.length - 2] : null) : post.prev_stats;
@@ -164,8 +166,8 @@ export default function MonitoringPage() {
       if (s?.likes_count != null && s.likes_count >= 0) likes += s.likes_count; // 음수(-1)=인스타 좋아요 비공개 → 제외
       if (s?.comments_count != null && s.comments_count >= 0) comments += s.comments_count;
     }
-    return { delta, cost, views, reach, likes, comments };
-  }, [filteredPosts, filters.dateFrom, filters.dateTo]);
+    return { delta, cost, views, reach, likes, comments, count: rows.length, selectionMode: selected.size > 0 };
+  }, [filteredPosts, filters.dateFrom, filters.dateTo, selected]);
 
   // B2B 발주량: 상품 필터가 한 카테고리(듬뿍/쫀득)면 해당 카테고리 CVS 발주량만, 아니면 듬뿍+쫀득 합계
   const b2bCategory = useMemo<"듬뿍" | "쫀득" | "total">(() => {

@@ -118,7 +118,7 @@ type Props = {
   posts: Post[];
   filteredPosts: Post[];
   sortedPosts: Post[];
-  tableTotals: { delta: number; cost: number; views: number; reach: number; likes: number; comments: number };
+  tableTotals: { delta: number; cost: number; views: number; reach: number; likes: number; comments: number; count: number; selectionMode: boolean };
   filters: Filters;
   hasFilter: boolean;
   setFilters: React.Dispatch<React.SetStateAction<Filters>>;
@@ -231,8 +231,8 @@ function PostsTable(props: Props) {
                 </tr>
               </thead>
               <tbody>
-                {/* 필터 선택 시: 헤더 바로 아래 합계 행 (증분량·비용·조회수 합계 / 조회당비용은 합계 안 함) */}
-                {hasFilter && sortedPosts.length > 0 && (
+                {/* 헤더 바로 아래 합계 행 — 체크박스로 선택한 행이 있으면 그 선택분 합계, 없으면 필터 적용 시 전체 합계 (조회당비용은 합계 안 함) */}
+                {(tableTotals.selectionMode || hasFilter) && tableTotals.count > 0 && (
                   <tr className="border-y-2 border-a-blue/30 bg-blue-50 text-xs font-semibold">
                     <td className="pl-3 pr-1 py-2.5 sticky z-10 bg-blue-50" style={{ left: 0, width: 36, minWidth: 36 }} />
                     <td className="px-3 py-2.5 tabular-nums sticky z-10 bg-blue-50 group/cp" style={{ left: stickyLefts["증분량"], width: stickyColWidths["증분량"], minWidth: stickyColWidths["증분량"] }}>
@@ -246,7 +246,7 @@ function PostsTable(props: Props) {
                         </button>
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 text-a-ink-muted whitespace-nowrap border-l border-a-divider">합계 ({sortedPosts.length}건)</td>
+                    <td className="px-3 py-2.5 text-a-ink-muted whitespace-nowrap border-l border-a-divider">{tableTotals.selectionMode ? "선택 합계" : "합계"} ({tableTotals.count}건)</td>
                     <td />{/* 게시일 */}
                     <td />{/* 인플루언서 */}
                     <td />{/* 업체명 */}
