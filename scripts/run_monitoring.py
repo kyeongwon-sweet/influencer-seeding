@@ -22,8 +22,12 @@ def retry_on_network_error(max_retries=3, delay=5):
                 except Exception as e:
                     last_error = e
                     error_str = str(e).lower()
-                    # 네트워크 에러만 재시도 (DNS, 연결 실패 등)
-                    if "name or service not known" in error_str or "connect" in error_str:
+                    # 네트워크 에러만 재시도 (DNS·연결 실패·타임아웃 등). "connect" 단독 매칭은
+                    # "cannot connect actor input" 같은 비네트워크 에러까지 잡아 오탐 → 구체 문구로 한정.
+                    _net = ("name or service not known", "connection reset", "connection refused",
+                            "connection aborted", "connection timed out", "timed out",
+                            "temporarily unavailable", "max retries exceeded", "connection error")
+                    if any(p in error_str for p in _net):
                         if attempt < max_retries - 1:
                             print(f"[WARN] 네트워크 에러 발생. {delay}초 후 재시도... ({attempt + 1}/{max_retries})")
                             time.sleep(delay)
@@ -43,6 +47,37 @@ def _ig_shortcode(url: str) -> str | None:
     """Instagram URL에서 숏코드 추출 (/p/, /reel/, /reels/, /tv/ 모두 처리)"""
     m = re.search(r'/(?:p|reels|reel|tv)/([A-Za-z0-9_-]+)', url or "")
     return m.group(1) if m else None
+
+
+def _prev_stats(db, post_ids):
+    """게시물들의 '오늘 이전' 최신 통계를 {post_id: row} 로 반환 (mono가드 기준값).
+
+    - post_id를 100개씩 청크로 나눠 .in_ 쿼리 URL 길이 한도 회피
+    - measured_at desc + created_at desc(같은 날 다중행을 결정적으로 최신 선택) 정렬
+    - .range() 페이지네이션으로 PostgREST 기본 1000행 상한을 넘겨도 각 post의 최신행 유실 방지
+    """
+    last: dict = {}
+    ids = [i for i in post_ids if i]
+    PAGE = 1000
+    for c in range(0, len(ids), 100):
+        chunk = ids[c:c + 100]
+        frm = 0
+        while True:
+            res = (db.table("post_daily_stats")
+                   .select("post_id, play_count, likes_count, comments_count, measured_at")
+                   .in_("post_id", chunk)
+                   .lt("measured_at", TODAY)
+                   .order("measured_at", desc=True)
+                   .order("created_at", desc=True)
+                   .range(frm, frm + PAGE - 1)
+                   .execute())
+            page = res.data or []
+            for r in page:
+                last.setdefault(r["post_id"], r)
+            if len(page) < PAGE:
+                break
+            frm += PAGE
+    return last
 
 
 def _stats_key(url: str) -> str:
@@ -181,7 +216,7 @@ def _fetch_facebook(urls: list) -> dict:
     client = ApifyClient(os.getenv("APIFY_API_TOKEN"))
     run = client.actor("apify/facebook-posts-scraper").call(run_input={
         "startUrls": [{"url": u} for u in urls],
-        "resultsLimit": max(len(urls), 5),
+        "resultsLimit": len(urls),  # 요청 URL 수만큼만(단건에 최대 5 요청하던 과수집 제거)
     })
     out = {}
     for it in client.dataset(run["defaultDatasetId"]).iterate_items():
@@ -325,7 +360,9 @@ def run():
             # 릴스/tv는 정상 시 거의 항상 play_count가 있으므로, 릴스 조회수가 대량 누락이면 '차단'으로 보고 막힌 건만 data-slayer로 재시도.
             reels = [u for u in ig_urls if re.search(r'/(?:reel|reels|tv)/', u)]
             reel_missing = [u for u in reels if not (stats_by_key.get(_stats_key(u)) or {}).get("play_count")]
-            if reels and len(reel_missing) / len(reels) >= 0.4:
+            # 최소 표본(릴스 5개↑) 확보 시에만 비율 판정 — 릴스 2개 중 1개 누락(50%) 같은 소표본 오탐으로
+            # 더 비싼 data-slayer 폴백이 트리거되는 것을 방지.
+            if len(reels) >= 5 and len(reel_missing) / len(reels) >= 0.4:
                 missing = [u for u in ig_urls if not (stats_by_key.get(_stats_key(u)) or {}).get("play_count")]
                 print(f"[WARN] IG 릴스 조회수 누락 {len(reel_missing)}/{len(reels)} → 기본 액터 차단 추정, data-slayer 폴백 {len(missing)}건 호출")
                 fb = _fetch_ig_fallback(missing)
@@ -409,10 +446,7 @@ def run():
                 yt_stats = _fetch_youtube([p["url"] for p in yt_posts])
                 print(f"[LOG] 유튜브 수집: {len(yt_stats)}건 / {len(yt_posts)}개 요청")
                 # 직전(오늘 이전) 누적값을 일괄 조회 (게시물별 개별 쿼리 대신 한 번에)
-                prev_res = db.table("post_daily_stats").select("post_id, play_count, likes_count, comments_count, measured_at").in_("post_id", [p["id"] for p in yt_posts]).lt("measured_at", TODAY).order("measured_at", desc=True).execute()
-                last_stat = {}
-                for r in (prev_res.data or []):
-                    last_stat.setdefault(r["post_id"], r)
+                last_stat = _prev_stats(db, [p["id"] for p in yt_posts])
                 for post in yt_posts:
                     s = yt_stats.get(_yt_id(post["url"]))
                     if not s:
@@ -450,10 +484,7 @@ def run():
                 tt_stats = _fetch_tiktok([tt_canon[p["url"]] for p in tt_posts])
                 got = sum(1 for s in tt_stats.values() if (s.get("views") or 0) > 0)
                 print(f"[LOG] 틱톡 수집: 실값 {got}건 / {len(tt_posts)}개 요청")
-                prev_res = db.table("post_daily_stats").select("post_id, play_count, likes_count, comments_count, measured_at").in_("post_id", [p["id"] for p in tt_posts]).lt("measured_at", TODAY).order("measured_at", desc=True).execute()
-                last_stat = {}
-                for r in (prev_res.data or []):
-                    last_stat.setdefault(r["post_id"], r)
+                last_stat = _prev_stats(db, [p["id"] for p in tt_posts])
                 for post in tt_posts:
                     s = tt_stats.get(_tt_id(tt_canon[post["url"]]))
                     play = s.get("views") if s else None
@@ -484,10 +515,7 @@ def run():
             try:
                 th_stats = _fetch_threads([p["url"] for p in th_posts])
                 print(f"[LOG] 스레드 수집: {len(th_stats)}건 / {len(th_posts)}개 요청")
-                prev_res = db.table("post_daily_stats").select("post_id, likes_count, comments_count, measured_at").in_("post_id", [p["id"] for p in th_posts]).lt("measured_at", TODAY).order("measured_at", desc=True).execute()
-                last_stat = {}
-                for r in (prev_res.data or []):
-                    last_stat.setdefault(r["post_id"], r)
+                last_stat = _prev_stats(db, [p["id"] for p in th_posts])
                 for post in th_posts:
                     s = th_stats.get(_th_code(post["url"]))
                     if not s:
@@ -513,10 +541,7 @@ def run():
             try:
                 fb_stats = _fetch_facebook([p["url"] for p in fb_posts])
                 print(f"[LOG] 페이스북 수집: {len(fb_stats)}건 / {len(fb_posts)}개 요청")
-                prev_res = db.table("post_daily_stats").select("post_id, likes_count, comments_count, measured_at").in_("post_id", [p["id"] for p in fb_posts]).lt("measured_at", TODAY).order("measured_at", desc=True).execute()
-                last_stat = {}
-                for r in (prev_res.data or []):
-                    last_stat.setdefault(r["post_id"], r)
+                last_stat = _prev_stats(db, [p["id"] for p in fb_posts])
                 for post in fb_posts:
                     s = fb_stats.get(_fb_key(post["url"]))
                     if not s:
@@ -543,10 +568,7 @@ def run():
                 tw_stats = _fetch_twitter([p["url"] for p in tw_posts])
                 got = sum(1 for s in tw_stats.values() if (s.get("views") or 0) > 0)
                 print(f"[LOG] 트위터 수집: 실값 {got}건 / {len(tw_posts)}개 요청")
-                prev_res = db.table("post_daily_stats").select("post_id, play_count, likes_count, comments_count, measured_at").in_("post_id", [p["id"] for p in tw_posts]).lt("measured_at", TODAY).order("measured_at", desc=True).execute()
-                last_stat = {}
-                for r in (prev_res.data or []):
-                    last_stat.setdefault(r["post_id"], r)
+                last_stat = _prev_stats(db, [p["id"] for p in tw_posts])
                 for post in tw_posts:
                     s = tw_stats.get(_tw_id(post["url"]))
                     play = s.get("views") if s else None
@@ -594,11 +616,16 @@ def run():
         if job_id:
             db.table("jobs").update({"status": "done"}).eq("id", job_id).execute()
 
-        # 부가 플랫폼 수집이 실패하면 작업을 실패로 표시해 알림이 오게 한다(알람은 끄지 않는다).
-        # 실패의 실제 원인(예: Apify 월 한도 초과)을 보고 근본 해결하기 위함.
-        # (IG 데이터는 위에서 이미 저장됨. status='missing'이면 11/14/17시 재수집이 복구.)
+        # 보조 플랫폼(유튜브/틱톡/페북/스레드/트위터) 일부 실패 처리:
+        #  - 저장된 데이터가 있으면(주 수집 성공) 전체 run을 실패로 만들지 않고 경고만 남긴다.
+        #    누락 aux 데이터는 status='missing' 재수집(02/05/08시)이 복구 → 매일 false '실패' 알림 방지.
+        #  - 아무것도 저장 못 했으면(총 실패) 하드 실패로 raise해 알림/원인 확인.
         if yt_failed or tt_failed or fb_failed or th_failed or tw_failed:
-            raise RuntimeError(f"수집 일부 실패(유튜브={yt_failed}, 틱톡={tt_failed}, 페북={fb_failed}, 스레드={th_failed}, 트위터={tw_failed}) — 원인 확인 필요")
+            _aux = f"유튜브={yt_failed}, 틱톡={tt_failed}, 페북={fb_failed}, 스레드={th_failed}, 트위터={tw_failed}"
+            if rows:
+                print(f"[WARN] 보조 플랫폼 일부 실패({_aux}) — 주 수집 {len(rows)}건은 저장됨(부분성공). 누락분은 재수집으로 복구.")
+            else:
+                raise RuntimeError(f"수집 실패({_aux}) — 저장된 데이터 없음, 원인 확인 필요")
 
     except Exception as e:
         print(f"[ERROR] 모니터링 실패: {str(e)}")
