@@ -144,7 +144,7 @@ export default function AdminUsersPage() {
               <th className="text-left font-medium px-4 py-2.5">이름</th>
               <th className="text-left font-medium px-3 py-2.5">이메일</th>
               <th className="text-left font-medium px-3 py-2.5 whitespace-nowrap">최근 활동 시각</th>
-              <th className="text-left font-medium px-3 py-2.5">IP 정보 (브라우저 · 기기)</th>
+              <th className="text-left font-medium px-3 py-2.5">IP</th>
               <th className="text-right font-medium px-4 py-2.5">상태 / 작업</th>
             </tr>
           </thead>
