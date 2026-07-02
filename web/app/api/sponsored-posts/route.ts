@@ -135,13 +135,22 @@ export async function GET(req: NextRequest) {
       return { ...s, play_count, play_collected: playCollected };
     });
     const desc = [...mono].reverse();
+    // all_stats는 게시물별 이력 전량(수천 행)이라 payload의 대부분 → 프런트가 실제 쓰는 필드만 남겨 경량화.
+    // (post_id·created_at은 all_stats에서 미사용. latest/prev은 created_at을 쓰므로 full mono에서 뽑음.)
+    const allStatsLight = mono.map((s: any) => ({
+      measured_at: s.measured_at,
+      play_count: s.play_count,
+      likes_count: s.likes_count,
+      comments_count: s.comments_count,
+      play_collected: s.play_collected,
+    }));
     return {
       ...post,
       post_daily_stats: undefined,
       influencers: null,
       latest_stats: desc[0] ?? null,
       prev_stats: desc[1] ?? null,
-      all_stats: mono,
+      all_stats: allStatsLight,
     };
   });
 
