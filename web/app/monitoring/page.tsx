@@ -830,6 +830,8 @@ export default function MonitoringPage() {
       case "유형": av = getPostType(a.url); bv = getPostType(b.url); break;
       case "게시일": av = a.posted_at ?? ""; bv = b.posted_at ?? ""; break;
       case "조회수": av = sa?.play_count ?? -1; bv = sb?.play_count ?? -1; break;
+      case "좋아요": av = sa?.likes_count ?? -1; bv = sb?.likes_count ?? -1; break;
+      case "댓글": av = sa?.comments_count ?? -1; bv = sb?.comments_count ?? -1; break;
       case "도달수": av = effectiveReach(a.reach_count, sa?.play_count) ?? -1; bv = effectiveReach(b.reach_count, sb?.play_count) ?? -1; break;
       case "비용": av = a.cost ?? -1; bv = b.cost ?? -1; break;
       case "조회당비용":
