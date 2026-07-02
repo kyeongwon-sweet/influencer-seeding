@@ -89,7 +89,10 @@ export default function AdminUsersPage() {
 
   return (
     <div className="max-w-3xl mx-auto p-6 md:p-10">
-      <h1 className="text-xl font-semibold text-a-ink">유저 관리</h1>
+      <h1 className="text-xl font-semibold text-a-ink flex items-center gap-2">
+        유저 관리
+        <span className="text-[11px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">관리자만 노출</span>
+      </h1>
       <p className="mt-1 text-sm text-a-ink-muted">대시보드에 접근할 수 있는 사용자를 초대·차단합니다. (@lalasweet.kr 계정만)</p>
 
       {/* 초대(추가) */}
@@ -115,7 +118,7 @@ export default function AdminUsersPage() {
             <tr className="bg-gray-50 text-a-ink-muted text-xs">
               <th className="text-left font-medium px-4 py-2.5">이메일</th>
               <th className="text-left font-medium px-3 py-2.5">이름</th>
-              <th className="text-left font-medium px-3 py-2.5 whitespace-nowrap">최근 로그인</th>
+              <th className="text-left font-medium px-3 py-2.5 whitespace-nowrap">최근 접속일</th>
               <th className="text-right font-medium px-4 py-2.5">상태 / 작업</th>
             </tr>
           </thead>
