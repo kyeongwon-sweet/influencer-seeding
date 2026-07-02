@@ -72,25 +72,45 @@ export async function GET(req: NextRequest) {
   // (N+1 쿼리 방지 + Supabase 기본 1000행 상한으로 과거 데이터가 잘리는 문제 방지)
   const ids = (posts ?? []).map((p) => p.id);
   const statsByPost = new Map<string, any[]>();
+  // ⚠️ .in("post_id", ids) 쓰지 말 것 — 게시물 수백 개면 id 목록이 쿼리 URL 한도를 넘어
+  //    PostgREST가 0행을 반환(2026-07-01 확인). ids=전체 게시물이라 필터 불필요 → 전량 조회 후 post_id로 그룹핑.
+  // 성능: select("*") 대신 필요한 컬럼만 + 순차 페이지네이션(왕복 N회) 대신 count 기반 병렬 조회로 로딩 단축.
+  const PAGE = 1000;
+  const STAT_COLS = "post_id, measured_at, play_count, likes_count, comments_count, created_at";
+  const collect = (page: any[] | null | undefined) => {
+    for (const s of page ?? []) {
+      const arr = statsByPost.get(s.post_id) ?? [];
+      arr.push(s);
+      statsByPost.set(s.post_id, arr);
+    }
+  };
   if (ids.length > 0) {
-    const PAGE = 1000;
-    for (let from = 0; ; from += PAGE) {
-      // ⚠️ .in("post_id", ids) 쓰지 말 것 — 게시물 수백 개면 id 목록이 쿼리 URL 한도를 넘어
-      //    PostgREST가 0행을 반환(2026-07-01 확인: 638개 id → 통계 0행 → 홈 인사이트 전부 '특이사항 없음').
-      //    ids=전체 게시물이라 필터가 어차피 불필요 → 전량 조회 후 아래에서 post_id로 그룹핑.
-      const { data: page, error: statsError } = await supabase
-        .from("post_daily_stats")
-        .select("*")
-        .order("measured_at", { ascending: false })
-        .range(from, from + PAGE - 1);
-      // graceful degrade: 통계 조회가 실패해도 500 대신 있는 데이터로 진행(게시물은 뜨고 인사이트만 비게).
-      if (statsError) { console.error("[sponsored-posts] stats 조회 실패(있는 데이터로 진행):", statsError.message); break; }
-      for (const s of page ?? []) {
-        const arr = statsByPost.get(s.post_id) ?? [];
-        arr.push(s);
-        statsByPost.set(s.post_id, arr);
+    const { count, error: cntErr } = await supabase
+      .from("post_daily_stats")
+      .select("post_id", { count: "exact", head: true });
+    if (cntErr || count == null) {
+      // count 실패 시 순차 폴백(절단 방지) — 마지막 페이지가 가득 차면 계속 조회.
+      if (cntErr) console.error("[sponsored-posts] stats count 실패, 순차 폴백:", cntErr.message);
+      for (let from = 0; ; from += PAGE) {
+        const { data: page, error } = await supabase.from("post_daily_stats").select(STAT_COLS)
+          .order("measured_at", { ascending: false }).range(from, from + PAGE - 1);
+        if (error) { console.error("[sponsored-posts] stats 조회 실패(있는 데이터로 진행):", error.message); break; }
+        collect(page);
+        if (!page || page.length < PAGE) break;
       }
-      if (!page || page.length < PAGE) break;
+    } else {
+      // count 확보 → 전 페이지 병렬 조회(순차 왕복 제거).
+      const pages = Math.max(1, Math.ceil(count / PAGE));
+      const results = await Promise.all(
+        Array.from({ length: pages }, (_, i) =>
+          supabase.from("post_daily_stats").select(STAT_COLS)
+            .order("measured_at", { ascending: false }).range(i * PAGE, i * PAGE + PAGE - 1)
+        )
+      );
+      for (const { data: page, error } of results) {
+        if (error) { console.error("[sponsored-posts] stats 조회 실패(있는 데이터로 진행):", error.message); continue; }
+        collect(page);
+      }
     }
   }
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createApifyClient } from "@/lib/apify";
+import { checkCronAuth } from "@/lib/cron-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -14,7 +15,8 @@ function igShortcode(url: string): string | null {
 /**
  * 협찬 게시물 즉시 수집 (수동 트리거)
  * GET/POST /api/monitoring/collect-now?date=2026-06-08 (선택)
- * 인증 불필요 (수집만 함)
+ * ⚠️ CRON_SECRET Bearer 인증 필수 — 무인증 시 외부에서 전체 Apify 스크랩을 트리거해 월 예산 고갈 가능.
+ *    수동 실행: curl -H "Authorization: Bearer $CRON_SECRET" ".../collect-now?date=..."
  * @note Vercel deployment verified with apify-client dependency
  */
 export async function GET(req: NextRequest) {
@@ -26,6 +28,9 @@ export async function POST(req: NextRequest) {
 }
 
 async function collect(req: NextRequest) {
+  if (checkCronAuth(req) !== "ok") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   try {
     const apiToken = process.env.APIFY_API_TOKEN;
     if (!apiToken) {

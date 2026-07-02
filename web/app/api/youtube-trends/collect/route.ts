@@ -14,7 +14,7 @@ function getAppUrl() {
 // Apify google-trends-scraper는 콜드 실행 시 수 분~10분 걸려 동기 대기가 불가 →
 // 비동기로 시작하고, 완료되면 /api/youtube-trends/webhook 이 결과를 저장한다.
 export async function POST(req: NextRequest) {
-  if (checkCronAuth(req) === "bad") {
+  if (checkCronAuth(req) !== "ok") { // fail-closed: CRON_SECRET 미설정 시에도 차단(무인증 오픈 방지)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   if (!process.env.APIFY_API_TOKEN) {

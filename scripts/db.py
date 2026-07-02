@@ -20,14 +20,10 @@ def get_client() -> Client:
         url = os.getenv("SUPABASE_URL")
         key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
-        # 🔍 상세 진단
+        # 🔍 상세 진단 — ⚠️ 전체값은 절대 print 금지(서비스롤 키가 GitHub Actions 로그에 노출됨).
         print(f"\n[DEBUG] Supabase 연결 정보:")
-        print(f"  URL 설정: {'✅ 설정' if url else '❌ 미설정'}")
-        print(f"  URL 길이: {len(url) if url else 0}")
-        print(f"  URL 전체값: {url}")
-        print(f"  KEY 설정: {'✅ 설정' if key else '❌ 미설정'}")
-        print(f"  KEY 길이: {len(key) if key else 0}")
-        print(f"  KEY 전체값: {key}")
+        print(f"  URL 설정: {'✅ 설정' if url else '❌ 미설정'} (길이 {len(url) if url else 0})")
+        print(f"  KEY 설정: {'✅ 설정' if key else '❌ 미설정'} (길이 {len(key) if key else 0})")
         print()
 
         if not url or not key:

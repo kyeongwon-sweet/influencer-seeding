@@ -21,7 +21,7 @@ function toNum(v: string | number | null | undefined): number | null {
 }
 
 export async function GET(req: NextRequest) {
-  if (checkCronAuth(req) === "bad") {
+  if (checkCronAuth(req) !== "ok") { // fail-closed: CRON_SECRET 미설정 시에도 차단(무인증 오픈 방지)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

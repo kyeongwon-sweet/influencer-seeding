@@ -94,7 +94,7 @@ async function fetchInstagramMetrics(dateStr: string) {
 // ── Handler ────────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   // Vercel Cron 또는 GitHub Actions에서 호출 — CRON_SECRET으로 인증
-  if (checkCronAuth(req) === "bad") {
+  if (checkCronAuth(req) !== "ok") { // fail-closed: CRON_SECRET 미설정 시에도 차단(무인증 오픈 방지)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { checkCronAuth } from "@/lib/cron-auth";
 
 export const runtime = "nodejs";
 
 /**
  * 특정 날짜의 협찬 게시물 통계 삭제 (데이터 수정용)
  * DELETE /api/monitoring/delete-date?date=2026-06-06
+ * ⚠️ 파괴적 작업 → CRON_SECRET Bearer 인증 필수(무인증 외부 삭제 차단).
  */
 export async function DELETE(req: NextRequest) {
+  if (checkCronAuth(req) !== "ok") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   try {
     const dateParam = req.nextUrl.searchParams.get("date");
 
