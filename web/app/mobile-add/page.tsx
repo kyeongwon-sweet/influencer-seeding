@@ -1,7 +1,18 @@
 "use client";
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import { CHANNEL_TYPES } from "@/app/monitoring/lib";
+
+type RecentPost = { id: string; url: string; channel_type: string | null; content_summary: string | null; posted_at: string | null; created_at: string; created_by?: string | null };
+
+// 추가 시각 표기 (KST, MM-DD HH:mm)
+function fmtTime(iso: string) {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "-";
+  return d.toLocaleString("sv-SE", { timeZone: "Asia/Seoul", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
 
 // 모바일 전용 경량 게시물 추가 화면. 무거운 모니터링 대시보드를 로드하지 않고
 // 폰에서 URL만 붙여넣어 바로 추가할 수 있게 한다. (사이드바 없이 전체 폭 — AppShell BARE_ROUTES)
@@ -13,8 +24,18 @@ export default function MobileAddPage() {
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const urlRef = useRef<HTMLInputElement>(null);
+  const { user } = useUser();
+  const [history, setHistory] = useState<RecentPost[]>([]);
   const set = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const r = await fetch("/api/sponsored-posts/recent", { cache: "no-store" });
+      if (r.ok) setHistory(await r.json());
+    } catch { /* 히스토리 실패는 무시(추가 기능엔 영향 없음) */ }
+  }, []);
+  useEffect(() => { loadHistory(); }, [loadHistory]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -32,6 +53,7 @@ export default function MobileAddPage() {
           channel_type: form.channel_type || null,
           cost: form.cost !== "" ? Number(form.cost) : null,
           content_summary: form.content_summary.trim() || null,
+          added_by: user?.primaryEmailAddress?.emailAddress ?? null,
         }),
       });
       if (!res.ok) {
@@ -43,6 +65,7 @@ export default function MobileAddPage() {
       setForm(EMPTY);
       setMsg({ ok: true, text: "게시물이 추가됐습니다. 계정명·게시일·캡션은 다음 수집 때 자동으로 채워집니다." });
       urlRef.current?.focus();
+      loadHistory();
     } catch {
       setMsg({ ok: false, text: "네트워크 오류로 추가하지 못했습니다." });
     } finally {
@@ -116,6 +139,28 @@ export default function MobileAddPage() {
             </p>
           )}
         </form>
+
+        {history.length > 0 && (
+          <section className="mt-7">
+            <h2 className="text-xs font-semibold text-a-ink-muted mb-2">최근 추가</h2>
+            <div className="space-y-2">
+              {history.map(h => (
+                <div key={h.id} className="rounded-xl border border-gray-200 bg-white px-3.5 py-2.5">
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="font-semibold text-a-ink truncate">{h.channel_type || "채널 미지정"}</span>
+                    <span className="text-a-ink-muted whitespace-nowrap">{fmtTime(h.created_at)}</span>
+                  </div>
+                  <a href={h.url} target="_blank" rel="noreferrer" className="block text-xs text-a-blue truncate mt-1">{h.url}</a>
+                  {h.content_summary && <p className="text-xs text-a-ink-muted truncate mt-1">{h.content_summary}</p>}
+                  <div className="flex items-center justify-between gap-2 mt-1.5 text-[11px] text-a-ink-muted">
+                    <span className="whitespace-nowrap">업로드 {h.posted_at || "-"}</span>
+                    <span className="truncate">{h.created_by || "-"}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );

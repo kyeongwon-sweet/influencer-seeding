@@ -192,6 +192,9 @@ export async function POST(req: NextRequest) {
 
   const cleaned = { ...body, url: body.url ? (normalizeUrl(body.url) || body.url) : body.url };
   if (cleaned.channel_type) cleaned.channel_type = normalizeChannelType(String(cleaned.channel_type));
+  // 추가자(이메일) — created_by 컬럼이 없을 수도 있어 insert 대상에서 분리 후 삽입 성공 시 best-effort로 기록.
+  const addedBy = typeof cleaned.added_by === "string" ? cleaned.added_by : null;
+  delete cleaned.added_by;
 
   logger.info("sponsored-posts-api", "게시물 추가 시작", {
     url: cleaned.url,
@@ -214,6 +217,11 @@ export async function POST(req: NextRequest) {
   logger.info("sponsored-posts-api", "게시물 추가 완료", {
     postId: data.id,
   });
+
+  // 추가자 기록(best-effort). created_by 컬럼이 없으면 에러가 반환되지만 무시 — 게시물 추가 자체엔 영향 없음.
+  if (addedBy && data?.id) {
+    await supabase.from("sponsored_posts").update({ created_by: addedBy }).eq("id", data.id);
+  }
 
   return NextResponse.json(data, { status: 201 });
 }
