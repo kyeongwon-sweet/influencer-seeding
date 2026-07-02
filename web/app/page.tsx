@@ -57,7 +57,7 @@ function fmtDateVal(date: string, value: number) {
   );
 }
 
-// 검색량 급등 감지: 최신일 vs 전전일(2일 전), +30% 이상이면 반환
+// 검색량 특이치 감지: 최신일 vs 전전일(2일 전), 절대 30% 이상 변동(급등 또는 급하락)이면 반환. pct 부호로 방향 구분.
 function detectSpike(series: { date: string; value: number }[]) {
   if (series.length < 3) return null;
   const sorted = [...series].sort((a, b) => a.date.localeCompare(b.date));
@@ -66,7 +66,7 @@ function detectSpike(series: { date: string; value: number }[]) {
   const prev2 = sorted.find(x => x.date === target) ?? sorted[sorted.length - 3];
   if (!prev2 || prev2.value <= 0) return null;
   const pct = ((latest.value - prev2.value) / prev2.value) * 100;
-  if (pct < 30) return null;
+  if (Math.abs(pct) < 30) return null;
   return { pct, latest, prev2 };
 }
 
@@ -155,10 +155,10 @@ export default function DashboardPage() {
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const recentOrganic = organicMentions.filter(m => m.created_at >= sevenDaysAgo).slice(0, 3);
 
-  // 라라스윗 전체 검색량 급등: 최신일 vs 전전일(2일 전), +30% 이상이면 노출
+  // 라라스윗 전체 검색량 특이치: 최신일 vs 전전일(2일 전), 절대 30% 이상 변동(급등/급하락)이면 노출
   const brandSpike = detectSpike(brandSearch);
 
-  // 상품별 검색량 급등: 동일 기준(+30%)으로 감지, 상승률 높은 순 최대 3개
+  // 상품별 검색량 특이치: 동일 기준(절대 30%)으로 감지, 변동 폭(급등·급하락 모두) 큰 순 최대 3개
   const productSpikes = (productTrends?.products ?? [])
     .map(name => {
       const series = (productTrends?.rows ?? [])
@@ -167,7 +167,7 @@ export default function DashboardPage() {
       return { name, spike: detectSpike(series) };
     })
     .filter((x): x is { name: string; spike: NonNullable<ReturnType<typeof detectSpike>> } => x.spike != null)
-    .sort((a, b) => b.spike.pct - a.spike.pct)
+    .sort((a, b) => Math.abs(b.spike.pct) - Math.abs(a.spike.pct))
     .slice(0, 3);
 
   const menuItems = [
@@ -305,28 +305,28 @@ export default function DashboardPage() {
                 ) : (brandSpike || productSpikes.length > 0 || kwSpikes.length > 0) ? (
                   <div className="space-y-1">
                     {brandSpike && (
-                      <div className="flex items-center justify-between gap-2 bg-red-50 rounded-[6px] px-2 py-1 -mx-1">
+                      <div className={`flex items-center justify-between gap-2 rounded-[6px] px-2 py-1 -mx-1 ${brandSpike.pct >= 0 ? "bg-red-50" : "bg-blue-50"}`}>
                         <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-xs font-bold text-red-600 whitespace-nowrap">🔥 라라스윗 전체 급등</span>
+                          <span className={`text-xs font-bold whitespace-nowrap ${brandSpike.pct >= 0 ? "text-red-600" : "text-blue-600"}`}>{brandSpike.pct >= 0 ? "🔥 라라스윗 전체 급등" : "📉 라라스윗 전체 급하락"}</span>
                           <span className="text-[10px] text-a-ink-muted truncate hidden sm:block">
                             · {fmtDateVal(brandSpike.prev2.date, brandSpike.prev2.value)} → {fmtDateVal(brandSpike.latest.date, brandSpike.latest.value)}
                           </span>
                         </div>
-                        <span className="text-xs font-semibold text-red-500 whitespace-nowrap flex-shrink-0">
-                          +{brandSpike.pct.toFixed(0)}%
+                        <span className={`text-xs font-semibold whitespace-nowrap flex-shrink-0 ${brandSpike.pct >= 0 ? "text-red-500" : "text-blue-600"}`}>
+                          {brandSpike.pct >= 0 ? "+" : ""}{brandSpike.pct.toFixed(0)}%
                         </span>
                       </div>
                     )}
                     {productSpikes.map(({ name, spike }) => (
-                      <div key={name} className="flex items-center justify-between gap-2 bg-red-50/60 rounded-[6px] px-2 py-1 -mx-1">
+                      <div key={name} className={`flex items-center justify-between gap-2 rounded-[6px] px-2 py-1 -mx-1 ${spike.pct >= 0 ? "bg-red-50/60" : "bg-blue-50/60"}`}>
                         <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-xs font-semibold text-red-500 whitespace-nowrap truncate">🔥 {cleanProductName(name)} 급등</span>
+                          <span className={`text-xs font-semibold whitespace-nowrap truncate ${spike.pct >= 0 ? "text-red-500" : "text-blue-600"}`}>{spike.pct >= 0 ? "🔥" : "📉"} {cleanProductName(name)} {spike.pct >= 0 ? "급등" : "급하락"}</span>
                           <span className="text-[10px] text-a-ink-muted truncate hidden sm:block">
                             · {fmtDateVal(spike.prev2.date, spike.prev2.value)} → {fmtDateVal(spike.latest.date, spike.latest.value)}
                           </span>
                         </div>
-                        <span className="text-xs font-semibold text-red-500 whitespace-nowrap flex-shrink-0">
-                          +{spike.pct.toFixed(0)}%
+                        <span className={`text-xs font-semibold whitespace-nowrap flex-shrink-0 ${spike.pct >= 0 ? "text-red-500" : "text-blue-600"}`}>
+                          {spike.pct >= 0 ? "+" : ""}{spike.pct.toFixed(0)}%
                         </span>
                       </div>
                     ))}
