@@ -569,7 +569,7 @@ function PostsTable(props: Props) {
                         ) : (
                           <span
                             onClick={() => setEditCell({ postId: post.id, field: "notes", value: post.notes ?? "" })}
-                            className="text-xs cursor-text text-a-ink-muted hover:text-a-ink transition-colors line-clamp-2 block"
+                            className="text-xs cursor-text text-a-ink-muted hover:text-a-ink transition-colors block whitespace-nowrap overflow-x-auto"
                           >
                             {post.notes || <span className="text-gray-300">—</span>}
                           </span>
