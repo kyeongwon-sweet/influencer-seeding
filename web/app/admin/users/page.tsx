@@ -115,7 +115,7 @@ export default function AdminUsersPage() {
     <div className="min-h-screen px-6 py-8">
       <h1 className="text-xl font-semibold text-a-ink flex items-center gap-2">
         유저 관리
-        <span className="text-[11px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">관리자만 노출</span>
+        <span className="text-[11px] font-medium leading-none px-1.5 py-px rounded bg-amber-50 text-amber-700 border border-amber-200">관리자만 노출</span>
       </h1>
       <p className="mt-1 text-sm text-a-ink-muted">대시보드에 접근할 수 있는 사용자를 초대·차단합니다. (@lalasweet.kr 계정만)</p>
 
