@@ -62,6 +62,9 @@ function detectSpike(series: { date: string; value: number }[]) {
   if (series.length < 3) return null;
   const sorted = [...series].sort((a, b) => a.date.localeCompare(b.date));
   const latest = sorted[sorted.length - 1];
+  // '오늘의 인사이트'용 — 수집이 멈춰 최신 데이터가 오래된 시리즈의 옛 변동은 제외(최근 6일 내 최신치만)
+  const freshCutoff = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
+  if (latest.date < freshCutoff) return null;
   const target = new Date(new Date(latest.date + "T00:00:00").getTime() - 2 * 86400000).toISOString().slice(0, 10);
   const prev2 = sorted.find(x => x.date === target) ?? sorted[sorted.length - 3];
   if (!prev2 || prev2.value <= 0) return null;
