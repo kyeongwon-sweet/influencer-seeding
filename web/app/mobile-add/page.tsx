@@ -88,7 +88,7 @@ export default function MobileAddPage() {
 
         {/* 공지 메모팁 — 카카오/네이버 조회수 수동 입력 안내 */}
         <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs leading-relaxed text-amber-800">
-          💡 <b>카카오 숏폼·네이버 클립</b>은 조회수 자동 수집이 안 됩니다. 이 두 채널은 대시보드에서 조회수를 <b>수동 입력</b>해 주세요.
+          💡 <b>카카오 숏폼·네이버 클립</b>은 조회수 자동 수집이 안 됩니다.<br />이 두 채널은 대시보드에서 조회수를 <b>수동 입력</b>해 주세요.
         </div>
 
         <form onSubmit={submit} className="space-y-3">
