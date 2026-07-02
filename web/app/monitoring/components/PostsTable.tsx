@@ -5,6 +5,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import { type Post, type EditCell, type DailyStats, type Filters, getFilteredStats, hasNotableChange, viewIncrement, fmt, fmtChannelType, effectiveReach, pickMetric, CHANNEL_TYPES, INIT_FILTERS, CHART } from "../lib";
 import { MIN_ENTRY_DATE, maxDateKST } from "@/lib/dateRule";
 import { companyForAccount } from "@/lib/companyMap";
+import { productCodeOf } from "@/lib/productCode";
 
 function TH({ children, right, col, onSort, sorted, className: cls, w, leftPos, onResize, fixed }: {
   children?: React.ReactNode; right?: boolean; col?: string;
@@ -399,8 +400,10 @@ function PostsTable(props: Props) {
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5" />
                         ) : (
                           <span onClick={() => setEditCell({ postId: post.id, field: "product_name", value: post.product_name ?? "" })}
+                            title={post.product_name ?? undefined}
                             className="block truncate cursor-text hover:text-a-blue transition-colors">
-                            {post.product_name ?? "-"}
+                            {/* 매핑되면 제품코드 표시, 없으면 원본 상품명. 편집 시엔 원본 상품명 수정. */}
+                            {productCodeOf(post.product_name) ?? post.product_name ?? "-"}
                           </span>
                         )}
                       </TD>
