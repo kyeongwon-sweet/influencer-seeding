@@ -71,6 +71,7 @@ export const PRODUCT_CODES: Record<string, string> = {
   "피치망고듬뿍바": "DB피",
   "더블베리 듬뿍바": "DB베",
   // 쫀득바 (JD)
+  "쫀득바": "JD혼",
   "멜론쫀득바": "JD멜",
   "망고쫀득바": "JD망",
   // 웨하스 (미니 WF / 바타입 WB)
