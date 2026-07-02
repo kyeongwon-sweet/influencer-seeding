@@ -234,8 +234,8 @@ function PostsTable(props: Props) {
                 {/* 헤더 바로 아래 합계 행 — 체크박스로 선택한 행이 있으면 그 선택분 합계, 없으면 필터 적용 시 전체 합계 (조회당비용은 합계 안 함) */}
                 {(tableTotals.selectionMode || hasFilter) && tableTotals.count > 0 && (
                   <tr className="border-y-2 border-a-blue/30 bg-blue-50 text-xs font-semibold">
-                    <td className="pl-3 pr-1 py-2.5 sticky z-10 bg-blue-50" style={{ left: 0, width: 36, minWidth: 36 }} />
-                    <td className="px-3 py-2.5 tabular-nums sticky z-10 bg-blue-50 group/cp" style={{ left: stickyLefts["증분량"], width: stickyColWidths["증분량"], minWidth: stickyColWidths["증분량"] }}>
+                    <td className="pl-3 pr-1 py-2.5 sticky top-10 z-30 bg-blue-50" style={{ left: 0, width: 36, minWidth: 36 }} />
+                    <td className="px-3 py-2.5 tabular-nums sticky top-10 z-30 bg-blue-50 group/cp" style={{ left: stickyLefts["증분량"], width: stickyColWidths["증분량"], minWidth: stickyColWidths["증분량"] }}>
                       <div className="flex items-center justify-end gap-2 whitespace-nowrap">
                         <span className={tableTotals.delta > 0 ? "text-red-500" : tableTotals.delta < 0 ? "text-blue-600" : "text-gray-400"}>
                           {tableTotals.delta > 0 ? "+" : ""}{tableTotals.delta.toLocaleString()}
@@ -246,23 +246,23 @@ function PostsTable(props: Props) {
                         </button>
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 text-a-ink-muted whitespace-nowrap border-l border-a-divider">{tableTotals.selectionMode ? "선택 합계" : "합계"} ({tableTotals.count}건)</td>
-                    <td />{/* 게시일 */}
-                    <td />{/* 인플루언서 */}
-                    <td />{/* 업체명 */}
-                    <td />{/* 상품명 */}
-                    <td />{/* 프로젝트명 */}
-                    <td className="px-3 py-2.5 text-right tabular-nums text-a-ink border-l border-a-divider">{tableTotals.cost.toLocaleString()}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums text-a-blue">{tableTotals.views.toLocaleString()}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums text-a-ink">{tableTotals.views > 0 ? (tableTotals.cost / tableTotals.views).toFixed(2) : "-"}</td>{/* 전체 평균 조회당비용 = 비용합계 ÷ 조회수합계 */}
-                    <td className="px-3 py-2.5 text-right tabular-nums text-a-ink">{tableTotals.reach.toLocaleString()}</td>{/* 도달수 합계 */}
-                    <td className="px-3 py-2.5 text-right tabular-nums text-a-ink">{tableTotals.reach > 0 ? (tableTotals.cost / tableTotals.reach).toFixed(2) : "-"}</td>{/* 전체 평균 도달당비용 = 비용합계 ÷ 도달수합계 */}
-                    <td className="border-l border-a-divider" />{/* 캡션 */}
-                    <td className="px-3 py-2.5 text-right tabular-nums text-a-ink">{tableTotals.likes.toLocaleString()}</td>{/* 좋아요 합계 */}
-                    <td className="px-3 py-2.5 text-right tabular-nums text-a-ink">{tableTotals.comments.toLocaleString()}</td>{/* 댓글 합계 */}
-                    <td />{/* 트렌드 */}
-                    <td />{/* 특이사항 */}
-                    <td />{/* 삭제 */}
+                    <td className="px-3 py-2.5 text-a-ink-muted whitespace-nowrap border-l border-a-divider sticky top-10 z-20 bg-blue-50">{tableTotals.selectionMode ? "선택 합계" : "합계"} ({tableTotals.count}건)</td>
+                    <td className="sticky top-10 z-20 bg-blue-50" />{/* 게시일 */}
+                    <td className="sticky top-10 z-20 bg-blue-50" />{/* 인플루언서 */}
+                    <td className="sticky top-10 z-20 bg-blue-50" />{/* 업체명 */}
+                    <td className="sticky top-10 z-20 bg-blue-50" />{/* 상품명 */}
+                    <td className="sticky top-10 z-20 bg-blue-50" />{/* 프로젝트명 */}
+                    <td className="px-3 py-2.5 text-right tabular-nums text-a-ink border-l border-a-divider sticky top-10 z-20 bg-blue-50">{tableTotals.cost.toLocaleString()}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-a-blue sticky top-10 z-20 bg-blue-50">{tableTotals.views.toLocaleString()}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-a-ink sticky top-10 z-20 bg-blue-50">{tableTotals.views > 0 ? (tableTotals.cost / tableTotals.views).toFixed(2) : "-"}</td>{/* 전체 평균 조회당비용 = 비용합계 ÷ 조회수합계 */}
+                    <td className="px-3 py-2.5 text-right tabular-nums text-a-ink sticky top-10 z-20 bg-blue-50">{tableTotals.reach.toLocaleString()}</td>{/* 도달수 합계 */}
+                    <td className="px-3 py-2.5 text-right tabular-nums text-a-ink sticky top-10 z-20 bg-blue-50">{tableTotals.reach > 0 ? (tableTotals.cost / tableTotals.reach).toFixed(2) : "-"}</td>{/* 전체 평균 도달당비용 = 비용합계 ÷ 도달수합계 */}
+                    <td className="border-l border-a-divider sticky top-10 z-20 bg-blue-50" />{/* 캡션 */}
+                    <td className="px-3 py-2.5 text-right tabular-nums text-a-ink sticky top-10 z-20 bg-blue-50">{tableTotals.likes.toLocaleString()}</td>{/* 좋아요 합계 */}
+                    <td className="px-3 py-2.5 text-right tabular-nums text-a-ink sticky top-10 z-20 bg-blue-50">{tableTotals.comments.toLocaleString()}</td>{/* 댓글 합계 */}
+                    <td className="sticky top-10 z-20 bg-blue-50" />{/* 트렌드 */}
+                    <td className="sticky top-10 z-20 bg-blue-50" />{/* 특이사항 */}
+                    <td className="sticky top-10 z-20 bg-blue-50" />{/* 삭제 */}
                   </tr>
                 )}
                 {sortedPosts.map((post, rowIdx) => {
