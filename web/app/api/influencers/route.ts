@@ -9,13 +9,20 @@ export async function GET() {
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const supabase = getServerSupabase();
-  const { data, error } = await supabase
-    .from("influencers")
-    .select("*, screening_metrics(*)")
-    .order("created_at", { ascending: false });
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data);
+  // 페이지네이션 — Supabase 기본 1000행 상한으로 인플루언서가 잘리는 것 방지(현재 201행이나 증가 대비).
+  const all: any[] = [];
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from("influencers")
+      .select("*, screening_metrics(*)")
+      .order("created_at", { ascending: false })
+      .range(from, from + PAGE - 1);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    all.push(...(data ?? []));
+    if (!data || data.length < PAGE) break;
+  }
+  return NextResponse.json(all);
 }
 
 export async function POST(req: NextRequest) {

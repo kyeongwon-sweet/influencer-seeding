@@ -32,7 +32,10 @@ async function fetchYouTubeMetrics(dateStr: string) {
   url.searchParams.set("ids",       "channel==MINE");
   url.searchParams.set("startDate", dateStr);
   url.searchParams.set("endDate",   dateStr);
-  url.searchParams.set("metrics",   "views,uniqeViewers,search");
+  // 유효 YouTube Analytics metric만 사용(기존 "uniqeViewers" 오타 + 무효 "search"는 요청 자체를 실패시켰음).
+  // ※ 이 OAuth 경로는 현재 死경로(yt_views/yt_unique_viewers 전 기간 미적재) — 토큰 미설정 시 위에서 null 반환.
+  //   브랜드 그래프의 '유튜브 검색량'은 Google Trends(youtube_search_trends)로 별도 동작.
+  url.searchParams.set("metrics",   "views,uniqueViewers");
   url.searchParams.set("dimensions","day");
 
   const analyticsRes = await fetch(url.toString(), {
@@ -41,13 +44,13 @@ async function fetchYouTubeMetrics(dateStr: string) {
   if (!analyticsRes.ok) return null;
 
   const json = await analyticsRes.json();
-  const row = json.rows?.[0]; // [day, views, uniqeViewers, search]
+  const row = json.rows?.[0]; // [day, views, uniqueViewers]
   if (!row) return null;
 
   return {
     yt_views: row[1] as number,
     yt_unique_viewers: row[2] as number,
-    yt_search_views: row[3] as number
+    yt_search_views: null // 死필드(별도 Google Trends 사용) — Analytics에서 조회 안 함
   };
 }
 
