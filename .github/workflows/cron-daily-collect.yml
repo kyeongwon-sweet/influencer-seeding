@@ -115,9 +115,11 @@ jobs:
           PYTHONUNBUFFERED: "1"
         run: cd scripts && python notify_status.py
 
-      # 캡션 보강: 메인 IG 액터가 조회수만 주고 캡션을 누락한 게시물을 data-slayer로 채움(캡션 빈 활성 IG만 → 소량).
+      # 캡션 보강: 메인 IG 액터가 조회수만 주고 캡션을 누락한 게시물을 data-slayer로 채움(캡션 빈 활성 IG만).
+      # ⚠️ go==1(이번 창이 실제 수집)에 묶지 않는다 — 수집이 다른 경로/이전 창에서 끝나 go=0이면 캡션이 영영 안 채워지던 문제(2026-07-02, 빈 캡션 77건 누적).
+      #    멱등(빈 것만 채움·없으면 0건, Apify 비용도 0)이라 매 창 돌려 안전. api_only 실행만 제외.
       - name: 캡션 보강 (data-slayer)
-        if: steps.decide.outputs.go == '1' && github.event.inputs.api_only != 'true'
+        if: always() && github.event.inputs.api_only != 'true'
         continue-on-error: true
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
