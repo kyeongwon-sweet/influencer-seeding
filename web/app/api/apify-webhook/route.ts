@@ -277,12 +277,14 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
   const infUrlMap = new Map((matchedInfs || []).map((i: { id: string; url: string }) => [i.url, i.id]));
 
   // 🛡️ 안전장치용: today 이전 마지막 조회수·측정일.
-  // count 기반 병렬 페이지네이션(순차 왕복 제거) — 결과는 measured_at desc 전역 순서라
-  // '최초 등장 = 최신'으로 각 post의 직전값을 잡는 동작은 순차 때와 동일. 1000행 상한도 회피.
+  // 전체 히스토리 스캔 대신 '이번 배치(posts)의 post_id'만 조회 → 읽는 양↓(이 웹훅이 소비하는 값은
+  // 아래 루프에서 post.id 기준이라 batch id만 있으면 누락 없음). id는 청크로 나눠 URL 한도 회피,
+  // 청크마다 measured_at desc 페이지네이션으로 1000행 상한 회피 + '최초 등장 = 최신' 동작 유지.
   const lastKnownPlay = new Map<string, number>();
   const lastMeasuredAt = new Map<string, string>();
   {
-    const PAGE = 1000;
+    const batchIds = [...new Set((posts || []).map((p: { id: string }) => p.id).filter(Boolean))];
+    const ID_CHUNK = 120, PAGE = 1000;
     type PrevRow = { post_id: string; play_count: number | null; measured_at: string };
     const collectPrev = (page: PrevRow[] | null | undefined) => {
       for (const s of page ?? []) {
@@ -290,26 +292,19 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
         if (!lastMeasuredAt.has(s.post_id)) lastMeasuredAt.set(s.post_id, s.measured_at);
       }
     };
-    const q = () => supabase.from('post_daily_stats')
-      .select('post_id, play_count, measured_at').lt('measured_at', today)
-      .order('measured_at', { ascending: false });
-    const { count } = await supabase
-      .from('post_daily_stats')
-      .select('post_id', { count: 'exact', head: true })
-      .lt('measured_at', today);
-    if (count == null) {
-      // count 실패 시 순차 폴백(절단 방지)
+    for (let c = 0; c < batchIds.length; c += ID_CHUNK) {
+      const idsChunk = batchIds.slice(c, c + ID_CHUNK);
       for (let from = 0; ; from += PAGE) {
-        const { data: page } = await q().range(from, from + PAGE - 1);
+        const { data: page } = await supabase
+          .from('post_daily_stats')
+          .select('post_id, play_count, measured_at')
+          .in('post_id', idsChunk)
+          .lt('measured_at', today)
+          .order('measured_at', { ascending: false })
+          .range(from, from + PAGE - 1);
         collectPrev(page as PrevRow[] | null);
         if (!page || page.length < PAGE) break;
       }
-    } else {
-      const pages = Math.max(1, Math.ceil(count / PAGE));
-      const results = await Promise.all(
-        Array.from({ length: pages }, (_, i) => q().range(i * PAGE, i * PAGE + PAGE - 1))
-      );
-      for (const { data: page } of results) collectPrev(page as PrevRow[] | null);
     }
   }
 

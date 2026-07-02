@@ -91,6 +91,9 @@ export async function POST(req: NextRequest) {
   // 기존 게시물 → 비어있지 않은 시트 값으로 덮어씀(시트가 정본).
   // 단, ① 대시보드에서 직접 수정한 필드(manual_fields)는 보존, ② 시트 값이 비면 기존 값 유지(지우지 않음).
   let metaFilled = 0;
+  // 필드별 스킵 규칙(manual_fields 보존·캡션 정본·빈값 유지)은 그대로 계산한 뒤,
+  // 순차 await UPDATE만 청크 병렬로 실행(로직·결과 동일, 왕복 시간만 단축).
+  const metaUpdates: { id: string; upd: Record<string, unknown> }[] = [];
   for (const r of rows) {
     const ex = existingByUrl.get(r.url);
     if (!ex) continue;
@@ -103,10 +106,15 @@ export async function POST(req: NextRequest) {
       const valPresent = val !== null && val !== undefined && val !== "";
       if (valPresent) upd[f] = val; // 시트 값이 있으면 덮기 (비면 기존 유지)
     }
-    if (Object.keys(upd).length > 0) {
-      const { error: ue } = await supabase.from("sponsored_posts").update(upd).eq("id", String(ex.id));
-      if (!ue) metaFilled++;
-    }
+    if (Object.keys(upd).length > 0) metaUpdates.push({ id: String(ex.id), upd });
+  }
+  const UPD_CHUNK = 25;
+  for (let i = 0; i < metaUpdates.length; i += UPD_CHUNK) {
+    const res = await Promise.all(
+      metaUpdates.slice(i, i + UPD_CHUNK).map(({ id, upd }) =>
+        supabase.from("sponsored_posts").update(upd).eq("id", id).then(({ error }) => !error))
+    );
+    metaFilled += res.filter(Boolean).length;
   }
 
   // 캡션에 '삭제' 또는 '보관'이 포함된 행 → '종료'(ended_at) 처리. 이미 종료된 건은 날짜 유지(중복 방지).

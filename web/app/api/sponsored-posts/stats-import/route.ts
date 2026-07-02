@@ -108,6 +108,9 @@ export async function POST(req: NextRequest) {
   // 2-b) '빈 값만 채우기': 기존 게시물 중 사이트 값이 비어있는(null/"") 필드만 시트 값으로 채움.
   //      이미 값이 있는 필드는 절대 안 건드림 → 사이트에서 직접 수정한 값 보존.
   let metaFilled = 0;
+  // 필드별 스킵 규칙(빈값만 채우기·캡션 정본)은 그대로 계산한 뒤,
+  // 순차 await UPDATE만 청크 병렬로 실행(로직·결과 동일, 왕복 시간만 단축).
+  const metaUpdates: { id: string; upd: Record<string, unknown> }[] = [];
   for (const [url, meta] of postByUrl) {
     const ex = existingByUrl.get(url);
     if (!ex) continue; // 신규 생성분은 이미 전체 메타로 만들어짐
@@ -119,11 +122,15 @@ export async function POST(req: NextRequest) {
       // 캡션은 시트값 우선(정본) → 비어있지 않아도 시트 값으로 덮음. 그 외는 '빈 값만 채우기'.
       if (meta[f] !== undefined && (curEmpty || f === "content_summary")) upd[f] = meta[f];
     }
-    if (Object.keys(upd).length > 0) {
-      const { error: ue } = await supabase
-        .from("sponsored_posts").update(upd).eq("id", String(ex.id));
-      if (!ue) metaFilled++;
-    }
+    if (Object.keys(upd).length > 0) metaUpdates.push({ id: String(ex.id), upd });
+  }
+  const UPD_CHUNK = 25;
+  for (let i = 0; i < metaUpdates.length; i += UPD_CHUNK) {
+    const res = await Promise.all(
+      metaUpdates.slice(i, i + UPD_CHUNK).map(({ id, upd }) =>
+        supabase.from("sponsored_posts").update(upd).eq("id", id).then(({ error }) => !error))
+    );
+    metaFilled += res.filter(Boolean).length;
   }
 
   // 2-c) 캡션에 '삭제' 또는 '보관'이 포함된 글 → '종료'(ended_at) 처리. 이미 종료된 건은 날짜 유지.
