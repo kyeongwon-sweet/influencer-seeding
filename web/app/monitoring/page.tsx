@@ -1698,7 +1698,7 @@ export default function MonitoringPage() {
               <div className="relative">
                 <select value={form.channel_type}
                   onChange={e => setForm(p => ({ ...p, channel_type: e.target.value }))}
-                  className="w-full appearance-none bg-white border border-a-hairline rounded-[10px] pl-3.5 pr-9 py-2.5 text-sm text-a-ink focus:outline-none focus:border-a-blue focus:ring-1 focus:ring-a-blue transition">
+                  className={`w-full appearance-none bg-white border border-a-hairline rounded-[10px] pl-3.5 pr-9 py-2.5 text-sm ${form.channel_type ? "text-a-ink" : "text-a-ink-muted"} focus:outline-none focus:border-a-blue focus:ring-1 focus:ring-a-blue transition`}>
                   <option value="">채널 분류 선택</option>
                   {CHANNEL_TYPES.map(t => <option key={t} value={t}>{fmtChannelType(t)}</option>)}
                 </select>
@@ -1708,7 +1708,7 @@ export default function MonitoringPage() {
               </div>
               <input placeholder="게시물 URL (필수)" value={form.url}
                 onChange={e => setForm(p => ({ ...p, url: e.target.value }))}
-                className="w-full border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-sm placeholder:text-a-ink-muted focus:outline-none focus:border-a-blue focus:ring-1 focus:ring-a-blue transition" />
+                className="w-full border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-sm placeholder:text-[#8B1A2E] focus:outline-none focus:border-a-blue focus:ring-1 focus:ring-a-blue transition" />
               <input placeholder="비용 (원, 선택)" type="number" value={form.cost}
                 onChange={e => setForm(p => ({ ...p, cost: e.target.value }))}
                 className="w-full border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-sm placeholder:text-a-ink-muted focus:outline-none focus:border-a-blue focus:ring-1 focus:ring-a-blue transition" />
