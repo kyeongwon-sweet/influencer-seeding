@@ -42,6 +42,7 @@ export async function GET() {
                 device: act?.deviceType ?? (act?.isMobile ? "Mobile" : null),
                 city: act?.city ?? null,
                 country: act?.country ?? null,
+                ip: act?.ipAddress ?? null,
               }
             : null,
         };
