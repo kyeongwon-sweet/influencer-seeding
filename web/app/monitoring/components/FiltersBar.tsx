@@ -179,7 +179,7 @@ export default function FiltersBar({ filters, setFilters, pdOptions, productOpti
         </div>
       )}
       {productOptions.length > 0 && (
-        <div className="flex items-center gap-1.5 overflow-x-auto flex-nowrap scrollbar-none pb-0.5">
+        <div className="flex items-center gap-1.5 overflow-x-auto flex-nowrap scrollbar-none pb-0.5 basis-full min-w-0">
           {productOptions.map(p => {
             const active = filters.products.includes(p);
             return (
