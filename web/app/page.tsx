@@ -250,72 +250,72 @@ export default function DashboardPage() {
                 <p className="text-[11px] font-semibold text-green-600 tracking-widest uppercase">오늘의 인사이트</p>
               </div>
             </div>
-            <div className="px-7 pb-5 grid grid-cols-2 gap-x-8 gap-y-5">
+            <div className="px-7 pb-6 grid grid-cols-2 gap-x-8 gap-y-6">
               <div>
-                <p className="text-[11px] font-bold text-a-ink mb-2">📈 조회수 급상승</p>
+                <p className="text-sm font-bold text-a-ink mb-2.5">📈 조회수 급상승</p>
                 {loading ? (
-                  <p className="text-xs text-a-ink-muted">불러오는 중…</p>
+                  <p className="text-[13px] text-a-ink-muted">불러오는 중…</p>
                 ) : viewGainers.length > 0 ? (
-                  <div className="space-y-0.5">
+                  <div className="space-y-1">
                     {viewGainers.map((g, i) => (
                       <a key={g.id} href={g.url ?? undefined} target="_blank" rel="noreferrer"
                         className="flex items-center justify-between gap-2 hover:bg-a-parchment rounded-[6px] py-1 -mx-1 px-1 transition-colors">
                         <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-[11px] text-a-ink-muted tabular-nums w-4 flex-shrink-0">{i + 1}</span>
-                          <span className="text-xs font-medium text-a-ink truncate">
+                          <span className="text-xs text-a-ink-muted tabular-nums w-4 flex-shrink-0">{i + 1}</span>
+                          <span className="text-[13px] font-medium text-a-ink truncate">
                             {g.account_name ?? "-"}
                           </span>
                         </div>
-                        <span className="text-xs font-semibold text-red-500 whitespace-nowrap flex-shrink-0">
+                        <span className="text-[13px] font-semibold text-red-500 whitespace-nowrap flex-shrink-0">
                           +{g.delta.toLocaleString()}
                         </span>
                       </a>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-a-ink-muted">{insightsError ? "일시적으로 불러오지 못함" : "특이사항 없음"}</p>
+                  <p className="text-[13px] text-a-ink-muted">{insightsError ? "일시적으로 불러오지 못함" : "특이사항 없음"}</p>
                 )}
               </div>
               <div>
-                <p className="text-[11px] font-bold text-a-ink mb-2">💬 댓글 급상승</p>
+                <p className="text-sm font-bold text-a-ink mb-2.5">💬 댓글 급상승</p>
                 {loading ? (
-                  <p className="text-xs text-a-ink-muted">불러오는 중…</p>
+                  <p className="text-[13px] text-a-ink-muted">불러오는 중…</p>
                 ) : commentGainers.length > 0 ? (
-                  <div className="space-y-0.5">
+                  <div className="space-y-1">
                     {commentGainers.map((g, i) => (
                       <a key={g.id} href={g.url ?? undefined} target="_blank" rel="noreferrer"
                         className="flex items-center justify-between gap-2 hover:bg-a-parchment rounded-[6px] py-1 -mx-1 px-1 transition-colors">
                         <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-[11px] text-a-ink-muted tabular-nums w-4 flex-shrink-0">{i + 1}</span>
-                          <span className="text-xs font-medium text-a-ink truncate">
+                          <span className="text-xs text-a-ink-muted tabular-nums w-4 flex-shrink-0">{i + 1}</span>
+                          <span className="text-[13px] font-medium text-a-ink truncate">
                             {g.account_name ?? "-"}
                           </span>
                         </div>
-                        <span className="text-xs font-semibold text-red-500 whitespace-nowrap flex-shrink-0">
+                        <span className="text-[13px] font-semibold text-red-500 whitespace-nowrap flex-shrink-0">
                           +{g.delta.toLocaleString()}
                         </span>
                       </a>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-a-ink-muted">{insightsError ? "일시적으로 불러오지 못함" : "특이사항 없음"}</p>
+                  <p className="text-[13px] text-a-ink-muted">{insightsError ? "일시적으로 불러오지 못함" : "특이사항 없음"}</p>
                 )}
               </div>
               <div>
-                <p className="text-[11px] font-bold text-a-ink mb-2">🔍 검색량 특이치</p>
+                <p className="text-sm font-bold text-a-ink mb-2.5">🔍 검색량 특이치</p>
                 {loading ? (
-                  <p className="text-xs text-a-ink-muted">불러오는 중…</p>
+                  <p className="text-[13px] text-a-ink-muted">불러오는 중…</p>
                 ) : (brandSpike || productSpikes.length > 0 || kwSpikes.length > 0) ? (
                   <div className="space-y-1">
                     {brandSpike && (
                       <div className={`flex items-center justify-between gap-2 rounded-[6px] px-2 py-1 -mx-1 ${brandSpike.pct >= 0 ? "bg-red-50" : "bg-blue-50"}`}>
                         <div className="flex items-center gap-2 min-w-0">
-                          <span className={`text-xs font-bold whitespace-nowrap ${brandSpike.pct >= 0 ? "text-red-600" : "text-blue-600"}`}>{brandSpike.pct >= 0 ? "🔥 라라스윗 전체 급등" : "📉 라라스윗 전체 급하락"}</span>
-                          <span className="text-[10px] text-a-ink-muted truncate hidden sm:block">
+                          <span className={`text-[13px] font-bold whitespace-nowrap ${brandSpike.pct >= 0 ? "text-red-600" : "text-blue-600"}`}>{brandSpike.pct >= 0 ? "🔥 라라스윗 전체 급등" : "📉 라라스윗 전체 급하락"}</span>
+                          <span className="text-[11px] text-a-ink-muted truncate hidden sm:block">
                             · {fmtDateVal(brandSpike.prev2.date, brandSpike.prev2.value)} → {fmtDateVal(brandSpike.latest.date, brandSpike.latest.value)}
                           </span>
                         </div>
-                        <span className={`text-xs font-semibold whitespace-nowrap flex-shrink-0 ${brandSpike.pct >= 0 ? "text-red-500" : "text-blue-600"}`}>
+                        <span className={`text-[13px] font-semibold whitespace-nowrap flex-shrink-0 ${brandSpike.pct >= 0 ? "text-red-500" : "text-blue-600"}`}>
                           {brandSpike.pct >= 0 ? "+" : ""}{brandSpike.pct.toFixed(0)}%
                         </span>
                       </div>
@@ -323,54 +323,54 @@ export default function DashboardPage() {
                     {productSpikes.map(({ name, spike }) => (
                       <div key={name} className={`flex items-center justify-between gap-2 rounded-[6px] px-2 py-1 -mx-1 ${spike.pct >= 0 ? "bg-red-50/60" : "bg-blue-50/60"}`}>
                         <div className="flex items-center gap-2 min-w-0">
-                          <span className={`text-xs font-semibold whitespace-nowrap truncate ${spike.pct >= 0 ? "text-red-500" : "text-blue-600"}`}>{spike.pct >= 0 ? "🔥" : "📉"} {cleanProductName(name)} {spike.pct >= 0 ? "급등" : "급하락"}</span>
-                          <span className="text-[10px] text-a-ink-muted truncate hidden sm:block">
+                          <span className={`text-[13px] font-semibold whitespace-nowrap truncate ${spike.pct >= 0 ? "text-red-500" : "text-blue-600"}`}>{spike.pct >= 0 ? "🔥" : "📉"} {cleanProductName(name)} {spike.pct >= 0 ? "급등" : "급하락"}</span>
+                          <span className="text-[11px] text-a-ink-muted truncate hidden sm:block">
                             · {fmtDateVal(spike.prev2.date, spike.prev2.value)} → {fmtDateVal(spike.latest.date, spike.latest.value)}
                           </span>
                         </div>
-                        <span className={`text-xs font-semibold whitespace-nowrap flex-shrink-0 ${spike.pct >= 0 ? "text-red-500" : "text-blue-600"}`}>
+                        <span className={`text-[13px] font-semibold whitespace-nowrap flex-shrink-0 ${spike.pct >= 0 ? "text-red-500" : "text-blue-600"}`}>
                           {spike.pct >= 0 ? "+" : ""}{spike.pct.toFixed(0)}%
                         </span>
                       </div>
                     ))}
                     {kwSpikes.map(({ inf, kw_impact, kw_keywords }, i) => (
-                      <div key={i} className="flex items-center justify-between gap-2">
+                      <div key={i} className="flex items-center justify-between gap-2 py-1">
                         <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-[11px] text-a-ink-muted tabular-nums w-4 flex-shrink-0">{i + 1}</span>
-                          <span className="text-xs font-medium text-a-ink truncate">{inf.name}</span>
-                          {kw_keywords && <span className="text-[10px] text-a-ink-muted truncate hidden sm:block">· {kw_keywords}</span>}
+                          <span className="text-xs text-a-ink-muted tabular-nums w-4 flex-shrink-0">{i + 1}</span>
+                          <span className="text-[13px] font-medium text-a-ink truncate">{inf.name}</span>
+                          {kw_keywords && <span className="text-[11px] text-a-ink-muted truncate hidden sm:block">· {kw_keywords}</span>}
                         </div>
-                        <span className={`text-xs font-semibold whitespace-nowrap flex-shrink-0 ${kw_impact > 0 ? "text-red-500" : "text-emerald-600"}`}>
+                        <span className={`text-[13px] font-semibold whitespace-nowrap flex-shrink-0 ${kw_impact > 0 ? "text-red-500" : "text-emerald-600"}`}>
                           {kw_impact > 0 ? "+" : ""}{kw_impact.toFixed(1)}%
                         </span>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-a-ink-muted">특이사항 없음</p>
+                  <p className="text-[13px] text-a-ink-muted">특이사항 없음</p>
                 )}
               </div>
               <div>
-                <p className="text-[11px] font-bold text-a-ink mb-2">💡 무상 노출</p>
+                <p className="text-sm font-bold text-a-ink mb-2.5">💡 무상 노출</p>
                 {loading ? (
-                  <p className="text-xs text-a-ink-muted">불러오는 중…</p>
+                  <p className="text-[13px] text-a-ink-muted">불러오는 중…</p>
                 ) : recentOrganic.length > 0 ? (
-                  <div className="space-y-0.5">
+                  <div className="space-y-1">
                     {recentOrganic.map((m, i) => (
-                      <div key={m.id} className="flex items-center justify-between gap-2">
+                      <div key={m.id} className="flex items-center justify-between gap-2 py-1">
                         <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-[11px] text-a-ink-muted tabular-nums w-4 flex-shrink-0">{i + 1}</span>
-                          <span className="text-xs font-medium text-a-ink truncate">{m.account_name ?? "-"}</span>
-                          {m.mentioned_product && <span className="text-[10px] text-a-ink-muted truncate hidden sm:block">· {m.mentioned_product}</span>}
+                          <span className="text-xs text-a-ink-muted tabular-nums w-4 flex-shrink-0">{i + 1}</span>
+                          <span className="text-[13px] font-medium text-a-ink truncate">{m.account_name ?? "-"}</span>
+                          {m.mentioned_product && <span className="text-[11px] text-a-ink-muted truncate hidden sm:block">· {m.mentioned_product}</span>}
                         </div>
-                        <span className="text-xs text-a-ink whitespace-nowrap flex-shrink-0">
+                        <span className="text-[13px] text-a-ink whitespace-nowrap flex-shrink-0">
                           {m.view_count != null ? m.view_count.toLocaleString() : "-"}
                         </span>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-a-ink-muted">특이사항 없음</p>
+                  <p className="text-[13px] text-a-ink-muted">특이사항 없음</p>
                 )}
               </div>
             </div>
