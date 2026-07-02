@@ -31,6 +31,7 @@ const CONFIG = {
   SHEET_GID: 1937186871,
   API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/bulk",
   STATS_API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/stats-import",
+  LIST_API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/list-for-sheet",  // DB→시트 반영(대시보드 추가분 가져오기)용 조회
   HEADER_ROW: 1,
   DATA_START_ROW: 2,
   STATUS_HEADER: "등록상태",
@@ -75,6 +76,7 @@ function onOpen() {
     .addSeparator()
     .addItem("📊 일자별 조회수 입력 (I~AE열)", "importStats")
     .addItem("♻️ 전체 다시 추가", "syncAll")
+    .addItem("⬇️ 대시보드 추가분 시트로 가져오기", "pullFromDB")
     .addSeparator()
     .addItem("🔎 빈칸 검사 (A~H)", "checkBlanks")
     .addItem("🔁 중복 URL 검사", "checkDuplicates")
@@ -334,6 +336,88 @@ function syncNew()  { runSync_(true); }
 function syncAll()  { runSync_(false); }
 
 // ═══════════════════════════════════════════════════════════════
+// DB → 시트 반영 (대시보드에서 추가한 게시물을 시트로 가져오기)
+// ═══════════════════════════════════════════════════════════════
+// 방향: [DB] → [시트]. (시트→DB는 syncNew/syncAll, 이건 그 반대)
+// 동작: DB의 모든 게시물을 조회해, URL이 시트에 없으면 새 행 추가.
+//       이미 있는 행은 '빈 칸만' DB값으로 채움(계정명·업로드일 등 — 수동 입력분은 보존).
+// 인증: bulk와 동일한 Bearer CRON_SECRET. 조회수(일자별)·등록상태 열은 건드리지 않음.
+function fmtVal_(field, v) {
+  if (v == null) return "";
+  if (field === "posted_at") return toDateStr_(v) || "";
+  return v;  // cost는 숫자 그대로, 나머지는 문자열
+}
+
+function pullFromDB() {
+  try {
+    const sheet = getSheet_();
+    const fieldCols = buildFieldCols_(sheet);   // {field: 1-based col}
+    const urlCol = fieldCols.url;
+
+    const res = UrlFetchApp.fetch(CONFIG.LIST_API_URL, {
+      method: "get",
+      headers: authHeaders_(),
+      muteHttpExceptions: true,
+    });
+    if (res.getResponseCode() !== 200) throw new Error(`API ${res.getResponseCode()}: ${res.getContentText()}`);
+    const posts = (JSON.parse(res.getContentText()).posts) || [];
+
+    // 시트 기존 URL → 행번호
+    const lastRow = sheet.getLastRow();
+    const rowByKey = {};
+    if (lastRow >= CONFIG.DATA_START_ROW) {
+      const urls = sheet.getRange(CONFIG.DATA_START_ROW, urlCol, lastRow - CONFIG.DATA_START_ROW + 1, 1).getValues();
+      urls.forEach((r, i) => {
+        const u = String(r[0] || "").trim();
+        if (u) rowByKey[urlKey_(u)] = CONFIG.DATA_START_ROW + i;
+      });
+    }
+
+    // 채울 필드(시트에 해당 헤더가 있는 것만)
+    const fillFields = ["posted_at", "account_name", "company_name", "content_summary", "channel_type", "project_name", "product_name", "cost"];
+
+    let added = 0, filled = 0;
+    posts.forEach(p => {
+      const key = urlKey_(String(p.url || ""));
+      if (!key) return;
+      if (rowByKey[key]) {
+        // 기존 행 — 빈 칸만 DB값으로 채움(수동 편집 보존)
+        const rowNum = rowByKey[key];
+        fillFields.forEach(f => {
+          if (!fieldCols[f]) return;
+          const val = fmtVal_(f, p[f]);
+          if (val === "") return;
+          const cell = sheet.getRange(rowNum, fieldCols[f]);
+          if (String(cell.getValue()).trim() === "") { cell.setValue(val); filled++; }
+        });
+      } else {
+        // 신규 — 새 행에 메타 셀만 기록(조회수·등록상태 열은 그대로 비워둠 → 다른 열 안 건드림)
+        const targetRow = sheet.getLastRow() + 1;
+        sheet.getRange(targetRow, urlCol).setValue(p.url);
+        fillFields.forEach(f => {
+          if (!fieldCols[f]) return;
+          const val = fmtVal_(f, p[f]);
+          if (val !== "") sheet.getRange(targetRow, fieldCols[f]).setValue(val);
+        });
+        rowByKey[key] = targetRow;
+        added++;
+      }
+    });
+
+    safeAlert_(`⬇️ DB→시트 반영 완료\n• 신규 행 추가: ${added}건\n• 기존 행 빈칸 채움: ${filled}건`);
+  } catch (e) {
+    safeAlert_("❌ DB→시트 반영 오류\n" + e.message);
+    Logger.log(e.stack || e.message);
+  }
+}
+
+// 매일 자동: 시트→DB(신규 추가) + DB→시트(대시보드 추가분 가져오기)를 함께 수행
+function dailyAuto() {
+  try { runSync_(true); } catch (e) { Logger.log("dailyAuto syncNew: " + (e.stack || e.message)); }
+  try { pullFromDB(); }  catch (e) { Logger.log("dailyAuto pullFromDB: " + (e.stack || e.message)); }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // 일자별 조회수 입력 (I~AE열 → post_daily_stats 백필)
 // ═══════════════════════════════════════════════════════════════
 /** 날짜 헤더("5. 17 (일)", "6.1", Date 값) → {mo, da}. 파싱 불가면 null. */
@@ -511,24 +595,25 @@ function checkDuplicates() {
 // 자동 트리거 (매일 9:30, syncNew 실행)
 // ═══════════════════════════════════════════════════════════════
 function installDailyTrigger() {
+  // 기존 트리거(구버전 syncNew 포함) 제거 후 양방향 dailyAuto로 재등록
   ScriptApp.getProjectTriggers()
-    .filter(t => t.getHandlerFunction() === "syncNew")
+    .filter(t => t.getHandlerFunction() === "syncNew" || t.getHandlerFunction() === "dailyAuto")
     .forEach(t => ScriptApp.deleteTrigger(t));
 
-  ScriptApp.newTrigger("syncNew")
+  ScriptApp.newTrigger("dailyAuto")
     .timeBased()
     .everyDays(1)
     .atHour(CONFIG.TRIGGER_HOUR)
     .nearMinute(CONFIG.TRIGGER_MINUTE)
     .create();
 
-  safeAlert_(`✅ 매일 오전 ${CONFIG.TRIGGER_HOUR}:${CONFIG.TRIGGER_MINUTE} (±15분) 자동 추가를 켰습니다.\n버튼 없이 신규 광고가 매일 자동으로 사이트에 추가됩니다.`);
+  safeAlert_(`✅ 매일 오전 ${CONFIG.TRIGGER_HOUR}:${CONFIG.TRIGGER_MINUTE} (±15분) 자동 동기화를 켰습니다.\n• 시트→사이트: 신규 광고 자동 추가\n• 사이트→시트: 대시보드 추가분 자동 가져오기`);
 }
 
 function removeDailyTrigger() {
-  const triggers = ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === "syncNew");
+  const triggers = ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === "syncNew" || t.getHandlerFunction() === "dailyAuto");
   triggers.forEach(t => ScriptApp.deleteTrigger(t));
-  safeAlert_(`⏹ 자동 추가를 껐습니다. (${triggers.length}개 트리거 제거)`);
+  safeAlert_(`⏹ 자동 동기화를 껐습니다. (${triggers.length}개 트리거 제거)`);
 }
 
 // ═══════════════════════════════════════════════════════════════
