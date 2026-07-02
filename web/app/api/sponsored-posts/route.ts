@@ -196,6 +196,14 @@ export async function POST(req: NextRequest) {
   const addedBy = typeof cleaned.added_by === "string" ? cleaned.added_by : null;
   delete cleaned.added_by;
 
+  // 같은 URL 중복 추가 방지 — 정규화된 URL 기준으로 이미 있으면 409로 안내(중복 행 생성 방지).
+  if (cleaned.url) {
+    const { data: dup } = await supabase.from("sponsored_posts").select("id").eq("url", cleaned.url).limit(1);
+    if (dup && dup.length > 0) {
+      return NextResponse.json({ error: "이미 추가된 URL입니다.", duplicate: true }, { status: 409 });
+    }
+  }
+
   logger.info("sponsored-posts-api", "게시물 추가 시작", {
     url: cleaned.url,
     hasNormalization: true,

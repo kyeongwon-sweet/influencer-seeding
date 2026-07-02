@@ -58,7 +58,10 @@ export default function MobileAddPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        setMsg({ ok: false, text: `추가 실패: ${(err as { error?: string }).error ?? "오류가 발생했습니다."}` });
+        const text = res.status === 409
+          ? "이미 추가된 게시물입니다. (같은 URL은 한 번만 등록돼요)"
+          : `추가 실패: ${(err as { error?: string }).error ?? "오류가 발생했습니다."}`;
+        setMsg({ ok: false, text });
         return;
       }
       // 성공 → 폼 초기화, 연속 추가 편하게 URL로 포커스.
@@ -83,17 +86,17 @@ export default function MobileAddPage() {
           <Link href="/monitoring" className="text-xs text-a-ink-muted hover:text-a-blue">대시보드 →</Link>
         </header>
 
+        {/* 공지 메모팁 — 카카오/네이버 조회수 수동 입력 안내 */}
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs leading-relaxed text-amber-800">
+          💡 <b>카카오 숏폼·네이버 클립</b>은 조회수 자동 수집이 안 됩니다. 이 두 채널은 대시보드에서 조회수를 <b>수동 입력</b>해 주세요.
+        </div>
+
         <form onSubmit={submit} className="space-y-3">
           <div>
             <label className="block text-xs font-medium text-a-ink-muted mb-1">게시물 URL <span className="text-rose-500">*필수</span></label>
             <input ref={urlRef} inputMode="url" autoCapitalize="off" autoCorrect="off" spellCheck={false}
               placeholder="https://www.instagram.com/reel/DZPNjIZIzRe/" value={form.url} onChange={set("url")}
               className={inputCls} />
-            <div className="mt-1.5 space-y-0.5 text-[11px] leading-snug break-all">
-              <p className="text-rose-500">✕ https://www.instagram.com/reel/DZPNjIZIzRe/?utm_source=ig_web_copy_link&igsh=NTc4MTIwNjQ2YQ==</p>
-              <p className="text-rose-500">✕ https://www.instagram.com/reel/DZPNjIZIzRe</p>
-              <p className="text-emerald-600">✓ https://www.instagram.com/reel/DZPNjIZIzRe/</p>
-            </div>
           </div>
 
           <div>
