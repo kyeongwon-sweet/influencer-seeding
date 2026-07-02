@@ -225,7 +225,7 @@ function PostsTable(props: Props) {
                   <TH right w={colWidths["좋아요"]} onResize={e => startResize("좋아요", e)} {...sp("좋아요")}>좋아요</TH>
                   <TH right w={colWidths["댓글"]} onResize={e => startResize("댓글", e)} {...sp("댓글")}>댓글</TH>
                   <TH className="text-center" w={colWidths["트렌드"]} onResize={e => startResize("트렌드", e)}>트렌드</TH>
-                  <TH w={colWidths["특이사항"]} fixed>특이사항</TH>
+                  <TH w={colWidths["특이사항"]}>특이사항</TH>
                   <TH w={colWidths["삭제"]}></TH>
                 </tr>
               </thead>
@@ -555,7 +555,7 @@ function PostsTable(props: Props) {
                       <td style={{ minWidth: colWidths["트렌드"] }} className="px-3 py-3 text-center">
                         <Sparkline stats={post.all_stats ?? []} postId={post.id} onClick={() => setTrendPost(post)} />
                       </td>
-                      <td style={{ width: colWidths["특이사항"], minWidth: colWidths["특이사항"], maxWidth: colWidths["특이사항"] }} className="px-3 py-3">
+                      <td style={{ minWidth: colWidths["특이사항"] }} className="px-3 py-3 whitespace-nowrap">
                         {editCell?.postId === post.id && editCell?.field === "notes" ? (
                           <textarea
                             autoFocus
@@ -569,7 +569,7 @@ function PostsTable(props: Props) {
                         ) : (
                           <span
                             onClick={() => setEditCell({ postId: post.id, field: "notes", value: post.notes ?? "" })}
-                            className="text-xs cursor-text text-a-ink-muted hover:text-a-ink transition-colors block whitespace-nowrap overflow-x-auto"
+                            className="text-xs cursor-text text-a-ink-muted hover:text-a-ink transition-colors whitespace-nowrap"
                           >
                             {post.notes || <span className="text-gray-300">—</span>}
                           </span>
