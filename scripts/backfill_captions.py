@@ -34,14 +34,24 @@ def backfill():
     print(f"[caption] 캡션 없는 활성 IG {len(targets)}건 → data-slayer 조회")
     from apify_client import ApifyClient
     client = ApifyClient(os.getenv("APIFY_API_TOKEN"))
-    run = client.actor("data-slayer/instagram-post-details").call(run_input={"postUrls": [t["url"] for t in targets]})
-    cap = {}
-    for it in client.dataset(run["defaultDatasetId"]).iterate_items():
-        code = it.get("shortcode") or it.get("code") or _sc(it.get("url") or "") or it.get("url")
-        c = it.get("caption")
-        text = c.get("text") if isinstance(c, dict) else c
-        if code and text:
-            cap[code] = text.strip()[:300]
+
+    def _fetch(urls):
+        run = client.actor("data-slayer/instagram-post-details").call(run_input={"postUrls": urls})
+        out = {}
+        for it in client.dataset(run["defaultDatasetId"]).iterate_items():
+            code = it.get("shortcode") or it.get("code") or _sc(it.get("url") or "") or it.get("url")
+            c = it.get("caption")
+            text = c.get("text") if isinstance(c, dict) else c
+            if code and text:
+                out[code] = text.strip()[:300]
+        return out
+
+    cap = _fetch([t["url"] for t in targets])
+    # data-slayer가 한 런에서 일부 게시물을 누락하는 경우가 있어 못 받은 건만 1회 재시도.
+    missed = [t for t in targets if not cap.get(_sc(t["url"]))]
+    if missed:
+        print(f"[caption] 1차 미수신 {len(missed)}건 → 재시도")
+        cap.update(_fetch([m["url"] for m in missed]))
     updated = 0
     for a in targets:
         t = cap.get(_sc(a["url"]))
