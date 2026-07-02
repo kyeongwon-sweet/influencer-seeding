@@ -18,7 +18,7 @@ export default function FiltersBar({ filters, setFilters, pdOptions, productOpti
   const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
   const [showPdDropdown, setShowPdDropdown] = useState(false);
   return (
-    <div className="bg-white rounded-[14px] border border-a-hairline px-4 py-2.5 mb-4 flex items-center gap-2.5 flex-wrap">
+    <div className="bg-white rounded-[14px] border border-a-hairline px-4 py-2.5 mb-4 flex items-center gap-x-2.5 gap-y-1 flex-wrap">
       <input
         type="text"
         placeholder="인플루언서 검색"
