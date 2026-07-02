@@ -577,6 +577,7 @@ export default function ListupPage() {
   }
 
   async function checkListupJob() {
+    if (document.hidden) return; // 백그라운드 탭에선 /api/jobs 폴링 스킵(Vercel 호출 절감)
     try {
       const jobRes = await fetch("/api/jobs");
       const jobs: { id: string; status: string; error?: string }[] = await jobRes.json();

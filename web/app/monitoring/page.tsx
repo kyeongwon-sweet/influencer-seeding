@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ElapsedTimer, useStableHandlers } from "./perf-utils";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
@@ -220,7 +220,9 @@ export default function MonitoringPage() {
     }
 
     return allDates.map(date => ({ date, ...totals.get(date)! }));
-  }, [filteredPosts]);
+    // filteredPosts는 날짜필터를 제외하므로(위 getFilteredStats가 dateFrom/dateTo를 직접 참조),
+    // 날짜 범위만 바꿔도 재계산되도록 deps에 명시. (누락 시 델타 표가 그래프와 어긋남)
+  }, [filteredPosts, filters.dateFrom, filters.dateTo]);
 
   const deltaChartData = useMemo(() => {
     return chartData.slice(1).map((d, i) => ({
@@ -448,6 +450,72 @@ export default function MonitoringPage() {
     [filters.products, productChips]
   );
 
+  // LineChart props 안정화 — 호버 등 무관한 부모 리렌더에서 차트가 재계산/재렌더되지 않도록 memo화.
+  // (LineChart는 memo로 감싸져 있어, 아래 참조가 안정적이면 리렌더 스톰이 차단됨)
+  const chartExtraSeries = useMemo(() => [
+    ...activeProductSeries.map(c => ({
+      name: c.label,
+      color: productColorOf(c.id),
+      group: "search",   // 상품별 검색량끼리 공통 세로축(절대값 비례)
+      members: c.members.map(col => ({
+        label: productLabel(col),
+        data: productTrends.data.map(row => ({ date: row.date, value: row.values[col] ?? null })),
+      })),
+    })),
+    // 라라스윗 공식 인스타 프로필 방문 — brandMetrics.ig_profile_views
+    ...(brandMetrics.some(d => d.ig_profile_views != null) ? [{
+      name: "인스타 프로필 방문",
+      color: CHART.axis,
+      members: [{
+        label: "인스타 프로필 방문",
+        data: brandMetrics.map(d => ({ date: d.measured_at, value: d.ig_profile_views })),
+      }],
+    }] : []),
+    // 유튜브 검색 트렌드 — 키워드별 (Google Trends gprop=youtube, 상대값 0~100)
+    ...Array.from(new Set(ytTrends.map(t => t.keyword))).map((kw, i) => ({
+      name: `유튜브 ${kw} 검색량`,
+      color: CHART.youtube[i % 2],
+      members: [{
+        label: kw,
+        data: ytTrends.filter(t => t.keyword === kw).map(t => ({ date: t.measured_at, value: t.value })),
+      }],
+    })),
+    // B2B 발주량 (듬뿍바+쫀득바 CVS 발주량) — 미래 계획행 제외, 오늘까지만. 카테고리 필터 시 해당 항목만.
+    ...(b2bDaily.some(d => d.total_order != null) ? [{
+      name: "B2B 발주량",
+      color: "#16a34a",
+      members: [
+        ...(b2bCategory !== "쫀득" ? [{
+          label: "듬뿍바 발주량",
+          data: b2bDaily
+            .filter(d => d.date <= new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10))
+            .map(d => ({ date: d.date, value: d.dumbuk_order })),
+        }] : []),
+        ...(b2bCategory !== "듬뿍" ? [{
+          label: "쫀득바 발주량",
+          data: b2bDaily
+            .filter(d => d.date <= new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10))
+            .map(d => ({ date: d.date, value: d.jjondeuk_order })),
+        }] : []),
+      ],
+    }] : []),
+  ], [activeProductSeries, productTrends, brandMetrics, ytTrends, b2bDaily, b2bCategory]);
+
+  const chartSecondaryData = useMemo(
+    () => mainAdCosts.length > 0 ? mainAdCosts.map(d => ({ date: d.date, value: d.total_cost })) : undefined,
+    [mainAdCosts]
+  );
+
+  const chartPostsOnDate = useCallback((date: string) =>
+    filteredPosts
+      .filter(p => {
+        const pd = p.posted_at?.slice(0, 10);
+        return pd ? (smooth ? weekKeyOf(pd) === date : pd === date) : false;
+      })
+      .map(p => ({ name: p.account_name ?? p.influencers?.name ?? '-', url: p.url })),
+    [filteredPosts, smooth]
+  );
+
   useEffect(() => {
     loadPosts().finally(() => setLoading(false));
     checkAndResumeMonitoring();
@@ -592,6 +660,7 @@ export default function MonitoringPage() {
         setShowTimeoutError(true);
         return;
       }
+      if (document.hidden) return; // 백그라운드 탭에선 /api/jobs 폴링 스킵(Vercel 호출 절감)
       await checkMonitoringJob();
     }, 10_000);
   }
@@ -1354,64 +1423,10 @@ export default function MonitoringPage() {
                   hidePrimary={seriesHidden("조회수")}
                   hiddenLines={hiddenSeries}
                   lsData={lsSearchData}
-                  extraSeries={[
-                    ...activeProductSeries.map(c => ({
-                      name: c.label,
-                      color: productColorOf(c.id),
-                      group: "search",   // 상품별 검색량끼리 공통 세로축(절대값 비례)
-                      members: c.members.map(col => ({
-                        label: productLabel(col),
-                        data: productTrends.data.map(row => ({ date: row.date, value: row.values[col] ?? null })),
-                      })),
-                    })),
-                    // 라라스윗 공식 인스타 프로필 방문 — brandMetrics.ig_profile_views
-                    ...(brandMetrics.some(d => d.ig_profile_views != null) ? [{
-                      name: "인스타 프로필 방문",
-                      color: CHART.axis,
-                      members: [{
-                        label: "인스타 프로필 방문",
-                        data: brandMetrics.map(d => ({ date: d.measured_at, value: d.ig_profile_views })),
-                      }],
-                    }] : []),
-                    // 유튜브 검색 트렌드 — 키워드별 (Google Trends gprop=youtube, 상대값 0~100)
-                    ...Array.from(new Set(ytTrends.map(t => t.keyword))).map((kw, i) => ({
-                      name: `유튜브 ${kw} 검색량`,
-                      color: CHART.youtube[i % 2],
-                      members: [{
-                        label: kw,
-                        data: ytTrends.filter(t => t.keyword === kw).map(t => ({ date: t.measured_at, value: t.value })),
-                      }],
-                    })),
-                    // B2B 발주량 (듬뿍바+쫀득바 CVS 발주량) — 미래 계획행 제외, 오늘까지만. 카테고리 필터 시 해당 항목만.
-                    ...(b2bDaily.some(d => d.total_order != null) ? [{
-                      name: "B2B 발주량",
-                      color: "#16a34a",
-                      members: [
-                        ...(b2bCategory !== "쫀득" ? [{
-                          label: "듬뿍바 발주량",
-                          data: b2bDaily
-                            .filter(d => d.date <= new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10))
-                            .map(d => ({ date: d.date, value: d.dumbuk_order })),
-                        }] : []),
-                        ...(b2bCategory !== "듬뿍" ? [{
-                          label: "쫀득바 발주량",
-                          data: b2bDaily
-                            .filter(d => d.date <= new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10))
-                            .map(d => ({ date: d.date, value: d.jjondeuk_order })),
-                        }] : []),
-                      ],
-                    }] : []),
-                  ]}
-                  secondaryData={mainAdCosts.length > 0 ? mainAdCosts.map(d => ({date: d.date, value: d.total_cost})) : undefined}
+                  extraSeries={chartExtraSeries}
+                  secondaryData={chartSecondaryData}
                   secondaryColor={CHART.secondary}
-                  postsOnDate={(date) =>
-                    filteredPosts
-                      .filter(p => {
-                        const pd = p.posted_at?.slice(0, 10);
-                        return pd ? (smooth ? weekKeyOf(pd) === date : pd === date) : false;
-                      })
-                      .map(p => ({ name: p.account_name ?? p.influencers?.name ?? '-', url: p.url }))
-                  }
+                  postsOnDate={chartPostsOnDate}
                 />
               </div>
               {/* 증감 테이블 — 내용폭에 맞춰 고정(여백 최소화), 그래프가 나머지 차지 */}

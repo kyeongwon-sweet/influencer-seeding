@@ -1,8 +1,8 @@
 "use client";
-import { useRef, useState } from "react";
+import { memo, useRef, useState } from "react";
 import { CHART, weeklySum, weekLabelOf, padDomain, smoothCurvePath, NAVER_DATALAB_URL, META_ADS_MANAGER_URL } from "../lib";
 
-export default function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData, secondaryData, secondaryColor = "#ea580c", extraSeries, hidePrimary, hiddenLines, smooth }: {
+function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData, secondaryData, secondaryColor = "#ea580c", extraSeries, hidePrimary, hiddenLines, smooth }: {
   data: { date: string; value: number }[];
   height?: number;
   gradId?: string;
@@ -338,3 +338,6 @@ export default function LineChart({ data, height = 160, gradId = "lcGrad", posts
     </div>
   );
 }
+
+// props가 안정적이면(부모에서 memo화) 호버 등 무관한 부모 리렌더에 재계산/재렌더 안 함.
+export default memo(LineChart);

@@ -118,7 +118,8 @@ function fmtRatio(v: number | null | undefined) {
 }
 
 function latest(inf: Influencer): Metrics | null {
-  return (inf.screening_metrics ?? []).sort(
+  // 원본 state 배열을 in-place 정렬하면 매 렌더마다 state를 변형 → 복사본을 정렬.
+  return [...(inf.screening_metrics ?? [])].sort(
     (a, b) => new Date(b.run_at).getTime() - new Date(a.run_at).getTime()
   )[0] ?? null;
 }
@@ -320,6 +321,7 @@ export default function ScreeningPage() {
   }
 
   async function checkScreeningJob() {
+    if (document.hidden) return; // 백그라운드 탭에선 /api/jobs 폴링 스킵(Vercel 호출 절감)
     try {
       const jobRes = await fetch("/api/jobs");
       const jobs: { id: string; status: string; error?: string }[] = await jobRes.json();

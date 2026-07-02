@@ -154,6 +154,7 @@ export default function OrganicPage() {
   }
 
   async function checkJob() {
+    if (document.hidden) return; // 백그라운드 탭에선 /api/jobs 폴링 스킵(Vercel 호출 절감)
     try {
       const res = await fetch("/api/jobs");
       const jobs: { id: string; status: string; payload?: { added?: number }; error?: string }[] = await res.json();

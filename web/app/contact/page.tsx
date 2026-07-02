@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import DOMPurify from "dompurify";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { platformLabel } from "@/lib/platform";
 
@@ -302,10 +303,10 @@ export default function ContactPage() {
   const [editNotes, setEditNotes] = useState<{ id: string; value: string } | null>(null);
 
   function sanitizeHtml(html: string): string {
-    return html
-      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-      .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '')
-      .replace(/javascript:/gi, '');
+    // 정규식 방식은 <img onerror>·<svg> 등으로 우회 가능 → DOMPurify로 안전한 태그만 허용(스크립트/이벤트핸들러/javascript: 제거).
+    // 템플릿에 표(table) 등 정상 HTML이 들어가므로 전체 이스케이프 대신 화이트리스트 새니타이즈 사용.
+    if (typeof window === "undefined") return ""; // 미리보기는 클라이언트에서만 렌더(SSR 스킵)
+    return DOMPurify.sanitize(html);
   }
 
   useEffect(() => {
