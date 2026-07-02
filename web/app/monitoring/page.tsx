@@ -1706,7 +1706,7 @@ export default function MonitoringPage() {
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
                 </span>
               </div>
-              <input placeholder="게시물 URL" value={form.url}
+              <input placeholder="게시물 URL (필수)" value={form.url}
                 onChange={e => setForm(p => ({ ...p, url: e.target.value }))}
                 className="w-full border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-sm placeholder:text-a-ink-muted focus:outline-none focus:border-a-blue focus:ring-1 focus:ring-a-blue transition" />
               <input placeholder="비용 (원, 선택)" type="number" value={form.cost}
