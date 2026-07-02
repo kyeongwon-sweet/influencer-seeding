@@ -1643,18 +1643,30 @@ export default function MonitoringPage() {
       {showHelp && (
         <HelpModal title="협찬 모니터링 사용 안내" onClose={() => setShowHelp(false)}>
           <HelpSection title="이 탭에서 하는 일">
-            <p className="text-a-ink-muted leading-relaxed">협찬 게시물의 조회수·좋아요·댓글 수를 날짜별로 자동 추적합니다. 매일 수치가 쌓여 성과 변화를 확인할 수 있습니다.</p>
+            <p className="text-a-ink-muted leading-relaxed">협찬 게시물의 조회수·좋아요·댓글과 비용 효율(조회당·도달당비용)을 날짜별로 자동 추적하고, 검색량·전환 광고비·B2B 발주량과 함께 비교합니다.</p>
           </HelpSection>
           <HelpSection title="버튼 설명">
             <HelpItem label="+ 게시물 추가 —">협찬 게시물 URL과 프로젝트명·상품명을 입력해 추적 대상으로 등록합니다.</HelpItem>
+            <HelpItem label="CSV 업로드 —">여러 게시물을 CSV로 한 번에 등록합니다. 템플릿을 내려받아 채운 뒤 올리세요.</HelpItem>
             <HelpItem label="지금 수집 —">등록된 모든 게시물의 현재 수치를 즉시 수집합니다. GitHub Actions 자동 수집과 별개로 수동으로도 실행 가능합니다.</HelpItem>
+            <HelpItem label="엑셀 다운로드 —">현재 필터가 적용된 게시물 목록을 CSV로 내려받습니다.</HelpItem>
             <HelpItem label="새로고침 —">화면 데이터를 DB에서 다시 불러옵니다.</HelpItem>
+          </HelpSection>
+          <HelpSection title="메인 그래프">
+            <HelpItem label="범례 시리즈 —">조회수 외에 검색량·전체 전환 광고비·B2B 발주량 선이 있습니다. 검색량·광고비·B2B는 기본적으로 선이 꺼져 있지만, 그래프에 마우스를 올리면 툴팁에는 항상 값이 표시됩니다. 범례를 클릭해 각 선을 켜고 끌 수 있습니다.</HelpItem>
+            <HelpItem label="주별 합계 —">조회수 트렌드를 주 단위(N월 N주차) 합계로 봅니다. 기본은 일별 증분입니다.</HelpItem>
+            <HelpItem label="상관분석 —">조회수·검색량·전환 광고비·B2B 발주량의 상관관계와 광고비 선행 효과(시차)를 분석합니다.</HelpItem>
           </HelpSection>
           <HelpSection title="표시 지표 정의">
             <HelpItem label="조회수 (재생수) —">videoPlayCount. 인스타그램 공개 조회수로 같은 사람이 여러 번 봐도 모두 카운트됩니다.</HelpItem>
             <HelpItem label="좋아요 / 댓글 —">likesCount / commentsCount. 게시물의 좋아요·댓글 수입니다.</HelpItem>
-            <HelpItem label="조회당비용 —">비용 ÷ videoPlayCount (재생수)</HelpItem>
-            <HelpItem label="도달당비용 —">비용 ÷ 도달수(reach_count). 실제 도달 인원 기준 효율입니다.</HelpItem>
+            <HelpItem label="조회당비용 —">비용 ÷ 조회수(재생수)</HelpItem>
+            <HelpItem label="도달당비용 —">비용 ÷ 도달수. 도달수는 수동 입력값이 없으면 조회수의 80%로 추정합니다.</HelpItem>
+            <HelpItem label="배너(바이럴) 소재 —">채널분류가 배너인 소재는 조회수·조회당비용 대신 도달수·도달당비용으로 성과를 집계합니다.</HelpItem>
+          </HelpSection>
+          <HelpSection title="표 편집">
+            <HelpItem label="업체명 —">협찬 업체명입니다. 계정명 기반으로 자동 매핑되며, 셀을 클릭해 직접 수정할 수 있습니다.</HelpItem>
+            <HelpItem label="종료 —">게시물을 자동 수집 대상에서 제외합니다(기존 데이터는 보존). 삭제 추정 게시물엔 '종료' 배지가 표시됩니다.</HelpItem>
           </HelpSection>
           <HelpSection title="자동 수집">
             <p className="text-a-ink-muted leading-relaxed">GitHub Actions에 의해 매일 자동으로 수치를 수집합니다. 별도 실행 없이도 일별 데이터가 쌓입니다.</p>

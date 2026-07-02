@@ -1305,12 +1305,17 @@ export default function ListupPage() {
             <p className="text-a-ink-muted leading-relaxed">특정 브랜드·제품 해시태그가 포함된 게시물(릴스/쇼츠 포함)을 올린 계정을 자동 발굴합니다. 발굴된 계정은 스크리닝 탭에서 상세 지표를 수집합니다.</p>
           </HelpSection>
           <HelpSection title="버튼 설명">
-            <HelpItem label="리스트업 실행 —">지정된 해시태그로 Apify를 통해 게시물을 수집하고 계정을 자동 추가합니다. 이미 등록된 계정은 중복 추가되지 않습니다.</HelpItem>
-            <HelpItem label="+ 계정 추가 —">채널명과 URL을 직접 입력해 계정을 수동으로 추가합니다.</HelpItem>
+            <HelpItem label="리스트업 실행 —">지정된 해시태그로 Apify를 통해 게시물을 수집하고 계정을 자동 추가합니다(등록된 계정은 중복 제외). 완료되면 스크리닝이 자동으로 시작되며, 5분 넘게 걸리면 백그라운드에서 계속 진행됩니다.</HelpItem>
+            <HelpItem label="CSV 가져오기 —">키워드,URL 형식으로 계정을 한 번에 등록합니다. 등록 즉시 스크리닝이 자동으로 시작됩니다.</HelpItem>
             <HelpItem label="선택 삭제 —">체크박스로 선택한 계정을 일괄 삭제합니다.</HelpItem>
+            <HelpItem label="엑셀 다운로드 —">현재 목록을 CSV 파일로 내려받습니다.</HelpItem>
+            <HelpItem label="전체 삭제 —">발굴된 계정을 모두 삭제합니다.</HelpItem>
           </HelpSection>
-          <HelpSection title="조회/팔로워 열">
-            <p className="text-a-ink-muted leading-relaxed">스크리닝 완료 후 표시되는 지표입니다. 팔로워 수 대비 평균 재생수 비율로, 높을수록 확산력이 좋은 계정입니다. 이 값으로 정렬하면 시딩 효율이 높은 계정을 우선순위에 올릴 수 있습니다.</p>
+          <HelpSection title="팔로워·조회수·참여수 열">
+            <p className="text-a-ink-muted leading-relaxed">스크리닝 완료 후 채워지는 지표입니다. 조회수 칸은 최근 콘텐츠 5개 평균 조회수와 그 아래 '팔로워 대비 비율'(평균 조회수÷팔로워, 높을수록 확산력 우수)을 함께 보여줍니다. 참여수는 좋아요+댓글 합계입니다. 이 값으로 정렬해 시딩 효율이 높은 계정을 우선순위에 올릴 수 있습니다.</p>
+          </HelpSection>
+          <HelpSection title="표에서 바로 수정">
+            <p className="text-a-ink-muted leading-relaxed">채널명·발굴 키워드·팔로워·팔로워 대비 비율·캡션·업로드일·특이사항은 셀을 클릭해 바로 수정할 수 있습니다. 스크리닝으로 못 채운 값을 수동으로 보정할 때 사용하세요.</p>
           </HelpSection>
           <HelpSection title="열 너비 조정">
             <p className="text-a-ink-muted leading-relaxed">각 열 오른쪽 경계선을 드래그하면 너비를 자유롭게 조정할 수 있습니다.</p>

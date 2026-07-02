@@ -1357,11 +1357,19 @@ export default function ScreeningPage() {
             <p className="text-a-ink-muted leading-relaxed">발굴된 계정의 성과 지표(팔로워, 조회수, 광고 비율 등)를 수집해 협찬 후보를 선정합니다.</p>
           </HelpSection>
           <HelpSection title="버튼 설명">
-            <HelpItem label="스크리닝 실행 —">아직 지표가 없는 계정만 대상으로 Apify를 통해 데이터를 수집합니다. 이미 수집된 계정은 건너뜁니다.</HelpItem>
+            <HelpItem label="스크리닝 실행 —">아직 지표가 없는 계정만 대상으로 Apify를 통해 데이터를 수집합니다(이미 수집된 계정은 건너뜀). 백그라운드 작업으로 처리되며 완료 시 결과가 자동 반영됩니다. 5분이 넘으면 지연 안내가 뜨지만 작업은 계속 진행됩니다.</HelpItem>
+            <HelpItem label="기준 설정 —">통과 자동 분류 조건(팔로워·100만뷰 개수·알고리즘 계수·총 평균 조회수·광고 비율)을 정합니다. 설정한 조건을 모두 충족한 계정만 스크리닝 시 '통과'로 자동 분류되며, 비워둔 조건은 무시됩니다. (표의 '통과 기준' 열에서 '보기'를 누르면 항목별 충족 여부 확인)</HelpItem>
+            <HelpItem label="CSV 가져오기 —">인플루언서명·URL·플랫폼·상태·카테고리 컬럼의 CSV로 계정을 일괄 등록합니다. (템플릿 다운로드 제공)</HelpItem>
+            <HelpItem label="엑셀 다운로드 —">현재 목록의 전체 스크리닝 지표를 CSV로 내려받습니다.</HelpItem>
           </HelpSection>
-          <HelpSection title="상태 변경">
+          <HelpSection title="상태 변경 · 편집">
             <HelpItem label="개별 변경 —">테이블 맨 오른쪽 드롭다운에서 각 계정의 상태를 직접 바꿀 수 있습니다.</HelpItem>
             <HelpItem label="일괄 변경 —">체크박스로 여러 계정을 선택한 뒤 오른쪽 상단 드롭다운에서 상태를 일괄 변경합니다.</HelpItem>
+            <HelpItem label="삭제 —">체크한 계정을 일괄 삭제합니다. (되돌릴 수 없으니 주의)</HelpItem>
+            <HelpItem label="채널명·특이사항 —">셀을 클릭하면 바로 수정·저장할 수 있습니다.</HelpItem>
+          </HelpSection>
+          <HelpSection title="검색어 트렌드">
+            <p className="text-a-ink-muted leading-relaxed">'검색어 트렌드' 열은 광고 전후 네이버 검색량 변화율(후 7일 평균 대비 전 7일 평균)로, 광고 화제성을 가늠하는 지표입니다.</p>
           </HelpSection>
           <HelpSection title="필터 및 정렬">
             <HelpItem label="상태 탭 —">전체 / 대기중 / 통과 / 보류 / 탈락 중 원하는 상태만 볼 수 있습니다.</HelpItem>
