@@ -5,8 +5,7 @@ import Link from "next/link";
 type Influencer = { name: string; status: string; source?: string; created_at?: string; screening_metrics?: { run_at?: string; kw_impact?: number | null; kw_keywords?: string | null }[] };
 type OrganicMention = { id: string; created_at: string; platform: string; account_name: string | null; mentioned_product: string | null; view_count: number | null };
 type Job = { id: string; type: string; status: string; payload?: { added?: number; screened?: number }; user_email?: string; created_at: string; error?: string };
-type DailyStats = { play_count: number | null; comments_count: number | null; measured_at: string };
-type SponsoredPost = { id: string; url: string | null; account_name: string | null; project_name: string | null; influencers: { name: string } | null; latest_stats: DailyStats | null; prev_stats: DailyStats | null };
+type Gain = { id: string; url: string | null; account_name: string | null; delta: number };
 type KpiMetric = { product?: string; label: string; target: number | null; current: number | null; achievement: number | null };
 type KpiSnapshot = { id: string; fetched_at: string; month_label: string | null; metrics: KpiMetric[] };
 
@@ -80,7 +79,9 @@ function cleanProductName(name: string): string {
 export default function DashboardPage() {
   const [influencers, setInfluencers] = useState<Influencer[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [posts, setPosts] = useState<SponsoredPost[]>([]);
+  const [viewGainers, setViewGainers] = useState<Gain[]>([]);
+  const [commentGainers, setCommentGainers] = useState<Gain[]>([]);
+  const [insightsError, setInsightsError] = useState(false);
   const [organicMentions, setOrganicMentions] = useState<OrganicMention[]>([]);
   const [kpi, setKpi] = useState<KpiSnapshot | null>(null);
   const [brandSearch, setBrandSearch] = useState<{ date: string; value: number }[]>([]);
@@ -94,9 +95,16 @@ export default function DashboardPage() {
       return Promise.allSettled([
         fetch("/api/influencers", { signal: t }).then(r => r.json()).then(setInfluencers),
         fetch("/api/jobs", { signal: t }).then(r => r.json()).then(setJobs),
-        fetch("/api/sponsored-posts", { signal: t }).then(r => r.json()).then((data: SponsoredPost[]) => {
-          if (Array.isArray(data)) setPosts(data);
-        }),
+        // 홈 인사이트: 경량 요약 엔드포인트(급상승 top3만). 예전엔 /api/sponsored-posts 전량(3.5MB·~10초)을
+        // 받아 클라에서 계산하다 12초 abort와 레이스로 '특이사항 없음' 오표시됨 → /api/insights로 분리(재발 방지).
+        fetch("/api/insights", { signal: t })
+          .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+          .then((d: { viewGainers: Gain[]; commentGainers: Gain[] }) => {
+            setViewGainers(d.viewGainers ?? []);
+            setCommentGainers(d.commentGainers ?? []);
+            setInsightsError(false);
+          })
+          .catch(() => setInsightsError(true)),
         fetch("/api/organic-mentions", { signal: t }).then(r => r.json()).then((data: OrganicMention[]) => {
           if (Array.isArray(data)) setOrganicMentions(data);
         }),
@@ -135,20 +143,6 @@ export default function DashboardPage() {
   const counts = Object.fromEntries(
     STATUS_CONFIG.map(s => [s.value, influencers.filter(i => i.status === s.value).length])
   );
-
-  const topViewGainers = posts
-    .filter(p => p.prev_stats != null && p.latest_stats != null)
-    .map(p => ({ post: p, delta: (p.latest_stats!.play_count ?? 0) - (p.prev_stats!.play_count ?? 0) }))
-    .filter(x => x.delta > 0)
-    .sort((a, b) => b.delta - a.delta)
-    .slice(0, 3);
-
-  const topCommentGainers = posts
-    .filter(p => p.prev_stats != null && p.latest_stats != null)
-    .map(p => ({ post: p, delta: (p.latest_stats!.comments_count ?? 0) - (p.prev_stats!.comments_count ?? 0) }))
-    .filter(x => x.delta > 0)
-    .sort((a, b) => b.delta - a.delta)
-    .slice(0, 3);
 
   const kwSpikes = influencers
     .flatMap(inf => (inf.screening_metrics ?? [])
@@ -244,8 +238,8 @@ export default function DashboardPage() {
       <main className="px-10 py-8 w-full max-w-[1080px] mx-auto space-y-5">
 
 
-        {/* 오늘의 인사이트 */}
-        {!loading && (
+        {/* 오늘의 인사이트 (패널은 항상 렌더 — 로딩/빈값/오류를 섹션별로 구분해 '특이사항 없음' 오표시 방지) */}
+        {(
           <div className="bg-white rounded-[24px] shadow-[0_4px_32px_rgba(100,120,180,0.13)] overflow-hidden">
             <div className="px-7 pt-6 pb-3">
               <div className="inline-flex items-center gap-1.5 bg-green-50 rounded-full px-3 py-1">
@@ -256,53 +250,59 @@ export default function DashboardPage() {
             <div className="px-7 pb-5 grid grid-cols-2 gap-x-8 gap-y-5">
               <div>
                 <p className="text-[11px] font-bold text-a-ink mb-2">📈 조회수 급상승</p>
-                {topViewGainers.length > 0 ? (
+                {loading ? (
+                  <p className="text-xs text-a-ink-muted">불러오는 중…</p>
+                ) : viewGainers.length > 0 ? (
                   <div className="space-y-0.5">
-                    {topViewGainers.map(({ post, delta }, i) => (
-                      <a key={post.id} href={post.url ?? undefined} target="_blank" rel="noreferrer"
+                    {viewGainers.map((g, i) => (
+                      <a key={g.id} href={g.url ?? undefined} target="_blank" rel="noreferrer"
                         className="flex items-center justify-between gap-2 hover:bg-a-parchment rounded-[6px] py-1 -mx-1 px-1 transition-colors">
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="text-[11px] text-a-ink-muted tabular-nums w-4 flex-shrink-0">{i + 1}</span>
                           <span className="text-xs font-medium text-a-ink truncate">
-                            {post.influencers?.name ?? post.account_name ?? "-"}
+                            {g.account_name ?? "-"}
                           </span>
                         </div>
                         <span className="text-xs font-semibold text-red-500 whitespace-nowrap flex-shrink-0">
-                          +{delta.toLocaleString()}
+                          +{g.delta.toLocaleString()}
                         </span>
                       </a>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-a-ink-muted">특이사항 없음</p>
+                  <p className="text-xs text-a-ink-muted">{insightsError ? "일시적으로 불러오지 못함" : "특이사항 없음"}</p>
                 )}
               </div>
               <div>
                 <p className="text-[11px] font-bold text-a-ink mb-2">💬 댓글 급상승</p>
-                {topCommentGainers.length > 0 ? (
+                {loading ? (
+                  <p className="text-xs text-a-ink-muted">불러오는 중…</p>
+                ) : commentGainers.length > 0 ? (
                   <div className="space-y-0.5">
-                    {topCommentGainers.map(({ post, delta }, i) => (
-                      <a key={post.id} href={post.url ?? undefined} target="_blank" rel="noreferrer"
+                    {commentGainers.map((g, i) => (
+                      <a key={g.id} href={g.url ?? undefined} target="_blank" rel="noreferrer"
                         className="flex items-center justify-between gap-2 hover:bg-a-parchment rounded-[6px] py-1 -mx-1 px-1 transition-colors">
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="text-[11px] text-a-ink-muted tabular-nums w-4 flex-shrink-0">{i + 1}</span>
                           <span className="text-xs font-medium text-a-ink truncate">
-                            {post.influencers?.name ?? post.account_name ?? "-"}
+                            {g.account_name ?? "-"}
                           </span>
                         </div>
                         <span className="text-xs font-semibold text-red-500 whitespace-nowrap flex-shrink-0">
-                          +{delta.toLocaleString()}
+                          +{g.delta.toLocaleString()}
                         </span>
                       </a>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-a-ink-muted">특이사항 없음</p>
+                  <p className="text-xs text-a-ink-muted">{insightsError ? "일시적으로 불러오지 못함" : "특이사항 없음"}</p>
                 )}
               </div>
               <div>
                 <p className="text-[11px] font-bold text-a-ink mb-2">🔍 검색량 특이치</p>
-                {(brandSpike || productSpikes.length > 0 || kwSpikes.length > 0) ? (
+                {loading ? (
+                  <p className="text-xs text-a-ink-muted">불러오는 중…</p>
+                ) : (brandSpike || productSpikes.length > 0 || kwSpikes.length > 0) ? (
                   <div className="space-y-1">
                     {brandSpike && (
                       <div className="flex items-center justify-between gap-2 bg-red-50 rounded-[6px] px-2 py-1 -mx-1">
@@ -349,7 +349,9 @@ export default function DashboardPage() {
               </div>
               <div>
                 <p className="text-[11px] font-bold text-a-ink mb-2">💡 무상 노출</p>
-                {recentOrganic.length > 0 ? (
+                {loading ? (
+                  <p className="text-xs text-a-ink-muted">불러오는 중…</p>
+                ) : recentOrganic.length > 0 ? (
                   <div className="space-y-0.5">
                     {recentOrganic.map((m, i) => (
                       <div key={m.id} className="flex items-center justify-between gap-2">
