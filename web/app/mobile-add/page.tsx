@@ -98,10 +98,16 @@ export default function MobileAddPage() {
 
           <div>
             <label className="block text-xs font-medium text-a-ink-muted mb-1">채널 분류</label>
-            <select value={form.channel_type} onChange={set("channel_type")} className={inputCls}>
-              <option value="">채널 분류 선택</option>
-              {CHANNEL_TYPES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+            {/* appearance-none으로 네이티브 들여쓰기/화살표 제거 → 텍스트가 다른 입력칸과 동일하게 pl-3.5 정렬. 커스텀 화살표는 오른쪽 안쪽. */}
+            <div className="relative">
+              <select value={form.channel_type} onChange={set("channel_type")} className={inputCls + " appearance-none pr-10"}>
+                <option value="">채널 분류 선택</option>
+                {CHANNEL_TYPES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-a-ink-muted">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+              </span>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
