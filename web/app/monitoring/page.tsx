@@ -1576,7 +1576,7 @@ export default function MonitoringPage() {
             {showCorr && <CorrelationPanel data={correlations} />}
             {/* 그래프 접기/펼치기 — 카드 하단 (접혀도 펼쳐도 항상 하단에 노출) */}
             <button type="button" onClick={() => setChartCollapsed(v => !v)}
-              className="w-full flex items-center justify-center gap-1 border-t border-a-hairline py-2 text-xs text-a-ink-muted hover:text-a-ink hover:bg-a-parchment/40 transition-colors">
+              className="w-full flex items-center justify-end gap-1 border-t border-a-hairline py-2 pr-6 text-xs text-a-ink-muted hover:text-a-ink hover:bg-a-parchment/40 transition-colors">
               {chartCollapsed ? "그래프 펼치기" : "그래프 접기"}
               <span className="text-[11px] leading-none">{chartCollapsed ? "▼" : "▲"}</span>
             </button>
