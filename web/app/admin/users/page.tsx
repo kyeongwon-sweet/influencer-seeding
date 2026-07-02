@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 
+type Activity = { at: number; browser: string | null; device: string | null; city: string | null; country: string | null };
 type AdminUser = {
   id: string;
   email: string;
@@ -8,12 +9,33 @@ type AdminUser = {
   banned: boolean;
   createdAt: number | null;
   lastSignInAt: number | null;
+  activity: Activity | null;
 };
 
 function fmtDate(ms: number | null): string {
   if (!ms) return "-";
   const d = new Date(ms + 9 * 3600 * 1000); // KST
   return `${d.getUTCFullYear()}.${String(d.getUTCMonth() + 1).padStart(2, "0")}.${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+
+// "얼마 전" 상대 표기 (최근 활동 시각용)
+function fmtAgo(ms: number | null): string {
+  if (!ms) return "";
+  const diff = Date.now() - ms;
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "방금";
+  if (m < 60) return `${m}분 전`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}시간 전`;
+  const d = Math.floor(h / 24);
+  return `${d}일 전`;
+}
+
+// 최근 활동 요약: "Chrome · macOS · Seoul KR"
+function fmtActivity(a: Activity | null): string {
+  if (!a) return "-";
+  const loc = [a.city, a.country].filter(Boolean).join(" ");
+  return [a.browser, a.device, loc].filter(Boolean).join(" · ") || "-";
 }
 
 export default function AdminUsersPage() {
@@ -119,6 +141,7 @@ export default function AdminUsersPage() {
               <th className="text-left font-medium px-4 py-2.5">이메일</th>
               <th className="text-left font-medium px-3 py-2.5">이름</th>
               <th className="text-left font-medium px-3 py-2.5 whitespace-nowrap">최근 접속일</th>
+              <th className="text-left font-medium px-3 py-2.5">최근 활동</th>
               <th className="text-right font-medium px-4 py-2.5">상태 / 작업</th>
             </tr>
           </thead>
@@ -128,6 +151,14 @@ export default function AdminUsersPage() {
                 <td className="px-4 py-3 text-a-ink">{u.email || "(이메일없음)"}</td>
                 <td className="px-3 py-3 text-a-ink-muted">{u.name ?? "-"}</td>
                 <td className="px-3 py-3 text-a-ink-muted whitespace-nowrap">{fmtDate(u.lastSignInAt)}</td>
+                <td className="px-3 py-3 text-a-ink-muted">
+                  {u.activity ? (
+                    <span className="whitespace-nowrap" title={new Date(u.activity.at).toLocaleString("ko-KR")}>
+                      {fmtActivity(u.activity)}
+                      <span className="text-a-ink-muted/60"> · {fmtAgo(u.activity.at)}</span>
+                    </span>
+                  ) : "-"}
+                </td>
                 <td className="px-4 py-3 text-right whitespace-nowrap">
                   {u.banned && <span className="mr-2 text-[11px] px-1.5 py-0.5 rounded bg-rose-50 text-rose-600 border border-rose-200">차단됨</span>}
                   <button
@@ -143,7 +174,7 @@ export default function AdminUsersPage() {
               </tr>
             ))}
             {users.length === 0 && (
-              <tr><td colSpan={4} className="px-4 py-6 text-center text-a-ink-muted">사용자가 없습니다.</td></tr>
+              <tr><td colSpan={5} className="px-4 py-6 text-center text-a-ink-muted">사용자가 없습니다.</td></tr>
             )}
           </tbody>
         </table>

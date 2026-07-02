@@ -11,7 +11,7 @@ export async function GET() {
 
   const client = await clerkClient();
   const { data } = await client.users.getUserList({ limit: 200 });
-  const users = data
+  const base = data
     .map(u => ({
       id: u.id,
       email:
@@ -24,6 +24,32 @@ export async function GET() {
       lastSignInAt: u.lastSignInAt,
     }))
     .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+
+  // 최근 활동(접속 기기/브라우저/지역 + 활동 시각) — 사용자별 최신 세션의 latestActivity.
+  // (관리자만 보는 페이지·저빈도라 사용자당 1콜 병렬 허용)
+  const users = await Promise.all(
+    base.map(async u => {
+      try {
+        const { data: sessions } = await client.sessions.getSessionList({ userId: u.id, limit: 10 });
+        const latest = sessions.slice().sort((a, b) => b.lastActiveAt - a.lastActiveAt)[0];
+        const act = latest?.latestActivity;
+        return {
+          ...u,
+          activity: latest
+            ? {
+                at: latest.lastActiveAt,
+                browser: act?.browserName ?? null,
+                device: act?.deviceType ?? (act?.isMobile ? "Mobile" : null),
+                city: act?.city ?? null,
+                country: act?.country ?? null,
+              }
+            : null,
+        };
+      } catch {
+        return { ...u, activity: null };
+      }
+    })
+  );
 
   return NextResponse.json({ users });
 }
