@@ -91,7 +91,7 @@ def main():
     today_ids = {r["post_id"] for r in rows}
     active, off = [], 0
     while True:
-        res = db.table("sponsored_posts").select("id, url, account_name, created_at, ended_at").range(off, off + 999).execute()
+        res = db.table("sponsored_posts").select("id, url, account_name, created_at, ended_at, content_summary").range(off, off + 999).execute()
         chunk = res.data or []
         active.extend(chunk)
         if len(chunk) < 1000:
@@ -121,6 +121,15 @@ def main():
             text += f"\n  · {nm} [{reason}] {tail}"
         if len(check) > 8:
             text += f"\n  … 외 {len(check) - 8}건"
+
+    # 캡션 미충전 감시 — 자동 보강(backfill_captions)이 안 돌면 빈 캡션이 쌓임(2026-07-02 사고: 77건 누적).
+    # 매일 이 수치가 보이면, 다시 안 채워지기 시작할 때 즉시 알아챌 수 있다(조용한 실패 → 시끄러운 실패).
+    empty_cap = sum(1 for a in active
+                    if "instagram.com" in (a.get("url") or "").lower()
+                    and re.search(r"/(?:p|reels|reel|tv)/[A-Za-z0-9_-]+", (a.get("url") or ""))
+                    and not (a.get("content_summary") or "").strip())
+    if empty_cap:
+        text += f"\n\n📝 캡션 없는 활성 IG {empty_cap}건 — 자동 보강이 채우는 중(내일도 이 수치면 backfill 미작동 의심)"
 
     ch = os.getenv("SLACK_CHANNEL") or os.getenv("STATUS_USER")
     if not ch:
