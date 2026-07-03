@@ -32,6 +32,63 @@ def _chunks(lst, n):
         yield lst[i:i + n]
 
 
+def _urlkey(u: str) -> str:
+    # 같은 게시물을 가리키는 URL 변형(/reel/↔/p/, /<계정>/p/<code>, 끝슬래시 등)을 한 키로 접음.
+    # IG shortcode는 대소문자 구분이라 원문에서 추출.
+    u = (u or "").strip()
+    m = re.search(r"instagram\.com/(?:[^/]+/)?(?:p|reels|reel|tv)/([A-Za-z0-9_-]+)", u, re.I)
+    if m:
+        return "ig:" + m.group(1)
+    v = re.sub(r"^https?://(?:www\.)?", "", u, flags=re.I).split("?")[0].split("#")[0].rstrip("/")
+    host, _, path = v.partition("/")
+    return (host.lower() + "/" + path) if path else host.lower()
+
+
+def _integrity_lines(db, posts):
+    # 데이터 정합성 특이 감시 — 증분 리포트를 왜곡하는 조용한 오염을 상태 댓글에서 바로 드러낸다.
+    lines = []
+
+    # 1) 같은 링크 중복 집계 (레거시 /reel/↔/p/ 중복 삽입 사고(2026-07-03, 275건) 재발 감시)
+    groups = {}
+    for p in posts:
+        k = _urlkey(p.get("url"))
+        if k:
+            groups.setdefault(k, []).append(p)
+    dups = {k: v for k, v in groups.items() if len(v) > 1}
+    if dups:
+        ex = " / ".join(f"{k.split(':')[-1].split('/')[-1]}({'·'.join((x.get('account_name') or '?') for x in v[:3])})"
+                        for k, v in list(dups.items())[:4])
+        line = f"같은 링크 중복 {len(dups)}그룹 — 증분 이중계산 위험: {ex}"
+        if len(dups) > 4:
+            line += f" … 외 {len(dups) - 4}그룹"
+        lines.append(line)
+
+    # 2) 게시일 이전 조회수 이력 (게시일 오기 또는 시트 백필 열 어긋남 신호)
+    posted = {p["id"]: str(p["posted_at"])[:10] for p in posts if p.get("posted_at")}
+    first = {}
+    off = 0
+    while True:
+        res = db.table("post_daily_stats").select("post_id, measured_at").range(off, off + 999).execute()
+        chunk = res.data or []
+        for r in chunk:
+            m = r["measured_at"]
+            if r["post_id"] not in first or m < first[r["post_id"]]:
+                first[r["post_id"]] = m
+        if len(chunk) < 1000:
+            break
+        off += 1000
+    name_of = {p["id"]: (p.get("account_name") or "?") for p in posts}
+    early = sorted((pid for pid in posted if pid in first and first[pid] < posted[pid]),
+                   key=lambda pid: first[pid])
+    if early:
+        ex = ", ".join(f"{name_of.get(pid, '?')}({posted[pid][5:]}게시·이력 {first[pid][5:]}~)" for pid in early[:4])
+        line = f"게시일 이전 조회수 이력 {len(early)}건 — 게시일 오기/백필 어긋남 의심: {ex}"
+        if len(early) > 4:
+            line += f" … 외 {len(early) - 4}건"
+        lines.append(line)
+    return lines
+
+
 def main():
     token = os.environ["SLACK_BOT_TOKEN"]
     target = os.getenv("MONITORING_DATE") or date.today().isoformat()
@@ -89,15 +146,15 @@ def main():
 
     # 활성인데 오늘 미측정 게시물 점검 (수집 누락·잘못된 URL 조기 발견)
     today_ids = {r["post_id"] for r in rows}
-    active, off = [], 0
+    posts, off = [], 0
     while True:
-        res = db.table("sponsored_posts").select("id, url, account_name, created_at, ended_at, content_summary").range(off, off + 999).execute()
+        res = db.table("sponsored_posts").select("id, url, account_name, created_at, ended_at, content_summary, posted_at").range(off, off + 999).execute()
         chunk = res.data or []
-        active.extend(chunk)
+        posts.extend(chunk)
         if len(chunk) < 1000:
             break
         off += 1000
-    active = [a for a in active if not a.get("ended_at")]
+    active = [a for a in posts if not a.get("ended_at")]
     waiting = uncollectable = 0
     check = []  # (account, 사유, url)
     for a in active:
@@ -130,6 +187,14 @@ def main():
                     and not (a.get("content_summary") or "").strip())
     if empty_cap:
         text += f"\n\n📝 캡션 없는 활성 IG {empty_cap}건 — 자동 보강이 채우는 중(내일도 이 수치면 backfill 미작동 의심)"
+
+    # 데이터 정합성 특이 — 이상 있을 때만 섹션 추가. 점검 자체가 죽어도 상태 발송은 유지하되 티는 낸다(조용한 실패 방지).
+    try:
+        integ = _integrity_lines(db, posts)
+        if integ:
+            text += "\n\n🧪 데이터 정합성 특이 — 수집과 별개로 데이터 손질 필요:\n" + "\n".join("  · " + l for l in integ)
+    except Exception as e:
+        text += f"\n\n🧪 정합성 점검 실패({type(e).__name__}) — notify_status 로그 확인 필요"
 
     ch = os.getenv("SLACK_CHANNEL") or os.getenv("STATUS_USER")
     if not ch:
