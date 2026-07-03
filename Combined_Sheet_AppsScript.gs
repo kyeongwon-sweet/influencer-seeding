@@ -620,32 +620,31 @@ function removeDailyTrigger() {
 // 💻 배너 인사이트 요청 — 업체별 채널 조회 (기존 기능)
 // ═══════════════════════════════════════════════════════════════
 function summarizeByCompany() {
-  const ws = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-
-  const DATA_START  = 10;
-  const COL_CHANNEL = 7;
-  const COL_URL     = 9;
-  const COL_COMPANY = 10;
-
-  const lastRow = ws.getLastRow();
-  const allRows = ws.getRange(DATA_START, 1, lastRow - DATA_START + 1, COL_COMPANY).getValues();
+  // [콘텐츠 대시보드 연동] 탭(gid=CONFIG.SHEET_GID)을 헤더 이름 기반으로 읽는다.
+  // ⚠️ 이전엔 열 위치(D/G/I/J)·시작행(10)을 하드코딩해, 업체명 열이 삽입되며 다 어긋나 결과가 비었음(2026-07).
+  //    buildFieldCols_로 헤더명(업체명·채널 분류·채널명·게시물URL) 위치를 찾아 앞으로 열이 밀려도 안 깨지게 한다.
+  const sheet = getSheet_();
+  const fc = buildFieldCols_(sheet);
+  const cCompany = fc.company_name, cType = fc.channel_type, cChannel = fc.account_name, cUrl = fc.url;
+  if (!cCompany || !cType) {
+    safeAlert_("헤더에 '업체명'과 '채널 분류' 컬럼이 필요합니다. [콘텐츠 대시보드 연동] 탭 1행 헤더를 확인하세요.");
+    return;
+  }
 
   const companyMap = {};
-
-  for (const row of allRows) {
-    const colA    = String(row[0]).trim();
-    const colD    = String(row[3]).trim();
-    const company = String(row[COL_COMPANY - 1]).trim();
-    const channel = String(row[COL_CHANNEL - 1]).trim();
-    const url     = String(row[COL_URL - 1]).trim();
-
-    if (colA.includes('X')) continue;
-    if (!colD.includes('배너')) continue;
-    if (!company || company === 'undefined') continue;
-
-    if (!companyMap[company]) companyMap[company] = {};
-    if (!companyMap[company][channel]) companyMap[company][channel] = new Set();
-    if (url && url !== 'undefined') companyMap[company][channel].add(url);
+  const lastRow = sheet.getLastRow();
+  if (lastRow >= CONFIG.DATA_START_ROW) {
+    const allRows = sheet.getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, sheet.getLastColumn()).getValues();
+    for (const row of allRows) {
+      if (!String(row[cType - 1] || '').includes('배너')) continue;   // 배너 채널분류만(예: '바이럴 (배너)')
+      const company = String(row[cCompany - 1] || '').trim();
+      if (!company) continue;
+      const channel = (cChannel ? String(row[cChannel - 1] || '').trim() : '') || '(채널명 없음)';
+      const url = cUrl ? String(row[cUrl - 1] || '').trim() : '';
+      if (!companyMap[company]) companyMap[company] = {};
+      if (!companyMap[company][channel]) companyMap[company][channel] = new Set();
+      if (url) companyMap[company][channel].add(url);
+    }
   }
 
   const dataJson = JSON.stringify(
