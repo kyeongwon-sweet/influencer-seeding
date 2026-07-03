@@ -1,17 +1,16 @@
-name: Daily Increment Report (11:00 KST)
+name: Daily Increment Report (12:20 KST)
 
-# 매일 오전 11:00 KST에 협찬 조회수 일일 증분 요약을 여믄봇이 #빙과_마케팅_리포트로 발송.
+# 매일 오후 12:20 KST에 협찬 조회수 일일 증분 요약을 여믄봇이 #빙과_마케팅_리포트로 발송.
 # 데이터는 자정 수집(cron-daily-collect.yml)이 이미 적재해 둔 '오늘(KST)' measured_at 기준.
 # 수집 자체의 정상/실패 알럿은 수집 직후 황경원 DM으로 별도 발송됨(cron-daily-collect.yml).
 on:
   schedule:
-    - cron: "0 2 * * *"    # 02:00 UTC = 11:00 KST (주 실행, 매일·주말·공휴일 포함)
-    # 백업 창(11:00 이후 매시간) — GitHub 예약 트리거는 best-effort라 수 시간 지연/누락됨.
+    - cron: "20 3 * * *"   # 03:20 UTC = 12:20 KST (주 실행, 매일·주말·공휴일 포함)
+    # 백업 창(12:20 이후 매시간) — GitHub 예약 트리거는 best-effort라 수 시간 지연/누락됨.
     # 여러 창을 두고 DEDUP(오늘 리포트 이미 있으면 생략)으로 중복 발송을 막는다. 하나만 떠도 발송됨.
-    - cron: "0 3 * * *"    # 03:00 UTC = 12:00 KST (백업1)
-    - cron: "0 4 * * *"    # 04:00 UTC = 13:00 KST (백업2)
-    - cron: "0 5 * * *"    # 05:00 UTC = 14:00 KST (백업3)
-    - cron: "0 6 * * *"    # 06:00 UTC = 15:00 KST (백업4)
+    - cron: "20 4 * * *"   # 04:20 UTC = 13:20 KST (백업1)
+    - cron: "20 5 * * *"   # 05:20 UTC = 14:20 KST (백업2)
+    - cron: "20 6 * * *"   # 06:20 UTC = 15:20 KST (백업3)
   workflow_dispatch:        # 수동 테스트용
     inputs:
       to_dm:
@@ -49,9 +48,9 @@ jobs:
           cd scripts && python notify_increments.py
           if [ -f "$RUNNER_TEMP/report_ts.txt" ]; then echo "ts=$(cat "$RUNNER_TEMP/report_ts.txt")" >> "$GITHUB_OUTPUT"; fi
 
-      # 리포트 게시 ~15분 후(예약 시 ≈11:15 KST) 상태 요약을 그 리포트의 '댓글(스레드 답글)'로 게시.
+      # 리포트 게시 ~15분 후(예약 시 ≈12:35 KST) 상태 요약을 그 리포트의 '댓글(스레드 답글)'로 게시.
       # 수동 실행은 10초만 대기(빠른 검증). 리포트가 실제 게시됐을 때(ts 있음)만 실행.
-      - name: 댓글 전 대기 (11:15)
+      - name: 댓글 전 대기 (12:35)
         if: steps.report.outputs.ts != ''
         run: sleep ${{ github.event_name == 'schedule' && '900' || '10' }}
 
