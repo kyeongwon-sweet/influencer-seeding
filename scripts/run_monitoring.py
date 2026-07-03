@@ -80,6 +80,44 @@ def _prev_stats(db, post_ids):
     return last
 
 
+def _snapshot_totals(db, post_ids, upto):
+    """게시물들의 upto(포함) 시점 누적 총합 스냅샷 — 일별 증분 락 저장용.
+    - play: 각 post의 max(누적·mono) play_count(≤ upto). likes/comments: 각 post의 최신값.
+    - 증분[D] = 스냅샷[D].total_play − 스냅샷[D-1].total_play (락되어 사후에 안 바뀜).
+    표시 dailyTotals(전일 forward-fill + 단조보정)와 동일 정의(합=합의 차).
+    """
+    last: dict = {}      # post별 최신 행 (likes/comments용)
+    maxplay: dict = {}   # post별 max play(누적)
+    ids = [i for i in post_ids if i]
+    PAGE = 1000
+    for c in range(0, len(ids), 100):
+        chunk = ids[c:c + 100]
+        frm = 0
+        while True:
+            res = (db.table("post_daily_stats")
+                   .select("post_id, play_count, likes_count, comments_count, measured_at")
+                   .in_("post_id", chunk)
+                   .lte("measured_at", upto)
+                   .order("measured_at", desc=True)
+                   .order("created_at", desc=True)
+                   .range(frm, frm + PAGE - 1)
+                   .execute())
+            page = res.data or []
+            for r in page:
+                pid = r["post_id"]
+                last.setdefault(pid, r)  # desc 정렬 → 첫 = 최신
+                pc = r.get("play_count")
+                if pc is not None and pc > maxplay.get(pid, -1):
+                    maxplay[pid] = pc
+            if len(page) < PAGE:
+                break
+            frm += PAGE
+    tp = sum(maxplay.values())
+    tl = sum((v.get("likes_count") or 0) for v in last.values() if (v.get("likes_count") or 0) >= 0)
+    tc = sum((v.get("comments_count") or 0) for v in last.values() if (v.get("comments_count") or 0) >= 0)
+    return {"total_play": tp, "total_likes": tl, "total_comments": tc, "post_count": len(last)}
+
+
 def _stats_key(url: str) -> str:
     """매칭 키: 인스타그램이면 숏코드, 아니면 정규화된 URL"""
     sc = _ig_shortcode(url)
@@ -648,6 +686,16 @@ def run():
             print(f"[WARN] 저장할 데이터가 없습니다 (매칭 실패 또는 조회수 오류)")
 
         print(f"[SUCCESS] 모니터링 완료: {len(rows)}건 저장")
+
+        # 📸 일별 증분 스냅샷(락) — 오늘 시점 누적 총합을 daily_view_snapshot에 저장.
+        #    이후 게시물이 늦게 추가돼도 과거 스냅샷은 안 바뀜 → '일자별 증감' 과거값 안정화.
+        #    best-effort: 테이블 미생성 등 어떤 오류도 수집 자체엔 영향 주지 않음(경고만).
+        try:
+            snap = _snapshot_totals(db, [p["id"] for p in all_posts], TODAY)
+            db.table("daily_view_snapshot").upsert({"date": TODAY, **snap}, on_conflict="date").execute()
+            print(f"[LOG] 📸 일별 스냅샷 저장({TODAY}): {snap}")
+        except Exception as e:
+            print(f"[WARN] 일별 스냅샷 저장 실패(무시): {e}")
 
         if job_id:
             db.table("jobs").update({"status": "done"}).eq("id", job_id).execute()
