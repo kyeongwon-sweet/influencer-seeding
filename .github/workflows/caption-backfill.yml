@@ -1,0 +1,30 @@
+name: Caption Backfill (KST work hours)
+
+# 캡션 빈 활성 IG 게시물을 data-slayer로 채운다(backfill_captions.py).
+# 별도 스케줄로 두는 이유: 캡션은 원래 자정 수집 창(cron-daily-collect)에서만 채워져,
+# 낮에 추가된 게시물이 다음날 새벽까지 빈 채로 보이던 지연 문제(2026-07-03)를 없애기 위함.
+# 업무시간(KST)에만 4회 → GitHub Actions 분 절약. 멱등: 빈 캡션 없으면 data-slayer 호출 0(비용 0).
+# Apify 비용은 새 글 수에만 비례(빈도와 무관). 실패해도 다음 창/자정 수집 창이 재시도.
+on:
+  schedule:
+    - cron: "0 1,4,7,10 * * *"   # 01/04/07/10 UTC = 10·13·16·19시 KST (업무시간 4회). 낮 추가분 ~3h 내 채움.
+  workflow_dispatch:
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: 캡션 보강 (data-slayer)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
+          PYTHONUNBUFFERED: "1"
+        run: cd scripts && python backfill_captions.py
