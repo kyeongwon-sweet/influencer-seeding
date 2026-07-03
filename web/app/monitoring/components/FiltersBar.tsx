@@ -3,6 +3,7 @@
 // filters 상태/세터는 부모 소유(prop). 드롭다운 열림상태는 필터바 전용이라 내부 보관.
 import { useState } from "react";
 import { type Filters, INIT_FILTERS, POST_TYPES, CHANNEL_TYPES, fmtChannelType } from "../lib";
+import { productCodeOf } from "@/lib/productCode";
 
 type Props = {
   filters: Filters;
@@ -188,10 +189,11 @@ export default function FiltersBar({ filters, setFilters, pdOptions, productOpti
                   ...prev,
                   products: active ? prev.products.filter(x => x !== p) : [...prev.products, p],
                 }))}
+                title={p}
                 className={`text-xs px-2.5 py-1 rounded-full border transition ${
                   active ? "border-a-blue bg-blue-50 text-a-blue font-medium" : "border-a-hairline text-a-ink-muted hover:border-gray-400"
                 }`}
-              >{p}</button>
+              >{productCodeOf(p) ?? p}</button>
             );
           })}
         </div>
