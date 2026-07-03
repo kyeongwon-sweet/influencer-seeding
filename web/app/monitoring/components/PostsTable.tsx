@@ -189,7 +189,7 @@ function PostsTable(props: Props) {
                       onChange={toggleSelectAll} />
                   </th>
                   <TH col="증분량" w={stickyColWidths["증분량"]} leftPos={stickyLefts["증분량"]} onResize={e => startResize("증분량", e, true)} right {...sp("증분량")}>증분량</TH>
-                  <TH className="border-l border-a-divider" w={colWidths["채널분류"]} onResize={e => startResize("채널분류", e)} {...sp("채널분류")}>
+                  <TH className="border-l border-a-divider" w={colWidths["채널분류"]} fixed onResize={e => startResize("채널분류", e)} {...sp("채널분류")}>
                     <span className="relative group/ct cursor-default">
                       채널 분류
                       <span className="hidden group-hover/ct:block absolute top-full left-0 mt-1 z-50 bg-gray-900 text-white text-[11px] rounded-[8px] px-3 py-2 whitespace-nowrap shadow-lg font-normal normal-case tracking-normal">
@@ -304,7 +304,7 @@ function PostsTable(props: Props) {
                           );
                         })()}
                       </TD>
-                      <TD muted groupStart w={colWidths["채널분류"]}>
+                      <TD muted groupStart fixed w={colWidths["채널분류"]}>
                         {editCell?.postId === post.id && editCell?.field === "channel_type" ? (
                           <select autoFocus value={editCell.value}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
@@ -316,7 +316,8 @@ function PostsTable(props: Props) {
                           </select>
                         ) : (
                           <span onClick={() => setEditCell({ postId: post.id, field: "channel_type", value: post.channel_type ?? "" })}
-                            className="cursor-text hover:text-a-blue transition-colors">
+                            title={post.channel_type ? fmtChannelType(post.channel_type) : undefined}
+                            className="block truncate cursor-text hover:text-a-blue transition-colors">
                             {post.channel_type ? fmtChannelType(post.channel_type) : "-"}
                           </span>
                         )}
