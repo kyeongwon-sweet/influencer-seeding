@@ -424,7 +424,7 @@ function pullFromDB() {
       const urls = sheet.getRange(CONFIG.DATA_START_ROW, urlCol, lastRow - CONFIG.DATA_START_ROW + 1, 1).getValues();
       urls.forEach((r, i) => {
         const u = String(r[0] || "").trim();
-        if (u) rowByKey[urlKey_(u)] = CONFIG.DATA_START_ROW + i;
+        if (u) rowByKey[linkKey_(u)] = CONFIG.DATA_START_ROW + i;   // shortcode/영상ID 기준 — /p/·/reel/ 등 경로만 달라도 같은 글로 인식
       });
     }
 
@@ -433,7 +433,7 @@ function pullFromDB() {
 
     let added = 0, filled = 0;
     posts.forEach(p => {
-      const key = urlKey_(String(p.url || ""));
+      const key = linkKey_(String(p.url || ""));   // 시트 인덱스와 동일 기준 — DB /p/ ↔ 시트 /reel/ 매칭되어 재추가 안 됨
       if (!key) return;
       if (rowByKey[key]) {
         // 기존 행 — 빈 칸만 DB값으로 채움(수동 편집 보존)
