@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
 import { platformLabel } from "@/lib/platform";
+import { parseNumInput } from "@/lib/num";
 
 const PLATFORMS = ["인스타그램", "유튜브", "블로그", "틱톡", "스레드", "트위터"];
 
@@ -231,7 +232,7 @@ export default function OrganicPage() {
         content_summary: addForm.content_summary || null,
         mentioned_product: addForm.mentioned_product || null,
         uploaded_at: addForm.uploaded_at || null,
-        view_count: addForm.view_count ? Number(addForm.view_count) : null,
+        view_count: parseNumInput(addForm.view_count),
         source: "manual",
       }),
     });
@@ -263,7 +264,7 @@ export default function OrganicPage() {
       return;
     }
     const isNumeric = field === "view_count";
-    const parsed = isNumeric ? (value === "" ? null : Number(value)) : (value || null);
+    const parsed = isNumeric ? parseNumInput(value) : (value || null);
     const res = await fetch(`/api/organic-mentions/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -311,7 +312,7 @@ export default function OrganicPage() {
           content_summary: cols[3] || null,
           mentioned_product: cols[4] || null,
           uploaded_at: isValidUploadDate(cols[5] || "") ? cols[5] : null,
-          view_count: cols[6] ? Number(cols[6]) : null,
+          view_count: parseNumInput(cols[6]),
         };
       }).filter(r => r.url);
       setCsvRows(rows);

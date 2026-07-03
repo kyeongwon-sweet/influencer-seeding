@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
 import { platformLabel } from "@/lib/platform";
+import { parseNumInput } from "@/lib/num";
+import { batchFetch } from "@/lib/batchFetch";
 import { MIN_ENTRY_DATE, maxDateKST, isValidEntryDate } from "@/lib/dateRule";
 
 type Metrics = {
@@ -271,7 +273,7 @@ export default function ScreeningPage() {
   async function saveCriteria() {
     if (!criteria) return;
     setSavingCriteria(true);
-    const parse = (v: string) => v.trim() !== "" ? Number(v) : null;
+    const parse = (v: string) => parseNumInput(v); // 콤마 허용·NaN→null (조용한 값 유실 방지)
     const res = await fetch("/api/screening-criteria", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -437,17 +439,19 @@ export default function ScreeningPage() {
   async function applyBulkStatus() {
     if (selected.size === 0) return;
     setApplying(true);
-    await Promise.all([...selected].map(id =>
+    const { ok, failed } = await batchFetch([...selected], id =>
       fetch(`/api/influencers/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: bulkStatus }),
       })
-    ));
+    );
     const label = STATUS.find(s => s.value === bulkStatus)?.label ?? bulkStatus;
-    setList(prev => prev.map(i => selected.has(i.id) ? { ...i, status: bulkStatus } : i));
-    toast(`${selected.size}개 계정을 '${label}'로 변경했습니다.`, "success");
-    setSelected(new Set());
+    const okSet = new Set(ok);
+    setList(prev => prev.map(i => okSet.has(i.id) ? { ...i, status: bulkStatus } : i));
+    if (failed.length) toast(`${ok.length}건 변경, ${failed.length}건 실패 — 실패분은 선택 유지됨(재시도 가능)`, "error");
+    else toast(`${ok.length}개 계정을 '${label}'로 변경했습니다.`, "success");
+    setSelected(new Set(failed));
     setApplying(false);
   }
 
@@ -456,10 +460,12 @@ export default function ScreeningPage() {
     const count = selected.size;
     if (!confirm(`선택한 ${count}개 계정을 삭제하시겠습니까?`)) return;
     setDeleting(true);
-    await Promise.all([...selected].map(id => fetch(`/api/influencers/${id}`, { method: "DELETE" })));
-    setList(prev => prev.filter(i => !selected.has(i.id)));
-    toast(`${count}개 계정을 삭제했습니다.`, "success");
-    setSelected(new Set());
+    const { ok, failed } = await batchFetch([...selected], id => fetch(`/api/influencers/${id}`, { method: "DELETE" }));
+    const okSet = new Set(ok);
+    setList(prev => prev.filter(i => !okSet.has(i.id)));
+    if (failed.length) toast(`${ok.length}건 삭제, ${failed.length}건 실패 — 실패분은 선택 유지됨`, "error");
+    else toast(`${ok.length}개 계정을 삭제했습니다.`, "success");
+    setSelected(new Set(failed));
     setDeleting(false);
   }
 

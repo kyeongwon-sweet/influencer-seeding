@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import { CHANNEL_TYPES } from "@/app/monitoring/lib";
+import { parseNumInput } from "@/lib/num";
 
 type RecentPost = { id: string; url: string; channel_type: string | null; content_summary: string | null; posted_at: string | null; created_at: string; created_by?: string | null };
 
@@ -51,7 +52,7 @@ export default function MobileAddPage() {
           product_name: form.product_name || null,
           project_name: form.project_name || null,
           channel_type: form.channel_type || null,
-          cost: form.cost !== "" ? Number(form.cost) : null,
+          cost: parseNumInput(form.cost),
           content_summary: form.content_summary.trim() || null,
           added_by: user?.primaryEmailAddress?.emailAddress ?? null,
         }),

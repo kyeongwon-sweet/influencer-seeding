@@ -148,15 +148,25 @@ def main():
     post_ids = list(today.keys())
 
     # 직전(target 이전) 측정값 — post별 가장 최근 1건
+    # ⚠️ .range() 페이지네이션 필수: 청크(100포스트)의 전체 이력이 1000행을 넘으면 오래 미측정된
+    #    게시물의 직전값이 잘려 '신규'로 오인 → 그날 누적 전체가 증분으로 잡혀 리포트가 뻥튀기된다.
     prev = {}
+    PAGE = 1000
     for chunk in _chunks(post_ids, 100):
-        res = (db.table("post_daily_stats")
-               .select("post_id, play_count, measured_at")
-               .in_("post_id", chunk).lt("measured_at", target)
-               .order("measured_at", desc=True).execute())
-        for r in (res.data or []):
-            if r["post_id"] not in prev and r.get("play_count") is not None:
-                prev[r["post_id"]] = r["play_count"]
+        frm = 0
+        while True:
+            res = (db.table("post_daily_stats")
+                   .select("post_id, play_count, measured_at")
+                   .in_("post_id", chunk).lt("measured_at", target)
+                   .order("measured_at", desc=True)
+                   .range(frm, frm + PAGE - 1).execute())
+            page = res.data or []
+            for r in page:
+                if r["post_id"] not in prev and r.get("play_count") is not None:
+                    prev[r["post_id"]] = r["play_count"]
+            if len(page) < PAGE:
+                break
+            frm += PAGE
 
     # 게시물 메타(이름/플랫폼/상품군/업로드일/채널분류)
     meta = {}

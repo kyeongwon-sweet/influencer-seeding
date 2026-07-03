@@ -6,6 +6,7 @@ import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
 import { platformLabel } from "@/lib/platform";
 import { normalizeYouTubeUrl } from "@/lib/url-utils";
 import { MIN_ENTRY_DATE, maxDateKST, isValidEntryDate } from "@/lib/dateRule";
+import { batchFetch } from "@/lib/batchFetch";
 
 type Keyword = { id: string; keyword: string; platform: string; created_at: string };
 type ScreeningMetrics = {
@@ -223,9 +224,11 @@ export default function ListupPage() {
     if (selected.size === 0) return;
     if (!confirm(`선택한 ${selected.size}개 계정을 삭제하시겠습니까?`)) return;
     setDeleting(true);
-    await Promise.all([...selected].map(id => fetch(`/api/influencers/${id}`, { method: "DELETE" })));
-    setInfluencers(prev => prev.filter(i => !selected.has(i.id)));
-    setSelected(new Set());
+    const { ok, failed } = await batchFetch([...selected], id => fetch(`/api/influencers/${id}`, { method: "DELETE" }));
+    const okSet = new Set(ok);
+    setInfluencers(prev => prev.filter(i => !okSet.has(i.id)));
+    if (failed.length) alert(`${ok.length}건 삭제, ${failed.length}건 실패 — 실패분은 목록에 남아 있습니다.`);
+    setSelected(new Set(failed));
     setDeleting(false);
   }
 
@@ -233,8 +236,10 @@ export default function ListupPage() {
     if (influencers.length === 0) return;
     if (!confirm(`발굴된 계정 ${influencers.length}개를 모두 삭제하시겠습니까?`)) return;
     setDeleting(true);
-    await Promise.all(influencers.map(i => fetch(`/api/influencers/${i.id}`, { method: "DELETE" })));
-    setInfluencers([]);
+    const { ok, failed } = await batchFetch(influencers.map(i => i.id), id => fetch(`/api/influencers/${id}`, { method: "DELETE" }));
+    const okSet = new Set(ok);
+    setInfluencers(prev => prev.filter(i => !okSet.has(i.id)));
+    if (failed.length) alert(`${ok.length}건 삭제, ${failed.length}건 실패 — 실패분은 목록에 남아 있습니다.`);
     setSelected(new Set());
     setDeleting(false);
   }

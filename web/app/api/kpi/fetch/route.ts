@@ -93,11 +93,13 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = getServerSupabase();
-  const { error } = await supabase.from("kpi_snapshots").insert({ month_label: monthLabel, metrics });
+  const { data: ins, error } = await supabase.from("kpi_snapshots").insert({ month_label: monthLabel, metrics }).select("id").single();
   if (error) {
     await notifyJob("KPI 스냅샷", "fail", `DB 저장 실패: ${error.message}`);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+  // 소비자(/api/kpi)는 최신 1행만 읽음 — 매일 크론이 같은 달 행을 무한 누적하지 않게 옛 행 정리(달별 최신 1행 유지)
+  if (ins?.id) await supabase.from("kpi_snapshots").delete().eq("month_label", monthLabel).neq("id", ins.id);
 
   await notifyJob("KPI 스냅샷", "ok", `${monthLabel} ${TABS.length}개 제품 × ${METRICS.length}지표`);
   return NextResponse.json({ ok: true, month_label: monthLabel, metrics });

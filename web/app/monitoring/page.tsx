@@ -6,6 +6,7 @@ import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
 import { MIN_ENTRY_DATE, maxDateKST, isValidEntryDate } from "@/lib/dateRule";
 import { companyForAccount } from "@/lib/companyMap";
+import { batchFetch } from "@/lib/batchFetch";
 import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, INIT_FILTERS, CHANNEL_TYPES, CATEGORIES, STICKY_COL_ORDER, PROJECT_PARSE_COLS, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, isStatInDateRange, getFilteredStats, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, getPostType, viewIncrement, pickMetric, pdOf, productLabel, effectiveReach, weekKeyOf, pearson, alignedPairs, bestLag, solveLinear, alignMulti, multipleR2, parseCsvLine } from "./lib";
 import CorrelationPanel from "./components/CorrelationPanel";
 import FiltersBar from "./components/FiltersBar";
@@ -947,11 +948,13 @@ export default function MonitoringPage() {
     if (selected.size === 0) return;
     if (!confirm(`선택한 ${selected.size}건을 삭제하시겠습니까?`)) return;
     setDeleting(true);
-    await Promise.all([...selected].map(id => fetch(`/api/sponsored-posts/${id}`, { method: "DELETE" })));
-    setPosts(prev => prev.filter(p => !selected.has(p.id)));
-    setSelected(new Set());
+    const { ok, failed } = await batchFetch([...selected], id => fetch(`/api/sponsored-posts/${id}`, { method: "DELETE" }));
+    const okSet = new Set(ok);
+    setPosts(prev => prev.filter(p => !okSet.has(p.id)));
+    setSelected(new Set(failed));
     setDeleting(false);
-    toast(`${selected.size}건 삭제됐습니다.`, "success");
+    if (failed.length) toast(`${ok.length}건 삭제, ${failed.length}건 실패 — 실패분은 선택 유지됨`, "error");
+    else toast(`${ok.length}건 삭제됐습니다.`, "success");
   }
 
   // 트래킹 종료/해제 — ended_at 설정(오늘, KST)/해제(null). 종료 시 자동 수집 제외, 기존 데이터는 보존.
@@ -974,15 +977,17 @@ export default function MonitoringPage() {
     if (!confirm(`선택한 ${ids.length}건의 트래킹을 종료하시겠습니까?\n(이후 자동 수집에서 제외, 기존 데이터는 보존)`)) return;
     const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
     setDeleting(true);
-    await Promise.all(ids.map(id => fetch(`/api/sponsored-posts/${id}`, {
+    const { ok, failed } = await batchFetch(ids, id => fetch(`/api/sponsored-posts/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ended_at: today }),
-    })));
-    setPosts(prev => prev.map(p => ids.includes(p.id) ? { ...p, ended_at: today } : p));
-    setSelected(new Set());
+    }));
+    const okSet = new Set(ok);
+    setPosts(prev => prev.map(p => okSet.has(p.id) ? { ...p, ended_at: today } : p));
+    setSelected(new Set(failed));
     setDeleting(false);
-    toast(`${ids.length}건 종료 처리됐습니다.`, "success");
+    if (failed.length) toast(`${ok.length}건 종료, ${failed.length}건 실패 — 실패분은 선택 유지됨`, "error");
+    else toast(`${ok.length}건 종료 처리됐습니다.`, "success");
   }
 
   function toggleSelect(id: string) {

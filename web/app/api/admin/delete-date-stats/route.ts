@@ -11,20 +11,13 @@ export async function DELETE(req: NextRequest) {
 
   const supabase = getServerSupabase();
 
-  // 먼저 삭제될 데이터 개수 확인
-  const { data: toDelete } = await supabase
+  // 삭제 건수는 delete 자체의 count로 집계 — data.length는 1000행 캡에 잘려 과소 보고됨
+  const { error, count } = await supabase
     .from("post_daily_stats")
-    .select("id", { count: "exact" })
-    .eq("measured_at", date);
-
-  const count = toDelete?.length ?? 0;
-  console.log(`[DELETE] ${date}: ${count}건 삭제 예정`);
-
-  const { error } = await supabase
-    .from("post_daily_stats")
-    .delete()
+    .delete({ count: "exact" })
     .eq("measured_at", date);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ deleted: count, date });
+  console.log(`[DELETE] ${date}: ${count ?? 0}건 삭제`);
+  return NextResponse.json({ deleted: count ?? 0, date });
 }
