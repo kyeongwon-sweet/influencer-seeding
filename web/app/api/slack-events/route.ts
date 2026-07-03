@@ -1,25 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
+import { getServerSupabase } from "@/lib/supabase-server";
 
-// 여믄봇 이벤트 수신: 누가 DM을 보내든 정해진 사진 중 1장을 랜덤 응답
+// 여믄봇 이벤트 수신: 누가 DM을 보내든 사진 1장을 랜덤 응답
+// 사진은 Supabase Storage 'yeomun' 버킷에서 실시간 조회 → 버킷에 넣기만 하면 즉시 포함됨
 // Slack Event Subscriptions Request URL: https://<도메인>/api/slack-events
-// 필요 env: SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET
+// 필요 env: SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET, NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// public/yeomun/ 아래 파일명들 (사진 추가 시 여기만 갱신)
-const IMAGES: string[] = [
-  "1.jpg",
-  "2.jpg",
-  "3.jpg",
-  "4.jpg",
-  "5.jpg",
-  "6.jpg",
-  "7.jpg",
-  "8.jpg",
-  "9.png",
-];
+const BUCKET = "yeomun";
 
 function verifySlack(raw: string, ts: string, sig: string, secret: string): boolean {
   if (!ts || !sig) return false;
@@ -72,11 +63,14 @@ export async function POST(req: NextRequest) {
       !e.subtype &&
       !!e.user;
 
-    if (isUserDM && IMAGES.length > 0) {
-      const host = req.headers.get("x-forwarded-host") || req.headers.get("host");
-      const proto = req.headers.get("x-forwarded-proto") || "https";
-      const pick = IMAGES[Math.floor(Math.random() * IMAGES.length)];
-      const imageUrl = `${proto}://${host}/yeomun/${pick}`;
+    if (isUserDM) {
+      // Supabase Storage 'yeomun' 버킷에서 사진 목록 실시간 조회 → 랜덤 1장
+      const sb = getServerSupabase();
+      const { data: files } = await sb.storage.from(BUCKET).list("", { limit: 100 });
+      const imgs = (files || []).filter((f) => /\.(jpe?g|png|webp|gif)$/i.test(f.name));
+      if (imgs.length === 0) return NextResponse.json({ ok: true });
+      const pick = imgs[Math.floor(Math.random() * imgs.length)].name;
+      const imageUrl = sb.storage.from(BUCKET).getPublicUrl(pick).data.publicUrl;
       await fetch("https://slack.com/api/chat.postMessage", {
         method: "POST",
         headers: {
