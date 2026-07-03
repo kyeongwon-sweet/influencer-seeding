@@ -1,0 +1,30 @@
+name: Admin — Delete Slack message
+
+# 여믄봇이 자기가 보낸 슬랙 메시지(ts)를 삭제. 정정/중복/고아 스레드 답글 청소용. 수동 전용.
+# chat.delete는 봇이 '자기 메시지'만 지울 수 있어 안전(여믄봇 발송분만 대상).
+on:
+  workflow_dispatch:
+    inputs:
+      ts:
+        description: "삭제할 메시지 ts (예: 1783072409.266399)"
+        required: true
+      channel:
+        description: "채널 ID"
+        required: true
+        default: "C0B4F7GBX17"
+
+jobs:
+  delete:
+    runs-on: ubuntu-latest
+    steps:
+      - name: chat.delete
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: |
+          resp=$(curl -s -X POST https://slack.com/api/chat.delete \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            -H "Content-type: application/x-www-form-urlencoded" \
+            --data-urlencode "channel=${{ github.event.inputs.channel }}" \
+            --data-urlencode "ts=${{ github.event.inputs.ts }}")
+          echo "$resp"
+          echo "$resp" | grep -q '"ok":true' || { echo "삭제 실패"; exit 1; }
