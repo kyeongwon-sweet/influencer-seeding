@@ -154,15 +154,28 @@ async function collect(req: NextRequest) {
       }
 
       // 4️⃣ 직전(measuredAt 이전) 마지막 조회수 — 누적 단조성 검증용
-      const { data: priorStats } = await supabase
-        .from("post_daily_stats")
-        .select("post_id, play_count, measured_at")
-        .lt("measured_at", measuredAt)
-        .order("measured_at", { ascending: false });
-
+      // ⚠️ 전체 테이블 단일 쿼리는 1000행 상한에 잘려 오래된 게시물 직전값이 누락됨(가드 무력화)
+      //    → apify-webhook과 동일하게 이번 배치 id만 청크 조회 + 페이지네이션 (최초 등장 = 최신)
       const lastKnownPlay = new Map<string, number>();
-      for (const s of priorStats || []) {
-        if (!lastKnownPlay.has(s.post_id)) lastKnownPlay.set(s.post_id, s.play_count ?? 0);
+      {
+        const batchIds = [...new Set(igPosts.map((p: { id: string }) => p.id).filter(Boolean))];
+        const ID_CHUNK = 120, PAGE = 1000;
+        for (let c = 0; c < batchIds.length; c += ID_CHUNK) {
+          const idsChunk = batchIds.slice(c, c + ID_CHUNK);
+          for (let from = 0; ; from += PAGE) {
+            const { data: page } = await supabase
+              .from("post_daily_stats")
+              .select("post_id, play_count, measured_at")
+              .in("post_id", idsChunk)
+              .lt("measured_at", measuredAt)
+              .order("measured_at", { ascending: false })
+              .range(from, from + PAGE - 1);
+            for (const s of page ?? []) {
+              if (!lastKnownPlay.has(s.post_id)) lastKnownPlay.set(s.post_id, s.play_count ?? 0);
+            }
+            if (!page || page.length < PAGE) break;
+          }
+        }
       }
 
       let skipped = 0;

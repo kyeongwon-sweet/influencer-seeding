@@ -800,12 +800,13 @@ export default function MonitoringPage() {
     const resData = await res.json().catch(() => null);
     setUploading(false);
     if (!res.ok) { toast("업로드 실패: " + ((resData as { error?: string })?.error ?? "오류"), "error"); return; }
-    const inserted = Array.isArray(resData) ? resData.length : 0;
+    const s = (resData ?? {}) as { upserted?: number; created?: number; meta_filled?: number };
     const total = csvRows.length;
     setCsvRows([]);
     setShowUpload(false);
     await loadPosts();
-    toast(`${inserted}개 게시물이 처리됐습니다. (신규 추가 또는 업데이트)`, "success");
+    const skipped = total - (s.upserted ?? 0);
+    toast(`처리 ${s.upserted ?? 0}건 (신규 ${s.created ?? 0} · 기존 채움 ${s.meta_filled ?? 0}${skipped > 0 ? ` · 제외 ${skipped}` : ""})`, "success");
   }
 
   function handleSort(col: string) {

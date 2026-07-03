@@ -16,10 +16,21 @@ export async function PATCH(
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "잘못된 요청" }, { status: 400 });
 
-  const toNum = (v: unknown) => v === "" || v == null ? null : Math.round(Number(v));
+  // 숫자 검증: "1,000" 같은 콤마 입력은 Number()가 NaN → 그대로 두면 조용히 null 저장(값 유실).
+  // 콤마·공백은 허용(제거 후 파싱)하되, 그 외 비숫자·음수·비유한 값은 400으로 명시 거부.
+  const toNum = (v: unknown) => {
+    if (v === "" || v == null) return null;
+    const n = Math.round(Number(typeof v === "string" ? v.replace(/[,\s]/g, "") : v));
+    return Number.isFinite(n) && n >= 0 ? n : NaN;
+  };
   const updates: Record<string, number | boolean | null> = {};
   for (const key of ["play_count", "likes_count", "comments_count"]) {
-    if (key in body) updates[key] = toNum(body[key]);
+    if (key in body) {
+      const n = toNum(body[key]);
+      if (typeof n === "number" && Number.isNaN(n))
+        return NextResponse.json({ error: `${key} 값이 올바른 숫자가 아닙니다: "${body[key]}"` }, { status: 400 });
+      updates[key] = n;
+    }
   }
   if (Object.keys(updates).length === 0)
     return NextResponse.json({ error: "수정할 필드가 없습니다" }, { status: 400 });
@@ -49,7 +60,7 @@ export async function PATCH(
       .limit(1)
       .single();
     if (!latest) {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10); // KST
       const { error } = await supabase
         .from("post_daily_stats")
         .upsert({ post_id: id, measured_at: today, ...updates }, { onConflict: "post_id,measured_at" });

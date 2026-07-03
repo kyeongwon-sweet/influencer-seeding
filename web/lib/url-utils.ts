@@ -24,9 +24,28 @@ export function normalizeUrl(url: string): string | null {
     const u = new URL(url.startsWith("http") ? url : "https://" + url);
     // 인스타 게시물은 /p/·/reel/·/reels/·/tv/ 가 모두 같은 글 → shortcode로 표준형(/p/<code>/) 통일.
     // (경로만 다른 중복 행 방지 — onConflict:url 이 자동 dedup 하도록. 예: /p/ABC/ 와 /reel/ABC/ 는 동일)
-    if (u.hostname.includes("instagram.com")) {
+    // instagr.am 단축 호스트도 동일 게시물 → 같은 표준형으로.
+    if (u.hostname.includes("instagram.com") || u.hostname.includes("instagr.am")) {
       const m = u.pathname.match(/\/(?:p|reels|reel|tv)\/([A-Za-z0-9_-]+)/);
       if (m) return `https://www.instagram.com/p/${m[1]}/`;
+    }
+    // 유튜브 영상: ID가 쿼리(watch?v=)·단축호스트(youtu.be)에 있어서 아래 일반 규칙(쿼리 제거)을 타면
+    // ID가 통째로 소실됨 → 서로 다른 영상이 "https://www.youtube.com/watch/" 한 행으로 충돌(onConflict).
+    // ID를 보존해 표준형으로 통일: shorts는 기존 DB 표준형(/shorts/<id>/) 유지, 그 외(watch·youtu.be·embed·live·v)는 watch?v=<id>.
+    {
+      const host = u.hostname.toLowerCase();
+      if (host === "youtu.be" || host.endsWith("youtube.com")) {
+        const mShorts = u.pathname.match(/\/shorts\/([A-Za-z0-9_-]{6,})/);
+        if (mShorts) return `https://www.youtube.com/shorts/${mShorts[1]}/`;
+        let id: string | null = null;
+        if (host === "youtu.be") id = u.pathname.split("/").filter(Boolean)[0] ?? null;
+        else {
+          const mPath = u.pathname.match(/\/(?:embed|live|v)\/([A-Za-z0-9_-]{6,})/);
+          id = mPath ? mPath[1] : (u.pathname.replace(/\/$/, "") === "/watch" ? u.searchParams.get("v") : null);
+        }
+        if (id && /^[A-Za-z0-9_-]{6,}$/.test(id)) return `https://www.youtube.com/watch?v=${id}`;
+        // ID가 없으면(채널/재생목록 등) 일반 규칙으로 진행
+      }
     }
     // 프로토콜을 https로 강제
     const origin = `https://${u.hostname}`;

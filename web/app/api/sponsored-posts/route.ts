@@ -5,6 +5,7 @@ import { normalizeUrl } from "@/lib/url-utils";
 import { logger } from "@/lib/logger";
 import { normalizeChannelType } from "@/app/monitoring/lib";
 import { triggerCaptionBackfill, needsCaption } from "@/lib/github-dispatch";
+import { upsertSponsoredRows } from "@/lib/sponsored-write";
 
 export async function GET(req: NextRequest) {
   // URL 정규화 마이그레이션 엔드포인트
@@ -161,46 +162,25 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  // Google Sheets Apps Script에서 인증 없이 호출 가능
-  // (GET은 Clerk 인증 필요, POST는 공개 인터페이스)
+  // 인증: 미들웨어가 보호(공개 매처에 없음 → Clerk 로그인 + @lalasweet.kr 도메인 필수).
+  // 호출자: 대시보드 '게시물 추가'(단일 객체) · CSV 업로드(배열) · mobile-add.
   const body = await req.json();
   const supabase = getServerSupabase();
 
   if (Array.isArray(body)) {
-    // URL 정규화 + 빈 URL 제거
-    // 목적: 쿼리 파라미터, trailing slash 등을 정규화해서 중복 방지
-    const rows = body
-      .map(r => ({ ...r, url: r.url ? (normalizeUrl(r.url) || r.url) : r.url, ...(r.channel_type ? { channel_type: normalizeChannelType(String(r.channel_type)) } : {}) }))
-      .filter(r => r.url);
+    // CSV 업로드 — 시트 bulk와 동일한 쓰기 정책 공유(lib/sponsored-write.ts):
+    // URL 정규화·허용 플랫폼 필터·신규는 생성·기존은 '비어있지 않은 값만' 덮기(manual_fields 보존).
+    // (이전 구현은 raw upsert라 CSV의 빈 필드가 기존 게시물 메타를 null로 덮는 사고 소지가 있었음)
+    logger.info("sponsored-posts-api", "게시물 일괄 추가 시작(CSV)", { count: body.length });
 
-    logger.info("sponsored-posts-api", "게시물 일괄 추가 시작", {
-      count: body.length,
-      afterNormalization: rows.length,
-      filtered: body.length - rows.length,
-    });
-
-    // upsert: URL이 이미 있으면 새 컬럼값으로 업데이트, 없으면 삽입
-    const { data, error } = await supabase
-      .from("sponsored_posts")
-      .upsert(rows, { onConflict: "url" })
-      .select();
-
+    const { summary, error } = await upsertSponsoredRows(supabase, body as Array<Record<string, unknown>>, "csv-upload");
     if (error) {
-      logger.error("sponsored-posts-api", "게시물 일괄 추가 실패", {
-        error: error.message,
-        count: rows.length,
-      });
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      logger.error("sponsored-posts-api", "게시물 일괄 추가 실패", { error, count: body.length });
+      return NextResponse.json({ error }, { status: 500 });
     }
 
-    logger.info("sponsored-posts-api", "게시물 일괄 추가 완료", {
-      insertedCount: data.length,
-    });
-
-    // 캡션 빈 IG 글이 있으면 캡션 보강 즉시 트리거(이벤트 기반)
-    if (rows.some(r => needsCaption(r.url, r.content_summary))) await triggerCaptionBackfill("bulk-array");
-
-    return NextResponse.json(data, { status: 201 });
+    logger.info("sponsored-posts-api", "게시물 일괄 추가 완료", { ...summary });
+    return NextResponse.json({ ok: true, ...summary }, { status: 201 });
   }
 
   const cleaned = { ...body, url: body.url ? (normalizeUrl(body.url) || body.url) : body.url };
