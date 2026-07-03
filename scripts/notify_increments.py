@@ -165,6 +165,16 @@ def main():
         ct = _norm_ch(it["channel_type"])
         by_channel[ct] = by_channel.get(ct, 0) + it["inc"]
 
+    # 배너는 '조회수 증분'이 아니라 도달 지표(인사이트 요청 중) — 오늘 조회수 증분이 없어도 라인이 사라지지 않게
+    # 활성 배너 게시물의 채널분류를 by_channel에 0으로 채워 항상 노출한다.
+    try:
+        ban = db.table("sponsored_posts").select("channel_type, ended_at").ilike("channel_type", "%배너%").execute()
+        for r in (ban.data or []):
+            if not r.get("ended_at") and r.get("channel_type"):
+                by_channel.setdefault(_norm_ch(r["channel_type"]), 0)
+    except Exception as e:
+        print("[notify] 배너 라인 보강 조회 실패(무시):", e)
+
     # CPV(누적 조회당 비용): 채널별 Σ비용 / Σ누적조회수 — 오늘 측정된 게시물 전체 기준(대시보드 조회당비용과 동일)
     cost_by_ch, cumviews_by_ch = {}, {}
     for pid, tv in today.items():
@@ -195,7 +205,12 @@ def main():
         "",
     ]
     for ct, s in sorted(by_channel.items(), key=lambda x: x[1], reverse=True):
-        lines.append(f"• {_ital_paren(ct)} *+{f(s)}*  {_cpv(cost_by_ch.get(ct, 0), cumviews_by_ch.get(ct, 0), ct)}")
+        if "배너" in ct:
+            # 배너: 조회수 아닌 도달 지표 → 증분 있으면 표기, 없으면 숫자 생략하고 '인사이트 요청 중'만
+            num = f" *+{f(s)}*" if s > 0 else ""
+            lines.append(f"• {_ital_paren(ct)}{num}  (인사이트 요청 중)")
+        else:
+            lines.append(f"• {_ital_paren(ct)} *+{f(s)}*  {_cpv(cost_by_ch.get(ct, 0), cumviews_by_ch.get(ct, 0), ct)}")
     lines += ["", DIV, "", "◾ *급상승 TOP 10* 🔥  `CPV는 누적 기준`", ""]
     for rank, it in enumerate(items[:10], 1):
         prod = f"[{it['product']}] " if it["product"] else ""
@@ -203,6 +218,11 @@ def main():
         date = it["posted_at"] or "업로드일 미상"
         lines.append(f"{rank}. {prod}{label} _({it['platform']})_ *+{f(it['inc'])}*  {_cpv(it['cost'], it['cum'], it['channel_type'])}  `{date}`")
     text = "\n".join(lines)
+
+    if os.getenv("DRY_RUN"):   # 발송 없이 내용만 출력(검증용, Slack 토큰 불필요)
+        print("=== DRY_RUN (발송 안 함) ===")
+        print(text)
+        return
 
     data = urllib.parse.urlencode({"channel": CHANNEL, "text": text, "unfurl_links": "false"}).encode()
     req = urllib.request.Request(SLACK_API, data=data,
