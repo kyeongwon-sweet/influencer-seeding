@@ -17,6 +17,10 @@ on:
         description: "채널 대신 황경원 DM으로 보내기(미리보기 — 채널에 테스트글 안 쌓임)"
         type: boolean
         default: false
+      replace:
+        description: "정정 재발송 — 오늘 기존 리포트를 삭제하고 새로 발송"
+        type: boolean
+        default: false
 
 jobs:
   report:
@@ -41,6 +45,8 @@ jobs:
           STRICT_DATE: ${{ github.event_name == 'schedule' && '1' || '' }}
           # 채널 발송(=to_dm 아님) 시 하루 1회만: 오늘 리포트가 이미 있으면 생략(백업 창 중복 방지).
           DEDUP: ${{ github.event.inputs.to_dm == 'true' && '' || '1' }}
+          # 정정 재발송: 오늘 기존 리포트를 삭제 후 새로 발송(DEDUP 무시).
+          REPLACE: ${{ github.event.inputs.replace == 'true' && '1' || '' }}
           TS_OUT: ${{ runner.temp }}/report_ts.txt
           PYTHONUNBUFFERED: "1"
         run: |

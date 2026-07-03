@@ -66,6 +66,38 @@ def _already_posted(token: str, channel: str, target: str) -> bool:
     return False
 
 
+def _find_report_ts(token: str, channel: str, target: str) -> list:
+    """채널에서 오늘(target) 증분 리포트 메시지들의 ts 목록(정정 재발송용 삭제 대상)."""
+    try:
+        req = urllib.request.Request(
+            f"https://slack.com/api/conversations.history?channel={channel}&limit=30",
+            headers={"Authorization": "Bearer " + token})
+        d = json.load(urllib.request.urlopen(req, timeout=20))
+    except Exception as e:
+        print("[notify] 기존 리포트 조회 실패:", e)
+        return []
+    out = []
+    for m in d.get("messages", []):
+        t = m.get("text", "")
+        if "일일 증분" in t and f"({target})" in t and m.get("ts"):
+            out.append(m["ts"])
+    return out
+
+
+def _delete_msg(token: str, channel: str, ts: str) -> bool:
+    data = urllib.parse.urlencode({"channel": channel, "ts": ts}).encode()
+    req = urllib.request.Request("https://slack.com/api/chat.delete", data=data,
+                                 headers={"Authorization": "Bearer " + token,
+                                          "Content-Type": "application/x-www-form-urlencoded; charset=utf-8"})
+    try:
+        r = json.load(urllib.request.urlopen(req, timeout=20))
+        print("[notify] 기존 리포트 삭제 ts=", ts, "ok=", r.get("ok"), "err=", r.get("error"))
+        return bool(r.get("ok"))
+    except Exception as e:
+        print("[notify] 삭제 실패 ts=", ts, e)
+        return False
+
+
 def _fetch_day(db, target):
     """target일의 {post_id: play_count} (null 제외)."""
     out, start = {}, 0
@@ -104,8 +136,12 @@ def main():
         print(f"[notify] {target} 조회수 데이터 없음 → 발송 생략 (strict={strict})")
         return
 
-    # 중복 방지: 채널 발송 + DEDUP=1인데 오늘 리포트가 이미 있으면 생략(백업 창 대비).
-    if os.getenv("DEDUP") == "1" and CHANNEL[:1] in ("C", "G") and _already_posted(token, CHANNEL, target):
+    # 정정 재발송(REPLACE=1): 오늘 기존 리포트를 삭제한 뒤 새로 발송(잘못 나간 리포트 교체).
+    if os.getenv("REPLACE") == "1" and CHANNEL[:1] in ("C", "G"):
+        for ts in _find_report_ts(token, CHANNEL, target):
+            _delete_msg(token, CHANNEL, ts)
+    # 중복 방지: 채널 발송 + DEDUP=1인데 오늘 리포트가 이미 있으면 생략(백업 창 대비). REPLACE면 위에서 지웠으니 통과.
+    elif os.getenv("DEDUP") == "1" and CHANNEL[:1] in ("C", "G") and _already_posted(token, CHANNEL, target):
         print(f"[notify] {target} 리포트 이미 게시됨 → 중복 방지 생략")
         return
 
