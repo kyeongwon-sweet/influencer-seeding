@@ -462,13 +462,24 @@ def run():
                 db.table("sponsored_posts").update(updates).eq("id", post["id"]).execute()
 
             # 기존 데이터 조회 (누적값 검증)
-            existing_res = db.table("post_daily_stats").select("play_count, likes_count, comments_count").eq("post_id", post["id"]).order("measured_at", desc=True).limit(1).execute()
-            existing = existing_res.data[0] if existing_res.data else {}
+            # ⚠️ 이 조회가 실패하면 누적 검증(역행 clamp)을 할 수 없다 → 하향/0 글리치를 못 거른다.
+            #    이땐 이번 회차 play를 저장하지 않고(직전값 유지) 배치는 계속한다. (한 게시물 오류로 전체 수집이 깨지지 않게)
+            try:
+                existing_res = db.table("post_daily_stats").select("play_count, likes_count, comments_count").eq("post_id", post["id"]).order("measured_at", desc=True).limit(1).execute()
+                existing = existing_res.data[0] if existing_res.data else {}
+                existing_ok = True
+            except Exception as e:
+                existing = {}
+                existing_ok = False
+                print(f"  ⚠️  직전값 조회 실패 {post['url']}: {e} — 누적 검증 불가, 이번 회차 play 저장 스킵(직전값 유지)")
 
             play_count = s.get("play_count")
 
             # 조회수 검증
-            if play_count is None:
+            if not existing_ok:
+                # 직전값을 모르므로 검증 불가 → play 미저장(표시 레이어 mono가 직전값으로 forward-fill).
+                play_count = None
+            elif play_count is None:
                 # Apify가 조회수를 반환하지 않음 (게시물 타입상 조회수 없을 수 있음)
                 print(f"  ⚠️  조회수 없음: {post['url']} (account={s.get('account_name')})")
                 play_count = None
