@@ -322,7 +322,7 @@ def run():
         _start, _PAGE = 0, 1000
         while True:
             _res = db.table("sponsored_posts").select(
-                "id, url, posted_at, account_name, influencer_id, ended_at, content_summary"
+                "id, url, posted_at, account_name, influencer_id, ended_at, content_summary, notes"
             ).range(_start, _start + _PAGE - 1).execute()
             _chunk = _res.data or []
             all_posts.extend(_chunk)
@@ -396,6 +396,13 @@ def run():
             if not s:
                 print(f"  매칭 실패: {post['url']} (key={key})")
                 continue
+
+            # 🗑️ 삭제/비공개 자동 태깅 — Apify not_found 감지 시 특이사항(notes)에 기록.
+            #    수동노트 보존: notes가 비어 있을 때만 기입(사람이 적어둔 특이사항은 절대 덮지 않음).
+            if s.get("deleted") and not (post.get("notes") or "").strip():
+                auto_note = f"게시물 삭제/비공개 감지(자동 {TODAY}, Apify not_found) — 조회수 최종값에서 정지, 확인 필요"
+                db.table("sponsored_posts").update({"notes": auto_note}).eq("id", post["id"]).execute()
+                print(f"  🗑️  삭제 감지 자동 태깅: {post['url']}")
 
             updates = {}
             if not post.get("posted_at") and s.get("posted_at"):
@@ -788,6 +795,9 @@ def _fetch_stats(urls: list) -> list:
                 print(f"        가능한 조회수 필드: {non_none_fields or 'NONE'}")
                 print(f"        모든 필드 키: {list(item.keys())}\n")
 
+        # 삭제/비공개 감지 — Apify가 not_found(게시물 없음)로 응답한 경우. (자동 특이사항 태깅용)
+        deleted = (item.get("error") == "not_found") or ("does not exist" in str(item.get("errorDescription") or "").lower())
+
         result.append({
             "url": url,
             "play_count": play_count,
@@ -797,6 +807,7 @@ def _fetch_stats(urls: list) -> list:
             "account_name": account_name,
             "owner_username": owner_username,
             "content_summary": (item.get("caption") or "")[:300] or None,
+            "deleted": deleted,
         })
 
     return result
