@@ -4,7 +4,7 @@ import os
 import re
 import json
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 from db import get_client
 from url_utils import normalize_url
@@ -40,7 +40,8 @@ def retry_on_network_error(max_retries=3, delay=5):
     return decorator
 
 APIFY_IG_ACTOR = os.getenv("APIFY_IG_ACTOR_ID", "apify/instagram-scraper")
-TODAY = os.getenv("MONITORING_DATE") or date.today().isoformat()
+# GHA는 MONITORING_DATE(KST)를 항상 주입. 폴백(로컬 실행)도 러너 로컬시각 대신 KST로 계산 — UTC 러너에서 하루 밀림 방지.
+TODAY = os.getenv("MONITORING_DATE") or (datetime.now(timezone.utc) + timedelta(hours=9)).date().isoformat()
 
 
 def _ig_shortcode(url: str) -> str | None:

@@ -141,11 +141,11 @@ export default function ListupPage() {
     if (filters.platform !== "all" && inf.platform !== filters.platform) return false;
     if (filters.status !== "all" && inf.status !== filters.status) return false;
     if (filters.keyword !== "all" && inf.keyword !== filters.keyword) return false;
-    if (filters.uploadedFrom && inf.post_uploaded_at) {
-      if (new Date(inf.post_uploaded_at) < new Date(filters.uploadedFrom)) return false;
-    }
-    if (filters.uploadedTo && inf.post_uploaded_at) {
-      if (new Date(inf.post_uploaded_at) > new Date(filters.uploadedTo + "T23:59:59Z")) return false;
+    // 업로드일 필터: KST 달력 날짜로 비교 (UTC 경계 비교는 KST 00~09시 게시물이 경계에서 빠지거나 넘침)
+    if ((filters.uploadedFrom || filters.uploadedTo) && inf.post_uploaded_at) {
+      const kst = new Date(new Date(inf.post_uploaded_at).getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      if (filters.uploadedFrom && kst < filters.uploadedFrom) return false;
+      if (filters.uploadedTo && kst > filters.uploadedTo) return false;
     }
     return true;
   });

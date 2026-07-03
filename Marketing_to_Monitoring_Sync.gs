@@ -107,7 +107,8 @@ function readMarketingData() {
       }
 
       records.push({
-        posted_at: row[headers.uploadDate] ? new Date(row[headers.uploadDate]).toISOString().split('T')[0] : null,
+        // toISOString은 UTC라 KST 자정 셀이 '전날'로 밀림 → 시트 시간대 기준으로 포맷
+        posted_at: row[headers.uploadDate] ? Utilities.formatDate(new Date(row[headers.uploadDate]), Session.getScriptTimeZone(), "yyyy-MM-dd") : null,
         url: String(row[headers.url] || "").trim(),
         caption: String(row[headers.caption] || "").trim(),
         channel: String(row[headers.channel] || "").trim(),

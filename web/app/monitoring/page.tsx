@@ -130,11 +130,15 @@ export default function MonitoringPage() {
   };
 
   const chartData = useMemo(() => {
+    // 오늘(KST)은 수집 중·미완성 → 제외. playDeltaData·델타표와 동일 정책으로 맞춰
+    // 이 배열에서 파생되는 광고비/검색량 조회 범위·차트 축이 하루 어긋나지 않게 한다.
+    const todayKST = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const map = new Map<string, number>();
     for (const post of filteredPosts) {
       // ⚠️ 재발방지: getFilteredStats() 사용해서 날짜 범위 일관성 보장
       const filteredStats = getFilteredStats(post.all_stats ?? [], filters.dateFrom, filters.dateTo);
       for (const s of filteredStats) {
+        if (s.measured_at >= todayKST) continue;
         const v = pickMetric(s);
         if (v != null) map.set(s.measured_at, (map.get(s.measured_at) ?? 0) + v);
       }
@@ -814,9 +818,20 @@ export default function MonitoringPage() {
     setSortCol(col);
   }
 
-  const sortedPosts = useMemo(() => [...filteredPosts].sort((a, b) => {
+  const sortedPosts = useMemo(() => {
+    // 정렬 기준을 행이 '표시하는 값'과 일치시킴 — 날짜 필터 시 표는 범위 내 마지막/직전 값을 보여주는데,
+    // 정렬이 latest_stats(필터 무시 최신값)를 쓰면 "조회수 ▼" 순서가 표시값과 어긋난다.
+    const hasDate = !!(filters.dateFrom || filters.dateTo);
+    const disp = new Map<string, { s: Post["latest_stats"]; prev: Post["prev_stats"] }>();
+    for (const p of filteredPosts) {
+      const fs = hasDate ? getFilteredStats(p.all_stats ?? [], filters.dateFrom, filters.dateTo) : (p.all_stats ?? []);
+      const s = fs.length > 0 ? fs[fs.length - 1] : p.latest_stats;
+      const prev = hasDate ? (fs.length > 1 ? fs[fs.length - 2] : null) : p.prev_stats;
+      disp.set(p.id, { s: (s ?? null) as Post["latest_stats"], prev: (prev ?? null) as Post["prev_stats"] });
+    }
+    return [...filteredPosts].sort((a, b) => {
     if (!sortCol) return 0;
-    const sa = a.latest_stats, sb = b.latest_stats;
+    const sa = disp.get(a.id)?.s ?? null, sb = disp.get(b.id)?.s ?? null;
     let av: string | number = "", bv: string | number = "";
     switch (sortCol) {
       case "인플루언서": av = (a.account_name ?? a.influencers?.name ?? "").toLowerCase(); bv = (b.account_name ?? b.influencers?.name ?? "").toLowerCase(); break;
@@ -824,8 +839,8 @@ export default function MonitoringPage() {
       case "프로젝트명": av = (a.project_name ?? "").toLowerCase(); bv = (b.project_name ?? "").toLowerCase(); break;
       case "상품명": av = (a.product_name ?? "").toLowerCase(); bv = (b.product_name ?? "").toLowerCase(); break;
       case "증분량":
-        av = viewIncrement(a, a.latest_stats, a.prev_stats) ?? -Infinity;
-        bv = viewIncrement(b, b.latest_stats, b.prev_stats) ?? -Infinity;
+        av = viewIncrement(a, sa, disp.get(a.id)?.prev ?? null) ?? -Infinity;
+        bv = viewIncrement(b, sb, disp.get(b.id)?.prev ?? null) ?? -Infinity;
         break;
       case "채널분류": av = (a.channel_type ?? "").toLowerCase(); bv = (b.channel_type ?? "").toLowerCase(); break;
       case "카테고리": av = (a.influencers?.category ?? "").toLowerCase(); bv = (b.influencers?.category ?? "").toLowerCase(); break;
@@ -849,7 +864,8 @@ export default function MonitoringPage() {
     }
     const cmp = av < bv ? -1 : av > bv ? 1 : 0;
     return sortDir === "asc" ? cmp : -cmp;
-  }), [filteredPosts, sortCol, sortDir]);
+    });
+  }, [filteredPosts, sortCol, sortDir, filters.dateFrom, filters.dateTo]);
 
   const sp = (col: string) => ({
     onSort: () => handleSort(col),
@@ -1494,8 +1510,9 @@ export default function MonitoringPage() {
                     ]);
                     const DAY_KO = ['일','월','화','수','목','금','토'];
                     function dateColor(dateStr: string) {
+                      // date-only 문자열은 UTC 자정으로 파싱됨 → getUTCDay()가 클라이언트 시간대와 무관하게 해당 날짜의 요일
                       const d = new Date(dateStr);
-                      const dow = d.getDay();
+                      const dow = d.getUTCDay();
                       if (KR_HOLIDAYS.has(dateStr) || dow === 0) return 'text-[#8B1A2E]'; // 버건디
                       if (dow === 6) return 'text-[#1a3c82]'; // 남색
                       return 'text-a-ink';
@@ -1516,7 +1533,7 @@ export default function MonitoringPage() {
                           </thead>
                           <tbody>
                             {reversed.map((d, i) => {
-                              const dow = new Date(d.date).getDay();
+                              const dow = new Date(d.date).getUTCDay();
                               const dayLabel = DAY_KO[dow];
                               const cls = dateColor(d.date);
                               function deltaCell(v: number | null | undefined, accent = "text-red-500", negClass = "text-blue-600") {

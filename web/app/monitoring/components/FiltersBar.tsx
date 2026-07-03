@@ -238,13 +238,14 @@ export default function FiltersBar({ filters, setFilters, pdOptions, productOpti
           className={`filter-input ${filters.dateTo ? "border-a-blue" : ""}`} />
         {/* 빠른 선택 버튼 — 날짜 인풋 바로 우측 */}
         {(() => {
+          // KST 고정: toISOString은 UTC라 00~09시(KST)엔 날짜가 하루 밀림 → +9h 시프트 후 UTC 필드로만 계산.
           const fmt = (d: Date) => d.toISOString().slice(0, 10);
-          const today = new Date();
+          const today = new Date(Date.now() + 9 * 60 * 60 * 1000);
           const todayStr = fmt(today);
-          // 일요일(getDay=0)을 7로 처리해 월요일 시작 기준 올바르게 계산
-          const dayOfWeek = today.getDay() === 0 ? 7 : today.getDay();
+          // 일요일(getUTCDay=0)을 7로 처리해 월요일 시작 기준 올바르게 계산
+          const dayOfWeek = today.getUTCDay() === 0 ? 7 : today.getUTCDay();
           // 주말: 가장 최근 '완료된' 금~일 (월요일에 누르면 직전 금/토/일 3일). 일요일이면 지난주 주말.
-          const lastSun = new Date(today.getTime() - (today.getDay() === 0 ? 7 : today.getDay()) * 86400000);
+          const lastSun = new Date(today.getTime() - (today.getUTCDay() === 0 ? 7 : today.getUTCDay()) * 86400000);
           const lastFri = new Date(lastSun.getTime() - 2 * 86400000);
           const presets = [
             { label: "전체",   from: "",          to: "" },

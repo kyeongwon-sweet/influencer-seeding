@@ -54,7 +54,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "일자별 표 헤더('CVS 발주량'+'B2B 발주량')를 찾지 못했습니다." }, { status: 500 });
   }
 
-  const year = new Date().getFullYear();
+  // 시트 날짜는 M/D뿐이라 연도를 추정해야 함. 고정 '올해'는 연말·연초에 지난/다음 해 행이 잘못 매핑됨
+  // → 현재 월(KST)과 6개월 이상 차이나면 인접 연도로 보정.
+  const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const curYear = nowKST.getUTCFullYear(), curMonth = nowKST.getUTCMonth() + 1;
   const records: Record<string, unknown>[] = [];
   let started = false;
   for (let i = hdr + 1; i < rows.length; i++) {
@@ -63,6 +66,8 @@ export async function GET(req: NextRequest) {
     const m = typeof dateCell === "string" ? dateCell.match(/(\d{1,2})\/(\d{1,2})/) : null;
     if (!m) { if (started) break; else continue; }
     started = true;
+    const mo = Number(m[1]);
+    const year = mo - curMonth > 6 ? curYear - 1 : curMonth - mo > 6 ? curYear + 1 : curYear;
     const mm = String(m[1]).padStart(2, "0");
     const dd = String(m[2]).padStart(2, "0");
     const date = `${year}-${mm}-${dd}`;
