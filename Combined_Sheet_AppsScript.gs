@@ -80,6 +80,7 @@ function onOpen() {
     .addSeparator()
     .addItem("🔎 빈칸 검사 (A~H)", "checkBlanks")
     .addItem("🔁 중복 URL 검사", "checkDuplicates")
+    .addItem("🧹 중복 링크 정리 (하나만 남김)", "removeDuplicateLinks")
     .addItem("🔍 설정 확인", "checkSetup")
     .addSeparator()
     .addItem("⏰ 매일 9:30 자동 추가 켜기", "installDailyTrigger")
@@ -217,6 +218,60 @@ function collectRows_(onlyNew) {
 /** 중복 판정용 URL 키: 쿼리스트링·끝슬래시 제거 + 소문자 (서버 정규화와 동일 기준) */
 function urlKey_(u) {
   return String(u).split("?")[0].replace(/\/+$/, "").toLowerCase();
+}
+
+/** 링크 동일성 키 — 같은 게시물이면 경로가 달라도 같은 키.
+ *  IG는 shortcode(/p/·/reel/·/reels/·/tv/ 통일), 틱톡은 영상ID, 그 외는 urlKey_. (서버 정규화와 동일 기준) */
+function linkKey_(u) {
+  u = String(u || "").trim();
+  var ig = u.match(/instagram\.com\/(?:p|reels|reel|tv)\/([A-Za-z0-9_-]+)/i);
+  if (ig) return "ig:" + ig[1];
+  var tt = u.match(/tiktok\.com\/(?:.*\/)?video\/(\d+)/i) || u.match(/\/video\/(\d+)/);
+  if (tt) return "tt:" + tt[1];
+  return urlKey_(u);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 🧹 중복 링크 정리 — 겹치는 링크 행을 각 1개만 남기고 삭제
+// ═══════════════════════════════════════════════════════════════
+// 같은 게시물(IG shortcode·틱톡 영상ID·정규화 URL 동일)을 그룹으로 묶어, 그룹마다
+// '데이터가 가장 많이 채워진 행' 1개만 남기고 나머지 행을 삭제(데이터 손실 최소화).
+// 아래→위로 삭제해 행번호 밀림 방지. 조회수는 DB(post_daily_stats)에 있어 안전.
+function removeDuplicateLinks() {
+  try {
+    var sheet = getSheet_();
+    var fc = buildFieldCols_(sheet);
+    var urlCol = fc.url;
+    var lastRow = sheet.getLastRow();
+    if (lastRow < CONFIG.DATA_START_ROW) { safeAlert_("데이터가 없습니다."); return; }
+    var lastCol = sheet.getLastColumn();
+    var vals = sheet.getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, lastCol).getValues();
+
+    var groups = {};
+    vals.forEach(function (row, i) {
+      var u = String(row[urlCol - 1] || "").trim();
+      if (!u) return;
+      var k = linkKey_(u);
+      var filled = row.filter(function (c) { return String(c).trim() !== ""; }).length;
+      (groups[k] = groups[k] || []).push({ row: CONFIG.DATA_START_ROW + i, filled: filled });
+    });
+
+    var toDelete = [], dupGroups = 0;
+    Object.keys(groups).forEach(function (k) {
+      var rows = groups[k];
+      if (rows.length <= 1) return;
+      dupGroups++;
+      rows.sort(function (a, b) { return b.filled - a.filled || a.row - b.row; }); // 데이터 많은 것 우선, 동률이면 위쪽
+      rows.slice(1).forEach(function (r) { toDelete.push(r.row); });
+    });
+
+    if (!toDelete.length) { safeAlert_("✅ 겹치는 링크 없음 — 정리할 게 없습니다."); return; }
+    toDelete.sort(function (a, b) { return b - a; }).forEach(function (r) { sheet.deleteRow(r); }); // 아래→위
+    safeAlert_("🧹 중복 링크 정리 완료\n중복 그룹 " + dupGroups + "개 → " + toDelete.length + "행 삭제(각 그룹 1행만 남김).");
+  } catch (e) {
+    safeAlert_("❌ 오류\n" + e.message);
+    Logger.log(e.stack || e.message);
+  }
 }
 
 function noteExtra_(skipped, dupCount, future) {
