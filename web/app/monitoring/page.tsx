@@ -233,14 +233,31 @@ export default function MonitoringPage() {
     }));
   }, [chartData]);
 
+  // 신규 '백로그' 감지 — 오래된 게시물을 뒤늦게 등록해 첫 수집일에 기존 조회수가 통째로 유입된 건.
+  // 게시일(posted_at)이 첫 등장일보다 3일 넘게 이르면 백로그로 보고 그날 증분에서 제외 → '실제 하루 성장'만 카운트.
+  // 게시일이 최근인 신규 콘텐츠(첫날 조회수)는 실제 성장으로 인정(제외 안 함). posted_at 없으면 보수적으로 제외.
+  const backlogFirstByDate = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const post of filteredPosts) {
+      const gf = (post.all_stats ?? []).find(s => s.play_count != null); // 전역 최초 등장(첫 실측 조회수)
+      if (!gf) continue;
+      const fd = gf.measured_at;
+      if ((filters.dateFrom && fd < filters.dateFrom) || (filters.dateTo && fd > filters.dateTo)) continue;
+      const p = post.posted_at;
+      const late = !p || (new Date(fd).getTime() - new Date(p).getTime()) / 86400000 > 3;
+      if (late) m.set(fd, (m.get(fd) ?? 0) + (gf.play_count ?? 0));
+    }
+    return m;
+  }, [filteredPosts, filters.dateFrom, filters.dateTo]);
+
   // 메인 그래프 조회수 선 = 일별 증분(누적 아님). 광고비·검색량·B2B 와 같은 '하루치 흐름'으로 맞춰 상관관계가 보이게 함.
-  // dailyTotals(전일 forward-fill + 단조보정)에서 파생 → 일자별 증감 표의 '조회수' 값과 정확히 일치.
+  // dailyTotals(전일 forward-fill + 단조보정)에서 파생 → 일자별 증감 표의 '조회수' 값과 정확히 일치. 신규 백로그는 제외(실제 성장).
   const playDeltaData = useMemo(() => {
     const todayKST = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
     return dailyTotals.slice(1)
-      .map((d, i) => ({ date: d.date, value: d.play - dailyTotals[i].play }))
+      .map((d, i) => ({ date: d.date, value: d.play - dailyTotals[i].play - (backlogFirstByDate.get(d.date) ?? 0) }))
       .filter(d => d.date < todayKST); // 오늘(KST)은 수집 중·미완성이라 증분이 0/왜곡 → 제외(완료된 날만 표시)
-  }, [dailyTotals]);
+  }, [dailyTotals, backlogFirstByDate]);
 
   // 상관·시차 분석: 4개 일별 흐름(광고비·조회수증분·검색량·B2B)의 공통 날짜에서 피어슨 상관 + 최적 시차.
   const correlations = useMemo(() => {
@@ -306,11 +323,11 @@ export default function MonitoringPage() {
     const todayKST = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
     return dailyTotals.slice(1).map((d, i) => ({
       date:     d.date,
-      play:     d.play     - dailyTotals[i].play,
+      play:     d.play     - dailyTotals[i].play - (backlogFirstByDate.get(d.date) ?? 0), // 신규 백로그 제외 = 실제 하루 성장
       search:   lsSearchDelta(d.date),
       comments: d.comments - dailyTotals[i].comments,
     })).filter(d => d.date < todayKST); // 오늘(KST)은 수집 중·미완성이라 증분이 0/왜곡 → 제외(완료된 날만 표시)
-  }, [dailyTotals, lsSearchData]);
+  }, [dailyTotals, lsSearchData, backlogFirstByDate]);
 
   // 날짜별 채널타입(바이럴/협찬) 조회수 증분 — forward-fill 적용
   const typeBreakdownByDate = useMemo(() => {
