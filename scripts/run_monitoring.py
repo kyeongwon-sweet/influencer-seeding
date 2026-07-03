@@ -175,6 +175,8 @@ def _fetch_tiktok(urls: list) -> dict:
                 "views": it.get("playCount"),
                 "likes": it.get("diggCount"),
                 "comments": it.get("commentCount"),
+                # 틱톡 영상 설명 → 캡션(content_summary). 액터가 text로 반환(실측 확인). 300자 제한.
+                "content_summary": (it.get("text") or "")[:300] or None,
             }
     return out
 
@@ -489,6 +491,9 @@ def run():
                 last_stat = _prev_stats(db, [p["id"] for p in tt_posts])
                 for post in tt_posts:
                     s = tt_stats.get(_tt_id(tt_canon[post["url"]]))
+                    # 캡션 자동채움 — 틱톡 설명을 content_summary가 비어있을 때만(시트/수동 보존). 조회수 유무와 무관.
+                    if s and not post.get("content_summary") and s.get("content_summary"):
+                        db.table("sponsored_posts").update({"content_summary": s["content_summary"]}).eq("id", post["id"]).execute()
                     play = s.get("views") if s else None
                     # 🛡️ 0/미반환은 접근불가 → 저장 안 함(0으로 덮어쓰면 누적 붕괴, 직전 값 유지)
                     if not play or play <= 0:
