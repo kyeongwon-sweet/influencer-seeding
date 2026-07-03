@@ -21,6 +21,7 @@
 4. **pre-push 훅이 푸시 전 `tsc --noEmit`을 자동 실행**(`.githooks/pre-push`, `core.hooksPath=.githooks`). 비상 우회 `git push --no-verify`.
 5. **"고쳤다" 전에 실제로 확인.** 특히 자동화/엔드포인트: **그 자동화가 하는 정확한 호출(메서드+경로+인증)을 그대로 찍어 200을 본 뒤에만** 바꾼다. 옆 URL의 상태코드/302로 추론해 행동 금지(302=리다이렉트=차단일 수 있음). 되는 걸 "안 된다" 단정 말고 직접 호출해 검증.
 6. 커밋 메시지: `feat|fix|refactor|style|chore:` + 푸터 `Co-Authored-By: Claude <noreply@anthropic.com>`.
+7. **프로덕션 데이터(특히 `post_daily_stats`) 수정 전 3단계.** ① 값이 이상해 보이면 DB가 아니라 **그 값을 계산·렌더하는 코드부터 읽어 표시값을 재현**한다 — 화면이 이미 보정하는 경우가 많다(§6 클라이언트 단조보정). ② 꼭 써야 하면 **원본을 파일로 백업**(post_id+옛값) 후 쓴다. ③ **대량·비가역 변경은 실행 전 사용자에게 제안·확인.** (2026-07-03: 미검증 가설로 215행을 덮어써 오히려 데이터를 오염시킨 사고 — 자세한 절차는 `AI_SKILLS.md` Skill 1·2)
 
 ---
 
@@ -74,6 +75,8 @@
 
 ## 6. 알려진 함정 / 규칙 (재발방지)
 
+- **조회수 단조보정은 '화면(클라이언트)'에서도 한다 ⭐**: `monitoring/page.tsx`의 `dailyTotals`가 **게시물별 러닝맥스(`Math.max`)+forward-fill**로 계산(`lastPlay = Math.max(lastPlay ?? v, v)`, 202~203줄) → DB에 수집오류로 0/감소값이 있어도 "일자별 증감"은 직전값을 유지해 **정상 표시**된다. 따라서 **DB의 낮은 값을 직접 clamp하지 말 것**(불필요하고, 잘못 올리면 러닝맥스가 뒷날짜로 전파돼 영구 과대계상됨). 실제 수집 가드는 적재 시점의 `run_monitoring.py`/`lib/stats-guard.ts`가 담당.
+- **일자별 증분의 변동성**: 증분(누적 diff)은 **집계 대상 게시물 수가 매일 늘어나면**(늦게 추가된 게시물이 과거 이력을 달고 들어옴) 최근 날짜가 부풀려진다 — 알려진 "증분 귀속" 특성이지 손상이 아님. 오늘(KST)은 수집중이라 표/그래프에서 제외됨.
 - **채널분류 표기 표준**: 괄호 앞 공백("바이럴 (영상)"). CHANNEL_TYPES 상수는 공백없음이라, 저장 시 모든 쓰기경로(POST/PATCH/bulk/sync/stats-import/marketing)에서 `normalizeChannelType`로 표준화(623cfab). "온드미디어"도 채널분류(2bfe7dd).
 - **조회수=비용 오염 가드**: cost가 play_count로 적재되던 버그 → stats-import에 `play_count==cost` 차단(65e54d9). play_count 유입경로: 스크랩·시트 importStats만(자동 sync는 메타만).
 - **수동 수정 보존(manual_fields)**: 시트 동기화가 대시보드 수동수정을 안 덮게. 단 캡션(content_summary)은 시트값 우선 정책.
