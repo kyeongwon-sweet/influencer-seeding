@@ -22,6 +22,12 @@ export function normalizeUrl(url: string): string | null {
   if (!url) return null;
   try {
     const u = new URL(url.startsWith("http") ? url : "https://" + url);
+    // 인스타 게시물은 /p/·/reel/·/reels/·/tv/ 가 모두 같은 글 → shortcode로 표준형(/p/<code>/) 통일.
+    // (경로만 다른 중복 행 방지 — onConflict:url 이 자동 dedup 하도록. 예: /p/ABC/ 와 /reel/ABC/ 는 동일)
+    if (u.hostname.includes("instagram.com")) {
+      const m = u.pathname.match(/\/(?:p|reels|reel|tv)\/([A-Za-z0-9_-]+)/);
+      if (m) return `https://www.instagram.com/p/${m[1]}/`;
+    }
     // 프로토콜을 https로 강제
     const origin = `https://${u.hostname}`;
     // trailing slash 포함한 경로
