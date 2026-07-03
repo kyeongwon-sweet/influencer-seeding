@@ -3,6 +3,7 @@ import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl, ALLOWED_POST_URL_RE } from "@/lib/url-utils";
 import { normalizeChannelType } from "@/app/monitoring/lib";
+import { triggerCaptionBackfill, needsCaption } from "@/lib/github-dispatch";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -132,6 +133,9 @@ export async function POST(req: NextRequest) {
       .select("id");
     endedMarked = (upd ?? []).length;
   }
+
+  // 캡션 빈 IG 글이 이번 배치에 있으면 캡션 보강 즉시 트리거(이벤트 기반)
+  if (rows.some(r => needsCaption(r.url, r.content_summary))) await triggerCaptionBackfill("sheet-bulk");
 
   return NextResponse.json({ ok: true, upserted: rows.length, created, meta_filled: metaFilled, ended_marked: endedMarked }, { status: 200 });
 }

@@ -4,6 +4,7 @@ import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl } from "@/lib/url-utils";
 import { logger } from "@/lib/logger";
 import { normalizeChannelType } from "@/app/monitoring/lib";
+import { triggerCaptionBackfill, needsCaption } from "@/lib/github-dispatch";
 
 export async function GET(req: NextRequest) {
   // URL 정규화 마이그레이션 엔드포인트
@@ -196,6 +197,9 @@ export async function POST(req: NextRequest) {
       insertedCount: data.length,
     });
 
+    // 캡션 빈 IG 글이 있으면 캡션 보강 즉시 트리거(이벤트 기반)
+    if (rows.some(r => needsCaption(r.url, r.content_summary))) await triggerCaptionBackfill("bulk-array");
+
     return NextResponse.json(data, { status: 201 });
   }
 
@@ -239,6 +243,9 @@ export async function POST(req: NextRequest) {
   if (addedBy && data?.id) {
     await supabase.from("sponsored_posts").update({ created_by: addedBy }).eq("id", data.id);
   }
+
+  // 캡션 없이 추가된 IG 글이면 캡션 보강 즉시 트리거(이벤트 기반 → ~1분 내 채움)
+  if (needsCaption(cleaned.url, cleaned.content_summary)) await triggerCaptionBackfill("single-add");
 
   return NextResponse.json(data, { status: 201 });
 }
