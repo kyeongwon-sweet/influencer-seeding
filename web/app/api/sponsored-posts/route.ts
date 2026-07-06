@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
   //    PostgREST가 0행을 반환(2026-07-01 확인). ids=전체 게시물이라 필터 불필요 → 전량 조회 후 post_id로 그룹핑.
   // 성능: select("*") 대신 필요한 컬럼만 + 순차 페이지네이션(왕복 N회) 대신 count 기반 병렬 조회로 로딩 단축.
   const PAGE = 1000;
-  const STAT_COLS = "post_id, measured_at, play_count, likes_count, comments_count, created_at";
+  const STAT_COLS = "post_id, measured_at, play_count, likes_count, comments_count, created_at, reach_count";
   const collect = (page: any[] | null | undefined) => {
     for (const s of page ?? []) {
       const arr = statsByPost.get(s.post_id) ?? [];
@@ -144,6 +144,7 @@ export async function GET(req: NextRequest) {
       play_count: s.play_count,
       likes_count: s.likes_count,
       comments_count: s.comments_count,
+      reach_count: s.reach_count ?? null,   // 배너 도달수 일별 이력(증분 계산용)
       play_collected: s.play_collected,
     }));
     return {

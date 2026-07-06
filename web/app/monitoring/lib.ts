@@ -7,6 +7,7 @@ export type DailyStats = {
   play_count: number | null;
   likes_count: number | null;
   comments_count: number | null;
+  reach_count?: number | null; // 배너 도달수 일별 이력 — 배너 증분 계산용(조회수 대체)
   created_at?: string | null; // 적재(수집) 시각 — 마지막 업데이트 표시용
   play_collected?: boolean;   // 원본 조회수가 실제 수집됐는지 (mono 보정 전) — 당일 반영 판정용
 };
@@ -159,13 +160,18 @@ export function getCategoryLabel(val: string | null | undefined): string {
   return cat ? cat.desc : val;
 }
 
-// 증분량(조회수): 직전 측정이 있으면 차이, 없고 '업로드 첫 측정'(그 이전 측정 자체가 없음)이면 0에서 시작 → 그날 전체.
+// 증분량: 직전 측정이 있으면 차이, 없고 '첫 측정'(그 이전 측정 자체가 없음)이면 그날 전체.
 // 필터로 직전만 잘렸고 이전 측정이 존재하면 계산 불가(null → '-').
+// 배너(바이럴(배너))는 조회수(play_count)가 없어 도달수(reach_count)를 조회수처럼 취급 → 동일 로직으로 전일 대비 증분.
 export function viewIncrement(post: Post, s: DailyStats | null | undefined, prev: DailyStats | null | undefined): number | null {
-  if (!s || s.play_count == null) return null;
-  if (prev?.play_count != null) return s.play_count - prev.play_count;
-  const hasEarlier = (post.all_stats ?? []).some(x => x.measured_at < s.measured_at && x.play_count != null);
-  return hasEarlier ? null : s.play_count;
+  const isBanner = (post.channel_type ?? "").includes("배너");
+  const val = (st: DailyStats | null | undefined) => (isBanner ? st?.reach_count : st?.play_count);
+  const sv = val(s);
+  if (!s || sv == null) return null;
+  const pv = val(prev);
+  if (pv != null) return sv - pv;
+  const hasEarlier = (post.all_stats ?? []).some(x => x.measured_at < s.measured_at && val(x) != null);
+  return hasEarlier ? null : sv;
 }
 
 export function pickMetric(s: DailyStats): number | null {
