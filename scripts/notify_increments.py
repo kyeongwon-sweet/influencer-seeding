@@ -184,6 +184,8 @@ def main():
         if inc <= 0:
             continue
         m = meta.get(pid, {})
+        if "배너" in (m.get("channel_type") or ""):
+            continue  # 배너 조회수(play_count)는 증분에서 제외 — 배너는 도달수(reach_count)로만 집계(사용자 지시)
         url = (m.get("url") or "").strip()
         items.append({
             "inc": inc,
