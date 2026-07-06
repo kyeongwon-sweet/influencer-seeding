@@ -49,6 +49,10 @@ export async function POST(req: NextRequest) {
     if (r.play_count === null || r.play_count === undefined || r.play_count === "") continue;
     const play_count = Number(r.play_count);
     if (!Number.isFinite(play_count)) continue;
+    // 시트 셀 0 = 대개 '아직 데이터 없음(미입력 placeholder)'이지 '조회수 0회'가 아님.
+    // 0을 적재하면 0-오염 → 리포트 뻥튀기·정리 시 행없음 공백 유발(2026-07-03/04 233건 사고).
+    // 수집기(틱톡 clamp·IG NULL)와 동일하게 '수집 실패 ≠ 0' 원칙으로 0은 미적재.
+    if (play_count === 0) continue;
     byKey.set(`${url}|${String(r.measured_at)}`, { url, measured_at: String(r.measured_at), play_count });
   }
   const items = [...byKey.values()];
