@@ -54,8 +54,19 @@ def main():
     print(f"총 증분(리포트방식): +{total:,}")
     print(f"신규취급(직전>0 없음) 게시물 수: {new_cnt}  / 그 합(전체누적): +{new_full:,}  ({new_full*100//max(total,1)}% of 총)")
     print(f"신규취급인데 과거 측정이력 있던(전부 0) 케이스: {len(new_but_hasearlier)}")
-    for tv, pid, ld, lv in sorted(new_but_hasearlier, reverse=True)[:20]:
-        print(f"    tv={tv:,}  마지막이전측정 {ld}={lv}  {pid}")
+    top = sorted(new_but_hasearlier, reverse=True)[:8]
+    ids = [pid for _, pid, _, _ in top]
+    m = {}
+    if ids:
+        res = db.table("sponsored_posts").select("id, account_name, url, posted_at, created_at, ended_at").in_("id", ids).execute()
+        for r in (res.data or []):
+            m[r["id"]] = r
+    for tv, pid, ld, lv in top:
+        mm = m.get(pid, {})
+        hist = ", ".join(f"{d}={st[pid][d]}" for d in sorted(st[pid]))
+        print(f"\n  ★ {mm.get('account_name')}  tv={tv:,}  posted={str(mm.get('posted_at'))[:10]} created={str(mm.get('created_at'))[:10]}")
+        print(f"    url={mm.get('url')}")
+        print(f"    전체이력: {hist}")
 
 
 if __name__ == "__main__":
