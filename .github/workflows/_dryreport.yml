@@ -27,3 +27,10 @@ jobs:
           DRY_RUN: "1"
           PYTHONUNBUFFERED: "1"
         run: cd scripts && python notify_increments.py
+      - name: prev 로직 점검
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          MONITORING_DATE: ${{ github.event.inputs.date }}
+          PYTHONUNBUFFERED: "1"
+        run: cd scripts && python _diag_prev.py
