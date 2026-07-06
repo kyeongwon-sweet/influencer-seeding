@@ -44,6 +44,39 @@ def _urlkey(u: str) -> str:
     return (host.lower() + "/" + path) if path else host.lower()
 
 
+def _canon_url(u: str) -> str:
+    """web/lib/url-utils.ts normalizeUrl의 파이썬 이식 — DB URL이 이 표준형과 다르면
+    다음 시트 동기화 때 onConflict 미스매치로 중복 삽입될 잠복 위험(2026-07-06 YT www 17건 재발 사례).
+    로직 변경 시 반드시 TS 쪽과 함께 바꿀 것."""
+    u = (u or "").strip()
+    m = re.search(r"(?:instagram\.com|instagr\.am)/(?:[^/]+/)?(?:p|reels|reel|tv)/([A-Za-z0-9_-]+)", u, re.I)
+    if m:
+        return f"https://www.instagram.com/p/{m.group(1)}/"
+    hm = re.match(r"https?://([^/]+)(/[^?#]*)?(\?[^#]*)?", u, re.I)
+    if not hm:
+        return u
+    host = hm.group(1).lower()
+    path = hm.group(2) or "/"
+    if host == "youtu.be" or host.endswith("youtube.com"):
+        ms = re.search(r"/shorts/([A-Za-z0-9_-]{6,})", path)
+        if ms:
+            return f"https://www.youtube.com/shorts/{ms.group(1)}/"
+        vid = None
+        if host == "youtu.be":
+            seg = [s for s in path.split("/") if s]
+            vid = seg[0] if seg else None
+        else:
+            mp = re.search(r"/(?:embed|live|v)/([A-Za-z0-9_-]{6,})", path)
+            if mp:
+                vid = mp.group(1)
+            elif path.rstrip("/") == "/watch":
+                mv = re.search(r"[?&]v=([A-Za-z0-9_-]{6,})", hm.group(3) or "")
+                vid = mv.group(1) if mv else None
+        if vid:
+            return f"https://www.youtube.com/watch?v={vid}"
+    return f"https://{host}{path if path.endswith('/') else path + '/'}"
+
+
 def _integrity_lines(db, posts):
     # 데이터 정합성 특이 감시 — 증분 리포트를 왜곡하는 조용한 오염을 상태 댓글에서 바로 드러낸다.
     lines = []
@@ -85,6 +118,16 @@ def _integrity_lines(db, posts):
         line = f"게시일 이전 조회수 이력 {len(early)}건 — 게시일 오기/백필 어긋남 의심: {ex}"
         if len(early) > 4:
             line += f" … 외 {len(early) - 4}건"
+        lines.append(line)
+
+    # 3) URL 표준형 불일치 — 중복이 '생기기 전' 사전 감지(중복 감시 1)은 생긴 후에야 잡음).
+    #    DB URL이 normalizeUrl 표준형과 다르면 다음 동기화 때 같은 게시물이 새 행으로 삽입된다.
+    mism = [p for p in posts if (p.get("url") or "").strip() and _canon_url(p["url"]) != (p.get("url") or "").strip()]
+    if mism:
+        ex = ", ".join(f"{(p.get('account_name') or '?')}({(p.get('url') or '')[-24:]})" for p in mism[:4])
+        line = f"URL 표준형 불일치 {len(mism)}건 — 다음 동기화 때 중복 삽입 위험(소급 정규화 필요): {ex}"
+        if len(mism) > 4:
+            line += f" … 외 {len(mism) - 4}건"
         lines.append(line)
     return lines
 
