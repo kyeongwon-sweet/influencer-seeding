@@ -9,6 +9,7 @@ import { companyForAccount } from "@/lib/companyMap";
 import { batchFetch } from "@/lib/batchFetch";
 import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, INIT_FILTERS, CHANNEL_TYPES, CATEGORIES, STICKY_COL_ORDER, PROJECT_PARSE_COLS, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, isStatInDateRange, getFilteredStats, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, getPostType, viewIncrement, pickMetric, pdOf, productLabel, effectiveReach, weekKeyOf, pearson, alignedPairs, bestLag, solveLinear, alignMulti, multipleR2, parseCsvLine } from "./lib";
 import CorrelationPanel from "./components/CorrelationPanel";
+import DayOfWeekPanel, { type DowData } from "./components/DayOfWeekPanel";
 import FiltersBar from "./components/FiltersBar";
 import LineChart from "./components/LineChart";
 import PostsTable from "./components/PostsTable";
@@ -32,6 +33,7 @@ export default function MonitoringPage() {
   const [showOtherSeries, setShowOtherSeries] = useState(false); // 범례 '그외' 드롭다운(인스타·유튜브)
   const [smooth, setSmooth] = useState(false); // 주별 합계 보기(주차 버킷, N월 N주차)
   const [showCorr, setShowCorr] = useState(false); // 상관·시차 분석 패널
+  const [showDow, setShowDow] = useState(false); // 요일별 성과 패널
   const [chartCollapsed, setChartCollapsed] = useState(false); // 메인 그래프(차트+증감표) 접기 — 기본 펼침
   const [lsSearchData, setLsSearchData] = useState<{ date: string; ratio: number; value: number | null }[]>([]);
   const [brandMetrics, setBrandMetrics] = useState<{ measured_at: string; yt_views: number | null; yt_unique_viewers: number | null; yt_search_views: number | null; ig_profile_views: number | null }[]>([]);
@@ -230,6 +232,36 @@ export default function MonitoringPage() {
     // filteredPosts는 날짜필터를 제외하므로(위 getFilteredStats가 dateFrom/dateTo를 직접 참조),
     // 날짜 범위만 바꿔도 재계산되도록 deps에 명시. (누락 시 델타 표가 그래프와 어긋남)
   }, [filteredPosts, filters.dateFrom, filters.dateTo]);
+
+  // 요일별 성과: 게시 요일(posted_at)별 '게시 후 7일 시점' 조회수 median. (영상)만·배너 제외.
+  //   일별 증분과 달리 각 게시물의 절대 성과를 연령보정(7일)해 비교 → 수집 누락·백로그에 안 흔들림.
+  const dowAnalysis = useMemo<DowData>(() => {
+    const WD = ["월", "화", "수", "목", "금", "토", "일"];
+    const buckets: number[][] = [[], [], [], [], [], [], []];
+    for (const post of filteredPosts) {
+      if (!(post.channel_type ?? "").includes("(영상)")) continue; // 배너 등 제외, 영상만
+      const pa = post.posted_at;
+      if (!pa) continue;
+      const target = new Date(pa).getTime() + 7 * 86400000; // 게시 후 7일
+      let best: { diff: number; v: number } | null = null;
+      for (const s of post.all_stats ?? []) {
+        if (s.play_count == null) continue;
+        const diff = Math.abs(new Date(s.measured_at).getTime() - target) / 86400000;
+        if (diff <= 2 && (!best || diff < best.diff)) best = { diff, v: s.play_count }; // 7일±2 최근접
+      }
+      if (best) {
+        const dow = (new Date(pa).getUTCDay() + 6) % 7; // date-only → 월=0…일=6
+        buckets[dow].push(best.v);
+      }
+    }
+    const median = (arr: number[]) => {
+      if (!arr.length) return 0;
+      const s = [...arr].sort((a, b) => a - b);
+      const m = Math.floor(s.length / 2);
+      return s.length % 2 ? s[m] : Math.round((s[m - 1] + s[m]) / 2);
+    };
+    return WD.map((label, i) => ({ label, count: buckets[i].length, median: median(buckets[i]) }));
+  }, [filteredPosts]);
 
   // 메인 그래프 조회수 선 = 일별 증분(누적 아님). 광고비·검색량·B2B 와 같은 '하루치 흐름'으로 맞춰 상관관계가 보이게 함.
   // dailyTotals(전일 forward-fill + 단조보정)에서 파생 → 일자별 증감 표의 '조회수' 값과 정확히 일치.
@@ -1398,6 +1430,9 @@ export default function MonitoringPage() {
                     <button type="button" onClick={() => setShowCorr(v => !v)}
                       className={`text-[11px] px-1.5 py-0.5 rounded border transition-colors ${showCorr ? "bg-a-blue/10 border-a-blue/40 text-a-blue" : "border-a-hairline text-a-ink-muted hover:text-a-ink"}`}
                       title="4개 지표의 상관계수와 광고비 선행효과(시차) 분석">상관분석</button>
+                    <button type="button" onClick={() => setShowDow(v => !v)}
+                      className={`text-[11px] px-1.5 py-0.5 rounded border transition-colors ${showDow ? "bg-a-blue/10 border-a-blue/40 text-a-blue" : "border-a-hairline text-a-ink-muted hover:text-a-ink"}`}
+                      title="게시 요일별 성과(게시 후 7일 조회수 중앙값) — 영상만, 배너 제외">요일별</button>
                   </div>
                   <div className="flex items-center gap-x-4 gap-y-1.5 flex-wrap justify-end">
                     {/* 1. 조회수 */}
@@ -1602,6 +1637,7 @@ export default function MonitoringPage() {
               </div>
             </div>
             {showCorr && <CorrelationPanel data={correlations} />}
+            {showDow && <DayOfWeekPanel data={dowAnalysis} />}
             {/* 그래프 접기/펼치기 — 카드 하단 (접혀도 펼쳐도 항상 하단에 노출) */}
             <button type="button" onClick={() => setChartCollapsed(v => !v)}
               className="w-full flex items-center justify-end gap-1 border-t border-a-hairline py-2 pr-6 text-xs text-a-ink-muted hover:text-a-ink hover:bg-a-parchment/40 transition-colors">
