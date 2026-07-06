@@ -47,13 +47,14 @@ export function normalizeUrl(url: string): string | null {
         // ID가 없으면(채널/재생목록 등) 일반 규칙으로 진행
       }
     }
-    // 프로토콜을 https로 강제
-    const origin = `https://${u.hostname}`;
-    // trailing slash 포함한 경로
-    let path = u.pathname.endsWith("/") ? u.pathname : u.pathname + "/";
-    // 경로가 비어있으면 /로
-    if (!path || path === "") path = "/";
-    return `${origin}${path}`;
+    // 일반(비 IG/YouTube): host 표준화로 www/스킴/이중슬래시 변형 중복을 한 곳에서 차단(틱톡·X·페북·스레드 등).
+    //   - 선행 www. 만 제거(m.blog.naver.com 같은 유의미 서브도메인은 보존) + host 소문자
+    //   - 경로 // 이중슬래시 축약 + trailing slash 강제
+    //   ⚠️ scripts/notify_status.py 의 _canon_url(파이썬 이식)과 반드시 동기화할 것.
+    const host = u.hostname.toLowerCase().replace(/^www\./, "");
+    let path = u.pathname.replace(/\/{2,}/g, "/");
+    path = path.endsWith("/") ? path : path + "/";
+    return `https://${host}${path}`;
   } catch {
     return null;
   }

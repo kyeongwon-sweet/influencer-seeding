@@ -74,7 +74,12 @@ def _canon_url(u: str) -> str:
                 vid = mv.group(1) if mv else None
         if vid:
             return f"https://www.youtube.com/watch?v={vid}"
-    return f"https://{host}{path if path.endswith('/') else path + '/'}"
+    # 일반: 선행 www. 제거(m.blog.naver.com 등 유의미 서브도메인 보존) + // 축약 + trailing slash
+    host = re.sub(r"^www\.", "", host)
+    path = re.sub(r"/{2,}", "/", path)
+    if not path.endswith("/"):
+        path += "/"
+    return f"https://{host}{path}"
 
 
 def _integrity_lines(db, posts):
