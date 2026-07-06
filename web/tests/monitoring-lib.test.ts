@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   pearson, solveLinear, multipleR2, movingAvg, weekKeyOf, weekLabelOf,
-  padDomain, effectiveReach, alignedPairs, bestLag, getPostType, parseCsvLine,
+  padDomain, effectiveReach, alignedPairs, bestLag, getPostType, parseCsvLine, pickRangeStats, viewIncrement,
 } from "../app/monitoring/lib.ts";
 
 const close = (a: number, b: number, eps = 1e-9) => Math.abs(a - b) < eps;
@@ -80,4 +80,45 @@ test("getPostType: 플랫폼/형식 판별", () => {
   assert.equal(getPostType("https://youtube.com/shorts/X"), "숏폼");
   assert.equal(getPostType("https://youtube.com/watch?v=X"), "롱폼");
   assert.equal(getPostType("https://example.com/x"), "-");
+});
+
+// 🔒 필터 불변식 회귀 테스트 (2026-07-06 버그: 7/1~7/2 필터에 7/5 게시물이 +75,000 표시)
+// pickRangeStats: 날짜 필터 중엔 범위 밖(latest_stats) 폴백 금지 — 모든 값 표면(행·합계·정렬·복사·CSV·카드)의 단일 규칙.
+test("pickRangeStats+viewIncrement: 범위 밖 게시물은 값·증분 없음('-')", () => {
+  const stat = (d: string, play: number | null) => ({ measured_at: d, play_count: play, likes_count: null, comments_count: null });
+  const mkPost = (stats: ReturnType<typeof stat>[]) => ({
+    id: "t", url: "https://www.instagram.com/p/X/", posted_at: "2026-07-05",
+    product_name: null, project_name: null, account_name: null, company_name: null,
+    channel_type: null, cost: null, reach_count: null, notes: null, content_summary: null,
+    created_at: "2026-07-05", ended_at: null, influencers: null,
+    latest_stats: stats[stats.length - 1] ?? null,
+    prev_stats: stats.length > 1 ? stats[stats.length - 2] : null,
+    all_stats: stats,
+  });
+
+  // ① 범위(7/1~7/2) 이후 업로드·측정된 게시물 → s/prev 모두 null, 증분 '-'(null). latest로 새면 안 됨.
+  const late = mkPost([stat("2026-07-05", null), stat("2026-07-06", 75000)]);
+  const r1 = pickRangeStats(late, "2026-07-01", "2026-07-02");
+  assert.equal(r1.s, null);
+  assert.equal(r1.prev, null);
+  assert.equal(viewIncrement(late, r1.s, r1.prev), null);
+
+  // ② 범위 내 2개 측정 → 정확한 전일대비 차이
+  const both = mkPost([stat("2026-07-01", 100), stat("2026-07-02", 130), stat("2026-07-06", 999)]);
+  const r2 = pickRangeStats(both, "2026-07-01", "2026-07-02");
+  assert.equal(viewIncrement(both, r2.s, r2.prev), 30);
+
+  // ③ 범위 내 1개 + 범위 밖 이전 이력 존재 → 계산 불가(null), 전체값으로 부풀리면 안 됨
+  const cut = mkPost([stat("2026-06-30", 90), stat("2026-07-02", 130)]);
+  const r3 = pickRangeStats(cut, "2026-07-01", "2026-07-02");
+  assert.equal(viewIncrement(cut, r3.s, r3.prev), null);
+
+  // ④ 진짜 신규(이전 이력 전무, 범위 내 첫 측정) → 첫값 전체가 증분(포함 정책)
+  const fresh = mkPost([stat("2026-07-02", 500)]);
+  const r4 = pickRangeStats(fresh, "2026-07-01", "2026-07-02");
+  assert.equal(viewIncrement(fresh, r4.s, r4.prev), 500);
+
+  // ⑤ 필터 없음 → 기존 동작(latest/prev) 그대로
+  const r5 = pickRangeStats(both, "", "");
+  assert.equal(r5.s?.play_count, 999);
 });

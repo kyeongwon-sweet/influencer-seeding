@@ -8,11 +8,12 @@ import {
 } from "../lib/url-utils.ts";
 
 test("normalizeUrl: 프로토콜·trailing slash 통일 + 쿼리 제거", () => {
+  // IG 게시물 표준형은 shortcode 기준 www.instagram.com/p/<code>/ (64234f3 정준화 — DB 저장형과 동일)
   assert.equal(
     normalizeUrl("http://instagram.com/p/ABC?utm_source=x"),
-    "https://instagram.com/p/ABC/"
+    "https://www.instagram.com/p/ABC/"
   );
-  assert.equal(normalizeUrl("instagram.com/p/ABC/"), "https://instagram.com/p/ABC/");
+  assert.equal(normalizeUrl("instagram.com/p/ABC/"), "https://www.instagram.com/p/ABC/");
   assert.equal(normalizeUrl(""), null);
   assert.equal(normalizeUrl("not a url"), null);
 });

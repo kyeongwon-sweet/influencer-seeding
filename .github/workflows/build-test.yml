@@ -23,6 +23,11 @@ jobs:
       - name: Install dependencies
         run: cd web && npm ci
 
+      # 단위 테스트 — 필터 불변식(pickRangeStats)·정규화·가드 회귀 방지.
+      # (이전엔 CI가 테스트를 안 돌려서 url-utils 테스트가 64234f3 이후 조용히 깨진 채 방치됐음)
+      - name: Run unit tests
+        run: cd web && npm test
+
       - name: Run build
         run: cd web && npm run build
 
