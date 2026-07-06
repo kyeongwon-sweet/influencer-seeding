@@ -93,6 +93,12 @@ export async function POST(req: NextRequest) {
   for (const [u, ex] of existingByUrl) { const c = Number(ex.cost); if (Number.isFinite(c) && c > 0) costByUrl.set(u, c); }
   for (const [u, m] of postByUrl) { const c = Number(m.cost); if (Number.isFinite(c) && c > 0 && !costByUrl.has(u)) costByUrl.set(u, c); }
 
+  // 🛡️ 게시일(posted_at)보다 이른 날짜의 조회수는 저장하지 않는다(업로드 전 조회수 = 불가능 = 시트 날짜칸 백필 오류).
+  //    url → posted_at(YYYY-MM-DD). 기존 메타 우선, 없으면 시트 메타. (2026-07 게시일-이전 이력 재발 방지)
+  const postedByUrl = new Map<string, string>();
+  for (const [u, ex] of existingByUrl) { const pa = ex.posted_at ? String(ex.posted_at).slice(0, 10) : ""; if (pa) postedByUrl.set(u, pa); }
+  for (const [u, m] of postByUrl) { const pa = m.posted_at ? String(m.posted_at).slice(0, 10) : ""; if (pa && !postedByUrl.has(u)) postedByUrl.set(u, pa); }
+
   // 2) 없는 광고만 신규 생성 (기존은 절대 건드리지 않음). 새로 만든 id를 매핑에 합침 → 재조회 불필요.
   let created = 0;
   const toCreate = [...postByUrl.values()].filter(p => !idByUrl.has(String(p.url)));
@@ -153,6 +159,7 @@ export async function POST(req: NextRequest) {
   // 3) 게시물 매칭 (미등록 URL은 건너뜀)
   const missing = new Set<string>();
   const costAsViews: Array<{ url: string; date: string; value: number }> = [];
+  const prePosted: Array<{ url: string; date: string }> = [];
   const incoming: GuardInput[] = [];
   const postIdSet = new Set<string>();
   for (const it of items) {
@@ -160,6 +167,9 @@ export async function POST(req: NextRequest) {
     if (!pid) { missing.add(it.url); continue; }
     // 🛡️ 조회수 == 그 게시물의 비용 → 비용이 조회수 칸에 잘못 들어온 오염으로 보고 제외
     if (costByUrl.get(it.url) === it.play_count) { costAsViews.push({ url: it.url, date: it.measured_at, value: it.play_count }); continue; }
+    // 🛡️ 게시일 이전 날짜 = 업로드 전 조회수(불가능) → 시트 날짜칸 백필 오류로 보고 저장 안 함
+    const pa = postedByUrl.get(it.url);
+    if (pa && String(it.measured_at).slice(0, 10) < pa) { prePosted.push({ url: it.url, date: it.measured_at }); continue; }
     incoming.push({ post_id: pid, measured_at: it.measured_at, play_count: it.play_count });
     postIdSet.add(pid);
   }
@@ -233,6 +243,8 @@ export async function POST(req: NextRequest) {
     dropped_sample: droppedSample,
     cost_as_views: costAsViews.length,
     cost_as_views_sample: costAsViews.slice(0, 10),
+    pre_posted_skipped: prePosted.length,
+    pre_posted_sample: prePosted.slice(0, 10),
     matched_urls: [...new Set(items.map(i => i.url))].length - missing.size,
     missing_urls: missing.size,
     missing_sample: [...missing].slice(0, 5),
