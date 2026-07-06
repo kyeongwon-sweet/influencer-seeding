@@ -80,6 +80,17 @@ export function getFilteredStats(allStats: DailyStats[], dateFrom: string, dateT
   return allStats.filter(s => isStatInDateRange(s, dateFrom, dateTo));
 }
 
+// 🔒 필터 불변식: 조회수 기간 필터가 걸려 있으면 '값'(현재/직전)은 반드시 범위 안에서만 뽑는다.
+// 범위 밖(latest_stats) 폴백 금지 — 범위 이후 업로드된 게시물이 최신 누적을 조회수/증분으로 노출하던
+// 버그(2026-07-06)의 재발 방지. 값을 쓰는 모든 표면(행·합계·정렬·복사·CSV·상단 카드)은 이 함수 하나만 쓸 것.
+export function pickRangeStats(post: Post, dateFrom: string, dateTo: string): { s: DailyStats | null; prev: DailyStats | null } {
+  const hasDate = !!(dateFrom || dateTo);
+  const fs = hasDate ? getFilteredStats(post.all_stats ?? [], dateFrom, dateTo) : (post.all_stats ?? []);
+  const s = fs.length > 0 ? fs[fs.length - 1] : (hasDate ? null : post.latest_stats);
+  const prev = hasDate ? (fs.length > 1 ? fs[fs.length - 2] : null) : post.prev_stats;
+  return { s, prev };
+}
+
 export function fmt(v: number | null | undefined) {
   return v == null ? "-" : v.toLocaleString();
 }

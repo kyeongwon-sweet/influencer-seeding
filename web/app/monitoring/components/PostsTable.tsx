@@ -2,7 +2,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 // 게시물 표 — monitoring/page.tsx 에서 추출. 모든 상태/핸들러는 부모(MonitoringPage) 소유(props).
 // 인라인 편집/정렬/선택/열 리사이즈는 전부 부모 함수를 props로 받아 그대로 호출 → 동작 동일.
-import { type Post, type EditCell, type DailyStats, type Filters, getFilteredStats, hasNotableChange, viewIncrement, fmt, fmtChannelType, effectiveReach, pickMetric, CHANNEL_TYPES, INIT_FILTERS, CHART } from "../lib";
+import { type Post, type EditCell, type DailyStats, type Filters, getFilteredStats, pickRangeStats, hasNotableChange, viewIncrement, fmt, fmtChannelType, effectiveReach, pickMetric, CHANNEL_TYPES, INIT_FILTERS, CHART } from "../lib";
 import { MIN_ENTRY_DATE, maxDateKST } from "@/lib/dateRule";
 import { companyForAccount } from "@/lib/companyMap";
 import { productCodeOf } from "@/lib/productCode";
@@ -267,26 +267,9 @@ function PostsTable(props: Props) {
                   </tr>
                 )}
                 {sortedPosts.map((post, rowIdx) => {
-                  // ⚠️ 재발방지: getFilteredStats() 사용해서 필터 범위 일관성 보장
-                  // 날짜 필터 시 해당 기간의 측정값들을 추출
-                  const filteredStats = (filters.dateFrom || filters.dateTo)
-                    ? getFilteredStats(post.all_stats ?? [], filters.dateFrom, filters.dateTo)
-                    : (post.all_stats ?? []);
-
-                  // 현재값: 필터 범위 내 마지막 측정값.
-                  // ⚠️ 날짜 필터 중엔 범위 밖(latest_stats) 폴백 금지 — 범위에 측정이 없는 게시물(예: 범위 이후 업로드)이
-                  //    최신 누적값을 조회수/증분으로 노출하던 버그(2026-07-06, 7/1~7/2 필터에 7/5 게시물 +75,000 표시).
-                  const s = filteredStats.length > 0
-                    ? filteredStats[filteredStats.length - 1]
-                    : ((filters.dateFrom || filters.dateTo) ? null : post.latest_stats);
-
-                  // 이전값: 필터 범위 내 그 이전 값, 없으면 필터 범위 밖의 이전값
-                  // ⚠️ 중요: 필터 적용 시 필터 범위 내에서 prev를 재계산 (전체 데이터의 prev_stats 사용 금지)
-                  const prev = (filters.dateFrom || filters.dateTo)
-                    ? filteredStats.length > 1
-                      ? filteredStats[filteredStats.length - 2]  // 필터 범위 내 이전값
-                      : null  // 필터 범위 내 데이터가 1개면 비교 불가
-                    : post.prev_stats;  // 필터 미적용: 전체 데이터의 이전값 사용
+                  // 🔒 필터 불변식: 값(현재/직전)은 lib.pickRangeStats 단일 구현으로 —
+                  // 날짜 필터 시 범위 밖(latest_stats) 폴백 금지. 합계·정렬·복사·CSV와 반드시 동일 규칙.
+                  const { s, prev } = pickRangeStats(post, filters.dateFrom, filters.dateTo);
 
                   const displayName = post.account_name ?? post.influencers?.name ?? "-";
                   const hl = hasNotableChange(post);

@@ -7,7 +7,7 @@ import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
 import { MIN_ENTRY_DATE, maxDateKST, isValidEntryDate } from "@/lib/dateRule";
 import { companyForAccount } from "@/lib/companyMap";
 import { batchFetch } from "@/lib/batchFetch";
-import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, INIT_FILTERS, CHANNEL_TYPES, CATEGORIES, STICKY_COL_ORDER, PROJECT_PARSE_COLS, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, isStatInDateRange, getFilteredStats, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, getPostType, viewIncrement, pickMetric, pdOf, productLabel, effectiveReach, weekKeyOf, pearson, alignedPairs, bestLag, solveLinear, alignMulti, multipleR2, parseCsvLine } from "./lib";
+import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, INIT_FILTERS, CHANNEL_TYPES, CATEGORIES, STICKY_COL_ORDER, PROJECT_PARSE_COLS, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, isStatInDateRange, getFilteredStats, pickRangeStats, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, getPostType, viewIncrement, pickMetric, pdOf, productLabel, effectiveReach, weekKeyOf, pearson, alignedPairs, bestLag, solveLinear, alignMulti, multipleR2, parseCsvLine } from "./lib";
 import CorrelationPanel from "./components/CorrelationPanel";
 import DayOfWeekPanel, { type DowData } from "./components/DayOfWeekPanel";
 import FiltersBar from "./components/FiltersBar";
@@ -149,11 +149,18 @@ export default function MonitoringPage() {
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, value]) => ({ date, value }));
   }, [filteredPosts, filters]);
 
-  const { totalPlayCount, totalLikes, totalComments } = useMemo(() => ({
-    totalPlayCount: filteredPosts.reduce((s, p) => s + (p.latest_stats?.play_count ?? 0), 0),
-    totalLikes: filteredPosts.reduce((s, p) => s + (p.latest_stats?.likes_count ?? 0), 0),
-    totalComments: filteredPosts.reduce((s, p) => s + (p.latest_stats?.comments_count ?? 0), 0),
-  }), [filteredPosts]);
+  // 🔒 필터 불변식: 상단 '조회수 합계' 카드도 표와 동일한 값 규칙(pickRangeStats) —
+  // 날짜 필터 시 표는 범위 값인데 카드만 현재 누적을 보여주던 불일치 수정
+  const { totalPlayCount, totalLikes, totalComments } = useMemo(() => {
+    let play = 0, likes = 0, comments = 0;
+    for (const p of filteredPosts) {
+      const { s } = pickRangeStats(p, filters.dateFrom, filters.dateTo);
+      play += s?.play_count ?? 0;
+      likes += s?.likes_count ?? 0;
+      comments += s?.comments_count ?? 0;
+    }
+    return { totalPlayCount: play, totalLikes: likes, totalComments: comments };
+  }, [filteredPosts, filters.dateFrom, filters.dateTo]);
 
   // 표 상단 합계 행 — 행 렌더링과 동일한 s/prev 로직으로 증분량·비용·조회수 합산.
   // 체크박스로 선택한 행이 있으면 그 선택분만 합산(선택 없으면 필터된 전체).
@@ -162,10 +169,8 @@ export default function MonitoringPage() {
     const rows = selected.size > 0 ? filteredPosts.filter(p => selected.has(p.id)) : filteredPosts;
     let delta = 0, cost = 0, views = 0, reach = 0, likes = 0, comments = 0;
     for (const post of rows) {
-      const fs = hasDate ? getFilteredStats(post.all_stats ?? [], filters.dateFrom, filters.dateTo) : (post.all_stats ?? []);
-      // 날짜 필터 중엔 범위 밖(latest_stats) 폴백 금지 — 범위 밖 게시물의 최신 누적이 합계에 새던 버그
-      const s = fs.length > 0 ? fs[fs.length - 1] : (hasDate ? null : post.latest_stats);
-      const prev = hasDate ? (fs.length > 1 ? fs[fs.length - 2] : null) : post.prev_stats;
+      // 🔒 필터 불변식: 행 렌더링과 동일한 단일 구현(pickRangeStats) — 범위 밖 폴백 금지
+      const { s, prev } = pickRangeStats(post, filters.dateFrom, filters.dateTo);
       const inc = viewIncrement(post, s, prev); if (inc != null) delta += inc;
       cost += post.cost ?? 0;
       if (s?.play_count != null) views += s.play_count;
@@ -867,11 +872,9 @@ export default function MonitoringPage() {
     const hasDate = !!(filters.dateFrom || filters.dateTo);
     const disp = new Map<string, { s: Post["latest_stats"]; prev: Post["prev_stats"] }>();
     for (const p of filteredPosts) {
-      const fs = hasDate ? getFilteredStats(p.all_stats ?? [], filters.dateFrom, filters.dateTo) : (p.all_stats ?? []);
-      // 날짜 필터 중엔 범위 밖(latest_stats) 폴백 금지 — 행 렌더링(PostsTable)과 동일 규칙
-      const s = fs.length > 0 ? fs[fs.length - 1] : (hasDate ? null : p.latest_stats);
-      const prev = hasDate ? (fs.length > 1 ? fs[fs.length - 2] : null) : p.prev_stats;
-      disp.set(p.id, { s: (s ?? null) as Post["latest_stats"], prev: (prev ?? null) as Post["prev_stats"] });
+      // 🔒 필터 불변식: 행 렌더링과 동일한 단일 구현(pickRangeStats)
+      const { s, prev } = pickRangeStats(p, filters.dateFrom, filters.dateTo);
+      disp.set(p.id, { s, prev });
     }
     return [...filteredPosts].sort((a, b) => {
     if (!sortCol) return 0;
@@ -919,7 +922,9 @@ export default function MonitoringPage() {
   function downloadCSV() {
     const headers = ["업로드일", "인플루언서", "링크", "프로젝트명", "상품명", "채널분류", "유형", "증분량", "조회수", "도달수", "비용(원)", "조회당비용(원)", "도달당비용(원)"];
     const rows = sortedPosts.map(post => {
-      const s = post.latest_stats;
+      // 🔒 필터 불변식: CSV도 화면과 동일한 값 규칙(pickRangeStats) — 필터 무시하고 latest를 내보내
+      //   '화면≠내보내기'가 되던 버그(2026-07-06) 수정
+      const { s, prev } = pickRangeStats(post, filters.dateFrom, filters.dateTo);
       const play = s?.play_count ?? null;
       const reach = effectiveReach(post.reach_count, play);
       const cost = post.cost ?? null;
@@ -933,7 +938,7 @@ export default function MonitoringPage() {
         post.product_name ?? "",
         post.channel_type ?? "",
         getPostType(post.url),
-        (viewIncrement(post, s, post.prev_stats) ?? ""),
+        (viewIncrement(post, s, prev) ?? ""),
         play ?? "",
         reach ?? "",
         cost ?? "",
@@ -960,10 +965,8 @@ export default function MonitoringPage() {
     const hasDate = filters.dateFrom || filters.dateTo;
     const lines = sortedPosts.map(post => {
       if (post.ended_at) return null;
-      const fs = hasDate ? getFilteredStats(post.all_stats ?? [], filters.dateFrom, filters.dateTo) : (post.all_stats ?? []);
-      // 날짜 필터 중엔 범위 밖(latest_stats) 폴백 금지 — 행 렌더링(PostsTable)과 동일 규칙
-      const s = fs.length > 0 ? fs[fs.length - 1] : (hasDate ? null : post.latest_stats);
-      const prev = hasDate ? (fs.length > 1 ? fs[fs.length - 2] : null) : post.prev_stats;
+      // 🔒 필터 불변식: 행 렌더링과 동일한 단일 구현(pickRangeStats)
+      const { s, prev } = pickRangeStats(post, filters.dateFrom, filters.dateTo);
       const play = s?.play_count ?? null;
       const isBanner = (post.channel_type ?? "").includes("배너");
       const value = isBanner ? effectiveReach(post.reach_count, play) : play;
