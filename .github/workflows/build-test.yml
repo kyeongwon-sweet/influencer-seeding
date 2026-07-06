@@ -16,7 +16,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # 22 필수: npm test가 쓰는 --experimental-strip-types는 Node 22.6+ 전용(20에선 bad option으로 즉사)
+          node-version: "22"
           cache: "npm"
           cache-dependency-path: web/package-lock.json
 
