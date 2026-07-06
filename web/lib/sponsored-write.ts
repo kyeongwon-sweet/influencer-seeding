@@ -29,11 +29,17 @@ export async function upsertSponsoredRows(
   source: string
 ): Promise<{ summary?: UpsertSummary; error?: string }> {
   const seen = new Set<string>();
+  // 시트 채널명에 붙는 작업용 마커(●)는 DB 계정명에서 제거 — 시트에선 팀 표기용으로 유지되므로
+  // 여기서 걸러야 매일 syncAll 때 재유입되지 않음(2026-07-06, 'chachaping_zzal ●' 6건 사례).
+  const cleanName = (v: unknown) => {
+    const s = String(v ?? "").replace(/●/g, "").trim();
+    return s || null;
+  };
   const rows = list
     .map(r => ({
       url:             r.url ? (normalizeUrl(String(r.url)) || String(r.url)) : "",
       posted_at:       r.posted_at || null,
-      account_name:    r.account_name || null,
+      account_name:    cleanName(r.account_name),
       company_name:    r.company_name || null,
       content_summary: r.content_summary || null,
       channel_type:    normalizeChannelType(r.channel_type ? String(r.channel_type) : null),
