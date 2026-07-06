@@ -205,8 +205,8 @@ export default function MonitoringPage() {
     const allDates = [...allDatesSet].sort();
     if (allDates.length === 0) return [];
 
-    const totals = new Map<string, { play: number; likes: number; comments: number }>(
-      allDates.map(d => [d, { play: 0, likes: 0, comments: 0 }])
+    const totals = new Map<string, { play: number; likes: number; comments: number; inc: number }>(
+      allDates.map(d => [d, { play: 0, likes: 0, comments: 0, inc: 0 }])
     );
 
     for (const post of filteredPosts) {
@@ -220,6 +220,7 @@ export default function MonitoringPage() {
       // null은 데이터 없음(기여 0)
       let lastPlay: number | null = null, lastLikes: number | null = null, lastComments: number | null = null;
       for (const date of allDates) {
+        let incAdd = 0;
         if (statsMap.has(date)) {
           const s = statsMap.get(date)!;
           const metric = isBanner ? s.reach_count : s.play_count;
@@ -227,12 +228,14 @@ export default function MonitoringPage() {
           lastPlay     = metric != null ? Math.max(lastPlay ?? metric, metric) : lastPlay;
           lastLikes    = s.likes_count    ?? lastLikes;
           lastComments = s.comments_count ?? lastComments;
+          incAdd = s.increment ?? 0;   // 단일 소스: 저장된 증분(리포트와 동일값)
         }
         const e = totals.get(date)!;
         totals.set(date, {
           play:     e.play     + (lastPlay     ?? 0),
           likes:    e.likes    + (lastLikes    ?? 0),
           comments: e.comments + (lastComments ?? 0),
+          inc:      e.inc      + incAdd,
         });
       }
     }
@@ -285,8 +288,8 @@ export default function MonitoringPage() {
   const playDeltaData = useMemo(() => {
     const todayKST = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
     return dailyTotals.slice(1)
-      .map((d, i) => ({ date: d.date, value: d.play - dailyTotals[i].play }))
-      .filter(d => d.date < todayKST); // 오늘(KST)은 수집 중·미완성이라 증분이 0/왜곡 → 제외(완료된 날만 표시)
+      .map(d => ({ date: d.date, value: d.inc }))   // 단일 소스: 저장된 증분 합(리포트와 동일값)
+      .filter(d => d.date < todayKST); // 오늘(KST)은 수집 중·미완성이라 제외(완료된 날만 표시)
   }, [dailyTotals]);
 
   // 상관·시차 분석: 4개 일별 흐름(광고비·조회수증분·검색량·B2B)의 공통 날짜에서 피어슨 상관 + 최적 시차.
@@ -353,10 +356,10 @@ export default function MonitoringPage() {
     const todayKST = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
     return dailyTotals.slice(1).map((d, i) => ({
       date:     d.date,
-      play:     d.play     - dailyTotals[i].play, // 전일 대비 누적 조회수 증분(늦게 등록된 게시물 첫값도 그대로 포함)
+      play:     d.inc, // 단일 소스: 저장된 증분 합(리포트와 동일값, 배너=도달수 포함)
       search:   lsSearchDelta(d.date),
       comments: d.comments - dailyTotals[i].comments,
-    })).filter(d => d.date < todayKST); // 오늘(KST)은 수집 중·미완성이라 증분이 0/왜곡 → 제외(완료된 날만 표시)
+    })).filter(d => d.date < todayKST); // 오늘(KST)은 수집 중·미완성이라 제외(완료된 날만 표시)
   }, [dailyTotals, lsSearchData]);
 
   // 날짜별 채널타입(바이럴/협찬) 조회수 증분 — forward-fill 적용
