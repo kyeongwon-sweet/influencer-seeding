@@ -3,6 +3,7 @@ import { normalizeUrl, ALLOWED_POST_URL_RE } from "@/lib/url-utils";
 import { normalizeChannelType } from "@/app/monitoring/lib";
 import { triggerCaptionBackfill, needsCaption } from "@/lib/github-dispatch";
 import { todayKST } from "@/lib/dateRule";
+import { startActorRun } from "@/lib/apify";
 
 type Supabase = ReturnType<typeof getServerSupabase>;
 
@@ -83,6 +84,35 @@ export async function upsertSponsoredRows(
       .select("id");
     if (ie) return { error: `[신규생성] ${ie.message} | code=${ie.code ?? ""} | details=${ie.details ?? ""} | hint=${ie.hint ?? ""}` };
     created = (ins ?? []).length;
+
+    // 🆕 등록 동기화 시 캡션·첫 조회수 즉시 수집 — 신규 IG '게시물' 중 캡션 없는 것만 Apify 1회 스크랩.
+    // apify-webhook이 캡션(비어있을 때만)·계정명·오늘 stats를 채움 → 별도 backfill(GHA)을 기다릴 필요 없음.
+    // (GH_DISPATCH_TOKEN 기반 즉시 트리거가 미설정으로 한 번도 안 돌아, 2026-07-06 신규 11건 캡션이 종일 비었던 문제의 근본 해법)
+    // 가드: shortcode 있는 게시물 URL만(프로필형 directUrls 과수집 방지), 배치당 100개 캡.
+    const igNew = [...new Set(
+      toCreate
+        .filter(r => needsCaption(r.url, r.content_summary) && /instagram\.com\/p\/[A-Za-z0-9_-]+/.test(r.url))
+        .map(r => r.url)
+    )].slice(0, 100);
+    if (igNew.length > 0 && process.env.APIFY_API_TOKEN) {
+      const appUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, "") : `https://${process.env.VERCEL_URL}`;
+      const webhookSecret = process.env.WEBHOOK_SECRET ?? "";
+      const { data: job } = await supabase
+        .from("jobs")
+        .insert({ type: "monitoring", status: "pending", payload: {} })
+        .select().single();
+      if (job) {
+        const runError = await startActorRun(
+          "apify/instagram-scraper",
+          { directUrls: igNew, resultsType: "posts", resultsLimit: igNew.length, addParentData: true },
+          `${appUrl}/api/apify-webhook?token=${encodeURIComponent(webhookSecret)}&jobId=${job.id}&jobType=monitoring`
+        ).then(() => null).catch((e: unknown) => e);
+        if (runError) {
+          // 스크랩 실패해도 등록 자체엔 영향 없음(캡션은 크론 안전망·자정 수집이 커버)
+          await supabase.from("jobs").update({ status: "failed", error: String(runError) }).eq("id", job.id);
+        }
+      }
+    }
   }
 
   // 기존 게시물 → 비어있지 않은 값으로 덮어씀(manual_fields 보존·캡션 우선·빈값 유지).
