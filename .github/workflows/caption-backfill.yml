@@ -9,7 +9,12 @@ on:
   repository_dispatch:
     types: [caption-backfill]   # 게시물 추가 시 앱이 발사(이벤트 기반, 주 트리거)
   schedule:
-    - cron: "0 4 * * *"         # 04:00 UTC = 13:00 KST (안전망 1회/일 — 놓친 트리거 청소)
+    # 안전망 창 확대(1→3회/일): GH_DISPATCH_TOKEN 미설정이라 이벤트 트리거가 발사된 적 없고,
+    # GitHub schedule은 2~3시간 지연·통째 누락이 잦음(2026-07-06 실측: 13시 창 누락 → 11건 방치).
+    # 멱등(빈 캡션 없으면 data-slayer 호출 0)이라 창을 늘려도 비용 증가 없음.
+    - cron: "0 4 * * *"         # 04:00 UTC = 13:00 KST
+    - cron: "0 8 * * *"         # 08:00 UTC = 17:00 KST
+    - cron: "0 12 * * *"        # 12:00 UTC = 21:00 KST
   workflow_dispatch:
 
 # 동시 실행 방지 — 짧은 시간에 여러 번 추가돼 여러 dispatch가 와도 한 번에 하나만(중복 data-slayer 호출 방지)
