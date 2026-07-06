@@ -163,7 +163,8 @@ export default function MonitoringPage() {
     let delta = 0, cost = 0, views = 0, reach = 0, likes = 0, comments = 0;
     for (const post of rows) {
       const fs = hasDate ? getFilteredStats(post.all_stats ?? [], filters.dateFrom, filters.dateTo) : (post.all_stats ?? []);
-      const s = fs.length > 0 ? fs[fs.length - 1] : post.latest_stats;
+      // 날짜 필터 중엔 범위 밖(latest_stats) 폴백 금지 — 범위 밖 게시물의 최신 누적이 합계에 새던 버그
+      const s = fs.length > 0 ? fs[fs.length - 1] : (hasDate ? null : post.latest_stats);
       const prev = hasDate ? (fs.length > 1 ? fs[fs.length - 2] : null) : post.prev_stats;
       const inc = viewIncrement(post, s, prev); if (inc != null) delta += inc;
       cost += post.cost ?? 0;
@@ -860,7 +861,8 @@ export default function MonitoringPage() {
     const disp = new Map<string, { s: Post["latest_stats"]; prev: Post["prev_stats"] }>();
     for (const p of filteredPosts) {
       const fs = hasDate ? getFilteredStats(p.all_stats ?? [], filters.dateFrom, filters.dateTo) : (p.all_stats ?? []);
-      const s = fs.length > 0 ? fs[fs.length - 1] : p.latest_stats;
+      // 날짜 필터 중엔 범위 밖(latest_stats) 폴백 금지 — 행 렌더링(PostsTable)과 동일 규칙
+      const s = fs.length > 0 ? fs[fs.length - 1] : (hasDate ? null : p.latest_stats);
       const prev = hasDate ? (fs.length > 1 ? fs[fs.length - 2] : null) : p.prev_stats;
       disp.set(p.id, { s: (s ?? null) as Post["latest_stats"], prev: (prev ?? null) as Post["prev_stats"] });
     }
@@ -952,7 +954,8 @@ export default function MonitoringPage() {
     const lines = sortedPosts.map(post => {
       if (post.ended_at) return null;
       const fs = hasDate ? getFilteredStats(post.all_stats ?? [], filters.dateFrom, filters.dateTo) : (post.all_stats ?? []);
-      const s = fs.length > 0 ? fs[fs.length - 1] : post.latest_stats;
+      // 날짜 필터 중엔 범위 밖(latest_stats) 폴백 금지 — 행 렌더링(PostsTable)과 동일 규칙
+      const s = fs.length > 0 ? fs[fs.length - 1] : (hasDate ? null : post.latest_stats);
       const prev = hasDate ? (fs.length > 1 ? fs[fs.length - 2] : null) : post.prev_stats;
       const play = s?.play_count ?? null;
       const isBanner = (post.channel_type ?? "").includes("배너");

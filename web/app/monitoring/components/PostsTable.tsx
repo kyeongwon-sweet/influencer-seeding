@@ -273,8 +273,12 @@ function PostsTable(props: Props) {
                     ? getFilteredStats(post.all_stats ?? [], filters.dateFrom, filters.dateTo)
                     : (post.all_stats ?? []);
 
-                  // 현재값: 필터 범위 내 마지막 측정값, 없으면 latest_stats
-                  const s = filteredStats.length > 0 ? filteredStats[filteredStats.length - 1] : post.latest_stats;
+                  // 현재값: 필터 범위 내 마지막 측정값.
+                  // ⚠️ 날짜 필터 중엔 범위 밖(latest_stats) 폴백 금지 — 범위에 측정이 없는 게시물(예: 범위 이후 업로드)이
+                  //    최신 누적값을 조회수/증분으로 노출하던 버그(2026-07-06, 7/1~7/2 필터에 7/5 게시물 +75,000 표시).
+                  const s = filteredStats.length > 0
+                    ? filteredStats[filteredStats.length - 1]
+                    : ((filters.dateFrom || filters.dateTo) ? null : post.latest_stats);
 
                   // 이전값: 필터 범위 내 그 이전 값, 없으면 필터 범위 밖의 이전값
                   // ⚠️ 중요: 필터 적용 시 필터 범위 내에서 prev를 재계산 (전체 데이터의 prev_stats 사용 금지)
