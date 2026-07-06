@@ -472,9 +472,12 @@ function pullFromDB() {
   }
 }
 
-// 매일 자동: 시트→DB(신규 추가) + DB→시트(대시보드 추가분 가져오기)를 함께 수행
+// 매일 자동: 시트→DB(전체 syncAll) + DB→시트(대시보드 추가분 가져오기)를 함께 수행.
+// syncNew(신규만)→syncAll 변경(2026-07-06): 기존 행의 시트 수정(업로드일 정정 등)이 DB로
+// 전파되지 않아 시트·DB 게시일이 어긋나던 문제 해소(640행 7/2↔7/4 사례).
+// 서버(bulk)가 '비어있지 않은 값만 덮기 + manual_fields 보존'이라 전체 재전송도 안전.
 function dailyAuto() {
-  try { runSync_(true); } catch (e) { Logger.log("dailyAuto syncNew: " + (e.stack || e.message)); }
+  try { runSync_(false); } catch (e) { Logger.log("dailyAuto syncAll: " + (e.stack || e.message)); }
   try { pullFromDB(); }  catch (e) { Logger.log("dailyAuto pullFromDB: " + (e.stack || e.message)); }
 }
 
