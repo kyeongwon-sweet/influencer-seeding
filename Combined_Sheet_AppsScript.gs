@@ -259,21 +259,26 @@ function removeDuplicateLinks() {
       if (!u) return;
       var k = linkKey_(u);
       var filled = row.filter(function (c) { return String(c).trim() !== ""; }).length;
-      (groups[k] = groups[k] || []).push({ row: CONFIG.DATA_START_ROW + i, filled: filled });
+      (groups[k] = groups[k] || []).push({ row: CONFIG.DATA_START_ROW + i, filled: filled, url: u });
     });
 
-    var toDelete = [], dupGroups = 0;
+    var toDelete = [], deleted = [], dupGroups = 0;
     Object.keys(groups).forEach(function (k) {
       var rows = groups[k];
       if (rows.length <= 1) return;
       dupGroups++;
       rows.sort(function (a, b) { return b.filled - a.filled || a.row - b.row; }); // 데이터 많은 것 우선, 동률이면 위쪽
-      rows.slice(1).forEach(function (r) { toDelete.push(r.row); });
+      var keep = rows[0];
+      rows.slice(1).forEach(function (r) {
+        toDelete.push(r.row);
+        deleted.push("· 삭제 " + r.row + "행: " + r.url + "\n   (남김 " + keep.row + "행: " + keep.url + ")");
+      });
     });
 
     if (!toDelete.length) { safeAlert_("✅ 겹치는 링크 없음 — 정리할 게 없습니다."); return; }
     toDelete.sort(function (a, b) { return b - a; }).forEach(function (r) { sheet.deleteRow(r); }); // 아래→위
-    safeAlert_("🧹 중복 링크 정리 완료\n중복 그룹 " + dupGroups + "개 → " + toDelete.length + "행 삭제(각 그룹 1행만 남김).");
+    Logger.log("중복 링크 정리 삭제 목록:\n" + deleted.join("\n"));
+    safeAlert_("🧹 중복 링크 정리 완료\n중복 그룹 " + dupGroups + "개 → " + toDelete.length + "행 삭제(각 그룹 1행만 남김).\n(행번호는 삭제 전 기준)\n\n" + deleted.join("\n"));
   } catch (e) {
     safeAlert_("❌ 오류\n" + e.message);
     Logger.log(e.stack || e.message);
