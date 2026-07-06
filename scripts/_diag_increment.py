@@ -96,6 +96,23 @@ def main():
         dash = dtot[d] - dtot[pd] if pd else dtot[d]
         print(f"{d}:  리포트 +{r:,}   |   대시보드 +{dash:,}   (차이 {r - dash:+,})")
 
+    # 채널분류별 대시보드 기여(당일-전일 clamped) + 온드미디어 제외 총합
+    print("\n=== 날짜별 대시보드 기여 by channel_type + 온드 제외 ===")
+    for d in DATES:
+        if d not in all_dates:
+            continue
+        pdte = prev_date(d)
+        by_ct = defaultdict(int)
+        for pid in all_stats:
+            c = ppod[pid][d] - (ppod[pid][pdte] if pdte else 0)
+            ct = (meta.get(pid, {}).get("channel_type") or "미분류")
+            by_ct[ct] += c
+        tot = sum(by_ct.values())
+        ond = sum(v for k, v in by_ct.items() if "온드" in k)
+        print(f"\n[{d}] 대시보드 총 {tot:,}  / 온드 제외 {tot-ond:,}")
+        for ct, v in sorted(by_ct.items(), key=lambda x: -x[1]):
+            print(f"    {v:>12,}  {ct}")
+
     # 07-06 과대계상 상위: 리포트 per-post inc - 대시보드 per-post 기여(당일-전일 clamped)
     target = "2026-07-06"
     if target in all_dates:
