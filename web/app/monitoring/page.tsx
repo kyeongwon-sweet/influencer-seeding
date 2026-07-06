@@ -213,6 +213,8 @@ export default function MonitoringPage() {
       // ⚠️ 재발방지: getFilteredStats() 사용해서 필터 범위 일관성 보장
       const filteredStats = getFilteredStats(post.all_stats ?? [], filters.dateFrom, filters.dateTo);
       const statsMap = new Map(filteredStats.map(s => [s.measured_at, s]));
+      // 배너는 조회수(play_count)가 없어 도달수(reach_count)를 조회수처럼 취급(사용자 지시) → play 누적에 합산.
+      const isBanner = (post.channel_type ?? "").includes("배너");
 
       // Forward-fill: 필터 범위 내에서만 데이터 없는 날은 이전 마지막 값 유지
       // null은 데이터 없음(기여 0)
@@ -220,8 +222,9 @@ export default function MonitoringPage() {
       for (const date of allDates) {
         if (statsMap.has(date)) {
           const s = statsMap.get(date)!;
-          // 🛡️ 누적 조회수는 감소 불가 — 수집 오류로 낮아진 값은 직전 값 유지
-          lastPlay     = s.play_count != null ? Math.max(lastPlay ?? s.play_count, s.play_count) : lastPlay;
+          const metric = isBanner ? s.reach_count : s.play_count;
+          // 🛡️ 누적(조회수/도달수)은 감소 불가 — 수집 오류로 낮아진 값은 직전 값 유지
+          lastPlay     = metric != null ? Math.max(lastPlay ?? metric, metric) : lastPlay;
           lastLikes    = s.likes_count    ?? lastLikes;
           lastComments = s.comments_count ?? lastComments;
         }
