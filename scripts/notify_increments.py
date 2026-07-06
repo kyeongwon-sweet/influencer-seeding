@@ -125,15 +125,30 @@ def main():
     # 대상 날짜: 수집 워크플로가 넘긴 MONITORING_DATE(KST).
     # STRICT_DATE=1(예약 9:30 발송)이면 그 날짜만 — 데이터 없으면 생략(어제값 재발송 방지).
     # 비-strict(수동 테스트)이면 데이터 없을 때 최신 측정일로 폴백.
+    # 대상일 증분(단일 소스 B): post_daily_stats.increment 를 그대로 읽는다.
+    #   run_monitoring이 '오늘값(배너=reach, 그외=play) − 이전까지 최댓값'(단조보정,≥0)을 저장 → 리포트·대시보드 동일값.
+    def _fetch_inc(tgt):
+        out, st = {}, 0
+        while True:
+            res = (db.table("post_daily_stats").select("post_id, increment, play_count, reach_count")
+                   .eq("measured_at", tgt).gt("increment", 0).range(st, st + 999).execute())
+            rs = res.data or []
+            for r in rs:
+                out[r["post_id"]] = r
+            if len(rs) < 1000:
+                break
+            st += 1000
+        return out
+
     target = os.getenv("MONITORING_DATE") or None
     strict = os.getenv("STRICT_DATE") == "1"
-    today = _fetch_day(db, target) if target else {}
-    if not today and not strict:
+    dayrows = _fetch_inc(target) if target else {}
+    if not dayrows and not strict:
         target = _latest_date(db)
         if target:
-            today = _fetch_day(db, target)
-    if not today:
-        print(f"[notify] {target} 조회수 데이터 없음 → 발송 생략 (strict={strict})")
+            dayrows = _fetch_inc(target)
+    if not dayrows:
+        print(f"[notify] {target} 증분 데이터 없음 → 발송 생략 (strict={strict})")
         return
 
     # 정정 재발송(REPLACE=1): 오늘 기존 리포트를 삭제한 뒤 새로 발송(잘못 나간 리포트 교체).
@@ -145,29 +160,7 @@ def main():
         print(f"[notify] {target} 리포트 이미 게시됨 → 중복 방지 생략")
         return
 
-    post_ids = list(today.keys())
-
-    # 직전(target 이전) 값 = post별 '이전까지의 최댓값'(단조보정 — 대시보드와 동일).
-    #   조회수는 누적이라 감소 불가인데 수집이 삐끗해 낮게 잡히는 날이 있음. '가장 최근값'을 직전값으로 쓰면
-    #   그 낮은 값 기준으로 다음날 증분이 부풀려짐 → 이전까지의 최댓값을 기준으로 삼아 방지.
-    # ⚠️ .range() 페이지네이션 필수: 청크 전체 이력이 1000행 초과 시 잘려 '신규' 오인 → 뻥튀기.
-    prev = {}
-    PAGE = 1000
-    for chunk in _chunks(post_ids, 100):
-        frm = 0
-        while True:
-            res = (db.table("post_daily_stats")
-                   .select("post_id, play_count, measured_at")
-                   .in_("post_id", chunk).lt("measured_at", target)
-                   .gt("play_count", 0)   # 0(글리치·미측정)은 최댓값 계산에서 제외
-                   .range(frm, frm + PAGE - 1).execute())
-            page = res.data or []
-            for r in page:
-                prev[r["post_id"]] = max(prev.get(r["post_id"], 0), r["play_count"])  # 단조보정: 이전까지 최댓값
-            if len(page) < PAGE:
-                break
-            frm += PAGE
-
+    post_ids = list(dayrows.keys())
     # 게시물 메타(이름/플랫폼/상품군/업로드일/채널분류)
     meta = {}
     for chunk in _chunks(post_ids, 100):
@@ -175,87 +168,42 @@ def main():
         for r in (res.data or []):
             meta[r["id"]] = r
 
-    # 증분 계산 — 양(+)의 증분만
+    # items: 저장된 increment 를 그대로 사용(배너 포함 — 배너는 reach 기반 증분이 이미 저장됨). 계산 없음.
     items = []
-    for pid, tv in today.items():
-        pv = prev.get(pid)
-        inc = tv - pv if pv is not None else tv
-        if inc <= 0:
-            continue
+    for pid, dr in dayrows.items():
         m = meta.get(pid, {})
-        if "배너" in (m.get("channel_type") or ""):
-            continue  # 배너 조회수(play_count)는 증분에서 제외 — 배너는 도달수(reach_count)로만 집계(사용자 지시)
+        ct = (m.get("channel_type") or "").strip()
         url = (m.get("url") or "").strip()
+        cum = (dr.get("reach_count") if "배너" in ct else dr.get("play_count")) or 0  # CPV용 누적값
         items.append({
-            "inc": inc,
+            "inc": dr["increment"],
             "name": (m.get("account_name") or "").strip() or url.rstrip("/").split("/")[-1] or "?",
             "platform": _platform(url),
             "url": url,
             "product": (m.get("product_name") or "").strip(),
             "posted_at": str(m.get("posted_at"))[:10] if m.get("posted_at") else "",
-            "channel_type": (m.get("channel_type") or "").strip() or "미분류",
-            "is_new": pv is None,
+            "channel_type": ct or "미분류",
+            "is_new": False,
             "cost": m.get("cost") or 0,
-            "cum": tv or 0,          # 누적 조회수(오늘 play_count)
+            "cum": cum,
         })
 
-    # 배너: 조회수(play_count) 없음 → 도달수(reach_count) 일별 이력으로 '전일 대비 증분' 계산해 편입(사용자 지시).
-    #   post_daily_stats.reach_count 시리즈에서: 오늘 - 직전(>0). 직전 없으면 첫 측정 → 오늘값 전체. 양수만.
-    #   조회수와 동일하게 채널분류·총 증분·TOP에 반영.
+    # 배너 라인은 증분 없어도 항상 노출(미집계 표기용) — 활성 배너 채널분류 수집.
     banner_cts = set()
     try:
-        # 활성 배너 메타
-        bmeta, boff = {}, 0
+        boff = 0
         while True:
-            bres = (db.table("sponsored_posts")
-                    .select("id, url, account_name, product_name, posted_at, channel_type, cost, ended_at")
+            bres = (db.table("sponsored_posts").select("channel_type, ended_at")
                     .ilike("channel_type", "%배너%").range(boff, boff + 999).execute())
             bchunk = bres.data or []
             for b in bchunk:
                 if not b.get("ended_at") and b.get("channel_type"):
-                    bmeta[b["id"]] = b
                     banner_cts.add((b.get("channel_type") or "").strip())
             if len(bchunk) < 1000:
                 break
             boff += 1000
-        # 오늘 도달수
-        reach_today = {}
-        for chunk in _chunks(list(bmeta.keys()), 100):
-            res = (db.table("post_daily_stats").select("post_id, reach_count")
-                   .in_("post_id", chunk).eq("measured_at", target).execute())
-            for r in (res.data or []):
-                if r.get("reach_count") is not None:
-                    reach_today[r["post_id"]] = r["reach_count"]
-        # 직전 도달수 = 이전까지의 최댓값(단조보정 — 조회수와 동일 기준)
-        reach_prev = {}
-        for chunk in _chunks(list(reach_today.keys()), 100):
-            res = (db.table("post_daily_stats").select("post_id, reach_count, measured_at")
-                   .in_("post_id", chunk).lt("measured_at", target).gt("reach_count", 0).execute())
-            for r in (res.data or []):
-                if r.get("reach_count") is not None:
-                    reach_prev[r["post_id"]] = max(reach_prev.get(r["post_id"], 0), r["reach_count"])
-        # 전일 대비 도달수 증분 → items 편입
-        for pid, tv in reach_today.items():
-            pv = reach_prev.get(pid)
-            inc = tv - pv if pv is not None else tv
-            if inc <= 0:
-                continue
-            b = bmeta.get(pid, {})
-            url = (b.get("url") or "").strip()
-            items.append({
-                "inc": inc,
-                "name": (b.get("account_name") or "").strip() or url.rstrip("/").split("/")[-1] or "?",
-                "platform": _platform(url),
-                "url": url,
-                "product": (b.get("product_name") or "").strip(),
-                "posted_at": str(b.get("posted_at"))[:10] if b.get("posted_at") else "",
-                "channel_type": (b.get("channel_type") or "").strip() or "미분류",
-                "is_new": pv is None,
-                "cost": b.get("cost") or 0,
-                "cum": tv or 0,
-            })
     except Exception as e:
-        print("[notify] 배너 도달수 증분 집계 실패(무시):", e)
+        print("[notify] 배너 채널분류 조회 실패(무시):", e)
 
     if not items:
         print(f"[notify] {target} 증가분 없음 → 발송 생략")
@@ -276,13 +224,12 @@ def main():
     for ct in banner_cts:
         by_channel.setdefault(_norm_ch(ct), 0)
 
-    # CPV(누적 조회당 비용): 채널별 Σ비용 / Σ누적조회수 — 오늘 측정된 게시물 전체 기준(대시보드 조회당비용과 동일)
+    # CPV(누적 조회당 비용): 채널별 Σ비용 / Σ누적조회수 (증분 있는 게시물 기준)
     cost_by_ch, cumviews_by_ch = {}, {}
-    for pid, tv in today.items():
-        m = meta.get(pid, {})
-        ct = _norm_ch(m.get("channel_type"))
-        cost_by_ch[ct] = cost_by_ch.get(ct, 0) + (m.get("cost") or 0)
-        cumviews_by_ch[ct] = cumviews_by_ch.get(ct, 0) + (tv or 0)
+    for it in items:
+        ct = _norm_ch(it["channel_type"])
+        cost_by_ch[ct] = cost_by_ch.get(ct, 0) + (it["cost"] or 0)
+        cumviews_by_ch[ct] = cumviews_by_ch.get(ct, 0) + (it["cum"] or 0)
 
     items.sort(key=lambda x: x["inc"], reverse=True)
 

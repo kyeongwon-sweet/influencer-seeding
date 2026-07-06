@@ -664,6 +664,47 @@ def run():
         except Exception as e:
             print(f"[WARN] 배너 도달수 스냅샷 실패(무시): {e}")
 
+        # 📈 증분(increment) 계산·저장 — 단일 소스(B): 리포트·대시보드가 이 값을 그대로 읽는다.
+        #   게시물별 오늘값(배너=reach_count, 그 외=play_count) − 이전까지 최댓값(단조보정, ≥0). 첫 측정=전체.
+        #   ⚠️ 이 로직은 scripts 백필과 동일해야 함(리포트↔대시보드 일치 근거).
+        try:
+            tr = db.table("post_daily_stats").select("post_id, play_count, reach_count").eq("measured_at", TODAY).execute()
+            today_pids = list({x["post_id"] for x in (tr.data or [])})
+            isbanner = {}
+            for i in range(0, len(today_pids), 200):
+                cr = db.table("sponsored_posts").select("id, channel_type").in_("id", today_pids[i:i + 200]).execute()
+                for x in (cr.data or []):
+                    isbanner[x["id"]] = "배너" in (x.get("channel_type") or "")
+            inc_rows = []
+            for i in range(0, len(today_pids), 100):
+                chunk = today_pids[i:i + 100]
+                todayval = {}
+                for x in (tr.data or []):
+                    if x["post_id"] in chunk:
+                        v = x.get("reach_count") if isbanner.get(x["post_id"]) else x.get("play_count")
+                        if v is not None:
+                            todayval[x["post_id"]] = v
+                pmax = {}
+                frm = 0
+                while True:
+                    pr = (db.table("post_daily_stats").select("post_id, play_count, reach_count, measured_at")
+                          .in_("post_id", chunk).lt("measured_at", TODAY).range(frm, frm + 999).execute())
+                    pg = pr.data or []
+                    for x in pg:
+                        v = x.get("reach_count") if isbanner.get(x["post_id"]) else x.get("play_count")
+                        if v is not None:
+                            pmax[x["post_id"]] = max(pmax.get(x["post_id"], 0), v)
+                    if len(pg) < 1000:
+                        break
+                    frm += 1000
+                for pid, tv in todayval.items():
+                    inc_rows.append({"post_id": pid, "measured_at": TODAY, "increment": max(0, tv - pmax.get(pid, 0))})
+            if inc_rows:
+                db.table("post_daily_stats").upsert(inc_rows, on_conflict="post_id,measured_at").execute()
+                print(f"[LOG] 📈 증분 저장: {len(inc_rows)}건 ({TODAY})")
+        except Exception as e:
+            print(f"[WARN] 증분 계산 실패(무시): {e}")
+
         # 📸 일별 증분 스냅샷(락) — 오늘 시점 누적 총합을 daily_view_snapshot에 저장.
         #    이후 게시물이 늦게 추가돼도 과거 스냅샷은 안 바뀜 → '일자별 증감' 과거값 안정화.
         #    best-effort: 테이블 미생성 등 어떤 오류도 수집 자체엔 영향 주지 않음(경고만).
