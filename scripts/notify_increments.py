@@ -147,9 +147,10 @@ def main():
 
     post_ids = list(today.keys())
 
-    # 직전(target 이전) 측정값 — post별 가장 최근 1건
-    # ⚠️ .range() 페이지네이션 필수: 청크(100포스트)의 전체 이력이 1000행을 넘으면 오래 미측정된
-    #    게시물의 직전값이 잘려 '신규'로 오인 → 그날 누적 전체가 증분으로 잡혀 리포트가 뻥튀기된다.
+    # 직전(target 이전) 값 = post별 '이전까지의 최댓값'(단조보정 — 대시보드와 동일).
+    #   조회수는 누적이라 감소 불가인데 수집이 삐끗해 낮게 잡히는 날이 있음. '가장 최근값'을 직전값으로 쓰면
+    #   그 낮은 값 기준으로 다음날 증분이 부풀려짐 → 이전까지의 최댓값을 기준으로 삼아 방지.
+    # ⚠️ .range() 페이지네이션 필수: 청크 전체 이력이 1000행 초과 시 잘려 '신규' 오인 → 뻥튀기.
     prev = {}
     PAGE = 1000
     for chunk in _chunks(post_ids, 100):
@@ -158,13 +159,11 @@ def main():
             res = (db.table("post_daily_stats")
                    .select("post_id, play_count, measured_at")
                    .in_("post_id", chunk).lt("measured_at", target)
-                   .gt("play_count", 0)   # 0(수집 글리치·미측정)은 직전값으로 쓰지 않음 → 마지막 '실제값(>0)'을 직전값으로.
-                   .order("measured_at", desc=True)   #  (대시보드 단조보정과 동일 취지. 0→전체값이 증분으로 잡혀 누적처럼 뻥튀기되던 문제 방지)
+                   .gt("play_count", 0)   # 0(글리치·미측정)은 최댓값 계산에서 제외
                    .range(frm, frm + PAGE - 1).execute())
             page = res.data or []
             for r in page:
-                if r["post_id"] not in prev:
-                    prev[r["post_id"]] = r["play_count"]
+                prev[r["post_id"]] = max(prev.get(r["post_id"], 0), r["play_count"])  # 단조보정: 이전까지 최댓값
             if len(page) < PAGE:
                 break
             frm += PAGE
@@ -227,15 +226,14 @@ def main():
             for r in (res.data or []):
                 if r.get("reach_count") is not None:
                     reach_today[r["post_id"]] = r["reach_count"]
-        # 직전 도달수(>0, 가장 최근)
+        # 직전 도달수 = 이전까지의 최댓값(단조보정 — 조회수와 동일 기준)
         reach_prev = {}
         for chunk in _chunks(list(reach_today.keys()), 100):
             res = (db.table("post_daily_stats").select("post_id, reach_count, measured_at")
-                   .in_("post_id", chunk).lt("measured_at", target).gt("reach_count", 0)
-                   .order("measured_at", desc=True).execute())
+                   .in_("post_id", chunk).lt("measured_at", target).gt("reach_count", 0).execute())
             for r in (res.data or []):
-                if r["post_id"] not in reach_prev and r.get("reach_count") is not None:
-                    reach_prev[r["post_id"]] = r["reach_count"]
+                if r.get("reach_count") is not None:
+                    reach_prev[r["post_id"]] = max(reach_prev.get(r["post_id"], 0), r["reach_count"])
         # 전일 대비 도달수 증분 → items 편입
         for pid, tv in reach_today.items():
             pv = reach_prev.get(pid)
