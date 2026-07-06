@@ -21,6 +21,10 @@ on:
         description: "정정 재발송 — 오늘 기존 리포트를 삭제하고 새로 발송"
         type: boolean
         default: false
+      date:
+        description: "발송 대상 날짜(YYYY-MM-DD, 비우면 오늘 KST). 특정일 정정 재발송용"
+        type: string
+        default: ""
 
 jobs:
   report:
@@ -50,7 +54,8 @@ jobs:
           TS_OUT: ${{ runner.temp }}/report_ts.txt
           PYTHONUNBUFFERED: "1"
         run: |
-          export MONITORING_DATE=$(TZ=Asia/Seoul date +%F)
+          export MONITORING_DATE="${{ github.event.inputs.date }}"
+          [ -z "$MONITORING_DATE" ] && export MONITORING_DATE=$(TZ=Asia/Seoul date +%F)
           cd scripts && python notify_increments.py
           if [ -f "$RUNNER_TEMP/report_ts.txt" ]; then echo "ts=$(cat "$RUNNER_TEMP/report_ts.txt")" >> "$GITHUB_OUTPUT"; fi
 
