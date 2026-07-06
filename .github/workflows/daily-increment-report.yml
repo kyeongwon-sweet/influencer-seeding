@@ -1,7 +1,8 @@
 name: Daily Increment Report (12:20 KST)
 
 # 매일 오후 12:20 KST에 협찬 조회수 일일 증분 요약을 여믄봇이 #빙과_마케팅_리포트로 발송.
-# 데이터는 자정 수집(cron-daily-collect.yml)이 이미 적재해 둔 '오늘(KST)' measured_at 기준.
+# 데이터는 '어제(KST)' measured_at 기준 — 어제는 수집이 끝나 값이 정착됐고 대시보드 표에 표시되는
+# 확정값과 일치. (당일은 자정수집+백업+재수집이 계속 정착 중이라 값이 오후에 바뀌어 리포트가 흔들림.)
 # 수집 자체의 정상/실패 알럿은 수집 직후 황경원 DM으로 별도 발송됨(cron-daily-collect.yml).
 on:
   schedule:
@@ -22,7 +23,7 @@ on:
         type: boolean
         default: false
       date:
-        description: "발송 대상 날짜(YYYY-MM-DD, 비우면 오늘 KST). 특정일 정정 재발송용"
+        description: "발송 대상 날짜(YYYY-MM-DD, 비우면 어제 KST). 특정일 정정 재발송용"
         type: string
         default: ""
 
@@ -45,7 +46,7 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           # to_dm=true면 황경원 DM(U0B2Y0ZC8QZ)으로, 아니면 빈값 → 스크립트가 기본 채널로 폴백.
           SLACK_CHANNEL: ${{ github.event.inputs.to_dm == 'true' && 'U0B2Y0ZC8QZ' || '' }}
-          # 예약 발송은 오늘(KST) 데이터만(없으면 생략 — 어제값 재발송 방지). 수동 실행은 폴백 허용(테스트 편의).
+          # 예약 발송은 대상일(어제 KST) 데이터만(없으면 생략). 수동 실행은 폴백 허용(테스트 편의).
           STRICT_DATE: ${{ github.event_name == 'schedule' && '1' || '' }}
           # 채널 발송(=to_dm 아님) 시 하루 1회만: 오늘 리포트가 이미 있으면 생략(백업 창 중복 방지).
           DEDUP: ${{ github.event.inputs.to_dm == 'true' && '' || '1' }}
@@ -55,7 +56,7 @@ jobs:
           PYTHONUNBUFFERED: "1"
         run: |
           export MONITORING_DATE="${{ github.event.inputs.date }}"
-          [ -z "$MONITORING_DATE" ] && export MONITORING_DATE=$(TZ=Asia/Seoul date +%F)
+          [ -z "$MONITORING_DATE" ] && export MONITORING_DATE=$(TZ=Asia/Seoul date -d 'yesterday' +%F)
           cd scripts && python notify_increments.py
           if [ -f "$RUNNER_TEMP/report_ts.txt" ]; then echo "ts=$(cat "$RUNNER_TEMP/report_ts.txt")" >> "$GITHUB_OUTPUT"; fi
 
@@ -78,5 +79,6 @@ jobs:
           COLLECT_OUTCOME: success
           PYTHONUNBUFFERED: "1"
         run: |
-          export MONITORING_DATE=$(TZ=Asia/Seoul date +%F)
+          export MONITORING_DATE="${{ github.event.inputs.date }}"
+          [ -z "$MONITORING_DATE" ] && export MONITORING_DATE=$(TZ=Asia/Seoul date -d 'yesterday' +%F)
           cd scripts && python notify_status.py
