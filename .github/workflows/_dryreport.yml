@@ -34,3 +34,9 @@ jobs:
           MONITORING_DATE: ${{ github.event.inputs.date }}
           PYTHONUNBUFFERED: "1"
         run: cd scripts && python _diag_prev.py
+      - name: 배너 필드 점검
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PYTHONUNBUFFERED: "1"
+        run: cd scripts && python _diag_banner.py
