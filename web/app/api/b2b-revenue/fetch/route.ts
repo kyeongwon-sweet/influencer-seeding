@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
 
   let rows: (string | number | null)[][];
   try {
-    rows = await fetchSheetTabValues(SPREADSHEET_ID, SHEET_GID, "A1:AB200");
+    rows = await fetchSheetTabValues(SPREADSHEET_ID, SHEET_GID, "A1:AB400"); // 일자별 누적 → 200행 초과 대비 여유
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await notifyJob("B2B 발주량", "fail", `시트 조회 실패: ${msg}`);
@@ -59,12 +59,19 @@ export async function GET(req: NextRequest) {
   const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
   const curYear = nowKST.getUTCFullYear(), curMonth = nowKST.getUTCMonth() + 1;
   const records: Record<string, unknown>[] = [];
-  let started = false;
+  let started = false, gap = 0;
   for (let i = hdr + 1; i < rows.length; i++) {
     const row = rows[i];
     const dateCell = row[cDate];
     const m = typeof dateCell === "string" ? dateCell.match(/(\d{1,2})\/(\d{1,2})/) : null;
-    if (!m) { if (started) break; else continue; }
+    if (!m) {
+      // 날짜 없는 행(월 경계 합계행·빈 행·구분행)에서 바로 끊지 말 것.
+      // 예전엔 여기서 즉시 break → 6/30 다음 구분행에 막혀 7월 전체가 누락됐다(2026-07 발견).
+      // 연속 공백이 6줄 넘으면 표가 끝난 것으로 보고 종료(아래 무관한 표 오독 방지).
+      if (started && ++gap > 6) break;
+      continue;
+    }
+    gap = 0;
     started = true;
     const mo = Number(m[1]);
     const year = mo - curMonth > 6 ? curYear - 1 : curMonth - mo > 6 ? curYear + 1 : curYear;
