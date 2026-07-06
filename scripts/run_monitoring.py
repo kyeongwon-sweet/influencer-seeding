@@ -436,15 +436,20 @@ def run():
             stats_by_key = {_stats_key(s["url"]): s for s in stats}
             print(f"[LOG] Apify 수집 결과: {len(stats)}건 / {len(ig_urls)}개 요청(인스타)")
 
-            # 🛟 IG 폴백: 인스타가 기본 액터(apify/instagram-scraper) 요청을 차단하면 no_items만 와서 조회수가 대량 누락된다.
-            # 릴스/tv는 정상 시 거의 항상 play_count가 있으므로, 릴스 조회수가 대량 누락이면 '차단'으로 보고 막힌 건만 data-slayer로 재시도.
-            reels = [u for u in ig_urls if re.search(r'/(?:reel|reels|tv)/', u)]
-            reel_missing = [u for u in reels if not (stats_by_key.get(_stats_key(u)) or {}).get("play_count")]
-            # 최소 표본(릴스 5개↑) 확보 시에만 비율 판정 — 릴스 2개 중 1개 누락(50%) 같은 소표본 오탐으로
-            # 더 비싼 data-slayer 폴백이 트리거되는 것을 방지.
-            if len(reels) >= 5 and len(reel_missing) / len(reels) >= 0.4:
+            # 🛟 IG 폴백: 인스타가 기본 액터를 차단하거나 조회수 필드만 빼고 반환하면 play_count가 대량 누락된다.
+            # ⚠️ 감지 기준 교체(2026-07-06): 예전 'URL에 /reel/ 포함' 기준은 IG URL 정준화(64234f3, 전부 /p/형)로
+            #    릴스 표본이 0이 돼 영구 거짓 — 그래서 2026-07-03~05 부분수집(실측 159/182/219)을 폴백이 못 구제했다.
+            #    이제 '직전 측정에서 play가 있던 게시물'(=조회수가 나와야 정상인 영상들) 중 이번 수집에서
+            #    빠진 비율로 판정한다. 사진 포스트(원래 play 없음)는 분모에서 자연 제외돼 오탐도 줄어든다.
+            ig_url_set = set(ig_urls)
+            prev_ig = _prev_stats(db, [p["id"] for p in posts if (p.get("url") or "") in ig_url_set])
+            expected = [p["url"] for p in posts
+                        if (p.get("url") or "") in ig_url_set and (prev_ig.get(p["id"]) or {}).get("play_count") is not None]
+            exp_missing = [u for u in expected if not (stats_by_key.get(_stats_key(u)) or {}).get("play_count")]
+            # 최소 표본(5개↑) 확보 시에만 비율 판정 — 소표본 오탐으로 더 비싼 data-slayer 폴백이 트리거되는 것을 방지.
+            if len(expected) >= 5 and len(exp_missing) / len(expected) >= 0.4:
                 missing = [u for u in ig_urls if not (stats_by_key.get(_stats_key(u)) or {}).get("play_count")]
-                print(f"[WARN] IG 릴스 조회수 누락 {len(reel_missing)}/{len(reels)} → 기본 액터 차단 추정, data-slayer 폴백 {len(missing)}건 호출")
+                print(f"[WARN] IG 조회수 누락 {len(exp_missing)}/{len(expected)}(직전값 보유 기준) → 차단/필드누락 추정, data-slayer 폴백 {len(missing)}건 호출")
                 fb = _fetch_ig_fallback(missing)
                 merged = 0
                 for u in missing:
