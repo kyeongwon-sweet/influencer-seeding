@@ -134,6 +134,35 @@ def _integrity_lines(db, posts):
         if len(mism) > 4:
             line += f" … 외 {len(mism) - 4}건"
         lines.append(line)
+
+    # 4) 부분수집 감지 — 특정일 실측(non-null play)수가 최근 기준선의 60% 미만이면 그날 증분이 실제보다 과소.
+    #    (2026-07-03~05 주말: 350개 중 ~140개만 수집 → 증분 반토막, 성장이 월요일로 몰림. 재시도 강화의 백스톱.)
+    from datetime import timedelta, datetime, timezone
+    kst_today = (datetime.now(timezone.utc) + timedelta(hours=9)).date()
+    cutoff = (kst_today - timedelta(days=7)).isoformat()
+    day_cnt = {}
+    off = 0
+    while True:
+        res = db.table("post_daily_stats").select("measured_at, play_count").gte("measured_at", cutoff).range(off, off + 999).execute()
+        chunk = res.data or []
+        for r in chunk:
+            if r["play_count"] is not None:
+                day_cnt[r["measured_at"]] = day_cnt.get(r["measured_at"], 0) + 1
+        if len(chunk) < 1000:
+            break
+        off += 1000
+    # 오늘(KST)은 수집 중이라 제외하고 완료된 날만 판정. 기준선=중앙값(주말 저점·단일 결측에 안 끌림).
+    done = {d: c for d, c in day_cnt.items() if d < kst_today.isoformat()}
+    if len(done) >= 4:
+        vals = sorted(done.values())
+        median = vals[len(vals) // 2]
+        low = sorted(d for d, c in done.items() if median > 0 and c < 0.6 * median)
+        if low:
+            ex = ", ".join(f"{d[5:]}({done[d]}/{median})" for d in low[:5])
+            line = f"부분수집 감지 {len(low)}일 — 실측수가 기준선({median})의 60% 미만이라 그날 증분 과소(재수집 권장): {ex}"
+            if len(low) > 5:
+                line += f" … 외 {len(low) - 5}일"
+            lines.append(line)
     return lines
 
 
