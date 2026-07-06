@@ -226,6 +226,12 @@ function linkKey_(u) {
   u = String(u || "").trim();
   var ig = u.match(/instagram\.com\/(?:p|reels|reel|tv)\/([A-Za-z0-9_-]+)/i);
   if (ig) return "ig:" + ig[1];
+  // 유튜브: 영상ID로 통일(www/non-www·shorts·watch·youtu.be 모두 동일 영상). ID는 대소문자 구분(소문자화 X).
+  var yt = u.match(/youtube\.com\/shorts\/([A-Za-z0-9_-]{6,})/)
+        || u.match(/youtu\.be\/([A-Za-z0-9_-]{6,})/)
+        || u.match(/youtube\.com\/(?:embed|live|v)\/([A-Za-z0-9_-]{6,})/)
+        || (/youtube\.com\/watch/.test(u) ? u.match(/[?&]v=([A-Za-z0-9_-]{6,})/) : null);
+  if (yt) return "yt:" + yt[1];
   var tt = u.match(/tiktok\.com\/(?:.*\/)?video\/(\d+)/i) || u.match(/\/video\/(\d+)/);
   if (tt) return "tt:" + tt[1];
   return urlKey_(u);
