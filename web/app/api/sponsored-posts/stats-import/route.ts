@@ -62,7 +62,10 @@ export async function POST(req: NextRequest) {
     if (!ALLOWED_POST_URL_RE.test(url)) continue; // 허용 플랫폼만 신규 생성
     if (postByUrl.has(url)) continue;
     const clean: Record<string, unknown> = { url };
-    for (const f of POST_FIELDS) if (p[f] !== undefined && p[f] !== "") clean[f] = f === "channel_type" ? normalizeChannelType(String(p[f])) : p[f]; // ""→ 제외(date/numeric 캐스트 오류 방지)
+    // != null 로 null·undefined 모두 제외 — 시트(importStats)가 빈 캡션 셀을 content_summary:null로 보내는데,
+    // 예전 가드(!== undefined && !== "")는 null을 통과시켜 '캡션은 시트값 우선' 정책과 결합, 스크랩해둔 캡션을
+    // null로 반복 삭제했음(2026-07-06 실사고: 채움→importStats→삭제 2회 반복).
+    for (const f of POST_FIELDS) if (p[f] != null && p[f] !== "") clean[f] = f === "channel_type" ? normalizeChannelType(String(p[f])) : p[f];
     postByUrl.set(url, clean);
   }
 
