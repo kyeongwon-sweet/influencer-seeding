@@ -158,11 +158,12 @@ def main():
             res = (db.table("post_daily_stats")
                    .select("post_id, play_count, measured_at")
                    .in_("post_id", chunk).lt("measured_at", target)
-                   .order("measured_at", desc=True)
+                   .gt("play_count", 0)   # 0(수집 글리치·미측정)은 직전값으로 쓰지 않음 → 마지막 '실제값(>0)'을 직전값으로.
+                   .order("measured_at", desc=True)   #  (대시보드 단조보정과 동일 취지. 0→전체값이 증분으로 잡혀 누적처럼 뻥튀기되던 문제 방지)
                    .range(frm, frm + PAGE - 1).execute())
             page = res.data or []
             for r in page:
-                if r["post_id"] not in prev and r.get("play_count") is not None:
+                if r["post_id"] not in prev:
                     prev[r["post_id"]] = r["play_count"]
             if len(page) < PAGE:
                 break
