@@ -212,15 +212,18 @@ def main():
         ct = _norm_ch(it["channel_type"])
         by_channel[ct] = by_channel.get(ct, 0) + it["inc"]
 
-    # 배너는 '조회수 증분'이 아니라 도달 지표(인사이트 요청 중) — 오늘 조회수 증분이 없어도 라인이 사라지지 않게
-    # 활성 배너 게시물의 채널분류를 by_channel에 0으로 채워 항상 노출한다.
+    # 배너는 조회수(play_count)가 없어 '도달수(reach_count, 시트 수동입력)'로 집계.
+    # 활성 배너의 reach_count 합계를 채널분류별 증분에 반영 → 총 증분에도 합산(사용자 지시).
     try:
-        ban = db.table("sponsored_posts").select("channel_type, ended_at").ilike("channel_type", "%배너%").execute()
+        ban = db.table("sponsored_posts").select("channel_type, ended_at, reach_count").ilike("channel_type", "%배너%").execute()
         for r in (ban.data or []):
             if not r.get("ended_at") and r.get("channel_type"):
-                by_channel.setdefault(_norm_ch(r["channel_type"]), 0)
+                ct = _norm_ch(r["channel_type"])
+                by_channel[ct] = by_channel.get(ct, 0) + (r.get("reach_count") or 0)
     except Exception as e:
-        print("[notify] 배너 라인 보강 조회 실패(무시):", e)
+        print("[notify] 배너 도달수 집계 실패(무시):", e)
+    # 총 증분 = 조회수 증분 + 배너 도달수
+    total += sum(v for k, v in by_channel.items() if "배너" in k)
 
     # CPV(누적 조회당 비용): 채널별 Σ비용 / Σ누적조회수 — 오늘 측정된 게시물 전체 기준(대시보드 조회당비용과 동일)
     cost_by_ch, cumviews_by_ch = {}, {}
