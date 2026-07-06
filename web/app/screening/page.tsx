@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
@@ -608,10 +608,12 @@ export default function ScreeningPage() {
     load();
   }
 
-  const filtered = list
+  // 매 렌더(검색 타이핑·폴링) 전체 재필터/재정렬 방지 — 의존 입력이 바뀔 때만 계산
+  const filtered = useMemo(() => list
     .filter(i => statusFilter === "all" || i.status === statusFilter)
     .filter(i => !searchName || i.name.toLowerCase().includes(searchName.toLowerCase()))
-    .filter(i => filterPlatform === "all" || i.platform === filterPlatform);
+    .filter(i => filterPlatform === "all" || i.platform === filterPlatform),
+  [list, statusFilter, searchName, filterPlatform]);
 
   const filteredIds = filtered.map(i => i.id);
   const allFilteredSelected = filteredIds.length > 0 && filteredIds.every(id => selected.has(id));
@@ -622,7 +624,7 @@ export default function ScreeningPage() {
     setSortCol(col);
   }
 
-  const sorted = [...filtered].sort((a, b) => {
+  const sorted = useMemo(() => [...filtered].sort((a, b) => {
     if (!sortCol) {
       // 기본 정렬: 데이터가 수집된 채널을 먼저 노출 (그 안에서는 기존 순서 유지)
       const aHas = (a.screening_metrics ?? []).length > 0 ? 1 : 0;
@@ -649,7 +651,7 @@ export default function ScreeningPage() {
     }
     const cmp = av < bv ? -1 : av > bv ? 1 : 0;
     return sortDir === "asc" ? cmp : -cmp;
-  });
+  }), [filtered, sortCol, sortDir]);
 
   // 열 정의 툴팁 (인스타 / 유튜브)
   const COL_DEFS: Record<string, { ig?: string; yt?: string; both?: string }> = {

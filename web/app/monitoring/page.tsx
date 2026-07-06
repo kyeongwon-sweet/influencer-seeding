@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { ElapsedTimer, useStableHandlers } from "./perf-utils";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
@@ -319,7 +319,12 @@ export default function MonitoringPage() {
   }, [dailyTotals, lsSearchData]);
 
   // 날짜별 채널타입(바이럴/협찬) 조회수 증분 — forward-fill 적용
+  // 툴팁(호버) 전용 데이터라 useDeferredValue로 지연 계산 — 필터 타이핑마다 O(M×D) 재빌드가
+  // 긴급 렌더(입력 반응)를 막지 않게 한다. 값은 다음 idle 렌더에서 따라잡음.
+  const deferredPostsForTooltip = useDeferredValue(filteredPosts);
+  const deferredTotalsForTooltip = useDeferredValue(dailyTotals);
   const typeBreakdownByDate = useMemo(() => {
+    const dailyTotals = deferredTotalsForTooltip, filteredPosts = deferredPostsForTooltip;
     if (dailyTotals.length < 2) return new Map<string, Record<string, number>>();
     const dates = dailyTotals.map(d => d.date);
     // O(M×S) 인덱스 빌드: post별 date→play_count Map (forward-fill)
@@ -346,7 +351,7 @@ export default function MonitoringPage() {
       result.set(date, byType);
     }
     return result;
-  }, [dailyTotals, filteredPosts]);
+  }, [deferredTotalsForTooltip, deferredPostsForTooltip]);
 
   // derive sticky left positions from current widths
   const stickyLefts = useMemo(() => {
@@ -598,21 +603,25 @@ export default function MonitoringPage() {
         );
 
         // 조회수가 있는 게시물에 자동으로 도달수 입력
-        for (const [postId, newCount] of updated) {
-          if (newCount !== null && newCount > 0) {
-            const reach_count = Math.round(newCount * 0.8);
-            await fetch(`/api/sponsored-posts/${postId}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ reach_count }),
-            }).catch(() => {});
-
-            // 로컬 상태 업데이트
-            newPosts = newPosts.map(p =>
-              p.id === postId ? { ...p, reach_count } : p
-            );
-          }
+        // auto:true → ① 수동 입력된 도달수(manual_fields)는 덮지 않음 ② manual_fields에 잠기지 않음.
+        // 순차 await(게시물 수만큼 왕복) 대신 청크 병렬로 단축.
+        const reachTargets = [...updated].filter(([, c]) => c !== null && c > 0)
+          .map(([postId, c]) => ({ postId, reach_count: Math.round((c as number) * 0.8) }));
+        const byId = new Map(reachTargets.map(t => [t.postId, t.reach_count]));
+        const applied = new Set<string>(); // 서버가 실제로 쓴 것만 로컬 반영(수동 도달수 보존과 화면 일치)
+        for (let i = 0; i < reachTargets.length; i += 20) {
+          await Promise.all(reachTargets.slice(i, i + 20).map(async t => {
+            try {
+              const r = await fetch(`/api/sponsored-posts/${t.postId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ reach_count: t.reach_count, auto: true }),
+              });
+              if (r.ok && !(await r.json().catch(() => ({} as { skipped?: string }))).skipped) applied.add(t.postId);
+            } catch { /* 개별 실패는 다음 수집 때 재시도됨 */ }
+          }));
         }
+        newPosts = newPosts.map(p => applied.has(p.id) ? { ...p, reach_count: byId.get(p.id)! } : p);
       }
       previousPlayCountsRef.current.clear();
     }

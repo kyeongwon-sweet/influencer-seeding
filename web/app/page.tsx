@@ -93,7 +93,9 @@ export default function DashboardPage() {
   const [showAllJobs, setShowAllJobs] = useState(false);
 
   useEffect(() => {
+    let lastLoad = 0;
     const loadAll = () => {
+      lastLoad = Date.now();
       const t = AbortSignal.timeout(12000);
       return Promise.allSettled([
         fetch("/api/influencers", { signal: t }).then(r => r.json()).then(setInfluencers),
@@ -129,7 +131,8 @@ export default function DashboardPage() {
     };
     loadAll().finally(() => setLoading(false));
     // 탭 복귀 시 재요청 — 마운트 1회만 fetch하면 새 수집분이 반영 안 돼 인사이트('특이사항 없음' 등)가 낡은 채 남는 문제 방지.
-    const onVis = () => { if (!document.hidden) loadAll(); };
+    // 단 60초 스로틀: 탭 전환을 자주 하면 매번 6개 엔드포인트를 때리므로(사용량·부하) 최근 로드 후엔 생략.
+    const onVis = () => { if (!document.hidden && Date.now() - lastLoad > 60_000) loadAll(); };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
   }, []);

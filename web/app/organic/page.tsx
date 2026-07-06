@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
@@ -415,7 +415,8 @@ export default function OrganicPage() {
     setSortCol(col);
   }
 
-  const filtered = mentions.filter(m => {
+  // 매 렌더(검색 타이핑 등) 전체 재필터/재정렬 방지
+  const filtered = useMemo(() => mentions.filter(m => {
     // (광고) 또는 #광고 패턴만 제외 (내돈내산 있으면 통과)
     const cap = (m.content_summary ?? '').toLowerCase();
     if (!cap.includes('내돈내산') && (cap.includes('(광고)') || cap.includes('#광고'))) return false;
@@ -431,7 +432,7 @@ export default function OrganicPage() {
     if (filters.dateFrom && (!m.uploaded_at || m.uploaded_at < filters.dateFrom)) return false;
     if (filters.dateTo && (!m.uploaded_at || m.uploaded_at > filters.dateTo)) return false;
     return true;
-  });
+  }), [mentions, filters]);
 
   const hasFilter = filters.name !== "" || filters.platform !== "all" || filters.products.length > 0 || filters.exposureType !== "all" || filters.dateFrom !== "" || filters.dateTo !== "";
 
@@ -451,7 +452,7 @@ export default function OrganicPage() {
     ? mentions.reduce((a, b) => a.created_at > b.created_at ? a : b).created_at
     : null;
 
-  const sorted = [...filtered].sort((a, b) => {
+  const sorted = useMemo(() => [...filtered].sort((a, b) => {
     if (!sortCol) return 0;
     let av: string | number = "", bv: string | number = "";
     switch (sortCol) {
@@ -463,7 +464,7 @@ export default function OrganicPage() {
     }
     const cmp = av < bv ? -1 : av > bv ? 1 : 0;
     return sortDir === "asc" ? cmp : -cmp;
-  });
+  }), [filtered, sortCol, sortDir]);
 
   function rsTH(col: string, colIdx: number, sortable = true, right = false) {
     const active = sortCol === col;

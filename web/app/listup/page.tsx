@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
@@ -137,7 +137,8 @@ export default function ListupPage() {
 
   const uniqueKeywords = [...new Set(influencers.map(i => i.keyword).filter(Boolean))] as string[];
 
-  const filteredInfluencers = influencers.filter(inf => {
+  // 매 렌더 전체 재필터 방지
+  const filteredInfluencers = useMemo(() => influencers.filter(inf => {
     if (filters.name && !inf.name.toLowerCase().includes(filters.name.toLowerCase())) return false;
     if (filters.platform !== "all" && inf.platform !== filters.platform) return false;
     if (filters.status !== "all" && inf.status !== filters.status) return false;
@@ -149,7 +150,7 @@ export default function ListupPage() {
       if (filters.uploadedTo && kst > filters.uploadedTo) return false;
     }
     return true;
-  });
+  }), [influencers, filters]);
 
   const hasFilter = filters.name !== "" || filters.platform !== "all" || filters.status !== "all" || filters.keyword !== "all" || filters.uploadedFrom !== "" || filters.uploadedTo !== "";
 
