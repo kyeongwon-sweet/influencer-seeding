@@ -253,13 +253,18 @@ def main():
     ]
     for ct, s in sorted(by_channel.items(), key=lambda x: x[1], reverse=True):
         if "배너" in ct:
-            # 배너: 조회수 아닌 도달 지표 → 증분 있으면 표기, 없으면 숫자 생략하고 '인사이트 요청 중'만
-            num = f" *+{f(s)}*" if s > 0 else ""
-            lines.append(f"• {_ital_paren(ct)}{num}  (인사이트 요청 중)")
+            # 배너는 조회수가 없어 도달수(reach)를 play_count에 적재 → 총 증분에 '도달수'로 합산(사용자 지시).
+            # 주말엔 배너 트래킹이 안 돼 데이터가 없을 수 있음(그날은 0 → '미집계' 표기).
+            if s > 0:
+                lines.append(f"• {_ital_paren(ct)} *+{f(s)}*  (도달수)")
+            else:
+                lines.append(f"• {_ital_paren(ct)}  (도달수 미집계·주말/집계 전)")
         else:
             lines.append(f"• {_ital_paren(ct)} *+{f(s)}*  {_cpv(cost_by_ch.get(ct, 0), cumviews_by_ch.get(ct, 0), ct)}")
     lines += ["", DIV, "", "◾ *급상승 TOP 10* 🔥  `CPV는 누적 기준`", ""]
-    for rank, it in enumerate(items[:10], 1):
+    # 배너(도달수)는 게시물별 조회수 순위에 섞이지 않게 TOP에서 제외(총 증분엔 이미 합산됨).
+    top_items = [it for it in items if "배너" not in (it["channel_type"] or "")]
+    for rank, it in enumerate(top_items[:10], 1):
         prod = f"[{it['product']}] " if it["product"] else ""
         label = f"<{it['url']}|{_esc(it['name'])}>" if it["url"] else _esc(it["name"])
         date = it["posted_at"] or "업로드일 미상"
