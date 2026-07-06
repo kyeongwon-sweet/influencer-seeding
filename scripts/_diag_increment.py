@@ -20,7 +20,7 @@ def load_all_stats(db):
                .range(start, start + 999).execute())
         rows = res.data or []
         for r in rows:
-            if r.get("play_count") is not None:
+            if r.get("play_count") is not None and r.get("post_id"):
                 out[r["post_id"]][r["measured_at"]] = r["play_count"]
         n += len(rows)
         if len(rows) < 1000:
