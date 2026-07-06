@@ -198,6 +198,36 @@ def main():
             "cum": tv or 0,          # 누적 조회수(오늘 play_count)
         })
 
+    # 배너: 조회수(play_count)가 없어 도달수(reach_count, 시트 수동입력)를 '조회수'로 취급해 편입(사용자 지시).
+    # → 채널분류·총 증분·TOP에 일반 게시물과 동일하게 반영. reach_count>0 인 활성 배너만 항목화.
+    banner_cts = set()
+    try:
+        ban = db.table("sponsored_posts").select(
+            "url, account_name, product_name, posted_at, channel_type, cost, reach_count, ended_at"
+        ).ilike("channel_type", "%배너%").execute()
+        for r in (ban.data or []):
+            if r.get("ended_at") or not r.get("channel_type"):
+                continue
+            banner_cts.add((r.get("channel_type") or "").strip())
+            rc = r.get("reach_count") or 0
+            if rc <= 0:
+                continue
+            url = (r.get("url") or "").strip()
+            items.append({
+                "inc": rc,
+                "name": (r.get("account_name") or "").strip() or url.rstrip("/").split("/")[-1] or "?",
+                "platform": _platform(url),
+                "url": url,
+                "product": (r.get("product_name") or "").strip(),
+                "posted_at": str(r.get("posted_at"))[:10] if r.get("posted_at") else "",
+                "channel_type": (r.get("channel_type") or "").strip() or "미분류",
+                "is_new": False,
+                "cost": r.get("cost") or 0,
+                "cum": rc,
+            })
+    except Exception as e:
+        print("[notify] 배너 도달수 편입 실패(무시):", e)
+
     if not items:
         print(f"[notify] {target} 증가분 없음 → 발송 생략")
         return
@@ -212,18 +242,10 @@ def main():
         ct = _norm_ch(it["channel_type"])
         by_channel[ct] = by_channel.get(ct, 0) + it["inc"]
 
-    # 배너는 조회수(play_count)가 없어 '도달수(reach_count, 시트 수동입력)'로 집계.
-    # 활성 배너의 reach_count 합계를 채널분류별 증분에 반영 → 총 증분에도 합산(사용자 지시).
-    try:
-        ban = db.table("sponsored_posts").select("channel_type, ended_at, reach_count").ilike("channel_type", "%배너%").execute()
-        for r in (ban.data or []):
-            if not r.get("ended_at") and r.get("channel_type"):
-                ct = _norm_ch(r["channel_type"])
-                by_channel[ct] = by_channel.get(ct, 0) + (r.get("reach_count") or 0)
-    except Exception as e:
-        print("[notify] 배너 도달수 집계 실패(무시):", e)
-    # 총 증분 = 조회수 증분 + 배너 도달수
-    total += sum(v for k, v in by_channel.items() if "배너" in k)
+    # 배너 라인은 도달수 없어도 항상 노출(미집계 표기용). 도달수 자체는 위에서 items로 편입돼
+    # by_channel·total·TOP에 이미 반영됨(여기선 중복 합산하지 않는다).
+    for ct in banner_cts:
+        by_channel.setdefault(_norm_ch(ct), 0)
 
     # CPV(누적 조회당 비용): 채널별 Σ비용 / Σ누적조회수 — 오늘 측정된 게시물 전체 기준(대시보드 조회당비용과 동일)
     cost_by_ch, cumviews_by_ch = {}, {}
@@ -256,8 +278,8 @@ def main():
     ]
     for ct, s in sorted(by_channel.items(), key=lambda x: x[1], reverse=True):
         if "배너" in ct:
-            # 배너는 조회수가 없어 도달수(reach)를 play_count에 적재 → 총 증분에 '도달수'로 합산(사용자 지시).
-            # 주말엔 배너 트래킹이 안 돼 데이터가 없을 수 있음(그날은 0 → '미집계' 표기).
+            # 배너는 조회수가 없어 도달수(reach_count)를 '조회수'로 취급 → 채널합계·총 증분·TOP에 반영.
+            # 도달수 입력이 없으면(주말/집계 전) 0 → '미집계' 표기.
             if s > 0:
                 lines.append(f"• {_ital_paren(ct)} *+{f(s)}*  (도달수)")
             else:
@@ -265,9 +287,8 @@ def main():
         else:
             lines.append(f"• {_ital_paren(ct)} *+{f(s)}*  {_cpv(cost_by_ch.get(ct, 0), cumviews_by_ch.get(ct, 0), ct)}")
     lines += ["", DIV, "", "◾ *급상승 TOP 10* 🔥  `CPV는 누적 기준`", ""]
-    # 배너(도달수)는 게시물별 조회수 순위에 섞이지 않게 TOP에서 제외(총 증분엔 이미 합산됨).
-    top_items = [it for it in items if "배너" not in (it["channel_type"] or "")]
-    for rank, it in enumerate(top_items[:10], 1):
+    # 배너는 도달수를 '조회수'로 취급해 TOP에도 섞어 노출(사용자 지시). CPV 대신 '(인사이트 요청 중)' 표기됨.
+    for rank, it in enumerate(items[:10], 1):
         prod = f"[{it['product']}] " if it["product"] else ""
         label = f"<{it['url']}|{_esc(it['name'])}>" if it["url"] else _esc(it["name"])
         date = it["posted_at"] or "업로드일 미상"
