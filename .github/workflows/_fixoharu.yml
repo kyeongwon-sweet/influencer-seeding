@@ -1,0 +1,27 @@
+name: (admin) Fix 오하루 zero rows
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "1이면 실제 삭제, 비우면 백업/미리보기만"
+        type: string
+        default: ""
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - run: pip install -r requirements.txt
+      - name: 오하루 0행 백업+삭제
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CONFIRM: ${{ github.event.inputs.confirm }}
+          PYTHONUNBUFFERED: "1"
+        run: cd scripts && python _fix_oharu.py
