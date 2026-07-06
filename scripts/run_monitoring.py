@@ -641,6 +641,29 @@ def run():
 
         print(f"[SUCCESS] 모니터링 완료: {len(rows)}건 저장")
 
+        # 📸 배너 도달수(reach) 일별 스냅샷 — 배너는 조회수(play_count)가 없어 '도달수'로 증분 계산한다.
+        #    활성 배너의 현재 reach_count(시트/대시보드 수동입력)를 오늘 post_daily_stats.reach_count로 기록
+        #    → 도달수 일별 이력 생성 → viewIncrement/리포트가 '전일 대비 도달수 증분'을 산출.
+        #    (첫 스냅샷일엔 이전 이력이 없어 도달수 전체가 신규 증분으로 잡힘 = 의도된 규칙)
+        #    best-effort: 실패해도 수집 자체엔 영향 없음(경고만).
+        try:
+            banners, boff = [], 0
+            while True:
+                bres = (db.table("sponsored_posts").select("id, reach_count, ended_at")
+                        .ilike("channel_type", "%배너%").range(boff, boff + 999).execute())
+                bchunk = bres.data or []
+                banners.extend(bchunk)
+                if len(bchunk) < 1000:
+                    break
+                boff += 1000
+            reach_rows = [{"post_id": b["id"], "measured_at": TODAY, "reach_count": b["reach_count"]}
+                          for b in banners if not b.get("ended_at") and b.get("reach_count") is not None]
+            if reach_rows:
+                db.table("post_daily_stats").upsert(reach_rows, on_conflict="post_id,measured_at").execute()
+                print(f"[LOG] 📸 배너 도달수 스냅샷: {len(reach_rows)}건 ({TODAY})")
+        except Exception as e:
+            print(f"[WARN] 배너 도달수 스냅샷 실패(무시): {e}")
+
         # 📸 일별 증분 스냅샷(락) — 오늘 시점 누적 총합을 daily_view_snapshot에 저장.
         #    이후 게시물이 늦게 추가돼도 과거 스냅샷은 안 바뀜 → '일자별 증감' 과거값 안정화.
         #    best-effort: 테이블 미생성 등 어떤 오류도 수집 자체엔 영향 주지 않음(경고만).

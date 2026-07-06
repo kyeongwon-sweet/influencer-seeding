@@ -200,35 +200,64 @@ def main():
             "cum": tv or 0,          # 누적 조회수(오늘 play_count)
         })
 
-    # 배너: 조회수(play_count)가 없어 도달수(reach_count, 시트 수동입력)를 '조회수'로 취급해 편입(사용자 지시).
-    # → 채널분류·총 증분·TOP에 일반 게시물과 동일하게 반영. reach_count>0 인 활성 배너만 항목화.
+    # 배너: 조회수(play_count) 없음 → 도달수(reach_count) 일별 이력으로 '전일 대비 증분' 계산해 편입(사용자 지시).
+    #   post_daily_stats.reach_count 시리즈에서: 오늘 - 직전(>0). 직전 없으면 첫 측정 → 오늘값 전체. 양수만.
+    #   조회수와 동일하게 채널분류·총 증분·TOP에 반영.
     banner_cts = set()
     try:
-        ban = db.table("sponsored_posts").select(
-            "url, account_name, product_name, posted_at, channel_type, cost, reach_count, ended_at"
-        ).ilike("channel_type", "%배너%").execute()
-        for r in (ban.data or []):
-            if r.get("ended_at") or not r.get("channel_type"):
+        # 활성 배너 메타
+        bmeta, boff = {}, 0
+        while True:
+            bres = (db.table("sponsored_posts")
+                    .select("id, url, account_name, product_name, posted_at, channel_type, cost, ended_at")
+                    .ilike("channel_type", "%배너%").range(boff, boff + 999).execute())
+            bchunk = bres.data or []
+            for b in bchunk:
+                if not b.get("ended_at") and b.get("channel_type"):
+                    bmeta[b["id"]] = b
+                    banner_cts.add((b.get("channel_type") or "").strip())
+            if len(bchunk) < 1000:
+                break
+            boff += 1000
+        # 오늘 도달수
+        reach_today = {}
+        for chunk in _chunks(list(bmeta.keys()), 100):
+            res = (db.table("post_daily_stats").select("post_id, reach_count")
+                   .in_("post_id", chunk).eq("measured_at", target).execute())
+            for r in (res.data or []):
+                if r.get("reach_count") is not None:
+                    reach_today[r["post_id"]] = r["reach_count"]
+        # 직전 도달수(>0, 가장 최근)
+        reach_prev = {}
+        for chunk in _chunks(list(reach_today.keys()), 100):
+            res = (db.table("post_daily_stats").select("post_id, reach_count, measured_at")
+                   .in_("post_id", chunk).lt("measured_at", target).gt("reach_count", 0)
+                   .order("measured_at", desc=True).execute())
+            for r in (res.data or []):
+                if r["post_id"] not in reach_prev and r.get("reach_count") is not None:
+                    reach_prev[r["post_id"]] = r["reach_count"]
+        # 전일 대비 도달수 증분 → items 편입
+        for pid, tv in reach_today.items():
+            pv = reach_prev.get(pid)
+            inc = tv - pv if pv is not None else tv
+            if inc <= 0:
                 continue
-            banner_cts.add((r.get("channel_type") or "").strip())
-            rc = r.get("reach_count") or 0
-            if rc <= 0:
-                continue
-            url = (r.get("url") or "").strip()
+            b = bmeta.get(pid, {})
+            url = (b.get("url") or "").strip()
             items.append({
-                "inc": rc,
-                "name": (r.get("account_name") or "").strip() or url.rstrip("/").split("/")[-1] or "?",
+                "inc": inc,
+                "name": (b.get("account_name") or "").strip() or url.rstrip("/").split("/")[-1] or "?",
                 "platform": _platform(url),
                 "url": url,
-                "product": (r.get("product_name") or "").strip(),
-                "posted_at": str(r.get("posted_at"))[:10] if r.get("posted_at") else "",
-                "channel_type": (r.get("channel_type") or "").strip() or "미분류",
-                "is_new": False,
-                "cost": r.get("cost") or 0,
-                "cum": rc,
+                "product": (b.get("product_name") or "").strip(),
+                "posted_at": str(b.get("posted_at"))[:10] if b.get("posted_at") else "",
+                "channel_type": (b.get("channel_type") or "").strip() or "미분류",
+                "is_new": pv is None,
+                "cost": b.get("cost") or 0,
+                "cum": tv or 0,
             })
     except Exception as e:
-        print("[notify] 배너 도달수 편입 실패(무시):", e)
+        print("[notify] 배너 도달수 증분 집계 실패(무시):", e)
 
     if not items:
         print(f"[notify] {target} 증가분 없음 → 발송 생략")
