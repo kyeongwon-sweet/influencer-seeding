@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
+import { todayKST } from "@/lib/dateRule";
 
 // PATCH /api/sponsored-posts/[id]/stats
 // post_daily_stats 수동 수정: play_count / likes_count / comments_count.
@@ -60,7 +61,7 @@ export async function PATCH(
       .limit(1)
       .single();
     if (!latest) {
-      const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10); // KST
+      const today = todayKST();
       const { error } = await supabase
         .from("post_daily_stats")
         .upsert({ post_id: id, measured_at: today, ...updates }, { onConflict: "post_id,measured_at" });

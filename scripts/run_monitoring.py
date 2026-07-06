@@ -81,6 +81,43 @@ def _prev_stats(db, post_ids):
     return last
 
 
+def _store_aux_rows(db, rows, posts, stats, key_fn, label, *, views="clamp", caption_field=None, caption_limit=None):
+    """보조 플랫폼(YT/틱톡/스레드/FB/X) 공통 저장 루프 — 5개 블록의 복붙을 단일 구현으로.
+
+    views:
+      - "clamp":    0/미반환은 접근불가로 보고 행 자체를 저장 안 함(직전 값 유지) + 역행 clamp. (틱톡·X)
+      - "optional": 조회수 None이어도 행 저장(좋아요 등 유지) + 값 있으면 역행 clamp. (유튜브)
+      - "none":     플랫폼이 조회수 미제공 → play_count는 항상 None. (스레드·FB)
+    caption_field: 비어 있는 content_summary만 stats의 이 필드로 자동 채움(시트/수동 캡션 보존).
+    """
+    last_stat = _prev_stats(db, [p["id"] for p in posts])
+    for post in posts:
+        s = stats.get(key_fn(post))
+        # 캡션 자동채움 — 조회수 유무와 무관, 비어 있을 때만
+        if s and caption_field and not post.get("content_summary") and s.get(caption_field):
+            cap = s[caption_field][:caption_limit] if caption_limit else s[caption_field]
+            db.table("sponsored_posts").update({"content_summary": cap}).eq("id", post["id"]).execute()
+        if not s:
+            continue
+        existing = last_stat.get(post["id"], {})
+        play = None if views == "none" else s.get("views")
+        if views == "clamp" and (not play or play <= 0):
+            continue  # 🛡️ 0/미반환은 접근불가 → 저장 안 함(0으로 덮어쓰면 누적 붕괴)
+        if play is not None and existing.get("play_count") is not None and play < existing.get("play_count"):
+            # 미세 감소는 정상 지터 → NULL 대신 직전 최대값 유지(clamp)
+            print(f"  ⚠️  {label} 조회수 역행 clamp {post['url']} ({play} → {existing.get('play_count')} 유지)")
+            play = existing.get("play_count")
+        likes, comments = s.get("likes"), s.get("comments")
+        rows.append({
+            "post_id": post["id"],
+            "measured_at": TODAY,
+            "play_count": play,
+            # 액터가 필드 누락 시 None으로 덮어쓰지 않도록 직전값 폴백 (실제 0은 그대로 저장)
+            "likes_count": likes if likes is not None else existing.get("likes_count"),
+            "comments_count": comments if comments is not None else existing.get("comments_count"),
+        })
+
+
 def _snapshot_totals(db, post_ids, upto):
     """게시물들의 upto(포함) 시점 누적 총합 스냅샷 — 일별 증분 락 저장용.
     - play: 각 post의 max(누적·mono) play_count(≤ upto). likes/comments: 각 post의 최신값.
@@ -497,30 +534,9 @@ def run():
             try:
                 yt_stats = _fetch_youtube([p["url"] for p in yt_posts])
                 print(f"[LOG] 유튜브 수집: {len(yt_stats)}건 / {len(yt_posts)}개 요청")
-                # 직전(오늘 이전) 누적값을 일괄 조회 (게시물별 개별 쿼리 대신 한 번에)
-                last_stat = _prev_stats(db, [p["id"] for p in yt_posts])
-                for post in yt_posts:
-                    s = yt_stats.get(_yt_id(post["url"]))
-                    if not s:
-                        continue
-                    existing = last_stat.get(post["id"], {})
-                    # 유튜브 캡션 = 영상 제목 (비어 있을 때만 채움 — 수동/시트 캡션 보존)
-                    if not post.get("content_summary") and s.get("title"):
-                        db.table("sponsored_posts").update({"content_summary": s["title"][:300]}).eq("id", post["id"]).execute()
-                    play = s.get("views")
-                    if play is not None and existing.get("play_count") is not None and play < existing.get("play_count"):
-                        # 미세 감소는 정상 지터 → NULL 대신 직전 최대값 유지(clamp)
-                        print(f"  ⚠️  유튜브 조회수 역행 clamp {post['url']} ({play} → {existing.get('play_count')} 유지)")
-                        play = existing.get("play_count")
-                    likes, comments = s.get("likes"), s.get("comments")
-                    rows.append({
-                        "post_id": post["id"],
-                        "measured_at": TODAY,
-                        "play_count": play,
-                        # 실제 0을 stale 값으로 덮어쓰지 않도록 None일 때만 폴백
-                        "likes_count": likes if likes is not None else existing.get("likes_count"),
-                        "comments_count": comments if comments is not None else existing.get("comments_count"),
-                    })
+                # 유튜브 캡션 = 영상 제목. 조회수 None이어도 행 저장(좋아요 유지) + 역행 clamp.
+                _store_aux_rows(db, rows, yt_posts, yt_stats, lambda p: _yt_id(p["url"]), "유튜브",
+                                views="optional", caption_field="title", caption_limit=300)
             except Exception as e:
                 # 무음 실패 방지: 에러를 명시하고 아래에서 작업을 실패로 표시(IG는 정상 저장됨)
                 print(f"[ERROR] 유튜브 수집 실패: {e}")
@@ -536,29 +552,8 @@ def run():
                 tt_stats = _fetch_tiktok([tt_canon[p["url"]] for p in tt_posts])
                 got = sum(1 for s in tt_stats.values() if (s.get("views") or 0) > 0)
                 print(f"[LOG] 틱톡 수집: 실값 {got}건 / {len(tt_posts)}개 요청")
-                last_stat = _prev_stats(db, [p["id"] for p in tt_posts])
-                for post in tt_posts:
-                    s = tt_stats.get(_tt_id(tt_canon[post["url"]]))
-                    # 캡션 자동채움 — 틱톡 설명을 content_summary가 비어있을 때만(시트/수동 보존). 조회수 유무와 무관.
-                    if s and not post.get("content_summary") and s.get("content_summary"):
-                        db.table("sponsored_posts").update({"content_summary": s["content_summary"]}).eq("id", post["id"]).execute()
-                    play = s.get("views") if s else None
-                    # 🛡️ 0/미반환은 접근불가 → 저장 안 함(0으로 덮어쓰면 누적 붕괴, 직전 값 유지)
-                    if not play or play <= 0:
-                        continue
-                    existing = last_stat.get(post["id"], {})
-                    if existing.get("play_count") is not None and play < existing.get("play_count"):
-                        # 미세 감소는 정상 지터 → NULL 대신 직전 최대값 유지(clamp)
-                        print(f"  ⚠️  틱톡 조회수 역행 clamp {post['url']} ({play} → {existing.get('play_count')} 유지)")
-                        play = existing.get("play_count")
-                    likes, comments = s.get("likes"), s.get("comments")
-                    rows.append({
-                        "post_id": post["id"],
-                        "measured_at": TODAY,
-                        "play_count": play,
-                        "likes_count": likes if likes is not None else existing.get("likes_count"),
-                        "comments_count": comments if comments is not None else existing.get("comments_count"),
-                    })
+                _store_aux_rows(db, rows, tt_posts, tt_stats, lambda p: _tt_id(tt_canon[p["url"]]), "틱톡",
+                                views="clamp", caption_field="content_summary")
             except Exception as e:
                 print(f"[ERROR] 틱톡 수집 실패: {e}")
                 tt_failed = True
@@ -570,21 +565,7 @@ def run():
             try:
                 th_stats = _fetch_threads([p["url"] for p in th_posts])
                 print(f"[LOG] 스레드 수집: {len(th_stats)}건 / {len(th_posts)}개 요청")
-                last_stat = _prev_stats(db, [p["id"] for p in th_posts])
-                for post in th_posts:
-                    s = th_stats.get(_th_code(post["url"]))
-                    if not s:
-                        continue
-                    existing = last_stat.get(post["id"], {})
-                    likes, comments = s.get("likes"), s.get("comments")
-                    rows.append({
-                        "post_id": post["id"],
-                        "measured_at": TODAY,
-                        "play_count": None,  # 스레드는 조회수 미제공
-                        # 액터가 필드 누락 시 None으로 덮어쓰지 않도록 직전값 폴백
-                        "likes_count": likes if likes is not None else existing.get("likes_count"),
-                        "comments_count": comments if comments is not None else existing.get("comments_count"),
-                    })
+                _store_aux_rows(db, rows, th_posts, th_stats, lambda p: _th_code(p["url"]), "스레드", views="none")
             except Exception as e:
                 print(f"[ERROR] 스레드 수집 실패: {e}")
                 th_failed = True
@@ -596,21 +577,7 @@ def run():
             try:
                 fb_stats = _fetch_facebook([p["url"] for p in fb_posts])
                 print(f"[LOG] 페이스북 수집: {len(fb_stats)}건 / {len(fb_posts)}개 요청")
-                last_stat = _prev_stats(db, [p["id"] for p in fb_posts])
-                for post in fb_posts:
-                    s = fb_stats.get(_fb_key(post["url"]))
-                    if not s:
-                        continue
-                    existing = last_stat.get(post["id"], {})
-                    likes, comments = s.get("likes"), s.get("comments")
-                    rows.append({
-                        "post_id": post["id"],
-                        "measured_at": TODAY,
-                        "play_count": None,  # 일반 게시물은 조회수 없음
-                        # 액터가 필드 누락 시 None으로 덮어쓰지 않도록 직전값 폴백
-                        "likes_count": likes if likes is not None else existing.get("likes_count"),
-                        "comments_count": comments if comments is not None else existing.get("comments_count"),
-                    })
+                _store_aux_rows(db, rows, fb_posts, fb_stats, lambda p: _fb_key(p["url"]), "페이스북", views="none")
             except Exception as e:
                 print(f"[ERROR] 페이스북 수집 실패: {e}")
                 fb_failed = True
@@ -623,29 +590,8 @@ def run():
                 tw_stats = _fetch_twitter([p["url"] for p in tw_posts])
                 got = sum(1 for s in tw_stats.values() if (s.get("views") or 0) > 0)
                 print(f"[LOG] 트위터 수집: 실값 {got}건 / {len(tw_posts)}개 요청")
-                last_stat = _prev_stats(db, [p["id"] for p in tw_posts])
-                for post in tw_posts:
-                    s = tw_stats.get(_tw_id(post["url"]))
-                    # 캡션 자동채움 — 트윗 본문을 content_summary가 비어있을 때만(시트/수동 보존). 조회수 유무와 무관.
-                    if s and not post.get("content_summary") and s.get("content_summary"):
-                        db.table("sponsored_posts").update({"content_summary": s["content_summary"]}).eq("id", post["id"]).execute()
-                    play = s.get("views") if s else None
-                    # 🛡️ 0/미반환(X 조회수 미노출)은 접근불가 → 저장 안 함(직전 값 유지)
-                    if not play or play <= 0:
-                        continue
-                    existing = last_stat.get(post["id"], {})
-                    if existing.get("play_count") is not None and play < existing.get("play_count"):
-                        # 미세 감소는 정상 지터 → NULL 대신 직전 최대값 유지(clamp)
-                        print(f"  ⚠️  트위터 조회수 역행 clamp {post['url']} ({play} → {existing.get('play_count')} 유지)")
-                        play = existing.get("play_count")
-                    likes, comments = s.get("likes"), s.get("comments")
-                    rows.append({
-                        "post_id": post["id"],
-                        "measured_at": TODAY,
-                        "play_count": play,
-                        "likes_count": likes if likes is not None else existing.get("likes_count"),
-                        "comments_count": comments if comments is not None else existing.get("comments_count"),
-                    })
+                _store_aux_rows(db, rows, tw_posts, tw_stats, lambda p: _tw_id(p["url"]), "트위터",
+                                views="clamp", caption_field="content_summary")
             except Exception as e:
                 print(f"[ERROR] 트위터 수집 실패: {e}")
                 tw_failed = True

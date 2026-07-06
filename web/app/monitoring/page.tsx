@@ -231,13 +231,6 @@ export default function MonitoringPage() {
     // 날짜 범위만 바꿔도 재계산되도록 deps에 명시. (누락 시 델타 표가 그래프와 어긋남)
   }, [filteredPosts, filters.dateFrom, filters.dateTo]);
 
-  const deltaChartData = useMemo(() => {
-    return chartData.slice(1).map((d, i) => ({
-      date: d.date,
-      value: d.value - chartData[i].value,
-    }));
-  }, [chartData]);
-
   // 메인 그래프 조회수 선 = 일별 증분(누적 아님). 광고비·검색량·B2B 와 같은 '하루치 흐름'으로 맞춰 상관관계가 보이게 함.
   // dailyTotals(전일 forward-fill + 단조보정)에서 파생 → 일자별 증감 표의 '조회수' 값과 정확히 일치.
   // 늦게 등록된 게시물의 첫 등장 조회수도 그날 증분에 그대로 포함(전부 포함 방식).

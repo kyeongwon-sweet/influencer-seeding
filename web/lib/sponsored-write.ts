@@ -2,6 +2,7 @@ import type { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl, ALLOWED_POST_URL_RE } from "@/lib/url-utils";
 import { normalizeChannelType } from "@/app/monitoring/lib";
 import { triggerCaptionBackfill, needsCaption } from "@/lib/github-dispatch";
+import { todayKST } from "@/lib/dateRule";
 
 type Supabase = ReturnType<typeof getServerSupabase>;
 
@@ -105,7 +106,7 @@ export async function upsertSponsoredRows(
   }
 
   // 캡션에 '삭제' 또는 '보관'이 포함된 행 → '종료'(ended_at) 처리. 이미 종료된 건은 날짜 유지(중복 방지).
-  const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const today = todayKST();
   const endedUrls = rows
     .filter(r => /삭제|보관/.test(String(r.content_summary ?? "")))
     .map(r => r.url);

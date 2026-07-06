@@ -9,7 +9,6 @@ const isPublicRoute = createRouteMatcher([
   "/api/slack-events(.*)",
   "/api/kpi/ingest(.*)",
   "/api/kpi/fetch(.*)",
-  "/api/sponsored-posts/sync(.*)",
   "/api/sponsored-posts/bulk(.*)",
   "/api/sponsored-posts/stats-import(.*)",
   "/api/sponsored-posts/list-for-sheet(.*)",

@@ -3,6 +3,7 @@ import { getServerSupabase } from "@/lib/supabase-server";
 import { fetchDatasetItems } from "@/lib/apify";
 import { normalizeYouTubeUrl, normalizeInstagramUrl } from "@/lib/url-utils";
 import { notifyJob } from "@/lib/slack";
+import { todayKST } from "@/lib/dateRule";
 
 // ── 지표 계산 (metrics.py 포팅) ─────────────────────────────────────
 
@@ -229,7 +230,7 @@ export async function POST(req: NextRequest) {
 
 async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, jobId: string, items: Record<string, unknown>[]) {
   // KST 날짜로 적재 — GHA(run_monitoring, MONITORING_DATE=KST)·대시보드 todayKST와 일치(UTC로 잡으면 KST 새벽 수집이 어제로 밀림)
-  const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const today = todayKST();
   const { data: posts } = await supabase.from('sponsored_posts').select('id, url, posted_at, account_name, influencer_id, ended_at, project_name, content_summary');
 
   const statsKey = (url: string) => {

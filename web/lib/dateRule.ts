@@ -3,9 +3,14 @@
 
 export const MIN_ENTRY_DATE = "2020-01-01";
 
-/** 오늘(KST) YYYY-MM-DD — date input의 max */
-export function maxDateKST(): string {
+/** 오늘(KST) YYYY-MM-DD. 인라인 `new Date(Date.now()+9h)…` 산식 대신 이걸 쓸 것(중복·오타 방지). */
+export function todayKST(): string {
   return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+/** 오늘(KST) — date input의 max */
+export function maxDateKST(): string {
+  return todayKST();
 }
 
 /** YYYY-MM-DD 형식 + 2020-01-01 ~ 오늘(KST) 범위면 true */

@@ -5,6 +5,7 @@ import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
 import { platformLabel } from "@/lib/platform";
 import { parseNumInput } from "@/lib/num";
+import { maxDateKST, isValidEntryDate } from "@/lib/dateRule";
 
 const PLATFORMS = ["인스타그램", "유튜브", "블로그", "틱톡", "스레드", "트위터"];
 
@@ -75,13 +76,9 @@ function formatElapsed(s: number): string {
   return `${Math.floor(s / 60)}분 ${s % 60}초`;
 }
 
-// 업로드일 유효 범위: YYYY-MM-DD + 2020-01-01 ~ 오늘(KST). 비정상 날짜(5자리 연도·미래 등) 입력 방지
-function maxUploadDate(): string {
-  return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
-}
-function isValidUploadDate(s: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}$/.test(s) && s >= "2020-01-01" && s <= maxUploadDate();
-}
+// 업로드일 유효 범위 — 공용 규칙(lib/dateRule)과 동일해 로컬 중복 제거, alias만 유지
+const maxUploadDate = maxDateKST;
+const isValidUploadDate = isValidEntryDate;
 
 export default function OrganicPage() {
   const { toasts, show: toast } = useToast();
