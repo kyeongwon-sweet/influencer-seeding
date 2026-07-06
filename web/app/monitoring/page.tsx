@@ -238,7 +238,8 @@ export default function MonitoringPage() {
   //   일별 증분과 달리 각 게시물의 절대 성과를 연령보정(7일)해 비교 → 수집 누락·백로그에 안 흔들림.
   const dowAnalysis = useMemo<DowData>(() => {
     const WD = ["월", "화", "수", "목", "금", "토", "일"];
-    const buckets: number[][] = [[], [], [], [], [], [], []];
+    const views: number[][] = [[], [], [], [], [], [], []];
+    const cpvs: number[][] = [[], [], [], [], [], [], []]; // 게시물별 CPV = 비용/게시후7일 조회수
     for (const post of filteredPosts) {
       if (!(post.channel_type ?? "").includes("(영상)")) continue; // 배너 등 제외, 영상만
       const pa = post.posted_at;
@@ -250,18 +251,24 @@ export default function MonitoringPage() {
         const diff = Math.abs(new Date(s.measured_at).getTime() - target) / 86400000;
         if (diff <= 2 && (!best || diff < best.diff)) best = { diff, v: s.play_count }; // 7일±2 최근접
       }
-      if (best) {
-        const dow = (new Date(pa).getUTCDay() + 6) % 7; // date-only → 월=0…일=6
-        buckets[dow].push(best.v);
-      }
+      if (!best) continue;
+      const dow = (new Date(pa).getUTCDay() + 6) % 7; // date-only → 월=0…일=6
+      views[dow].push(best.v);
+      if (post.cost != null && best.v > 0) cpvs[dow].push(post.cost / best.v); // CPV=조회당비용(게시후7일 기준)
     }
-    const median = (arr: number[]) => {
+    const median = (arr: number[]): number => {
       if (!arr.length) return 0;
       const s = [...arr].sort((a, b) => a - b);
       const m = Math.floor(s.length / 2);
       return s.length % 2 ? s[m] : Math.round((s[m - 1] + s[m]) / 2);
     };
-    return WD.map((label, i) => ({ label, count: buckets[i].length, median: median(buckets[i]) }));
+    const medianF = (arr: number[]): number | null => { // CPV는 소수 유지
+      if (!arr.length) return null;
+      const s = [...arr].sort((a, b) => a - b);
+      const m = Math.floor(s.length / 2);
+      return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+    };
+    return WD.map((label, i) => ({ label, count: views[i].length, median: median(views[i]), cpv: medianF(cpvs[i]) }));
   }, [filteredPosts]);
 
   // 메인 그래프 조회수 선 = 일별 증분(누적 아님). 광고비·검색량·B2B 와 같은 '하루치 흐름'으로 맞춰 상관관계가 보이게 함.
