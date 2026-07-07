@@ -8,19 +8,22 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const SPREADSHEET_ID = "1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s";
-// 발주량 소스: 제품별 '인지_*' 3탭의 [일자별 현황](날짜 | CVS 발주량 | B2B 발주량).
-// 시트가 제품별 탭 구조로 바뀌어 통합표('N월 현황')가 6/30에서 끝남 → 전 기간을 3탭 C+D 합산으로 통일(2026-07-07).
-// order 필드만 upsert → 이익/공헌이익 컬럼은 onConflict 시 기존값 보존.
-const INJI_TABS = ["인지_쫀득바", "인지_듬뿍바", "인지_파인트"];
+// 시트가 제품별 탭 구조로 개편(2026-07) → 통합표가 6/30에서 끝남. 대시보드 두 칸(듬뿍바/쫀득바)을
+// 각 제품 탭 전체로 매핑: 발주량(CVS+B2B)·이익·광고비·본부공헌이익(=CVS손익)을 [일자별 현황]에서 읽음.
+// 전환손익 컬럼은 일별 섹션에 없음 → 항상 null(대시보드에서 "-"). 파인트는 제외(사용자 결정).
+const DUMBUK_TAB = "인지_듬뿍바";   // → dumbuk_* (대시보드 '듬뿍바' 칸)
+const JJONDEUK_TAB = "인지_쫀득바"; // → jjondeuk_* (대시보드 '쫀득바' 칸)
 
 function toNum(v: string | number | null | undefined): number | null {
   if (v == null || v === "") return null;
   if (typeof v === "number") return Math.round(v);
   const s = String(v).replace(/[,\s₩]/g, "").replace(/^\((.+)\)$/, "-$1").trim();
-  if (s === "" || s === "-" || s === "#REF!" || s === "#N/A") return null;
+  if (s === "" || s === "-" || s.startsWith("#")) return null;
   const n = parseFloat(s);
   return isNaN(n) ? null : Math.round(n);
 }
+
+type DayVals = { order: number; profit: number | null; ad: number | null; contrib: number | null };
 
 export async function GET(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") { // fail-closed: CRON_SECRET 미설정 시에도 차단(무인증 오픈 방지)
@@ -38,46 +41,77 @@ export async function GET(req: NextRequest) {
     return mo >= 1 && mo <= 12 && day >= 1 && day <= 31 ? { mo, day } : null;
   };
 
-  // 제품별 '인지_*' 3탭 → 날짜별 CVS+B2B 발주량 합산
-  const agg = new Map<string, { cvs: number; b2b: number }>();
-  const seenTabs: string[] = [];
-  for (const tab of INJI_TABS) {
-    let rr: (string | number | null)[][];
-    try { rr = await fetchSheetTabValuesByTitle(SPREADSHEET_ID, tab, "A1:H200"); } catch { continue; }
-    const marker = rr.findIndex((r) => r.some((c) => typeof c === "string" && c.includes("일자별 현황")));
-    let h = -1, ci = -1, bi = -1, di = -1;
-    for (let i = Math.max(0, marker); i < rr.length; i++) {
-      const c = rr[i].findIndex((x) => typeof x === "string" && x.trim() === "CVS 발주량");
-      const b = rr[i].findIndex((x) => typeof x === "string" && x.trim() === "B2B 발주량");
-      if (c >= 0 && b >= 0) { h = i; ci = c; bi = b; const d = rr[i].findIndex((x) => typeof x === "string" && x.trim() === "날짜"); di = d >= 0 ? d : c - 1; break; }
+  // 한 제품 탭의 [일자별 현황] 섹션을 날짜별로 파싱
+  const parseTab = async (title: string): Promise<Map<string, DayVals>> => {
+    const out = new Map<string, DayVals>();
+    const rr = await fetchSheetTabValuesByTitle(SPREADSHEET_ID, title, "A1:T160");
+    const mk = rr.findIndex((r) => r.some((c) => typeof c === "string" && c.includes("일자별 현황")));
+    const find = (row: (string | number | null)[], pred: (s: string) => boolean) =>
+      row.findIndex((c) => typeof c === "string" && pred(c.trim()));
+    // 마커 이후 'CVS 발주량'+'B2B 발주량' 둘 다 있는 헤더 행(월요약 섹션과 구분)
+    let h = -1, cCVS = -1, cB2B = -1, cDate = -1, cProfit = -1, cAd = -1, cContrib = -1;
+    for (let i = Math.max(0, mk); i < rr.length; i++) {
+      const ci = find(rr[i], (s) => s === "CVS 발주량"), bi = find(rr[i], (s) => s === "B2B 발주량");
+      if (ci >= 0 && bi >= 0) {
+        h = i; cCVS = ci; cB2B = bi;
+        const di = find(rr[i], (s) => s === "날짜"); cDate = di >= 0 ? di : ci - 1;
+        cProfit = find(rr[i], (s) => s.includes("이익") && s.includes("원")); // "○○바 이익(300원)"
+        cAd = find(rr[i], (s) => s === "전체 광고비");
+        cContrib = find(rr[i], (s) => s === "CVS 손익");
+        break;
+      }
     }
-    if (h < 0) continue;
-    seenTabs.push(tab);
-    let s = false, g = 0;
+    if (h < 0) return out;
+    let started = false, gap = 0;
     for (let i = h + 1; i < rr.length; i++) {
-      const md = parseMD(rr[i][di]);
-      if (!md) { if (s && ++g > 8) break; continue; }
-      g = 0; s = true;
+      const md = parseMD(rr[i][cDate]);
+      if (!md) { if (started && ++gap > 8) break; continue; }
+      gap = 0; started = true;
       const date = `${yearOf(md.mo)}-${String(md.mo).padStart(2, "0")}-${String(md.day).padStart(2, "0")}`;
-      const cvs = toNum(rr[i][ci]) ?? 0, b2b = toNum(rr[i][bi]) ?? 0;
-      const e = agg.get(date) ?? { cvs: 0, b2b: 0 };
-      e.cvs += cvs; e.b2b += b2b; agg.set(date, e);
+      const order = (toNum(rr[i][cCVS]) ?? 0) + (toNum(rr[i][cB2B]) ?? 0);
+      out.set(date, {
+        order,
+        profit: cProfit >= 0 ? toNum(rr[i][cProfit]) : null,
+        ad: cAd >= 0 ? toNum(rr[i][cAd]) : null,
+        contrib: cContrib >= 0 ? toNum(rr[i][cContrib]) : null,
+      });
     }
+    return out;
+  };
+
+  let dumbuk: Map<string, DayVals>, jjondeuk: Map<string, DayVals>;
+  try {
+    [dumbuk, jjondeuk] = await Promise.all([parseTab(DUMBUK_TAB), parseTab(JJONDEUK_TAB)]);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    await notifyJob("B2B 발주량", "fail", `시트 조회 실패: ${msg}`);
+    return NextResponse.json({ error: msg }, { status: 502 });
   }
 
-  const records = [...agg.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([date, v]) => ({
+  const dates = [...new Set([...dumbuk.keys(), ...jjondeuk.keys()])].sort((a, b) => a.localeCompare(b));
+  const records = dates.map((date) => {
+    const d = dumbuk.get(date), j = jjondeuk.get(date);
+    return {
       date,
-      dumbuk_order: v.cvs,       // CVS 발주량
-      jjondeuk_order: v.b2b,     // B2B 발주량
-      total_order: v.cvs + v.b2b,
+      dumbuk_order: d?.order ?? 0,
+      dumbuk_profit: d?.profit ?? null,
+      dumbuk_conv_pl: null,        // 일별 섹션에 전환손익 컬럼 없음 → 통일해서 비움
+      dumbuk_ad_cost: d?.ad ?? null,
+      dumbuk_contribution: d?.contrib ?? null,
+      jjondeuk_order: j?.order ?? 0,
+      jjondeuk_profit: j?.profit ?? null,
+      jjondeuk_conv_pl: null,
+      jjondeuk_ad_cost: j?.ad ?? null,
+      jjondeuk_contribution: j?.contrib ?? null,
+      total_order: (d?.order ?? 0) + (j?.order ?? 0),
+      total_contribution: (d?.contrib ?? 0) + (j?.contrib ?? 0),
       updated_at: new Date().toISOString(),
-    }));
+    };
+  });
 
   if (records.length === 0) {
-    await notifyJob("B2B 발주량", "fail", `일자별 데이터 행을 찾지 못함(탭 인식: ${seenTabs.join(",") || "없음"})`);
-    return NextResponse.json({ error: "일자별 데이터 행을 찾지 못했습니다.", seenTabs }, { status: 500 });
+    await notifyJob("B2B 발주량", "fail", "일자별 데이터 행을 찾지 못함");
+    return NextResponse.json({ error: "일자별 데이터 행을 찾지 못했습니다." }, { status: 500 });
   }
 
   const supabase = getServerSupabase();
