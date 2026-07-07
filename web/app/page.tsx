@@ -489,50 +489,57 @@ export default function DashboardPage() {
           </div>
           {loading ? (
             <div className="px-7 pb-7 pt-3"><div className="h-40 bg-a-divider rounded-lg animate-pulse" /></div>
-          ) : monthlyGoal && monthlyGoal.metrics.length ? (
-            <div className="px-7 pb-6 pt-1 overflow-x-auto">
-              <table className="w-full min-w-[640px]">
-                <thead>
-                  <tr className="text-[11px] font-semibold text-a-ink-muted border-b border-a-hairline">
-                    <th className="text-left py-2 pr-3">지표</th>
-                    <th className="text-right py-2 px-3">목표</th>
-                    <th className="text-right py-2 px-3">현황</th>
-                    <th className="text-right py-2 pl-3 w-24">달성률</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-a-divider">
-                  {monthlyGoal.metrics.map(m => {
-                    const fmtV = (v: unknown) => {
-                      if (v == null || v === "") return "—";
-                      const n = Number(v);
-                      if (!Number.isFinite(n)) return String(v);
-                      return Math.abs(n) >= 1000 ? Math.round(n).toLocaleString() : (Math.round(n * 10) / 10).toLocaleString();
-                    };
-                    const r = Number(m.rate);
-                    // 시트 수식 이상값(예: 손익 달성률 -2.9억)은 그대로 노출하지 않고 '—' (시트와 동일하게 참고 불가 상태)
-                    const rateOk = m.rate != null && m.rate !== "" && Number.isFinite(r) && r >= -10 && r <= 100;
-                    const pct = rateOk ? Math.round(r * 100) : null;
-                    const pill = pct == null ? "bg-gray-50 text-gray-400"
-                      : pct >= 100 ? "bg-emerald-50 text-emerald-700"
-                      : pct >= 70 ? "bg-amber-50 text-amber-600"
-                      : "bg-red-50 text-red-500";
-                    return (
-                      <tr key={m.label} className="text-[12.5px]">
-                        <td className="py-2 pr-3 font-medium text-a-ink whitespace-nowrap">{m.label}</td>
-                        <td className="py-2 px-3 text-right tabular-nums text-a-ink-muted">{fmtV(m.goal)}</td>
-                        <td className="py-2 px-3 text-right tabular-nums font-semibold text-a-ink">{fmtV(m.current)}</td>
-                        <td className="py-2 pl-3 text-right">
-                          <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-bold tabular-nums ${pill}`}>
-                            {pct != null ? `${pct}%` : "—"}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          ) : (
+          ) : monthlyGoal && monthlyGoal.metrics.length ? (() => {
+            const fmtGoalVal = (v: unknown): string => {
+              if (v == null || v === "") return "-";
+              const n = Number(v);
+              return Number.isFinite(n) ? fmtKpi(n) : String(v);
+            };
+            const tier = (pct: number) => pct >= 100
+              ? { pill: "bg-emerald-50 text-emerald-700", bar: "#10b981" }
+              : pct >= 70 ? { pill: "bg-amber-50 text-amber-600", bar: "#f59e0b" }
+              : { pill: "bg-red-50 text-red-500", bar: "#ef4444" };
+            const half = Math.ceil(monthlyGoal.metrics.length / 2);
+            const cols = [monthlyGoal.metrics.slice(0, half), monthlyGoal.metrics.slice(half)];
+            return (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 px-6 pb-6 pt-1">
+                {cols.map((col, ci) => (
+                  <div key={ci} className="rounded-[18px] border border-a-hairline bg-white px-5 py-2">
+                    <div className="divide-y divide-a-divider">
+                      {col.map(m => {
+                        const r = Number(m.rate);
+                        // 시트 수식 이상값(예: 손익 달성률 -2.9억)은 그대로 노출하지 않음 (시트와 동일하게 참고 불가 상태)
+                        const rateOk = m.rate != null && m.rate !== "" && Number.isFinite(r) && r >= -10 && r <= 100;
+                        const pct = rateOk ? Math.round(r * 100) : null;
+                        const t = pct != null ? tier(pct) : null;
+                        return (
+                          <div key={m.label} className="flex items-center justify-between gap-3 py-2.5">
+                            <span className="text-[12px] text-a-ink-muted">{m.label.replace(/^\*/, "")}</span>
+                            <div className="flex items-center gap-3 shrink-0">
+                              <div className="text-right leading-tight">
+                                <div className="text-[15px] font-bold tabular-nums text-a-ink">{fmtGoalVal(m.current)}</div>
+                                <div className="text-[10px] text-a-ink-muted">목표 {fmtGoalVal(m.goal)}</div>
+                              </div>
+                              {t && pct != null ? (
+                                <div className="w-14 shrink-0">
+                                  <span className={`block text-center px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none ${t.pill}`}>{pct}%</span>
+                                  <div className="w-full h-1 rounded-full bg-gray-100 overflow-hidden mt-1">
+                                    <div className="h-full rounded-full" style={{ width: `${Math.min(100, Math.max(0, pct))}%`, backgroundColor: t.bar }} />
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="w-14 shrink-0 text-center text-[10px] text-gray-300">—</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })() : (
             <div className="px-7 pb-7 pt-3 text-sm text-a-ink-muted">이달 목표 데이터를 불러오지 못했습니다.</div>
           )}
         </div>
