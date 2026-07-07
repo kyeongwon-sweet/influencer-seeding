@@ -1,0 +1,21 @@
+name: _b2b probe (temp)
+
+# 임시 진단: 인지_쫀득바/듬뿍바/파인트 탭 구조(날짜열·CVS/B2B 발주량 C/D·7월 범위) 확인. 확인 후 삭제.
+on:
+  workflow_dispatch:
+
+env:
+  APP_URL: "https://influencer-seeding-mu.vercel.app"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 인지 탭 덤프
+        run: |
+          for T in "인지_쫀득바" "인지_듬뿍바" "인지_파인트"; do
+            echo "===== DUMP: $T ====="
+            curl -sS -G "$APP_URL/api/b2b-revenue/fetch" --data-urlencode "dump=$T" \
+              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+            echo
+          done

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { fetchSheetTabValues } from "@/lib/google-sheets";
+import { fetchSheetTabValues, fetchSheetTabValuesByTitle } from "@/lib/google-sheets";
 import { notifyJob } from "@/lib/slack";
 
 export const runtime = "nodejs";
@@ -23,6 +23,13 @@ function toNum(v: string | number | null | undefined): number | null {
 export async function GET(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") { // fail-closed: CRON_SECRET 미설정 시에도 차단(무인증 오픈 방지)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // TEMP 진단: ?dump=<탭> → 앞 22행 raw(인지 탭 구조 파악용)
+  if (req.nextUrl.searchParams.has("dump")) {
+    const t = req.nextUrl.searchParams.get("dump") || "";
+    const rr = await fetchSheetTabValuesByTitle(SPREADSHEET_ID, t, "A1:H22").catch((e) => [["<err>", String(e).slice(0, 80)]]);
+    return NextResponse.json({ title: t, head: rr });
   }
 
   let rows: (string | number | null)[][];
