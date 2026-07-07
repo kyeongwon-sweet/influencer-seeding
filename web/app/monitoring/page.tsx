@@ -1592,7 +1592,7 @@ export default function MonitoringPage() {
                   </div>
                 )}
                 {deltaTableData.length === 0 ? (
-                  <div className="flex items-center justify-center flex-1 text-sm text-a-ink-muted py-10">측정 데이터 2일 이상 필요</div>
+                  <div className="flex items-center justify-center flex-1 text-sm text-a-ink-muted py-10 px-6 text-center leading-relaxed">측정 데이터<br />2일 이상 필요</div>
                 ) : (
                   (() => {
                     const KR_HOLIDAYS = new Set([
