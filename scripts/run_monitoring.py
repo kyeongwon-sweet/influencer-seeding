@@ -728,8 +728,14 @@ def run():
             print(f"[WARN] 배너 도달수 스냅샷 실패(무시): {e}")
 
         # 📈 증분(increment) 계산·저장 — 단일 소스(B): 리포트·대시보드가 이 값을 그대로 읽는다.
-        #   게시물별 오늘값(배너=reach_count, 그 외=play_count) − 이전까지 최댓값(단조보정, ≥0). 첫 측정=전체.
-        #   ⚠️ 이 로직은 scripts 백필과 동일해야 함(리포트↔대시보드 일치 근거).
+        #   게시물별 오늘값 − 이전까지 최댓값(단조보정, ≥0). 첫 측정=전체.
+        #   배너=도달수(reach_count) 우선, 없으면 조회수(play_count, 시트 수동입력) 사용. 그 외=play_count.
+        #   ⚠️ 이 로직은 scripts 백필(_backfill_increment.py)과 동일해야 함(리포트↔대시보드 일치 근거).
+        def _inc_metric(x, is_banner):
+            if is_banner:
+                rc = x.get("reach_count")
+                return rc if rc is not None else x.get("play_count")
+            return x.get("play_count")
         try:
             tr = db.table("post_daily_stats").select("post_id, play_count, reach_count").eq("measured_at", TODAY).execute()
             today_pids = list({x["post_id"] for x in (tr.data or [])})
@@ -744,7 +750,7 @@ def run():
                 todayval = {}
                 for x in (tr.data or []):
                     if x["post_id"] in chunk:
-                        v = x.get("reach_count") if isbanner.get(x["post_id"]) else x.get("play_count")
+                        v = _inc_metric(x, isbanner.get(x["post_id"]))
                         if v is not None:
                             todayval[x["post_id"]] = v
                 pmax = {}
@@ -756,7 +762,7 @@ def run():
                           .in_("post_id", chunk).lt("measured_at", TODAY).order("id").range(frm, frm + 999).execute())
                     pg = pr.data or []
                     for x in pg:
-                        v = x.get("reach_count") if isbanner.get(x["post_id"]) else x.get("play_count")
+                        v = _inc_metric(x, isbanner.get(x["post_id"]))
                         if v is not None:
                             pmax[x["post_id"]] = max(pmax.get(x["post_id"], 0), v)
                     if len(pg) < 1000:
