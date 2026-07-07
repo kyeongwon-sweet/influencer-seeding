@@ -63,20 +63,23 @@ export async function GET(req: NextRequest) {
   for (let i = hdr + 1; i < rows.length; i++) {
     const row = rows[i];
     const dateCell = row[cDate];
-    const m = typeof dateCell === "string" ? dateCell.match(/(\d{1,2})\/(\d{1,2})/) : null;
-    if (!m) {
-      // 날짜 없는 행(월 경계 합계행·빈 행·구분행)에서 바로 끊지 말 것.
-      // 예전엔 여기서 즉시 break → 6/30 다음 구분행에 막혀 7월 전체가 누락됐다(2026-07 발견).
-      // 연속 공백이 6줄 넘으면 표가 끝난 것으로 보고 종료(아래 무관한 표 오독 방지).
+    // 날짜 구분자가 월별로 섞임(6월 "6/1" 슬래시, 7월 "7. 1" 점 등) → 점·슬래시·하이픈 모두 허용.
+    // '26.07'(월 합계행)·'26.06' 같은 건 월 1~12·일 1~31 검증으로 걸러짐(연도.월 표기라 월=26 등).
+    const ds = typeof dateCell === "string" ? dateCell : "";
+    const m = ds.match(/(\d{1,2})\s*[.\/-]\s*(\d{1,2})/);
+    const mo = m ? Number(m[1]) : 0, day = m ? Number(m[2]) : 0;
+    const isDate = mo >= 1 && mo <= 12 && day >= 1 && day <= 31;
+    if (!isDate) {
+      // 날짜 아님(월 경계 합계행·빈 행·구분행) → 바로 끊지 말 것. 예전엔 즉시 break라 6/30 다음
+      // '26.07' 합계행에 막혀 7월 전체 누락(2026-07). 연속 6줄 넘게 비면 표 끝으로 보고 종료.
       if (started && ++gap > 6) break;
       continue;
     }
     gap = 0;
     started = true;
-    const mo = Number(m[1]);
     const year = mo - curMonth > 6 ? curYear - 1 : curMonth - mo > 6 ? curYear + 1 : curYear;
-    const mm = String(m[1]).padStart(2, "0");
-    const dd = String(m[2]).padStart(2, "0");
+    const mm = String(mo).padStart(2, "0");
+    const dd = String(day).padStart(2, "0");
     const date = `${year}-${mm}-${dd}`;
 
     const dumbuk_order = toNum(row[cCVS]);
@@ -115,5 +118,6 @@ export async function GET(req: NextRequest) {
   }
 
   await notifyJob("B2B 발주량", "ok", `${records.length}일 (${records[0].date} ~ ${records[records.length - 1].date})`);
-  return NextResponse.json({ ok: true, count: records.length, first: records[0].date, last: records[records.length - 1].date });
+  return NextResponse.json({ ok: true, count: records.length, first: records[0].date, last: records[records.length - 1].date,
+    debug_dates: rows.slice(hdr, Math.min(rows.length, hdr + 50)).map((r) => r[cDate]) }); // TEMP 진단: 헤더~데이터 raw 날짜셀
 }
