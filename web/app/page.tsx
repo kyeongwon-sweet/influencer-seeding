@@ -87,6 +87,7 @@ export default function DashboardPage() {
   const [insightsError, setInsightsError] = useState(false);
   const [organicMentions, setOrganicMentions] = useState<OrganicMention[]>([]);
   const [kpi, setKpi] = useState<KpiSnapshot | null>(null);
+  const [monthlyGoal, setMonthlyGoal] = useState<{ month: number; metrics: { label: string; goal: unknown; current: unknown; rate: unknown }[] } | null>(null);
   const [brandSearch, setBrandSearch] = useState<{ date: string; value: number }[]>([]);
   const [productTrends, setProductTrends] = useState<{ products: string[]; rows: { date: string; values: Record<string, number | null> }[] } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -115,6 +116,9 @@ export default function DashboardPage() {
         }),
         fetch("/api/kpi", { signal: t }).then(r => r.json()).then((data: KpiSnapshot | null) => {
           if (data?.id) setKpi(data);
+        }),
+        fetch("/api/monthly-goal", { signal: t }).then(r => r.json()).then((d: { month?: number; metrics?: { label: string; goal: unknown; current: unknown; rate: unknown }[] }) => {
+          if (d?.metrics?.length) setMonthlyGoal({ month: d.month ?? 0, metrics: d.metrics });
         }),
         fetch("/api/product-search-trends", { signal: t }).then(r => r.json()).then((d: { brandKey?: string; products?: string[]; data?: { date: string; values: Record<string, number | null> }[] }) => {
           if (d?.brandKey && Array.isArray(d.data)) {
@@ -464,6 +468,72 @@ export default function DashboardPage() {
               KPI 데이터가 없습니다.{" "}
               <span className="text-[11px]">Supabase에 <code className="bg-a-parchment px-1 rounded">kpi_snapshots</code> 테이블 생성 후 <code className="bg-a-parchment px-1 rounded">/api/kpi/fetch</code>를 호출해 주세요.</span>
             </div>
+          )}
+        </div>
+
+        {/* 이달의 목표 — 마케팅T 시트 월 현황 블록(목표/현황/달성률) 연동 */}
+        <div className="bg-white rounded-[24px] shadow-[0_4px_32px_rgba(100,120,180,0.13)] overflow-hidden">
+          <div className="px-7 pt-6 pb-2 flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-3">
+              <div className="inline-flex items-center gap-1.5 bg-emerald-50 rounded-full px-3 py-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                <p className="text-[11px] font-semibold text-emerald-600 tracking-widest uppercase">
+                  {monthlyGoal ? `${monthlyGoal.month}월 ` : ""}목표 현황
+                </p>
+              </div>
+              <a href="https://docs.google.com/spreadsheets/d/1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s/edit?gid=201954698#gid=201954698"
+                target="_blank" rel="noreferrer" className="text-[11px] text-a-blue hover:underline whitespace-nowrap">
+                마케팅T 시트 연동 →
+              </a>
+            </div>
+          </div>
+          {loading ? (
+            <div className="px-7 pb-7 pt-3"><div className="h-40 bg-a-divider rounded-lg animate-pulse" /></div>
+          ) : monthlyGoal && monthlyGoal.metrics.length ? (
+            <div className="px-7 pb-6 pt-1 overflow-x-auto">
+              <table className="w-full min-w-[640px]">
+                <thead>
+                  <tr className="text-[11px] font-semibold text-a-ink-muted border-b border-a-hairline">
+                    <th className="text-left py-2 pr-3">지표</th>
+                    <th className="text-right py-2 px-3">목표</th>
+                    <th className="text-right py-2 px-3">현황</th>
+                    <th className="text-right py-2 pl-3 w-24">달성률</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-a-divider">
+                  {monthlyGoal.metrics.map(m => {
+                    const fmtV = (v: unknown) => {
+                      if (v == null || v === "") return "—";
+                      const n = Number(v);
+                      if (!Number.isFinite(n)) return String(v);
+                      return Math.abs(n) >= 1000 ? Math.round(n).toLocaleString() : (Math.round(n * 10) / 10).toLocaleString();
+                    };
+                    const r = Number(m.rate);
+                    // 시트 수식 이상값(예: 손익 달성률 -2.9억)은 그대로 노출하지 않고 '—' (시트와 동일하게 참고 불가 상태)
+                    const rateOk = m.rate != null && m.rate !== "" && Number.isFinite(r) && r >= -10 && r <= 100;
+                    const pct = rateOk ? Math.round(r * 100) : null;
+                    const pill = pct == null ? "bg-gray-50 text-gray-400"
+                      : pct >= 100 ? "bg-emerald-50 text-emerald-700"
+                      : pct >= 70 ? "bg-amber-50 text-amber-600"
+                      : "bg-red-50 text-red-500";
+                    return (
+                      <tr key={m.label} className="text-[12.5px]">
+                        <td className="py-2 pr-3 font-medium text-a-ink whitespace-nowrap">{m.label}</td>
+                        <td className="py-2 px-3 text-right tabular-nums text-a-ink-muted">{fmtV(m.goal)}</td>
+                        <td className="py-2 px-3 text-right tabular-nums font-semibold text-a-ink">{fmtV(m.current)}</td>
+                        <td className="py-2 pl-3 text-right">
+                          <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-bold tabular-nums ${pill}`}>
+                            {pct != null ? `${pct}%` : "—"}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="px-7 pb-7 pt-3 text-sm text-a-ink-muted">이달 목표 데이터를 불러오지 못했습니다.</div>
           )}
         </div>
 
