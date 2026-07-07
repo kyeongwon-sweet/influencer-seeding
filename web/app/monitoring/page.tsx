@@ -1694,7 +1694,7 @@ export default function MonitoringPage() {
                 <div className="flex-1 min-w-[520px] border border-a-hairline rounded-[14px] bg-white mt-3">
                   <DayOfWeekPanel data={dowAnalysis} />
                 </div>
-                <div className="flex-1 min-w-[520px] border border-a-hairline rounded-[14px] bg-white mt-3">
+                <div className="flex-1 min-w-[560px] border border-a-hairline rounded-[14px] bg-white mt-3">
                   <CompanyPanel data={companyAnalysis} />
                 </div>
               </div>
