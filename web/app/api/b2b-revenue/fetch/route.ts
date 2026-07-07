@@ -28,8 +28,12 @@ export async function GET(req: NextRequest) {
   // TEMP 진단: ?dump=<탭> → 앞 22행 raw(인지 탭 구조 파악용)
   if (req.nextUrl.searchParams.has("dump")) {
     const t = req.nextUrl.searchParams.get("dump") || "";
-    const rr = await fetchSheetTabValuesByTitle(SPREADSHEET_ID, t, "A1:H22").catch((e) => [["<err>", String(e).slice(0, 80)]]);
-    return NextResponse.json({ title: t, head: rr });
+    const rr = await fetchSheetTabValuesByTitle(SPREADSHEET_ID, t, "A1:H200").catch((e) => [["<err>", String(e).slice(0, 80)]]);
+    // '일자별 현황' 마커·CVS/B2B 헤더 위치와 그 아래 날짜행만 추려 반환(노이즈 축소)
+    const marker = rr.findIndex((r) => r.some((c) => typeof c === "string" && c.includes("일자별 현황")));
+    const hdrIdx = rr.findIndex((r, i) => i > (marker < 0 ? 0 : marker) && r.some((c) => typeof c === "string" && c.trim() === "CVS 발주량") && r.some((c) => typeof c === "string" && c.trim() === "B2B 발주량"));
+    const slice = hdrIdx >= 0 ? rr.slice(hdrIdx, hdrIdx + 45) : rr.slice(0, 30);
+    return NextResponse.json({ title: t, marker, hdrIdx, header: hdrIdx >= 0 ? rr[hdrIdx] : null, sample: slice.map((r) => [r[1], r[2], r[3]]) });
   }
 
   let rows: (string | number | null)[][];
