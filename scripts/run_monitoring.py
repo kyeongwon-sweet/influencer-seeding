@@ -568,6 +568,16 @@ def run():
                 # Apify가 조회수를 반환하지 않음 (게시물 타입상 조회수 없을 수 있음)
                 print(f"  ⚠️  조회수 없음: {post['url']} (account={s.get('account_name')})")
                 play_count = None
+            elif play_count <= 0:
+                # 🛡️ 조회수 0 = 접근불가·수집 글리치(IG가 조회수를 0으로 반환). '수집 실패 ≠ 0' 원칙.
+                #   0을 저장하면 ①다음날 증분이 pmax 대비 폭증(며칠치 몰림) ②수기 입력값을 0으로 덮음.
+                #   직전값이 있으면 그 값으로 clamp(누적 유지), 없으면 이 행 자체를 스킵(0 미적재).
+                if existing.get("play_count"):
+                    print(f"  ⚠️  IG 조회수 0(글리치) → 직전값 유지 {post['url']} (→{existing.get('play_count')})")
+                    play_count = existing.get("play_count")
+                else:
+                    print(f"  ⚠️  IG 조회수 0(글리치)·직전값 없음 → 미적재 {post['url']}")
+                    continue
             elif existing.get("play_count") is not None and play_count < existing.get("play_count"):
                 # 누적값인데 줄어들었다 = 오류(글리치) 또는 IG 정상 미세감소(중복/봇 필터링 지터).
                 # NULL로 버리면 성숙 게시물에 톱니형 결측이 생기고 유효값이 사라지므로,
