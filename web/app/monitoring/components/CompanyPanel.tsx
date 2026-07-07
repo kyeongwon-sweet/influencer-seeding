@@ -15,10 +15,12 @@ function BarCell({ v, max, strong, color }: { v: { count: number; total: number 
   const fill = color === "blue"
     ? (strong ? "bg-a-blue" : "bg-a-blue/35")
     : (strong ? "bg-amber-400" : "bg-amber-400/40");
+  // 최대값(strong)은 막대가 꽉 차 숫자와 겹침. 진한 파랑 위에선 흰색으로 대비 확보(밝은 amber는 어두운 글씨가 더 선명).
+  const onDark = strong && color === "blue";
   return (
     <div className="flex-1 h-6 bg-a-parchment/50 rounded relative overflow-hidden">
       {v.count > 0 && <div className={`h-full rounded ${fill}`} style={{ width: `${pct}%` }} />}
-      <span className="absolute inset-y-0 right-2 flex items-center text-[12.5px] font-semibold tabular-nums text-a-ink">
+      <span className={`absolute inset-y-0 right-2 flex items-center text-[12.5px] tabular-nums ${onDark ? "text-white font-bold" : "text-a-ink font-semibold"}`}>
         {v.count > 0 ? v.total.toLocaleString() : "—"}
       </span>
     </div>

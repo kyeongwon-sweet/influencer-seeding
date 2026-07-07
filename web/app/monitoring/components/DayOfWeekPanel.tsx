@@ -40,7 +40,8 @@ export default function DayOfWeekPanel({ data }: { data: DowData }) {
                   {/* 막대 + 조회수 값을 막대 트랙 끝에 얹어 눈 이동 최소화 */}
                   <div className="flex-1 h-6 bg-a-parchment/50 rounded relative overflow-hidden">
                     <div className={`h-full rounded ${isBestViews ? "bg-a-blue" : "bg-a-blue/35"}`} style={{ width: `${pct}%` }} />
-                    <span className="absolute inset-y-0 right-2 flex items-center text-[12.5px] font-semibold tabular-nums text-a-ink">
+                    {/* 최대값은 진한 파란 막대가 꽉 차 숫자와 겹침 → 흰색·볼드로 대비 확보 */}
+                    <span className={`absolute inset-y-0 right-2 flex items-center text-[12.5px] tabular-nums ${isBestViews ? "text-white font-bold" : "text-a-ink font-semibold"}`}>
                       {d.count > 0 ? d.median.toLocaleString() : "—"}
                     </span>
                   </div>
