@@ -284,10 +284,11 @@ export default function MonitoringPage() {
     return WD.map((label, i) => ({ label, count: views[i].length, median: median(views[i]), cpv: medianF(cpvs[i]) }));
   }, [filteredPosts]);
 
-  // 업체별 성과: 업체(company_name/companyForAccount)별 '게시 후 7일 시점' 값 median — 요일별과 동일 기준.
-  //   영상=조회수(play)·CPV, 배너=도달수(reach 일별 이력)·CPR. 업체명 있는 바이럴 소재만.
+  // 업체별 성과: 업체(company_name/companyForAccount)별 '누적 총합' — 영상=Σ누적 조회수, 배너=Σ도달수(effectiveReach).
+  //   CPV/CPR = Σ비용 ÷ Σ누적 (대시보드 조회당비용·리포트와 동일 기준). 업체명 있는 바이럴 소재만.
+  //   🔒 필터 불변식: 값은 pickRangeStats — 조회수 기간 필터 시 범위 내 마지막 값 기준.
   const companyAnalysis = useMemo<CompanyData>(() => {
-    type Acc = { video: number[]; videoCpv: number[]; banner: number[]; bannerCpr: number[] };
+    type Acc = { video: { n: number; sum: number; cost: number }; banner: { n: number; sum: number; cost: number } };
     const by = new Map<string, Acc>();
     for (const post of filteredPosts) {
       const company = (post.company_name?.trim() || companyForAccount(post.account_name ?? post.influencers?.name) || "").trim();
@@ -295,42 +296,25 @@ export default function MonitoringPage() {
       const ct = post.channel_type ?? "";
       const kind = ct.includes("배너") ? "banner" : ct.includes("(영상)") ? "video" : null;
       if (!kind) continue;
-      const pa = post.posted_at;
-      if (!pa) continue;
-      const target = new Date(pa).getTime() + 7 * 86400000; // 게시 후 7일
-      let best: { diff: number; v: number } | null = null;
-      for (const s of post.all_stats ?? []) {
-        const val = kind === "video" ? s.play_count : (s.reach_count ?? null);
-        if (val == null) continue;
-        const diff = Math.abs(new Date(s.measured_at).getTime() - target) / 86400000;
-        if (diff <= 2 && (!best || diff < best.diff)) best = { diff, v: val }; // 7일±2 최근접
-      }
-      if (!best) continue;
-      const acc = by.get(company) ?? { video: [], videoCpv: [], banner: [], bannerCpr: [] };
-      if (kind === "video") { acc.video.push(best.v); if (post.cost != null && best.v > 0) acc.videoCpv.push(post.cost / best.v); }
-      else { acc.banner.push(best.v); if (post.cost != null && best.v > 0) acc.bannerCpr.push(post.cost / best.v); }
+      const { s } = pickRangeStats(post, filters.dateFrom, filters.dateTo);
+      const play = s?.play_count ?? null;
+      const val = kind === "video" ? play : effectiveReach(post.reach_count, play);
+      const acc = by.get(company) ?? { video: { n: 0, sum: 0, cost: 0 }, banner: { n: 0, sum: 0, cost: 0 } };
+      const slot = acc[kind];
+      slot.n += 1;                       // 게시물 수는 값 유무와 무관하게 집계(업체 물량 파악)
+      if (val != null) slot.sum += val;  // 누적 합산은 값 있는 것만
+      slot.cost += post.cost ?? 0;
       by.set(company, acc);
     }
-    const median = (arr: number[]): number => {
-      if (!arr.length) return 0;
-      const s = [...arr].sort((a, b) => a - b);
-      const m = Math.floor(s.length / 2);
-      return s.length % 2 ? s[m] : Math.round((s[m - 1] + s[m]) / 2);
-    };
-    const medianF = (arr: number[]): number | null => {
-      if (!arr.length) return null;
-      const s = [...arr].sort((a, b) => a - b);
-      const m = Math.floor(s.length / 2);
-      return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-    };
+    const cpx = (cost: number, sum: number): number | null => (cost > 0 && sum > 0 ? cost / sum : null);
     return [...by.entries()]
       .map(([company, a]) => ({
         company,
-        video: { count: a.video.length, median: median(a.video), cpv: medianF(a.videoCpv) },
-        banner: { count: a.banner.length, median: median(a.banner), cpr: medianF(a.bannerCpr) },
+        video: { count: a.video.n, total: a.video.sum, cpv: cpx(a.video.cost, a.video.sum) },
+        banner: { count: a.banner.n, total: a.banner.sum, cpr: cpx(a.banner.cost, a.banner.sum) },
       }))
-      .sort((x, y) => (y.video.count + y.banner.count) - (x.video.count + x.banner.count));
-  }, [filteredPosts]);
+      .sort((x, y) => (y.video.total + y.banner.total) - (x.video.total + x.banner.total));
+  }, [filteredPosts, filters.dateFrom, filters.dateTo]);
 
   // 메인 그래프 조회수 선 = 일별 증분(누적 아님). 광고비·검색량·B2B 와 같은 '하루치 흐름'으로 맞춰 상관관계가 보이게 함.
   // dailyTotals(전일 forward-fill + 단조보정)에서 파생 → 일자별 증감 표의 '조회수' 값과 정확히 일치.
@@ -1504,7 +1488,7 @@ export default function MonitoringPage() {
                       title="게시 요일별 성과(게시 후 7일 조회수 중앙값) — 영상만, 배너 제외">요일별</button>
                     <button type="button" onClick={() => setShowCompany(v => !v)}
                       className={`text-[11px] px-1.5 py-0.5 rounded border transition-colors ${showCompany ? "bg-a-blue/10 border-a-blue/40 text-a-blue" : "border-a-hairline text-a-ink-muted hover:text-a-ink"}`}
-                      title="업체별 성과(게시 후 7일 중앙값) — 영상=조회수·CPV, 배너=도달수·CPR">업체별</button>
+                      title="업체별 누적 총합 — 영상=Σ조회수·CPV, 배너=Σ도달수·CPR (Σ비용÷Σ누적)">업체별</button>
                   </div>
                   <div className="flex items-center gap-x-4 gap-y-1.5 flex-wrap justify-end">
                     {/* 1. 조회수 */}
