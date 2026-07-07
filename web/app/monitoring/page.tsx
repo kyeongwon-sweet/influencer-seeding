@@ -10,6 +10,7 @@ import { batchFetch } from "@/lib/batchFetch";
 import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, INIT_FILTERS, CHANNEL_TYPES, CATEGORIES, STICKY_COL_ORDER, PROJECT_PARSE_COLS, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, isStatInDateRange, getFilteredStats, pickRangeStats, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, getPostType, viewIncrement, pickMetric, pdOf, productLabel, effectiveReach, weekKeyOf, pearson, alignedPairs, bestLag, solveLinear, alignMulti, multipleR2, parseCsvLine } from "./lib";
 import CorrelationPanel from "./components/CorrelationPanel";
 import DayOfWeekPanel, { type DowData } from "./components/DayOfWeekPanel";
+import CompanyPanel, { type CompanyData } from "./components/CompanyPanel";
 import FiltersBar from "./components/FiltersBar";
 import LineChart from "./components/LineChart";
 import PostsTable from "./components/PostsTable";
@@ -34,6 +35,7 @@ export default function MonitoringPage() {
   const [smooth, setSmooth] = useState(false); // 주별 합계 보기(주차 버킷, N월 N주차)
   const [showCorr, setShowCorr] = useState(false); // 상관·시차 분석 패널
   const [showDow, setShowDow] = useState(false); // 요일별 성과 패널
+  const [showCompany, setShowCompany] = useState(false); // 업체별 성과 패널
   const [chartCollapsed, setChartCollapsed] = useState(false); // 메인 그래프(차트+증감표) 접기 — 기본 펼침
   const [lsSearchData, setLsSearchData] = useState<{ date: string; ratio: number; value: number | null }[]>([]);
   const [brandMetrics, setBrandMetrics] = useState<{ measured_at: string; yt_views: number | null; yt_unique_viewers: number | null; yt_search_views: number | null; ig_profile_views: number | null }[]>([]);
@@ -280,6 +282,54 @@ export default function MonitoringPage() {
       return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
     };
     return WD.map((label, i) => ({ label, count: views[i].length, median: median(views[i]), cpv: medianF(cpvs[i]) }));
+  }, [filteredPosts]);
+
+  // 업체별 성과: 업체(company_name/companyForAccount)별 '게시 후 7일 시점' 값 median — 요일별과 동일 기준.
+  //   영상=조회수(play)·CPV, 배너=도달수(reach 일별 이력)·CPR. 업체명 있는 바이럴 소재만.
+  const companyAnalysis = useMemo<CompanyData>(() => {
+    type Acc = { video: number[]; videoCpv: number[]; banner: number[]; bannerCpr: number[] };
+    const by = new Map<string, Acc>();
+    for (const post of filteredPosts) {
+      const company = (post.company_name?.trim() || companyForAccount(post.account_name ?? post.influencers?.name) || "").trim();
+      if (!company || company === "-") continue;
+      const ct = post.channel_type ?? "";
+      const kind = ct.includes("배너") ? "banner" : ct.includes("(영상)") ? "video" : null;
+      if (!kind) continue;
+      const pa = post.posted_at;
+      if (!pa) continue;
+      const target = new Date(pa).getTime() + 7 * 86400000; // 게시 후 7일
+      let best: { diff: number; v: number } | null = null;
+      for (const s of post.all_stats ?? []) {
+        const val = kind === "video" ? s.play_count : (s.reach_count ?? null);
+        if (val == null) continue;
+        const diff = Math.abs(new Date(s.measured_at).getTime() - target) / 86400000;
+        if (diff <= 2 && (!best || diff < best.diff)) best = { diff, v: val }; // 7일±2 최근접
+      }
+      if (!best) continue;
+      const acc = by.get(company) ?? { video: [], videoCpv: [], banner: [], bannerCpr: [] };
+      if (kind === "video") { acc.video.push(best.v); if (post.cost != null && best.v > 0) acc.videoCpv.push(post.cost / best.v); }
+      else { acc.banner.push(best.v); if (post.cost != null && best.v > 0) acc.bannerCpr.push(post.cost / best.v); }
+      by.set(company, acc);
+    }
+    const median = (arr: number[]): number => {
+      if (!arr.length) return 0;
+      const s = [...arr].sort((a, b) => a - b);
+      const m = Math.floor(s.length / 2);
+      return s.length % 2 ? s[m] : Math.round((s[m - 1] + s[m]) / 2);
+    };
+    const medianF = (arr: number[]): number | null => {
+      if (!arr.length) return null;
+      const s = [...arr].sort((a, b) => a - b);
+      const m = Math.floor(s.length / 2);
+      return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+    };
+    return [...by.entries()]
+      .map(([company, a]) => ({
+        company,
+        video: { count: a.video.length, median: median(a.video), cpv: medianF(a.videoCpv) },
+        banner: { count: a.banner.length, median: median(a.banner), cpr: medianF(a.bannerCpr) },
+      }))
+      .sort((x, y) => (y.video.count + y.banner.count) - (x.video.count + x.banner.count));
   }, [filteredPosts]);
 
   // 메인 그래프 조회수 선 = 일별 증분(누적 아님). 광고비·검색량·B2B 와 같은 '하루치 흐름'으로 맞춰 상관관계가 보이게 함.
@@ -1452,6 +1502,9 @@ export default function MonitoringPage() {
                     <button type="button" onClick={() => setShowDow(v => !v)}
                       className={`text-[11px] px-1.5 py-0.5 rounded border transition-colors ${showDow ? "bg-a-blue/10 border-a-blue/40 text-a-blue" : "border-a-hairline text-a-ink-muted hover:text-a-ink"}`}
                       title="게시 요일별 성과(게시 후 7일 조회수 중앙값) — 영상만, 배너 제외">요일별</button>
+                    <button type="button" onClick={() => setShowCompany(v => !v)}
+                      className={`text-[11px] px-1.5 py-0.5 rounded border transition-colors ${showCompany ? "bg-a-blue/10 border-a-blue/40 text-a-blue" : "border-a-hairline text-a-ink-muted hover:text-a-ink"}`}
+                      title="업체별 성과(게시 후 7일 중앙값) — 영상=조회수·CPV, 배너=도달수·CPR">업체별</button>
                   </div>
                   <div className="flex items-center gap-x-4 gap-y-1.5 flex-wrap justify-end">
                     {/* 1. 조회수 */}
@@ -1656,7 +1709,12 @@ export default function MonitoringPage() {
               </div>
             </div>
             {showCorr && <CorrelationPanel data={correlations} />}
-            {showDow && <DayOfWeekPanel data={dowAnalysis} />}
+            {(showDow || showCompany) && (
+              <div className="flex flex-wrap items-start">
+                {showDow && <div className="flex-1 min-w-[560px]"><DayOfWeekPanel data={dowAnalysis} /></div>}
+                {showCompany && <div className="flex-1 min-w-[560px]"><CompanyPanel data={companyAnalysis} /></div>}
+              </div>
+            )}
             {/* 그래프 접기/펼치기 — 카드 하단 (접혀도 펼쳐도 항상 하단에 노출) */}
             <button type="button" onClick={() => setChartCollapsed(v => !v)}
               className="w-full flex items-center justify-end gap-1 border-t border-a-hairline py-2 pr-6 text-xs text-a-ink-muted hover:text-a-ink hover:bg-a-parchment/40 transition-colors">
