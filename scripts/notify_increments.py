@@ -236,8 +236,8 @@ def main():
     def f(n): return f"{n:,}"
 
     def _cpv(cost, views, ct):
-        if "배너" in (ct or ""):
-            return "(인사이트 요청 중)"   # 배너는 조회수 지표 별도 → CPV 미산정
+        # 배너는 views 자리에 도달수(reach 누적)가 들어옴 → CPV = 비용/도달수 = '도달당비용'(사용자 지시).
+        # 그 외는 비용/누적조회수 = 조회당비용. 라벨은 공통 'CPV'.
         if not cost:
             return "무상"                # 무상시딩·비용 0
         if not views:
@@ -255,15 +255,16 @@ def main():
     for ct, s in sorted(by_channel.items(), key=lambda x: x[1], reverse=True):
         if "배너" in ct:
             # 배너는 조회수가 없어 도달수(reach_count)를 '조회수'로 취급 → 채널합계·총 증분·TOP에 반영.
+            # 증분은 (도달수)로 표기하고, CPV는 비용/도달수 = '도달당비용'을 표시(사용자 지시).
             # 도달수 입력이 없으면(주말/집계 전) 0 → '미집계' 표기.
             if s > 0:
-                lines.append(f"• {_ital_paren(ct)} *+{f(s)}*  (도달수)")
+                lines.append(f"• {_ital_paren(ct)} *+{f(s)}* (도달수)  {_cpv(cost_by_ch.get(ct, 0), cumviews_by_ch.get(ct, 0), ct)}")
             else:
                 lines.append(f"• {_ital_paren(ct)}  (도달수 미집계·주말/집계 전)")
         else:
             lines.append(f"• {_ital_paren(ct)} *+{f(s)}*  {_cpv(cost_by_ch.get(ct, 0), cumviews_by_ch.get(ct, 0), ct)}")
     lines += ["", DIV, "", "◾ *급상승 TOP 10* 🔥  `CPV는 누적 기준`", ""]
-    # 배너는 도달수를 '조회수'로 취급해 TOP에도 섞어 노출(사용자 지시). CPV 대신 '(인사이트 요청 중)' 표기됨.
+    # 배너는 도달수를 '조회수'로 취급해 TOP에도 섞어 노출(사용자 지시). 배너 CPV = 비용/도달수(도달당비용).
     for rank, it in enumerate(items[:10], 1):
         prod = f"[{it['product']}] " if it["product"] else ""
         label = f"<{it['url']}|{_esc(it['name'])}>" if it["url"] else _esc(it["name"])

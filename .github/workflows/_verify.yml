@@ -1,0 +1,14 @@
+name: (verify) dryban
+on:
+  workflow_dispatch: { inputs: { date: { type: string, default: "2026-07-06" } } }
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", cache: "pip" }
+      - run: pip install -r requirements.txt
+      - name: dry
+        env: { SUPABASE_URL: "${{ secrets.SUPABASE_URL }}", SUPABASE_SERVICE_ROLE_KEY: "${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}", SLACK_BOT_TOKEN: "${{ secrets.SLACK_BOT_TOKEN }}", DRY_RUN: "1", MONITORING_DATE: "${{ github.event.inputs.date }}", PYTHONUNBUFFERED: "1" }
+        run: cd scripts && python notify_increments.py
