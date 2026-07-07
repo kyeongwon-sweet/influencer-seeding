@@ -225,21 +225,26 @@ def main():
     today_ids = {r["post_id"] for r in rows}
     posts, off = [], 0
     while True:
-        res = db.table("sponsored_posts").select("id, url, account_name, created_at, ended_at, content_summary, posted_at").range(off, off + 999).execute()
+        res = db.table("sponsored_posts").select("id, url, account_name, created_at, ended_at, content_summary, posted_at, channel_type").range(off, off + 999).execute()
         chunk = res.data or []
         posts.extend(chunk)
         if len(chunk) < 1000:
             break
         off += 1000
     active = [a for a in posts if not a.get("ended_at")]
-    waiting = uncollectable = 0
+    waiting = uncollectable = banner_skip = 0
     check = []  # (account, 사유, url)
     for a in active:
         if a["id"] in today_ids:
             continue
+        c = str(a.get("created_at"))[:10]
+        if c > target:
+            continue                # 대상일 이후 등록 → 그날 존재 안 함(미측정 아님)
         u = (a.get("url") or "").lower()
-        if str(a.get("created_at"))[:10] == target:
-            waiting += 1            # 오늘 등록 → 다음 수집에서 측정(정상)
+        if c == target:
+            waiting += 1            # 당일 등록 → 다음 수집에서 측정(정상)
+        elif "배너" in (a.get("channel_type") or ""):
+            banner_skip += 1        # 배너는 도달수(reach_count)로 측정 → 조회수 미측정은 정상(점검 제외)
         elif ("threads." in u or "facebook.com" in u       # 조회수 없는 플랫폼
               or "naver.com" in u or "kakao.com" in u):     # 전용 수집기 없음(수동 입력)
             uncollectable += 1      # 수집 불가(정상 — 신경 안 써도 됨)
@@ -249,7 +254,8 @@ def main():
             check.append((a.get("account_name"), "미측정", a.get("url")))
     unmeasured = waiting + uncollectable + len(check)
     if unmeasured:
-        text += f"\n\n⚠️ 오늘 미측정 활성 {unmeasured}건 (신규대기 {waiting} · 수집불가 {uncollectable} · 점검 {len(check)})"
+        btail = f" · 배너 {banner_skip} 제외(도달수 측정)" if banner_skip else ""
+        text += f"\n\n⚠️ 오늘 미측정 활성 {unmeasured}건 (신규대기 {waiting} · 수집불가 {uncollectable} · 점검 {len(check)}){btail}"
         for nm, reason, url in check[:8]:
             tail = (url or "").rstrip("/").split("/")[-1]
             text += f"\n  · {nm} [{reason}] {tail}"
