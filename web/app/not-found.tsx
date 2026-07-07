@@ -11,7 +11,7 @@ export default function NotFound() {
     <div className="min-h-screen flex flex-col items-center justify-center gap-3 p-6 text-center">
       <p className="text-4xl font-bold text-a-ink">404</p>
       <p className="text-sm text-a-ink-muted">페이지를 찾을 수 없습니다.</p>
-      <Link href="/" className="mt-1 text-sm text-a-blue hover:underline">홈으로 가기</Link>
+      <Link href="/home" className="mt-1 text-sm text-a-blue hover:underline">홈으로 가기</Link>
     </div>
   );
 }

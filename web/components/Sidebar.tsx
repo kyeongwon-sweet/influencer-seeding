@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useUser } from "@clerk/nextjs";
 import { isAdminEmail } from "@/lib/admin";
 import SidebarMemo from "./SidebarMemo";
@@ -21,9 +21,9 @@ const BUILD_TIME = (() => {
   });
 })();
 
-const NAV = [
+const NAV: { href: string; label: string; highlight?: boolean; icon: ReactNode }[] = [
   {
-    href: "/",
+    href: "/home",
     label: "홈",
     icon: (
       <svg width="15" height="15" viewBox="0 0 20 20" fill="none">
@@ -77,6 +77,7 @@ const NAV = [
   {
     href: "/monitoring",
     label: "협찬 모니터링",
+    highlight: true, // 기본 진입 탭 — 항상 볼드+컬러 강조
     icon: (
       <svg width="15" height="15" viewBox="0 0 20 20" fill="none">
         <polyline points="2,14 6,9 10,11 14,5 18,7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -156,15 +157,17 @@ export default function Sidebar() {
 
       <nav className={`px-2.5 ${collapsed ? "pt-1" : "pt-3"} pb-3 space-y-0.5 overflow-x-hidden shrink-0`}>
         {NAV.map(item => {
-          const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+          const isActive = item.href === "/home" ? pathname === "/home" : pathname.startsWith(item.href);
           const link = (
             <Link
               href={item.href}
               title={collapsed ? item.label : undefined}
               className={`flex items-center gap-2.5 ${collapsed ? "justify-center px-0" : "px-3"} py-2 rounded-[8px] text-sm transition-colors ${
                 isActive
-                  ? "bg-blue-50 text-a-blue font-medium"
-                  : "text-gray-400 hover:text-a-ink hover:bg-gray-50"
+                  ? `bg-blue-50 text-a-blue ${item.highlight ? "font-bold" : "font-medium"}`
+                  : item.highlight
+                    ? "text-a-blue font-bold hover:bg-blue-50"
+                    : "text-gray-400 hover:text-a-ink hover:bg-gray-50"
               }`}
             >
               <span className="shrink-0">{item.icon}</span>
@@ -172,7 +175,7 @@ export default function Sidebar() {
             </Link>
           );
           // 펼친 상태에선 홈 행 오른쪽에 '접기' 토글을 붙여 상단 여백을 없앰.
-          if (!collapsed && item.href === "/") {
+          if (!collapsed && item.href === "/home") {
             return (
               <div key={item.href} className="flex items-center gap-1">
                 <div className="flex-1 min-w-0">{link}</div>

@@ -770,7 +770,7 @@ export default function ScreeningPage() {
     <div className="min-h-screen">
       <header className="bg-white border-b border-gray-100 h-11 px-6 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-3">
-          <Link href="/" className="text-gray-400 hover:text-a-ink transition text-sm">←</Link>
+          <Link href="/home" className="text-gray-400 hover:text-a-ink transition text-sm">←</Link>
           <span className="text-a-ink text-sm font-semibold tracking-tight">스크리닝</span>
           <span className="text-gray-400 text-xs">
             {hasFilter || statusFilter !== "all"
