@@ -398,13 +398,64 @@ def run():
         _start, _PAGE = 0, 1000
         while True:
             _res = db.table("sponsored_posts").select(
-                "id, url, posted_at, account_name, influencer_id, ended_at, content_summary, notes"
+                "id, url, posted_at, account_name, influencer_id, ended_at, content_summary, notes, channel_type, project_name"
             ).range(_start, _start + _PAGE - 1).execute()
             _chunk = _res.data or []
             all_posts.extend(_chunk)
             if len(_chunk) < _PAGE:
                 break
             _start += _PAGE
+
+        # 🛑 자동 종료 정책 — ended_at 딱지 부여(삭제 아님, 데이터 보존). 온드미디어·위성채널 제외.
+        #   규칙(OR): 배너 게시+7일 / 그외 게시+14일 / 7일 미반환(마지막 실측) / 캡션(content_summary) '종료·보관·삭제'
+        try:
+            active_ids = [p["id"] for p in all_posts if not p.get("ended_at")]
+            last_meas = {}
+            for _i in range(0, len(active_ids), 100):
+                _c = active_ids[_i:_i + 100]
+                _f = 0
+                while True:
+                    _r = (db.table("post_daily_stats").select("post_id, measured_at")
+                          .in_("post_id", _c).gt("play_count", 0)
+                          .order("measured_at", desc=True).range(_f, _f + 999).execute())
+                    _pg = _r.data or []
+                    for _x in _pg:
+                        if _x["post_id"] not in last_meas:
+                            last_meas[_x["post_id"]] = _x["measured_at"]
+                    if len(_pg) < 1000:
+                        break
+                    _f += 1000
+            today_d = date.fromisoformat(TODAY)
+            KW = ("종료", "보관", "삭제")
+            to_end = []
+            for p in all_posts:
+                if p.get("ended_at"):
+                    continue
+                ct = p.get("channel_type") or ""
+                pn = p.get("project_name") or ""
+                if "온드미디어" in ct or "위성채널" in pn or "온드미디어" in pn:
+                    continue
+                pa = p.get("posted_at")
+                cap = p.get("content_summary") or ""
+                age = (today_d - date.fromisoformat(str(pa)[:10])).days if pa else None
+                lm = last_meas.get(p["id"])
+                gap = (today_d - date.fromisoformat(lm)).days if lm else None
+                if (("배너" in ct and age is not None and age >= 7)
+                        or ("배너" not in ct and age is not None and age >= 14)
+                        or (gap is not None and gap >= 7)
+                        or any(k in cap for k in KW)):
+                    to_end.append(p["id"])
+            if to_end:
+                for _i in range(0, len(to_end), 100):
+                    db.table("sponsored_posts").update({"ended_at": TODAY}).in_("id", to_end[_i:_i + 100]).execute()
+                ended_set = set(to_end)
+                for p in all_posts:
+                    if p["id"] in ended_set:
+                        p["ended_at"] = TODAY  # 이번 수집에서도 제외되도록 반영
+                print(f"[LOG] 🛑 자동 종료: {len(to_end)}건 (ended_at={TODAY})")
+        except Exception as e:
+            print(f"[WARN] 자동 종료 처리 실패(무시): {e}")
+
         # 종료(ended_at) 처리된 글은 스크랩 제외 — Apify 사용량 절감(한도 재초과 방지), Vercel 라우트와 동일
         posts = [p for p in all_posts if not p.get("ended_at")]
         print(f"[LOG] 추적 게시물: {len(posts)}개 (종료 제외 {len(all_posts) - len(posts)}개)")
