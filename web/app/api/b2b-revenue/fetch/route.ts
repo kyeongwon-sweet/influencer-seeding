@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { fetchSheetTabValues } from "@/lib/google-sheets";
+import { fetchSheetTabValues, getSheetTitles } from "@/lib/google-sheets";
 import { notifyJob } from "@/lib/slack";
 
 export const runtime = "nodejs";
@@ -118,6 +118,7 @@ export async function GET(req: NextRequest) {
   }
 
   await notifyJob("B2B 발주량", "ok", `${records.length}일 (${records[0].date} ~ ${records[records.length - 1].date})`);
+  const debug_titles = await getSheetTitles(SPREADSHEET_ID).catch(() => ["<titles fetch fail>"]); // TEMP
   return NextResponse.json({ ok: true, count: records.length, first: records[0].date, last: records[records.length - 1].date,
-    debug_dates: rows.slice(hdr, Math.min(rows.length, hdr + 50)).map((r) => r[cDate]) }); // TEMP 진단: 헤더~데이터 raw 날짜셀
+    debug: { rows_total: rows.length, hdr, cDate, tab_titles: debug_titles, tail_rows: rows.slice(-4) } }); // TEMP 진단
 }
