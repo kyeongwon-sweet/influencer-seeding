@@ -27,6 +27,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // TEMP: 탭 원본 구조 확인용(?dump=인지_쫀득바). 확인 후 제거.
+  const dumpTab = req.nextUrl.searchParams.get("dump");
+  if (dumpTab) {
+    const rr = await fetchSheetTabValuesByTitle(SPREADSHEET_ID, dumpTab, "A1:P60");
+    return NextResponse.json({ tab: dumpTab, rows: rr.map((r, i) => ({ i, r })) });
+  }
+
   const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
   const curYear = nowKST.getUTCFullYear(), curMonth = nowKST.getUTCMonth() + 1;
   const yearOf = (mo: number) => (mo - curMonth > 6 ? curYear - 1 : curMonth - mo > 6 ? curYear + 1 : curYear);
