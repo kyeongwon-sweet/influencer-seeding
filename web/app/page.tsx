@@ -88,6 +88,10 @@ export default function DashboardPage() {
   const [organicMentions, setOrganicMentions] = useState<OrganicMention[]>([]);
   const [kpi, setKpi] = useState<KpiSnapshot | null>(null);
   const [monthlyGoal, setMonthlyGoal] = useState<{ month: number; metrics: { label: string; goal: unknown; current: unknown; rate: unknown }[]; fetchedAt?: string } | null>(null);
+  // 지난달 KPI 카드는 자동으로 접어서 아래로 (month_label의 월 ≠ 이번 달)
+  const [showPastKpi, setShowPastKpi] = useState(false);
+  const kpiMonthMatch = kpi?.month_label?.match(/(\d{1,2})월/);
+  const kpiIsPast = !!kpiMonthMatch && Number(kpiMonthMatch[1]) !== new Date().getMonth() + 1;
   const [brandSearch, setBrandSearch] = useState<{ date: string; value: number }[]>([]);
   const [productTrends, setProductTrends] = useState<{ products: string[]; rows: { date: string; values: Record<string, number | null> }[] } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -384,93 +388,6 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* KPI 현황 */}
-        <div className="bg-white rounded-[24px] shadow-[0_4px_32px_rgba(100,120,180,0.13)] overflow-hidden">
-          <div className="px-7 pt-6 pb-2 flex items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center gap-3">
-              <div className="inline-flex items-center gap-1.5 bg-blue-50 rounded-full px-3 py-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-a-blue inline-block" />
-                <p className="text-[11px] font-semibold text-a-blue tracking-widest uppercase">
-                  {kpi?.month_label ? `${kpi.month_label} ` : ""}KPI 현황
-                </p>
-              </div>
-              <a
-                href="https://docs.google.com/spreadsheets/d/1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s/edit?gid=201954698#gid=201954698"
-                target="_blank"
-                rel="noreferrer"
-                className="text-[11px] text-a-blue hover:underline whitespace-nowrap"
-              >
-                대시보드와 연동 →
-              </a>
-            </div>
-            {kpi?.fetched_at && (
-              <span className="text-[11px] text-a-ink-muted">
-                업데이트 <span className="font-medium text-a-ink">{formatTimestamp(kpi.fetched_at)}</span>
-              </span>
-            )}
-          </div>
-          {loading ? (
-            <div className="px-7 pb-7 pt-3 flex gap-4">
-              {[...Array(7)].map((_, i) => <div key={i} className="h-16 flex-1 bg-a-divider rounded-lg animate-pulse" />)}
-            </div>
-          ) : kpi && kpi.metrics.length ? (() => {
-            const products = [...new Set(kpi.metrics.map(m => m.product ?? ""))];
-            const labels = kpi.metrics.filter(m => (m.product ?? "") === products[0]).map(m => m.label);
-            const cell = (p: string, label: string) => kpi.metrics.find(m => (m.product ?? "") === p && m.label === label);
-            const PROD_DOT = ["#f59e0b", "#3b82f6", "#8b5cf6", "#ec4899"];
-            const tier = (pct: number) => pct >= 100
-              ? { pill: "bg-emerald-50 text-emerald-700", bar: "#10b981" }
-              : pct >= 70 ? { pill: "bg-amber-50 text-amber-600", bar: "#f59e0b" }
-              : { pill: "bg-red-50 text-red-500", bar: "#ef4444" };
-            return (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 px-6 pb-6 pt-1">
-                {products.map((p, pi) => (
-                  <div key={p} className="rounded-[18px] border border-a-hairline bg-white px-5 py-4">
-                    <div className="flex items-center gap-2 mb-2 pb-3 border-b border-a-divider">
-                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: PROD_DOT[pi % PROD_DOT.length] }} />
-                      <span className="text-[15px] font-bold text-a-ink">{p}</span>
-                    </div>
-                    <div className="divide-y divide-a-divider">
-                      {labels.map(l => {
-                        const m = cell(p, l);
-                        const pct = m?.achievement ?? null;
-                        const hasGoal = m?.target != null && m.target > 0 && pct != null;
-                        const t = pct != null ? tier(pct) : null;
-                        return (
-                          <div key={l} className="flex items-center justify-between gap-3 py-2.5">
-                            <span className="text-[12px] text-a-ink-muted">{l.replace(/^\*/, "")}</span>
-                            <div className="flex items-center gap-3 shrink-0">
-                              <div className="text-right leading-tight">
-                                <div className="text-[15px] font-bold tabular-nums text-a-ink">{fmtKpi(m?.current ?? null)}</div>
-                                <div className="text-[10px] text-a-ink-muted">{hasGoal ? `목표 ${fmtKpi(m!.target)}` : "실적"}</div>
-                              </div>
-                              {hasGoal && t ? (
-                                <div className="w-14 shrink-0">
-                                  <span className={`block text-center px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none ${t.pill}`}>{pct}%</span>
-                                  <div className="w-full h-1 rounded-full bg-gray-100 overflow-hidden mt-1">
-                                    <div className="h-full rounded-full" style={{ width: `${Math.min(100, Math.max(0, pct!))}%`, backgroundColor: t.bar }} />
-                                  </div>
-                                </div>
-                              ) : (
-                                <span className="w-14 shrink-0 text-center text-[10px] text-gray-300">—</span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            );
-          })() : (
-            <div className="px-7 pb-7 pt-3 text-sm text-a-ink-muted">
-              KPI 데이터가 없습니다.{" "}
-              <span className="text-[11px]">Supabase에 <code className="bg-a-parchment px-1 rounded">kpi_snapshots</code> 테이블 생성 후 <code className="bg-a-parchment px-1 rounded">/api/kpi/fetch</code>를 호출해 주세요.</span>
-            </div>
-          )}
-        </div>
-
         {/* 이달의 목표 — 마케팅T 시트 월 현황 블록(목표/현황/달성률) 연동 */}
         <div className="bg-white rounded-[24px] shadow-[0_4px_32px_rgba(100,120,180,0.13)] overflow-hidden">
           <div className="px-7 pt-6 pb-2 flex items-center justify-between flex-wrap gap-2">
@@ -547,6 +464,104 @@ export default function DashboardPage() {
           })() : (
             <div className="px-7 pb-7 pt-3 text-sm text-a-ink-muted">이달 목표 데이터를 불러오지 못했습니다.</div>
           )}
+        </div>
+
+        {/* KPI 현황 — 지난달 데이터면 자동으로 접힘(토글) */}
+        <div className="bg-white rounded-[24px] shadow-[0_4px_32px_rgba(100,120,180,0.13)] overflow-hidden">
+          <div
+            className={`px-7 pt-6 flex items-center justify-between flex-wrap gap-2 ${kpiIsPast ? "cursor-pointer select-none" : ""} ${kpiIsPast && !showPastKpi ? "pb-5" : "pb-2"}`}
+            onClick={kpiIsPast ? () => setShowPastKpi(v => !v) : undefined}
+          >
+            <div className="flex items-center gap-3">
+              <div className="inline-flex items-center gap-1.5 bg-blue-50 rounded-full px-3 py-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-a-blue inline-block" />
+                <p className="text-[11px] font-semibold text-a-blue tracking-widest uppercase">
+                  {kpi?.month_label ? `${kpi.month_label} ` : ""}KPI 현황
+                </p>
+              </div>
+              <a
+                href="https://docs.google.com/spreadsheets/d/1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s/edit?gid=201954698#gid=201954698"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[11px] text-a-blue hover:underline whitespace-nowrap"
+                onClick={e => e.stopPropagation()}
+              >
+                대시보드와 연동 →
+              </a>
+            </div>
+            <div className="flex items-center gap-3">
+              {kpi?.fetched_at && (
+                <span className="text-[11px] text-a-ink-muted">
+                  업데이트 <span className="font-medium text-a-ink">{formatTimestamp(kpi.fetched_at)}</span>
+                </span>
+              )}
+              {kpiIsPast && (
+                <span className="text-[11px] font-medium text-a-blue whitespace-nowrap">
+                  {showPastKpi ? "접기 ▴" : "펼치기 ▾"}
+                </span>
+              )}
+            </div>
+          </div>
+          {(!kpiIsPast || showPastKpi) && (loading ? (
+            <div className="px-7 pb-7 pt-3 flex gap-4">
+              {[...Array(7)].map((_, i) => <div key={i} className="h-16 flex-1 bg-a-divider rounded-lg animate-pulse" />)}
+            </div>
+          ) : kpi && kpi.metrics.length ? (() => {
+            const products = [...new Set(kpi.metrics.map(m => m.product ?? ""))];
+            const labels = kpi.metrics.filter(m => (m.product ?? "") === products[0]).map(m => m.label);
+            const cell = (p: string, label: string) => kpi.metrics.find(m => (m.product ?? "") === p && m.label === label);
+            const PROD_DOT = ["#f59e0b", "#3b82f6", "#8b5cf6", "#ec4899"];
+            const tier = (pct: number) => pct >= 100
+              ? { pill: "bg-emerald-50 text-emerald-700", bar: "#10b981" }
+              : pct >= 70 ? { pill: "bg-amber-50 text-amber-600", bar: "#f59e0b" }
+              : { pill: "bg-red-50 text-red-500", bar: "#ef4444" };
+            return (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 px-6 pb-6 pt-1">
+                {products.map((p, pi) => (
+                  <div key={p} className="rounded-[18px] border border-a-hairline bg-white px-5 py-4">
+                    <div className="flex items-center gap-2 mb-2 pb-3 border-b border-a-divider">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: PROD_DOT[pi % PROD_DOT.length] }} />
+                      <span className="text-[15px] font-bold text-a-ink">{p}</span>
+                    </div>
+                    <div className="divide-y divide-a-divider">
+                      {labels.map(l => {
+                        const m = cell(p, l);
+                        const pct = m?.achievement ?? null;
+                        const hasGoal = m?.target != null && m.target > 0 && pct != null;
+                        const t = pct != null ? tier(pct) : null;
+                        return (
+                          <div key={l} className="flex items-center justify-between gap-3 py-2.5">
+                            <span className="text-[12px] text-a-ink-muted">{l.replace(/^\*/, "")}</span>
+                            <div className="flex items-center gap-3 shrink-0">
+                              <div className="text-right leading-tight">
+                                <div className="text-[15px] font-bold tabular-nums text-a-ink">{fmtKpi(m?.current ?? null)}</div>
+                                <div className="text-[10px] text-a-ink-muted">{hasGoal ? `목표 ${fmtKpi(m!.target)}` : "실적"}</div>
+                              </div>
+                              {hasGoal && t ? (
+                                <div className="w-14 shrink-0">
+                                  <span className={`block text-center px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none ${t.pill}`}>{pct}%</span>
+                                  <div className="w-full h-1 rounded-full bg-gray-100 overflow-hidden mt-1">
+                                    <div className="h-full rounded-full" style={{ width: `${Math.min(100, Math.max(0, pct!))}%`, backgroundColor: t.bar }} />
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="w-14 shrink-0 text-center text-[10px] text-gray-300">—</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })() : (
+            <div className="px-7 pb-7 pt-3 text-sm text-a-ink-muted">
+              KPI 데이터가 없습니다.{" "}
+              <span className="text-[11px]">Supabase에 <code className="bg-a-parchment px-1 rounded">kpi_snapshots</code> 테이블 생성 후 <code className="bg-a-parchment px-1 rounded">/api/kpi/fetch</code>를 호출해 주세요.</span>
+            </div>
+          ))}
         </div>
 
         {/* 워크플로우 메뉴 카드 */}
