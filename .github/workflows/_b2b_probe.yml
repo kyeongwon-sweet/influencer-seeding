@@ -15,8 +15,9 @@ jobs:
     steps:
       - name: b2b-revenue/fetch 호출
         run: |
-          code=$(curl -sS -o /tmp/o -w "%{http_code}" "$APP_URL/api/b2b-revenue/fetch?scan=1" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
-          echo "HTTP $code"
-          cat /tmp/o
-          echo
+          for T in "(26.07~) 전환_스틱바" "(26.07~) 전환_파인트" "★통합_자사몰" "IC_통합"; do
+            echo "===== DUMP: $T ====="
+            curl -sS -G "$APP_URL/api/b2b-revenue/fetch" --data-urlencode "dump=$T" \
+              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+            echo
+          done

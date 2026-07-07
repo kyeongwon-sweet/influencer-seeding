@@ -25,6 +25,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // TEMP 진단: ?dump=<탭제목> → 그 탭 앞 18행 raw 반환(7월 구조 파악용).
+  if (req.nextUrl.searchParams.has("dump")) {
+    const t = req.nextUrl.searchParams.get("dump") || "";
+    const rr = await fetchSheetTabValuesByTitle(SPREADSHEET_ID, t, "A1:AB18").catch((e) => [["<err>", String(e).slice(0, 80)]]);
+    return NextResponse.json({ title: t, head: rr });
+  }
   // TEMP 진단: ?scan=1 → 전 탭에서 CVS/B2B 발주량 헤더·날짜범위를 스캔해 July 표가 있는 탭 식별.
   if (req.nextUrl.searchParams.has("scan")) {
     const titles = await getSheetTitles(SPREADSHEET_ID);
