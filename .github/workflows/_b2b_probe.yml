@@ -1,6 +1,6 @@
 name: _b2b probe (temp)
 
-# 임시: 인지 탭 원본 구조 확인(dump). 확인 후 삭제.
+# 임시: 인지 듬뿍/쫀득 탭 7월 일별 구조 확인(dump). 확인 후 삭제.
 on:
   workflow_dispatch:
 
@@ -11,9 +11,15 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: dump 인지_쫀득바
+      - name: dump 듬뿍바
         run: |
-          curl -sS -G "$APP_URL/api/b2b-revenue/fetch" \
-            --data-urlencode "dump=인지_쫀득바" \
+          echo "=== 인지_듬뿍바 ==="
+          curl -sS -G "$APP_URL/api/b2b-revenue/fetch" --data-urlencode "dump=인지_듬뿍바" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+          echo
+      - name: dump 쫀득바
+        run: |
+          echo "=== 인지_쫀득바 ==="
+          curl -sS -G "$APP_URL/api/b2b-revenue/fetch" --data-urlencode "dump=인지_쫀득바" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
           echo

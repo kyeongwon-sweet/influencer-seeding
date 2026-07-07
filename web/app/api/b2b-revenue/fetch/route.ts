@@ -30,10 +30,12 @@ export async function GET(req: NextRequest) {
   // TEMP: 탭 원본 구조 확인용(?dump=인지_쫀득바). 확인 후 제거.
   const dumpTab = req.nextUrl.searchParams.get("dump");
   if (dumpTab) {
-    const rr = await fetchSheetTabValuesByTitle(SPREADSHEET_ID, dumpTab, "A1:T150");
+    const rr = await fetchSheetTabValuesByTitle(SPREADSHEET_ID, dumpTab, "A1:T160");
     const mk = rr.findIndex((r) => r.some((c) => typeof c === "string" && c.includes("일자별 현황")));
-    const slice = mk >= 0 ? rr.slice(mk, mk + 45) : rr;
-    return NextResponse.json({ tab: dumpTab, marker: mk, rows: slice.map((r, i) => ({ i: (mk >= 0 ? mk : 0) + i, r })) });
+    // 헤더(marker+3 부근) + 7월 데이터 행만 반환
+    const header = mk >= 0 ? rr.slice(mk, mk + 4).map((r, i) => ({ i: mk + i, r })) : [];
+    const july = rr.map((r, i) => ({ i, r })).filter((x) => typeof x.r[1] === "string" && /^7\s*[.\/-]\s*\d/.test(String(x.r[1]).trim()));
+    return NextResponse.json({ tab: dumpTab, marker: mk, header, july });
   }
 
   const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
