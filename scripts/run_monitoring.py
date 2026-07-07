@@ -70,6 +70,7 @@ def _prev_stats(db, post_ids):
                    .lt("measured_at", TODAY)
                    .order("measured_at", desc=True)
                    .order("created_at", desc=True)
+                   .order("id", desc=True)   # 고유키 tiebreaker — range() 경계 행 누락 방지(직전값 오판 방지)
                    .range(frm, frm + PAGE - 1)
                    .execute())
             page = res.data or []
@@ -138,6 +139,7 @@ def _snapshot_totals(db, post_ids, upto):
                    .lte("measured_at", upto)
                    .order("measured_at", desc=True)
                    .order("created_at", desc=True)
+                   .order("id", desc=True)   # 고유키 tiebreaker — range() 경계 행 누락 방지(직전값 오판 방지)
                    .range(frm, frm + PAGE - 1)
                    .execute())
             page = res.data or []
@@ -749,7 +751,9 @@ def run():
                 frm = 0
                 while True:
                     pr = (db.table("post_daily_stats").select("post_id, play_count, reach_count, measured_at")
-                          .in_("post_id", chunk).lt("measured_at", TODAY).range(frm, frm + 999).execute())
+                          # ⚠️ 정렬키 없는 range() 페이지네이션은 경계 행 누락 → pmax가 낮아져 증분 폭증.
+                          #    고유키 id로 결정적 페이지네이션(API sponsored-posts와 동일 수정).
+                          .in_("post_id", chunk).lt("measured_at", TODAY).order("id").range(frm, frm + 999).execute())
                     pg = pr.data or []
                     for x in pg:
                         v = x.get("reach_count") if isbanner.get(x["post_id"]) else x.get("play_count")
