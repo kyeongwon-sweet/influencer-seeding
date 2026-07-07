@@ -95,7 +95,7 @@ export async function GET(req: NextRequest) {
       if (cntErr) console.error("[sponsored-posts] stats count 실패, 순차 폴백:", cntErr.message);
       for (let from = 0; ; from += PAGE) {
         const { data: page, error } = await supabase.from("post_daily_stats").select(STAT_COLS)
-          .order("measured_at", { ascending: false }).range(from, from + PAGE - 1);
+          .order("measured_at", { ascending: false }).order("id", { ascending: true }).range(from, from + PAGE - 1);
         if (error) { console.error("[sponsored-posts] stats 조회 실패(있는 데이터로 진행):", error.message); break; }
         collect(page);
         if (!page || page.length < PAGE) break;
@@ -106,7 +106,10 @@ export async function GET(req: NextRequest) {
       const results = await Promise.all(
         Array.from({ length: pages }, (_, i) =>
           supabase.from("post_daily_stats").select(STAT_COLS)
-            .order("measured_at", { ascending: false }).range(i * PAGE, i * PAGE + PAGE - 1)
+            // ⚠️ measured_at은 중복(한 날짜에 수백 행) → 단독 정렬 시 range() 페이지 경계에서 행 누락/중복
+            //    (비결정적 정렬). 병렬·동시삽입에선 특히 심함. 고유키 id를 2차 정렬키로 붙여 결정적 페이지네이션.
+            //    (2026-07-07: 대시보드 07-06 증분이 2.5~3.0M로 오락가락한 원인 — 리포트/DB는 정상 3.46M였음)
+            .order("measured_at", { ascending: false }).order("id", { ascending: true }).range(i * PAGE, i * PAGE + PAGE - 1)
         )
       );
       for (const { data: page, error } of results) {
