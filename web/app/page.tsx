@@ -87,7 +87,7 @@ export default function DashboardPage() {
   const [insightsError, setInsightsError] = useState(false);
   const [organicMentions, setOrganicMentions] = useState<OrganicMention[]>([]);
   const [kpi, setKpi] = useState<KpiSnapshot | null>(null);
-  const [monthlyGoal, setMonthlyGoal] = useState<{ month: number; metrics: { label: string; goal: unknown; current: unknown; rate: unknown }[] } | null>(null);
+  const [monthlyGoal, setMonthlyGoal] = useState<{ month: number; metrics: { label: string; goal: unknown; current: unknown; rate: unknown }[]; fetchedAt?: string } | null>(null);
   const [brandSearch, setBrandSearch] = useState<{ date: string; value: number }[]>([]);
   const [productTrends, setProductTrends] = useState<{ products: string[]; rows: { date: string; values: Record<string, number | null> }[] } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -117,8 +117,8 @@ export default function DashboardPage() {
         fetch("/api/kpi", { signal: t }).then(r => r.json()).then((data: KpiSnapshot | null) => {
           if (data?.id) setKpi(data);
         }),
-        fetch("/api/monthly-goal", { signal: t }).then(r => r.json()).then((d: { month?: number; metrics?: { label: string; goal: unknown; current: unknown; rate: unknown }[] }) => {
-          if (d?.metrics?.length) setMonthlyGoal({ month: d.month ?? 0, metrics: d.metrics });
+        fetch("/api/monthly-goal", { signal: t }).then(r => r.json()).then((d: { month?: number; metrics?: { label: string; goal: unknown; current: unknown; rate: unknown }[]; fetchedAt?: string }) => {
+          if (d?.metrics?.length) setMonthlyGoal({ month: d.month ?? 0, metrics: d.metrics, fetchedAt: d.fetchedAt });
         }),
         fetch("/api/product-search-trends", { signal: t }).then(r => r.json()).then((d: { brandKey?: string; products?: string[]; data?: { date: string; values: Record<string, number | null> }[] }) => {
           if (d?.brandKey && Array.isArray(d.data)) {
@@ -486,6 +486,11 @@ export default function DashboardPage() {
                 마케팅T 시트 연동 →
               </a>
             </div>
+            {monthlyGoal?.fetchedAt && (
+              <span className="text-[11px] text-a-ink-muted">
+                업데이트 <span className="font-medium text-a-ink">{formatTimestamp(monthlyGoal.fetchedAt)}</span>
+              </span>
+            )}
           </div>
           {loading ? (
             <div className="px-7 pb-7 pt-3"><div className="h-40 bg-a-divider rounded-lg animate-pulse" /></div>

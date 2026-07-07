@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
     .filter(m => m.label && (m.goal != null || m.current != null));
 
   return NextResponse.json(
-    { month: now.getUTCMonth() + 1, monthKey, metrics },
+    { month: now.getUTCMonth() + 1, monthKey, metrics, fetchedAt: new Date().toISOString() },
     { headers: { "Cache-Control": "s-maxage=300, stale-while-revalidate=900" } }
   );
 }
