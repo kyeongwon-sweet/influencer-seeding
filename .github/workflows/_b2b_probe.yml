@@ -1,0 +1,22 @@
+name: _b2b probe (temp)
+
+# 임시 진단용: b2b-revenue/fetch만 즉시 호출해 응답(debug_dates·count·last) 확인.
+# cron-daily-collect는 b2b 앞에 유튜브 14분 sleep이 있어 검증이 느림 → 이 probe로 빠르게 반복 확인.
+# ⚠️ 검증 완료 후 삭제할 것.
+on:
+  workflow_dispatch:
+
+env:
+  APP_URL: "https://influencer-seeding-mu.vercel.app"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: b2b-revenue/fetch 호출
+        run: |
+          code=$(curl -sS -o /tmp/o -w "%{http_code}" "$APP_URL/api/b2b-revenue/fetch" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          echo "HTTP $code"
+          cat /tmp/o
+          echo
