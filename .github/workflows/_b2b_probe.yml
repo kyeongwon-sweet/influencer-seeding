@@ -15,7 +15,7 @@ jobs:
     steps:
       - name: b2b-revenue/fetch 호출
         run: |
-          code=$(curl -sS -o /tmp/o -w "%{http_code}" "$APP_URL/api/b2b-revenue/fetch" \
+          code=$(curl -sS -o /tmp/o -w "%{http_code}" "$APP_URL/api/b2b-revenue/fetch?scan=1" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
           echo "HTTP $code"
           cat /tmp/o

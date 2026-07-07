@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { fetchSheetTabValues, getSheetTitles } from "@/lib/google-sheets";
+import { fetchSheetTabValues, fetchSheetTabValuesByTitle, getSheetTitles } from "@/lib/google-sheets";
 import { notifyJob } from "@/lib/slack";
 
 export const runtime = "nodejs";
@@ -23,6 +23,34 @@ function toNum(v: string | number | null | undefined): number | null {
 export async function GET(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") { // fail-closed: CRON_SECRET 미설정 시에도 차단(무인증 오픈 방지)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // TEMP 진단: ?scan=1 → 전 탭에서 CVS/B2B 발주량 헤더·날짜범위를 스캔해 July 표가 있는 탭 식별.
+  if (req.nextUrl.searchParams.has("scan")) {
+    const titles = await getSheetTitles(SPREADSHEET_ID);
+    const out: Record<string, unknown>[] = [];
+    for (const t of titles) {
+      try {
+        const rr = await fetchSheetTabValuesByTitle(SPREADSHEET_ID, t, "A1:AB400");
+        let h = -1, ci = -1, bi = -1;
+        for (let i = 0; i < rr.length; i++) {
+          const c = rr[i].findIndex((x) => typeof x === "string" && x.trim() === "CVS 발주량");
+          const b = rr[i].findIndex((x) => typeof x === "string" && x.trim() === "B2B 발주량");
+          if (c >= 0 && b >= 0) { h = i; ci = c; bi = b; break; }
+        }
+        const dates: string[] = [];
+        if (h >= 0) {
+          const cd = rr[h].findIndex((x) => typeof x === "string" && x.trim() === "날짜");
+          const dcol = cd >= 0 ? cd : ci - 1;
+          for (let i = h + 1; i < rr.length; i++) {
+            const s = typeof rr[i][dcol] === "string" ? (rr[i][dcol] as string) : "";
+            if (/(\d{1,2})[.\/-](\d{1,2})/.test(s)) dates.push(s);
+          }
+        }
+        out.push({ title: t, rows: rr.length, hasHeader: h >= 0, cCVS: ci, cB2B: bi, firstDate: dates[0] ?? null, lastDate: dates[dates.length - 1] ?? null, nDates: dates.length });
+      } catch (e) { out.push({ title: t, error: String(e).slice(0, 80) }); }
+    }
+    return NextResponse.json({ scan: out });
   }
 
   let rows: (string | number | null)[][];
