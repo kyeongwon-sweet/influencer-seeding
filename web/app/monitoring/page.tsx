@@ -34,8 +34,7 @@ export default function MonitoringPage() {
   const [showOtherSeries, setShowOtherSeries] = useState(false); // 범례 '그외' 드롭다운(인스타·유튜브)
   const [smooth, setSmooth] = useState(false); // 주별 합계 보기(주차 버킷, N월 N주차)
   const [showCorr, setShowCorr] = useState(false); // 상관·시차 분석 패널
-  const [showDow, setShowDow] = useState(false); // 요일별 성과 패널
-  const [showCompany, setShowCompany] = useState(false); // 업체별 성과 패널
+  const [showDow, setShowDow] = useState(false); // 요일별/업체별 성과 패널(단일 토글로 함께 표시)
   const [chartCollapsed, setChartCollapsed] = useState(false); // 메인 그래프(차트+증감표) 접기 — 기본 펼침
   const [lsSearchData, setLsSearchData] = useState<{ date: string; ratio: number; value: number | null }[]>([]);
   const [brandMetrics, setBrandMetrics] = useState<{ measured_at: string; yt_views: number | null; yt_unique_viewers: number | null; yt_search_views: number | null; ig_profile_views: number | null }[]>([]);
@@ -1485,10 +1484,7 @@ export default function MonitoringPage() {
                       title="4개 지표의 상관계수와 광고비 선행효과(시차) 분석">상관분석</button>
                     <button type="button" onClick={() => setShowDow(v => !v)}
                       className={`text-[11px] px-1.5 py-0.5 rounded border transition-colors ${showDow ? "bg-a-blue/10 border-a-blue/40 text-a-blue" : "border-a-hairline text-a-ink-muted hover:text-a-ink"}`}
-                      title="게시 요일별 성과(게시 후 7일 조회수 중앙값) — 영상만, 배너 제외">요일별</button>
-                    <button type="button" onClick={() => setShowCompany(v => !v)}
-                      className={`text-[11px] px-1.5 py-0.5 rounded border transition-colors ${showCompany ? "bg-a-blue/10 border-a-blue/40 text-a-blue" : "border-a-hairline text-a-ink-muted hover:text-a-ink"}`}
-                      title="업체별 누적 총합 — 영상=Σ조회수·CPV, 배너=Σ도달수·CPR (Σ비용÷Σ누적)">업체별</button>
+                      title="요일별(게시 후 7일 조회수 중앙값)·업체별(누적 총합 Σ비용÷Σ누적) 성과 패널 좌우 표시">요일별/업체별</button>
                   </div>
                   <div className="flex items-center gap-x-4 gap-y-1.5 flex-wrap justify-end">
                     {/* 1. 조회수 */}
@@ -1693,18 +1689,14 @@ export default function MonitoringPage() {
               </div>
             </div>
             {showCorr && <CorrelationPanel data={correlations} />}
-            {(showDow || showCompany) && (
+            {showDow && (
               <div className="px-6 pb-6 pt-2 flex flex-wrap gap-4 items-start border-t border-a-hairline">
-                {showDow && (
-                  <div className="flex-1 min-w-[520px] border border-a-hairline rounded-[14px] bg-white mt-3">
-                    <DayOfWeekPanel data={dowAnalysis} />
-                  </div>
-                )}
-                {showCompany && (
-                  <div className="flex-1 min-w-[520px] border border-a-hairline rounded-[14px] bg-white mt-3">
-                    <CompanyPanel data={companyAnalysis} />
-                  </div>
-                )}
+                <div className="flex-1 min-w-[520px] border border-a-hairline rounded-[14px] bg-white mt-3">
+                  <DayOfWeekPanel data={dowAnalysis} />
+                </div>
+                <div className="flex-1 min-w-[520px] border border-a-hairline rounded-[14px] bg-white mt-3">
+                  <CompanyPanel data={companyAnalysis} />
+                </div>
               </div>
             )}
             {/* 그래프 접기/펼치기 — 카드 하단 (접혀도 펼쳐도 항상 하단에 노출) */}
