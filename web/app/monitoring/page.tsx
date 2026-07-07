@@ -93,8 +93,9 @@ export default function MonitoringPage() {
     if (filters.postedFrom && (!post.posted_at || post.posted_at < filters.postedFrom)) return false;
     if (filters.postedTo && (!post.posted_at || post.posted_at > filters.postedTo)) return false;
 
-    // 📌 조회수 기간 필터(dateFrom/dateTo)는 게시물을 제외하지 않음
-    // 대신 표시 데이터 범위만 필터링 (filteredStats에서 처리)
+    // 📌 조회수 기간 필터(dateFrom/dateTo)는 표시 데이터 범위만 좁히고 게시물은 유지.
+    // 단, 기간 '종료일 이후' 업로드된 게시물은 표시할 조회수가 없으므로 행 자체를 제외.
+    if (filters.dateTo && post.posted_at && post.posted_at > filters.dateTo) return false;
 
     return true;
   }), [posts, filters]);
