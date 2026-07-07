@@ -11,7 +11,7 @@ export default function DayOfWeekPanel({ data }: { data: DowData }) {
   const cpvVals = data.map((d) => d.cpv).filter((v): v is number => v != null);
   const bestCpv = cpvVals.length ? Math.min(...cpvVals) : null; // 가장 저렴한(효율적) CPV
   return (
-    <div className="px-6 pb-5 pt-4 border-t border-a-hairline">
+    <div className="px-5 pb-5 pt-4">
       <p className="text-base font-semibold text-a-ink mb-1">
         요일별 성과 <span className="font-normal text-a-ink-muted text-[13px]">· 게시 요일별 게시 후 7일 조회수·CPV (영상, 배너 제외)</span>
       </p>

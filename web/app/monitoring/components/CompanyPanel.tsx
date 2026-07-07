@@ -25,7 +25,7 @@ export default function CompanyPanel({ data }: { data: CompanyData }) {
   const bestVideo = Math.max(0, ...data.filter(d => d.video.count > 0).map(d => d.video.total));
   const bestBanner = Math.max(0, ...data.filter(d => d.banner.count > 0).map(d => d.banner.total));
   return (
-    <div className="px-6 pb-5 pt-4 border-t border-a-hairline">
+    <div className="px-5 pb-5 pt-4">
       <p className="text-base font-semibold text-a-ink mb-1">
         업체별 성과 <span className="font-normal text-a-ink-muted text-[13px]">· 누적 총합 — 영상=조회수·CPV / 배너=도달수·CPR</span>
       </p>

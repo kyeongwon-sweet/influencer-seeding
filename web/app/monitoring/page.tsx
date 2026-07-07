@@ -1694,9 +1694,17 @@ export default function MonitoringPage() {
             </div>
             {showCorr && <CorrelationPanel data={correlations} />}
             {(showDow || showCompany) && (
-              <div className="flex flex-wrap items-start">
-                {showDow && <div className="flex-1 min-w-[560px]"><DayOfWeekPanel data={dowAnalysis} /></div>}
-                {showCompany && <div className="flex-1 min-w-[560px]"><CompanyPanel data={companyAnalysis} /></div>}
+              <div className="px-6 pb-6 pt-2 flex flex-wrap gap-4 items-start border-t border-a-hairline">
+                {showDow && (
+                  <div className="flex-1 min-w-[520px] border border-a-hairline rounded-[14px] bg-white mt-3">
+                    <DayOfWeekPanel data={dowAnalysis} />
+                  </div>
+                )}
+                {showCompany && (
+                  <div className="flex-1 min-w-[520px] border border-a-hairline rounded-[14px] bg-white mt-3">
+                    <CompanyPanel data={companyAnalysis} />
+                  </div>
+                )}
               </div>
             )}
             {/* 그래프 접기/펼치기 — 카드 하단 (접혀도 펼쳐도 항상 하단에 노출) */}
