@@ -24,6 +24,19 @@ export type UpsertSummary = {
  *   ② 캡션(content_summary)만 항상 입력값 우선, ③ 빈 값은 기존 유지(지우지 않음)
  * - 캡션에 '삭제'/'보관' 포함 행 → ended_at 종료 처리(이미 종료면 유지)
  */
+// 틱톡 단축링크(vt.tiktok.com/...)를 실제 영상 URL로 해석. 순수 정규화(normalizeUrl)로는 ID를 알 수 없어
+// 반드시 네트워크 해석이 필요 — 안 하면 단축링크가 그대로 저장돼 수집 실패·수동 교체·정식링크 재등록 시 중복이 생김
+// (2026-07-07 시으니네(TT) 사례). 해석 실패 시 원본 유지(다음 동기화 때 재시도).
+export async function resolveTikTokShortUrl(url: string): Promise<string> {
+  if (!/^https?:\/\/vt\.tiktok\.com\//i.test(url)) return url;
+  try {
+    const res = await fetch(url, { method: "HEAD", redirect: "manual", signal: AbortSignal.timeout(5000) });
+    const loc = res.headers.get("location");
+    if (loc && /tiktok\.com\/.+\/video\/\d+/.test(loc)) return loc.split("?")[0];
+  } catch { /* 해석 실패 → 원본 유지 */ }
+  return url;
+}
+
 export async function upsertSponsoredRows(
   supabase: Supabase,
   list: Array<Record<string, unknown>>,
@@ -36,7 +49,11 @@ export async function upsertSponsoredRows(
     const s = String(v ?? "").replace(/●/g, "").trim();
     return s || null;
   };
-  const rows = list
+  // 단축링크는 정규화 전에 해석(표준형으로 접혀야 기존 행과 onConflict 매칭됨). vt 링크만 네트워크 발생(드묾).
+  const resolved: Array<Record<string, unknown>> = await Promise.all(
+    list.map(async r => ({ ...r, url: r.url ? await resolveTikTokShortUrl(String(r.url)) : r.url }))
+  );
+  const rows = resolved
     .map(r => ({
       url:             r.url ? (normalizeUrl(String(r.url)) || String(r.url)) : "",
       posted_at:       r.posted_at || null,

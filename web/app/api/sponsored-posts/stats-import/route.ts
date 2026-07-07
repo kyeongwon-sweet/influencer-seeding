@@ -4,6 +4,7 @@ import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl, ALLOWED_POST_URL_RE } from "@/lib/url-utils";
 import { filterMonotonicStats, type GuardInput } from "@/lib/stats-guard";
 import { normalizeChannelType } from "@/app/monitoring/lib";
+import { resolveTikTokShortUrl } from "@/lib/sponsored-write";
 import { todayKST } from "@/lib/dateRule";
 
 export const dynamic = "force-dynamic";
@@ -41,11 +42,23 @@ export async function POST(req: NextRequest) {
   }
   const postsIn: Array<Record<string, unknown>> = Array.isArray(body?.posts) ? body.posts : [];
 
+  // 틱톡 단축링크(vt.tiktok)를 실제 영상 URL로 선해석 — 안 하면 단축형 그대로 저장·매칭돼
+  // 수집 실패·정식링크 재등록 시 중복·조회수 미매칭이 생김(2026-07-07 시으니네(TT) 사례).
+  // 고유 vt 링크당 네트워크 1회(드묾), 해석 실패 시 원본 유지.
+  const shortSet = new Set<string>();
+  for (const r of [...(statsIn as Array<Record<string, unknown>>), ...postsIn]) {
+    const u = r?.url ? String(r.url) : "";
+    if (/^https?:\/\/vt\.tiktok\.com\//i.test(u)) shortSet.add(u);
+  }
+  const shortMap = new Map<string, string>();
+  for (const u of shortSet) shortMap.set(u, await resolveTikTokShortUrl(u));
+  const resolveU = (u: string) => shortMap.get(u) ?? u;
+
   // 조회수: 정규화 + (url, measured_at) 중복 제거 (마지막 값 우선)
   const byKey = new Map<string, { url: string; measured_at: string; play_count: number }>();
   for (const r of statsIn as Array<Record<string, unknown>>) {
     if (!r || !r.url || !r.measured_at) continue;
-    const url = normalizeUrl(String(r.url)) || String(r.url);
+    const url = normalizeUrl(resolveU(String(r.url))) || String(r.url);
     if (r.play_count === null || r.play_count === undefined || r.play_count === "") continue;
     const play_count = Number(r.play_count);
     if (!Number.isFinite(play_count)) continue;
@@ -62,7 +75,7 @@ export async function POST(req: NextRequest) {
   const postByUrl = new Map<string, Record<string, unknown>>();
   for (const p of postsIn) {
     if (!p || !p.url) continue;
-    const url = normalizeUrl(String(p.url)) || String(p.url);
+    const url = normalizeUrl(resolveU(String(p.url))) || String(p.url);
     if (!ALLOWED_POST_URL_RE.test(url)) continue; // 허용 플랫폼만 신규 생성
     if (postByUrl.has(url)) continue;
     const clean: Record<string, unknown> = { url };
