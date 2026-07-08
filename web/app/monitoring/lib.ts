@@ -171,12 +171,16 @@ export function getCategoryLabel(val: string | null | undefined): string {
 export function viewIncrement(post: Post, s: DailyStats | null | undefined, prev: DailyStats | null | undefined): number | null {
   // 종료 게시물도 종료 전 활성기간에 실제로 쌓인 증분은 유효한 데이터 → 그대로 표시(숨기지 않음).
   if (!s) return null;
-  // 단일 소스(B): 저장된 increment가 있으면 그대로 사용 → 리포트와 항상 동일값.
-  if (s.increment != null) return s.increment;
-  // 폴백(백필 안 된 과거 행 등): 기존 계산(배너=reach, 그 외=play, 첫 측정=전체).
   const isBanner = (post.channel_type ?? "").includes("배너");
   const val = (st: DailyStats | null | undefined) => (isBanner ? st?.reach_count : st?.play_count);
   const sv = val(s);
+  // 🛡️ 직전 측정이 0/누락(수집 실패)인데 현재는 실값이면, 증분이 '실패 baseline(0) 대비'로 과집계됨
+  //    (7/5·7/6 대량 0 수집실패 → 7/7 증분 3~10배 뻥튀기). 진짜 일별값은 복원 불가 → 집계 불가(—)로 표시.
+  //    prev 자체가 없으면(첫 측정)은 제외 → 아래에서 그날 전체로 정상 처리.
+  if (prev && (val(prev) == null || val(prev) === 0) && sv != null && sv > 0) return null;
+  // 단일 소스(B): 저장된 increment가 있으면 그대로 사용 → 리포트와 항상 동일값.
+  if (s.increment != null) return s.increment;
+  // 폴백(백필 안 된 과거 행 등): 기존 계산(배너=reach, 그 외=play, 첫 측정=전체).
   if (sv == null) return null;
   const pv = val(prev);
   if (pv != null) return sv - pv;
