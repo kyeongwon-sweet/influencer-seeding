@@ -1597,7 +1597,10 @@ export default function MonitoringPage() {
                   </div>
                 )}
                 {deltaTableData.length === 0 ? (
-                  <div className="flex items-center justify-center flex-1 text-sm text-a-ink-muted py-10 px-6 text-center leading-relaxed">측정 데이터<br />2일 이상 필요</div>
+                  <div className="flex flex-col items-center justify-center flex-1 text-a-ink-muted py-10 px-6 text-center leading-relaxed gap-1">
+                    <span className="text-sm font-medium">증분은 최소 2일 필요</span>
+                    <span className="text-[11px]">증분·트렌드는 &apos;전일 대비&apos;라 하루만으론 계산할 수 없어요.<br />조회수 기간을 2일 이상으로 선택하세요.</span>
+                  </div>
                 ) : (
                   (() => {
                     const KR_HOLIDAYS = new Set([

@@ -271,6 +271,12 @@ export default function FiltersBar({ filters, setFilters, pdOptions, productOpti
             </div>
           );
         })()}
+        {/* 하루만 선택 시 안내 — 증분/트렌드는 '전일 대비'라 최소 2일 필요 */}
+        {filters.dateFrom && filters.dateTo && filters.dateFrom === filters.dateTo && (
+          <span className="text-[11px] text-amber-600 font-medium whitespace-nowrap ml-1">
+            ⚠️ 하루만 선택하면 증분·트렌드가 안 나와요 — 2일 이상 선택하세요
+          </span>
+        )}
       </div>
       <div className="flex-1" />
       {hasFilter && (
