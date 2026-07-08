@@ -532,7 +532,10 @@ function exportStats() {
       const k = linkKey_(String(p.url || ""));
       if (!k) return;
       const m = byKey[k] || (byKey[k] = {});
-      (p.stats || []).forEach(pair => { m[pair[0]] = pair[1]; allDatesSet[pair[0]] = true; });
+      (p.stats || []).forEach(pair => {
+        if (!(pair[1] > 0)) return; // 0·음수·비숫자 방어 — 시트에 0 찍힘/기존값 덮음/빈 열 추가 방지(엔드포인트도 >0만 반환)
+        m[pair[0]] = pair[1]; allDatesSet[pair[0]] = true;
+      });
     });
 
     // ── 우측 날짜열 자동 추가 ──
@@ -572,7 +575,7 @@ function exportStats() {
       matched++;
       dateCols.forEach(dc => {
         const v = m[dc.date];
-        if (v == null) return; // 그 날짜 수집값 없음 → 손 안 댐(기존값 유지)
+        if (!(v > 0)) return; // 수집값 없음/0/음수 → 손 안 댐(기존값·수동입력 유지, 0으로 덮지 않음)
         const bi = dc.col - firstCol;
         if (block[i][bi] !== v) { block[i][bi] = v; filled++; }
       });

@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
     const { data, error } = await supabase
       .from("post_daily_stats")
       .select("post_id, measured_at, play_count")
-      .not("play_count", "is", null)
+      .gt("play_count", 0) // 0·음수·null 제외 — 배너/미측정/글리치가 시트에 0으로 찍히거나 기존값을 덮지 않게
       .order("post_id", { ascending: true })
       .order("measured_at", { ascending: true })
       .range(from, from + PAGE - 1);
