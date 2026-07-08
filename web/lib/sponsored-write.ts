@@ -132,7 +132,7 @@ export async function upsertSponsoredRows(
     }
   }
 
-  // 기존 게시물 → '변경분만' 덮어씀(manual_fields 보존·캡션 우선·빈값 유지·동일값 skip).
+  // 기존 게시물 → '변경분만' 덮어씀(manual_fields 보존[캡션 포함]·빈값 유지·동일값 skip).
   let metaFilled = 0;
   const metaUpdates: { id: string; upd: Record<string, unknown> }[] = [];
   for (const r of rows) {
@@ -141,8 +141,9 @@ export async function upsertSponsoredRows(
     const manual = Array.isArray(ex.manual_fields) ? (ex.manual_fields as string[]) : [];
     const upd: Record<string, unknown> = {};
     for (const f of META) {
-      // 캡션은 항상 입력값 우선(정본) → manual_fields여도 비어있지 않은 값으로 덮음.
-      if (f !== "content_summary" && manual.includes(f)) continue; // 그 외 수동 수정 필드 → 보존(덮지 않음)
+      // 수동 수정 필드(캡션 포함)는 보존 — 대시보드에서 마지막으로 고친 값을 시트가 덮지 않음.
+      // (캡션도 이제 동일 정책. 시트 빈칸이면 아래 valPresent에서 skip → needsCaption 자동 불러오기가 채움)
+      if (manual.includes(f)) continue;
       const val = (r as Record<string, unknown>)[f];
       const valPresent = val !== null && val !== undefined && val !== "";
       if (!valPresent) continue; // 시트가 비면 기존 유지(지우지 않음)
