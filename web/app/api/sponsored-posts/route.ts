@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
   //    PostgREST가 0행을 반환(2026-07-01 확인). ids=전체 게시물이라 필터 불필요 → 전량 조회 후 post_id로 그룹핑.
   // 성능: select("*") 대신 필요한 컬럼만 + 순차 페이지네이션(왕복 N회) 대신 count 기반 병렬 조회로 로딩 단축.
   const PAGE = 1000;
-  const STAT_COLS = "post_id, measured_at, play_count, likes_count, comments_count, created_at, reach_count, increment";
+  const STAT_COLS = "post_id, measured_at, play_count, likes_count, comments_count, created_at, reach_count, increment, manual";
   const collect = (page: any[] | null | undefined) => {
     for (const s of page ?? []) {
       const arr = statsByPost.get(s.post_id) ?? [];
@@ -132,10 +132,14 @@ export async function GET(req: NextRequest) {
     );
     // 🛡️ 누적 조회수는 감소 불가 — Apify 글리치/미완성 수집으로 낮아진 값은 직전 최대값으로 보정.
     //    (게시물 단위 증분량이 음수로 표시되는 문제 방지)
+    //    단, 수기 수정(manual)은 팀이 의도한 정정값이므로 하향이어도 그대로 인정하고 기준선을 리셋.
+    //    (수기 0은 예외 — 오입력/비우기일 가능성이 높고 이후 증분이 전체값으로 폭주하므로 기존 보정 유지)
     let maxPlay = 0;
     const mono = asc.map((s: any) => {
       const playCollected = s.play_count != null; // 원본 수집 여부 (mono 보정 전)
-      const play_count = playCollected ? Math.max(maxPlay, Number(s.play_count)) : maxPlay;
+      const isManualFix = s.manual === true && playCollected && Number(s.play_count) > 0;
+      const play_count = isManualFix ? Number(s.play_count)
+        : playCollected ? Math.max(maxPlay, Number(s.play_count)) : maxPlay;
       maxPlay = play_count;
       return { ...s, play_count, play_collected: playCollected };
     });
