@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { fetchSheetTabValuesByTitle } from "@/lib/google-sheets";
+import { fetchSheetTabValuesByTitle, fetchSheetTabValues } from "@/lib/google-sheets";
 import { notifyJob } from "@/lib/slack";
 
 export const runtime = "nodejs";
@@ -28,6 +28,15 @@ type DayVals = { order: number; profit: number | null; ad: number | null; contri
 export async function GET(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") { // fail-closed: CRON_SECRET 미설정 시에도 차단(무인증 오픈 방지)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // TEMP: 연동 시트(gid 1937186871) 7/6 실측 존재 여부 확인용. 확인 후 제거.
+  if (req.nextUrl.searchParams.get("checksheet")) {
+    const rows = await fetchSheetTabValues("10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak", 1937186871, "A1:BZ800");
+    const header = rows[0] ?? [];
+    const nameCol = header.findIndex((c) => typeof c === "string" && c.trim() === "채널명");
+    const hit = rows.filter((r, i) => i > 0 && typeof r[nameCol] === "string" && /이나|백독기|오하루/.test(String(r[nameCol])));
+    return NextResponse.json({ nameCol, header, hit });
   }
 
   const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
