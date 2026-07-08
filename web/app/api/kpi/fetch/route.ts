@@ -39,14 +39,25 @@ type Metric = { product: string; label: string; target: number | null; current: 
 
 async function readProduct(tab: string, product: string): Promise<{ metrics: Metric[]; month: string }> {
   const rows = await fetchSheetTabValuesByTitle(SPREADSHEET_ID, tab, "A1:Q30");
-  // [N월 현황] 마커 → 그 아래 첫 'CVS 발주량' 헤더 행 → 목표/현황/달성률
+  // 마커 → 그 아래 첫 'CVS 발주량' 헤더 행 → 목표/현황/달성률.
+  // 탭마다 마커 형식이 다름: 듬뿍바=[6월 현황](월 포함), 쫀득바(신형)=[월별 현황](월은 26.06 행에서).
   let month = "";
   let markerIdx = -1;
   for (let i = 0; i < rows.length; i++) {
-    const m = rows[i].map((c) => String(c ?? "")).join(" ").match(/\[(\d+월)\s*현황\]/);
+    const j = rows[i].map((c) => String(c ?? "")).join(" ");
+    const m = j.match(/\[(\d+월)\s*현황\]/);            // 구형: [6월 현황]
     if (m) { month = m[1]; markerIdx = i; break; }
+    if (/\[월별\s*현황\]/.test(j)) { markerIdx = i; break; }  // 신형: [월별 현황]
   }
-  if (markerIdx < 0) throw new Error(`${tab}: [N월 현황] 마커를 찾지 못함`);
+  if (markerIdx < 0) throw new Error(`${tab}: [N월 현황]/[월별 현황] 마커를 찾지 못함`);
+
+  // 월 라벨 보강: 신형 마커엔 월이 없으므로 블록의 'YY.MM'(예 26.06) 값에서 추출(없으면 다른 탭 값으로 폴백).
+  if (!month) {
+    for (let i = markerIdx; i < Math.min(rows.length, markerIdx + 8); i++) {
+      const mm = rows[i].map((c) => String(c ?? "")).join(" ").match(/\b\d{2}\.(\d{2})\b/);
+      if (mm) { month = String(parseInt(mm[1], 10)) + "월"; break; }
+    }
+  }
 
   const hdrIdx = rows.findIndex((r, i) => i > markerIdx && r.some((c) => norm(c) === "CVS발주량") && r.some((c) => norm(c) === "인지조회비"));
   if (hdrIdx < 0) throw new Error(`${tab}: [${month} 현황] 헤더 행을 찾지 못함`);
