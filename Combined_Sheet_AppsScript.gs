@@ -219,7 +219,16 @@ function collectRows_(onlyNew) {
 
 /** 중복 판정용 URL 키: 쿼리스트링·끝슬래시 제거 + 소문자 (서버 정규화와 동일 기준) */
 function urlKey_(u) {
-  return String(u).split("?")[0].replace(/\/+$/, "").toLowerCase();
+  // 서버 normalizeUrl(web/lib/url-utils.ts)과 동일 규칙으로 정규화 — 안 맞추면 시트↔DB가
+  // 도메인/스킴 변형(www.threads.com↔threads.com, http↔https)을 다른 글로 봐서 pullFromDB가
+  // 이미 있는 글을 새 행으로 재추가함(2026-07-08 스레드·페북 중복 3건 사례).
+  var s = String(u || "").trim().toLowerCase();
+  s = s.split("?")[0].split("#")[0];    // 쿼리·프래그먼트 제거
+  s = s.replace(/^https?:\/\//, "");    // 스킴 제거(http/https 동일 취급)
+  s = s.replace(/^www\./, "");          // 선행 www 제거(서버와 동일; m.blog 등 유의미 서브도메인은 보존)
+  s = s.replace(/\/{2,}/g, "/");        // 경로 이중슬래시 축약
+  s = s.replace(/\/+$/, "");            // 트레일링 슬래시 제거
+  return s;
 }
 
 /** 링크 동일성 키 — 같은 게시물이면 경로가 달라도 같은 키.
