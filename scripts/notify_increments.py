@@ -172,6 +172,9 @@ def main():
     items = []
     for pid, dr in dayrows.items():
         m = meta.get(pid, {})
+        # 🎯 쫀득바만: 상품명(product_name)에 'JD'(쫀득바 코드) 포함된 게시물만 리포트 편입(사용자 지시).
+        if "jd" not in (m.get("product_name") or "").lower():
+            continue
         ct = (m.get("channel_type") or "").strip()
         url = (m.get("url") or "").strip()
         cum = (dr.get("reach_count") if "배너" in ct else dr.get("play_count")) or 0  # CPV용 누적값
@@ -193,11 +196,12 @@ def main():
     try:
         boff = 0
         while True:
-            bres = (db.table("sponsored_posts").select("channel_type, ended_at")
+            bres = (db.table("sponsored_posts").select("channel_type, ended_at, product_name")
                     .ilike("channel_type", "%배너%").range(boff, boff + 999).execute())
             bchunk = bres.data or []
             for b in bchunk:
-                if not b.get("ended_at") and b.get("channel_type"):
+                # 쫀득바(JD)만: 상품명에 JD 없는 배너 채널은 라인 노출 안 함(사용자 지시).
+                if not b.get("ended_at") and b.get("channel_type") and "jd" in (b.get("product_name") or "").lower():
                     banner_cts.add((b.get("channel_type") or "").strip())
             if len(bchunk) < 1000:
                 break
@@ -246,7 +250,7 @@ def main():
 
     DIV = "──────────────────────────────"
     lines = [
-        f"📈 *인지 조회수 일일 증분* `({target})`",
+        f"📈 *쫀득바 인지 조회수 일일 증분* `({target})`",
         f"오늘 총 증분 *+{f(total)}*",
         "", DIV, "",
         "◾ *채널분류별*  `CPV는 누적 기준`",
