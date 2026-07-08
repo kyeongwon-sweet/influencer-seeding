@@ -171,20 +171,24 @@ def main():
     # CPV 분모(누적 조회수/도달수)는 '하루치' 값이 아니라 게시물 이력의 최댓값이어야 정확하다.
     #   수집 글리치로 당일 play_count=0이 저장되면 하루치 분모가 0 → CPV가 '-'로 깨진다(실제 누적은 수십만).
     #   대시보드 단조(running max)와 동일 기준: measured_at ≤ target 전 구간에서 post별 play/reach 최댓값.
+    #   ⚠️ 당일뿐 아니라 과거 play_count까지 0으로 파괴된 게시물은 이력 최댓값도 0 → 그래도 CPV가 깨진다.
+    #      increment(증분)는 별도 컬럼이라 살아있으므로, 증분 합(= 누적 조회수/도달수)으로 누적을 복원한다.
     jd_pids = [pid for pid in dayrows if "jd" in ((meta.get(pid) or {}).get("product_name") or "").lower()]
-    cummax = {}   # pid -> {"play": 최대조회수, "reach": 최대도달수}
+    cummax = {}   # pid -> {"play": 최대조회수, "reach": 최대도달수, "inc": 증분합}
     for chunk in _chunks(jd_pids, 100):
         frm = 0
         while True:
-            cr = (db.table("post_daily_stats").select("post_id, play_count, reach_count")
+            cr = (db.table("post_daily_stats").select("post_id, play_count, reach_count, increment")
                   .in_("post_id", chunk).lte("measured_at", target).order("id").range(frm, frm + 999).execute())
             cg = cr.data or []
             for r in cg:
-                d = cummax.setdefault(r["post_id"], {"play": 0, "reach": 0})
+                d = cummax.setdefault(r["post_id"], {"play": 0, "reach": 0, "inc": 0})
                 if r.get("play_count"):
                     d["play"] = max(d["play"], r["play_count"])
                 if r.get("reach_count"):
                     d["reach"] = max(d["reach"], r["reach_count"])
+                if r.get("increment"):
+                    d["inc"] += r["increment"]
             if len(cg) < 1000:
                 break
             frm += 1000
@@ -198,8 +202,9 @@ def main():
             continue
         ct = (m.get("channel_type") or "").strip()
         url = (m.get("url") or "").strip()
-        cm = cummax.get(pid) or {"play": 0, "reach": 0}
-        cum = cm["reach"] if "배너" in ct else cm["play"]  # CPV용 누적(이력 최댓값 — 당일 0글리치 무시)
+        cm = cummax.get(pid) or {"play": 0, "reach": 0, "inc": 0}
+        base = cm["reach"] if "배너" in ct else cm["play"]
+        cum = max(base, cm["inc"])  # CPV용 누적: 이력 최댓값, 파괴 시 증분합으로 복원(당일 0글리치 무시)
         items.append({
             "inc": dr["increment"],
             "name": (m.get("account_name") or "").strip() or url.rstrip("/").split("/")[-1] or "?",
