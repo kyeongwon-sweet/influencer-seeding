@@ -44,8 +44,9 @@ export default function MonitoringPage() {
   // 기본은 조회수만 표시(차트 정돈) — 검색량·B2B·광고비는 범례 칩으로 켜서 봄. 그외(인스타·유튜브)는 아래 effect에서 추가 숨김.
   const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set(["검색량", "B2B 발주량", "전체 전환 광고비"])); // 범례 클릭으로 숨긴 시리즈
   const [productTrends, setProductTrends] = useState<{ brandKey: string; products: string[]; data: { date: string; values: Record<string, number | null> }[] }>({ brandKey: "", products: [], data: [] });
-  const [sortCol, setSortCol] = useState<string | null>(null);
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  // 기본 정렬 = 증분량 내림차순 — 어떤 필터에서도 '조회수 증분 높은 순'으로 보이게(신규 업로드 등 증분 '—'는 맨 아래).
+  const [sortCol, setSortCol] = useState<string | null>("증분량");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [showHelp, setShowHelp] = useState(false);
   const [trendPost, setTrendPost] = useState<Post | null>(null);
   const [trendLoading, setTrendLoading] = useState(false);
