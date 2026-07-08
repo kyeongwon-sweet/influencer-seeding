@@ -70,19 +70,54 @@ export async function POST(req: NextRequest) {
       const imgs = (files || []).filter((f) => /\.(jpe?g|png|webp|gif)$/i.test(f.name));
       if (imgs.length === 0) return NextResponse.json({ ok: true });
       const pick = imgs[Math.floor(Math.random() * imgs.length)].name;
-      const imageUrl = sb.storage.from(BUCKET).getPublicUrl(pick).data.publicUrl;
-      await fetch("https://slack.com/api/chat.postMessage", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}`,
-          "Content-Type": "application/json; charset=utf-8",
-        },
-        body: JSON.stringify({
-          channel: e.channel,
-          text: "🎁",
-          blocks: [{ type: "image", image_url: imageUrl, alt_text: "여믄봇" }],
-        }),
-      });
+      const token = process.env.SLACK_BOT_TOKEN || "";
+
+      // 사진을 Slack에 '실물 업로드'(files.uploadV2 3단계)로 보낸다.
+      // 예전엔 image 블록의 image_url(외부 링크)로 보냈으나, Slack이 그 URL을 서버에서
+      // 직접 가져오다 실패하면 파일이 멀쩡해도 깨진 이미지로 영구히 남는 문제가 있었다(2026-07-08).
+      // 실물 업로드는 Slack이 외부 URL을 가져올 필요가 없어 안정적으로 렌더된다.
+      // 업로드 실패(예: files:write 스코프 없음) 시엔 최소한 응답은 가도록 기존 링크 방식으로 폴백.
+      let uploaded = false;
+      try {
+        const { data: blob } = await sb.storage.from(BUCKET).download(pick);
+        if (blob) {
+          const bytes = Buffer.from(await blob.arrayBuffer());
+          // 1) 업로드 URL 발급
+          const g = await fetch("https://slack.com/api/files.getUploadURLExternal", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ filename: pick, length: String(bytes.length) }),
+          }).then((r) => r.json());
+          if (g.ok && g.upload_url && g.file_id) {
+            // 2) 실제 파일 바이트 업로드
+            const form = new FormData();
+            form.append("file", new Blob([bytes]), pick);
+            await fetch(g.upload_url, { method: "POST", body: form });
+            // 3) 업로드 완료 + DM 채널 공유
+            const c = await fetch("https://slack.com/api/files.completeUploadExternal", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json; charset=utf-8" },
+              body: JSON.stringify({ files: [{ id: g.file_id, title: "여믄봇" }], channel_id: e.channel }),
+            }).then((r) => r.json());
+            uploaded = !!c.ok;
+          }
+        }
+      } catch {
+        // 무시하고 아래 폴백으로
+      }
+
+      if (!uploaded) {
+        const imageUrl = sb.storage.from(BUCKET).getPublicUrl(pick).data.publicUrl;
+        await fetch("https://slack.com/api/chat.postMessage", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json; charset=utf-8" },
+          body: JSON.stringify({
+            channel: e.channel,
+            text: "🎁",
+            blocks: [{ type: "image", image_url: imageUrl, alt_text: "여믄봇" }],
+          }),
+        });
+      }
     }
   }
 
