@@ -719,38 +719,20 @@ def run():
             rows = [r for r in rows if r["post_id"] in valid]
             if len(rows) < before:
                 print(f"[WARN] 수집 중 삭제된 게시물 행 {before - len(rows)}건 제외(FK 보호)")
+        # 🛡️ 재발방지(전 수집경로 공통 초크포인트): play_count 0/음수는 '수집 실패'다(실측 0회가 아님).
+        #    직전 실측이 있으면 그 값으로 clamp, 없으면 None(측정 안 됨) — 0을 baseline으로 절대 남기지 않는다.
+        #    (플랫폼별 _store/IG 개별 가드에 더해, 저장 직전 단일 지점에서 모든 경로를 전수 차단.)
+        for _r in rows:
+            _pc = _r.get("play_count")
+            if _pc is not None and _pc <= 0:
+                _prev = (last_stat.get(_r["post_id"]) or {}).get("play_count")
+                _r["play_count"] = _prev if (_prev and _prev > 0) else None
         if rows:
             print(f"[LOG] 데이터 저장 시작: {len(rows)}건")
             result = db.table("post_daily_stats").upsert(rows, on_conflict="post_id,measured_at").execute()
             print(f"[LOG] ✅ 데이터 저장 완료: {len(rows)}건")
-
-            # 🔁 역방향 자동 baseline: 이번에 '처음' 수집된(과거 stat이 전혀 없는) 게시물은
-            #    전날(TODAY-1)에 play_count=0 baseline 행을 자동 추가한다.
-            #    → 뒤늦게 대시보드에 추가된 게시물의 누적 조회수가 '첫 수집일(=추가한 날)'에
-            #      전량 증분으로 잡히고, 홈 급상승(측정 2회 미만 제외)에도 걸리지 않는다.
-            #      전날에 0을 넣는 것이라 과거 날짜 누적합/증분은 불변(그래프 소급 변화 없음).
-            play_pids = list({r["post_id"] for r in rows if r.get("play_count") is not None})
-            seen = set()
-            for i in range(0, len(play_pids), 200):
-                # ⚠️ LIMIT 없는 조회는 기본 1000행에서 잘림 → 이력 있는 게시물이 '처음 수집'으로 오판되어
-                #    전날 행에 baseline 0 upsert가 실측을 파괴(2026-07-03~07, 7/7에만 79행 0 덮임). 전량 페이지네이션 필수.
-                frm = 0
-                while True:
-                    pr = (db.table("post_daily_stats").select("post_id")
-                          .in_("post_id", play_pids[i:i + 200]).lt("measured_at", TODAY)
-                          .order("id").range(frm, frm + 999).execute())
-                    pg = pr.data or []
-                    for x in pg:
-                        seen.add(x["post_id"])
-                    if len(pg) < 1000:
-                        break
-                    frm += 1000
-            yesterday = (date.fromisoformat(TODAY) - timedelta(days=1)).isoformat()
-            baseline = [{"post_id": pid, "measured_at": yesterday, "play_count": 0}
-                        for pid in play_pids if pid not in seen]
-            if baseline:
-                db.table("post_daily_stats").upsert(baseline, on_conflict="post_id,measured_at").execute()
-                print(f"[LOG] 🔁 역방향 baseline 자동추가: {len(baseline)}건 (전날 {yesterday} play_count=0)")
+            # (역방향 baseline=0 자동추가 제거 — '전날에 play_count=0을 심는' 안티패턴이 baseline-zero 파괴의 원인이었고,
+            #  이제 safeIncrement가 '첫 유효측정=증분 아님(—)'으로 처리하므로 불필요. 신규 게시물은 첫 실측일에 '—'로 표시.)
         else:
             print(f"[WARN] 저장할 데이터가 없습니다 (매칭 실패 또는 조회수 오류)")
 
@@ -771,8 +753,9 @@ def run():
                 if len(bchunk) < 1000:
                     break
                 boff += 1000
+            # 🛡️ reach 0/음수는 '미집계'다 → 저장 안 함(0 baseline 방지). 실제 도달수(>0)만 스냅샷.
             reach_rows = [{"post_id": b["id"], "measured_at": TODAY, "reach_count": b["reach_count"]}
-                          for b in banners if not b.get("ended_at") and b.get("reach_count") is not None]
+                          for b in banners if not b.get("ended_at") and (b.get("reach_count") or 0) > 0]
             if reach_rows:
                 db.table("post_daily_stats").upsert(reach_rows, on_conflict="post_id,measured_at").execute()
                 print(f"[LOG] 📸 배너 도달수 스냅샷: {len(reach_rows)}건 ({TODAY})")
@@ -821,7 +804,11 @@ def run():
                         break
                     frm += 1000
                 for pid, tv in todayval.items():
-                    inc_rows.append({"post_id": pid, "measured_at": TODAY, "increment": max(0, tv - pmax.get(pid, 0))})
+                    base = pmax.get(pid, 0)
+                    # safeIncrement와 동일: 직전 '유효(>0)' baseline이 없으면(첫 측정) 증분 저장 안 함(백로그를 증분으로 안 침).
+                    if base <= 0 or tv is None or tv <= 0:
+                        continue
+                    inc_rows.append({"post_id": pid, "measured_at": TODAY, "increment": max(0, tv - base)})
             if inc_rows:
                 db.table("post_daily_stats").upsert(inc_rows, on_conflict="post_id,measured_at").execute()
                 print(f"[LOG] 📈 증분 저장: {len(inc_rows)}건 ({TODAY})")

@@ -201,10 +201,18 @@ async function collect(req: NextRequest) {
           continue;
         }
 
+        // 🛡️ 재발방지(공통): 조회수 0/미집계는 '수집 실패'다 → 저장 안 함(0을 baseline으로 남기지 않음).
+        //    run_monitoring·apify-webhook과 동일 원칙.
+        if (!(stats.views > 0)) {
+          console.warn(`   ⏭️ 조회수 0/미집계 → 저장 안 함(직전값 유지): ${cleanUrl}`);
+          skipped++;
+          continue;
+        }
+
         statsToInsert.push({
           post_id: post.id,
           measured_at: measuredAt,
-          play_count: stats.views > 0 ? stats.views : 0,
+          play_count: stats.views,
           likes_count: stats.likes > 0 ? stats.likes : 0,
           comments_count: stats.comments > 0 ? stats.comments : 0,
         });
