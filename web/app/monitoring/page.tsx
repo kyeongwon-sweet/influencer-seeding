@@ -94,8 +94,13 @@ export default function MonitoringPage() {
     if (filters.postedTo && (!post.posted_at || post.posted_at > filters.postedTo)) return false;
 
     // 📌 조회수 기간 필터(dateFrom/dateTo)는 표시 데이터 범위만 좁히고 게시물은 유지.
-    // 단, 기간 '종료일 이후' 업로드된 게시물은 표시할 조회수가 없으므로 행 자체를 제외.
-    if (filters.dateTo && post.posted_at && post.posted_at > filters.dateTo) return false;
+    // 단, 기간 내 측정 행이 하나도 없는 게시물(기간 이후 업로드분 + 기간 마지막 날 등록되어
+    // 첫 측정이 다음날 자정인 게시물 + 그 이전에 측정이 끊긴 게시물)은 값이 전부 '-'로만
+    // 남으므로 행 자체를 제외. ("7/6 데이터가 없다" 오인의 원인이던 빈 행 정리)
+    if (filters.dateFrom || filters.dateTo) {
+      const { s } = pickRangeStats(post, filters.dateFrom, filters.dateTo);
+      if (!s) return false;
+    }
 
     return true;
   }), [posts, filters]);
