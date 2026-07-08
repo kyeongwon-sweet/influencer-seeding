@@ -1,0 +1,24 @@
+name: _zero probe (temp)
+on: { workflow_dispatch: {} }
+env:
+  APP_URL: "https://influencer-seeding-mu.vercel.app"
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: check no zeros
+        run: |
+          curl -sS "$APP_URL/api/sponsored-posts/stats-for-sheet" -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" -o /tmp/o
+          echo "bytes: $(wc -c < /tmp/o)"
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/o'))
+          posts=d.get('posts',[])
+          total=0; bad=0; mn=None
+          for p in posts:
+            for pair in p.get('stats',[]):
+              v=pair[1]; total+=1
+              if not (isinstance(v,(int,float)) and v>0): bad+=1
+              mn = v if mn is None else min(mn,v)
+          print(f"posts={len(posts)} pairs={total} zero_or_neg={bad} min_value={mn}")
+          PY
