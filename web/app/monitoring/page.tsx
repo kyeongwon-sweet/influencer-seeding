@@ -1003,13 +1003,12 @@ export default function MonitoringPage() {
 
   // 증분량 합계 셀 복사 — 필터된 모든 게시물의 "계정명 \t 값(▲)" 목록.
   // 값: 영상=조회수, 배너=도달수 (정확한 값, 반올림/내림 없음).
-  // '종료'(ended_at) 처리된 게시물은 복사에서 제외.
+  // 표에 보이는 그대로 복사(종료 게시물도 포함) — 표·복사 값 일치. 값 없는 행만 제외.
   // 체크박스 선택이 있으면 그 선택분만 복사(합계 행의 '선택 합계'와 동일한 우선 규칙).
   async function copyIncrementList() {
     const hasDate = filters.dateFrom || filters.dateTo;
     const source = selected.size > 0 ? sortedPosts.filter(p => selected.has(p.id)) : sortedPosts;
     const lines = source.map(post => {
-      if (post.ended_at) return null;
       // 🔒 필터 불변식: 행 렌더링과 동일한 단일 구현(pickRangeStats)
       const { s, prev } = pickRangeStats(post, filters.dateFrom, filters.dateTo);
       const play = s?.play_count ?? null;

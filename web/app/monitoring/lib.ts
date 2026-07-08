@@ -169,8 +169,7 @@ export function getCategoryLabel(val: string | null | undefined): string {
 // 필터로 직전만 잘렸고 이전 측정이 존재하면 계산 불가(null → '-').
 // 배너(바이럴(배너))는 조회수(play_count)가 없어 도달수(reach_count)를 조회수처럼 취급 → 동일 로직으로 전일 대비 증분.
 export function viewIncrement(post: Post, s: DailyStats | null | undefined, prev: DailyStats | null | undefined): number | null {
-  // 종료(ended_at) 게시물은 증분 집계에서 제외 — 표 증분량·합계·정렬·복사(copyIncrementList)가 모두 여기서 파생돼 일관 처리.
-  if (post.ended_at) return null;
+  // 종료 게시물도 종료 전 활성기간에 실제로 쌓인 증분은 유효한 데이터 → 그대로 표시(숨기지 않음).
   if (!s) return null;
   // 단일 소스(B): 저장된 increment가 있으면 그대로 사용 → 리포트와 항상 동일값.
   if (s.increment != null) return s.increment;
