@@ -43,10 +43,9 @@ export type B2bDaily = {
   total_order: number | null; total_contribution: number | null;
 };
 
-export type Filters = { name: string; project: string; caption: string; products: string[]; type: string; channelTypes: string[]; companies: string[]; pdNames: string[]; dateFrom: string; dateTo: string; postedFrom: string; postedTo: string };
-export const INIT_FILTERS: Filters = { name: "", project: "", caption: "", products: [], type: "all", channelTypes: [], companies: [], pdNames: [], dateFrom: "", dateTo: "", postedFrom: "", postedTo: "" };
+export type Filters = { name: string; project: string; caption: string; products: string[]; channelTypes: string[]; companies: string[]; pdNames: string[]; dateFrom: string; dateTo: string; postedFrom: string; postedTo: string };
+export const INIT_FILTERS: Filters = { name: "", project: "", caption: "", products: [], channelTypes: [], companies: [], pdNames: [], dateFrom: "", dateTo: "", postedFrom: "", postedTo: "" };
 export type EditCell = { postId: string; field: "project_name" | "product_name" | "channel_type" | "cost" | "reach_count" | "account_name" | "company_name" | "posted_at" | "notes" | "content_summary" | "likes_count" | "comments_count"; value: string; measuredAt?: string };
-export const POST_TYPES = ["릴스", "피드", "숏폼", "롱폼"];
 export const CHANNEL_TYPES = [
   "바이럴(배너)",
   "바이럴(영상)",
@@ -130,12 +129,6 @@ export function updatePostLatestStats(post: Post, now: string, overrides?: Parti
     likes_count: overrides?.likes_count ?? post.latest_stats.likes_count,
     comments_count: overrides?.comments_count ?? post.latest_stats.comments_count,
   };
-}
-
-export function getPostType(url: string): string {
-  if (url.includes("instagram.com")) return url.includes("/reel/") ? "릴스" : "피드";
-  if (url.includes("youtube.com") || url.includes("youtu.be")) return url.includes("/shorts/") ? "숏폼" : "롱폼";
-  return "-";
 }
 
 export const STICKY_COL_ORDER = ["증분량"] as const;

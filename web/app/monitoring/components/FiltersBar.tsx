@@ -2,7 +2,7 @@
 // 필터 바 — monitoring/page.tsx 에서 추출.
 // filters 상태/세터는 부모 소유(prop). 드롭다운 열림상태는 필터바 전용이라 내부 보관.
 import { useState } from "react";
-import { type Filters, INIT_FILTERS, POST_TYPES, CHANNEL_TYPES, fmtChannelType } from "../lib";
+import { type Filters, INIT_FILTERS, CHANNEL_TYPES, fmtChannelType } from "../lib";
 import { productCodeOf } from "@/lib/productCode";
 
 type Props = {
@@ -41,14 +41,6 @@ export default function FiltersBar({ filters, setFilters, pdOptions, productOpti
         onChange={e => setFilters(p => ({ ...p, caption: e.target.value }))}
         className={`filter-input w-32 ${filters.caption ? "border-a-blue" : ""}`}
       />
-      <select
-        value={filters.type}
-        onChange={e => setFilters(p => ({ ...p, type: e.target.value }))}
-        className={`filter-select ${filters.type !== "all" ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
-      >
-        <option value="all">전체 유형</option>
-        {POST_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-      </select>
       <div className="relative">
         <button
           onClick={() => setShowChannelTypeDropdown(!showChannelTypeDropdown)}

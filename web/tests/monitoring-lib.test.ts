@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   pearson, solveLinear, multipleR2, movingAvg, weekKeyOf, weekLabelOf,
-  padDomain, effectiveReach, alignedPairs, bestLag, getPostType, parseCsvLine, pickRangeStats, viewIncrement,
+  padDomain, effectiveReach, alignedPairs, bestLag, parseCsvLine, pickRangeStats, viewIncrement,
 } from "../app/monitoring/lib.ts";
 
 const close = (a: number, b: number, eps = 1e-9) => Math.abs(a - b) < eps;
@@ -72,14 +72,6 @@ test("parseCsvLine: 따옴표·이스케이프·쉼표 처리", () => {
   assert.deepEqual(parseCsvLine('a, "b,c" , d'), ["a", "b,c", "d"]); // 따옴표 안 쉼표 보존 + trim
   assert.deepEqual(parseCsvLine('"he said ""hi"""'), ['he said "hi"']); // 이스케이프 ""
   assert.deepEqual(parseCsvLine("x,,z"), ["x", "", "z"]); // 빈 셀
-});
-
-test("getPostType: 플랫폼/형식 판별", () => {
-  assert.equal(getPostType("https://instagram.com/reel/X/"), "릴스");
-  assert.equal(getPostType("https://instagram.com/p/X/"), "피드");
-  assert.equal(getPostType("https://youtube.com/shorts/X"), "숏폼");
-  assert.equal(getPostType("https://youtube.com/watch?v=X"), "롱폼");
-  assert.equal(getPostType("https://example.com/x"), "-");
 });
 
 // 🔒 필터 불변식 회귀 테스트 (2026-07-06 버그: 7/1~7/2 필터에 7/5 게시물이 +75,000 표시)

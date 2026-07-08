@@ -7,7 +7,7 @@ import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
 import { MIN_ENTRY_DATE, maxDateKST, isValidEntryDate } from "@/lib/dateRule";
 import { companyForAccount } from "@/lib/companyMap";
 import { batchFetch } from "@/lib/batchFetch";
-import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, INIT_FILTERS, CHANNEL_TYPES, CATEGORIES, STICKY_COL_ORDER, PROJECT_PARSE_COLS, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, isStatInDateRange, getFilteredStats, pickRangeStats, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, getPostType, viewIncrement, pickMetric, pdOf, productLabel, effectiveReach, weekKeyOf, pearson, alignedPairs, bestLag, solveLinear, alignMulti, multipleR2, parseCsvLine } from "./lib";
+import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, INIT_FILTERS, CHANNEL_TYPES, CATEGORIES, STICKY_COL_ORDER, PROJECT_PARSE_COLS, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, isStatInDateRange, getFilteredStats, pickRangeStats, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, viewIncrement, pickMetric, pdOf, productLabel, effectiveReach, weekKeyOf, pearson, alignedPairs, bestLag, solveLinear, alignMulti, multipleR2, parseCsvLine } from "./lib";
 import CorrelationPanel from "./components/CorrelationPanel";
 import DayOfWeekPanel, { type DowData } from "./components/DayOfWeekPanel";
 import CompanyPanel, { type CompanyData } from "./components/CompanyPanel";
@@ -85,7 +85,6 @@ export default function MonitoringPage() {
     if (filters.project && !(post.project_name ?? "").toLowerCase().includes(filters.project.toLowerCase())) return false;
     if (filters.caption && !(post.content_summary ?? "").toLowerCase().includes(filters.caption.toLowerCase())) return false;
     if (filters.products.length > 0 && !filters.products.includes(post.product_name ?? "")) return false;
-    if (filters.type !== "all" && getPostType(post.url) !== filters.type) return false;
     if (filters.channelTypes.length > 0 && !filters.channelTypes.some(ct => (post.channel_type ?? "").replace(/\s+/g, "") === ct.replace(/\s+/g, ""))) return false;
     if (filters.companies.length > 0 && !filters.companies.includes(post.company_name?.trim() || companyForAccount(post.account_name ?? post.influencers?.name) || "")) return false;
     if (filters.pdNames.length > 0 && !filters.pdNames.includes(pdOf(post.project_name))) return false;
@@ -119,7 +118,7 @@ export default function MonitoringPage() {
     new Set(posts.map(p => pdOf(p.project_name)).filter((v): v is string => Boolean(v)))
   ).sort((a, b) => a.localeCompare(b, "ko")), [posts]);
 
-  const hasFilter = filters.name !== "" || filters.project !== "" || filters.caption !== "" || filters.products.length > 0 || filters.type !== "all" || filters.channelTypes.length > 0 || filters.companies.length > 0 || filters.pdNames.length > 0 || filters.dateFrom !== "" || filters.dateTo !== "" || filters.postedFrom !== "" || filters.postedTo !== "";
+  const hasFilter = filters.name !== "" || filters.project !== "" || filters.caption !== "" || filters.products.length > 0 || filters.channelTypes.length > 0 || filters.companies.length > 0 || filters.pdNames.length > 0 || filters.dateFrom !== "" || filters.dateTo !== "" || filters.postedFrom !== "" || filters.postedTo !== "";
   const colSpan = 17;
 
   // 마지막 수집 시각 = 최신 측정행의 적재 시각(created_at) 중 최대값 (게시물 추가 시각 아님)
@@ -937,7 +936,6 @@ export default function MonitoringPage() {
         break;
       case "채널분류": av = (a.channel_type ?? "").toLowerCase(); bv = (b.channel_type ?? "").toLowerCase(); break;
       case "카테고리": av = (a.influencers?.category ?? "").toLowerCase(); bv = (b.influencers?.category ?? "").toLowerCase(); break;
-      case "유형": av = getPostType(a.url); bv = getPostType(b.url); break;
       case "게시일": av = a.posted_at ?? ""; bv = b.posted_at ?? ""; break;
       case "조회수": av = sa?.play_count ?? -1; bv = sb?.play_count ?? -1; break;
       case "좋아요": av = sa?.likes_count ?? -1; bv = sb?.likes_count ?? -1; break;
@@ -966,7 +964,7 @@ export default function MonitoringPage() {
   });
 
   function downloadCSV() {
-    const headers = ["업로드일", "인플루언서", "링크", "프로젝트명", "상품명", "채널분류", "유형", "증분량", "조회수", "도달수", "비용(원)", "조회당비용(원)", "도달당비용(원)"];
+    const headers = ["업로드일", "인플루언서", "링크", "프로젝트명", "상품명", "채널분류", "증분량", "조회수", "도달수", "비용(원)", "조회당비용(원)", "도달당비용(원)"];
     const rows = sortedPosts.map(post => {
       // 🔒 필터 불변식: CSV도 화면과 동일한 값 규칙(pickRangeStats) — 필터 무시하고 latest를 내보내
       //   '화면≠내보내기'가 되던 버그(2026-07-06) 수정
@@ -983,7 +981,6 @@ export default function MonitoringPage() {
         post.project_name ?? "",
         post.product_name ?? "",
         post.channel_type ?? "",
-        getPostType(post.url),
         (viewIncrement(post, s, prev) ?? ""),
         play ?? "",
         reach ?? "",
