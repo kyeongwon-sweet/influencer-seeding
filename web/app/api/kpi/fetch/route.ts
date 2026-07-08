@@ -62,7 +62,21 @@ async function readProduct(tab: string, product: string): Promise<{ metrics: Met
   const hdrIdx = rows.findIndex((r, i) => i > markerIdx && r.some((c) => norm(c) === "CVS발주량") && r.some((c) => norm(c) === "인지조회비"));
   if (hdrIdx < 0) throw new Error(`${tab}: [${month} 현황] 헤더 행을 찾지 못함`);
   const header = rows[hdrIdx];
-  const colOf = (name: string) => header.findIndex((c) => norm(c) === norm(name));
+  // 헤더 텍스트 매칭(공백무시). 탭마다 표기가 미세하게 달라(쫀득바 신형 등) 정확일치가 안 되면
+  // '겹치지 않는' 안전 폴백만 적용 — 잘못된 컬럼에 붙지 않도록 다른 지표와 배타적인 조건만 사용.
+  const colOf = (name: string) => {
+    let idx = header.findIndex((c) => norm(c) === norm(name));
+    if (idx >= 0) return idx;
+    const nn = norm(name);
+    if (nn === norm("본부공헌이익(=가용예산)")) {
+      // '본부공헌이익'으로 시작하되 '*...(판매)'(다른 지표)가 아닌 본체 컬럼.
+      idx = header.findIndex((c) => { const x = norm(c); return x.startsWith("본부공헌이익") && !x.startsWith("*") && !x.includes("판매"); });
+    } else if (nn === norm("*POS 일 판매량")) {
+      // 'POS'와 '판매'를 함께 가진 유일 컬럼(‘*CVS 손익(판매)’엔 POS 없음).
+      idx = header.findIndex((c) => { const x = norm(c); return x.includes("POS") && x.includes("판매"); });
+    }
+    return idx;
+  };
 
   const find = (kw: string) => rows.slice(hdrIdx + 1, hdrIdx + 6).find((r) => norm(r[1]).includes(kw));
   const targetRow = find("목표");
