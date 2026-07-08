@@ -1,0 +1,20 @@
+name: _caption test (temp)
+on:
+  workflow_dispatch:
+    inputs:
+      caption:
+        required: true
+        default: "ORIG"
+env:
+  APP_URL: "https://influencer-seeding-mu.vercel.app"
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: bulk upsert 2 test posts
+        run: |
+          curl -sS -X POST "$APP_URL/api/sponsored-posts/bulk" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            --data-raw '[{"url":"https://www.instagram.com/p/ZZ9CAPLOCK99/","content_summary":"${{ inputs.caption }}","account_name":"__captiontest_lock__","channel_type":"바이럴 (영상)"},{"url":"https://www.instagram.com/p/ZZ9CAPFREE88/","content_summary":"${{ inputs.caption }}","account_name":"__captiontest_free__","channel_type":"바이럴 (영상)"}]'
+          echo
