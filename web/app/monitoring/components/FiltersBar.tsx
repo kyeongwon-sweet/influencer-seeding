@@ -47,7 +47,7 @@ export default function FiltersBar({ filters, setFilters, pdOptions, productOpti
           className={`filter-select ${filters.channelTypes.length > 0 ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
         >
           {filters.channelTypes.length === 0
-            ? "전체 채널분류"
+            ? "전체 채널 분류"
             : filters.channelTypes.length === 1
             ? fmtChannelType(filters.channelTypes[0])
             : `${fmtChannelType(filters.channelTypes[0])} 외 ${filters.channelTypes.length - 1}`
