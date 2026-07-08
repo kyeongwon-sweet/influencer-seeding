@@ -1572,19 +1572,31 @@ export default function MonitoringPage() {
                     )}
                   </div>
                 </div>
-                <LineChart
-                  data={playDeltaData.length >= 2 ? playDeltaData : chartData}
-                  height={chartVH}
-                  gradId="summaryGrad"
-                  smooth={smooth}
-                  hidePrimary={seriesHidden("조회수")}
-                  hiddenLines={hiddenSeries}
-                  lsData={lsSearchData}
-                  extraSeries={chartExtraSeries}
-                  secondaryData={chartSecondaryData}
-                  secondaryColor={CHART.secondary}
-                  postsOnDate={chartPostsOnDate}
-                />
+                {/* 조회수 기간을 하루만 선택하면 '전일 대비 증분'을 만들 수 없어 그래프가 빔 → 이유·해결 안내 */}
+                {filters.dateFrom !== "" && filters.dateFrom === filters.dateTo ? (
+                  <div className="flex items-center justify-center px-6 text-center" style={{ height: chartVH }}>
+                    <div className="leading-relaxed">
+                      <p className="text-sm font-medium text-a-ink">하루는 증분이 없어 그래프가 표시되지 않아요</p>
+                      <p className="text-[12px] text-a-ink-muted mt-1">
+                        조회수 트렌드는 &apos;전일 대비 증분&apos;이라 최소 2일이 필요합니다.<br />조회수 기간을 2일 이상으로 선택하세요.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <LineChart
+                    data={playDeltaData.length >= 2 ? playDeltaData : chartData}
+                    height={chartVH}
+                    gradId="summaryGrad"
+                    smooth={smooth}
+                    hidePrimary={seriesHidden("조회수")}
+                    hiddenLines={hiddenSeries}
+                    lsData={lsSearchData}
+                    extraSeries={chartExtraSeries}
+                    secondaryData={chartSecondaryData}
+                    secondaryColor={CHART.secondary}
+                    postsOnDate={chartPostsOnDate}
+                  />
+                )}
               </div>
               {/* 증감 테이블 — 내용폭에 맞춰 고정(여백 최소화), 그래프가 나머지 차지 */}
               <div ref={tableRef} className="flex-none w-max flex flex-col self-start">
