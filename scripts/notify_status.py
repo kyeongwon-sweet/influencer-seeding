@@ -163,6 +163,26 @@ def _integrity_lines(db, posts):
             if len(low) > 5:
                 line += f" … 외 {len(low) - 5}일"
             lines.append(line)
+
+    # 5) 조회수 0인데 증분>0 — 'baseline 0 파괴' 시그니처(2026-07-08 사고, 6e915d1로 원인 수정).
+    #    누적 조회수(play)를 0으로 덮으면서 그날 증분(increment)엔 실측이 남아, 증분=누적으로 폭증하는 상태.
+    #    play는 감소 불가라 정상 수집에선 나올 수 없는 조합 → 나타나면 어딘가 0으로 덮이는 중이라는 뜻.
+    zero_inc = {}
+    off = 0
+    while True:
+        res = (db.table("post_daily_stats").select("measured_at, play_count, increment")
+               .gte("measured_at", cutoff).eq("play_count", 0).gt("increment", 0)
+               .range(off, off + 999).execute())
+        chunk = res.data or []
+        for r in chunk:
+            zero_inc[r["measured_at"]] = zero_inc.get(r["measured_at"], 0) + 1
+        if len(chunk) < 1000:
+            break
+        off += 1000
+    if zero_inc:
+        tot = sum(zero_inc.values())
+        ex = ", ".join(f"{d[5:]}({c})" for d, c in sorted(zero_inc.items())[:5])
+        lines.append(f"조회수 0인데 증분>0 {tot}건 — 누적이 0으로 덮여 증분 폭증(baseline 0 파괴 재발 의심, 즉시 확인): {ex}")
     return lines
 
 
