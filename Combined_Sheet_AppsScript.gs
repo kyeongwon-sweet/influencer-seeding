@@ -235,7 +235,9 @@ function urlKey_(u) {
  *  IG는 shortcode(/p/·/reel/·/reels/·/tv/ 통일), 틱톡은 영상ID, 그 외는 urlKey_. (서버 정규화와 동일 기준) */
 function linkKey_(u) {
   u = String(u || "").trim();
-  var ig = u.match(/instagram\.com\/(?:p|reels|reel|tv)\/([A-Za-z0-9_-]+)/i);
+  // /p/·/reel/ 앞에 계정명이 낀 형태(instagram.com/<user>/p/<code>/)도 인식 — 서버 normalizeUrl과 동일.
+  // (계정명 무시하고 경로 어디에 있든 /p|reel|reels|tv/<code>를 shortcode로. 2026-07-08 anavocado 중복 사례)
+  var ig = u.match(/instagram\.com\/(?:[^/?#]+\/)*(?:p|reels|reel|tv)\/([A-Za-z0-9_-]+)/i);
   if (ig) return "ig:" + ig[1];
   // 유튜브: 영상ID로 통일(www/non-www·shorts·watch·youtu.be 모두 동일 영상). ID는 대소문자 구분(소문자화 X).
   var yt = u.match(/youtube\.com\/shorts\/([A-Za-z0-9_-]{6,})/)
