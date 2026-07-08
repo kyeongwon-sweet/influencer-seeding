@@ -132,7 +132,7 @@ export async function upsertSponsoredRows(
     }
   }
 
-  // 기존 게시물 → 비어있지 않은 값으로 덮어씀(manual_fields 보존·캡션 우선·빈값 유지).
+  // 기존 게시물 → '변경분만' 덮어씀(manual_fields 보존·캡션 우선·빈값 유지·동일값 skip).
   let metaFilled = 0;
   const metaUpdates: { id: string; upd: Record<string, unknown> }[] = [];
   for (const r of rows) {
@@ -145,7 +145,11 @@ export async function upsertSponsoredRows(
       if (f !== "content_summary" && manual.includes(f)) continue; // 그 외 수동 수정 필드 → 보존(덮지 않음)
       const val = (r as Record<string, unknown>)[f];
       const valPresent = val !== null && val !== undefined && val !== "";
-      if (valPresent) upd[f] = val; // 값이 있으면 덮기 (비면 기존 유지)
+      if (!valPresent) continue; // 시트가 비면 기존 유지(지우지 않음)
+      // '변경분만' 반영: 시트값이 DB 기존값과 동일하면 skip — 불필요한 덮어쓰기 제거 +
+      // 시스템이 갱신한 값(스크랩 등)을 같은 값으로 되쓰는 낭비 방지. 다를 때만 덮음.
+      if (String(val).trim() === String(ex[f] ?? "").trim()) continue;
+      upd[f] = val;
     }
     if (Object.keys(upd).length > 0) metaUpdates.push({ id: String(ex.id), upd });
   }
