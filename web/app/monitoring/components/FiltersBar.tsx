@@ -250,7 +250,8 @@ export default function FiltersBar({ filters, setFilters, pdOptions, productOpti
           const presets = [
             { label: "전체",   from: "",          to: "" },
             // '오늘'은 수집 중이라 미완성 — 표가 전일자까지만 노출하므로 프리셋에서 제외
-            { label: "어제",   from: fmt(new Date(today.getTime() - 86400000)), to: fmt(new Date(today.getTime() - 86400000)) },
+            // '어제'는 엊그제~어제(2일) — 하루만 잡으면 전일 대비 증분·트렌드가 안 나오므로 어제 증분이 보이게 2일 범위로.
+            { label: "어제",   from: fmt(new Date(today.getTime() - 2 * 86400000)), to: fmt(new Date(today.getTime() - 86400000)) },
             { label: "주말",   from: fmt(lastFri), to: fmt(lastSun) },
             { label: "이번주", from: fmt(new Date(today.getTime() - (dayOfWeek - 1) * 86400000)), to: todayStr },
             { label: "지난주", from: fmt(new Date(today.getTime() - (dayOfWeek + 6) * 86400000)), to: fmt(new Date(today.getTime() - dayOfWeek * 86400000)) },
