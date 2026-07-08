@@ -12,11 +12,14 @@ export default function DayOfWeekPanel({ data }: { data: DowData }) {
   const bestCpv = cpvVals.length ? Math.min(...cpvVals) : null; // 가장 저렴한(효율적) CPV
   return (
     <div className="px-5 pb-5 pt-4">
-      <p className="text-base font-semibold text-a-ink mb-1">
-        요일별 성과 <span className="font-normal text-a-ink-muted text-[13px]">· 게시 요일별 게시 후 7일 조회수·CPV (영상, 배너 제외)</span>
-      </p>
+      <div className="flex items-baseline justify-between gap-2 mb-1">
+        <p className="text-base font-semibold text-a-ink">
+          요일별 성과 <span className="font-normal text-a-ink-muted text-[13px]">· 게시 요일별 게시 후 7일 조회수·CPV (영상, 배너 제외)</span>
+        </p>
+        <span className="text-[12px] text-a-ink-muted whitespace-nowrap flex-shrink-0">표본 {totalN}개</span>
+      </div>
       <p className="text-[12px] text-a-ink-muted mb-3 leading-relaxed">
-        각 영상의 <b className="text-a-ink">게시 후 7일 시점</b> 성과를 올린 요일로 묶은 <b className="text-a-ink">중앙값</b>. 수집 누락·백로그에 안 흔들려 &quot;언제 올릴까&quot; 판단용. (표본 {totalN}개)
+        각 영상의 <b className="text-a-ink">게시 후 7일 시점</b> 성과를 올린 요일로 묶은 <b className="text-a-ink">중앙값</b>. 수집 누락·백로그에 안 흔들려 &quot;언제 올릴까&quot; 판단용.
       </p>
       {totalN === 0 ? (
         <div className="text-sm text-a-ink-muted py-6 text-center">표본 없음 — 영상 게시물의 게시 후 7일 데이터가 필요합니다.</div>

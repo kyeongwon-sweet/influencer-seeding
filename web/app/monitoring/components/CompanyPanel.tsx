@@ -53,11 +53,14 @@ export default function CompanyPanel({ data }: { data: CompanyData }) {
   const bestCpr = cprVals.length ? Math.min(...cprVals) : null;
   return (
     <div className="px-5 pb-5 pt-4">
-      <p className="text-base font-semibold text-a-ink mb-1">
-        업체별 성과 <span className="font-normal text-a-ink-muted text-[13px]">· 누적 총합 — 영상=조회수 / 배너=도달수</span>
-      </p>
+      <div className="flex items-baseline justify-between gap-2 mb-1">
+        <p className="text-base font-semibold text-a-ink">
+          업체별 성과 <span className="font-normal text-a-ink-muted text-[13px]">· 누적 총합 — 영상=조회수 / 배너=도달수</span>
+        </p>
+        <span className="text-[12px] text-a-ink-muted whitespace-nowrap flex-shrink-0">소재 {totalN}개</span>
+      </div>
       <p className="text-[12px] text-a-ink-muted mb-3 leading-relaxed">
-        업체별 <b className="text-a-ink">전체 소재의 누적 합계</b>. CPV/CPR = Σ비용÷Σ누적(대시보드 조회당비용과 동일 기준). 날짜 필터를 걸면 그 범위 말일 기준 누적. (소재 {totalN}개)
+        업체별 <b className="text-a-ink">전체 소재의 누적 합계</b>. CPV/CPR = Σ비용÷Σ누적(대시보드 조회당비용과 동일 기준. CPR=도달당비용). 날짜 필터를 걸면 그 범위 말일 기준 누적.
       </p>
       {totalN === 0 ? (
         <div className="text-sm text-a-ink-muted py-6 text-center">표본 없음 — 업체명 있는 바이럴 소재가 필요합니다.</div>
