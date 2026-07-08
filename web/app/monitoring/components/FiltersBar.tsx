@@ -239,15 +239,21 @@ export default function FiltersBar({ filters, setFilters, pdOptions, productOpti
           // 주말: 가장 최근 '완료된' 금~일 (월요일에 누르면 직전 금/토/일 3일). 일요일이면 지난주 주말.
           const lastSun = new Date(today.getTime() - (today.getUTCDay() === 0 ? 7 : today.getUTCDay()) * 86400000);
           const lastFri = new Date(lastSun.getTime() - 2 * 86400000);
+          // 지난달: 이번 달 1일의 전날(=지난달 말일) 기준으로 지난달 1일~말일
+          const firstThisMonth = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+          const lastMonthEnd = new Date(firstThisMonth.getTime() - 86400000);
+          const lastMonthStart = new Date(Date.UTC(lastMonthEnd.getUTCFullYear(), lastMonthEnd.getUTCMonth(), 1));
           const presets = [
             { label: "전체",   from: "",          to: "" },
             // '오늘'은 수집 중이라 미완성 — 표가 전일자까지만 노출하므로 프리셋에서 제외
-            // '어제'는 엊그제~어제(2일) — 하루만 잡으면 전일 대비 증분·트렌드가 안 나오므로 어제 증분이 보이게 2일 범위로.
+            // '어제/그제'는 각각 '전날~그날'(2일) — 하루만 잡으면 전일 대비 증분·트렌드가 안 나와서 그날 증분이 보이게 2일 범위로.
             { label: "어제",   from: fmt(new Date(today.getTime() - 2 * 86400000)), to: fmt(new Date(today.getTime() - 86400000)) },
+            { label: "그제",   from: fmt(new Date(today.getTime() - 3 * 86400000)), to: fmt(new Date(today.getTime() - 2 * 86400000)) },
             { label: "주말",   from: fmt(lastFri), to: fmt(lastSun) },
             { label: "이번주", from: fmt(new Date(today.getTime() - (dayOfWeek - 1) * 86400000)), to: todayStr },
             { label: "지난주", from: fmt(new Date(today.getTime() - (dayOfWeek + 6) * 86400000)), to: fmt(new Date(today.getTime() - dayOfWeek * 86400000)) },
             { label: "이번달", from: `${todayStr.slice(0, 7)}-01`, to: todayStr },
+            { label: "지난달", from: fmt(lastMonthStart), to: fmt(lastMonthEnd) },
           ];
           return (
             <div className="flex rounded-[10px] border border-a-hairline bg-a-parchment/60 p-0.5 gap-0.5">
