@@ -1,0 +1,16 @@
+name: _stats probe (temp)
+on: { workflow_dispatch: {} }
+env:
+  APP_URL: "https://influencer-seeding-mu.vercel.app"
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: stats-for-sheet 호출
+        run: |
+          code=$(curl -sS -o /tmp/o -w "%{http_code}" "$APP_URL/api/sponsored-posts/stats-for-sheet" -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          echo "HTTP $code"
+          echo "bytes: $(wc -c < /tmp/o)"
+          # 게시물 수 + 첫 항목 일부
+          head -c 400 /tmp/o; echo
+          grep -o '"url"' /tmp/o | wc -l | sed 's/^/url 개수: /'
