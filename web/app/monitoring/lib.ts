@@ -166,12 +166,13 @@ export function getCategoryLabel(val: string | null | undefined): string {
 }
 
 // 🔒 안전 증분 규칙 (2026-07-08, 모든 표시 경로 공유 — viewIncrement·dailyTotals·리포트가 이 정의 하나만 사용).
-//   증분 = 오늘 측정값 − '직전 유효(>0) 측정값'. 유효 baseline이 없으면(그 게시물 첫 유효 측정) → null('—').
-//   0/누락은 '측정 안 됨'이므로 baseline·증분에서 제외 → 수집 실패(0 저장)가 다음날 누적 전체로 폭발하던
-//   과집계(baseline-zero/주말 저집계 계열)를 표시 단계에서 원천 차단. 이미 오염된 저장 increment는 무시하고 재계산.
+//   증분 = 오늘 측정값 − '직전 유효(>0) 측정값'. 직전 유효값이 없으면(그 게시물 첫 유효 측정) = 그날 값 전체.
+//   (절대 규칙: 업로드날 20만 확보 = 그날 증분 20만. 첫 측정을 '—'로 죽이면 첫날 성과가 누락되고 Σ증분≠누적이 됨.)
+//   0/누락은 '측정 안 됨'이므로 baseline에서 제외 → 수집 실패(0 저장)가 '직전값=0'으로 잡혀 다음날 전체가
+//   증분으로 폭발하던 과집계(baseline-zero/주말 저집계)를 차단. 이미 오염된 저장 increment는 무시하고 재계산.
 //   ※ '직전 값' 하나만 보지 않고 '직전 유효값'(0/누락 건너뛴 마지막 >0)을 baseline으로 써서, 0글리치 낀
-//     플라토 게시물도 실제 하루치(예: 88)를 살린다(직전값만 보면 '—'로 날아감).
-//   ※ mono 보정된 all_stats든 raw 시리즈든 'max(직전 >0)'는 결과가 같아 대시보드·리포트가 자동 일치.
+//     플라토 게시물도 실제 하루치(예: 88)를 살린다(직전값만 보면 전체로 뻥튀기됨).
+//   ※ 불변식: Σ증분(첫날 전체 + 이후 델타) == 최종 누적. mono/raw 무관하게 대시보드·리포트 자동 일치.
 export function safeIncrement(allStats: DailyStats[], s: DailyStats | null | undefined, isBanner: boolean): number | null {
   if (!s) return null;
   const val = (st: DailyStats | null | undefined) =>
@@ -184,7 +185,7 @@ export function safeIncrement(allStats: DailyStats[], s: DailyStats | null | und
     const v = val(st);
     if (v != null && v > 0) { hasBaseline = true; if (v > baseline) baseline = v; }
   }
-  if (!hasBaseline) return null;                  // 첫 유효 측정 = 백로그, 증분 아님 → '—'
+  if (!hasBaseline) return cur;                   // 첫 유효 측정 = 그날 값 전체(업로드날 성과)
   return Math.max(0, cur - baseline);
 }
 

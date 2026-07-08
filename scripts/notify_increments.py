@@ -191,7 +191,7 @@ def main():
         return r.get("play_count")
 
     def _safe_inc(rows, isb):
-        """대시보드 safeIncrement와 동일 규칙: 오늘값 − 직전 '유효(>0)' 값. 첫 유효측정/오늘0 → None."""
+        """대시보드 safeIncrement와 동일: 오늘값 − 직전 '유효(>0)' 값. 첫 유효측정=그날 전체, 오늘0/None=None."""
         cur, base, has = None, 0, False
         for r in rows:
             v = _metric(r, isb)
@@ -201,8 +201,10 @@ def main():
                 has = True
                 if v > base:
                     base = v
-        if cur is None or cur <= 0 or not has:
-            return None
+        if cur is None or cur <= 0:
+            return None            # 오늘 측정 없음/실패
+        if not has:
+            return cur             # 첫 유효 측정 = 그날 값 전체(업로드날 성과)
         return max(0, cur - base)
 
     # items: 안전 규칙으로 재계산(저장 increment 무시). 첫 측정/0 baseline은 증분 아님 → 제외(과집계 차단).

@@ -804,11 +804,11 @@ def run():
                         break
                     frm += 1000
                 for pid, tv in todayval.items():
-                    base = pmax.get(pid, 0)
-                    # safeIncrement와 동일: 직전 '유효(>0)' baseline이 없으면(첫 측정) 증분 저장 안 함(백로그를 증분으로 안 침).
-                    if base <= 0 or tv is None or tv <= 0:
+                    # safeIncrement와 동일: 오늘 측정 실패(0/None)면 스킵. 직전 '유효(>0)' baseline이 없으면(첫 측정)
+                    #   base=0이라 증분=tv 전체(업로드날 성과). 있으면 델타(0글리치는 max가 무시하므로 실측 기준).
+                    if tv is None or tv <= 0:
                         continue
-                    inc_rows.append({"post_id": pid, "measured_at": TODAY, "increment": max(0, tv - base)})
+                    inc_rows.append({"post_id": pid, "measured_at": TODAY, "increment": max(0, tv - pmax.get(pid, 0))})
             if inc_rows:
                 db.table("post_daily_stats").upsert(inc_rows, on_conflict="post_id,measured_at").execute()
                 print(f"[LOG] 📈 증분 저장: {len(inc_rows)}건 ({TODAY})")

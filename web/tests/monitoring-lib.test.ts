@@ -105,24 +105,24 @@ test("pickRangeStats+viewIncrement: 범위 밖 게시물은 값·증분 없음('
   const r3 = pickRangeStats(cut, "2026-07-01", "2026-07-02");
   assert.equal(viewIncrement(cut, r3.s, r3.prev), 40);
 
-  // ④ 진짜 신규(이전 유효 실측 전무) → 첫 측정은 증분 아님 → null('—'). (안전규칙: 첫 측정 전체값을 증분으로 안 침)
+  // ④ 진짜 신규(이전 유효 실측 전무, 범위 내 첫 측정) → 그날 값 전체가 증분(절대규칙: 업로드날 500=증분 500)
   const fresh = mkPost([stat("2026-07-02", 500)]);
   const r4 = pickRangeStats(fresh, "2026-07-01", "2026-07-02");
-  assert.equal(viewIncrement(fresh, r4.s, r4.prev), null);
+  assert.equal(viewIncrement(fresh, r4.s, r4.prev), 500);
 
   // ⑤ 필터 없음 → 기존 동작(latest/prev) 그대로
   const r5 = pickRangeStats(both, "", "");
   assert.equal(r5.s?.play_count, 999);
 });
 
-test("safeIncrement: 0/누락 baseline은 증분으로 안 침(과집계 원천 차단)", () => {
+test("safeIncrement: 0 baseline 건너뛰되 첫 유효측정은 전체값(절대규칙)", () => {
   const st = (d: string, p: number | null, r: number | null = null) =>
     ({ measured_at: d, play_count: p, reach_count: r, likes_count: null, comments_count: null });
   const at = (arr: ReturnType<typeof st>[], d: string) => arr.find(x => x.measured_at === d)!;
-  // 신규/신규추가(직전 유효 실측 전무, 0만): 첫 실측 전체는 증분 아님 → null('—')
+  // 첫 유효 측정(직전 유효값 전무, 0만): 그날 값 전체가 증분(업로드날 성과) → 580000
   const a = [st("2026-07-05", 0), st("2026-07-06", 0), st("2026-07-07", 580000)];
-  assert.equal(safeIncrement(a, at(a, "2026-07-07"), false), null);
-  // 플라토(직전 실측 59307 후 0 글리치): 07-07은 직전 유효값(59307) 기준 실제 하루치 88
+  assert.equal(safeIncrement(a, at(a, "2026-07-07"), false), 580000);
+  // 플라토(직전 실측 59307 후 0 글리치): 07-07은 '직전 유효값'(59307) 기준 실제 하루치 88 (0을 baseline으로 안 씀)
   const b = [st("2026-07-04", 59307), st("2026-07-05", 0), st("2026-07-06", 0), st("2026-07-07", 59395)];
   assert.equal(safeIncrement(b, at(b, "2026-07-07"), false), 88);
   // 배너: 도달수(reach) 기준 동일 규칙
