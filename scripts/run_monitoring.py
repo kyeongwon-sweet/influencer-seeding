@@ -101,7 +101,12 @@ def _store_aux_rows(db, rows, posts, stats, key_fn, label, *, views="clamp", cap
         if not s:
             continue
         if s.get("error"):
-            continue  # 비공개/삭제 등 액터 에러 → 행 저장 안 함(직전값 유지). 특이사항 태깅은 호출부에서.
+            # 액터가 명시적 에러(삭제/비공개/민감/수집불가) 반환 → 특이사항 자동 태깅(notes 빈 것만, 수동 특이사항 보존)
+            # + 행 저장 안 함(직전값 유지). 모든 보조 매체(YT·틱톡·스레드·FB·X) 공통 처리.
+            if not (post.get("notes") or "").strip():
+                note = f"{label} 수집 불가 감지(자동 {TODAY}, {s.get('error')}) — 조회수 최종값에서 정지, 확인 필요"
+                db.table("sponsored_posts").update({"notes": note}).eq("id", post["id"]).execute()
+            continue
         existing = last_stat.get(post["id"], {})
         play = None if views == "none" else s.get("views")
         if views == "clamp" and (not play or play <= 0):
@@ -254,15 +259,21 @@ def _fetch_tiktok(urls: list) -> dict:
     })
     out = {}
     for it in client.dataset(run["defaultDatasetId"]).iterate_items():
-        vid = _tt_id(it.get("webVideoUrl") or it.get("submittedVideoUrl") or "")
-        if vid:
-            out[vid] = {
-                "views": it.get("playCount"),
-                "likes": it.get("diggCount"),
-                "comments": it.get("commentCount"),
-                # 틱톡 영상 설명 → 캡션(content_summary). 액터가 text로 반환(실측 확인). 300자 제한.
-                "content_summary": (it.get("text") or "")[:300] or None,
-            }
+        vid = _tt_id(it.get("webVideoUrl") or it.get("submittedVideoUrl") or it.get("url") or "")
+        if not vid:
+            continue
+        # 삭제/비공개/민감(POST_SENSITIVE 등)은 액터가 error/errorCode 반환(실측 확인) → 자동 특이사항 태깅 신호.
+        err = it.get("errorCode") or it.get("error")
+        if err:
+            out[vid] = {"error": err, "views": None, "likes": None, "comments": None, "content_summary": None}
+            continue
+        out[vid] = {
+            "views": it.get("playCount"),
+            "likes": it.get("diggCount"),
+            "comments": it.get("commentCount"),
+            # 틱톡 영상 설명 → 캡션(content_summary). 액터가 text로 반환(실측 확인). 300자 제한.
+            "content_summary": (it.get("text") or "")[:300] or None,
+        }
     return out
 
 
@@ -282,9 +293,14 @@ def _fetch_threads(urls: list) -> dict:
     out = {}
     for it in client.dataset(run["defaultDatasetId"]).iterate_items():
         th = it.get("thread") or {}
-        code = th.get("code") or _th_code(th.get("url") or "")
-        if code:
-            out[code] = {"likes": th.get("like_count"), "comments": th.get("reply_count")}
+        code = th.get("code") or _th_code(th.get("url") or "") or _th_code(it.get("url") or "")
+        if not code:
+            continue
+        err = it.get("errorCode") or it.get("error")
+        if err:
+            out[code] = {"error": err, "likes": None, "comments": None}
+            continue
+        out[code] = {"likes": th.get("like_count"), "comments": th.get("reply_count")}
     return out
 
 
@@ -309,8 +325,13 @@ def _fetch_facebook(urls: list) -> dict:
     for it in client.dataset(run["defaultDatasetId"]).iterate_items():
         # facebookUrl이 입력 pfbid를 보존(url 필드는 FB가 다른 pfbid로 재생성하므로 매칭 실패)
         key = _fb_key(it.get("facebookUrl") or it.get("url") or "") or it.get("postId")
-        if key:
-            out[key] = {"likes": it.get("likes"), "comments": it.get("comments")}
+        if not key:
+            continue
+        err = it.get("errorCode") or it.get("error")
+        if err:
+            out[key] = {"error": err, "likes": None, "comments": None}
+            continue
+        out[key] = {"likes": it.get("likes"), "comments": it.get("comments")}
     return out
 
 
@@ -342,14 +363,19 @@ def _fetch_twitter(urls: list) -> dict:
     out = {}
     for it in client.dataset(run["defaultDatasetId"]).iterate_items():
         tid = _tw_id(it.get("url") or it.get("twitterUrl") or it.get("tweetUrl") or "")
-        if tid:
-            out[tid] = {
-                "views": it.get("viewCount") or it.get("views") or it.get("viewsCount"),
-                "likes": it.get("likeCount") or it.get("favoriteCount"),
-                "comments": it.get("replyCount"),
-                # 트윗 본문 → 캡션(content_summary). 액터가 fullText/text로 반환(실측 확인). 300자 제한.
-                "content_summary": (it.get("fullText") or it.get("text") or "")[:300] or None,
-            }
+        if not tid:
+            continue
+        err = it.get("errorCode") or it.get("error")
+        if err:
+            out[tid] = {"error": err, "views": None, "likes": None, "comments": None, "content_summary": None}
+            continue
+        out[tid] = {
+            "views": it.get("viewCount") or it.get("views") or it.get("viewsCount"),
+            "likes": it.get("likeCount") or it.get("favoriteCount"),
+            "comments": it.get("replyCount"),
+            # 트윗 본문 → 캡션(content_summary). 액터가 fullText/text로 반환(실측 확인). 300자 제한.
+            "content_summary": (it.get("fullText") or it.get("text") or "")[:300] or None,
+        }
     return out
 
 
@@ -609,13 +635,7 @@ def run():
             try:
                 yt_stats = _fetch_youtube([p["url"] for p in yt_posts])
                 print(f"[LOG] 유튜브 수집: {len(yt_stats)}건 / {len(yt_posts)}개 요청")
-                # 🔒 유튜브 비공개/삭제 자동 태깅 — 액터 error=VIDEO_UNAVAILABLE. IG not_found 태깅과 동형.
-                #    notes 비어 있을 때만 기입(사람이 적어둔 특이사항 보존).
-                for p in yt_posts:
-                    st = yt_stats.get(_yt_id(p["url"]))
-                    if st and st.get("error") == "VIDEO_UNAVAILABLE" and not (p.get("notes") or "").strip():
-                        auto_note = f"유튜브 비공개/삭제 감지(자동 {TODAY}, VIDEO_UNAVAILABLE) — 조회수 최종값에서 정지, 확인 필요"
-                        db.table("sponsored_posts").update({"notes": auto_note}).eq("id", p["id"]).execute()
+                # 비공개/삭제(error=VIDEO_UNAVAILABLE) 자동 특이사항 태깅은 _store_aux_rows가 공통 처리.
                 # 유튜브 캡션 = 영상 제목. 조회수 None이어도 행 저장(좋아요 유지) + 역행 clamp.
                 _store_aux_rows(db, rows, yt_posts, yt_stats, lambda p: _yt_id(p["url"]), "유튜브",
                                 views="optional", caption_field="title", caption_limit=300)
