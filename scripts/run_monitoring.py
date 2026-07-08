@@ -618,6 +618,15 @@ def run():
                 # 단축/비표준 URL(vt.tiktok.com 등)을 /video/ID 표준형으로 해석 → 결과 매칭 실패 방지
                 tt_canon = {p["url"]: _tt_canonical(p["url"]) for p in tt_posts}
                 tt_stats = _fetch_tiktok([tt_canon[p["url"]] for p in tt_posts])
+                # 액터가 간헐적으로 일부 영상만 미반환/0 (살아있는 영상인데 그날 수집 공백 발생,
+                # 2026-07-08 시으니네 등 3/26건). 미반환분만 모아 1회 재시도.
+                retry_urls = [tt_canon[p["url"]] for p in tt_posts
+                              if (tt_stats.get(_tt_id(tt_canon[p["url"]])) or {}).get("views") in (None, 0)]
+                if retry_urls:
+                    print(f"[LOG] 틱톡 미반환 {len(retry_urls)}건 재시도")
+                    for vid, s in _fetch_tiktok(retry_urls).items():
+                        if (s.get("views") or 0) > 0:
+                            tt_stats[vid] = s
                 got = sum(1 for s in tt_stats.values() if (s.get("views") or 0) > 0)
                 print(f"[LOG] 틱톡 수집: 실값 {got}건 / {len(tt_posts)}개 요청")
                 _store_aux_rows(db, rows, tt_posts, tt_stats, lambda p: _tt_id(tt_canon[p["url"]]), "틱톡",
@@ -689,10 +698,19 @@ def run():
             play_pids = list({r["post_id"] for r in rows if r.get("play_count") is not None})
             seen = set()
             for i in range(0, len(play_pids), 200):
-                pr = (db.table("post_daily_stats").select("post_id")
-                      .in_("post_id", play_pids[i:i + 200]).lt("measured_at", TODAY).execute())
-                for x in (pr.data or []):
-                    seen.add(x["post_id"])
+                # ⚠️ LIMIT 없는 조회는 기본 1000행에서 잘림 → 이력 있는 게시물이 '처음 수집'으로 오판되어
+                #    전날 행에 baseline 0 upsert가 실측을 파괴(2026-07-03~07, 7/7에만 79행 0 덮임). 전량 페이지네이션 필수.
+                frm = 0
+                while True:
+                    pr = (db.table("post_daily_stats").select("post_id")
+                          .in_("post_id", play_pids[i:i + 200]).lt("measured_at", TODAY)
+                          .order("id").range(frm, frm + 999).execute())
+                    pg = pr.data or []
+                    for x in pg:
+                        seen.add(x["post_id"])
+                    if len(pg) < 1000:
+                        break
+                    frm += 1000
             yesterday = (date.fromisoformat(TODAY) - timedelta(days=1)).isoformat()
             baseline = [{"post_id": pid, "measured_at": yesterday, "play_count": 0}
                         for pid in play_pids if pid not in seen]

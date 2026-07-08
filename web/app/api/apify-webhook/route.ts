@@ -289,7 +289,8 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
     type PrevRow = { post_id: string; play_count: number | null; measured_at: string };
     const collectPrev = (page: PrevRow[] | null | undefined) => {
       for (const s of page ?? []) {
-        if (!lastKnownPlay.has(s.post_id)) lastKnownPlay.set(s.post_id, s.play_count ?? 0);
+        // play가 실제 있는 행만 단조 기준으로 (null 행을 0으로 치면 어제 실측이 있어도 기준이 0이 됨)
+        if (!lastKnownPlay.has(s.post_id) && s.play_count != null) lastKnownPlay.set(s.post_id, s.play_count);
         if (!lastMeasuredAt.has(s.post_id)) lastMeasuredAt.set(s.post_id, s.measured_at);
       }
     };
@@ -300,7 +301,8 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
           .from('post_daily_stats')
           .select('post_id, play_count, measured_at')
           .in('post_id', idsChunk)
-          .lt('measured_at', today)
+          // 오늘(자정 GHA 수집분) 포함 — 낮 수집이 아침 실측보다 낮은 값으로 당일 행을 되덮는 것 방지
+          .lte('measured_at', today)
           .order('measured_at', { ascending: false })
           .range(from, from + PAGE - 1);
         collectPrev(page as PrevRow[] | null);
@@ -346,10 +348,11 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
       pendingUpdates.push({ id: post.id, updates });
     }
 
-    // 🛡️ 단조 보정: 신규 조회수가 없거나(미반환) 직전값보다 작으면(수집 오류) 저장 스킵 → 직전값 유지
+    // 🛡️ 단조 보정: 신규 조회수가 없거나(미반환) 0(접근불가·글리치, '수집 실패 ≠ 0' 원칙 — run_monitoring과 동일)
+    //    또는 직전값(당일 포함)보다 작으면(수집 오류) 저장 스킵 → 기존값 유지
     const newPlay = s.play_count;
     const prevPlay = lastKnownPlay.get(post.id);
-    if (newPlay == null) { skipped++; continue; }
+    if (newPlay == null || Number(newPlay) <= 0) { skipped++; continue; }
     if (prevPlay != null && Number(newPlay) < prevPlay) { skipped++; continue; }
 
     rows.push({ post_id: post.id, measured_at: today, play_count: newPlay, likes_count: s.likes_count, comments_count: s.comments_count });

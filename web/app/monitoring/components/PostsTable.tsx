@@ -241,7 +241,7 @@ function PostsTable(props: Props) {
                         <span className={tableTotals.delta > 0 ? "text-red-500" : tableTotals.delta < 0 ? "text-blue-600" : "text-gray-400"}>
                           {tableTotals.delta > 0 ? "+" : ""}{tableTotals.delta.toLocaleString()}
                         </span>
-                        <button type="button" onClick={copyIncrementList} title="필터된 계정·조회수/도달수 목록 복사 (종료 게시물 제외)"
+                        <button type="button" onClick={copyIncrementList} title="계정·조회수/도달수 목록 복사 — 체크박스 선택이 있으면 선택분만, 없으면 필터 전체 (종료 게시물 제외)"
                           className="opacity-0 group-hover/cp:opacity-100 transition-opacity flex-shrink-0 text-a-ink-muted hover:text-a-blue">
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                         </button>
