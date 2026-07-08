@@ -563,24 +563,37 @@ function exportStats() {
     const urlVals = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.url, nRows, 1).getValues();
     const firstCol = dateCols[0].col, lastDateCol = dateCols[dateCols.length - 1].col;
     const width = lastDateCol - firstCol + 1;
-    // 날짜 열 블록을 한 번에 읽고 → 수정 후 한 번에 씀(셀 단위 setValue보다 훨씬 빠름). 블록 내 비-날짜 열은 그대로 되씀.
+    // 현재값 1회 읽기(읽기는 수식 비파괴). ⚠️ 쓰기는 '날짜 열 단위'로만 → 날짜 아닌 열(수식·메모 등)은 절대 안 건드림.
     const block = sheet.getRange(CONFIG.DATA_START_ROW, firstCol, nRows, width).getValues();
 
-    let filled = 0, matched = 0, missing = 0;
+    // 행별 매칭 맵 선계산 + 매칭/누락 카운트
+    let matched = 0, missing = 0;
+    const rowMap = new Array(nRows);
     for (let i = 0; i < nRows; i++) {
       const url = String(urlVals[i][0] || "").trim();
-      if (!url) continue;
+      if (!url) { rowMap[i] = null; continue; }
       const m = byKey[linkKey_(url)];
-      if (!m) { if (ALLOWED_URL_RE.test(url)) missing++; continue; }
-      matched++;
-      dateCols.forEach(dc => {
-        const v = m[dc.date];
-        if (!(v > 0)) return; // 수집값 없음/0/음수 → 손 안 댐(기존값·수동입력 유지, 0으로 덮지 않음)
-        const bi = dc.col - firstCol;
-        if (block[i][bi] !== v) { block[i][bi] = v; filled++; }
-      });
+      if (m) { rowMap[i] = m; matched++; }
+      else { rowMap[i] = null; if (ALLOWED_URL_RE.test(url)) missing++; }
     }
-    sheet.getRange(CONFIG.DATA_START_ROW, firstCol, nRows, width).setValues(block);
+
+    // 날짜 열별로만 기록: 수집값(>0)이 기존과 다를 때만 그 열을 갱신. 다른 열은 읽기만 하고 절대 쓰지 않음.
+    let filled = 0;
+    dateCols.forEach(dc => {
+      const bi = dc.col - firstCol;
+      const colVals = new Array(nRows);
+      let changed = false;
+      for (let i = 0; i < nRows; i++) {
+        let cell = block[i][bi];
+        const m = rowMap[i];
+        if (m) {
+          const v = m[dc.date];
+          if (v > 0 && cell !== v) { cell = v; changed = true; filled++; } // 수집값 없음/0/음수/동일값 → 그대로
+        }
+        colVals[i] = [cell];
+      }
+      if (changed) sheet.getRange(CONFIG.DATA_START_ROW, dc.col, nRows, 1).setValues(colVals);
+    });
 
     let msg = `✅ 수집 조회수를 시트에 반영했습니다.\n새 날짜 열 ${addedCols}개 추가 · 갱신 칸 ${filled}개 · 매칭 게시물 ${matched}개 · 날짜 열 ${dateCols.length}개`;
     if (missing) msg += `\n⚠️ 시트엔 있으나 대시보드에 수집기록이 없는 URL ${missing}개(아직 수집 전이거나 미등록).`;
