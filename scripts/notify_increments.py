@@ -218,50 +218,23 @@ def main():
             "cum": cum,
         })
 
-    # 배너는 조회수가 없고 주말/야간 트래킹이 끊겨 '당일 증분'이 0이기 일쑤 → 당일 증분 대신
-    #   활성 JD 배너의 '누적 도달수'(post별 이력 최대 reach 합계)를 노출한다(사용자 지시: 배너값을 말해줘).
+    # 배너 라인은 증분 없어도 항상 노출 — 활성 JD 배너 채널분류 수집(증분 0인 날도 '미수집' 표기용).
     banner_cts = set()
-    banner_posts = []   # [(id, cost)] — 활성 JD 배너
     try:
         boff = 0
         while True:
-            bres = (db.table("sponsored_posts").select("id, channel_type, ended_at, product_name, cost")
+            bres = (db.table("sponsored_posts").select("channel_type, ended_at, product_name")
                     .ilike("channel_type", "%배너%").range(boff, boff + 999).execute())
             bchunk = bres.data or []
             for b in bchunk:
                 # 쫀득바(JD)만: 상품명에 JD 없는 배너 채널은 라인 노출 안 함(사용자 지시).
                 if not b.get("ended_at") and b.get("channel_type") and "jd" in (b.get("product_name") or "").lower():
                     banner_cts.add((b.get("channel_type") or "").strip())
-                    banner_posts.append((b["id"], b.get("cost") or 0))
             if len(bchunk) < 1000:
                 break
             boff += 1000
     except Exception as e:
         print("[notify] 배너 채널분류 조회 실패(무시):", e)
-
-    # 활성 JD 배너의 누적 도달수 합계 + 도달수 있는 배너의 비용 합계(도달당비용 CPV용).
-    banner_reach_total, banner_cost_total = 0, 0
-    try:
-        bcost = {bid: c for bid, c in banner_posts}
-        breach = {}
-        for chunk in _chunks([bid for bid, _ in banner_posts], 100):
-            frm = 0
-            while True:
-                rr = (db.table("post_daily_stats").select("post_id, reach_count")
-                      .in_("post_id", chunk).lte("measured_at", target).order("id").range(frm, frm + 999).execute())
-                rg = rr.data or []
-                for r in rg:
-                    if r.get("reach_count"):
-                        breach[r["post_id"]] = max(breach.get(r["post_id"], 0), r["reach_count"])
-                if len(rg) < 1000:
-                    break
-                frm += 1000
-        for bid, rc in breach.items():
-            if rc > 0:
-                banner_reach_total += rc
-                banner_cost_total += bcost.get(bid, 0)
-    except Exception as e:
-        print("[notify] 배너 도달수 집계 실패(무시):", e)
 
     if not items:
         print(f"[notify] {target} 증가분 없음 → 발송 생략")
@@ -312,14 +285,12 @@ def main():
     ]
     for ct, s in sorted(by_channel.items(), key=lambda x: x[1], reverse=True):
         if "배너" in ct:
-            # 배너는 조회수가 없어 '누적 도달수'를 노출한다(사용자 지시). 당일 증분(s)도 함께 표기.
-            #   CPV = 도달수 있는 배너 비용합 / 누적 도달수 = 도달당비용.
-            #   도달수 데이터가 아예 없으면(전 배너 미수집) '미집계' 표기.
-            if banner_reach_total > 0:
-                cpvb = f"CPV {banner_cost_total / banner_reach_total:,.1f}원" if banner_cost_total else "무상"
-                lines.append(f"• {_ital_paren(ct)} 누적 도달수 *{f(banner_reach_total)}* (당일 +{f(s)})  {cpvb}")
+            # 배너값은 '증분'만 쓴다(사용자 지시 — 누적 아님). 배너는 매일이 아니라 며칠 간격 수집이라
+            #   그날 수집이 없으면 증분 0 → '당일 미수집'으로 표기(값이 0이 아니라 수집이 없던 날).
+            if s > 0:
+                lines.append(f"• {_ital_paren(ct)} *+{f(s)}* (도달수)  {_cpv(cost_by_ch.get(ct, 0), cumviews_by_ch.get(ct, 0), ct)}")
             else:
-                lines.append(f"• {_ital_paren(ct)}  (도달수 미집계·주말/집계 전)")
+                lines.append(f"• {_ital_paren(ct)}  (당일 배너 미수집)")
         else:
             lines.append(f"• {_ital_paren(ct)} *+{f(s)}*  {_cpv(cost_by_ch.get(ct, 0), cumviews_by_ch.get(ct, 0), ct)}")
     lines += ["", DIV, "", "◾ *급상승 TOP 10* 🔥  `CPV는 누적 기준`", ""]
