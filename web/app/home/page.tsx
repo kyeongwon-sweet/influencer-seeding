@@ -473,10 +473,10 @@ export default function DashboardPage() {
             onClick={kpiIsPast ? () => setShowPastKpi(v => !v) : undefined}
           >
             <div className="flex items-center gap-3">
-              <div className="inline-flex items-center gap-1.5 bg-blue-50 rounded-full px-3 py-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-a-blue inline-block" />
-                <p className="text-[11px] font-semibold text-a-blue tracking-widest uppercase">
-                  {kpi?.month_label ? `${kpi.month_label} ` : ""}KPI 현황
+              <div className="inline-flex items-center gap-1.5 bg-emerald-50 rounded-full px-3 py-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                <p className="text-[11px] font-semibold text-emerald-600 tracking-widest uppercase">
+                  {kpi?.month_label ? `${kpi.month_label} ` : ""}목표 현황
                 </p>
               </div>
               <a
@@ -486,7 +486,7 @@ export default function DashboardPage() {
                 className="text-[11px] text-a-blue hover:underline whitespace-nowrap"
                 onClick={e => e.stopPropagation()}
               >
-                대시보드와 연동 →
+                마케팅T 시트 연동 →
               </a>
             </div>
             <div className="flex items-center gap-3">
