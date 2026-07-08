@@ -32,6 +32,7 @@ const CONFIG = {
   API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/bulk",
   STATS_API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/stats-import",
   LIST_API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/list-for-sheet",  // DB→시트 반영(대시보드 추가분 가져오기)용 조회
+  STATS_EXPORT_API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/stats-for-sheet",  // 자동수집 조회수 → 시트 I열~ 역채움용 조회
   HEADER_ROW: 1,
   DATA_START_ROW: 2,
   STATUS_HEADER: "등록상태",
@@ -75,6 +76,7 @@ function onOpen() {
     .addItem("✅ 신규 광고 추가", "syncNew")
     .addSeparator()
     .addItem("📊 일자별 조회수 입력 (I~AE열)", "importStats")
+    .addItem("📥 수집 조회수 시트로 채우기 (I~열)", "exportStats")
     .addItem("♻️ 전체 다시 추가", "syncAll")
     .addItem("⬇️ 대시보드 추가분 시트로 가져오기", "pullFromDB")
     .addSeparator()
@@ -484,6 +486,84 @@ function pullFromDB() {
 function dailyAuto() {
   try { runSync_(false); } catch (e) { Logger.log("dailyAuto syncAll: " + (e.stack || e.message)); }
   try { pullFromDB(); }  catch (e) { Logger.log("dailyAuto pullFromDB: " + (e.stack || e.message)); }
+  try { exportStats(); } catch (e) { Logger.log("dailyAuto exportStats: " + (e.stack || e.message)); }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 수집 조회수 → 시트 I열~ 역채움 (대시보드 자동수집분을 시트로 내림)
+// importStats(시트→DB)의 반대. 수집값이 있는 날짜 칸만 갱신, 없으면 기존값 유지(수동 입력 보존).
+// ═══════════════════════════════════════════════════════════════
+function fetchCollectedStats_() {
+  const res = UrlFetchApp.fetch(CONFIG.STATS_EXPORT_API_URL, {
+    method: "get",
+    headers: authHeaders_(),
+    muteHttpExceptions: true,
+  });
+  const code = res.getResponseCode();
+  if (code !== 200) throw new Error(`API ${code}: ${res.getContentText()}`);
+  return (JSON.parse(res.getContentText()).posts) || []; // [{url, stats:[[date,play],...]}]
+}
+
+function exportStats() {
+  try {
+    const sheet = getSheet_();
+    const fieldCols = buildFieldCols_(sheet);
+    const lastRow = sheet.getLastRow();
+    const lastCol = sheet.getLastColumn();
+    if (lastRow < CONFIG.DATA_START_ROW) { safeAlert_("데이터 행이 없습니다."); return; }
+    const header = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+
+    // 날짜 컬럼 자동 인식 (importStats와 동일 규칙: I열~ 스캔, 월 줄면 +1년)
+    const dateCols = [];
+    let year = CONFIG.STATS_START_YEAR, prevMonth = null;
+    for (let c = CONFIG.STATS_FIRST_COL; c <= lastCol; c++) {
+      const md = parseMonthDay_(header[c - 1]);
+      if (!md) continue;
+      if (prevMonth !== null && md.mo < prevMonth) year++;
+      prevMonth = md.mo;
+      dateCols.push({ col: c, date: `${year}-${("0" + md.mo).slice(-2)}-${("0" + md.da).slice(-2)}` });
+    }
+    if (dateCols.length === 0) { safeAlert_("날짜 컬럼(I열~)을 찾지 못했습니다. 1행 날짜 헤더를 확인하세요."); return; }
+
+    // 대시보드 수집 조회수 → linkKey(shortcode/영상ID) → {date: play}
+    const byKey = {};
+    fetchCollectedStats_().forEach(p => {
+      const k = linkKey_(String(p.url || ""));
+      if (!k) return;
+      const m = byKey[k] || (byKey[k] = {});
+      (p.stats || []).forEach(pair => { m[pair[0]] = pair[1]; });
+    });
+
+    const nRows = lastRow - CONFIG.DATA_START_ROW + 1;
+    const urlVals = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.url, nRows, 1).getValues();
+    const firstCol = dateCols[0].col, lastDateCol = dateCols[dateCols.length - 1].col;
+    const width = lastDateCol - firstCol + 1;
+    // 날짜 열 블록을 한 번에 읽고 → 수정 후 한 번에 씀(셀 단위 setValue보다 훨씬 빠름). 블록 내 비-날짜 열은 그대로 되씀.
+    const block = sheet.getRange(CONFIG.DATA_START_ROW, firstCol, nRows, width).getValues();
+
+    let filled = 0, matched = 0, missing = 0;
+    for (let i = 0; i < nRows; i++) {
+      const url = String(urlVals[i][0] || "").trim();
+      if (!url) continue;
+      const m = byKey[linkKey_(url)];
+      if (!m) { if (ALLOWED_URL_RE.test(url)) missing++; continue; }
+      matched++;
+      dateCols.forEach(dc => {
+        const v = m[dc.date];
+        if (v == null) return; // 그 날짜 수집값 없음 → 손 안 댐(기존값 유지)
+        const bi = dc.col - firstCol;
+        if (block[i][bi] !== v) { block[i][bi] = v; filled++; }
+      });
+    }
+    sheet.getRange(CONFIG.DATA_START_ROW, firstCol, nRows, width).setValues(block);
+
+    let msg = `✅ 수집 조회수를 시트에 채웠습니다.\n갱신 칸 ${filled}개 · 매칭 게시물 ${matched}개 · 날짜 열 ${dateCols.length}개`;
+    if (missing) msg += `\n⚠️ 시트엔 있으나 대시보드에 수집기록이 없는 URL ${missing}개(아직 수집 전이거나 미등록).`;
+    safeAlert_(msg);
+  } catch (e) {
+    safeAlert_("❌ 오류\n" + e.message);
+    Logger.log(e.stack || e.message);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
