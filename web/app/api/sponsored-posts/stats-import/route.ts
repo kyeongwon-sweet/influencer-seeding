@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
   for (let i = 0; i < allUrls.length; i += 80) {
     const { data: existing, error: ee } = await supabase
       .from("sponsored_posts")
-      .select(`id, url, ${POST_FIELDS.join(", ")}`)
+      .select(`id, url, manual_fields, ${POST_FIELDS.join(", ")}`)
       .in("url", allUrls.slice(i, i + 80));
     if (ee) return NextResponse.json({ error: ee.message }, { status: 500 });
     for (const e of (existing ?? []) as unknown as Array<Record<string, unknown>>) {
@@ -141,12 +141,14 @@ export async function POST(req: NextRequest) {
   for (const [url, meta] of postByUrl) {
     const ex = existingByUrl.get(url);
     if (!ex) continue; // 신규 생성분은 이미 전체 메타로 만들어짐
+    const manual = Array.isArray(ex.manual_fields) ? (ex.manual_fields as string[]) : [];
     const upd: Record<string, unknown> = {};
     for (const f of POST_FIELDS) {
+      if (manual.includes(f)) continue; // 대시보드 수동 편집(캡션 포함) 보존 — 시트가 덮지 않음
       const cur = ex[f];
       const curEmpty = cur === null || cur === undefined || cur === "";
       // meta[f]는 시트의 비어있지 않은 값만 들어있음(위 clean 생성 기준)
-      // 캡션은 시트값 우선(정본) → 비어있지 않아도 시트 값으로 덮음. 그 외는 '빈 값만 채우기'.
+      // 캡션은 시트값 우선(정본, 단 위 manual 잠금은 예외) → 비어있지 않아도 덮음. 그 외는 '빈 값만 채우기'.
       if (meta[f] !== undefined && (curEmpty || f === "content_summary")) upd[f] = meta[f];
     }
     if (Object.keys(upd).length > 0) metaUpdates.push({ id: String(ex.id), upd });
