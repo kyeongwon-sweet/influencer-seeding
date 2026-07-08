@@ -7,7 +7,7 @@ import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
 import { MIN_ENTRY_DATE, maxDateKST, isValidEntryDate } from "@/lib/dateRule";
 import { companyForAccount } from "@/lib/companyMap";
 import { batchFetch } from "@/lib/batchFetch";
-import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, INIT_FILTERS, CHANNEL_TYPES, CATEGORIES, STICKY_COL_ORDER, PROJECT_PARSE_COLS, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, isStatInDateRange, getFilteredStats, pickRangeStats, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, viewIncrement, pickMetric, pdOf, productLabel, effectiveReach, weekKeyOf, pearson, alignedPairs, bestLag, solveLinear, alignMulti, multipleR2, parseCsvLine } from "./lib";
+import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, INIT_FILTERS, CHANNEL_TYPES, CATEGORIES, STICKY_COL_ORDER, PROJECT_PARSE_COLS, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, isStatInDateRange, getFilteredStats, pickRangeStats, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, viewIncrement, safeIncrement, pickMetric, pdOf, productLabel, effectiveReach, weekKeyOf, pearson, alignedPairs, bestLag, solveLinear, alignMulti, multipleR2, parseCsvLine } from "./lib";
 import CorrelationPanel from "./components/CorrelationPanel";
 import DayOfWeekPanel, { type DowData } from "./components/DayOfWeekPanel";
 import CompanyPanel, { type CompanyData } from "./components/CompanyPanel";
@@ -235,7 +235,8 @@ export default function MonitoringPage() {
           lastPlay     = metric != null ? Math.max(lastPlay ?? metric, metric) : lastPlay;
           lastLikes    = s.likes_count    ?? lastLikes;
           lastComments = s.comments_count ?? lastComments;
-          incAdd = s.increment ?? 0;   // 단일 소스: 저장된 증분(리포트와 동일값)
+          // 안전 증분 규칙(공유 safeIncrement): 저장 increment 대신 재계산 — 0/누락 baseline 점프를 증분으로 안 침(과집계 차단).
+          incAdd = safeIncrement(post.all_stats ?? [], s, isBanner) ?? 0;
         }
         const e = totals.get(date)!;
         totals.set(date, {
@@ -327,7 +328,7 @@ export default function MonitoringPage() {
   const playDeltaData = useMemo(() => {
     const todayKST = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
     return dailyTotals.slice(1)
-      .map(d => ({ date: d.date, value: d.inc }))   // 단일 소스: 저장된 증분 합(리포트와 동일값)
+      .map(d => ({ date: d.date, value: d.inc }))   // 안전 재계산 증분 합(safeIncrement, 리포트와 동일 규칙)
       .filter(d => d.date < todayKST); // 오늘(KST)은 수집 중·미완성이라 제외(완료된 날만 표시)
   }, [dailyTotals]);
 
@@ -395,7 +396,7 @@ export default function MonitoringPage() {
     const todayKST = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
     return dailyTotals.slice(1).map((d, i) => ({
       date:     d.date,
-      play:     d.inc, // 단일 소스: 저장된 증분 합(리포트와 동일값, 배너=도달수 포함)
+      play:     d.inc, // 안전 재계산 증분 합(safeIncrement, 리포트와 동일 규칙, 배너=도달수 포함)
       search:   lsSearchDelta(d.date),
       comments: d.comments - dailyTotals[i].comments,
     })).filter(d => d.date < todayKST); // 오늘(KST)은 수집 중·미완성이라 제외(완료된 날만 표시)

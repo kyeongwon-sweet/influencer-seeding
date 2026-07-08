@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   pearson, solveLinear, multipleR2, movingAvg, weekKeyOf, weekLabelOf,
-  padDomain, effectiveReach, alignedPairs, bestLag, parseCsvLine, pickRangeStats, viewIncrement,
+  padDomain, effectiveReach, alignedPairs, bestLag, parseCsvLine, pickRangeStats, viewIncrement, safeIncrement,
 } from "../app/monitoring/lib.ts";
 
 const close = (a: number, b: number, eps = 1e-9) => Math.abs(a - b) < eps;
@@ -100,17 +100,34 @@ test("pickRangeStats+viewIncrement: 범위 밖 게시물은 값·증분 없음('
   const r2 = pickRangeStats(both, "2026-07-01", "2026-07-02");
   assert.equal(viewIncrement(both, r2.s, r2.prev), 30);
 
-  // ③ 범위 내 1개 + 범위 밖 이전 이력 존재 → 계산 불가(null), 전체값으로 부풀리면 안 됨
+  // ③ 범위 내 1개 + 범위 밖 이전 실측 존재 → 직전 유효값(90) 기준 실제 증분(40). (안전규칙: 전체 history의 마지막 유효값 사용)
   const cut = mkPost([stat("2026-06-30", 90), stat("2026-07-02", 130)]);
   const r3 = pickRangeStats(cut, "2026-07-01", "2026-07-02");
-  assert.equal(viewIncrement(cut, r3.s, r3.prev), null);
+  assert.equal(viewIncrement(cut, r3.s, r3.prev), 40);
 
-  // ④ 진짜 신규(이전 이력 전무, 범위 내 첫 측정) → 첫값 전체가 증분(포함 정책)
+  // ④ 진짜 신규(이전 유효 실측 전무) → 첫 측정은 증분 아님 → null('—'). (안전규칙: 첫 측정 전체값을 증분으로 안 침)
   const fresh = mkPost([stat("2026-07-02", 500)]);
   const r4 = pickRangeStats(fresh, "2026-07-01", "2026-07-02");
-  assert.equal(viewIncrement(fresh, r4.s, r4.prev), 500);
+  assert.equal(viewIncrement(fresh, r4.s, r4.prev), null);
 
   // ⑤ 필터 없음 → 기존 동작(latest/prev) 그대로
   const r5 = pickRangeStats(both, "", "");
   assert.equal(r5.s?.play_count, 999);
+});
+
+test("safeIncrement: 0/누락 baseline은 증분으로 안 침(과집계 원천 차단)", () => {
+  const st = (d: string, p: number | null, r: number | null = null) =>
+    ({ measured_at: d, play_count: p, reach_count: r, likes_count: null, comments_count: null });
+  const at = (arr: ReturnType<typeof st>[], d: string) => arr.find(x => x.measured_at === d)!;
+  // 신규/신규추가(직전 유효 실측 전무, 0만): 첫 실측 전체는 증분 아님 → null('—')
+  const a = [st("2026-07-05", 0), st("2026-07-06", 0), st("2026-07-07", 580000)];
+  assert.equal(safeIncrement(a, at(a, "2026-07-07"), false), null);
+  // 플라토(직전 실측 59307 후 0 글리치): 07-07은 직전 유효값(59307) 기준 실제 하루치 88
+  const b = [st("2026-07-04", 59307), st("2026-07-05", 0), st("2026-07-06", 0), st("2026-07-07", 59395)];
+  assert.equal(safeIncrement(b, at(b, "2026-07-07"), false), 88);
+  // 배너: 도달수(reach) 기준 동일 규칙
+  const c = [st("2026-07-05", null, 1000), st("2026-07-06", null, 1500)];
+  assert.equal(safeIncrement(c, at(c, "2026-07-06"), true), 500);
+  // 오늘 값이 0/누락이면 측정 안 됨 → 증분 아님
+  assert.equal(safeIncrement(b, st("2026-07-09", 0), false), null);
 });

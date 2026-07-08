@@ -123,15 +123,16 @@ def main():
     db = get_client()
 
     # 대상 날짜: 수집 워크플로가 넘긴 MONITORING_DATE(KST).
-    # STRICT_DATE=1(예약 9:30 발송)이면 그 날짜만 — 데이터 없으면 생략(어제값 재발송 방지).
-    # 비-strict(수동 테스트)이면 데이터 없을 때 최신 측정일로 폴백.
-    # 대상일 증분(단일 소스 B): post_daily_stats.increment 를 그대로 읽는다.
-    #   run_monitoring이 '오늘값(배너=reach, 그외=play) − 이전까지 최댓값'(단조보정,≥0)을 저장 → 리포트·대시보드 동일값.
-    def _fetch_inc(tgt):
+    # STRICT_DATE=1(예약 발송)이면 그 날짜만 — 데이터 없으면 생략(어제값 재발송 방지).
+    # ⚠️ 증분은 저장값(오염 가능)을 쓰지 않고, 대시보드 safeIncrement와 '동일 규칙'으로 여기서 재계산한다:
+    #   증분 = 오늘값 − 직전 '유효(>0)' 측정값. 직전 유효값 없으면(첫 측정) 증분 아님(제외). 배너=도달수 우선.
+    #   → 수집 실패(0 저장)가 다음날 누적 전체로 폭발하던 과집계를 리포트에서도 원천 차단.
+    def _measured_on(tgt):
+        """target일에 측정된 {post_id: row} — 증분 계산 후보."""
         out, st = {}, 0
         while True:
-            res = (db.table("post_daily_stats").select("post_id, increment, play_count, reach_count")
-                   .eq("measured_at", tgt).gt("increment", 0).range(st, st + 999).execute())
+            res = (db.table("post_daily_stats").select("post_id, play_count, reach_count")
+                   .eq("measured_at", tgt).range(st, st + 999).execute())
             rs = res.data or []
             for r in rs:
                 out[r["post_id"]] = r
@@ -142,13 +143,13 @@ def main():
 
     target = os.getenv("MONITORING_DATE") or None
     strict = os.getenv("STRICT_DATE") == "1"
-    dayrows = _fetch_inc(target) if target else {}
+    dayrows = _measured_on(target) if target else {}
     if not dayrows and not strict:
         target = _latest_date(db)
         if target:
-            dayrows = _fetch_inc(target)
+            dayrows = _measured_on(target)
     if not dayrows:
-        print(f"[notify] {target} 증분 데이터 없음 → 발송 생략 (strict={strict})")
+        print(f"[notify] {target} 측정 데이터 없음 → 발송 생략 (strict={strict})")
         return
 
     # 정정 재발송(REPLACE=1): 오늘 기존 리포트를 삭제한 뒤 새로 발송(잘못 나간 리포트 교체).
@@ -168,45 +169,56 @@ def main():
         for r in (res.data or []):
             meta[r["id"]] = r
 
-    # CPV 분모(누적 조회수/도달수)는 '하루치' 값이 아니라 게시물 이력의 최댓값이어야 정확하다.
-    #   수집 글리치로 당일 play_count=0이 저장되면 하루치 분모가 0 → CPV가 '-'로 깨진다(실제 누적은 수십만).
-    #   대시보드 단조(running max)와 동일 기준: measured_at ≤ target 전 구간에서 post별 play/reach 최댓값.
-    #   ⚠️ 당일뿐 아니라 과거 play_count까지 0으로 파괴된 게시물은 이력 최댓값도 0 → 그래도 CPV가 깨진다.
-    #      increment(증분)는 별도 컬럼이라 살아있으므로, 증분 합(= 누적 조회수/도달수)으로 누적을 복원한다.
+    # 🎯 쫀득바(JD)만: 각 게시물의 ≤target 시리즈를 가져와 안전 증분 + CPV용 누적(이력 최댓값)을 계산.
     jd_pids = [pid for pid in dayrows if "jd" in ((meta.get(pid) or {}).get("product_name") or "").lower()]
-    cummax = {}   # pid -> {"play": 최대조회수, "reach": 최대도달수, "inc": 증분합}
+    series = {}
     for chunk in _chunks(jd_pids, 100):
         frm = 0
         while True:
-            cr = (db.table("post_daily_stats").select("post_id, play_count, reach_count, increment")
+            cr = (db.table("post_daily_stats").select("post_id, measured_at, play_count, reach_count")
                   .in_("post_id", chunk).lte("measured_at", target).order("id").range(frm, frm + 999).execute())
             cg = cr.data or []
             for r in cg:
-                d = cummax.setdefault(r["post_id"], {"play": 0, "reach": 0, "inc": 0})
-                if r.get("play_count"):
-                    d["play"] = max(d["play"], r["play_count"])
-                if r.get("reach_count"):
-                    d["reach"] = max(d["reach"], r["reach_count"])
-                if r.get("increment"):
-                    d["inc"] += r["increment"]
+                series.setdefault(r["post_id"], []).append(r)
             if len(cg) < 1000:
                 break
             frm += 1000
 
-    # items: 저장된 increment 를 그대로 사용(배너 포함 — 배너는 reach 기반 증분이 이미 저장됨). 계산 없음.
+    def _metric(r, isb):
+        if isb:
+            rc = r.get("reach_count")
+            return rc if rc is not None else r.get("play_count")
+        return r.get("play_count")
+
+    def _safe_inc(rows, isb):
+        """대시보드 safeIncrement와 동일 규칙: 오늘값 − 직전 '유효(>0)' 값. 첫 유효측정/오늘0 → None."""
+        cur, base, has = None, 0, False
+        for r in rows:
+            v = _metric(r, isb)
+            if r["measured_at"] == target:
+                cur = v
+            elif r["measured_at"] < target and v is not None and v > 0:
+                has = True
+                if v > base:
+                    base = v
+        if cur is None or cur <= 0 or not has:
+            return None
+        return max(0, cur - base)
+
+    # items: 안전 규칙으로 재계산(저장 increment 무시). 첫 측정/0 baseline은 증분 아님 → 제외(과집계 차단).
     items = []
-    for pid, dr in dayrows.items():
+    for pid in jd_pids:
         m = meta.get(pid, {})
-        # 🎯 쫀득바만: 상품명(product_name)에 'JD'(쫀득바 코드) 포함된 게시물만 리포트 편입(사용자 지시).
-        if "jd" not in (m.get("product_name") or "").lower():
-            continue
         ct = (m.get("channel_type") or "").strip()
+        isb = "배너" in ct
+        rows = series.get(pid, [])
+        inc = _safe_inc(rows, isb)
+        if not inc or inc <= 0:
+            continue
         url = (m.get("url") or "").strip()
-        cm = cummax.get(pid) or {"play": 0, "reach": 0, "inc": 0}
-        base = cm["reach"] if "배너" in ct else cm["play"]
-        cum = max(base, cm["inc"])  # CPV용 누적: 이력 최댓값, 파괴 시 증분합으로 복원(당일 0글리치 무시)
+        cum = max([(_metric(r, isb) or 0) for r in rows] or [0])  # CPV용 누적 = 이력 최댓값
         items.append({
-            "inc": dr["increment"],
+            "inc": inc,
             "name": (m.get("account_name") or "").strip() or url.rstrip("/").split("/")[-1] or "?",
             "platform": _platform(url),
             "url": url,

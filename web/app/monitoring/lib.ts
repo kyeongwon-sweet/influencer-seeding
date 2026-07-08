@@ -165,27 +165,33 @@ export function getCategoryLabel(val: string | null | undefined): string {
   return cat ? cat.desc : val;
 }
 
-// 증분량: 직전 측정이 있으면 차이, 없고 '첫 측정'(그 이전 측정 자체가 없음)이면 그날 전체.
-// 필터로 직전만 잘렸고 이전 측정이 존재하면 계산 불가(null → '-').
-// 배너(바이럴(배너))는 조회수(play_count)가 없어 도달수(reach_count)를 조회수처럼 취급 → 동일 로직으로 전일 대비 증분.
-export function viewIncrement(post: Post, s: DailyStats | null | undefined, prev: DailyStats | null | undefined): number | null {
-  // 종료 게시물도 종료 전 활성기간에 실제로 쌓인 증분은 유효한 데이터 → 그대로 표시(숨기지 않음).
+// 🔒 안전 증분 규칙 (2026-07-08, 모든 표시 경로 공유 — viewIncrement·dailyTotals·리포트가 이 정의 하나만 사용).
+//   증분 = 오늘 측정값 − '직전 유효(>0) 측정값'. 유효 baseline이 없으면(그 게시물 첫 유효 측정) → null('—').
+//   0/누락은 '측정 안 됨'이므로 baseline·증분에서 제외 → 수집 실패(0 저장)가 다음날 누적 전체로 폭발하던
+//   과집계(baseline-zero/주말 저집계 계열)를 표시 단계에서 원천 차단. 이미 오염된 저장 increment는 무시하고 재계산.
+//   ※ '직전 값' 하나만 보지 않고 '직전 유효값'(0/누락 건너뛴 마지막 >0)을 baseline으로 써서, 0글리치 낀
+//     플라토 게시물도 실제 하루치(예: 88)를 살린다(직전값만 보면 '—'로 날아감).
+//   ※ mono 보정된 all_stats든 raw 시리즈든 'max(직전 >0)'는 결과가 같아 대시보드·리포트가 자동 일치.
+export function safeIncrement(allStats: DailyStats[], s: DailyStats | null | undefined, isBanner: boolean): number | null {
   if (!s) return null;
-  const isBanner = (post.channel_type ?? "").includes("배너");
-  const val = (st: DailyStats | null | undefined) => (isBanner ? st?.reach_count : st?.play_count);
-  const sv = val(s);
-  // 🛡️ 직전 측정이 0/누락(수집 실패)인데 현재는 실값이면, 증분이 '실패 baseline(0) 대비'로 과집계됨
-  //    (7/5·7/6 대량 0 수집실패 → 7/7 증분 3~10배 뻥튀기). 진짜 일별값은 복원 불가 → 집계 불가(—)로 표시.
-  //    prev 자체가 없으면(첫 측정)은 제외 → 아래에서 그날 전체로 정상 처리.
-  if (prev && (val(prev) == null || val(prev) === 0) && sv != null && sv > 0) return null;
-  // 단일 소스(B): 저장된 increment가 있으면 그대로 사용 → 리포트와 항상 동일값.
-  if (s.increment != null) return s.increment;
-  // 폴백(백필 안 된 과거 행 등): 기존 계산(배너=reach, 그 외=play, 첫 측정=전체).
-  if (sv == null) return null;
-  const pv = val(prev);
-  if (pv != null) return sv - pv;
-  const hasEarlier = (post.all_stats ?? []).some(x => x.measured_at < s.measured_at && val(x) != null);
-  return hasEarlier ? null : sv;
+  const val = (st: DailyStats | null | undefined) =>
+    st ? (isBanner ? (st.reach_count ?? st.play_count) : st.play_count) : null;
+  const cur = val(s);
+  if (cur == null || cur <= 0) return null;      // 오늘 측정 없음/실패 → 증분 아님
+  let baseline = 0, hasBaseline = false;
+  for (const st of allStats ?? []) {
+    if (st.measured_at >= s.measured_at) continue;
+    const v = val(st);
+    if (v != null && v > 0) { hasBaseline = true; if (v > baseline) baseline = v; }
+  }
+  if (!hasBaseline) return null;                  // 첫 유효 측정 = 백로그, 증분 아님 → '—'
+  return Math.max(0, cur - baseline);
+}
+
+// 증분량(게시물 열/상단 카드 합계): 안전 규칙으로 계산. 배너는 도달수(reach) 기준.
+// (prev 인자는 호출 시그니처 호환용 — 안전 규칙은 all_stats에서 직전 유효값을 직접 찾는다.)
+export function viewIncrement(post: Post, s: DailyStats | null | undefined, _prev?: DailyStats | null | undefined): number | null {
+  return safeIncrement(post.all_stats ?? [], s, (post.channel_type ?? "").includes("배너"));
 }
 
 export function pickMetric(s: DailyStats): number | null {
