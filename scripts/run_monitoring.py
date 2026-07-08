@@ -731,8 +731,8 @@ def run():
             print(f"[LOG] 데이터 저장 시작: {len(rows)}건")
             result = db.table("post_daily_stats").upsert(rows, on_conflict="post_id,measured_at").execute()
             print(f"[LOG] ✅ 데이터 저장 완료: {len(rows)}건")
-            # (역방향 baseline=0 자동추가 제거 — '전날에 play_count=0을 심는' 안티패턴이 baseline-zero 파괴의 원인이었고,
-            #  이제 safeIncrement가 '첫 유효측정=증분 아님(—)'으로 처리하므로 불필요. 신규 게시물은 첫 실측일에 '—'로 표시.)
+            # (역방향 baseline=0 자동추가 제거 — '전날에 play_count=0을 심는' 안티패턴이 baseline-zero 파괴의 원인이었음.
+            #  증분은 safeIncrement가 '첫 유효측정=그날 전체(업로드날 성과), 이후 델타'로 처리하므로 baseline=0 불필요.)
         else:
             print(f"[WARN] 저장할 데이터가 없습니다 (매칭 실패 또는 조회수 오류)")
 
