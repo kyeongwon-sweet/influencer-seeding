@@ -33,22 +33,22 @@ const NAV: { href: string; label: string; highlight?: boolean; icon: ReactNode }
     ),
   },
   {
-    href: "/listup",
-    label: "리스트업",
-    icon: (
-      <svg width="15" height="15" viewBox="0 0 20 20" fill="none">
-        <circle cx="8.5" cy="8.5" r="5" stroke="currentColor" strokeWidth="1.5"/>
-        <path d="M13 13l3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-      </svg>
-    ),
-  },
-  {
     href: "/organic",
     label: "무상 노출",
     icon: (
       <svg width="15" height="15" viewBox="0 0 20 20" fill="none">
         <path d="M10 3C6.69 3 4 5.69 4 9c0 2.12 1.08 3.99 2.72 5.1L6 17h8l-.72-2.9C14.92 12.99 16 11.12 16 9c0-3.31-2.69-6-6-6z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
         <path d="M8 17h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      </svg>
+    ),
+  },
+  {
+    href: "/listup",
+    label: "리스트업",
+    icon: (
+      <svg width="15" height="15" viewBox="0 0 20 20" fill="none">
+        <circle cx="8.5" cy="8.5" r="5" stroke="currentColor" strokeWidth="1.5"/>
+        <path d="M13 13l3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
       </svg>
     ),
   },
