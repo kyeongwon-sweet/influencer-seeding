@@ -491,7 +491,8 @@ function dailyAuto() {
 
 // ═══════════════════════════════════════════════════════════════
 // 수집 조회수 → 시트 I열~ 역채움 (대시보드 자동수집분을 시트로 내림)
-// importStats(시트→DB)의 반대. 수집값이 있는 날짜 칸만 갱신, 없으면 기존값 유지(수동 입력 보존).
+// importStats(시트→DB)의 반대. 새 날짜는 우측에 열 자동 추가 후, 수집값 있는 날짜 칸만 갱신
+// (없으면 기존값 유지=수동 입력 보존). dailyAuto(매일 9:30)에 연결돼 자동 확장·갱신.
 // ═══════════════════════════════════════════════════════════════
 function fetchCollectedStats_() {
   const res = UrlFetchApp.fetch(CONFIG.STATS_EXPORT_API_URL, {
@@ -523,16 +524,37 @@ function exportStats() {
       prevMonth = md.mo;
       dateCols.push({ col: c, date: `${year}-${("0" + md.mo).slice(-2)}-${("0" + md.da).slice(-2)}` });
     }
-    if (dateCols.length === 0) { safeAlert_("날짜 컬럼(I열~)을 찾지 못했습니다. 1행 날짜 헤더를 확인하세요."); return; }
 
-    // 대시보드 수집 조회수 → linkKey(shortcode/영상ID) → {date: play}
+    // 대시보드 수집 조회수 → linkKey(shortcode/영상ID) → {date: play} + 등장 날짜 수집
     const byKey = {};
+    const allDatesSet = {};
     fetchCollectedStats_().forEach(p => {
       const k = linkKey_(String(p.url || ""));
       if (!k) return;
       const m = byKey[k] || (byKey[k] = {});
-      (p.stats || []).forEach(pair => { m[pair[0]] = pair[1]; });
+      (p.stats || []).forEach(pair => { m[pair[0]] = pair[1]; allDatesSet[pair[0]] = true; });
     });
+
+    // ── 우측 날짜열 자동 추가 ──
+    // 수집 데이터의 날짜 중 '기존 마지막 날짜열보다 뒤(우측)이고 오늘(KST) 이하'인 날짜만 새 열로 삽입.
+    // (중간 백필용 열 삽입은 안 함 — 우측으로만 확장. 헤더/등록상태는 이름 기반 조회라 열 삽입에도 안 깨짐)
+    const existingSet = {};
+    dateCols.forEach(dc => existingSet[dc.date] = true);
+    const maxExisting = dateCols.length ? dateCols[dateCols.length - 1].date : null;
+    const today = todayStr_();
+    const newDates = Object.keys(allDatesSet)
+      .filter(d => !existingSet[d] && d <= today && (maxExisting === null || d > maxExisting))
+      .sort();
+    let addedCols = 0;
+    if (newDates.length) {
+      const anchor = dateCols.length ? dateCols[dateCols.length - 1].col : sheet.getLastColumn();
+      sheet.insertColumnsAfter(anchor, newDates.length);
+      const headerRow = newDates.map(d => { const p = d.split("-"); return `${+p[1]}.${+p[2]}`; }); // "2026-07-08" → "7.8"
+      sheet.getRange(CONFIG.HEADER_ROW, anchor + 1, 1, newDates.length).setValues([headerRow]);
+      newDates.forEach((d, i) => dateCols.push({ col: anchor + 1 + i, date: d }));
+      addedCols = newDates.length;
+    }
+    if (dateCols.length === 0) { safeAlert_("날짜 열도 없고 추가할 수집 날짜도 없습니다. (1행 날짜 헤더 또는 수집 데이터 확인)"); return; }
 
     const nRows = lastRow - CONFIG.DATA_START_ROW + 1;
     const urlVals = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.url, nRows, 1).getValues();
@@ -557,7 +579,7 @@ function exportStats() {
     }
     sheet.getRange(CONFIG.DATA_START_ROW, firstCol, nRows, width).setValues(block);
 
-    let msg = `✅ 수집 조회수를 시트에 채웠습니다.\n갱신 칸 ${filled}개 · 매칭 게시물 ${matched}개 · 날짜 열 ${dateCols.length}개`;
+    let msg = `✅ 수집 조회수를 시트에 반영했습니다.\n새 날짜 열 ${addedCols}개 추가 · 갱신 칸 ${filled}개 · 매칭 게시물 ${matched}개 · 날짜 열 ${dateCols.length}개`;
     if (missing) msg += `\n⚠️ 시트엔 있으나 대시보드에 수집기록이 없는 URL ${missing}개(아직 수집 전이거나 미등록).`;
     safeAlert_(msg);
   } catch (e) {
