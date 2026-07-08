@@ -222,15 +222,18 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 4-b) 대시보드 수동수정 조회수 보존: 그 (게시물·날짜)는 시트 값으로 덮지 않고 건너뜀.
-  let manualSkipped = 0;
-  const incomingProtected = incoming.filter(i => {
-    if (manualSet.has(`${i.post_id}|${i.measured_at}`)) { manualSkipped++; return false; }
-    return true;
-  });
+  // 4-b) 조회수 입력 우선순위 = "가장 최근에 사람이 손댄 값이 이긴다".
+  //   시트 조회수 입력(importStats)은 사람이 메뉴를 눌러 '지금 이 값을 넣겠다'는 의도적 행위이며
+  //   자동(밤 수집)이 절대 부르지 않는 경로다. 따라서 대시보드에서 먼저 수정한 값(manual)이라도
+  //   시트에서 새로 입력하면 덮어쓴다(예전엔 manual이면 무조건 보존 → 시트 정정이 반영 안 되던 반대 문제).
+  //   ⚠️ importStats는 '시트에 현재 적힌 값'을 밀어넣으므로, 최신 상태로 두고 입력할 것(안내 문구로 고지).
+  //   manualSet은 진단 표시에만 사용(어떤 칸이 대시보드값을 덮었는지).
+  const overwroteManual = incoming.filter(i => manualSet.has(`${i.post_id}|${i.measured_at}`)).length;
 
   // 5) 누적 감소 가드 (lib/stats-guard.ts — 테스트로 검증되는 순수 함수)
-  const { kept: statsRows, dropped } = filterMonotonicStats(incomingProtected, existingStats);
+  const { kept: keptRows, dropped } = filterMonotonicStats(incoming, existingStats);
+  // 시트 입력분도 '사람이 손댄 값'으로 표시 → 밤 자동수집이 덮지 않음(표시 우선 규칙과 일관).
+  const statsRows = keptRows.map(r => ({ ...r, manual: true }));
   const droppedDecrease = dropped.length;
   // 진단용: 제외된 건 샘플(어떤 글의 어느 날짜 값이, 어느 날짜의 어떤 값에 막혔는지)
   const urlByPid = new Map<string, string>([...idByUrl.entries()].map(([u, id]) => [id, u]));
@@ -258,7 +261,7 @@ export async function POST(req: NextRequest) {
     created_posts: created,
     meta_filled: metaFilled,
     ended_marked: endedMarked,
-    manual_skipped: manualSkipped,
+    overwrote_manual: overwroteManual,
     dropped_decrease: droppedDecrease,
     dropped_sample: droppedSample,
     cost_as_views: costAsViews.length,

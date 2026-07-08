@@ -703,6 +703,10 @@ function importStats() {
     if (res.missing_urls) {
       msg += `\n\n⚠️ 처리 못한 URL ${res.missing_urls}개 (예: ${(res.missing_sample || []).join(", ")})`;
     }
+    if (res.overwrote_manual) {
+      msg += `\n\nℹ️ 대시보드에서 수정돼 있던 ${res.overwrote_manual}칸을 시트 값으로 갱신했습니다(가장 최근 입력이 반영됨).`;
+    }
+    msg += `\n\n📌 여기서 입력한 조회수는 대시보드에 반영되며, 밤 자동수집은 이 값을 덮지 않습니다.\n   같은 칸을 대시보드에서 더 나중에 고치면 그 값이 최신으로 우선합니다.`;
     safeAlert_(msg + blankNote_());
   } catch (e) {
     safeAlert_("❌ 오류\n" + e.message);
