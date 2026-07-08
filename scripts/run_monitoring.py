@@ -100,6 +100,8 @@ def _store_aux_rows(db, rows, posts, stats, key_fn, label, *, views="clamp", cap
             db.table("sponsored_posts").update({"content_summary": cap}).eq("id", post["id"]).execute()
         if not s:
             continue
+        if s.get("error"):
+            continue  # 비공개/삭제 등 액터 에러 → 행 저장 안 함(직전값 유지). 특이사항 태깅은 호출부에서.
         existing = last_stat.get(post["id"], {})
         play = None if views == "none" else s.get("views")
         if views == "clamp" and (not play or play <= 0):
@@ -186,13 +188,18 @@ def _fetch_youtube(urls: list) -> dict:
     out = {}
     for it in client.dataset(run["defaultDatasetId"]).iterate_items():
         vid = _yt_id(it.get("url") or "")
-        if vid:
-            out[vid] = {
-                "views": it.get("viewCount"),
-                "likes": it.get("likes"),
-                "comments": it.get("commentsCount"),
-                "title": it.get("title"),
-            }
+        if not vid:
+            continue
+        # 비공개/삭제 영상은 액터가 {error:'VIDEO_UNAVAILABLE'}로 반환(실측 확인) → 자동 특이사항 태깅용 신호.
+        if it.get("error"):
+            out[vid] = {"error": it.get("error"), "views": None, "likes": None, "comments": None, "title": None}
+            continue
+        out[vid] = {
+            "views": it.get("viewCount"),
+            "likes": it.get("likes"),
+            "comments": it.get("commentsCount"),
+            "title": it.get("title"),
+        }
     return out
 
 
@@ -602,6 +609,13 @@ def run():
             try:
                 yt_stats = _fetch_youtube([p["url"] for p in yt_posts])
                 print(f"[LOG] 유튜브 수집: {len(yt_stats)}건 / {len(yt_posts)}개 요청")
+                # 🔒 유튜브 비공개/삭제 자동 태깅 — 액터 error=VIDEO_UNAVAILABLE. IG not_found 태깅과 동형.
+                #    notes 비어 있을 때만 기입(사람이 적어둔 특이사항 보존).
+                for p in yt_posts:
+                    st = yt_stats.get(_yt_id(p["url"]))
+                    if st and st.get("error") == "VIDEO_UNAVAILABLE" and not (p.get("notes") or "").strip():
+                        auto_note = f"유튜브 비공개/삭제 감지(자동 {TODAY}, VIDEO_UNAVAILABLE) — 조회수 최종값에서 정지, 확인 필요"
+                        db.table("sponsored_posts").update({"notes": auto_note}).eq("id", p["id"]).execute()
                 # 유튜브 캡션 = 영상 제목. 조회수 None이어도 행 저장(좋아요 유지) + 역행 clamp.
                 _store_aux_rows(db, rows, yt_posts, yt_stats, lambda p: _yt_id(p["url"]), "유튜브",
                                 views="optional", caption_field="title", caption_limit=300)
