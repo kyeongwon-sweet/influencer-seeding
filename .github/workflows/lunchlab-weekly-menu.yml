@@ -1,0 +1,68 @@
+name: 런치랩 주간 식단표 알림
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # 매주 월요일 15:00 KST (06:00 UTC)
+  workflow_dispatch:
+
+jobs:
+  send-menu:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 식단표 파싱 및 Slack 발송
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_LUNCHLAB_WEBHOOK }}
+        run: |
+          python3 - <<'EOF'
+          import urllib.request, re, json, os, sys
+
+          # 1. 페이지 fetch
+          req = urllib.request.Request(
+              "https://www.lunchlab.me/menu",
+              headers={"User-Agent": "Mozilla/5.0"}
+          )
+          html = urllib.request.urlopen(req, timeout=15).read().decode("utf-8", errors="ignore")
+
+          # 2. 이번 주 라벨 (첫 번째 M월 N주차)
+          label_m = re.search(r"(\d+월\s*\d+주차)", html)
+          week_label = label_m.group(1).replace(" ", "") if label_m else "이번 주"
+
+          # 3. ctfassets.net 이미지 URL (첫 2개 = 가정식 + 프레시밀)
+          imgs = re.findall(r'https://images\.ctfassets\.net/[^\s"\'<>]+\.(?:png|jpg|jpeg|webp)', html)
+          imgs = list(dict.fromkeys(imgs))[:2]  # dedupe, 최대 2개
+
+          # 4. Slack 블록 구성
+          blocks = [
+              {
+                  "type": "section",
+                  "text": {
+                      "type": "mrkdwn",
+                      "text": f":rice: *이번 주 런치랩 식단표 ({week_label})*\n:fork_and_knife: <https://www.lunchlab.me/menu|메뉴 보러가기>"
+                  }
+              }
+          ]
+          titles = ["가정식 도시락", "프레시밀"]
+          for i, url in enumerate(imgs):
+              blocks.append({
+                  "type": "image",
+                  "title": {"type": "plain_text", "text": titles[i] if i < len(titles) else "식단표"},
+                  "image_url": url,
+                  "alt_text": f"{week_label} {titles[i] if i < len(titles) else '식단표'}"
+              })
+
+          if not imgs:
+              # 이미지 없으면 링크만
+              print("이미지를 찾지 못함 — 링크만 발송")
+
+          # 5. 웹훅 발송
+          webhook = os.environ["SLACK_WEBHOOK"]
+          payload = json.dumps({"blocks": blocks}, ensure_ascii=False).encode("utf-8")
+          req2 = urllib.request.Request(
+              webhook, data=payload,
+              headers={"Content-Type": "application/json; charset=utf-8"}
+          )
+          res = urllib.request.urlopen(req2, timeout=15).read().decode()
+          print("Slack 응답:", res)
+          if res.strip() != "ok":
+              sys.exit(1)
+          EOF
