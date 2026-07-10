@@ -1,22 +1,32 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isValidEntryDate, maxDateKST, MIN_ENTRY_DATE } from "../lib/dateRule.ts";
+import { isValidEntryDate, maxDateKST, MIN_ENTRY_DATE, yesterdayKST } from "../lib/dateRule.ts";
 
-test("maxDateKST: YYYY-MM-DD 형식", () => {
+test("maxDateKST: returns YYYY-MM-DD", () => {
   assert.match(maxDateKST(), /^\d{4}-\d{2}-\d{2}$/);
 });
 
-test("isValidEntryDate: 형식 위반 거부", () => {
-  assert.equal(isValidEntryDate("2026-6-1"), false);   // zero-pad 안 됨
+test("yesterdayKST: after-midnight KST collection belongs to previous day", () => {
+  const originalNow = Date.now;
+  Date.now = () => new Date("2026-07-09T17:30:00Z").getTime(); // 2026-07-10 02:30 KST
+  try {
+    assert.equal(yesterdayKST(), "2026-07-09");
+  } finally {
+    Date.now = originalNow;
+  }
+});
+
+test("isValidEntryDate: rejects invalid formats", () => {
+  assert.equal(isValidEntryDate("2026-6-1"), false);
   assert.equal(isValidEntryDate("20260601"), false);
   assert.equal(isValidEntryDate("2026/06/01"), false);
   assert.equal(isValidEntryDate("abcd-ef-gh"), false);
-  assert.equal(isValidEntryDate("99999-01-01"), false); // 5자리 연도(과거 버그)
+  assert.equal(isValidEntryDate("99999-01-01"), false);
 });
 
-test("isValidEntryDate: 범위 검증", () => {
-  assert.equal(isValidEntryDate("2019-12-31"), false);  // MIN 미만
-  assert.equal(isValidEntryDate(MIN_ENTRY_DATE), true);  // 경계 포함
-  assert.equal(isValidEntryDate("2999-01-01"), false);   // 미래(>오늘 KST)
-  assert.equal(isValidEntryDate(maxDateKST()), true);     // 오늘 허용
+test("isValidEntryDate: validates allowed range", () => {
+  assert.equal(isValidEntryDate("2019-12-31"), false);
+  assert.equal(isValidEntryDate(MIN_ENTRY_DATE), true);
+  assert.equal(isValidEntryDate("2999-01-01"), false);
+  assert.equal(isValidEntryDate(maxDateKST()), true);
 });

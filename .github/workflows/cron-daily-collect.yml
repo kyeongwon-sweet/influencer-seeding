@@ -52,7 +52,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          export TODAY=$(TZ=Asia/Seoul date +%F)
+          export TODAY=$(TZ=Asia/Seoul date -d 'yesterday' +%F)
           echo "kdate=${TODAY}" >> "$GITHUB_OUTPUT"
           STATUS=$(cd scripts && python << 'EOF' | tail -n1
           import os
@@ -189,5 +189,5 @@ jobs:
           STATUS_USER: U0B2Y0ZC8QZ
           PYTHONUNBUFFERED: "1"
         run: |
-          export MONITORING_DATE=$(TZ=Asia/Seoul date +%F)
+          export MONITORING_DATE=$(TZ=Asia/Seoul date -d 'yesterday' +%F)
           cd scripts && python notify_status.py

@@ -1,19 +1,21 @@
-// 수동 날짜 입력 공용 검증 규칙 — 비정상 날짜(5자리 연도·미래 등) 방지.
-// 모든 수동 날짜 입력에 min={MIN_ENTRY_DATE} max={maxDateKST()} + 저장 시 isValidEntryDate() 적용.
-
 export const MIN_ENTRY_DATE = "2020-01-01";
 
-/** 오늘(KST) YYYY-MM-DD. 인라인 `new Date(Date.now()+9h)…` 산식 대신 이걸 쓸 것(중복·오타 방지). */
+/** Today in KST, formatted as YYYY-MM-DD. */
 export function todayKST(): string {
   return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
-/** 오늘(KST) — date input의 max */
+/** Yesterday in KST, formatted as YYYY-MM-DD. Used for after-midnight performance snapshots. */
+export function yesterdayKST(): string {
+  return new Date(Date.now() + 9 * 60 * 60 * 1000 - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+/** Max date for manual date inputs. */
 export function maxDateKST(): string {
   return todayKST();
 }
 
-/** YYYY-MM-DD 형식 + 2020-01-01 ~ 오늘(KST) 범위면 true */
+/** Valid manual entry date: YYYY-MM-DD from 2020-01-01 through today in KST. */
 export function isValidEntryDate(s: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) && s >= MIN_ENTRY_DATE && s <= maxDateKST();
 }

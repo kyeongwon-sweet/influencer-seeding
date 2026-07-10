@@ -200,7 +200,7 @@ export async function POST(req: NextRequest) {
     const items = await fetchDatasetItems(datasetId) as Record<string, unknown>[];
 
     if (jobType === 'monitoring') {
-      await handleMonitoring(supabase, jobId, items);
+      await handleMonitoring(supabase, jobId, items, searchParams.get('measuredAt') || searchParams.get('date') || undefined);
 
     } else if (jobType === 'listup') {
       const platform = searchParams.get('platform') || 'instagram';
@@ -228,9 +228,8 @@ export async function POST(req: NextRequest) {
 
 // ── 모니터링 ────────────────────────────────────────────────────────
 
-async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, jobId: string, items: Record<string, unknown>[]) {
-  // KST 날짜로 적재 — GHA(run_monitoring, MONITORING_DATE=KST)·대시보드 todayKST와 일치(UTC로 잡으면 KST 새벽 수집이 어제로 밀림)
-  const today = todayKST();
+async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, jobId: string, items: Record<string, unknown>[], measuredAt?: string) {
+  const today = measuredAt || todayKST();
   const { data: posts } = await supabase.from('sponsored_posts').select('id, url, posted_at, account_name, influencer_id, ended_at, project_name, content_summary');
 
   const statsKey = (url: string) => {
