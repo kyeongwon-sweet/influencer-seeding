@@ -710,14 +710,11 @@ export default function MonitoringPage() {
       previousPlayCountsRef.current.clear();
     }
 
-    // '오늘'(KST)은 수집 중이라 기본적으로 제외(전일자까지만 노출) — 미완성 null로 인한 증감 왜곡 방지.
-    // 단, 이 게시물의 오늘 값이 '실제 수집 완료'된 경우(play_collected 또는 likes 존재)에는 당일 값을 즉시 반영.
+    // '오늘'(KST)은 항상 제외한다. 새벽 자동 수집분은 전일 실적으로 귀속된다.
     const todayKST = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
     newPosts = newPosts.map(p => {
       const all = p.all_stats ?? [];
-      const today = all.find((s: DailyStats) => s.measured_at === todayKST);
-      const todayCollected = !!today && (today.play_collected === true || today.likes_count != null);
-      const stats = todayCollected ? all : all.filter((s: DailyStats) => s.measured_at < todayKST);
+      const stats = all.filter((s: DailyStats) => s.measured_at < todayKST);
       const latest = stats.length ? stats[stats.length - 1] : null;
       // 증분량 기준 = '달력 하루'(어제자정~오늘자정): '직전 행'이 아니라 '최신 날짜 −1일' 측정으로 비교.
       // 그 전날 측정이 없으면 null → 표에 빈칸(수집시각·건너뛴 날 노이즈 제거). 최초 측정(이전 전무)은 viewIncrement에서 전체값 표시.
