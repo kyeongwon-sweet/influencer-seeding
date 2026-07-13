@@ -61,7 +61,8 @@ export async function GET(req: NextRequest) {
 
   const metrics = labels
     .map((label, i) => ({ label, goal: goal[i], current: current[i], rate: rate ? rate[i] : null }))
-    .filter(m => m.label && (m.goal != null || m.current != null));
+    // "26.07" 같은 월-헤더 잔재 컬럼 제외(현황/목표 라벨만 들어와 카드에 쓰레기 행으로 뜸)
+    .filter(m => m.label && !/^\d{2}\.\d{2}$/.test(m.label.trim()) && (m.goal != null || m.current != null));
 
   return NextResponse.json(
     { month: now.getUTCMonth() + 1, monthKey, metrics, fetchedAt: new Date().toISOString() },

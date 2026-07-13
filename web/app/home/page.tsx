@@ -412,10 +412,13 @@ export default function DashboardPage() {
           {loading ? (
             <div className="px-7 pb-7 pt-3"><div className="h-40 bg-a-divider rounded-lg animate-pulse" /></div>
           ) : monthlyGoal && monthlyGoal.metrics.length ? (() => {
-            const fmtGoalVal = (v: unknown): string => {
+            const fmtGoalVal = (label: string, v: unknown): string => {
               if (v == null || v === "") return "-";
               const n = Number(v);
-              return Number.isFinite(n) ? fmtKpi(n) : String(v);
+              if (!Number.isFinite(n)) return String(v);
+              // "총 검색%"처럼 %-지표는 시트에 소수(0.0011)로 저장됨 → 퍼센트로 표기(0.11%). 아니면 0.001로 뭉개져 보임.
+              if (label.includes("%")) return (n * 100).toFixed(2) + "%";
+              return fmtKpi(n);
             };
             const tier = (pct: number) => pct >= 100
               ? { pill: "bg-emerald-50 text-emerald-700", bar: "#10b981" }
@@ -439,8 +442,8 @@ export default function DashboardPage() {
                             <span className="text-[12px] text-a-ink-muted">{m.label.replace(/^\*/, "")}</span>
                             <div className="flex items-center gap-3 shrink-0">
                               <div className="text-right leading-tight">
-                                <div className="text-[15px] font-bold tabular-nums text-a-ink">{fmtGoalVal(m.current)}</div>
-                                <div className="text-[10px] text-a-ink-muted">목표 {fmtGoalVal(m.goal)}</div>
+                                <div className="text-[15px] font-bold tabular-nums text-a-ink">{fmtGoalVal(m.label, m.current)}</div>
+                                <div className="text-[10px] text-a-ink-muted">목표 {fmtGoalVal(m.label, m.goal)}</div>
                               </div>
                               {t && pct != null ? (
                                 <div className="w-14 shrink-0">

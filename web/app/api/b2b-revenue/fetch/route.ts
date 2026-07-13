@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { fetchSheetTabValuesByTitle, fetchSheetTabValues } from "@/lib/google-sheets";
+import { fetchSheetTabValuesByTitle } from "@/lib/google-sheets";
 import { notifyJob } from "@/lib/slack";
 
 export const runtime = "nodejs";
@@ -28,24 +28,6 @@ type DayVals = { order: number; profit: number | null; ad: number | null; contri
 export async function GET(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") { // fail-closed: CRON_SECRET 미설정 시에도 차단(무인증 오픈 방지)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  // TEMP: 홈 '월 목표' 카드가 읽는 [26.MM] 블록 원시값 덤프(검증용). 확인 후 제거.
-  if (req.nextUrl.searchParams.get("kpiblock")) {
-    const vals = await fetchSheetTabValues("1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s", 1224959784, "A1:S400");
-    const nowK = new Date(Date.now() + 9 * 60 * 60 * 1000);
-    const mk = `${String(nowK.getUTCFullYear()).slice(2)}.${String(nowK.getUTCMonth() + 1).padStart(2, "0")}`;
-    const nz = (v: unknown) => String(v ?? "").replace(/\s+/g, "").trim();
-    let hr = -1, mc = -1;
-    for (let i = 0; i < vals.length; i++) { const j = (vals[i] ?? []).findIndex((c) => nz(c) === mk); if (j !== -1) { hr = i; mc = j; break; } }
-    if (hr === -1) return NextResponse.json({ error: `${mk} 없음`, sample: vals.slice(0, 20).map((r) => r.slice(0, 6)) });
-    const header = vals[hr] ?? [];
-    const labels: string[] = [];
-    for (let c = mc + 1; c < header.length; c++) labels.push(String(header[c] ?? "").trim());
-    const pickRow = (name: string) => { for (let i = hr + 1; i <= hr + 4 && i < vals.length; i++) { const row = vals[i] ?? []; const first = row.slice(0, mc + 1).map(nz).find(Boolean); if (first === name) return labels.map((_, k) => row[mc + 1 + k] ?? null); } return null; };
-    const goal = pickRow("목표"), cur = pickRow("현황"), rate = pickRow("달성률");
-    const metrics = labels.map((label, i) => ({ label, goal: goal?.[i] ?? null, current: cur?.[i] ?? null, rate: rate?.[i] ?? null })).filter((m) => m.label);
-    return NextResponse.json({ monthKey: mk, headerRow: hr, monthCol: mc, metrics });
   }
 
   const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
