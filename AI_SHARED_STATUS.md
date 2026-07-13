@@ -9,7 +9,25 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
-Last updated: 2026-07-13 16:45 KST
+Last updated: 2026-07-13 16:55 KST (Claude: 배너 도달수=조회수 합산 정합, 코드+3696행 백필)
+
+## 2026-07-13 배너 도달수=조회수 합산 정합 (Claude)
+
+증상: 시트 '일자별 조회수 입력'한 배너 값이 대시보드에 안 뜸. 원인: stats-import가 배너도 `play_count`로 저장하는데 배너 지표는 `reach_count` → 도달수 열이 비어 ×0.8 추정으로만 뜨고 조회수 열은 '—'.
+설계 합의: 배너는 도달수(reach)를 조회수처럼 합산.
+
+수정(코드):
+- `stats-import`: 채널분류가 배너면 daily 값을 `reach_count`로 저장(비배너는 play_count 유지). 응답 `banner_reach_inserted`. (d85fc9a)
+- `monitoring/page.tsx` 상단 '조회수 합계' 카드: `totalPlayCount`가 배너는 `reach_count`를 합산하도록 수정 — 카드 툴팁("배너는 도달수 합산")과 코드가 안 맞던 기존 버그 정합. (d3f782a)
+- 이미 정상이던 곳(변경 없음): dailyTotals(line 233, 배너=reach를 play누적에 합산), viewIncrement/safeIncrement(배너=reach??play).
+
+데이터 백필:
+- 배너 `post_daily_stats` 중 play>0 & reach null 3,696행(05-21~07-12, 전부 manual) → `reach_count=play_count, play_count=null` 이관. 백업 `data/output/banner-reach-backfill-20260713.json`.
+- 잔존 배너 play>0 87행: reach가 이미 있어 표시엔 reach 우선(무해) → 미변경.
+
+검증(라이브):
+- pink_humor25: reach 3,690(×0.8 없음, 이전 2,952), play null.
+- '조회수 합계' 카드 화면값 57,981,546 = 배너 reach 포함(신규), play-only 50,968,499 아님. 배너 reach 합 ~8.6M 합산 확인.
 
 ## Current Production State
 
