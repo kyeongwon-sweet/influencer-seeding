@@ -588,25 +588,42 @@ function exportStats() {
       else { rowMap[i] = null; if (ALLOWED_URL_RE.test(url)) missing++; }
     }
 
-    // 날짜 열별로만 기록: 수집값(>0)이 기존과 다를 때만 그 열을 갱신. 다른 열은 읽기만 하고 절대 쓰지 않음.
-    let filled = 0;
+    // 행별 좌→우 forward-fill: 실측(>0)은 반영하고 기준값(lastVal) 갱신, '측정 없음' 빈칸은 직전 누적값으로 이어받는다.
+    //   → 종료·수집누락·play_count null로 생기는 날짜 공백에도 누적조회수가 줄어(끊겨) 보이지 않게 하는 '표시 보정'.
+    //   ⚠️ DB(post_daily_stats)엔 아무것도 안 씀(safeIncrement·증분 규칙 불변). 이어받기 값은 importStats가 재저장 안 함(아래 가드).
+    //   배너 등 '양수 조회수가 한 번도 없는' 행은 lastVal이 안 생겨 자동 제외(빈칸 유지). 기존 실측·수동값은 절대 안 덮음.
+    let filled = 0, carried = 0;
+    const newBlock = block.map(r => r.slice());
+    for (let i = 0; i < nRows; i++) {
+      const m = rowMap[i];
+      let lastVal = null;
+      for (let j = 0; j < dateCols.length; j++) {
+        const bi = dateCols[j].col - firstCol;
+        const cell = block[i][bi];
+        const collected = m ? m[dateCols[j].date] : undefined;
+        if (collected > 0) {                                   // 실측값 도착 → 반영 + 기준 갱신
+          if (cell !== collected) { newBlock[i][bi] = collected; filled++; }
+          lastVal = collected;
+        } else if (typeof cell === "number" && cell > 0) {     // 기존 실측/수동값 → 유지 + 기준 갱신
+          lastVal = cell;
+        } else if (lastVal != null) {                          // 측정 없음 빈칸 → 직전 누적 이어받기
+          newBlock[i][bi] = lastVal; carried++;
+        }
+      }
+    }
+    // 변경된 날짜 열만 기록(비-날짜 열은 절대 안 건드림)
     dateCols.forEach(dc => {
       const bi = dc.col - firstCol;
-      const colVals = new Array(nRows);
       let changed = false;
+      const colVals = new Array(nRows);
       for (let i = 0; i < nRows; i++) {
-        let cell = block[i][bi];
-        const m = rowMap[i];
-        if (m) {
-          const v = m[dc.date];
-          if (v > 0 && cell !== v) { cell = v; changed = true; filled++; } // 수집값 없음/0/음수/동일값 → 그대로
-        }
-        colVals[i] = [cell];
+        colVals[i] = [newBlock[i][bi]];
+        if (newBlock[i][bi] !== block[i][bi]) changed = true;
       }
       if (changed) sheet.getRange(CONFIG.DATA_START_ROW, dc.col, nRows, 1).setValues(colVals);
     });
 
-    let msg = `✅ 수집 조회수를 시트에 반영했습니다.\n새 날짜 열 ${addedCols}개 추가 · 갱신 칸 ${filled}개 · 매칭 게시물 ${matched}개 · 날짜 열 ${dateCols.length}개`;
+    let msg = `✅ 수집 조회수를 시트에 반영했습니다.\n새 날짜 열 ${addedCols}개 추가 · 실측 갱신 ${filled}칸 · 공백 이어받기 ${carried}칸 · 매칭 게시물 ${matched}개 · 날짜 열 ${dateCols.length}개`;
     if (missing) msg += `\n⚠️ 시트엔 있으나 대시보드에 수집기록이 없는 URL ${missing}개(아직 수집 전이거나 미등록).`;
     safeAlert_(msg);
   } catch (e) {
@@ -698,10 +715,16 @@ function importStats() {
         postByKey[key] = p;
       }
 
+      // ⚠️ 이어받기(forward-fill) 값 재저장 차단: exportStats가 공백을 '직전 누적값'으로 채워두므로,
+      //    직전 칸과 값이 같은 셀은 '표시용 이어받기'이지 새 실측이 아니다 → DB로 보내지 않는다(가짜 측정 방지).
+      //    실제로 누적이 안 변한 날도 스킵되지만 정보량 0이고 safeIncrement가 표시단계에서 이어받으므로 무해.
+      let prevN = null;
       dateCols.forEach(dc => {
         const n = toNumber_(row[dc.col - 1]);
         if (n === null) return; // 빈칸/비숫자 → 측정 없음, 스킵
+        if (prevN !== null && n === prevN) return; // 직전과 동일 = 이어받기 값 → 스킵
         stats.push({ url: url, measured_at: dc.date, play_count: n });
+        prevN = n;
       });
     });
 
