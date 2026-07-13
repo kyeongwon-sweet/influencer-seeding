@@ -165,7 +165,7 @@ def main():
     # 게시물 메타(이름/플랫폼/상품군/업로드일/채널분류)
     meta = {}
     for chunk in _chunks(post_ids, 100):
-        res = db.table("sponsored_posts").select("id, url, account_name, product_name, posted_at, channel_type, cost").in_("id", chunk).execute()
+        res = db.table("sponsored_posts").select("id, url, account_name, product_name, posted_at, channel_type, cost, ended_at").in_("id", chunk).execute()
         for r in (res.data or []):
             meta[r["id"]] = r
 
@@ -218,6 +218,12 @@ def main():
     items = []
     for pid in jd_pids:
         m = meta.get(pid, {})
+        # 🛑 종료(ended_at) 게시물 제외 — target일 이전에 이미 종료된 글은 급상승/증분 리포트에서 뺀다.
+        #    종료 후 남은 carry-forward·오염 행(다른 글 값 복사 등)이 가짜 증분으로 TOP에 오르는 것 방지.
+        #    (종료일이 target 당일/이후면 그날까지는 실측이므로 포함.)
+        end = m.get("ended_at")
+        if end and str(end)[:10] < target:
+            continue
         ct = (m.get("channel_type") or "").strip()
         isb = "배너" in ct
         rows = series.get(pid, [])
