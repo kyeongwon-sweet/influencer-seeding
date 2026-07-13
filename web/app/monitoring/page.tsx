@@ -1376,7 +1376,7 @@ export default function MonitoringPage() {
         <div className="flex flex-wrap items-center gap-2">
           {selected.size > 0 && (
             <button onClick={endSelected} disabled={deleting}
-              className="text-xs px-3 py-1.5 rounded-full border border-gray-300 text-a-ink-muted hover:bg-gray-50 disabled:opacity-40 transition">
+              className="text-xs px-3 py-1.5 rounded-full border border-a-blue bg-a-blue text-white hover:bg-blue-600 disabled:opacity-40 transition">
               선택 보관 처리 ({selected.size})
             </button>
           )}
@@ -1609,7 +1609,7 @@ export default function MonitoringPage() {
                   <div className="mx-3 mt-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-[8px] text-[11px] text-amber-700 flex items-start gap-1.5">
                     <span>⚠️</span>
                     <span>
-                      누적 조회수가 감소한 날짜가 있습니다 ({deltaTableData.filter(d => d.play < 0).map(d => d.date.slice(5).replace("-", "/")).join(", ")}) — 데이터 오류를 확인하세요.
+                      조회수 증분이 음수인 날짜가 있습니다 ({deltaTableData.filter(d => d.play < 0).map(d => d.date.slice(5).replace("-", "/")).join(", ")}) — 데이터 오류를 확인하세요.
                     </span>
                   </div>
                 )}

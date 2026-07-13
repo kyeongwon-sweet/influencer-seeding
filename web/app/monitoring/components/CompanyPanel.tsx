@@ -68,7 +68,7 @@ export default function CompanyPanel({ data }: { data: CompanyData }) {
         <div className="max-w-3xl">
           <div className="flex items-center gap-3 px-1 pb-1.5 border-b border-a-hairline text-[11px] font-semibold text-a-ink-muted">
             <span className="w-20">업체</span>
-            <span className="flex-1">영상 · 누적 조회수</span>
+            <span className="flex-1">영상 · 조회수 증분</span>
             <span className="w-[92px] text-right">개수 · CPV</span>
             <span className="flex-1">배너 · 누적 도달수</span>
             <span className="w-[92px] text-right">개수 · CPR</span>
