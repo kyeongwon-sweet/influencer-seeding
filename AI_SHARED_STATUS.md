@@ -9,18 +9,44 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
-Last updated: 2026-07-13 14:35 KST
+Last updated: 2026-07-13 16:00 KST
 
 ## Current Production State
 
 - Main repo/worktree used by Codex: `C:\tmp\influencer-main`
 - Production URL: `https://influencer-seeding-mu.vercel.app/`
 - Latest pushed code guard commit: `29923f9 fix: guard monitoring stats attribution`
+- Latest dashboard UI/monthly-goal deploy commit: `02c6ca6 fix: sync dashboard labels and monthly goal tab`
 - Latest shared-status docs commit before this update: `6283605 docs: add shared AI status handoff`
 - Vercel production alias verified:
   - `https://influencer-seeding-mu.vercel.app/`
-  - points to `https://influencer-seeding-mhchbvk4t-kwhwang-s-projects.vercel.app`
+  - points to `https://influencer-seeding-rltpuopg5-kwhwang-s-projects.vercel.app`
+  - deployment id: `dpl_9giXUMey74a9qZb7iJtWAkERQqoM`
   - status: Ready
+
+## 2026-07-13 Dashboard Deploy
+
+Reason:
+- Deploy only the confirmed missing dashboard changes from `origin/main`, without including unrelated dirty local worktree changes from other AI sessions.
+
+Committed changes:
+- `web/app/api/monthly-goal/route.ts`
+  - changed the monthly goal sheet tab GID to `[인지_쫀득바]` (`1224959784`).
+- `web/app/monitoring/page.tsx`
+  - changed the daily delta table header from `누적 조회수` to `조회수 증분`.
+  - changed selected-post action label from `선택 종료` to `선택 보관 처리`.
+  - added `선택 취소` to clear the current selection.
+
+Verification:
+- `npm.cmd test`: passed, 26 tests.
+- `npx.cmd tsc --noEmit --incremental false`: passed.
+- `npm.cmd run build`: passed.
+- `npm.cmd run lint`: still fails on pre-existing lint debt; this deploy did not attempt the broader lint cleanup.
+- Vercel production alias verified as Ready on `https://influencer-seeding-rltpuopg5-kwhwang-s-projects.vercel.app`.
+- Live UI verified in logged-in Chrome:
+  - `/home` shows `7월 목표 현황` and no longer shows `이달 목표 데이터를 불러오지 못했습니다.`
+  - `/monitoring` daily delta table contains `조회수 증분` and no old `누적 조회수` table header.
+  - Selecting one post shows `선택 보관 처리 (1)`, `선택 취소`, and no `선택 종료`.
 
 ## Monitoring Increment Policy
 
