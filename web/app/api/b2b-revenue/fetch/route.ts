@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { fetchSheetTabValuesByTitle } from "@/lib/google-sheets";
+import { fetchSheetTabValuesByTitle, fetchSheetTabValues } from "@/lib/google-sheets";
 import { notifyJob } from "@/lib/slack";
 
 export const runtime = "nodejs";
@@ -28,6 +28,28 @@ type DayVals = { order: number; profit: number | null; ad: number | null; contri
 export async function GET(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") { // fail-closed: CRON_SECRET 미설정 시에도 차단(무인증 오픈 방지)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // TEMP: 연동 시트 고아 행(메타 비었는데 날짜칸에 값만 있는 행) 스캔. 확인 후 제거.
+  if (req.nextUrl.searchParams.get("orphan")) {
+    const rows = await fetchSheetTabValues("10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak", 1937186871, "A1:BZ2000");
+    const header = (rows[0] ?? []) as (string | number | null)[];
+    const findCol = (kw: string) => header.findIndex((c) => typeof c === "string" && c.includes(kw));
+    const cUrl = findCol("URL"), cAcc = findCol("채널명");
+    // 날짜 컬럼 = 헤더가 M.D/M. D 형태
+    const dateCols: number[] = [];
+    header.forEach((h, i) => { if (/(\d{1,2})\s*[.\/]\s*(\d{1,2})/.test(String(h ?? "")) && i > 8) dateCols.push(i); });
+    const orphans: { row: number; valueCells: number }[] = [];
+    let orphanSumCells = 0;
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i] as (string | number | null)[];
+      const url = String(r[cUrl] ?? "").trim();
+      const acc = String(r[cAcc] ?? "").trim();
+      if (url || acc) continue; // 메타 있으면 정상
+      const vc = dateCols.filter((c) => { const v = r[c]; return v != null && v !== "" && !isNaN(Number(String(v).replace(/,/g, ""))); }).length;
+      if (vc > 0) { orphans.push({ row: i + 1, valueCells: vc }); orphanSumCells += vc; }
+    }
+    return NextResponse.json({ cUrl, cAcc, dateColCount: dateCols.length, orphanRows: orphans.length, orphanSumCells, sample: orphans.slice(0, 40) });
   }
 
   const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
