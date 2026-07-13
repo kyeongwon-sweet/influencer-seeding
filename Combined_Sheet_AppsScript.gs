@@ -606,8 +606,8 @@ function exportStats() {
           lastVal = collected;
         } else if (typeof cell === "number" && cell > 0) {     // 기존 실측/수동값 → 유지 + 기준 갱신
           lastVal = cell;
-        } else if (lastVal != null) {                          // 측정 없음 빈칸 → 직전 누적 이어받기
-          newBlock[i][bi] = lastVal; carried++;
+        } else if (lastVal != null && (cell === "" || cell === null)) { // '완전 빈칸'만 이어받기
+          newBlock[i][bi] = lastVal; carried++;                // (0·텍스트 등 다른 내용이 든 셀은 절대 안 덮음)
         }
       }
     }
