@@ -50,6 +50,19 @@ export async function GET(req: NextRequest) {
       if (vc > 0) { orphans.push({ row: i + 1, valueCells: vc }); orphanSumCells += vc; }
     }
     const firstDate = dateCols.length ? dateCols[0] : 20;
+    // 경계 덤프: 866~895행 전체(메타10칸 + 값이 있는 날짜칸만 [헤더:값])
+    if (req.nextUrl.searchParams.get("dump")) {
+      const dateLabel = (c: number) => String(header[c] ?? c);
+      const dumpRows: Record<string, unknown>[] = [];
+      for (let n = 866; n <= 896; n++) {
+        const r = (rows[n - 1] as (string | number | null)[]) ?? [];
+        const meta = r.slice(0, firstDate).map((c) => (c == null ? "" : String(c)));
+        const vals: Record<string, string | number> = {};
+        for (const c of dateCols) { const v = r[c]; if (v != null && v !== "") vals[dateLabel(c)] = v; }
+        dumpRows.push({ row: n, meta, vals });
+      }
+      return NextResponse.json({ headerMeta: (header as (string|number|null)[]).slice(0, firstDate).map(String), dateHeaders: dateCols.map((c) => String(header[c])), dumpRows });
+    }
     const orphanRowNums = orphans.map((o) => o.row);
     const minR = Math.min(...orphanRowNums), maxR = Math.max(...orphanRowNums);
     // 연속 블록으로 묶기
