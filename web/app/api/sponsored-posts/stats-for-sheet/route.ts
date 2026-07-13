@@ -15,18 +15,23 @@ export async function GET(req: NextRequest) {
 
   // 1) post_id → url
   const urlById = new Map<string, string>();
+  const postedAtById = new Map<string, string>();
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await supabase
       .from("sponsored_posts")
-      .select("id, url")
+      .select("id, url, posted_at")
       .range(from, from + PAGE - 1);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    for (const p of data ?? []) if (p.url) urlById.set(p.id as string, p.url as string);
+    for (const p of data ?? []) {
+      if (p.url) urlById.set(p.id as string, p.url as string);
+      if (p.posted_at) postedAtById.set(p.id as string, String(p.posted_at).slice(0, 10));
+    }
     if (!data || data.length < PAGE) break;
   }
 
   // 2) 일자별 조회수(play_count 있는 행만) → url별 그룹
   const byUrl = new Map<string, [string, number][]>();
+  let prePostedDropped = 0;
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await supabase
       .from("post_daily_stats")
@@ -39,13 +44,22 @@ export async function GET(req: NextRequest) {
     for (const s of data ?? []) {
       const url = urlById.get(s.post_id as string);
       if (!url) continue;
+      const measuredAt = String(s.measured_at).slice(0, 10);
+      const postedAt = postedAtById.get(s.post_id as string);
+      if (postedAt && measuredAt < postedAt) {
+        prePostedDropped++;
+        continue;
+      }
       const arr = byUrl.get(url) ?? [];
-      arr.push([s.measured_at as string, s.play_count as number]);
+      arr.push([measuredAt, s.play_count as number]);
       byUrl.set(url, arr);
     }
     if (!data || data.length < PAGE) break;
   }
 
   const posts = [...byUrl.entries()].map(([url, stats]) => ({ url, stats }));
-  return NextResponse.json({ posts }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json(
+    { posts, pre_posted_dropped: prePostedDropped },
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }

@@ -77,6 +77,14 @@ async function collect(req: NextRequest) {
     }
 
     console.log(`[LOG] 📅 수집 날짜: ${measuredAt}`);
+    const eligiblePosts = posts.filter((p) => {
+      const postedAt = p.posted_at ? String(p.posted_at).slice(0, 10) : null;
+      return !postedAt || postedAt <= measuredAt!;
+    });
+    const prePostedSkipped = posts.length - eligiblePosts.length;
+    if (prePostedSkipped > 0) {
+      console.warn(`[WARN] pre-upload posts skipped: ${prePostedSkipped} (measured_at=${measuredAt})`);
+    }
 
     // 3. directUrls를 사용해서 개별 게시물별 조회수 수집
     const client = createApifyClient();
@@ -91,7 +99,7 @@ async function collect(req: NextRequest) {
 
     // Instagram 게시물만 필터링
     // ⚠️ shortcode 없는 프로필형 URL(.../username/reels/)은 제외 — 액터가 계정 게시물을 통째로 긁어 과수집됨
-    const igPosts = posts.filter((p) => p.url.includes("instagram.com") && igShortcode(p.url));
+    const igPosts = eligiblePosts.filter((p) => p.url.includes("instagram.com") && igShortcode(p.url));
 
     if (igPosts.length === 0) {
       return NextResponse.json({
@@ -254,6 +262,7 @@ async function collect(req: NextRequest) {
       success: true,
       message: `✅ ${measuredAt} 데이터 수집 완료!`,
       posts_found: posts.length,
+      pre_posted_skipped: prePostedSkipped,
       instagram_posts: igPosts.length,
       stats_collected: statsToInsert.length,
       measured_at: measuredAt,
