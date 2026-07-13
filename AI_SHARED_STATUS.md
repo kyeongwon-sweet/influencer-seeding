@@ -9,7 +9,7 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
-Last updated: 2026-07-13 16:00 KST
+Last updated: 2026-07-13 16:01 KST (Claude: advertising-cost recheck resolved)
 
 ## Current Production State
 
@@ -169,8 +169,20 @@ Linked Sheet corrections:
 
 ## Known Issues / Not Yet Verified
 
-- Advertising-cost duplicate issue mentioned by the user/Claude, including examples such as "뭐랭하맨", has not been rechecked in the current pass.
-- Before changing related data, verify the issue still exists from Sheets/DB and record exact rows/cells here.
+(none open — advertising-cost duplicate issue resolved below.)
+
+## 2026-07-13 Advertising-cost duplicate recheck — RESOLVED (no systematic bug)
+
+Rechecked by Claude against DB `sponsored_posts` (839 posts) + user confirmation. Conclusion: **no systematic advertising-cost duplication.** Do not mass-delete/adjust cost.
+
+- Same-cost-repeated groups are overwhelmingly legitimate:
+  - Viral accounts (e.g. good_tip_magazine 250k×32, bibimbap 300k×17, luna.humor 250k×19) post many separate pieces at a flat per-post rate — each a real cost, not a duplicate.
+  - Different-product campaigns by the same creator = separate deals (오하루 JD멜/P혼, 지지야먹자 JD망/JD멜, 와뜨기, 여원맛집, 골목대장, 오홀). User confirmed.
+  - Contract fees intentionally split across platforms are correct (톡톡시아 833,333×3 = 2.5M/3, 준맛 633,333×3 = 1.9M/3).
+- Cross-platform same-product/same-date full-fee entries are **intended per-platform costs, not duplicates** — user confirmed for 뭐랭하맨 (5.7M ×2 IG+YT, DB딸, 05-22) and for the remaining group (시으니네 1.1M×2, 프롬서희 1.0M×2, 라밍 500k×3, 류라이 400k×2, 포슬 100k×2).
+- Naive heuristic "base account + same cost" over-counted ~85M (31.6%) and is invalid — ignore it.
+
+No data changed. Cost values left as-is.
 
 ## Verification Completed For Commit 29923f9
 
