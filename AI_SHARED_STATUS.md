@@ -9,7 +9,7 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
-Last updated: 2026-07-13 16:20 KST (Claude: JD 7/12 보정 검증·오염정리 요구 기록, Codex 실행중)
+Last updated: 2026-07-13 16:45 KST
 
 ## Current Production State
 
@@ -147,6 +147,62 @@ Linked Sheet corrections:
   - `프롬서희(IG)`: `7/7~7/8 blank`, `7/9~7/12 = 33,788 / 38,687 / 39,675 / 42,219`
   - `프롬서희(TT)`: `7/7~7/8 blank`, `7/9~7/12 = 54,400 / 83,600 / 84,100 / 84,800`
   - `셍이`, `복득이`, `새로미`: upload-before cells blank and values match DB/memo.
+
+## 2026-07-13 JD 7/12 Correction
+
+Reason:
+- User reported JD 7/12 expected increment from the Jjondeuk dashboard was much higher than dashboard/linked Sheet/DB.
+- Claude independently confirmed some rows were flat/manual and that several ended posts contained copied pollution from live influencer rows.
+- Do not inject the aggregate `1,562,357` into DB. Dashboard increment must remain per-URL cumulative stats plus `safeIncrement`.
+
+DB correction applied:
+- Upserted per-URL cumulative values for `2026-07-10` / `2026-07-11` / `2026-07-12`, with `manual=true`:
+  - `슈기` `/p/Dach9JUR1iW/`: `408,411 / 418,385 / 441,152`
+  - `시으니네(IG)` `/reel/Dacjht6TrGq/`: `191,980 / 195,538 / 202,896`
+  - `이아` `/reel/DaZ6pOnxiXn/`: `87,002 / 88,430 / 90,955`
+  - `안현수` `/reel/DaVK4O7iWOZ/`: `630,074 / 640,812 / 658,457`
+  - `백독기` `/reel/DaVAfgdJR4H/`: `81,123 / 82,249 / 84,259`
+  - `조션` `/reel/DaVDhkQyqXa/`: `48,057 / 48,337 / 48,991`
+  - `하요이` `/reels/DaM9QZZxnof/`: `185,325 / 187,679 / 194,516`
+  - `가내수제업` YouTube Shorts `XyxNWdZPgJc`: `152,634 / 153,837 / 153,837`
+- Deleted copied pollution rows:
+  - `투데이단` `/p/DZ9WqkhpjpA/`: deleted `2026-07-09` through `2026-07-12`
+  - `한입혜원` `/p/DZpf4SuJS_Z/`: deleted `2026-07-09` through `2026-07-12`
+  - `빵토리` `/p/DZO523IPRkv/`: deleted `2026-07-10` through `2026-07-12`; keep ended-before actual `2026-07-07 = 41,229`
+
+Linked Sheet correction applied:
+- Spreadsheet: `10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak`
+- Tab: `콘텐츠 대시보드 연동`
+- Columns: `BM=7.10`, `BN=7.11`, `BO=7.12`
+- Updated rows:
+  - `가내수제업` row 696
+  - `하요이` row 702
+  - `안현수` row 725
+  - `백독기` row 726
+  - `조션` row 727
+  - `이아` row 801
+  - `슈기` row 802
+  - `시으니네(IG)` row 804
+- Cleared copied pollution cells:
+  - `빵토리` row 149: `BM:BO`
+  - `한입혜원` row 361: `BL:BO`
+  - `투데이단` row 670: `BL:BO`
+
+Verification:
+- DB upsert readback matched all expected cumulative values.
+- DB deletion readback showed no remaining polluted dates for the three ended posts.
+- Linked Sheet readback matched the corrected rows and showed cleared pollution ranges.
+- Production dashboard live UI was checked in logged-in Chrome with product filters `JD망`, `JD멜`, `JD혼` selected:
+  - UI `07/12` daily increment: `+590,176`
+  - DB recomputation using dashboard `safeIncrement` semantics: `590,176`
+  - `2026-07-13` measurement rows remain `0`.
+- Note on prior discrepancy:
+  - A rough helper total `705,816` did not exactly match dashboard semantics because it did not fully mirror `safeIncrement` and query pagination.
+  - Dashboard truth is `safeIncrement`, including banner reach logic and backlog-first-measurement suppression.
+
+Still pending / do not auto-correct yet:
+- Jjondeuk memo aliases `굿띵투유`, `유머패밀리`, `루나앤코코`, `동후작가`, `아택`, `업크루` need URL-level alias mapping before any DB/Sheet edit.
+- `이나 (IG)` `/p/DZXeAW8S9IQ/` appears as a remaining unique candidate with `2026-07-12 = 249,508`, but it was not corrected in this pass because the memo uses divided manual increments for ended/untracked channels and needs separate review.
 
 ## Latest Apps Script
 
