@@ -762,58 +762,10 @@ def run():
         except Exception as e:
             print(f"[WARN] 배너 도달수 스냅샷 실패(무시): {e}")
 
-        # 📈 증분(increment) 계산·저장 — 단일 소스(B): 리포트·대시보드가 이 값을 그대로 읽는다.
-        #   게시물별 오늘값 − 이전까지 최댓값(단조보정, ≥0). 첫 측정=전체.
-        #   배너=도달수(reach_count) 우선, 없으면 조회수(play_count, 시트 수동입력) 사용. 그 외=play_count.
-        #   ⚠️ 이 로직은 scripts 백필(_backfill_increment.py)과 동일해야 함(리포트↔대시보드 일치 근거).
-        def _inc_metric(x, is_banner):
-            if is_banner:
-                rc = x.get("reach_count")
-                return rc if rc is not None else x.get("play_count")
-            return x.get("play_count")
-        try:
-            tr = db.table("post_daily_stats").select("post_id, play_count, reach_count").eq("measured_at", TODAY).execute()
-            today_pids = list({x["post_id"] for x in (tr.data or [])})
-            isbanner = {}
-            for i in range(0, len(today_pids), 200):
-                cr = db.table("sponsored_posts").select("id, channel_type").in_("id", today_pids[i:i + 200]).execute()
-                for x in (cr.data or []):
-                    isbanner[x["id"]] = "배너" in (x.get("channel_type") or "")
-            inc_rows = []
-            for i in range(0, len(today_pids), 100):
-                chunk = today_pids[i:i + 100]
-                todayval = {}
-                for x in (tr.data or []):
-                    if x["post_id"] in chunk:
-                        v = _inc_metric(x, isbanner.get(x["post_id"]))
-                        if v is not None:
-                            todayval[x["post_id"]] = v
-                pmax = {}
-                frm = 0
-                while True:
-                    pr = (db.table("post_daily_stats").select("post_id, play_count, reach_count, measured_at")
-                          # ⚠️ 정렬키 없는 range() 페이지네이션은 경계 행 누락 → pmax가 낮아져 증분 폭증.
-                          #    고유키 id로 결정적 페이지네이션(API sponsored-posts와 동일 수정).
-                          .in_("post_id", chunk).lt("measured_at", TODAY).order("id").range(frm, frm + 999).execute())
-                    pg = pr.data or []
-                    for x in pg:
-                        v = _inc_metric(x, isbanner.get(x["post_id"]))
-                        if v is not None:
-                            pmax[x["post_id"]] = max(pmax.get(x["post_id"], 0), v)
-                    if len(pg) < 1000:
-                        break
-                    frm += 1000
-                for pid, tv in todayval.items():
-                    # safeIncrement와 동일: 오늘 측정 실패(0/None)면 스킵. 직전 '유효(>0)' baseline이 없으면(첫 측정)
-                    #   base=0이라 증분=tv 전체(업로드날 성과). 있으면 델타(0글리치는 max가 무시하므로 실측 기준).
-                    if tv is None or tv <= 0:
-                        continue
-                    inc_rows.append({"post_id": pid, "measured_at": TODAY, "increment": max(0, tv - pmax.get(pid, 0))})
-            if inc_rows:
-                db.table("post_daily_stats").upsert(inc_rows, on_conflict="post_id,measured_at").execute()
-                print(f"[LOG] 📈 증분 저장: {len(inc_rows)}건 ({TODAY})")
-        except Exception as e:
-            print(f"[WARN] 증분 계산 실패(무시): {e}")
+        # 📈 증분(increment) 저장 폐기(2026-07-08) — 단일 진실은 표시단계 safeIncrement(오늘값 − 직전 유효>0값,
+        #   첫 유효측정=전체)로 이관. 대시보드(viewIncrement/dailyTotals)·리포트(notify_increments)가 raw play/reach
+        #   시리즈에서 매번 재계산하므로 저장 increment 컬럼은 아무도 안 읽음(웹/스크립트 전수 확인). 오염 자가치유+일관.
+        #   → run_monitoring은 play_count/reach_count(원천값)만 저장하고 increment는 계산·저장하지 않는다.
 
         # 📸 일별 증분 스냅샷(락) — 오늘 시점 누적 총합을 daily_view_snapshot에 저장.
         #    이후 게시물이 늦게 추가돼도 과거 스냅샷은 안 바뀜 → '일자별 증감' 과거값 안정화.

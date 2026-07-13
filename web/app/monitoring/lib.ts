@@ -8,7 +8,6 @@ export type DailyStats = {
   likes_count: number | null;
   comments_count: number | null;
   reach_count?: number | null; // 배너 도달수 일별 이력 — 배너 증분 계산용(조회수 대체)
-  increment?: number | null;   // 단일 소스 증분(run_monitoring 저장). 있으면 이 값을 그대로 씀 → 리포트와 동일
   created_at?: string | null; // 적재(수집) 시각 — 마지막 업데이트 표시용
   play_collected?: boolean;   // 원본 조회수가 실제 수집됐는지 (mono 보정 전) — 당일 반영 판정용
 };
