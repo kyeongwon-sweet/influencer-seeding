@@ -433,7 +433,7 @@ function PostsTable(props: Props) {
                             onKeyDown={e => { if (e.key === "Enter") patchPlayCount(post.id, editPlayCount.value); if (e.key === "Escape") setEditPlayCount(null); }}
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
                         ) : (
-                          <div className="flex items-center justify-end gap-1.5 relative">
+                          <div className="flex items-center justify-end gap-1.5 relative z-30">
                             <span onClick={() => setEditPlayCount({ postId: post.id, value: String(s?.play_count ?? "") })}
                               title="여기서 고치면 즉시 반영되며, 밤 자동수집은 이 값을 덮지 않습니다. 시트에서 더 나중에 입력하면 그 값이 최신으로 우선합니다."
                               className="text-a-ink-muted hover:text-a-blue transition-colors cursor-text">
@@ -448,7 +448,7 @@ function PostsTable(props: Props) {
                               />
                             )}
                             {hoverUpdatedId === post.id && (
-                              <div className="absolute bottom-full right-0 mb-2 bg-white border border-a-hairline rounded-[6px] px-2 py-1 text-xs whitespace-nowrap shadow-[0_4px_12px_rgba(0,0,0,0.10)] z-10">
+                              <div className="absolute bottom-full right-0 mb-2 bg-white border border-a-hairline rounded-[6px] px-2 py-1 text-xs whitespace-nowrap shadow-[0_4px_12px_rgba(0,0,0,0.10)] z-[80]">
                                 <p className="font-semibold text-red-500">{collectedAtLabel}</p>
                               </div>
                             )}
