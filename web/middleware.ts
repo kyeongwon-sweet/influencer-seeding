@@ -7,6 +7,7 @@ const isPublicRoute = createRouteMatcher([
   "/access-denied(.*)",
   "/api/apify-webhook(.*)",
   "/api/slack-events(.*)",
+  "/api/slack/events(.*)",
   "/api/kpi/ingest(.*)",
   "/api/kpi/fetch(.*)",
   "/api/sponsored-posts/bulk(.*)",
