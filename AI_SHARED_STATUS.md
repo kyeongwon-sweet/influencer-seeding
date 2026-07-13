@@ -187,6 +187,12 @@ Linked Sheet correction applied:
   - `빵토리` row 149: `BM:BO`
   - `한입혜원` row 361: `BL:BO`
   - `투데이단` row 670: `BL:BO`
+- Follow-up Sheet repair for `빵토리` row 149:
+  - Re-read DB stats for `/p/DZO523IPRkv/`; DB last actual cumulative remains `2026-07-07 = 41,229`, `ended_at = 2026-07-07`.
+  - Updated linked Sheet row 149 `AD:BP` from DB/carry-forward display policy:
+    - `AD:AF` (`6.5`~`6.7`) blank.
+    - `AG:BP` (`6.8`~`7.13`) filled from DB measured values plus carry-forward after missing/ended dates.
+    - Readback confirmed `AG=19,000`, `BJ=41,229`, `BP=41,229`.
 
 Verification:
 - DB upsert readback matched all expected cumulative values.
