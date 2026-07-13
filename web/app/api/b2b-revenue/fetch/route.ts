@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { fetchSheetTabValuesByTitle, fetchSheetTabValues } from "@/lib/google-sheets";
+import { fetchSheetTabValuesByTitle } from "@/lib/google-sheets";
 import { notifyJob } from "@/lib/slack";
 
 export const runtime = "nodejs";
@@ -28,63 +28,6 @@ type DayVals = { order: number; profit: number | null; ad: number | null; contri
 export async function GET(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") { // fail-closed: CRON_SECRET 미설정 시에도 차단(무인증 오픈 방지)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  // TEMP: 연동 시트 고아 행(메타 비었는데 날짜칸에 값만 있는 행) 스캔. 확인 후 제거.
-  if (req.nextUrl.searchParams.get("orphan")) {
-    const rows = await fetchSheetTabValues("10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak", 1937186871, "A1:BZ2000");
-    const header = (rows[0] ?? []) as (string | number | null)[];
-    const findCol = (kw: string) => header.findIndex((c) => typeof c === "string" && c.includes(kw));
-    const cUrl = findCol("URL"), cAcc = findCol("채널명");
-    // 날짜 컬럼 = 헤더가 M.D/M. D 형태
-    const dateCols: number[] = [];
-    header.forEach((h, i) => { if (/(\d{1,2})\s*[.\/]\s*(\d{1,2})/.test(String(h ?? "")) && i > 8) dateCols.push(i); });
-    const orphans: { row: number; valueCells: number }[] = [];
-    let orphanSumCells = 0;
-    for (let i = 1; i < rows.length; i++) {
-      const r = rows[i] as (string | number | null)[];
-      const url = String(r[cUrl] ?? "").trim();
-      const acc = String(r[cAcc] ?? "").trim();
-      if (url || acc) continue; // 메타 있으면 정상
-      const vc = dateCols.filter((c) => { const v = r[c]; return v != null && v !== "" && !isNaN(Number(String(v).replace(/,/g, ""))); }).length;
-      if (vc > 0) { orphans.push({ row: i + 1, valueCells: vc }); orphanSumCells += vc; }
-    }
-    const firstDate = dateCols.length ? dateCols[0] : 20;
-    // 경계 덤프: 866~895행 전체(메타10칸 + 값이 있는 날짜칸만 [헤더:값])
-    if (req.nextUrl.searchParams.get("dump")) {
-      const dateLabel = (c: number) => String(header[c] ?? c);
-      const dumpRows: Record<string, unknown>[] = [];
-      for (let n = 866; n <= 896; n++) {
-        const r = (rows[n - 1] as (string | number | null)[]) ?? [];
-        const meta = r.slice(0, firstDate).map((c) => (c == null ? "" : String(c)));
-        const vals: Record<string, string | number> = {};
-        for (const c of dateCols) { const v = r[c]; if (v != null && v !== "") vals[dateLabel(c)] = v; }
-        dumpRows.push({ row: n, meta, vals });
-      }
-      return NextResponse.json({ headerMeta: (header as (string|number|null)[]).slice(0, firstDate).map(String), dateHeaders: dateCols.map((c) => String(header[c])), dumpRows });
-    }
-    const locate = req.nextUrl.searchParams.get("locate");
-    if (locate) {
-      const wanted = locate.split(",").map((s) => s.trim()).filter(Boolean);
-      const hits: Record<string, number[]> = {};
-      for (const w of wanted) hits[w] = [];
-      for (let i = 1; i < rows.length; i++) {
-        const url = String((rows[i] as (string|number|null)[])[cUrl] ?? "").trim();
-        for (const w of wanted) if (url && url.includes(w)) hits[w].push(i + 1);
-      }
-      return NextResponse.json({ hits });
-    }
-    const orphanRowNums = orphans.map((o) => o.row);
-    const minR = Math.min(...orphanRowNums), maxR = Math.max(...orphanRowNums);
-    // 연속 블록으로 묶기
-    const blocks: { start: number; end: number }[] = [];
-    for (const rn of orphanRowNums) { const last = blocks[blocks.length - 1]; if (last && rn === last.end + 1) last.end = rn; else blocks.push({ start: rn, end: rn }); }
-    // meta 있는(정상) 데이터행 마지막 위치
-    let lastMetaRow = 0, metaRowCount = 0;
-    for (let i = 1; i < rows.length; i++) { const r = rows[i] as (string | number | null)[]; const url = String(r[cUrl] ?? "").trim(); const acc = String(r[cAcc] ?? "").trim(); if (url || acc) { lastMetaRow = i + 1; metaRowCount++; } }
-    // 첫 orphan 직전 3개 정상행 meta(URL/채널명/업체명/프로젝트명)
-    const context = [minR - 3, minR - 2, minR - 1].filter((n) => n >= 2).map((n) => { const r = (rows[n - 1] as (string|number|null)[]) ?? []; return { row: n, url: String(r[cUrl] ?? ""), acc: String(r[cAcc] ?? ""), company: String(r[3] ?? ""), project: String(r[6] ?? "") }; });
-    return NextResponse.json({ totalRows: rows.length, metaRowCount, lastMetaRow, orphanRows: orphans.length, orphanRange: [minR, maxR], blockCount: blocks.length, blocks: blocks.slice(0, 30), contextBeforeFirstOrphan: context });
   }
 
   const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
