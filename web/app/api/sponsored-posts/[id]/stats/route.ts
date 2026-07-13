@@ -39,6 +39,21 @@ export async function PATCH(
   if ("play_count" in body) updates.manual = true;
 
   const supabase = getServerSupabase();
+
+  // 🔒 배너 초크포인트: 배너는 조회수(play_count)가 없고 도달수(reach_count)를 조회수처럼 합산(사용자 지시).
+  //   어떤 경로로 들어오든 배너 게시물의 play_count 입력은 reach_count로 저장(play는 비움) → stats-import(d85fc9a)와 동일 규칙.
+  //   이 라우트를 부르는 모든 호출자(대시보드 인라인 편집 등)가 자동으로 배너=도달수로 통일됨.
+  if ("play_count" in updates) {
+    const { data: post } = await supabase
+      .from("sponsored_posts")
+      .select("channel_type")
+      .eq("id", id)
+      .single();
+    if ((post?.channel_type ?? "").includes("배너")) {
+      updates.reach_count = updates.play_count;
+      updates.play_count = null;
+    }
+  }
   let targetDate: string | null = body.measured_at ?? null;
 
   // 지정된 measured_at이 실제 행과 일치하는지 확인 (포맷/타임존 불일치 → 최신으로 폴백)

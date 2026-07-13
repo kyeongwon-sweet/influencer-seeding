@@ -2,7 +2,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 // 게시물 표 — monitoring/page.tsx 에서 추출. 모든 상태/핸들러는 부모(MonitoringPage) 소유(props).
 // 인라인 편집/정렬/선택/열 리사이즈는 전부 부모 함수를 props로 받아 그대로 호출 → 동작 동일.
-import { type Post, type EditCell, type DailyStats, type Filters, getFilteredStats, pickRangeStats, hasNotableChange, viewIncrement, fmt, fmtChannelType, effectiveReach, pickMetric, CHANNEL_TYPES, INIT_FILTERS, CHART } from "../lib";
+import { type Post, type EditCell, type DailyStats, type Filters, getFilteredStats, pickRangeStats, hasNotableChange, viewIncrement, fmt, fmtChannelType, effectiveReach, bannerDailyMetric, pickMetric, CHANNEL_TYPES, INIT_FILTERS, CHART } from "../lib";
 import { MIN_ENTRY_DATE, maxDateKST } from "@/lib/dateRule";
 import { companyForAccount } from "@/lib/companyMap";
 import { productCodeOf } from "@/lib/productCode";
@@ -472,8 +472,8 @@ function PostsTable(props: Props) {
                         ) : (
                           (() => {
                             const isBanner = (post.channel_type ?? "").includes("배너");
-                            // 배너=시트 일별 숫자(play_count)를 도달수로 1:1 사용. 그 외=reach_count(없으면 조회수×0.8 추정).
-                            const eff = isBanner ? (s?.play_count ?? null) : effectiveReach(post.reach_count, s?.play_count);
+                            // 배너=일별 도달수(reach 우선, 없으면 입력값 1:1) — bannerDailyMetric 단일 규칙. 그 외=reach_count(없으면 조회수×0.8 추정).
+                            const eff = isBanner ? bannerDailyMetric(s) : effectiveReach(post.reach_count, s?.play_count);
                             if (eff == null) return <span className="text-gray-300">—</span>;
                             const isAuto = !isBanner && post.reach_count == null;
                             return (
@@ -488,7 +488,7 @@ function PostsTable(props: Props) {
                       <TD right muted w={colWidths["도달당비용"]}>
                         {(() => {
                           const isBanner = (post.channel_type ?? "").includes("배너");
-                          const eff = isBanner ? (s?.play_count ?? null) : effectiveReach(post.reach_count, s?.play_count);
+                          const eff = isBanner ? bannerDailyMetric(s) : effectiveReach(post.reach_count, s?.play_count);
                           return post.cost != null && eff != null && eff > 0
                             ? (post.cost / eff).toFixed(2)
                             : <span className="text-gray-300">—</span>;

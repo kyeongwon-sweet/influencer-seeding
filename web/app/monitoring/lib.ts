@@ -119,6 +119,7 @@ export function updatePostLatestStats(post: Post, now: string, overrides?: Parti
       play_count: overrides?.play_count ?? null,
       likes_count: overrides?.likes_count ?? null,
       comments_count: overrides?.comments_count ?? null,
+      reach_count: overrides?.reach_count ?? null,   // 배너 일별 도달수(수기 입력) 로컬 즉시 반영
     };
   }
   return {
@@ -127,6 +128,7 @@ export function updatePostLatestStats(post: Post, now: string, overrides?: Parti
     play_count: overrides?.play_count ?? post.latest_stats.play_count,
     likes_count: overrides?.likes_count ?? post.latest_stats.likes_count,
     comments_count: overrides?.comments_count ?? post.latest_stats.comments_count,
+    reach_count: overrides?.reach_count ?? post.latest_stats.reach_count,
   };
 }
 
@@ -172,10 +174,19 @@ export function getCategoryLabel(val: string | null | undefined): string {
 //   ※ '직전 값' 하나만 보지 않고 '직전 유효값'(0/누락 건너뛴 마지막 >0)을 baseline으로 써서, 0글리치 낀
 //     플라토 게시물도 실제 하루치(예: 88)를 살린다(직전값만 보면 전체로 뻥튀기됨).
 //   ※ 불변식: Σ증분(첫날 전체 + 이후 델타) == 최종 누적. mono/raw 무관하게 대시보드·리포트 자동 일치.
+// 🔒 배너 일별 지표 = 도달수(reach) 우선, 없으면 입력값(play)을 도달수로 1:1 취급(사용자 지시: 도달수를 조회수처럼 합산).
+//   배너 값은 저장 시 reach_count로 들어가지만(stats-import·[id]/stats 가드), 과거 오배치/미이관 행은 play_count에 남아
+//   있을 수 있어 폴백을 둔다. ⚠️ 배너 지표를 읽는 모든 표시·집계 경로는 반드시 이 헬퍼를 쓸 것(과거 isBanner?play_count
+//   직접 참조가 저장 변경 후 도달수 열을 '—'로 만든 회귀 재발 방지).
+export function bannerDailyMetric(s: DailyStats | null | undefined): number | null {
+  if (!s) return null;
+  return s.reach_count ?? s.play_count ?? null;
+}
+
 export function safeIncrement(allStats: DailyStats[], s: DailyStats | null | undefined, isBanner: boolean, postedAt?: string | null): number | null {
   if (!s) return null;
   const val = (st: DailyStats | null | undefined) =>
-    st ? (isBanner ? (st.reach_count ?? st.play_count) : st.play_count) : null;
+    st ? (isBanner ? bannerDailyMetric(st) : (st.play_count ?? null)) : null;
   const cur = val(s);
   if (cur == null || cur <= 0) return null;      // 오늘 측정 없음/실패 → 증분 아님
   let baseline = 0, hasBaseline = false;

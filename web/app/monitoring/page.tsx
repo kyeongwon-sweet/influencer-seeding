@@ -7,7 +7,7 @@ import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
 import { MIN_ENTRY_DATE, maxDateKST, isValidEntryDate } from "@/lib/dateRule";
 import { companyForAccount } from "@/lib/companyMap";
 import { batchFetch } from "@/lib/batchFetch";
-import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, INIT_FILTERS, CHANNEL_TYPES, CATEGORIES, STICKY_COL_ORDER, PROJECT_PARSE_COLS, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, isStatInDateRange, getFilteredStats, pickRangeStats, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, viewIncrement, safeIncrement, pickMetric, pdOf, productLabel, effectiveReach, weekKeyOf, pearson, alignedPairs, bestLag, solveLinear, alignMulti, multipleR2, parseCsvLine } from "./lib";
+import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, INIT_FILTERS, CHANNEL_TYPES, CATEGORIES, STICKY_COL_ORDER, PROJECT_PARSE_COLS, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, isStatInDateRange, getFilteredStats, pickRangeStats, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, viewIncrement, safeIncrement, pickMetric, pdOf, productLabel, effectiveReach, bannerDailyMetric, weekKeyOf, pearson, alignedPairs, bestLag, solveLinear, alignMulti, multipleR2, parseCsvLine } from "./lib";
 import CorrelationPanel from "./components/CorrelationPanel";
 import DayOfWeekPanel, { type DowData } from "./components/DayOfWeekPanel";
 import CompanyPanel, { type CompanyData } from "./components/CompanyPanel";
@@ -1013,7 +1013,8 @@ export default function MonitoringPage() {
       const { s, prev } = pickRangeStats(post, filters.dateFrom, filters.dateTo);
       const play = s?.play_count ?? null;
       const isBanner = (post.channel_type ?? "").includes("배너");
-      const value = isBanner ? effectiveReach(post.reach_count, play) : play;
+      // 배너=행에 보이는 도달수(bannerDailyMetric)와 동일 값으로 복사 — 표·복사 일치.
+      const value = isBanner ? bannerDailyMetric(s) : play;
       if (value == null) return null;
       const delta = viewIncrement(post, s, prev) ?? 0;
       const arrow = delta > 0 ? "▲" : delta < 0 ? "▼" : "-";
@@ -1052,11 +1053,16 @@ export default function MonitoringPage() {
   async function endPost(id: string, end: boolean) {
     if (end && !confirm("이 게시물의 트래킹을 종료하시겠습니까?\n(이후 자동 수집에서 제외, 기존 데이터는 보존)")) return;
     const ended_at = end ? new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10) : null;
-    await fetch(`/api/sponsored-posts/${id}`, {
+    const res = await fetch(`/api/sponsored-posts/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ended_at }),
     });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      toast(data?.error || "트래킹 상태 변경에 실패했습니다.", "error");
+      return;
+    }
     setPosts(prev => prev.map(p => p.id === id ? { ...p, ended_at } : p));
     toast(end ? "종료 처리됐습니다." : "종료 해제됐습니다.", "success");
   }
@@ -1160,6 +1166,8 @@ export default function MonitoringPage() {
 
   async function patchPlayCount(postId: string, value: string) {
     const play_count = value === "" ? null : Number(value);
+    // 배너는 입력값 자체가 도달수 — /stats 라우트가 이 값을 reach_count로 저장(초크포인트). ×0.8 추정·post레벨 reach 덮기 안 함.
+    const isBanner = (posts.find(p => p.id === postId)?.channel_type ?? "").includes("배너");
 
     try {
       // 1️⃣ 조회수 저장
@@ -1178,34 +1186,37 @@ export default function MonitoringPage() {
       const now = new Date().toISOString().slice(0, 10);
       let reach_count = null;
 
-      // 2️⃣ 도달수 계산 및 저장
-      if (play_count !== null && play_count > 0) {
-        reach_count = Math.round(play_count * 0.8);
+      // 2️⃣ 도달수 계산 및 저장 (영상만 — 배너는 위 /stats가 이미 reach_count로 저장했으므로 건너뜀)
+      if (!isBanner) {
+        if (play_count !== null && play_count > 0) {
+          reach_count = Math.round(play_count * 0.8);
 
-        // reach_count 저장 (비동기로 계속 진행)
-        await fetch(`/api/sponsored-posts/${postId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ reach_count }),
-        });
-      } else if (play_count === null || play_count === 0) {
-        // play_count가 0이면 reach_count도 null로
-        await fetch(`/api/sponsored-posts/${postId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ reach_count: null }),
-        });
+          // reach_count 저장 (비동기로 계속 진행)
+          await fetch(`/api/sponsored-posts/${postId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reach_count }),
+          });
+        } else if (play_count === null || play_count === 0) {
+          // play_count가 0이면 reach_count도 null로
+          await fetch(`/api/sponsored-posts/${postId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reach_count: null }),
+          });
+        }
       }
 
       // 3️⃣ UI 업데이트
       setPosts(prev => prev.map(p => {
         if (p.id === postId) {
+          // 배너는 입력값을 도달수로 저장 → 로컬 latest_stats도 reach로 반영(bannerDailyMetric이 reach 우선).
           const updated = {
             ...p,
-            latest_stats: updatePostLatestStats(p, now, { play_count })
+            latest_stats: updatePostLatestStats(p, now, isBanner ? { reach_count: play_count } : { play_count })
           };
-          // reach_count는 계산된 값으로 설정 (null도 명시적으로 설정)
-          if (reach_count !== null) {
+          // 영상: 계산된 ×0.8 reach를 post레벨에 반영(null도 명시). 배너는 post레벨 reach 안 건드림.
+          if (!isBanner && reach_count !== null) {
             updated.reach_count = reach_count;
           }
           return updated;
