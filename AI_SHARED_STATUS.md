@@ -9,13 +9,14 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
-Last updated: 2026-07-13 14:20 KST
+Last updated: 2026-07-13 14:35 KST
 
 ## Current Production State
 
 - Main repo/worktree used by Codex: `C:\tmp\influencer-main`
 - Production URL: `https://influencer-seeding-mu.vercel.app/`
-- Latest pushed commit: `29923f9 fix: guard monitoring stats attribution`
+- Latest pushed code guard commit: `29923f9 fix: guard monitoring stats attribution`
+- Latest shared-status docs commit before this update: `6283605 docs: add shared AI status handoff`
 - Vercel production alias verified:
   - `https://influencer-seeding-mu.vercel.app/`
   - points to `https://influencer-seeding-mhchbvk4t-kwhwang-s-projects.vercel.app`
@@ -125,11 +126,25 @@ Linked Sheet corrections:
 
 - Current latest Apps Script file referenced by user:
   - `C:\Users\hwangkw\AI\.claude\wt-company\Combined_Sheet_AppsScript.gs`
+- Git-tracked Apps Script canonical file:
+  - `Combined_Sheet_AppsScript.gs`
+  - Synced from the user-referenced latest file on 2026-07-13 so the upload-date guards are not only in a local worktree.
 - Policy expected in Apps Script:
   - `exportStats`: never fill cells before upload date.
   - `exportStats`: may forward-fill only after upload date and only for missing measurement display.
   - `importStats`: never import stats before upload date.
   - `importStats`: do not re-import forward-filled carry values as fake new measurements.
+
+## Claude / Codex Shared Entry Points
+
+- `.claude/skills/influencer-seeding/SKILL.md` must instruct Claude to read this file first.
+- `CLAUDE.md` and `AI_SKILLS.md` also point to this file.
+- Personal AI memory is background/history only. It must not override this shared status file.
+
+## Known Issues / Not Yet Verified
+
+- Advertising-cost duplicate issue mentioned by the user/Claude, including examples such as "뭐랭하맨", has not been rechecked in the current pass.
+- Before changing related data, verify the issue still exists from Sheets/DB and record exact rows/cells here.
 
 ## Verification Completed For Commit 29923f9
 

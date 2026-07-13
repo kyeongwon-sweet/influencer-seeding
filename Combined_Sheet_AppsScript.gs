@@ -143,8 +143,14 @@ function toDateStr_(v) {
   }
   const s = String(v || "").trim();
   if (!s) return null;
+  const m = s.match(/^(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+  if (m) return `${m[1]}-${("0" + m[2]).slice(-2)}-${("0" + m[3]).slice(-2)}`;
   const d = new Date(s);
   return isNaN(d.getTime()) ? null : Utilities.formatDate(d, Session.getScriptTimeZone(), "yyyy-MM-dd");
+}
+
+function isBeforePostedDate_(date, postedAt) {
+  return !!postedAt && !!date && date < postedAt;
 }
 
 function toNumber_(v) {
@@ -572,6 +578,9 @@ function exportStats() {
 
     const nRows = lastRow - CONFIG.DATA_START_ROW + 1;
     const urlVals = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.url, nRows, 1).getValues();
+    const postedVals = fieldCols.posted_at
+      ? sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.posted_at, nRows, 1).getValues()
+      : new Array(nRows).fill([null]);
     const firstCol = dateCols[0].col, lastDateCol = dateCols[dateCols.length - 1].col;
     const width = lastDateCol - firstCol + 1;
     // 현재값 1회 읽기(읽기는 수식 비파괴). ⚠️ 쓰기는 '날짜 열 단위'로만 → 날짜 아닌 열(수식·메모 등)은 절대 안 건드림.
@@ -580,7 +589,9 @@ function exportStats() {
     // 행별 매칭 맵 선계산 + 매칭/누락 카운트
     let matched = 0, missing = 0;
     const rowMap = new Array(nRows);
+    const postedAtByRow = new Array(nRows);
     for (let i = 0; i < nRows; i++) {
+      postedAtByRow[i] = toDateStr_(postedVals[i][0]);
       const url = String(urlVals[i][0] || "").trim();
       if (!url) { rowMap[i] = null; continue; }
       const m = byKey[linkKey_(url)];
@@ -591,19 +602,34 @@ function exportStats() {
     // 행별 좌→우 forward-fill: 실측(>0)은 반영하고 기준값(lastVal) 갱신, '측정 없음' 빈칸은 직전 누적값으로 이어받는다.
     //   → 종료·수집누락·play_count null로 생기는 날짜 공백에도 누적조회수가 줄어(끊겨) 보이지 않게 하는 '표시 보정'.
     //   ⚠️ DB(post_daily_stats)엔 아무것도 안 씀(safeIncrement·증분 규칙 불변). 이어받기 값은 importStats가 재저장 안 함(아래 가드).
-    //   배너 등 '양수 조회수가 한 번도 없는' 행은 lastVal이 안 생겨 자동 제외(빈칸 유지). 기존 실측·수동값은 절대 안 덮음.
-    let filled = 0, carried = 0;
+    //   배너 등 '양수 조회수가 한 번도 없는' 행은 lastVal이 안 생겨 자동 제외(빈칸 유지).
+    //   기존 실측·수동값은 절대 안 덮고, 빈칸 또는 직전값 이어받기였던 칸만 새 실측으로 교체.
+    let filled = 0, carried = 0, prePostedCleared = 0, preserved = 0;
     const newBlock = block.map(r => r.slice());
     for (let i = 0; i < nRows; i++) {
       const m = rowMap[i];
       let lastVal = null;
       for (let j = 0; j < dateCols.length; j++) {
         const bi = dateCols[j].col - firstCol;
+        const date = dateCols[j].date;
         const cell = block[i][bi];
-        const collected = m ? m[dateCols[j].date] : undefined;
+        const postedAt = postedAtByRow[i];
+        if (isBeforePostedDate_(date, postedAt)) {
+          if (cell !== "" && cell !== null) { newBlock[i][bi] = ""; prePostedCleared++; }
+          lastVal = null;
+          continue;
+        }
+        const collected = m ? m[date] : undefined;
         if (collected > 0) {                                   // 실측값 도착 → 반영 + 기준 갱신
-          if (cell !== collected) { newBlock[i][bi] = collected; filled++; }
-          lastVal = collected;
+          const isBlank = cell === "" || cell === null;
+          const isCarried = lastVal != null && cell === lastVal;
+          if (isBlank || isCarried) {
+            if (cell !== collected) { newBlock[i][bi] = collected; filled++; }
+            lastVal = collected;
+          } else if (typeof cell === "number" && cell > 0) {
+            lastVal = cell;
+            if (cell !== collected) preserved++;
+          }
         } else if (typeof cell === "number" && cell > 0) {     // 기존 실측/수동값 → 유지 + 기준 갱신
           lastVal = cell;
         } else if (lastVal != null && (cell === "" || cell === null)) { // '완전 빈칸'만 이어받기
@@ -623,7 +649,7 @@ function exportStats() {
       if (changed) sheet.getRange(CONFIG.DATA_START_ROW, dc.col, nRows, 1).setValues(colVals);
     });
 
-    let msg = `✅ 수집 조회수를 시트에 반영했습니다.\n새 날짜 열 ${addedCols}개 추가 · 실측 갱신 ${filled}칸 · 공백 이어받기 ${carried}칸 · 매칭 게시물 ${matched}개 · 날짜 열 ${dateCols.length}개`;
+    let msg = `✅ 수집 조회수를 시트에 반영했습니다.\n새 날짜 열 ${addedCols}개 추가 · 실측 갱신 ${filled}칸 · 공백 이어받기 ${carried}칸 · 업로드 전 값 삭제 ${prePostedCleared}칸 · 기존값 보존 ${preserved}칸 · 매칭 게시물 ${matched}개 · 날짜 열 ${dateCols.length}개`;
     if (missing) msg += `\n⚠️ 시트엔 있으나 대시보드에 수집기록이 없는 URL ${missing}개(아직 수집 전이거나 미등록).`;
     safeAlert_(msg);
   } catch (e) {
@@ -720,6 +746,7 @@ function importStats() {
       //    실제로 누적이 안 변한 날도 스킵되지만 정보량 0이고 safeIncrement가 표시단계에서 이어받으므로 무해.
       let prevN = null;
       dateCols.forEach(dc => {
+        if (isBeforePostedDate_(dc.date, postedAt)) return; // 업로드 전 날짜는 조회수 저장 대상 아님
         const n = toNumber_(row[dc.col - 1]);
         if (n === null) return; // 빈칸/비숫자 → 측정 없음, 스킵
         if (prevN !== null && n === prevN) return; // 직전과 동일 = 이어받기 값 → 스킵
@@ -737,6 +764,7 @@ function importStats() {
     if (res.meta_filled) msg += `\n📝 기존 광고의 빈 항목 ${res.meta_filled}건을 시트 값으로 채움(채널 분류 등).`;
     if (res.ended_marked) msg += `\n🛑 캡션 '삭제/보관' ${res.ended_marked}건 → '종료' 처리됨.`;
     if (future) msg += `\n⏭️ 업로드일이 오늘 이후인 행 ${future}건 제외(아직 게시 전).`;
+    if (res.pre_posted_skipped) msg += `\n🛡️ 업로드일 이전 조회수 ${res.pre_posted_skipped}건은 서버에서 저장 제외.`;
     if (res.dropped_decrease) {
       msg += `\n🛡️ 누적 조회수가 직전보다 낮은(수집 오류) ${res.dropped_decrease}건은 저장 제외.`;
       if (res.dropped_sample && res.dropped_sample.length) {
