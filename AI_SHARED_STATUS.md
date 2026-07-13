@@ -9,7 +9,33 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
-Last updated: 2026-07-13 16:55 KST (Claude: 배너 도달수=조회수 합산 정합, 코드+3696행 백필)
+## 2026-07-13 Monitoring Label/Button Deploy
+
+Commit:
+- `b27a8cd fix(monitoring): update increment labels and archive button style`
+
+Reason:
+- User still saw `누적 조회수` in the dashboard and asked for the selected archive action to be blue.
+
+Changed:
+- `web/app/monitoring/components/CompanyPanel.tsx`
+  - visible header `영상 · 누적 조회수` changed to `영상 · 조회수 증분`.
+- `web/app/monitoring/page.tsx`
+  - selected archive button now uses blue styling: `border-a-blue bg-a-blue text-white`.
+  - visible warning text changed from `누적 조회수가 감소한 날짜...` to `조회수 증분이 음수인 날짜...`.
+
+Verification:
+- `npm.cmd test`: passed, 26 tests.
+- `npx.cmd tsc --noEmit --incremental false`: passed.
+- `npm.cmd run build`: passed.
+- Vercel production deploy for the code commit was Ready at `https://influencer-seeding-16o240xsr-kwhwang-s-projects.vercel.app`.
+- Live `/monitoring` check in logged-in Chrome:
+  - daily table header contains `날짜	조회수 증분	검색량`.
+  - no live `누적 조회수` text matches were found.
+  - selecting one post shows `선택 보관 처리 (1)` and `선택 취소`, not `선택 종료`.
+  - archive button class includes `border-a-blue bg-a-blue text-white`.
+
+Last updated: 2026-07-13 19:21 KST (Codex: monitoring label/style deploy)
 
 ## 2026-07-13 배너 도달수=조회수 합산 정합 (Claude)
 
