@@ -1,0 +1,74 @@
+name: 런치랩 신규 입장자 환영 메시지
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # 매 10분마다 체크
+  workflow_dispatch:
+
+jobs:
+  welcome:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 마지막 체크 시각 복원
+        uses: actions/cache@v4
+        with:
+          path: /tmp/lunchlab_last_check.txt
+          key: lunchlab-welcome-${{ github.run_id }}
+          restore-keys: lunchlab-welcome-
+
+      - name: 새 입장자 감지 및 환영 메시지 발송
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_LUNCHLAB_BOT_TOKEN }}
+        run: |
+          python3 - <<'EOF'
+          import urllib.request, json, os, time, re
+          from pathlib import Path
+
+          TOKEN = os.environ['SLACK_BOT_TOKEN']
+          CHANNEL = 'C0BFPQAPHEK'
+          WELCOME_LINK = 'https://lalasweethq.slack.com/archives/C0BFPQAPHEK/p1783572191917999'
+          STATE_FILE = Path('/tmp/lunchlab_last_check.txt')
+
+          now = time.time()
+          if STATE_FILE.exists():
+              oldest = STATE_FILE.read_text().strip()
+              print(f"마지막 체크: {oldest}")
+          else:
+              oldest = str(now - 900)   # 첫 실행: 최근 15분
+              print("첫 실행 — 최근 15분 체크")
+
+          # 채널 히스토리 조회 (oldest 이후 메시지)
+          url = f'https://slack.com/api/conversations.history?channel={CHANNEL}&oldest={oldest}&limit=100'
+          req = urllib.request.Request(url, headers={'Authorization': 'Bearer ' + TOKEN})
+          data = json.load(urllib.request.urlopen(req, timeout=15))
+          if not data.get('ok'):
+              print('history 오류:', data.get('error'))
+              exit(1)
+
+          # channel_join 이벤트만 필터
+          joins = [m for m in data['messages'] if m.get('subtype') == 'channel_join']
+          print(f"입장 이벤트 {len(joins)}개 발견")
+
+          for msg in joins:
+              m = re.search(r'<@(U[A-Z0-9]+)', msg.get('text', ''))
+              if not m:
+                  continue
+              user_id = m.group(1)
+              print(f"환영 전송: {user_id}")
+
+              text = (
+                  f"<@{user_id}> 런치랩에 오신것을 환영합니다 :환영:\n"
+                  f"당신의 점심시간을 두 배로 즐기도록! ((런치랩 사측 아님))\n"
+                  f"<{WELCOME_LINK}|👆 회사코드 여기서 확인>"
+              )
+              payload = json.dumps({'channel': CHANNEL, 'text': text}, ensure_ascii=False).encode('utf-8')
+              req2 = urllib.request.Request(
+                  'https://slack.com/api/chat.postMessage', data=payload,
+                  headers={'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json; charset=utf-8'}
+              )
+              r = json.load(urllib.request.urlopen(req2, timeout=15))
+              print(f"  → ok={r.get('ok')} error={r.get('error', '')}")
+
+          STATE_FILE.write_text(str(now))
+          print("완료")
+          EOF
