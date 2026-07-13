@@ -20,8 +20,8 @@ Last updated: 2026-07-13 16:01 KST (Claude: advertising-cost recheck resolved)
 - Latest shared-status docs commit before this update: `6283605 docs: add shared AI status handoff`
 - Vercel production alias verified:
   - `https://influencer-seeding-mu.vercel.app/`
-  - points to `https://influencer-seeding-rltpuopg5-kwhwang-s-projects.vercel.app`
-  - deployment id: `dpl_9giXUMey74a9qZb7iJtWAkERQqoM`
+  - points to `https://influencer-seeding-8p9eteu5u-kwhwang-s-projects.vercel.app`
+  - deployment id: `dpl_54XrVwNXU8No9pJFN8zN7E1TbC9x`
   - status: Ready
 
 ## 2026-07-13 Dashboard Deploy
@@ -42,7 +42,7 @@ Verification:
 - `npx.cmd tsc --noEmit --incremental false`: passed.
 - `npm.cmd run build`: passed.
 - `npm.cmd run lint`: still fails on pre-existing lint debt; this deploy did not attempt the broader lint cleanup.
-- Vercel production alias verified as Ready on `https://influencer-seeding-rltpuopg5-kwhwang-s-projects.vercel.app`.
+- Vercel production alias verified as Ready on `https://influencer-seeding-8p9eteu5u-kwhwang-s-projects.vercel.app`.
 - Live UI verified in logged-in Chrome:
   - `/home` shows `7월 목표 현황` and no longer shows `이달 목표 데이터를 불러오지 못했습니다.`
   - `/monitoring` daily delta table contains `조회수 증분` and no old `누적 조회수` table header.
