@@ -63,6 +63,17 @@ export async function GET(req: NextRequest) {
       }
       return NextResponse.json({ headerMeta: (header as (string|number|null)[]).slice(0, firstDate).map(String), dateHeaders: dateCols.map((c) => String(header[c])), dumpRows });
     }
+    const locate = req.nextUrl.searchParams.get("locate");
+    if (locate) {
+      const wanted = locate.split(",").map((s) => s.trim()).filter(Boolean);
+      const hits: Record<string, number[]> = {};
+      for (const w of wanted) hits[w] = [];
+      for (let i = 1; i < rows.length; i++) {
+        const url = String((rows[i] as (string|number|null)[])[cUrl] ?? "").trim();
+        for (const w of wanted) if (url && url.includes(w)) hits[w].push(i + 1);
+      }
+      return NextResponse.json({ hits });
+    }
     const orphanRowNums = orphans.map((o) => o.row);
     const minR = Math.min(...orphanRowNums), maxR = Math.max(...orphanRowNums);
     // 연속 블록으로 묶기

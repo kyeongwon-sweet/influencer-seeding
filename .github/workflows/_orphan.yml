@@ -6,5 +6,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: |
-          curl -sS "$APP_URL/api/b2b-revenue/fetch?orphan=1&dump=1" -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+          curl -sS "$APP_URL/api/b2b-revenue/fetch?orphan=1&locate=DaNLXx1kxHs,DaNLMb2gCvQ,DaNLJtuCXJP,DaNLW5-DwOK,DZM5qhyD4SJ,DZPX8iKCYKx" -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
           echo
