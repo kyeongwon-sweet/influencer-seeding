@@ -1375,7 +1375,13 @@ export default function MonitoringPage() {
           {selected.size > 0 && (
             <button onClick={endSelected} disabled={deleting}
               className="text-xs px-3 py-1.5 rounded-full border border-gray-300 text-a-ink-muted hover:bg-gray-50 disabled:opacity-40 transition">
-              선택 종료 ({selected.size})
+              선택 보관 처리 ({selected.size})
+            </button>
+          )}
+          {selected.size > 0 && (
+            <button onClick={() => setSelected(new Set())} disabled={deleting}
+              className="text-xs px-3 py-1.5 rounded-full border border-gray-300 text-a-ink-muted hover:bg-gray-50 disabled:opacity-40 transition">
+              선택 취소
             </button>
           )}
           {selected.size > 0 && (
@@ -1638,7 +1644,7 @@ export default function MonitoringPage() {
                           <thead className="sticky top-0 z-10 bg-white border-b border-a-hairline">
                             <tr>
                               <th className="pl-5 pr-3 py-2.5 text-left text-[13px] font-semibold text-a-ink-muted">날짜</th>
-                              <th className="px-3 py-2.5 text-right text-[13px] font-semibold text-a-ink-muted whitespace-nowrap">누적 조회수</th>
+                              <th className="px-3 py-2.5 text-right text-[13px] font-semibold text-a-ink-muted whitespace-nowrap">조회수 증분</th>
                               <th className="px-3 py-2.5 text-right text-[13px] font-semibold text-a-ink-muted">검색량</th>
                               <th className="pl-3 pr-5 py-2.5 text-right text-[13px] font-semibold text-a-ink-muted whitespace-nowrap">B2B 발주량</th>
                             </tr>
