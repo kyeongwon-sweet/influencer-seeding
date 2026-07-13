@@ -11,7 +11,7 @@ jobs:
     steps:
       - name: 식단표 파싱 및 Slack 발송
         env:
-          SLACK_WEBHOOK: ${{ secrets.SLACK_LUNCHLAB_WEBHOOK }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_LUNCHLAB_BOT_TOKEN }}
         run: |
           python3 - <<'EOF'
           import urllib.request, re, json, os, sys
@@ -51,18 +51,22 @@ jobs:
               })
 
           if not imgs:
-              # 이미지 없으면 링크만
               print("이미지를 찾지 못함 — 링크만 발송")
 
-          # 5. 웹훅 발송
-          webhook = os.environ["SLACK_WEBHOOK"]
-          payload = json.dumps({"blocks": blocks}, ensure_ascii=False).encode("utf-8")
+          # 5. chat.postMessage로 발송
+          token = os.environ["SLACK_BOT_TOKEN"]
+          payload = json.dumps({"channel": "C0BFPQAPHEK", "blocks": blocks}, ensure_ascii=False).encode("utf-8")
           req2 = urllib.request.Request(
-              webhook, data=payload,
-              headers={"Content-Type": "application/json; charset=utf-8"}
+              "https://slack.com/api/chat.postMessage",
+              data=payload,
+              headers={
+                  "Authorization": "Bearer " + token,
+                  "Content-Type": "application/json; charset=utf-8"
+              }
           )
-          res = urllib.request.urlopen(req2, timeout=15).read().decode()
-          print("Slack 응답:", res)
-          if res.strip() != "ok":
+          r = json.load(urllib.request.urlopen(req2, timeout=15))
+          print("Slack 응답:", r)
+          if not r.get("ok"):
+              print("오류:", r.get("error"))
               sys.exit(1)
           EOF
