@@ -49,10 +49,18 @@ export async function GET(req: NextRequest) {
       const vc = dateCols.filter((c) => { const v = r[c]; return v != null && v !== "" && !isNaN(Number(String(v).replace(/,/g, ""))); }).length;
       if (vc > 0) { orphans.push({ row: i + 1, valueCells: vc }); orphanSumCells += vc; }
     }
-    const trim = (arr: (string | number | null)[]) => arr.map((c) => (c == null ? "" : String(c))).slice(0, dateCols.length ? Math.max(...dateCols) + 1 : 20);
     const firstDate = dateCols.length ? dateCols[0] : 20;
-    const fullSample = orphans.slice(0, 12).map((o) => ({ row: o.row, meta: trim((rows[o.row - 1] as (string | number | null)[]) ?? []).slice(0, firstDate), vals: (dateCols.map((c) => (rows[o.row - 1] as (string | number | null)[])?.[c] ?? "")).filter((v) => v !== "" && v != null) }));
-    return NextResponse.json({ headerMeta: (header as (string|number|null)[]).slice(0, firstDate).map(String), cUrl, cAcc, firstDateCol: firstDate, dateColCount: dateCols.length, orphanRows: orphans.length, orphanSumCells, fullSample });
+    const orphanRowNums = orphans.map((o) => o.row);
+    const minR = Math.min(...orphanRowNums), maxR = Math.max(...orphanRowNums);
+    // 연속 블록으로 묶기
+    const blocks: { start: number; end: number }[] = [];
+    for (const rn of orphanRowNums) { const last = blocks[blocks.length - 1]; if (last && rn === last.end + 1) last.end = rn; else blocks.push({ start: rn, end: rn }); }
+    // meta 있는(정상) 데이터행 마지막 위치
+    let lastMetaRow = 0, metaRowCount = 0;
+    for (let i = 1; i < rows.length; i++) { const r = rows[i] as (string | number | null)[]; const url = String(r[cUrl] ?? "").trim(); const acc = String(r[cAcc] ?? "").trim(); if (url || acc) { lastMetaRow = i + 1; metaRowCount++; } }
+    // 첫 orphan 직전 3개 정상행 meta(URL/채널명/업체명/프로젝트명)
+    const context = [minR - 3, minR - 2, minR - 1].filter((n) => n >= 2).map((n) => { const r = (rows[n - 1] as (string|number|null)[]) ?? []; return { row: n, url: String(r[cUrl] ?? ""), acc: String(r[cAcc] ?? ""), company: String(r[3] ?? ""), project: String(r[6] ?? "") }; });
+    return NextResponse.json({ totalRows: rows.length, metaRowCount, lastMetaRow, orphanRows: orphans.length, orphanRange: [minR, maxR], blockCount: blocks.length, blocks: blocks.slice(0, 30), contextBeforeFirstOrphan: context });
   }
 
   const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
