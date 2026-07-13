@@ -14,30 +14,58 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_LUNCHLAB_BOT_TOKEN }}
         run: |
           python3 - <<'EOF'
-          import urllib.request, re, json, os, sys
+          import urllib.request, re, json, os, sys, urllib.parse
+          from datetime import date, timedelta
 
-          # 1. 페이지 fetch
+          # 1. 이번 주 월요일 계산 (오늘이 월요일이면 오늘, 아니면 다음 월요일)
+          today = date.today()
+          days_to_monday = (7 - today.weekday()) % 7
+          monday = today + timedelta(days=days_to_monday)
+          # 주차 계산: 월 첫날 기준 첫 번째 월요일로부터 몇 번째 주인지
+          month = monday.month
+          first_of_month = date(monday.year, month, 1)
+          first_monday = first_of_month - timedelta(days=first_of_month.weekday())
+          week_num = (monday - first_monday).days // 7 + 1
+          target_label = f"{month}월{week_num}주차"
+          print(f"찾는 주차: {month}월 {week_num}주차 (월요일: {monday})")
+
+          # 2. 페이지 fetch
           req = urllib.request.Request(
               "https://www.lunchlab.me/menu",
               headers={"User-Agent": "Mozilla/5.0"}
           )
           html = urllib.request.urlopen(req, timeout=15).read().decode("utf-8", errors="ignore")
 
-          # 2. 이번 주 라벨 (첫 번째 M월 N주차)
-          label_m = re.search(r"(\d+월\s*\d+주차)", html)
-          week_label = label_m.group(1).replace(" ", "") if label_m else "이번 주"
+          # 3. 해당 주차 라벨 위치 찾기
+          label_pattern = rf"{month}월\s*{week_num}주차"
+          label_m = re.search(label_pattern, html)
+          if label_m:
+              # 다음 주차 라벨 전까지 구간만 추출
+              after_label = html[label_m.end():]
+              next_label_m = re.search(r"\d+월\s*\d+주차", after_label)
+              section = after_label[:next_label_m.start()] if next_label_m else after_label
+              week_label_display = f"{month}월 {week_num}주차"
+          else:
+              print(f"'{month}월 {week_num}주차' 라벨 못 찾음 — 첫 번째 이미지 사용")
+              section = html
+              first_label = re.search(r"(\d+월\s*\d+주차)", html)
+              week_label_display = first_label.group(1) if first_label else "이번 주"
 
-          # 3. ctfassets.net 이미지 URL (첫 2개 = 가정식 + 프레시밀)
-          imgs = re.findall(r'https://images\.ctfassets\.net/[^\s"\'<>]+\.(?:png|jpg|jpeg|webp)', html)
-          imgs = list(dict.fromkeys(imgs))[:2]  # dedupe, 최대 2개
+          # 4. 해당 구간에서 이미지 URL 추출 (첫 2개)
+          # Next.js가 /_next/image?url= 형식으로 URL인코딩해서 embed함
+          raw_imgs = re.findall(r'https://images\.ctfassets\.net/[^\s"\'<>]+\.(?:png|jpg|jpeg|webp)', section)
+          encoded_imgs = re.findall(r'https?%3A%2F%2Fimages\.ctfassets\.net[^\s"\'<>&]+?\.(?:png|jpg|jpeg|webp)', section)
+          decoded_imgs = [urllib.parse.unquote(u) for u in encoded_imgs]
+          imgs = list(dict.fromkeys(raw_imgs + decoded_imgs))[:2]
+          print(f"이미지 {len(imgs)}개 발견")
 
-          # 4. Slack 블록 구성
+          # 5. Slack 블록 구성
           blocks = [
               {
                   "type": "section",
                   "text": {
                       "type": "mrkdwn",
-                      "text": f":rice: *이번 주 런치랩 식단표 ({week_label})*\n:fork_and_knife: <https://www.lunchlab.me/menu|메뉴 보러가기>"
+                      "text": f":rice: *이번 주 런치랩 식단표 ({week_label_display})*\n:fork_and_knife: <https://www.lunchlab.me/menu|메뉴 보러가기>"
                   }
               }
           ]
@@ -47,13 +75,10 @@ jobs:
                   "type": "image",
                   "title": {"type": "plain_text", "text": titles[i] if i < len(titles) else "식단표"},
                   "image_url": url,
-                  "alt_text": f"{week_label} {titles[i] if i < len(titles) else '식단표'}"
+                  "alt_text": f"{week_label_display} {titles[i] if i < len(titles) else '식단표'}"
               })
 
-          if not imgs:
-              print("이미지를 찾지 못함 — 링크만 발송")
-
-          # 5. chat.postMessage로 발송
+          # 6. chat.postMessage로 발송
           token = os.environ["SLACK_BOT_TOKEN"]
           payload = json.dumps({"channel": "C0BFPQAPHEK", "blocks": blocks}, ensure_ascii=False).encode("utf-8")
           req2 = urllib.request.Request(
@@ -65,8 +90,7 @@ jobs:
               }
           )
           r = json.load(urllib.request.urlopen(req2, timeout=15))
-          print("Slack 응답:", r)
+          print("Slack 응답:", r.get("ok"), r.get("error", ""))
           if not r.get("ok"):
-              print("오류:", r.get("error"))
               sys.exit(1)
           EOF
