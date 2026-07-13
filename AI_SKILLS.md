@@ -1,3 +1,8 @@
+# Shared AI Status
+
+Before using any workflow below, read `AI_SHARED_STATUS.md`.
+After code, DB, Sheet, Apps Script, or deployment changes, update `AI_SHARED_STATUS.md` with the verified latest state.
+
 # AI 작업 스킬 (플레이북)
 
 > 이 프로젝트를 이어받는 AI/개발자를 위한 **반복 작업 절차집**.

@@ -1,3 +1,8 @@
+# Shared AI Status
+
+Before making code, database, Google Sheet, Apps Script, or deployment changes, read `AI_SHARED_STATUS.md`.
+After meaningful changes, update `AI_SHARED_STATUS.md` so Claude, Codex, and other AI sessions share the same latest state.
+
 # 인플루언서 시딩 시스템
 
 ## 프로젝트 개요
