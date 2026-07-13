@@ -178,11 +178,19 @@ export async function POST(req: NextRequest) {
     endedMarked = (upd ?? []).length;
   }
 
+  // 🎯 배너 판정: 배너는 조회수(play_count)가 없고 '도달수(reach_count)'로 표시·합산한다(합의된 설계).
+  //    시트 '일자별 조회수 입력'은 값을 play_count로 보내지만, 배너면 reach_count로 저장해야
+  //    도달수 열에 입력값 그대로(×0.8 추정 없이) 뜨고 조회수 합산도 정확해진다. (기존/시트 메타 채널분류로 판정)
+  const isBannerByUrl = new Map<string, boolean>();
+  for (const [u, ex] of existingByUrl) isBannerByUrl.set(u, String(ex.channel_type ?? "").includes("배너"));
+  for (const [u, m] of postByUrl) if (!isBannerByUrl.has(u)) isBannerByUrl.set(u, String(m.channel_type ?? "").includes("배너"));
+
   // 3) 게시물 매칭 (미등록 URL은 건너뜀)
   const missing = new Set<string>();
   const costAsViews: Array<{ url: string; date: string; value: number }> = [];
   const prePosted: Array<{ url: string; date: string }> = [];
   const incoming: GuardInput[] = [];
+  const bannerRows: Array<{ post_id: string; measured_at: string; reach_count: number; manual: boolean }> = [];
   const postIdSet = new Set<string>();
   for (const it of items) {
     const pid = idByUrl.get(it.url);
@@ -192,7 +200,12 @@ export async function POST(req: NextRequest) {
     // 🛡️ 게시일 이전 날짜 = 업로드 전 조회수(불가능) → 시트 날짜칸 백필 오류로 보고 저장 안 함
     const pa = postedByUrl.get(it.url);
     if (pa && String(it.measured_at).slice(0, 10) < pa) { prePosted.push({ url: it.url, date: it.measured_at }); continue; }
-    incoming.push({ post_id: pid, measured_at: it.measured_at, play_count: it.play_count });
+    // 배너: reach_count로 저장(입력값=도달수). 비배너: 기존대로 play_count(누적 mono가드 대상).
+    if (isBannerByUrl.get(it.url)) {
+      bannerRows.push({ post_id: pid, measured_at: it.measured_at, reach_count: it.play_count, manual: true });
+    } else {
+      incoming.push({ post_id: pid, measured_at: it.measured_at, play_count: it.play_count });
+    }
     postIdSet.add(pid);
   }
   const postIds = [...postIdSet];
@@ -257,9 +270,21 @@ export async function POST(req: NextRequest) {
     inserted = (data ?? []).length;
   }
 
+  // 배너 도달수 입력분 upsert (reach_count). play_count는 안 건드림(배너는 조회수 없음).
+  let bannerInserted = 0;
+  if (bannerRows.length > 0) {
+    const { data, error } = await supabase
+      .from("post_daily_stats")
+      .upsert(bannerRows, { onConflict: "post_id,measured_at" })
+      .select();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    bannerInserted = (data ?? []).length;
+  }
+
   return NextResponse.json({
     ok: true,
     inserted,
+    banner_reach_inserted: bannerInserted,
     created_posts: created,
     meta_filled: metaFilled,
     ended_marked: endedMarked,
