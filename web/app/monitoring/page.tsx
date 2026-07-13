@@ -164,7 +164,7 @@ export default function MonitoringPage() {
       const { s } = pickRangeStats(p, filters.dateFrom, filters.dateTo);
       // 배너는 조회수(play)가 없어 도달수(reach)를 조회수처럼 합산(카드 툴팁·dailyTotals와 동일 규칙).
       const isBanner = (p.channel_type ?? "").includes("배너");
-      play += (isBanner ? s?.reach_count : s?.play_count) ?? 0;
+      play += (isBanner ? bannerDailyMetric(s) : s?.play_count) ?? 0;
       likes += s?.likes_count ?? 0;
       comments += s?.comments_count ?? 0;
     }
@@ -182,8 +182,10 @@ export default function MonitoringPage() {
       const { s, prev } = pickRangeStats(post, filters.dateFrom, filters.dateTo);
       const inc = viewIncrement(post, s, prev); if (inc != null) delta += inc;
       cost += post.cost ?? 0;
-      if (s?.play_count != null) views += s.play_count;
-      const r = effectiveReach(post.reach_count, s?.play_count);
+      const isBanner = (post.channel_type ?? "").includes("배너");
+      // 배너는 조회수(play) 없음 → 조회수 합계 제외(잔존 play가 섞이지 않게). 도달수는 일별 도달수(bannerDailyMetric).
+      if (!isBanner && s?.play_count != null) views += s.play_count;
+      const r = isBanner ? bannerDailyMetric(s) : effectiveReach(post.reach_count, s?.play_count);
       if (r != null) reach += r;
       if (s?.likes_count != null && s.likes_count >= 0) likes += s.likes_count; // 음수(-1)=인스타 좋아요 비공개 → 제외
       if (s?.comments_count != null && s.comments_count >= 0) comments += s.comments_count;
@@ -232,7 +234,7 @@ export default function MonitoringPage() {
         let incAdd = 0;
         if (statsMap.has(date)) {
           const s = statsMap.get(date)!;
-          const metric = isBanner ? s.reach_count : s.play_count;
+          const metric = isBanner ? bannerDailyMetric(s) : s.play_count;
           // 🛡️ 누적(조회수/도달수)은 감소 불가 — 수집 오류로 낮아진 값은 직전 값 유지
           lastPlay     = metric != null ? Math.max(lastPlay ?? metric, metric) : lastPlay;
           lastLikes    = s.likes_count    ?? lastLikes;
@@ -306,7 +308,8 @@ export default function MonitoringPage() {
       if (!kind) continue;
       const { s } = pickRangeStats(post, filters.dateFrom, filters.dateTo);
       const play = s?.play_count ?? null;
-      const val = kind === "video" ? play : effectiveReach(post.reach_count, play);
+      // 배너=일별 도달수 우선(bannerDailyMetric), 없으면 post레벨 reach 폴백. 영상=조회수.
+      const val = kind === "video" ? play : (bannerDailyMetric(s) ?? effectiveReach(post.reach_count, play));
       const acc = by.get(company) ?? { video: { n: 0, sum: 0, cost: 0 }, banner: { n: 0, sum: 0, cost: 0 } };
       const slot = acc[kind];
       slot.n += 1;                       // 게시물 수는 값 유무와 무관하게 집계(업체 물량 파악)
@@ -969,8 +972,10 @@ export default function MonitoringPage() {
       // 🔒 필터 불변식: CSV도 화면과 동일한 값 규칙(pickRangeStats) — 필터 무시하고 latest를 내보내
       //   '화면≠내보내기'가 되던 버그(2026-07-06) 수정
       const { s, prev } = pickRangeStats(post, filters.dateFrom, filters.dateTo);
+      const isBanner = (post.channel_type ?? "").includes("배너");
       const play = s?.play_count ?? null;
-      const reach = effectiveReach(post.reach_count, play);
+      // 배너=일별 도달수(bannerDailyMetric), 영상=reach_count(없으면 조회수×0.8) — 화면 도달수 열과 동일.
+      const reach = isBanner ? bannerDailyMetric(s) : effectiveReach(post.reach_count, play);
       const cost = post.cost ?? null;
       const cpr = cost != null && play != null && play > 0 ? (cost / play).toFixed(2) : "";
       const cpreach = cost != null && reach != null && reach > 0 ? (cost / reach).toFixed(2) : "";
