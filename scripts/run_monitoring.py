@@ -572,6 +572,22 @@ def run():
                 print(f"  매칭 실패: {post['url']} (key={key})")
                 continue
 
+            # Guard against Apify returning a different post for a requested URL.
+            # Instagram timestamps can differ by one calendar day between UTC/KST,
+            # but larger gaps mean the collected item is not the sponsored post.
+            if post.get("posted_at") and s.get("posted_at"):
+                try:
+                    post_date = date.fromisoformat(str(post["posted_at"])[:10])
+                    stat_date = date.fromisoformat(str(s["posted_at"])[:10])
+                    if abs((stat_date - post_date).days) > 1:
+                        print(
+                            f"  [WARN] IG 게시일 불일치 응답 제외: {post['url']} "
+                            f"(sheet={post_date}, apify={stat_date}, key={key})"
+                        )
+                        continue
+                except Exception:
+                    pass
+
             # 🗑️ 삭제/비공개 자동 태깅 — Apify not_found 감지 시 특이사항(notes)에 기록.
             #    수동노트 보존: notes가 비어 있을 때만 기입(사람이 적어둔 특이사항은 절대 덮지 않음).
             if s.get("deleted") and not (post.get("notes") or "").strip():
@@ -865,6 +881,7 @@ def _fetch_stats(urls: list) -> list:
     items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
     print(f"[LOG] Apify 응답 아이템: {len(items)}개")
 
+    requested_keys = {_stats_key(u) for u in urls}
     result = []
     for idx, item in enumerate(items):
         shortcode = item.get("shortCode") or item.get("shortcode")
@@ -873,6 +890,10 @@ def _fetch_stats(urls: list) -> list:
             or (shortcode and f"https://www.instagram.com/p/{shortcode}/")
         )
         if not url:
+            continue
+        response_key = _stats_key(url)
+        if response_key not in requested_keys:
+            print(f"  [WARN] 요청하지 않은 IG 응답 제외: {url} (key={response_key})")
             continue
 
         # 게시일 추출

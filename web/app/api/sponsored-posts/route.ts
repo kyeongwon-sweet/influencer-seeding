@@ -126,7 +126,12 @@ export async function GET(req: NextRequest) {
 
   const result = (data ?? []).map((post: any) => {
     // 과거→현재 정렬
-    const asc = (post.post_daily_stats ?? []).slice().sort(
+    const postedAt = post.posted_at ? String(post.posted_at).slice(0, 10) : null;
+    const visibleStats = (post.post_daily_stats ?? []).filter((s: { measured_at: string }) => {
+      const measuredAt = String(s.measured_at).slice(0, 10);
+      return !postedAt || measuredAt >= postedAt;
+    });
+    const asc = visibleStats.slice().sort(
       (a: { measured_at: string }, b: { measured_at: string }) =>
         new Date(a.measured_at).getTime() - new Date(b.measured_at).getTime()
     );

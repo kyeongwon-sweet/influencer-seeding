@@ -128,9 +128,10 @@ async function collect(req: NextRequest) {
       console.log(`[LOG] 📊 Apify 응답: ${resultItems.length}개 게시물`);
 
       // URL → 조회수 매핑
+      const requestedKeys = new Set(igPosts.map((p) => igShortcode(p.url)).filter(Boolean));
       const urlToStats: Record<
         string,
-        { views: number; likes: number; comments: number }
+        { views: number; likes: number; comments: number; posted_at: string | null }
       > = {};
 
       for (const item of resultItems) {
@@ -141,9 +142,17 @@ async function collect(req: NextRequest) {
 
         const url = (item.url || "").split("?")[0];
         const sc = igShortcode(item.url);
+        if (sc && !requestedKeys.has(sc)) {
+          console.warn(`   [WARN] 요청하지 않은 IG 응답 제외: ${url} (key=${sc})`);
+          continue;
+        }
         const views = item.videoPlayCount || item.videoViewCount || item.impressions || item.viewCount || item.count || 0;
         const likes = item.likesCount || item.likeCount || 0;
         const comments = item.commentsCount || item.commentCount || item.comments || 0;
+        const ts = item.timestamp || item.takenAt;
+        let postedAt: string | null = null;
+        if (typeof ts === "string") postedAt = ts.slice(0, 10);
+        else if (typeof ts === "number") postedAt = new Date(ts * 1000).toISOString().slice(0, 10);
 
         // 🔍 음수 조회수 감지 (Apify 버그 추적)
         if (views < 0) {
@@ -158,7 +167,7 @@ async function collect(req: NextRequest) {
           );
         }
 
-        if (sc) urlToStats[sc] = { views, likes, comments };
+        if (sc) urlToStats[sc] = { views, likes, comments, posted_at: postedAt };
       }
 
       // 4️⃣ 직전(measuredAt 이전) 마지막 조회수 — 누적 단조성 검증용
@@ -200,6 +209,16 @@ async function collect(req: NextRequest) {
           continue;
         }
         const stats = urlToStats[sc];
+        if (post.posted_at && stats.posted_at) {
+          const postDate = new Date(String(post.posted_at).slice(0, 10) + "T00:00:00Z");
+          const statDate = new Date(stats.posted_at + "T00:00:00Z");
+          const gapDays = Math.abs((statDate.getTime() - postDate.getTime()) / 86400000);
+          if (gapDays > 1) {
+            console.warn(`   [WARN] IG 게시일 불일치 응답 제외: ${cleanUrl} (sheet=${String(post.posted_at).slice(0, 10)}, apify=${stats.posted_at}, key=${sc})`);
+            skipped++;
+            continue;
+          }
+        }
 
         // 🛡️ 재발방지: 누적 조회수 감소 = 수집 오류 → 저장 안 함
         const prevPlay = lastKnownPlay.get(post.id);

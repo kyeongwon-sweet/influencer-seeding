@@ -231,17 +231,24 @@ export async function POST(req: NextRequest) {
 async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, jobId: string, items: Record<string, unknown>[], measuredAt?: string) {
   const today = measuredAt || todayKST();
   const { data: posts } = await supabase.from('sponsored_posts').select('id, url, posted_at, account_name, influencer_id, ended_at, project_name, content_summary');
+  const eligiblePosts = (posts || []).filter((p) => {
+    const postedAt = p.posted_at ? String(p.posted_at).slice(0, 10) : null;
+    return !postedAt || postedAt <= today;
+  });
 
   const statsKey = (url: string) => {
     const m = (url || '').match(/\/(?:p|reel|tv)\/([A-Za-z0-9_-]+)/);
     return m ? m[1] : url.replace(/\/$/, '');
   };
 
+  const requestedKeys = new Set(eligiblePosts.map((p) => statsKey(p.url)));
   const statsByKey: Record<string, Record<string, unknown>> = {};
   for (const item of items) {
     const shortcode = (item.shortCode || item.shortcode) as string | undefined;
     const url = (item.url as string) || (shortcode ? `https://www.instagram.com/p/${shortcode}/` : '');
     if (!url) continue;
+    const key = statsKey(url);
+    if (!requestedKeys.has(key)) continue;
 
     const ts = item.timestamp || item.takenAt;
     let postedAt: string | null = null;
@@ -249,7 +256,7 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
     else if (typeof ts === 'number') postedAt = new Date(ts * 1000).toISOString().slice(0, 10);
 
     const owner = (item.owner as Record<string, unknown>) || {};
-    statsByKey[statsKey(url)] = {
+    statsByKey[key] = {
       url,
       play_count: (item.videoPlayCount ?? item.videoViewCount) ?? null,
       likes_count: (item.likesCount ?? item.likes) ?? null,
@@ -263,7 +270,7 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
 
   // statsByKey 빌드 후 필요한 username만 추려서 influencer 조회 (전체 로드 대신 targeted 쿼리)
   const neededUrls = [...new Set(
-    (posts || [])
+    eligiblePosts
       .filter(p => !p.influencer_id)
       .map(p => {
         const s = statsByKey[statsKey(p.url)];
@@ -283,7 +290,7 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
   const lastKnownPlay = new Map<string, number>();
   const lastMeasuredAt = new Map<string, string>();
   {
-    const batchIds = [...new Set((posts || []).map((p: { id: string }) => p.id).filter(Boolean))];
+    const batchIds = [...new Set(eligiblePosts.map((p: { id: string }) => p.id).filter(Boolean))];
     const ID_CHUNK = 120, PAGE = 1000;
     type PrevRow = { post_id: string; play_count: number | null; measured_at: string };
     const collectPrev = (page: PrevRow[] | null | undefined) => {
@@ -315,7 +322,7 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
   const pendingUpdates: { id: string; updates: Record<string, unknown> }[] = [];
   const endedUpdates: { id: string; ended_at: string }[] = [];
   let skipped = 0;
-  for (const post of posts || []) {
+  for (const post of eligiblePosts) {
     const key = statsKey(post.url);
     const s = statsByKey[key];
 
@@ -332,6 +339,13 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
         }
       }
       continue;
+    }
+
+    if (post.posted_at && s.posted_at) {
+      const postDate = Date.parse(`${String(post.posted_at).slice(0, 10)}T00:00:00Z`);
+      const statDate = Date.parse(`${String(s.posted_at).slice(0, 10)}T00:00:00Z`);
+      const gapDays = Math.abs((statDate - postDate) / 86400000);
+      if (Number.isFinite(gapDays) && gapDays > 1) { skipped++; continue; }
     }
 
     const updates: Record<string, unknown> = {};
