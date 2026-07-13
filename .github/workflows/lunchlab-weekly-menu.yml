@@ -14,17 +14,18 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_LUNCHLAB_BOT_TOKEN }}
         run: |
           python3 - <<'EOF'
-          import urllib.request, re, json, os, sys, math
+          import urllib.request, re, json, os, sys, urllib.parse
           from datetime import date, timedelta
 
           # 1. 이번 주 월요일 계산 (오늘이 월요일이면 오늘, 아니면 다음 월요일)
           today = date.today()
           days_to_monday = (7 - today.weekday()) % 7
           monday = today + timedelta(days=days_to_monday)
-          # 주차 계산: 화요일(배송 첫날) 기준
-          tuesday = monday + timedelta(days=1)
-          month = tuesday.month
-          week_num = math.ceil(tuesday.day / 7)
+          # 주차 계산: 월 첫날 기준 첫 번째 월요일로부터 몇 번째 주인지
+          month = monday.month
+          first_of_month = date(monday.year, month, 1)
+          first_monday = first_of_month - timedelta(days=first_of_month.weekday())
+          week_num = (monday - first_monday).days // 7 + 1
           target_label = f"{month}월{week_num}주차"
           print(f"찾는 주차: {month}월 {week_num}주차 (월요일: {monday})")
 
@@ -51,8 +52,11 @@ jobs:
               week_label_display = first_label.group(1) if first_label else "이번 주"
 
           # 4. 해당 구간에서 이미지 URL 추출 (첫 2개)
-          imgs = re.findall(r'https://images\.ctfassets\.net/[^\s"\'<>]+\.(?:png|jpg|jpeg|webp)', section)
-          imgs = list(dict.fromkeys(imgs))[:2]
+          # Next.js가 /_next/image?url= 형식으로 URL인코딩해서 embed함
+          raw_imgs = re.findall(r'https://images\.ctfassets\.net/[^\s"\'<>]+\.(?:png|jpg|jpeg|webp)', section)
+          encoded_imgs = re.findall(r'https?%3A%2F%2Fimages\.ctfassets\.net[^\s"\'<>&]+?\.(?:png|jpg|jpeg|webp)', section)
+          decoded_imgs = [urllib.parse.unquote(u) for u in encoded_imgs]
+          imgs = list(dict.fromkeys(raw_imgs + decoded_imgs))[:2]
           print(f"이미지 {len(imgs)}개 발견")
 
           # 5. Slack 블록 구성
