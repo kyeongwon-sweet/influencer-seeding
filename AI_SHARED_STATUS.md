@@ -225,7 +225,11 @@ Verification:
   - Dashboard truth is `safeIncrement`, including banner reach logic and backlog-first-measurement suppression.
 
 Still pending / do not auto-correct yet:
-- Jjondeuk memo aliases `굿띵투유`, `유머패밀리`, `루나앤코코`, `동후작가`, `아택`, `업크루` need URL-level alias mapping before any DB/Sheet edit.
+- Jjondeuk memo alias URL mapping has been extracted and user-confirmed for `굿띵투유`, `유머패밀리`, `루나앤코코`, `동후작가`, `아택`, `업크루`.
+  - Important: `루나앤코코` duplicate-looking candidates are all valid separate URLs whose `2026-07-12` values are coincidentally identical:
+    - `63,122`: row 758 `good_tip_magazine` `/p/DaXWsj4kRMS/` and row 830 `good_tip_magazine` `/p/DakaOz4k-ZO/`
+    - `41,711`: row 732 `nato.tip` `/p/DaVO5zcEvws/` and row 832 `nato.tip` `/p/DakaaMukq2B/`
+  - Next correction may use these confirmed URL mappings, but still must dry-run/backup first and verify DB + linked Sheet + dashboard readback.
 - `이나 (IG)` `/p/DZXeAW8S9IQ/` appears as a remaining unique candidate with `2026-07-12 = 249,508`, but it was not corrected in this pass because the memo uses divided manual increments for ended/untracked channels and needs separate review.
 
 ## Latest Apps Script
@@ -274,7 +278,7 @@ No data changed. Cost values left as-is.
   - 투데이단(종료07-08, `/p/DZ9WqkhpjpA/`) = 한입혜원(종료07-07, `/p/DZpf4SuJS_Z/`) = 동일 시계열 `609,615→630,074→640,812→658,457`, 7/12값 658,457 = **안현수 실제값** 복사됨. 안현수 본인은 10,578에 멈춤.
   - 빵토리(종료07-07, `/p/DZO523IPRkv/`) 7/10~7/12 = `695,164/740,117/781,556` = **복득이 값** 복사.
   - 처리: 종료일 이후 오염 날짜행 삭제 또는 종료 직전 실제값으로 되돌림(빵토리 실제 마지막 07-07 41,229).
-- 보류(별칭매핑 확정 전 수정 금지): 굿띵투유·유머패밀리·루나앤코코·동후작가 (DB 계정명 매칭 없음).
+- 별칭매핑: 굿띵투유·유머패밀리·루나앤코코·동후작가·아택·업크루 후보 추출 완료. 사용자 확인으로 루나앤코코 동일값 후보(`63,122` 두 URL, `41,711` 두 URL)는 모두 정상 별도 URL로 확정됨.
 - 절차: 백업 → per-URL 7/10·7/11·7/12 upsert → 종료오염 정리 → DB합계·연동시트 BM:BO·대시보드 JD필터 재검증 → 이 파일에 결과 기록.
 
 ## Verification Completed For Commit 29923f9
