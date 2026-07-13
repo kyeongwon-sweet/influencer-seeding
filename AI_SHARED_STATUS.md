@@ -9,6 +9,29 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
+## 2026-07-13 배너 도달수=조회수 표시 경로 전수 정합 (Claude)
+
+배경: d85fc9a는 배너 시트 입력을 `reach_count`로 저장하도록 **저장만** 바꿨고, **표시/집계 경로 전수 점검을 안 해** 회귀가 남아 있었음.
+증상: 백필된 배너(play=null, reach=값)의 도달수 열이 `—`, 87 잔존행(play·reach 둘 다)은 열=play인데 카드=reach로 내부 불일치.
+
+단일 규칙 도입:
+- `lib.bannerDailyMetric(s) = reach_count ?? play_count`. 배너 지표를 읽는 **모든 표시·집계 경로가 이 헬퍼 하나만** 사용(회귀 재발 방지). `safeIncrement`도 사용.
+
+수정한 경로(전수):
+- `PostsTable`: 도달수 열, 도달당비용 분모.
+- `page.tsx`: totalPlayCount(KPI 카드), tableTotals(조회수 합계에서 배너 play 제외 + 도달수 합계=일별 도달수), dailyTotals(그래프 증분), companyAnalysis(업체별 누적 — daily-only reach 배너 0 누락 수정), downloadCSV(도달수 열), copyIncrementList(복사 값), patchPlayCount(배너 ×0.8 skip)·updatePostLatestStats(reach 전파).
+- Slack 스크립트(notify_increments/notify_status)는 이미 배너=reach 처리 상태.
+
+재발방지 초크포인트:
+- `web/app/api/sponsored-posts/[id]/stats/route.ts`: 배너 게시물의 `play_count` 입력은 **어느 호출자든** `reach_count`로 저장(play는 null). stats-import(d85fc9a)와 동일 규칙 → 시트·대시보드 인라인 편집 **모든 수기 입력 경로 통일**.
+- 회귀 테스트 `bannerDailyMetric` 추가(총 27 테스트).
+
+커밋: `48dad32`(표시경로+초크포인트), `9742a43`(합계·업체·CSV·KPI).
+검증: tsc/build/test 통과. 라이브(로그인 Chrome) — ho1y_time 배너 도달수 열에 3,795·3,466·4,724… 표시, 조회수 `—`, 도달당비용·증분(+6,496) 정상.
+
+미해결(원본 확인 필요, 무단수정 금지):
+- 배너 87 잔존행(play>0 & reach 이미 존재, 값 상이 예: Ufo__NIGHT play 136,788/reach 41,002). 표시는 reach 우선이라 카드와 일치(무해)하나 stray play는 원본 확인 후 정리 대상.
+
 ## 2026-07-13 Monitoring Updated-Value Tooltip Layer Fix
 
 Commit:
@@ -58,7 +81,7 @@ Verification:
   - selecting one post shows `선택 보관 처리 (1)` and `선택 취소`, not `선택 종료`.
   - archive button class includes `border-a-blue bg-a-blue text-white`.
 
-Last updated: 2026-07-13 19:29 KST (Codex: monitoring updated-value tooltip layer fix)
+Last updated: 2026-07-13 19:30 KST (Claude: 배너 도달수 표시경로 전수정합 + 초크포인트)
 
 ## 2026-07-13 배너 도달수=조회수 합산 정합 (Claude)
 
