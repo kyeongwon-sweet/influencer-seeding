@@ -9,6 +9,29 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
+## 2026-07-13 Monitoring Updated-Value Tooltip Layer Fix
+
+Commit:
+- `9abef47 fix(monitoring): lift updated-value tooltip above totals row`
+
+Reason:
+- User reported the red updated-value marker/tooltip was hidden under the sticky totals row.
+
+Changed:
+- `web/app/monitoring/components/PostsTable.tsx`
+  - updated-value marker wrapper now has `relative z-30`.
+  - updated-value tooltip now has `z-[80]`, above the sticky totals row `z-20`.
+
+Verification:
+- `npm.cmd test`: passed, 26 tests.
+- `npx.cmd tsc --noEmit --incremental false`: passed.
+- `npm.cmd run build`: passed.
+- Vercel production deploy for the code commit was Ready at `https://influencer-seeding-j8oro6jyj-kwhwang-s-projects.vercel.app`.
+- Live `/monitoring` check in logged-in Chrome:
+  - current live data had no red updated-value dots at check time, so the exact hover visual could not be reproduced from live data.
+  - deployed CSS contains `.z-[80] { z-index: 80; }`.
+  - deployed CSS contains `.z-20 { z-index: 20; }` for the sticky totals layer.
+
 ## 2026-07-13 Monitoring Label/Button Deploy
 
 Commit:
@@ -35,7 +58,7 @@ Verification:
   - selecting one post shows `선택 보관 처리 (1)` and `선택 취소`, not `선택 종료`.
   - archive button class includes `border-a-blue bg-a-blue text-white`.
 
-Last updated: 2026-07-13 19:21 KST (Codex: monitoring label/style deploy)
+Last updated: 2026-07-13 19:29 KST (Codex: monitoring updated-value tooltip layer fix)
 
 ## 2026-07-13 배너 도달수=조회수 합산 정합 (Claude)
 
