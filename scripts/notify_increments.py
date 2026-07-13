@@ -190,8 +190,9 @@ def main():
             return rc if rc is not None else r.get("play_count")
         return r.get("play_count")
 
-    def _safe_inc(rows, isb):
-        """대시보드 safeIncrement와 동일: 오늘값 − 직전 '유효(>0)' 값. 첫 유효측정=그날 전체, 오늘0/None=None."""
+    def _safe_inc(rows, isb, posted_at=None):
+        """대시보드 safeIncrement와 동일: 오늘값 − 직전 '유효(>0)' 값. 첫 유효측정=그날 전체, 오늘0/None=None.
+        단 첫 유효측정은 '게시 후 7일 이내'만 전액 — 게시 한참 뒤 첫 측정(백로그)은 스파이크 방지로 제외."""
         cur, base, has = None, 0, False
         for r in rows:
             v = _metric(r, isb)
@@ -204,7 +205,13 @@ def main():
         if cur is None or cur <= 0:
             return None            # 오늘 측정 없음/실패
         if not has:
-            return cur             # 첫 유효 측정 = 그날 값 전체(업로드날 성과)
+            if posted_at:          # 백로그(게시 7일 초과 뒤 첫 측정)는 그날 전액 아님 → 제외
+                try:
+                    if (date.fromisoformat(target) - date.fromisoformat(str(posted_at)[:10])).days > 7:
+                        return None
+                except Exception:
+                    pass
+            return cur             # 첫 유효 측정(게시 7일 이내) = 그날 값 전체(업로드날 성과)
         return max(0, cur - base)
 
     # items: 안전 규칙으로 재계산(저장 increment 무시). 첫 측정/0 baseline은 증분 아님 → 제외(과집계 차단).
@@ -214,7 +221,7 @@ def main():
         ct = (m.get("channel_type") or "").strip()
         isb = "배너" in ct
         rows = series.get(pid, [])
-        inc = _safe_inc(rows, isb)
+        inc = _safe_inc(rows, isb, m.get("posted_at"))
         if not inc or inc <= 0:
             continue
         url = (m.get("url") or "").strip()

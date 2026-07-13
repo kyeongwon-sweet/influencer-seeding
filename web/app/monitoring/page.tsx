@@ -236,7 +236,7 @@ export default function MonitoringPage() {
           lastLikes    = s.likes_count    ?? lastLikes;
           lastComments = s.comments_count ?? lastComments;
           // 안전 증분 규칙(공유 safeIncrement): 저장 increment 대신 재계산 — 0/누락 baseline 점프를 증분으로 안 침(과집계 차단).
-          incAdd = safeIncrement(post.all_stats ?? [], s, isBanner) ?? 0;
+          incAdd = safeIncrement(post.all_stats ?? [], s, isBanner, post.posted_at) ?? 0;
         }
         const e = totals.get(date)!;
         totals.set(date, {

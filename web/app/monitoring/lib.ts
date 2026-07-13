@@ -172,7 +172,7 @@ export function getCategoryLabel(val: string | null | undefined): string {
 //   ※ '직전 값' 하나만 보지 않고 '직전 유효값'(0/누락 건너뛴 마지막 >0)을 baseline으로 써서, 0글리치 낀
 //     플라토 게시물도 실제 하루치(예: 88)를 살린다(직전값만 보면 전체로 뻥튀기됨).
 //   ※ 불변식: Σ증분(첫날 전체 + 이후 델타) == 최종 누적. mono/raw 무관하게 대시보드·리포트 자동 일치.
-export function safeIncrement(allStats: DailyStats[], s: DailyStats | null | undefined, isBanner: boolean): number | null {
+export function safeIncrement(allStats: DailyStats[], s: DailyStats | null | undefined, isBanner: boolean, postedAt?: string | null): number | null {
   if (!s) return null;
   const val = (st: DailyStats | null | undefined) =>
     st ? (isBanner ? (st.reach_count ?? st.play_count) : st.play_count) : null;
@@ -184,14 +184,23 @@ export function safeIncrement(allStats: DailyStats[], s: DailyStats | null | und
     const v = val(st);
     if (v != null && v > 0) { hasBaseline = true; if (v > baseline) baseline = v; }
   }
-  if (!hasBaseline) return cur;                   // 첫 유효 측정 = 그날 값 전체(업로드날 성과)
+  if (!hasBaseline) {
+    // 첫 유효 측정 = 그날 값 전체(업로드날 성과). 단 '게시 후 7일 이내' 첫 측정만 = 진짜 첫날 성과.
+    //   게시 한참 뒤에야 추적 추가돼 처음 잡힌 백로그(예: 20~40일 뒤)는 그날 누적 전액이 하루 증분
+    //   스파이크로 찍히므로 제외(null). posted_at 없으면 판정 불가라 전액 유지(보수적).
+    if (postedAt) {
+      const gapDays = (Date.parse(s.measured_at) - Date.parse(String(postedAt).slice(0, 10))) / 86400000;
+      if (gapDays > 7) return null;               // 백로그 첫 측정 → 스파이크 방지로 제외
+    }
+    return cur;
+  }
   return Math.max(0, cur - baseline);
 }
 
 // 증분량(게시물 열/상단 카드 합계): 안전 규칙으로 계산. 배너는 도달수(reach) 기준.
 // (prev 인자는 호출 시그니처 호환용 — 안전 규칙은 all_stats에서 직전 유효값을 직접 찾는다.)
 export function viewIncrement(post: Post, s: DailyStats | null | undefined, _prev?: DailyStats | null | undefined): number | null {
-  return safeIncrement(post.all_stats ?? [], s, (post.channel_type ?? "").includes("배너"));
+  return safeIncrement(post.all_stats ?? [], s, (post.channel_type ?? "").includes("배너"), post.posted_at);
 }
 
 export function pickMetric(s: DailyStats): number | null {
