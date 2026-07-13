@@ -49,7 +49,10 @@ export async function GET(req: NextRequest) {
       const vc = dateCols.filter((c) => { const v = r[c]; return v != null && v !== "" && !isNaN(Number(String(v).replace(/,/g, ""))); }).length;
       if (vc > 0) { orphans.push({ row: i + 1, valueCells: vc }); orphanSumCells += vc; }
     }
-    return NextResponse.json({ cUrl, cAcc, dateColCount: dateCols.length, orphanRows: orphans.length, orphanSumCells, sample: orphans.slice(0, 40) });
+    const trim = (arr: (string | number | null)[]) => arr.map((c) => (c == null ? "" : String(c))).slice(0, dateCols.length ? Math.max(...dateCols) + 1 : 20);
+    const firstDate = dateCols.length ? dateCols[0] : 20;
+    const fullSample = orphans.slice(0, 12).map((o) => ({ row: o.row, meta: trim((rows[o.row - 1] as (string | number | null)[]) ?? []).slice(0, firstDate), vals: (dateCols.map((c) => (rows[o.row - 1] as (string | number | null)[])?.[c] ?? "")).filter((v) => v !== "" && v != null) }));
+    return NextResponse.json({ headerMeta: (header as (string|number|null)[]).slice(0, firstDate).map(String), cUrl, cAcc, firstDateCol: firstDate, dateColCount: dateCols.length, orphanRows: orphans.length, orphanSumCells, fullSample });
   }
 
   const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
