@@ -162,7 +162,9 @@ export default function MonitoringPage() {
     let play = 0, likes = 0, comments = 0;
     for (const p of filteredPosts) {
       const { s } = pickRangeStats(p, filters.dateFrom, filters.dateTo);
-      play += s?.play_count ?? 0;
+      // 배너는 조회수(play)가 없어 도달수(reach)를 조회수처럼 합산(카드 툴팁·dailyTotals와 동일 규칙).
+      const isBanner = (p.channel_type ?? "").includes("배너");
+      play += (isBanner ? s?.reach_count : s?.play_count) ?? 0;
       likes += s?.likes_count ?? 0;
       comments += s?.comments_count ?? 0;
     }
