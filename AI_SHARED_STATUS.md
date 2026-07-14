@@ -620,3 +620,27 @@ Verification:
 - `npx.cmd tsc --noEmit --incremental false`: passed.
 
 Last updated: 2026-07-14 (Codex: stats-import date/repeated-carry guard + sheet/DB reimport cleanup)
+
+## 2026-07-14 Codex: run_monitoring fallback = yesterday KST
+
+Request/source:
+- Claude handoff asked Codex to apply the `run_monitoring.py` fallback date rule to main.
+- Regular GHA cron already passes `MONITORING_DATE`, so this change affects only fallback/manual/local runs without `MONITORING_DATE`.
+
+Code change:
+- `scripts/run_monitoring.py`
+  - changed fallback from KST today to KST yesterday:
+    `TODAY = os.getenv("MONITORING_DATE") or ((datetime.now(timezone.utc) + timedelta(hours=9)).date() - timedelta(days=1)).isoformat()`
+  - Reason: after-midnight monitoring collection represents the previous day's performance snapshot.
+
+7/14 anomaly decision:
+- Live DB readback after the prior cleanup: `post_daily_stats` rows with `measured_at=2026-07-14` = 0, and `manual=false` rows for that date = 0.
+- Therefore no additional deletion/relabel was needed in this pass.
+- If a future anomaly exists, prefer backup + exact readback before deleting; do not rely on self-heal assumptions without checking current DB.
+
+Verification:
+- Cache-writing `python -m py_compile scripts/run_monitoring.py` could not write `scripts/__pycache__` in this sandbox (`WinError 5`).
+- Equivalent Python parser/compiler check without bytecode cache passed:
+  `compile(Path('scripts/run_monitoring.py').read_text(encoding='utf-8'), 'scripts/run_monitoring.py', 'exec')`
+
+Last updated: 2026-07-14 (Codex: run_monitoring fallback uses yesterday KST)
