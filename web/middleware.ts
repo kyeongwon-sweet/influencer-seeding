@@ -21,6 +21,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/youtube-trends/collect(.*)",
   "/api/youtube-trends/webhook(.*)",
   "/api/b2b-revenue/fetch(.*)",
+  "/api/awareness-ads(.*)",
 ]);
 
 // 회사 도메인 화이트리스트 — 이 도메인 이메일 계정만 대시보드/API 접근 허용.
