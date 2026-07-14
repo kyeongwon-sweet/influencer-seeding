@@ -658,3 +658,11 @@ Verification:
   `compile(Path('scripts/run_monitoring.py').read_text(encoding='utf-8'), 'scripts/run_monitoring.py', 'exec')`
 
 Last updated: 2026-07-14 (Codex: run_monitoring fallback uses yesterday KST)
+
+## 2026-07-14 exportStats 역채움 수동값 보호 (Claude)
+
+증상(사용자): 연동시트에 배너 도달수를 수동 입력하면 5분 내 다른 값으로 바뀜.
+원인: `exportStats` 역채움의 `isBlank || isCarried` 분기 — 배너 도달수는 며칠 평평(동일)해서, 수동 입력값이 '직전값과 같으면' isCarried로 오인돼 DB collected로 덮임. Codex가 배너 reach를 stats-for-sheet에 추가한 뒤 배너 수동값이 이 역채움에 덮이기 시작.
+수정(`f3a12e4`, git + 사용자 배포본 wt-company 동기): `if (isBlank)`로 축소 — 값 든 칸(수동/기존실측) 절대 안 덮고 빈 칸만 채움. CLAUDE.md 데이터무결성 규칙과 일치.
+⚠️ Apps Script라 **시트 편집기 재배포 필요**(git·wt-company만으론 미적용). 사용자에게 안내함.
+트레이드오프: 늦게 도착한 실측이 carry 칸을 자동 갱신하진 않음(빈 칸만) — 대시보드는 DB를 읽으므로 영향 없음(시트 표시만).
