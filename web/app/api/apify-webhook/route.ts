@@ -3,7 +3,7 @@ import { getServerSupabase } from "@/lib/supabase-server";
 import { fetchDatasetItems } from "@/lib/apify";
 import { normalizeYouTubeUrl, normalizeInstagramUrl } from "@/lib/url-utils";
 import { notifyBot, notifyJob } from "@/lib/slack";
-import { yesterdayKST } from "@/lib/dateRule";
+import { todayKST } from "@/lib/dateRule";
 
 // ── 지표 계산 (metrics.py 포팅) ─────────────────────────────────────
 
@@ -229,7 +229,7 @@ export async function POST(req: NextRequest) {
 // ── 모니터링 ────────────────────────────────────────────────────────
 
 async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, jobId: string, items: Record<string, unknown>[], measuredAt?: string) {
-  const today = measuredAt || yesterdayKST();
+  const today = measuredAt || todayKST();
   const { data: posts } = await supabase.from('sponsored_posts').select('id, url, posted_at, account_name, influencer_id, ended_at, project_name, content_summary');
   const eligiblePosts = (posts || []).filter((p) => {
     const postedAt = p.posted_at ? String(p.posted_at).slice(0, 10) : null;

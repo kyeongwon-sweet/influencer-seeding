@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createApifyClient } from "@/lib/apify";
 import { checkCronAuth } from "@/lib/cron-auth";
-import { yesterdayKST } from "@/lib/dateRule";
+import { todayKST } from "@/lib/dateRule";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -69,7 +69,7 @@ async function collect(req: NextRequest) {
 
     // 2. 수집 날짜 결정
     const dateParam = req.nextUrl.searchParams.get("date");
-    const measuredAt = dateParam || yesterdayKST();
+    const measuredAt = dateParam || todayKST();
 
     console.log(`[LOG] 📅 수집 날짜: ${measuredAt}`);
     const eligiblePosts = posts.filter((p) => {

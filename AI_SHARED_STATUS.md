@@ -964,3 +964,29 @@ Verification:
 - `web`: `npx.cmd tsc --noEmit --incremental false` passed.
 - `git diff --check` passed.
 - Local `npm.cmd run build` did not complete within 420s in this Codex shell; Vercel production deploy build should be used as the final build verification.
+
+## 2026-07-14 manual collection date attribution rule (Codex)
+
+User/Claude request:
+- Scheduled dawn collection must remain previous-day attribution because it represents the prior day's final snapshot.
+- Manual/weekly collection must default to same-day attribution so afternoon collection writes to today's hidden row instead of overwriting yesterday's visible final row.
+
+Changed:
+- `web/app/api/monitoring/collect-now/route.ts`
+  - default `measuredAt`: `todayKST()` when no `?date=` is explicitly supplied.
+- `web/app/api/jobs/route.ts`
+  - dashboard monitoring jobs now pass `measuredAt=todayKST()` to the Apify webhook.
+- `web/app/api/apify-webhook/route.ts`
+  - monitoring webhook fallback is now `todayKST()` when neither `measuredAt` nor `date` is supplied.
+
+Intentionally unchanged:
+- `web/app/api/monitoring/apify-collect/route.ts`
+  - still passes explicit `measuredAt=yesterdayKST()` for scheduled/Vercel cron collection.
+- Display layer was not changed; dashboard and sheet export already hide/skip today.
+- `safeIncrement` was not changed.
+
+Verification:
+- Grep confirmed the only remaining sponsored monitoring default `yesterdayKST()` in these web collection paths is scheduled `apify-collect`.
+- `web`: `npm.cmd test` passed (27 tests).
+- `web`: `npx.cmd tsc --noEmit --incremental false` passed.
+- `git diff --check` passed.
