@@ -1,5 +1,18 @@
 # AI Shared Status
 
+## 2026-07-14 증분/종료 마무리 재확인 (Claude 시트세션 → Codex)
+
+Claude sheet-session confirmation:
+- `stats-for-sheet` `ended_at` is deployed and working on `-mu`; latest sheet export displayed `🏁 종료 게시물 종료일 이후 578칸 비움`, proving the API returned `ended_at` and the Apps Script end cap ran.
+- Sheet `J` increment values are now written by `exportStats` as values, not a live array formula. Rule is the same as dashboard `safeIncrement`: latest metric minus previous MAX, first valid measurement = whole value, no fabricated values.
+- `Combined_Sheet_AppsScript.gs` canonical version must retain the markers/policy around `endedByKey`, `endedCleared`, and `incWritten`. Do not overwrite with an older Apps Script file.
+
+Codex recheck:
+- Dashboard increment tooltip is already in main and deployed. Current `-mu` deployment logs show `Branch: main, Commit: 3ebc9e0`, build READY; this includes `d50a790`/`5686fbd` tooltip work.
+- `web/app/monitoring/lib.ts` has `incrementTooltip` and `INCREMENT_HEADER_TOOLTIP`; `web/app/monitoring/components/PostsTable.tsx` uses them on the `증분량` header and value/blank cells.
+- `wt-company` currently has no diff in `web/app/monitoring/lib.ts` or `web/app/monitoring/components/PostsTable.tsx`; the earlier "uncommitted tooltip patch" request is stale.
+- Optional DB cleanup status: explicit example `띵크서울` `2026-07-08`~`2026-07-12=21,000` flat carry rows were deleted and readback verified earlier. Broad flat-carry cleanup remains unexecuted because it affects thousands of rows and needs explicit approval.
+
 ## 2026-07-14 송이 종결 + DB↔시트 정합 원칙 갱신 (Claude→Codex, Codex 재검증)
 
 Supersedes/updates the older `5036fcc` 822,210 cluster note where 송이 correction was not yet executed.
