@@ -288,9 +288,31 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // 3-c) 🛡️ 중복 날짜열 감지 — 시트에 같은 날짜 열이 중복되면 한 (게시물,날짜)에 서로 다른 값이 2개 들어온다.
+  //   어느 게 진짜인지 알 수 없으므로 그 (게시물,날짜)는 저장하지 않고 건너뛰고 알림(추측 금지).
+  const urlById = new Map<string, string>([...idByUrl.entries()].map(([u, id]) => [id, u]));
+  const dupConflict: Array<{ url: string; date: string; values: number[] }> = [];
+  {
+    const byKey = new Map<string, number[]>();
+    for (const r of incoming) {
+      const k = `${r.post_id}|${r.measured_at.slice(0, 10)}`;
+      const arr = byKey.get(k) ?? []; arr.push(r.play_count as number); byKey.set(k, arr);
+    }
+    const badKeys = new Set<string>();
+    for (const [k, vals] of byKey) {
+      if (new Set(vals).size >= 2) {            // 같은 날짜에 서로 다른 값 = 중복 열 오염
+        badKeys.add(k);
+        const [pid, d] = k.split("|");
+        dupConflict.push({ url: urlById.get(pid) ?? pid, date: d, values: [...new Set(vals)] });
+      }
+    }
+    if (badKeys.size > 0) incoming = incoming.filter(r => !badKeys.has(`${r.post_id}|${r.measured_at.slice(0, 10)}`));
+  }
+
   // 4) 기존 post_daily_stats 조회 (누적 감소 판정 기준) — 페이지네이션으로 전량
   const existingStats: GuardInput[] = [];
   const manualSet = new Set<string>(); // 대시보드에서 수동수정된 (post_id|measured_at) → 동기화가 덮지 않고 보존
+  const maxAutoByPost = new Map<string, number>(); // post_id → 자동수집(manual=false) 실측 최댓값 (급변 판정 기준)
   // ⚠️ .in("post_id", postIds)를 통째로 쓰면 시트가 대량 배치를 보낼 때 id 목록이 쿼리 URL 한도를 넘어
   //    0행/에러가 됨(sponsored-posts 500 버그와 동일 계열) → id를 청크로 나눠 조회.
   //    (mono가드 정합성 때문에 조회 에러 시엔 500으로 실패시켜 부분 쓰기 방지 — degrade 안 함)
@@ -309,6 +331,7 @@ export async function POST(req: NextRequest) {
         for (const s of (page ?? []) as Array<{ post_id: string; measured_at: string; play_count: number | null; manual: boolean | null }>) {
           existingStats.push({ post_id: s.post_id, measured_at: s.measured_at, play_count: Number(s.play_count ?? 0) });
           if (s.manual) manualSet.add(`${s.post_id}|${s.measured_at}`);
+          else { const v = Number(s.play_count ?? 0); if (v > 0) maxAutoByPost.set(s.post_id, Math.max(maxAutoByPost.get(s.post_id) ?? 0, v)); }
         }
         if (!page || page.length < PAGE) break;
       }
@@ -362,6 +385,20 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // 4-c) 🛡️ 급변 감지 — 들어온 값이 그 게시물의 '자동수집 실측 최댓값'의 3배 이상이면 과대 오입력 의심.
+  //   저장 보류 + 알림(alert-only, 자동보정 아님). 자동 실측이 있는 게시물만 대상(없으면 판정 불가라 통과).
+  const spikeSuspected: Array<{ url: string; date: string; value: number; auto_max: number }> = [];
+  {
+    const kept: GuardInput[] = [];
+    for (const r of incomingForGuard) {
+      const autoMax = maxAutoByPost.get(r.post_id) ?? 0;
+      if (autoMax > 0 && (r.play_count as number) >= autoMax * 3) {
+        spikeSuspected.push({ url: urlById.get(r.post_id) ?? r.post_id, date: r.measured_at, value: r.play_count as number, auto_max: autoMax });
+      } else kept.push(r);
+    }
+    incomingForGuard.length = 0; incomingForGuard.push(...kept);
+  }
+
   const overwroteManual = incomingForGuard.filter(i => manualSet.has(`${i.post_id}|${i.measured_at}`)).length;
 
   // 5) 누적 감소 가드 (lib/stats-guard.ts — 테스트로 검증되는 순수 함수)
@@ -407,11 +444,26 @@ export async function POST(req: NextRequest) {
     await notifyBot(`🚨 [시트 조회수 입력] 복사 의심 ${copySuspected.length}행 스킵 — 다른 게시물 값과 여러 날 일치라 DB 유입 차단. 시트 확인·정정 필요: ${s}`);
   }
 
+  // 중복 날짜열 감지분 → 알림(같은 날짜에 값 2개 = 시트 중복 열 오염, 어느 게 진짜인지 몰라 스킵).
+  if (dupConflict.length > 0) {
+    const s = dupConflict.slice(0, 6).map(c => `${c.date.slice(5, 10)} [${c.values.map(v => v.toLocaleString()).join("/")}]`).join(", ");
+    await notifyBot(`🚨 [시트 조회수 입력] 중복 날짜열 의심 ${dupConflict.length}건 스킵 — 한 게시물·날짜에 값이 2개(중복 열). 시트 날짜 열 정규화 필요: ${s}`);
+  }
+  // 급변 감지분 → 알림(자동 실측의 3배 이상 = 과대 오입력 의심, 보류). 사람이 실제 값 확인.
+  if (spikeSuspected.length > 0) {
+    const s = spikeSuspected.slice(0, 6).map(c => `${c.date.slice(5, 10)} ${c.value.toLocaleString()}(자동실측 ${c.auto_max.toLocaleString()})`).join(", ");
+    await notifyBot(`🚨 [시트 조회수 입력] 급변 의심 ${spikeSuspected.length}행 보류 — 자동수집 실측의 3배↑. 실제 급상승이면 재입력, 오입력이면 정정: ${s}`);
+  }
+
   return NextResponse.json({
     ok: true,
     inserted,
     copy_suspected_skipped: copySuspected.length,
     copy_suspected_sample: copySuspected.slice(0, 10),
+    dup_column_skipped: dupConflict.length,
+    dup_column_sample: dupConflict.slice(0, 10),
+    spike_suspected_skipped: spikeSuspected.length,
+    spike_suspected_sample: spikeSuspected.slice(0, 10),
     banner_reach_inserted: bannerInserted,
     created_posts: created,
     meta_filled: metaFilled,
