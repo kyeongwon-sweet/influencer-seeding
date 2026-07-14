@@ -9,6 +9,24 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
+## 2026-07-14 종료-후 복사 오염 전수조사 + 가드 (Claude)
+
+증상: 협찬(인플루언서)+DB(듬뿍바) 필터·기간필터 없음인데 종료 게시물 증분이 큼(합계 +132,728).
+원인: **종료 게시물에 라이브 게시물의 누적 시계열이 복사된 오염**(JD 7/12와 동일 메커니즘). 종료일 이후 measured_at 행에 다른 게시물 값이 박혀 safeIncrement가 가짜 성장을 증분으로 읽음.
+
+전수조사(종료후 성장 + 타 게시물 동일값=복사 확정):
+- **DB(듬뿍바) 4건** — 톡톡시아(유튜브)←복득이, 톡톡시아(틱톡)←셍이, 뭐랭하맨(인스타)←셍이, 준맛(인스타)←슈기. 종료 07-07, 종료후 07-08~12행. **14행. 소유 명확(듬뿍바 게시물에 쫀득바 인플루언서 값) → Claude가 정리 예정(백업 `data/output/db-pollution-delete-20260714.json`).** ⚠️ 실행은 안전분류기 차단으로 사용자 명시승인 대기 중.
+- **JD/P 상품 5건 = Codex 도메인(JD 7/12 정정)** — 아직 미정리:
+  - `smile_life_s2`(JD망, 종료06-10, **28행**, 복사원 요매거진)
+  - `니블이`(JD멜, 5행, 복사원 행)
+  - `송이`(JD멜, 4행) / `자취생으로 살아남기`(P혼, 4행) — 둘 다 822,210 공유(오하루(IG)·이나와도). **누가 진짜 주인인지 메모(JD_candidate_report) 대조 필요 → 함부로 삭제 금지.**
+  - `한입혜원`(JD멜, 1행, 복사원 투데이단) — Codex가 앞서 일부 지웠으나 잔존.
+- 의심(종료후 성장, 동일값 없음) 12행: 몽글(JD멜 217,400~229,100), yes__jam_·mamy014·dolkki_daily 등 소액 — 검토 필요.
+
+재발방지(배포됨):
+- `stats-import`에 **post_ended 가드** 추가(`b75ad66`): 시트 입력행의 measured_at > 게시물 ended_at이면 저장 거부(종료 게시물엔 신규 측정 유입 불가). 게시일-이전(pre_posted) 가드와 대칭. 응답 `post_ended_skipped` 노출. tsc/build 통과.
+- ⚠️ 남은 재발경로 점검 필요(Codex 조율): run_monitoring/apify-webhook/collect-now도 종료후 성장행을 쓸 수 있는지, 표시층 safeIncrement가 measured_at>ended_at 성장행을 무시하도록 할지.
+
 ## 2026-07-13 배너 도달수=조회수 표시 경로 전수 정합 (Claude)
 
 배경: d85fc9a는 배너 시트 입력을 `reach_count`로 저장하도록 **저장만** 바꿨고, **표시/집계 경로 전수 점검을 안 해** 회귀가 남아 있었음.
@@ -85,7 +103,7 @@ Verification:
   - selecting one post shows `선택 보관 처리 (1)` and `선택 취소`, not `선택 종료`.
   - archive button class includes `border-a-blue bg-a-blue text-white`.
 
-Last updated: 2026-07-14 (Claude: 배너 잔존 play 90행 정정 reach:=play)
+Last updated: 2026-07-14 (Claude: 종료후 복사오염 전수조사 + post_ended 가드 b75ad66)
 
 ## 2026-07-13 배너 도달수=조회수 합산 정합 (Claude)
 
