@@ -946,3 +946,21 @@ Verification:
 Remaining blocker:
 - This Codex environment has no `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, or `CRON_SECRET` in `.env.production.local` or scanned `C:/tmp/**/.env.production.local` files.
 - Therefore the 18 over-recorded rows were not DB-corrected here. Do not invent replacement values. Correct only with per-post real measurement evidence, and correct linked sheet cells and DB rows together to avoid `importStats` re-pollution.
+
+## 2026-07-14 stats-for-sheet ended_at export for sheet ffill cap (Codex)
+
+Reason:
+- Claude sheet session added an Apps Script exportStats cap that needs each post's `ended_at`.
+- Without `ended_at`, sheet reverse-fill can carry the final cumulative value into dates after tracking ended, fabricating values in cells where there was no measurement.
+
+Changed:
+- `web/app/api/sponsored-posts/stats-for-sheet/route.ts`
+  - `sponsored_posts` select now includes `ended_at`.
+  - Response posts now include `{ url, ended_at, stats }`.
+  - Post-ended `post_daily_stats` rows are not filtered in the API. This is intentional because manual post-ended real measurements can exist; Apps Script owns the judgment/cap.
+
+Verification:
+- `web`: `npm.cmd test` passed (27 tests).
+- `web`: `npx.cmd tsc --noEmit --incremental false` passed.
+- `git diff --check` passed.
+- Local `npm.cmd run build` did not complete within 420s in this Codex shell; Vercel production deploy build should be used as the final build verification.

@@ -4,7 +4,7 @@ import { getServerSupabase } from "@/lib/supabase-server";
 
 // 시트 Apps Script가 '자동수집 조회수 → 시트 I열~ 역채움'을 위해 호출하는 라우트.
 // URL별 (날짜, 조회수) 목록을 반환. 인증: Authorization: Bearer <CRON_SECRET> (list-for-sheet 등과 동일).
-// 반환: { posts: [ { url, stats: [ [measured_at, metric], ... ] } ] }
+// 반환: { posts: [ { url, ended_at, stats: [ [measured_at, metric], ... ] } ] }
 // 배너 metric = reach_count ?? play_count, 그 외 metric = play_count.
 export async function GET(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") {
@@ -17,15 +17,19 @@ export async function GET(req: NextRequest) {
   // 1) post_id → url
   const urlById = new Map<string, string>();
   const postedAtById = new Map<string, string>();
+  const endedByUrl = new Map<string, string>();
   const bannerById = new Map<string, boolean>();
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await supabase
       .from("sponsored_posts")
-      .select("id, url, posted_at, channel_type")
+      .select("id, url, posted_at, channel_type, ended_at")
       .range(from, from + PAGE - 1);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     for (const p of data ?? []) {
-      if (p.url) urlById.set(p.id as string, p.url as string);
+      if (p.url) {
+        urlById.set(p.id as string, p.url as string);
+        if (p.ended_at) endedByUrl.set(p.url as string, String(p.ended_at).slice(0, 10));
+      }
       if (p.posted_at) postedAtById.set(p.id as string, String(p.posted_at).slice(0, 10));
       bannerById.set(p.id as string, String(p.channel_type ?? "").includes("배너"));
     }
@@ -63,7 +67,11 @@ export async function GET(req: NextRequest) {
     if (!data || data.length < PAGE) break;
   }
 
-  const posts = [...byUrl.entries()].map(([url, stats]) => ({ url, stats }));
+  const posts = [...byUrl.entries()].map(([url, stats]) => ({
+    url,
+    ended_at: endedByUrl.get(url) ?? null,
+    stats,
+  }));
   return NextResponse.json(
     { posts, pre_posted_dropped: prePostedDropped },
     { headers: { "Cache-Control": "no-store" } }
