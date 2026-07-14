@@ -23,6 +23,13 @@ function normPlatform(p: string): string {
   return PLATFORM_KO[p.toLowerCase()] ?? p;
 }
 
+// 제품 상위 라인 — 변형(예: 멜론쫀득바) 선택 시 상위(쫀득바)도 함께 선택되게 한다.
+const PRODUCT_PARENTS = ["쫀득바", "듬뿍바", "제로바"];
+function parentProductOf(p: string): string | null {
+  for (const parent of PRODUCT_PARENTS) if (p !== parent && p.endsWith(parent)) return parent;
+  return null;
+}
+
 type Mention = {
   id: string;
   url: string;
@@ -412,6 +419,23 @@ export default function OrganicPage() {
     setSortCol(col);
   }
 
+  // 제품 칩 토글 — 변형(멜론쫀득바 등) 선택 시 상위 라인(쫀득바)도 자동 포함. 변형 해제 시 같은 상위의 다른 변형이 없으면 상위도 해제.
+  function toggleProduct(p: string) {
+    setFilters(prev => {
+      const parent = parentProductOf(p);
+      if (prev.products.includes(p)) {
+        let next = prev.products.filter(x => x !== p);
+        if (parent && next.includes(parent) && !next.some(x => parentProductOf(x) === parent)) {
+          next = next.filter(x => x !== parent);
+        }
+        return { ...prev, products: next };
+      }
+      const next = [...prev.products, p];
+      if (parent && !next.includes(parent)) next.push(parent);
+      return { ...prev, products: next };
+    });
+  }
+
   // 매 렌더(검색 타이핑 등) 전체 재필터/재정렬 방지
   const filtered = useMemo(() => mentions.filter(m => {
     // (광고) 또는 #광고 패턴만 제외 (내돈내산 있으면 통과)
@@ -434,7 +458,7 @@ export default function OrganicPage() {
   const hasFilter = filters.name !== "" || filters.platform !== "all" || filters.products.length > 0 || filters.exposureType !== "all" || filters.dateFrom !== "" || filters.dateTo !== "";
 
   // 언급 제품 옵션 — 콤마 구분 복수 값 파싱
-  const productOptions = Array.from(
+  const productOptions = useMemo(() => Array.from(
     new Set(
       mentions.flatMap(m =>
         m.mentioned_product
@@ -442,12 +466,12 @@ export default function OrganicPage() {
           : []
       )
     )
-  ).sort();
+  ).sort(), [mentions]);
 
   // 최근 업데이트 시간
-  const lastUpdatedAt = mentions.length > 0
+  const lastUpdatedAt = useMemo(() => mentions.length > 0
     ? mentions.reduce((a, b) => a.created_at > b.created_at ? a : b).created_at
-    : null;
+    : null, [mentions]);
 
   const sorted = useMemo(() => [...filtered].sort((a, b) => {
     if (!sortCol) return 0;
@@ -634,12 +658,7 @@ export default function OrganicPage() {
                   const active = filters.products.includes(p);
                   return (
                     <button key={p}
-                      onClick={() => setFilters(prev => ({
-                        ...prev,
-                        products: active
-                          ? prev.products.filter(x => x !== p)
-                          : [...prev.products, p],
-                      }))}
+                      onClick={() => toggleProduct(p)}
                       className={`text-xs px-3 py-1 rounded-full border whitespace-nowrap shrink-0 transition ${
                         active
                           ? "border-a-blue bg-blue-50 text-a-blue font-medium"
@@ -681,12 +700,12 @@ export default function OrganicPage() {
                     const thumb = m.thumbnail_url || getThumbnailUrl(m.url);
                     const platformShort = platformLabel(m.platform);
                     return (
-                    <tr key={m.id} className="group border-b border-a-divider last:border-0 hover:bg-a-parchment/60 transition-colors">
+                    <tr key={m.id} className="group border-b border-a-divider last:border-0 hover:bg-a-parchment/60 transition-colors [content-visibility:auto] [contain-intrinsic-size:auto_57px]">
                       {/* 썸네일 */}
                       <td className="px-2 py-2 w-16">
                         <a href={m.url} target="_blank" rel="noreferrer" className="block hover:opacity-80 transition-opacity">
                           {thumb
-                            ? <img src={thumb} alt="" className="w-12 h-9 object-cover rounded" />
+                            ? <img src={thumb} alt="" loading="lazy" decoding="async" className="w-12 h-9 object-cover rounded" />
                             : <div className="w-12 h-9 bg-a-parchment rounded flex items-center justify-center text-[10px] text-a-ink-muted font-medium">{platformShort}</div>
                           }
                         </a>
