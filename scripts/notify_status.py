@@ -164,9 +164,46 @@ def _integrity_lines(db, posts):
                 line += f" … 외 {len(low) - 5}일"
             lines.append(line)
 
-    # (5번 체크 'play=0 & increment>0' 제거 — increment 컬럼 폐기(2026-07-08)로 무의미해짐.
-    #  0-저장 자체는 run_monitoring 저장 직전 초크포인트 가드가 원천 차단하고(play<=0→직전값/None),
-    #  표시는 safeIncrement가 0을 baseline으로 안 써서 과집계가 구조적으로 불가능하다.)
+    # (구 5번 'play=0 & increment>0' 제거 — increment 컬럼 폐기(2026-07-08)로 무의미.)
+
+    # 5) 종료-후 복사 오염 감지 — 종료 게시물에 '다른 게시물의 시계열'이 복사돼 붙는 오염(2026-07-14 톡톡시아·뭐랭하맨·준맛 등).
+    #    종료일 이후(measured_at>ended_at) 값이 '종료 전 최대'를 넘고(자연 불가), 그 (날짜,값)이 다른 게시물에도
+    #    존재하면 복사 신호. ⚠️ 강제 차단은 안 함(종료 후 알고리즘 유입으로 실제 상승 가능) — 여기서 드러내
+    #    사람이 소스(시트/정정)를 바로잡게 한다. 단일 우연 일치가 아닌 '종료후 성장 + 타 게시물 동일값'만 잡아 오탐 최소화.
+    ended = {p["id"]: str(p["ended_at"])[:10] for p in posts if p.get("ended_at")}
+    if ended:
+        series = {}
+        vidx = {}
+        off = 0
+        while True:
+            res = db.table("post_daily_stats").select("post_id, measured_at, play_count, reach_count").range(off, off + 999).execute()
+            chunk = res.data or []
+            for r in chunk:
+                v = r.get("play_count") or r.get("reach_count") or 0
+                if v <= 0:
+                    continue
+                d = r["measured_at"][:10]
+                series.setdefault(r["post_id"], []).append((d, v))
+                vidx.setdefault((d, v), set()).add(r["post_id"])
+            if len(chunk) < 1000:
+                break
+            off += 1000
+        copied = []
+        for pid, ed in ended.items():
+            rows = series.get(pid, [])
+            premax = max((v for d, v in rows if d <= ed), default=0)
+            hits = [(d, v) for d, v in rows if d > ed and v > premax and len(vidx.get((d, v), ())) > 1]
+            if hits:
+                src = sorted({name_of.get(x, "?") for dv in hits for x in vidx.get(dv, ()) if x != pid})
+                copied.append((name_of.get(pid, "?"), ed, len(hits), src[:2]))
+        if copied:
+            copied.sort(key=lambda x: -x[2])
+            ex = ", ".join(f"{acc}(종료{ed[5:]}·{n}행←{'/'.join(s) or '?'})" for acc, ed, n, s in copied[:4])
+            line = f"종료-후 복사 오염 {len(copied)}건 — 종료 게시물에 타 게시물 값 복사(증분 왜곡, 소스 확인 필요): {ex}"
+            if len(copied) > 4:
+                line += f" … 외 {len(copied) - 4}건"
+            lines.append(line)
+
     return lines
 
 
