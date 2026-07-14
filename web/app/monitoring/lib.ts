@@ -54,6 +54,7 @@ export const CHANNEL_TYPES = [
   "무상시딩 (영상)",
   "무상시딩 (피드)",
   "온드미디어",
+  "위성채널",
 ];
 export const CATEGORIES = [
   { value: "A",   desc: "찐팬서사 (꾸준함)" },
