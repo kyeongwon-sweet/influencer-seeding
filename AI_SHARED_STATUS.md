@@ -684,6 +684,63 @@ Verification:
 
 Last updated: 2026-07-14 (Codex: run_monitoring fallback uses yesterday KST)
 
+## 2026-07-14 Codex: JD 2026-07-13 dashboard delta cleanup
+
+User target/context:
+- User reported dashboard JD 2026-07-13 delta was 900,247, while the sheet subtotal they wanted to match was 770,810.
+- Verified sheet `1EIT...`, tab `인지_쫀득바`, row 111:
+  - N111 total awareness views = 1,003,150.
+  - 770,810 is not N111; it is V111 + AE111 + AH111:
+    - V111 influencer sponsorship = 118,815
+    - AE111 viral banner = 152,262
+    - AH111 viral reels = 499,733
+
+Actions completed with backups:
+- Removed one DB-only duplicate banner post not present in linked sheet:
+  - Deleted `sponsored_posts.id=8cee9f9e-feb4-4858-acc7-2fbe8f87e3b6`
+  - URL `https://www.instagram.com/p/DaupIMrmv42/`
+  - Also deleted its single 2026-07-13 `post_daily_stats` row, reach_count 39,953.
+  - Kept the sheet-existing Ufo__RED row URL `DauuTX_mrVt` untouched.
+  - Backup: `C:/tmp/db-jd-ufo-red-duplicate-delete-20260714.json`
+- Fixed Sieun TT cumulative baseline from linked sheet row 815:
+  - URL token `7659342828111269140`
+  - Inserted 2026-07-12 play_count 38,300 manual=true.
+  - Updated 2026-07-13 play_count from 58,400 to 58,300 manual=true.
+  - This makes safeIncrement 20,000, matching the sheet memo intent.
+  - Backup: `C:/tmp/db-jd-sieun-tt-cumulative-fix-20260714.json`
+
+Verification:
+- DB safeIncrement recompute after both fixes:
+  - JD 2026-07-13 total = 821,894
+  - by channel:
+    - 바이럴 (배너) = 152,262
+    - 바이럴 (영상) = 499,733
+    - 협찬 (인플루언서) = 158,148
+    - 위성채널 = 4,797
+    - 온드미디어 = 2,566
+    - 협찬 (먹스타) = 4,388
+- Live dashboard verification after reload:
+  - product filters JD망/JD멜/JD혼 active
+  - date preset 전체 active
+  - daily table 2026-07-13 displayed +821,894
+
+Remaining gap to user's 770,810 target:
+- Current verified dashboard 821,894 - target 770,810 = 51,084.
+- This is not a confirmed DB pollution total.
+- It consists of:
+  - 11,751 from channels included by dashboard JD product filter but not included in V+AE+AH sheet subtotal:
+    - 위성채널 4,797
+    - 온드미디어 2,566
+    - 협찬 (먹스타) 4,388
+  - 39,333 remaining influencer sponsorship difference:
+    - dashboard DB/safeIncrement influencer total = 158,148
+    - sheet V111 manual formula total = 118,815
+- Do not force DB to 770,810 without per-post memo/source confirmation.
+- Especially do not rewrite cumulative rows merely to match V111 formula if it would contradict real cumulative values.
+- Example: Fromseohee TT has DB cumulative 84,800 -> 85,400, so safeIncrement 600. Sheet memo says "증분값 100", but changing DB cumulative to make 100 would distort the cumulative series unless the team confirms the 85,400/84,800 source is wrong.
+
+Last updated: 2026-07-14 (Codex: JD 7/13 duplicate banner cleanup + Sieun TT baseline correction)
+
 ## 2026-07-14 exportStats 역채움 수동값 보호 (Claude)
 
 증상(사용자): 연동시트에 배너 도달수를 수동 입력하면 5분 내 다른 값으로 바뀜.
