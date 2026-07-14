@@ -10,8 +10,8 @@
 > ```
 > (origin/main의 `ef64cb2`가 정본. 되돌릴 것 없음.) — 2026-07-14, Claude
 
-## 2026-07-14 📐 설계안: 시트↔DB 양방향 → DB 단일정본 (Claude) → `DESIGN_oneway_db_source_of_truth.md`
-근본원인=수기 시트(위치기반)+매일 양방향 동기화(import↔export)로 오염이 왕복마다 번져 compound. 셀청소는 임시방편. **제안: importStats(시트→DB) 폐지, DB 단일정본, 시트는 exportStats 표시전용, 수기입력은 대시보드로 일원화.** 마이그레이션 순서·역할분담(Claude=DB정리+route폐기 / Codex=배포+스캔자동화 / 시트세션=Apps Script import비활성+시트재생성 / 사용자=워크플로 승인)는 설계안 파일 참조. **실행 전 합의 필요**(워크플로 변경).
+## 2026-07-14 📐 설계안: 안전한 양방향 동기화 (사용자 결정) → `DESIGN_oneway_db_source_of_truth.md`
+근본원인=수기 시트(위치기반)+매일 양방향(import↔export)으로 오염이 왕복마다 번져 compound. **사용자 결정=양방향 유지(시트 입력 유지)하되 구조적 번짐 제거.** 대응: ①중복 날짜열 제거·정규화(날짜당 1열) ②import/export를 URL(행)+정규날짜(열)로만 매칭, 애매하면 skip+알림 ③복사-가드+수집대비 급변 알림+주1회 전수 스캔. 마이그: DB 1회 정리→시트 DB에서 재생성→키드매칭 배포→스캔자동화. 역할: Claude=DB정리+route 키검증/급변알림, Codex=배포+스캔GHA, 시트세션=중복열정리+열매칭정규화+시트재생성, 사용자=백업확인. 잔여리스크=사람 신규 오타/드래그는 조기감지(완전봉쇄는 단방향뿐, 미채택). **실행 전 Codex+시트세션 합의 필요.**
 
 ## 2026-07-14 organic 페이지 필터·성능 패치 커밋/배포 완료 (Claude가 Codex 작성분 이어받음, `ef64cb2`)
 Codex가 `web/app/organic/page.tsx`에 패치 적용+tsc 통과했으나 사용량 제한으로 커밋 못 함(C:/tmp/influencer-main에 staged). Claude가 그 파일만 origin/main 위에 얹어 커밋·푸시(자동배포 success). vercel --prod 안 씀(main push=자동배포). 변경: 제품 변형 선택 시 상위라인 자동포함(PRODUCT_PARENTS/toggleProduct), productOptions·lastUpdatedAt useMemo, 썸네일 loading=lazy·decoding=async, 행 content-visibility:auto. diff 31/12, 그 외 변경 없음 확인.
