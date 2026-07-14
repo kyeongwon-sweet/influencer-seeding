@@ -9,6 +9,13 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
+## 2026-07-14 콘텐츠 대시보드 연동 J열 증분값 수식 과부하 복구 (Codex)
+- Sheet: `[빙과] 마케팅_대시보드(실무용)_25.09~` / tab `콘텐츠 대시보드 연동` (`gid=1937186871`).
+- User issue: `J2:J1016`에 행별 증분 수식이 들어가 시트가 과부하되고 J열 증분값이 표시되지 않음.
+- Action: Google Sheets API로 `J2:J1016`의 `userEnteredValue`를 삭제한 뒤, `J2` 한 칸에만 사용자 지정 증분 수식을 입력. J열 전체 채우기 금지 원칙 유지.
+- Verification: `J2:J20`에는 J2 수식 1개만 남고, `J1000:J1016`은 비어 있음. `B2:C2`는 URL/채널명(`자취생으로 살아남기`) 존재, `K2:BW2`에는 일자별 누적값(예: 6.1=699000, 7.9~7.13=822210)이 존재. J2 표시값은 공란으로 읽힘(에러 아님; API `formattedValue/effectiveValue` 없음)이며 수식 원문은 유지됨.
+- Follow-up: 전체 J열 증분은 수식 복사 대신 `exportStats`/값 쓰기 방식으로 채우는 것이 안전.
+
 ## 🖱️ 2026-07-14 대시보드 '증분량' 열 툴팁 추가 (Claude 작성안 → Codex main 반영)
 사용자 요청: 일자별 증감표 vs 대시보드 증분량의 차이를 증분량 열 제목·각 값 hover로 노출.
 - `web/app/monitoring/lib.ts`: `incrementTooltip(post,s)`(해당 게시물의 '최신 mm/dd 값 - 직전 mm/dd 값 = 증분' 구체 계산 문자열) + `INCREMENT_HEADER_TOOLTIP`(열 정의 + 일자별표와 다른 이유) 추가.
