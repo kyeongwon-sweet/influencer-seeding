@@ -9,6 +9,15 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
+## 2026-07-14 틱톡 민감영상 수집불가 + 수동 누적하락 오기 (Claude)
+
+- **이나**: 사용자 지시로 **종료 유지**(성장 중이어도 게시+14일 자동종료 규칙대로) — 조치/규칙변경 안 함.
+- **시으니네(틱톡) 수집불가 원인 확정**: TikTok이 영상을 **민감성 콘텐츠**로 분류 → Apify `clockworks/tiktok-scraper`가 `error:"Post is sensitive content.", errorCode:POST_SENSITIVE` 반환. 코드·URL 문제 아님(플랫폼 제한). 07-08 실측(249,508)에서 정지. note의 POST_SENSITIVE 정확(액터 errorCode). 대응: 민감영상=수동 트래킹.
+- **정상화(승인)**: 시으니네(틱톡) 07-12 `58,300 → 249,508`. 58,300<마지막실측 249,508(누적 감소 불가)=수동 오기. 백업 `data/output/siwoonine-tt-fix-20260714.json`.
+- **근본 원인**: 자동수집엔 역행 clamp 있으나 **수동 입력(manual=true)은 mono 기준선 리셋(2722cf4)**해 감소 검증 우회. 틱톡 민감영상처럼 수동 강제 시 오타가 그대로 통과 → 누적 깨짐.
+- **재발방지(`44ecdfe`, 차단 아님)**: `notify_status` 6번 체크 = **누적 조회수 하락 감지**(마지막<직전 최대). 수동 하락 전부/자동 5%초과만(미세 재집계 제외). 사람이 오기 vs 정당 하향정정 판단(준맛식 정정도 있어 차단 안 함).
+- 검토 대상 4건: 시으니네(인스타 자동 402,745→211,235, **별개 자동하락 조사 필요**), 이나(유튜브 수동, JD=Codex), 라밍(카카오 자동 첫값 과대·종료), 찐빵만두(수동 소액·종료).
+
 ## 2026-07-14 monitoring date attribution fix (Codex)
 
 Problem verified:
@@ -522,4 +531,25 @@ Not fully verified:
 - 미배포 상태: 사용자가 Apps Script 재붙여넣기+저장해야 ①②③ 적용. 배포 후 `📥 수집 조회수 시트로 채우기` 실행 시 🗓️/🧟 경고로 동작 확인.
 
 Last updated: 2026-07-14 (Claude: J열 A수식 + exportStats 가드 3종[고아·미래·업체명])
+
+## 2026-07-14 전일귀속 통일: run_monitoring 폴백 + 시트 캡 (Claude, 사용자 승인)
+
+증상: DB에 `measured_at=7/14`(오늘) 자동수집 186행 존재(created 2026-07-14 00:16 UTC, manual=false). 사용자 규칙 = **새벽 수집분은 어제(수집일-1)에 귀속**.
+
+진단(검증):
+- 정규 새벽 크론 `cron-daily-collect.yml`은 `TODAY=$(date -d 'yesterday')`→`MONITORING_DATE=어제` 주입 → **이미 전일귀속 정상**.
+- 7/14 anomaly는 크론(02:41 KST)이 아니라 **`MONITORING_DATE` 없이 낮(09:16 KST)에 돈 실행**이 `run_monitoring.py` 폴백(`KST 오늘`)을 타서 오늘로 라벨한 것.
+
+변경 ①(run_monitoring, ⚠️ main 반영·배포 필요 = Codex 도메인): 44행 폴백을 **KST 어제**로.
+```python
+TODAY = os.getenv("MONITORING_DATE") or ((datetime.now(timezone.utc) + timedelta(hours=9)).date() - timedelta(days=1)).isoformat()
+```
+- 크론은 MONITORING_DATE 항상 주입 → **무영향**. 폴백(수동/로컬)만 어제로 → 오늘 라벨 재발 차단. 이중 밀림 없음.
+- ⚠️ wt-company 파일에만 반영됨. **GHA는 main에서 실행** → Codex가 main 반영·배포·검증(py_compile/GHA) 해야 효력.
+
+변경 ②(시트 Apps Script `Combined_Sheet_AppsScript.gs`, Claude 도메인): exportStats·importStats에 **"오늘(today) 이후 날짜칸 안 채움/안 보냄" 캡**(`date >= today` → 비움/스킵). 앞선 엔트리의 `maxCollectedDate` 기준은 **폐기**(DB에 오늘 실측이 있어도 시트엔 오늘 제외해야 하므로 `today` 기준으로 교체). → 시트/대시보드 표시를 '어제까지'로 일치.
+
+7/14 anomaly 처리: 내일 새벽 크론이 7/14를 (어제로) 재수집하며 `upsert(post_id,measured_at)` 덮어써 **self-heal** 예상 → 별도 삭제 보류(대시보드는 오늘 제외라 현재도 화면 미표시). Codex 판단 요청.
+
+Last updated: 2026-07-14 (Claude: 전일귀속 통일 — run_monitoring 폴백=어제[main 배포 대기] + 시트 exportStats/importStats today-캡)
 
