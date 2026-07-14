@@ -2,7 +2,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 // 게시물 표 — monitoring/page.tsx 에서 추출. 모든 상태/핸들러는 부모(MonitoringPage) 소유(props).
 // 인라인 편집/정렬/선택/열 리사이즈는 전부 부모 함수를 props로 받아 그대로 호출 → 동작 동일.
-import { type Post, type EditCell, type DailyStats, type Filters, getFilteredStats, pickRangeStats, hasNotableChange, viewIncrement, fmt, fmtChannelType, effectiveReach, bannerDailyMetric, pickMetric, CHANNEL_TYPES, INIT_FILTERS, CHART } from "../lib";
+import { type Post, type EditCell, type DailyStats, type Filters, getFilteredStats, pickRangeStats, hasNotableChange, viewIncrement, incrementTooltip, INCREMENT_HEADER_TOOLTIP, fmt, fmtChannelType, effectiveReach, bannerDailyMetric, pickMetric, CHANNEL_TYPES, INIT_FILTERS, CHART } from "../lib";
 import { MIN_ENTRY_DATE, maxDateKST } from "@/lib/dateRule";
 import { companyForAccount } from "@/lib/companyMap";
 import { productCodeOf } from "@/lib/productCode";
@@ -188,7 +188,7 @@ function PostsTable(props: Props) {
                       checked={filteredPosts.length > 0 && filteredPosts.every(p => selected.has(p.id))}
                       onChange={toggleSelectAll} />
                   </th>
-                  <TH col="증분량" w={stickyColWidths["증분량"]} leftPos={stickyLefts["증분량"]} onResize={e => startResize("증분량", e, true)} right {...sp("증분량")}>증분량</TH>
+                  <TH col="증분량" w={stickyColWidths["증분량"]} leftPos={stickyLefts["증분량"]} onResize={e => startResize("증분량", e, true)} right {...sp("증분량")}><span title={INCREMENT_HEADER_TOOLTIP} className="cursor-help underline decoration-dotted decoration-a-ink-muted/50 underline-offset-2">증분량</span></TH>
                   <TH className="border-l border-a-divider" w={colWidths["채널분류"]} fixed onResize={e => startResize("채널분류", e)} {...sp("채널분류")}>
                     <span className="relative group/ct cursor-default">
                       채널 분류
@@ -282,10 +282,10 @@ function PostsTable(props: Props) {
                       </td>
                       <TD col="증분량" w={stickyColWidths["증분량"]} leftPos={stickyLefts["증분량"]} right highlighted={hl}>
                         {(() => {
-                          if (viewIncrement(post, s, prev) == null) return <span className="text-gray-300">—</span>;
+                          if (viewIncrement(post, s, prev) == null) return <span title={incrementTooltip(post, s)} className="text-gray-300 cursor-help">—</span>;
                           const delta = viewIncrement(post, s, prev) ?? 0;
                           return (
-                            <span className={`font-semibold ${delta > 0 ? "text-red-500" : delta < 0 ? "text-blue-600" : "text-gray-300"}`}>
+                            <span title={incrementTooltip(post, s)} className={`font-semibold cursor-help ${delta > 0 ? "text-red-500" : delta < 0 ? "text-blue-600" : "text-gray-300"}`}>
                               {delta > 0 ? "+" : ""}{delta.toLocaleString()}
                             </span>
                           );

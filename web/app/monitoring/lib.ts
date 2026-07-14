@@ -215,6 +215,34 @@ export function viewIncrement(post: Post, s: DailyStats | null | undefined, _pre
   return safeIncrement(post.all_stats ?? [], s, (post.channel_type ?? "").includes("배너"), post.posted_at);
 }
 
+// 증분량 hover 설명(열 제목 아래 각 값): 이 증분이 어떤 측정값(최신-직전 유효)으로 나왔는지 + '일자별 증감표'와 다른 이유.
+export const INCREMENT_HEADER_TOOLTIP =
+  "증분량 = 게시물별 '최신 측정값 - 직전 유효값(이전 최대)'. 첫 유효 측정이면 그날 값 전체.\n" +
+  "※ 게시물마다 마지막 수집일이 달라, 오른쪽 '일자별 증감표'(특정 하루의 합)와 숫자가 다를 수 있어요 - 정상입니다.";
+
+export function incrementTooltip(post: Post, s: DailyStats | null | undefined): string {
+  const isBanner = (post.channel_type ?? "").includes("배너");
+  const label = isBanner ? "도달수" : "조회수";
+  const note =
+    "\n\n※ '게시물별 최신' 증분입니다. 게시물마다 마지막 수집일이 달라, 오른쪽 '일자별 증감표'(특정 하루의 합)와 총합이 다를 수 있어요(정상).";
+  const inc = safeIncrement(post.all_stats ?? [], s, isBanner, post.posted_at);
+  if (!s || inc == null) return `${label} 증분: 최신 측정값이 없거나 유효하지 않아 표시 안 됨.${note}`;
+  const val = (st: DailyStats) => (isBanner ? bannerDailyMetric(st) : (st.play_count ?? null));
+  const cur = val(s) ?? 0;
+  let base = 0, baseDate = "";
+  for (const st of post.all_stats ?? []) {
+    if (st.measured_at >= s.measured_at) continue;
+    const v = val(st);
+    if (v != null && v > 0 && v > base) { base = v; baseDate = st.measured_at; }
+  }
+  const md = (d?: string) => (d ? d.slice(5).replace("-", "/") : "");
+  const plus = inc > 0 ? "+" : "";
+  const head = base === 0
+    ? `${label} 증분 = 첫 유효 측정이라 그날 값 전체.\n최신 ${md(s.measured_at)}: ${cur.toLocaleString()} = ${plus}${inc.toLocaleString()}`
+    : `${label} 증분 = 최신값 - 직전 유효값(이전 최대).\n최신 ${md(s.measured_at)}: ${cur.toLocaleString()} - 직전 ${md(baseDate)}: ${base.toLocaleString()} = ${plus}${inc.toLocaleString()}`;
+  return head + note;
+}
+
 export function pickMetric(s: DailyStats): number | null {
   // 조회수(재생수)만 사용 — 재생수가 없는 게시물을 좋아요로 대체하지 않음(지표 혼선 방지)
   return s.play_count;

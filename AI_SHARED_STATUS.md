@@ -9,6 +9,12 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
+## 🖱️ 2026-07-14 대시보드 '증분량' 열 툴팁 추가 (Claude 작성안 → Codex main 반영)
+사용자 요청: 일자별 증감표 vs 대시보드 증분량의 차이를 증분량 열 제목·각 값 hover로 노출.
+- `web/app/monitoring/lib.ts`: `incrementTooltip(post,s)`(해당 게시물의 '최신 mm/dd 값 - 직전 mm/dd 값 = 증분' 구체 계산 문자열) + `INCREMENT_HEADER_TOOLTIP`(열 정의 + 일자별표와 다른 이유) 추가.
+- `web/app/monitoring/components/PostsTable.tsx`: 증분량 **열 제목**(점선밑줄+cursor-help, hover=정의) + **각 값 셀** 및 **'—' 셀**에 title(hover=구체 계산). 네이티브 title(기존 title 패턴), 로직·집계 불변.
+- Codex 반영 범위: 위 표시 설명만 추가. `safeIncrement`, 집계, DB, 시트, API 로직 변경 없음.
+
 ## 🚨 2026-07-14 과대기록 전수 감사 + 재오염 메커니즘 발견 (Claude, A/B 감사 결과)
 
 **과대기록 재수집 감사**(협찬·수집가능·manual play 122건 중 IG 102+YT 12 재수집, DB max vs Apify 실측):
