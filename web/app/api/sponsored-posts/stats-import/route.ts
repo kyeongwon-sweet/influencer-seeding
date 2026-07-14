@@ -6,6 +6,7 @@ import { filterMonotonicStats, type GuardInput } from "@/lib/stats-guard";
 import { normalizeChannelType } from "@/app/monitoring/lib";
 import { resolveTikTokShortUrl } from "@/lib/sponsored-write";
 import { todayKST, yesterdayKST } from "@/lib/dateRule";
+import { notifySlack } from "@/lib/slack";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -191,7 +192,7 @@ export async function POST(req: NextRequest) {
   const prePosted: Array<{ url: string; date: string }> = [];
   const futureDated: Array<{ url: string; date: string; max_date: string }> = [];
   const maxStatsDate = yesterdayKST();
-  const incoming: GuardInput[] = [];
+  let incoming: GuardInput[] = [];
   const bannerRows: Array<{ post_id: string; measured_at: string; reach_count: number; manual: boolean }> = [];
   const postIdSet = new Set<string>();
   for (const it of items) {
@@ -217,6 +218,72 @@ export async function POST(req: NextRequest) {
     postIdSet.add(pid);
   }
   const postIds = [...postIdSet];
+
+  // 3-b) 🛡️ 복사 유입 방지 — 시트 입력값이 '다른 게시물의 같은 날짜 값'과 여러 날 일치하면(=시리즈 복사)
+  //   그 행을 저장하지 않는다(남의 값이 DB로 유입돼 대시보드까지 오염되는 것을 원천 차단).
+  //   단일 우연 일치는 통과(다른 게시물이 같은 라운드 숫자일 수 있음) — '같은 타 게시물과 2일 이상 일치'만 차단.
+  //   (2026-07 라밍 카카오 행에 몽글 값이 수동 오입력된 사례 재발 방지. 의심분은 Slack 알림.)
+  const copySuspected: Array<{ url: string; date: string; value: number; source: string }> = [];
+  if (incoming.length > 0) {
+    const dates = [...new Set(incoming.map(r => r.measured_at))];
+    const vals = [...new Set(incoming.map(r => r.play_count).filter((v): v is number => typeof v === "number" && v > 0))];
+    const dvOwners = new Map<string, Set<string>>();
+    const VCHUNK = 100;
+    for (let i = 0; i < vals.length && dates.length > 0; i += VCHUNK) {
+      const { data: rows, error } = await supabase
+        .from("post_daily_stats")
+        .select("post_id, measured_at, play_count")
+        .in("measured_at", dates)
+        .in("play_count", vals.slice(i, i + VCHUNK));
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      for (const r of (rows ?? []) as Array<{ post_id: string; measured_at: string; play_count: number }>) {
+        const k = `${String(r.measured_at).slice(0, 10)}|${r.play_count}`;
+        let set = dvOwners.get(k); if (!set) { set = new Set(); dvOwners.set(k, set); }
+        set.add(r.post_id);
+      }
+    }
+    // (pid → 타 게시물) 별 일치 날짜 집계 → 같은 타 게시물과 2일 이상 일치하면 복사로 판정
+    const matchDates = new Map<string, Set<string>>(); // `${pid}|${other}` → set(date)
+    for (const r of incoming) {
+      const d = r.measured_at.slice(0, 10);
+      const owners = dvOwners.get(`${d}|${r.play_count}`);
+      if (!owners) continue;
+      for (const other of owners) {
+        if (other === r.post_id) continue;
+        const mk = `${r.post_id}|${other}`;
+        let set = matchDates.get(mk); if (!set) { set = new Set(); matchDates.set(mk, set); }
+        set.add(d);
+      }
+    }
+    const copyKeys = new Set<string>();            // `${pid}|${date}` → 스킵 대상
+    const copySource = new Map<string, string>();  // pid → 복사원 post_id
+    for (const [mk, dset] of matchDates) {
+      if (dset.size >= 2) {
+        const [pid, other] = mk.split("|");
+        for (const d of dset) copyKeys.add(`${pid}|${d}`);
+        if (!copySource.has(pid)) copySource.set(pid, other);
+      }
+    }
+    if (copyKeys.size > 0) {
+      const accByPid = new Map<string, string>();
+      const urlByPid = new Map<string, string>();
+      for (const [u, id] of idByUrl) urlByPid.set(id, u);
+      for (const ex of existingByUrl.values()) { if (ex.account_name) accByPid.set(String(ex.id), String(ex.account_name)); }
+      for (const [u, m] of postByUrl) { const id = idByUrl.get(u); if (id && m.account_name && !accByPid.has(id)) accByPid.set(id, String(m.account_name)); }
+      incoming = incoming.filter(r => {
+        if (copyKeys.has(`${r.post_id}|${r.measured_at.slice(0, 10)}`)) {
+          copySuspected.push({
+            url: urlByPid.get(r.post_id) ?? r.post_id,
+            date: r.measured_at,
+            value: r.play_count as number,
+            source: accByPid.get(copySource.get(r.post_id) ?? "") ?? "?",
+          });
+          return false;
+        }
+        return true;
+      });
+    }
+  }
 
   // 4) 기존 post_daily_stats 조회 (누적 감소 판정 기준) — 페이지네이션으로 전량
   const existingStats: GuardInput[] = [];
@@ -330,9 +397,18 @@ export async function POST(req: NextRequest) {
     bannerInserted = (data ?? []).length;
   }
 
+  // 복사 의심 스킵분 → 여믄봇 Slack 알림(사람이 확인·정정). DB 유입은 이미 차단됨(위 필터).
+  if (copySuspected.length > 0) {
+    const s = copySuspected.slice(0, 6)
+      .map(c => `${c.date.slice(5, 10)} ${Number(c.value).toLocaleString()}←${c.source}`).join(", ");
+    await notifySlack(`🚨 [시트 조회수 입력] 복사 의심 ${copySuspected.length}행 스킵 — 다른 게시물 값과 여러 날 일치라 DB 유입 차단. 시트 확인·정정 필요: ${s}`);
+  }
+
   return NextResponse.json({
     ok: true,
     inserted,
+    copy_suspected_skipped: copySuspected.length,
+    copy_suspected_sample: copySuspected.slice(0, 10),
     banner_reach_inserted: bannerInserted,
     created_posts: created,
     meta_filled: metaFilled,
