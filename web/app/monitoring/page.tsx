@@ -1730,8 +1730,9 @@ export default function MonitoringPage() {
                 )}
               </div>
             </div>
-            {showCorr && <CorrelationPanel data={correlations} />}
-            {showDow && (
+            {/* 그래프를 접으면 상관분석·요일별/업체별 패널도 함께 숨김(토글 상태는 보존 → 다시 펼치면 복원) */}
+            {!chartCollapsed && showCorr && <CorrelationPanel data={correlations} />}
+            {!chartCollapsed && showDow && (
               <div className="px-6 pb-6 pt-2 flex flex-wrap gap-4 items-start border-t border-a-hairline">
                 <div className="flex-1 min-w-[520px] border border-a-hairline rounded-[14px] bg-white mt-3">
                   <DayOfWeekPanel data={dowAnalysis} />
