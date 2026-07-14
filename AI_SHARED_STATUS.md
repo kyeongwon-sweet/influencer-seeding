@@ -688,21 +688,21 @@ Last updated: 2026-07-14 (Codex: run_monitoring fallback uses yesterday KST)
 
 User target/context:
 - User reported dashboard JD 2026-07-13 delta was 900,247, while the sheet subtotal they wanted to match was 770,810.
-- Verified sheet `1EIT...`, tab `인지_쫀득바`, row 111:
-  - N111 total awareness views = 1,003,150.
-  - 770,810 is not N111; it is V111 + AE111 + AH111:
-    - V111 influencer sponsorship = 118,815
-    - AE111 viral banner = 152,262
-    - AH111 viral reels = 499,733
+- Verified sheet `[빙과] 마케팅T 대시보드 (26.06~)`, tab `인지_쫀득바`, [row 111](https://docs.google.com/spreadsheets/d/1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s/edit?gid=1224959784&range=111:111):
+  - [N111](https://docs.google.com/spreadsheets/d/1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s/edit?gid=1224959784&range=N111) total awareness views = 1,003,150.
+  - 770,810 is not N111; it is [V111](https://docs.google.com/spreadsheets/d/1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s/edit?gid=1224959784&range=V111) + [AE111](https://docs.google.com/spreadsheets/d/1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s/edit?gid=1224959784&range=AE111) + [AH111](https://docs.google.com/spreadsheets/d/1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s/edit?gid=1224959784&range=AH111):
+    - [V111](https://docs.google.com/spreadsheets/d/1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s/edit?gid=1224959784&range=V111) influencer sponsorship = 118,815
+    - [AE111](https://docs.google.com/spreadsheets/d/1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s/edit?gid=1224959784&range=AE111) viral banner = 152,262
+    - [AH111](https://docs.google.com/spreadsheets/d/1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s/edit?gid=1224959784&range=AH111) viral reels = 499,733
 
 Actions completed with backups:
 - Removed one DB-only duplicate banner post not present in linked sheet:
   - Deleted `sponsored_posts.id=8cee9f9e-feb4-4858-acc7-2fbe8f87e3b6`
   - URL `https://www.instagram.com/p/DaupIMrmv42/`
   - Also deleted its single 2026-07-13 `post_daily_stats` row, reach_count 39,953.
-  - Kept the sheet-existing Ufo__RED row URL `DauuTX_mrVt` untouched.
+  - Kept the sheet-existing Ufo__RED row URL `DauuTX_mrVt` untouched: linked sheet `콘텐츠 대시보드 연동` [row 841](https://docs.google.com/spreadsheets/d/10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak/edit?gid=1937186871&range=841:841).
   - Backup: `C:/tmp/db-jd-ufo-red-duplicate-delete-20260714.json`
-- Fixed Sieun TT cumulative baseline from linked sheet row 815:
+- Fixed Sieun TT cumulative baseline from linked sheet `콘텐츠 대시보드 연동` [row 815](https://docs.google.com/spreadsheets/d/10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak/edit?gid=1937186871&range=815:815) and `인지_쫀득바` [V111 memo](https://docs.google.com/spreadsheets/d/1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s/edit?gid=1224959784&range=V111):
   - URL token `7659342828111269140`
   - Inserted 2026-07-12 play_count 38,300 manual=true.
   - Updated 2026-07-13 play_count from 58,400 to 58,300 manual=true.
@@ -722,7 +722,7 @@ Verification:
 - Live dashboard verification after reload:
   - product filters JD망/JD멜/JD혼 active
   - date preset 전체 active
-  - daily table 2026-07-13 displayed +821,894
+  - [live dashboard](https://influencer-seeding-mu.vercel.app/monitoring) daily table 2026-07-13 displayed +821,894
 
 Remaining gap to user's 770,810 target:
 - Current verified dashboard 821,894 - target 770,810 = 51,084.
@@ -734,10 +734,16 @@ Remaining gap to user's 770,810 target:
     - 협찬 (먹스타) 4,388
   - 39,333 remaining influencer sponsorship difference:
     - dashboard DB/safeIncrement influencer total = 158,148
-    - sheet V111 manual formula total = 118,815
+    - sheet [V111](https://docs.google.com/spreadsheets/d/1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s/edit?gid=1224959784&range=V111) manual formula total = 118,815
 - Do not force DB to 770,810 without per-post memo/source confirmation.
 - Especially do not rewrite cumulative rows merely to match V111 formula if it would contradict real cumulative values.
-- Example: Fromseohee TT has DB cumulative 84,800 -> 85,400, so safeIncrement 600. Sheet memo says "증분값 100", but changing DB cumulative to make 100 would distort the cumulative series unless the team confirms the 85,400/84,800 source is wrong.
+- Example: Fromseohee TT has DB cumulative 84,800 -> 85,400, so safeIncrement 600. Sheet [V111 memo](https://docs.google.com/spreadsheets/d/1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s/edit?gid=1224959784&range=V111) says "증분값 100", but changing DB cumulative to make 100 would distort the cumulative series unless the team confirms the 85,400/84,800 source is wrong.
+
+Handoff rule for Claude/Codex:
+- Any future sheet memo or sheet-based evidence in this project must include a direct Google Sheets hyperlink to the exact tab row/cell/range, e.g. `.../edit?gid=<sheetId>&range=V111`.
+- Do not cite "sheet memo", "row", or "manual formula" without a link.
+- If the evidence is absence from a sheet, link the searched sheet/tab and the closest positive control row/cell used for comparison.
+- For the remaining JD 2026-07-13 gap, do not change DB solely to match 770,810. Only adjust when the linked cell/range proves the per-post cumulative value or the dashboard filter definition must change.
 
 Last updated: 2026-07-14 (Codex: JD 7/13 duplicate banner cleanup + Sieun TT baseline correction)
 
