@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
   for (let i = 0; i < allUrls.length; i += 80) {
     const { data: existing, error: ee } = await supabase
       .from("sponsored_posts")
-      .select(`id, url, manual_fields, ${POST_FIELDS.join(", ")}`)
+      .select(`id, url, manual_fields, ended_at, ${POST_FIELDS.join(", ")}`)
       .in("url", allUrls.slice(i, i + 80));
     if (ee) return NextResponse.json({ error: ee.message }, { status: 500 });
     for (const e of (existing ?? []) as unknown as Array<Record<string, unknown>>) {
@@ -118,6 +118,12 @@ export async function POST(req: NextRequest) {
   const postedByUrl = new Map<string, string>();
   for (const [u, ex] of existingByUrl) { const pa = ex.posted_at ? String(ex.posted_at).slice(0, 10) : ""; if (pa) postedByUrl.set(u, pa); }
   for (const [u, m] of postByUrl) { const pa = m.posted_at ? String(m.posted_at).slice(0, 10) : ""; if (pa && !postedByUrl.has(u)) postedByUrl.set(u, pa); }
+
+  // 🛡️ 종료일(ended_at)보다 늦은 날짜의 조회수는 저장하지 않는다(종료 게시물엔 신규 측정 유입 불가).
+  //    시트 URL/행 매칭 오류로 라이브 게시물의 누적 시계열이 종료 게시물의 최근 날짜에 복사되던 오염 차단
+  //    (2026-07 톡톡시아·뭐랭하맨·준맛 등 종료후 성장 오염 재발 방지). 게시일-이전 가드와 대칭.
+  const endedByUrl = new Map<string, string>();
+  for (const [u, ex] of existingByUrl) { const ea = ex.ended_at ? String(ex.ended_at).slice(0, 10) : ""; if (ea) endedByUrl.set(u, ea); }
 
   // 2) 없는 광고만 신규 생성 (기존은 절대 건드리지 않음). 새로 만든 id를 매핑에 합침 → 재조회 불필요.
   let created = 0;
@@ -189,6 +195,7 @@ export async function POST(req: NextRequest) {
   const missing = new Set<string>();
   const costAsViews: Array<{ url: string; date: string; value: number }> = [];
   const prePosted: Array<{ url: string; date: string }> = [];
+  const postEnded: Array<{ url: string; date: string }> = [];
   const incoming: GuardInput[] = [];
   const bannerRows: Array<{ post_id: string; measured_at: string; reach_count: number; manual: boolean }> = [];
   const postIdSet = new Set<string>();
@@ -200,6 +207,9 @@ export async function POST(req: NextRequest) {
     // 🛡️ 게시일 이전 날짜 = 업로드 전 조회수(불가능) → 시트 날짜칸 백필 오류로 보고 저장 안 함
     const pa = postedByUrl.get(it.url);
     if (pa && String(it.measured_at).slice(0, 10) < pa) { prePosted.push({ url: it.url, date: it.measured_at }); continue; }
+    // 🛡️ 종료일 이후 = 종료 게시물에 새 측정 유입(불가) → 시트 URL 매칭 오류로 인한 복사 오염 차단
+    const ea = endedByUrl.get(it.url);
+    if (ea && String(it.measured_at).slice(0, 10) > ea) { postEnded.push({ url: it.url, date: it.measured_at }); continue; }
     // 배너: reach_count로 저장(입력값=도달수). 비배너: 기존대로 play_count(누적 mono가드 대상).
     if (isBannerByUrl.get(it.url)) {
       bannerRows.push({ post_id: pid, measured_at: it.measured_at, reach_count: it.play_count, manual: true });
@@ -295,6 +305,8 @@ export async function POST(req: NextRequest) {
     cost_as_views_sample: costAsViews.slice(0, 10),
     pre_posted_skipped: prePosted.length,
     pre_posted_sample: prePosted.slice(0, 10),
+    post_ended_skipped: postEnded.length,
+    post_ended_sample: postEnded.slice(0, 10),
     matched_urls: [...new Set(items.map(i => i.url))].length - missing.size,
     missing_urls: missing.size,
     missing_sample: [...missing].slice(0, 5),
