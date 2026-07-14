@@ -1028,6 +1028,41 @@ Verification:
 - `web`: `npx.cmd tsc --noEmit --incremental false` passed.
 - `git diff --check` passed.
 
+## 2026-07-14 Claude handoff recheck: date attribution + 822210 cluster (Codex)
+
+Latest-main check:
+- Pulled `origin/main` through `1600388`.
+- Confirmed `c2b94e2` date-attribution change is still present:
+  - manual `collect-now`: default `todayKST()`
+  - dashboard `/api/jobs` monitoring: passes `measuredAt=todayKST()`
+  - `apify-webhook` monitoring fallback: `todayKST()`
+  - scheduled `apify-collect`: still explicit `yesterdayKST()`
+- Confirmed Claude's edit-targeting change (`529de5d`) is present:
+  - `PostsTable.tsx` passes visible stat date `s?.measured_at` to `patchPlayCount`.
+  - `page.tsx` sends `{ play_count, measured_at }` and optimistic UI updates the same visible date.
+
+Verification:
+- `web`: `npm.cmd test` passed (27 tests).
+- `web`: `npx.cmd tsc --noEmit --incremental false` passed.
+
+Sheet evidence checked:
+- `[빙과] 마케팅T 대시보드 (26.06~)` / `인지_쫀득바!V111` note is not enough to resolve the cluster; it still contains stale-looking values such as `슈기 462,970 -` and old 이나 YT/TT memo values.
+- Linked sheet `[빙과] 마케팅_대시보드(실무용)_25.09~` / `콘텐츠 대시보드 연동`:
+  - `자취생으로 살아남기` row 2 (`https://www.instagram.com/p/DYFBwz5GlJ7/`) has `7.8=816,015`, `7.9~7.13=822,210`.
+  - `송이` row 452 (`https://www.instagram.com/reel/DZyzmiTB5i7/`) has the same `7.8=816,015`, `7.9~7.13=822,210`.
+  - `오하루(인스타)` row 705 (`https://www.instagram.com/reel/DaDMoGqBS0Z/`) has the same `7.8=816,015`, `7.9~7.13=822,210`.
+  - `이나` row 22 has a one-day `7.9=822,210` spike while adjacent values are `15,786`, also suspicious.
+- Local dump `current_jd_20260713.json` confirms:
+  - `송이` rows `2026-07-09`~`2026-07-12 = 822,210`, `manual=true`, created `2026-07-13T01:49:38Z`.
+  - `오하루(IG)` rows `2026-07-09`~`2026-07-12 = 822,210`, `manual=true`.
+  - `자취생` is P-domain and not present in that JD-only dump.
+
+Conclusion:
+- Do **not** delete or rewrite the 822,210 cluster yet. The value is clearly duplicated across multiple rows, but the true owner cannot be proven from the checked memo/sheet/dump alone.
+- Existing shared status also lists `오하루IG 822,210/실측465,643`, so treating 오하루 as the source would be unsafe without a fresh source measurement or the missing `JD_20260712_candidate_report.md`.
+- This Codex environment still has no `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, or `CRON_SECRET`, so DB correction and explicit `collect-now?date=2026-07-13` partial recrawl were not executed.
+- Important after date-attribution change: dashboard "manual collect" now defaults to today, so repairing the `2026-07-13` partial collection requires an explicit dated trigger, e.g. `collect-now?date=2026-07-13` with `CRON_SECRET`, not the normal button.
+
 ## 2026-07-14 [Codex 재배포요청] 인지광고 라우트 Clerk 공개 누락 수정 (Claude)
 
 Codex 배포(dpl_HvrWCKS...)에 `/api/awareness-ads`는 포함됐으나, **Clerk 미들웨어 공개목록에 없어** 미인증/CRON_SECRET bearer 요청이 `/_not-found`(404, `protect-rewrite`)로 막혔음(리포트가 시트값 못 읽음).
