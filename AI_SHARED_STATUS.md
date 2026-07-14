@@ -29,7 +29,7 @@ Rules:
 ### 누적 하락 4건 조사·처리 (Claude, 2026-07-14, 재수집 실측 기준·값 안 지어냄)
 - **시으니네(인스타)**: 07-06=402,745 = 이나 유튜브 값 복사(07-13 생성) **가짜** → 삭제. IG 재수집 실측 211,481로 실제 시계열 191,980~211,235 확인. 백업 `drops-fix-20260714.json`.
 - **찐빵만두**: 07-06~12=47,099(7행) 수동 오기(실측 59,741·직전 56,260보다 낮음) → 삭제. 실측 ≤07-05=56,260 유지. 백업 동일.
-- **이나(유튜브)**: YT 재수집 실측 **255,214**인데 저장 시계열이 308k~438k로 **전부 실측 초과**(유튜브 감소 불가→전부 과대). 07-06=402,745는 시으니네IG와 동일 복사값. = Codex 07-13 JD 백필 오염과 동일 뿌리, 시계열 전체 얽힘 → **Codex 도메인으로 이관(실측 255,214 근거).** 미처리.
+- **이나(유튜브)**: YT 재수집 실측 **255,214**인데 저장 시계열이 308k~438k로 **전부 실측 초과**(유튜브 감소 불가→전부 과대). 07-06=402,745는 시으니네IG와 동일 복사값. = Codex 07-13 JD 백필 오염과 동일 뿌리, 시계열 전체 얽힘 → **Codex 도메인으로 이관**. 처리 완료 아래 참고.
 - **라밍(카카오숏폼)**: 06-29=240,000(수동) vs 자동 65,000/67,000. **카카오=Apify 재수집 불가**라 실측 확인 불가 → 값 안 지어냄. **팀이 카카오에서 실제 값 확인 필요.** 미처리.
   - ⚠️ 추가 발견(시트): 연동시트 라밍 카카오 행 7.6~7.13에 **몽글 값(195,200/217,400/222,300…)이 수동 오입력**돼 있음(DB엔 없음, 실제 라밍≈7.2만). exportStats는 URL 매칭이라 오정렬 아님 — **사람이 시트에 몽글 열을 잘못 붙여넣은 것**, exportStats가 "수동값 보존" 원칙대로 안 덮고 유지·ffill함. **팀이 시트 그 셀들 정정 필요**(제가 시트 못 씀).
 
@@ -37,6 +37,14 @@ Rules:
 - `stats-import`에 **복사 유입 차단**: 시트→DB 입력값이 '다른 게시물의 같은 날짜 값과 **2일 이상** 일치'(=시리즈 복사)면 그 행 **저장 안 함**(DB·대시보드 오염 원천 차단). 단일 우연 일치는 통과(오탐 최소화).
 - 스킵분은 **`notifySlack`(SLACK_WEBHOOK_URL 팀 채널)로 알림** → 사람이 시트 확인·정정. 응답 `copy_suspected_skipped`.
 - ⚠️ 알림 대상은 현재 SLACK_WEBHOOK_URL 채널(수집알림과 동일). '여믄봇 DM to 황경원'이 꼭 필요하면 SLACK_BOT_TOKEN+user 경로로 교체 가능(미구현).
+
+### 이나(유튜브) JD 백필 오염 처리 (Codex, 2026-07-14)
+- Target: `이나 (유튜브/미러링)`, `https://www.youtube.com/shorts/14NN3A0vRDE/`, post_id `eeae1521-ebb2-4e10-9ea8-1052d5c924d7`, row 202 in `콘텐츠 대시보드 연동`.
+- Verified current Apify recollect at 2026-07-14 11:20 KST: play_count `255,228`, likes `2,000`, comments `34` (run `vht3SHAa0oF4syHj5`, dataset `EfUZDqxazx22ydeF0`). This confirms stored `308,807`~`438,733` values are impossible overcounts, not valid historical cumulative counts.
+- DB backup: `C:/tmp/ina-youtube-jd-pollution-cleanup-20260714.json`.
+- DB correction: deleted only impossible over-actual rows `2026-06-30`~`2026-07-11` where play_count exceeded `255,228`; preserved `2026-07-12 = 250,000`; inserted verified recollect as `2026-07-13 = 255,228` under the monitoring previous-day attribution rule. Did not invent intermediate daily values.
+- Sheet correction: `콘텐츠 대시보드 연동!BC202:BN202` cleared, `BO202=250,000` preserved, `BP202=255,228`, `BQ202` blank(today cap).
+- Readback verification: DB now has only `2026-07-12=250,000`, `2026-07-13=255,228`, impossibleCount `0`; Sheet readback `BC202:BQ202` = 12 blanks, `250,000`, `255,228`, trailing today blank.
 
 ## 2026-07-14 monitoring date attribution fix (Codex)
 
