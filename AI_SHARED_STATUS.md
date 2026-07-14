@@ -1259,3 +1259,22 @@ Verification before DB run:
 - `web`: `npx.cmd tsc --noEmit --incremental false` passed.
 - Workflow YAML parsed successfully.
 - Rule sample check passed: 8th-day banner ends, 15th-day video ends, 500k keeps active, free seeding keeps active, caption keyword ends even if otherwise excluded/high.
+
+Execution:
+- Dry-run GitHub Actions run `29326888092` (`target_date=2026-07-14`, `apply=false`) classified all `878` sponsored posts:
+  - `to_end=0`
+  - `to_clear=51`
+  - `keep_ended=538`
+  - `keep_unended=289`
+  - clear reasons: excluded channel/project/product (`39`), high metric >= 500k (`12`).
+- Apply GitHub Actions run `29326984870` (`apply=true`) executed the same plan:
+  - updated `51` rows by clearing `ended_at`.
+  - readback: `checked=51`, `end_failed=0`, `clear_failed=0`.
+- Final verification dry-run `29327057969` after apply:
+  - `to_end=0`
+  - `to_clear=0`
+  - final classification: `keep_ended=538`, `keep_unended=340`.
+
+Conclusion:
+- As of `2026-07-14`, DB `sponsored_posts.ended_at` is reconciled to the canonical auto-end rules above.
+- No stats rows were fabricated or edited; only post tracking status (`ended_at`) was changed.
