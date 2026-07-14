@@ -9,6 +9,8 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
+Last updated: 2026-07-14 KST (Codex: stats-for-sheet 배너 reach export 보완 + DB 잔존 검증)
+
 ## 2026-07-14 종료-후 복사 오염 전수조사 + 가드 (Claude)
 
 증상: 협찬(인플루언서)+DB(듬뿍바) 필터·기간필터 없음인데 종료 게시물 증분이 큼(합계 +132,728).
@@ -26,6 +28,25 @@ Rules:
 재발방지(배포됨):
 - `stats-import`에 **post_ended 가드** 추가(`b75ad66`): 시트 입력행의 measured_at > 게시물 ended_at이면 저장 거부(종료 게시물엔 신규 측정 유입 불가). 게시일-이전(pre_posted) 가드와 대칭. 응답 `post_ended_skipped` 노출. tsc/build 통과.
 - ⚠️ 남은 재발경로 점검 필요(Codex 조율): run_monitoring/apify-webhook/collect-now도 종료후 성장행을 쓸 수 있는지, 표시층 safeIncrement가 measured_at>ended_at 성장행을 무시하도록 할지.
+
+## 2026-07-14 stats-for-sheet 배너 export 보완 (Codex)
+
+Reason:
+- Claude's banner rule is correct: banner daily metric must be `bannerDailyMetric(s) = reach_count ?? play_count`.
+- One related path was still missing in `origin/main`: `web/app/api/sponsored-posts/stats-for-sheet/route.ts` exported only rows with `play_count > 0`.
+- After the 2026-07-14 data correction, banner `play_count` is intentionally null, so DB→linked-Sheet export must read banner `reach_count`.
+
+Changed:
+- `stats-for-sheet` now loads `channel_type` and returns:
+  - banner: `reach_count ?? play_count`
+  - non-banner: `play_count`
+- Upload-date guard remains unchanged: stats before `posted_at` are still dropped.
+
+Verification:
+- `npm.cmd test`: passed, 27 tests.
+- `npx.cmd tsc --noEmit --incremental false`: passed.
+- `npm.cmd run build`: passed.
+- Live Supabase readback: banner posts `288`; banner daily rows with `play_count > 0` = `0`; banner daily rows with `reach_count > 0` = `3,789`.
 
 ## 2026-07-13 배너 도달수=조회수 표시 경로 전수 정합 (Claude)
 
@@ -102,8 +123,6 @@ Verification:
   - no live `누적 조회수` text matches were found.
   - selecting one post shows `선택 보관 처리 (1)` and `선택 취소`, not `선택 종료`.
   - archive button class includes `border-a-blue bg-a-blue text-white`.
-
-Last updated: 2026-07-14 (Claude: 종료후 복사오염 전수조사 + post_ended 가드 b75ad66)
 
 ## 2026-07-13 배너 도달수=조회수 합산 정합 (Claude)
 
