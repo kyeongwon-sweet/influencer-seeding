@@ -6,7 +6,7 @@ import { filterMonotonicStats, type GuardInput } from "@/lib/stats-guard";
 import { normalizeChannelType } from "@/app/monitoring/lib";
 import { resolveTikTokShortUrl } from "@/lib/sponsored-write";
 import { todayKST, yesterdayKST } from "@/lib/dateRule";
-import { notifySlack } from "@/lib/slack";
+import { notifyBot } from "@/lib/slack";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -401,7 +401,7 @@ export async function POST(req: NextRequest) {
   if (copySuspected.length > 0) {
     const s = copySuspected.slice(0, 6)
       .map(c => `${c.date.slice(5, 10)} ${Number(c.value).toLocaleString()}←${c.source}`).join(", ");
-    await notifySlack(`🚨 [시트 조회수 입력] 복사 의심 ${copySuspected.length}행 스킵 — 다른 게시물 값과 여러 날 일치라 DB 유입 차단. 시트 확인·정정 필요: ${s}`);
+    await notifyBot(`🚨 [시트 조회수 입력] 복사 의심 ${copySuspected.length}행 스킵 — 다른 게시물 값과 여러 날 일치라 DB 유입 차단. 시트 확인·정정 필요: ${s}`);
   }
 
   return NextResponse.json({
