@@ -233,7 +233,7 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
   const { data: posts } = await supabase.from('sponsored_posts').select('id, url, posted_at, account_name, influencer_id, ended_at, project_name, content_summary');
   const eligiblePosts = (posts || []).filter((p) => {
     const postedAt = p.posted_at ? String(p.posted_at).slice(0, 10) : null;
-    return !postedAt || postedAt <= today;
+    return !p.ended_at && (!postedAt || postedAt <= today);
   });
 
   const statsKey = (url: string) => {

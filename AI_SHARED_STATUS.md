@@ -553,3 +553,56 @@ TODAY = os.getenv("MONITORING_DATE") or ((datetime.now(timezone.utc) + timedelta
 
 Last updated: 2026-07-14 (Claude: 전일귀속 통일 — run_monitoring 폴백=어제[main 배포 대기] + 시트 exportStats/importStats today-캡)
 
+
+## 2026-07-14 Codex: stats-import reimport pollution cleanup + guard
+
+Context:
+- Claude handoff said remaining post-ended copied-growth candidates should be 3, but live DB recheck found 9 because a later sheet import batch reinserted old dirty values.
+- Reinsert signal: `post_daily_stats.created_at` around `2026-07-14T01:26:37Z/01:26:39Z`, all `manual=true`; 139 rows were `measured_at=2026-07-14`.
+
+Code guard added:
+- `web/app/api/sponsored-posts/stats-import/route.ts`
+  - imports `yesterdayKST()`.
+  - skips any sheet-import stat whose `measured_at` is later than yesterday KST.
+  - response exposes `future_date_skipped` and sample rows.
+  - skips non-banner repeated carry-forward values when the incoming value equals the previous stored/incoming value.
+  - response exposes `repeated_carry_skipped` and sample rows.
+- `web/app/api/monitoring/collect-now/route.ts`
+  - manual collect-now excludes `ended_at` posts from routine scrape targets.
+  - response exposes `ended_skipped`.
+- `web/app/api/apify-webhook/route.ts`
+  - monitoring webhook matching excludes `ended_at` posts, so stale Apify results do not attach to ended posts.
+- `safeIncrement` was NOT changed. Post-ended real growth/corrections are still visible if intentionally present; routine collection/import pollution is blocked at source boundaries.
+
+Sheet cleanup performed:
+- Spreadsheet `10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak`, tab `콘텐츠 대시보드 연동` (`sheetId=1937186871`).
+- Confirmed copied cells were changed back to their ended/carry cumulative values:
+  - row 73 뭐랭하맨(인스타): `BM:BQ` -> `94,584`
+  - row 133 니블이: `BK:BQ` -> `133,206`
+  - row 160 smile_life_s2: `AN:BQ` -> `21,884`
+  - row 292 준맛(인스타/미러링): `BM:BQ` -> `322,112`
+  - row 361 한입혜원: `BK:BQ` -> `592,754`
+  - row 446 톡톡시아(틱톡/미러링): `BM:BQ` -> `164,000`
+  - row 447 톡톡시아(유튜브/미러링): `BM:BQ` -> `50,610`
+- Readback verified the above exact ranges after write.
+
+DB cleanup performed:
+- Backup: `C:/tmp/db-reimport-pollution-cleanup-20260714.json`
+- Deleted 158 rows from `post_daily_stats`:
+  - 139 rows with `measured_at=2026-07-14`
+  - 19 confirmed post-ended copied non-carry rows for the 7 sheet-cleaned posts above
+- Readback verification after cleanup:
+  - `measured_at=2026-07-14` count = 0
+  - improved post-ended copied-growth detector count = 2
+
+Remaining intentional hold:
+- Do not touch without memo/JD_candidate_report confirmation:
+  - 송이(JD멜) `/p/DZyzmiTB5i7/`
+  - 자취생으로 살아남기(P혼) `/p/DYFBwz5GlJ7/`
+- Both still show 822,210 on 2026-07-09~2026-07-12 shared with 이나/오하루. They are the only remaining detector hits after cleanup.
+
+Verification:
+- `npm.cmd test`: 27 passed.
+- `npx.cmd tsc --noEmit --incremental false`: passed.
+
+Last updated: 2026-07-14 (Codex: stats-import date/repeated-carry guard + sheet/DB reimport cleanup)

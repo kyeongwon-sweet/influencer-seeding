@@ -51,7 +51,7 @@ async function collect(req: NextRequest) {
     // 1. 모든 협찬 게시물 조회
     const { data: posts, error: postsError } = await supabase
       .from("sponsored_posts")
-      .select("id, account_name, url, posted_at");
+      .select("id, account_name, url, posted_at, ended_at");
 
     if (postsError) {
       throw new Error(`Failed to fetch posts: ${postsError.message}`);
@@ -74,11 +74,18 @@ async function collect(req: NextRequest) {
     console.log(`[LOG] 📅 수집 날짜: ${measuredAt}`);
     const eligiblePosts = posts.filter((p) => {
       const postedAt = p.posted_at ? String(p.posted_at).slice(0, 10) : null;
-      return !postedAt || postedAt <= measuredAt!;
+      return !p.ended_at && (!postedAt || postedAt <= measuredAt!);
     });
-    const prePostedSkipped = posts.length - eligiblePosts.length;
+    const prePostedSkipped = posts.filter((p) => {
+      const postedAt = p.posted_at ? String(p.posted_at).slice(0, 10) : null;
+      return postedAt && postedAt > measuredAt!;
+    }).length;
+    const endedSkipped = posts.filter((p) => p.ended_at).length;
     if (prePostedSkipped > 0) {
       console.warn(`[WARN] pre-upload posts skipped: ${prePostedSkipped} (measured_at=${measuredAt})`);
+    }
+    if (endedSkipped > 0) {
+      console.warn(`[WARN] ended posts skipped: ${endedSkipped} (measured_at=${measuredAt})`);
     }
 
     // 3. directUrls를 사용해서 개별 게시물별 조회수 수집
@@ -277,6 +284,7 @@ async function collect(req: NextRequest) {
       message: `✅ ${measuredAt} 데이터 수집 완료!`,
       posts_found: posts.length,
       pre_posted_skipped: prePostedSkipped,
+      ended_skipped: endedSkipped,
       instagram_posts: igPosts.length,
       stats_collected: statsToInsert.length,
       measured_at: measuredAt,

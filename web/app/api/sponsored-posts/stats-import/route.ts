@@ -5,7 +5,7 @@ import { normalizeUrl, ALLOWED_POST_URL_RE } from "@/lib/url-utils";
 import { filterMonotonicStats, type GuardInput } from "@/lib/stats-guard";
 import { normalizeChannelType } from "@/app/monitoring/lib";
 import { resolveTikTokShortUrl } from "@/lib/sponsored-write";
-import { todayKST } from "@/lib/dateRule";
+import { todayKST, yesterdayKST } from "@/lib/dateRule";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -189,17 +189,25 @@ export async function POST(req: NextRequest) {
   const missing = new Set<string>();
   const costAsViews: Array<{ url: string; date: string; value: number }> = [];
   const prePosted: Array<{ url: string; date: string }> = [];
+  const futureDated: Array<{ url: string; date: string; max_date: string }> = [];
+  const maxStatsDate = yesterdayKST();
   const incoming: GuardInput[] = [];
   const bannerRows: Array<{ post_id: string; measured_at: string; reach_count: number; manual: boolean }> = [];
   const postIdSet = new Set<string>();
   for (const it of items) {
     const pid = idByUrl.get(it.url);
     if (!pid) { missing.add(it.url); continue; }
+    const measuredDate = String(it.measured_at).slice(0, 10);
+    // Sheet round-trips may contain today's open cells. Persist only finalized snapshots through yesterday.
+    if (measuredDate > maxStatsDate) {
+      futureDated.push({ url: it.url, date: measuredDate, max_date: maxStatsDate });
+      continue;
+    }
     // 🛡️ 조회수 == 그 게시물의 비용 → 비용이 조회수 칸에 잘못 들어온 오염으로 보고 제외
     if (costByUrl.get(it.url) === it.play_count) { costAsViews.push({ url: it.url, date: it.measured_at, value: it.play_count }); continue; }
     // 🛡️ 게시일 이전 날짜 = 업로드 전 조회수(불가능) → 시트 날짜칸 백필 오류로 보고 저장 안 함
     const pa = postedByUrl.get(it.url);
-    if (pa && String(it.measured_at).slice(0, 10) < pa) { prePosted.push({ url: it.url, date: it.measured_at }); continue; }
+    if (pa && measuredDate < pa) { prePosted.push({ url: it.url, date: it.measured_at }); continue; }
     // 배너: reach_count로 저장(입력값=도달수). 비배너: 기존대로 play_count(누적 mono가드 대상).
     if (isBannerByUrl.get(it.url)) {
       bannerRows.push({ post_id: pid, measured_at: it.measured_at, reach_count: it.play_count, manual: true });
@@ -243,10 +251,51 @@ export async function POST(req: NextRequest) {
   //   시트에서 새로 입력하면 덮어쓴다(예전엔 manual이면 무조건 보존 → 시트 정정이 반영 안 되던 반대 문제).
   //   ⚠️ importStats는 '시트에 현재 적힌 값'을 밀어넣으므로, 최신 상태로 두고 입력할 것(안내 문구로 고지).
   //   manualSet은 진단 표시에만 사용(어떤 칸이 대시보드값을 덮었는지).
-  const overwroteManual = incoming.filter(i => manualSet.has(`${i.post_id}|${i.measured_at}`)).length;
+  // Sheet display may forward-fill cumulative cells. If that repeated value comes back through
+  // stats-import, do not store it as a new real measurement.
+  const existingByPost = new Map<string, GuardInput[]>();
+  for (const row of existingStats) {
+    const arr = existingByPost.get(row.post_id) ?? [];
+    arr.push(row);
+    existingByPost.set(row.post_id, arr);
+  }
+  for (const arr of existingByPost.values()) arr.sort((a, b) => a.measured_at.localeCompare(b.measured_at));
+  const incomingByPost = new Map<string, GuardInput[]>();
+  for (const row of incoming) {
+    const arr = incomingByPost.get(row.post_id) ?? [];
+    arr.push(row);
+    incomingByPost.set(row.post_id, arr);
+  }
+  const repeatedCarry: GuardInput[] = [];
+  const incomingForGuard: GuardInput[] = [];
+  for (const [pid, rows] of incomingByPost) {
+    const existingRows = existingByPost.get(pid) ?? [];
+    const sortedRows = [...rows].sort((a, b) => a.measured_at.localeCompare(b.measured_at));
+    let existingIdx = 0;
+    let previous: GuardInput | null = null;
+    for (const row of sortedRows) {
+      const sameDate = existingRows.find((e) => e.measured_at === row.measured_at);
+      if (sameDate && sameDate.play_count === row.play_count) {
+        repeatedCarry.push(row);
+        continue;
+      }
+      while (existingIdx < existingRows.length && existingRows[existingIdx].measured_at < row.measured_at) {
+        previous = existingRows[existingIdx];
+        existingIdx++;
+      }
+      if (previous && previous.play_count === row.play_count) {
+        repeatedCarry.push(row);
+        continue;
+      }
+      incomingForGuard.push(row);
+      previous = row;
+    }
+  }
+
+  const overwroteManual = incomingForGuard.filter(i => manualSet.has(`${i.post_id}|${i.measured_at}`)).length;
 
   // 5) 누적 감소 가드 (lib/stats-guard.ts — 테스트로 검증되는 순수 함수)
-  const { kept: keptRows, dropped } = filterMonotonicStats(incoming, existingStats);
+  const { kept: keptRows, dropped } = filterMonotonicStats(incomingForGuard, existingStats);
   // 시트 입력분도 '사람이 손댄 값'으로 표시 → 밤 자동수집이 덮지 않음(표시 우선 규칙과 일관).
   const statsRows = keptRows.map(r => ({ ...r, manual: true }));
   const droppedDecrease = dropped.length;
@@ -295,6 +344,14 @@ export async function POST(req: NextRequest) {
     cost_as_views_sample: costAsViews.slice(0, 10),
     pre_posted_skipped: prePosted.length,
     pre_posted_sample: prePosted.slice(0, 10),
+    future_date_skipped: futureDated.length,
+    future_date_sample: futureDated.slice(0, 10),
+    repeated_carry_skipped: repeatedCarry.length,
+    repeated_carry_sample: repeatedCarry.slice(0, 10).map(r => ({
+      url: urlByPid.get(r.post_id) ?? r.post_id,
+      date: r.measured_at,
+      value: r.play_count,
+    })),
     matched_urls: [...new Set(items.map(i => i.url))].length - missing.size,
     missing_urls: missing.size,
     missing_sample: [...missing].slice(0, 5),
