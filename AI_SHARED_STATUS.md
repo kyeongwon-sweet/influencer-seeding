@@ -1182,3 +1182,27 @@ DB cleanup:
 Important:
 - Broad deletion of all `2,367` remaining rows was not executed because it is a large destructive DB operation. It needs explicit user approval after reviewing the candidate report.
 - This cleanup does not fabricate values. It only removes exact post-ended flat carry rows; any post-ended growth/changed value remains untouched.
+
+## 2026-07-14 Codex: 자동수집 동작 검증 + 부분수집 재발방지 보강
+
+Evidence checked:
+- GitHub Actions `cron-daily-collect.yml` recent runs are succeeding. The 2026-07-14 05:41 KST run targeted `MONITORING_DATE=2026-07-13` but skipped because the old check only required some rows + YouTube presence.
+- GitHub Actions `monitoring-retry.yml` run `29322880030` detected the partial 2026-07-13 state: `today=263 base=505 complete=False yt_ok=True`, then ran `scripts/run_monitoring.py` with `MONITORING_DATE=2026-07-13`.
+- That retry run collected active posts only: `추적 게시물: 285개 (종료/업로드전 제외 589개)`, saved `270건`, and completed successfully.
+- `origin/main` code check:
+  - scheduled GitHub `run_monitoring.py` still writes to yesterday via `MONITORING_DATE`.
+  - `run_monitoring.py` fallback is also KST yesterday.
+  - manual `collect-now`, dashboard `/api/jobs`, and `apify-webhook` fallback use `todayKST()`.
+  - scheduled `apify-collect` remains explicit `yesterdayKST()`.
+
+Change made by Codex:
+- `.github/workflows/cron-daily-collect.yml` now uses the same partial-collection completeness check as `monitoring-retry.yml` before deciding to skip:
+  - count non-null `play_count` rows for target day.
+  - compare against the max of the previous 3 days.
+  - if target day is below 60% of that baseline, treat as `missing` and run full collection.
+  - YouTube presence check remains.
+
+Status:
+- The scheduling/date-attribution path is fixed and the 2026-07-13 partial collection was caught by retry and re-run.
+- This workflow change closes the remaining weak spot where the main early-morning backup windows could skip a partially collected day.
+- `safeIncrement`, dashboard display rules, and sheet export rules were not changed.
