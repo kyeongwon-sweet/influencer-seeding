@@ -248,6 +248,9 @@ export async function POST(req: NextRequest) {
       const d = r.measured_at.slice(0, 10);
       const owners = dvOwners.get(`${d}|${r.play_count}`);
       if (!owners) continue;
+      // 🛡️ 오탐 방지: 그 게시물이 '이미 그 날짜에 그 값'을 갖고 있으면(자기 기존값 재입력) 복사 아님 → 스킵 안 함.
+      //   (원본/기존 데이터가 다른 게시물에 복사돼 있어도, 원본의 재입력까지 막던 문제 해결. 새 값 오붙임만 차단.)
+      if (owners.has(r.post_id)) continue;
       for (const other of owners) {
         if (other === r.post_id) continue;
         const mk = `${r.post_id}|${other}`;
