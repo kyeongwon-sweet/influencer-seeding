@@ -920,3 +920,29 @@ Verification:
 Data note:
 - No DB or Sheet correction was executed in this step.
 - The 18 over-recorded rows still require sheet+DB simultaneous correction; DB-only correction will be re-polluted by `importStats` if dirty sheet cells remain.
+
+## 2026-07-14 production deploy: over-record alert + awareness route (Codex)
+
+Main/deploy status:
+- `fix(monitoring): alert on manual over-recorded stats` was pushed to `origin/main` as `935ef89`.
+- `origin/main` then advanced to `c21d247` with Claude's docs-only 자연님 correction note; Codex fast-forwarded local source before deployment.
+- Production deploy completed with Vercel deployment `dpl_HvrWCKS4mHYJgFTpJ3Gck49UfW4y`.
+- Vercel inspect verified:
+  - target: `production`
+  - status: `Ready`
+  - alias: `https://influencer-seeding-mu.vercel.app`
+  - created: `2026-07-14 15:07 KST`
+
+Verification:
+- Pre-push hook ran `tsc --noEmit` and passed.
+- Final local verification before push/deploy:
+  - `web`: `npm.cmd test` passed (27 tests).
+  - `web`: `npx.cmd tsc --noEmit --incremental false` passed.
+  - Python syntax: `ast.parse(scripts/run_monitoring.py)` passed.
+  - `git diff --check HEAD^ HEAD` passed.
+- Vercel build output included `ƒ /api/apify-webhook` and `ƒ /api/awareness-ads`.
+- Signed-out `curl` to `/monitoring` and `/api/awareness-ads` returns Clerk-protected 404 (`X-Clerk-Auth-Reason: protect-rewrite, dev-browser-missing`), so route availability must be verified with the proper browser session or `CRON_SECRET`.
+
+Remaining blocker:
+- This Codex environment has no `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, or `CRON_SECRET` in `.env.production.local` or scanned `C:/tmp/**/.env.production.local` files.
+- Therefore the 18 over-recorded rows were not DB-corrected here. Do not invent replacement values. Correct only with per-post real measurement evidence, and correct linked sheet cells and DB rows together to avoid `importStats` re-pollution.
