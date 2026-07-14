@@ -7,7 +7,7 @@ Supersedes/updates the older `5036fcc` 822,210 cluster note where 송이 correct
 송이 status:
 - Claude handoff: 송이 DB copied rows 23개 삭제, real measured row `2026-07-13=96,709` inserted/manual, backup `songyi-fix-20260714.json`.
 - Codex DB readback verified: 송이 post `b519bed1-15c4-4e93-bc65-6b9bdaeb6e8b` / `https://www.instagram.com/p/DZyzmiTB5i7/` now has exactly one `post_daily_stats` row: `measured_at=2026-07-13`, `play_count=96,709`, `manual=true`, `created_at=2026-07-14T08:04:25.230883+00:00`.
-- Codex Sheet readback verified: `[빙과] 마케팅_대시보드(실무용)_25.09~` / `콘텐츠 대시보드 연동!A452:BQ452` has 송이 row 452 with `7/8=816,015`, copied `822,210` cells cleared, and `7/13=96,709`. J value currently displays `0` for that row.
+- Codex Sheet readback verified: `[빙과] 마케팅_대시보드(실무용)_25.09~` / `콘텐츠 대시보드 연동!BJ1:BQ452` has 송이 row 452 with `7/7=816,015`, `7/8`~`7/12` copied `822,210` cells cleared/blank, and `7/13=96,709`. J value currently displays `0` for that row because 7/7 remains higher than 7/13.
 - Claude verified after importStats that `2026-07-13=96,709` stayed unchanged and `created_at` did not move. Treat 송이 as closed unless new evidence appears.
 
 Core DB↔Sheet principle:
