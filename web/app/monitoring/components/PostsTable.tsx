@@ -433,7 +433,7 @@ function PostsTable(props: Props) {
                             onKeyDown={e => { if (e.key === "Enter") patchPlayCount(post.id, editPlayCount.value); if (e.key === "Escape") setEditPlayCount(null); }}
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
                         ) : (
-                          <div className="flex items-center justify-end gap-1.5 relative z-30">
+                          <div className="flex items-center justify-end gap-1.5 relative">
                             <span onClick={() => setEditPlayCount({ postId: post.id, value: String(s?.play_count ?? "") })}
                               title="여기서 고치면 즉시 반영되며, 밤 자동수집은 이 값을 덮지 않습니다. 시트에서 더 나중에 입력하면 그 값이 최신으로 우선합니다."
                               className="text-a-ink-muted hover:text-a-blue transition-colors cursor-text">
