@@ -848,3 +848,10 @@ Backup and verification:
 Note:
 - Claude's request text expected 2026-07-13 value `465,513` and increment `24,361`, but live DB at execution time had auto row `2026-07-13=467,448`; therefore the verified DB result is `26,296`.
 - Sheet cleanup is separate sheet-owner work: clear the same polluted `468,897` cell(s) on the linked "콘텐츠 대시보드 연동" row, and if exact sheet/dashboard equality is required, refresh the 2026-07-13 cell from DB rather than hand-entering a guessed value.
+
+Follow-up verification and sheet alignment:
+- Google Sheet `[빙과] 마케팅_대시보드(실무용)_25.09~`, tab `콘텐츠 대시보드 연동`, row 820 (`슈기`) was updated after DB cleanup.
+- Exact sheet range: [`콘텐츠 대시보드 연동!BI820:BP820`](https://docs.google.com/spreadsheets/d/10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak/edit?gid=1937186871&range=BI820:BP820).
+- Cleared polluted `468,897` cells from `BI820:BL820` (`7.6` through `7.9`), kept `BM820:BO820 = 408,411 / 418,385 / 441,152`, and set `BP820` (`7.13`) to DB value `467,448`.
+- Sheet formula readback: [`J820`](https://docs.google.com/spreadsheets/d/10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak/edit?gid=1937186871&range=J820) now displays `26,296`.
+- Live dashboard readback from `https://influencer-seeding-mu.vercel.app/monitoring`: `슈기` row displays increment `+26,296` and cumulative views `467,448`.
