@@ -1,5 +1,15 @@
 # AI Shared Status
 
+> ## 🛑 [CODEX 필독] `web/app/organic/page.tsx` **재커밋/재푸시 금지**
+> 이 변경은 **Claude가 이미 커밋·배포 완료**: 커밋 `ef64cb2` → origin/main·**프로덕션(-mu) 라이브**, CI build-test **success**, 라이브 동작(변형→상위 자동포함) 검증 완료.
+> Codex 워크트리 `C:/tmp/influencer-main` (브랜치 codex-overrecord-alert)에 동일 변경이 아직 **staged**로 남아있지만 **절대 재커밋/재푸시하지 마세요 — 중복입니다.**
+> 사용량 제한 풀리면: staged 변경을 버리세요 →
+> ```
+> git -C C:/tmp/influencer-main restore --staged web/app/organic/page.tsx
+> git -C C:/tmp/influencer-main checkout -- web/app/organic/page.tsx
+> ```
+> (origin/main의 `ef64cb2`가 정본. 되돌릴 것 없음.) — 2026-07-14, Claude
+
 ## 2026-07-14 organic 페이지 필터·성능 패치 커밋/배포 완료 (Claude가 Codex 작성분 이어받음, `ef64cb2`)
 Codex가 `web/app/organic/page.tsx`에 패치 적용+tsc 통과했으나 사용량 제한으로 커밋 못 함(C:/tmp/influencer-main에 staged). Claude가 그 파일만 origin/main 위에 얹어 커밋·푸시(자동배포 success). vercel --prod 안 씀(main push=자동배포). 변경: 제품 변형 선택 시 상위라인 자동포함(PRODUCT_PARENTS/toggleProduct), productOptions·lastUpdatedAt useMemo, 썸네일 loading=lazy·decoding=async, 행 content-visibility:auto. diff 31/12, 그 외 변경 없음 확인.
 
