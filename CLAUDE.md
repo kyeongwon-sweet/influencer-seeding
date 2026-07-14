@@ -3,6 +3,9 @@
 Before making code, database, Google Sheet, Apps Script, or deployment changes, read `AI_SHARED_STATUS.md`.
 After meaningful changes, update `AI_SHARED_STATUS.md` so Claude, Codex, and other AI sessions share the same latest state.
 
+## 🚨 절대 규칙 — 데이터 무결성 (모든 AI 필수)
+**실측이 없으면 값을 지어내지 않는다.** 지표(조회수/도달수 등)는 실제 수집 또는 팀이 실제로 본 값만 DB·시트에 넣는다. 수집 불가(틱톡 민감영상 등)·미측정이면 **비워둔다**(마지막 값 복사·타 게시물 값·추정치 저장 금지). 이상치는 자동 보정하지 말고 **감지 알림만**, 사람이 실제 값으로 정정. ⚠️ **빈 값(측정 없음)을 0으로 읽지 말 것**(공백≠0, 증분·누적 깨짐). 상세는 `AI_SHARED_STATUS.md` 최상단.
+
 # 인플루언서 시딩 시스템
 
 ## 프로젝트 개요
