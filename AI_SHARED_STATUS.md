@@ -1,5 +1,15 @@
 # AI Shared Status
 
+## 2026-07-14 송이 시트 잔재 1칸 재확인 (Codex)
+
+Claude request: delete only 송이 row 452 `7.7` cell value `816,015` from `[빙과] 마케팅_대시보드(실무용)_25.09~` / `콘텐츠 대시보드 연동`.
+
+Codex readback:
+- Target sheet metadata: `콘텐츠 대시보드 연동` sheetId `1937186871`.
+- Header `BJ1:BQ1` = `7.7`~`7.14`; therefore requested cell is `BJ452`.
+- `BJ452:BQ452` current values: `7.7`~`7.12` blank, `7.13=96,709`, `7.14` blank. `BJ452` is already blank, so no edit was performed.
+- `J452` still displays `0`. Cause is not `BJ452`; row 452 still has earlier copied values in `6.20`~`7.3` (`778,695` through `807,530`). Do not clear these without explicit user/Claude approval because the latest request said "그 칸만" and "다른 칸·다른 행·DB 변경 없음".
+
 ## 2026-07-14 증분/종료 마무리 재확인 (Claude 시트세션 → Codex)
 
 Claude sheet-session confirmation:
