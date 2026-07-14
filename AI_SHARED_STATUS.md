@@ -386,3 +386,19 @@ Not fully verified:
   - read back exact rows/cells afterward
   - record what changed here
 
+## 2026-07-14 여믄봇 증분 리포트: 종료 게시물 제외 (Claude)
+
+사용자 보고: 빵토리(실제 4.2만, 이전 건이라 진작 종료됐어야 함)가 아직 트래킹처럼 보이고 여믄봇 리포트에 우수소재로 선정됨.
+
+진단(DB 직접 확인):
+- 빵토리 `/p/DZO523IPRkv/` = posted_at 2026-06-05, ended_at 2026-07-07, 실제 최종 41,229. 이미 종료 상태이고 수집기(run_monitoring)도 종료 글 제외 중 → 실제로는 트래킹 안 함.
+- 과거 오염(복득이 누적값 695,164/740,117/781,556가 7/10~7/12에 복사)이 가짜 대형 증분(41,439)을 만들었음. 이 오염 stats 행은 **현재 DB에서 삭제 확인됨**(Codex 정리 완료).
+- 그러나 `scripts/notify_increments.py`가 종료(ended_at) 게시물을 걸러내지 않아, 종료 글이 오염값을 달고 급상승 TOP10에 올랐음(오늘 오전 리포트는 정리 이전 시점).
+
+수정(커밋 `b93fd4e`, origin/main push 완료):
+- `scripts/notify_increments.py`: meta select에 `ended_at` 추가 + 증분 순위 루프에서 `ended_at < target` 게시물 제외(종료일이 target 당일/이후면 포함). 배너 라인은 이미 `not ended_at` 필터라 일관.
+- 검증: 07-12 기준 종료 게시물 3건(yes__jam_ 7,306 / mamy014 1,157·416)이 제외됨(108→105건, 종료 0건). 활성 105건 유지. `py_compile` OK. pre-push tsc는 node_modules 없어 skip(파이썬 변경이라 무관).
+
+미처리(사용자 지시로 Codex 영역에 남김):
+- 종료 게시물의 '종료일 이후' `post_daily_stats` 행(전수 2,523건 존재, 대부분 평평한 carry-forward=증분0 무해, 일부만 값 점프 오염)의 DB 정리는 upload-date/carry 정책 영역이라 Codex 담당.
+
