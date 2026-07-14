@@ -116,6 +116,19 @@ def _find_report_ts(token: str, channel: str, target: str) -> list:
     return out
 
 
+def _thread_reply_ts(token: str, channel: str, parent_ts: str) -> list:
+    """리포트(parent_ts)에 달린 스레드 답글 ts 목록(부모 제외) — 정정 재발송 시 댓글(상태 알럿 등)도 함께 지우기 위함."""
+    try:
+        req = urllib.request.Request(
+            f"https://slack.com/api/conversations.replies?channel={channel}&ts={parent_ts}&limit=100",
+            headers={"Authorization": "Bearer " + token})
+        d = json.load(urllib.request.urlopen(req, timeout=20))
+    except Exception as e:
+        print("[notify] 스레드 답글 조회 실패:", e)
+        return []
+    return [m["ts"] for m in d.get("messages", []) if m.get("ts") and m.get("ts") != parent_ts]
+
+
 def _delete_msg(token: str, channel: str, ts: str) -> bool:
     data = urllib.parse.urlencode({"channel": channel, "ts": ts}).encode()
     req = urllib.request.Request("https://slack.com/api/chat.delete", data=data,
@@ -187,6 +200,9 @@ def main():
     # 정정 재발송(REPLACE=1): 오늘 기존 리포트를 삭제한 뒤 새로 발송(잘못 나간 리포트 교체).
     if os.getenv("REPLACE") == "1" and CHANNEL[:1] in ("C", "G"):
         for ts in _find_report_ts(token, CHANNEL, target):
+            # 리포트에 달린 댓글(상태 알럿 등)을 먼저 지우고(부모 삭제 후엔 조회 불가) 부모를 삭제.
+            for rts in _thread_reply_ts(token, CHANNEL, ts):
+                _delete_msg(token, CHANNEL, rts)
             _delete_msg(token, CHANNEL, ts)
     # 중복 방지: 채널 발송 + DEDUP=1인데 오늘 리포트가 이미 있으면 생략(백업 창 대비). REPLACE면 위에서 지웠으니 통과.
     elif os.getenv("DEDUP") == "1" and CHANNEL[:1] in ("C", "G") and _already_posted(token, CHANNEL, target):
