@@ -1664,10 +1664,10 @@ export default function MonitoringPage() {
                         <table className="mx-auto">
                           <thead className="sticky top-0 z-10 bg-white border-b border-a-hairline">
                             <tr>
-                              <th className="pl-5 pr-3 py-2.5 text-left text-[13px] font-semibold text-a-ink-muted">날짜</th>
-                              <th className="px-3 py-2.5 text-right text-[13px] font-semibold text-a-ink-muted whitespace-nowrap">조회수 증분</th>
-                              <th className="px-3 py-2.5 text-right text-[13px] font-semibold text-a-ink-muted">검색량</th>
-                              <th className="pl-3 pr-5 py-2.5 text-right text-[13px] font-semibold text-a-ink-muted whitespace-nowrap">B2B 발주량</th>
+                              <th className="pl-5 pr-3 py-2.5 text-left text-[13px] font-semibold text-a-ink-muted"><span title={"측정 날짜예요. 주말·공휴일은 색으로 구분하고, 오늘 날짜는 아직 수집 중이라 표에서 빼요."} className="cursor-help underline decoration-dotted decoration-a-ink-muted/50 underline-offset-2">날짜</span></th>
+                              <th className="px-3 py-2.5 text-right text-[13px] font-semibold text-a-ink-muted whitespace-nowrap"><span title={"조회수 증분 = 그날 하루에 늘어난 조회수 합계 (그날 누적 − 전날 누적).\n※ 게시물 표의 '증분량'(게시물별 최신 증분)과 기준이 달라, 총합이 다를 수 있어요 - 정상입니다."} className="cursor-help underline decoration-dotted decoration-a-ink-muted/50 underline-offset-2">조회수 증분</span></th>
+                              <th className="px-3 py-2.5 text-right text-[13px] font-semibold text-a-ink-muted"><span title={"라라스윗 검색량의 전일 대비 증감이에요 (네이버 데이터랩). 줄거나 변화 없는 날은 음수·0으로 떠요."} className="cursor-help underline decoration-dotted decoration-a-ink-muted/50 underline-offset-2">검색량</span></th>
+                              <th className="pl-3 pr-5 py-2.5 text-right text-[13px] font-semibold text-a-ink-muted whitespace-nowrap"><span title={"그날의 편의점(CVS) 발주 수량이에요 (마케팅T 시트, 미래 계획행 제외)."} className="cursor-help underline decoration-dotted decoration-a-ink-muted/50 underline-offset-2">B2B 발주량</span></th>
                             </tr>
                           </thead>
                           <tbody>
