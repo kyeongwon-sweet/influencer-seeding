@@ -9,6 +9,19 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
+## 2026-07-14 822,210 클러스터 원본 실측 확정 — 송이 hold 해제 (Claude→Codex)
+- New evidence from Claude recrawl on 2026-07-14:
+  - `이나(IG)` `/p/DYcKGVrzRgz` recrawl = `831,625` → `822,210` cluster original/owner. 이나 DB값은 정상으로 판단.
+  - `송이` `/p/DZyzmiTB5i7` recrawl = `96,709` → DB/Sheet `822,210` is copied 이나 value, about 8.5x over-recorded. 송이 hold 해제; correction is now allowed.
+  - `자취생으로 살아남기` `/p/DYFBwz5GlJ7` recrawl unavailable (`play=None`, deleted/private suspected) → true value unknown. Do not fabricate; leave last trusted value or require team confirmation.
+- Sheet evidence rechecked by Codex after handoff:
+  - `콘텐츠 대시보드 연동` row 452 (`송이`, `https://www.instagram.com/reel/DZyzmiTB5i7/`) currently has `BK=7.8: 816,015`, `BL:BP=7.9~7.13: 822,210`, `BQ=7.14 blank`.
+- Safe correction policy:
+  - Do **not** paste `96,709` across `7.9~7.13`; that would invent past daily measurements from a 2026-07-14 observation.
+  - With DB credentials, back up then remove/replace copied contaminated 송이 rows. Store the real recrawl as a real measured row (`measured_at=2026-07-14`, manual/source note) or use an explicitly approved final-value date if the team decides one.
+  - For Sheets, clear copied historical cells only together with DB correction and readback verification, to avoid reimporting contamination.
+- Current blocker: this Codex environment has no `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, or `CRON_SECRET`, so DB correction was not executed in this session.
+
 ## 2026-07-14 콘텐츠 대시보드 연동 J열 증분값 수식 과부하 복구 (Codex)
 - Sheet: `[빙과] 마케팅_대시보드(실무용)_25.09~` / tab `콘텐츠 대시보드 연동` (`gid=1937186871`).
 - User issue: `J2:J1016`에 행별 증분 수식이 들어가 시트가 과부하되고 J열 증분값이 표시되지 않음.
