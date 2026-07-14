@@ -791,3 +791,11 @@ Last updated: 2026-07-14 (Codex: JD 7/13 duplicate banner cleanup + Sieun TT bas
 - 이나(틱톡) 07-12=234,500, 시으니네(틱톡) 07-13=58,400 (사용자 실측 지시값). 백업 fix-ina-tt/fix-sieuni-tt-20260714.json.
 - JD 유튜브 10건: 과대 82행 삭제 + 07-13 실측 채움. 백업 yt-fix-20260714.json.
   - ⚠️ 이 중 **종료 YT 게시물(가내수제업·또호·냠냠·오하루·밈튜브) 07-13 채움이 7/13 증분을 ~26K 과다**하게 만듦(종료 게시물이 증분에 잡힘). 7/13 대시보드 900,247 vs 목표 770,810 과다의 일부. Codex가 활성 과대값 정리 시 함께 재검토 요망. (종료 포함 900,247 / 종료 제외 874,442 / 목표 770,810)
+
+## 2026-07-14 git .gs 가드 재동기화 — 해결됨 (Claude, 사용자 승인)
+
+앞서 공개한 "git origin/main .gs가 가드 3종 빠진 옛 버전" 문제 → **정본(wt-company)과 바이트 일치로 재동기화 완료**(`5d8ba53`).
+- 복원된 가드: ①URL없는 고아행 skip ②오늘·미래(date>=today) 날짜칸 안채움 ③빈칸검사 업체명 제외. + isBlank 수동값 보호 유지.
+- 검증: `git show origin/main:Combined_Sheet_AppsScript.gs`(CR제거) == wt-company(CR제거) 완전 일치.
+- 이제 git본/정본 어느 걸 Apps Script에 붙여도 가드 동일(회귀 위험 제거). ⚠️ 단 실제 적용은 시트 편집기 재배포 필요.
+- 이후 .gs/시트는 소유 세션(Ad view tracking) 소유 — Claude는 더 안 건드림.
