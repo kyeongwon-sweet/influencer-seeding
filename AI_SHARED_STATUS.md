@@ -9,6 +9,29 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
+## 2026-07-14 JD/P post-ended copied-growth cleanup (Codex)
+
+Policy alignment:
+- Do not re-add a hard `post_ended` write/display block. Latest shared policy is detection + source correction because a post can still grow after tracking ended.
+- Existing `aaa8ede` Slack integrity check remains the recurring backstop for copied post-ended values.
+
+DB cleanup performed:
+- Backup: `C:/tmp/jd-post-ended-copy-cleanup-20260714.json`.
+- Deleted 33 verified copied-growth rows from `post_daily_stats`; readback after delete found `0` remaining deleted ids.
+- Removed:
+  - `smile_life_s2` JD banner `/p/DZPX8iKCYKx/`: 27 rows, ended `2026-06-10`, copied value `40,511` from source `/p/DZhMG8tGgzg/`; prior max before/end `21,884`.
+  - post `5ac1df57-236e-49da-b196-51b67079ba79` (`/p/DZCdCIGy0SA/`): 5 rows, ended `2026-07-07`, copied values from source `/p/DaFWfmKxGFj/` and related rows; prior max `133,206`.
+  - post `5b0dc48a-e347-4a54-9fda-7b4f0e1f0ede` (`/p/DZpf4SuJS_Z/`): 1 row on `2026-07-08`, copied value `604,931` from source `/p/DZ9WqkhpjpA/`; prior max `592,754`.
+
+Remaining review candidates after cleanup:
+- post `b519bed1-15c4-4e93-bc65-6b9bdaeb6e8b` (`/p/DZyzmiTB5i7/`) and post `d40746e5-713f-4108-96d5-ea2ecc0107e7` (`/p/DYFBwz5GlJ7/`) rows with `822,210`: true owner still needs memo/JD candidate report comparison.
+- post `b9afa0c9-ef70-4ce2-8260-57953a82b5e4` (`/p/DZC0onTuJ-p/`) post-ended growth: same-date same-value source not found.
+- Single-row small banner candidates remain: `dolkki_daily`, `mamy014`, `smile_papa_s2`, `yes__jam_`.
+
+Verification:
+- Supabase read-only candidate scan before cleanup found 11 JD/P post-ended growth candidates; after deleting the 33 confirmed copied rows, 8 review candidates remain.
+- No code was changed or deployed by Codex in this cleanup commit.
+
 Last updated: 2026-07-14 KST (Codex: stats-for-sheet 배너 reach export 보완 + DB 잔존 검증)
 
 ## 2026-07-14 종료-후 복사 오염 전수조사 + 가드 (Claude)
