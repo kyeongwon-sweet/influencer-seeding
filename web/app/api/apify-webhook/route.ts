@@ -319,10 +319,8 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
     }
   }
 
-  const ENDED_DAYS = 7;
   const rows = [];
   const pendingUpdates: { id: string; updates: Record<string, unknown> }[] = [];
-  const endedUpdates: { id: string; ended_at: string }[] = [];
   const overRecorded: Array<{ account: string | null; url: string; observed: number; stored: number; storedDate: string | null }> = [];
   let skipped = 0;
   for (const post of eligiblePosts) {
@@ -330,17 +328,8 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
     const s = statsByKey[key];
 
     if (!s) {
-      // 🛑 미반환 → 자동 종료 감지: 이전 실데이터(>0) 있고 ENDED_DAYS 경과 + 아직 종료 안 됨
-      // 단, '위성채널'·'온드미디어' 프로젝트 소재는 자동 종료 제외(요청)
-      const pn = (post.project_name as string | null) ?? "";
-      if (!post.ended_at && !pn.includes("위성채널") && !pn.includes("온드미디어")) {
-        const prevPlay = lastKnownPlay.get(post.id);
-        const last = lastMeasuredAt.get(post.id);
-        if (prevPlay && prevPlay > 0 && last) {
-          const gapDays = Math.floor((Date.parse(today) - Date.parse(last)) / 86400000);
-          if (gapDays >= ENDED_DAYS) endedUpdates.push({ id: post.id, ended_at: last });
-        }
-      }
+      // Missing scraper rows are not a measurement and must not auto-end a post.
+      // Auto-ending is handled by posted-date/caption rules in run_monitoring and the reconcile script.
       continue;
     }
 
@@ -399,13 +388,6 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
       )
     );
   }
-  if (endedUpdates.length > 0) {
-    await Promise.all(
-      endedUpdates.map(({ id, ended_at }) =>
-        supabase.from('sponsored_posts').update({ ended_at }).eq('id', id)
-      )
-    );
-  }
   if (rows.length > 0) {
     await supabase.from('post_daily_stats').upsert(rows, { onConflict: 'post_id,measured_at' });
   }
@@ -419,12 +401,12 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
       `${sample}${overRecorded.length > 8 ? `\n- ...외 ${overRecorded.length - 8}건` : ''}`
     );
   }
-  await supabase.from('jobs').update({ status: 'done', payload: { saved: rows.length, skipped, ended: endedUpdates.length } }).eq('id', jobId);
+  await supabase.from('jobs').update({ status: 'done', payload: { saved: rows.length, skipped } }).eq('id', jobId);
 
   // 자동 수집(크론, user_email 없음)만 Slack 통지 — 수동 버튼 노이즈 방지
   const { data: jobRow } = await supabase.from('jobs').select('user_email').eq('id', jobId).single();
   if (!(jobRow as { user_email: string | null } | null)?.user_email) {
-    await notifyJob('협찬 모니터링', 'ok', `${rows.length}건 적재${endedUpdates.length ? `, 종료 ${endedUpdates.length}건` : ''}${skipped ? `, 스킵 ${skipped}` : ''}`);
+    await notifyJob('협찬 모니터링', 'ok', `${rows.length}건 적재${skipped ? `, 스킵 ${skipped}` : ''}`);
   }
 }
 

@@ -1,0 +1,45 @@
+name: Auto End Reconcile
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: "KST 기준 판정일 YYYY-MM-DD"
+        required: true
+        default: "2026-07-14"
+      apply:
+        description: "true면 DB ended_at 적용, false면 dry-run만"
+        required: true
+        default: "false"
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Reconcile auto-end state
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          flag=""
+          if [ "${{ inputs.apply }}" = "true" ]; then
+            flag="--apply"
+          fi
+          python scripts/reconcile_auto_end.py --target-date "${{ inputs.target_date }}" $flag
+
+      - name: Upload reconcile report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auto-end-reconcile-${{ inputs.target_date }}-${{ inputs.apply }}
+          path: data/output/auto-end-reconcile-${{ inputs.target_date }}.json

@@ -9,6 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 from db import get_client
 from url_utils import normalize_url
+from auto_end_rules import classify_auto_end, row_metric
 
 
 OVERRECORDED_WARNINGS = []
@@ -518,7 +519,7 @@ def run():
         _start, _PAGE = 0, 1000
         while True:
             _res = db.table("sponsored_posts").select(
-                "id, url, posted_at, account_name, influencer_id, ended_at, content_summary, notes, channel_type, project_name"
+                "id, url, posted_at, account_name, influencer_id, ended_at, content_summary, notes, channel_type, project_name, product_name"
             ).range(_start, _start + _PAGE - 1).execute()
             _chunk = _res.data or []
             all_posts.extend(_chunk)
@@ -526,47 +527,36 @@ def run():
                 break
             _start += _PAGE
 
-        # 🛑 자동 종료 정책 — ended_at 딱지 부여(삭제 아님, 데이터 보존). 온드미디어·위성채널 제외.
-        #   규칙(OR): 배너·캐러셀(피드) 업로드일 제외 7일(8일째 종료) / 그외(영상) 14일(15일째 종료) / 7일 미반환(마지막 실측) / 캡션(content_summary) '종료·보관·삭제'
-        #   ※ '업로드일 제외' — age = 오늘-업로드일이라 업로드일(age 0)은 카운트에서 빠짐. 캐러셀=channel_type '피드'로 식별(사용자 지시).
+        # 🛑 자동 종료 정책 — ended_at 딱지 부여(삭제 아님, 데이터 보존).
+        #   규칙: 배너·캐러셀(피드) 업로드일 제외 7일 이후(8일째 종료) / 그 외(영상) 14일 이후(15일째 종료) / 캡션(content_summary) '종료·보관·삭제'.
+        #   예외: 위성채널·온드미디어·무상시딩, 누적 metric 50만 이상. 업로드일은 카운트에서 제외(age 0).
         try:
             active_ids = [p["id"] for p in all_posts if not p.get("ended_at")]
-            last_meas = {}
+            max_metric_by_post = {}
             for _i in range(0, len(active_ids), 100):
                 _c = active_ids[_i:_i + 100]
                 _f = 0
                 while True:
-                    _r = (db.table("post_daily_stats").select("post_id, measured_at")
-                          .in_("post_id", _c).gt("play_count", 0)
-                          .order("measured_at", desc=True).range(_f, _f + 999).execute())
+                    _r = (db.table("post_daily_stats").select("post_id, play_count, reach_count")
+                          .in_("post_id", _c).range(_f, _f + 999).execute())
                     _pg = _r.data or []
                     for _x in _pg:
-                        if _x["post_id"] not in last_meas:
-                            last_meas[_x["post_id"]] = _x["measured_at"]
+                        _metric = row_metric(_x)
+                        if _metric > max_metric_by_post.get(_x["post_id"], 0):
+                            max_metric_by_post[_x["post_id"]] = _metric
                     if len(_pg) < 1000:
                         break
                     _f += 1000
-            today_d = date.fromisoformat(TODAY)
-            KW = ("종료", "보관", "삭제")
             to_end = []
             for p in all_posts:
                 if p.get("ended_at"):
                     continue
-                ct = p.get("channel_type") or ""
-                pn = p.get("project_name") or ""
-                if "온드미디어" in ct or "위성채널" in pn or "온드미디어" in pn:
-                    continue
-                pa = p.get("posted_at")
-                cap = p.get("content_summary") or ""
-                age = (today_d - date.fromisoformat(str(pa)[:10])).days if pa else None
-                lm = last_meas.get(p["id"])
-                gap = (today_d - date.fromisoformat(lm)).days if lm else None
-                short = ("배너" in ct or "피드" in ct)  # 배너·캐러셀(피드) = 7일 / 그 외(영상) = 14일
-                # 업로드일 제외 N일 = N일째까지 유지, N+1일째 종료 → age>=N+1 (배너·피드 8, 영상 15)
-                if ((short and age is not None and age >= 8)
-                        or (not short and age is not None and age >= 15)
-                        or (gap is not None and gap >= 7)
-                        or any(k in cap for k in KW)):
+                decision = classify_auto_end(
+                    p,
+                    target_date=TODAY,
+                    max_metric=max_metric_by_post.get(p["id"], 0),
+                )
+                if decision.should_end:
                     to_end.append(p["id"])
             if to_end:
                 for _i in range(0, len(to_end), 100):

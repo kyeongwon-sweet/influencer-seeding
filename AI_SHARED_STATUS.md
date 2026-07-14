@@ -1231,3 +1231,31 @@ Follow-up correction before final push:
   - `play_count is not null`
   - chunked `post_id in (...)` counts to avoid broad-table baseline drift
 - This prevents the retry loop from comparing active collection size (~285 active posts on 2026-07-13) against stale historical totals (~505 rows including ended posts).
+
+## 2026-07-14 Codex: 자동 종료 규칙 재정의 + 전체 재분류 준비
+
+User rule, treated as canonical from this point:
+- Upload day excluded 14 days => video auto-end after those 14 days are complete (15th day, `age > 14`).
+- Upload day excluded 7 days => banner/carousel(feed) auto-end after those 7 days are complete (8th day, `age > 7`).
+- Satellite channel, owned media, and free seeding are excluded from date-based auto-end.
+- If `content_summary` caption contains `삭제`, `보관`, or `종료`, auto-end.
+- If cumulative metric is >= 500,000, do not auto-end by age.
+
+Implementation:
+- Added `scripts/auto_end_rules.py` as the single rule helper:
+  - caption keyword wins first.
+  - then excluded channel/project/product => keep active.
+  - then metric >= 500,000 => keep active.
+  - then age threshold by channel type (`age > threshold`, not `age >= threshold`).
+  - banner/feed/carousel use 7 days; everything else uses 14 days.
+- Updated `scripts/run_monitoring.py` to use this helper and removed the hidden runtime effect of the old "missing for 7 days" auto-end rule.
+- Updated `web/app/api/apify-webhook/route.ts` so a missing scraper row no longer auto-ends a post.
+- Added `scripts/reconcile_auto_end.py` and `.github/workflows/auto-end-reconcile.yml` for full DB classification:
+  - dry-run writes `data/output/auto-end-reconcile-YYYY-MM-DD.json`.
+  - apply sets `ended_at=target_date` for `end` and clears `ended_at` for `clear`, then readback-verifies.
+
+Verification before DB run:
+- `python ast.parse` syntax check passed for `auto_end_rules.py`, `reconcile_auto_end.py`, and `run_monitoring.py`.
+- `web`: `npx.cmd tsc --noEmit --incremental false` passed.
+- Workflow YAML parsed successfully.
+- Rule sample check passed: 8th-day banner ends, 15th-day video ends, 500k keeps active, free seeding keeps active, caption keyword ends even if otherwise excluded/high.
