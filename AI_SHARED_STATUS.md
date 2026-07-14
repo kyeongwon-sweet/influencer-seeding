@@ -1,5 +1,8 @@
 # AI Shared Status
 
+## 2026-07-14 organic 페이지 필터·성능 패치 커밋/배포 완료 (Claude가 Codex 작성분 이어받음, `ef64cb2`)
+Codex가 `web/app/organic/page.tsx`에 패치 적용+tsc 통과했으나 사용량 제한으로 커밋 못 함(C:/tmp/influencer-main에 staged). Claude가 그 파일만 origin/main 위에 얹어 커밋·푸시(자동배포 success). vercel --prod 안 씀(main push=자동배포). 변경: 제품 변형 선택 시 상위라인 자동포함(PRODUCT_PARENTS/toggleProduct), productOptions·lastUpdatedAt useMemo, 썸네일 loading=lazy·decoding=async, 행 content-visibility:auto. diff 31/12, 그 외 변경 없음 확인.
+
 ## 2026-07-14 자동종료 규칙 재조정 — 무상시딩·500k 예외 제거 (Claude, 사용자 "3번만 적용", `c0af664`)
 Codex reconcile(`4aa2124`)이 추가한 예외 중 **#1 무상시딩 전체 제외 · #2 누적 50만 예외를 되돌림**(사용자 지시). **#3 미반환 종료 제거는 유지.**
 - `scripts/auto_end_rules.py`: `AUTO_END_EXCLUDED_TERMS`=위성채널·온드미디어만(무상시딩 제거), `HIGH_METRIC_THRESHOLD`(500k) 삭제.
