@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## 2026-07-14 자동종료 규칙 재조정 — 무상시딩·500k 예외 제거 (Claude, 사용자 "3번만 적용", `c0af664`)
+Codex reconcile(`4aa2124`)이 추가한 예외 중 **#1 무상시딩 전체 제외 · #2 누적 50만 예외를 되돌림**(사용자 지시). **#3 미반환 종료 제거는 유지.**
+- `scripts/auto_end_rules.py`: `AUTO_END_EXCLUDED_TERMS`=위성채널·온드미디어만(무상시딩 제거), `HIGH_METRIC_THRESHOLD`(500k) 삭제.
+- 결과 규칙: 배너·피드·캐러셀 age>7(8일째) / 그외(영상·무상시딩 영상 포함) age>14(15일째) / 캡션 키워드 / 제외=위성채널·온드미디어. **무상시딩(피드)도 7일 종료**(사용자 원지시 "피드=7일" 복원). py_compile+규칙샘플 검증 통과.
+- ⚠️ **reconcile apply는 아직 안 함(dry-run only).** 이 규칙변경으로 dry-run 재분류가 달라짐(무상시딩 피드 age>7는 이제 to_end). 다음 GHA 일일크론(run_monitoring)이 going-forward 자동 적용. 즉시 소급(retroactive) 종료/해제하려면 `reconcile_auto_end.py --apply` 별도 실행 필요(대량 DB ended_at 변경 → 사용자 승인 후). Codex 도메인이라 조율 요망.
+
 ## 2026-07-14 ✅ 최우선 4건 DB 정정 완료 (Claude, Codex 시트정정 `0410e13`과 쌍)
 Codex 시트정정 4건의 **DB를 실측으로 맞춤**. 가짜 play만 null(좋아요·진짜 초기궤적 보존), 실측 세팅. 백업 `data/output/priority4-fix-20260714.json`.
 - 한입혜원 `5b0dc48a`: 07-04~06 null, **07-07=8,833** → 증분 **1,036** ✓
