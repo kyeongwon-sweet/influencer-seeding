@@ -6,8 +6,7 @@ from typing import Any
 
 
 CAPTION_END_KEYWORDS = ("삭제", "보관", "종료")
-AUTO_END_EXCLUDED_TERMS = ("위성채널", "온드미디어", "무상시딩", "무상 시딩")
-HIGH_METRIC_THRESHOLD = 500_000
+AUTO_END_EXCLUDED_TERMS = ("위성채널", "온드미디어")
 
 
 @dataclass(frozen=True)
@@ -63,8 +62,6 @@ def classify_auto_end(
         return AutoEndDecision(False, "excluded_channel_project", None, None, int(max_metric or 0))
 
     metric = int(max_metric or 0)
-    if metric >= HIGH_METRIC_THRESHOLD:
-        return AutoEndDecision(False, "high_metric_500k", None, None, metric)
 
     posted_at = post.get("posted_at")
     if not posted_at:
