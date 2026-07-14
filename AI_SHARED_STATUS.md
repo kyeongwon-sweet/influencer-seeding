@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 2026-07-14 자동종료 7일 그룹에 캐러셀(피드) 추가 (Claude, ⚠️run_monitoring=Codex 도메인)
+사용자 지시: 자동 종료 기준 = 업로드일 제외 14일(영상) / 업로드일 제외 7일(배너·캐러셀).
+- 확인 결과 **기존 규칙이 이미 배너 게시+7 / 그외 게시+14 + 업로드일 제외**(age=오늘-업로드, 업로드일=age0). `run_monitoring.py`가 유일한 posted-기반 종료처(apify-webhook의 ENDED_DAYS=7은 '미반환 7일' 별개 규칙, 유지).
+- **변경(1곳, `e44fc9a`)**: `run_monitoring.py` 자동종료 조건에서 7일 그룹을 `"배너" in ct` → `("배너" in ct or "피드" in ct)`로 확장. 캐러셀 식별 = 사용자 결정 "채널분류에 배너·피드 포함"(무상시딩 (피드)=캐러셀/피드 이미지). 영상 등 그외 14일 유지. py_compile 통과.
+- 적용 시점: GHA 일일 크론(00시 KST) 다음 실행부터. 기존 피드 게시물 중 age≥7는 다음 런에 자동 종료됨(소급 DB 수정 안 함).
+- ⚠️ Codex: run_monitoring.py는 Codex 도메인이라 사후 공유. 종료 규칙 추가 변경 시 조율.
+
 ## 2026-07-14 송이 시트 잔재 1칸 재확인 (Codex)
 
 Claude request: delete only 송이 row 452 `7.7` cell value `816,015` from `[빙과] 마케팅_대시보드(실무용)_25.09~` / `콘텐츠 대시보드 연동`.
