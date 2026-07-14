@@ -44,6 +44,10 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          # 인지 광고(메타/틱톡/유튜브) 섹션용 — 시트값을 웹 라우트(/api/awareness-ads, Vercel 서비스계정)에서 읽는다.
+          # 둘 중 하나라도 없으면 스크립트가 인지광고 섹션만 조용히 생략(리포트 본문은 정상 발송).
+          APP_URL: "https://influencer-seeding-mu.vercel.app"
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
           # to_dm=true면 황경원 DM(U0B2Y0ZC8QZ)으로, 아니면 빈값 → 스크립트가 기본 채널로 폴백.
           SLACK_CHANNEL: ${{ github.event.inputs.to_dm == 'true' && 'U0B2Y0ZC8QZ' || '' }}
           # 예약 발송은 대상일(어제 KST) 데이터만(없으면 생략). 수동 실행은 폴백 허용(테스트 편의).

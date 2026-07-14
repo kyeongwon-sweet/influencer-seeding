@@ -45,6 +45,38 @@ def _ital_paren(s: str) -> str:
     return s if i == -1 else f"{s[:i]}_{s[i:]}_"
 
 
+def _ad_cpv(cost, views) -> str:
+    """인지 광고 CPV = 광고비 / 조회수. 조회수 0/없음이면 생략, 광고비 0이면 'CPV -'."""
+    if not views:
+        return ""
+    if not cost:
+        return "CPV -"
+    return f"CPV {cost / views:,.1f}원"
+
+
+def _fetch_awareness_ads(target: str):
+    """마케팅T [인지_쫀득바] 시트의 그날 인지광고(메타/틱톡/유튜브) '일별' 조회수·광고비.
+    값이 DB에 없고 시트에만 있어(팀 수동입력) 웹 라우트(/api/awareness-ads, Vercel 서비스계정)로 읽는다.
+    APP_URL/CRON_SECRET 없거나·조회 실패·해당일 행 없음이면 None → 인지광고 섹션만 생략(리포트 본문은 정상)."""
+    base = (os.getenv("APP_URL") or "").rstrip("/")
+    secret = os.getenv("CRON_SECRET")
+    if not base or not secret:
+        print("[notify] APP_URL/CRON_SECRET 없음 → 인지광고 섹션 생략")
+        return None
+    try:
+        req = urllib.request.Request(
+            f"{base}/api/awareness-ads?date={urllib.parse.quote(target)}",
+            headers={"Authorization": "Bearer " + secret})
+        d = json.load(urllib.request.urlopen(req, timeout=30))
+    except Exception as e:
+        print("[notify] 인지광고 조회 실패(섹션 생략):", e)
+        return None
+    if not d.get("found"):
+        print(f"[notify] 인지광고 {target} 시트 행 없음 → 섹션 생략")
+        return None
+    return d
+
+
 def _already_posted(token: str, channel: str, target: str) -> bool:
     """채널에 오늘(target) 리포트가 이미 있으면 True (백업 창 중복 발송 방지).
     조회 실패/스코프 없으면 False(발송 진행) — 막지 않음."""
@@ -269,6 +301,15 @@ def main():
 
     total = sum(it["inc"] for it in items)
 
+    # 인지 광고(시트값, 대시보드와 별개): 메타/틱톡/유튜브 그날 조회수를 총 증분에 합산.
+    #   빈칸(미입력)은 합산하지 않음(빈칸≠0). 아래 채널분류 섹션 맨 위에 라인으로도 노출.
+    ads = _fetch_awareness_ads(target)
+    if ads:
+        for _k in ("meta", "tiktok", "youtube"):
+            _v = (ads.get(_k) or {}).get("views")
+            if isinstance(_v, (int, float)) and _v > 0:
+                total += _v
+
     def _norm_ch(ct):
         return "무상시딩 (영상+피드)" if "무상시딩" in (ct or "") else ((ct or "").strip() or "미분류")
 
@@ -310,6 +351,17 @@ def main():
         "◾ *채널분류별*  `CPV는 누적 기준`",
         "",
     ]
+    # 인지 광고(시트값) — 채널분류 맨 위. 조회수는 위에서 total에 이미 합산됨.
+    if ads:
+        lines.append("• *인지 광고*")
+        for _k, _lab in (("meta", "메타"), ("tiktok", "틱톡"), ("youtube", "유튜브")):
+            a = ads.get(_k) or {}
+            v, c = a.get("views"), a.get("cost")
+            if v is None:
+                lines.append(f"    {_lab}  (당일 미입력)")
+            else:
+                lines.append(f"    {_lab} *+{f(v)}*  {_ad_cpv(c or 0, v)}".rstrip())
+        lines.append("")
     for ct, s in sorted(by_channel.items(), key=lambda x: x[1], reverse=True):
         if "배너" in ct:
             # 배너값은 '증분'만 쓴다(사용자 지시 — 누적 아님). 배너는 매일이 아니라 며칠 간격 수집이라
