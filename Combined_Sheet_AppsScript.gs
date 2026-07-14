@@ -620,10 +620,12 @@ function exportStats() {
           continue;
         }
         const collected = m ? m[date] : undefined;
-        if (collected > 0) {                                   // 실측값 도착 → 반영 + 기준 갱신
+        if (collected > 0) {                                   // 실측값 도착 → 빈 칸만 채움 + 기준 갱신
           const isBlank = cell === "" || cell === null;
-          const isCarried = lastVal != null && cell === lastVal;
-          if (isBlank || isCarried) {
+          // 🛡️ 값이 이미 든 칸(수동 입력·기존 실측)은 절대 안 덮는다 — 빈 칸만 실측으로 채운다.
+          //    예전엔 isCarried(직전값과 같으면 덮기)도 덮었는데, '평평한 수동값'(배너 도달수는 며칠씩 동일)이
+          //    carry로 오인돼 역채움이 사용자 수동입력을 덮어버리는 버그가 있었음. 빈 칸만 채우도록 축소(수동값 보호).
+          if (isBlank) {
             if (cell !== collected) { newBlock[i][bi] = collected; filled++; }
             lastVal = collected;
           } else if (typeof cell === "number" && cell > 0) {
