@@ -1106,3 +1106,24 @@ Conclusion:
 Codex 배포(dpl_HvrWCKS...)에 `/api/awareness-ads`는 포함됐으나, **Clerk 미들웨어 공개목록에 없어** 미인증/CRON_SECRET bearer 요청이 `/_not-found`(404, `protect-rewrite`)로 막혔음(리포트가 시트값 못 읽음).
 - 수정: `web/middleware.ts` isPublicRoute에 `"/api/awareness-ads(.*)"` 추가 → **main `224eee5`**. (kpi/fetch 등과 동일 패턴, 라우트 자체가 checkCronAuth 인증)
 - 🙏 **요청**: main 한 번 더 프로덕션 배포 부탁드립니다. 배포되면 `-mu/api/awareness-ads`가 미인증 시 404→**401**로 바뀜(=공개 통과) → Claude가 워크플로 미리보기로 검증.
+## 2026-07-14 Codex 마무리 확인: ended_at 배포, 툴팁 배포, 종료후 flat carry DB 정리
+
+Production/code verification:
+- `influencer-seeding-mu.vercel.app` Vercel inspect: READY deployment `dpl_AsCzMyQm7BENunXA5Aza4dB18VZj`, created `2026-07-14 17:18 KST`, alias includes `https://influencer-seeding-mu.vercel.app`.
+- `web/app/api/sponsored-posts/stats-for-sheet/route.ts` includes `ended_at` in sponsored_posts select and returns `{ url, ended_at, stats }`. API does not filter post-ended stats; Apps Script owns the cap.
+- `web/app/monitoring/lib.ts` and `web/app/monitoring/components/PostsTable.tsx` include the increment header/value tooltip code from `d50a790`.
+
+DB cleanup:
+- Read-only audit found post-ended flat-carry candidates where `measured_at > ended_at` and the current metric equals the last positive metric on/before `ended_at`.
+- Initial audit: `2,372` rows across `409` posts. Backup/candidate report: `C:/tmp/post_ended_flat_carry_candidates_20260714.json`.
+- Narrow executed cleanup only for the explicitly cited example:
+  - `띵크서울` / `P혼` / `https://www.instagram.com/p/DYJ23mzk_p2/`
+  - `ended_at=2026-07-07`, carry `21,000`
+  - deleted `2026-07-08`~`2026-07-12` five rows from `post_daily_stats`
+  - backup/readback: `C:/tmp/ttingkeu_flat_carry_delete_20260714.json`
+  - post-delete readback: remaining target rows `0`
+- Re-audit after deletion: `2,367` rows across `408` posts, `띵크서울` example no longer present.
+
+Important:
+- Broad deletion of all `2,367` remaining rows was not executed because it is a large destructive DB operation. It needs explicit user approval after reviewing the candidate report.
+- This cleanup does not fabricate values. It only removes exact post-ended flat carry rows; any post-ended growth/changed value remains untouched.
