@@ -4,10 +4,93 @@ import os
 import re
 import json
 import time
+import urllib.request
 from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 from db import get_client
 from url_utils import normalize_url
+
+
+OVERRECORDED_WARNINGS = []
+OVERRECORDED_RATIO = 0.8
+OVERRECORDED_MIN_DIFF = 1000
+
+
+def _send_status_alert(text: str):
+    """Best-effort Slack alert. Never fail monitoring because alert delivery failed."""
+    try:
+        token = os.getenv("SLACK_BOT_TOKEN")
+        channel = os.getenv("STATUS_USER") or os.getenv("SLACK_CHANNEL")
+        if token and channel:
+            data = json.dumps({"channel": channel, "text": text}).encode("utf-8")
+            req = urllib.request.Request(
+                "https://slack.com/api/chat.postMessage",
+                data=data,
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"},
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+                if not body.get("ok"):
+                    print(f"[WARN] Slack bot alert failed: {body.get('error')}")
+            return
+
+        webhook = os.getenv("SLACK_WEBHOOK_URL")
+        if webhook:
+            data = json.dumps({"text": text}).encode("utf-8")
+            req = urllib.request.Request(webhook, data=data, headers={"Content-Type": "application/json"})
+            urllib.request.urlopen(req, timeout=10).read()
+    except Exception as e:
+        print(f"[WARN] over-record alert delivery failed: {e}")
+
+
+def _record_overrecord_candidate(post: dict, label: str, observed: int | float | None, existing: dict):
+    """Detect likely manual over-recording when fresh auto measurement is far below stored manual value."""
+    prev = existing.get("play_count")
+    if observed is None or prev is None or not existing.get("manual"):
+        return
+    try:
+        observed_n = int(observed)
+        prev_n = int(prev)
+    except Exception:
+        return
+    if observed_n <= 0 or prev_n <= 0:
+        return
+    diff = prev_n - observed_n
+    if diff < OVERRECORDED_MIN_DIFF or observed_n > prev_n * OVERRECORDED_RATIO:
+        return
+    warning = {
+        "label": label,
+        "url": post.get("url"),
+        "account_name": post.get("account_name"),
+        "observed": observed_n,
+        "stored": prev_n,
+        "stored_date": existing.get("measured_at"),
+    }
+    OVERRECORDED_WARNINGS.append(warning)
+    print(
+        "[WARN] manual over-record candidate "
+        f"{label} {warning['account_name'] or ''} {warning['url']} "
+        f"(observed={observed_n:,}, stored_manual={prev_n:,}, stored_date={warning['stored_date']})"
+    )
+
+
+def _flush_overrecord_warnings():
+    if not OVERRECORDED_WARNINGS:
+        return
+    sample = OVERRECORDED_WARNINGS[:8]
+    lines = [
+        "🚨 [협찬 모니터링] 자동 실측이 기존 수동 누적값보다 크게 낮습니다.",
+        "값은 자동으로 낮추지 않았고 기존 monotonic/clamp 규칙대로 유지했습니다. 실제값 확인 후 시트+DB를 함께 정정하세요.",
+    ]
+    for w in sample:
+        lines.append(
+            f"- {w.get('label')} {w.get('account_name') or '-'} "
+            f"{w.get('observed'):,} < {w.get('stored'):,} "
+            f"({w.get('stored_date')}) {w.get('url')}"
+        )
+    if len(OVERRECORDED_WARNINGS) > len(sample):
+        lines.append(f"- ...외 {len(OVERRECORDED_WARNINGS) - len(sample)}건")
+    _send_status_alert("\n".join(lines))
 
 
 def retry_on_network_error(max_retries=3, delay=5):
@@ -66,7 +149,7 @@ def _prev_stats(db, post_ids):
         frm = 0
         while True:
             res = (db.table("post_daily_stats")
-                   .select("post_id, play_count, likes_count, comments_count, measured_at")
+                   .select("post_id, play_count, likes_count, comments_count, measured_at, manual")
                    .in_("post_id", chunk)
                    .lt("measured_at", TODAY)
                    .order("measured_at", desc=True)
@@ -113,6 +196,7 @@ def _store_aux_rows(db, rows, posts, stats, key_fn, label, *, views="clamp", cap
         if views == "clamp" and (not play or play <= 0):
             continue  # 🛡️ 0/미반환은 접근불가 → 저장 안 함(0으로 덮어쓰면 누적 붕괴)
         if play is not None and existing.get("play_count") is not None and play < existing.get("play_count"):
+            _record_overrecord_candidate(post, label, play, existing)
             # 미세 감소는 정상 지터 → NULL 대신 직전 최대값 유지(clamp)
             print(f"  ⚠️  {label} 조회수 역행 clamp {post['url']} ({play} → {existing.get('play_count')} 유지)")
             play = existing.get("play_count")
@@ -636,6 +720,7 @@ def run():
                     print(f"  ⚠️  IG 조회수 0(글리치)·직전값 없음 → 미적재 {post['url']}")
                     continue
             elif existing.get("play_count") is not None and play_count < existing.get("play_count"):
+                _record_overrecord_candidate(post, "Instagram", play_count, existing)
                 # 누적값인데 줄어들었다 = 오류(글리치) 또는 IG 정상 미세감소(중복/봇 필터링 지터).
                 # NULL로 버리면 성숙 게시물에 톱니형 결측이 생기고 유효값이 사라지므로,
                 # 직전 최대값으로 clamp(하향 무시) — 표시 레이어의 monotonic과 동일하게 누적 불변식 유지.
@@ -759,6 +844,7 @@ def run():
             print(f"[WARN] 저장할 데이터가 없습니다 (매칭 실패 또는 조회수 오류)")
 
         print(f"[SUCCESS] 모니터링 완료: {len(rows)}건 저장")
+        _flush_overrecord_warnings()
 
         # 📸 배너 도달수(reach) 일별 스냅샷 — 배너는 조회수(play_count)가 없어 '도달수'로 증분 계산한다.
         #    활성 배너의 현재 reach_count(시트/대시보드 수동입력)를 오늘 post_daily_stats.reach_count로 기록

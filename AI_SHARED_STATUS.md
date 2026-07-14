@@ -864,3 +864,54 @@ Follow-up verification and sheet alignment:
 - ⚠️ **프로덕션(-mu)이 이 라우트를 아직 안 서빙**(`/api/awareness-ads`→404 /_not-found). 이 프로젝트는 Vercel 자동배포가 아니라 **수동 CLI 배포**(배포에 git meta 없음)이고, 카노니컬 repo가 지금 `refactor/monitoring-decompose`(미커밋 다수)라 Claude가 임의 배포 못 함(브랜치 오염/refactor 프로덕션 되돌림 위험).
 - 🙏 **요청**: main을 프로덕션에 배포해 주세요(또는 refactor에 이 라우트 포함). refactor 머지 시 `web/app/api/awareness-ads/route.ts` 유지 필수(현재 refactor 기준 D로 표시됨=아직 없음).
 - 배포되면 Claude가 `-mu/api/awareness-ads?date=` 확인 후 워크플로 미리보기(황경원 DM)로 렌더링 검증 예정.
+
+## 2026-07-14 JD 2026-07-13 target 770,810 recheck (Codex)
+
+User reported screenshots: live dashboard once showed `900,247`, sheet target showed `770,810`.
+
+Current live dashboard verification:
+- URL: `https://influencer-seeding-mu.vercel.app/monitoring`
+- Filters clicked in Chrome: product chips `JD망`, `JD멜`, `JD혼`.
+- Daily table readback: `2026-07-13 = +813,905`.
+- Therefore the old `900,247` screenshot is stale after the ended-YT cleanup and Shugi cleanup.
+
+Current sheet target verification:
+- Spreadsheet: `[빙과] 마케팅T 대시보드 (26.06~)` / tab `인지_쫀득바` (`sheetId=1224959784`).
+- User target `770,810` is still [`V111`](https://docs.google.com/spreadsheets/d/1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s/edit?gid=1224959784&range=V111) + [`AE111`](https://docs.google.com/spreadsheets/d/1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s/edit?gid=1224959784&range=AE111) + [`AH111`](https://docs.google.com/spreadsheets/d/1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s/edit?gid=1224959784&range=AH111):
+  - `V111 = 118,815`, formula `=90715+100+20000+8000`.
+  - `AE111 = 152,262`.
+  - `AH111 = 499,733`.
+- Important conflict: `V111` note is stale after the verified Shugi correction. It still says `슈기 462,970 -`, while DB / linked sheet / live dashboard verified Shugi as cumulative `467,448`, increment `+26,296`.
+
+Current difference:
+- Live dashboard `813,905` - sheet target `770,810` = `43,095`.
+- Do not force DB/dashboard down to `770,810` without per-post evidence. Doing so would undo at least the verified Shugi `+26,296` correction or distort other real cumulative series.
+- Remaining basis mismatch to resolve with the user:
+  1. If the sheet memo/formula is the authority, provide per-post cumulative evidence for the rows that should be reduced.
+  2. If verified DB/linked-sheet/dashboard rows are the authority, update `인지_쫀득바!V111` target/memo to include Shugi and any other verified per-post deltas.
+  3. Product-only dashboard filters include all JD product rows; `V111+AE111+AH111` is a subset comparison. Do not compare those two bases as if identical unless the intended channel categories are explicitly selected.
+
+No DB or sheet values were changed in this recheck.
+
+## 2026-07-14 manual over-record alert backstop (Codex)
+
+Claude handoff item #5 implemented as code-only recurrence prevention. This does not change `safeIncrement`, does not lower stored values automatically, and does not fabricate replacements.
+
+Changed paths:
+- `scripts/run_monitoring.py`
+  - Previous stat lookup now includes `manual`.
+  - When fresh auto collection is far below the latest stored manual value (`observed <= stored * 0.8` and diff >= `1,000`), monitoring keeps the existing clamp behavior but records a "manual over-record candidate".
+  - At run end, candidates are sent via Slack bot target (`STATUS_USER`/`SLACK_CHANNEL`) or webhook fallback. Alert text instructs sheet+DB correction together.
+- `web/app/api/apify-webhook/route.ts`
+  - Same over-record candidate detection added for dashboard/webhook monitoring path.
+  - Lower auto values are still skipped as before; the new behavior is alert-only.
+
+Verification:
+- `web`: `npm.cmd test` passed (27 tests).
+- `web`: `npx.cmd tsc --noEmit --incremental false` passed.
+- Python syntax: `ast.parse(scripts/run_monitoring.py)` passed.
+- `python -m py_compile scripts/run_monitoring.py` could not be used in this sandbox because writing `__pycache__` was denied, so AST syntax parse was used instead.
+
+Data note:
+- No DB or Sheet correction was executed in this step.
+- The 18 over-recorded rows still require sheet+DB simultaneous correction; DB-only correction will be re-polluted by `importStats` if dirty sheet cells remain.

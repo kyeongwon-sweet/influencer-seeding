@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { fetchDatasetItems } from "@/lib/apify";
 import { normalizeYouTubeUrl, normalizeInstagramUrl } from "@/lib/url-utils";
-import { notifyJob } from "@/lib/slack";
+import { notifyBot, notifyJob } from "@/lib/slack";
 import { yesterdayKST } from "@/lib/dateRule";
 
 // ── 지표 계산 (metrics.py 포팅) ─────────────────────────────────────
@@ -289,15 +289,17 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
   // 청크마다 measured_at desc 페이지네이션으로 1000행 상한 회피 + '최초 등장 = 최신' 동작 유지.
   const lastKnownPlay = new Map<string, number>();
   const lastMeasuredAt = new Map<string, string>();
+  const lastWasManual = new Map<string, boolean>();
   {
     const batchIds = [...new Set(eligiblePosts.map((p: { id: string }) => p.id).filter(Boolean))];
     const ID_CHUNK = 120, PAGE = 1000;
-    type PrevRow = { post_id: string; play_count: number | null; measured_at: string };
+    type PrevRow = { post_id: string; play_count: number | null; measured_at: string; manual: boolean | null };
     const collectPrev = (page: PrevRow[] | null | undefined) => {
       for (const s of page ?? []) {
         // play가 실제 있는 행만 단조 기준으로 (null 행을 0으로 치면 어제 실측이 있어도 기준이 0이 됨)
         if (!lastKnownPlay.has(s.post_id) && s.play_count != null) lastKnownPlay.set(s.post_id, s.play_count);
         if (!lastMeasuredAt.has(s.post_id)) lastMeasuredAt.set(s.post_id, s.measured_at);
+        if (!lastWasManual.has(s.post_id)) lastWasManual.set(s.post_id, Boolean(s.manual));
       }
     };
     for (let c = 0; c < batchIds.length; c += ID_CHUNK) {
@@ -305,7 +307,7 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
       for (let from = 0; ; from += PAGE) {
         const { data: page } = await supabase
           .from('post_daily_stats')
-          .select('post_id, play_count, measured_at')
+          .select('post_id, play_count, measured_at, manual')
           .in('post_id', idsChunk)
           // 오늘(자정 GHA 수집분) 포함 — 낮 수집이 아침 실측보다 낮은 값으로 당일 행을 되덮는 것 방지
           .lte('measured_at', today)
@@ -321,6 +323,7 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
   const rows = [];
   const pendingUpdates: { id: string; updates: Record<string, unknown> }[] = [];
   const endedUpdates: { id: string; ended_at: string }[] = [];
+  const overRecorded: Array<{ account: string | null; url: string; observed: number; stored: number; storedDate: string | null }> = [];
   let skipped = 0;
   for (const post of eligiblePosts) {
     const key = statsKey(post.url);
@@ -366,7 +369,24 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
     const newPlay = s.play_count;
     const prevPlay = lastKnownPlay.get(post.id);
     if (newPlay == null || Number(newPlay) <= 0) { skipped++; continue; }
-    if (prevPlay != null && Number(newPlay) < prevPlay) { skipped++; continue; }
+    if (prevPlay != null && Number(newPlay) < prevPlay) {
+      const observed = Number(newPlay);
+      if (
+        lastWasManual.get(post.id) &&
+        prevPlay - observed >= 1000 &&
+        observed <= prevPlay * 0.8
+      ) {
+        overRecorded.push({
+          account: (post.account_name as string | null) ?? null,
+          url: post.url,
+          observed,
+          stored: prevPlay,
+          storedDate: lastMeasuredAt.get(post.id) ?? null,
+        });
+      }
+      skipped++;
+      continue;
+    }
 
     rows.push({ post_id: post.id, measured_at: today, play_count: newPlay, likes_count: s.likes_count, comments_count: s.comments_count });
   }
@@ -388,6 +408,16 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
   }
   if (rows.length > 0) {
     await supabase.from('post_daily_stats').upsert(rows, { onConflict: 'post_id,measured_at' });
+  }
+  if (overRecorded.length > 0) {
+    const sample = overRecorded.slice(0, 8)
+      .map(r => `- ${r.account ?? '-'} ${r.observed.toLocaleString()} < ${r.stored.toLocaleString()} (${r.storedDate ?? '-'}) ${r.url}`)
+      .join('\n');
+    await notifyBot(
+      `🚨 [협찬 모니터링] 자동 실측이 기존 수동 누적값보다 크게 낮습니다.\n` +
+      `값은 자동으로 낮추지 않았고 기존 스킵/clamp 규칙대로 유지했습니다. 실제값 확인 후 시트+DB를 함께 정정하세요.\n` +
+      `${sample}${overRecorded.length > 8 ? `\n- ...외 ${overRecorded.length - 8}건` : ''}`
+    );
   }
   await supabase.from('jobs').update({ status: 'done', payload: { saved: rows.length, skipped, ended: endedUpdates.length } }).eq('id', jobId);
 
