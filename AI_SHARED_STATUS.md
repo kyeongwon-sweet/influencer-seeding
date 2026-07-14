@@ -799,3 +799,34 @@ Last updated: 2026-07-14 (Codex: JD 7/13 duplicate banner cleanup + Sieun TT bas
 - 검증: `git show origin/main:Combined_Sheet_AppsScript.gs`(CR제거) == wt-company(CR제거) 완전 일치.
 - 이제 git본/정본 어느 걸 Apps Script에 붙여도 가드 동일(회귀 위험 제거). ⚠️ 단 실제 적용은 시트 편집기 재배포 필요.
 - 이후 .gs/시트는 소유 세션(Ad view tracking) 소유 — Claude는 더 안 건드림.
+
+## 2026-07-14 ended YouTube post-ended rows cleanup (Codex)
+
+Claude handoff trace request checked against DB and current code.
+
+Findings:
+- Current productized collectors already exclude ended posts:
+  - `scripts/run_monitoring.py`: builds `posts` with `not p.ended_at` before IG/YT/TT collection.
+  - `web/app/api/monitoring/collect-now/route.ts`: `eligiblePosts` requires `!p.ended_at` and is IG-only.
+  - `web/app/api/apify-webhook/route.ts`: monitoring `eligiblePosts` requires `!p.ended_at`.
+- The 2026-07-14T02:54:42Z-02:54:43Z batch was 8 DB rows, matching the earlier "JD YouTube real recollect/fill" handoff, not the normal run_monitoring path.
+- In that batch, only rows with `measured_at > ended_at` were invalid post-ended updates. Same-day ended row (`이나 YT`, measured_at=ended_at=2026-07-13) was not deleted.
+
+DB action:
+- Backup: `C:/tmp/ended-yt-post-ended-delete-20260714.json`
+- Deleted 5 `post_daily_stats` rows where `measured_at=2026-07-13`, `manual=false`, created in the 02:54Z batch, and `measured_at > ended_at`:
+  - `밈튜브` `https://www.youtube.com/shorts/CN_ES_pzGz4/` ended 2026-06-08, 2026-07-13 value 4,054.
+  - `가내수제업` `https://www.youtube.com/shorts/XyxNWdZPgJc/` ended 2026-07-12, 2026-07-13 value 158,716.
+  - `또호` `https://www.youtube.com/shorts/yjip4anczaw/` ended 2026-07-11, 2026-07-13 value 63,637.
+  - `오하루(YT)` `https://www.youtube.com/shorts/TW0sMmr1XbY/` ended 2026-07-11, 2026-07-13 value 119,495.
+  - `냠냠` `https://www.youtube.com/shorts/JTi0Tu42x4g/` ended 2026-07-07, 2026-07-13 value 159,261.
+- Delete verification: re-read by deleted stat ids returned 0 rows.
+
+Post-cleanup verification:
+- DB safeIncrement recompute for `product_name like JD*`, date `2026-07-13`: 825,703.
+- Remaining JD rows where `measured_at > ended_at` and contributing on 2026-07-13: 0.
+- The remaining gap to target 770,810 is no longer from post-ended YT rows. It must be investigated in active or same-day-ended rows, not by re-deleting these five.
+
+Notes:
+- `밈튜브` still has invalid metadata shape: `ended_at=2026-06-08` is earlier than `posted_at=2026-06-11`. Do not auto-clear it without source confirmation because clearing `ended_at` would reactivate collection.
+- Direct service-role/ad-hoc correction scripts can bypass app-route guards. For future one-off scripts, apply the same final predicate before upsert/delete decisions: skip stats where `post.ended_at` exists and `measured_at > ended_at`, unless the user explicitly confirms a backdated correction.
