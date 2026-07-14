@@ -29,8 +29,12 @@ Rules:
 커밋: `48dad32`(표시경로+초크포인트), `9742a43`(합계·업체·CSV·KPI).
 검증: tsc/build/test 통과. 라이브(로그인 Chrome) — ho1y_time 배너 도달수 열에 3,795·3,466·4,724… 표시, 조회수 `—`, 도달당비용·증분(+6,496) 정상.
 
-미해결(원본 확인 필요, 무단수정 금지):
-- 배너 87 잔존행(play>0 & reach 이미 존재, 값 상이 예: Ufo__NIGHT play 136,788/reach 41,002). 표시는 reach 우선이라 카드와 일치(무해)하나 stray play는 원본 확인 후 정리 대상.
+데이터 정정 — 배너 잔존 play 행 90건 (2026-07-14, Claude, 사용자 승인):
+- 대상: 배너 `post_daily_stats` 중 `play_count>0` 90행. 연산 `reach_count:=play_count, play_count:=null`. 백업 `data/output/banner-residual-fix-20260714.json`.
+- provenance 검증(원장): 예 `lllll_lllli_llll`(/p/DZPXjkoAFXq/)은 06-15~07-12 내내 `reach=122,000 manual=true`(팀 수기 시계열). 07-05·07-06만 값이 `play=122,000`으로, `reach`엔 `8,438`(=post.reach_count 스냅샷 충돌 아티팩트)이 박혀 대시보드가 그 이틀만 8,438 딥을 표시하고 있었음. play=122,000이 진짜 값.
+- 전수 검증: play가 같은 게시물 reach 시계열에 존재 87/90(나머지 3=07-13 틱톡 신규, reach null); play가 가짜·reach 진짜인 이례 0건; play≥직전 유효 reach(하락 유발) 0건.
+- 읽기검증: 적용 후 배너 `play>0` 잔존 0. lllll 07-05/06 → reach 122,000, play null.
+- 효과: 07-05·06·13 등의 잘못된 도달수 표시가 진짜 값으로 정상화. (증분/그래프는 mono 가드로 이미 정상이었고, per-row 도달수 열·CSV·합계가 교정됨.)
 
 ## 2026-07-13 Monitoring Updated-Value Tooltip Layer Fix
 
@@ -81,7 +85,7 @@ Verification:
   - selecting one post shows `선택 보관 처리 (1)` and `선택 취소`, not `선택 종료`.
   - archive button class includes `border-a-blue bg-a-blue text-white`.
 
-Last updated: 2026-07-13 19:30 KST (Claude: 배너 도달수 표시경로 전수정합 + 초크포인트)
+Last updated: 2026-07-14 (Claude: 배너 잔존 play 90행 정정 reach:=play)
 
 ## 2026-07-13 배너 도달수=조회수 합산 정합 (Claude)
 
