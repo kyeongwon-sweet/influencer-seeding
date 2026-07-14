@@ -352,16 +352,18 @@ def main():
         "",
     ]
     # 인지 광고(시트값) — 채널분류 맨 위. 조회수는 위에서 total에 이미 합산됨.
+    #   조회수 0·미입력(빈칸) 채널 줄은 숨김(사용자 지시). 셋 다 없으면 섹션 자체 생략.
     if ads:
-        lines.append("• *인지 광고*")
+        ad_lines = []
         for _k, _lab in (("meta", "메타"), ("tiktok", "틱톡"), ("youtube", "유튜브")):
             a = ads.get(_k) or {}
             v, c = a.get("views"), a.get("cost")
-            if v is None:
-                lines.append(f"    {_lab}  (당일 미입력)")
-            else:
-                lines.append(f"    {_lab} *+{f(v)}*  {_ad_cpv(c or 0, v)}".rstrip())
-        lines.append("")
+            if isinstance(v, (int, float)) and v > 0:
+                ad_lines.append(f"    {_lab} *+{f(v)}*  {_ad_cpv(c or 0, v)}".rstrip())
+        if ad_lines:
+            lines.append("• *인지 광고*")
+            lines.extend(ad_lines)
+            lines.append("")
     for ct, s in sorted(by_channel.items(), key=lambda x: x[1], reverse=True):
         if "배너" in ct:
             # 배너값은 '증분'만 쓴다(사용자 지시 — 누적 아님). 배너는 매일이 아니라 며칠 간격 수집이라
