@@ -32,6 +32,10 @@ Last updated: 2026-07-14 KST (Codex: stats-for-sheet 배너 reach export 보완 
 - provenance(created_at): 오염행들은 07-10~13(정정/백필 기간)에 늦게 쓰임 → 상시 일일수집 버그 아니라 **수동 정정·백필 시 misroute**. 정정 작업자 주의 + 위 감지가 백스톱.
 - ⚠️ 남은 재발경로 점검 필요(Codex 조율): run_monitoring/apify-webhook/collect-now도 종료후 성장행을 쓸 수 있는지, 표시층 safeIncrement가 measured_at>ended_at 성장행을 무시하도록 할지.
 
+### 추가 정리 — 톡톡시아(릴스) 잔존 4행 삭제 (Claude, 2026-07-14, 사용자 승인)
+- `톡톡시아(릴스)` DB혼 `/p/DZwvpIzpPiH/` (종료 07-07): 종료-후 4행 `07-09~12 = 54,400/83,600/84,100/84,100`(= 프롬서희 TT 시계열 복사) 삭제. 읽기검증: 종료-후 0행, 마지막=07-07 **212,917** 복귀. 백업 `data/output/del-toctoc-reels-20260714.json`.
+- ⚠️ **감지 5번의 사각지대**: 이 복사값(54,400)은 종료전 실측(212,917)보다 **낮아** '종료후>종료전 최대' 조건에 안 걸림 → 위 전수조사 14행 목록에서 누락됐던 이유. **하락형 복사**도 잡으려면 감지 기준을 '(measured_at,값)이 타 게시물에 동일'만으로도 신호 처리하도록 보완 검토 권장(값 크기 무관).
+
 ## 2026-07-14 stats-for-sheet 배너 export 보완 (Codex)
 
 Reason:
