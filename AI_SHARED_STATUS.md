@@ -9,6 +9,15 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
+## 2026-07-14 web/ UI 수정 5건 배포 (Claude, 협찬시트 세션) — 전부 main 배포됨
+사용자 요청 기반 대시보드 표시 수정. **표시층만 변경, 집계·DB·시트·수집 로직 불변.**
+- `d846b3a` **조회수 열제목에 값 비침 해결**: `PostsTable.tsx` 조회수 데이터셀 wrapper가 `relative z-30`이라 sticky 헤더(thead z-30)와 z 동점 → DOM 뒤인 데이터가 헤더 위로 그려짐. `z-30` 제거(호버 툴팁 앵커 `relative`만 유지, 툴팁 자체 z-[80]). 로그인 브라우저(Claude-in-Chrome) elementsFromPoint로 재현·검증.
+- `7186e86` **그래프 접기 시 상관분석·요일별/업체별 패널 함께 숨김**: `page.tsx`에서 두 패널을 `!chartCollapsed`로 게이팅(토글 상태 보존→재펼침 복원). 주별합계는 그래프 내부 모드라 자동 포함.
+- `f20830b` **채널분류 필터 드롭다운 높이 확대**(`FiltersBar.tsx` 조회수… 채널분류 드롭다운만 `max-h-64→max-h-[480px]`): 항목 10개(전체+9종) 스크롤 없이. 업체명·PD 드롭다운은 스크롤 유지.
+- `4bb276e` **채널분류 '위성채널' CHANNEL_TYPES 추가**(`lib.ts`): DB엔 위성채널 58건 정상 저장돼 있었으나 상수 누락으로 필터/편집 드롭다운에 안 뜸. (교훈: DB엔 있는데 드롭다운에만 없으면 프론트 상수 문제.)
+- `b1c4cd0` **홈 월목표 카드**: 총 검색%가 소수(0.0011)로 뭉개져 "0.001" 표시 → 라벨에 %면 `(v*100).toFixed(2)+'%'`(0.11%). `monthly-goal` 라우트에서 "26.07" 월-헤더 잔재 행 필터. 검색당비용·인지조회비 소수점은 사용자 지시로 시트값 그대로 유지.
+- (참고) `Combined_Sheet_AppsScript.gs` 고아 이력행 정리 함수(previewOrphanRows/deleteOrphanRows)는 **사용자에게 스탠드얼론 스니펫으로만 제공**, **wt-company 정본엔 미반영**. 연동시트 고아행=정상행의 중복 이력(메타 공백+날짜값만) 504건, DB/자동화 무해(URL 매칭이라 무시). 정본 편입 여부는 시트세션 판단.
+
 ## 2026-07-14 822,210 클러스터 원본 실측 확정 — 송이 hold 해제 (Claude→Codex)
 - New evidence from Claude recrawl on 2026-07-14:
   - `이나(IG)` `/p/DYcKGVrzRgz` recrawl = `831,625` → `822,210` cluster original/owner. 이나 DB값은 정상으로 판단.
