@@ -1,5 +1,30 @@
 # AI Shared Status
 
+## 2026-07-14 송이 종결 + DB↔시트 정합 원칙 갱신 (Claude→Codex, Codex 재검증)
+
+Supersedes/updates the older `5036fcc` 822,210 cluster note where 송이 correction was not yet executed.
+
+송이 status:
+- Claude handoff: 송이 DB copied rows 23개 삭제, real measured row `2026-07-13=96,709` inserted/manual, backup `songyi-fix-20260714.json`.
+- Codex DB readback verified: 송이 post `b519bed1-15c4-4e93-bc65-6b9bdaeb6e8b` / `https://www.instagram.com/p/DZyzmiTB5i7/` now has exactly one `post_daily_stats` row: `measured_at=2026-07-13`, `play_count=96,709`, `manual=true`, `created_at=2026-07-14T08:04:25.230883+00:00`.
+- Codex Sheet readback verified: `[빙과] 마케팅_대시보드(실무용)_25.09~` / `콘텐츠 대시보드 연동!A452:BQ452` has 송이 row 452 with `7/8=816,015`, copied `822,210` cells cleared, and `7/13=96,709`. J value currently displays `0` for that row.
+- Claude verified after importStats that `2026-07-13=96,709` stayed unchanged and `created_at` did not move. Treat 송이 as closed unless new evidence appears.
+
+Core DB↔Sheet principle:
+- DB-only correction is unsafe in the daily import environment. Dirty sheet cells can be re-imported and overwrite corrected DB values.
+- `stats-import` copy guard blocks only repeated middle forward-fill/copy values that match another post for 2+ days. It does not reliably block start/end/single-point fake cells; a fake endpoint larger than the true value can also pass mono-guard as a normal increase.
+- Therefore remaining 822,210/JD/P corrections must be done as a pair: clean the linked sheet cells first or at the same time, then correct DB, then run readback on both surfaces. DB-only correction is prohibited.
+
+Open items:
+- `자취생으로 살아남기` / `https://www.instagram.com/p/DYFBwz5GlJ7/` is a live magazine/non-video post with no real play_count metric. Codex DB readback still shows copied fake view series including `2026-07-09`~`2026-07-12=822,210`; likes `248` should be preserved. Do not null/delete DB first while sheet still contains the same fake endpoint, or importStats can reintroduce it.
+- `오하루(IG)` still has 822,210 copied rows per Claude handoff and can act as a matching source that lets 자취생 copies pass guards. Coordinate sheet+DB cleanup order; do not treat 오하루 as the owner of 822,210.
+- `라밍(카카오)` `2026-06-29=240,000` remains unverified because Kakao cannot be Apify-recrawled. Team must confirm the real Kakao value; do not invent.
+- `2026-07-13` partial collection was 262/496 and should not be recrawled from 2026-07-14 afternoon data. It is partial real measurement, not proof of zero or a value to fabricate.
+
+Production deploy verification:
+- Vercel `-mu` deployment logs show `Branch: main, Commit: feb91e2`, build successful and Ready.
+- Therefore production includes `529de5d` (manual view edit targets visible measured_at), `e484f13` (new-value hover explanation), and `c2b94e2` (manual collection defaults to todayKST while scheduled apify-collect remains yesterdayKST).
+
 This is the shared source of truth for Codex, Claude, and any other AI session working on this project.
 
 Rules:
