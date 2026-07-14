@@ -167,9 +167,9 @@ def _integrity_lines(db, posts):
     # (구 5번 'play=0 & increment>0' 제거 — increment 컬럼 폐기(2026-07-08)로 무의미.)
 
     # 5) 종료-후 복사 오염 감지 — 종료 게시물에 '다른 게시물의 시계열'이 복사돼 붙는 오염(2026-07-14 톡톡시아·뭐랭하맨·준맛 등).
-    #    종료일 이후(measured_at>ended_at) 값이 '종료 전 최대'를 넘고(자연 불가), 그 (날짜,값)이 다른 게시물에도
-    #    존재하면 복사 신호. ⚠️ 강제 차단은 안 함(종료 후 알고리즘 유입으로 실제 상승 가능) — 여기서 드러내
-    #    사람이 소스(시트/정정)를 바로잡게 한다. 단일 우연 일치가 아닌 '종료후 성장 + 타 게시물 동일값'만 잡아 오탐 최소화.
+    #    종료일 이후(measured_at>ended_at) 행이 '자기 carry-forward 값'이 아닌데 그 (날짜,값)이 다른 게시물에도
+    #    존재하면 복사 신호(상향·하향 복사 모두). ⚠️ 강제 차단은 안 함(종료 후 알고리즘 유입으로 실제 상승 가능) —
+    #    여기서 드러내 사람이 소스(시트/정정)를 바로잡게 한다. carry 값·단일 우연은 제외해 오탐 최소화.
     ended = {p["id"]: str(p["ended_at"])[:10] for p in posts if p.get("ended_at")}
     if ended:
         series = {}
@@ -191,8 +191,11 @@ def _integrity_lines(db, posts):
         copied = []
         for pid, ed in ended.items():
             rows = series.get(pid, [])
-            premax = max((v for d, v in rows if d <= ed), default=0)
-            hits = [(d, v) for d, v in rows if d > ed and v > premax and len(vidx.get((d, v), ())) > 1]
+            pre = sorted((d, v) for d, v in rows if d <= ed)
+            carry = pre[-1][1] if pre else None   # 종료 전 마지막 실측 = 정상 carry-forward 값(제외 대상)
+            # 종료-후 행이 '자기 carry 값'이 아닌데 (날짜,값)이 다른 게시물에도 있으면 복사 신호.
+            # ⚠️ 상향(>carry)뿐 아니라 하향(<carry) 복사도 잡는다(2026-07-14 톡톡시아 릴스 54,400<212,917 누락 교훈).
+            hits = [(d, v) for d, v in rows if d > ed and v != carry and len(vidx.get((d, v), ())) > 1]
             if hits:
                 src = sorted({name_of.get(x, "?") for dv in hits for x in vidx.get(dv, ()) if x != pid})
                 copied.append((name_of.get(pid, "?"), ed, len(hits), src[:2]))
