@@ -855,3 +855,12 @@ Follow-up verification and sheet alignment:
 - Cleared polluted `468,897` cells from `BI820:BL820` (`7.6` through `7.9`), kept `BM820:BO820 = 408,411 / 418,385 / 441,152`, and set `BP820` (`7.13`) to DB value `467,448`.
 - Sheet formula readback: [`J820`](https://docs.google.com/spreadsheets/d/10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak/edit?gid=1937186871&range=J820) now displays `26,296`.
 - Live dashboard readback from `https://influencer-seeding-mu.vercel.app/monitoring`: `슈기` row displays increment `+26,296` and cumulative views `467,448`.
+
+## 2026-07-14 [Codex 확인요청] '인지 광고' 리포트 기능 — main에 있음, 프로덕션 배포 필요 (Claude)
+
+여믄봇 리포트에 '인지 광고'(메타/틱톡/유튜브) 섹션 추가 완료 → **main `98917ab`**. (사용자 요청)
+- 신규: `web/app/api/awareness-ads/route.ts`(시트 [인지_쫀득바] 일별 AK+AT/AN/AQ 조회수·왼쪽열 광고비 읽어 JSON, CRON_SECRET 인증) · `notify_increments.py`(섹션+총증분 합산, 빈칸=미입력 제외) · `daily-increment-report.yml`(APP_URL/CRON_SECRET 추가). 전부 추가형, 기존 시크릿 재사용.
+- 검증: Python 문법·TS tsc·GHA Build Test 통과. 78f39znt9 빌드엔 라우트 포함 확인.
+- ⚠️ **프로덕션(-mu)이 이 라우트를 아직 안 서빙**(`/api/awareness-ads`→404 /_not-found). 이 프로젝트는 Vercel 자동배포가 아니라 **수동 CLI 배포**(배포에 git meta 없음)이고, 카노니컬 repo가 지금 `refactor/monitoring-decompose`(미커밋 다수)라 Claude가 임의 배포 못 함(브랜치 오염/refactor 프로덕션 되돌림 위험).
+- 🙏 **요청**: main을 프로덕션에 배포해 주세요(또는 refactor에 이 라우트 포함). refactor 머지 시 `web/app/api/awareness-ads/route.ts` 유지 필수(현재 refactor 기준 D로 표시됨=아직 없음).
+- 배포되면 Claude가 `-mu/api/awareness-ads?date=` 확인 후 워크플로 미리보기(황경원 DM)로 렌더링 검증 예정.
