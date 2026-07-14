@@ -527,7 +527,8 @@ def run():
             _start += _PAGE
 
         # 🛑 자동 종료 정책 — ended_at 딱지 부여(삭제 아님, 데이터 보존). 온드미디어·위성채널 제외.
-        #   규칙(OR): 배너 게시+7일 / 그외 게시+14일 / 7일 미반환(마지막 실측) / 캡션(content_summary) '종료·보관·삭제'
+        #   규칙(OR): 배너·캐러셀(피드) 게시+7일 / 그외(영상) 게시+14일 / 7일 미반환(마지막 실측) / 캡션(content_summary) '종료·보관·삭제'
+        #   ※ '업로드일 제외' — age = 오늘-업로드일이라 업로드일(age 0)은 카운트에서 빠짐. 캐러셀=channel_type '피드'로 식별(사용자 지시).
         try:
             active_ids = [p["id"] for p in all_posts if not p.get("ended_at")]
             last_meas = {}
@@ -560,8 +561,9 @@ def run():
                 age = (today_d - date.fromisoformat(str(pa)[:10])).days if pa else None
                 lm = last_meas.get(p["id"])
                 gap = (today_d - date.fromisoformat(lm)).days if lm else None
-                if (("배너" in ct and age is not None and age >= 7)
-                        or ("배너" not in ct and age is not None and age >= 14)
+                short = ("배너" in ct or "피드" in ct)  # 배너·캐러셀(피드) = 7일 / 그 외(영상) = 14일
+                if ((short and age is not None and age >= 7)
+                        or (not short and age is not None and age >= 14)
                         or (gap is not None and gap >= 7)
                         or any(k in cap for k in KW)):
                     to_end.append(p["id"])
