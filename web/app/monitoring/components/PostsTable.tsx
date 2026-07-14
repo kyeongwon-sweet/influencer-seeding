@@ -127,7 +127,7 @@ type Props = {
   setEditCell: React.Dispatch<React.SetStateAction<EditCell | null>>;
   patchPost: (postId: string, field: string, value: string) => void;
   patchStat: (postId: string, measuredAt: string, field: "likes_count" | "comments_count", value: string) => void;
-  patchPlayCount: (postId: string, value: string) => void;
+  patchPlayCount: (postId: string, value: string, measuredAt?: string | null) => void;
   editPlayCount: { postId: string; value: string } | null;
   setEditPlayCount: React.Dispatch<React.SetStateAction<{ postId: string; value: string } | null>>;
   selected: Set<string>;
@@ -429,13 +429,13 @@ function PostsTable(props: Props) {
                         {editPlayCount?.postId === post.id ? (
                           <input autoFocus type="number" value={editPlayCount.value}
                             onChange={e => setEditPlayCount(v => v ? { ...v, value: e.target.value } : null)}
-                            onBlur={() => patchPlayCount(post.id, editPlayCount.value)}
-                            onKeyDown={e => { if (e.key === "Enter") patchPlayCount(post.id, editPlayCount.value); if (e.key === "Escape") setEditPlayCount(null); }}
+                            onBlur={() => patchPlayCount(post.id, editPlayCount.value, s?.measured_at)}
+                            onKeyDown={e => { if (e.key === "Enter") patchPlayCount(post.id, editPlayCount.value, s?.measured_at); if (e.key === "Escape") setEditPlayCount(null); }}
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
                         ) : (
                           <div className="flex items-center justify-end gap-1.5 relative">
                             <span onClick={() => setEditPlayCount({ postId: post.id, value: String(s?.play_count ?? "") })}
-                              title="여기서 고치면 즉시 반영되며, 밤 자동수집은 이 값을 덮지 않습니다. 시트에서 더 나중에 입력하면 그 값이 최신으로 우선합니다."
+                              title="여기서 고치면 화면에 보이는 그 날짜 값으로 고정됩니다. 이후 자동수집은 계속되지만 이 값보다 낮아지지 않고, 더 높게 수집되면 그때 갱신됩니다. 시트에 더 나중에 입력한 값이 있으면 그 값이 우선합니다."
                               className="text-a-ink-muted hover:text-a-blue transition-colors cursor-text">
                               {(post.channel_type ?? "").includes("배너") ? <span className="text-gray-300">—</span> : fmt(s?.play_count)}
                             </span>

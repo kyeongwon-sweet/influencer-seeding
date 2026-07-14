@@ -1169,17 +1169,18 @@ export default function MonitoringPage() {
     setEditCell(null);
   }
 
-  async function patchPlayCount(postId: string, value: string) {
+  async function patchPlayCount(postId: string, value: string, measuredAt?: string | null) {
     const play_count = value === "" ? null : Number(value);
     // 배너는 입력값 자체가 도달수 — /stats 라우트가 이 값을 reach_count로 저장(초크포인트). ×0.8 추정·post레벨 reach 덮기 안 함.
     const isBanner = (posts.find(p => p.id === postId)?.channel_type ?? "").includes("배너");
 
     try {
-      // 1️⃣ 조회수 저장
+      // 1️⃣ 조회수 저장 — 화면에 보이는 그 날짜 행(measuredAt)을 정확히 겨냥.
+      //    (미전달 시에만 최신 행 폴백) → 오후 수집으로 생긴 '오늘(미노출)' 행을 실수로 덮지 않음.
       const res = await fetch(`/api/sponsored-posts/${postId}/stats`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ play_count }),
+        body: JSON.stringify(measuredAt ? { play_count, measured_at: measuredAt } : { play_count }),
       });
 
       if (!res.ok) {
@@ -1188,7 +1189,9 @@ export default function MonitoringPage() {
         return;
       }
 
-      const now = new Date().toISOString().slice(0, 10);
+      // 낙관적 UI 갱신은 실제 저장된 날짜(measuredAt) 기준 — 오늘로 태깅하면 '오늘 제외' 규칙에 걸려
+      // 방금 고친 값이 화면에서 사라짐(새로고침 전까지). measuredAt 미전달 시에만 오늘로 폴백.
+      const now = measuredAt ?? new Date().toISOString().slice(0, 10);
       let reach_count = null;
 
       // 2️⃣ 도달수 계산 및 저장 (영상만 — 배너는 위 /stats가 이미 reach_count로 저장했으므로 건너뜀)
