@@ -39,20 +39,40 @@ jobs:
           today = os.environ["TODAY_KST"]
           # ⚠️ 부분수집 감지: '행이 1개라도 있으면 ok'는 부분실패(예: 350개 중 140개만)를 놓쳐
           #    주말 대량 구멍이 방치됐다(2026-07-03~05, 각 ~210개 미수집). → 실측수를 최근 기준선과 비교.
+          posts = db.table("sponsored_posts").select("id, url, posted_at, ended_at").execute()
+          eligible = [
+              p for p in (posts.data or [])
+              if not p.get("ended_at") and (not p.get("posted_at") or str(p.get("posted_at"))[:10] <= today)
+          ]
+          eligible_ids = [p["id"] for p in eligible]
+
           def measured(day):
-              r = db.table("post_daily_stats").select("id", count="exact").eq("measured_at", day).filter("play_count", "not.is", "null").execute()
-              return r.count or 0
-          today_n = measured(today)
+              total = 0
+              for i in range(0, len(eligible_ids), 100):
+                  chunk = eligible_ids[i:i + 100]
+                  if not chunk:
+                      continue
+                  r = (
+                      db.table("post_daily_stats")
+                      .select("id", count="exact")
+                      .eq("measured_at", day)
+                      .filter("play_count", "not.is", "null")
+                      .in_("post_id", chunk)
+                      .execute()
+                  )
+                  total += r.count or 0
+              return total
+
+          today_n = measured(today) if eligible_ids else 0
           base = 0
           for k in (1, 2, 3):  # 직전 3일 최대 실측수 = 기준선(주말 저점에 끌려가지 않게 max)
               d = (datetime.date.fromisoformat(today) - datetime.timedelta(days=k)).isoformat()
               base = max(base, measured(d))
           # 완전성: 오늘 실측수가 기준선의 60% 미만이면 부분수집으로 보고 재수집(run_monitoring은 멱등).
           #   임계 60% = 주말 실패(38%)는 잡고 정상 변동(80%+)은 오탐 안 함 → Apify 과금 최소.
-          complete = (today_n >= 0.6 * base) if base else (today_n > 0)
+          complete = True if not eligible_ids else ((today_n >= 0.6 * base) if base else (today_n > 0))
           # 유튜브는 별도 액터로 수집되므로 IG가 성공해도 유튜브가 비면 '재수집 대상'으로 본다.
-          posts = db.table("sponsored_posts").select("id, url").execute()
-          yt_ids = [p["id"] for p in (posts.data or []) if "youtube.com" in (p["url"] or "") or "youtu.be" in (p["url"] or "")]
+          yt_ids = [p["id"] for p in eligible if "youtube.com" in (p["url"] or "") or "youtu.be" in (p["url"] or "")]
           yt_ok = True
           if yt_ids:
               yr = db.table("post_daily_stats").select("post_id").eq("measured_at", today).in_("post_id", yt_ids).limit(1).execute()

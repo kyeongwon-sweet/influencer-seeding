@@ -1206,3 +1206,12 @@ Status:
 - The scheduling/date-attribution path is fixed and the 2026-07-13 partial collection was caught by retry and re-run.
 - This workflow change closes the remaining weak spot where the main early-morning backup windows could skip a partially collected day.
 - `safeIncrement`, dashboard display rules, and sheet export rules were not changed.
+
+Follow-up correction before final push:
+- The first completeness check copied from `monitoring-retry.yml` used all `post_daily_stats.play_count` rows for the previous-day baseline. That over-counts because ended/pre-upload posts are excluded from the actual collector.
+- Codex corrected both `.github/workflows/cron-daily-collect.yml` and `.github/workflows/monitoring-retry.yml` to calculate completeness only for the same eligible set the collector uses:
+  - `not ended_at`
+  - `posted_at <= target measured_at` when posted_at exists
+  - `play_count is not null`
+  - chunked `post_id in (...)` counts to avoid broad-table baseline drift
+- This prevents the retry loop from comparing active collection size (~285 active posts on 2026-07-13) against stale historical totals (~505 rows including ended posts).

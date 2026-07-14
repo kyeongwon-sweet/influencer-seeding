@@ -59,19 +59,38 @@ jobs:
           from db import get_client
           db = get_client()
           today = os.environ["TODAY"]
-          def measured(day):
-              r = db.table("post_daily_stats").select("id", count="exact").eq("measured_at", day).filter("play_count", "not.is", "null").execute()
-              return r.count or 0
+          posts = db.table("sponsored_posts").select("id, url, posted_at, ended_at").execute()
+          eligible = [
+              p for p in (posts.data or [])
+              if not p.get("ended_at") and (not p.get("posted_at") or str(p.get("posted_at"))[:10] <= today)
+          ]
+          eligible_ids = [p["id"] for p in eligible]
 
-          today_n = measured(today)
+          def measured(day):
+              total = 0
+              for i in range(0, len(eligible_ids), 100):
+                  chunk = eligible_ids[i:i + 100]
+                  if not chunk:
+                      continue
+                  r = (
+                      db.table("post_daily_stats")
+                      .select("id", count="exact")
+                      .eq("measured_at", day)
+                      .filter("play_count", "not.is", "null")
+                      .in_("post_id", chunk)
+                      .execute()
+                  )
+                  total += r.count or 0
+              return total
+
+          today_n = measured(today) if eligible_ids else 0
           base = 0
           for k in (1, 2, 3):
               import datetime
               d = (datetime.date.fromisoformat(today) - datetime.timedelta(days=k)).isoformat()
               base = max(base, measured(d))
-          complete = (today_n >= 0.6 * base) if base else (today_n > 0)
-          posts = db.table("sponsored_posts").select("id, url").execute()
-          yt_ids = [p["id"] for p in (posts.data or []) if "youtube.com" in (p["url"] or "") or "youtu.be" in (p["url"] or "")]
+          complete = True if not eligible_ids else ((today_n >= 0.6 * base) if base else (today_n > 0))
+          yt_ids = [p["id"] for p in eligible if "youtube.com" in (p["url"] or "") or "youtu.be" in (p["url"] or "")]
           yt_ok = True
           if yt_ids:
               yr = db.table("post_daily_stats").select("post_id").eq("measured_at", today).in_("post_id", yt_ids).limit(1).execute()
