@@ -326,7 +326,8 @@ function scanBlanks_() {
   const values = sheet
     .getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, lastCol)
     .getValues();
-  const fields = Object.keys(fieldCols);
+  // 업체명(company_name)은 바이럴에만 있는 선택 항목 → 빈칸 검사 대상에서 제외(빈칸이 정상).
+  const fields = Object.keys(fieldCols).filter(f => f !== "company_name");
   const cell = (row, f) => String(row[fieldCols[f] - 1] == null ? "" : row[fieldCols[f] - 1]).trim();
 
   const blanks = [];
@@ -604,10 +605,18 @@ function exportStats() {
     //   ⚠️ DB(post_daily_stats)엔 아무것도 안 씀(safeIncrement·증분 규칙 불변). 이어받기 값은 importStats가 재저장 안 함(아래 가드).
     //   배너 등 '양수 조회수가 한 번도 없는' 행은 lastVal이 안 생겨 자동 제외(빈칸 유지).
     //   기존 실측·수동값은 절대 안 덮고, 빈칸 또는 직전값 이어받기였던 칸만 새 실측으로 교체.
-    let filled = 0, carried = 0, prePostedCleared = 0, preserved = 0;
+    let filled = 0, carried = 0, prePostedCleared = 0, preserved = 0, orphanRows = 0, futureCleared = 0;
     const newBlock = block.map(r => r.slice());
     for (let i = 0; i < nRows; i++) {
       const m = rowMap[i];
+      // 🛡️ URL 없는 '고아' 행은 절대 건드리지 않는다(ffill로 숫자 옆번짐 차단). 데이터 남은 고아는 카운트→경고.
+      if (!String(urlVals[i][0] || "").trim()) {
+        for (let j = 0; j < dateCols.length; j++) {
+          const c = block[i][dateCols[j].col - firstCol];
+          if (c !== "" && c !== null) { orphanRows++; break; }
+        }
+        continue;
+      }
       let lastVal = null;
       for (let j = 0; j < dateCols.length; j++) {
         const bi = dateCols[j].col - firstCol;
@@ -616,6 +625,12 @@ function exportStats() {
         const postedAt = postedAtByRow[i];
         if (isBeforePostedDate_(date, postedAt)) {
           if (cell !== "" && cell !== null) { newBlock[i][bi] = ""; prePostedCleared++; }
+          lastVal = null;
+          continue;
+        }
+        // 🛡️ 오늘·미래 날짜칸은 채우지 않고 비운다(수집일-1까지만; 대시보드 '오늘 제외'와 일치).
+        if (date >= today) {
+          if (cell !== "" && cell !== null) { newBlock[i][bi] = ""; futureCleared++; }
           lastVal = null;
           continue;
         }
@@ -653,6 +668,8 @@ function exportStats() {
 
     let msg = `✅ 수집 조회수를 시트에 반영했습니다.\n새 날짜 열 ${addedCols}개 추가 · 실측 갱신 ${filled}칸 · 공백 이어받기 ${carried}칸 · 업로드 전 값 삭제 ${prePostedCleared}칸 · 기존값 보존 ${preserved}칸 · 매칭 게시물 ${matched}개 · 날짜 열 ${dateCols.length}개`;
     if (missing) msg += `\n⚠️ 시트엔 있으나 대시보드에 수집기록이 없는 URL ${missing}개(아직 수집 전이거나 미등록).`;
+    if (futureCleared) msg += `\n🗓️ 오늘·미래(수집일-1 이후) 날짜칸 ${futureCleared}개를 비웠습니다.`;
+    if (orphanRows) msg += `\n🧟 URL 없이 숫자만 있는 '고아 행' ${orphanRows}개 발견 — 행 삭제로 정리하세요(데이터는 DB에 있음).`;
     safeAlert_(msg);
   } catch (e) {
     safeAlert_("❌ 오류\n" + e.message);
