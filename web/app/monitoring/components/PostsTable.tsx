@@ -450,6 +450,7 @@ function PostsTable(props: Props) {
                             {hoverUpdatedId === post.id && (
                               <div className="absolute bottom-full right-0 mb-2 bg-white border border-a-hairline rounded-[6px] px-2 py-1 text-xs whitespace-nowrap shadow-[0_4px_12px_rgba(0,0,0,0.10)] z-[80]">
                                 <p className="font-semibold text-red-500">{collectedAtLabel}</p>
+                                <p className="text-[11px] text-a-ink-muted mt-0.5">표에는 전일(어제)까지 반영 · 오늘 수집분은 다음날 노출</p>
                               </div>
                             )}
                           </div>
