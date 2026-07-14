@@ -57,7 +57,7 @@ export default function FiltersBar({ filters, setFilters, pdOptions, productOpti
           <>
           <div className="fixed inset-0 z-40" onClick={() => setShowChannelTypeDropdown(false)} />
           <div className="absolute top-full left-0 mt-1 bg-white border border-a-hairline rounded-[8px] shadow-lg z-50 w-48">
-            <div className="p-3 space-y-2 max-h-64 overflow-y-auto">
+            <div className="p-3 space-y-2 max-h-[480px] overflow-y-auto">
               <label className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1.5 rounded text-xs">
                 <input
                   type="checkbox"
