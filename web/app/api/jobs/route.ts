@@ -5,6 +5,7 @@ import { startActorRun } from "@/lib/apify";
 import { normalizeYouTubeUrl, normalizeInstagramUrl, normalizeUrl } from "@/lib/url-utils";
 import { logger } from "@/lib/logger";
 import { activeIgPostUrls, isSuspiciousUrlCount } from "@/lib/ig-post-urls";
+import { yesterdayKST } from "@/lib/dateRule";
 
 /** 공통 설정 */
 const CONFIG = {
@@ -129,10 +130,11 @@ export async function POST(req: NextRequest) {
           await supabase.from('jobs').update({ status: 'done' }).eq('id', job.id);
         } else {
           await supabase.from('jobs').update({ status: 'running' }).eq('id', job.id);
+          const measuredAt = yesterdayKST();
           await startActorRun(
             'apify/instagram-scraper',
             { directUrls: urls, resultsType: 'posts', resultsLimit: urls.length },
-            webhookUrl(appUrl, `jobId=${job.id}&jobType=monitoring`)
+            webhookUrl(appUrl, `jobId=${job.id}&jobType=monitoring&measuredAt=${encodeURIComponent(measuredAt)}`)
           );
         }
 

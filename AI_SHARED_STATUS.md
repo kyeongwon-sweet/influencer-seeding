@@ -9,6 +9,33 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
+## 2026-07-14 monitoring date attribution fix (Codex)
+
+Problem verified:
+- Scheduled GitHub/Vercel collection paths already use collection-date minus 1 day:
+  - `.github/workflows/cron-daily-collect.yml`: `date -d 'yesterday'` -> `MONITORING_DATE`.
+  - `.github/workflows/monitoring-retry.yml`: `date -d 'yesterday'`.
+  - `/api/monitoring/apify-collect`: `yesterdayKST()`.
+- The 2026-07-14 rows came from a manual dashboard monitoring job, not the scheduled collector:
+  - recent job `56865f7c-2122-430b-903c-2532ccf0cf57`, `user_email=hwangkw@lalasweet.kr`, `created_at=2026-07-14T00:15:11Z`, `saved=186`.
+  - It started `/api/jobs` monitoring without `measuredAt`; `/api/apify-webhook` fell back to `todayKST()`, creating `measured_at=2026-07-14`.
+
+Code change:
+- `/api/jobs` monitoring now passes `measuredAt=yesterdayKST()` to the monitoring webhook.
+- `/api/apify-webhook` monitoring fallback changed from `todayKST()` to `yesterdayKST()`.
+- `/api/monitoring/collect-now` default changed from KST today to `yesterdayKST()`; explicit `?date=YYYY-MM-DD` still overrides.
+- This is not a broad one-day shift of all data; it only aligns no-date monitoring collection entrypoints with the existing scheduled collector rule.
+
+DB correction:
+- Backup: `C:/tmp/relabel-20260714-to-20260713-backup.json`.
+- Dry-run before correction: `2026-07-14` rows `186`; all `186` had a `2026-07-13` target row; `0` rows had a lower 7/14 metric than 7/13.
+- Applied: updated the 186 existing `2026-07-13` rows with the 7/14 source values, preserving existing/manual target rows' manual flag; deleted the 186 duplicate `2026-07-14` rows.
+- Readback: `remaining_2026_07_14 = 0`, `target_rows_after = 271`.
+
+Verification:
+- `npm.cmd test`: passed, 27 tests.
+- `npx.cmd tsc --noEmit --incremental false`: passed.
+
 ## 2026-07-14 JD/P post-ended copied-growth cleanup (Codex)
 
 Policy alignment:
