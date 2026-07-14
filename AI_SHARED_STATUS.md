@@ -830,3 +830,21 @@ Post-cleanup verification:
 Notes:
 - `밈튜브` still has invalid metadata shape: `ended_at=2026-06-08` is earlier than `posted_at=2026-06-11`. Do not auto-clear it without source confirmation because clearing `ended_at` would reactivate collection.
 - Direct service-role/ad-hoc correction scripts can bypass app-route guards. For future one-off scripts, apply the same final predicate before upsert/delete decisions: skip stats where `post.ended_at` exists and `measured_at > ended_at`, unless the user explicitly confirms a backdated correction.
+
+## 2026-07-14 Shugi 2026-07-06 manual typo cleanup (Codex)
+
+Claude handoff request executed for DB-owned `post_daily_stats`.
+
+Target:
+- Post: `슈기` `https://www.instagram.com/p/Dach9JUR1iW/`
+- Deleted row: `measured_at=2026-07-06`, `play_count=468,897`, `manual=true`, stat id `1e89d744-e0c0-4877-aab8-6e2d2a41faf7`.
+- Reason: impossible cumulative inversion. The later current DB series is `2026-07-10=408,411`, `2026-07-11=418,385`, `2026-07-12=441,152`, `2026-07-13=467,448`; true 2026-07-06 value is unknown, so no replacement value was fabricated.
+
+Backup and verification:
+- Backup: `C:/tmp/shugi-20260706-manual-typo-delete-20260714.json`
+- Delete verification: re-read by deleted stat id returned 0 rows.
+- Current DB safeIncrement for 슈기 on `2026-07-13`: `467,448 - 441,152 = 26,296`.
+
+Note:
+- Claude's request text expected 2026-07-13 value `465,513` and increment `24,361`, but live DB at execution time had auto row `2026-07-13=467,448`; therefore the verified DB result is `26,296`.
+- Sheet cleanup is separate sheet-owner work: clear the same polluted `468,897` cell(s) on the linked "콘텐츠 대시보드 연동" row, and if exact sheet/dashboard equality is required, refresh the 2026-07-13 cell from DB rather than hand-entering a guessed value.
