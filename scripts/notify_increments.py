@@ -364,7 +364,7 @@ def main():
         f"📈 *쫀득바 인지 조회수 일일 증분* `({target})`",
         f"오늘 총 증분 *+{f(total)}*",
         "", DIV, "",
-        "◾ *채널분류별*  `CPV는 누적 기준`",
+        "◾ *채널분류별*",
         "",
     ]
     # 인지 광고(시트값) — 채널분류 맨 위. 조회수는 위에서 total에 이미 합산됨.
@@ -377,9 +377,12 @@ def main():
             if isinstance(v, (int, float)) and v > 0:
                 ad_lines.append(f"    {_lab} *+{f(v)}*  {_ad_cpv(c or 0, v)}".rstrip())
         if ad_lines:
-            lines.append("• *인지 광고*")
+            lines.append("• *인지 광고*  `CPV는 일일 기준`")   # 광고 CPV = 그날 광고비 ÷ 그날 조회수(일일)
             lines.extend(ad_lines)
             lines.append("")
+    # 아래 DB 채널들의 CPV는 누적 기준(누적비용÷누적조회수) — 인지광고(일일)와 구분해 별도 표기.
+    lines.append("`CPV는 누적 기준`")
+    lines.append("")
     for ct, s in sorted(by_channel.items(), key=lambda x: x[1], reverse=True):
         if "배너" in ct:
             # 배너값은 '증분'만 쓴다(사용자 지시 — 누적 아님). 배너는 매일이 아니라 며칠 간격 수집이라
