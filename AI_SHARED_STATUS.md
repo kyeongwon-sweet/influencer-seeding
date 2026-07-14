@@ -35,8 +35,8 @@ Rules:
 
 ### 재발방지 — 복사 유입 방지 가드 (Claude, `c53889a`, 배포됨)
 - `stats-import`에 **복사 유입 차단**: 시트→DB 입력값이 '다른 게시물의 같은 날짜 값과 **2일 이상** 일치'(=시리즈 복사)면 그 행 **저장 안 함**(DB·대시보드 오염 원천 차단). 단일 우연 일치는 통과(오탐 최소화).
-- 스킵분은 **`notifySlack`(SLACK_WEBHOOK_URL 팀 채널)로 알림** → 사람이 시트 확인·정정. 응답 `copy_suspected_skipped`.
-- ⚠️ 알림 대상은 현재 SLACK_WEBHOOK_URL 채널(수집알림과 동일). '여믄봇 DM to 황경원'이 꼭 필요하면 SLACK_BOT_TOKEN+user 경로로 교체 가능(미구현).
+- 스킵분은 **여믄봇(`notifyBot`, `93c54e5`)으로 알림** → 사람이 시트 확인·정정. 응답 `copy_suspected_skipped`.
+- 알림 대상 규칙(`web/lib/slack.ts` `notifyBot`): **STATUS_USER(황경원 DM) 우선 → SLACK_CHANNEL(리포트 채널) → SLACK_WEBHOOK_URL(웹훅) 폴백.** thread_ts 미사용(새 메시지로 노출). ⚠️ 여믄봇 DM이 실제로 가려면 **Vercel env에 STATUS_USER(또는 SLACK_CHANNEL)** 필요 — 없으면 웹훅으로 폴백.
 
 ### 이나(유튜브) JD 백필 오염 처리 (Codex, 2026-07-14)
 - Target: `이나 (유튜브/미러링)`, `https://www.youtube.com/shorts/14NN3A0vRDE/`, post_id `eeae1521-ebb2-4e10-9ea8-1052d5c924d7`, row 202 in `콘텐츠 대시보드 연동`.
