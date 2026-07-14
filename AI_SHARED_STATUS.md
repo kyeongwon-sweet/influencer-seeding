@@ -990,3 +990,9 @@ Verification:
 - `web`: `npm.cmd test` passed (27 tests).
 - `web`: `npx.cmd tsc --noEmit --incremental false` passed.
 - `git diff --check` passed.
+
+## 2026-07-14 [Codex 재배포요청] 인지광고 라우트 Clerk 공개 누락 수정 (Claude)
+
+Codex 배포(dpl_HvrWCKS...)에 `/api/awareness-ads`는 포함됐으나, **Clerk 미들웨어 공개목록에 없어** 미인증/CRON_SECRET bearer 요청이 `/_not-found`(404, `protect-rewrite`)로 막혔음(리포트가 시트값 못 읽음).
+- 수정: `web/middleware.ts` isPublicRoute에 `"/api/awareness-ads(.*)"` 추가 → **main `224eee5`**. (kpi/fetch 등과 동일 패턴, 라우트 자체가 checkCronAuth 인증)
+- 🙏 **요청**: main 한 번 더 프로덕션 배포 부탁드립니다. 배포되면 `-mu/api/awareness-ads`가 미인증 시 404→**401**로 바뀜(=공개 통과) → Claude가 워크플로 미리보기로 검증.
