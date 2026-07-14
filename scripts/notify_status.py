@@ -207,6 +207,38 @@ def _integrity_lines(db, posts):
                 line += f" … 외 {len(copied) - 4}건"
             lines.append(line)
 
+    # 6) 누적 조회수 하락 감지 — 조회수는 누적이라 감소 불가. 특히 수동 입력(manual)은 mono 가드를 우회(2722cf4,
+    #    원래 하향 정정 허용 목적)해서 오타·잘못된 숫자가 그대로 통과 → 누적·증분 깨짐(2026-07 시으니네 틱톡
+    #    249,508→58,300 등, 틱톡 민감영상은 자동수집 불가라 수동 트래킹 강제 = 오기 다발). 차단 아닌 알림으로
+    #    사람이 오기인지 정당한 하향 정정인지 판단. 수동 하락은 전부, 자동 하락은 5% 초과만(IG 미세 재집계 노이즈 제외).
+    drows = {}
+    off = 0
+    while True:
+        res = db.table("post_daily_stats").select("post_id, measured_at, play_count, manual").range(off, off + 999).execute()
+        chunk = res.data or []
+        for r in chunk:
+            if (r.get("play_count") or 0) > 0:
+                drows.setdefault(r["post_id"], []).append((r["measured_at"][:10], r["play_count"], bool(r.get("manual"))))
+        if len(chunk) < 1000:
+            break
+        off += 1000
+    drops = []
+    for pid, rows in drows.items():
+        if len(rows) < 2:
+            continue
+        rows.sort()
+        last_d, last_v, last_m = rows[-1]
+        prior_max = max(v for _, v, _ in rows[:-1])
+        if last_v < prior_max and (last_m or (last_v < prior_max * 0.95)):   # 수동 하락 전부 / 자동은 5% 초과만
+            drops.append((name_of.get(pid, "?"), last_d, last_v, prior_max, last_m))
+    if drops:
+        drops.sort(key=lambda x: -(x[3] - x[2]))
+        ex = ", ".join(f"{acc}({'수동' if m else '자동'} {d[5:]} {v:,}<직전 {pm:,})" for acc, d, v, pm, m in drops[:4])
+        line = f"누적 조회수 하락 {len(drops)}건 — 누적은 감소 불가(수동 오기/과대 정정 확인 필요): {ex}"
+        if len(drops) > 4:
+            line += f" … 외 {len(drops) - 4}건"
+        lines.append(line)
+
     return lines
 
 
