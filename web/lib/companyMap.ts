@@ -4,6 +4,7 @@
 const COMPANY_ACCOUNTS: Record<string, string[]> = {
   "루나앤코코": [
     "luna.humor", "luna.tip", "luna.daily",
+    "luna.besty", "jolly__humor", "nato.tip", "tteokbokki__zip",
     "nato.funny", "nato.healing", "nato.zzal",
     "tree.humor", "tree.playlist", "tree.tving",
     "hana.humor", "hana.tving", "hana.zzal",
@@ -25,7 +26,7 @@ const COMPANY_ACCOUNTS: Record<string, string[]> = {
     "humor_nyang", "some2lve",
   ],
   "굿띵투유": [
-    "365_hot", "time_holy", "humor_yonggari", "mamy014", "Pangpang_one_", "eattt.zin",
+    "365_hot", "365_real", "time_holy", "humor_yonggari", "mamy014", "Pangpang_one_", "eattt.zin",
     "entertainment_yonggari", "graegaja", "hahahohokiki6814", "humor_ssul", "kutbba101",
     "laugh.34", "laugh.35", "mukddoonge", "one_day_humor_diary", "oyes__blue", "today_quest",
     "yes__jam_", "Hoho_cutie_", "Sksk1sksk0", "Sksk1sksk1",
@@ -34,6 +35,9 @@ const COMPANY_ACCOUNTS: Record<string, string[]> = {
     "dolkki_daily", "guliguli_humor", "happyhappy_pick", "humorphim",
     "pink_humor25", "pink_idolly", "upupupupup_upupup", "zzalqueen",
   ],
+  "후마니": [
+    "humani_3",
+  ],
 };
 
 const _BY_ACCOUNT: Record<string, string> = {};
@@ -41,8 +45,14 @@ for (const [company, accounts] of Object.entries(COMPANY_ACCOUNTS)) {
   for (const a of accounts) _BY_ACCOUNT[a.toLowerCase()] = company;
 }
 
+export function excludesCompanyFallback(channelType?: string | null): boolean {
+  const normalized = (channelType ?? "").replace(/\s+/g, "");
+  return normalized.includes("온드미디어") || normalized.includes("위성채널");
+}
+
 /** 계정명 → 업체명(매핑에 있으면), 없으면 null. 대소문자 무관. */
-export function companyForAccount(name?: string | null): string | null {
+export function companyForAccount(name?: string | null, channelType?: string | null): string | null {
+  if (excludesCompanyFallback(channelType)) return null;
   if (!name) return null;
   return _BY_ACCOUNT[name.trim().toLowerCase()] ?? null;
 }

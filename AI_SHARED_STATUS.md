@@ -16,6 +16,20 @@
 - 첫 전체 스캔(잔여 ~294게시물)은 다음 스케줄 또는 수동 dispatch에서 실행. Apify 비용: 프로브 ~$0.04 실측, 첫 스캔 추정 수$, 이후 일일 증가분만이라 미미.
 - 2단계(미구현): 보유 계정(온드/위성)은 Vercel env에 이미 있는 `INSTAGRAM_ACCESS_TOKEN`으로 Graph API 숨김 버튼(Slack interactivity 엔드포인트) 추가 가능.
 
+## 2026-07-15 company fallback excludes owned/satellite channels (Codex)
+Dashboard/company fallback cleanup:
+- `web/lib/companyMap.ts` now treats `온드미디어` and `위성채널` as no-company-fallback channels. Explicit `sponsored_posts.company_name` is still displayed if present, but account-based fallback no longer creates cosmetic company names for owned/satellite rows.
+- Monitoring usages now pass `post.channel_type` into `companyForAccount(...)`: company filter, company dropdown options, company analysis panel, company sort, and PostsTable display.
+- Static fallback map was aligned with the learned viral accounts from the sheet/DB cleanup: `jolly__humor`, `luna.besty`, `nato.tip`, `tteokbokki__zip` => `루나앤코코`; `365_real` => `굿띵투유`; `humani_3` => `후마니`; `some2lve` remains `아택`.
+
+Validation:
+- Added `web/tests/companyMap.test.ts`.
+- `npm.cmd test` passed: 29/29.
+- `tsc` was not run in this worktree because `node_modules` is absent and `npx.cmd tsc` attempted a registry fetch, which is blocked in this Codex environment.
+
+Collection note:
+- `/api/monitoring/collect-now` is authenticated by `CRON_SECRET` and is IG-only. This session does not have `CRON_SECRET`, so the requested 2026-07-15 collect-now refill was not executed here. Use production `collect-now?date=2026-07-15` with the proper Bearer token or the authenticated dashboard manual collection path.
+
 ## 2026-07-15 sheet regeneration requested after DB cleanup (Codex handoff)
 User/Claude request: DB is now the source of truth after cleanup of cluster copies, Siuni rows, deleted videos, and orphan stats. Sheet session should regenerate the `콘텐츠 대시보드 연동` tab from DB.
 

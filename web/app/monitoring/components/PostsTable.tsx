@@ -373,7 +373,7 @@ function PostsTable(props: Props) {
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5" />
                         ) : (() => {
                           // 표시값 = 수동 업체명 우선, 없으면 계정→업체명 자동매핑. 편집 시작 시 이 표시값을 seed해 보이는 대로 수정 가능.
-                          const company = post.company_name?.trim() || companyForAccount(post.account_name ?? post.influencers?.name) || "";
+                          const company = post.company_name?.trim() || companyForAccount(post.account_name ?? post.influencers?.name, post.channel_type) || "";
                           return (
                             <span onClick={() => setEditCell({ postId: post.id, field: "company_name", value: company })}
                               className="block truncate cursor-text hover:text-a-blue transition-colors">

@@ -82,7 +82,7 @@ export default function MonitoringPage() {
     if (filters.caption && !(post.content_summary ?? "").toLowerCase().includes(filters.caption.toLowerCase())) return false;
     if (filters.products.length > 0 && !filters.products.includes(post.product_name ?? "")) return false;
     if (filters.channelTypes.length > 0 && !filters.channelTypes.some(ct => (post.channel_type ?? "").replace(/\s+/g, "") === ct.replace(/\s+/g, ""))) return false;
-    if (filters.companies.length > 0 && !filters.companies.includes(post.company_name?.trim() || companyForAccount(post.account_name ?? post.influencers?.name) || "")) return false;
+    if (filters.companies.length > 0 && !filters.companies.includes(post.company_name?.trim() || companyForAccount(post.account_name ?? post.influencers?.name, post.channel_type) || "")) return false;
     if (filters.pdNames.length > 0 && !filters.pdNames.includes(pdOf(post.project_name))) return false;
 
     // 게시일 필터 (posted_at 기준)
@@ -106,7 +106,7 @@ export default function MonitoringPage() {
   ).sort(), [posts]);
 
   const companyOptions = useMemo(() => Array.from(
-    new Set(posts.map(p => p.company_name?.trim() || companyForAccount(p.account_name ?? p.influencers?.name) || "").filter(Boolean))
+    new Set(posts.map(p => p.company_name?.trim() || companyForAccount(p.account_name ?? p.influencers?.name, p.channel_type) || "").filter(Boolean))
   ).sort((a, b) => a.localeCompare(b, "ko")), [posts]);
 
   // PD/디자이너 옵션 — project_name이 파싱되는 게시물만 (빈 값 제외)
@@ -282,7 +282,7 @@ export default function MonitoringPage() {
     type Acc = { video: { n: number; sum: number; cost: number }; banner: { n: number; sum: number; cost: number } };
     const by = new Map<string, Acc>();
     for (const post of filteredPosts) {
-      const company = (post.company_name?.trim() || companyForAccount(post.account_name ?? post.influencers?.name) || "").trim();
+      const company = (post.company_name?.trim() || companyForAccount(post.account_name ?? post.influencers?.name, post.channel_type) || "").trim();
       if (!company || company === "-") continue;
       const ct = post.channel_type ?? "";
       const kind = ct.includes("배너") ? "banner" : ct.includes("(영상)") ? "video" : null;
@@ -910,7 +910,7 @@ export default function MonitoringPage() {
     let av: string | number = "", bv: string | number = "";
     switch (sortCol) {
       case "인플루언서": av = (a.account_name ?? a.influencers?.name ?? "").toLowerCase(); bv = (b.account_name ?? b.influencers?.name ?? "").toLowerCase(); break;
-      case "업체명": av = (a.company_name?.trim() || companyForAccount(a.account_name ?? a.influencers?.name) || "").toLowerCase(); bv = (b.company_name?.trim() || companyForAccount(b.account_name ?? b.influencers?.name) || "").toLowerCase(); break;
+      case "업체명": av = (a.company_name?.trim() || companyForAccount(a.account_name ?? a.influencers?.name, a.channel_type) || "").toLowerCase(); bv = (b.company_name?.trim() || companyForAccount(b.account_name ?? b.influencers?.name, b.channel_type) || "").toLowerCase(); break;
       case "프로젝트명": av = (a.project_name ?? "").toLowerCase(); bv = (b.project_name ?? "").toLowerCase(); break;
       case "상품명": av = (a.product_name ?? "").toLowerCase(); bv = (b.product_name ?? "").toLowerCase(); break;
       case "증분량":
