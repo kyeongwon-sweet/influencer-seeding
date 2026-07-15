@@ -9,22 +9,6 @@ export type BlacklistEntry = {
   reason: string | null;
 };
 
-// URL에서 username 추출 (인스타·유튜브 공통)
-// route.ts는 핸들러(GET/POST 등)만 export 가능 — 내부 헬퍼는 비export.
-function extractHandle(url: string): string {
-  try {
-    const u = new URL(url);
-    const parts = u.pathname.split("/").filter(Boolean);
-    // 유튜브: /@handle → handle
-    if (u.hostname.includes("youtube")) {
-      const at = parts.find(p => p.startsWith("@"));
-      return at ? at.slice(1).toLowerCase() : "";
-    }
-    // 인스타: /username/reels/ → username
-    return (parts[0] ?? "").toLowerCase().replace(/@/g, "");
-  } catch { return ""; }
-}
-
 export async function GET() {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

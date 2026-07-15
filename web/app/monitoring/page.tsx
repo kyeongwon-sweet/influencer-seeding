@@ -4,10 +4,10 @@ import { ElapsedTimer, useStableHandlers } from "./perf-utils";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
-import { MIN_ENTRY_DATE, maxDateKST, isValidEntryDate } from "@/lib/dateRule";
+import { isValidEntryDate } from "@/lib/dateRule";
 import { companyForAccount } from "@/lib/companyMap";
 import { batchFetch } from "@/lib/batchFetch";
-import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, INIT_FILTERS, CHANNEL_TYPES, CATEGORIES, STICKY_COL_ORDER, PROJECT_PARSE_COLS, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, isStatInDateRange, getFilteredStats, pickRangeStats, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, viewIncrement, safeIncrement, pickMetric, pdOf, productLabel, effectiveReach, bannerDailyMetric, weekKeyOf, pearson, alignedPairs, bestLag, solveLinear, alignMulti, multipleR2, parseCsvLine } from "./lib";
+import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, INIT_FILTERS, CHANNEL_TYPES, STICKY_COL_ORDER, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, getFilteredStats, pickRangeStats, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, viewIncrement, safeIncrement, pickMetric, pdOf, productLabel, effectiveReach, bannerDailyMetric, weekKeyOf, pearson, alignedPairs, bestLag, alignMulti, multipleR2, parseCsvLine } from "./lib";
 import CorrelationPanel from "./components/CorrelationPanel";
 import DayOfWeekPanel, { type DowData } from "./components/DayOfWeekPanel";
 import CompanyPanel, { type CompanyData } from "./components/CompanyPanel";
@@ -49,9 +49,8 @@ export default function MonitoringPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [showHelp, setShowHelp] = useState(false);
   const [trendPost, setTrendPost] = useState<Post | null>(null);
-  const [trendLoading, setTrendLoading] = useState(false);
+  const trendLoading = false;
   const [editCell, setEditCell] = useState<EditCell | null>(null);
-  const [editCategory, setEditCategory] = useState<{ postId: string; infId: string; value: string } | null>(null);
   const [editPlayCount, setEditPlayCount] = useState<{ postId: string; value: string } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const lastCheckedIdx = useRef<number | null>(null); // 체크박스 Ctrl/Shift 범위 선택 기준점
@@ -76,9 +75,6 @@ export default function MonitoringPage() {
 
   const filteredPosts = useMemo(() => posts.filter(post => {
     const displayName = (post.account_name ?? post.influencers?.name ?? "").toLowerCase();
-
-    // 제로비 판정: 조회수가 없거나 0
-    const isZeroPost = !post.latest_stats || post.latest_stats.play_count === 0 || post.latest_stats.play_count == null;
 
     // 1️⃣ 모든 게시물에 적용되는 필터 (제로비도 포함)
     if (filters.name && !displayName.includes(filters.name.toLowerCase())) return false;
@@ -127,18 +123,6 @@ export default function MonitoringPage() {
     return t && (!latest || t > latest) ? t : latest;
   }, null), [posts]);
 
-  const formatLastUpdate = (dateStr: string): string => {
-    const d = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffDays > 0) return `${diffDays}일 전`;
-    if (diffHours > 0) return `${diffHours}시간 전`;
-    return "방금";
-  };
-
   const chartData = useMemo(() => {
     // 오늘(KST)은 수집 중·미완성 → 제외. playDeltaData·델타표와 동일 정책으로 맞춰
     // 이 배열에서 파생되는 광고비/검색량 조회 범위·차트 축이 하루 어긋나지 않게 한다.
@@ -158,23 +142,20 @@ export default function MonitoringPage() {
 
   // 🔒 필터 불변식: 상단 '조회수 합계' 카드도 표와 동일한 값 규칙(pickRangeStats) —
   // 날짜 필터 시 표는 범위 값인데 카드만 현재 누적을 보여주던 불일치 수정
-  const { totalPlayCount, totalLikes, totalComments } = useMemo(() => {
-    let play = 0, likes = 0, comments = 0;
+  const totalPlayCount = useMemo(() => {
+    let play = 0;
     for (const p of filteredPosts) {
       const { s } = pickRangeStats(p, filters.dateFrom, filters.dateTo);
       // 배너는 조회수(play)가 없어 도달수(reach)를 조회수처럼 합산(카드 툴팁·dailyTotals와 동일 규칙).
       const isBanner = (p.channel_type ?? "").includes("배너");
       play += (isBanner ? bannerDailyMetric(s) : s?.play_count) ?? 0;
-      likes += s?.likes_count ?? 0;
-      comments += s?.comments_count ?? 0;
     }
-    return { totalPlayCount: play, totalLikes: likes, totalComments: comments };
+    return play;
   }, [filteredPosts, filters.dateFrom, filters.dateTo]);
 
   // 표 상단 합계 행 — 행 렌더링과 동일한 s/prev 로직으로 증분량·비용·조회수 합산.
   // 체크박스로 선택한 행이 있으면 그 선택분만 합산(선택 없으면 필터된 전체).
   const tableTotals = useMemo(() => {
-    const hasDate = filters.dateFrom || filters.dateTo;
     const rows = selected.size > 0 ? filteredPosts.filter(p => selected.has(p.id)) : filteredPosts;
     let delta = 0, cost = 0, views = 0, reach = 0, likes = 0, comments = 0;
     for (const post of rows) {
@@ -917,7 +898,6 @@ export default function MonitoringPage() {
   const sortedPosts = useMemo(() => {
     // 정렬 기준을 행이 '표시하는 값'과 일치시킴 — 날짜 필터 시 표는 범위 내 마지막/직전 값을 보여주는데,
     // 정렬이 latest_stats(필터 무시 최신값)를 쓰면 "조회수 ▼" 순서가 표시값과 어긋난다.
-    const hasDate = !!(filters.dateFrom || filters.dateTo);
     const disp = new Map<string, { s: Post["latest_stats"]; prev: Post["prev_stats"] }>();
     for (const p of filteredPosts) {
       // 🔒 필터 불변식: 행 렌더링과 동일한 단일 구현(pickRangeStats)
@@ -1011,7 +991,6 @@ export default function MonitoringPage() {
   // 표에 보이는 그대로 복사(종료 게시물도 포함) — 표·복사 값 일치. 값 없는 행만 제외.
   // 체크박스 선택이 있으면 그 선택분만 복사(합계 행의 '선택 합계'와 동일한 우선 규칙).
   async function copyIncrementList() {
-    const hasDate = filters.dateFrom || filters.dateTo;
     const source = selected.size > 0 ? sortedPosts.filter(p => selected.has(p.id)) : sortedPosts;
     const lines = source.map(post => {
       // 🔒 필터 불변식: 행 렌더링과 동일한 단일 구현(pickRangeStats)
@@ -1093,7 +1072,12 @@ export default function MonitoringPage() {
   }
 
   function toggleSelect(id: string) {
-    setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+    setSelected(prev => {
+      const s = new Set(prev);
+      if (s.has(id)) s.delete(id);
+      else s.add(id);
+      return s;
+    });
   }
 
   // 체크박스 클릭: Ctrl/Shift(또는 Cmd) + 클릭 시 직전 클릭~현재 사이를 전체 선택
@@ -1240,27 +1224,6 @@ export default function MonitoringPage() {
     } finally {
       setEditPlayCount(null);
     }
-  }
-
-  async function patchCategory(postId: string, infId: string, value: string) {
-    const res = await fetch(`/api/influencers/${infId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ category: value || null }),
-    });
-    if (res.ok) {
-      const now = new Date().toISOString().slice(0, 10);
-      setPosts(prev => prev.map(p => p.id === postId
-        ? {
-          ...p,
-          influencers: p.influencers ? { ...p.influencers, category: value || null } : null,
-          latest_stats: updatePostLatestStats(p, now)
-        }
-        : p));
-    } else {
-      toast("저장에 실패했습니다.", "error");
-    }
-    setEditCategory(null);
   }
 
   function startResize(col: string, e: React.MouseEvent, isSticky = false) {
@@ -1695,7 +1658,7 @@ export default function MonitoringPage() {
                                     onMouseLeave={() => setDateTooltip(null)}
                                   >
                                     {d.date.slice(0,4) !== String(new Date().getFullYear()) && (
-                                      <span className="text-[11px] font-normal text-gray-400 mr-0.5">'{d.date.slice(2,4)}.</span>
+                                      <span className="text-[11px] font-normal text-gray-400 mr-0.5">&apos;{d.date.slice(2,4)}.</span>
                                     )}
                                     {d.date.slice(5).replace("-", "/")}
                                     <span className={`ml-1.5 text-[11px] font-medium ${cls}`}>({dayLabel})</span>
@@ -1838,7 +1801,7 @@ export default function MonitoringPage() {
           </HelpSection>
           <HelpSection title="표 편집">
             <HelpItem label="업체명 —">협찬 업체명입니다. 계정명 기반으로 자동 매핑되며, 셀을 클릭해 직접 수정할 수 있습니다.</HelpItem>
-            <HelpItem label="종료 —">게시물을 자동 수집 대상에서 제외합니다(기존 데이터는 보존). 삭제 추정 게시물엔 '종료' 배지가 표시됩니다.</HelpItem>
+            <HelpItem label="종료 —">게시물을 자동 수집 대상에서 제외합니다(기존 데이터는 보존). 삭제 추정 게시물엔 &apos;종료&apos; 배지가 표시됩니다.</HelpItem>
           </HelpSection>
           <HelpSection title="자동 수집">
             <p className="text-a-ink-muted leading-relaxed">GitHub Actions에 의해 매일 자동으로 수치를 수집합니다. 별도 실행 없이도 일별 데이터가 쌓입니다.</p>

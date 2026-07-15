@@ -1,5 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl } from "@/lib/url-utils";
 
@@ -15,7 +15,7 @@ export const maxDuration = 120;
  *
  * 충돌(이미 같은 정규화 URL이 존재)은 건너뜀 → unique 제약 위반 방지.
  */
-export async function GET(_req: NextRequest) {
+export async function GET() {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

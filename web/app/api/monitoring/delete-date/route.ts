@@ -30,7 +30,7 @@ export async function DELETE(req: NextRequest) {
 
     console.log(`[LOG] 🗑️ ${dateParam} 데이터 삭제 중...`);
 
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from("post_daily_stats")
       .delete()
       .eq("measured_at", dateParam);

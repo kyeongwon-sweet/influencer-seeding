@@ -7,6 +7,29 @@ import { normalizeChannelType } from "@/app/monitoring/lib";
 import { triggerCaptionBackfill, needsCaption } from "@/lib/github-dispatch";
 import { upsertSponsoredRows } from "@/lib/sponsored-write";
 
+type DailyStatRow = {
+  post_id: string;
+  measured_at: string;
+  play_count: number | null;
+  likes_count: number | null;
+  comments_count: number | null;
+  created_at?: string | null;
+  reach_count?: number | null;
+  manual?: boolean | null;
+};
+
+type MonotonicDailyStatRow = DailyStatRow & {
+  play_collected: boolean;
+  play_count: number;
+};
+
+type SponsoredPostRow = Record<string, unknown> & {
+  id: string;
+  url: string;
+  posted_at?: string | null;
+  post_daily_stats?: DailyStatRow[];
+};
+
 export async function GET(req: NextRequest) {
   // URL 정규화 마이그레이션 엔드포인트
   // (req.url 은 Vercel 런타임에서 쿼리가 누락될 수 있어 req.nextUrl 사용)
@@ -54,7 +77,7 @@ export async function GET(req: NextRequest) {
 
   // sponsored_posts 조회 (influencer_id가 NULL이므로 조인 불가)
   // 게시물도 페이지네이션으로 전부 조회 (Supabase 기본 1000행 상한 우회 — 게시물 1000개 초과 시 누락 방지)
-  const posts: any[] = [];
+  const posts: SponsoredPostRow[] = [];
   {
     const PAGE = 1000;
     for (let from = 0; ; from += PAGE) {
@@ -73,13 +96,13 @@ export async function GET(req: NextRequest) {
   // 모든 post_daily_stats를 페이지네이션으로 전부 조회 후 post별 그룹핑
   // (N+1 쿼리 방지 + Supabase 기본 1000행 상한으로 과거 데이터가 잘리는 문제 방지)
   const ids = (posts ?? []).map((p) => p.id);
-  const statsByPost = new Map<string, any[]>();
+  const statsByPost = new Map<string, DailyStatRow[]>();
   // ⚠️ .in("post_id", ids) 쓰지 말 것 — 게시물 수백 개면 id 목록이 쿼리 URL 한도를 넘어
   //    PostgREST가 0행을 반환(2026-07-01 확인). ids=전체 게시물이라 필터 불필요 → 전량 조회 후 post_id로 그룹핑.
   // 성능: select("*") 대신 필요한 컬럼만 + 순차 페이지네이션(왕복 N회) 대신 count 기반 병렬 조회로 로딩 단축.
   const PAGE = 1000;
   const STAT_COLS = "post_id, measured_at, play_count, likes_count, comments_count, created_at, reach_count, manual";
-  const collect = (page: any[] | null | undefined) => {
+  const collect = (page: DailyStatRow[] | null | undefined) => {
     for (const s of page ?? []) {
       const arr = statsByPost.get(s.post_id) ?? [];
       arr.push(s);
@@ -97,7 +120,7 @@ export async function GET(req: NextRequest) {
         const { data: page, error } = await supabase.from("post_daily_stats").select(STAT_COLS)
           .order("measured_at", { ascending: false }).order("id", { ascending: true }).range(from, from + PAGE - 1);
         if (error) { console.error("[sponsored-posts] stats 조회 실패(있는 데이터로 진행):", error.message); break; }
-        collect(page);
+        collect(page as DailyStatRow[]);
         if (!page || page.length < PAGE) break;
       }
     } else {
@@ -114,7 +137,7 @@ export async function GET(req: NextRequest) {
       );
       for (const { data: page, error } of results) {
         if (error) { console.error("[sponsored-posts] stats 조회 실패(있는 데이터로 진행):", error.message); continue; }
-        collect(page);
+        collect(page as DailyStatRow[]);
       }
     }
   }
@@ -124,7 +147,7 @@ export async function GET(req: NextRequest) {
     post_daily_stats: statsByPost.get(post.id) ?? [],
   }));
 
-  const result = (data ?? []).map((post: any) => {
+  const result = (data ?? []).map((post: SponsoredPostRow) => {
     // 과거→현재 정렬
     const postedAt = post.posted_at ? String(post.posted_at).slice(0, 10) : null;
     const visibleStats = (post.post_daily_stats ?? []).filter((s: { measured_at: string }) => {
@@ -140,7 +163,7 @@ export async function GET(req: NextRequest) {
     //    단, 수기 수정(manual)은 팀이 의도한 정정값이므로 하향이어도 그대로 인정하고 기준선을 리셋.
     //    (수기 0은 예외 — 오입력/비우기일 가능성이 높고 이후 증분이 전체값으로 폭주하므로 기존 보정 유지)
     let maxPlay = 0;
-    const mono = asc.map((s: any) => {
+    const mono: MonotonicDailyStatRow[] = asc.map((s: DailyStatRow) => {
       const playCollected = s.play_count != null; // 원본 수집 여부 (mono 보정 전)
       const isManualFix = s.manual === true && playCollected && Number(s.play_count) > 0;
       const play_count = isManualFix ? Number(s.play_count)
@@ -151,7 +174,7 @@ export async function GET(req: NextRequest) {
     const desc = [...mono].reverse();
     // all_stats는 게시물별 이력 전량(수천 행)이라 payload의 대부분 → 프런트가 실제 쓰는 필드만 남겨 경량화.
     // (post_id·created_at은 all_stats에서 미사용. latest/prev은 created_at을 쓰므로 full mono에서 뽑음.)
-    const allStatsLight = mono.map((s: any) => ({
+    const allStatsLight = mono.map((s: MonotonicDailyStatRow) => ({
       measured_at: s.measured_at,
       play_count: s.play_count,
       likes_count: s.likes_count,

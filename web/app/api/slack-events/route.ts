@@ -12,6 +12,19 @@ export const dynamic = "force-dynamic";
 
 const BUCKET = "yeomun";
 
+type SlackEventPayload = {
+  type?: string;
+  challenge?: string;
+  event?: {
+    type?: string;
+    channel_type?: string;
+    bot_id?: string;
+    subtype?: string;
+    user?: string;
+    channel?: string;
+  };
+};
+
 function verifySlack(raw: string, ts: string, sig: string, secret: string): boolean {
   if (!ts || !sig) return false;
   // 5분 이상 지난 요청은 거부(재전송 공격 방지)
@@ -31,7 +44,7 @@ export async function POST(req: NextRequest) {
   const ts = req.headers.get("x-slack-request-timestamp") || "";
   const sig = req.headers.get("x-slack-signature") || "";
 
-  let body: any;
+  let body: SlackEventPayload;
   try {
     body = JSON.parse(raw);
   } catch {

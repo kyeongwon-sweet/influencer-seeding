@@ -212,6 +212,7 @@ export function safeIncrement(allStats: DailyStats[], s: DailyStats | null | und
 // 증분량(게시물 열/상단 카드 합계): 안전 규칙으로 계산. 배너는 도달수(reach) 기준.
 // (prev 인자는 호출 시그니처 호환용 — 안전 규칙은 all_stats에서 직전 유효값을 직접 찾는다.)
 export function viewIncrement(post: Post, s: DailyStats | null | undefined, _prev?: DailyStats | null | undefined): number | null {
+  void _prev;
   return safeIncrement(post.all_stats ?? [], s, (post.channel_type ?? "").includes("배너"), post.posted_at);
 }
 

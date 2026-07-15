@@ -921,7 +921,7 @@ export default function OrganicPage() {
                     <tr>
                       <td colSpan={10} className="px-5 py-14 text-center">
                         <p className="text-sm font-medium text-a-ink mb-1">수집된 게시물이 없습니다</p>
-                        <p className="text-xs text-a-ink-muted">'지금 수집' 버튼으로 라라스윗 언급 게시물을 자동 수집하거나, 직접 추가할 수 있습니다.</p>
+                        <p className="text-xs text-a-ink-muted">&apos;지금 수집&apos; 버튼으로 라라스윗 언급 게시물을 자동 수집하거나, 직접 추가할 수 있습니다.</p>
                       </td>
                     </tr>
                   )}
@@ -1083,14 +1083,14 @@ export default function OrganicPage() {
             <p className="text-a-ink-muted leading-relaxed">유튜브·X(트위터)·틱톡·네이버 블로그·스레드 등에서 라라스윗을 자발적으로 언급한 게시물을 수집·관리합니다. 협찬 없이 자연 발생한 노출을 추적합니다.</p>
           </HelpSection>
           <HelpSection title="버튼 설명">
-            <HelpItem label="지금 수집 —">Apify로 유튜브·X·틱톡·네이버 블로그·스레드에서 '라라스윗' 언급 게시물을 자동 수집합니다. (인스타그램은 검색 대신 기존 게시물의 조회수만 갱신)</HelpItem>
+            <HelpItem label="지금 수집 —">Apify로 유튜브·X·틱톡·네이버 블로그·스레드에서 &apos;라라스윗&apos; 언급 게시물을 자동 수집합니다. (인스타그램은 검색 대신 기존 게시물의 조회수만 갱신)</HelpItem>
             <HelpItem label="노션 불러오기 —">노션 무상노출 DB를 조회해 새 게시물을 자동으로 추가합니다.</HelpItem>
             <HelpItem label="CSV 업로드 —">자동 수집에서 누락된 게시물이나 수기 정리분을 CSV로 일괄 등록합니다.</HelpItem>
             <HelpItem label="+ 게시물 추가 —">게시물을 개별 수동 등록합니다.</HelpItem>
             <HelpItem label="엑셀 다운로드 —">현재 필터가 적용된 목록을 CSV로 내려받습니다.</HelpItem>
           </HelpSection>
           <HelpSection title="유형 분류">
-            <p className="text-a-ink-muted leading-relaxed">각 게시물의 '유형' 셀을 클릭해 무가시딩·오가닉 노출·연예인 언급으로 분류할 수 있고, 상단 필터로 유형별 조회가 가능합니다.</p>
+            <p className="text-a-ink-muted leading-relaxed">각 게시물의 &apos;유형&apos; 셀을 클릭해 무가시딩·오가닉 노출·연예인 언급으로 분류할 수 있고, 상단 필터로 유형별 조회가 가능합니다.</p>
           </HelpSection>
           <HelpSection title="셀 편집">
             <p className="text-a-ink-muted leading-relaxed">계정명·캡션·언급 제품·업로드일·조회수·유형·특이사항 셀을 클릭하면 바로 수정됩니다. 언급 제품은 쉼표로 여러 개를 입력할 수 있습니다.</p>

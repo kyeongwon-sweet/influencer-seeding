@@ -4,6 +4,8 @@ import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl } from "@/lib/url-utils";
 import { logger } from "@/lib/logger";
 
+type OrganicMentionPayload = Record<string, unknown> & { url?: unknown };
+
 export async function GET() {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -28,13 +30,13 @@ export async function POST(req: NextRequest) {
 
   // URL 정규화: 모든 무상노출 언급의 URL을 정규화 후 저장
   // 목적: URL 비교 오류 방지 (쿼리 파라미터, trailing slash 등)
-  const normalizeMention = (mention: any) => ({
+  const normalizeMention = (mention: OrganicMentionPayload) => ({
     ...mention,
-    url: mention.url ? normalizeUrl(mention.url) : mention.url,
+    url: typeof mention.url === "string" ? normalizeUrl(mention.url) : mention.url,
   });
 
   if (Array.isArray(body)) {
-    const normalizedBody = body.map(normalizeMention);
+    const normalizedBody = (body as OrganicMentionPayload[]).map(normalizeMention);
 
     logger.info("organic-mentions-api", "무상노출 데이터 추가 시작", {
       count: body.length,
@@ -61,7 +63,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(data, { status: 201 });
   }
 
-  const normalizedBody = normalizeMention(body);
+    const normalizedBody = normalizeMention(body as OrganicMentionPayload);
 
   logger.info("organic-mentions-api", "무상노출 데이터 추가 시작", {
     count: 1,

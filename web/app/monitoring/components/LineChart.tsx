@@ -133,18 +133,18 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
     const secRange = secMax - secMin || 1;
     const secYS = (v: number) => ch - ((v - secMin) / secRange) * (ch - chTop); // 다른 선과 동일하게 상단 여유 확보(맨 위 붙어 넘침 방지)
     // secondaryData가 있는 모든 점을 포함 (필터링 안 함)
-    const secPts: [number, number][] = data.map((d, i) => {
+    const secPts = data.map<[number, number] | null>((d, i) => {
       const v = secMap.get(normalizeDate(d.date));
-      if (v == null) return null as any;
+      if (v == null) return null;
       return [xS(i), secYS(v)];
-    }).filter(p => p !== null);
+    }).filter((p): p is [number, number] => p !== null);
     if (secPts.length === 0) return null;
     if (secPts.length === 1) {
       // 1개 포인트: 점 표시용 경로 (반경 2px 원)
       const [x, y] = secPts[0];
       return `M ${x} ${y - 2} A 2 2 0 0 1 ${x} ${y + 2} A 2 2 0 0 1 ${x} ${y - 2}`;
     }
-    return smoothCurvePath(secPts as [number, number][]);
+    return smoothCurvePath(secPts);
   })();
 
   const secondaryTicks = (() => {

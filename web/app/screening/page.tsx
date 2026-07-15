@@ -427,15 +427,6 @@ export default function ScreeningPage() {
     setList(prev => prev.map(i => i.id === id ? { ...i, status } : i));
   }
 
-  async function updateCategory(id: string, category: string) {
-    await fetch(`/api/influencers/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ category: category || null }),
-    });
-    setList(prev => prev.map(i => i.id === id ? { ...i, category: category || null } : i));
-  }
-
   async function applyBulkStatus() {
     if (selected.size === 0) return;
     setApplying(true);
@@ -472,7 +463,8 @@ export default function ScreeningPage() {
   function toggleSelect(id: string) {
     setSelected(prev => {
       const s = new Set(prev);
-      s.has(id) ? s.delete(id) : s.add(id);
+      if (s.has(id)) s.delete(id);
+      else s.add(id);
       return s;
     });
   }
@@ -1213,7 +1205,7 @@ export default function ScreeningPage() {
               </button>
             </div>
             <p className="text-xs text-a-ink-muted mb-5 leading-relaxed">
-              아래 조건을 <strong className="text-a-ink font-semibold">모두 충족</strong>한 계정만 스크리닝 시 '통과'로 자동 분류됩니다. 비워두면 해당 조건은 무시됩니다.
+              아래 조건을 <strong className="text-a-ink font-semibold">모두 충족</strong>한 계정만 스크리닝 시 &apos;통과&apos;로 자동 분류됩니다. 비워두면 해당 조건은 무시됩니다.
             </p>
             <div className="space-y-2.5">
               {([
@@ -1366,7 +1358,7 @@ export default function ScreeningPage() {
           </HelpSection>
           <HelpSection title="버튼 설명">
             <HelpItem label="스크리닝 실행 —">아직 지표가 없는 계정만 대상으로 Apify를 통해 데이터를 수집합니다(이미 수집된 계정은 건너뜀). 백그라운드 작업으로 처리되며 완료 시 결과가 자동 반영됩니다. 5분이 넘으면 지연 안내가 뜨지만 작업은 계속 진행됩니다.</HelpItem>
-            <HelpItem label="기준 설정 —">통과 자동 분류 조건(팔로워·100만뷰 개수·알고리즘 계수·총 평균 조회수·광고 비율)을 정합니다. 설정한 조건을 모두 충족한 계정만 스크리닝 시 '통과'로 자동 분류되며, 비워둔 조건은 무시됩니다. (표의 '통과 기준' 열에서 '보기'를 누르면 항목별 충족 여부 확인)</HelpItem>
+            <HelpItem label="기준 설정 —">통과 자동 분류 조건(팔로워·100만뷰 개수·알고리즘 계수·총 평균 조회수·광고 비율)을 정합니다. 설정한 조건을 모두 충족한 계정만 스크리닝 시 &apos;통과&apos;로 자동 분류되며, 비워둔 조건은 무시됩니다. (표의 &apos;통과 기준&apos; 열에서 &apos;보기&apos;를 누르면 항목별 충족 여부 확인)</HelpItem>
             <HelpItem label="CSV 가져오기 —">인플루언서명·URL·플랫폼·상태·카테고리 컬럼의 CSV로 계정을 일괄 등록합니다. (템플릿 다운로드 제공)</HelpItem>
             <HelpItem label="엑셀 다운로드 —">현재 목록의 전체 스크리닝 지표를 CSV로 내려받습니다.</HelpItem>
           </HelpSection>
@@ -1377,7 +1369,7 @@ export default function ScreeningPage() {
             <HelpItem label="채널명·특이사항 —">셀을 클릭하면 바로 수정·저장할 수 있습니다.</HelpItem>
           </HelpSection>
           <HelpSection title="검색어 트렌드">
-            <p className="text-a-ink-muted leading-relaxed">'검색어 트렌드' 열은 광고 전후 네이버 검색량 변화율(후 7일 평균 대비 전 7일 평균)로, 광고 화제성을 가늠하는 지표입니다.</p>
+            <p className="text-a-ink-muted leading-relaxed">&apos;검색어 트렌드&apos; 열은 광고 전후 네이버 검색량 변화율(후 7일 평균 대비 전 7일 평균)로, 광고 화제성을 가늠하는 지표입니다.</p>
           </HelpSection>
           <HelpSection title="필터 및 정렬">
             <HelpItem label="상태 탭 —">전체 / 대기중 / 통과 / 보류 / 탈락 중 원하는 상태만 볼 수 있습니다.</HelpItem>

@@ -1,8 +1,8 @@
 "use client";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 // 게시물 표 — monitoring/page.tsx 에서 추출. 모든 상태/핸들러는 부모(MonitoringPage) 소유(props).
 // 인라인 편집/정렬/선택/열 리사이즈는 전부 부모 함수를 props로 받아 그대로 호출 → 동작 동일.
-import { type Post, type EditCell, type DailyStats, type Filters, getFilteredStats, pickRangeStats, hasNotableChange, viewIncrement, incrementTooltip, INCREMENT_HEADER_TOOLTIP, fmt, fmtChannelType, effectiveReach, bannerDailyMetric, pickMetric, CHANNEL_TYPES, INIT_FILTERS, CHART } from "../lib";
+import { type Post, type EditCell, type DailyStats, type Filters, pickRangeStats, hasNotableChange, viewIncrement, incrementTooltip, INCREMENT_HEADER_TOOLTIP, fmt, fmtChannelType, effectiveReach, bannerDailyMetric, pickMetric, CHANNEL_TYPES, INIT_FILTERS, CHART } from "../lib";
 import { MIN_ENTRY_DATE, maxDateKST } from "@/lib/dateRule";
 import { companyForAccount } from "@/lib/companyMap";
 import { productCodeOf } from "@/lib/productCode";
@@ -82,8 +82,11 @@ function TD({ children, right, muted, col, highlighted, w, leftPos, fixed, group
 }
 
 
-function Sparkline({ stats, postId, onClick }: { stats: DailyStats[]; postId: string; onClick: () => void }) {
-  const pts = stats.filter(s => pickMetric(s) != null).map(s => pickMetric(s) as number);
+const Sparkline = memo(function Sparkline({ stats, postId, onClick }: { stats: DailyStats[]; postId: string; onClick: () => void }) {
+  const pts = useMemo(
+    () => stats.map(pickMetric).filter((value): value is number => value != null),
+    [stats],
+  );
   if (pts.length < 2) return <button onClick={onClick} className="text-xs text-a-ink-muted">-</button>;
   const W = 72, H = 24, pad = 2;
   const min = Math.min(...pts), max = Math.max(...pts);
@@ -110,7 +113,7 @@ function Sparkline({ stats, postId, onClick }: { stats: DailyStats[]; postId: st
       </svg>
     </button>
   );
-}
+});
 
 
 
@@ -592,7 +595,7 @@ function PostsTable(props: Props) {
                   <tr>
                     <td colSpan={colSpan} className="px-5 py-14 text-center">
                       <p className="text-sm font-medium text-a-ink mb-1">추적 중인 협찬 게시물이 없습니다</p>
-                      <p className="text-xs text-a-ink-muted">상단 '+ 게시물 추가' 버튼으로 협찬 게시물을 등록하세요.</p>
+                      <p className="text-xs text-a-ink-muted">상단 &apos;+ 게시물 추가&apos; 버튼으로 협찬 게시물을 등록하세요.</p>
                     </td>
                   </tr>
                 )}

@@ -1,5 +1,14 @@
 # AI Shared Status
 
+## 2026-07-15 dashboard code review + lint/efficiency cleanup (Codex)
+Clean worktree `C:/tmp/influencer-review-opt-20260715121802`에서 `origin/main` 기준으로만 작업함. 메인 워크트리의 동시 세션 변경은 건드리지 않음.
+- `web/package.json`: Next 15에서 deprecated 된 `next lint`를 ESLint CLI로 전환. 범위는 `app components lib middleware.ts tests`로 제한해 `.next`/`next-env.d.ts` 산출물 오탐을 제외.
+- Lint errors 86개를 0개로 정리. 남은 15개는 warnings만 있음: hook dependency 8개, `<img>` 최적화 7개. `npm.cmd run lint` exit 0 확인.
+- `PostsTable` 미니그래프를 `memo + useMemo`로 감싸 행 재렌더 시 반복 계산을 줄임.
+- API/공통 유틸의 명시적 `any`를 `unknown`/구체 row 타입으로 축소하고, 미사용 변수/죽은 함수/JSX unescaped entity/삼항 side-effect를 정리.
+- 검증: `npm.cmd run lint` pass(0 errors, 15 warnings), `npx.cmd tsc --noEmit --incremental false` pass, `npm.cmd test` pass(27/27), `npm.cmd run build` pass(Next 15.5.19, `/monitoring` build size 37.2 kB).
+- 아직 배포하지 않음. 동시 작업 보호를 위해 이 clean worktree 변경분만 별도 커밋/배포해야 함.
+
 ## 2026-07-15 시으니네 paired 시트 정리 완료 (Codex)
 Claude 요청 대기건 처리 완료. 시트 `[빙과] 마케팅_대시보드(실무용)_25.09~` / `콘텐츠 대시보드 연동`:
 - row 819 시으니네(틱톡/미러링): `BK819:BN819`의 `249,508` 오염값 삭제. Readback: `BJ819=240,811`, `BK:BN blank`, `BO819=38,300`, `BP819=58,300`, `BQ819=102,700`, `J819=44,400`.

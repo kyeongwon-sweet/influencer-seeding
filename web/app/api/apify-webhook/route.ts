@@ -707,19 +707,7 @@ async function handleOrganicRefresh(supabase: ReturnType<typeof getServerSupabas
 
 // ── 무상 노출 ────────────────────────────────────────────────────────
 
-const ORGANIC_MIN_FOLLOWERS = 500_000;  // 50만 이상 인플루언서
 const ORGANIC_MIN_VIEWS = 500_000;      // 50만 이상 뷰
-const CELEBRITY_MIN_FOLLOWERS = 1_000_000;  // 100만+ = 아이돌/연예인으로 간주
-const CELEBRITY_KEYWORDS = ['연예인', '아이돌', '배우', '가수', '탤런트', '방송인', '모델', '셀럽', '연예'];
-
-function isCelebrity(username: string, followers: number, bio: string = ''): boolean {
-  // 100만+ 팔로워 = 아이돌/연예인으로 간주
-  if (followers >= CELEBRITY_MIN_FOLLOWERS) return true;
-
-  // 또는 계정명/소개에 연예인 키워드 포함
-  const text = (username + ' ' + bio).toLowerCase();
-  return CELEBRITY_KEYWORDS.some(k => text.includes(k));
-}
 
 // Helper: 날짜 파싱 (다양한 형식 지원)
 function parseDate(rawTs: unknown): string | null {

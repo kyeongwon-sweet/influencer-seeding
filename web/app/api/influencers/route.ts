@@ -4,13 +4,15 @@ import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl } from "@/lib/url-utils";
 import { logger } from "@/lib/logger";
 
+type InfluencerPayload = Record<string, unknown> & { url?: unknown };
+
 export async function GET() {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const supabase = getServerSupabase();
   // 페이지네이션 — Supabase 기본 1000행 상한으로 인플루언서가 잘리는 것 방지(현재 201행이나 증가 대비).
-  const all: any[] = [];
+  const all: InfluencerPayload[] = [];
   const PAGE = 1000;
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await supabase
@@ -34,15 +36,16 @@ export async function POST(req: NextRequest) {
 
   // URL 정규화: 모든 인플루언서의 URL을 정규화 후 저장
   // 목적: URL 비교 오류 방지 (쿼리 파라미터, trailing slash 등)
-  const normalizeInfluencer = (inf: any) => ({
+  const normalizeInfluencer = (inf: InfluencerPayload) => ({
     ...inf,
-    url: inf.url ? normalizeUrl(inf.url) : inf.url,
+    url: typeof inf.url === "string" ? normalizeUrl(inf.url) : inf.url,
   });
 
-  const isArray = Array.isArray(body);
+  const input = body as InfluencerPayload | InfluencerPayload[];
+  const isArray = Array.isArray(input);
   const normalizedBody = isArray
-    ? body.map(normalizeInfluencer)
-    : normalizeInfluencer(body);
+    ? input.map(normalizeInfluencer)
+    : normalizeInfluencer(input);
 
   logger.info("influencers-api", "인플루언서 추가 시작", {
     count: isArray ? body.length : 1,

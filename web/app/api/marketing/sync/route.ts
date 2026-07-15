@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
     const supabase = getServerSupabase();
 
     // upsert: URL이 이미 있으면 업데이트, 없으면 삽입
-    const { error, data } = await supabase
+    const { error } = await supabase
       .from("sponsored_posts")
       .upsert(cleaned, { onConflict: "url", ignoreDuplicates: false })
       .select();

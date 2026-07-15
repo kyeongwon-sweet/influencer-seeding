@@ -248,7 +248,8 @@ export default function ListupPage() {
   function toggleSelect(id: string) {
     setSelected(prev => {
       const s = new Set(prev);
-      s.has(id) ? s.delete(id) : s.add(id);
+      if (s.has(id)) s.delete(id);
+      else s.add(id);
       return s;
     });
   }
@@ -1318,7 +1319,7 @@ export default function ListupPage() {
             <HelpItem label="전체 삭제 —">발굴된 계정을 모두 삭제합니다.</HelpItem>
           </HelpSection>
           <HelpSection title="팔로워·조회수·참여수 열">
-            <p className="text-a-ink-muted leading-relaxed">스크리닝 완료 후 채워지는 지표입니다. 조회수 칸은 최근 콘텐츠 5개 평균 조회수와 그 아래 '팔로워 대비 비율'(평균 조회수÷팔로워, 높을수록 확산력 우수)을 함께 보여줍니다. 참여수는 좋아요+댓글 합계입니다. 이 값으로 정렬해 시딩 효율이 높은 계정을 우선순위에 올릴 수 있습니다.</p>
+            <p className="text-a-ink-muted leading-relaxed">스크리닝 완료 후 채워지는 지표입니다. 조회수 칸은 최근 콘텐츠 5개 평균 조회수와 그 아래 &apos;팔로워 대비 비율&apos;(평균 조회수÷팔로워, 높을수록 확산력 우수)을 함께 보여줍니다. 참여수는 좋아요+댓글 합계입니다. 이 값으로 정렬해 시딩 효율이 높은 계정을 우선순위에 올릴 수 있습니다.</p>
           </HelpSection>
           <HelpSection title="표에서 바로 수정">
             <p className="text-a-ink-muted leading-relaxed">채널명·발굴 키워드·팔로워·팔로워 대비 비율·캡션·업로드일·특이사항은 셀을 클릭해 바로 수정할 수 있습니다. 스크리닝으로 못 채운 값을 수동으로 보정할 때 사용하세요.</p>

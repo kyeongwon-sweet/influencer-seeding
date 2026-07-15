@@ -109,7 +109,7 @@ export function validateFilterResult(
  * - 목적: 응답 형식 변경으로 인한 버그 조기 발견
  */
 export function validateApiResponse(
-  response: any,
+  response: unknown,
   expectedFields: string[]
 ): ValidationResult {
   const errors: string[] = [];

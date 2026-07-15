@@ -20,16 +20,18 @@ export function ElapsedTimer() {
 // 핸들러 묶음을 "정체성 고정"으로 만들어 React.memo(PostsTable)가 실제로 동작하게 함.
 // 반환된 함수들은 매번 같은 참조지만 항상 최신 클로저를 호출 → deps 신경 안 써도 stale 없음.
 // (key 집합은 호출 동안 불변이라는 전제 — 본 페이지의 핸들러 묶음은 고정)
-export function useStableHandlers<T extends Record<string, (...args: any[]) => any>>(handlers: T): T {
+type StableHandler = (...args: never[]) => unknown;
+
+export function useStableHandlers<T extends Record<string, StableHandler>>(handlers: T): T {
   const ref = useRef(handlers);
   ref.current = handlers;
   const stableRef = useRef<T | null>(null);
   if (stableRef.current === null) {
-    const out = {} as Record<string, (...args: any[]) => any>;
-    for (const key of Object.keys(handlers)) {
-      out[key] = (...args: any[]) => ref.current[key](...args);
+    const out = {} as T;
+    for (const key of Object.keys(handlers) as Array<keyof T>) {
+      out[key] = ((...args: Parameters<T[typeof key]>) => ref.current[key](...args)) as T[typeof key];
     }
-    stableRef.current = out as T;
+    stableRef.current = out;
   }
   return stableRef.current;
 }

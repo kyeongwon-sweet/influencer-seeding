@@ -124,8 +124,22 @@ async function collect(req: NextRequest) {
         proxy: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"] }, // 인스타 차단 회피 → 릴스 조회수 수집
       });
 
+      type ApifyPostItem = Record<string, unknown> & {
+        error?: unknown;
+        url?: string;
+        timestamp?: string | number;
+        takenAt?: string | number;
+      };
+      const toMetric = (value: unknown): number => {
+        if (typeof value === "number") return value;
+        if (typeof value === "string") {
+          const parsed = Number(value);
+          return Number.isFinite(parsed) ? parsed : 0;
+        }
+        return 0;
+      };
       const items = await client.dataset(run.defaultDatasetId).listItems();
-      const resultItems = (items.items || []) as any[]; // Apify 외부 JSON — 필드 동적
+      const resultItems = (items.items || []) as ApifyPostItem[]; // Apify 외부 JSON — 필드 동적
 
       console.log(`[LOG] 📊 Apify 응답: ${resultItems.length}개 게시물`);
 
@@ -143,14 +157,14 @@ async function collect(req: NextRequest) {
         }
 
         const url = (item.url || "").split("?")[0];
-        const sc = igShortcode(item.url);
+        const sc = igShortcode(url);
         if (sc && !requestedKeys.has(sc)) {
           console.warn(`   [WARN] 요청하지 않은 IG 응답 제외: ${url} (key=${sc})`);
           continue;
         }
-        const views = item.videoPlayCount || item.videoViewCount || item.impressions || item.viewCount || item.count || 0;
-        const likes = item.likesCount || item.likeCount || 0;
-        const comments = item.commentsCount || item.commentCount || item.comments || 0;
+        const views = toMetric(item.videoPlayCount ?? item.videoViewCount ?? item.impressions ?? item.viewCount ?? item.count);
+        const likes = toMetric(item.likesCount ?? item.likeCount);
+        const comments = toMetric(item.commentsCount ?? item.commentCount ?? item.comments);
         const ts = item.timestamp || item.takenAt;
         let postedAt: string | null = null;
         if (typeof ts === "string") postedAt = ts.slice(0, 10);

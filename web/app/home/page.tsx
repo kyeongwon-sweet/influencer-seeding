@@ -145,14 +145,6 @@ export default function DashboardPage() {
     return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
 
-  const lastListupAt = influencers.length > 0
-    ? influencers.map(i => i.created_at).filter(Boolean).sort().reverse()[0] ?? null
-    : null;
-  const allMetricsRunAt = influencers.flatMap(i => (i.screening_metrics ?? []).map(m => m.run_at));
-  const lastScreeningAt = allMetricsRunAt.length > 0
-    ? allMetricsRunAt.filter(Boolean).sort().reverse()[0] ?? null
-    : null;
-
   const total = influencers.length;
   const counts = Object.fromEntries(
     STATUS_CONFIG.map(s => [s.value, influencers.filter(i => i.status === s.value).length])
