@@ -29,6 +29,7 @@
 // ═══════════════════════════════════════════════════════════════
 const CONFIG = {
   SHEET_GID: 1937186871,
+  KST_TIMEZONE: "Asia/Seoul",
   API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/bulk",
   STATS_API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/stats-import",
   LIST_API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/list-for-sheet",  // DB→시트 반영(대시보드 추가분 가져오기)용 조회
@@ -177,9 +178,9 @@ function toNumber_(v) {
   return isNaN(n) ? null : n;
 }
 
-/** 스크립트 시간대 기준 오늘 (YYYY-MM-DD). 업로드일이 이보다 크면 미래 = 아직 게시 전. */
+/** KST 기준 오늘 (YYYY-MM-DD). 업로드일이 이보다 크면 미래 = 아직 게시 전. */
 function todayStr_() {
-  return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
+  return Utilities.formatDate(new Date(), CONFIG.KST_TIMEZONE, "yyyy-MM-dd");
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -946,10 +947,13 @@ function checkSetup() {
     const lastStarted = props.getProperty("DAILY_AUTO_LAST_STARTED_AT") || "-";
     const lastFinished = props.getProperty("DAILY_AUTO_LAST_FINISHED_AT") || "-";
     const lastStatus = props.getProperty("DAILY_AUTO_LAST_STATUS") || "기록 없음";
+    const scriptTimezone = Session.getScriptTimeZone();
+    const kstToday = todayStr_();
     safeAlert_(
       `✅ 설정 정상\n` +
       `탭: ${sheet.getName()}\n` +
       `인식된 필드: ${Object.keys(fieldCols).join(", ")}\n\n` +
+      `🕘 스크립트 시간대: ${scriptTimezone} / KST 오늘: ${kstToday}\n` +
       `⏰ 자동 동기화 트리거: dailyAuto ${dailyAutoCount}개, 구버전 syncNew ${legacySyncNewCount}개\n` +
       `예정: 매일 ${CONFIG.TRIGGER_HOUR}:${CONFIG.TRIGGER_MINUTE} KST 전후(12:20 리포트 전)\n` +
       `마지막 dailyAuto 시작: ${lastStarted}\n` +

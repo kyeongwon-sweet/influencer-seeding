@@ -1,5 +1,16 @@
 # AI Shared Status
 
+## 2026-07-15 exportStats today boundary fixed to KST (Codex)
+`Combined_Sheet_AppsScript.gs` now computes `todayStr_()` with `CONFIG.KST_TIMEZONE = "Asia/Seoul"` instead of `Session.getScriptTimeZone()`. This prevents KST morning runs from treating yesterday's latest date cell as "today" when the Apps Script project timezone is not Asia/Seoul.
+
+Scope is intentionally narrow:
+- `exportStats`/`importStats` today caps now use explicit KST through the shared `todayStr_()`.
+- Existing canonical markers are preserved: `carriedCells`, `setFormulas`, `colLetter_`, `endedByKey`, `incWritten`.
+- `checkSetup()` now displays both the Apps Script project timezone and KST today so the sheet session can verify the environment before export.
+
+Validation:
+- marker check passed for `KST_TIMEZONE`, `todayStr_`, `carriedCells`, `setFormulas`, `colLetter_`, `endedByKey`, `incWritten`.
+- Apps Script syntax check passed with Node after converting `const`/`let` to `var` for local parsing compatibility.
 ## 2026-07-15 썰박스·썰뜨기 업체명 제거 (Claude, 사용자 "업체명 있으면 안 돼")
 썰박스·썰뜨기는 전부 **위성채널**인데 7건에 업체명이 오입력돼 있었음(루나앤코코·쿠캣·동후작가·유머패밀리·굿띵투유) — [[owned-satellite-no-cost-rule]] 위반 + 아래 백필 학습을 오염시킨 모호계정 원인.
 - **DB 7건 company_name=null 완료**(readback 잔존 0). 백업 `C:/tmp/sulbox-sultteugi-backup-20260715.json`(62건 전체).
