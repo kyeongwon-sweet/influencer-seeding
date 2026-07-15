@@ -15,26 +15,22 @@
 ## 2026-07-15 고아행(post_id=null) 95건 청소 (Claude)
 `post_daily_stats`에서 **post_id=null 쓰레기 행 95건**(06-04·06-05 자동수집분, 어느 게시물에도 안 붙음) 삭제. 대시보드엔 원래 안 보였으나 교차-복사 스캔 노이즈였음(예: 726,252 등이 미상행으로 잡힘). 백업 `data/output/orphan-stats-20260715.json`, 잔존 0 검증.
 
-## 2026-07-15 자동 수집 measured_at = 수집일(KST 오늘) 통일 (Codex)
-사용자 확정 기준 반영: **자동 수집은 수집일(KST 오늘) 칸만 기록**하고, 어제/과거 날짜는 사람이 명시적으로 날짜를 준 백필·수동 정정 경로에서만 기록한다. 목적은 12:20 증분 리포트의 "어제 확정치"가 자동 수집으로 사후 변경되지 않게 하는 것.
+## 2026-07-15 overnight collection date attribution restored (Codex)
+Correction: commit b50b201 changed automatic overnight collection to stamp KST today, but the daily increment report still targets KST yesterday. That combination creates an off-by-one: a 00:41 KST run captures the previous day's final snapshot, so it must be stored as measured_at = collection date minus 1.
 
-확인 결과 기존 `main`에는 아직 어제 귀속 자동 경로가 남아 있었다:
-- `scripts/run_monitoring.py` 폴백 = KST 어제.
-- `.github/workflows/cron-daily-collect.yml` / `monitoring-retry.yml`이 `MONITORING_DATE=$(TZ=Asia/Seoul date -d 'yesterday' +%F)`를 주입.
-- `web/app/api/monitoring/apify-collect/route.ts`가 webhook `measuredAt=yesterdayKST()`를 전달.
+Verified alignment:
+- daily-increment-report.yml defaults to KST yesterday.
+- If overnight collection writes today's label, the report reads the prior day's growth as yesterday's growth.
+- Scheduled/overnight collection paths must use KST yesterday: cron-daily-collect, monitoring-retry, run_monitoring fallback, and cron apify-collect default.
+- Manual/daytime collection paths stay KST today: collect-now and /api/jobs, so today's data remains hidden by the dashboard/sheet today-exclusion rule.
 
-수정:
-- `run_monitoring.py` 폴백을 KST 오늘로 변경. 과거 백필은 `MONITORING_DATE`를 명시한 경우에만 가능.
-- `cron-daily-collect.yml` / `monitoring-retry.yml`의 게이트·수집 대상 날짜를 KST 오늘로 변경.
-- `apify-collect` 기본 `measuredAt`을 `todayKST()`로 변경.
-- `collect-now`와 `/api/jobs` monitoring은 이미 기본값이 `todayKST()`라 변경 없음.
-- 리포트(`daily-increment-report.yml`)와 시트 import cap(`stats-import`의 `yesterdayKST`)은 어제 확정치를 읽거나 오늘 이후 시트 입력을 막는 경로라 유지.
+Changes:
+- .github/workflows/cron-daily-collect.yml: gate, collect, and status dates restored to KST yesterday.
+- .github/workflows/monitoring-retry.yml: retry date restored to KST yesterday.
+- scripts/run_monitoring.py: no-env fallback restored to KST yesterday.
+- web/app/api/monitoring/apify-collect/route.ts: cron/webhook default restored to yesterdayKST().
 
-검증:
-- 자동 수집 경로(`cron-daily-collect`, `monitoring-retry`, `run_monitoring`, `apify-collect`, `collect-now`, `/api/jobs`, `apify-webhook`)에서 `date -d 'yesterday'`/`yesterdayKST()` 잔존 없음.
-- `PYTHONPYCACHEPREFIX=$TEMP python -m py_compile scripts/run_monitoring.py` 통과.
-- `npm.cmd test` 통과(27/27). `npx tsc --noEmit`은 이 워크트리에 `web/node_modules`가 없어 npm registry 접근을 시도하다 환경 권한(EACCES)으로 실패; TS 변경은 `apify-collect` import/호출명 교체 1곳.
-
+Do not reuse the b50b201 "automatic collection = today" note. It is superseded.
 ## 2026-07-15 syncAll 리포트 전 실행 점검 — Codex 확인/보강
 요청 `0b85801` 확인 결과:
 - 리포트 GHA `daily-increment-report.yml`은 12:20 KST(+13:20/14:20/15:20 백업)에 실행.

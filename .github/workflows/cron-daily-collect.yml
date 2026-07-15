@@ -7,8 +7,8 @@ name: Daily Collect (Vercel 크론 대체)
 # ⏱ GitHub 스케줄 지연 대응(2026-06-19):
 #   - 정각(:00)은 GitHub 부하 피크라 수 시간 지연됨 → 비혼잡 분(:41)으로 이동.
 #   - 15:41/17:41/19:41 UTC 3개 창으로 분산: 한 창이 늦어도 다음 창이 더 일찍 실행될 확률↑.
-#   - 게이트: '오늘(KST) 이미 수집됨'이면 무거운 IG·유튜브 수집을 건너뜀 → 중복 Apify 과금 방지.
-#     (먼저 도는 창이 수집 → 이후 창은 스킵. measured_at은 수집일 KST 오늘로 고정.)
+#   - 게이트: '어제(KST) 데이터가 이미 수집됨'이면 무거운 IG·유튜브 수집을 건너뜀 → 중복 Apify 과금 방지.
+#     (먼저 도는 창이 수집 → 이후 창은 스킵. measured_at은 전일 최종값 날짜로 고정.)
 on:
   schedule:
     - cron: "41 15 * * *"   # 00:41 KST (주 실행)
@@ -52,7 +52,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          export TODAY=$(TZ=Asia/Seoul date +%F)
+          export TODAY=$(TZ=Asia/Seoul date -d 'yesterday' +%F)
           echo "kdate=${TODAY}" >> "$GITHUB_OUTPUT"
           STATUS=$(cd scripts && python << 'EOF' | tail -n1
           import os
@@ -122,7 +122,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
           PYTHONUNBUFFERED: "1"
-          MONITORING_DATE: ${{ steps.check.outputs.kdate }}   # 수집일 KST 오늘로 적재(어제 확정치 자동 변경 방지)
+          MONITORING_DATE: ${{ steps.check.outputs.kdate }}   # 새벽 예약수집은 전일 최종값으로 적재
         # 실패 사유 알럿용으로 출력을 로그 파일에 캡처(pipefail로 python 실패가 단계 실패에 반영).
         run: |
           cd scripts
@@ -220,5 +220,5 @@ jobs:
           STATUS_USER: U0B2Y0ZC8QZ
           PYTHONUNBUFFERED: "1"
         run: |
-          export MONITORING_DATE=$(TZ=Asia/Seoul date +%F)
+          export MONITORING_DATE=$(TZ=Asia/Seoul date -d 'yesterday' +%F)
           cd scripts && python notify_status.py

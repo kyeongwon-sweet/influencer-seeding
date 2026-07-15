@@ -4,7 +4,7 @@ import { getServerSupabase } from "@/lib/supabase-server";
 import { startActorRun } from "@/lib/apify";
 import { notifyJob } from "@/lib/slack";
 import { activeIgPostUrls } from "@/lib/ig-post-urls";
-import { todayKST } from "@/lib/dateRule";
+import { yesterdayKST } from "@/lib/dateRule";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
     }
 
     await supabase.from("jobs").update({ status: "running" }).eq("id", jobId);
-    const measuredAt = todayKST();
+    const measuredAt = yesterdayKST();
     const webhook = `${getAppUrl()}/api/apify-webhook?token=${encodeURIComponent(process.env.WEBHOOK_SECRET ?? "")}&jobId=${jobId}&jobType=monitoring&measuredAt=${encodeURIComponent(measuredAt)}`;
     await startActorRun(
       "apify/instagram-scraper",

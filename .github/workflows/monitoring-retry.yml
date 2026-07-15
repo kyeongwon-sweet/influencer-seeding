@@ -30,7 +30,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          export TODAY_KST=$(TZ=Asia/Seoul date +%F)
+          export TODAY_KST=$(TZ=Asia/Seoul date -d 'yesterday' +%F)
           # db.py가 stdout에 DEBUG를 찍으므로 마지막 줄(ok/missing)만 취한다
           STATUS=$(cd scripts && python << 'EOF' | tail -n1
           import os, datetime
@@ -104,6 +104,6 @@ jobs:
           APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
           SKIP_APIFY: "0"
         run: |
-          export MONITORING_DATE=$(TZ=Asia/Seoul date +%F)
+          export MONITORING_DATE=$(TZ=Asia/Seoul date -d 'yesterday' +%F)
           echo "수집 대상(KST): ${MONITORING_DATE}"
           cd scripts && python run_monitoring.py
