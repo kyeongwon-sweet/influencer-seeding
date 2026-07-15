@@ -6,7 +6,16 @@
 - ⚠️미분류 122건=시트 syncAll 필요(사용자/시트세션). 위성 업체명(썰박스/썰뜨기)=DB company_name 빈값, companyForAccount 코드 매핑 파생=Codex/web 코드수정(cosmetic).
 - 미측정 알림 "외 12건"+썰박스 malformed id는 미처리 → Codex collect-now 재실행이 효율적.
 
-<<<<<<< Updated upstream
+## 2026-07-15 협찬 부정 댓글 감시 슬랙 알림 신설 (Claude)
+- 목적: 활성(미종료) 협찬 게시물(IG/YT/TT)의 신규 댓글 중 부정/이슈만 여믄봇이 **#통합_dm댓글승인관리(C0B9RR4E8NR)** 로 알림. 기존 'Instagram Comment Alert'(leo 운영, 우리 광고 댓글 전용·adId 기반)와는 **별개 시스템**(협찬/시딩 게시물 대상).
+- 구성: `scripts/monitor_comments.py` + `.github/workflows/comment-alerts.yml`(매일 09:00 KST + dispatch 입력: to_dm/dry_run/limit_posts/setup_test). DB `post_comments`(unique post_id+comment_id, RLS on)·`post_comment_checks` — `scripts/create_post_comments_table.sql` Supabase 적용 완료(2026-07-15).
+- 비용 최적화: 일일 수집의 `post_daily_stats.comments_count`가 늘어난 게시물만 댓글 스크레이프. 액터: apify/instagram-comment-scraper · streamers/youtube-comments-scraper(NEWEST_FIRST) · clockworks/tiktok-comments-scraper(**⚠️ www.tiktok.com 정규화 필수 — non-www URL은 0건 반환 실측**).
+- 분류: `ANTHROPIC_API_KEY` 시크릿 있으면 Claude(haiku), 없으면 키워드 폴백(정확도 낮음). **⚠️ 현재 시크릿 미등록 → 폴백 동작 중.**
+- 알림 유실 방지: `alerted_at`은 발송 성공 후에만 기록. 미발송(null) 부정/이슈는 다음 실행에서 자동 재발송(봇 미초대 not_in_channel 대비).
+- 검증: 로컬 DRY_RUN + GHA 2회(25/15 게시물, 3플랫폼 102댓글 수집·매칭실패 0·황경원 DM 도착 실측 확인). **⚠️ 채널 발송은 여믄봇이 C0B9RR4E8NR 미초대라 not_in_channel — `/invite @여믄봇` 후 setup_test 재실행 필요.** 커밋 `0be4d18`·`e656c36`·`bef9a32`.
+- 첫 전체 스캔(잔여 ~294게시물)은 다음 스케줄 또는 수동 dispatch에서 실행. Apify 비용: 프로브 ~$0.04 실측, 첫 스캔 추정 수$, 이후 일일 증가분만이라 미미.
+- 2단계(미구현): 보유 계정(온드/위성)은 Vercel env에 이미 있는 `INSTAGRAM_ACCESS_TOKEN`으로 Graph API 숨김 버튼(Slack interactivity 엔드포인트) 추가 가능.
+
 ## 2026-07-15 sheet regeneration requested after DB cleanup (Codex handoff)
 User/Claude request: DB is now the source of truth after cleanup of cluster copies, Siuni rows, deleted videos, and orphan stats. Sheet session should regenerate the `콘텐츠 대시보드 연동` tab from DB.
 
@@ -49,7 +58,7 @@ Validation:
 - **DB(sponsored_posts.company_name) 13건 PATCH 완료**(readback 13/13). 백업 `C:/tmp/company-backfill-backup-20260714.json`.
 - **시트**: 사용자가 Apps Script `fillCompanyFromLearned()`(바이럴 한정·빈칸만·유일업체만) 실행해 채움. 스탠드얼론 스니펫 제공(정본 .gs 미변경).
 - ⚠️ 제외: **위성채널(32건)**=규칙상 업체명 공란이 정상([[owned-satellite-no-cost-rule]]), **협찬(5건)**=업체 개념 약함, **모호계정 5종(20건)**=여러 업체라 자동 못 채움(good_tip_magazine·bibimbap__zip·dotori_channel·shashaping_humor·썰박스(유튜브)). 공백표기 변형(썰뜨기(유튜브)↔썰뜨기 (유튜브))도 상충이라 제외.
-=======
+
 ## 2026-07-15 ✅ 류라이(틱톡/미러링) measured_at 라벨 정정 완료 (Claude, Codex 인계분)
 `4bed32e7...`(https://tiktok.com/@ryuraikj/video/7652295124399000839/) — 403,000 행(rowid `5964d3dc...`, manual=True)의 `measured_at`을 **2026-07-13 → 2026-07-14**로 정정(값 불변, 시트 row 381=07-14와 일치, 07/14 증분 정합). 기존 07-14 행 없어 충돌 없음. 백업 `data/output/ryurai-tt-datefix-20260715.json`. 검증: 07-06=56,706 → 07-14=403,000. **날짜 라벨만, 값 미생성.**
 
@@ -82,18 +91,15 @@ Codex `e32f0ed`(origin/main) 확인: `run_monitoring.py` 폴백=`-timedelta(days
 
 ## 2026-07-15 시으니네 07-13 값 결론 확정 (Claude) — DB 무수정
 Codex의 `5e494a4`(인스타 402,745 DB삭제+시트/DB 정합) 위에서, 남았던 07-13 값 충돌(수기 210,457 vs DB자동 213,566)을 종결. **근거**: 07-13 행 `manual=false`(자동수집), created_at 07-13 19:09 KST; 대표님 **라이브 재확인 224,000**(>213,566>210,457) → 조회수 누적 단조증가 확인 = 자동 213,566은 과대 아님, 210,457은 그날 더 이른 낮은 값. **결정=DB 213,566 유지, 시트를 213,566으로(📥 동기화). DB 쓰기 없음.** 402,745는 전역 스캔 0건(이미 제거) 재확인. 틱톡 07-14=102,700 시트/DB 일치(무수정). 교차복사 스캔=진짜의심 6쌍 잔존이나 전부 종료 07-07 게시물(자기쌍2+종료프리즈4), .gs 종료캡이 중화 → 조치 불필요(66행 Codex 분석과 동일).
->>>>>>> Stashed changes
 
 ## 2026-07-15 고아행(post_id=null) 95건 청소 (Claude)
 `post_daily_stats`에서 **post_id=null 쓰레기 행 95건**(06-04·06-05 자동수집분, 어느 게시물에도 안 붙음) 삭제. 대시보드엔 원래 안 보였으나 교차-복사 스캔 노이즈였음(예: 726,252 등이 미상행으로 잡힘). 백업 `data/output/orphan-stats-20260715.json`, 잔존 0 검증.
 
-<<<<<<< Updated upstream
 ## 2026-07-15 overnight collection date attribution restored (Codex)
 Correction: commit b50b201 changed automatic overnight collection to stamp KST today, but the daily increment report still targets KST yesterday. That combination creates an off-by-one: a 00:41 KST run captures the previous day's final snapshot, so it must be stored as measured_at = collection date minus 1.
-=======
+
 ## ~~2026-07-15 자동 수집 measured_at = 수집일(KST 오늘) 통일 (Codex)~~ ⛔폐기(사용자 결정=어제 원복, 최상단 참조)
 사용자 확정 기준 반영: **자동 수집은 수집일(KST 오늘) 칸만 기록**하고, 어제/과거 날짜는 사람이 명시적으로 날짜를 준 백필·수동 정정 경로에서만 기록한다. 목적은 12:20 증분 리포트의 "어제 확정치"가 자동 수집으로 사후 변경되지 않게 하는 것.
->>>>>>> Stashed changes
 
 Verified alignment:
 - daily-increment-report.yml defaults to KST yesterday.
