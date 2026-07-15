@@ -1,5 +1,25 @@
 # AI Shared Status
 
+## 2026-07-15 sheet regeneration requested after DB cleanup (Codex handoff)
+User/Claude request: DB is now the source of truth after cleanup of cluster copies, Siuni rows, deleted videos, and orphan stats. Sheet session should regenerate the `콘텐츠 대시보드 연동` tab from DB.
+
+Required order:
+1. Normalize duplicate date columns: one column per date, fixed chronological order.
+2. Clear the date/stat area.
+3. Run exportStats to rebuild from DB.
+
+Expected cleanup from regeneration:
+- stale sheet-only remnants from the 17 copied clusters.
+- Siuni contaminated cells such as 402745 and 249508.
+- small foreign values mixed into owner rows that currently trigger importStats copy-suspect skips.
+
+Do not delete:
+- deleted-video URLs must not be re-added: @ssulbox_1/video/7662339923424513300 and 7662308369608510741.
+- the remaining 6 scan pairs known as self-duplicate/noise are not value contamination.
+
+Apps Script canonical markers must stay intact: `carriedCells`, `setFormulas`, `colLetter_`, `endedByKey`, `incWritten`. Do not revert to value-only or carry-J versions.
+
+After sheet regeneration, Claude should run final scan plus DB-to-sheet consistency verification.
 ## 2026-07-15 exportStats today boundary fixed to KST (Codex)
 `Combined_Sheet_AppsScript.gs` now computes `todayStr_()` with `CONFIG.KST_TIMEZONE = "Asia/Seoul"` instead of `Session.getScriptTimeZone()`. This prevents KST morning runs from treating yesterday's latest date cell as "today" when the Apps Script project timezone is not Asia/Seoul.
 
