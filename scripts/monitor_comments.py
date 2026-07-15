@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
-# 협찬 게시물 부정 댓글 감시 → 슬랙(#통합_dm댓글승인관리, 여믄봇) 알림.
+# 협찬 게시물 부정 댓글 감시 → 슬랙(부정댓글 관리 채널, 여믄봇) 알림.
 # comment-alerts.yml(매일 09:00 KST)에서 실행.
 #
 # 흐름:
 #   1) 활성(미종료) 협찬 게시물(인스타/유튜브/틱톡) 로드
 #   2) 일일 수집이 쌓아둔 post_daily_stats.comments_count 최신값 vs post_comment_checks.last_count 비교
 #      → '댓글 수가 늘어난 게시물만' Apify 댓글 액터로 수집 (비용 절감 핵심)
-#   3) post_comments에 없는 신규 댓글만 분류(ANTHROPIC_API_KEY 있으면 Claude, 없으면 키워드 폴백)
-#   4) 부정(negative)/이슈(issue)만 슬랙 채널에 알림, 전체 신규 댓글은 DB 저장(중복 알림 방지)
+#   3) post_comments에 없는 신규 댓글만 분류(ANTHROPIC_API_KEY 있으면 Claude, 없으면 키워드+욕설 폴백)
+#   4) 부정(negative)/이슈(issue)만 슬랙에 알림 — 매일 '[n/n 부정 댓글 관리 스레드]' 부모 아래
+#      스레드 답글로, 처리완료/무시 버튼 포함. 전체 신규 댓글은 DB 저장(중복 알림 방지)
 #
 # 환경변수:
 #   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, APIFY_API_TOKEN, SLACK_BOT_TOKEN  (필수)
-#   ANTHROPIC_API_KEY  (권장 — 없으면 키워드 폴백, 정확도 낮음)
-#   SLACK_CHANNEL      (기본 C0B9RR4E8NR=#통합_dm댓글승인관리. DM 미리보기 시 user id 주입)
+#   ANTHROPIC_API_KEY  (권장 — 없으면 키워드+욕설 폴백, 정확도 낮음)
+#   SLACK_CHANNEL      (기본 C0B659HEYDV=부정 댓글 관리 채널. DM 미리보기 시 user id 주입)
 #   DRY_RUN=1          (슬랙 발송·DB 쓰기 없이 결과만 출력. Apify 수집은 수행됨)
 #   LIMIT_POSTS=N      (스크레이프 대상 게시물 수 상한 — 프로브/테스트용)
 import os
@@ -25,7 +26,7 @@ from datetime import datetime, timezone, timedelta
 from db import get_client
 
 SLACK_API = "https://slack.com/api/chat.postMessage"
-CHANNEL = os.getenv("SLACK_CHANNEL") or "C0B9RR4E8NR"  # #통합_dm댓글승인관리
+CHANNEL = os.getenv("SLACK_CHANNEL") or "C0B659HEYDV"  # 부정 댓글 관리 채널
 KST = timezone(timedelta(hours=9))
 
 FIRST_LIMIT = int(os.getenv("FIRST_LIMIT", "15"))        # 첫 확인 게시물: 최신 N개만
@@ -251,22 +252,49 @@ FETCHERS = {"instagram": _fetch_ig_comments, "youtube": _fetch_yt_comments, "tik
 
 # ── 분류: Claude(권장) 또는 키워드 폴백 ─────────────────────────────────────
 
-# 폴백용 부정/이슈 신호 키워드 (LLM 키 없을 때만 사용 — 정확도 낮음, 참고용)
+# 폴백용 부정/이슈 신호 키워드 (LLM 키 없을 때만 사용 — 정확도 낮음, 참고용).
+#   ANTHROPIC_API_KEY가 있으면 이 목록은 안 쓰이고 Claude가 문맥으로 판별한다(욕설·반어 포함).
 NEG_KEYWORDS = (
+    # 맛·품질·불만
     "맛없", "노맛", "별로", "실망", "최악", "비추", "돈아깝", "돈 아깝", "사지마", "사지 마",
-    "사먹지", "과대광고", "뒷광고", "허위", "사기", "장사기술", "가격이 미쳤", "비싸", "바가지",
-    "양이 너무 적", "양 적", "환불", "이물", "머리카락", "벌레", "곰팡이", "배탈", "설사", "토했",
+    "사먹지", "양이 너무 적", "양 적", "가격이 미쳤", "비싸", "바가지", "창렬",
+    # 광고/바이럴/상술 지적 (사용자 추가)
+    "광고", "바이럴", "뒷광고", "앞광고", "과대광고", "허위", "낚시", "장사기술", "상술",
+    "끼워", "끼워팔", "돈받고", "협찬받", "내돈내산 아니",
+    # CS/위생 이슈
+    "사기", "환불", "이물", "머리카락", "벌레", "곰팡이", "배탈", "설사", "토했",
     "상했", "녹아서 왔", "불량", "누락", "배송이 안", "고객센터", "문의했는데", "답이 없",
 )
+
+# 욕설/비속어 — 정규화(공백·특수문자·반복 제거) 후 부분일치. 자모(ㅅㅂ)·우회표기 변형까지 폭넓게 잡는다.
+#   ⚠️ 완전 포괄은 불가(신조어/변형 무한) → 근본 커버리지는 Claude 분류. 이 목록은 폴백 안전망.
+PROFANITY = (
+    "시발", "씨발", "시1발", "씨1발", "슈발", "쉬발", "씨빨", "ㅅㅂ", "ㅆㅂ", "ㅅ1ㅂ",
+    "병신", "ㅂㅅ", "븅신", "지랄", "ㅈㄹ", "존나", "존내", "ㅈㄴ", "졸라",
+    "좆", "좃", "ㅈ같", "개같", "개소리", "개새", "새끼", "썅", "썅놈", "닥쳐", "꺼져", "닥치",
+    "미친", "미쳤", "또라이", "돌+아이", "등신", "머저리", "쳐먹", "처먹", "빡친", "빡쳐",
+    "역겹", "구역질", "토나", "쓰레기", "노답", "극혐", "혐오",
+)
+
+
+def _norm_profanity(text: str) -> str:
+    """욕설 탐지용 정규화: 소문자화 + 한글/자모/숫자만 남기고 나머지 제거(특수문자로 회피하는 표기 무력화)."""
+    return re.sub(r"[^0-9a-z가-힣ㄱ-ㅎ]", "", (text or "").lower())
 
 
 def _classify_fallback(comments: list) -> list:
     out = []
     for c in comments:
-        t = (c.get("text") or "").replace(" ", "")
+        raw = c.get("text") or ""
+        t = raw.replace(" ", "")
         hit = next((k for k in NEG_KEYWORDS if k.replace(" ", "") in t), None)
-        out.append({"label": "negative" if hit else "normal",
-                    "reason": f"키워드 '{hit}'" if hit else None})
+        if hit:
+            out.append({"label": "negative", "reason": f"키워드 '{hit}'"})
+            continue
+        norm = _norm_profanity(raw)
+        prof = next((p for p in PROFANITY if _norm_profanity(p) in norm), None)
+        out.append({"label": "negative" if prof else "normal",
+                    "reason": f"욕설/비속어 '{prof}'" if prof else None})
     return out
 
 
@@ -283,10 +311,13 @@ def _classify_claude(comments: list) -> list | None:
             "당신은 '라라스윗'(저당 아이스크림·간식 브랜드) 마케팅팀의 SNS 댓글 검토 어시스턴트입니다.\n"
             "협찬/광고 게시물에 달린 아래 댓글들을 하나씩 분류하세요.\n\n"
             "라벨 기준:\n"
-            "- negative: 제품·브랜드에 대한 부정 평가(맛·품질·양·가격 혹평, 구매 만류, 성분·효능 의혹 제기, 비방, 조롱)\n"
+            "- negative: 제품·브랜드 부정 평가(맛·품질·양·가격 혹평, 구매 만류, 성분·효능 의혹),\n"
+            "    광고/협찬 조롱('이거 다 광고', '바이럴 돌리네', '뒷광고'), 끼워팔기·상술 불만('끼워팔기', '낚시'),\n"
+            "    '별로'·실망 표현, 그리고 욕설·비속어·인신공격(ㅅㅂ, 시발, 병신, 꺼져 등 우회표기 포함)\n"
             "- issue: 고객 클레임·CS 이슈(배송 문제, 이물·변질, 환불 요구, 문의 무응답 등 대응이 필요한 문제 제기)\n"
             "- normal: 그 외 전부(긍정, 중립, 단순 질문, 태그, 이모지 등)\n"
-            "주의: 제품과 무관한 잡담·유머는 normal. 반어/비꼼(예: '이걸 돈 주고 산다고?')은 negative.\n\n"
+            "주의: 제품과 무관한 잡담·유머는 normal. 반어/비꼼(예: '이걸 돈 주고 산다고?')은 negative.\n"
+            "  욕설이라도 명백히 애정표현/감탄('미쳤다 맛있어', '개맛있음')이면 normal.\n\n"
             f"댓글 목록:\n{numbered}\n\n"
             '각 댓글에 대해 JSON 배열로만 답하세요: [{"i": 번호, "label": "negative|issue|normal", "reason": "한줄 근거(normal이면 빈 문자열)"}]'
         )
@@ -335,15 +366,64 @@ def _kst_str(iso):
         return str(iso)
 
 
-def _post_slack(token, channel, text):
-    data = urllib.parse.urlencode({"channel": channel, "text": text, "unfurl_links": "false"}).encode()
-    req = urllib.request.Request(SLACK_API, data=data,
-                                 headers={"Authorization": "Bearer " + token,
-                                          "Content-Type": "application/x-www-form-urlencoded; charset=utf-8"})
+def _slack(method, token, payload: dict):
+    """Slack Web API(JSON) 호출."""
+    req = urllib.request.Request(
+        f"https://slack.com/api/{method}",
+        data=json.dumps(payload).encode(),
+        headers={"Authorization": "Bearer " + token,
+                 "Content-Type": "application/json; charset=utf-8"})
     r = json.load(urllib.request.urlopen(req, timeout=30))
     if not r.get("ok"):
-        print(f"[comments] 슬랙 발송 실패: {r.get('error')} channel={channel}")
+        print(f"[comments] slack {method} 실패: {r.get('error')}")
     return r
+
+
+def _post_slack(token, channel, text, thread_ts=None, blocks=None):
+    payload = {"channel": channel, "text": text, "unfurl_links": False}
+    if thread_ts:
+        payload["thread_ts"] = thread_ts
+    if blocks:
+        payload["blocks"] = blocks
+    return _slack("chat.postMessage", token, payload)
+
+
+PARENT_MARK = "부정 댓글 관리 스레드"
+
+
+def _find_daily_parent_ts(token, channel, target):
+    """오늘(target) 부모 스레드가 이미 있으면 그 ts. 없으면 None."""
+    try:
+        req = urllib.request.Request(
+            f"https://slack.com/api/conversations.history?channel={channel}&limit=50",
+            headers={"Authorization": "Bearer " + token})
+        d = json.load(urllib.request.urlopen(req, timeout=20))
+    except Exception as e:
+        print("[comments] 부모 조회 실패(새로 만듦):", e)
+        return None
+    md = _md(target)
+    for m in d.get("messages", []):
+        t = m.get("text", "")
+        if PARENT_MARK in t and f"[{md}" in t and m.get("ts"):
+            return m["ts"]
+    return None
+
+
+def _md(target):
+    p = str(target).split("-")
+    return f"{int(p[1])}/{int(p[2])}" if len(p) == 3 else str(target)
+
+
+def _ensure_daily_parent(token, channel, target, n):
+    """오늘 부모 스레드를 찾거나 새로 만들어 ts 반환. 제목에 건수(n) 표시."""
+    ts = _find_daily_parent_ts(token, channel, target)
+    title = f"🚨 *[{_md(target)} 부정 댓글 관리 스레드]*  오늘 감지 {n}건"
+    if ts:
+        # 건수 갱신(재실행 시 누적 반영)
+        _slack("chat.update", token, {"channel": channel, "ts": ts, "text": title})
+        return ts
+    r = _post_slack(token, channel, title)
+    return r.get("ts")
 
 
 PF_KO = {"instagram": "인스타", "youtube": "유튜브", "tiktok": "틱톡"}
@@ -364,6 +444,20 @@ def _alert_text(post, c):
     return "\n".join(lines)
 
 
+def _alert_blocks(post, c):
+    """부정 댓글 알림 블록 + 처리완료/무시 버튼. value=post_id|comment_id (Vercel 엔드포인트가 파싱)."""
+    val = f"{post['id']}|{c['comment_id']}"
+    return [
+        {"type": "section", "text": {"type": "mrkdwn", "text": _alert_text(post, c)}},
+        {"type": "actions", "block_id": "comment_action", "elements": [
+            {"type": "button", "text": {"type": "plain_text", "text": "✅ 처리완료"},
+             "style": "primary", "action_id": "comment_done", "value": val},
+            {"type": "button", "text": {"type": "plain_text", "text": "🙈 무시"},
+             "action_id": "comment_ignore", "value": val},
+        ]},
+    ]
+
+
 # ── 메인 ────────────────────────────────────────────────────────────────────
 
 def main():
@@ -381,6 +475,7 @@ def main():
         return
     db = get_client()
     now_iso = datetime.now(timezone.utc).isoformat()
+    today_kst = datetime.now(KST).date().isoformat()
 
     posts = _load_active_posts(db)
     ids = [p["id"] for p in posts]
@@ -520,26 +615,37 @@ def main():
             (db.table("post_comments").update({"alerted_at": now_iso})
              .eq("post_id", r["post_id"]).eq("comment_id", r["comment_id"]).execute())
 
+    if not pending:
+        print(f"[comments] 발송할 부정/이슈 없음 (channel={CHANNEL})")
+        return
+
+    # 오늘 '[n/n 부정 댓글 관리 스레드]' 부모를 찾거나 생성 → 각 알림을 그 스레드 답글로.
+    parent_ts = _ensure_daily_parent(token, CHANNEL, today_kst, len(pending))
+    if not parent_ts:
+        print(f"[comments] 부모 스레드 생성 실패(봇 채널 미초대 가능) — 다음 실행 재시도. channel={CHANNEL}")
+        return
+
     sent = 0
     for r in pending[:MAX_ALERTS]:
         p = by_id[r["post_id"]]
-        c = {"label": r["classification"], "text": r["text"], "author": r["author"],
-             "commented_at": r["commented_at"], "reason": r["reason"]}
-        resp = _post_slack(token, CHANNEL, _alert_text(p, c))
+        c = {"label": r["classification"], "comment_id": r["comment_id"], "text": r["text"],
+             "author": r["author"], "commented_at": r["commented_at"], "reason": r["reason"]}
+        resp = _post_slack(token, CHANNEL, _alert_text(p, c),
+                           thread_ts=parent_ts, blocks=_alert_blocks(p, c))
         if resp.get("ok"):
             sent += 1
             _mark_alerted([r])
         time.sleep(1)   # rate limit 여유
     rest = pending[MAX_ALERTS:]
-    if rest and sent:   # 개별 발송이 되는 상태에서만 요약 발송·소진 처리
-        summary = [f"…외 부정/이슈 댓글 *{len(rest)}건* (알림 상한 {MAX_ALERTS}건 초과분 — 대시보드 DB post_comments에 저장됨)"]
+    if rest and sent:   # 개별 발송이 되는 상태에서만 요약 답글·소진 처리
+        summary = [f"…외 부정/이슈 댓글 *{len(rest)}건* (알림 상한 {MAX_ALERTS}건 초과분 — DB post_comments에 저장됨)"]
         for r in rest[:10]:
             p = by_id[r["post_id"]]
             nm = (p.get("account_name") or "").strip() or "?"
             summary.append(f"• <{p['url']}|{_esc(nm)}>: {_esc((r.get('text') or '')[:80])}")
-        if _post_slack(token, CHANNEL, "\n".join(summary)).get("ok"):
+        if _post_slack(token, CHANNEL, "\n".join(summary), thread_ts=parent_ts).get("ok"):
             _mark_alerted(rest)
-    print(f"[comments] 알림 발송 {sent}/{len(pending)}건 (channel={CHANNEL}, 요약처리 {len(rest) if rest and sent else 0}건)")
+    print(f"[comments] 알림 발송 {sent}/{len(pending)}건 (channel={CHANNEL}, 스레드={parent_ts})")
 
 
 def _iso_or_none(v):
