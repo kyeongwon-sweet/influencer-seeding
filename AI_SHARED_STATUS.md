@@ -5,6 +5,13 @@
 - **측정이력0 4건 파악**: 썰박스(틱톡) 2건=위성채널(1건 notes에 POST_NOT_FOUND_OR_PRIVATE=삭제/비공개 감지, 죽은 틱톡) → #제외로 알림에서 빠짐. cream.at.home·____ziini=무상시딩(영상) **07-13 신규등록(2일전)**, 삭제 아님·부분수집에 걸려 첫 측정 대기 → 자가치유(값 지어내기 금지, 손대지 않음).
 - **라밍(카카오숏폼) 누적하락**(06-29 수동 240,000 > 자동 65~67k): 사용자 지시로 **이번엔 제외**. 카카오 Apify 재수집 불가 → 팀이 실제 조회수 확인해야 정정 가능(open item 유지, 메모상 실제 ≈7.2만 추정).
 - 부분수집(07-13=299·07-14=307 vs 07-11~12 639/660)은 Codex 크론 완결성 감지 도메인.
+
+## 2026-07-15 dup-date-guard 정본 반영 완료 (Codex)
+- `Combined_Sheet_AppsScript.gs` exportStats의 `dateCols.length === 0` 가드 직후에 중복 날짜열 감지+중단 가드를 커밋본에 반영했다. 사용자 Apps Script 붙여넣기본과 커밋 정본 불일치 방지 목적.
+- 중복 날짜가 발견되면 역채움/J열 증분 오염 방지를 위해 `safeAlert_` 후 즉시 중단한다. 기존 정본 마커 `carriedCells`/`setFormulas`/`colLetter_`/`endedByKey`/`incWritten`는 유지.
+- 검증: `node vm.Script`로 `Combined_Sheet_AppsScript.gs` 문법 파싱 통과.
+
+## 2026-07-15 정합성 알림 손질 (Claude)
 - 오홀(DaNFFSbxYl0) 누적하락: 재유입된 07-06=493,331 제거 → 07-13=142,651만. ⚠️시트에 493,331 남아 importStats마다 재발(단일날짜=복사가드 미탐), 재생성 전까지 반복. 백업 fix-ohol-satcompany-20260715.json.
 - 미측정 재수집(알림 지정분): IG 5건 07-15 채움(somi 410·jjin 442·jjujjuba 355·lm 27,214·lm 961, manual=false). 삭제된 썰뜨기틱톡 2건(7654386788248669461·7654396077273124117 = Post not found) 종료처리(이력 보존).
 - ⚠️미분류 122건=시트 syncAll 필요(사용자/시트세션). 위성 업체명(썰박스/썰뜨기)=DB company_name 빈값, companyForAccount 코드 매핑 파생=Codex/web 코드수정(cosmetic).

@@ -630,6 +630,23 @@ function exportStats() {
     }
     if (dateCols.length === 0) { safeAlert_("날짜 열도 없고 추가할 수집 날짜도 없습니다. (1행 날짜 헤더 또는 수집 데이터 확인)"); return; }
 
+    // 중복 날짜열 감지: 같은 날짜가 2개 이상이면 역채움/증분 기준이 흔들려 오염될 수 있으므로 중단.
+    {
+      const dateSeen = {}, dupDates = [];
+      dateCols.forEach(dc => {
+        if (dateSeen[dc.date]) {
+          if (dupDates.indexOf(dc.date) < 0) dupDates.push(dc.date);
+        } else {
+          dateSeen[dc.date] = true;
+        }
+      });
+      if (dupDates.length) {
+        const s = dupDates.slice(0, 10).map(d => { const p = d.split("-"); return `${+p[1]}.${+p[2]}`; }).join(", ");
+        safeAlert_(`🚨 중복 날짜 열 ${dupDates.length}개 발견 — 역채움·증분 오염 우려. 📥 중단. 시트에서 중복 날짜 열을 하나만 남기고 재실행하세요.\n중복 날짜: ${s}${dupDates.length > 10 ? " ..." : ""}`);
+        return;
+      }
+    }
+
     const nRows = lastRow - CONFIG.DATA_START_ROW + 1;
     const urlVals = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.url, nRows, 1).getValues();
     const postedVals = fieldCols.posted_at
