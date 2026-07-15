@@ -10,6 +10,9 @@
 > ```
 > (origin/main의 `ef64cb2`가 정본. 되돌릴 것 없음.) — 2026-07-14, Claude
 
+## 2026-07-15 organic parent 목록 보정 (Codex, `0d0f1ce`)
+`ef64cb2`의 organic 패치는 그대로 유지하고, 최신 인계 기준에 맞춰 `PRODUCT_PARENTS`에 `요거트바`, `모나카`를 추가했다. 변경 파일은 `web/app/organic/page.tsx` 1줄뿐이며, `origin/main` 푸시 후 프로덕션 `influencer-seeding-mu.vercel.app` alias가 새 Ready 배포(`dpl_7UztUKhA7Y6Pu1ZT4sfxsgWTuF92`)를 가리키는 것까지 확인했다. GitHub Actions `Build Test (Pre-Deploy Check)` 성공. 기존 `C:/tmp/influencer-main`의 임시 organic 변경은 버려서 중복 커밋 위험 제거.
+
 ## 2026-07-14 📐 설계안: 안전한 양방향 동기화 (사용자 결정) → `DESIGN_oneway_db_source_of_truth.md`
 근본원인=수기 시트(위치기반)+매일 양방향(import↔export)으로 오염이 왕복마다 번져 compound. **사용자 결정=양방향 유지(시트 입력 유지)하되 구조적 번짐 제거.** 대응: ①중복 날짜열 제거·정규화(날짜당 1열) ②import/export를 URL(행)+정규날짜(열)로만 매칭, 애매하면 skip+알림 ③복사-가드+수집대비 급변 알림+주1회 전수 스캔. 마이그: DB 1회 정리→시트 DB에서 재생성→키드매칭 배포→스캔자동화. 역할: Claude=DB정리+route 키검증/급변알림, Codex=배포+스캔GHA, 시트세션=중복열정리+열매칭정규화+시트재생성, 사용자=백업확인. 잔여리스크=사람 신규 오타/드래그는 조기감지(완전봉쇄는 단방향뿐, 미채택). **실행 전 Codex+시트세션 합의 필요.**
 
