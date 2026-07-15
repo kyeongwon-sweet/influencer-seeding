@@ -1,5 +1,10 @@
 # AI Shared Status
 
+## 2026-07-15 썰박스·썰뜨기 업체명 제거 (Claude, 사용자 "업체명 있으면 안 돼")
+썰박스·썰뜨기는 전부 **위성채널**인데 7건에 업체명이 오입력돼 있었음(루나앤코코·쿠캣·동후작가·유머패밀리·굿띵투유) — [[owned-satellite-no-cost-rule]] 위반 + 아래 백필 학습을 오염시킨 모호계정 원인.
+- **DB 7건 company_name=null 완료**(readback 잔존 0). 백업 `C:/tmp/sulbox-sultteugi-backup-20260715.json`(62건 전체).
+- ⚠️ **시트도 비워야 함**(안 비우면 다음 sheet→DB 동기화가 비어있지않은 시트값으로 DB 재오염). 사용자에게 Apps Script `fixCompanyNames()`(썰박스/썰뜨기 업체명 clear + 바이럴 빈칸 fill 통합) 제공. 이 스크립트는 학습 시 썰박스/썰뜨기 제외.
+
 ## 2026-07-15 업체명 공란 백필 — 계정→업체 학습 (Claude, 사용자 지시)
 배너 인사이트(summarizeByCompany)식 학습: 업체명 채워진 행에서 계정→업체 매핑(유일업체 251종). **바이럴(배너+영상) 행 중 업체명 공란 & 유일업체 13건**을 채움.
 - 대상: jolly__humor·luna.besty·nato.tip·tteokbokki__zip→루나앤코코, 365_real→굿띵투유, humani_3→후마니, some2lve→아택.
