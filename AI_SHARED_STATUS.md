@@ -33,6 +33,13 @@ Apify 월 사용액 고페이스 이슈 대응. 최신 `origin/main` 기준 clea
 - 검증: Python `compile()` syntax check pass(`run_monitoring.py`, `monitor_comments.py`), PyYAML parse pass(수정 workflow 3개), `_same_day_measured_ids` fake DB 단위 확인 pass, `git diff --check` pass.
 - 운영 효과: 다음 09:00 스케줄은 한 번에 전체 댓글 스캔하지 않고, 조회수 수집 백업/재시도는 이미 측정된 게시물을 중복 Apify 호출하지 않는다.
 
+## 2026-07-15 류라이 TT 시트+DB 정합 완료 (Codex, 사용자 승인)
+- 대상: `류라이 (틱톡/미러링)` row 381 / `https://www.tiktok.com/@ryuraikj/video/7652295124399000839/`.
+- 판단: `56,586~56,706` 과거 낮은값은 `HANDOFF_cluster_contamination_20260714.md` 기준 찐빵만두 공유값 클러스터의 **과소 오염 baseline**. 실제값은 403,000대.
+- DB readback: `post_daily_stats`는 이미 `2026-07-14=403,000(manual=true)` 단일 행만 존재. 낮은 baseline 행 없음. 백업: `data/output/ryurai-tt-sheet-db-cleanup-20260715.json`.
+- 시트 정리: `BH381:BP381`(7.5~7.13 낮은값/오류 라벨) 전부 비움, `BQ381(7.14)=403,000`만 유지, `J381` 공란 처리. Readback 완료: 과거칸 공백, 7.14=403000, J blank.
+- 결과: 누적 403,000은 보존, 가짜 `+346,294` 증분 제거. safeIncrement/notify 리포트에서는 게시 후 7일 초과 첫 유효측정으로 증분 제외.
+
 ## 2026-07-15 미측정 알림 노이즈 제거(내부채널) + 측정이력0/하락 파악 (Claude, 사용자 "라밍 제외 전부 수정")
 - **`notify_status.py` 미측정 점검에서 위성채널·온드미디어 제외**(`ec4c1da`) — 배너처럼 내부채널은 캠페인 아님·불규칙 수집이라 미측정 정상. **점검 18→8건**(내부채널 10 제외). py_compile 통과. 리포트 크론용이라 다음 리포트부터 적용.
 - **측정이력0 4건 파악**: 썰박스(틱톡) 2건=위성채널(1건 notes에 POST_NOT_FOUND_OR_PRIVATE=삭제/비공개 감지, 죽은 틱톡) → #제외로 알림에서 빠짐. cream.at.home·____ziini=무상시딩(영상) **07-13 신규등록(2일전)**, 삭제 아님·부분수집에 걸려 첫 측정 대기 → 자가치유(값 지어내기 금지, 손대지 않음).
