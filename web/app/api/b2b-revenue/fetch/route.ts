@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { fetchSheetTabValuesByTitle } from "@/lib/google-sheets";
+import { fetchSheetTabValuesByTitle, fetchSheetTabValues } from "@/lib/google-sheets";
 import { notifyJob } from "@/lib/slack";
 
 export const runtime = "nodejs";
@@ -28,6 +28,29 @@ type DayVals = { order: number; profit: number | null; ad: number | null; contri
 export async function GET(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") { // fail-closed: CRON_SECRET 미설정 시에도 차단(무인증 오픈 방지)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // TEMP: 연동 시트 검증 — 썰박스/썰뜨기 업체명(공란이어야) + 바이럴 대상계정 업체명(채워야). 확인 후 제거.
+  if (req.nextUrl.searchParams.get("verify")) {
+    const rows = await fetchSheetTabValues("10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak", 1937186871, "A1:F2000");
+    const header = (rows[0] ?? []) as (string | number | null)[];
+    const find = (kw: string) => header.findIndex((c) => typeof c === "string" && c.replace(/\s+/g, "").includes(kw));
+    const cAcc = find("채널명"), cCo = find("업체명"), cType = find("채널분류");
+    const TARGETS = ["jolly__humor", "luna.besty", "nato.tip", "tteokbokki__zip", "365_real", "humani_3", "some2lve"];
+    const sulbox: { row: number; account: string; company: string }[] = [];
+    const viralTarget: { row: number; account: string; company: string; type: string; filled: boolean }[] = [];
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i] as (string | number | null)[];
+      const acc = String(r[cAcc] ?? "").trim(), co = String(r[cCo] ?? "").trim(), ct = String(r[cType] ?? "");
+      if ((acc.includes("썰박스") || acc.includes("썰뜨기")) && co) sulbox.push({ row: i + 1, account: acc, company: co });
+      if (ct.includes("바이럴") && TARGETS.includes(acc)) viralTarget.push({ row: i + 1, account: acc, company: co, type: ct, filled: !!co });
+    }
+    const viralBlank = viralTarget.filter((v) => !v.filled);
+    return NextResponse.json({
+      sulbox_with_company: sulbox.length, sulbox,
+      viralTarget_total: viralTarget.length, viralTarget_filled: viralTarget.filter((v) => v.filled).length,
+      viralTarget_blank: viralBlank.length, viralBlank,
+    });
   }
 
   const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
