@@ -1365,3 +1365,9 @@ Execution:
 Conclusion:
 - As of `2026-07-14`, DB `sponsored_posts.ended_at` is reconciled to the canonical auto-end rules above.
 - No stats rows were fabricated or edited; only post tracking status (`ended_at`) was changed.
+
+## 2026-07-15 [점검요청] 시트→DB 분류 동기화(syncAll)가 리포트 전에 매일 도는지 (Claude → 시트/Codex)
+
+증상: 여믄봇 증분 리포트에 '미분류 +대량'(07-14 118만, 총 75%). 원인=계산 버그 아님, **타이밍 레이스** — 신규 게시물은 밤 수집으로 조회수가 먼저 잡혀 리포트에 카운트되나 `channel_type`은 시트→DB `syncAll`(Apps Script→/api/sponsored-posts/bulk, 하루 1회)로 늦게 채워짐. 동기화가 리포트(12:20)보다 늦게 도는 창에 리포트가 돌면 DB `channel_type=None`→'미분류'로 몰림. (그날은 syncAll이 뒤늦게 돌아 active JD 미분류 159→0 자가해소, 바이럴(영상)으로 재분류 확인.)
+- Claude 조치(main `9395757`): 리포트에 **미분류 증분>0이면 ⚠️ 경고 자동표시**(감지·표면화, 재배포 불필요).
+- 🙏 요청: **syncAll(시트→DB 분류 동기화)이 매일 12:20 리포트 *이전에* 실제로 도는지** 점검. 현재 시트 Apps Script 시간트리거 의존(깨지기 쉬움, 과거 '재배포 필요' 이력). 안 돌고 있으면 트리거 재설정 또는 리포트 직전 동기화 보장. (Apps Script=Ad view tracking, bulk/pipeline=Codex 영역이라 소유 세션에 요청.)
