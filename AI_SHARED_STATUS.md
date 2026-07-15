@@ -1,6 +1,8 @@
 # AI Shared Status
 
-## 2026-07-15 dashboard code review + lint/efficiency cleanup (Codex)
+## 2026-07-15 삭제된 틱톡 영상 2건 DB 제거 (Claude, 사용자 지시)
+썰박스(틱톡) `@ssulbox_1/video/7662339923424513300`·`7662308369608510741` — 재수집 "Post not found"(삭제 확정), DB엔 위성채널 게시물로 있었으나 stats 0행(빈 껍데기). sponsored_posts 행 삭제(백업 `data/output/deleted-tiktok-ssulbox-20260714.json`). DB 잔존 0 검증.
+⚠️ 시트세션: 시트 재생성 시 이 2개 URL은 **재추가 금지**(삭제된 영상, 껍데기 행 방지).
 Clean worktree `C:/tmp/influencer-review-opt-20260715121802`에서 `origin/main` 기준으로만 작업함. 메인 워크트리의 동시 세션 변경은 건드리지 않음.
 - `web/package.json`: Next 15에서 deprecated 된 `next lint`를 ESLint CLI로 전환. 범위는 `app components lib middleware.ts tests`로 제한해 `.next`/`next-env.d.ts` 산출물 오탐을 제외.
 - Lint errors 86개를 0개로 정리. 남은 15개는 warnings만 있음: hook dependency 8개, `<img>` 최적화 7개. `npm.cmd run lint` exit 0 확인.
