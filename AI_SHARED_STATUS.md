@@ -13,6 +13,9 @@
 ## 2026-07-15 organic parent 목록 보정 (Codex, `0d0f1ce`)
 `ef64cb2`의 organic 패치는 그대로 유지하고, 최신 인계 기준에 맞춰 `PRODUCT_PARENTS`에 `요거트바`, `모나카`를 추가했다. 변경 파일은 `web/app/organic/page.tsx` 1줄뿐이며, `origin/main` 푸시 후 프로덕션 `influencer-seeding-mu.vercel.app` alias가 새 Ready 배포(`dpl_7UztUKhA7Y6Pu1ZT4sfxsgWTuF92`)를 가리키는 것까지 확인했다. GitHub Actions `Build Test (Pre-Deploy Check)` 성공. 기존 `C:/tmp/influencer-main`의 임시 organic 변경은 버려서 중복 커밋 위험 제거.
 
+## 2026-07-15 교차-복사 오염 주간 스캔 자동화 (Codex)
+`scripts/scan_cross_post_copies.py`를 GHA 출력/리포트 저장 가능하게 보강하고 `.github/workflows/cross-post-copy-scan.yml`을 추가했다. 매주 월요일 09:20 KST + 수동 실행 가능, DB는 read-only 조회만 하며 진짜의심 쌍이 있으면 Actions summary/artifact와 Slack DM(기본 `U0B2Y0ZC8QZ`, `vars.CROSS_POST_SCAN_SLACK_CHANNEL` 설정 시 해당 채널)에 알림. `run_monitoring.py` 영향 확인: 새 워크플로는 수집/적재와 분리되어 `MONITORING_DATE`, 자동종료, 업로드전 제외, 배너 reach 스냅샷 로직을 건드리지 않는다.
+
 ## 2026-07-14 📐 설계안: 안전한 양방향 동기화 (사용자 결정) → `DESIGN_oneway_db_source_of_truth.md`
 근본원인=수기 시트(위치기반)+매일 양방향(import↔export)으로 오염이 왕복마다 번져 compound. **사용자 결정=양방향 유지(시트 입력 유지)하되 구조적 번짐 제거.** 대응: ①중복 날짜열 제거·정규화(날짜당 1열) ②import/export를 URL(행)+정규날짜(열)로만 매칭, 애매하면 skip+알림 ③복사-가드+수집대비 급변 알림+주1회 전수 스캔. 마이그: DB 1회 정리→시트 DB에서 재생성→키드매칭 배포→스캔자동화. 역할: Claude=DB정리+route 키검증/급변알림, Codex=배포+스캔GHA, 시트세션=중복열정리+열매칭정규화+시트재생성, 사용자=백업확인. 잔여리스크=사람 신규 오타/드래그는 조기감지(완전봉쇄는 단방향뿐, 미채택). **실행 전 Codex+시트세션 합의 필요.**
 

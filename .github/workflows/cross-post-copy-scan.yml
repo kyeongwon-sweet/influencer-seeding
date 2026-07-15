@@ -1,0 +1,113 @@
+name: Cross-post Copy Scan
+
+on:
+  schedule:
+    - cron: "20 0 * * 1"  # 매주 월요일 09:20 KST
+  workflow_dispatch:
+    inputs:
+      min_days:
+        description: "같은 날짜/값을 공유해야 하는 최소 일수"
+        type: string
+        default: "2"
+      min_value:
+        description: "스캔 최소 조회수"
+        type: string
+        default: "10000"
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Scan cross-post copied stats
+        id: scan
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SCAN_REPORT_PATH: ${{ runner.temp }}/cross-post-copy-scan.txt
+          PYTHONUTF8: "1"
+        run: |
+          MIN_DAYS="${{ github.event.inputs.min_days || '2' }}"
+          MIN_VALUE="${{ github.event.inputs.min_value || '10000' }}"
+          python scripts/scan_cross_post_copies.py "$MIN_DAYS" "$MIN_VALUE"
+
+      - name: Write summary
+        if: always()
+        run: |
+          {
+            echo "## Cross-post Copy Scan"
+            echo
+            echo "- genuine_count: ${{ steps.scan.outputs.genuine_count || 'unknown' }}"
+            echo "- noisy_count: ${{ steps.scan.outputs.noisy_count || 'unknown' }}"
+            echo
+            echo '```'
+            cat "${RUNNER_TEMP}/cross-post-copy-scan.txt" 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload scan report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-post-copy-scan
+          path: ${{ runner.temp }}/cross-post-copy-scan.txt
+          if-no-files-found: ignore
+
+      - name: Slack alert on findings
+        if: steps.scan.outputs.genuine_count != '0'
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL: ${{ vars.CROSS_POST_SCAN_SLACK_CHANNEL }}
+          STATUS_USER: U0B2Y0ZC8QZ
+          GENUINE_COUNT: ${{ steps.scan.outputs.genuine_count }}
+          NOISY_COUNT: ${{ steps.scan.outputs.noisy_count }}
+          REPORT_PATH: ${{ runner.temp }}/cross-post-copy-scan.txt
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python - << 'EOF'
+          import json
+          import os
+          import urllib.parse
+          import urllib.request
+
+          token = os.getenv("SLACK_BOT_TOKEN")
+          channel = os.getenv("SLACK_CHANNEL") or os.getenv("STATUS_USER")
+          if not token or not channel:
+              print("Slack token/channel missing; skip alert")
+              raise SystemExit(0)
+
+          report_path = os.getenv("REPORT_PATH")
+          report = ""
+          if report_path and os.path.exists(report_path):
+              report = open(report_path, encoding="utf-8", errors="replace").read().strip()
+          if len(report) > 2500:
+              report = report[:2500] + "\n... (truncated)"
+
+          text = (
+              f"🚨 교차-복사 오염 스캔: 진짜의심 {os.getenv('GENUINE_COUNT')}쌍 "
+              f"(라운드오탐 {os.getenv('NOISY_COUNT')}쌍)\n"
+              f"{os.getenv('RUN_URL')}\n"
+              f"```{report}```"
+          )
+          data = urllib.parse.urlencode({"channel": channel, "text": text}).encode()
+          req = urllib.request.Request(
+              "https://slack.com/api/chat.postMessage",
+              data=data,
+              headers={
+                  "Authorization": "Bearer " + token,
+                  "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
+              },
+          )
+          resp = json.load(urllib.request.urlopen(req, timeout=30))
+          print("slack ok=", resp.get("ok"), "error=", resp.get("error"), "channel=", channel)
+          assert resp.get("ok"), resp
+          EOF

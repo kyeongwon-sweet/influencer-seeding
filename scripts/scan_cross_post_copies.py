@@ -46,6 +46,11 @@ def is_round(v):
 def main():
     posts = {p["id"]: p for p in page("sponsored_posts", {"select": "id,account_name,url,ended_at"})}
     stats = page("post_daily_stats", {"select": "post_id,measured_at,play_count"})
+    report_lines = []
+
+    def emit(line=""):
+        print(line)
+        report_lines.append(line)
 
     dv = defaultdict(set)  # (date, value) -> {post_id}
     for s in stats:
@@ -69,15 +74,27 @@ def main():
         (noisy if all(is_round(v) for v in vals) else genuine).append((a, b, dvs, vals))
 
     genuine.sort(key=lambda x: -len(x[2]))
-    print(f"교차-복사 스캔: stats {len(stats)}행 / 진짜의심 {len(genuine)}쌍 / 라운드오탐 {len(noisy)}쌍\n")
-    print("=== 진짜 복사 의심 (비-라운드 값 ≥%d일 공유) ===" % MIN_DAYS)
+    emit(f"교차-복사 스캔: stats {len(stats)}행 / 진짜의심 {len(genuine)}쌍 / 라운드오탐 {len(noisy)}쌍")
+    emit()
+    emit("=== 진짜 복사 의심 (비-라운드 값 ≥%d일 공유) ===" % MIN_DAYS)
     for a, b, dvs, vals in genuine:
         na, nb = posts[a]["account_name"], posts[b]["account_name"]
         ea = (posts[a].get("ended_at") or "-")[:10]
         eb = (posts[b].get("ended_at") or "-")[:10]
-        print(f"  {na}(종료{ea}) ↔ {nb}(종료{eb}): {len(dvs)}일, 값 {vals[:3]}")
+        emit(f"  {na}(종료{ea}) ↔ {nb}(종료{eb}): {len(dvs)}일, 값 {vals[:3]}")
     if not genuine:
-        print("  (없음 — 깨끗)")
+        emit("  (없음 — 깨끗)")
+
+    report_path = os.environ.get("SCAN_REPORT_PATH")
+    if report_path:
+        with open(report_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(report_lines) + "\n")
+
+    github_output = os.environ.get("GITHUB_OUTPUT")
+    if github_output:
+        with open(github_output, "a", encoding="utf-8") as f:
+            f.write(f"genuine_count={len(genuine)}\n")
+            f.write(f"noisy_count={len(noisy)}\n")
 
 
 if __name__ == "__main__":
