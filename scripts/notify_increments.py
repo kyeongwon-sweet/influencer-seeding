@@ -352,26 +352,6 @@ def main():
         cost_by_ch[ct] = cost_by_ch.get(ct, 0) + c
         cumviews_by_ch[ct] = cumviews_by_ch.get(ct, 0) + (it["cum"] or 0)
 
-    # ⚠️ 온드/위성 데이터 위생 검사: 광고비(cost>0)·업체명(company_name)이 있으면 오입력 → 경고 수집.
-    nocost_bad = []
-    try:
-        vr = (db.table("sponsored_posts")
-              .select("account_name, url, channel_type, cost, company_name, product_name")
-              .in_("channel_type", list(NO_COST_CH)).is_("ended_at", "null").execute())
-        for r in (vr.data or []):
-            if "jd" not in (r.get("product_name") or "").lower():
-                continue
-            bad = []
-            if (r.get("cost") or 0) > 0:
-                bad.append(f"광고비 {int(r['cost']):,}원")
-            if (r.get("company_name") or "").strip():
-                bad.append(f"업체명 '{r['company_name'].strip()}'")
-            if bad:
-                nm = (r.get("account_name") or "").strip() or (r.get("url") or "").rstrip("/").split("/")[-1] or "?"
-                nocost_bad.append(f"{nm} ({(r.get('channel_type') or '').strip()}): {' · '.join(bad)}")
-    except Exception as e:
-        print("[notify] 온드/위성 위생검사 실패(무시):", e)
-
     items.sort(key=lambda x: x["inc"], reverse=True)
 
     def f(n): return f"{n:,}"
@@ -426,11 +406,6 @@ def main():
     if unclassified_inc > 0:
         lines.append("")
         lines.append(f"⚠️ *미분류 {unclassified_cnt}건 (+{f(unclassified_inc)})* — 시트 채널분류가 DB에 아직 반영 안 됨(시트→DB 동기화 지연). 시트에서 `♻️ 전체 다시 추가`(syncAll) 실행 후 재발송하면 각 채널로 분류됩니다.")
-    if nocost_bad:
-        lines.append("")
-        lines.append(f"⚠️ *온드/위성 오입력 {len(nocost_bad)}건* — 온드미디어·위성채널은 광고비·업체명이 없어야 합니다(리포트 CPV엔 무시). 시트에서 해당 값 삭제 필요:")
-        for b in nocost_bad[:10]:
-            lines.append(f"    • {b}")
     lines += ["", DIV, "", "◾ *급상승 TOP 10* 🔥  `CPV는 누적 기준`", ""]
     # 배너는 도달수를 '조회수'로 취급해 TOP에도 섞어 노출(사용자 지시). 배너 CPV = 비용/도달수(도달당비용).
     # 리포트는 이미 쫀득바만 필터돼 있어 줄마다 [JD멜] 상품태그는 중복 → 표시에서 제거(사용자 지시).

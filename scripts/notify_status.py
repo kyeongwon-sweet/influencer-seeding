@@ -239,6 +239,25 @@ def _integrity_lines(db, posts):
             line += f" … 외 {len(drops) - 4}건"
         lines.append(line)
 
+    # 6) 온드/위성 무상채널에 광고비·업체명 오입력 감시 — 리포트 CPV엔 무시하지만 시트·DB 정정 필요(사용자 지시로 댓글에만 표기).
+    try:
+        vr = (db.table("sponsored_posts")
+              .select("account_name, channel_type, cost, company_name, product_name, ended_at")
+              .in_("channel_type", ["온드미디어", "위성채널"]).is_("ended_at", "null").execute())
+        for r in (vr.data or []):
+            if "jd" not in (r.get("product_name") or "").lower():
+                continue
+            bad = []
+            if (r.get("cost") or 0) > 0:
+                bad.append(f"광고비 {int(r['cost']):,}원")
+            if (r.get("company_name") or "").strip():
+                bad.append(f"업체명 '{r['company_name'].strip()}'")
+            if bad:
+                nm = (r.get("account_name") or "").strip() or "?"
+                lines.append(f"온드/위성 오입력 — {nm}({(r.get('channel_type') or '').strip()}): {' · '.join(bad)} → 시트·DB에서 삭제 필요")
+    except Exception as e:
+        print("[status] 온드/위성 검사 실패(무시):", e)
+
     return lines
 
 
