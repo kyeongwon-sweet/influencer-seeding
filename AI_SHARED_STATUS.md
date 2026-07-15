@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 2026-07-15 정합성 알림 손질 (Claude)
+- 오홀(DaNFFSbxYl0) 누적하락: 재유입된 07-06=493,331 제거 → 07-13=142,651만. ⚠️시트에 493,331 남아 importStats마다 재발(단일날짜=복사가드 미탐), 재생성 전까지 반복. 백업 fix-ohol-satcompany-20260715.json.
+- 미측정 재수집(알림 지정분): IG 5건 07-15 채움(somi 410·jjin 442·jjujjuba 355·lm 27,214·lm 961, manual=false). 삭제된 썰뜨기틱톡 2건(7654386788248669461·7654396077273124117 = Post not found) 종료처리(이력 보존).
+- ⚠️미분류 122건=시트 syncAll 필요(사용자/시트세션). 위성 업체명(썰박스/썰뜨기)=DB company_name 빈값, companyForAccount 코드 매핑 파생=Codex/web 코드수정(cosmetic).
+- 미측정 알림 "외 12건"+썰박스 malformed id는 미처리 → Codex collect-now 재실행이 효율적.
+
+<<<<<<< Updated upstream
 ## 2026-07-15 sheet regeneration requested after DB cleanup (Codex handoff)
 User/Claude request: DB is now the source of truth after cleanup of cluster copies, Siuni rows, deleted videos, and orphan stats. Sheet session should regenerate the `콘텐츠 대시보드 연동` tab from DB.
 
@@ -42,12 +49,51 @@ Validation:
 - **DB(sponsored_posts.company_name) 13건 PATCH 완료**(readback 13/13). 백업 `C:/tmp/company-backfill-backup-20260714.json`.
 - **시트**: 사용자가 Apps Script `fillCompanyFromLearned()`(바이럴 한정·빈칸만·유일업체만) 실행해 채움. 스탠드얼론 스니펫 제공(정본 .gs 미변경).
 - ⚠️ 제외: **위성채널(32건)**=규칙상 업체명 공란이 정상([[owned-satellite-no-cost-rule]]), **협찬(5건)**=업체 개념 약함, **모호계정 5종(20건)**=여러 업체라 자동 못 채움(good_tip_magazine·bibimbap__zip·dotori_channel·shashaping_humor·썰박스(유튜브)). 공백표기 변형(썰뜨기(유튜브)↔썰뜨기 (유튜브))도 상충이라 제외.
+=======
+## 2026-07-15 ✅ 류라이(틱톡/미러링) measured_at 라벨 정정 완료 (Claude, Codex 인계분)
+`4bed32e7...`(https://tiktok.com/@ryuraikj/video/7652295124399000839/) — 403,000 행(rowid `5964d3dc...`, manual=True)의 `measured_at`을 **2026-07-13 → 2026-07-14**로 정정(값 불변, 시트 row 381=07-14와 일치, 07/14 증분 정합). 기존 07-14 행 없어 충돌 없음. 백업 `data/output/ryurai-tt-datefix-20260715.json`. 검증: 07-06=56,706 → 07-14=403,000. **날짜 라벨만, 값 미생성.**
+
+## 2026-07-15 ✅ 자동수집 measured_at '어제 원복' 라이브 검증 완료 (Claude)
+Codex `e32f0ed`(origin/main) 확인: `run_monitoring.py` 폴백=`-timedelta(days=1)`, `apify-collect`=`yesterdayKST()`, `cron-daily-collect`·`monitoring-retry`=`date -d 'yesterday'` → **자동수집=어제 복원**. `collect-now`(수동)=`todayKST()` 유지(의도대로). 리포트=어제와 정합, off-by-one 해소. GitHub build/test 통과·Vercel production Ready(Codex 보고).
+
+## 2026-07-15 ✅[사용자 확정] 자동수집 measured_at = '어제(수집일-1)'로 원복 — [Codex 인계]
+**사용자 결정**: measured_at을 **'어제 귀속'으로 원복**하고 리포트와 정합. (b50b201의 '오늘 귀속'은 폐기.)
+- **정합 근거(Claude 검증)**: 리포트 `daily-increment-report.yml`(63·87행)이 `date -d 'yesterday'`로 **어제 KST**를 읽음. 수집도 어제로 맞추면 수집=리포트 일치.
+- **[Codex 필요] 원복 작업**: `git revert b50b201` 권장(단, 이후 `AI_SHARED_STATUS.md`가 여러 번 편집돼 **docs 충돌 예상 → 현재 내용 유지(ours)**, 코드만 되돌림). 되돌릴 코드 4곳 = ①`cron-daily-collect.yml`(kdate 스텝→어제) ②`monitoring-retry.yml`(→어제) ③`run_monitoring.py` 폴백(`-timedelta(days=1)` 복원) ④`web/app/api/monitoring/apify-collect/route.ts`(`todayKST()`→`yesterdayKST()`) + `web/tests/dateRule.test.ts` 문구. 원복 후 `date -d 'yesterday'`/`yesterdayKST()`가 자동수집 경로에 복원됐는지 확인.
+- ⚠️ **아래 '자동 수집 measured_at = 수집일(KST 오늘) 통일' 항목(Codex)은 이 결정으로 폐기.**
+
+## 2026-07-15 [Codex 인계] 정본 .gs에 dup-date-guard 삽입 요청 (Claude 작성)
+`Combined_Sheet_AppsScript.gs`(fe47735)에 **중복 날짜열 감지+중단 가드가 빠져 있음**(사용자 Apps Script엔 이미 반영됨). 커밋본으로 되돌려 붙이면 가드 유실 → 정합 필요. wt-company가 detached HEAD라 커밋은 Codex가 수행 권장. **삽입 위치**: `if (dateCols.length === 0) { ...return; }`(HEAD 630행) 다음, `const nRows = lastRow ...`(632행) 앞. **넣을 블록**(dateCols 요소가 `{col, date}` 구조 전제 — 확인 후 반영):
+```js
+    // 🛡️ 중복 날짜열 감지 → 중단+경고. 같은 날짜가 2개 이상 열에 있으면 역채움·증분(J)이 어느 열 기준인지 몰라 오염됨.
+    {
+      const dateSeen = {}, dupDates = [];
+      dateCols.forEach(dc => {
+        if (dateSeen[dc.date]) { if (dupDates.indexOf(dc.date) < 0) dupDates.push(dc.date); }
+        else dateSeen[dc.date] = true;
+      });
+      if (dupDates.length) {
+        const s = dupDates.slice(0, 10).map(d => { const p = d.split("-"); return `${+p[1]}.${+p[2]}`; }).join(", ");
+        safeAlert_(`🚨 중복 날짜 열 ${dupDates.length}개 발견 — 역채움·증분 오염 우려. 📥 중단. 시트에서 중복 날짜 열을 하나만 남기고 재실행하세요.`);
+        return;
+      }
+    }
+```
+
+## 2026-07-15 시으니네 07-13 값 결론 확정 (Claude) — DB 무수정
+Codex의 `5e494a4`(인스타 402,745 DB삭제+시트/DB 정합) 위에서, 남았던 07-13 값 충돌(수기 210,457 vs DB자동 213,566)을 종결. **근거**: 07-13 행 `manual=false`(자동수집), created_at 07-13 19:09 KST; 대표님 **라이브 재확인 224,000**(>213,566>210,457) → 조회수 누적 단조증가 확인 = 자동 213,566은 과대 아님, 210,457은 그날 더 이른 낮은 값. **결정=DB 213,566 유지, 시트를 213,566으로(📥 동기화). DB 쓰기 없음.** 402,745는 전역 스캔 0건(이미 제거) 재확인. 틱톡 07-14=102,700 시트/DB 일치(무수정). 교차복사 스캔=진짜의심 6쌍 잔존이나 전부 종료 07-07 게시물(자기쌍2+종료프리즈4), .gs 종료캡이 중화 → 조치 불필요(66행 Codex 분석과 동일).
+>>>>>>> Stashed changes
 
 ## 2026-07-15 고아행(post_id=null) 95건 청소 (Claude)
 `post_daily_stats`에서 **post_id=null 쓰레기 행 95건**(06-04·06-05 자동수집분, 어느 게시물에도 안 붙음) 삭제. 대시보드엔 원래 안 보였으나 교차-복사 스캔 노이즈였음(예: 726,252 등이 미상행으로 잡힘). 백업 `data/output/orphan-stats-20260715.json`, 잔존 0 검증.
 
+<<<<<<< Updated upstream
 ## 2026-07-15 overnight collection date attribution restored (Codex)
 Correction: commit b50b201 changed automatic overnight collection to stamp KST today, but the daily increment report still targets KST yesterday. That combination creates an off-by-one: a 00:41 KST run captures the previous day's final snapshot, so it must be stored as measured_at = collection date minus 1.
+=======
+## ~~2026-07-15 자동 수집 measured_at = 수집일(KST 오늘) 통일 (Codex)~~ ⛔폐기(사용자 결정=어제 원복, 최상단 참조)
+사용자 확정 기준 반영: **자동 수집은 수집일(KST 오늘) 칸만 기록**하고, 어제/과거 날짜는 사람이 명시적으로 날짜를 준 백필·수동 정정 경로에서만 기록한다. 목적은 12:20 증분 리포트의 "어제 확정치"가 자동 수집으로 사후 변경되지 않게 하는 것.
+>>>>>>> Stashed changes
 
 Verified alignment:
 - daily-increment-report.yml defaults to KST yesterday.
