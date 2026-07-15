@@ -24,7 +24,7 @@ function normPlatform(p: string): string {
 }
 
 // 제품 상위 라인 — 변형(예: 멜론쫀득바) 선택 시 상위(쫀득바)도 함께 선택되게 한다.
-const PRODUCT_PARENTS = ["쫀득바", "듬뿍바", "제로바"];
+const PRODUCT_PARENTS = ["쫀득바", "듬뿍바", "제로바", "요거트바", "모나카"];
 function parentProductOf(p: string): string | null {
   for (const parent of PRODUCT_PARENTS) if (p !== parent && p.endsWith(parent)) return parent;
   return null;
