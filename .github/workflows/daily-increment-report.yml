@@ -22,6 +22,10 @@ on:
         description: "정정 재발송 — 오늘 기존 리포트를 삭제하고 새로 발송"
         type: boolean
         default: false
+      delete_only:
+        description: "삭제 전용 — 그 날짜 리포트+봇댓글만 삭제하고 재발송 안 함(잘못 나간 리포트 정리)"
+        type: boolean
+        default: false
       date:
         description: "발송 대상 날짜(YYYY-MM-DD, 비우면 어제 KST). 특정일 정정 재발송용"
         type: string
@@ -56,6 +60,8 @@ jobs:
           DEDUP: ${{ github.event.inputs.to_dm == 'true' && '' || '1' }}
           # 정정 재발송: 오늘 기존 리포트를 삭제 후 새로 발송(DEDUP 무시).
           REPLACE: ${{ github.event.inputs.replace == 'true' && '1' || '' }}
+          # 삭제 전용: 그 날짜 리포트+봇댓글만 삭제하고 재발송 안 함.
+          DELETE_ONLY: ${{ github.event.inputs.delete_only == 'true' && '1' || '' }}
           TS_OUT: ${{ runner.temp }}/report_ts.txt
           PYTHONUNBUFFERED: "1"
         run: |

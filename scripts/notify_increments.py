@@ -192,6 +192,19 @@ def main():
 
     target = os.getenv("MONITORING_DATE") or None
     strict = os.getenv("STRICT_DATE") == "1"
+
+    # 삭제 전용(DELETE_ONLY=1): 그 날짜(target) 리포트+댓글만 지우고 재발송/데이터조회 없이 종료(잘못 나간 리포트 정리용).
+    if os.getenv("DELETE_ONLY") == "1" and target and CHANNEL[:1] in ("C", "G"):
+        n = 0
+        for ts in _find_report_ts(token, CHANNEL, target):
+            for rts in _thread_reply_ts(token, CHANNEL, ts):   # 봇 댓글(상태 알럿)도 함께. 사람 댓글은 chat.delete 불가라 자동 보존.
+                if _delete_msg(token, CHANNEL, rts):
+                    n += 1
+            if _delete_msg(token, CHANNEL, ts):
+                n += 1
+        print(f"[notify] DELETE_ONLY {target}: {n}개 삭제(리포트+봇댓글) → 재발송 생략")
+        return
+
     dayrows = _measured_on(target) if target else {}
     if not dayrows and not strict:
         target = _latest_date(db)
