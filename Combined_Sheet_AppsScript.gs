@@ -137,6 +137,23 @@ function getStatusCol_(sheet) {
   return col;
 }
 
+function getIncrementCol_(sheet) {
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+  const idx = headers.findIndex(h => norm_(h) === norm_("증분값"));
+  return idx === -1 ? null : idx + 1;
+}
+
+function colLetter_(col) {
+  let s = "";
+  while (col > 0) {
+    const m = (col - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    col = Math.floor((col - 1) / 26);
+  }
+  return s;
+}
+
 function toDateStr_(v) {
   if (v instanceof Date && !isNaN(v.getTime())) {
     return Utilities.formatDate(v, Session.getScriptTimeZone(), "yyyy-MM-dd");
@@ -520,7 +537,7 @@ function fetchCollectedStats_() {
   });
   const code = res.getResponseCode();
   if (code !== 200) throw new Error(`API ${code}: ${res.getContentText()}`);
-  return (JSON.parse(res.getContentText()).posts) || []; // [{url, stats:[[date,play],...]}]
+  return (JSON.parse(res.getContentText()).posts) || []; // [{url, ended_at, stats:[[date,metric],...]}]
 }
 
 function exportStats() {
@@ -545,10 +562,12 @@ function exportStats() {
 
     // 대시보드 수집 조회수 → linkKey(shortcode/영상ID) → {date: play} + 등장 날짜 수집
     const byKey = {};
+    const endedByKey = {};
     const allDatesSet = {};
     fetchCollectedStats_().forEach(p => {
       const k = linkKey_(String(p.url || ""));
       if (!k) return;
+      if (p.ended_at) endedByKey[k] = String(p.ended_at).slice(0, 10);
       const m = byKey[k] || (byKey[k] = {});
       (p.stats || []).forEach(pair => {
         if (!(pair[1] > 0)) return; // 0·음수·비숫자 방어 — 시트에 0 찍힘/기존값 덮음/빈 열 추가 방지(엔드포인트도 >0만 반환)
@@ -590,12 +609,15 @@ function exportStats() {
     // 행별 매칭 맵 선계산 + 매칭/누락 카운트
     let matched = 0, missing = 0;
     const rowMap = new Array(nRows);
+    const rowKeys = new Array(nRows);
     const postedAtByRow = new Array(nRows);
     for (let i = 0; i < nRows; i++) {
       postedAtByRow[i] = toDateStr_(postedVals[i][0]);
       const url = String(urlVals[i][0] || "").trim();
-      if (!url) { rowMap[i] = null; continue; }
-      const m = byKey[linkKey_(url)];
+      if (!url) { rowMap[i] = null; rowKeys[i] = null; continue; }
+      const key = linkKey_(url);
+      rowKeys[i] = key;
+      const m = byKey[key];
       if (m) { rowMap[i] = m; matched++; }
       else { rowMap[i] = null; if (ALLOWED_URL_RE.test(url)) missing++; }
     }
@@ -605,7 +627,8 @@ function exportStats() {
     //   ⚠️ DB(post_daily_stats)엔 아무것도 안 씀(safeIncrement·증분 규칙 불변). 이어받기 값은 importStats가 재저장 안 함(아래 가드).
     //   배너 등 '양수 조회수가 한 번도 없는' 행은 lastVal이 안 생겨 자동 제외(빈칸 유지).
     //   기존 실측·수동값은 절대 안 덮고, 빈칸 또는 직전값 이어받기였던 칸만 새 실측으로 교체.
-    let filled = 0, carried = 0, prePostedCleared = 0, preserved = 0, orphanRows = 0, futureCleared = 0;
+    let filled = 0, carried = 0, prePostedCleared = 0, preserved = 0, orphanRows = 0, futureCleared = 0, endedCleared = 0;
+    const carriedCells = {};
     const newBlock = block.map(r => r.slice());
     for (let i = 0; i < nRows; i++) {
       const m = rowMap[i];
@@ -618,6 +641,7 @@ function exportStats() {
         continue;
       }
       let lastVal = null;
+      const endedAt = rowKeys[i] ? endedByKey[rowKeys[i]] : null;
       for (let j = 0; j < dateCols.length; j++) {
         const bi = dateCols[j].col - firstCol;
         const date = dateCols[j].date;
@@ -625,6 +649,11 @@ function exportStats() {
         const postedAt = postedAtByRow[i];
         if (isBeforePostedDate_(date, postedAt)) {
           if (cell !== "" && cell !== null) { newBlock[i][bi] = ""; prePostedCleared++; }
+          lastVal = null;
+          continue;
+        }
+        if (endedAt && date > endedAt) {
+          if (cell !== "" && cell !== null) { newBlock[i][bi] = ""; endedCleared++; }
           lastVal = null;
           continue;
         }
@@ -651,6 +680,7 @@ function exportStats() {
           lastVal = cell;
         } else if (lastVal != null && (cell === "" || cell === null)) { // '완전 빈칸'만 이어받기
           newBlock[i][bi] = lastVal; carried++;                // (0·텍스트 등 다른 내용이 든 셀은 절대 안 덮음)
+          carriedCells[i + ":" + bi] = true;
         }
       }
     }
@@ -666,7 +696,55 @@ function exportStats() {
       if (changed) sheet.getRange(CONFIG.DATA_START_ROW, dc.col, nRows, 1).setValues(colVals);
     });
 
-    let msg = `✅ 수집 조회수를 시트에 반영했습니다.\n새 날짜 열 ${addedCols}개 추가 · 실측 갱신 ${filled}칸 · 공백 이어받기 ${carried}칸 · 업로드 전 값 삭제 ${prePostedCleared}칸 · 기존값 보존 ${preserved}칸 · 매칭 게시물 ${matched}개 · 날짜 열 ${dateCols.length}개`;
+    const incrementCol = getIncrementCol_(sheet);
+    let incWritten = 0;
+    if (incrementCol) {
+      const incFormulas = [];
+      for (let i = 0; i < nRows; i++) {
+        const url = String(urlVals[i][0] || "").trim();
+        const m = rowMap[i];
+        const postedAt = postedAtByRow[i];
+        const endedAt = rowKeys[i] ? endedByKey[rowKeys[i]] : null;
+        const rowNum = CONFIG.DATA_START_ROW + i;
+        const refs = [];
+        if (url && m) {
+          for (let j = 0; j < dateCols.length; j++) {
+            const dc = dateCols[j];
+            const bi = dc.col - firstCol;
+            if (isBeforePostedDate_(dc.date, postedAt)) continue;
+            if (endedAt && dc.date > endedAt) continue;
+            if (dc.date >= today) continue;
+            if (carriedCells[i + ":" + bi]) continue;
+            if (!(m[dc.date] > 0)) continue;
+            const n = toNumber_(newBlock[i][bi]);
+            if (n == null || n <= 0) continue;
+            refs.push({ ref: colLetter_(dc.col) + rowNum, date: dc.date });
+          }
+        }
+        if (refs.length === 0) {
+          incFormulas.push([""]);
+          continue;
+        }
+        if (refs.length === 1) {
+          let firstOk = true;
+          if (postedAt) {
+            const gapDays = (Date.parse(refs[0].date) - Date.parse(String(postedAt).slice(0, 10))) / 86400000;
+            if (gapDays > 7) firstOk = false;
+          }
+          incFormulas.push([firstOk ? `=IF(N(${refs[0].ref})>0,${refs[0].ref},"")` : ""]);
+          if (firstOk) incWritten++;
+          continue;
+        }
+        const latest = refs[refs.length - 1].ref;
+        const prevRefs = refs.slice(0, -1).map(r => r.ref);
+        const prevMax = prevRefs.length === 1 ? prevRefs[0] : `MAX({${prevRefs.join(",")}})`;
+        incFormulas.push([`=IF(N(${latest})<=0,"",MAX(0,${latest}-${prevMax}))`]);
+        incWritten++;
+      }
+      sheet.getRange(CONFIG.DATA_START_ROW, incrementCol, nRows, 1).setFormulas(incFormulas);
+    }
+
+    let msg = `✅ 수집 조회수를 시트에 반영했습니다.\n새 날짜 열 ${addedCols}개 추가 · 실측 갱신 ${filled}칸 · 공백 이어받기 ${carried}칸 · 업로드 전 값 삭제 ${prePostedCleared}칸 · 종료 이후 값 삭제 ${endedCleared}칸 · 증분 수식 ${incWritten}행 · 기존값 보존 ${preserved}칸 · 매칭 게시물 ${matched}개 · 날짜 열 ${dateCols.length}개`;
     if (missing) msg += `\n⚠️ 시트엔 있으나 대시보드에 수집기록이 없는 URL ${missing}개(아직 수집 전이거나 미등록).`;
     if (futureCleared) msg += `\n🗓️ 오늘·미래(수집일-1 이후) 날짜칸 ${futureCleared}개를 비웠습니다.`;
     if (orphanRows) msg += `\n🧟 URL 없이 숫자만 있는 '고아 행' ${orphanRows}개 발견 — 행 삭제로 정리하세요(데이터는 DB에 있음).`;

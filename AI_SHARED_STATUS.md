@@ -1,5 +1,17 @@
 # AI Shared Status
 
+## 2026-07-15 Combined_Sheet_AppsScript.gs 정본 복원 (Codex)
+Claude가 보고한 `.gs` 자동 revert 원인 후보를 추적해, `claude-code` 백그라운드 세션 3개를 중단했다(PID 33064, 52760, 61116). 이후 `C:/tmp/influencer-organic-main/Combined_Sheet_AppsScript.gs`를 정본으로 복원.
+
+복원 내용:
+- `exportStats`가 `stats-for-sheet`의 `ended_at`을 `endedByKey`로 읽고, 종료일 이후 날짜칸을 비운다.
+- forward-fill 표시값은 계속 만들되, carry로 채운 칸은 `carriedCells`에 표시한다.
+- J열 `증분값`은 `setFormulas`로 가벼운 행별 수식만 쓴다. 기준은 대시보드 `safeIncrement`와 동일하게 실제 수집/수기 DB값 날짜만 참조하고, carry 셀은 제외한다.
+- 첫 유효 측정은 전체값을 증분으로 보되, 게시 후 7일 초과 백로그 첫 측정은 빈칸으로 둔다.
+- 마커: `carriedCells`, `setFormulas`, `colLetter_`, `endedByKey`, `incWritten`.
+
+검증: Node `new Function(...)` 문법 컴파일 통과. Apps Script 편집기에 반영할 때 이 버전을 기준으로 사용하고, 구버전 value-only 또는 carry 포함 버전으로 덮어쓰지 말 것.
+
 > ## 🛑 [CODEX 필독] `web/app/organic/page.tsx` **재커밋/재푸시 금지**
 > 이 변경은 **Claude가 이미 커밋·배포 완료**: 커밋 `ef64cb2` → origin/main·**프로덕션(-mu) 라이브**, CI build-test **success**, 라이브 동작(변형→상위 자동포함) 검증 완료.
 > Codex 워크트리 `C:/tmp/influencer-main` (브랜치 codex-overrecord-alert)에 동일 변경이 아직 **staged**로 남아있지만 **절대 재커밋/재푸시하지 마세요 — 중복입니다.**
