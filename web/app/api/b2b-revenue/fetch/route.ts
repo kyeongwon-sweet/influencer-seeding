@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { fetchSheetTabValuesByTitle } from "@/lib/google-sheets";
+import { fetchSheetTabValuesByTitle, fetchSheetTabValues } from "@/lib/google-sheets";
 import { notifyJob } from "@/lib/slack";
 
 export const runtime = "nodejs";
@@ -28,6 +28,21 @@ type DayVals = { order: number; profit: number | null; ad: number | null; contri
 export async function GET(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") { // fail-closed: CRON_SECRET 미설정 시에도 차단(무인증 오픈 방지)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // TEMP: 연동 시트 썰박스/썰뜨기 업체명(D열) 채워진 셀 조회. 확인 후 제거.
+  if (req.nextUrl.searchParams.get("sulbox")) {
+    const rows = await fetchSheetTabValues("10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak", 1937186871, "A1:F2000");
+    const header = (rows[0] ?? []) as (string | number | null)[];
+    const findCol = (kw: string) => header.findIndex((c) => typeof c === "string" && c.replace(/\s+/g, "").includes(kw));
+    const cAcc = findCol("채널명"), cCo = findCol("업체명");
+    const hits: { row: number; account: string; company: string }[] = [];
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i] as (string | number | null)[];
+      const acc = String(r[cAcc] ?? ""), co = String(r[cCo] ?? "").trim();
+      if ((acc.includes("썰박스") || acc.includes("썰뜨기")) && co) hits.push({ row: i + 1, account: acc.trim(), company: co });
+    }
+    return NextResponse.json({ companyCol: String.fromCharCode(65 + cCo), count: hits.length, hits });
   }
 
   const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
