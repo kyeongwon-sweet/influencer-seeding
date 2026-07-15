@@ -1,5 +1,24 @@
 # AI Shared Status
 
+## 2026-07-15 syncAll 리포트 전 실행 점검 — Codex 확인/보강
+요청 `0b85801` 확인 결과:
+- 리포트 GHA `daily-increment-report.yml`은 12:20 KST(+13:20/14:20/15:20 백업)에 실행.
+- Apps Script 정본 `Combined_Sheet_AppsScript.gs`의 `CONFIG.TRIGGER_HOUR=9`, `TRIGGER_MINUTE=30`; `dailyAuto()`는 `syncAll(runSync_(false)) → pullFromDB → exportStats` 순서. 즉 코드상 의도는 **09:30 KST dailyAuto가 12:20 리포트 전에 channel_type을 DB로 동기화**하는 것.
+- `/api/sponsored-posts/bulk`는 `upsertSponsoredRows`를 통해 시트의 `channel_type`을 기존 게시물 메타 업데이트 대상으로 받는다. bulk/pipeline 경로 자체가 분류를 버리는 구조는 아님.
+- 단, 실제 사고 원인은 공유상태 기록처럼 **Apps Script 시간 트리거가 실제로 설치/실행/성공했는지** 영역. Codex가 로컬 코드만으로 라이브 Apps Script 트리거 실행 로그를 확정할 수는 없음.
+
+보강:
+- `dailyAuto`가 마지막 시작/종료/상태를 `PropertiesService`에 기록하도록 수정.
+- `runSync_`/`pullFromDB`/`exportStats`가 성공 여부를 반환하고, `dailyAuto` 단계 실패 시 Apps Script 실행이 `ERROR`로 남게 수정(조용한 성공 방지).
+- `설정 확인(checkSetup)`이 dailyAuto 트리거 수, 구버전 syncNew 트리거 수, 마지막 dailyAuto 상태를 표시.
+- `AI_SKILLS.md`/`ONBOARDING.md`의 오래된 dailyAuto=syncNew, 09:30 리포트 문구를 현재 구조(09:30 syncAll, 12:20 리포트)로 정정.
+
+시트세션/Ad view tracking 할 일:
+1. 이 `Combined_Sheet_AppsScript.gs` 정본을 Apps Script 편집기에 반영.
+2. 메뉴에서 자동 동기화 켜기(`installDailyTrigger`)를 한 번 실행해 구버전 syncNew 트리거를 제거하고 dailyAuto 09:30 트리거를 재설치.
+3. `설정 확인`에서 `dailyAuto 1개, syncNew 0개`와 마지막 상태 `OK`를 확인.
+4. 다음날 12:20 리포트 전, Apps Script 실행 로그에서 dailyAuto가 09:30 전후 성공했는지 확인. 리포트에 `미분류` 경고가 뜨면 syncAll 실패/지연으로 간주하고 즉시 `syncAll` 수동 실행 후 리포트 재발송.
+
 ## 2026-07-15 삭제된 틱톡 영상 2건 DB 제거 (Claude, 사용자 지시)
 썰박스(틱톡) `@ssulbox_1/video/7662339923424513300`·`7662308369608510741` — 재수집 "Post not found"(삭제 확정), DB엔 위성채널 게시물로 있었으나 stats 0행(빈 껍데기). sponsored_posts 행 삭제(백업 `data/output/deleted-tiktok-ssulbox-20260714.json`). DB 잔존 0 검증.
 ⚠️ 시트세션: 시트 재생성 시 이 2개 URL은 **재추가 금지**(삭제된 영상, 껍데기 행 방지).

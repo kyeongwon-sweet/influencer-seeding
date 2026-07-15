@@ -55,9 +55,9 @@
   - 틱톡: 살아있는 영상만(0=접근불가 건너뜀). FB/스레드는 조회수 없음.
   - 조회수는 **누적·단조증가**(monotonic max 가드). 감소=수집오류로 간주.
 - **`.github/workflows/cron-daily-collect.yml`** — run_monitoring + Vercel API curl 4개(brand-metrics/collect·youtube-trends/collect kw=0,1·b2b-revenue/fetch)를 GET+Bearer(CRON_SECRET). 스케줄은 혼잡 피해 `:41` 3개 창(UTC) + "오늘 이미 수집됨" 게이트. `workflow_dispatch` input `api_only=true`(IG 건너뛰고 보조만). **호출 URL은 워크플로 상단 `env.APP_URL`(=`https://influencer-seeding-mu.vercel.app`)로 중앙화** — 도메인 바꿀 땐 이 한 줄만. 각 curl은 **응답이 2xx 아니면 `::error`+`exit 1`로 단계 실패**(조용한 무성공 처리 방지, 3f6745c). cron-kpi.yml도 동일 패턴.
-- 다른 크론: `cron-kpi.yml`(kpi/fetch), `daily-increment-report.yml`(09:30 증분 리포트 슬랙), `monitoring-retry.yml`(데이터 없을 때만 재수집), `dumppokbar-reminder.yml`.
+- 다른 크론: `cron-kpi.yml`(kpi/fetch), `daily-increment-report.yml`(12:20 KST 증분 리포트 슬랙 + 13:20/14:20/15:20 백업), `monitoring-retry.yml`(데이터 없을 때만 재수집), `dumppokbar-reminder.yml`.
 - **보조 지표 출처**: brand-metrics(IG 프로필 방문 ig_profile_views), **유튜브 검색량 = Google Trends**(`youtube_search_trends`, Apify gprop=youtube, **OAuth 불필요**). ⚠️ `yt_search_views`(Analytics OAuth)는 1d36401에서 **의도적으로 폐기된 죽은 필드**(영구 null, 복구대상 아님 — "OAuth 필요"로 오판 말 것).
-- 슬랙(여믄봇): 수집상태 DM(황경원) + 09:30 증분 리포트(#빙과_마케팅_리포트, TOP10 하이퍼링크). 채널 발송은 봇이 멤버여야 함.
+- 슬랙(여믄봇): 수집상태 DM(황경원) + 12:20 KST 증분 리포트(#빙과_마케팅_리포트, TOP10 하이퍼링크). 채널 발송은 봇이 멤버여야 함.
 
 ## 4. 주요 DB 테이블
 

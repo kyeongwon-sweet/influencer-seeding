@@ -421,7 +421,7 @@ function runSync_(onlyNew) {
     const { rows, rowNums, statusCol, skipped, dupCount, future } = collectRows_(onlyNew);
     if (rows.length === 0) {
       safeAlert_((onlyNew ? "추가할 신규 광고가 없습니다." : "추가할 광고가 없습니다.") + noteExtra_(skipped, dupCount, future));
-      return;
+      return true;
     }
     const { count, ended, filled } = postRows_(rows);
     markRegistered_(getSheet_(), statusCol, rowNums);
@@ -429,9 +429,11 @@ function runSync_(onlyNew) {
     if (filled) okMsg += `\n📝 기존 광고의 빈 항목 ${filled}건을 시트 값으로 채움(채널 분류·비용 등).`;
     if (ended) okMsg += `\n🛑 캡션 '삭제/보관' ${ended}건 → '종료' 처리됨.`;
     safeAlert_(okMsg + noteExtra_(skipped, dupCount, future) + blankNote_());
+    return true;
   } catch (e) {
     safeAlert_("❌ 오류\n" + e.message);
     Logger.log(e.stack || e.message);
+    return false;
   }
 }
 
@@ -508,9 +510,11 @@ function pullFromDB() {
     });
 
     safeAlert_(`⬇️ DB→시트 반영 완료\n• 신규 행 추가: ${added}건\n• 기존 행 빈칸 채움: ${filled}건`);
+    return true;
   } catch (e) {
     safeAlert_("❌ DB→시트 반영 오류\n" + e.message);
     Logger.log(e.stack || e.message);
+    return false;
   }
 }
 
@@ -519,9 +523,38 @@ function pullFromDB() {
 // 전파되지 않아 시트·DB 게시일이 어긋나던 문제 해소(640행 7/2↔7/4 사례).
 // 서버(bulk)가 '비어있지 않은 값만 덮기 + manual_fields 보존'이라 전체 재전송도 안전.
 function dailyAuto() {
-  try { runSync_(false); } catch (e) { Logger.log("dailyAuto syncAll: " + (e.stack || e.message)); }
-  try { pullFromDB(); }  catch (e) { Logger.log("dailyAuto pullFromDB: " + (e.stack || e.message)); }
-  try { exportStats(); } catch (e) { Logger.log("dailyAuto exportStats: " + (e.stack || e.message)); }
+  const props = PropertiesService.getScriptProperties();
+  const startedAt = new Date().toISOString();
+  const errors = [];
+  props.setProperties({
+    DAILY_AUTO_LAST_STARTED_AT: startedAt,
+    DAILY_AUTO_LAST_STATUS: "RUNNING",
+  }, false);
+
+  const syncOk = runSync_(false);
+  if (syncOk === false) errors.push("syncAll failed");
+  try {
+    const pullOk = pullFromDB();
+    if (pullOk === false) errors.push("pullFromDB failed");
+  } catch (e) {
+    errors.push("pullFromDB threw: " + (e.stack || e.message));
+    Logger.log("dailyAuto pullFromDB: " + (e.stack || e.message));
+  }
+  try {
+    const exportOk = exportStats();
+    if (exportOk === false) errors.push("exportStats failed");
+  } catch (e) {
+    errors.push("exportStats threw: " + (e.stack || e.message));
+    Logger.log("dailyAuto exportStats: " + (e.stack || e.message));
+  }
+
+  const finishedAt = new Date().toISOString();
+  const status = errors.length ? `ERROR: ${errors.join(" | ")}` : "OK";
+  props.setProperties({
+    DAILY_AUTO_LAST_FINISHED_AT: finishedAt,
+    DAILY_AUTO_LAST_STATUS: status,
+  }, false);
+  if (errors.length) throw new Error(status);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -749,9 +782,11 @@ function exportStats() {
     if (futureCleared) msg += `\n🗓️ 오늘·미래(수집일-1 이후) 날짜칸 ${futureCleared}개를 비웠습니다.`;
     if (orphanRows) msg += `\n🧟 URL 없이 숫자만 있는 '고아 행' ${orphanRows}개 발견 — 행 삭제로 정리하세요(데이터는 DB에 있음).`;
     safeAlert_(msg);
+    return true;
   } catch (e) {
     safeAlert_("❌ 오류\n" + e.message);
     Logger.log(e.stack || e.message);
+    return false;
   }
 }
 
@@ -903,7 +938,24 @@ function checkSetup() {
   try {
     const sheet = getSheet_();
     const fieldCols = buildFieldCols_(sheet);
-    safeAlert_(`✅ 설정 정상\n탭: ${sheet.getName()}\n인식된 필드: ${Object.keys(fieldCols).join(", ")}`);
+    const triggers = ScriptApp.getProjectTriggers()
+      .filter(t => t.getHandlerFunction() === "syncNew" || t.getHandlerFunction() === "dailyAuto");
+    const dailyAutoCount = triggers.filter(t => t.getHandlerFunction() === "dailyAuto").length;
+    const legacySyncNewCount = triggers.filter(t => t.getHandlerFunction() === "syncNew").length;
+    const props = PropertiesService.getScriptProperties();
+    const lastStarted = props.getProperty("DAILY_AUTO_LAST_STARTED_AT") || "-";
+    const lastFinished = props.getProperty("DAILY_AUTO_LAST_FINISHED_AT") || "-";
+    const lastStatus = props.getProperty("DAILY_AUTO_LAST_STATUS") || "기록 없음";
+    safeAlert_(
+      `✅ 설정 정상\n` +
+      `탭: ${sheet.getName()}\n` +
+      `인식된 필드: ${Object.keys(fieldCols).join(", ")}\n\n` +
+      `⏰ 자동 동기화 트리거: dailyAuto ${dailyAutoCount}개, 구버전 syncNew ${legacySyncNewCount}개\n` +
+      `예정: 매일 ${CONFIG.TRIGGER_HOUR}:${CONFIG.TRIGGER_MINUTE} KST 전후(12:20 리포트 전)\n` +
+      `마지막 dailyAuto 시작: ${lastStarted}\n` +
+      `마지막 dailyAuto 종료: ${lastFinished}\n` +
+      `마지막 상태: ${lastStatus}`
+    );
   } catch (e) {
     safeAlert_("❌ 설정 오류\n" + e.message);
   }
@@ -942,7 +994,7 @@ function checkDuplicates() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 자동 트리거 (매일 9:30, syncNew 실행)
+// 자동 트리거 (매일 9:30, dailyAuto 실행: syncAll → pullFromDB → exportStats)
 // ═══════════════════════════════════════════════════════════════
 function installDailyTrigger() {
   // 기존 트리거(구버전 syncNew 포함) 제거 후 양방향 dailyAuto로 재등록
@@ -957,7 +1009,7 @@ function installDailyTrigger() {
     .nearMinute(CONFIG.TRIGGER_MINUTE)
     .create();
 
-  safeAlert_(`✅ 매일 오전 ${CONFIG.TRIGGER_HOUR}:${CONFIG.TRIGGER_MINUTE} (±15분) 자동 동기화를 켰습니다.\n• 시트→사이트: 신규 광고 자동 추가\n• 사이트→시트: 대시보드 추가분 자동 가져오기`);
+  safeAlert_(`✅ 매일 오전 ${CONFIG.TRIGGER_HOUR}:${CONFIG.TRIGGER_MINUTE} (±15분) 자동 동기화를 켰습니다.\n• 시트→사이트: 전체 메타 syncAll\n• 사이트→시트: 대시보드 추가분/수집 조회수 가져오기\n• 12:20 리포트 전에 분류 동기화`);
 }
 
 function removeDailyTrigger() {

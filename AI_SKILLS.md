@@ -116,7 +116,7 @@ git push origin HEAD:main || (git fetch origin main && git rebase origin/main &&
 방향과 정책을 알아야 무한 왕복/덮어쓰기 사고를 막는다.
 - **시트→DB**: `Combined_Sheet_AppsScript.gs`의 `syncNew()`(신규 URL만) / `syncAll()`(전체) → `POST /api/sponsored-posts/bulk`. **비어있지 않은 값만 덮고, `manual_fields`(대시보드 수동수정)·빈칸은 보존.** 캡션(content_summary)은 시트값 우선.
 - **DB→시트**: `pullFromDB()` → `GET .../sponsored-posts/...`(sync 계열). **시트의 빈 셀만 채움**(기존 값 안 덮음).
-- **매일 자동(dailyAuto)** = `syncNew`(신규만) + `pullFromDB`(빈칸만) → **기존 행은 자동으로 안 덮인다.** 단 **수동 `syncAll`(전체 동기화)** 을 돌리면 시트값이 DB를 덮는다.
+- **매일 자동(dailyAuto)** = `syncAll`(전체 메타 동기화) + `pullFromDB`(빈칸만) + `exportStats`(수집 조회수/J열 갱신). 기본 설치 시간은 09:30 KST라 12:20 증분 리포트 전에 `channel_type`을 DB로 보내는 것이 정상이다. `설정 확인`에서 dailyAuto 트리거 수와 마지막 실행 상태를 확인한다.
 - 결론: DB에서 바꾼 값을 영구화하려면 **시트 원본도 같이 바꿔라**(안 그러면 다음 `syncAll` 때 되돌아감).
 - 인증: bulk·stats-import는 Bearer(CRON_SECRET) — Apps Script 스크립트 속성에 `CRON_SECRET` 필요.
 - **오염 가드**: stats-import는 `play_count==cost` 차단(비용이 조회수로 적재되던 버그 방지).
