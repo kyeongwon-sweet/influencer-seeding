@@ -21,6 +21,10 @@ on:
         description: "스크레이프 게시물 수 상한(비우면 전체) — 프로브용"
         type: string
         default: ""
+      setup_test:
+        description: "연동 테스트 — 대상에 테스트 메시지 1건만 발송(수집 안 함)"
+        type: boolean
+        default: false
 
 jobs:
   alert:
@@ -44,5 +48,6 @@ jobs:
           SLACK_CHANNEL: ${{ github.event.inputs.to_dm == 'true' && 'U0B2Y0ZC8QZ' || '' }}
           DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && '1' || '' }}
           LIMIT_POSTS: ${{ github.event.inputs.limit_posts }}
+          SETUP_TEST: ${{ github.event.inputs.setup_test == 'true' && '1' || '' }}
           PYTHONUNBUFFERED: "1"
         run: cd scripts && python monitor_comments.py

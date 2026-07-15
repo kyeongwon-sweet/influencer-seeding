@@ -371,6 +371,14 @@ def main():
     dry = os.getenv("DRY_RUN") == "1"
     if not dry and not token:
         raise RuntimeError("SLACK_BOT_TOKEN 필요 (미발송 테스트는 DRY_RUN=1)")
+    # 연동 테스트: 대상 채널에 테스트 메시지 1건만 보내고 종료(수집·DB 무관).
+    # 봇이 채널 미초대면 not_in_channel로 실패 → /invite @여믄봇 후 재실행.
+    if os.getenv("SETUP_TEST") == "1":
+        r = _post_slack(token, CHANNEL,
+                        "✅ 여믄봇 부정 댓글 알림 연동 테스트 — 이 채널로 협찬 게시물 부정/이슈 댓글 알림이 발송됩니다. (매일 09:00 KST)")
+        print(f"[comments] SETUP_TEST ok={r.get('ok')} error={r.get('error')} channel={CHANNEL}")
+        assert r.get("ok"), r
+        return
     db = get_client()
     now_iso = datetime.now(timezone.utc).isoformat()
 
