@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     const text =
       `<@${userId}> 런치랩에 오신것을 환영합니다 :환영:\n` +
       `당신의 점심시간을 두 배로 즐기도록! ((런치랩 사측 아님))\n` +
-      `<${WELCOME_LINK}|👆 회사코드 여기서 확인>`
+      `:point_down::skin-tone-2: <${WELCOME_LINK}|회사코드 여기서 확인!>`
 
     await fetch('https://slack.com/api/chat.postMessage', {
       method: 'POST',
