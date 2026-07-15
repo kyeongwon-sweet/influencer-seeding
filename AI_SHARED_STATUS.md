@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## 2026-07-15 부정 댓글 알림 v2 — 채널 스레드+버튼, 키워드/욕설 확장 (Claude)
+- **채널 이전**: 부정 댓글 알림 대상 채널 = **C0B659HEYDV**(부정 댓글 관리). 매일 `[n/n 부정 댓글 관리 스레드]` 부모 1개 생성/재사용 후, 부정/이슈 댓글을 **스레드 답글**로 발송. 각 답글에 **[✅처리완료]/[🙈무시]** 버튼.
+- **버튼 처리**: `web/app/api/slack/comment-action/route.ts`(신규, Clerk public, SLACK_SIGNING_SECRET 서명검증) → `post_comments.handled_at/handled_by/handled_action` 갱신 + response_url로 메시지 교체. 외부 계정은 API 숨김 불가라 **상태 기록만**(보유계정 Graph 숨김은 추후). DB 컬럼 3종 추가 완료.
+- **분류 확장**: NEG_KEYWORDS에 광고·바이럴·별로·끼워팔기·상술 등 추가 + 한국어 욕설 정규화 감지(`_norm_profanity`로 ㅅㅂ/시발 우회표기 무력화). Claude 프롬프트에 광고조롱/끼워팔기/욕설 명시(**애정표현 욕설은 normal 예외**). ⚠️ 폴백은 "존나 웃김"류 오탐 많음 → **ANTHROPIC_API_KEY 필수 권장**(아직 미등록).
+- 단가 실측(댓글 1개당): **IG $0.0023 · 틱톡 $0.0010 · 유튜브 ~$0.0015**. 증가분만 스크레이프(delta+10, cap 80). 30댓글/일 게시물 1개월: IG $2.8·틱톡 $1.2·유튜브 $1.8. 실측 하루 댓글증가 게시물 ~6개라 현 비용 월 $2~3.
+- 커밋 `03b846a`(스레드+버튼+키워드)·`7c7884a`(미들웨어 public). 검증: tsc0/build/DRY_RUN/GHA DM 스모크(부모 스레드+답글2 렌더)·엔드포인트 라이브(401).
+- **미완(사용자 액션)**: ①C0B659HEYDV에 여믄봇 `/invite` ②GitHub `ANTHROPIC_API_KEY` 시크릿 ③여믄봇 Slack 앱 Interactivity Request URL = `https://influencer-seeding-mu.vercel.app/api/slack/comment-action`(버튼 활성화).
+
 ## 2026-07-15 라밍(카카오숏폼) 누적하락 정정 완료 (Claude, 사용자 실측 확인 "라밍 7.2만")
 사용자가 카카오에서 실제 조회수 **72,000** 확인. 06-29=240,000(수동 오기)이 자동 65k/67k보다 높아 누적하락 알림 원인이었음.
 - **DB 정정**: 06-29=240,000 삭제 + 07-09(종료일)=72,000 기록(manual, 실측). 결과 **65,000(06-30)→67,000(07-02)→72,000(07-09) 단조증가, 하락 해소.** 백업 `C:/tmp/raming-kakao-backup-20260715.json`.
