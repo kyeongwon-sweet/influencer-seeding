@@ -34,7 +34,7 @@ const ACTION_LABEL: Record<string, string> = {
 
 export async function POST(req: NextRequest) {
   const raw = await req.text();
-  const secret = process.env.INJIBOT_SIGNING_SECRET || "";
+  const secret = (process.env.INJIBOT_SIGNING_SECRET || "").trim();
   const ts = req.headers.get("x-slack-request-timestamp") || "";
   const sig = req.headers.get("x-slack-signature") || "";
   if (!secret || !verifySlack(raw, ts, sig, secret)) {
