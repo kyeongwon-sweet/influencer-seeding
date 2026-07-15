@@ -393,6 +393,13 @@ def main():
                 lines.append(f"• {_ital_paren(ct)}  (당일 배너 미수집)")
         else:
             lines.append(f"• {_ital_paren(ct)} *+{f(s)}*  {_cpv(cost_by_ch.get(ct, 0), cumviews_by_ch.get(ct, 0), ct)}")
+    # ⚠️ 미분류 경고 — 시트엔 분류돼 있어도 DB channel_type이 아직 동기화 안 되면 여기로 몰림.
+    #    조용히 '미분류'로 넘어가지 않게 표면화(시트→DB 분류 동기화 지연 감지용).
+    unclassified_cnt = sum(1 for it in items if _norm_ch(it["channel_type"]) == "미분류")
+    unclassified_inc = by_channel.get("미분류", 0)
+    if unclassified_inc > 0:
+        lines.append("")
+        lines.append(f"⚠️ *미분류 {unclassified_cnt}건 (+{f(unclassified_inc)})* — 시트 채널분류가 DB에 아직 반영 안 됨(시트→DB 동기화 지연). 시트에서 `♻️ 전체 다시 추가`(syncAll) 실행 후 재발송하면 각 채널로 분류됩니다.")
     lines += ["", DIV, "", "◾ *급상승 TOP 10* 🔥  `CPV는 누적 기준`", ""]
     # 배너는 도달수를 '조회수'로 취급해 TOP에도 섞어 노출(사용자 지시). 배너 CPV = 비용/도달수(도달당비용).
     # 리포트는 이미 쫀득바만 필터돼 있어 줄마다 [JD멜] 상품태그는 중복 → 표시에서 제거(사용자 지시).
