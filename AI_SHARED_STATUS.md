@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 2026-07-15 업체명 공란 백필 — 계정→업체 학습 (Claude, 사용자 지시)
+배너 인사이트(summarizeByCompany)식 학습: 업체명 채워진 행에서 계정→업체 매핑(유일업체 251종). **바이럴(배너+영상) 행 중 업체명 공란 & 유일업체 13건**을 채움.
+- 대상: jolly__humor·luna.besty·nato.tip·tteokbokki__zip→루나앤코코, 365_real→굿띵투유, humani_3→후마니, some2lve→아택.
+- **DB(sponsored_posts.company_name) 13건 PATCH 완료**(readback 13/13). 백업 `C:/tmp/company-backfill-backup-20260714.json`.
+- **시트**: 사용자가 Apps Script `fillCompanyFromLearned()`(바이럴 한정·빈칸만·유일업체만) 실행해 채움. 스탠드얼론 스니펫 제공(정본 .gs 미변경).
+- ⚠️ 제외: **위성채널(32건)**=규칙상 업체명 공란이 정상([[owned-satellite-no-cost-rule]]), **협찬(5건)**=업체 개념 약함, **모호계정 5종(20건)**=여러 업체라 자동 못 채움(good_tip_magazine·bibimbap__zip·dotori_channel·shashaping_humor·썰박스(유튜브)). 공백표기 변형(썰뜨기(유튜브)↔썰뜨기 (유튜브))도 상충이라 제외.
+
 ## 2026-07-15 고아행(post_id=null) 95건 청소 (Claude)
 `post_daily_stats`에서 **post_id=null 쓰레기 행 95건**(06-04·06-05 자동수집분, 어느 게시물에도 안 붙음) 삭제. 대시보드엔 원래 안 보였으나 교차-복사 스캔 노이즈였음(예: 726,252 등이 미상행으로 잡힘). 백업 `data/output/orphan-stats-20260715.json`, 잔존 0 검증.
 
