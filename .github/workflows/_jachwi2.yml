@@ -1,0 +1,10 @@
+name: _jachwi2 (temp)
+on: { workflow_dispatch: {} }
+env: { APP_URL: "https://influencer-seeding-mu.vercel.app" }
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          curl -sS "$APP_URL/api/b2b-revenue/fetch?jachwi2=1" -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+          echo
