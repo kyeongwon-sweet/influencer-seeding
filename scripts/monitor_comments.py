@@ -476,7 +476,7 @@ def main():
         print(f"[comments] DRY_RUN — 알림 {len(bad)}건·DB 쓰기 생략")
         return
 
-    # DB 저장 (신규 전량) + 체크상태 갱신
+    # DB 저장 (신규 전량, alerted_at은 '발송 성공 후'에만 기록) + 체크상태 갱신
     rows = []
     for p, c in fresh:
         rows.append({
@@ -484,7 +484,6 @@ def main():
             "author": c.get("author"), "text": c.get("text"),
             "commented_at": _iso_or_none(c.get("commented_at")),
             "classification": c["label"], "reason": c.get("reason"),
-            "alerted_at": now_iso if c["label"] in ("negative", "issue") else None,
         })
     for chunk in _chunks(rows, 200):
         db.table("post_comments").upsert(chunk, on_conflict="post_id,comment_id", ignore_duplicates=True).execute()
@@ -501,21 +500,46 @@ def main():
     for chunk in _chunks(check_rows, 200):
         db.table("post_comment_checks").upsert(chunk, on_conflict="post_id").execute()
 
-    # 슬랙 알림 (개별 → 상한 초과분은 요약)
+    # 슬랙 알림 — DB 기반: 미발송(alerted_at null) 부정/이슈 전체가 대상이라
+    # 과거 발송 실패분(예: 봇 채널 미초대로 not_in_channel)도 다음 실행에서 자동 재시도된다.
+    by_id = {p["id"]: p for p in posts}
+    pending = []
+    frm = 0
+    while True:
+        res = (db.table("post_comments").select("post_id, comment_id, author, text, commented_at, classification, reason")
+               .is_("alerted_at", "null").in_("classification", ["negative", "issue"])
+               .order("id").range(frm, frm + 999).execute())
+        rs = res.data or []
+        pending += [r for r in rs if r["post_id"] in by_id]   # 활성 게시물만
+        if len(rs) < 1000:
+            break
+        frm += 1000
+
+    def _mark_alerted(items):
+        for r in items:
+            (db.table("post_comments").update({"alerted_at": now_iso})
+             .eq("post_id", r["post_id"]).eq("comment_id", r["comment_id"]).execute())
+
     sent = 0
-    for p, c in bad[:MAX_ALERTS]:
-        r = _post_slack(token, CHANNEL, _alert_text(p, c))
-        if r.get("ok"):
+    for r in pending[:MAX_ALERTS]:
+        p = by_id[r["post_id"]]
+        c = {"label": r["classification"], "text": r["text"], "author": r["author"],
+             "commented_at": r["commented_at"], "reason": r["reason"]}
+        resp = _post_slack(token, CHANNEL, _alert_text(p, c))
+        if resp.get("ok"):
             sent += 1
+            _mark_alerted([r])
         time.sleep(1)   # rate limit 여유
-    if len(bad) > MAX_ALERTS:
-        rest = bad[MAX_ALERTS:]
-        summary = [f"…외 부정/이슈 댓글 *{len(rest)}건* (알림 상한 {MAX_ALERTS}건 초과분, DB에는 저장됨)"]
-        for p, c in rest[:10]:
+    rest = pending[MAX_ALERTS:]
+    if rest and sent:   # 개별 발송이 되는 상태에서만 요약 발송·소진 처리
+        summary = [f"…외 부정/이슈 댓글 *{len(rest)}건* (알림 상한 {MAX_ALERTS}건 초과분 — 대시보드 DB post_comments에 저장됨)"]
+        for r in rest[:10]:
+            p = by_id[r["post_id"]]
             nm = (p.get("account_name") or "").strip() or "?"
-            summary.append(f"• <{p['url']}|{_esc(nm)}>: {_esc((c.get('text') or '')[:80])}")
-        _post_slack(token, CHANNEL, "\n".join(summary))
-    print(f"[comments] 알림 발송 {sent}/{len(bad)}건 (channel={CHANNEL})")
+            summary.append(f"• <{p['url']}|{_esc(nm)}>: {_esc((r.get('text') or '')[:80])}")
+        if _post_slack(token, CHANNEL, "\n".join(summary)).get("ok"):
+            _mark_alerted(rest)
+    print(f"[comments] 알림 발송 {sent}/{len(pending)}건 (channel={CHANNEL}, 요약처리 {len(rest) if rest and sent else 0}건)")
 
 
 def _iso_or_none(v):
