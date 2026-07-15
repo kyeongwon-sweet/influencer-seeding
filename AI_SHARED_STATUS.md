@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## 2026-07-15 Apify 비용 가드 1차 적용 (Codex)
+Apify 월 사용액 고페이스 이슈 대응. 최신 `origin/main` 기준 clean worktree `C:/tmp/influencer-apify-cost-20260715124500`에서만 작업.
+- `scripts/run_monitoring.py`: 같은 `MONITORING_DATE`에 이미 `post_daily_stats` 측정행(조회/좋아요/댓글/도달 중 하나 이상)이 있는 게시물은 기본 재수집 제외. 부분 실패 후 백업/재시도 창이 돌 때 이미 성공한 게시물 Apify 중복 호출을 막고, 미측정 게시물만 계속 복구한다.
+- 강제 전체 재수집은 `RECOLLECT_ALL=1`일 때만 허용. `.github/workflows/cron-daily-collect.yml`, `.github/workflows/monitoring-retry.yml`에 수동 dispatch 입력 `recollect_all` 추가.
+- `.github/workflows/comment-alerts.yml`: 09:00 KST 댓글 감시 첫 전체 스캔을 기본 `LIMIT_POSTS=40`, `FIRST_LIMIT=10`, `DELTA_CAP=50`으로 제한해 잔여 첫 스캔을 며칠에 나눠 처리. 전체 스캔이 필요하면 수동 dispatch에서 `limit_posts`를 크게 입력.
+- 검증: Python `compile()` syntax check pass(`run_monitoring.py`, `monitor_comments.py`), PyYAML parse pass(수정 workflow 3개), `_same_day_measured_ids` fake DB 단위 확인 pass, `git diff --check` pass.
+- 운영 효과: 다음 09:00 스케줄은 한 번에 전체 댓글 스캔하지 않고, 조회수 수집 백업/재시도는 이미 측정된 게시물을 중복 Apify 호출하지 않는다.
+
 ## 2026-07-15 미측정 알림 노이즈 제거(내부채널) + 측정이력0/하락 파악 (Claude, 사용자 "라밍 제외 전부 수정")
 - **`notify_status.py` 미측정 점검에서 위성채널·온드미디어 제외**(`ec4c1da`) — 배너처럼 내부채널은 캠페인 아님·불규칙 수집이라 미측정 정상. **점검 18→8건**(내부채널 10 제외). py_compile 통과. 리포트 크론용이라 다음 리포트부터 적용.
 - **측정이력0 4건 파악**: 썰박스(틱톡) 2건=위성채널(1건 notes에 POST_NOT_FOUND_OR_PRIVATE=삭제/비공개 감지, 죽은 틱톡) → #제외로 알림에서 빠짐. cream.at.home·____ziini=무상시딩(영상) **07-13 신규등록(2일전)**, 삭제 아님·부분수집에 걸려 첫 측정 대기 → 자가치유(값 지어내기 금지, 손대지 않음).

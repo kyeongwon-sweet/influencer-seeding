@@ -9,6 +9,11 @@ on:
   schedule:
     - cron: "0 2,5,8 * * *"  # 11/14/17 KST — 데이터 없을 때만 재수집(안전망)
   workflow_dispatch:
+    inputs:
+      recollect_all:
+        description: "강제 전체 재수집(기본 false) — 같은 MONITORING_DATE 기존 측정행도 다시 Apify 호출"
+        type: boolean
+        default: false
 
 jobs:
   collect:
@@ -103,6 +108,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
           SKIP_APIFY: "0"
+          RECOLLECT_ALL: ${{ github.event.inputs.recollect_all == 'true' && '1' || '0' }}
         run: |
           export MONITORING_DATE=$(TZ=Asia/Seoul date -d 'yesterday' +%F)
           echo "수집 대상(KST): ${MONITORING_DATE}"

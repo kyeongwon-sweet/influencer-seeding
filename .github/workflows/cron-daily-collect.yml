@@ -24,6 +24,10 @@ on:
         description: "수집 안 하고 상태 알럿(황경원 DM)만 테스트 발송"
         type: boolean
         default: false
+      recollect_all:
+        description: "강제 전체 재수집(기본 false) — 같은 MONITORING_DATE 기존 측정행도 다시 Apify 호출"
+        type: boolean
+        default: false
 
 # 배포 URL은 여기 한 곳에서만 관리(프로젝트 이전·alias 변경 시 이 줄만 수정).
 # ⚠️ -mu(프로덕션 도메인)만 사용 — -kwhwang-s-projects는 Vercel 배포보호(SSO)로 302되어 cron 차단됨(2026-06-30 확인).
@@ -123,6 +127,7 @@ jobs:
           APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
           PYTHONUNBUFFERED: "1"
           MONITORING_DATE: ${{ steps.check.outputs.kdate }}   # 새벽 예약수집은 전일 최종값으로 적재
+          RECOLLECT_ALL: ${{ github.event.inputs.recollect_all == 'true' && '1' || '0' }}
         # 실패 사유 알럿용으로 출력을 로그 파일에 캡처(pipefail로 python 실패가 단계 실패에 반영).
         run: |
           cd scripts

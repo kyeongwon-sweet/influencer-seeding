@@ -167,6 +167,37 @@ def _prev_stats(db, post_ids):
     return last
 
 
+def _same_day_measured_ids(db, post_ids, measured_at=TODAY):
+    """Return post ids that already have a measurement row for measured_at.
+
+    Retry windows should not pay Apify again for posts that were already
+    collected earlier for the same date. A row counts as measured when at least
+    one metric exists; rows with all metrics null are treated as still missing.
+    """
+    done = set()
+    ids = [i for i in post_ids if i]
+    for c in range(0, len(ids), 100):
+        chunk = ids[c:c + 100]
+        frm = 0
+        while True:
+            res = (
+                db.table("post_daily_stats")
+                .select("post_id, play_count, likes_count, comments_count, reach_count")
+                .eq("measured_at", measured_at)
+                .in_("post_id", chunk)
+                .range(frm, frm + 999)
+                .execute()
+            )
+            rows = res.data or []
+            for row in rows:
+                if any(row.get(k) is not None for k in ("play_count", "likes_count", "comments_count", "reach_count")):
+                    done.add(row["post_id"])
+            if len(rows) < 1000:
+                break
+            frm += 1000
+    return done
+
+
 def _store_aux_rows(db, rows, posts, stats, key_fn, label, *, views="clamp", caption_field=None, caption_limit=None):
     """보조 플랫폼(YT/틱톡/스레드/FB/X) 공통 저장 루프 — 5개 블록의 복붙을 단일 구현으로.
 
@@ -577,6 +608,16 @@ def run():
             and (not p.get("posted_at") or str(p.get("posted_at"))[:10] <= TODAY)
         ]
         print(f"[LOG] 추적 게시물: {len(posts)}개 (종료/업로드전 제외 {len(all_posts) - len(posts)}개)")
+
+        recollect_all = os.getenv("RECOLLECT_ALL", "0").lower() in ("1", "true", "yes")
+        if recollect_all:
+            print(f"[LOG] 🔁 RECOLLECT_ALL=1 — {TODAY} 기존 측정행이 있어도 전체 재수집")
+        else:
+            measured_ids = _same_day_measured_ids(db, [p["id"] for p in posts])
+            if measured_ids:
+                before = len(posts)
+                posts = [p for p in posts if p["id"] not in measured_ids]
+                print(f"[LOG] 💸 Apify 비용 가드: {TODAY} 이미 측정된 {before - len(posts)}건 제외, 미측정 {len(posts)}건만 수집")
 
         if not posts:
             print("[WARN] 추적 중인 게시물이 없습니다.")
