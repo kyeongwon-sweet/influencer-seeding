@@ -124,9 +124,9 @@ def retry_on_network_error(max_retries=3, delay=5):
     return decorator
 
 APIFY_IG_ACTOR = os.getenv("APIFY_IG_ACTOR_ID", "apify/instagram-scraper")
-# GHA는 MONITORING_DATE(KST)를 항상 주입. 폴백(로컬 실행)도 러너 로컬시각 대신 KST로 계산 — UTC 러너에서 하루 밀림 방지.
-# Fallback/manual runs belong to yesterday KST because after-midnight collection is the previous day's snapshot.
-TODAY = os.getenv("MONITORING_DATE") or ((datetime.now(timezone.utc) + timedelta(hours=9)).date() - timedelta(days=1)).isoformat()
+# GHA는 MONITORING_DATE(KST)를 주입할 수 있다. 폴백(로컬/수동 실행)은 러너 로컬시각 대신 KST 오늘로 계산한다.
+# 자동 수집은 수집일(KST 오늘) 칸만 만들고, 과거 날짜 백필은 MONITORING_DATE를 명시한 경우에만 허용한다.
+TODAY = os.getenv("MONITORING_DATE") or (datetime.now(timezone.utc) + timedelta(hours=9)).date().isoformat()
 
 
 def _ig_shortcode(url: str) -> str | None:

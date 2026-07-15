@@ -6,7 +6,7 @@ test("maxDateKST: returns YYYY-MM-DD", () => {
   assert.match(maxDateKST(), /^\d{4}-\d{2}-\d{2}$/);
 });
 
-test("yesterdayKST: after-midnight KST collection belongs to previous day", () => {
+test("yesterdayKST: returns previous KST date for reports and sheet caps", () => {
   const originalNow = Date.now;
   Date.now = () => new Date("2026-07-09T17:30:00Z").getTime(); // 2026-07-10 02:30 KST
   try {
