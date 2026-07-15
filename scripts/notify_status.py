@@ -327,7 +327,7 @@ def main():
             break
         off += 1000
     active = [a for a in posts if not a.get("ended_at")]
-    waiting = uncollectable = banner_skip = 0
+    waiting = uncollectable = banner_skip = internal_skip = 0
     check = []  # (account, 사유, url)
     for a in active:
         if a["id"] in today_ids:
@@ -340,6 +340,8 @@ def main():
             waiting += 1            # 당일 등록 → 다음 수집에서 측정(정상)
         elif "배너" in (a.get("channel_type") or ""):
             banner_skip += 1        # 배너는 도달수(reach_count)로 측정 → 조회수 미측정은 정상(점검 제외)
+        elif any(t in (a.get("channel_type") or "") for t in ("위성채널", "온드미디어")):
+            internal_skip += 1      # 내부채널(위성/온드) — 캠페인 아님·불규칙 수집 → 미측정 정상(점검 제외, 2026-07-15 사용자 지시)
         elif ("threads." in u or "facebook.com" in u       # 조회수 없는 플랫폼
               or "naver.com" in u or "kakao.com" in u):     # 전용 수집기 없음(수동 입력)
             uncollectable += 1      # 수집 불가(정상 — 신경 안 써도 됨)
@@ -349,7 +351,7 @@ def main():
             check.append((a.get("account_name"), "미측정", a.get("url")))
     unmeasured = waiting + uncollectable + len(check)
     if unmeasured:
-        btail = f" · 배너 {banner_skip} 제외(도달수 측정)" if banner_skip else ""
+        btail = (f" · 배너 {banner_skip} 제외(도달수 측정)" if banner_skip else "") + (f" · 내부채널 {internal_skip} 제외(위성/온드)" if internal_skip else "")
         text += f"\n\n⚠️ 오늘 미측정 활성 {unmeasured}건 (신규대기 {waiting} · 수집불가 {uncollectable} · 점검 {len(check)}){btail}"
         for nm, reason, url in check[:8]:
             tail = (url or "").rstrip("/").split("/")[-1]
