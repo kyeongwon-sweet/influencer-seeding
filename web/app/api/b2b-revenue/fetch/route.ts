@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { fetchSheetTabValuesByTitle, fetchSheetTabValues } from "@/lib/google-sheets";
+import { fetchSheetTabValuesByTitle } from "@/lib/google-sheets";
 import { notifyJob } from "@/lib/slack";
 
 export const runtime = "nodejs";
@@ -28,26 +28,6 @@ type DayVals = { order: number; profit: number | null; ad: number | null; contri
 export async function GET(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") { // fail-closed: CRON_SECRET 미설정 시에도 차단(무인증 오픈 방지)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  // TEMP: 자취생 시트행 전체(메타+J증분+날짜별) 조회. 확인 후 제거.
-  if (req.nextUrl.searchParams.get("jachwi2")) {
-    const rows = await fetchSheetTabValues("10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak", 1937186871, "A1:BZ2000");
-    const header = (rows[0] ?? []) as (string | number | null)[];
-    const find = (kw: string) => header.findIndex((c) => typeof c === "string" && c.replace(/\s+/g, "").includes(kw));
-    const cUrl = find("URL"), cInc = find("증분");
-    const firstDate = header.findIndex((h, i) => i > 8 && /(\d{1,2})\s*[.\/]\s*(\d{1,2})/.test(String(h ?? "")));
-    const out: unknown[] = [];
-    for (let i = 1; i < rows.length; i++) {
-      const r = rows[i] as (string | number | null)[];
-      if (String(r[cUrl] ?? "").includes("DYFBwz5GlJ7")) {
-        const meta = r.slice(0, firstDate < 0 ? 10 : firstDate).map((c) => (c == null ? "" : String(c)));
-        const dates: Record<string, string | number> = {};
-        for (let c = firstDate; c < r.length; c++) { const v = r[c]; if (v != null && v !== "") dates[String(header[c])] = v as string | number; }
-        out.push({ row: i + 1, meta, incCol: cInc >= 0 ? r[cInc] : null, dateValues: dates });
-      }
-    }
-    return NextResponse.json({ found: out.length, firstDateCol: firstDate, rows: out });
   }
 
   const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
