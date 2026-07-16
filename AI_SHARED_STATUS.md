@@ -45,6 +45,14 @@
 - **필요 조치(계정주=사용자만 가능, AI 불가)**: GitHub `kyeongwon-sweet` → Settings → Billing & plans → 결제수단 갱신 또는 Actions spending limit 상향. 풀리면 다음 스케줄부터 자동 정상화.
 - **임시 방어**: billing 지연 시 `scripts/run_monitoring.py` 로컬 실행(PYTHONUTF8=1 + `web/.env.local` creds)으로 그날치 수집 땜빵 가능. 근본 해결은 billing.
 
+## 2026-07-16 시트↔DB 최종 재대조 완료 (Claude, 게이팅 체인 step 3)
+- **전제**: CRON_SECRET 정합→syncAll 완료 후 실행. DB **974건**(직전 962→+12, 신규 07-16 15건 등록). normalized_key **974/974·중복 0**, tiktok **53/53 www·URL표준형 불일치 0**.
+- **값 대조**(연동시트 gid 1937186871 각 행 최신 비어있지않은값 vs DB 최신 play/reach, normalized_key 매칭): 시트 값보유 821행 중 **DB매칭 810 + 고아 11**. 고아 11은 전부 threads/x/naver/kakao/tiktok-photo(내 key파서 미지원) — **raw url로 확인 시 11/11 DB 실존 → 실제 import 누락 0**.
+- **정확일치 776 + 근사(≤5%) 10 = 810 중 786(97%) 정합. DB값없음(import 갭) 0.**
+- **불일치>5% 24건 성격 규명**: ① DB>시트 14건 = 자동수집이 시트 export보다 최신(정상 타이밍), 그중 2건(오먹·Ufo__brown 시트=60)은 시트 우측 비날짜 숫자열을 프로브가 최신값으로 오탐한 것. ② 시트>DB 10건 = **전부 바이럴 배너, 7.15 수동 도달수가 DB보다 앞섬 = 배너 reach의 stats-import 지연**(손실/오염 아님).
+- **결론: syncAll 정합 정상**(중복 0·누락 0·97% 일치, 나머지는 타이밍/배너 reach 지연). 임시 프로브(b2b-revenue/fetch recon)는 제거 완료.
+- **후속(선택, Codex/시트세션)**: 배너 도달수 stats-import 동기화 확인 — 시트 7.15 수동 reach가 DB에 아직 안 들어온 10건(text_pyeong·happy__pyeong·bol4_pyeong 등). 대시보드 배너 도달수가 시트보다 낮게 보임.
+
 ## 2026-07-16 stats-for-sheet shortcode 매칭 + 자동종료 50만+ 회귀테스트 (Codex)
 - **stats-for-sheet 매칭 재발방지**: `web/app/api/sponsored-posts/stats-for-sheet/route.ts`가 URL 완전일치 대신 `normalizeUrl()` canonical key로 일자별 stats를 그룹화한다. IG `/reel/`·`/reels/`·`/tv/`·`/p/`는 같은 shortcode면 같은 게시물로 묶임. 동일 key/date 중복 metric은 큰 값 1개만 반환.
 - **Apps Script 정본 보강**: `Combined_Sheet_AppsScript.gs` `exportStats()`는 API의 `{ key }`를 받더라도 반드시 `linkKey_(p.key || p.url)`로 변환해 시트 행 키와 같은 기준(`ig:<shortcode>`, `tt:<id>`, `yt:<id>`)으로 매칭한다. `/reel·/tv` 잔재 URL이 shortcode로 정상 매칭된 개수는 결과창에 별도 표시한다. 옛 완전일치 기준으로 되돌리지 말 것.
