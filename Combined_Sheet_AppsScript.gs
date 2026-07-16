@@ -79,6 +79,7 @@ function onOpen() {
     .addItem("📥 대시보드 → 시트 조회수 채우기 (I열~)", "exportStats")
     .addItem("♻️ 전체 다시 추가", "syncAll")
     .addItem("⬇️ 대시보드 추가분 시트로 가져오기", "pullFromDB")
+    .addItem("🚦 트래킹 상태 갱신", "syncStatus")
     .addSeparator()
     .addItem("🔎 빈칸 검사 (A~H)", "checkBlanks")
     .addItem("🔁 중복 URL 검사", "checkDuplicates")
@@ -489,6 +490,7 @@ function dailyAuto() {
   try { runSync_(false); } catch (e) { Logger.log("dailyAuto syncAll: " + (e.stack || e.message)); }
   try { pullFromDB(); }  catch (e) { Logger.log("dailyAuto pullFromDB: " + (e.stack || e.message)); }
   try { exportStats(); } catch (e) { Logger.log("dailyAuto exportStats: " + (e.stack || e.message)); }
+  try { syncStatus(); }  catch (e) { Logger.log("dailyAuto syncStatus: " + (e.stack || e.message)); }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1018,4 +1020,41 @@ function deleteOrphanRows() {
   }
 
   safeAlert_(deleted + "개 고아 이력행 삭제 완료.\n백업 탭: " + backup.getName());
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 대시보드 종료상태(ended_at)를 '상태' 열에 반영: 트래킹 종료 / 트래킹 중.
+// LIST_API_URL(list-for-sheet)이 게시물별 ended_at을 내려줌 → 게시물URL(linkKey_) 매칭.
+// 상태 열이 없으면 '비용' 열 왼쪽 열을 상태 열로 지정하고 헤더를 설정. dailyAuto에 연결(매일 자동).
+// ═══════════════════════════════════════════════════════════════
+function syncStatus() {
+  const sheet = getSheet_();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < CONFIG.DATA_START_ROW) return;
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+  const norm = headers.map(function (h) { return norm_(h); });
+  const costCol = norm.indexOf(norm_("비용")) + 1;
+  let urlCol = norm.indexOf(norm_("게시물URL")) + 1;
+  if (!urlCol) urlCol = norm.indexOf("url") + 1;
+  let statusCol = norm.indexOf(norm_("상태")) + 1;
+  if (!statusCol) statusCol = costCol - 1;
+  if (statusCol < 1 || !urlCol) { safeAlert_("상태 동기화: 열을 찾지 못했습니다."); return; }
+  sheet.getRange(CONFIG.HEADER_ROW, statusCol).setValue("상태");
+  const resp = UrlFetchApp.fetch(CONFIG.LIST_API_URL, { headers: authHeaders_(), muteHttpExceptions: true });
+  if (resp.getResponseCode() !== 200) { safeAlert_("상태 동기화 실패 HTTP " + resp.getResponseCode()); return; }
+  const posts = (JSON.parse(resp.getContentText()).posts) || [];
+  const ended = {};
+  posts.forEach(function (p) { if (p && p.url) ended[linkKey_(p.url)] = !!p.ended_at; });
+  const n = lastRow - CONFIG.DATA_START_ROW + 1;
+  const urls = sheet.getRange(CONFIG.DATA_START_ROW, urlCol, n, 1).getValues();
+  const out = urls.map(function (r) {
+    const u = r[0];
+    if (!u) return [""];
+    const k = linkKey_(String(u));
+    if (!(k in ended)) return [""];
+    return [ended[k] ? "트래킹 종료" : "트래킹 중"];
+  });
+  sheet.getRange(CONFIG.DATA_START_ROW, statusCol, n, 1).setValues(out);
+  safeAlert_("상태 동기화 완료: " + n + "행 (종료 기준 대시보드 반영)");
 }

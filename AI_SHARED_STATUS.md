@@ -27,6 +27,14 @@ Last updated: 2026-07-16 (refactor branch fully committed & pushed; handoff doc 
 - **RESOLVED 07-16: repo is now PUBLIC (user decision, flipped in GitHub UI) → Actions unlimited free, block lifted** (verified: anonymous HTTP 200; build-test and scheduled Daily Increment Report both green after the flip). Consequences: all code, docs (this file, HANDOFF, ONBOARDING), and full git history are publicly visible — never commit secrets or sensitive data (rule unchanged, stakes higher). `.env.production.local` was untracked + gitignored pre-flip (5bb3450); its token in history is a 12h-TTL Vercel OIDC token expired 2026-06-08 (verified) — harmless, history NOT rewritten.
 - 07-16 public-route audit (post-flip): every Clerk-bypassing route in `web/middleware.ts` verified to carry its own guard — Bearer CRON_SECRET (bulk/stats-import/list-for-sheet/stats-for-sheet/kpi-ingest), fail-closed checkCronAuth (kpi-fetch, apify-collect, marketing-sync, brand-metrics, youtube-trends-collect, b2b-revenue), WEBHOOK_SECRET query token (apify-webhook, youtube-trends-webhook), Slack signature (slack-events). No unauthenticated data or Apify-spend endpoint.
 
+## 2026-07-16 Sheet '상태' column + syncStatus (tracking status)
+
+- Linked sheet (10WpAQU9…, 콘텐츠 대시보드 연동): inserted a '상태' column immediately LEFT of 비용. Layout now: …상품명(H) | 상태(I) | 비용(J) | 증분값(K) | 최종 조회수(L) | dates(M~) | … . The insert shifted all right-side columns +1; verified sync-safe because the Apps Script locates metadata by header name (buildFieldCols_ / FIELD_BY_HEADER) and date columns dynamically (parseMonthDay_ scan from STATS_FIRST_COL, skipping non-dates). 최종 조회수 formula refs auto-adjusted ($L→$M).
+- New live Apps Script function `syncStatus()` (public; menu "🚦 트래킹 상태 갱신" + wired into dailyAuto for daily auto-update). It fetches LIST_API_URL (/api/sponsored-posts/list-for-sheet, which already returns per-post `ended_at`), matches by 게시물URL via linkKey_, and writes 트래킹 종료 / 트래킹 중 to the 상태 column (blank if URL not matched). No web deploy needed — the API already exposed ended_at.
+- First run verified: 999 rows processed; 트래킹 종료 615 / 트래킹 중 322 / blank 1. Live editor saved; scopes already granted (no auth prompt).
+- Repo `Combined_Sheet_AppsScript.gs` updated to match (syncStatus function + menu + dailyAuto wiring) — but note repo remains behind the live script overall; live is the source of truth for this sheet's script.
+- '상태' header text was written by the script (setValue), not typed, because browser-automation Korean input into the sheet was unreliable.
+
 ## 2026-07-16 Branch Sync
 
 - All previously uncommitted changes in the canonical worktree (`refactor/monitoring-decompose`) were committed in 5 themed commits and pushed to origin:
