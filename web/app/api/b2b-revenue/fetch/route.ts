@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { fetchSheetTabValuesByTitle, fetchSheetTabValues } from "@/lib/google-sheets";
+import { fetchSheetTabValuesByTitle } from "@/lib/google-sheets";
 import { notifyJob } from "@/lib/slack";
 
 export const runtime = "nodejs";
@@ -28,27 +28,6 @@ type DayVals = { order: number; profit: number | null; ad: number | null; contri
 export async function GET(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") { // fail-closed: CRON_SECRET 미설정 시에도 차단(무인증 오픈 방지)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  // TEMP: 시으니네/이나 시트행 날짜별 값 조회(DB 정합용). 확인 후 제거.
-  if (req.nextUrl.searchParams.get("siina")) {
-    const rows = await fetchSheetTabValues("10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak", 1937186871, "A1:BZ2000");
-    const header = (rows[0] ?? []) as (string | number | null)[];
-    const find = (kw: string) => header.findIndex((c) => typeof c === "string" && c.replace(/\s+/g, "").includes(kw));
-    const cAcc = find("채널명"), cUrl = find("URL");
-    const dateCols: { i: number; label: string }[] = [];
-    header.forEach((h, i) => { if (/(\d{1,2})\s*[.\/]\s*(\d{1,2})/.test(String(h ?? "")) && i > 8) dateCols.push({ i, label: String(h).replace(/\s+/g, "") }); });
-    const out: unknown[] = [];
-    for (let r = 1; r < rows.length; r++) {
-      const row = rows[r] as (string | number | null)[];
-      const acc = String(row[cAcc] ?? "");
-      if (acc.includes("시으니") || acc.includes("이나")) {
-        const vals: Record<string, number> = {};
-        for (const d of dateCols) { const v = row[d.i]; if (v != null && v !== "" && !isNaN(Number(String(v).replace(/,/g, "")))) vals[d.label] = Number(String(v).replace(/,/g, "")); }
-        out.push({ row: r + 1, account: acc.trim(), url: String(row[cUrl] ?? ""), values: vals });
-      }
-    }
-    return NextResponse.json({ found: out.length, rows: out });
   }
 
   const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
