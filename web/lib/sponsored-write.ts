@@ -125,10 +125,10 @@ export async function upsertSponsoredRows(
   let created = 0;
   if (toCreate.length > 0) {
     const createRows = supportsNormalizedKey ? toCreate : toCreate.map(({ normalized_key: _key, ...r }) => r);
-    const { data: ins, error: ie } = await supabase
-      .from("sponsored_posts")
-      .upsert(createRows, { onConflict: supportsNormalizedKey ? "normalized_key" : "url", ignoreDuplicates: true })
-      .select("id");
+    const writeQuery = supportsNormalizedKey
+      ? supabase.from("sponsored_posts").insert(createRows)
+      : supabase.from("sponsored_posts").upsert(createRows, { onConflict: "url", ignoreDuplicates: true });
+    const { data: ins, error: ie } = await writeQuery.select("id");
     if (ie) return { error: `[신규생성] ${ie.message} | code=${ie.code ?? ""} | details=${ie.details ?? ""} | hint=${ie.hint ?? ""}` };
     created = (ins ?? []).length;
 

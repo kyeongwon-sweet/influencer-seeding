@@ -159,10 +159,10 @@ export async function POST(req: NextRequest) {
   const toCreate = [...postByUrl.entries()].filter(([key, p]) => !idByKey.has(key) && !idByUrl.has(String(p.url))).map(([, p]) => p);
   if (toCreate.length > 0) {
     const createRows = supportsNormalizedKey ? toCreate : toCreate.map(({ normalized_key: _key, ...p }) => p);
-    const { data: ins, error: ie } = await supabase
-      .from("sponsored_posts")
-      .upsert(createRows, { onConflict: supportsNormalizedKey ? "normalized_key" : "url", ignoreDuplicates: true })
-      .select("id, url");
+    const writeQuery = supportsNormalizedKey
+      ? supabase.from("sponsored_posts").insert(createRows)
+      : supabase.from("sponsored_posts").upsert(createRows, { onConflict: "url", ignoreDuplicates: true });
+    const { data: ins, error: ie } = await writeQuery.select("id, url");
     if (ie) return NextResponse.json({ error: ie.message }, { status: 500 });
     for (const row of (ins ?? []) as Array<{ id: string; url: string }>) {
       idByUrl.set(row.url, row.id);

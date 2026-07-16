@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## 2026-07-16 syncAll 401 해소 후 42P10 신규생성 오류 수정 (Codex)
+- Apps Script script property `CRON_SECRET` was aligned with Vercel without printing the secret. `syncAll` then passed auth (no 401) but failed at 신규생성 with DB error `42P10`: `there is no unique or exclusion constraint matching the ON CONFLICT specification`.
+- Root cause: the normalized-key migration intentionally created a partial unique index (`sponsored_posts_normalized_key_uidx ... where normalized_key is not null`), but the server write path used Supabase `upsert(..., onConflict: "normalized_key")`. Postgres cannot use that partial index for a plain `ON CONFLICT(normalized_key)`.
+- Fix: for normalized-key-aware 신규 생성 paths, insert only the already prefiltered `toCreate` rows instead of `upsert(onConflict: normalized_key)`. Existing rows are still matched first by `normalized_key/postIdentityKey`, and the DB partial unique index still blocks real duplicates. Legacy fallback without normalized_key continues to use `onConflict: url`.
+- Files changed: `web/lib/sponsored-write.ts`, `web/app/api/sponsored-posts/stats-import/route.ts`.
+- Verification: `cd web && npm.cmd test` passed (31/31), `cd web && npx.cmd tsc --noEmit --incremental false` passed after installing lockfile dependencies.
+- Next: push/deploy this fix, then rerun Apps Script `syncAll` for the pending new sheet rows.
+
 ## 2026-07-16 TikTok URL canonical form unified to www (Codex)
 - Decision: TikTok canonical URL string is `https://www.tiktok.com/...`.
 - Reason: `web/lib/url-utils.ts normalizeUrl()` already returns `www.tiktok.com`, and TikTok comment scraping has a recorded production constraint that non-www URLs can return 0 comments.
