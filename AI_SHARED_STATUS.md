@@ -1,5 +1,15 @@
 # AI Shared Status
 
+## 2026-07-16 stats-for-sheet shortcode 매칭 + 자동종료 50만+ 회귀테스트 (Codex)
+- **stats-for-sheet 매칭 재발방지**: `web/app/api/sponsored-posts/stats-for-sheet/route.ts`가 URL 완전일치 대신 `normalizeUrl()` canonical key로 일자별 stats를 그룹화한다. IG `/reel/`·`/reels/`·`/tv/`·`/p/`는 같은 shortcode면 같은 게시물로 묶임. 동일 key/date 중복 metric은 큰 값 1개만 반환.
+- **Apps Script 정본 보강**: `Combined_Sheet_AppsScript.gs` `exportStats()`는 API의 `{ key }`를 받더라도 반드시 `linkKey_(p.key || p.url)`로 변환해 시트 행 키와 같은 기준(`ig:<shortcode>`, `tt:<id>`, `yt:<id>`)으로 매칭한다. `/reel·/tv` 잔재 URL이 shortcode로 정상 매칭된 개수는 결과창에 별도 표시한다. 옛 완전일치 기준으로 되돌리지 말 것.
+- **하토토류 `/reel/` 잔재 대응**: 예 `https://www.instagram.com/reel/DZ1L0iLzahp/`와 DB canonical `https://www.instagram.com/p/DZ1L0iLzahp/`는 같은 key로 처리된다. `web/tests/url-utils.test.ts`에 이 케이스를 명시.
+- **라이브 시트 감사**: 2026-07-16 커넥터 검색 기준 `콘텐츠 대시보드 연동` B열에는 `/reel/` URL 307개가 남아 있음(`B1:B1029`, returned 200/307). 다음 `exportStats` 실행 결과창의 “/reel·/tv 잔재 URL N개 shortcode 정상 매칭”이 형식 불일치로 살린 개수이고, 그 뒤에도 남는 missing은 진짜 미수집/미등록 후보로 보면 된다.
+- **자동종료 회귀테스트**: `scripts/test_auto_end_rules.py` 추가. `max_metric >= 500_000` + 나이 초과 게시물은 `end=False`, `reason="high_metric_500k"`이어야 한다. 10만 일반 게시물은 age 종료, 정확히 500,000 경계도 종료 제외, 위성/온드 제외와 캡션 종료 키워드 스모크 포함.
+- **CI 연결**: `.github/workflows/build-test.yml`에 `python3 scripts/test_auto_end_rules.py` 단계 추가. 50만+ 예외가 다시 제거되면 CI에서 실패해야 한다.
+- **검증**: `python scripts/test_auto_end_rules.py` 통과, 50만+ threshold를 무력화한 음성 테스트 실패 감지 확인, `python compile(...)` 문법 확인 통과, `web` `npm.cmd test` 29/29 통과. 로컬 `npm.cmd run build`는 이 작업트리에 `web/node_modules`가 없어 `next` 미발견으로 실행 불가; push 후 GitHub Actions build로 확인 필요.
+- **주의**: 이 변경은 실제 측정값을 지어내지 않는다. shortcode 매칭으로 같은 게시물의 기존 DB stats를 찾게 할 뿐이며, 여전히 수집기록이 없는 URL은 missing으로 남아야 한다.
+
 ## 2026-07-16 부정댓글 자동 감시 스케줄러 점검 + 로컬 fallback 등록 (Codex)
 - 최신 `origin/main` 기준 확인: `.github/workflows/comment-alerts.yml`는 GitHub Actions에 실제 등록되어 있음. 워크플로명 `Negative Comment Alerts (09:00 KST)`, ID `313496692`, 매일 09:00 KST 실행 설정.
 - 최근 실행 확인: 수동 실행은 성공 이력이 있으나, 최신 schedule 실행 `29467530163`은 job 시작 전 실패. GitHub 메시지: `recent account payments have failed or your spending limit needs to be increased`. 즉 현재 클라우드 자동 실행은 코드 문제가 아니라 GitHub 결제/한도 문제로 막혀 있음.

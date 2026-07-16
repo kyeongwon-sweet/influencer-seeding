@@ -571,7 +571,7 @@ function fetchCollectedStats_() {
   });
   const code = res.getResponseCode();
   if (code !== 200) throw new Error(`API ${code}: ${res.getContentText()}`);
-  return (JSON.parse(res.getContentText()).posts) || []; // [{url, ended_at, stats:[[date,metric],...]}]
+  return (JSON.parse(res.getContentText()).posts) || []; // [{url, key, ended_at, stats:[[date,metric],...]}]
 }
 
 function exportStats() {
@@ -599,7 +599,7 @@ function exportStats() {
     const endedByKey = {};
     const allDatesSet = {};
     fetchCollectedStats_().forEach(p => {
-      const k = linkKey_(String(p.url || ""));
+      const k = linkKey_(String(p.key || p.url || ""));
       if (!k) return;
       if (p.ended_at) endedByKey[k] = String(p.ended_at).slice(0, 10);
       const m = byKey[k] || (byKey[k] = {});
@@ -658,7 +658,7 @@ function exportStats() {
     const block = sheet.getRange(CONFIG.DATA_START_ROW, firstCol, nRows, width).getValues();
 
     // 행별 매칭 맵 선계산 + 매칭/누락 카운트
-    let matched = 0, missing = 0;
+    let matched = 0, missing = 0, shortcodeFormatMatched = 0;
     const rowMap = new Array(nRows);
     const rowKeys = new Array(nRows);
     const postedAtByRow = new Array(nRows);
@@ -669,7 +669,10 @@ function exportStats() {
       const key = linkKey_(url);
       rowKeys[i] = key;
       const m = byKey[key];
-      if (m) { rowMap[i] = m; matched++; }
+      if (m) {
+        rowMap[i] = m; matched++;
+        if (/instagram\.com\/(?:[^/?#]+\/)*(?:reels|reel|tv)\//i.test(url)) shortcodeFormatMatched++;
+      }
       else { rowMap[i] = null; if (ALLOWED_URL_RE.test(url)) missing++; }
     }
 
@@ -796,6 +799,7 @@ function exportStats() {
     }
 
     let msg = `✅ 수집 조회수를 시트에 반영했습니다.\n새 날짜 열 ${addedCols}개 추가 · 실측 갱신 ${filled}칸 · 공백 이어받기 ${carried}칸 · 업로드 전 값 삭제 ${prePostedCleared}칸 · 종료 이후 값 삭제 ${endedCleared}칸 · 증분 수식 ${incWritten}행 · 기존값 보존 ${preserved}칸 · 매칭 게시물 ${matched}개 · 날짜 열 ${dateCols.length}개`;
+    if (shortcodeFormatMatched) msg += `\n🔁 /reel·/tv 잔재 URL ${shortcodeFormatMatched}개는 shortcode 기준으로 정상 매칭했습니다.`;
     if (missing) msg += `\n⚠️ 시트엔 있으나 대시보드에 수집기록이 없는 URL ${missing}개(아직 수집 전이거나 미등록).`;
     if (futureCleared) msg += `\n🗓️ 오늘·미래(수집일-1 이후) 날짜칸 ${futureCleared}개를 비웠습니다.`;
     if (orphanRows) msg += `\n🧟 URL 없이 숫자만 있는 '고아 행' ${orphanRows}개 발견 — 행 삭제로 정리하세요(데이터는 DB에 있음).`;

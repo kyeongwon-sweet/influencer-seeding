@@ -22,6 +22,8 @@ test("normalizeUrl: 같은 게시물의 다른 표기는 동일 URL로 정규화
   const a = normalizeUrl("https://www.instagram.com/reel/XYZ/?igsh=1");
   const b = normalizeUrl("https://www.instagram.com/reel/XYZ?hl=ko");
   assert.equal(a, b);
+  assert.equal(normalizeUrl("https://www.instagram.com/reel/DZ1L0iLzahp/"), "https://www.instagram.com/p/DZ1L0iLzahp/");
+  assert.equal(normalizeUrl("https://www.instagram.com/p/DZ1L0iLzahp/"), "https://www.instagram.com/p/DZ1L0iLzahp/");
 });
 
 test("ALLOWED_POST_URL_RE: 허용 플랫폼만 통과", () => {
