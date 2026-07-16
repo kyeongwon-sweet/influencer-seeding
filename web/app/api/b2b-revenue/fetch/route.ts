@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { fetchSheetTabValuesByTitle } from "@/lib/google-sheets";
+import { fetchSheetTabValuesByTitle, fetchSheetTabValues } from "@/lib/google-sheets";
 import { notifyJob } from "@/lib/slack";
 
 export const runtime = "nodejs";
@@ -28,6 +28,36 @@ type DayVals = { order: number; profit: number | null; ad: number | null; contri
 export async function GET(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") { // fail-closed: CRON_SECRET 미설정 시에도 차단(무인증 오픈 방지)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // TEMP: 연동시트 헤더 기준 재대조(열 재정렬 안전). URL='게시물URL' 헤더, 날짜=날짜패턴 헤더(I열~)만.
+  // 각 행의 '가장 늦은 날짜' 열의 양수값 = 시트 최신 누적. 확인 후 제거.
+  if (req.nextUrl.searchParams.get("recon2")) {
+    const rows = await fetchSheetTabValues("10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak", 1937186871, "A1:GZ2000");
+    const header = (rows[0] ?? []) as (string | number | null)[];
+    const norm = (v: unknown) => String(v ?? "").replace(/\s+/g, "").toLowerCase();
+    const urlCol = header.findIndex((h) => norm(h) === norm("게시물URL"));
+    // 날짜 열: I열(index>=8)부터, 헤더가 M.D 패턴이면 날짜열. (mo,da) 저장.
+    const dateCols: { c: number; ord: number; label: string }[] = [];
+    for (let c = 8; c < header.length; c++) {
+      const m = String(header[c] ?? "").match(/(\d{1,2})\D+(\d{1,2})/);
+      if (!m) continue;
+      const mo = +m[1], da = +m[2];
+      if (mo >= 1 && mo <= 12 && da >= 1 && da <= 31) dateCols.push({ c, ord: mo * 100 + da, label: String(header[c]) });
+    }
+    const out: { row: number; url: string; lastVal: number | null; lastCol: string | null }[] = [];
+    for (let r = 1; r < rows.length; r++) {
+      const row = (rows[r] ?? []) as (string | number | null)[];
+      const url = urlCol >= 0 ? String(row[urlCol] ?? "").trim() : "";
+      if (!url) continue;
+      let lastVal: number | null = null, lastCol: string | null = null, bestOrd = -1;
+      for (const d of dateCols) {
+        const v = row[d.c];
+        if (typeof v === "number" && v > 0 && d.ord > bestOrd) { bestOrd = d.ord; lastVal = v; lastCol = d.label; }
+      }
+      out.push({ row: r + 1, url, lastVal, lastCol });
+    }
+    return NextResponse.json({ count: out.length, urlCol, dateCols: dateCols.map((d) => d.label), rows: out });
   }
 
   const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
