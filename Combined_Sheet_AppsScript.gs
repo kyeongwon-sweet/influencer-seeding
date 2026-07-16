@@ -82,6 +82,7 @@ function onOpen() {
     .addItem("🚦 트래킹 상태 갱신", "syncStatus")
     .addItem("🧮 누적 조회수 갱신", "refreshCumulativeViews")
     .addItem("👥 기획자/제작자 갱신", "syncCreators")
+    .addItem("💰 단가/업체명 채우기", "syncPricing")
     .addSeparator()
     .addItem("🔎 빈칸 검사 (A~H)", "checkBlanks")
     .addItem("🔁 중복 URL 검사", "checkDuplicates")
@@ -458,7 +459,8 @@ function pullFromDB() {
         const rowNum = rowByKey[key];
         fillFields.forEach(f => {
           if (!fieldCols[f]) return;
-          const val = fmtVal_(f, p[f]);
+          let val = fmtVal_(f, p[f]);
+          if (f === "content_summary") { if (/바이럴|위성/.test(String(p.channel_type == null ? "" : p.channel_type))) return; val = String(val).replace(/[\r\n]+/g, " ").trim(); }
           if (val === "") return;
           const cell = sheet.getRange(rowNum, fieldCols[f]);
           if (String(cell.getValue()).trim() === "") { cell.setValue(val); filled++; }
@@ -469,7 +471,8 @@ function pullFromDB() {
         sheet.getRange(targetRow, urlCol).setValue(p.url);
         fillFields.forEach(f => {
           if (!fieldCols[f]) return;
-          const val = fmtVal_(f, p[f]);
+          let val = fmtVal_(f, p[f]);
+          if (f === "content_summary") { if (/바이럴|위성/.test(String(p.channel_type == null ? "" : p.channel_type))) return; val = String(val).replace(/[\r\n]+/g, " ").trim(); }
           if (val !== "") sheet.getRange(targetRow, fieldCols[f]).setValue(val);
         });
         rowByKey[key] = targetRow;
@@ -495,6 +498,7 @@ function dailyAuto() {
   try { syncStatus(); }  catch (e) { Logger.log("dailyAuto syncStatus: " + (e.stack || e.message)); }
   try { refreshCumulativeViews(); } catch (e) { Logger.log("dailyAuto refreshCumulativeViews: " + (e.stack || e.message)); }
   try { syncCreators(); } catch (e) { Logger.log("dailyAuto syncCreators: " + (e.stack || e.message)); }
+  try { syncPricing(); } catch (e) { Logger.log("dailyAuto syncPricing: " + (e.stack || e.message)); }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1145,4 +1149,57 @@ function parseCreator_(name) {
     r.pd = (tail.split("_").pop() || "").trim().replace(/\s*\(\d+\)\s*$/, "").trim();
   }
   return r;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 단가/업체명 자동 매핑: [AI 바이럴 대시보드 연동] 탭(gid 1649102171)에서
+// 채널명→업체명(유일), (채널명+포맷)→단가 를 학습해 바이럴 행의 빈 업체명/비용을 채움.
+// 포맷: 채널분류에 "영상"→릴스, "배너"→배너. 빈칸만 채우고 기존값 보존. dailyAuto 연결.
+// (위성채널은 이 연동 탭에 없음 → 대상 아님)
+// ═══════════════════════════════════════════════════════════════
+function getPricingSheet_() {
+  var target = 1649102171;
+  var shs = SpreadsheetApp.getActive().getSheets();
+  for (var i = 0; i < shs.length; i++) { if (shs[i].getSheetId() === target) return shs[i]; }
+  return null;
+}
+
+function syncPricing() {
+  var sh = getSheet_();
+  var lastRow = sh.getLastRow();
+  if (lastRow < CONFIG.DATA_START_ROW) return;
+  var lastCol = sh.getLastColumn();
+  var headers = sh.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+  var norm = headers.map(function (h) { return norm_(h); });
+  var chCol = norm.indexOf(norm_("채널명")) + 1;
+  var typeCol = norm.indexOf(norm_("채널분류")) + 1;
+  var coCol = norm.indexOf(norm_("업체명")) + 1;
+  var costCol = norm.indexOf(norm_("비용")) + 1;
+  if (!chCol || !typeCol || !coCol || !costCol) { safeAlert_("단가 매핑: 열을 찾지 못했습니다."); return; }
+  var link = getPricingSheet_();
+  if (!link) { safeAlert_("단가 매핑: 연동 탭을 찾지 못했습니다."); return; }
+  var lv = link.getDataRange().getValues();
+  var chCo = {}, chFmtPrice = {};
+  for (var i = 1; i < lv.length; i++) {
+    var c = String(lv[i][0] == null ? "" : lv[i][0]).trim(); if (!c) continue;
+    var co = String(lv[i][1] == null ? "" : lv[i][1]).trim();
+    var fmt = String(lv[i][2] == null ? "" : lv[i][2]).trim();
+    var price = parseFloat(String(lv[i][3] == null ? "" : lv[i][3]).replace(/[^0-9.]/g, ""));
+    if (co) chCo[c] = co;
+    if (fmt && isFinite(price)) chFmtPrice[c + "|" + fmt] = price;
+  }
+  var n = lastRow - CONFIG.DATA_START_ROW + 1;
+  var data = sh.getRange(CONFIG.DATA_START_ROW, 1, n, lastCol).getValues();
+  var filledCo = 0, filledCost = 0;
+  for (var r = 0; r < n; r++) {
+    var row = data[r];
+    var ch = String(row[chCol - 1] == null ? "" : row[chCol - 1]).trim();
+    var ct = String(row[typeCol - 1] == null ? "" : row[typeCol - 1]);
+    if (!ch || ct.indexOf("바이럴") < 0) continue;
+    var fmt2 = ct.indexOf("영상") >= 0 ? "릴스" : (ct.indexOf("배너") >= 0 ? "배너" : "");
+    var curCo = row[coCol - 1], curCost = row[costCol - 1];
+    if ((curCo === "" || curCo == null) && chCo[ch]) { sh.getRange(CONFIG.DATA_START_ROW + r, coCol).setValue(chCo[ch]); filledCo++; }
+    if ((curCost === "" || curCost == null) && fmt2 && (ch + "|" + fmt2) in chFmtPrice) { sh.getRange(CONFIG.DATA_START_ROW + r, costCol).setValue(chFmtPrice[ch + "|" + fmt2]); filledCost++; }
+  }
+  SpreadsheetApp.getActive().toast("단가/업체명 채움: 업체 " + filledCo + ", 비용 " + filledCost, "완료", 5);
 }
