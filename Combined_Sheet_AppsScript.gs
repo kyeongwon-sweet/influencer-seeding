@@ -1106,8 +1106,13 @@ function refreshCumulativeViews() {
     var sr = CONFIG.DATA_START_ROW + r;
     var hasData = false;
     for (var k = 0; k < dateCols.length; k++) { var v = data[r][dateCols[k]]; if (typeof v === "number" && v > 0) { hasData = true; break; } }
-    if (hasData) { out.push(["=MAX(" + fc + sr + ":" + lc + sr + ")"]); filled++; }
-    else { var f = curForms[r][0]; if (f && f.indexOf("MAX(") >= 0) { out.push([""]); } else { out.push([curVals[r][0]]); } }
+    var f = curForms[r][0];
+    var cv = curVals[r][0];
+    var isManual = (f === "" && cv !== "" && cv !== null);
+    // 날짜 데이터 없는 행에 수동입력값이 있으면 보존. 그 외에는 자가치유 수식(=IF(COUNT=0,"",MAX)).
+    // 수식으로 두면 날짜열이 비어도 0이 아니라 빈칸이 됨(수집 데이터 변동에도 0 안 뜸).
+    if (isManual && !hasData) { out.push([cv]); }
+    else { out.push(["=IF(COUNT(" + fc + sr + ":" + lc + sr + ")=0,\"\",MAX(" + fc + sr + ":" + lc + sr + "))"]); if (hasData) filled++; }
   }
   cumRange.setValues(out);
   SpreadsheetApp.getActive().toast("누적 조회수 갱신: 데이터행 " + filled + " (수동값 보존)", "완료", 5);
