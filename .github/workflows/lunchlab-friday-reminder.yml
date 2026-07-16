@@ -1,0 +1,33 @@
+name: 런치랩 금요일 메뉴 선택 독려
+
+on:
+  schedule:
+    - cron: "0 1 * * 5"   # 매주 금요일 10:00 KST (01:00 UTC)
+  workflow_dispatch:
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 메뉴 선택 독려 메시지 발송
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_LUNCHLAB_BOT_TOKEN }}
+        run: |
+          python3 - <<'EOF'
+          import urllib.request, json, os, sys
+
+          token = os.environ['SLACK_BOT_TOKEN']
+          payload = json.dumps({
+              'channel': 'C0BFPQAPHEK',
+              'text': '다음주 메뉴를 다 선택하셨나요? :bento:\n하루에 3명이 모이지 않으면 도시락이 배달되지 않아요!'
+          }, ensure_ascii=False).encode('utf-8')
+          req = urllib.request.Request(
+              'https://slack.com/api/chat.postMessage',
+              data=payload,
+              headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json; charset=utf-8'}
+          )
+          r = json.load(urllib.request.urlopen(req, timeout=15))
+          print('ok:', r.get('ok'), 'error:', r.get('error', ''))
+          if not r.get('ok'):
+              sys.exit(1)
+          EOF
