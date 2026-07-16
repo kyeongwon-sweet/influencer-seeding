@@ -1090,18 +1090,27 @@ function refreshCumulativeViews() {
   for (var j = 0; j < headers.length; j++) { var hj = headers[j]; if (hj instanceof Date) { dateCols.push(j); } else if (dateRe.test(String(hj))) { dateCols.push(j); } }
   if (dateCols.length === 0) return;
   var nRows = lastRow - CONFIG.DATA_START_ROW + 1;
-  // 값이 아니라 수식으로 기록 → 날짜열 값이 바뀌면 자동 갱신. 날짜열 블록(첫~마지막)만 참조해 aux/오참조 방지.
+  // 날짜열 데이터가 있는 행만 =MAX 수식으로 채우고, 없는 행은 기존값(수동입력) 보존.
+  // 날짜열 블록(첫~마지막)만 참조해 aux/오참조 방지. 이전에 우리가 쓴 수식이 남은 무데이터 행은 빈칸으로 정리.
   var firstIdx = Math.min.apply(null, dateCols) + 1;
   var lastIdx = Math.max.apply(null, dateCols) + 1;
   var colA1 = function (n) { var s = ""; while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = (n - m - 1) / 26; } return s; };
   var fc = colA1(firstIdx), lc = colA1(lastIdx);
+  var data = sh.getRange(CONFIG.DATA_START_ROW, 1, nRows, lastCol).getValues();
+  var cumRange = sh.getRange(CONFIG.DATA_START_ROW, cumCol, nRows, 1);
+  var curVals = cumRange.getValues();
+  var curForms = cumRange.getFormulas();
   var out = [];
+  var filled = 0;
   for (var r = 0; r < nRows; r++) {
     var sr = CONFIG.DATA_START_ROW + r;
-    out.push(["=IF(COUNT(" + fc + sr + ":" + lc + sr + ")=0,\"\",MAX(" + fc + sr + ":" + lc + sr + "))"]);
+    var hasData = false;
+    for (var k = 0; k < dateCols.length; k++) { var v = data[r][dateCols[k]]; if (typeof v === "number" && v > 0) { hasData = true; break; } }
+    if (hasData) { out.push(["=MAX(" + fc + sr + ":" + lc + sr + ")"]); filled++; }
+    else { var f = curForms[r][0]; if (f && f.indexOf("MAX(") >= 0) { out.push([""]); } else { out.push([curVals[r][0]]); } }
   }
-  sh.getRange(CONFIG.DATA_START_ROW, cumCol, nRows, 1).setValues(out);
-  SpreadsheetApp.getActive().toast("누적 조회수 갱신: " + nRows + "행", "완료", 5);
+  cumRange.setValues(out);
+  SpreadsheetApp.getActive().toast("누적 조회수 갱신: 데이터행 " + filled + " (수동값 보존)", "완료", 5);
 }
 
 // ═══════════════════════════════════════════════════════════════
