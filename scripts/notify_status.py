@@ -82,6 +82,41 @@ def _canon_url(u: str) -> str:
     return f"https://{host}{path}"
 
 
+def _channel_type(post) -> str:
+    return str(post.get("channel_type") or "")
+
+
+def _is_banner(post) -> bool:
+    return "배너" in _channel_type(post)
+
+
+def _is_internal_channel(post) -> bool:
+    return any(t in _channel_type(post) for t in ("위성채널", "온드미디어"))
+
+
+def _is_free_seed_manual(post) -> bool:
+    return "무상시딩" in _channel_type(post)
+
+
+def _is_uncollectable_play_platform(post) -> bool:
+    u = (post.get("url") or "").lower()
+    return (
+        "threads." in u
+        or "facebook.com" in u
+        or "naver.com" in u
+        or "kakao.com" in u
+    )
+
+
+def _is_view_collection_target(post) -> bool:
+    """Posts that should normally produce a play_count from the collector."""
+    if post.get("ended_at"):
+        return False
+    if _is_banner(post) or _is_internal_channel(post) or _is_free_seed_manual(post) or _is_uncollectable_play_platform(post):
+        return False
+    return True
+
+
 def _integrity_lines(db, posts):
     # 데이터 정합성 특이 감시 — 증분 리포트를 왜곡하는 조용한 오염을 상태 댓글에서 바로 드러낸다.
     lines = []
@@ -135,31 +170,42 @@ def _integrity_lines(db, posts):
             line += f" … 외 {len(mism) - 4}건"
         lines.append(line)
 
-    # 4) 부분수집 감지 — 특정일 실측(non-null play)수가 최근 기준선의 60% 미만이면 그날 증분이 실제보다 과소.
-    #    (2026-07-03~05 주말: 350개 중 ~140개만 수집 → 증분 반토막, 성장이 월요일로 몰림. 재시도 강화의 백스톱.)
+    # 4) 부분수집 감지 — 특정일 실측(non-null play)수가 그날 활성 조회수대상 풀의 60% 미만이면
+    #    그날 증분이 실제보다 과소. 예전에는 최근 중앙값을 기준선으로 썼지만, 자동종료로 활성 풀이
+    #    정상 축소되면 정상 수집도 부분수집으로 오탐됐다(2026-07-16: active 347, measured 272).
     from datetime import timedelta, datetime, timezone
     kst_today = (datetime.now(timezone.utc) + timedelta(hours=9)).date()
     cutoff = (kst_today - timedelta(days=7)).isoformat()
+    active_view_posts = [p for p in posts if _is_view_collection_target(p)]
+    active_view_ids = {p["id"] for p in active_view_posts}
     day_cnt = {}
     off = 0
     while True:
-        res = db.table("post_daily_stats").select("measured_at, play_count").gte("measured_at", cutoff).range(off, off + 999).execute()
+        res = db.table("post_daily_stats").select("post_id, measured_at, play_count").gte("measured_at", cutoff).range(off, off + 999).execute()
         chunk = res.data or []
         for r in chunk:
-            if r["play_count"] is not None:
+            if r.get("post_id") in active_view_ids and r["play_count"] is not None:
                 day_cnt[r["measured_at"]] = day_cnt.get(r["measured_at"], 0) + 1
         if len(chunk) < 1000:
             break
         off += 1000
-    # 오늘(KST)은 수집 중이라 제외하고 완료된 날만 판정. 기준선=중앙값(주말 저점·단일 결측에 안 끌림).
+    # 오늘(KST)은 수집 중이라 제외하고 완료된 날만 판정.
     done = {d: c for d, c in day_cnt.items() if d < kst_today.isoformat()}
     if len(done) >= 4:
-        vals = sorted(done.values())
-        median = vals[len(vals) // 2]
-        low = sorted(d for d, c in done.items() if median > 0 and c < 0.6 * median)
+        expected_by_day = {}
+        for d in done:
+            expected_by_day[d] = sum(
+                1 for p in active_view_posts
+                if str(p.get("created_at") or "")[:10] <= d
+                and (not p.get("posted_at") or str(p.get("posted_at"))[:10] <= d)
+            )
+        low = sorted(
+            d for d, c in done.items()
+            if expected_by_day.get(d, 0) > 0 and c < 0.6 * expected_by_day[d]
+        )
         if low:
-            ex = ", ".join(f"{d[5:]}({done[d]}/{median})" for d in low[:5])
-            line = f"부분수집 감지 {len(low)}일 — 실측수가 기준선({median})의 60% 미만이라 그날 증분 과소(재수집 권장): {ex}"
+            ex = ", ".join(f"{d[5:]}({done[d]}/{expected_by_day[d]})" for d in low[:5])
+            line = f"부분수집 감지 {len(low)}일 — 실측수가 활성 조회수대상 풀의 60% 미만이라 그날 증분 과소(재수집 권장): {ex}"
             if len(low) > 5:
                 line += f" … 외 {len(low) - 5}일"
             lines.append(line)
@@ -327,7 +373,7 @@ def main():
             break
         off += 1000
     active = [a for a in posts if not a.get("ended_at")]
-    waiting = uncollectable = banner_skip = internal_skip = 0
+    waiting = uncollectable = banner_skip = internal_skip = free_seed_skip = 0
     check = []  # (account, 사유, url)
     for a in active:
         if a["id"] in today_ids:
@@ -338,12 +384,13 @@ def main():
         u = (a.get("url") or "").lower()
         if c == target:
             waiting += 1            # 당일 등록 → 다음 수집에서 측정(정상)
-        elif "배너" in (a.get("channel_type") or ""):
+        elif _is_banner(a):
             banner_skip += 1        # 배너는 도달수(reach_count)로 측정 → 조회수 미측정은 정상(점검 제외)
-        elif any(t in (a.get("channel_type") or "") for t in ("위성채널", "온드미디어")):
+        elif _is_internal_channel(a):
             internal_skip += 1      # 내부채널(위성/온드) — 캠페인 아님·불규칙 수집 → 미측정 정상(점검 제외, 2026-07-15 사용자 지시)
-        elif ("threads." in u or "facebook.com" in u       # 조회수 없는 플랫폼
-              or "naver.com" in u or "kakao.com" in u):     # 전용 수집기 없음(수동 입력)
+        elif _is_free_seed_manual(a):
+            free_seed_skip += 1     # 무상시딩 영상 소형 계정은 수동추적 버킷으로 분리(점검 목록에서는 제외)
+        elif _is_uncollectable_play_platform(a):
             uncollectable += 1      # 수집 불가(정상 — 신경 안 써도 됨)
         elif "instagram.com" in u and not re.search(r"/(?:p|reels|reel|tv)/[A-Za-z0-9_-]+", u):
             check.append((a.get("account_name"), "URL오류(게시물 링크 아님)", a.get("url")))
@@ -351,13 +398,19 @@ def main():
             check.append((a.get("account_name"), "미측정", a.get("url")))
     unmeasured = waiting + uncollectable + len(check)
     if unmeasured:
-        btail = (f" · 배너 {banner_skip} 제외(도달수 측정)" if banner_skip else "") + (f" · 내부채널 {internal_skip} 제외(위성/온드)" if internal_skip else "")
+        btail = (
+            (f" · 배너 {banner_skip} 제외(도달수 측정)" if banner_skip else "")
+            + (f" · 내부채널 {internal_skip} 제외(위성/온드)" if internal_skip else "")
+            + (f" · 무상시딩 수동추적 {free_seed_skip}건 제외" if free_seed_skip else "")
+        )
         text += f"\n\n⚠️ 오늘 미측정 활성 {unmeasured}건 (신규대기 {waiting} · 수집불가 {uncollectable} · 점검 {len(check)}){btail}"
         for nm, reason, url in check[:8]:
             tail = (url or "").rstrip("/").split("/")[-1]
             text += f"\n  · {nm} [{reason}] {tail}"
         if len(check) > 8:
             text += f"\n  … 외 {len(check) - 8}건"
+    elif free_seed_skip:
+        text += f"\n\nℹ️ 무상시딩 수동추적 {free_seed_skip}건 제외 — 소형 계정 수집 누락 노이즈라 점검 목록에서는 분리"
 
     # 캡션 미충전 감시 — 자동 보강(backfill_captions)이 안 돌면 빈 캡션이 쌓임(2026-07-02 사고: 77건 누적).
     # 매일 이 수치가 보이면, 다시 안 채워지기 시작할 때 즉시 알아챌 수 있다(조용한 실패 → 시끄러운 실패).
