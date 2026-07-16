@@ -458,9 +458,14 @@ def run():
         except Exception as e:
             print(f"[WARN] 자동 종료 처리 실패(무시): {e}")
 
-        # 종료(ended_at) 처리된 글은 스크랩 제외 — Apify 사용량 절감(한도 재초과 방지), Vercel 라우트와 동일
-        posts = [p for p in all_posts if not p.get("ended_at")]
-        print(f"[LOG] 추적 게시물: {len(posts)}개 (종료 제외 {len(all_posts) - len(posts)}개)")
+        # 종료(ended_at) 처리된 글과 측정일 기준 업로드 전 글은 스크랩 제외.
+        # 업로드 전 조회수는 존재할 수 없으므로 DB/API에 들어오지 않게 입구에서 차단한다.
+        posts = [
+            p for p in all_posts
+            if not p.get("ended_at")
+            and (not p.get("posted_at") or str(p.get("posted_at"))[:10] <= TODAY)
+        ]
+        print(f"[LOG] 추적 게시물: {len(posts)}개 (종료/업로드전 제외 {len(all_posts) - len(posts)}개)")
 
         if not posts:
             print("[WARN] 추적 중인 게시물이 없습니다.")
