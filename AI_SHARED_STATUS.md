@@ -11,6 +11,15 @@ Rules:
 
 Last updated: 2026-07-16 (refactor branch fully committed & pushed; handoff doc pointer added)
 
+## 2026-07-16 Apps Script Live State (verified in editor via Chrome)
+
+- The linked sheet has THREE container-bound projects all named `마T2P_대시보드(실무용)_25.09~` — content byte-identical across all three (hash-verified). Only ONE `dailyAuto` time trigger exists (no duplicate-run risk). All three last modified 2026-07-15.
+- ⚠️ The LIVE script has diverged AHEAD of repo `Combined_Sheet_AppsScript.gs` (repo 1021 lines vs live 1170 + 2 extra files: `clearPrePostedStats` 63L, `바이럴 업체명 채우기` 32L). Live-only helpers: `getIncrementCol_`, `colLetter_`, `isBeforePostedDate_`. 17 functions differ; biggest: `exportStats` repo 90L → live 238L, `dailyAuto` 11L → 40L, `checkSetup` 12L → 32L. Repo-only (not yet deployed): orphan-row menu (`previewOrphanRows`/`deleteOrphanRows`, commit 97f7f58).
+- **DO NOT paste repo version over the live editor — it would destroy newer live work. Live editor is currently the newest source for this script; repo copy is stale.**
+- CRON_SECRET: rotated 2026-07-15 (user). Live script reads it from Script Properties (no hardcoded secret — verified). Sheet-side syncs all green on 07-16 (dailyAuto/importStats/syncNew/exportStats 완료); `syncAll` completed 07-15 19:19 — the old "syncAll 401" issue appears resolved.
+- GHA `cron-daily-collect.yml` 07-16: primary run (01:54 KST) SUCCESS → collection unaffected by rotation. Backup runs (03:44/05:39 KST) failed with **GitHub billing error** ("account payments have failed / spending limit") — user must fix in GitHub Billing & plans or future runs may not start.
+- ⚠️ Separate project `팝콘_인지 자동 업데이트`: `pushKpiToVercel` trigger error rate 100% (last run 07-15 11:59, before rotation) — home KPI cards may be stale; needs investigation.
+
 ## 2026-07-16 Branch Sync
 
 - All previously uncommitted changes in the canonical worktree (`refactor/monitoring-decompose`) were committed in 5 themed commits and pushed to origin:
