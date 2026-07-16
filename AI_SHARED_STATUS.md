@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 2026-07-16 🚨 GitHub Actions 전면 차단 = billing/한도 (Claude 독립검증) — 일일수집 위험
+- **모든 워크플로가 job 시작 전 2~6초 실패.** GitHub 주석 원문: *"The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section."* 코드 문제 아님(계정 결제/한도).
+- **영향(gh run list 확인)**: `Daily Collect (Vercel 크론 대체)`=**일일 데이터 수집 본체** ❗, `Monitoring Backup & Retry`, `KPI 현황 갱신`, `Negative Comment Alerts`, `Build Test`(CI, 회귀테스트 포함) 전부 실패.
+- **시점/위험**: 07-16 00KST 수집은 한도 걸리기 전 성공(구멍 없음). **다음 07-17 00KST 수집부터 실패 예상** → 그때부터 데이터 구멍.
+- **필요 조치(계정주=사용자만 가능, AI 불가)**: GitHub `kyeongwon-sweet` → Settings → Billing & plans → 결제수단 갱신 또는 Actions spending limit 상향. 풀리면 다음 스케줄부터 자동 정상화.
+- **임시 방어**: billing 지연 시 `scripts/run_monitoring.py` 로컬 실행(PYTHONUTF8=1 + `web/.env.local` creds)으로 그날치 수집 땜빵 가능. 근본 해결은 billing.
+
 ## 2026-07-16 stats-for-sheet shortcode 매칭 + 자동종료 50만+ 회귀테스트 (Codex)
 - **stats-for-sheet 매칭 재발방지**: `web/app/api/sponsored-posts/stats-for-sheet/route.ts`가 URL 완전일치 대신 `normalizeUrl()` canonical key로 일자별 stats를 그룹화한다. IG `/reel/`·`/reels/`·`/tv/`·`/p/`는 같은 shortcode면 같은 게시물로 묶임. 동일 key/date 중복 metric은 큰 값 1개만 반환.
 - **Apps Script 정본 보강**: `Combined_Sheet_AppsScript.gs` `exportStats()`는 API의 `{ key }`를 받더라도 반드시 `linkKey_(p.key || p.url)`로 변환해 시트 행 키와 같은 기준(`ig:<shortcode>`, `tt:<id>`, `yt:<id>`)으로 매칭한다. `/reel·/tv` 잔재 URL이 shortcode로 정상 매칭된 개수는 결과창에 별도 표시한다. 옛 완전일치 기준으로 되돌리지 말 것.
