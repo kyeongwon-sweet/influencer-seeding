@@ -20,7 +20,8 @@ Last updated: 2026-07-16 (refactor branch fully committed & pushed; handoff doc 
 - **DO NOT paste repo version over the live editor — it would destroy newer live work. Live editor is currently the newest source for this script; repo copy is stale.**
 - CRON_SECRET: rotated 2026-07-15 (user). Live script reads it from Script Properties (no hardcoded secret — verified). Sheet-side syncs all green on 07-16 (dailyAuto/importStats/syncNew/exportStats 완료); `syncAll` completed 07-15 19:19 — the old "syncAll 401" issue appears resolved.
 - GHA `cron-daily-collect.yml` 07-16: primary run (01:54 KST) SUCCESS → collection unaffected by rotation. Backup runs (03:44/05:39 KST) failed with **GitHub billing error** ("account payments have failed / spending limit") — user must fix in GitHub Billing & plans or future runs may not start.
-- ⚠️ Separate project `팝콘_인지 자동 업데이트`: `pushKpiToVercel` trigger error rate 100% (last run 07-15 11:59, before rotation) — home KPI cards may be stale; needs investigation.
+- `팝콘_인지 자동 업데이트` project (`pushKpiToVercel` 100% error): USER DECISION 07-16 — this project is unused data; do NOT connect it to the dashboard and do NOT investigate/fix. Ignore its failures.
+- GitHub Actions block root cause (07-16, verified on billing pages): NOT a failed payment. GitHub Free 2,000 included minutes exhausted mid-July (~$12 gross, all influencer-seeding) + Actions budget $0 with "Stop usage: Yes" → all jobs blocked until Aug 1 reset, budget raise, or repo made public. No payment method is on file at all.
 
 ## 2026-07-16 Branch Sync
 
