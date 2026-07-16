@@ -195,10 +195,33 @@ export async function upsertSponsoredRows(
 
   // 캡션에 '삭제' 또는 '보관'이 포함된 행 → '종료'(ended_at) 처리. 이미 종료된 건은 날짜 유지(중복 방지).
   const today = todayKST();
-  const endedUrls = rows
+  const endedRows = rows
     .filter(r => /삭제|보관/.test(String(r.content_summary ?? "")))
-    .map(r => r.url);
+  const endedIds = [
+    ...new Set(
+      endedRows
+        .map(r => existingByIdentity.get(r.normalized_key ?? r.url) ?? existingByUrl.get(r.url))
+        .map(ex => String(ex?.id ?? ""))
+        .filter(Boolean)
+    ),
+  ];
+  const endedUrls = [
+    ...new Set(
+      endedRows
+        .filter(r => !(existingByIdentity.get(r.normalized_key ?? r.url) ?? existingByUrl.get(r.url)))
+        .map(r => r.url)
+    ),
+  ];
   let endedMarked = 0;
+  if (endedIds.length > 0) {
+    const { data: upd } = await supabase
+      .from("sponsored_posts")
+      .update({ ended_at: today })
+      .in("id", endedIds)
+      .is("ended_at", null)
+      .select("id");
+    endedMarked += (upd ?? []).length;
+  }
   if (endedUrls.length > 0) {
     const { data: upd } = await supabase
       .from("sponsored_posts")
@@ -206,7 +229,7 @@ export async function upsertSponsoredRows(
       .in("url", endedUrls)
       .is("ended_at", null)
       .select("id");
-    endedMarked = (upd ?? []).length;
+    endedMarked += (upd ?? []).length;
   }
 
   // 캡션 빈 IG 글이 이번 배치에 있으면 캡션 보강 즉시 트리거(이벤트 기반)
