@@ -37,3 +37,6 @@ build/
 *.log
 logs/
 .vercel
+
+.env.production.local
+.env.*.local
