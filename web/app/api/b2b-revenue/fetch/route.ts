@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { fetchSheetTabValuesByTitle, fetchSheetTabValues } from "@/lib/google-sheets";
+import { fetchSheetTabValuesByTitle } from "@/lib/google-sheets";
 import { notifyJob } from "@/lib/slack";
 
 export const runtime = "nodejs";
@@ -28,19 +28,6 @@ type DayVals = { order: number; profit: number | null; ad: number | null; contri
 export async function GET(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") { // fail-closed: CRON_SECRET 미설정 시에도 차단(무인증 오픈 방지)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  // TEMP: 시으니/이나 행의 왼쪽 열(헤더+A~M) 값 조회(증분 열 확인용). 확인 후 제거.
-  if (req.nextUrl.searchParams.get("jread")) {
-    const rows = await fetchSheetTabValues("10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak", 1937186871, "A1:M2000");
-    const header = (rows[0] ?? []).slice(0, 13);
-    const out: unknown[] = [];
-    for (let r = 1; r < rows.length; r++) {
-      const row = rows[r] as (string | number | null)[];
-      const acc = String(row[0] ?? "") + String(row[1] ?? "") + String(row[2] ?? "");
-      if (acc.includes("시으니") || acc.includes("이나")) out.push({ row: r + 1, cells: (row ?? []).slice(0, 13) });
-    }
-    return NextResponse.json({ header, found: out.length, rows: out });
   }
 
   const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
