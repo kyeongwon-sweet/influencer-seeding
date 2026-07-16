@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 2026-07-16 TikTok URL canonical form unified to www (Codex)
+- Decision: TikTok canonical URL string is `https://www.tiktok.com/...`.
+- Reason: `web/lib/url-utils.ts normalizeUrl()` already returns `www.tiktok.com`, and TikTok comment scraping has a recorded production constraint that non-www URLs can return 0 comments.
+- Fixed `scripts/notify_status.py` `_canon_url()` so the URL-standard mismatch check uses `www.tiktok.com` for TikTok instead of stripping `www`.
+- DB `sponsored_posts.url` TikTok rows were normalized in Supabase from mixed forms to www form. Readback: `non_www_tiktok=0`, `www_tiktok=53`, `total_tiktok=53`, `duplicate_normalized_keys=0`.
+- Ryurai check: `e32284d3` remains `https://www.tiktok.com/@ryuraikj/video/7652295124399000839/`.
+
 ## 2026-07-16 sponsored_posts normalized_key DB migration applied (Codex)
 - Supabase SQL migration `docs/migration-sponsored-posts-normalized-key.sql` was applied manually in the Supabase SQL Editor because DB DDL requires project DB privileges.
 - Important execution note: Supabase SQL Editor initially ran only the cursor statement, so Codex re-ran the migration statement-by-statement and verified each step succeeded: identity function, `normalized_key` column, backfill, `e32284d3` TikTok URL correction, duplicate preflight, partial UNIQUE index, trigger function, trigger replacement.

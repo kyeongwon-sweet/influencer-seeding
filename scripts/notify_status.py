@@ -79,6 +79,8 @@ def _canon_url(u: str) -> str:
     path = re.sub(r"/{2,}", "/", path)
     if not path.endswith("/"):
         path += "/"
+    if host == "tiktok.com":
+        return f"https://www.tiktok.com{path}"
     return f"https://{host}{path}"
 
 
