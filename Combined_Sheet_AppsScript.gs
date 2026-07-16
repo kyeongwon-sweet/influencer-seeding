@@ -1072,7 +1072,8 @@ function syncStatus() {
 // 날짜 헤더는 텍스트("6.15", "5. 26 (화)")이거나 Date 객체(서식만 날짜)인
 // 두 종류가 섞여 있음 → 둘 다 인식해야 5월(=Date 객체)에 끝난 게시물도 잡힘.
 // (텍스트 정규식만 쓰면 Date 헤더 열이 누락돼 5월 종료 행이 공백이 됨)
-// dailyAuto(매일 9:30)에 연결. 저장값 무시하고 표시단계에서 재계산.
+// dailyAuto(매일 9:30)에 연결. 각 행에 =IF(COUNT(첫날짜열:마지막날짜열)=0,"",MAX(..)) 수식 기록
+// (값 아님) → 날짜열 값 변경 시 자동 갱신. 날짜셀은 전부 숫자라 MAX 정확.
 // ═══════════════════════════════════════════════════════════════
 function refreshCumulativeViews() {
   const sh = getSheet_();
@@ -1087,18 +1088,17 @@ function refreshCumulativeViews() {
   var dateRe = /^\s*\d{1,2}\s*[.]\s*\d{1,2}(\s|\(|$)/;
   var dateCols = [];
   for (var j = 0; j < headers.length; j++) { var hj = headers[j]; if (hj instanceof Date) { dateCols.push(j); } else if (dateRe.test(String(hj))) { dateCols.push(j); } }
+  if (dateCols.length === 0) return;
   var nRows = lastRow - CONFIG.DATA_START_ROW + 1;
-  var data = sh.getRange(CONFIG.DATA_START_ROW, 1, nRows, lastCol).getValues();
+  // 값이 아니라 수식으로 기록 → 날짜열 값이 바뀌면 자동 갱신. 날짜열 블록(첫~마지막)만 참조해 aux/오참조 방지.
+  var firstIdx = Math.min.apply(null, dateCols) + 1;
+  var lastIdx = Math.max.apply(null, dateCols) + 1;
+  var colA1 = function (n) { var s = ""; while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = (n - m - 1) / 26; } return s; };
+  var fc = colA1(firstIdx), lc = colA1(lastIdx);
   var out = [];
   for (var r = 0; r < nRows; r++) {
-    var row = data[r];
-    var mx = null;
-    for (var k = 0; k < dateCols.length; k++) {
-      var v = row[dateCols[k]];
-      var num = (typeof v === "number") ? v : parseFloat(String(v).replace(/[^0-9.\-]/g, ""));
-      if (isFinite(num) && num > 0 && (mx === null || num > mx)) mx = num;
-    }
-    out.push([mx === null ? "" : mx]);
+    var sr = CONFIG.DATA_START_ROW + r;
+    out.push(["=IF(COUNT(" + fc + sr + ":" + lc + sr + ")=0,\"\",MAX(" + fc + sr + ":" + lc + sr + "))"]);
   }
   sh.getRange(CONFIG.DATA_START_ROW, cumCol, nRows, 1).setValues(out);
   SpreadsheetApp.getActive().toast("누적 조회수 갱신: " + nRows + "행", "완료", 5);
