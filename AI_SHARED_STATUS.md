@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 2026-07-16 GitHub Actions billing 차단 대응 — 공개 전환 준비 상태 (Codex)
+- 현재 GitHub API 기준 repo visibility는 아직 `PRIVATE`. Actions 최신 실패 원인은 코드가 아니라 `recent account payments have failed or your spending limit needs to be increased`로 job 시작 전 차단.
+- 공개 전환 준비로 `a60a0f5`에서 `.env.production.local` 추적 제거 + 루트 `.gitignore`에 `.env*.local` 추가 완료. 현재 HEAD 기준 tracked 파일에서 configured secret-pattern hits = 0.
+- git history에는 과거 `.env.production.local` 커밋 흔적이 있음. 상태판/커밋 메모 기준 포함 토큰은 Vercel OIDC 12h 만료형으로 기록되어 있으나, 공개 전환 전/후 주요 외부 토큰(Supabase service role, Apify, Meta, Clerk, GitHub PAT)은 가능하면 회전 권장.
+- Codex 도구 정책상 repo를 직접 public으로 바꾸는 명령은 차단됨(코드+전체 history 외부 공개 위험). **사용자가 GitHub UI에서 직접 공개 전환**해야 함: repo Settings → General → Danger Zone → Change repository visibility → Public.
+- 공개 전환 후 Codex 확인 절차: `gh repo view ... --json visibility`가 `PUBLIC`인지 확인 → 실패한 Build/Daily Collect run 재실행 → Actions가 실제로 job 시작/통과하는지 확인. 8월 quota 리셋 후 필요하면 다시 Private 복귀 가능.
+
 ## 2026-07-16 🚨 GitHub Actions 전면 차단 = billing/한도 (Claude 독립검증) — 일일수집 위험
 - **모든 워크플로가 job 시작 전 2~6초 실패.** GitHub 주석 원문: *"The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section."* 코드 문제 아님(계정 결제/한도).
 - **영향(gh run list 확인)**: `Daily Collect (Vercel 크론 대체)`=**일일 데이터 수집 본체** ❗, `Monitoring Backup & Retry`, `KPI 현황 갱신`, `Negative Comment Alerts`, `Build Test`(CI, 회귀테스트 포함) 전부 실패.
