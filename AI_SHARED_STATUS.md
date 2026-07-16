@@ -9,7 +9,19 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
-Last updated: 2026-07-16 (added handoff context doc pointer)
+Last updated: 2026-07-16 (refactor branch fully committed & pushed; handoff doc pointer added)
+
+## 2026-07-16 Branch Sync
+
+- All previously uncommitted changes in the canonical worktree (`refactor/monitoring-decompose`) were committed in 5 themed commits and pushed to origin:
+  - `6dd8a4b` safeIncrement display recompute (same lineage as main `afeeb5d`/`54a9804`)
+  - `e26a2f3` pre-upload stats guards (same lineage as main `29923f9`)
+  - `97f7f58` Apps Script orphan-row preview/delete menu
+  - `3bb71a4` dead-code cleanup + ESLint unused-vars rule
+  - `fb54a0b` docs (shared-status-first rule, same lineage as main `ca3cb72`)
+- Remote branch had 2 duplicate commits (identical patches, different hashes); merged via `8ee757c`, no content lost (verified by patch-id and blob comparison).
+- Verified before push: 26 web tests pass, `tsc --noEmit` clean, `py_compile` clean on both changed Python scripts.
+- Working tree is now clean. Note for future merges to main: several refactor commits duplicate main-side work (see lineage notes above) — expect content-identical conflicts that resolve mechanically.
 
 ## Current Production State
 
