@@ -1,8 +1,8 @@
 "use client";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 // 게시물 표 — monitoring/page.tsx 에서 추출. 모든 상태/핸들러는 부모(MonitoringPage) 소유(props).
 // 인라인 편집/정렬/선택/열 리사이즈는 전부 부모 함수를 props로 받아 그대로 호출 → 동작 동일.
-import { type Post, type EditCell, type DailyStats, type Filters, getFilteredStats, pickRangeStats, hasNotableChange, viewIncrement, fmt, fmtChannelType, effectiveReach, pickMetric, CHANNEL_TYPES, INIT_FILTERS, CHART } from "../lib";
+import { type Post, type EditCell, type Filters, pickRangeStats, pickAsOfStats, hasNotableChange, viewIncrement, fmt, fmtChannelType, effectiveReach, pickMetric, CHANNEL_TYPES, INIT_FILTERS, CHART } from "../lib";
 import { MIN_ENTRY_DATE, maxDateKST } from "@/lib/dateRule";
 import { companyForAccount } from "@/lib/companyMap";
 import { productCodeOf } from "@/lib/productCode";
@@ -82,19 +82,23 @@ function TD({ children, right, muted, col, highlighted, w, leftPos, fixed, group
 }
 
 
-function Sparkline({ stats, postId, onClick }: { stats: DailyStats[]; postId: string; onClick: () => void }) {
-  const pts = stats.filter(s => pickMetric(s) != null).map(s => pickMetric(s) as number);
-  if (pts.length < 2) return <button onClick={onClick} className="text-xs text-a-ink-muted">-</button>;
+const Sparkline = memo(function Sparkline({ post, onSelectPost }: { post: Post; onSelectPost: (post: Post) => void }) {
   const W = 72, H = 24, pad = 2;
-  const min = Math.min(...pts), max = Math.max(...pts);
-  const range = max - min || 1;
-  const coords = pts.map((v, i) => [
-    pad + (i / (pts.length - 1)) * (W - 2 * pad),
-    pad + (1 - (v - min) / range) * (H - 2 * pad),
-  ]);
-  const line = coords.map(([x, y]) => `${x},${y}`).join(" ");
-  const area = `${coords[0][0]},${H} ` + line + ` ${coords[coords.length - 1][0]},${H}`;
-  const gId = `sg-${postId}`;
+  const spark = useMemo(() => {
+    const pts = (post.all_stats ?? []).map(s => pickMetric(s)).filter((v): v is number => v != null);
+    if (pts.length < 2) return null;
+    const min = Math.min(...pts), max = Math.max(...pts);
+    const range = max - min || 1;
+    const coords = pts.map((v, i) => [
+      pad + (i / (pts.length - 1)) * (W - 2 * pad),
+      pad + (1 - (v - min) / range) * (H - 2 * pad),
+    ]);
+    const line = coords.map(([x, y]) => `${x},${y}`).join(" ");
+    return { line, area: `${coords[0][0]},${H} ${line} ${coords[coords.length - 1][0]},${H}` };
+  }, [post.all_stats]);
+  const onClick = () => onSelectPost(post);
+  if (!spark) return <button onClick={onClick} className="text-xs text-a-ink-muted">-</button>;
+  const gId = `sg-${post.id}`;
   return (
     <button onClick={onClick} className="block hover:opacity-70 transition" title="트렌드 보기">
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
@@ -104,13 +108,13 @@ function Sparkline({ stats, postId, onClick }: { stats: DailyStats[]; postId: st
             <stop offset="100%" stopColor={CHART.primary} stopOpacity="0.02" />
           </linearGradient>
         </defs>
-        <polygon points={area} fill={`url(#${gId})`} />
-        <polyline points={line} fill="none" stroke={CHART.primary} strokeWidth="1.5"
+        <polygon points={spark.area} fill={`url(#${gId})`} />
+        <polyline points={spark.line} fill="none" stroke={CHART.primary} strokeWidth="1.5"
           strokeLinejoin="round" strokeLinecap="round" />
       </svg>
     </button>
   );
-}
+});
 
 
 
@@ -270,6 +274,7 @@ function PostsTable(props: Props) {
                   // 🔒 필터 불변식: 값(현재/직전)은 lib.pickRangeStats 단일 구현으로 —
                   // 날짜 필터 시 범위 밖(latest_stats) 폴백 금지. 합계·정렬·복사·CSV와 반드시 동일 규칙.
                   const { s, prev } = pickRangeStats(post, filters.dateFrom, filters.dateTo);
+                  const displayS = pickAsOfStats(post, filters.dateFrom, filters.dateTo);
 
                   const displayName = post.account_name ?? post.influencers?.name ?? "-";
                   const hl = hasNotableChange(post);
@@ -434,10 +439,10 @@ function PostsTable(props: Props) {
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
                         ) : (
                           <div className="flex items-center justify-end gap-1.5 relative">
-                            <span onClick={() => setEditPlayCount({ postId: post.id, value: String(s?.play_count ?? "") })}
+                            <span onClick={() => setEditPlayCount({ postId: post.id, value: String(displayS?.play_count ?? "") })}
                               title="여기서 고치면 즉시 반영되며, 밤 자동수집은 이 값을 덮지 않습니다. 시트에서 더 나중에 입력하면 그 값이 최신으로 우선합니다."
                               className="text-a-ink-muted hover:text-a-blue transition-colors cursor-text">
-                              {(post.channel_type ?? "").includes("배너") ? <span className="text-gray-300">—</span> : fmt(s?.play_count)}
+                              {(post.channel_type ?? "").includes("배너") ? <span className="text-gray-300">—</span> : fmt(displayS?.play_count)}
                             </span>
                             {updatedPlayCounts.has(post.id) && (
                               <div
@@ -456,8 +461,8 @@ function PostsTable(props: Props) {
                         )}
                       </td>
                       <TD right muted w={colWidths["조회당비용"]}>
-                        {!(post.channel_type ?? "").includes("배너") && post.cost != null && s?.play_count != null && s.play_count > 0
-                          ? (post.cost / s.play_count).toFixed(2)
+                        {!(post.channel_type ?? "").includes("배너") && post.cost != null && displayS?.play_count != null && displayS.play_count > 0
+                          ? (post.cost / displayS.play_count).toFixed(2)
                           : <span className="text-gray-300">—</span>}
                       </TD>
                       <td style={{ minWidth: colWidths["도달수"] }}
@@ -473,7 +478,7 @@ function PostsTable(props: Props) {
                           (() => {
                             const isBanner = (post.channel_type ?? "").includes("배너");
                             // 배너=시트 일별 숫자(play_count)를 도달수로 1:1 사용. 그 외=reach_count(없으면 조회수×0.8 추정).
-                            const eff = isBanner ? (s?.play_count ?? null) : effectiveReach(post.reach_count, s?.play_count);
+                            const eff = isBanner ? (displayS?.play_count ?? null) : effectiveReach(post.reach_count, displayS?.play_count);
                             if (eff == null) return <span className="text-gray-300">—</span>;
                             const isAuto = !isBanner && post.reach_count == null;
                             return (
@@ -488,7 +493,7 @@ function PostsTable(props: Props) {
                       <TD right muted w={colWidths["도달당비용"]}>
                         {(() => {
                           const isBanner = (post.channel_type ?? "").includes("배너");
-                          const eff = isBanner ? (s?.play_count ?? null) : effectiveReach(post.reach_count, s?.play_count);
+                          const eff = isBanner ? (displayS?.play_count ?? null) : effectiveReach(post.reach_count, displayS?.play_count);
                           return post.cost != null && eff != null && eff > 0
                             ? (post.cost / eff).toFixed(2)
                             : <span className="text-gray-300">—</span>;
@@ -525,9 +530,9 @@ function PostsTable(props: Props) {
                             onKeyDown={e => { if (e.key === "Enter") patchStat(post.id, editCell.measuredAt ?? "", "likes_count", editCell.value); if (e.key === "Escape") { e.preventDefault(); setEditCell(null); }; }}
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
                         ) : (
-                          s?.likes_count == null ? <span className="text-gray-300">—</span>
-                            : s.likes_count < 0 ? <span className="text-gray-400 text-[11px]" title="작성자가 좋아요 수를 숨김 (더블클릭해 수동 입력)">비공개</span>
-                            : s.likes_count.toLocaleString()
+                          displayS?.likes_count == null ? <span className="text-gray-300">—</span>
+                            : displayS.likes_count < 0 ? <span className="text-gray-400 text-[11px]" title="작성자가 좋아요 수를 숨김 (더블클릭해 수동 입력)">비공개</span>
+                            : displayS.likes_count.toLocaleString()
                         )}
                       </td>
                       <td style={{ minWidth: colWidths["댓글"] }}
@@ -540,13 +545,13 @@ function PostsTable(props: Props) {
                             onKeyDown={e => { if (e.key === "Enter") patchStat(post.id, editCell.measuredAt ?? "", "comments_count", editCell.value); if (e.key === "Escape") { e.preventDefault(); setEditCell(null); }; }}
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
                         ) : (
-                          s?.comments_count == null ? <span className="text-gray-300">—</span>
-                            : s.comments_count < 0 ? <span className="text-gray-400 text-[11px]" title="댓글 비공개/사용 안 함 (더블클릭해 수동 입력)">비공개</span>
-                            : s.comments_count.toLocaleString()
+                          displayS?.comments_count == null ? <span className="text-gray-300">—</span>
+                            : displayS.comments_count < 0 ? <span className="text-gray-400 text-[11px]" title="댓글 비공개/사용 안 함 (더블클릭해 수동 입력)">비공개</span>
+                            : displayS.comments_count.toLocaleString()
                         )}
                       </td>
                       <td style={{ minWidth: colWidths["트렌드"] }} className="px-3 py-3 text-center">
-                        <Sparkline stats={post.all_stats ?? []} postId={post.id} onClick={() => setTrendPost(post)} />
+                        <Sparkline post={post} onSelectPost={setTrendPost} />
                       </td>
                       <td style={{ minWidth: colWidths["특이사항"] }} className="px-3 py-3 whitespace-nowrap">
                         {editCell?.postId === post.id && editCell?.field === "notes" ? (

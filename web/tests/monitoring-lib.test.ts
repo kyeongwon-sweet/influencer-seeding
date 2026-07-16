@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   pearson, solveLinear, multipleR2, movingAvg, weekKeyOf, weekLabelOf,
-  padDomain, effectiveReach, alignedPairs, bestLag, getPostType, parseCsvLine, pickRangeStats, viewIncrement,
+  padDomain, effectiveReach, alignedPairs, bestLag, getPostType, parseCsvLine, pickRangeStats, pickAsOfStats, viewIncrement, safeIncrement,
 } from "../app/monitoring/lib.ts";
 
 const close = (a: number, b: number, eps = 1e-9) => Math.abs(a - b) < eps;
@@ -12,6 +12,24 @@ test("pearson: 완전 양/음 상관, 무분산, 표본부족", () => {
   assert.ok(close(pearson([1, 2, 3], [3, 2, 1])!, -1));
   assert.equal(pearson([5, 5, 5], [1, 2, 3]), null); // x 분산 0
   assert.equal(pearson([1], [2]), null);             // n<2
+});
+
+test("safeIncrement/viewIncrement: 저장 increment 오염값을 무시하고 원천 누적값으로 재계산", () => {
+  const stats = [
+    { measured_at: "2026-07-06", play_count: 1000, likes_count: null, comments_count: null, increment: 1000 },
+    { measured_at: "2026-07-07", play_count: 1100, likes_count: null, comments_count: null, increment: 9000 },
+  ];
+  const post = {
+    id: "t", url: "https://www.instagram.com/p/X/", posted_at: "2026-07-06",
+    product_name: null, project_name: null, account_name: null, company_name: null,
+    channel_type: null, cost: null, reach_count: null, notes: null, content_summary: null,
+    created_at: "2026-07-06", ended_at: null, influencers: null,
+    latest_stats: stats[1],
+    prev_stats: stats[0],
+    all_stats: stats,
+  };
+  assert.equal(safeIncrement(stats, stats[1], false), 100);
+  assert.equal(viewIncrement(post, stats[1], stats[0]), 100);
 });
 
 test("solveLinear: 대각 행렬 해 / 특이행렬 null", () => {
@@ -121,4 +139,21 @@ test("pickRangeStats+viewIncrement: 범위 밖 게시물은 값·증분 없음('
   // ⑤ 필터 없음 → 기존 동작(latest/prev) 그대로
   const r5 = pickRangeStats(both, "", "");
   assert.equal(r5.s?.play_count, 999);
+});
+
+test("pickAsOfStats: 날짜 필터 종료일 기준 누적값을 이전 측정에서 이어받음", () => {
+  const stat = (d: string, play: number | null) => ({ measured_at: d, play_count: play, likes_count: null, comments_count: null });
+  const stats = [stat("2026-07-09", 1000)];
+  const post = {
+    id: "t", url: "https://www.instagram.com/p/X/", posted_at: "2026-07-09",
+    product_name: null, project_name: null, account_name: null, company_name: null,
+    channel_type: null, cost: null, reach_count: null, notes: null, content_summary: null,
+    created_at: "2026-07-09", ended_at: null, influencers: null,
+    latest_stats: stats[0],
+    prev_stats: null,
+    all_stats: stats,
+  };
+
+  assert.equal(pickRangeStats(post, "2026-07-10", "2026-07-10").s, null);
+  assert.equal(pickAsOfStats(post, "2026-07-10", "2026-07-10")?.play_count, 1000);
 });

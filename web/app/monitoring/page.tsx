@@ -4,10 +4,10 @@ import { ElapsedTimer, useStableHandlers } from "./perf-utils";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
-import { MIN_ENTRY_DATE, maxDateKST, isValidEntryDate } from "@/lib/dateRule";
+import { isValidEntryDate } from "@/lib/dateRule";
 import { companyForAccount } from "@/lib/companyMap";
 import { batchFetch } from "@/lib/batchFetch";
-import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, INIT_FILTERS, CHANNEL_TYPES, CATEGORIES, STICKY_COL_ORDER, PROJECT_PARSE_COLS, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, isStatInDateRange, getFilteredStats, pickRangeStats, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, getPostType, viewIncrement, pickMetric, pdOf, productLabel, effectiveReach, weekKeyOf, pearson, alignedPairs, bestLag, solveLinear, alignMulti, multipleR2, parseCsvLine } from "./lib";
+import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, INIT_FILTERS, CHANNEL_TYPES, STICKY_COL_ORDER, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, getFilteredStats, pickRangeStats, pickAsOfStats, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, getPostType, viewIncrement, safeIncrement, pickMetric, pdOf, productLabel, effectiveReach, weekKeyOf, pearson, alignedPairs, bestLag, alignMulti, multipleR2, parseCsvLine } from "./lib";
 import CorrelationPanel from "./components/CorrelationPanel";
 import DayOfWeekPanel, { type DowData } from "./components/DayOfWeekPanel";
 import CompanyPanel, { type CompanyData } from "./components/CompanyPanel";
@@ -49,9 +49,8 @@ export default function MonitoringPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [showHelp, setShowHelp] = useState(false);
   const [trendPost, setTrendPost] = useState<Post | null>(null);
-  const [trendLoading, setTrendLoading] = useState(false);
+  const [trendLoading] = useState(false);
   const [editCell, setEditCell] = useState<EditCell | null>(null);
-  const [editCategory, setEditCategory] = useState<{ postId: string; infId: string; value: string } | null>(null);
   const [editPlayCount, setEditPlayCount] = useState<{ postId: string; value: string } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const lastCheckedIdx = useRef<number | null>(null); // 체크박스 Ctrl/Shift 범위 선택 기준점
@@ -76,9 +75,6 @@ export default function MonitoringPage() {
 
   const filteredPosts = useMemo(() => posts.filter(post => {
     const displayName = (post.account_name ?? post.influencers?.name ?? "").toLowerCase();
-
-    // 제로비 판정: 조회수가 없거나 0
-    const isZeroPost = !post.latest_stats || post.latest_stats.play_count === 0 || post.latest_stats.play_count == null;
 
     // 1️⃣ 모든 게시물에 적용되는 필터 (제로비도 포함)
     if (filters.name && !displayName.includes(filters.name.toLowerCase())) return false;
@@ -128,18 +124,6 @@ export default function MonitoringPage() {
     return t && (!latest || t > latest) ? t : latest;
   }, null), [posts]);
 
-  const formatLastUpdate = (dateStr: string): string => {
-    const d = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffDays > 0) return `${diffDays}일 전`;
-    if (diffHours > 0) return `${diffHours}시간 전`;
-    return "방금";
-  };
-
   const chartData = useMemo(() => {
     // 오늘(KST)은 수집 중·미완성 → 제외. playDeltaData·델타표와 동일 정책으로 맞춰
     // 이 배열에서 파생되는 광고비/검색량 조회 범위·차트 축이 하루 어긋나지 않게 한다.
@@ -159,10 +143,10 @@ export default function MonitoringPage() {
 
   // 🔒 필터 불변식: 상단 '조회수 합계' 카드도 표와 동일한 값 규칙(pickRangeStats) —
   // 날짜 필터 시 표는 범위 값인데 카드만 현재 누적을 보여주던 불일치 수정
-  const { totalPlayCount, totalLikes, totalComments } = useMemo(() => {
+  const { totalPlayCount } = useMemo(() => {
     let play = 0, likes = 0, comments = 0;
     for (const p of filteredPosts) {
-      const { s } = pickRangeStats(p, filters.dateFrom, filters.dateTo);
+      const s = pickAsOfStats(p, filters.dateFrom, filters.dateTo);
       play += s?.play_count ?? 0;
       likes += s?.likes_count ?? 0;
       comments += s?.comments_count ?? 0;
@@ -173,19 +157,19 @@ export default function MonitoringPage() {
   // 표 상단 합계 행 — 행 렌더링과 동일한 s/prev 로직으로 증분량·비용·조회수 합산.
   // 체크박스로 선택한 행이 있으면 그 선택분만 합산(선택 없으면 필터된 전체).
   const tableTotals = useMemo(() => {
-    const hasDate = filters.dateFrom || filters.dateTo;
     const rows = selected.size > 0 ? filteredPosts.filter(p => selected.has(p.id)) : filteredPosts;
     let delta = 0, cost = 0, views = 0, reach = 0, likes = 0, comments = 0;
     for (const post of rows) {
       // 🔒 필터 불변식: 행 렌더링과 동일한 단일 구현(pickRangeStats) — 범위 밖 폴백 금지
       const { s, prev } = pickRangeStats(post, filters.dateFrom, filters.dateTo);
+      const displayS = pickAsOfStats(post, filters.dateFrom, filters.dateTo);
       const inc = viewIncrement(post, s, prev); if (inc != null) delta += inc;
       cost += post.cost ?? 0;
-      if (s?.play_count != null) views += s.play_count;
-      const r = effectiveReach(post.reach_count, s?.play_count);
+      if (displayS?.play_count != null) views += displayS.play_count;
+      const r = effectiveReach(post.reach_count, displayS?.play_count);
       if (r != null) reach += r;
-      if (s?.likes_count != null && s.likes_count >= 0) likes += s.likes_count; // 음수(-1)=인스타 좋아요 비공개 → 제외
-      if (s?.comments_count != null && s.comments_count >= 0) comments += s.comments_count;
+      if (displayS?.likes_count != null && displayS.likes_count >= 0) likes += displayS.likes_count;
+      if (displayS?.comments_count != null && displayS.comments_count >= 0) comments += displayS.comments_count;
     }
     return { delta, cost, views, reach, likes, comments, count: rows.length, selectionMode: selected.size > 0 };
   }, [filteredPosts, filters.dateFrom, filters.dateTo, selected]);
@@ -210,6 +194,14 @@ export default function MonitoringPage() {
         allDatesSet.add(s.measured_at);
       }
     }
+    if (filters.dateFrom && filters.dateTo) {
+      const cursor = new Date(`${filters.dateFrom}T00:00:00Z`);
+      const end = new Date(`${filters.dateTo}T00:00:00Z`);
+      while (cursor <= end) {
+        allDatesSet.add(cursor.toISOString().slice(0, 10));
+        cursor.setUTCDate(cursor.getUTCDate() + 1);
+      }
+    }
     const allDates = [...allDatesSet].sort();
     if (allDates.length === 0) return [];
 
@@ -223,10 +215,15 @@ export default function MonitoringPage() {
       const statsMap = new Map(filteredStats.map(s => [s.measured_at, s]));
       // 배너는 조회수(play_count)가 없어 도달수(reach_count)를 조회수처럼 취급(사용자 지시) → play 누적에 합산.
       const isBanner = (post.channel_type ?? "").includes("배너");
+      const seed = (post.all_stats ?? [])
+        .filter(s => s.measured_at < allDates[0])
+        .sort((a, b) => a.measured_at.localeCompare(b.measured_at))
+        .at(-1);
 
       // Forward-fill: 필터 범위 내에서만 데이터 없는 날은 이전 마지막 값 유지
       // null은 데이터 없음(기여 0)
-      let lastPlay: number | null = null, lastLikes: number | null = null, lastComments: number | null = null;
+      let lastPlay: number | null = seed ? (isBanner ? seed.reach_count : seed.play_count) ?? null : null;
+      let lastLikes: number | null = seed?.likes_count ?? null, lastComments: number | null = seed?.comments_count ?? null;
       for (const date of allDates) {
         let incAdd = 0;
         if (statsMap.has(date)) {
@@ -236,7 +233,7 @@ export default function MonitoringPage() {
           lastPlay     = metric != null ? Math.max(lastPlay ?? metric, metric) : lastPlay;
           lastLikes    = s.likes_count    ?? lastLikes;
           lastComments = s.comments_count ?? lastComments;
-          incAdd = s.increment ?? 0;   // 단일 소스: 저장된 증분(리포트와 동일값)
+          incAdd = safeIncrement(post.all_stats ?? [], s, isBanner) ?? 0;
         }
         const e = totals.get(date)!;
         totals.set(date, {
@@ -302,7 +299,7 @@ export default function MonitoringPage() {
       const ct = post.channel_type ?? "";
       const kind = ct.includes("배너") ? "banner" : ct.includes("(영상)") ? "video" : null;
       if (!kind) continue;
-      const { s } = pickRangeStats(post, filters.dateFrom, filters.dateTo);
+      const s = pickAsOfStats(post, filters.dateFrom, filters.dateTo);
       const play = s?.play_count ?? null;
       const val = kind === "video" ? play : effectiveReach(post.reach_count, play);
       const acc = by.get(company) ?? { video: { n: 0, sum: 0, cost: 0 }, banner: { n: 0, sum: 0, cost: 0 } };
@@ -710,14 +707,12 @@ export default function MonitoringPage() {
       previousPlayCountsRef.current.clear();
     }
 
-    // '오늘'(KST)은 수집 중이라 기본적으로 제외(전일자까지만 노출) — 미완성 null로 인한 증감 왜곡 방지.
-    // 단, 이 게시물의 오늘 값이 '실제 수집 완료'된 경우(play_collected 또는 likes 존재)에는 당일 값을 즉시 반영.
+    // '오늘'(KST)은 수집 중이라 아래 표·합계·일자별 증감표 모두에서 제외한다.
+    // 수집 완료 여부와 무관하게 전일자까지만 노출해 표 합계와 일자별 증감표 기준을 통일한다.
     const todayKST = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
     newPosts = newPosts.map(p => {
       const all = p.all_stats ?? [];
-      const today = all.find((s: DailyStats) => s.measured_at === todayKST);
-      const todayCollected = !!today && (today.play_collected === true || today.likes_count != null);
-      const stats = todayCollected ? all : all.filter((s: DailyStats) => s.measured_at < todayKST);
+      const stats = all.filter((s: DailyStats) => s.measured_at < todayKST);
       const latest = stats.length ? stats[stats.length - 1] : null;
       // 증분량 기준 = '달력 하루'(어제자정~오늘자정): '직전 행'이 아니라 '최신 날짜 −1일' 측정으로 비교.
       // 그 전날 측정이 없으면 null → 표에 빈칸(수집시각·건너뛴 날 노이즈 제거). 최초 측정(이전 전무)은 viewIncrement에서 전체값 표시.
@@ -915,16 +910,17 @@ export default function MonitoringPage() {
   const sortedPosts = useMemo(() => {
     // 정렬 기준을 행이 '표시하는 값'과 일치시킴 — 날짜 필터 시 표는 범위 내 마지막/직전 값을 보여주는데,
     // 정렬이 latest_stats(필터 무시 최신값)를 쓰면 "조회수 ▼" 순서가 표시값과 어긋난다.
-    const hasDate = !!(filters.dateFrom || filters.dateTo);
-    const disp = new Map<string, { s: Post["latest_stats"]; prev: Post["prev_stats"] }>();
+    const disp = new Map<string, { s: Post["latest_stats"]; prev: Post["prev_stats"]; displayS: Post["latest_stats"] }>();
     for (const p of filteredPosts) {
       // 🔒 필터 불변식: 행 렌더링과 동일한 단일 구현(pickRangeStats)
       const { s, prev } = pickRangeStats(p, filters.dateFrom, filters.dateTo);
-      disp.set(p.id, { s, prev });
+      const displayS = pickAsOfStats(p, filters.dateFrom, filters.dateTo);
+      disp.set(p.id, { s, prev, displayS });
     }
     return [...filteredPosts].sort((a, b) => {
     if (!sortCol) return 0;
     const sa = disp.get(a.id)?.s ?? null, sb = disp.get(b.id)?.s ?? null;
+    const da = disp.get(a.id)?.displayS ?? null, db = disp.get(b.id)?.displayS ?? null;
     let av: string | number = "", bv: string | number = "";
     switch (sortCol) {
       case "인플루언서": av = (a.account_name ?? a.influencers?.name ?? "").toLowerCase(); bv = (b.account_name ?? b.influencers?.name ?? "").toLowerCase(); break;
@@ -939,17 +935,17 @@ export default function MonitoringPage() {
       case "카테고리": av = (a.influencers?.category ?? "").toLowerCase(); bv = (b.influencers?.category ?? "").toLowerCase(); break;
       case "유형": av = getPostType(a.url); bv = getPostType(b.url); break;
       case "게시일": av = a.posted_at ?? ""; bv = b.posted_at ?? ""; break;
-      case "조회수": av = sa?.play_count ?? -1; bv = sb?.play_count ?? -1; break;
-      case "좋아요": av = sa?.likes_count ?? -1; bv = sb?.likes_count ?? -1; break;
-      case "댓글": av = sa?.comments_count ?? -1; bv = sb?.comments_count ?? -1; break;
-      case "도달수": av = effectiveReach(a.reach_count, sa?.play_count) ?? -1; bv = effectiveReach(b.reach_count, sb?.play_count) ?? -1; break;
+      case "조회수": av = da?.play_count ?? -1; bv = db?.play_count ?? -1; break;
+      case "좋아요": av = da?.likes_count ?? -1; bv = db?.likes_count ?? -1; break;
+      case "댓글": av = da?.comments_count ?? -1; bv = db?.comments_count ?? -1; break;
+      case "도달수": av = effectiveReach(a.reach_count, da?.play_count) ?? -1; bv = effectiveReach(b.reach_count, db?.play_count) ?? -1; break;
       case "비용": av = a.cost ?? -1; bv = b.cost ?? -1; break;
       case "조회당비용":
-        av = (a.cost != null && sa?.play_count != null && sa.play_count > 0) ? a.cost / sa.play_count : Infinity;
-        bv = (b.cost != null && sb?.play_count != null && sb.play_count > 0) ? b.cost / sb.play_count : Infinity;
+        av = (a.cost != null && da?.play_count != null && da.play_count > 0) ? a.cost / da.play_count : Infinity;
+        bv = (b.cost != null && db?.play_count != null && db.play_count > 0) ? b.cost / db.play_count : Infinity;
         break;
       case "도달당비용": {
-        const ra = effectiveReach(a.reach_count, sa?.play_count), rb = effectiveReach(b.reach_count, sb?.play_count);
+        const ra = effectiveReach(a.reach_count, da?.play_count), rb = effectiveReach(b.reach_count, db?.play_count);
         av = (a.cost != null && ra != null && ra > 0) ? a.cost / ra : Infinity;
         bv = (b.cost != null && rb != null && rb > 0) ? b.cost / rb : Infinity;
         break;
@@ -971,7 +967,8 @@ export default function MonitoringPage() {
       // 🔒 필터 불변식: CSV도 화면과 동일한 값 규칙(pickRangeStats) — 필터 무시하고 latest를 내보내
       //   '화면≠내보내기'가 되던 버그(2026-07-06) 수정
       const { s, prev } = pickRangeStats(post, filters.dateFrom, filters.dateTo);
-      const play = s?.play_count ?? null;
+      const displayS = pickAsOfStats(post, filters.dateFrom, filters.dateTo);
+      const play = displayS?.play_count ?? null;
       const reach = effectiveReach(post.reach_count, play);
       const cost = post.cost ?? null;
       const cpr = cost != null && play != null && play > 0 ? (cost / play).toFixed(2) : "";
@@ -1009,7 +1006,6 @@ export default function MonitoringPage() {
   // '종료'(ended_at) 처리된 게시물은 복사에서 제외.
   // 체크박스 선택이 있으면 그 선택분만 복사(합계 행의 '선택 합계'와 동일한 우선 규칙).
   async function copyIncrementList() {
-    const hasDate = filters.dateFrom || filters.dateTo;
     const source = selected.size > 0 ? sortedPosts.filter(p => selected.has(p.id)) : sortedPosts;
     const lines = source.map(post => {
       if (post.ended_at) return null;
@@ -1086,7 +1082,12 @@ export default function MonitoringPage() {
   }
 
   function toggleSelect(id: string) {
-    setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+    setSelected(prev => {
+      const s = new Set(prev);
+      if (s.has(id)) s.delete(id);
+      else s.add(id);
+      return s;
+    });
   }
 
   // 체크박스 클릭: Ctrl/Shift(또는 Cmd) + 클릭 시 직전 클릭~현재 사이를 전체 선택
@@ -1227,27 +1228,6 @@ export default function MonitoringPage() {
     }
   }
 
-  async function patchCategory(postId: string, infId: string, value: string) {
-    const res = await fetch(`/api/influencers/${infId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ category: value || null }),
-    });
-    if (res.ok) {
-      const now = new Date().toISOString().slice(0, 10);
-      setPosts(prev => prev.map(p => p.id === postId
-        ? {
-          ...p,
-          influencers: p.influencers ? { ...p.influencers, category: value || null } : null,
-          latest_stats: updatePostLatestStats(p, now)
-        }
-        : p));
-    } else {
-      toast("저장에 실패했습니다.", "error");
-    }
-    setEditCategory(null);
-  }
-
   function startResize(col: string, e: React.MouseEvent, isSticky = false) {
     e.preventDefault();
     e.stopPropagation();
@@ -1381,7 +1361,13 @@ export default function MonitoringPage() {
           {selected.size > 0 && (
             <button onClick={endSelected} disabled={deleting}
               className="text-xs px-3 py-1.5 rounded-full border border-gray-300 text-a-ink-muted hover:bg-gray-50 disabled:opacity-40 transition">
-              선택 종료 ({selected.size})
+              선택 보관 처리 ({selected.size})
+            </button>
+          )}
+          {selected.size > 0 && (
+            <button onClick={() => setSelected(new Set())} disabled={deleting}
+              className="text-xs px-3 py-1.5 rounded-full border border-gray-300 text-a-ink-muted hover:bg-gray-50 disabled:opacity-40 transition">
+              선택 취소
             </button>
           )}
           {selected.size > 0 && (
@@ -1644,7 +1630,7 @@ export default function MonitoringPage() {
                           <thead className="sticky top-0 z-10 bg-white border-b border-a-hairline">
                             <tr>
                               <th className="pl-5 pr-3 py-2.5 text-left text-[13px] font-semibold text-a-ink-muted">날짜</th>
-                              <th className="px-3 py-2.5 text-right text-[13px] font-semibold text-a-ink-muted whitespace-nowrap">누적 조회수</th>
+                              <th className="px-3 py-2.5 text-right text-[13px] font-semibold text-a-ink-muted whitespace-nowrap">조회수 증분</th>
                               <th className="px-3 py-2.5 text-right text-[13px] font-semibold text-a-ink-muted">검색량</th>
                               <th className="pl-3 pr-5 py-2.5 text-right text-[13px] font-semibold text-a-ink-muted whitespace-nowrap">B2B 발주량</th>
                             </tr>

@@ -92,6 +92,16 @@ export function pickRangeStats(post: Post, dateFrom: string, dateTo: string): { 
   return { s, prev };
 }
 
+export function pickAsOfStats(post: Post, dateFrom: string, dateTo: string): DailyStats | null {
+  if (!(dateFrom || dateTo)) return post.latest_stats;
+  if (!dateTo) return post.latest_stats;
+  let best: DailyStats | null = null;
+  for (const s of post.all_stats ?? []) {
+    if (s.measured_at <= dateTo && (!best || s.measured_at > best.measured_at)) best = s;
+  }
+  return best;
+}
+
 export function fmt(v: number | null | undefined) {
   return v == null ? "-" : v.toLocaleString();
 }
@@ -172,22 +182,37 @@ export function getCategoryLabel(val: string | null | undefined): string {
   return cat ? cat.desc : val;
 }
 
-// 증분량: 직전 측정이 있으면 차이, 없고 '첫 측정'(그 이전 측정 자체가 없음)이면 그날 전체.
-// 필터로 직전만 잘렸고 이전 측정이 존재하면 계산 불가(null → '-').
-// 배너(바이럴(배너))는 조회수(play_count)가 없어 도달수(reach_count)를 조회수처럼 취급 → 동일 로직으로 전일 대비 증분.
-export function viewIncrement(post: Post, s: DailyStats | null | undefined, prev: DailyStats | null | undefined): number | null {
+// 안전 증분 규칙: 저장 increment는 오염될 수 있으므로 표시/리포트에서는 읽지 않고 원천 누적값에서 재계산한다.
+// 증분 = 현재 측정값 - 이전 유효(>0) 누적 최댓값. 이전 유효값이 없으면 첫 측정값 전체를 증분으로 본다.
+// 배너는 reach_count를 우선하고, 없으면 play_count를 도달수처럼 취급한다.
+export function safeIncrement(allStats: DailyStats[], s: DailyStats | null | undefined, isBanner: boolean): number | null {
   if (!s) return null;
-  // 단일 소스(B): 저장된 increment가 있으면 그대로 사용 → 리포트와 항상 동일값.
-  if (s.increment != null) return s.increment;
-  // 폴백(백필 안 된 과거 행 등): 기존 계산(배너=reach, 그 외=play, 첫 측정=전체).
-  const isBanner = (post.channel_type ?? "").includes("배너");
   const val = (st: DailyStats | null | undefined) => (isBanner ? st?.reach_count : st?.play_count);
   const sv = val(s);
-  if (sv == null) return null;
-  const pv = val(prev);
-  if (pv != null) return sv - pv;
-  const hasEarlier = (post.all_stats ?? []).some(x => x.measured_at < s.measured_at && val(x) != null);
-  return hasEarlier ? null : sv;
+  if (sv == null || sv <= 0) return null;
+  let baseline = 0;
+  let hasBaseline = false;
+  for (const st of allStats ?? []) {
+    if (st.measured_at >= s.measured_at) continue;
+    const v = val(st);
+    if (v != null && v > 0) {
+      hasBaseline = true;
+      if (v > baseline) baseline = v;
+    }
+  }
+  return hasBaseline ? Math.max(0, sv - baseline) : sv;
+}
+
+// 증분량: 표/합계/CSV에서 쓰는 공유 진입점.
+// 날짜 필터로 직전값만 잘린 경우에는 범위 밖 기준을 끌어오지 않고 null을 유지한다.
+export function viewIncrement(post: Post, s: DailyStats | null | undefined, prev: DailyStats | null | undefined): number | null {
+  if (!s) return null;
+  const isBanner = (post.channel_type ?? "").includes("배너");
+  const val = (st: DailyStats | null | undefined) => (isBanner ? st?.reach_count : st?.play_count);
+  if (!prev && (post.all_stats ?? []).some(x => x.measured_at < s.measured_at && val(x) != null && val(x)! > 0)) {
+    return null;
+  }
+  return safeIncrement(post.all_stats ?? [], s, isBanner);
 }
 
 export function pickMetric(s: DailyStats): number | null {
