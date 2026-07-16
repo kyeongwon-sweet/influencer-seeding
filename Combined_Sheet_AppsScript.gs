@@ -81,6 +81,7 @@ function onOpen() {
     .addItem("⬇️ 대시보드 추가분 시트로 가져오기", "pullFromDB")
     .addItem("🚦 트래킹 상태 갱신", "syncStatus")
     .addItem("🧮 누적 조회수 갱신", "refreshCumulativeViews")
+    .addItem("👥 기획자/제작자 갱신", "syncCreators")
     .addSeparator()
     .addItem("🔎 빈칸 검사 (A~H)", "checkBlanks")
     .addItem("🔁 중복 URL 검사", "checkDuplicates")
@@ -493,6 +494,7 @@ function dailyAuto() {
   try { exportStats(); } catch (e) { Logger.log("dailyAuto exportStats: " + (e.stack || e.message)); }
   try { syncStatus(); }  catch (e) { Logger.log("dailyAuto syncStatus: " + (e.stack || e.message)); }
   try { refreshCumulativeViews(); } catch (e) { Logger.log("dailyAuto refreshCumulativeViews: " + (e.stack || e.message)); }
+  try { syncCreators(); } catch (e) { Logger.log("dailyAuto syncCreators: " + (e.stack || e.message)); }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1096,4 +1098,51 @@ function refreshCumulativeViews() {
   }
   sh.getRange(CONFIG.DATA_START_ROW, cumCol, nRows, 1).setValues(out);
   SpreadsheetApp.getActive().toast("누적 조회수 갱신: " + nRows + "행", "완료", 5);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 기획자(마케터)/제작자(PD·디자이너)를 소재명(파일명 규칙)에서 추출.
+// 대시보드 lib.ts parseProjectName과 동일 규칙: 마케터=파일명 11번째 토큰,
+// PD/디자이너=마지막 토큰(확장자·(1) 정리). 파싱값 있을 때만 기록 →
+// 파싱 불가 행의 기존값(수동입력) 보존. dailyAuto 연결 + 메뉴.
+// ═══════════════════════════════════════════════════════════════
+function syncCreators() {
+  var sh = getSheet_();
+  var lastRow = sh.getLastRow();
+  if (lastRow < CONFIG.DATA_START_ROW) return;
+  var lastCol = sh.getLastColumn();
+  var headers = sh.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+  var norm = headers.map(function (h) { return norm_(h); });
+  var srcCol = norm.indexOf(norm_("소재명")) + 1;
+  var planCol = norm.indexOf(norm_("기획자")) + 1;
+  var makerCol = norm.indexOf(norm_("제작자")) + 1;
+  if (!srcCol || !planCol || !makerCol) { safeAlert_("기획자/제작자 동기화: 열을 찾지 못했습니다."); return; }
+  var n = lastRow - CONFIG.DATA_START_ROW + 1;
+  var src = sh.getRange(CONFIG.DATA_START_ROW, srcCol, n, 1).getValues();
+  var plan = sh.getRange(CONFIG.DATA_START_ROW, planCol, n, 1).getValues();
+  var maker = sh.getRange(CONFIG.DATA_START_ROW, makerCol, n, 1).getValues();
+  var filled = 0;
+  for (var i = 0; i < n; i++) {
+    var c = parseCreator_(String(src[i][0] == null ? "" : src[i][0]));
+    if (c.mk) plan[i][0] = c.mk;
+    if (c.pd) maker[i][0] = c.pd;
+    if (c.mk || c.pd) filled++;
+  }
+  sh.getRange(CONFIG.DATA_START_ROW, planCol, n, 1).setValues(plan);
+  sh.getRange(CONFIG.DATA_START_ROW, makerCol, n, 1).setValues(maker);
+  SpreadsheetApp.getActive().toast("기획자/제작자 갱신: " + filled + "행", "완료", 5);
+}
+
+// 소재명(파일명)에서 마케터/PD 추출 (대시보드 parseProjectName과 동일 규칙)
+function parseCreator_(name) {
+  var r = { mk: "", pd: "" };
+  if (!name || name.charAt(0) !== "[") return r;
+  var parts = name.split("_");
+  if (parts.length < 3) return r;
+  if (parts.length > 10) r.mk = String(parts[10]).trim();
+  if (parts.length > 13) {
+    var tail = parts.slice(13).join("_").trim().replace(/\.(mp4|mov|png|jpe?g|gif|webp|zip|pdf)$/i, "");
+    r.pd = (tail.split("_").pop() || "").trim().replace(/\s*\(\d+\)\s*$/, "").trim();
+  }
+  return r;
 }

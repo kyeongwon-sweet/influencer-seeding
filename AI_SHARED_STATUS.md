@@ -9,7 +9,7 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
-Last updated: 2026-07-16 (sheet column reorder + 누적 조회수 Date-header fix; see section below)
+Last updated: 2026-07-16 (기획자/제작자 자동 채우기 syncCreators 추가; 아래 섹션)
 
 ## 2026-07-16 Apps Script Live State (verified in editor via Chrome)
 
@@ -42,6 +42,13 @@ Last updated: 2026-07-16 (sheet column reorder + 누적 조회수 Date-header fi
 - **ROOT CAUSE fixed (non-obvious):** the sheet's date headers are TWO types — text like "6.15" (manually typed) AND actual **Date objects** for May 17–31 + "6.30" (cells formatted to *display* as "5. 26 (화)" but stored as Date). `getValues()` returns the raw Date (`Tue May 26 2026…`), while gviz returns the formatted string. A naive text-regex date detector misses the Date-typed columns, so any row whose maximum lives in a May column (e.g. 자취생으로 살아남기, tracking ended in May → only value 76,323 at the 5/26 Date column) came out blank. Fix: `refreshCumulativeViews` treats a header as a date column if `header instanceof Date` OR its string matches `/^\s*\d{1,2}\s*[.]\s*\d{1,2}/`. (Note: `parseMonthDay_` already handled Date objects — the bug was only in the new function not reusing that convention. exportStats/importStats were never affected.)
 - Verified live (gviz, cache-busted): 자취생 H = 76,323; across 972 data rows → 821 populated correctly, 0 mismatches vs recomputed MAX, 0 rows wrongly blank (151 legit blanks = rows with no date data, e.g. banners). Aux columns (marker "◀◀ 열 순서 수정 금지!!", #N/A timestamp col with 962 rows, 등록상태 972 rows, TRUE flags) all preserved. Temporary diagnostic function + its scratch write were removed and trailing empty columns trimmed (sheet grid width 236→113, no data lost — deleted range had getLastColumn=113 at deletion, i.e. purely empty structural buffer).
 - Repo `Combined_Sheet_AppsScript.gs` (refactor branch) updated to mirror: `refreshCumulativeViews` function + dailyAuto wiring + onOpen menu item. `applyNewColumnLayout` (one-time migration, already executed) was NOT mirrored. Repo still lags live overall — live editor remains source of truth for this sheet's script.
+
+## 2026-07-16 기획자/제작자 (syncCreators) — live, verified
+
+- New live function `syncCreators()` (public; menu "👥 기획자/제작자 갱신" + wired into dailyAuto). Fills the 기획자/제작자 columns by parsing the 소재명 (project_name) filename — **same rule the dashboard already uses** (`web/app/monitoring/lib.ts` `parseProjectName`/`pdOf`). Mapping (user-confirmed): **마케터 → 기획자, PD/디자이너 → 제작자**. The rule sheets the user linked (`1zkp-RvD…`, 배너 gid 1718299100 / 영상 gid 1405043067) are the filename-generator *definition*; the actual person values are embedded in the filename, so parsing is sufficient (no cross-sheet lookup) and guarantees the sheet matches the dashboard.
+- Extraction: filename split by `_` → 마케터 = token[10], PD/디자이너 = last token (strip extension + " (n)"). Only writes when the parse yields a value → rows without a parseable filename keep their existing cell (manual entries preserved). Runs daily via dailyAuto.
+- Verified live (gviz, cache-busted): 986 rows → 기획자 411 filled / 제작자 430 filled, **0 mismatches** vs recomputed parse (samples: 황경원/오형선, 이재원/김민우, 이재원/홍정민). Rows left blank are 협찬 인플루언서·먹스타·온드미디어·무상시딩 (no in-house 마케터/PD — expected) and a handful of short-format 바이럴 소재명 (e.g. `[26.06]title_type_name` with <14 tokens — dashboard also can't parse these; the last token is the creator but we intentionally match the dashboard rather than diverge). Offer stands to extend to short-format if user wants fuller coverage.
+- Repo `Combined_Sheet_AppsScript.gs` mirrors `syncCreators` + `parseCreator_` + dailyAuto wiring + menu item.
 
 ## 2026-07-16 Branch Sync
 
