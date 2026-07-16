@@ -47,7 +47,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          SLACK_BOT_TOKEN: ${{ secrets.INJI_BOT_TOKEN }}   # 인지봇으로 발송(증분 리포트+상태 댓글). 다른 워크플로는 여믄봇 유지.
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           # 인지 광고(메타/틱톡/유튜브) 섹션용 — 시트값을 웹 라우트(/api/awareness-ads, Vercel 서비스계정)에서 읽는다.
           # 둘 중 하나라도 없으면 스크립트가 인지광고 섹션만 조용히 생략(리포트 본문은 정상 발송).
           APP_URL: "https://influencer-seeding-mu.vercel.app"
@@ -76,13 +76,13 @@ jobs:
         if: steps.report.outputs.ts != ''
         run: sleep ${{ github.event_name == 'schedule' && '900' || '10' }}
 
-      - name: 상태 알럿을 리포트 댓글로 (인지봇)
+      - name: 상태 알럿을 리포트 댓글로 (여믄봇)
         if: steps.report.outputs.ts != ''
         continue-on-error: true
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          SLACK_BOT_TOKEN: ${{ secrets.INJI_BOT_TOKEN }}   # 인지봇으로 발송(증분 리포트+상태 댓글). 다른 워크플로는 여믄봇 유지.
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           # 리포트가 간 곳과 동일 채널의 그 메시지에 답글.
           SLACK_CHANNEL: ${{ github.event.inputs.to_dm == 'true' && 'U0B2Y0ZC8QZ' || 'C0B4F7GBX17' }}
           SLACK_THREAD_TS: ${{ steps.report.outputs.ts }}

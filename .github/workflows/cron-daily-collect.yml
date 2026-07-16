@@ -142,7 +142,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          SLACK_BOT_TOKEN: ${{ secrets.INJI_BOT_TOKEN }}   # 수집실패/상태 DM은 인지봇으로. 나머지 워크플로는 여믄봇.
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           MONITORING_DATE: ${{ steps.check.outputs.kdate }}
           COLLECT_OUTCOME: ${{ steps.collect.outcome }}
           COLLECT_LOG: ${{ runner.temp }}/collect.log
@@ -220,7 +220,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          SLACK_BOT_TOKEN: ${{ secrets.INJI_BOT_TOKEN }}   # 수집실패/상태 DM은 인지봇으로. 나머지 워크플로는 여믄봇.
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           COLLECT_OUTCOME: success
           STATUS_USER: U0B2Y0ZC8QZ
           PYTHONUNBUFFERED: "1"
