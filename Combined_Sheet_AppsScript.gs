@@ -80,6 +80,7 @@ function onOpen() {
     .addItem("♻️ 전체 다시 추가", "syncAll")
     .addItem("⬇️ 대시보드 추가분 시트로 가져오기", "pullFromDB")
     .addItem("🚦 트래킹 상태 갱신", "syncStatus")
+    .addItem("🧮 누적 조회수 갱신", "refreshCumulativeViews")
     .addSeparator()
     .addItem("🔎 빈칸 검사 (A~H)", "checkBlanks")
     .addItem("🔁 중복 URL 검사", "checkDuplicates")
@@ -491,6 +492,7 @@ function dailyAuto() {
   try { pullFromDB(); }  catch (e) { Logger.log("dailyAuto pullFromDB: " + (e.stack || e.message)); }
   try { exportStats(); } catch (e) { Logger.log("dailyAuto exportStats: " + (e.stack || e.message)); }
   try { syncStatus(); }  catch (e) { Logger.log("dailyAuto syncStatus: " + (e.stack || e.message)); }
+  try { refreshCumulativeViews(); } catch (e) { Logger.log("dailyAuto refreshCumulativeViews: " + (e.stack || e.message)); }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1057,4 +1059,41 @@ function syncStatus() {
   });
   sheet.getRange(CONFIG.DATA_START_ROW, statusCol, n, 1).setValues(out);
   safeAlert_("상태 동기화 완료: " + n + "행 (종료 기준 대시보드 반영)");
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 누적 조회수(H열) 재계산: 날짜 열들의 최댓값을 값으로 기록.
+// 날짜 헤더는 텍스트("6.15", "5. 26 (화)")이거나 Date 객체(서식만 날짜)인
+// 두 종류가 섞여 있음 → 둘 다 인식해야 5월(=Date 객체)에 끝난 게시물도 잡힘.
+// (텍스트 정규식만 쓰면 Date 헤더 열이 누락돼 5월 종료 행이 공백이 됨)
+// dailyAuto(매일 9:30)에 연결. 저장값 무시하고 표시단계에서 재계산.
+// ═══════════════════════════════════════════════════════════════
+function refreshCumulativeViews() {
+  const sh = getSheet_();
+  const lastRow = sh.getLastRow();
+  const lastCol = sh.getLastColumn();
+  if (lastRow < CONFIG.DATA_START_ROW) return;
+  const headers = sh.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+  var cumCol = -1;
+  var wantCum = norm_("누적 조회수");
+  for (var i = 0; i < headers.length; i++) { if (norm_(headers[i]) === wantCum) { cumCol = i + 1; break; } }
+  if (cumCol < 0) throw new Error("누적 조회수 열을 찾을 수 없음");
+  var dateRe = /^\s*\d{1,2}\s*[.]\s*\d{1,2}(\s|\(|$)/;
+  var dateCols = [];
+  for (var j = 0; j < headers.length; j++) { var hj = headers[j]; if (hj instanceof Date) { dateCols.push(j); } else if (dateRe.test(String(hj))) { dateCols.push(j); } }
+  var nRows = lastRow - CONFIG.DATA_START_ROW + 1;
+  var data = sh.getRange(CONFIG.DATA_START_ROW, 1, nRows, lastCol).getValues();
+  var out = [];
+  for (var r = 0; r < nRows; r++) {
+    var row = data[r];
+    var mx = null;
+    for (var k = 0; k < dateCols.length; k++) {
+      var v = row[dateCols[k]];
+      var num = (typeof v === "number") ? v : parseFloat(String(v).replace(/[^0-9.\-]/g, ""));
+      if (isFinite(num) && num > 0 && (mx === null || num > mx)) mx = num;
+    }
+    out.push([mx === null ? "" : mx]);
+  }
+  sh.getRange(CONFIG.DATA_START_ROW, cumCol, nRows, 1).setValues(out);
+  SpreadsheetApp.getActive().toast("누적 조회수 갱신: " + nRows + "행", "완료", 5);
 }

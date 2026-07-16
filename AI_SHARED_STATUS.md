@@ -9,7 +9,7 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
-Last updated: 2026-07-16 (refactor branch fully committed & pushed; handoff doc pointer added)
+Last updated: 2026-07-16 (sheet column reorder + 누적 조회수 Date-header fix; see section below)
 
 ## 2026-07-16 Apps Script Live State (verified in editor via Chrome)
 
@@ -34,6 +34,14 @@ Last updated: 2026-07-16 (refactor branch fully committed & pushed; handoff doc 
 - First run verified: 999 rows processed; 트래킹 종료 615 / 트래킹 중 322 / blank 1. Live editor saved; scopes already granted (no auth prompt).
 - Repo `Combined_Sheet_AppsScript.gs` updated to match (syncStatus function + menu + dailyAuto wiring) — but note repo remains behind the live script overall; live is the source of truth for this sheet's script.
 - '상태' header text was written by the script (setValue), not typed, because browser-automation Korean input into the sheet was unreliable.
+
+## 2026-07-16 Sheet column reorder + 누적 조회수 (refreshCumulativeViews) — live, verified
+
+- Linked sheet (10WpAQU9…, gid 1937186871) columns reordered to the user's target order (done in live editor via `applyNewColumnLayout()`, one-time; backup tab `백업_reorder_20260716` created). Final data-column order: **A 업로드일 | B 게시물URL | C 채널명 | D 채널분류 | E 소재명 | F 상품명 | G 비용 | H 누적 조회수 | I 증분 | J 기획자 | K 제작자 | L 캡션 | M 업체명 | N 상태 | O~ 날짜열 | 이후 aux**. Header renames: 채널 분류→채널분류, 최종 조회수→누적 조회수, 증분값→증분. New empty columns 기획자/제작자 added (population rules TBD — user will supply 제작자 rule later; 제작자 is already consumed by the dashboard elsewhere). Reorder is sync-safe (header-name mapping + dynamic date detection).
+- **누적 조회수 (H) is now computed by `refreshCumulativeViews()`** (public; menu "🧮 누적 조회수 갱신" + wired into dailyAuto). It writes the MAX over all date columns as a VALUE (no volatile formula). Replaces the old `=MAX(...)` formula approach the user rejected (it returned wrong values like 60 / blanks by grabbing stray aux cells or erroring).
+- **ROOT CAUSE fixed (non-obvious):** the sheet's date headers are TWO types — text like "6.15" (manually typed) AND actual **Date objects** for May 17–31 + "6.30" (cells formatted to *display* as "5. 26 (화)" but stored as Date). `getValues()` returns the raw Date (`Tue May 26 2026…`), while gviz returns the formatted string. A naive text-regex date detector misses the Date-typed columns, so any row whose maximum lives in a May column (e.g. 자취생으로 살아남기, tracking ended in May → only value 76,323 at the 5/26 Date column) came out blank. Fix: `refreshCumulativeViews` treats a header as a date column if `header instanceof Date` OR its string matches `/^\s*\d{1,2}\s*[.]\s*\d{1,2}/`. (Note: `parseMonthDay_` already handled Date objects — the bug was only in the new function not reusing that convention. exportStats/importStats were never affected.)
+- Verified live (gviz, cache-busted): 자취생 H = 76,323; across 972 data rows → 821 populated correctly, 0 mismatches vs recomputed MAX, 0 rows wrongly blank (151 legit blanks = rows with no date data, e.g. banners). Aux columns (marker "◀◀ 열 순서 수정 금지!!", #N/A timestamp col with 962 rows, 등록상태 972 rows, TRUE flags) all preserved. Temporary diagnostic function + its scratch write were removed and trailing empty columns trimmed (sheet grid width 236→113, no data lost — deleted range had getLastColumn=113 at deletion, i.e. purely empty structural buffer).
+- Repo `Combined_Sheet_AppsScript.gs` (refactor branch) updated to mirror: `refreshCumulativeViews` function + dailyAuto wiring + onOpen menu item. `applyNewColumnLayout` (one-time migration, already executed) was NOT mirrored. Repo still lags live overall — live editor remains source of truth for this sheet's script.
 
 ## 2026-07-16 Branch Sync
 
