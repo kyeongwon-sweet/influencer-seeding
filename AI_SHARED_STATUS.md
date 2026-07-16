@@ -7,6 +7,12 @@
 - Codex 도구 정책상 repo를 직접 public으로 바꾸는 명령은 차단됨(코드+전체 history 외부 공개 위험). **사용자가 GitHub UI에서 직접 공개 전환**해야 함: repo Settings → General → Danger Zone → Change repository visibility → Public.
 - 공개 전환 후 Codex 확인 절차: `gh repo view ... --json visibility`가 `PUBLIC`인지 확인 → 실패한 Build/Daily Collect run 재실행 → Actions가 실제로 job 시작/통과하는지 확인. 8월 quota 리셋 후 필요하면 다시 Private 복귀 가능.
 
+## 2026-07-16 GitHub Actions billing 차단 해소 확인 (Codex)
+- 사용자가 repo를 Public으로 전환. `gh repo view kyeongwon-sweet/influencer-seeding --json visibility` 확인 결과 `PUBLIC`.
+- 공개 전환 직후 Build Test run `29482366208` 재실행: job이 3초 실패가 아니라 실제 시작했고, 최종 **success**. `npm test`, `python3 scripts/test_auto_end_rules.py`, `npm run build` 모두 통과.
+- 결론: 공개 전환으로 GitHub Actions billing/spending 차단은 해소됨. 이전 3~5초 failure들은 공개 전 실패 이력.
+- 주의: Daily Increment Report / Daily Collect는 Slack/DB side effect가 있어 임의 재실행하지 않음. 다음 schedule에서 정상 시작 여부 확인. 8월 quota 리셋 후 Private 복귀 가능하나, 다시 quota 기반 운영이 됨.
+
 ## 2026-07-16 🚨 GitHub Actions 전면 차단 = billing/한도 (Claude 독립검증) — 일일수집 위험
 - **모든 워크플로가 job 시작 전 2~6초 실패.** GitHub 주석 원문: *"The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section."* 코드 문제 아님(계정 결제/한도).
 - **영향(gh run list 확인)**: `Daily Collect (Vercel 크론 대체)`=**일일 데이터 수집 본체** ❗, `Monitoring Backup & Retry`, `KPI 현황 갱신`, `Negative Comment Alerts`, `Build Test`(CI, 회귀테스트 포함) 전부 실패.
