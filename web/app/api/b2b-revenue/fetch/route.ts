@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { fetchSheetTabValuesByTitle, fetchSheetTabValues } from "@/lib/google-sheets";
+import { fetchSheetTabValuesByTitle } from "@/lib/google-sheets";
 import { notifyJob } from "@/lib/slack";
 
 export const runtime = "nodejs";
@@ -28,25 +28,6 @@ type DayVals = { order: number; profit: number | null; ad: number | null; contri
 export async function GET(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") { // fail-closed: CRON_SECRET 미설정 시에도 차단(무인증 오픈 방지)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  // TEMP: 연동시트 각 행의 URL + 날짜영역(K~) 마지막 비어있지않은 값 반환(시트↔DB 재대조용). 확인 후 제거.
-  if (req.nextUrl.searchParams.get("recon")) {
-    const rows = await fetchSheetTabValues("10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak", 1937186871, "A1:GZ2000");
-    const header = (rows[0] ?? []) as (string | number | null)[];
-    const out: { row: number; url: string; lastVal: number | null; lastCol: string | null }[] = [];
-    for (let r = 1; r < rows.length; r++) {
-      const row = (rows[r] ?? []) as (string | number | null)[];
-      const url = String(row[1] ?? "").trim(); // B열 = URL
-      if (!url) continue;
-      let lastVal: number | null = null, lastCol: string | null = null;
-      for (let c = 10; c < row.length; c++) { // K열(index 10)부터 날짜영역
-        const v = row[c];
-        if (typeof v === "number" && v > 0) { lastVal = v; lastCol = String(header[c] ?? c); }
-      }
-      out.push({ row: r + 1, url, lastVal, lastCol });
-    }
-    return NextResponse.json({ count: out.length, firstDateCol: String(header[10] ?? ""), rows: out });
   }
 
   const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
