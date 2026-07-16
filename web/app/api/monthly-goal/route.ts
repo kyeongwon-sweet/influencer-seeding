@@ -5,11 +5,11 @@ import { fetchSheetTabValues } from "@/lib/google-sheets";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-// 홈 '이달의 목표' 카드 — 마케팅T 시트의 월 현황 블록(26.MM 행 아래 목표/현황/달성률)을 읽어 반환.
+// 홈 '이달의 목표' 카드 — 마케팅T 시트 [인지_쫀득바] 탭의 월 현황 블록(26.MM 행 아래 목표/현황/달성률)을 읽어 반환.
 // 블록 구조(시트): [26.07 | CVS 발주량 | 광고비 | … | 인지 조회비] 헤더 행 + 목표/현황/달성률 3행.
 // 현재 월(KST)을 자동 인식해 다음 달부터는 자동으로 새 블록을 읽음. 서비스계정 뷰어 권한(기존 kpi와 동일 시트).
 const SPREADSHEET_ID = "1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s";
-const GID = 201954698;
+const GID = 1224959784;
 
 export async function GET(req: NextRequest) {
   const { userId } = await auth();

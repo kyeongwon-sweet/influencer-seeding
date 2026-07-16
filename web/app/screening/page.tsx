@@ -427,15 +427,6 @@ export default function ScreeningPage() {
     setList(prev => prev.map(i => i.id === id ? { ...i, status } : i));
   }
 
-  async function updateCategory(id: string, category: string) {
-    await fetch(`/api/influencers/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ category: category || null }),
-    });
-    setList(prev => prev.map(i => i.id === id ? { ...i, category: category || null } : i));
-  }
-
   async function applyBulkStatus() {
     if (selected.size === 0) return;
     setApplying(true);
@@ -472,7 +463,8 @@ export default function ScreeningPage() {
   function toggleSelect(id: string) {
     setSelected(prev => {
       const s = new Set(prev);
-      s.has(id) ? s.delete(id) : s.add(id);
+      if (s.has(id)) s.delete(id);
+      else s.add(id);
       return s;
     });
   }

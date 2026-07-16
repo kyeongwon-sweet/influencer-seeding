@@ -145,14 +145,6 @@ export default function DashboardPage() {
     return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
 
-  const lastListupAt = influencers.length > 0
-    ? influencers.map(i => i.created_at).filter(Boolean).sort().reverse()[0] ?? null
-    : null;
-  const allMetricsRunAt = influencers.flatMap(i => (i.screening_metrics ?? []).map(m => m.run_at));
-  const lastScreeningAt = allMetricsRunAt.length > 0
-    ? allMetricsRunAt.filter(Boolean).sort().reverse()[0] ?? null
-    : null;
-
   const total = influencers.length;
   const counts = Object.fromEntries(
     STATUS_CONFIG.map(s => [s.value, influencers.filter(i => i.status === s.value).length])
@@ -398,7 +390,7 @@ export default function DashboardPage() {
                   {monthlyGoal ? `${monthlyGoal.month}월 ` : ""}목표 현황
                 </p>
               </div>
-              <a href="https://docs.google.com/spreadsheets/d/1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s/edit?gid=201954698#gid=201954698"
+              <a href="https://docs.google.com/spreadsheets/d/1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s/edit?gid=1224959784#gid=1224959784"
                 target="_blank" rel="noreferrer" className="text-[11px] text-a-blue hover:underline whitespace-nowrap">
                 마케팅T 시트 연동 →
               </a>
