@@ -83,6 +83,8 @@ function onOpen() {
     .addItem("🔎 빈칸 검사 (A~H)", "checkBlanks")
     .addItem("🔁 중복 URL 검사", "checkDuplicates")
     .addItem("🧹 중복 링크 정리 (하나만 남김)", "removeDuplicateLinks")
+    .addItem("👁️ 고아 이력행 미리보기", "previewOrphanRows")
+    .addItem("🗑️ 고아 이력행 삭제 (메타 없이 값만)", "deleteOrphanRows")
     .addItem("🔍 설정 확인", "checkSetup")
     .addSeparator()
     .addItem("⏰ 매일 9:30 자동 추가 켜기", "installDailyTrigger")
@@ -690,6 +692,7 @@ function importStats() {
     if (res.meta_filled) msg += `\n📝 기존 광고의 빈 항목 ${res.meta_filled}건을 시트 값으로 채움(채널 분류 등).`;
     if (res.ended_marked) msg += `\n🛑 캡션 '삭제/보관' ${res.ended_marked}건 → '종료' 처리됨.`;
     if (future) msg += `\n⏭️ 업로드일이 오늘 이후인 행 ${future}건 제외(아직 게시 전).`;
+    if (res.pre_posted_skipped) msg += `\n🛡️ 업로드일 이전 조회수 ${res.pre_posted_skipped}건은 서버에서 저장 제외.`;
     if (res.dropped_decrease) {
       msg += `\n🛡️ 누적 조회수가 직전보다 낮은(수집 오류) ${res.dropped_decrease}건은 저장 제외.`;
       if (res.dropped_sample && res.dropped_sample.length) {
@@ -921,4 +924,98 @@ function showToast(msg) {
 `).setWidth(400).setHeight(580);
 
   SpreadsheetApp.getUi().showModalDialog(html, '배너 인사이트 요청');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 고아 이력행 정리 (메타 A~J 전부 비었는데 날짜칸에 값만 있는 행)
+//  - 시트 다른 위치에 URL 붙은 정상 행이 이미 있는 게시물의 중복 이력 잔재.
+//  - 대시보드/자동동기화엔 영향 없으나(수집은 DB·URL 기반) 시트 수동 합계 시 이중계상 위험 → 정리.
+// ═══════════════════════════════════════════════════════════════
+
+/** 날짜 헤더가 시작되는 0-based 컬럼 인덱스. (M.D / M. D 형태, I열 이후) */
+function firstDateColIdx_(headers) {
+  for (let i = 8; i < headers.length; i++) {
+    if (/(\d{1,2})\s*[.\/]\s*(\d{1,2})/.test(String(headers[i] == null ? "" : headers[i]))) return i;
+  }
+  return -1;
+}
+
+/** 고아 행 번호(1-based) 목록. 메타(0..firstDate-1) 전부 공백 && 날짜칸(firstDate..) 중 1개 이상 값. */
+function findOrphanRows_(values, firstDate) {
+  const orphans = [];
+  for (let i = 1; i < values.length; i++) { // 0=헤더 제외
+    const row = values[i];
+    let metaBlank = true;
+    for (let c = 0; c < firstDate; c++) {
+      if (row[c] !== "" && row[c] !== null && row[c] !== undefined) { metaBlank = false; break; }
+    }
+    if (!metaBlank) continue;
+    let hasVal = false;
+    for (let c = firstDate; c < row.length; c++) {
+      if (row[c] !== "" && row[c] !== null && row[c] !== undefined) { hasVal = true; break; }
+    }
+    if (hasVal) orphans.push(i + 1);
+  }
+  return orphans;
+}
+
+function previewOrphanRows() {
+  const sheet = getSheet_();
+  const values = sheet.getDataRange().getValues();
+  const firstDate = firstDateColIdx_(values[0]);
+  if (firstDate === -1) { safeAlert_("날짜 헤더 컬럼을 찾지 못했습니다."); return; }
+  const orphans = findOrphanRows_(values, firstDate);
+  if (!orphans.length) { safeAlert_("고아 이력행이 없습니다."); return; }
+  const head = orphans.slice(0, 20).join(", ");
+  safeAlert_(
+    "고아 이력행: " + orphans.length + "개\n" +
+    "행 범위: " + orphans[0] + " ~ " + orphans[orphans.length - 1] + "\n" +
+    "앞쪽 예시 행번호: " + head + (orphans.length > 20 ? " ..." : "") + "\n\n" +
+    "삭제하려면 '🗑️ 고아 이력행 삭제' 메뉴를 실행하세요. (삭제 전 자동 백업 탭 생성)"
+  );
+}
+
+function deleteOrphanRows() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = getSheet_();
+  const values = sheet.getDataRange().getValues();
+  const firstDate = firstDateColIdx_(values[0]);
+  if (firstDate === -1) { safeAlert_("날짜 헤더 컬럼을 찾지 못했습니다."); return; }
+  const orphans = findOrphanRows_(values, firstDate);
+  if (!orphans.length) { safeAlert_("삭제할 고아 이력행이 없습니다."); return; }
+
+  // 확인
+  const ui = SpreadsheetApp.getUi();
+  const resp = ui.alert(
+    "고아 이력행 삭제",
+    orphans.length + "개 행(메타 없이 값만 있는 중복 이력)을 삭제합니다.\n" +
+    "삭제 전 백업 탭을 자동 생성합니다. 진행할까요?",
+    ui.ButtonSet.YES_NO
+  );
+  if (resp !== ui.Button.YES) return;
+
+  // 1) 백업 탭에 헤더+고아행 원본 저장
+  const stamp = Utilities.formatDate(new Date(), "GMT+9", "yyyyMMdd_HHmm");
+  const backup = ss.insertSheet("orphan_backup_" + stamp);
+  const width = values[0].length;
+  const toSave = [values[0]].concat(orphans.map(r => {
+    const row = values[r - 1].slice();
+    while (row.length < width) row.push("");
+    return row.slice(0, width);
+  }));
+  backup.getRange(1, 1, toSave.length, width).setValues(toSave);
+
+  // 2) 아래→위로, 연속 구간 묶어 삭제 (인덱스 밀림 방지)
+  orphans.sort((a, b) => b - a);
+  let i = 0, deleted = 0;
+  while (i < orphans.length) {
+    const end = orphans[i];
+    let count = 1;
+    while (i + count < orphans.length && orphans[i + count] === end - count) count++;
+    sheet.deleteRows(end - count + 1, count);
+    deleted += count;
+    i += count;
+  }
+
+  safeAlert_(deleted + "개 고아 이력행 삭제 완료.\n백업 탭: " + backup.getName());
 }
