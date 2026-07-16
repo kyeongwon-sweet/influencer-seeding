@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## 2026-07-16 sponsored_posts normalized_key DB migration applied (Codex)
+- Supabase SQL migration `docs/migration-sponsored-posts-normalized-key.sql` was applied manually in the Supabase SQL Editor because DB DDL requires project DB privileges.
+- Important execution note: Supabase SQL Editor initially ran only the cursor statement, so Codex re-ran the migration statement-by-statement and verified each step succeeded: identity function, `normalized_key` column, backfill, `e32284d3` TikTok URL correction, duplicate preflight, partial UNIQUE index, trigger function, trigger replacement.
+- Readback verification query result: `total_posts=962`, `normalized_key_filled=962`, `normalized_key_missing=0`, `duplicate_normalized_keys=0`, `has_unique_index=true`, `has_trigger=true`.
+- Known URL correction verified: `e32284d3` now has `https://www.tiktok.com/@ryuraikj/video/7652295124399000839/`.
+- The external spec file was copied into repo root as `SPEC_integrity_fix_20260716.md` so Codex/Claude can read the same instruction document from git.
+- Next sequence remains: Apps Script `CRON_SECRET` alignment -> `syncAll` for the 30 new sheet rows -> Claude final sheet↔DB rediff. Do not run DB-only cleanup for sheet-origin rows outside that sequence.
+
 ## 2026-07-16 GitHub Actions billing 차단 대응 — 공개 전환 준비 상태 (Codex)
 - 현재 GitHub API 기준 repo visibility는 아직 `PRIVATE`. Actions 최신 실패 원인은 코드가 아니라 `recent account payments have failed or your spending limit needs to be increased`로 job 시작 전 차단.
 - 공개 전환 준비로 `a60a0f5`에서 `.env.production.local` 추적 제거 + 루트 `.gitignore`에 `.env*.local` 추가 완료. 현재 HEAD 기준 tracked 파일에서 configured secret-pattern hits = 0.
