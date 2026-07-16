@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { normalizeUrl } from "@/lib/url-utils";
+import { postIdentityKey } from "@/lib/url-utils";
 
 // 시트 Apps Script가 '자동수집 조회수 → 시트 I열~ 역채움'을 위해 호출하는 라우트.
 // URL별 (날짜, 조회수) 목록을 반환. 인증: Authorization: Bearer <CRON_SECRET> (list-for-sheet 등과 동일).
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     for (const p of data ?? []) {
       if (p.url) {
         const rawUrl = String(p.url);
-        const key = normalizeUrl(rawUrl) ?? rawUrl.trim();
+        const key = postIdentityKey(rawUrl) ?? rawUrl.trim();
         keyById.set(p.id as string, key);
         if (!urlByKey.has(key)) urlByKey.set(key, key);
         if (p.ended_at) {

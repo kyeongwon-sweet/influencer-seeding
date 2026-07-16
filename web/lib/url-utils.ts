@@ -54,7 +54,48 @@ export function normalizeUrl(url: string): string | null {
     const host = u.hostname.toLowerCase().replace(/^www\./, "");
     let path = u.pathname.replace(/\/{2,}/g, "/");
     path = path.endsWith("/") ? path : path + "/";
+    if (host === "tiktok.com") return `https://www.tiktok.com${path}`;
     return `https://${host}${path}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Stable identity key for a single post across URL variants.
+ *
+ * This is stricter than normalizeUrl(): it intentionally ignores path spelling
+ * such as Instagram /reel/ vs /p/ and host spelling such as TikTok www.
+ * Use this for DB uniqueness and Sheet<->DB matching.
+ */
+export function postIdentityKey(url: string): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url.startsWith("http") ? url : "https://" + url);
+    const host = u.hostname.toLowerCase().replace(/^www\./, "");
+
+    if (host.includes("instagram.com") || host.includes("instagr.am")) {
+      const m = u.pathname.match(/\/(?:p|reels|reel|tv)\/([A-Za-z0-9_-]+)/);
+      if (m) return `ig:${m[1]}`;
+    }
+
+    if (host.includes("tiktok.com")) {
+      const m = u.pathname.match(/\/video\/(\d+)/);
+      if (m) return `tt:${m[1]}`;
+    }
+
+    if (host === "youtu.be" || host.endsWith("youtube.com")) {
+      const shorts = u.pathname.match(/\/shorts\/([A-Za-z0-9_-]{6,})/);
+      if (shorts) return `yt:${shorts[1]}`;
+      const pathId = u.pathname.match(/\/(?:embed|live|v)\/([A-Za-z0-9_-]{6,})/);
+      const id = host === "youtu.be"
+        ? u.pathname.split("/").filter(Boolean)[0]
+        : pathId?.[1] ?? (u.pathname.replace(/\/$/, "") === "/watch" ? u.searchParams.get("v") : null);
+      if (id && /^[A-Za-z0-9_-]{6,}$/.test(id)) return `yt:${id}`;
+    }
+
+    const normalized = normalizeUrl(url);
+    return normalized ? `url:${normalized}` : null;
   } catch {
     return null;
   }

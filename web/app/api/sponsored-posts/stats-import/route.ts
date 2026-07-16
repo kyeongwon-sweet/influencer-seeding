@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { normalizeUrl, ALLOWED_POST_URL_RE } from "@/lib/url-utils";
+import { normalizeUrl, postIdentityKey, ALLOWED_POST_URL_RE } from "@/lib/url-utils";
 import { filterMonotonicStats, type GuardInput } from "@/lib/stats-guard";
 import { normalizeChannelType } from "@/app/monitoring/lib";
 import { resolveTikTokShortUrl } from "@/lib/sponsored-write";
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
   const resolveU = (u: string) => shortMap.get(u) ?? u;
 
   // 조회수: 정규화 + (url, measured_at) 중복 제거 (마지막 값 우선)
-  const byKey = new Map<string, { url: string; measured_at: string; play_count: number }>();
+  const byKey = new Map<string, { url: string; key: string; measured_at: string; play_count: number }>();
   for (const r of statsIn as Array<Record<string, unknown>>) {
     if (!r || !r.url || !r.measured_at) continue;
     const url = normalizeUrl(resolveU(String(r.url))) || String(r.url);
@@ -67,7 +67,8 @@ export async function POST(req: NextRequest) {
     // 0을 적재하면 0-오염 → 리포트 뻥튀기·정리 시 행없음 공백 유발(2026-07-03/04 233건 사고).
     // 수집기(틱톡 clamp·IG NULL)와 동일하게 '수집 실패 ≠ 0' 원칙으로 0은 미적재.
     if (play_count === 0) continue;
-    byKey.set(`${url}|${String(r.measured_at)}`, { url, measured_at: String(r.measured_at), play_count });
+    const key = postIdentityKey(url) ?? url;
+    byKey.set(`${key}|${String(r.measured_at)}`, { url, key, measured_at: String(r.measured_at), play_count });
   }
   const items = [...byKey.values()];
 
@@ -78,33 +79,62 @@ export async function POST(req: NextRequest) {
     if (!p || !p.url) continue;
     const url = normalizeUrl(resolveU(String(p.url))) || String(p.url);
     if (!ALLOWED_POST_URL_RE.test(url)) continue; // 허용 플랫폼만 신규 생성
-    if (postByUrl.has(url)) continue;
-    const clean: Record<string, unknown> = { url };
+    const postKey = postIdentityKey(url) ?? url;
+    if (postByUrl.has(postKey)) continue;
+    const clean: Record<string, unknown> = { url, normalized_key: postKey };
     // != null 로 null·undefined 모두 제외 — 시트(importStats)가 빈 캡션 셀을 content_summary:null로 보내는데,
     // 예전 가드(!== undefined && !== "")는 null을 통과시켜 '캡션은 시트값 우선' 정책과 결합, 스크랩해둔 캡션을
     // null로 반복 삭제했음(2026-07-06 실사고: 채움→importStats→삭제 2회 반복).
     for (const f of POST_FIELDS) if (p[f] != null && p[f] !== "") clean[f] = f === "channel_type" ? normalizeChannelType(String(p[f])) : p[f];
-    postByUrl.set(url, clean);
+    postByUrl.set(postKey, clean);
   }
 
   const supabase = getServerSupabase();
 
-  const allUrls = [...new Set([...items.map(i => i.url), ...postByUrl.keys()])];
+  const allUrls = [...new Set([...items.map(i => i.url), ...[...postByUrl.values()].map(p => String(p.url))])];
   if (allUrls.length === 0) return NextResponse.json({ ok: true, inserted: 0, created_posts: 0, matched_urls: 0, missing_urls: 0 });
 
   // 1) 기존 URL → id + 현재 메타 조회 (한 번만) — '빈 값만 채우기' 비교용으로 메타도 함께 조회
   // ⚠️ URL이 많으면 .in() 쿼리 URL 길이 한도 초과로 400(Bad Request) → 80개씩 청크로 조회.
   const idByUrl = new Map<string, string>();
+  const idByKey = new Map<string, string>();
   const existingByUrl = new Map<string, Record<string, unknown>>();
+  const existingByKey = new Map<string, Record<string, unknown>>();
+  const allKeys = [...new Set([...items.map(i => i.key), ...postByUrl.keys()])].filter(Boolean);
+  let supportsNormalizedKey = allKeys.length > 0;
+  if (supportsNormalizedKey) {
+    for (let i = 0; i < allKeys.length; i += 80) {
+      const { data: existing, error: ee } = await supabase
+        .from("sponsored_posts")
+        .select(`id, url, normalized_key, ended_at, manual_fields, ${POST_FIELDS.join(", ")}`)
+        .in("normalized_key", allKeys.slice(i, i + 80));
+      if (ee) {
+        supportsNormalizedKey = false;
+        idByKey.clear();
+        existingByUrl.clear();
+        break;
+      }
+      for (const e of (existing ?? []) as unknown as Array<Record<string, unknown>>) {
+        idByUrl.set(String(e.url), String(e.id));
+        const key = String(e.normalized_key ?? postIdentityKey(String(e.url)) ?? e.url);
+        idByKey.set(key, String(e.id));
+        existingByUrl.set(String(e.url), e);
+        existingByKey.set(key, e);
+      }
+    }
+  }
   for (let i = 0; i < allUrls.length; i += 80) {
     const { data: existing, error: ee } = await supabase
       .from("sponsored_posts")
-      .select(`id, url, manual_fields, ${POST_FIELDS.join(", ")}`)
+          .select(`id, url, ended_at, manual_fields, ${POST_FIELDS.join(", ")}`)
       .in("url", allUrls.slice(i, i + 80));
     if (ee) return NextResponse.json({ error: ee.message }, { status: 500 });
     for (const e of (existing ?? []) as unknown as Array<Record<string, unknown>>) {
       idByUrl.set(String(e.url), String(e.id));
+      const key = postIdentityKey(String(e.url)) ?? String(e.url);
+      idByKey.set(key, String(e.id));
       existingByUrl.set(String(e.url), e);
+      existingByKey.set(key, e);
     }
   }
 
@@ -117,19 +147,27 @@ export async function POST(req: NextRequest) {
   // 🛡️ 게시일(posted_at)보다 이른 날짜의 조회수는 저장하지 않는다(업로드 전 조회수 = 불가능 = 시트 날짜칸 백필 오류).
   //    url → posted_at(YYYY-MM-DD). 기존 메타 우선, 없으면 시트 메타. (2026-07 게시일-이전 이력 재발 방지)
   const postedByUrl = new Map<string, string>();
+  const endedByUrl = new Map<string, string>();
+  const endedByKey = new Map<string, string>();
   for (const [u, ex] of existingByUrl) { const pa = ex.posted_at ? String(ex.posted_at).slice(0, 10) : ""; if (pa) postedByUrl.set(u, pa); }
+  for (const [u, ex] of existingByUrl) { const ea = ex.ended_at ? String(ex.ended_at).slice(0, 10) : ""; if (ea) endedByUrl.set(u, ea); }
+  for (const [u, ex] of existingByUrl) { const ea = ex.ended_at ? String(ex.ended_at).slice(0, 10) : ""; const k = postIdentityKey(u) ?? u; if (ea) endedByKey.set(k, ea); }
   for (const [u, m] of postByUrl) { const pa = m.posted_at ? String(m.posted_at).slice(0, 10) : ""; if (pa && !postedByUrl.has(u)) postedByUrl.set(u, pa); }
 
   // 2) 없는 광고만 신규 생성 (기존은 절대 건드리지 않음). 새로 만든 id를 매핑에 합침 → 재조회 불필요.
   let created = 0;
-  const toCreate = [...postByUrl.values()].filter(p => !idByUrl.has(String(p.url)));
+  const toCreate = [...postByUrl.entries()].filter(([key, p]) => !idByKey.has(key) && !idByUrl.has(String(p.url))).map(([, p]) => p);
   if (toCreate.length > 0) {
+    const createRows = supportsNormalizedKey ? toCreate : toCreate.map(({ normalized_key: _key, ...p }) => p);
     const { data: ins, error: ie } = await supabase
       .from("sponsored_posts")
-      .upsert(toCreate, { onConflict: "url", ignoreDuplicates: true })
+      .upsert(createRows, { onConflict: supportsNormalizedKey ? "normalized_key" : "url", ignoreDuplicates: true })
       .select("id, url");
     if (ie) return NextResponse.json({ error: ie.message }, { status: 500 });
-    for (const row of (ins ?? []) as Array<{ id: string; url: string }>) idByUrl.set(row.url, row.id);
+    for (const row of (ins ?? []) as Array<{ id: string; url: string }>) {
+      idByUrl.set(row.url, row.id);
+      idByKey.set(postIdentityKey(row.url) ?? row.url, row.id);
+    }
     created = (ins ?? []).length;
   }
 
@@ -140,7 +178,7 @@ export async function POST(req: NextRequest) {
   // 순차 await UPDATE만 청크 병렬로 실행(로직·결과 동일, 왕복 시간만 단축).
   const metaUpdates: { id: string; upd: Record<string, unknown> }[] = [];
   for (const [url, meta] of postByUrl) {
-    const ex = existingByUrl.get(url);
+    const ex = existingByKey.get(url) ?? existingByUrl.get(String(meta.url));
     if (!ex) continue; // 신규 생성분은 이미 전체 메타로 만들어짐
     const manual = Array.isArray(ex.manual_fields) ? (ex.manual_fields as string[]) : [];
     const upd: Record<string, unknown> = {};
@@ -167,7 +205,7 @@ export async function POST(req: NextRequest) {
   const today = todayKST();
   const endedUrls = [...postByUrl.entries()]
     .filter(([, m]) => /삭제|보관/.test(String(m.content_summary ?? "")))
-    .map(([u]) => u);
+    .map(([u, m]) => String((existingByKey.get(u) ?? existingByUrl.get(String(m.url)))?.url ?? m.url));
   let endedMarked = 0;
   if (endedUrls.length > 0) {
     const { data: upd } = await supabase
@@ -190,13 +228,14 @@ export async function POST(req: NextRequest) {
   const missing = new Set<string>();
   const costAsViews: Array<{ url: string; date: string; value: number }> = [];
   const prePosted: Array<{ url: string; date: string }> = [];
+  const postEnded: Array<{ url: string; date: string; ended_at: string }> = [];
   const futureDated: Array<{ url: string; date: string; max_date: string }> = [];
   const maxStatsDate = yesterdayKST();
   let incoming: GuardInput[] = [];
   const bannerRows: Array<{ post_id: string; measured_at: string; reach_count: number; manual: boolean }> = [];
   const postIdSet = new Set<string>();
   for (const it of items) {
-    const pid = idByUrl.get(it.url);
+    const pid = idByKey.get(it.key) ?? idByUrl.get(it.url);
     if (!pid) { missing.add(it.url); continue; }
     const measuredDate = String(it.measured_at).slice(0, 10);
     // Sheet round-trips may contain today's open cells. Persist only finalized snapshots through yesterday.
@@ -209,8 +248,10 @@ export async function POST(req: NextRequest) {
     // 🛡️ 게시일 이전 날짜 = 업로드 전 조회수(불가능) → 시트 날짜칸 백필 오류로 보고 저장 안 함
     const pa = postedByUrl.get(it.url);
     if (pa && measuredDate < pa) { prePosted.push({ url: it.url, date: it.measured_at }); continue; }
+    const endedAt = endedByKey.get(it.key) ?? endedByUrl.get(it.url);
+    if (endedAt && measuredDate > endedAt) { postEnded.push({ url: it.url, date: it.measured_at, ended_at: endedAt }); continue; }
     // 배너: reach_count로 저장(입력값=도달수). 비배너: 기존대로 play_count(누적 mono가드 대상).
-    if (isBannerByUrl.get(it.url)) {
+    if (isBannerByUrl.get(it.key) ?? isBannerByUrl.get(it.url)) {
       bannerRows.push({ post_id: pid, measured_at: it.measured_at, reach_count: it.play_count, manual: true });
     } else {
       incoming.push({ post_id: pid, measured_at: it.measured_at, play_count: it.play_count });
@@ -475,6 +516,8 @@ export async function POST(req: NextRequest) {
     cost_as_views_sample: costAsViews.slice(0, 10),
     pre_posted_skipped: prePosted.length,
     pre_posted_sample: prePosted.slice(0, 10),
+    post_ended_skipped: postEnded.length,
+    post_ended_sample: postEnded.slice(0, 10),
     future_date_skipped: futureDated.length,
     future_date_sample: futureDated.slice(0, 10),
     repeated_carry_skipped: repeatedCarry.length,

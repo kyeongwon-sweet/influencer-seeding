@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { todayKST } from "@/lib/dateRule";
 
+type PostMeta = { channel_type: string | null; ended_at: string | null };
+
 // PATCH /api/sponsored-posts/[id]/stats
 // post_daily_stats 수동 수정: play_count / likes_count / comments_count.
 // measured_at 지정 시 그 측정일 행, 미지정/불일치 시 가장 최근 행으로 폴백(없으면 오늘 행 생성).
@@ -39,6 +41,7 @@ export async function PATCH(
   if ("play_count" in body) updates.manual = true;
 
   const supabase = getServerSupabase();
+  let postMeta: PostMeta | null = null;
 
   // 🔒 배너 초크포인트: 배너는 조회수(play_count)가 없고 도달수(reach_count)를 조회수처럼 합산(사용자 지시).
   //   어떤 경로로 들어오든 배너 게시물의 play_count 입력은 reach_count로 저장(play는 비움) → stats-import(d85fc9a)와 동일 규칙.
@@ -46,9 +49,10 @@ export async function PATCH(
   if ("play_count" in updates) {
     const { data: post } = await supabase
       .from("sponsored_posts")
-      .select("channel_type")
+      .select("channel_type, ended_at")
       .eq("id", id)
       .single();
+    postMeta = (post ?? null) as PostMeta | null;
     if ((post?.channel_type ?? "").includes("배너")) {
       updates.reach_count = updates.play_count;
       updates.play_count = null;
@@ -77,6 +81,21 @@ export async function PATCH(
       .single();
     if (!latest) {
       const today = todayKST();
+      if (!postMeta) {
+        const { data: post } = await supabase
+          .from("sponsored_posts")
+          .select("channel_type, ended_at")
+          .eq("id", id)
+          .single();
+        postMeta = (post ?? null) as PostMeta | null;
+      }
+      const endedAt = postMeta?.ended_at ? String(postMeta.ended_at).slice(0, 10) : null;
+      if (endedAt && today > endedAt) {
+        return NextResponse.json(
+          { error: "ended_at 이후 날짜에는 조회수/도달수 값을 입력할 수 없습니다.", measured_at: today, ended_at: endedAt },
+          { status: 400 }
+        );
+      }
       const { error } = await supabase
         .from("post_daily_stats")
         .upsert({ post_id: id, measured_at: today, ...updates }, { onConflict: "post_id,measured_at" });
@@ -87,6 +106,22 @@ export async function PATCH(
   }
 
   // 실제 갱신 + 갱신된 행 확인
+  if (!postMeta) {
+    const { data: post } = await supabase
+      .from("sponsored_posts")
+      .select("channel_type, ended_at")
+      .eq("id", id)
+      .single();
+    postMeta = (post ?? null) as PostMeta | null;
+  }
+  const endedAt = postMeta?.ended_at ? String(postMeta.ended_at).slice(0, 10) : null;
+  if (endedAt && targetDate > endedAt) {
+    return NextResponse.json(
+      { error: "ended_at 이후 날짜에는 조회수/도달수 값을 입력할 수 없습니다.", measured_at: targetDate, ended_at: endedAt },
+      { status: 400 }
+    );
+  }
+
   const { data: updated, error } = await supabase
     .from("post_daily_stats")
     .update(updates)

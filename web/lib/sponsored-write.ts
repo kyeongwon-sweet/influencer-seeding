@@ -1,5 +1,5 @@
 import type { getServerSupabase } from "@/lib/supabase-server";
-import { normalizeUrl, ALLOWED_POST_URL_RE } from "@/lib/url-utils";
+import { normalizeUrl, postIdentityKey, ALLOWED_POST_URL_RE } from "@/lib/url-utils";
 import { normalizeChannelType } from "@/app/monitoring/lib";
 import { triggerCaptionBackfill, needsCaption } from "@/lib/github-dispatch";
 import { todayKST } from "@/lib/dateRule";
@@ -54,21 +54,26 @@ export async function upsertSponsoredRows(
     list.map(async r => ({ ...r, url: r.url ? await resolveTikTokShortUrl(String(r.url)) : r.url }))
   );
   const rows = resolved
-    .map(r => ({
-      url:             r.url ? (normalizeUrl(String(r.url)) || String(r.url)) : "",
-      posted_at:       r.posted_at || null,
-      account_name:    cleanName(r.account_name),
-      company_name:    r.company_name || null,
-      content_summary: r.content_summary || null,
-      channel_type:    normalizeChannelType(r.channel_type ? String(r.channel_type) : null),
-      project_name:    r.project_name || null,
-      product_name:    r.product_name || null,
-      cost:            r.cost != null && r.cost !== "" ? Number(r.cost) : null,
-    }))
+    .map(r => {
+      const url = r.url ? (normalizeUrl(String(r.url)) || String(r.url)) : "";
+      return {
+        url,
+        normalized_key: postIdentityKey(url),
+        posted_at:       r.posted_at || null,
+        account_name:    cleanName(r.account_name),
+        company_name:    r.company_name || null,
+        content_summary: r.content_summary || null,
+        channel_type:    normalizeChannelType(r.channel_type ? String(r.channel_type) : null),
+        project_name:    r.project_name || null,
+        product_name:    r.product_name || null,
+        cost:            r.cost != null && r.cost !== "" ? Number(r.cost) : null,
+      };
+    })
     .filter(r => {
       if (!r.url || !ALLOWED_POST_URL_RE.test(r.url)) return false;
-      if (seen.has(r.url)) return false;
-      seen.add(r.url);
+      const key = r.normalized_key ?? r.url;
+      if (seen.has(key)) return false;
+      seen.add(key);
       return true;
     });
 
@@ -81,23 +86,48 @@ export async function upsertSponsoredRows(
   // 기존 게시물(id+메타) 조회 — '빈 값만 채우기' 비교용.
   // ⚠️ URL이 많으면 .in() 쿼리 URL 길이 한도 초과로 400(Bad Request) → 80개씩 청크로 조회.
   const existingByUrl = new Map<string, Record<string, unknown>>();
+  const existingByIdentity = new Map<string, Record<string, unknown>>();
   const allUrls = rows.map(r => r.url);
+  const allIdentityKeys = rows.map(r => r.normalized_key).filter((v): v is string => Boolean(v));
+  let supportsNormalizedKey = allIdentityKeys.length > 0;
+  if (supportsNormalizedKey) {
+    for (let i = 0; i < allIdentityKeys.length; i += 80) {
+      const { data: existing, error: ee } = await supabase
+        .from("sponsored_posts")
+        .select(`id, url, normalized_key, manual_fields, ${META.join(", ")}`)
+        .in("normalized_key", allIdentityKeys.slice(i, i + 80));
+      if (ee) {
+        supportsNormalizedKey = false;
+        existingByIdentity.clear();
+        break;
+      }
+      for (const e of (existing ?? []) as unknown as Array<Record<string, unknown>>) {
+        const key = String(e.normalized_key ?? postIdentityKey(String(e.url)) ?? e.url);
+        existingByIdentity.set(key, e);
+        existingByUrl.set(String(e.url), e);
+      }
+    }
+  }
   for (let i = 0; i < allUrls.length; i += 80) {
     const { data: existing, error: ee } = await supabase
       .from("sponsored_posts")
       .select(`id, url, manual_fields, ${META.join(", ")}`)
       .in("url", allUrls.slice(i, i + 80));
     if (ee) return { error: `[조회] ${ee.message} | code=${ee.code ?? ""} | details=${ee.details ?? ""} | hint=${ee.hint ?? ""}` };
-    for (const e of (existing ?? []) as unknown as Array<Record<string, unknown>>) existingByUrl.set(String(e.url), e);
+    for (const e of (existing ?? []) as unknown as Array<Record<string, unknown>>) {
+      existingByUrl.set(String(e.url), e);
+      existingByIdentity.set(postIdentityKey(String(e.url)) ?? String(e.url), e);
+    }
   }
 
   // 신규 URL → 전체 메타로 생성
-  const toCreate = rows.filter(r => !existingByUrl.has(r.url));
+  const toCreate = rows.filter(r => !existingByIdentity.has(r.normalized_key ?? r.url) && !existingByUrl.has(r.url));
   let created = 0;
   if (toCreate.length > 0) {
+    const createRows = supportsNormalizedKey ? toCreate : toCreate.map(({ normalized_key: _key, ...r }) => r);
     const { data: ins, error: ie } = await supabase
       .from("sponsored_posts")
-      .upsert(toCreate, { onConflict: "url", ignoreDuplicates: true })
+      .upsert(createRows, { onConflict: supportsNormalizedKey ? "normalized_key" : "url", ignoreDuplicates: true })
       .select("id");
     if (ie) return { error: `[신규생성] ${ie.message} | code=${ie.code ?? ""} | details=${ie.details ?? ""} | hint=${ie.hint ?? ""}` };
     created = (ins ?? []).length;
@@ -136,7 +166,7 @@ export async function upsertSponsoredRows(
   let metaFilled = 0;
   const metaUpdates: { id: string; upd: Record<string, unknown> }[] = [];
   for (const r of rows) {
-    const ex = existingByUrl.get(r.url);
+    const ex = existingByIdentity.get(r.normalized_key ?? r.url) ?? existingByUrl.get(r.url);
     if (!ex) continue;
     const manual = Array.isArray(ex.manual_fields) ? (ex.manual_fields as string[]) : [];
     const upd: Record<string, unknown> = {};
