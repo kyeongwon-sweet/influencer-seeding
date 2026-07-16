@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## 2026-07-16 부정댓글 자동 감시 스케줄러 점검 + 로컬 fallback 등록 (Codex)
+- 최신 `origin/main` 기준 확인: `.github/workflows/comment-alerts.yml`는 GitHub Actions에 실제 등록되어 있음. 워크플로명 `Negative Comment Alerts (09:00 KST)`, ID `313496692`, 매일 09:00 KST 실행 설정.
+- 최근 실행 확인: 수동 실행은 성공 이력이 있으나, 최신 schedule 실행 `29467530163`은 job 시작 전 실패. GitHub 메시지: `recent account payments have failed or your spending limit needs to be increased`. 즉 현재 클라우드 자동 실행은 코드 문제가 아니라 GitHub 결제/한도 문제로 막혀 있음.
+- 중복 방지 확인: `scripts/monitor_comments.py`는 `post_comments`의 `(post_id, comment_id)` 기반으로 이미 수집된 댓글을 제외하고, `alerted_at`은 Slack 발송 성공 후에만 기록한다. 실패/봇 미초대 등으로 미발송이면 다음 실행에서 재시도된다.
+- 로컬 fallback: GitHub 결제 차단이 풀릴 때까지 대표님 PC에 Windows 작업 스케줄러 `InfluencerNegativeCommentMonitor`를 등록했다. 실행 명령은 Node `--env-file`로 `C:\Users\hwangkw\Documents\부정댓글 모니터링 알람봇\.env`를 읽고 `src\run.js`를 실행한다. 다음 실행 예정: 2026-07-17 09:00 KST. PC가 켜져 있고 네트워크가 연결되어 있어야 동작한다.
+- 로컬 Node 앱 검증: `npm.cmd test` 통과(31/31), `node --env-file=.env ... loadConfig()` 통과. 실제 Apify/Slack 실행은 비용/알림 side effect 때문에 강제 실행하지 않았다.
+- 남은 액션: GitHub 결제/Actions 사용 한도 복구가 필요하다. 복구 후에는 PC 의존 fallback 대신 GitHub Actions schedule이 다시 정식 운영 경로가 된다.
+
 ## 2026-07-16 ⚠️ '이나' = 특수게시물 카나리아 (모든 AI 작업 전 필독)
 '이나'는 **①50만+ 유일 고성과 ②미러링 다중행(인스타·틱톡·유튜브·822,210=4행) ③활발히 성장** 3조건을 동시에 가진 거의 유일한 게시물 → 규칙/코드/시트 변경 부작용이 여기서 먼저 폭발(반복 사고: 500k예외 삭제→자동종료 / 클러스터 시계열 복사 / J열 증분 stale). **작업 전 방지:**
 - 자동종료·성과 규칙 변경 시 **500k+ 게시물 종료 안 됨 사전 시뮬**(`auto_end_rules.py` `HIGH_METRIC_THRESHOLD=500_000` 회귀). 이 예외 다시 빼지 말 것.
