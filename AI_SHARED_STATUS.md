@@ -6,7 +6,9 @@
 - Fix: for normalized-key-aware 신규 생성 paths, insert only the already prefiltered `toCreate` rows instead of `upsert(onConflict: normalized_key)`. Existing rows are still matched first by `normalized_key/postIdentityKey`, and the DB partial unique index still blocks real duplicates. Legacy fallback without normalized_key continues to use `onConflict: url`.
 - Files changed: `web/lib/sponsored-write.ts`, `web/app/api/sponsored-posts/stats-import/route.ts`.
 - Verification: `cd web && npm.cmd test` passed (31/31), `cd web && npx.cmd tsc --noEmit --incremental false` passed after installing lockfile dependencies.
-- Next: push/deploy this fix, then rerun Apps Script `syncAll` for the pending new sheet rows.
+- Deployment: commit `3d101e7` pushed to `main`; GitHub Build Test passed; Vercel Production deployment became `Ready` and aliases include `https://influencer-seeding-mu.vercel.app`.
+- Apps Script `syncAll` rerun after deployment: success dialog reported `972개 광고를 사이트에 반영했습니다`, `기존 광고의 빈 항목 1건` filled, and no `401`/`500`/`42P10`. Remaining sheet data warning: A~H blank rows 14 (examples shown: 738/816 caption, 895/896/897 product_name; use `🔎 빈칸 검사` for full list).
+- Next: Claude/시트세션 can run the planned final sheet↔DB rediff. Team/user still needs to resolve the A~H blank rows if those fields are required.
 
 ## 2026-07-16 TikTok URL canonical form unified to www (Codex)
 - Decision: TikTok canonical URL string is `https://www.tiktok.com/...`.
