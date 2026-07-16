@@ -151,3 +151,38 @@ git push origin main --force
 1. 이 체크리스트 항목 확인
 2. CLAUDE.md의 "배포 프로세스" 섹션 참고
 3. GitHub Actions 로그 스크린샷과 함께 보고
+---
+
+## 2026-07-13 Codex 인수인계: 날짜별 누적조회수 carry-forward
+
+### 배경
+- 사용자 제보: 2026-07-10 조회수가 2026-07-09보다 낮게 보이는 게시물이 많음.
+- 검증 결과, DB 원본에서 같은 post_id의 `2026-07-10 play_count < 2026-07-09 play_count`는 0건.
+- 실제 원인은 “7/10 값이 낮은 것”이 아니라, 7/10 측정 행이 없는 게시물이 날짜 필터에서 누적값을 이어받지 못해 빈값/0처럼 빠지는 표시 로직.
+
+### 수정 원칙
+- 증분 계산은 기존처럼 `pickRangeStats` + `viewIncrement`로 기간 안 실제 측정값만 사용한다.
+- 누적조회수/도달수/좋아요/댓글 표시, 합계, 정렬, CSV, 업체별 누적은 `pickAsOfStats`로 기간 종료일(`dateTo`) 기준 마지막 누적값을 사용한다.
+- 일자별 누적 합계는 필터 시작일 이전 마지막 누적값을 seed로 넣고, 이후 날짜는 forward-fill한다.
+
+### 주요 변경 파일
+- `web/app/monitoring/lib.ts`
+  - `pickAsOfStats(post, dateFrom, dateTo)` 추가.
+  - 날짜 필터가 있고 `dateTo`가 있으면 `dateTo` 이하의 마지막 stats를 반환.
+- `web/app/monitoring/page.tsx`
+  - 상단 조회수 카드, 하단 표 합계, 정렬, CSV, 업체별 누적, 일자별 합계가 누적 표시용 as-of 값을 사용.
+  - 일자별 합계는 날짜 범위를 명시적으로 만들고, 첫 날짜 이전 값을 seed로 forward-fill.
+- `web/app/monitoring/components/PostsTable.tsx`
+  - 행 표시용 조회수/도달수/좋아요/댓글/비용비는 `displayS = pickAsOfStats(...)` 기준.
+  - 증분 컬럼은 계속 `pickRangeStats` 기준.
+- `web/tests/monitoring-lib.test.ts`
+  - `pickAsOfStats`가 7/10 측정값이 없어도 7/9 누적값을 이어받는 테스트 추가.
+
+### 실제 검증 결과
+- Google Sheet `콘텐츠 대시보드 연동`: BK=7.9, BL=7.10 기준 실제 숫자 감소 행 0건.
+- 같은 시트에서 7/9 값 있음 + 7/10 공백은 117건.
+- DB 원본 직접 비교: 7/9 행 292개, 7/10 행 249개, 실제 감소 0건.
+- 새 표시 규칙으로 DB 전체 재계산: 비교 가능 699개 중 7/10 미측정 carry-forward 422개, 감소 0건.
+- `npm.cmd test`: pass 26/26.
+- `npm.cmd run lint`: error 0, 기존 warning 71개.
+- `npm.cmd run build`: 성공.

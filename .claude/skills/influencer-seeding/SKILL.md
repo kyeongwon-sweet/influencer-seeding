@@ -3,6 +3,12 @@ name: influencer-seeding
 description: 라라스윗 인플루언서 시딩/협찬 모니터링 대시보드(influencer-seeding 레포) 작업 시의 필수 규칙·아키텍처·함정. 이 레포의 코드(web/ Next.js, scripts/ Python 수집, .github/workflows 크론, Vercel 배포)를 수정·디버깅·배포하거나, 협찬 모니터링·수집·Apify·Vercel 사용량·채널분류·도메인/크론 문제를 다룰 때 사용. 자세한 내용은 레포 루트 ONBOARDING.md.
 ---
 
+# Shared Source Of Truth
+
+Before any code, DB, Google Sheet, Apps Script, or deployment work, read the repo root `AI_SHARED_STATUS.md` first.
+Treat `AI_SHARED_STATUS.md` as the current project source of truth. Personal memory is background/history only and must not override the shared status file.
+After meaningful changes, update `AI_SHARED_STATUS.md` with verified results and note anything not verified.
+
 # influencer-seeding 대시보드 작업 스킬
 
 이 레포(Next.js 15 + Clerk + Supabase + Apify + Vercel + GitHub Actions)를 작업할 때 **반드시** 따른다. 전체 맥락은 레포 루트 **`ONBOARDING.md`** 를 먼저 읽을 것.
