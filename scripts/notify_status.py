@@ -368,7 +368,7 @@ def main():
     today_ids = {r["post_id"] for r in rows}
     posts, off = [], 0
     while True:
-        res = db.table("sponsored_posts").select("id, url, account_name, created_at, ended_at, content_summary, posted_at, channel_type").range(off, off + 999).execute()
+        res = db.table("sponsored_posts").select("id, url, account_name, created_at, ended_at, content_summary, posted_at, channel_type, notes").range(off, off + 999).execute()
         chunk = res.data or []
         posts.extend(chunk)
         if len(chunk) < 1000:
@@ -378,6 +378,8 @@ def main():
     waiting = uncollectable = banner_skip = internal_skip = free_seed_skip = 0
     check = []  # (account, 사유, url)
     for a in active:
+        if "수동추적 제외" in str(a.get("notes") or ""):
+            continue
         if a["id"] in today_ids:
             continue
         c = str(a.get("created_at"))[:10]

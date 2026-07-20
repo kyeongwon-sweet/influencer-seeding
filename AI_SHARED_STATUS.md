@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 2026-07-20 Apps Script exportStats canonical key prefix fix (Codex)
+- Root cause verified for the large DB-to-sheet export mismatch: `stats-for-sheet` returns canonical keys like `ig:<shortcode>`, `yt:<videoId>`, and `tt:<videoId>`, but Apps Script `linkKey_(p.key || p.url)` treated those already-canonical keys as ordinary URLs. The fallback `urlKey_()` lowercased them, so `ig:Da2QRL9MTlw` became `ig:da2qrl9mtlw` and failed to match the sheet row key made from `https://www.instagram.com/reel/Da2QRL9MTlw/`.
+- Fixed `Combined_Sheet_AppsScript.gs` `linkKey_()` to detect already-canonical `ig:`, `yt:`, and `tt:` keys first and preserve the ID case while normalizing only the prefix.
+- Verification: local Node reproduction showed the old mapping failed for `ig:Da2QRL9MTlw` vs the matching Instagram URL. After the fix, `ig:Da2QRL9MTlw`, `yt:ORlMOVjest8`, and `tt:7662680135077743892` all map to the same keys as their sheet URLs.
+- Branch alignment: do not merge `refactor/monitoring-decompose` wholesale because it has large Apps Script/server drift. Only the narrow `d2c0e63` behavior was selected for main: skip `notes` containing `수동추적 제외` in collection/status checks, and allow up to 20 per-day individual IG data-slayer fallback calls when posts with previous `play_count` suddenly miss views but the global IG-missing ratio is below the bulk fallback threshold.
+- Deployment note: this repo file still needs to be pushed/applied to the live Apps Script project before the spreadsheet menu `exportStats` will use the fix.
+
 ## 2026-07-20 monitoring recollect gate changed to per-post missing play_count (Codex)
 - User correction accepted: the retry condition must not mean "the day has enough overall rows"; it must find tracked posts whose view row is missing for the target date.
 - Changed `scripts/run_monitoring.py` cost guard so view-capable posts (`instagram.com`, `youtube.com`, `youtu.be`, `tiktok.com`, `twitter.com`, `x.com`) count as already measured only when `post_daily_stats.play_count` is non-null for `MONITORING_DATE`. Rows that only have likes/comments are now treated as missing and remain in the recollect list. Non-view/reach-only rows still use the old "any metric exists" guard to avoid unnecessary recollection.

@@ -259,6 +259,10 @@ function urlKey_(u) {
  *  IG는 shortcode(/p/·/reel/·/reels/·/tv/ 통일), 틱톡은 영상ID, 그 외는 urlKey_. (서버 정규화와 동일 기준) */
 function linkKey_(u) {
   u = String(u || "").trim();
+  // stats-for-sheet may already return canonical keys like ig:<shortcode>, yt:<videoId>, tt:<videoId>.
+  // Preserve ID case; IG/YouTube IDs are case-sensitive, and lowercasing breaks sheet row matching.
+  var canonical = u.match(/^(ig|yt|tt):(.+)$/i);
+  if (canonical) return canonical[1].toLowerCase() + ":" + canonical[2];
   // /p/·/reel/ 앞에 계정명이 낀 형태(instagram.com/<user>/p/<code>/)도 인식 — 서버 normalizeUrl과 동일.
   // (계정명 무시하고 경로 어디에 있든 /p|reel|reels|tv/<code>를 shortcode로. 2026-07-08 anavocado 중복 사례)
   var ig = u.match(/instagram\.com\/(?:[^/?#]+\/)*(?:p|reels|reel|tv)\/([A-Za-z0-9_-]+)/i);
