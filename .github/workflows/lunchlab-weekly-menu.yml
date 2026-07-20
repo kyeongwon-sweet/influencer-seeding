@@ -39,6 +39,7 @@ jobs:
               "https://www.lunchlab.me/menu"
           ], capture_output=True)
           html = result.stdout.decode("utf-8", errors="ignore")
+          print(f"HTML 크기: {len(html)}자, ctfassets 포함: {'ctfassets' in html}")
 
           # 3. 해당 주차 라벨 위치 찾기
           label_pattern = rf"{month}월\s*{week_num}주차"
