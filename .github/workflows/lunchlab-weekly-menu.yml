@@ -29,12 +29,16 @@ jobs:
           target_label = f"{month}월{week_num}주차"
           print(f"찾는 주차: {month}월 {week_num}주차 (월요일: {monday})")
 
-          # 2. 페이지 fetch
-          req = urllib.request.Request(
-              "https://www.lunchlab.me/menu",
-              headers={"User-Agent": "Mozilla/5.0"}
-          )
-          html = urllib.request.urlopen(req, timeout=15).read().decode("utf-8", errors="ignore")
+          # 2. 페이지 fetch (curl — urllib이 GHA IP 차단 우회)
+          import subprocess
+          result = subprocess.run([
+              "curl", "-s", "-L", "--max-time", "15",
+              "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+              "-H", "Accept-Language: ko-KR,ko;q=0.9",
+              "-H", "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+              "https://www.lunchlab.me/menu"
+          ], capture_output=True)
+          html = result.stdout.decode("utf-8", errors="ignore")
 
           # 3. 해당 주차 라벨 위치 찾기
           label_pattern = rf"{month}월\s*{week_num}주차"
