@@ -39,6 +39,8 @@ jobs:
               "https://www.lunchlab.me/menu"
           ], capture_output=True)
           html = result.stdout.decode("utf-8", errors="ignore").replace('\\/', '/')
+          idx = html.find('ctfassets')
+          if idx >= 0: print("ctfassets 주변:", repr(html[max(0,idx-20):idx+120]))
 
           # 3. 해당 주차 라벨 위치 찾기
           label_pattern = rf"{month}월\s*{week_num}주차"
