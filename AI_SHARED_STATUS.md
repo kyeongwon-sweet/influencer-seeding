@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## 2026-07-20 인지광고 리포트 열 오독 수정 + 프로덕션 자동배포 확인 (Claude)
+- 버그: 여믄봇 증분 리포트 '인지 광고' 값이 전부 틀렸음. `web/app/api/awareness-ads/route.ts`가 시트 [인지_쫀득바]의 고정 열 `AK/AN/AQ/AT`(메타/틱톡/유튜브 조회수)를 읽었는데, 시트가 채널별 `(광고비/조회수/조회당비용)` 3칸 세트로 재편되며 그 열들이 전환·바이럴 채널의 광고비(₩) 칸으로 밀림. 결과: 메타/유튜브 "조회수"가 실은 광고비(₩) → 총 증분 매일 ~260만 부풀림, 틱톡(AN=빈칸) 항상 누락. 발송분+시트 실측+route 재현으로 교차검증.
+- 수정 (main `1592094`, 프로덕션 자동배포됨): 현행 정본 열(사용자 확인) 메타 = `Meta_인지_릴스` 조회수 AX(광고비 AW) + `Meta_인지_배너` 조회수 BG(광고비 BF) 합산 / 틱톡 = BA(AZ) / 유튜브 = BD(BC). 읽기 범위 `A1:AV500`→`A1:BJ500`(BG 포함). 재발방지: 조회수 칸 raw에 `₩` 감지 시 그 값 제외 + `warn` 반환. notify_increments.py는 변경 불필요.
+- 채널 조치: 옛 07-19 리포트+봇댓글 삭제 후 교정본 재발송(총증분 7,349,623→4,213,279; 메타 61,499·틱톡 140,611·유튜브 111,546). DM 미리보기 검증 후 발송.
+- 미결(사용자 결정 대기): 채널의 07-18·07-17 리포트는 아직 옛 틀린 값 — 교체 여부 미정.
+- ⚠️ 공유 인식 정정: 프로덕션은 이제 **main→자동배포**임. 실측 결과 main 푸시 시 ~1분 뒤 프로덕션(-mu, git 연동, `-git-main-` 별칭) 자동 배포(커밋 16:56:40 → 프로덕션 16:56:53). `vercel ls --prod`도 푸시마다 규칙적 배포. 상태판/메모리의 "-mu 수동 `vercel --prod`" 전제는 폐기. 앞으로 웹 라우트 수정은 main 푸시만으로 라이브.
+- 브랜치 주의: 이 수정은 main에만 있음. `refactor/monitoring-decompose` 머지 시 `awareness-ads/route.ts` 새 열매핑 유실 방지(rebase/포함 확인).
+
 ## 2026-07-20 sheet tracking status edit + pricing normalization (Codex)
 - Implemented `tracking-by-url` completion in `web/app/api/sponsored-posts/tracking-by-url/route.ts`: Sheet calls now normalize URL, match by `normalized_key`/`postIdentityKey` first and URL fallback second, and update matched post IDs directly. Manual reopen (`ended_at: null`) records `manual_fields += ended_at`; manual end removes that protection.
 - Added `/api/sponsored-posts/tracking-by-url(.*)` to `web/middleware.ts` public API routes so the endpoint reaches its own Bearer `CRON_SECRET` auth check on the production `-mu` alias instead of falling through Clerk/not-found.
