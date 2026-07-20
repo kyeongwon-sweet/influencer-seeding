@@ -84,7 +84,7 @@ export default function MonitoringPage() {
     if (filters.type !== "all" && getPostType(post.url) !== filters.type) return false;
     if (filters.channelTypes.length > 0 && !filters.channelTypes.some(ct => (post.channel_type ?? "").replace(/\s+/g, "") === ct.replace(/\s+/g, ""))) return false;
     if (filters.companies.length > 0 && !filters.companies.includes(post.company_name?.trim() || companyForAccount(post.account_name ?? post.influencers?.name) || "")) return false;
-    if (filters.pdNames.length > 0 && !filters.pdNames.includes(pdOf(post.project_name))) return false;
+    if (filters.pdNames.length > 0 && !filters.pdNames.includes(post.creator?.trim() || pdOf(post.project_name))) return false;
 
     // 게시일 필터 (posted_at 기준)
     if (filters.postedFrom && (!post.posted_at || post.posted_at < filters.postedFrom)) return false;
@@ -112,7 +112,7 @@ export default function MonitoringPage() {
 
   // PD/디자이너 옵션 — project_name이 파싱되는 게시물만 (빈 값 제외)
   const pdOptions = useMemo(() => Array.from(
-    new Set(posts.map(p => pdOf(p.project_name)).filter((v): v is string => Boolean(v)))
+    new Set(posts.map(p => p.creator?.trim() || pdOf(p.project_name)).filter((v): v is string => Boolean(v)))
   ).sort((a, b) => a.localeCompare(b, "ko")), [posts]);
 
   const hasFilter = filters.name !== "" || filters.project !== "" || filters.caption !== "" || filters.products.length > 0 || filters.type !== "all" || filters.channelTypes.length > 0 || filters.companies.length > 0 || filters.pdNames.length > 0 || filters.dateFrom !== "" || filters.dateTo !== "" || filters.postedFrom !== "" || filters.postedTo !== "";

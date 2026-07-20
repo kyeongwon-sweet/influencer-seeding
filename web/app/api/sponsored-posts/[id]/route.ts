@@ -13,7 +13,7 @@ export async function PATCH(
   const { id } = await params;
   const body = await req.json();
   // ended_at: 대시보드 수동 종료/해제(날짜 문자열 = 종료, null = 해제)
-  const allowed = ["project_name", "product_name", "channel_type", "account_name", "company_name", "posted_at", "notes", "content_summary", "ended_at"];
+  const allowed = ["project_name", "product_name", "channel_type", "account_name", "company_name", "posted_at", "notes", "content_summary", "planner", "creator", "ended_at"];
   const allowedNumeric = ["cost", "reach_count"];
   const updates: Record<string, string | number | null> = {};
   for (const key of allowed) {

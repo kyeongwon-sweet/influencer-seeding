@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     const { data, error } = await supabase
       .from("sponsored_posts")
       .select(
-        "url, posted_at, account_name, company_name, content_summary, channel_type, project_name, product_name, cost, ended_at"
+        "url, posted_at, account_name, company_name, content_summary, channel_type, project_name, product_name, cost, planner, creator, ended_at"
       )
       .range(from, from + PAGE - 1);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });

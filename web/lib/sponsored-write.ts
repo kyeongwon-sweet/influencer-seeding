@@ -63,6 +63,8 @@ export async function upsertSponsoredRows(
       channel_type:    normalizeChannelType(r.channel_type ? String(r.channel_type) : null),
       project_name:    r.project_name || null,
       product_name:    r.product_name || null,
+      planner:         r.planner || null,
+      creator:         r.creator || null,
       cost:            r.cost != null && r.cost !== "" ? Number(r.cost) : null,
     }))
     .filter(r => {
@@ -76,7 +78,7 @@ export async function upsertSponsoredRows(
     return { summary: { upserted: 0, created: 0, meta_filled: 0, ended_marked: 0 } };
   }
 
-  const META = ["posted_at", "account_name", "company_name", "content_summary", "channel_type", "project_name", "product_name", "cost"];
+  const META = ["posted_at", "account_name", "company_name", "content_summary", "channel_type", "project_name", "product_name", "planner", "creator", "cost"];
 
   // 기존 게시물(id+메타) 조회 — '빈 값만 채우기' 비교용.
   // ⚠️ URL이 많으면 .in() 쿼리 URL 길이 한도 초과로 400(Bad Request) → 80개씩 청크로 조회.

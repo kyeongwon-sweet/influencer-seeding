@@ -26,6 +26,8 @@ export type Post = {
   reach_count: number | null;
   notes: string | null;
   content_summary: string | null;
+  planner: string | null;
+  creator: string | null;
   created_at: string;
   ended_at: string | null;
   influencers: { id: string; name: string; platform: string; post_type: string | null; category?: string | null } | null;
@@ -45,7 +47,7 @@ export type B2bDaily = {
 
 export type Filters = { name: string; project: string; caption: string; products: string[]; type: string; channelTypes: string[]; companies: string[]; pdNames: string[]; dateFrom: string; dateTo: string; postedFrom: string; postedTo: string };
 export const INIT_FILTERS: Filters = { name: "", project: "", caption: "", products: [], type: "all", channelTypes: [], companies: [], pdNames: [], dateFrom: "", dateTo: "", postedFrom: "", postedTo: "" };
-export type EditCell = { postId: string; field: "project_name" | "product_name" | "channel_type" | "cost" | "reach_count" | "account_name" | "company_name" | "posted_at" | "notes" | "content_summary" | "likes_count" | "comments_count"; value: string; measuredAt?: string };
+export type EditCell = { postId: string; field: "project_name" | "product_name" | "channel_type" | "cost" | "reach_count" | "account_name" | "company_name" | "posted_at" | "notes" | "content_summary" | "planner" | "creator" | "likes_count" | "comments_count"; value: string; measuredAt?: string };
 export const POST_TYPES = ["릴스", "피드", "숏폼", "롱폼"];
 export const CHANNEL_TYPES = [
   "바이럴(배너)",
