@@ -8,7 +8,6 @@ const isPublicRoute = createRouteMatcher([
   "/api/apify-webhook(.*)",
   "/api/slack-events(.*)",
   "/api/slack/events(.*)",
-  "/api/slack/comment-action(.*)",  // Slack 버튼 클릭(자체 서명검증) → 미들웨어 통과
   "/api/slack/injibot-action(.*)",  // injibot 부정댓글 버튼(자체 서명검증) → 미들웨어 통과
   "/api/kpi/ingest(.*)",
   "/api/kpi/fetch(.*)",
