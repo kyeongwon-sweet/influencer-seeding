@@ -345,6 +345,47 @@ def _fetch_youtube(urls: list) -> dict:
     return out
 
 
+def _fetch_youtube_api(urls: list) -> dict:
+    """공식 YouTube Data API v3로 조회수 보강 — Apify 스크래퍼가 VIDEO_UNAVAILABLE 등으로
+    못 읽은 영상만 폴백한다. YOUTUBE_API_KEY 미설정이면 무동작(빈 dict).
+    무료 쿼터(1만 units/일, videos.list=1 unit)라 실사용 수십 건은 사실상 무비용.
+    반환: {video_id: {views,likes,comments,title}} (스크래퍼와 동일 스키마)."""
+    api_key = os.getenv("YOUTUBE_API_KEY")
+    if not api_key:
+        print("[WARN] YOUTUBE_API_KEY 미설정 → 유튜브 Data API 폴백 건너뜀")
+        return {}
+    ids = [v for v in (_yt_id(u) for u in urls) if v]
+    if not ids:
+        return {}
+    import urllib.request, urllib.parse, json as _json
+    out = {}
+    for i in range(0, len(ids), 50):  # videos.list는 id 최대 50개/요청
+        q = urllib.parse.urlencode({"part": "statistics,snippet",
+                                    "id": ",".join(ids[i:i + 50]), "key": api_key})
+        try:
+            with urllib.request.urlopen(
+                    urllib.request.Request(f"https://www.googleapis.com/youtube/v3/videos?{q}"),
+                    timeout=15) as r:
+                data = _json.loads(r.read().decode())
+        except Exception as e:
+            print(f"[WARN] 유튜브 Data API 호출 실패: {e}")
+            continue
+        for it in data.get("items", []):
+            vid = it.get("id")
+            if not vid:
+                continue
+            st = it.get("statistics") or {}
+            sn = it.get("snippet") or {}
+            vc, lc, cc = st.get("viewCount"), st.get("likeCount"), st.get("commentCount")
+            out[vid] = {
+                "views": int(vc) if vc is not None else None,
+                "likes": int(lc) if lc is not None else None,
+                "comments": int(cc) if cc is not None else None,
+                "title": sn.get("title"),
+            }
+    return out
+
+
 def _tt_id(url: str):
     """틱톡 영상 ID 추출"""
     m = re.search(r'/video/(\d+)', url or "")
@@ -795,7 +836,28 @@ def run():
         if yt_posts and not skip_apify:
             try:
                 yt_stats = _fetch_youtube([p["url"] for p in yt_posts])
-                print(f"[LOG] 유튜브 수집: {len(yt_stats)}건 / {len(yt_posts)}개 요청")
+                _miss = lambda: [p["url"] for p in yt_posts
+                                 if not ((yt_stats.get(_yt_id(p["url"])) or {}).get("views"))]
+                # (B) 미반환/0 조회수 1회 재시도 — 간헐적 스크래퍼 공백 보강(틱톡과 동일 패턴).
+                #     영구오류(VIDEO_UNAVAILABLE)는 재시도 무의미 → 제외하고 (A) Data API로 넘김.
+                yt_retry = [u for u in _miss()
+                            if (yt_stats.get(_yt_id(u)) or {}).get("error") != "VIDEO_UNAVAILABLE"]
+                if yt_retry:
+                    print(f"[LOG] 유튜브 미반환 {len(yt_retry)}건 → 1회 재시도")
+                    for vid, s in _fetch_youtube(yt_retry).items():
+                        if (s.get("views") or 0) > 0:
+                            yt_stats[vid] = s
+                # (A) 스크래퍼가 끝내 못 준 영상(VIDEO_UNAVAILABLE 등) → 공식 Data API 보강(YOUTUBE_API_KEY 있을 때만)
+                yt_unavail = _miss()
+                if yt_unavail:
+                    filled = 0
+                    for vid, s in _fetch_youtube_api(yt_unavail).items():
+                        if (s.get("views") or 0) > 0:
+                            yt_stats[vid] = s
+                            filled += 1
+                    if filled:
+                        print(f"[LOG] 유튜브 Data API 폴백 보강: {filled}건 / 미반환 {len(yt_unavail)}건")
+                print(f"[LOG] 유튜브 수집: 실값 {sum(1 for s in yt_stats.values() if (s.get('views') or 0) > 0)}건 / {len(yt_posts)}개 요청")
                 # 비공개/삭제(error=VIDEO_UNAVAILABLE) 자동 특이사항 태깅은 _store_aux_rows가 공통 처리.
                 # 유튜브 캡션 = 영상 제목. 조회수 None이어도 행 저장(좋아요 유지) + 역행 clamp.
                 _store_aux_rows(db, rows, yt_posts, yt_stats, lambda p: _yt_id(p["url"]), "유튜브",
