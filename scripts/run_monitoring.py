@@ -463,6 +463,7 @@ def run():
         posts = [
             p for p in all_posts
             if not p.get("ended_at")
+            and "수동추적 제외" not in str(p.get("notes") or "")
             and (not p.get("posted_at") or str(p.get("posted_at"))[:10] <= TODAY)
         ]
         print(f"[LOG] 추적 게시물: {len(posts)}개 (종료/업로드전 제외 {len(all_posts) - len(posts)}개)")
@@ -527,6 +528,26 @@ def run():
                         cur["content_summary"] = m["content_summary"]
                     stats_by_key[key] = cur
                 print(f"[LOG] data-slayer 폴백 보강 완료: 조회수 {merged}건 채움")
+            elif exp_missing:
+                # 전체 차단 비율에는 못 미쳐도 직전 측정값이 있던 개별 게시물이 갑자기 빠지면
+                # 해당 누락분만 data-slayer로 보강한다. 비용 폭주 방지를 위해 일일 20건 상한.
+                missing = exp_missing[:20]
+                print(f"[WARN] IG 개별 조회수 누락 {len(exp_missing)}건 → data-slayer 선택 폴백 {len(missing)}건 호출")
+                fb = _fetch_ig_fallback(missing)
+                merged = 0
+                for u in missing:
+                    m = fb.get(_ig_shortcode(u) or "")
+                    if not m:
+                        continue
+                    key = _stats_key(u)
+                    cur = stats_by_key.get(key) or {"url": u}
+                    for field in ("play_count", "likes_count", "comments_count", "content_summary"):
+                        if m.get(field) is not None and (field != "content_summary" or not cur.get(field)):
+                            cur[field] = m[field]
+                    if m.get("play_count") is not None:
+                        merged += 1
+                    stats_by_key[key] = cur
+                print(f"[LOG] data-slayer 선택 폴백 완료: 조회수 {merged}건 채움")
 
         rows = []
         # 직전(오늘 이전) 누적값 일괄 조회 — per-post 개별 쿼리(N+1) 제거.
