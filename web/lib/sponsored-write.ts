@@ -194,9 +194,16 @@ export async function upsertSponsoredRows(
   }
 
   // 캡션에 '삭제' 또는 '보관'이 포함된 행 → '종료'(ended_at) 처리. 이미 종료된 건은 날짜 유지(중복 방지).
+  // 단, 시트/대시보드에서 수동으로 트래킹 재개한 행(manual_fields includes ended_at)은
+  // 캡션에 예전 "삭제/보관" 문구가 남아 있어도 재종료하지 않는다.
   const today = todayKST();
   const endedRows = rows
-    .filter(r => /삭제|보관/.test(String(r.content_summary ?? "")))
+    .filter(r => {
+      if (!/삭제|보관/.test(String(r.content_summary ?? ""))) return false;
+      const ex = existingByIdentity.get(r.normalized_key ?? r.url) ?? existingByUrl.get(r.url);
+      const manual = Array.isArray(ex?.manual_fields) ? (ex.manual_fields as string[]) : [];
+      return !manual.includes("ended_at");
+    })
   const endedIds = [
     ...new Set(
       endedRows

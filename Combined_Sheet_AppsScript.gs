@@ -32,6 +32,7 @@ const CONFIG = {
   KST_TIMEZONE: "Asia/Seoul",
   API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/bulk",
   STATS_API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/stats-import",
+  TRACKING_API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/tracking-by-url",
   LIST_API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/list-for-sheet",  // DB→시트 반영(대시보드 추가분 가져오기)용 조회
   STATS_EXPORT_API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/stats-for-sheet",  // 자동수집 조회수 → 시트 I열~ 역채움용 조회
   HEADER_ROW: 1,
@@ -141,7 +142,8 @@ function getStatusCol_(sheet) {
 function getIncrementCol_(sheet) {
   const lastCol = sheet.getLastColumn();
   const headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
-  const idx = headers.findIndex(h => norm_(h) === norm_("증분값"));
+  const wanted = [norm_("증분"), norm_("증분값")];
+  const idx = headers.findIndex(h => wanted.includes(norm_(h)));
   return idx === -1 ? null : idx + 1;
 }
 
@@ -165,6 +167,11 @@ function toDateStr_(v) {
   if (m) return `${m[1]}-${("0" + m[2]).slice(-2)}-${("0" + m[3]).slice(-2)}`;
   const d = new Date(s);
   return isNaN(d.getTime()) ? null : Utilities.formatDate(d, Session.getScriptTimeZone(), "yyyy-MM-dd");
+}
+
+function headerDate_(value) {
+  if (value instanceof Date && !isNaN(value.getTime())) return true;
+  return /^\s*\d{1,2}\s*[.]\s*\d{1,2}(\s|\(|$)/.test(String(value || ""));
 }
 
 function isBeforePostedDate_(date, postedAt) {
@@ -552,6 +559,20 @@ function dailyAuto() {
     errors.push("exportStats threw: " + (e.stack || e.message));
     Logger.log("dailyAuto exportStats: " + (e.stack || e.message));
   }
+  [
+    ["syncStatus", syncStatus],
+    ["refreshCumulativeViews", refreshCumulativeViews],
+    ["syncCreators", syncCreators],
+    ["syncPricing", syncPricing],
+  ].forEach(([name, fn]) => {
+    try {
+      const ok = fn();
+      if (ok === false) errors.push(name + " failed");
+    } catch (e) {
+      errors.push(name + " threw: " + (e.stack || e.message));
+      Logger.log("dailyAuto " + name + ": " + (e.stack || e.message));
+    }
+  });
 
   const finishedAt = new Date().toISOString();
   const status = errors.length ? `ERROR: ${errors.join(" | ")}` : "OK";
@@ -1025,6 +1046,261 @@ function checkDuplicates() {
 // ═══════════════════════════════════════════════════════════════
 // 자동 트리거 (매일 9:30, dailyAuto 실행: syncAll → pullFromDB → exportStats)
 // ═══════════════════════════════════════════════════════════════
+function findHeaderCol_(sheet, names) {
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+  const wanted = names.map(n => norm_(n));
+  const idx = headers.findIndex(h => wanted.includes(norm_(h)));
+  return idx === -1 ? null : idx + 1;
+}
+
+function getTrackingStatusCol_(sheet) {
+  const col = findHeaderCol_(sheet, ["상태"]);
+  if (col) return col;
+  const next = sheet.getLastColumn() + 1;
+  sheet.getRange(CONFIG.HEADER_ROW, next).setValue("상태");
+  return next;
+}
+
+function trackingEndedAtFromStatus_(value) {
+  const s = String(value == null ? "" : value).trim();
+  if (!s) return undefined;
+  if (s.indexOf("종료") >= 0) return todayStr_();
+  if (s.indexOf("중") >= 0 || s.indexOf("재개") >= 0) return null;
+  return undefined;
+}
+
+function postTrackingRows_(rows) {
+  if (!rows.length) return { updated: 0, missing: [] };
+  const res = UrlFetchApp.fetch(CONFIG.TRACKING_API_URL, {
+    method: "post",
+    contentType: "application/json",
+    headers: authHeaders_(),
+    payload: JSON.stringify({ rows }),
+    muteHttpExceptions: true,
+  });
+  const code = res.getResponseCode();
+  const text = res.getContentText();
+  if (code !== 200) throw new Error("tracking-by-url API " + code + ": " + text);
+  return JSON.parse(text);
+}
+
+function onStatusEdit_(e) {
+  try {
+    if (!e || !e.range || !e.source) return;
+    const sheet = e.range.getSheet();
+    if (sheet.getSheetId() !== CONFIG.SHEET_GID) return;
+    if (e.range.getRow() < CONFIG.DATA_START_ROW || e.range.getNumRows() !== 1 || e.range.getNumColumns() !== 1) return;
+    const statusCol = findHeaderCol_(sheet, ["상태"]);
+    if (!statusCol || e.range.getColumn() !== statusCol) return;
+    const endedAt = trackingEndedAtFromStatus_(e.value);
+    if (endedAt === undefined) return;
+    const fieldCols = buildFieldCols_(sheet);
+    const url = String(sheet.getRange(e.range.getRow(), fieldCols.url).getValue() || "").trim();
+    if (!url) return;
+    const result = postTrackingRows_([{ url, ended_at: endedAt }]);
+    SpreadsheetApp.getActive().toast("상태 DB 반영: " + (result.updated || 0) + "건", "완료", 4);
+  } catch (err) {
+    Logger.log("onStatusEdit_: " + (err.stack || err.message));
+    SpreadsheetApp.getActive().toast("상태 DB 반영 실패: " + err.message, "오류", 6);
+  }
+}
+
+function installStatusEditTrigger() {
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === "onStatusEdit_")
+    .forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger("onStatusEdit_")
+    .forSpreadsheet(SpreadsheetApp.getActive())
+    .onEdit()
+    .create();
+  safeAlert_("상태 열 수기수정 즉시 DB 반영 트리거를 설치했습니다.");
+}
+
+function removeStatusEditTrigger() {
+  const triggers = ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === "onStatusEdit_");
+  triggers.forEach(t => ScriptApp.deleteTrigger(t));
+  safeAlert_("상태 열 DB 반영 트리거를 제거했습니다. (" + triggers.length + "개)");
+}
+
+function syncStatus() {
+  const sheet = getSheet_();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < CONFIG.DATA_START_ROW) return true;
+  const fieldCols = buildFieldCols_(sheet);
+  const statusCol = getTrackingStatusCol_(sheet);
+  const resp = UrlFetchApp.fetch(CONFIG.LIST_API_URL, { headers: authHeaders_(), muteHttpExceptions: true });
+  if (resp.getResponseCode() !== 200) throw new Error("상태 동기화 API " + resp.getResponseCode() + ": " + resp.getContentText());
+  const posts = (JSON.parse(resp.getContentText()).posts) || [];
+  const ended = {};
+  posts.forEach(p => { if (p && p.url) ended[linkKey_(p.url)] = !!p.ended_at; });
+  const n = lastRow - CONFIG.DATA_START_ROW + 1;
+  const urls = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.url, n, 1).getValues();
+  const out = urls.map(r => {
+    const url = String(r[0] || "").trim();
+    if (!url) return [""];
+    const k = linkKey_(url);
+    if (!(k in ended)) return [""];
+    return [ended[k] ? "트래킹 종료" : "트래킹 중"];
+  });
+  sheet.getRange(CONFIG.DATA_START_ROW, statusCol, n, 1).setValues(out);
+  SpreadsheetApp.getActive().toast("상태 동기화 완료: " + n + "행", "완료", 4);
+  return true;
+}
+
+function refreshCumulativeViews() {
+  const sheet = getSheet_();
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < CONFIG.DATA_START_ROW) return true;
+  const cumCol = findHeaderCol_(sheet, ["누적 조회수", "누적조회수"]);
+  if (!cumCol) return true;
+  const headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+  const dateCols = [];
+  for (let i = CONFIG.STATS_FIRST_COL - 1; i < headers.length; i++) {
+    if (headerDate_(headers[i])) dateCols.push(i + 1);
+  }
+  if (!dateCols.length) return true;
+  const first = colLetter_(Math.min.apply(null, dateCols));
+  const last = colLetter_(Math.max.apply(null, dateCols));
+  const n = lastRow - CONFIG.DATA_START_ROW + 1;
+  const data = sheet.getRange(CONFIG.DATA_START_ROW, 1, n, lastCol).getValues();
+  const currentValues = sheet.getRange(CONFIG.DATA_START_ROW, cumCol, n, 1).getValues();
+  const currentFormulas = sheet.getRange(CONFIG.DATA_START_ROW, cumCol, n, 1).getFormulas();
+  const formulas = [];
+  for (let i = 0; i < n; i++) {
+    const r = CONFIG.DATA_START_ROW + i;
+    const hasDateMetric = dateCols.some(c => typeof data[i][c - 1] === "number" && data[i][c - 1] > 0);
+    const manualValue = currentFormulas[i][0] === "" && currentValues[i][0] !== "" && currentValues[i][0] != null;
+    if (!hasDateMetric && manualValue) {
+      formulas.push([currentValues[i][0]]);
+    } else {
+      formulas.push(["=IF(COUNT(" + first + r + ":" + last + r + ")=0,\"\",MAX(" + first + r + ":" + last + r + "))"]);
+    }
+  }
+  sheet.getRange(CONFIG.DATA_START_ROW, cumCol, n, 1).setValues(formulas);
+  SpreadsheetApp.getActive().toast("누적 조회수 수식 갱신: " + n + "행", "완료", 4);
+  return true;
+}
+
+function parseCreator_(name) {
+  const result = { mk: "", pd: "" };
+  if (!name || name.charAt(0) !== "[") return result;
+  const parts = String(name).split("_");
+  if (parts.length > 10) result.mk = String(parts[10] || "").trim();
+  if (parts.length > 13) {
+    const tail = parts.slice(13).join("_").trim().replace(/\.(mp4|mov|png|jpe?g|gif|webp|zip|pdf)$/i, "");
+    result.pd = (tail.split("_").pop() || "").trim().replace(/\s*\(\d+\)\s*$/, "").trim();
+  }
+  return result;
+}
+
+function syncCreators() {
+  const sheet = getSheet_();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < CONFIG.DATA_START_ROW) return true;
+  const sourceCol = findHeaderCol_(sheet, ["소재명"]);
+  const plannerCol = findHeaderCol_(sheet, ["기획자"]);
+  const makerCol = findHeaderCol_(sheet, ["제작자", "PD", "디자이너"]);
+  if (!sourceCol || !plannerCol || !makerCol) return true;
+  const n = lastRow - CONFIG.DATA_START_ROW + 1;
+  const source = sheet.getRange(CONFIG.DATA_START_ROW, sourceCol, n, 1).getValues();
+  const planners = sheet.getRange(CONFIG.DATA_START_ROW, plannerCol, n, 1).getValues();
+  const makers = sheet.getRange(CONFIG.DATA_START_ROW, makerCol, n, 1).getValues();
+  let filled = 0;
+  for (let i = 0; i < n; i++) {
+    const parsed = parseCreator_(source[i][0]);
+    if (parsed.mk) { planners[i][0] = parsed.mk; filled++; }
+    if (parsed.pd) { makers[i][0] = parsed.pd; filled++; }
+  }
+  sheet.getRange(CONFIG.DATA_START_ROW, plannerCol, n, 1).setValues(planners);
+  sheet.getRange(CONFIG.DATA_START_ROW, makerCol, n, 1).setValues(makers);
+  SpreadsheetApp.getActive().toast("기획자/제작자 갱신: " + filled + "칸", "완료", 4);
+  return true;
+}
+
+function getPricingSheet_() {
+  const target = 1649102171;
+  const sheets = SpreadsheetApp.getActive().getSheets();
+  for (let i = 0; i < sheets.length; i++) {
+    if (sheets[i].getSheetId() === target) return sheets[i];
+  }
+  return null;
+}
+
+function priceChannelKey_(value) {
+  return String(value == null ? "" : value)
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/_+/g, "_");
+}
+
+function addUniqueMapValue_(map, key, value) {
+  if (!key || value === "" || value == null) return;
+  if (!map[key]) map[key] = {};
+  map[key][String(value)] = true;
+}
+
+function onlyUniqueMapValue_(map, key) {
+  const vals = Object.keys(map[key] || {});
+  return vals.length === 1 ? vals[0] : null;
+}
+
+function pricingFormatFromType_(channelType) {
+  const s = String(channelType == null ? "" : channelType);
+  if (s.indexOf("배너") >= 0) return "배너";
+  if (s.indexOf("영상") >= 0 || s.indexOf("릴스") >= 0 || s.indexOf("숏폼") >= 0) return "릴스";
+  return "";
+}
+
+function syncPricing() {
+  const sheet = getSheet_();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < CONFIG.DATA_START_ROW) return true;
+  const fieldCols = buildFieldCols_(sheet);
+  if (!fieldCols.account_name || !fieldCols.channel_type || !fieldCols.company_name || !fieldCols.cost) return true;
+  const pricing = getPricingSheet_();
+  if (!pricing) throw new Error("가격/업체명 매핑 시트를 찾을 수 없습니다.");
+  const rows = pricing.getDataRange().getValues();
+  const companyByChannel = {};
+  const priceByChannelFormat = {};
+  for (let i = 1; i < rows.length; i++) {
+    const key = priceChannelKey_(rows[i][0]);
+    const company = String(rows[i][1] == null ? "" : rows[i][1]).trim();
+    const format = String(rows[i][2] == null ? "" : rows[i][2]).trim();
+    const price = toNumber_(rows[i][3]);
+    addUniqueMapValue_(companyByChannel, key, company);
+    if (format && price !== null) addUniqueMapValue_(priceByChannelFormat, key + "|" + format, price);
+  }
+  const n = lastRow - CONFIG.DATA_START_ROW + 1;
+  const data = sheet.getRange(CONFIG.DATA_START_ROW, 1, n, sheet.getLastColumn()).getValues();
+  let filledCompany = 0, filledCost = 0, ambiguous = 0;
+  for (let r = 0; r < n; r++) {
+    const row = data[r];
+    const key = priceChannelKey_(row[fieldCols.account_name - 1]);
+    const type = String(row[fieldCols.channel_type - 1] || "");
+    if (!key || type.indexOf("바이럴") < 0) continue;
+    const company = onlyUniqueMapValue_(companyByChannel, key);
+    if ((row[fieldCols.company_name - 1] === "" || row[fieldCols.company_name - 1] == null) && company) {
+      sheet.getRange(CONFIG.DATA_START_ROW + r, fieldCols.company_name).setValue(company);
+      filledCompany++;
+    } else if (!company && companyByChannel[key]) {
+      ambiguous++;
+    }
+    const format = pricingFormatFromType_(type);
+    const price = format ? onlyUniqueMapValue_(priceByChannelFormat, key + "|" + format) : null;
+    if ((row[fieldCols.cost - 1] === "" || row[fieldCols.cost - 1] == null) && price !== null) {
+      sheet.getRange(CONFIG.DATA_START_ROW + r, fieldCols.cost).setValue(Number(price));
+      filledCost++;
+    } else if (format && !price && priceByChannelFormat[key + "|" + format]) {
+      ambiguous++;
+    }
+  }
+  SpreadsheetApp.getActive().toast("가격/업체명 채움: 업체 " + filledCompany + ", 비용 " + filledCost + ", 애매함 " + ambiguous, "완료", 5);
+  return true;
+}
+
 function installDailyTrigger() {
   // 기존 트리거(구버전 syncNew 포함) 제거 후 양방향 dailyAuto로 재등록
   ScriptApp.getProjectTriggers()

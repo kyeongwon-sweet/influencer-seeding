@@ -202,9 +202,16 @@ export async function POST(req: NextRequest) {
   }
 
   // 2-c) 캡션에 '삭제' 또는 '보관'이 포함된 글 → '종료'(ended_at) 처리. 이미 종료된 건은 날짜 유지.
+  // 단, 시트/대시보드에서 수동으로 트래킹 재개한 행(manual_fields includes ended_at)은
+  // 캡션에 예전 "삭제/보관" 문구가 남아 있어도 재종료하지 않는다.
   const today = todayKST();
   const endedUrls = [...postByUrl.entries()]
-    .filter(([, m]) => /삭제|보관/.test(String(m.content_summary ?? "")))
+    .filter(([u, m]) => {
+      if (!/삭제|보관/.test(String(m.content_summary ?? ""))) return false;
+      const ex = existingByKey.get(u) ?? existingByUrl.get(String(m.url));
+      const manual = Array.isArray(ex?.manual_fields) ? (ex.manual_fields as string[]) : [];
+      return !manual.includes("ended_at");
+    })
     .map(([u, m]) => String((existingByKey.get(u) ?? existingByUrl.get(String(m.url)))?.url ?? m.url));
   let endedMarked = 0;
   if (endedUrls.length > 0) {
