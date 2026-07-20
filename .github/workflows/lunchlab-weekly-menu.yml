@@ -42,25 +42,12 @@ jobs:
           idx = html.find('ctfassets')
           if idx >= 0: print("ctfassets 주변:", repr(html[max(0,idx-20):idx+120]))
 
-          # 3. 해당 주차 라벨 위치 찾기
-          label_pattern = rf"{month}월\s*{week_num}주차"
-          label_m = re.search(label_pattern, html)
-          if label_m:
-              # 다음 주차 라벨 전까지 구간만 추출
-              after_label = html[label_m.end():]
-              next_label_m = re.search(r"\d+월\s*\d+주차", after_label)
-              section = after_label[:next_label_m.start()] if next_label_m else after_label
-              week_label_display = f"{month}월 {week_num}주차"
-          else:
-              print(f"'{month}월 {week_num}주차' 라벨 못 찾음 — 첫 번째 이미지 사용")
-              section = html
-              first_label = re.search(r"(\d+월\s*\d+주차)", html)
-              week_label_display = first_label.group(1) if first_label else "이번 주"
+          # 3. 주차 라벨 표시용 (HTML 검색 없이 계산값 사용)
+          week_label_display = f"{month}월 {week_num}주차"
 
-          # 4. 해당 구간에서 이미지 URL 추출 (첫 2개)
-          # Next.js가 /_next/image?url= 형식으로 URL인코딩해서 embed함
-          raw_imgs = re.findall(r'https://images\.ctfassets\.net/[^\s"\'<>]+\.(?:png|jpg|jpeg|webp)', section)
-          encoded_imgs = re.findall(r'https?%3A%2F%2Fimages\.ctfassets\.net[^\s"\'<>&]+?\.(?:png|jpg|jpeg|webp)', section)
+          # 4. 전체 HTML에서 이미지 URL 추출 (section 슬라이싱 없음 — 라벨 위치에 무관)
+          raw_imgs = re.findall(r'https://images\.ctfassets\.net/[^\s"<>]+\.(?:png|jpg|jpeg|webp)', html)
+          encoded_imgs = re.findall(r'https?%3A%2F%2Fimages\.ctfassets\.net[^\s"<>&]+?\.(?:png|jpg|jpeg|webp)', html)
           decoded_imgs = [urllib.parse.unquote(u) for u in encoded_imgs]
           imgs = list(dict.fromkeys(raw_imgs + decoded_imgs))[:2]
           print(f"이미지 {len(imgs)}개 발견")

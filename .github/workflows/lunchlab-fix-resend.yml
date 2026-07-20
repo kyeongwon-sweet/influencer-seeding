@@ -1,0 +1,80 @@
+name: 런치랩 메시지 삭제 후 재발송 (1회용)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 삭제 후 이미지 포함 재발송
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_LUNCHLAB_BOT_TOKEN }}
+        run: |
+          python3 - <<'EOF'
+          import urllib.request, re, json, os, sys, urllib.parse, subprocess
+          from datetime import date, timedelta
+
+          TOKEN = os.environ['SLACK_BOT_TOKEN']
+          CHANNEL = 'C0BFPQAPHEK'
+
+          # 1. 잘못 보낸 메시지 6개 삭제
+          ts_list = [
+              '1784537518.762249',
+              '1784537483.550219',
+              '1784537428.223069',
+              '1784537309.009869',
+              '1784537238.149909',
+              '1784536898.189619',
+          ]
+          for ts in ts_list:
+              payload = json.dumps({'channel': CHANNEL, 'ts': ts}).encode()
+              req = urllib.request.Request('https://slack.com/api/chat.delete', data=payload,
+                  headers={'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json'})
+              r = json.load(urllib.request.urlopen(req, timeout=15))
+              print(f'삭제 {ts}: ok={r.get("ok")} error={r.get("error","")}')
+
+          # 2. 주차 계산
+          today = date.today()
+          days_to_monday = (7 - today.weekday()) % 7
+          monday = today + timedelta(days=days_to_monday)
+          month = monday.month
+          first_of_month = date(monday.year, month, 1)
+          first_monday = first_of_month - timedelta(days=first_of_month.weekday())
+          week_num = (monday - first_monday).days // 7 + 1
+          week_label = f'{month}월 {week_num}주차'
+          print(f'주차: {week_label}')
+
+          # 3. 페이지 fetch (curl)
+          result = subprocess.run([
+              'curl', '-s', '-L', '--max-time', '15',
+              '-H', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+              '-H', 'Accept-Language: ko-KR,ko;q=0.9',
+              '-H', 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'https://www.lunchlab.me/menu'
+          ], capture_output=True)
+          html = result.stdout.decode('utf-8', errors='ignore').replace('\\/', '/')
+
+          # 4. 전체 HTML에서 이미지 추출 (section 슬라이싱 없이)
+          raw_imgs = re.findall(r'https://images\.ctfassets\.net/[^\s"<>]+\.(?:png|jpg|jpeg|webp)', html)
+          encoded_imgs = re.findall(r'https?%3A%2F%2Fimages\.ctfassets\.net[^\s"<>&]+?\.(?:png|jpg|jpeg|webp)', html)
+          imgs = list(dict.fromkeys(raw_imgs + [urllib.parse.unquote(u) for u in encoded_imgs]))[:2]
+          print(f'이미지 {len(imgs)}개')
+
+          # 5. 발송
+          blocks = [{'type': 'section', 'text': {'type': 'mrkdwn',
+              'text': f':rice: *이번 주 런치랩 식단표 ({week_label})*\n:fork_and_knife: <https://www.lunchlab.me/menu|메뉴 보러가기>'}}]
+          titles = ['가정식 도시락', '프레시밀']
+          for i, url in enumerate(imgs):
+              blocks.append({'type': 'image',
+                  'title': {'type': 'plain_text', 'text': titles[i] if i < len(titles) else '식단표'},
+                  'image_url': url, 'alt_text': week_label})
+
+          payload = json.dumps({'channel': CHANNEL, 'blocks': blocks}, ensure_ascii=False).encode('utf-8')
+          req2 = urllib.request.Request('https://slack.com/api/chat.postMessage', data=payload,
+              headers={'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json; charset=utf-8'})
+          r = json.load(urllib.request.urlopen(req2, timeout=15))
+          print(f'발송: ok={r.get("ok")} error={r.get("error","")}')
+          if not r.get('ok'):
+              sys.exit(1)
+          EOF
