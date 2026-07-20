@@ -51,6 +51,9 @@ jobs:
           decoded_imgs = [urllib.parse.unquote(u) for u in encoded_imgs]
           imgs = list(dict.fromkeys(raw_imgs + decoded_imgs))[:2]
           print(f"이미지 {len(imgs)}개 발견")
+          if not imgs:
+              print("이미지 없음 — 전송 중단 (사이트 구조 변경 또는 메뉴 미업로드)")
+              sys.exit(1)
 
           # 5. Slack 블록 구성
           blocks = [
