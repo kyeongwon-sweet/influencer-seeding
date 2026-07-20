@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
         const rawUrl = String(p.url);
         const key = postIdentityKey(rawUrl) ?? rawUrl.trim();
         keyById.set(p.id as string, key);
-        if (!urlByKey.has(key)) urlByKey.set(key, key);
+        if (!urlByKey.has(key)) urlByKey.set(key, rawUrl);
         if (p.ended_at) {
           const endedAt = String(p.ended_at).slice(0, 10);
           const prev = endedByKey.get(key);
