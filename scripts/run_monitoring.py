@@ -167,15 +167,31 @@ def _prev_stats(db, post_ids):
     return last
 
 
-def _same_day_measured_ids(db, post_ids, measured_at=TODAY):
-    """Return post ids that already have a measurement row for measured_at.
+def _tracks_play_count(url):
+    u = (url or "").lower()
+    return any(
+        host in u
+        for host in (
+            "instagram.com",
+            "youtube.com",
+            "youtu.be",
+            "tiktok.com",
+            "twitter.com",
+            "x.com",
+        )
+    )
 
-    Retry windows should not pay Apify again for posts that were already
-    collected earlier for the same date. A row counts as measured when at least
-    one metric exists; rows with all metrics null are treated as still missing.
+
+def _same_day_measured_ids(db, posts, measured_at=TODAY):
+    """Return post ids that already have the needed measurement for measured_at.
+
+    View-capable posts must have play_count. Auxiliary-only rows with likes or
+    comments are intentionally treated as missing so retries recollect the view
+    row instead of skipping the post.
     """
     done = set()
-    ids = [i for i in post_ids if i]
+    ids = [p.get("id") for p in posts if p.get("id")]
+    play_required = {p.get("id") for p in posts if p.get("id") and _tracks_play_count(p.get("url"))}
     for c in range(0, len(ids), 100):
         chunk = ids[c:c + 100]
         frm = 0
@@ -190,8 +206,12 @@ def _same_day_measured_ids(db, post_ids, measured_at=TODAY):
             )
             rows = res.data or []
             for row in rows:
-                if any(row.get(k) is not None for k in ("play_count", "likes_count", "comments_count", "reach_count")):
-                    done.add(row["post_id"])
+                post_id = row["post_id"]
+                if post_id in play_required:
+                    if row.get("play_count") is not None:
+                        done.add(post_id)
+                elif any(row.get(k) is not None for k in ("play_count", "likes_count", "comments_count", "reach_count")):
+                    done.add(post_id)
             if len(rows) < 1000:
                 break
             frm += 1000
@@ -613,7 +633,7 @@ def run():
         if recollect_all:
             print(f"[LOG] 🔁 RECOLLECT_ALL=1 — {TODAY} 기존 측정행이 있어도 전체 재수집")
         else:
-            measured_ids = _same_day_measured_ids(db, [p["id"] for p in posts])
+            measured_ids = _same_day_measured_ids(db, posts)
             if measured_ids:
                 before = len(posts)
                 posts = [p for p in posts if p["id"] not in measured_ids]

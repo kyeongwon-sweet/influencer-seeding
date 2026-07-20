@@ -64,44 +64,52 @@ jobs:
           db = get_client()
           today = os.environ["TODAY"]
           posts = db.table("sponsored_posts").select("id, url, posted_at, ended_at").execute()
+
+          def tracks_play_count(url):
+              u = (url or "").lower()
+              return any(
+                  host in u
+                  for host in (
+                      "instagram.com",
+                      "youtube.com",
+                      "youtu.be",
+                      "tiktok.com",
+                      "twitter.com",
+                      "x.com",
+                  )
+              )
+
           eligible = [
               p for p in (posts.data or [])
-              if not p.get("ended_at") and (not p.get("posted_at") or str(p.get("posted_at"))[:10] <= today)
+              if not p.get("ended_at")
+              and (not p.get("posted_at") or str(p.get("posted_at"))[:10] <= today)
+              and tracks_play_count(p.get("url"))
           ]
           eligible_ids = [p["id"] for p in eligible]
 
-          def measured(day):
-              total = 0
-              for i in range(0, len(eligible_ids), 100):
-                  chunk = eligible_ids[i:i + 100]
-                  if not chunk:
-                      continue
-                  r = (
-                      db.table("post_daily_stats")
-                      .select("id", count="exact")
-                      .eq("measured_at", day)
-                      .filter("play_count", "not.is", "null")
-                      .in_("post_id", chunk)
-                      .execute()
-                  )
-                  total += r.count or 0
-              return total
+          measured_ids = set()
+          for i in range(0, len(eligible_ids), 100):
+              chunk = eligible_ids[i:i + 100]
+              if not chunk:
+                  continue
+              r = (
+                  db.table("post_daily_stats")
+                  .select("post_id")
+                  .eq("measured_at", today)
+                  .filter("play_count", "not.is", "null")
+                  .in_("post_id", chunk)
+                  .execute()
+              )
+              measured_ids.update(row["post_id"] for row in (r.data or []) if row.get("post_id"))
 
-          today_n = measured(today) if eligible_ids else 0
-          base = 0
-          for k in (1, 2, 3):
-              import datetime
-              d = (datetime.date.fromisoformat(today) - datetime.timedelta(days=k)).isoformat()
-              base = max(base, measured(d))
-          complete = True if not eligible_ids else ((today_n >= 0.6 * base) if base else (today_n > 0))
-          yt_ids = [p["id"] for p in eligible if "youtube.com" in (p["url"] or "") or "youtu.be" in (p["url"] or "")]
-          yt_ok = True
-          if yt_ids:
-              yr = db.table("post_daily_stats").select("post_id").eq("measured_at", today).in_("post_id", yt_ids).limit(1).execute()
-              yt_ok = bool(yr.data)
+          missing_ids = [post_id for post_id in eligible_ids if post_id not in measured_ids]
           import sys
-          print(f"today={today_n} base={base} complete={complete} yt_ok={yt_ok}", file=sys.stderr)
-          print("ok" if (complete and yt_ok) else "missing")
+          print(
+              f"eligible_views={len(eligible_ids)} measured_views={len(measured_ids)} "
+              f"missing_views={len(missing_ids)} sample_missing={missing_ids[:10]}",
+              file=sys.stderr,
+          )
+          print("ok" if not missing_ids else "missing")
           EOF
           )
           echo "오늘(KST ${TODAY}) → ${STATUS}"

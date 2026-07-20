@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 2026-07-20 monitoring recollect gate changed to per-post missing play_count (Codex)
+- User correction accepted: the retry condition must not mean "the day has enough overall rows"; it must find tracked posts whose view row is missing for the target date.
+- Changed `scripts/run_monitoring.py` cost guard so view-capable posts (`instagram.com`, `youtube.com`, `youtu.be`, `tiktok.com`, `twitter.com`, `x.com`) count as already measured only when `post_daily_stats.play_count` is non-null for `MONITORING_DATE`. Rows that only have likes/comments are now treated as missing and remain in the recollect list. Non-view/reach-only rows still use the old "any metric exists" guard to avoid unnecessary recollection.
+- Changed `.github/workflows/cron-daily-collect.yml` and `.github/workflows/monitoring-retry.yml` check steps to build the eligible tracked view-post list and compare it against today's `play_count` post IDs. The workflow now prints `eligible_views`, `measured_views`, `missing_views`, and sample missing post IDs, and returns `missing` when any tracked view post lacks a play_count row.
+- Verification in isolated worktree `C:\tmp\influencer-recollect-missing`: `scripts/run_monitoring.py` compiled, both embedded workflow Python blocks compiled after YAML dedent, both workflow YAML files parsed with PyYAML, and a fake DB test proved an IG row with likes/comments but no `play_count` is not considered done while an IG row with `play_count` is considered done.
+- Isolation note: this was done in a separate worktree based on `origin/main` to avoid touching concurrent-session changes in the main local repo.
+
 ## 2026-07-16 syncAll 401 해소 후 42P10 신규생성 오류 수정 (Codex)
 - Apps Script script property `CRON_SECRET` was aligned with Vercel without printing the secret. `syncAll` then passed auth (no 401) but failed at 신규생성 with DB error `42P10`: `there is no unique or exclusion constraint matching the ON CONFLICT specification`.
 - Root cause: the normalized-key migration intentionally created a partial unique index (`sponsored_posts_normalized_key_uidx ... where normalized_key is not null`), but the server write path used Supabase `upsert(..., onConflict: "normalized_key")`. Postgres cannot use that partial index for a plain `ON CONFLICT(normalized_key)`.
