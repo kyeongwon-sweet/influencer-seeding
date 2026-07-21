@@ -9,7 +9,13 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
-Last updated: 2026-07-21 (Claude: 시트 증분열 자동갱신 이슈 조사 + 1503 복사의심 오탐 종결 + 유튜브 쇼츠 오진 정정)
+Last updated: 2026-07-21 (Claude: TikTok 칩 배포요청 + 증분열 이슈 + 1503 오탐 + 쇼츠 오진)
+
+## 2026-07-21 [배포 요청] 상단 액션바 TikTok 바로가기 칩 (Claude)
+
+- **변경**: `web/components/GlobalActions.tsx` — 상단 액션바 맨 앞(YouTube Shorts 왼쪽)에 TikTok 칩 추가(클릭 시 tiktok.com 새 탭). YouTube/IG 칩과 동일 `LinkChip` 패턴. 커밋 `2dd5787` (refactor/monitoring-decompose), tsc 통과 + 아이콘 미리보기 확인.
+- **배포 상태**: refactor 브랜치에 있으므로 **다음 refactor→prod 배포 때 자동 포함**됨. Codex 배포 시 포함·노출만 확인 요청.
+- **Claude가 prod 직접 배포 안 한 이유**: refactor가 main 대비 웹 50파일(+545/−1610) 앞선 진행 중 리팩터라 "내 커밋만" 분리 배포 불가(배포는 브랜치 통째). refactor째 배포=WIP 유출(규칙 금지), main+버튼 배포=현 prod가 refactor 기반이면 리팩터 롤백 위험 + prod에 git 메타 없어 기준선 확인 불가. → prod 배포는 Codex 소관. 사용자 확인용 프리뷰 배포만 별도 수행.
 
 ## 2026-07-21 시트 '증분값' 열 자동갱신 안 됨 — 원인 미확정, Codex 라이브 스크립트 확인 요청 (Claude)
 
