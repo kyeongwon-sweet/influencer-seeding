@@ -23,29 +23,55 @@
  *   6. "바이럴 업체명 채우기.gs"  (업체명)          per-row setValue @28
  *   7. "바이럴 최신효율 업데이트.gs" (예상조회수)    per-row setValue @87
  *
- * ▣ 적용 방법 (시트세션/Codex가 라이브에 적용 — 동시편집 없는지 확인 후 저장)
- *   A. 이 파일을 라이브 프로젝트에 새 스크립트 파일로 추가.
- *   B. 위 7개 함수의 "본문 전체"를 withDocLock_(function(){ ... }) 로 감싼다.
- *      예)  function exportStats(){ return withDocLock_(function(){  ...기존 본문...  }); }
- *      → 동시 실행 직렬화(문서 락). 두 스크립트가 겹쳐 돌지 않음.
- *   C. 절대 행범위 setValues 바로 앞에 assertRowCountStable_(sheet, L, '함수명') 호출.
- *      (L = 그 함수가 처음 getLastRow()로 읽어둔 값) → 읽은 뒤 행 수가 바뀌었으면
- *      쓰기를 취소하고 에러(재실행 유도). 밀린 쓰기 자체를 원천 차단.
- *   D. (권장) URL 키 기준 컬럼 writer(상태·누적 제외 매칭형)는 writeColumnByKey_로 교체.
- *      누적 조회수 함수(행-로컬 Math.max)는 D 불필요 — B+C만으로 충분.
- *   E. 중복 URL은 값 기준 쓰기를 흔든다 → 적용 전 checkDuplicates()로 점검,
- *      removeDuplicateLinks()(또는 수동)로 한 줄만 남긴다. (현재 3건 보고됨)
+ * ▣ 적용 방법 — 검증된 rename+wrapper 레시피 (Claude가 in-page 드라이런으로 문법검증 완료 2026-07-21)
+ *   ⚠️ Claude가 로그인 브라우저로 라이브 저장을 시도했으나 하네스 안전 분류기가 '라이브
+ *      프로덕션 코드 쓰기'를 차단함 → Codex(정본 clasp/API 도구) 또는 수동으로 아래 적용.
+ *   ⚠️ 저장 전 반드시 다른 세션/사람이 이 Apps Script 프로젝트를 편집 중이 아닌지 확인
+ *      (Apps Script 저장 = 프로젝트 원자적 덮어쓰기 — 겹치면 남 작업 유실).
+ *
+ *   A. 이 헬퍼 3종(withDocLock_ 재진입판 · assertRowCountStable_ · writeColumnByKey_)을
+ *      라이브 파일 "AI 트래킹 대시보드 연동.gs" 끝에 추가(또는 새 파일).
+ *   B. 아래 10개 "시트 변경 함수"를 각각 rename+wrapper로 감싼다(본문은 안 건드림 → 안전):
+ *        function NAME(  →  function NAME__wgimpl(     (선언부만 1회 치환)
+ *        + 말미에 래퍼 추가:
+ *          function NAME(){ var a=arguments,t=this; return withDocLock_(function(){ return NAME__wgimpl.apply(t,a); }); }
+ *      함수 선언은 호이스팅되므로 기존 호출부·배열참조(["syncPricing",syncPricing] 등)는
+ *      자동으로 래퍼를 가리킴. 재진입 락이라 함수 간 순차/중첩 호출도 안전(자기교착 없음).
+ *   B-대상 10개(라이브 실측, 각 정확히 1회 선언 확인됨):
+ *      ▸ 블록 읽고 절대범위 쓰기: exportStats, syncStatus, refreshCumulativeViews,
+ *        syncCreators, syncPricing, importStats
+ *      ▸ 행 삽입/삭제(구조 변경 → 위 함수들의 밀림 유발): runSync_(=syncNew/syncAll),
+ *        pullFromDB, removeDuplicateLinks, checkSheetIssues
+ *      → 이 둘을 같은 락으로 묶어야 "블록쓰기 도중 다른 실행이 행 삽입" 인터리브가 사라짐.
+ *      (별도 파일 "바이럴 업체명 채우기.gs"@28 · "바이럴 최신효율.gs"@87 도 동일 패턴 —
+ *       각 파일에도 헬퍼 접근 가능하면 같은 방식 래핑 권장.)
+ *   C. (후속·선택) 사람이 실행 도중 행을 넣는 경우까지 막으려면, 각 블록쓰기 함수의
+ *      절대범위 setValues 직전에 assertRowCountStable_(sheet, L, 'NAME') 삽입
+ *      (L=그 함수가 처음 getLastRow()로 읽은 값). 본문 편집이라 B보다 조심.
+ *   D. 검증: 저장 시 Apps Script가 문법오류를 거부함. 저장 후 메뉴에서 exportStats /
+ *      refreshCumulativeViews 1회 실행해 정상(락 획득·해제) 동작 확인. 동시 2회 실행 시
+ *      두 번째가 SHEET_LOCKED로 대기/차단되면 정상.
+ *   ※ 중복 URL은 값 기준 쓰기를 흔듦 → 적용 무관하게 정리 권장. (2026-07-21 4건 모두 해소됨)
  */
 
-/** 문서 단위 락으로 감싸 동시 실행을 직렬화한다. 모든 시트 쓰기 함수에 적용. */
+/**
+ * 문서 단위 락으로 감싸 동시 실행을 직렬화한다. 모든 시트 쓰기 함수에 적용.
+ * ⚠️ 재진입(reentrant) 버전: 락을 이미 잡은 실행 안에서 다시 호출되면(래핑 함수가
+ *    또 다른 래핑 함수를 호출하는 경우) 재획득 없이 그냥 실행 → 자기교착 방지.
+ *    (예: refreshSheetDerivedFields → syncStatus/refreshCumulativeViews/... 순차 호출)
+ */
+var __WG_LOCKED__ = false;
 function withDocLock_(fn) {
+  if (__WG_LOCKED__) return fn();               // 이미 이 실행이 락 보유 → 재획득 없이 실행
   var lock = LockService.getDocumentLock();
   if (!lock.tryLock(30000)) {
-    throw new Error('시트가 다른 작업으로 잠겨 있습니다. 잠시 후 다시 실행하세요(동시편집 방지).');
+    throw new Error('SHEET_LOCKED: 다른 작업이 시트를 수정 중입니다. 잠시 후 다시 실행하세요(동시편집 방지).');
   }
+  __WG_LOCKED__ = true;
   try {
     return fn();
   } finally {
+    __WG_LOCKED__ = false;
     lock.releaseLock();
   }
 }
