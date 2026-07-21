@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## 2026-07-21 시트 동시편집 "행 밀림"(누적 조회수) 근본원인 확정 + 재발방지 가드 (Claude)
+- 신고 증상: 특정 게시물의 누적 조회수가 **윗줄 게시물 행**에 반영. 라이브 Apps Script("마T2P_대시보드(실무용)", scriptId `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn`)를 Chrome으로 직접 읽어 **원인 확정(추측 아님)**.
+- 원인: 누적 조회수 writer(파일 "AI 트래킹 대시보드 연동.gs" 1341행 함수, `setValues` @1375) 포함 writer들이 공통으로 `getLastRow()`→`getValues()`(블록)→배열 계산(행 인덱스 고정)→**절대 행범위 `setValues`** 를 **`LockService` 없이** 수행. 읽기~쓰기 사이 다른 세션/트리거(onEdit·dailyAuto)/사람이 행 삽입·삭제·정렬하면 계산 배열이 **밀린 행에 기록(off-by-one)**.
+- 취약 writer 전수(모두 Lock 없음): `exportStats`(@864)·`syncStatus`(@1334)·**누적함수(@1375)**·`syncCreators`(@1408,1409)·`syncPricing`(@1564~1635)·"바이럴 업체명 채우기.gs"(@28)·"바이럴 최신효율 업데이트.gs"(@87).
+- 재발방지 코드: repo **`_WriteGuard.gs`** (main `cd358d2`) — `withDocLock_`(문서락 직렬화)+`assertRowCountStable_`(쓰기 직전 행수 재확인, 변경 시 쓰기 취소)+`writeColumnByKey_`(URL키 기준 최신 위치 재확인 후 기록). 7개 writer 적용 지시서는 파일 상단 주석.
+- ⚠️ 핸드오프(시트세션/Codex — 라이브 저장 권한자): 라이브 프로젝트에 `_WriteGuard.gs` 추가 → 7개 함수 본문을 `withDocLock_(function(){...})`로 감싸고 절대범위 `setValues` 앞에 `assertRowCountStable_` 삽입. **저장 전 동시편집 없는지 확인**(Apps Script 저장=프로젝트 원자적 덮어쓰기 — 겹치면 남 작업 유실). 중복 URL 3건(`reels/DaxX2EvyTXB`·`DavtendTZ04`·`DazZgQSyi3B`)은 `checkDuplicates()` 후 한 줄만 남김.
+- 제 권한 밖: 라이브 Apps Script 저장은 안 함(권한 없음 + 동시편집 사고 방지 원칙).
+
 ## 2026-07-20 인지광고 리포트 열 오독 수정 + 프로덕션 자동배포 확인 (Claude)
 - 버그: 여믄봇 증분 리포트 '인지 광고' 값이 전부 틀렸음. `web/app/api/awareness-ads/route.ts`가 시트 [인지_쫀득바]의 고정 열 `AK/AN/AQ/AT`(메타/틱톡/유튜브 조회수)를 읽었는데, 시트가 채널별 `(광고비/조회수/조회당비용)` 3칸 세트로 재편되며 그 열들이 전환·바이럴 채널의 광고비(₩) 칸으로 밀림. 결과: 메타/유튜브 "조회수"가 실은 광고비(₩) → 총 증분 매일 ~260만 부풀림, 틱톡(AN=빈칸) 항상 누락. 발송분+시트 실측+route 재현으로 교차검증.
 - 수정 (main `1592094`, 프로덕션 자동배포됨): 현행 정본 열(사용자 확인) 메타 = `Meta_인지_릴스` 조회수 AX(광고비 AW) + `Meta_인지_배너` 조회수 BG(광고비 BF) 합산 / 틱톡 = BA(AZ) / 유튜브 = BD(BC). 읽기 범위 `A1:AV500`→`A1:BJ500`(BG 포함). 재발방지: 조회수 칸 raw에 `₩` 감지 시 그 값 제외 + `warn` 반환. notify_increments.py는 변경 불필요.
