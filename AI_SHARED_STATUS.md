@@ -9,9 +9,70 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
-Last updated: 2026-07-16 (단가/업체명 syncPricing + 캡션 정책 변경; ⚠️동시편집 주의 아래 섹션)
+Last updated: 2026-07-21 (Claude: 시트 증분열 자동갱신 이슈 조사 + 1503 복사의심 오탐 종결 + 유튜브 쇼츠 오진 정정)
+
+## 2026-07-21 시트 '증분값' 열 자동갱신 안 됨 — 원인 미확정, Codex 라이브 스크립트 확인 요청 (Claude)
+
+- **증상**: 연동 시트(`10WpAQU9…`, gid `1937186871`) 최근 글 증분 빈칸. 사용자가 📥 대시보드→시트 조회수 채우기(exportStats) 실행 시 완료 팝업에 **`증분 수식 0`** (= exportStats가 증분 열을 아예 안 씀). 옛 행엔 증분 값/수식 남아있음(과거엔 동작).
+- **확인된 사실(검증됨)**:
+  - exportStats 증분 수식 로직(현 repo `Combined_Sheet_AppsScript.gs`)은 대시보드 `safeIncrement`(web/app/monitoring/lib.ts) 규칙과 **일치**: `=IF(N(최신)<=0,"",MAX(0,최신−MAX({이전 유효>0값들})))`, 첫 유효측정→전체값(게시 7일 초과 백로그→빈칸), gap·dip·carry·오늘·게시전·종료후 제외. → **수식 로직 자체는 규칙에 맞음.**
+  - `getIncrementCol_` 헤더 인식 히스토리: `8342b07`(7/15 라이브 동기화본)=헤더 `"증분값"`만 인식 / `a3010b8`(이후)=`"증분"`+`"증분값"` 둘 다.
+  - 실제 시트 헤더 I1 = **"증분"** 이었음(사용자 확언: 항상 "증분", "증분값"인 적 없음).
+  - export CSV 직접 스캔으로 orange(`Da4TIPUv_XD`) 등 최근 바이럴영상 글의 날짜 셀엔 실측값 존재(7/17=24429…7/20=101288) → 데이터는 있는데 증분 수식이 그 열을 반영 못 함.
+- **미확정 가설(라이브 Apps Script 소스 직접 못 읽음 — 편집기 계정 재인증 루프로 막힘)**: 라이브 스크립트가 `8342b07`("증분값"만) 상태로 되돌려져(2026-07-15 .gs auto-revert 사고 기록 참조) "증분" 헤더를 못 찾아 exportStats가 증분 열을 건너뛰는 것일 수 있음. **단, 헤더가 늘 "증분"이었는데 예전엔 동작했다는 사용자 지적과 모순** → 확정 불가.
+- **진행/임시조치**: 사용자가 시트 헤더 I1을 **"증분" → "증분값"** 으로 변경(임시 테스트). 채우기 재실행 후 `증분 수식 N>0` 여부로 이름-불일치 원인 확정 예정(결과 미확인).
+- **Codex 요청**: 라이브 Apps Script `getIncrementCol_` 실제 버전 확인 → "증분" 인식하는 `a3010b8`가 라이브에 반영됐는지. 미반영이면 배포(그럼 헤더 "증분" 원복 가능). exportStats 증분 수식은 고정 열 참조라 매 실행 재작성으로만 최신 유지 → 미실행 기간엔 stale/blank(9:30 dailyAuto 방금 사용자가 켬).
+
+## 2026-07-21 '복사 의심 1503' Slack 알림 = 오탐 (종결, Claude)
+
+- 인증 브라우저로 시트 전체(필터 숨김행 포함 1,162행) export CSV 직접 스캔: 값 `1503`은 **2행에만** — 제주여행(FB, `facebook.com/jejuing`)·썰박스(YT, `o8PpgHmLyyQ`). (에르메키는 URL `clip/15032187` substring 오매치)
+- 둘 다 **DB 실측과 일치하는 진짜 정체값**: 제주여행 6/21부터 1503 정체(FB reach, manual), 썰박스 6/9부터 1503 정체(1393→…→1503). 서로 무관한 두 저조회수 글이 우연히 같은 1503 → copy-guard(stats-import 3-b) **오탐**. **지울 것 없음, DB 안전**(가드가 재유입만 차단, 기존 DB값=실측).
+- (선택) copy-guard가 "우연히 같은 정체값(비-라운드지만 실측 일치)"을 복사로 오탐하지 않도록 튜닝 여지 있음.
+
+## 2026-07-21 유튜브 쇼츠 수집 오진 정정 (Claude)
+
+- `run_monitoring.py`의 `maxResultsShorts:0`가 쇼츠를 막는다는 초기 진단은 **오진**(Apify 프로덕션 설정 그대로 실측 시 썰뜨기·GVQfNG0WpAk 쇼츠 정상 반환). 썰뜨기 7/15~19 빈칸의 실제 원인 = **간헐적 스크래퍼 빈응답**, PR#4 재시도(B)로 7/20 자동 복구됨(manual:false). PR#6(maxResultsShorts 변경)은 no-op이라 **닫음**. 활성 쇼츠 62개 중 4개(SNnhs53CcU0 등 위성)는 실제 비공개 전환(oEmbed 403+VIDEO_UNAVAILABLE, notes 자동 태깅됨) — 사람이 종료처리/재공개 판단 필요.
+
+## 2026-07-20 배너 reach 값이 play_count에도 중복 기입되는 계통적 오류 (Claude)
+
+- **증상**: jolly__humor(`DauzdN1mSZ9`) 등에서 특정일 `play_count == reach_count == 동일값`(예 49,328). 배너는 도달수(reach)만 있어야 하는데 조회수(play_count) 칸에도 같은 값이 들어감.
+- **전수 확인**: `post_daily_stats` 20,061행 중 `play_count==reach_count`(둘 다 값)인 행 **464건, 전부 `channel_type='바이럴 (배너)'`**. 배너 계정 전반의 계통적 오류(smile_papa_s2 34·Ufo__NIGHT 33·text_pyeong 32·wikitrip 28·humor_yonggari 28 … 20+계정).
+- **원인(추정)**: 배너 수집/시트↔DB 동기화 경로가 배너의 단일 수치(도달수)를 `reach_count`와 `play_count` **양쪽에** 씀. 배너는 정책(`banner-reach-as-views`)상 play_count는 비워야 함(리포트·대시보드는 배너=reach 전일대비). 정확한 write 경로는 Codex 확인 필요.
+- **부작용**: 교차복사 스캔(`scan_cross_post_copies.py`)이 배너 reach 일치를 play_count 복사로 **오탐**(jolly__humor 49,328 오탐이 이 때문), view 합산 시 배너 **이중계상 위험**.
+- **재발방지(요청)**: 쓰기 경로(stats-import/bulk/collection)에 **"channel_type이 배너면 play_count 저장 금지(reach_count만)" 가드** 추가 (Codex). + 기존 **464행 정리**(배너 play_count→NULL, reach 보존) — 대량 변경이라 백업+조율 후.
+- jolly__humor 잔재는 사용자가 시트에서 삭제(2026-07-20). DB 잔존행(07-13 play=reach=49328 등)은 위 464행 정리에 포함.
+
+## 2026-07-20 Apps Script live server recheck after Claude conflict report (Codex)
+
+- Claude reported possible stale-editor conflict: their browser showed live project `1XogwTHJb...` with `applyNewColumnLayout` and `[1회용] 열 순서 재배치` still present, length `69765`, while Codex's earlier record had `62208`/later menu-consolidated state.
+- Rechecked current live Apps Script editor in a fresh tab for project `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn`: copied editor content length `71801`, `function applyNewColumnLayout` absent, `[1회용] 열 순서 재배치` absent.
+- Rechecked actual linked Google Sheet menu in a fresh tab (`10WpAQU9...`, gid `1937186871`): `🚀 광고 모니터링` menu shows consolidated items `♻️ 전체 다시 추가/수정 반영`, `🔄 트래킹 상태, 누적 조회수, 제작자, 업체명 업데이트하기`, `🔎 빈칸, 중복 URL 검사`; no `열 순서`/`재배치` menu.
+- Rechecked Apps Script function dropdown text: `syncAllWithConfirm`, `refreshSheetDerivedFields`, `checkSheetIssues` present; `applyNewColumnLayout` absent.
+- No `clasp` executable/auth was available in this local environment, and Google Drive search did not expose the Apps Script project as an editable file. Best available server-facing evidence is live editor reload + actual Sheet `onOpen` menu generation + function dropdown.
+- Claude-reported sheet data recovery note, not independently cell-reverified by Codex in this turn: 596 manually entered daily-view rows restored from backup spreadsheet `1jcxZI78l00aU76YyV0fSMGzHwIBS3amxhb-PxhRz62I` by URL/date matching into blank cells only; Claude reported 14,607 date cells identical, 0 missing/0 contamination, cumulative views 821 rows consistent, meta columns 0 loss/0 contamination. Backup copy intentionally retained for observation.
+- Collaboration rule reaffirmed: live Apps Script saves are whole-project atomic. Before saving, refresh/read current live content and coordinate with the other session; after saving, verify via the actual Sheet menu/runtime surface, not only a possibly stale editor tab.
+
+## 2026-07-20 Apps Script live menu consolidation (Codex)
+
+- User requested combining routine Apps Script menu items and keeping "전체 다시 추가" because it is frequently used for typo/link/meta corrections.
+- Verified the current live Apps Script editor first. The live file had moved ahead again (`lengthBefore=70587`) and contained `[1회용] 열 순서 재배치` again, so the change was based on the current live code, not the stale repo file.
+- Live project id edited: `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn`, file `AI 트래킹 대시보드 연동.gs`.
+- Menu consolidation applied and saved:
+  - `🧮 누적 조회수 갱신`, `👥 기획자/제작자 갱신`, `💰 단가/업체명 채우기`, `🚦 트래킹 상태 갱신` → `🔄 트래킹 상태, 누적 조회수, 제작자, 업체명 업데이트하기` (`refreshSheetDerivedFields`).
+  - `🔎 빈칸 검사 (A~H)`, `🔁 중복 URL 검사` → `🔎 빈칸, 중복 URL 검사` (`checkSheetIssues`) with one combined alert.
+  - `♻️ 전체 다시 추가` → `♻️ 전체 다시 추가/수정 반영` (`syncAllWithConfirm`) with an OK/Cancel confirmation before `runSync_(false)`.
+- The one-time reorder menu/function was removed again from this latest live version: no `[1회용] 열 순서 재배치` menu and no `applyNewColumnLayout()` function.
+- Verification: saved live code parses with Node `vm.Script`; normalized saved code exactly matches the intended edit; live Google Sheet menu shows the new consolidated items; clicking `전체 다시 추가/수정 반영` opens a confirmation dialog before any DB transmission, and Cancel was clicked during verification.
 
 ## 2026-07-16 Apps Script Live State (verified in editor via Chrome)
+
+## 2026-07-20 Apps Script one-time reorder cleanup (Codex)
+
+- User requested removing `[1회용] 열 순서 재배치` from the Apps Script menu.
+- Verified live Apps Script project id `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn` in editor.
+- Removed the menu item `.addItem('🔀 [1회용] 열 순서 재배치', 'applyNewColumnLayout')` and removed the now-dangerous one-time `applyNewColumnLayout()` function from the live file `AI 트래킹 대시보드 연동.gs`.
+- Reload verification after save: live editor code length `62208`; `containsMenu=false`; `containsFunction=false`; no remaining matches for `열 순서`, `재배치`, or `applyNewColumnLayout`.
+- Repo `Combined_Sheet_AppsScript.gs` already did not contain that menu/function in this session. Live editor remains the source of truth for this script.
 
 - The linked sheet has THREE container-bound projects all named `마T2P_대시보드(실무용)_25.09~` — content byte-identical across all three (hash-verified). Only ONE `dailyAuto` time trigger exists (no duplicate-run risk). All three last modified 2026-07-15.
 - **CORRECTION (07-16 later): the actually-LIVE bound project is a FOURTH, SHARED one (not owned by hwangkw): project id `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn`.** All of today's real executions (dailyAuto/importStats/syncNew/exportStats/onOpen) run there; it also has a 4th file `바이럴 최신효율 업데이트.gs` (118L) and a deployed web app (`doGet`, 버전 1, called frequently). The 3 owned projects have no current executions — they are stale duplicates; edit the SHARED project, not them.
