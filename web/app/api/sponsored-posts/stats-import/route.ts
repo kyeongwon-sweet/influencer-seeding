@@ -294,6 +294,9 @@ export async function POST(req: NextRequest) {
     const matchDates = new Map<string, Set<string>>(); // `${pid}|${other}` → set(date)
     for (const r of incoming) {
       const d = r.measured_at.slice(0, 10);
+      // 🛡️ 라운드 값(1000단위)은 서로 다른 게시물이 우연히 같은 값을 갖기 쉬워(예: 36,000·135,000)
+      //   복사 판정에서 제외한다(scan_cross_post_copies.py is_round과 동일 기준). 비-라운드 다일 일치만 진짜 복사로 차단.
+      if (typeof r.play_count === "number" && r.play_count % 1000 === 0) continue;
       const owners = dvOwners.get(`${d}|${r.play_count}`);
       if (!owners) continue;
       // 🛡️ 오탐 방지: 그 게시물이 '이미 그 날짜에 그 값'을 갖고 있으면(자기 기존값 재입력) 복사 아님 → 스킵 안 함.
