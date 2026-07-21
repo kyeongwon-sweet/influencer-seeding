@@ -5,8 +5,10 @@
 - 원인: 누적 조회수 writer(파일 "AI 트래킹 대시보드 연동.gs" 1341행 함수, `setValues` @1375) 포함 writer들이 공통으로 `getLastRow()`→`getValues()`(블록)→배열 계산(행 인덱스 고정)→**절대 행범위 `setValues`** 를 **`LockService` 없이** 수행. 읽기~쓰기 사이 다른 세션/트리거(onEdit·dailyAuto)/사람이 행 삽입·삭제·정렬하면 계산 배열이 **밀린 행에 기록(off-by-one)**.
 - 취약 writer 전수(모두 Lock 없음): `exportStats`(@864)·`syncStatus`(@1334)·**누적함수(@1375)**·`syncCreators`(@1408,1409)·`syncPricing`(@1564~1635)·"바이럴 업체명 채우기.gs"(@28)·"바이럴 최신효율 업데이트.gs"(@87).
 - 재발방지 코드: repo **`_WriteGuard.gs`** (main `cd358d2`) — `withDocLock_`(문서락 직렬화)+`assertRowCountStable_`(쓰기 직전 행수 재확인, 변경 시 쓰기 취소)+`writeColumnByKey_`(URL키 기준 최신 위치 재확인 후 기록). 7개 writer 적용 지시서는 파일 상단 주석.
-- ⚠️ 핸드오프(시트세션/Codex — 라이브 저장 권한자): 라이브 프로젝트에 `_WriteGuard.gs` 추가 → 7개 함수 본문을 `withDocLock_(function(){...})`로 감싸고 절대범위 `setValues` 앞에 `assertRowCountStable_` 삽입. **저장 전 동시편집 없는지 확인**(Apps Script 저장=프로젝트 원자적 덮어쓰기 — 겹치면 남 작업 유실). 중복 URL 3건(`reels/DaxX2EvyTXB`·`DavtendTZ04`·`DazZgQSyi3B`)은 `checkDuplicates()` 후 한 줄만 남김.
-- 제 권한 밖: 라이브 Apps Script 저장은 안 함(권한 없음 + 동시편집 사고 방지 원칙).
+- ⚠️ **Codex 요청 ①(최우선)**: 라이브 프로젝트에 `_WriteGuard.gs` 추가 → 위 7개 함수 본문을 `withDocLock_(function(){...})`로 감싸고 절대범위 `setValues` 앞에 `assertRowCountStable_` 삽입해 **라이브 저장**. **저장 전 동시편집 세션 없는지 확인**(Apps Script 저장=프로젝트 원자적 덮어쓰기 — 겹치면 남 작업 유실). (Claude는 라이브 저장 권한 없음 + 동시편집 사고 방지 원칙으로 코드만 준비.)
+- ⚠️ **Codex 요청 ②**: importStats 라운드값 가드 커밋 `1d315e8`(stats-import/route.ts: `play_count%1000==0` 라운드값을 교차복사 판정에서 제외)는 origin/main에 포함됨. "main→자동배포"라 하나 Claude는 -mu 라이브 반영을 미확정(루트 404라 커밋 식별 불가). `vercel ls --prod`로 최신 main이 -mu에 배포됐는지 확인, 누락이면 `vercel --prod`.
+- ✅ **시트 중복 URL 정리(Claude, Chrome 직접 삭제)**: 3건 완료 — `DaxX2EvyTXB`(another__summer, 531 유지)·`DavtendTZ04`(euntto_z, **뷰티**행만 남김, 패션 삭제)·`DazZgQSyi3B`(i.i_mg, **뷰티**행만 남김, 패션 삭제). 소재 충돌(패션 vs 뷰티) 2건은 사용자가 뷰티 선택. Drive CSV 검증: 데이터행 1,161→**1,158**(정확히 3행), 각 shortcode 1건, 셀 오염 0. ⚠️ 삭제 시 Apps Script 컨텍스트 메뉴 좌표클릭이 ~16px 빗나가 행 삽입 오조작 1회(즉시 Ctrl+Z 복구, 손상 0) → 이후 이름상자 선택+Shift+F10 키보드 내비+Enter 전 하이라이트 확인 방식으로 안전 완료.
+- ⚠️ **남은 중복 1건(Codex 손대지 말 것, 사용자 확인 대기)**: 전체 shortcode 스캔 결과 `DauzdN1mSZ9`(jolly__humor 배너 추정)가 2회 등장. 배너 이중계상 소지 — 사용자 확인 후 Claude가 정리 예정.
 
 ## 2026-07-20 인지광고 리포트 열 오독 수정 + 프로덕션 자동배포 확인 (Claude)
 - 버그: 여믄봇 증분 리포트 '인지 광고' 값이 전부 틀렸음. `web/app/api/awareness-ads/route.ts`가 시트 [인지_쫀득바]의 고정 열 `AK/AN/AQ/AT`(메타/틱톡/유튜브 조회수)를 읽었는데, 시트가 채널별 `(광고비/조회수/조회당비용)` 3칸 세트로 재편되며 그 열들이 전환·바이럴 채널의 광고비(₩) 칸으로 밀림. 결과: 메타/유튜브 "조회수"가 실은 광고비(₩) → 총 증분 매일 ~260만 부풀림, 틱톡(AN=빈칸) 항상 누락. 발송분+시트 실측+route 재현으로 교차검증.
