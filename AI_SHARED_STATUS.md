@@ -9,7 +9,14 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
-Last updated: 2026-07-21 (Claude: 위성/온드 업체명 오입력 정리+재발방지 갭 + TikTok 칩 + 증분열 + 1503 + 쇼츠)
+Last updated: 2026-07-21 (Claude: syncStatus '오류' 상태 추가 + 위성/온드 업체명 정리 + TikTok 칩 + 증분열 + 1503 + 쇼츠)
+
+## 2026-07-21 상태열에 '오류' 추가 — URL이 게시물 링크 아님(수집불가) (Claude)
+
+- **요청**: URL이 잘못돼(게시물 링크 아님) 아무것도 수집 못하는 글은 '트래킹 중'이 아니라 **'오류'** 로 표시.
+- **수정**: `syncStatus`(라이브 Apps Script + repo `Combined_Sheet_AppsScript.gs`) map에 한 줄 추가 — `ct` 판정 전, URL이 **인스타 URL인데 `/p·/reel·/reels·/tv/<code>` 게시물 패턴 아님**이면 `['오류']` 반환. (notify_status.py의 "URL오류(게시물 링크 아님)" 기준과 동일. IG 한정 — 스레드/FB/네이버/카카오 등 정상 수집불가는 제외.)
+- **적용/검증**: 라이브 편집기에서 직접 수정·저장·`syncStatus` 실행(1169행, 에러 없음). 현재 URL오류 글 0건(김뿌잉뿌잉은 URL이 `instagram.com/reel/…` 유효로 이미 수정됨 → 정상 '트래킹 중'). 정규식 실측: 프로필/bare IG → '오류', 게시물 링크 → 통과 확인. 매일 9:30 dailyAuto가 syncStatus 포함이라 이후 자동 반영.
+- **주의**: 라이브 syncStatus는 repo와 동일했음(이 수정으로 양쪽 일치). Codex는 라이브 Apps Script 재배포 시 이 한 줄 유지할 것.
 
 ## 2026-07-21 위성/온드 채널에 업체명 오입력 — DB 3건 정리 + 재발방지 갭(Codex 요청) (Claude)
 

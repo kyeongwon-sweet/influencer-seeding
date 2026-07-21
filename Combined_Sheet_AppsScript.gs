@@ -1059,6 +1059,9 @@ function syncStatus() {
   const out = urls.map(function (r) {
     const u = r[0];
     if (!u) return [""];
+    const uu = String(u).toLowerCase();
+    // 게시물 링크가 아닌 인스타 URL(프로필 등) = 수집 불가 → '오류'(notify_status.py URL오류 기준과 동일)
+    if (uu.indexOf("instagram.com") >= 0 && !/\/(p|reels|reel|tv)\/[a-z0-9_-]+/i.test(uu)) return ["오류"];
     const k = linkKey_(String(u));
     if (!(k in ended)) return [""];
     return [ended[k] ? "트래킹 종료" : "트래킹 중"];
