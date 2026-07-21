@@ -9,6 +9,16 @@ After code, DB, Sheet, Apps Script, or deployment changes, update `AI_SHARED_STA
 > 프로젝트 지식·경로·함정 → `ONBOARDING.md`, 코딩 규칙 → `CLAUDE.md`, 배경 이력 → `docs/`.
 > 각 스킬은 그대로 따라 하면 되도록 명령/스니펫을 포함. 작성 기준일 2026-07-03.
 
+## 🤝 재발방지 약속 — 다중세션 공용 (모든 AI 세션·Codex 필수)
+여러 Claude 세션 + Codex + Apps Script가 **같은 DB·시트·main**을 동시에 쓴다("단일 소유자" 전제는 거짓). 정본은 `.claude/skills/influencer-seeding/SKILL.md` 상단. 요약:
+1. **데이터 무결성** — 실측 없으면 지어내기 금지·미측정은 비워둠(복사/추정 금지)·이상치 자동보정 금지(감지 알림만)·**빈값≠0**·**`posted_at` 절대 자동수정 금지**.
+2. **삭제/정정 전 트리아지 3원칙** — (a)오귀속 금지(시트 편집자 "황경원"은 자동 스크립트일 수 있음, `created_at`+transcript로 출처 확인) (b)전 컬럼 검증(play만 보다 배너 `reach_count` 놓칠 뻔) (c)검증 전 삭제 금지(재수집 불가 지표는 팀 확인).
+3. **DB 대량수정 금지** — 소비코드 먼저 읽기→최소범위(전량 UPDATE/DELETE 금지)→백업→비가역은 사전확인 (30행 의도가 2,497행 오삽입된 사고).
+4. **시트 쓰기는 행 위치 아닌 URL/키 기준** — 라이브 Apps Script는 저장이 원자적이 아님, 실행 중 행 삽입/편집 시 누적·날짜값이 옆 행에 밀려 기입(write race).
+5. **배포 단일 경로·동시 배포 금지** — `vercel --prod`는 Codex 소유, 라이브 반영은 `-mu` 직접 확인.
+6. **`AI_SHARED_STATUS.md` 필독·후 갱신** — 한 것/못 한 것 정직 기록, "다른 세션 탓" 금지(공동 책임).
+7. **시크릿 비출력** — 토큰/키 채팅 출력·git 파일 기재 금지(repo PUBLIC).
+
 ## 환경 전제 (모든 스킬 공통)
 - OS: Windows 11, 셸: PowerShell 주력 + Git Bash(POSIX). **Git Bash는 cp949** — 한글을 그대로 파이프/`curl -d` 하면 깨진다.
 - **실제 python**: `C:\Users\hwangkw\AppData\Local\Python\pythoncore-3.14-64\python.exe` (bare `python`은 깨진 스텁 — 쓰지 말 것).
