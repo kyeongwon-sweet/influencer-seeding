@@ -325,7 +325,9 @@ def _fetch_youtube(urls: list) -> dict:
         "startUrls": [{"url": u} for u in urls],
         "maxResults": 1,
         "maxResultStreams": 0,
-        "maxResultsShorts": 0,
+        # 쇼츠(/shorts/)도 수집 — 0이면 쇼츠 협찬글이 통째로 누락된다.
+        # 배치에 쇼츠가 여러 개여도 안 잘리도록 URL 수만큼 상한을 준다(직접 URL이라 과수집 없음).
+        "maxResultsShorts": max(1, len(urls)),
     })
     out = {}
     for it in client.dataset(run["defaultDatasetId"]).iterate_items():
