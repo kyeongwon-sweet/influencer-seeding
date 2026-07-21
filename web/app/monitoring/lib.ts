@@ -121,6 +121,13 @@ export function normalizeChannelType(value: string | null): string | null {
   return value.trim().replace(/\s+/g, " ").replace(/\s*\(/g, " (");
 }
 
+// 무상 채널(위성채널·온드미디어)은 업체명·광고비가 없어야 한다(owned-satellite-no-cost-rule).
+// DB 쓰기 경로에서 이 판정으로 company_name=null·cost=0 강제 → 시트 자가치유가 못 닿는 DB 오입력 차단.
+export function isFreeChannel(channelType: unknown): boolean {
+  const ct = String(channelType ?? "");
+  return ct.includes("위성") || ct.includes("온드");
+}
+
 // 표시 전용: 괄호 앞에 공백 추가 ("바이럴(배너)" → "바이럴 (배너)"). 저장값은 그대로, 화면에만 적용(필터 매칭은 공백 무시).
 export function fmtChannelType(ct: string | null | undefined): string {
   return (ct ?? "").replace(/\s*\(/g, " (");

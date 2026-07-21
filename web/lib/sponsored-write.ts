@@ -1,6 +1,6 @@
 import type { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl, ALLOWED_POST_URL_RE } from "@/lib/url-utils";
-import { normalizeChannelType } from "@/app/monitoring/lib";
+import { normalizeChannelType, isFreeChannel } from "@/app/monitoring/lib";
 import { triggerCaptionBackfill, needsCaption } from "@/lib/github-dispatch";
 import { todayKST } from "@/lib/dateRule";
 import { startActorRun } from "@/lib/apify";
@@ -54,19 +54,23 @@ export async function upsertSponsoredRows(
     list.map(async r => ({ ...r, url: r.url ? await resolveTikTokShortUrl(String(r.url)) : r.url }))
   );
   const rows = resolved
-    .map(r => ({
-      url:             r.url ? (normalizeUrl(String(r.url)) || String(r.url)) : "",
-      posted_at:       r.posted_at || null,
-      account_name:    cleanName(r.account_name),
-      company_name:    r.company_name || null,
-      content_summary: r.content_summary || null,
-      channel_type:    normalizeChannelType(r.channel_type ? String(r.channel_type) : null),
-      project_name:    r.project_name || null,
-      product_name:    r.product_name || null,
-      planner:         r.planner || null,
-      creator:         r.creator || null,
-      cost:            r.cost != null && r.cost !== "" ? Number(r.cost) : null,
-    }))
+    .map(r => {
+      const channel_type = normalizeChannelType(r.channel_type ? String(r.channel_type) : null);
+      const free = isFreeChannel(channel_type); // 무상채널(위성/온드) → 업체명·광고비 없음 강제
+      return {
+        url:             r.url ? (normalizeUrl(String(r.url)) || String(r.url)) : "",
+        posted_at:       r.posted_at || null,
+        account_name:    cleanName(r.account_name),
+        company_name:    free ? null : (r.company_name || null),
+        content_summary: r.content_summary || null,
+        channel_type,
+        project_name:    r.project_name || null,
+        product_name:    r.product_name || null,
+        planner:         r.planner || null,
+        creator:         r.creator || null,
+        cost:            free ? 0 : (r.cost != null && r.cost !== "" ? Number(r.cost) : null),
+      };
+    })
     .filter(r => {
       if (!r.url || !ALLOWED_POST_URL_RE.test(r.url)) return false;
       if (seen.has(r.url)) return false;
@@ -148,6 +152,11 @@ export async function upsertSponsoredRows(
       const val = (r as Record<string, unknown>)[f];
       const valPresent = val !== null && val !== undefined && val !== "";
       if (valPresent) upd[f] = val; // 값이 있으면 덮기 (비면 기존 유지)
+    }
+    // 무상채널 자가치유: 위성/온드에 기존 업체명·광고비가 남아있으면 강제로 비운다(시트 정정이 DB에 안 닿는 갭 보정)
+    if (isFreeChannel(r.channel_type)) {
+      if (ex.company_name != null) upd.company_name = null;
+      if (ex.cost != null && Number(ex.cost) !== 0) upd.cost = 0;
     }
     if (Object.keys(upd).length > 0) metaUpdates.push({ id: String(ex.id), upd });
   }

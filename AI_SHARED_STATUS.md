@@ -23,7 +23,7 @@ Last updated: 2026-07-21 (Claude: syncStatus '오류' 상태 추가 + 위성/온
 - **증상**: 무상채널 규칙 위반 — 위성/온드에 업체명 존재. DB 3건 확인: 썰뜨기(틱톡) `3744028e`·썰박스(틱톡) `d514a599` → "루나앤코코", lm_not_sweet_(온드) `427fe460` → "유머패밀리". 셋 다 cost=0, `manual_fields=[]`(자동 기입).
 - **조치(완료)**: 세 행 `company_name`을 null로 PATCH, 검증 완료(위성/온드 중 company 있는 행 0). cost는 이미 0이라 무변경. 사용자는 시트쪽 이미 삭제함.
 - **시트측 재발방지는 이미 됨(코드 확인)**: 라이브 `applyPricingRow_`(AI 트래킹 대시보드 연동.gs, ~1560행)가 `ct === "위성채널" || "온드미디어"`면 **업체명 clearContent + 비용 0**으로 자가치유하고, 바이럴 행만 단가/업체 채움. → 시트에는 재발 안 함.
-- **⚠️ 재발방지 갭(Codex 확인 요청)**: **DB 쓰기 경로엔 이 가드가 없음.** 시트→DB는 insert-only(기존 광고정보 안 덮음)라 시트 자가치유가 **DB엔 반영 안 됨** → 한번 DB에 들어간 오입력은 수동 정리해야 함(이번처럼). 근본 차단책 = sponsored_posts 쓰기 경로(syncNew/bulk/marketing sync 등)에 **"channel_type이 위성채널/온드미디어면 company_name=null·cost=0 강제" 가드** 추가(web, Codex). ([[owned-satellite-no-cost-rule]] 참고)
+- **✅ 재발방지 구현 완료(Claude, 2026-07-21)**: DB 쓰기 경로에 무상채널 가드 추가. 공통 헬퍼 `isFreeChannel(channel_type)`(`web/app/monitoring/lib.ts`) 신설 → 위성/온드면 **company_name=null·cost=0 강제**. 적용: `lib/sponsored-write.ts`(bulk·csv, 신규생성 + 기존 자가치유), `stats-import`(신규생성 + 자가치유), `marketing/sync`(cost=0). 신규 유입 차단 + 기존 오입력은 다음 sync 때 자가치유(시트뿐 아니라 DB도). tsc 통과. refactor 브랜치 커밋 → Codex 배포 시 반영. ([[owned-satellite-no-cost-rule]])
 
 ## 2026-07-21 [배포 요청] 상단 액션바 TikTok 바로가기 칩 (Claude)
 

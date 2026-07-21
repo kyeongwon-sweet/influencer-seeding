@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl } from "@/lib/url-utils";
-import { normalizeChannelType } from "@/app/monitoring/lib";
+import { normalizeChannelType, isFreeChannel } from "@/app/monitoring/lib";
 
 /**
  * 마케팅 대시보드 → 협찬 모니터링 동기화 엔드포인트
@@ -61,6 +61,7 @@ export async function POST(req: NextRequest) {
 
     // channel 을 channel_type으로 매핑 (표준 표기로 정규화 — 괄호 앞 공백 보장)
     const channel_type = normalizeChannelType(r.channel ? String(r.channel) : null);
+    const free = isFreeChannel(channel_type); // 무상채널(위성/온드) → 광고비 0 강제
 
     return {
       url: normalizeUrl(String(r.url)) || (String(r.url).replace(/\/$/, "") + "/"),  // 정규화(쿼리 제거 + 끝 /) — bulk/sync와 통일
@@ -68,7 +69,7 @@ export async function POST(req: NextRequest) {
       channel_type,
       project_name: r.project_name ? String(r.project_name).trim() : null,
       product_name: r.product_name ? String(r.product_name).trim() : null,
-      cost: r.cost != null ? Number(r.cost) : null,
+      cost: free ? 0 : (r.cost != null ? Number(r.cost) : null),
       // 주의: caption과 performance는 현재 저장되지 않음
       // sponsored_posts 테이블에 해당 컬럼이 없으므로
     };
