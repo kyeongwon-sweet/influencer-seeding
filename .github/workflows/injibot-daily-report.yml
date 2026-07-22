@@ -1,0 +1,29 @@
+name: Injibot Daily Collect Report
+
+# 자정수집 요약(배너제외 확보율)+실패상세 스레드를 인지봇으로 Slack #빙과_마케팅_인지p(C0B659HEYDV)에 발송.
+# 로컬 예약작업(daily-collect-injibot-report)이 PC 수면/따라잡기 실행으로 발송 누락되는 문제 →
+# GitHub 서버 크론으로 이전(PC 상태 무관). report.py가 계산·서식·발송을 결정론적으로 처리.
+#
+# ⚠️ 필요한 GitHub Secret: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY(기존) + INJIBOT_SLACK_TOKEN(신규 추가 필요).
+# ⚠️ GHA 검증 후 로컬 예약작업은 비활성화할 것(중복 발송 방지).
+on:
+  schedule:
+    - cron: "38 21 * * *"   # 06:38 KST (자정수집 이후)
+  workflow_dispatch:        # 수동 테스트
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Send injibot daily report
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          INJIBOT_SLACK_TOKEN: ${{ secrets.INJIBOT_SLACK_TOKEN }}
+          PYTHONUTF8: "1"
+          TZ: "Asia/Seoul"
+        run: python scripts/daily_collect_report.py --send
