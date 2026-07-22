@@ -1,5 +1,10 @@
 # AI Shared Status
 
+## 2026-07-22 수집기 "1회 not_found→삭제 오탐" 버그 + 자정리포트 개선 (Claude)
+- ⚠️ **Codex 요청 — run_monitoring 삭제판정 완화**: 게시물이 Apify not_found **단 1회**만 나와도 `notes`에 "게시물 삭제/비공개 감지 … 조회수 최종값에서 정지"를 박아 **재수집을 멈춘다**. 그런데 Apify IG 스크래퍼는 간헐적으로 살아있는 글에도 not_found를 뱉음(오탐). 실측: `dding_box`(`ig:Da-Hhd9tbtb`)는 브라우저에서 멀쩡히 살아있는데(좋아요 487) 07-21 1회 not_found로 삭제 플래그됨 → Claude가 notes를 ""로 정정(재수집 재개). **수정 요망: N일(예:2~3) 연속 not_found일 때만 삭제 판정**하고, 기존 삭제-플래그 게시물 중 실제 살아있는 오탐 재점검(시그니처: notes에 not_found + 이후 재수집 정지).
+- 참고 — `seri_ko`(`ig:DaxSbt3GjKI`)는 **사진 게시물**인데 channel_type='무상시딩 (영상)'로 오분류 → 사진은 play_count 지표가 없어 영구 미수집(정상). 재분류 검토.
+- ✅ **자정 수집 리포트(injibot) GHA 이전+개선(Claude)**: 로컬 예약작업이 07-22 미발송(PC 수면/따라잡기) → `.github/workflows/injibot-daily-report.yml`+`scripts/daily_collect_report.py`로 GHA 크론(06:38 KST) 이전. GH 시크릿 `INJIBOT_SLACK_TOKEN` 추가, `SUPABASE_URL`/`SERVICE_ROLE_KEY` 기존. 로컬 예약작업 비활성화(중복방지). 리포트가 **삭제/비공개(종료) vs 진짜 미수집** 분리(확보율 분모서 종료 제외). 배너 오계산(99%→76%) 버그도 결정론 스크립트로 제거.
+
 ## 2026-07-21 부정댓글 봇 대규모 수정 인계 (Claude → Codex)
 **대상 repo: `kyeongwon-sweet/negative-comment-monitor` (master, 최신 `4e12b8c`, origin 동기화됨).** GAS v79는 Codex가 함(감사·검증 완료).
 
