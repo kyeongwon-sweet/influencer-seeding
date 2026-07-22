@@ -1142,6 +1142,8 @@ function syncStatus() {
   const out = urls.map(r => {
     const url = String(r[0] || "").trim();
     if (!url) return [""];
+    const uu = url.toLowerCase();
+    if (uu.indexOf("instagram.com") >= 0 && !/\/(p|reels|reel|tv)\/[a-z0-9_-]+/i.test(uu)) return ["오류"];
     const k = linkKey_(url);
     if (!(k in ended)) return [""];
     return [ended[k] ? "트래킹 종료" : "트래킹 중"];
