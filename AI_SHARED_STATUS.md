@@ -1,5 +1,15 @@
 # AI Shared Status
 
+## 2026-07-22 ⚠️ dailyAuto 100% 실패 발견 + 자정수집前 신규등록 자동화 요청 (Claude)
+- 사용자 요청: 매일 **자정 수집(GHA 00:41 KST) 전에 syncNew(신규 등록)를 자동 실행**되게 → 당일 시트에 넣은 게시물이 그날 measured_at로 수집돼 증분 몰림(첫측정=전체) 방지. (현재 sheet→DB 등록은 dailyAuto 09:30=수집 이후라, 당일 오후 등록분이 다음날로 밀려 증분 소급 몰림. 7/20·7/22 증분 튄 근본.)
+- ⚠️ **핵심 발견 — dailyAuto 트리거 오류율 100%**: Apps Script 트리거 페이지(scriptId 1XogwTHJb…)에서 `dailyAuto`(시간기반, 09:30, =syncAll+pullFromDB+exportStats) **최종실행 2026-07-22 09:34, 오류율 100%**. 즉 **자동 동기화가 매번 실패** 중 → "수집은 됐는데 시트에 자동 반영 안 됨(exportStats/누적/증분 자동 미갱신)"의 유력 근본원인. **수동 버튼(🔄 refreshSheetDerivedFields / 📥 exportStats)은 작동**(사용자 실행 시 '상태 동기화 완료 1206행' 확인)하나 **트리거(무인) 실행은 실패**.
+- ⚠️ 기존 트리거 현황: `syncNew`(시간기반) 트리거가 **이미 있으나 '사용 중지됨'**(다른 사용자 소유). onStatusEdit_·syncManualCreatorsOnEdit(수정 시), updateExpectedViews(시간기반)×2 존재.
+- **Codex 요청**:
+  1. **dailyAuto 트리거 100% 실패 원인 규명·수정**(실행 로그 확인). 추정: 무인 트리거 컨텍스트에서 `safeAlert_`의 `SpreadsheetApp.getUi().alert()` 예외 / 또는 _WriteGuard 락 / 또는 bulk API auth(CRON_SECRET). ← 이게 자동 반영 안 되던 진짜 원인일 수 있음, 최우선.
+  2. 그 뒤 **syncNew를 자정 수집(00:41 KST) 직전(예: 23:xx KST 또는 00:10 KST) 시간트리거로 활성화**(기존 disabled syncNew 재활용 or 신규). dailyAuto(09:30, exportStats 포함)는 수집 후라 유지.
+  3. 트리거 실행 정상화 확인(다음날 새벽 measured_at 정합) → 당일 등록분 증분 몰림 해소.
+- Claude 미조치 사유: 트리거는 라이브 Codex 프로젝트 + **dailyAuto가 이미 100% 실패라 새 syncNew 트리거도 동일 원인으로 실패할 개연**. 트리거만 추가하는 건 무의미 → 트리거 실행 실패(1번) 수정이 선행. (브라우저 UI로 트리거 추가는 신뢰성·권한(다른 사용자 트리거) 문제도 있음.)
+
 ## 2026-07-22 정책요청(Codex): 바이럴 채널명 = IG 핸들 고정 (Claude)
 - 사용자 규칙: **채널명이 비면 무조건 IG 핸들(아이디)로 채운다. 특히 바이럴(영상)·바이럴(배너)는 account_name이 항상 IG 핸들이어야 함**(표시명 금지).
 - 근본원인: `scripts/run_monitoring.py`(≈1144) `account_name = ownerFullName || owner.fullName || owner_username` → **표시명(ownerFullName) 우선**이라 예: `ufo__yellow`인데 DB엔 "유머패밀리 yellow"(표시명)가 저장됨. 그래서 pullFromDB(⬇️)로 채우면 표시명이 들어가 규칙 위반.
