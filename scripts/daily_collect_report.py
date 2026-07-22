@@ -99,6 +99,7 @@ def main():
         return ("삭제" in n) or ("비공개" in n) or ("not_found" in n)
 
     b_tot = 0
+    feed_cnt = 0                   # 피드/사진 — play_count 지표 자체가 없음(확보율 제외)
     active_nb = val_nb = 0          # 종료 제외 활성 비배너 / 그중 값 확보
     ended_miss = []                # 종료(삭제/비공개)인데 그날 값 없음 — 정상, 참고만
     real_miss = []                 # 활성인데 값 없음 — 진짜 확인 필요
@@ -115,6 +116,9 @@ def main():
                 new_times.append(ca_kst)
         if "배너" in ct:
             b_tot += 1
+            continue
+        if any(k in ct for k in ("피드", "사진", "이미지")):
+            feed_cnt += 1            # 사진/피드 — 조회수 지표 없음, 확보율 제외
             continue
         item = {"account_name": p.get("account_name"), "channel_type": ct, "url": p.get("url")}
         if is_ended(p):
@@ -145,10 +149,10 @@ def main():
     body = (
         "📊 자정 수집 %s 알림 (%s)\n\n"
         "• %s  %s 수집\n"
-        "• 측정 대상(배너·종료 제외): %d건 중 값 확보 %d건(%d%%) · 확인필요 %d건\n"
-        "• 종료(삭제/비공개): %d건 · 배너: %d건 (격일 수집)\n"
+        "• 측정 대상(배너·피드·종료 제외): %d건 중 값 확보 %d건(%d%%) · 확인필요 %d건\n"
+        "• 종료(삭제/비공개) %d · 배너 %d · 피드/사진 %d — 조회수 지표 없어 확보율 제외\n"
         "• 특이사항: %s"
-    ) % (status_word, today, status_icon, first, active_nb, val_nb, P, len(real_miss), len(ended_miss), b_tot, note)
+    ) % (status_word, today, status_icon, first, active_nb, val_nb, P, len(real_miss), len(ended_miss), b_tot, feed_cnt, note)
 
     thread = None
     if real_miss:
