@@ -205,6 +205,19 @@ def main():
         print(f"[notify] DELETE_ONLY {target}: {n}개 삭제(리포트+봇댓글) → 재발송 생략")
         return
 
+    # 특정 ts 삭제(DELETE_TS=쉼표구분 ts): 고아 댓글·재발송본 등 임의 봇 메시지 정리용.
+    # 각 ts의 스레드 봇답글도 함께 삭제(사람 댓글은 chat.delete 불가라 보존). 데이터조회/발송 없이 종료.
+    if os.getenv("DELETE_TS") and CHANNEL[:1] in ("C", "G"):
+        n = 0
+        for ts in [x.strip() for x in os.getenv("DELETE_TS").split(",") if x.strip()]:
+            for rts in _thread_reply_ts(token, CHANNEL, ts):
+                if _delete_msg(token, CHANNEL, rts):
+                    n += 1
+            if _delete_msg(token, CHANNEL, ts):
+                n += 1
+        print(f"[notify] DELETE_TS: {n}개 삭제 → 종료")
+        return
+
     dayrows = _measured_on(target) if target else {}
     if not dayrows and not strict:
         target = _latest_date(db)

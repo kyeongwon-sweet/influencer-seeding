@@ -7,11 +7,14 @@ name: Daily Increment Report (12:20 KST)
 on:
   # ▶️ 2026-07-08 재개: catch-up 스파이크·CPV 누적분모·배너 증분·증분테이블 정합 재계산 정정·검증 완료.
   #    (2026-07-06 정지했던 것을 재개 — 어제 확정값만 STRICT_DATE로 발송, 채널 DEDUP 1회.)
-  schedule:
-    - cron: "20 3 * * *"   # 03:20 UTC = 12:20 KST (주 실행, 매일·주말·공휴일 포함)
-    - cron: "20 4 * * *"   # 04:20 UTC = 13:20 KST (백업1)
-    - cron: "20 5 * * *"   # 05:20 UTC = 14:20 KST (백업2)
-    - cron: "20 6 * * *"   # 06:20 UTC = 15:20 KST (백업3)
+  # ⏸️ 2026-07-22 자동발송 일시중단 (Claude, 사용자 지시 "문제 해결까지 보내지마").
+  #    사유: 배너 도달수 시트→DB 전송 미반영(07-21 reach 0) → 리포트 배너 ~0으로 나감.
+  #    배너 동기화 해결 후 아래 schedule 주석 해제해 복원할 것. 수동 dispatch는 계속 가능.
+  # schedule:
+  #   - cron: "20 3 * * *"   # 03:20 UTC = 12:20 KST (주 실행, 매일·주말·공휴일 포함)
+  #   - cron: "20 4 * * *"   # 04:20 UTC = 13:20 KST (백업1)
+  #   - cron: "20 5 * * *"   # 05:20 UTC = 14:20 KST (백업2)
+  #   - cron: "20 6 * * *"   # 06:20 UTC = 15:20 KST (백업3)
   workflow_dispatch:        # 수동 테스트용
     inputs:
       to_dm:
@@ -26,6 +29,10 @@ on:
         description: "삭제 전용 — 그 날짜 리포트+봇댓글만 삭제하고 재발송 안 함(잘못 나간 리포트 정리)"
         type: boolean
         default: false
+      delete_ts:
+        description: "특정 ts 삭제(쉼표구분) — 고아 댓글·재발송본 등 임의 봇 메시지 정리(발송 안 함)"
+        type: string
+        default: ""
       date:
         description: "발송 대상 날짜(YYYY-MM-DD, 비우면 어제 KST). 특정일 정정 재발송용"
         type: string
@@ -62,6 +69,8 @@ jobs:
           REPLACE: ${{ github.event.inputs.replace == 'true' && '1' || '' }}
           # 삭제 전용: 그 날짜 리포트+봇댓글만 삭제하고 재발송 안 함.
           DELETE_ONLY: ${{ github.event.inputs.delete_only == 'true' && '1' || '' }}
+          # 특정 ts 삭제(고아 댓글·재발송본 등). 값 있으면 그 ts들만 지우고 종료.
+          DELETE_TS: ${{ github.event.inputs.delete_ts }}
           TS_OUT: ${{ runner.temp }}/report_ts.txt
           PYTHONUNBUFFERED: "1"
         run: |
