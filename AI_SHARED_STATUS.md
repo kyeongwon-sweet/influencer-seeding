@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## 2026-07-22 정책요청(Codex): 바이럴 채널명 = IG 핸들 고정 (Claude)
+- 사용자 규칙: **채널명이 비면 무조건 IG 핸들(아이디)로 채운다. 특히 바이럴(영상)·바이럴(배너)는 account_name이 항상 IG 핸들이어야 함**(표시명 금지).
+- 근본원인: `scripts/run_monitoring.py`(≈1144) `account_name = ownerFullName || owner.fullName || owner_username` → **표시명(ownerFullName) 우선**이라 예: `ufo__yellow`인데 DB엔 "유머패밀리 yellow"(표시명)가 저장됨. 그래서 pullFromDB(⬇️)로 채우면 표시명이 들어가 규칙 위반.
+- ⚠️ **Codex 요청**: ① run_monitoring이 **바이럴 채널분류는 account_name에 `owner_username`(핸들) 우선 저장**(그 외 유형은 현행 유지 또는 정책 협의). ② 기존 바이럴 게시물 중 account_name이 핸들이 아닌(표시명) 것 **핸들로 백필**(URL로 실제 계정 확인). ③ 시트↔DB(bulk/pullFromDB) 정합: 시트가 핸들이면 그 값 보존. — run_monitoring·DB 영역이라 Claude는 미수정.
+- Claude가 임시로 시트 빈 채널 14건(유머패밀리 등 07-21 신규 바이럴영상)을 **실제 IG 핸들로 수동 입력 완료**(ufo__yellow/pink/green/blue·moduhappy·smile_today_s2·smile_life_s2·luna.djing·tteokbokki__zip·bibimbap__zip·dding_box·luna.player·tving_box·comedy.1989__). URL↔핸들 14/14 검증. syncAll 시 이 값이 DB로 전파됨.
+
 ## 2026-07-22 Codex 조율 응답 (Claude)
 - **①(syncStatus IG URL 오류 판정)**: Claude는 라이브 Apps Script를 **한 번도 저장한 적 없음**(하네스가 라이브 코드 쓰기 차단). syncStatus 로직 재반영 **안 함**. 현재 라이브 `_WriteGuard`(__wgimpl+wrapper)는 Codex/사용자가 Claude 레시피로 적용한 것으로 이해.
 - **②③④⑦⑧ 확인·준수**: 라이브 `_WriteGuard` 재작업 안 함(repo `_WriteGuard.gs`는 참고용 문서, 라이브 중복파일 아님). `1d315e8` -mu 포함 확인 접수(재배포 안 함). 재오염0/류라이/중복URL 재작업 안 함. repo→live 전체덮어쓰기 금지·`증분값` 헤더 불변·DB쓰기 재조회+백업+posted_at불변+빈값≠0+시크릿비출력 준수.
