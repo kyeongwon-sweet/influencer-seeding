@@ -77,7 +77,7 @@ def main():
     # 전체 게시물 메타
     posts = []; frm = 0
     while True:
-        pg = get("/rest/v1/sponsored_posts?select=id,account_name,channel_type,url&limit=1000&offset=%d" % frm)
+        pg = get("/rest/v1/sponsored_posts?select=id,account_name,channel_type,url,notes,ended_at&limit=1000&offset=%d" % frm)
         posts += pg
         if len(pg) < 1000: break
         frm += 1000
@@ -91,38 +91,51 @@ def main():
         if len(pg) < 1000: break
         frm += 1000
 
-    nb_tot = nb_val = b_tot = 0
-    failnb = []
+    def is_ended(p):
+        # 삭제/비공개(종료) 판정: notes 자동감지 플래그 또는 ended_at 설정
+        n = (p.get("notes") or "")
+        if p.get("ended_at"):
+            return True
+        return ("삭제" in n) or ("비공개" in n) or ("not_found" in n)
+
+    b_tot = 0
+    active_nb = val_nb = 0          # 종료 제외 활성 비배너 / 그중 값 확보
+    ended_miss = []                # 종료(삭제/비공개)인데 그날 값 없음 — 정상, 참고만
+    real_miss = []                 # 활성인데 값 없음 — 진짜 확인 필요
     new_times = []
     cutoff = now - datetime.timedelta(hours=20)  # 수집 사이클(자정~새벽) 포착
     for r in rows:
         p = pmap.get(r["post_id"]) or {}
         ct = p.get("channel_type") or ""
-        is_banner = "배너" in ct
         has_val = (r.get("play_count") is not None) or (r.get("reach_count") is not None)
         ca = parse_iso(r.get("created_at"))
         if ca is not None and ca.tzinfo is not None:
             ca_kst = ca.astimezone(datetime.timezone(datetime.timedelta(hours=9)))
             if ca_kst >= cutoff:
                 new_times.append(ca_kst)
-        if is_banner:
+        if "배너" in ct:
             b_tot += 1
+            continue
+        item = {"account_name": p.get("account_name"), "channel_type": ct, "url": p.get("url")}
+        if is_ended(p):
+            if not has_val:
+                ended_miss.append(item)     # 종료 게시물 — 값 없음이 정상
+            continue                         # 확보율 분모에서 제외
+        active_nb += 1
+        if has_val:
+            val_nb += 1
         else:
-            nb_tot += 1
-            if has_val:
-                nb_val += 1
-            else:
-                failnb.append({"account_name": p.get("account_name"), "channel_type": ct, "url": p.get("url")})
+            real_miss.append(item)           # 활성인데 미수집 — 진짜 문제
 
-    P = round(100 * nb_val / nb_tot) if nb_tot else 0
+    P = round(100 * val_nb / active_nb) if active_nb else 0
     newN = len(new_times)
     first = min(new_times).strftime("%H:%M") if new_times else "--:--"
     success = newN >= 100
 
     if not success:
         note = "신규 적재 %d건뿐 — GHA 로그 확인" % newN
-    elif failnb:
-        note = "수집 실패 %d건(상세 스레드 참고)" % len(failnb)
+    elif real_miss:
+        note = "확인필요(미수집) %d건 — 상세 스레드 참고" % len(real_miss)
     else:
         note = "없음"
 
@@ -132,15 +145,15 @@ def main():
     body = (
         "📊 자정 수집 %s 알림 (%s)\n\n"
         "• %s  %s 수집\n"
-        "• 측정 대상(배너 제외): %d건 중 값 확보 %d건(%d%%) · 미확보 %d건\n"
-        "• 배너: %d건 (격일 수집, 확보율 제외)\n"
+        "• 측정 대상(배너·종료 제외): %d건 중 값 확보 %d건(%d%%) · 확인필요 %d건\n"
+        "• 종료(삭제/비공개): %d건 · 배너: %d건 (격일 수집)\n"
         "• 특이사항: %s"
-    ) % (status_word, today, status_icon, first, nb_tot, nb_val, P, len(failnb), b_tot, note)
+    ) % (status_word, today, status_icon, first, active_nb, val_nb, P, len(real_miss), len(ended_miss), b_tot, note)
 
     thread = None
-    if failnb:
-        lines = ["⚠️ 수집 실패 상세 (%s 측정) — 배너 제외 %d건\n" % (yday, len(failnb))]
-        for i, f in enumerate(failnb, 1):
+    if real_miss:
+        lines = ["⚠️ 확인필요 — 활성 게시물인데 조회수 미수집 (%s 측정) %d건\n" % (yday, len(real_miss))]
+        for i, f in enumerate(real_miss, 1):
             lines.append("%d. %s · %s\n   %s" % (i, f.get("account_name") or "계정명 미등록", f.get("channel_type") or "-", f.get("url") or "-"))
         thread = "\n".join(lines)
 
