@@ -4,6 +4,7 @@ import { fetchDatasetItems } from "@/lib/apify";
 import { normalizeYouTubeUrl, normalizeInstagramUrl } from "@/lib/url-utils";
 import { notifyBot, notifyJob } from "@/lib/slack";
 import { todayKST } from "@/lib/dateRule";
+import { isBannerChannelType } from "@/lib/banner-metric";
 
 // ── 지표 계산 (metrics.py 포팅) ─────────────────────────────────────
 
@@ -230,7 +231,7 @@ export async function POST(req: NextRequest) {
 
 async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, jobId: string, items: Record<string, unknown>[], measuredAt?: string) {
   const today = measuredAt || todayKST();
-  const { data: posts } = await supabase.from('sponsored_posts').select('id, url, posted_at, account_name, influencer_id, ended_at, project_name, content_summary');
+  const { data: posts } = await supabase.from('sponsored_posts').select('id, url, posted_at, account_name, influencer_id, ended_at, project_name, content_summary, channel_type');
   const eligiblePosts = (posts || []).filter((p) => {
     const postedAt = p.posted_at ? String(p.posted_at).slice(0, 10) : null;
     return !p.ended_at && (!postedAt || postedAt <= today);
@@ -351,6 +352,11 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
     }
     if (Object.keys(updates).length > 0) {
       pendingUpdates.push({ id: post.id, updates });
+    }
+
+    if (isBannerChannelType(post.channel_type)) {
+      rows.push({ post_id: post.id, measured_at: today, play_count: null, likes_count: s.likes_count, comments_count: s.comments_count });
+      continue;
     }
 
     // 🛡️ 단조 보정: 신규 조회수가 없거나(미반환) 0(접근불가·글리치, '수집 실패 ≠ 0' 원칙 — run_monitoring과 동일)

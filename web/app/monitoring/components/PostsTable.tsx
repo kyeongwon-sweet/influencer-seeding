@@ -437,7 +437,7 @@ function PostsTable(props: Props) {
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
                         ) : (
                           <div className="flex items-center justify-end gap-1.5 relative">
-                            <span onClick={() => setEditPlayCount({ postId: post.id, value: String(s?.play_count ?? "") })}
+                            <span onClick={() => !(post.channel_type ?? "").includes("배너") && setEditPlayCount({ postId: post.id, value: String(s?.play_count ?? "") })}
                               title="여기서 고치면 화면에 보이는 그 날짜 값으로 고정됩니다. 이후 자동수집은 계속되지만 이 값보다 낮아지지 않고, 더 높게 수집되면 그때 갱신됩니다. 시트에 더 나중에 입력한 값이 있으면 그 값이 우선합니다."
                               className="text-a-ink-muted hover:text-a-blue transition-colors cursor-text">
                               {(post.channel_type ?? "").includes("배너") ? <span className="text-gray-300">—</span> : fmt(s?.play_count)}

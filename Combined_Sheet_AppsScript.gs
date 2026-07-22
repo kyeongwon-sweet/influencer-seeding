@@ -923,6 +923,9 @@ function importStats() {
       // ⚠️ 이어받기(forward-fill) 값 재저장 차단: exportStats가 공백을 '직전 누적값'으로 채워두므로,
       //    직전 칸과 값이 같은 셀은 '표시용 이어받기'이지 새 실측이 아니다 → DB로 보내지 않는다(가짜 측정 방지).
       //    실제로 누적이 안 변한 날도 스킵되지만 정보량 0이고 safeIncrement가 표시단계에서 이어받으므로 무해.
+      // 배너 날짜값은 reach_count이므로 play_count 입력 경로에서는 전송하지 않는다.
+      const channelType = fieldCols.channel_type ? String(row[fieldCols.channel_type - 1] || "") : "";
+      if (channelType.indexOf("배너") >= 0) return;
       let prevN = null;
       dateCols.forEach(dc => {
         if (isBeforePostedDate_(dc.date, postedAt)) return; // 업로드 전 날짜는 조회수 저장 대상 아님

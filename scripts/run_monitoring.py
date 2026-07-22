@@ -820,6 +820,16 @@ def run():
 
             play_count = s.get("play_count")
 
+            # Banner posts have no play metric. Daily reach is stored by reach_rows below.
+            if "\ubc30\ub108" in (post.get("channel_type") or ""):
+                rows.append({
+                    "post_id": post["id"],
+                    "measured_at": TODAY,
+                    "likes_count": s.get("likes_count") or existing.get("likes_count"),
+                    "comments_count": s.get("comments_count") or existing.get("comments_count"),
+                })
+                continue
+
             # 조회수 검증
             if play_count is None:
                 # Apify가 조회수를 반환하지 않음 (게시물 타입상 조회수 없을 수 있음)
