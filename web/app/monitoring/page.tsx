@@ -1957,8 +1957,11 @@ export default function MonitoringPage() {
             </div>
             <LineChart
               data={(trendPost.all_stats ?? [])
-                .filter(s => s.play_count != null)
-                .map(s => ({ date: s.measured_at, value: s.play_count! }))}
+                .map(s => ({
+                  date: s.measured_at,
+                  value: (trendPost.channel_type ?? "").includes("\ubc30\ub108") ? s.reach_count : s.play_count,
+                }))
+                .filter((s): s is { date: string; value: number } => s.value != null)}
               height={220}
               gradId="modalGrad"
             />

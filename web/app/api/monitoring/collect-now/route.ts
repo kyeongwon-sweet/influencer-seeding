@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createApifyClient } from "@/lib/apify";
 import { checkCronAuth } from "@/lib/cron-auth";
+import { isBannerChannelType } from "@/lib/banner-metric";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -50,7 +51,7 @@ async function collect(req: NextRequest) {
     // 1. 모든 협찬 게시물 조회
     const { data: posts, error: postsError } = await supabase
       .from("sponsored_posts")
-      .select("id, account_name, url, posted_at");
+      .select("id, account_name, url, posted_at, channel_type");
 
     if (postsError) {
       throw new Error(`Failed to fetch posts: ${postsError.message}`);
@@ -200,6 +201,17 @@ async function collect(req: NextRequest) {
           continue;
         }
         const stats = urlToStats[sc];
+
+        if (isBannerChannelType(post.channel_type)) {
+          statsToInsert.push({
+            post_id: post.id,
+            measured_at: measuredAt,
+            play_count: null,
+            likes_count: stats.likes > 0 ? stats.likes : 0,
+            comments_count: stats.comments > 0 ? stats.comments : 0,
+          });
+          continue;
+        }
 
         // 🛡️ 재발방지: 누적 조회수 감소 = 수집 오류 → 저장 안 함
         const prevPlay = lastKnownPlay.get(post.id);

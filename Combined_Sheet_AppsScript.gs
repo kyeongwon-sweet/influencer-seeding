@@ -686,6 +686,10 @@ function importStats() {
         postByKey[key] = p;
       }
 
+      // 배너는 조회수 지표가 없다. 날짜 셀 값은 reach_count이며 play_count로 전송하지 않는다.
+      const channelType = fieldCols.channel_type ? String(row[fieldCols.channel_type - 1] || "") : "";
+      if (channelType.indexOf("\ubc30\ub108") >= 0) return;
+
       dateCols.forEach(dc => {
         const n = toNumber_(row[dc.col - 1]);
         if (n === null) return; // 빈칸/비숫자 → 측정 없음, 스킵

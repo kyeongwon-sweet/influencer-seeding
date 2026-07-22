@@ -6,6 +6,7 @@ import { filterMonotonicStats, type GuardInput } from "@/lib/stats-guard";
 import { normalizeChannelType, isFreeChannel } from "@/app/monitoring/lib";
 import { resolveTikTokShortUrl } from "@/lib/sponsored-write";
 import { todayKST } from "@/lib/dateRule";
+import { isBannerChannelType } from "@/lib/banner-metric";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -189,9 +190,15 @@ export async function POST(req: NextRequest) {
   const prePosted: Array<{ url: string; date: string }> = [];
   const incoming: GuardInput[] = [];
   const postIdSet = new Set<string>();
+  const bannerPlaySkipped: Array<{ url: string; date: string }> = [];
   for (const it of items) {
     const pid = idByUrl.get(it.url);
     if (!pid) { missing.add(it.url); continue; }
+    const channelType = existingByUrl.get(it.url)?.channel_type ?? postByUrl.get(it.url)?.channel_type;
+    if (isBannerChannelType(channelType)) {
+      bannerPlaySkipped.push({ url: it.url, date: it.measured_at });
+      continue;
+    }
     // 🛡️ 조회수 == 그 게시물의 비용 → 비용이 조회수 칸에 잘못 들어온 오염으로 보고 제외
     if (costByUrl.get(it.url) === it.play_count) { costAsViews.push({ url: it.url, date: it.measured_at, value: it.play_count }); continue; }
     // 🛡️ 게시일 이전 날짜 = 업로드 전 조회수(불가능) → 시트 날짜칸 백필 오류로 보고 저장 안 함
@@ -275,6 +282,8 @@ export async function POST(req: NextRequest) {
     cost_as_views_sample: costAsViews.slice(0, 10),
     pre_posted_skipped: prePosted.length,
     pre_posted_sample: prePosted.slice(0, 10),
+    banner_play_skipped: bannerPlaySkipped.length,
+    banner_play_skipped_sample: bannerPlaySkipped.slice(0, 10),
     matched_urls: [...new Set(items.map(i => i.url))].length - missing.size,
     missing_urls: missing.size,
     missing_sample: [...missing].slice(0, 5),

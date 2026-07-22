@@ -439,7 +439,7 @@ function PostsTable(props: Props) {
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
                         ) : (
                           <div className="flex items-center justify-end gap-1.5 relative">
-                            <span onClick={() => setEditPlayCount({ postId: post.id, value: String(displayS?.play_count ?? "") })}
+                            <span onClick={() => !(post.channel_type ?? "").includes("\ubc30\ub108") && setEditPlayCount({ postId: post.id, value: String(displayS?.play_count ?? "") })}
                               title="여기서 고치면 즉시 반영되며, 밤 자동수집은 이 값을 덮지 않습니다. 시트에서 더 나중에 입력하면 그 값이 최신으로 우선합니다."
                               className="text-a-ink-muted hover:text-a-blue transition-colors cursor-text">
                               {(post.channel_type ?? "").includes("배너") ? <span className="text-gray-300">—</span> : fmt(displayS?.play_count)}
@@ -477,8 +477,8 @@ function PostsTable(props: Props) {
                         ) : (
                           (() => {
                             const isBanner = (post.channel_type ?? "").includes("배너");
-                            // 배너=시트 일별 숫자(play_count)를 도달수로 1:1 사용. 그 외=reach_count(없으면 조회수×0.8 추정).
-                            const eff = isBanner ? (displayS?.play_count ?? null) : effectiveReach(post.reach_count, displayS?.play_count);
+                            // 배너=일별 reach_count(없으면 게시물 reach_count). 그 외=reach_count(없으면 조회수×0.8 추정).
+                            const eff = isBanner ? (displayS?.reach_count ?? post.reach_count ?? null) : effectiveReach(post.reach_count, displayS?.play_count);
                             if (eff == null) return <span className="text-gray-300">—</span>;
                             const isAuto = !isBanner && post.reach_count == null;
                             return (
@@ -493,7 +493,7 @@ function PostsTable(props: Props) {
                       <TD right muted w={colWidths["도달당비용"]}>
                         {(() => {
                           const isBanner = (post.channel_type ?? "").includes("배너");
-                          const eff = isBanner ? (displayS?.play_count ?? null) : effectiveReach(post.reach_count, displayS?.play_count);
+                          const eff = isBanner ? (displayS?.reach_count ?? post.reach_count ?? null) : effectiveReach(post.reach_count, displayS?.play_count);
                           return post.cost != null && eff != null && eff > 0
                             ? (post.cost / eff).toFixed(2)
                             : <span className="text-gray-300">—</span>;

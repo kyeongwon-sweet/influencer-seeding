@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { todayKST } from "@/lib/dateRule";
+import { isBannerChannelType } from "@/lib/banner-metric";
 
 // PATCH /api/sponsored-posts/[id]/stats
 // post_daily_stats 수동 수정: play_count / likes_count / comments_count.
@@ -39,6 +40,20 @@ export async function PATCH(
   if ("play_count" in body) updates.manual = true;
 
   const supabase = getServerSupabase();
+  if ("play_count" in updates) {
+    const { data: post, error: postError } = await supabase
+      .from("sponsored_posts")
+      .select("channel_type")
+      .eq("id", id)
+      .single();
+    if (postError) return NextResponse.json({ error: postError.message }, { status: 500 });
+    if (isBannerChannelType(post?.channel_type)) {
+      return NextResponse.json(
+        { error: "배너는 play_count를 저장하지 않습니다. reach_count를 수정하세요." },
+        { status: 409 },
+      );
+    }
+  }
   let targetDate: string | null = body.measured_at ?? null;
 
   // 지정된 measured_at이 실제 행과 일치하는지 확인 (포맷/타임존 불일치 → 최신으로 폴백)
