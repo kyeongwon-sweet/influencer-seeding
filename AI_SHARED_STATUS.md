@@ -1,5 +1,25 @@
 # AI Shared Status
 
+## 2026-07-21 부정댓글 봇 대규모 수정 인계 (Claude → Codex)
+**대상 repo: `kyeongwon-sweet/negative-comment-monitor` (master, 최신 `4e12b8c`, origin 동기화됨).** GAS v79는 Codex가 함(감사·검증 완료).
+
+**negative-comment-monitor 오늘 커밋(9개):**
+- `2c8a669` 일일도래 **15분 창 버그 수정→마감기반**(09:10 KST 지나면 그날 첫 회차가 수집). GitHub 크론 드롭으로 3일 조용히 누락됐던 근본원인.
+- `676a0fc` heartbeat=**GHA watchdog(`heartbeat.yml`)**, DB 불필요(monitor_heartbeat 테이블 방식은 폐기 — 만들지 말 것). "오늘 09:10후 monitor 성공 실행 있나" GitHub API 확인→없으면 Slack 경고.
+- `a1bff34` **온드/위성 evergreen 감시**(나이 무관, `isEvergreenCategory`) — GAS v79와 짝.
+- `d091be7` 알림 UI(작성자 중복 제거·긴댓글 truncate·틱톡 `/photo/` 키), `ac4b852` 근거 순우리말(한자금지), `cf5f527` 아침지연 완화 크론.
+- `5bc3743` 오탐 수정('없던데' 성분키워드 제거+authenticity 즉시부정→LLM), `4e12b8c` **델타 증가→변화**(감소후 신규도 재스캔, dedup이 중복방지 — 건드리지 말 것).
+
+**GitHub Actions 변수 변경(gh variable set):** `APIFY_TIKTOK_INPUT_JSON`={commentsPerPost:50,maxRepliesPerComment:15}, `APIFY_INSTAGRAM_INPUT_JSON`={resultsLimit:30,includeNestedComments:true}, `APIFY_YOUTUBE_INPUT_JSON`={maxComments:50,...}. → **답글(대댓글) 수집 활성화+한도 상향**. 이전(reply0·IG10)이라 답글 부정댓글 전부 놓치던 것 수정(커버리지=한도, 절약=델타).
+
+**influencer-seeding (`a808760`, 내가 검증·push — 이후 origin/main은 `95c24d6`로 진행됨):** 옛 Python 부정댓글 시스템 완전 삭제(comment-alerts.yml·monitor_comments.py·create_post_comments_table.sql·`/api/slack/comment-action`+middleware 예외). `post_comments` 601행은 **보존**(드롭 금지). ⚠️**Vercel Production 재배포 필요(Codex/사용자)** — 그래야 라이브 `/comment-action` 실제 제거. dead endpoint라 급하진 않음. main 전체 prod-ready 확인 후.
+
+**백로그:** 오늘 상위50 게시물 답글포함 강제 풀스캔→신규 부정 **29건 발송(dedup 후, C0BHD9S69JA)**. 저댓글 게시물 묻힌 답글은 카운트 변할 때 자연 재스캔.
+
+**미결/검토:** ①정밀도 — "욕설/비속어"가 즉시부정이라 협찬글에서 **제품 무관 욕설(댓글러 싸움)도 오탐**. 욕설도 LLM에 "제품 겨냥?" 물을지 검토. ②repo 8/1 비공개 전환(사용자 카드 승인 대기). ③토큰 회전은 선택(공개 repo에 실토큰 없음, 노출은 채팅뿐).
+
+**조율 주의:** heartbeat는 watchdog(DB 아님)·델타는 "변화" 스크레이프(dedup 필수)·GAS는 헤더명 읽기라 시트 열재정렬 무해.
+
 ## 2026-07-21 시트 동시편집 "행 밀림"(누적 조회수) 근본원인 확정 + 재발방지 가드 (Claude)
 - 신고 증상: 특정 게시물의 누적 조회수가 **윗줄 게시물 행**에 반영. 라이브 Apps Script("마T2P_대시보드(실무용)", scriptId `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn`)를 Chrome으로 직접 읽어 **원인 확정(추측 아님)**.
 - 원인: 누적 조회수 writer(파일 "AI 트래킹 대시보드 연동.gs" 1341행 함수, `setValues` @1375) 포함 writer들이 공통으로 `getLastRow()`→`getValues()`(블록)→배열 계산(행 인덱스 고정)→**절대 행범위 `setValues`** 를 **`LockService` 없이** 수행. 읽기~쓰기 사이 다른 세션/트리거(onEdit·dailyAuto)/사람이 행 삽입·삭제·정렬하면 계산 배열이 **밀린 행에 기록(off-by-one)**.
