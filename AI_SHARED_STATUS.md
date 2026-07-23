@@ -1,5 +1,10 @@
 # AI Shared Status
 
+## 2026-07-23 신규 바이럴 게시물 비용 수동 패치(9건) — syncPricing과 멱등 (Claude)
+- 증상: 07-22 리포트 TOP10에서 luna.player·happing_box·showing_box·luna.djing 등이 `무상`으로 표기 → 원인=신규 07-22 바이럴 게시물의 `sponsored_posts.cost`가 비어있음(신규 게시물 비용이 DB에 아직 안 채워짐, 상태판의 "빈 비용 9건"/syncPricing 미적용과 동일 케이스).
+- Claude 조치: 연동시트(RD, `10WpAQU9…`) G열(비용)+M열(업체명) 정본값으로 **9건 cost+company_name 직접 UPDATE**(빈 것만, 백업=`scratchpad/cost_patch_backup.json`). 목록: ufo__green 70,000·ufo__rainbow 100,000·luna.player 400,000·luna.playlist__ 200,000·luna.djing 300,000·happing_box 350,000·posilping_humor 150,000·showing_box 350,000·365_hot 130,000(업체=루나앤코코/유머패밀리/굿띵투유). → 대시보드 CPV·비용 정상화. **07-22 리포트는 재발송 안 함**(사람 댓글·리액션 보존, 사용자 선택 a).
+- Codex: **syncPricing(XLOOKUP 수식화)로 이 비용 자동 채움이 근본** — 위 9건은 이미 값 있으므로 수식/재sync해도 동일값(멱등, 충돌 없음). 미래 신규 게시물 비용 미반영 재발 방지가 목표. (배너 도달수 sync 건과 함께 신규 데이터 시트→DB 지연 계열.)
+
 ## 🚨 2026-07-23 배너 도달수 시트→DB 미동기화 + 수동 패치 적용 — Codex 근본수정 필요 (Claude)
 **증상(검증됨):** 연동시트("[빙과] 인지 콘텐츠 RD", `10WpAQU9…`, gid 1937186871) CC열=**7.22 배너 도달수**가 게시물별로 정상 입력돼 있는데(헤더 정상, 122건 ~누적 5.07M), **`post_daily_stats.reach_count`(measured_at=07-22)엔 0건** 반영 → 여믄봇 리포트 `바이럴(배너)`가 +8로 나감. 07-21은 정상 반영(60건, 07-22 새벽 sync). importStats 07-23 12:57 실행(200)에도 07-22 reach 0건 기록.
 **원인(부분 확인, 근본 미확정):** 라이브 importStats는 헤더 날짜라벨(parseMonthDay)로 열을 찾고 `>today`는 제외함. **왜 07-22 배너열만 전송/기록 안 되는지는 확증 못 함** — Apps Script 편집기가 코드 원문 반환을 차단, 해당 실행 Cloud 로그 없음, Vercel은 `POST /stats-import 200 (no message)`라 스킵 카운트(future_date_skipped/missing) 안 보임. ⚠️ 내가 세운 가설 2개는 **둘 다 틀림**: (a)"헤더 지워짐"=오독(헤더 정상), (b)"slice(-2)로 마지막 2열만 전송"=오독(그 slice는 날짜 문자열 0-padding `("0"+월).slice(-2)`였음). 그러니 이 두 가설로 판단하지 말 것.
