@@ -1,5 +1,38 @@
 # AI Shared Status
 
+## 2026-07-23 [연동시트] 캡션(L열) = 소재명(E) 자동 추출 규칙 — Codex 라이브 반영 요청 (Claude)
+**사용자 요청/결정(확정):** 연동시트("[빙과] 인지 콘텐츠 RD", `10WpAQU9…`) **캡션(L열)** 자동 채움 규칙을 아래로. 우선순위 = **수동 > 소재명 > 게시글 캡션**.
+- L에 이미 값 있으면(수동 포함) → **절대 안 건드림**(수동 우선). *완벽한 manual-vs-auto 구분은 별도 편집감지 필요해서 미채택 — "비어있을 때만 채움"으로 근사.*
+- L 빈칸 + 소재명(E) 패턴 매칭 → **소재명에서 추출값**(`m[1]`).
+- L 빈칸 + 소재명 없음 → 기존 pullFromDB가 **게시글 캡션** 채움(그대로).
+- 정규식: `/_([^_]+\.[^_]+)\.디자인/` (E열 소재명 대상).
+- ✅ 사용자 Q2 확인: **캡션이 syncNew로 DB `content_summary`에 흘러가 추출값이 게시글 캡션을 대체하는 것 OK**(의도된 동작).
+**⚠️ 실행 순서 함정:** dailyAuto = `syncAll → pullFromDB → exportStats → syncStatus/refreshCumulativeViews/syncCreators/syncPricing`. 캡션 추출을 syncCreators에 넣으면 **pullFromDB가 먼저 빈칸을 게시글 캡션으로 채운 뒤라 소재명 추출이 안 먹힘.** → 캡션 추출 스텝은 **pullFromDB보다 먼저**(가능하면 syncAll 전, DB 동기화까지 당일 반영) 돌아야 함.
+**Codex 반영(라이브 Apps Script, Claude는 라이브 쓰기 차단):** 신규 함수 `fillCaptionFromAsset_()`(fill-empty, 소재명 매칭 시 추출값 write) 추가 + dailyAuto에서 pullFromDB **앞에** 호출. 스니펫:
+```javascript
+function fillCaptionFromAsset_() {
+  const sheet = getSheet_();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < CONFIG.DATA_START_ROW) return true;
+  const assetCol = findHeaderCol_(sheet, ["소재명"]);
+  const capCol   = findHeaderCol_(sheet, ["캡션"]);
+  if (!assetCol || !capCol) return true;
+  const n = lastRow - CONFIG.DATA_START_ROW + 1;
+  const assets = sheet.getRange(CONFIG.DATA_START_ROW, assetCol, n, 1).getValues();
+  const caps   = sheet.getRange(CONFIG.DATA_START_ROW, capCol,   n, 1).getValues();
+  const reCap = /_([^_]+\.[^_]+)\.디자인/;
+  let cf = 0;
+  for (let i = 0; i < n; i++) {
+    if (String(caps[i][0]).trim() !== "") continue;      // 이미 값(수동 포함) → 유지
+    const m = String(assets[i][0] || "").match(reCap);
+    if (m) { caps[i][0] = m[1]; cf++; }                  // 빈칸 + 소재명 → 추출값
+  }
+  if (cf) sheet.getRange(CONFIG.DATA_START_ROW, capCol, n, 1).setValues(caps);
+  return true;
+}
+```
+_WriteGuard `withDocLock_` 래핑 대상에 추가 권장. **적용 후 dailyAuto 1회 성공 + 캡션 3케이스(수동유지/소재명추출/빈칸→캡션) 실측 검증 후 배포**([[feedback-sync-integrity-nonnegotiable]] 계열).
+
 ## 2026-07-23 [부정댓글봇] #1 바이럴 재스캔 되돌림 + #2 무시→오탐 기록 배포 (Claude)
 - **⚠️ 되돌림(사용자 지시 "돈 아까움")**: negative-comment-monitor(master) 커밋 `a1d2aab`("feat(delta): 최근 바이럴 게시물 하루 1회 재스캔")를 `git revert`(`c1a4e2c`). **바이럴 시간주기 재스캔은 도입 안 함** — Codex/다른 세션이 만든 것이나 사용자가 비용 이유로 거부. **재추가하지 말 것.** 미탐 대응은 필요 시 수동 스윕으로.
 - **#2 배포(influencer-seeding main `f6abdb1`)**: injibot-action 라우트 — **[무시] 클릭 시 `negative_comment_alerts`를 slack_channel_id+slack_ts로 찾아 review_decision='false_positive' PATCH**(reviewed_by/at). 봇 분류기가 이 값을 classifier hash 무관 최우선 정상 처리(오탐 피드백 루프 라이브). Vercel 배포 success. getServerSupabase 사용, best-effort.
