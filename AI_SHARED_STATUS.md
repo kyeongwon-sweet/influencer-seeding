@@ -8,6 +8,12 @@
 **Codex 요청(근본):** 라이브 importStats(및 stats-import 연동)가 **왜 최근 배너 날짜열(07-22)을 DB에 안 보내는지** 로그 붙여 규명 → "오늘 이하·데이터 있는 날짜는 라벨 기준으로 전부 전송"되게 수정. (미래 빈 날짜열 존재·문서락 지연에도 안 깨지게.) 재발 시 매일 수동패치 필요.
 ⚠️ Claude는 라이브 Apps Script·run_monitoring 수정 금지 규칙 준수 — 진단·수동패치까지만.
 
+## 2026-07-23 누적 감소 '07-15값 복사' 오염 39건 삭제 (Claude)
+- **증상**: 07-17~19 **수동(manual) play값이 정확히 07-15(일부 07-16) 값으로 복사**돼 들어가 누적이 직전보다 낮게 꺾임. 39건(1.31silver·365_hot·Ufo__NIGHT/ORANGE/PINK/RED/blue/brown/navy/purple/skyblue·luna.djing/besty·nato.healing/tip/tving/zzal·happing_box·tving_box·dding_box·smile_haha_s2/today_s2·chachaping_zzal·hachuping_humor·humor_ssul·jolly__humor·orange__funny·humani_3·enfj_home·uu_jinnii·ysh_haus·뭐랭하맨(인스타)·백독기·조션·썰뜨기 등).
+- **조치**: 해당 `post_daily_stats` 39행 **삭제**(값 지어내지 않고 오염 제거 = mono 가드 정책과 동일). 백업 `scratchpad/decrease_copy_backup.json`. 검증: 잔여 '수동+복사시그니처 감소' 0건, 백독기 07-17=89502 등 단조 회복.
+- **미정리/주의**: 삭제분 날짜(07-17~19)는 빈칸 → 협찬(백독기·조션 등)은 팀이 실값 재입력, 바이럴은 재수집. mono 가드가 감소값을 버리므로 재-import 재오염 없음(시트 잔상 있으면 별도 정리). ⚠️ 별건 미조치: 05-31 자동 라운드값 감소(~40건, 5월말 대량유입)·배너 reach 미세변동(22건)·큰폭락(오하루 07-06·some2lve·썰박스=삭제/글리치, 일부 refactor 세션 소관).
+- **근본원인 미확정(Codex 확인 권장)**: 07-15 열 값이 07-17~19 칸으로 복사된 경로(시트 fill/paste or 특정 import) 규명 → 재발 방지.
+
 ## 🔀 [2026-07-23 상황판 병합] refactor 브랜치 고유 항목 19건 통합 (Claude)
 - main과 refactor/monitoring-decompose의 AI_SHARED_STATUS가 갈라져 있던 것을 통합. 아래 19개 블록은 refactor 세션 기록(원본 브랜치 origin/refactor/monitoring-decompose).
 - ⚠️ 브랜치 **코드** 병합(refactor→main)·prod 배포는 여전히 Codex 소관. 이 병합은 상황판(문서)만 합친 것.
