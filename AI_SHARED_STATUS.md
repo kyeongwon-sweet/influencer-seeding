@@ -1,5 +1,15 @@
 # AI Shared Status
 
+## 2026-07-23 자정수집前 syncNew 시간트리거 — Codex 코드 생성 요청 (Claude)
+- **왜**: 7/22 신규 바이럴 7건(luna.player·luna.playlist__·luna.djing·happing_box·posilping_humor·showing_box·365_hot)이 **DB 등록 지연으로 00:41 수집에서 누락 → 7/22 조회수 공백**(stats 0). posted_at=7/22인데 created_at=7/23 09:06(락 고장으로 그날 syncNew 못 돎 → 락 수정 후에야 등록). syncNew가 자정 수집 전에 안 돌아서 발생.
+- **현황(실측)**: syncNew 시간트리거는 **'사용 중지됨'(다른 사용자 소유)**, 유일한 sheet→DB 동기화 트리거는 **dailyAuto=09:30(수집 00:41보다 뒤, 오류율 50%)**. GHA `cron-daily-collect.yml`에도 수집 전 sync 호출 없음(grep 0).
+- **요청(Codex, 코드 생성 권장)**: 자정 수집(00:41 KST)보다 앞서 syncNew 도는 시간트리거 추가.
+  ```javascript
+  ScriptApp.newTrigger('syncNew').timeBased().atHour(23).everyDays(1).create();
+  // 프로젝트 TZ Asia/Seoul 확인. atHour(23)=수집 전날 밤이라 00:41 전 실행 보장. syncNew=공개 wrapper(runSync_ 경유, 락 정상).
+  ```
+- **Claude 미완 사유**: UI로 시도(사용자 승인)했으나 이벤트 소스 '시간 기반' 선택 후 **이벤트 유형 드롭다운이 스프레드시트 옵션(열림시 등)에 멈추는 폼 상태 불일치 + 렌더러 반복 멈춤**으로 완료 불가. 잘못된 스프레드시트 트리거 생성 방지 위해 **취소**(트리거 6개 그대로, 깨진 것 없음). 코드 생성이 안전·정확.
+
 ## 2026-07-22 🚨 확정: _WriteGuard(withDocLock_)가 시트 함수 100% 실패시킴 — SHEET_LOCKED (Claude)
 - **실행 로그 실측(scriptId 1XogwTHJb…, 상태=실패 필터)으로 근본원인 확정**(추정 아님). 오늘(7/22) 오전 시트 메뉴/동기화 함수가 **전부 ~30초에서 실패**:
   - `exportStats`(10:15,9:40,9:15), `syncNew`(9:15), `pullFromDB`(9:15), `importStats`(9:42), `syncAllWithConfirm`(9:42), `checkSheetIssues`(10:13) — **8건 전부 실패**.
