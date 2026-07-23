@@ -9,7 +9,23 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
-Last updated: 2026-07-21 (Claude: syncStatus '오류' 상태 추가 + 위성/온드 업체명 정리 + TikTok 칩 + 증분열 + 1503 + 쇼츠)
+Last updated: 2026-07-22 (Claude: 시트↔DB 수집 전수조사 + 위성/온드 사망 종료·이나 글리치·김뿌잉뿌잉 고아 DB손질 + 커밋 2개[위성 자동종료·IG URL가드] main 반영 요청)
+
+## 2026-07-22 수집/시트 빈칸 전수조사 + DB 손질 + 커밋 2개 (Claude)
+
+- **시트 빈칸/수집 결론(전수조사)**: DB→시트 write 버그 없음. DB에 값 있는 건 100% 시트 반영됨. 빈칸은 ①조회수 없는 포맷(배너·피드) ②미수집(스크래퍼 간헐/지역제한/삭제) ③오늘치(T-1) ④종료글 ⑤신규 0조회수 계정 — 대부분 정상.
+- **exportStats = T-1 확정**: 역채움/📥은 '어제까지'만 씀, 오늘 날짜는 절대 안 씀(하루 뒤 채워짐). dailyAuto가 exportStats→syncStatus 순서로 매일 실행(상태열도 자동). "오늘 안 뜬다"는 정상.
+- **DB 직접 손질(완료·백업함, main 무관)**:
+  - 확정 사망 위성 유튜브 7건 + 틱톡 2건 → `ended_at` 설정(유튜브=VIDEO_UNAVAILABLE/비공개, 틱톡=POST_NOT_FOUND). 오embed·클록웍스로 살아있음/삭제 판별(위성 신규계정 21건은 살아있는 실제 0조회수 → 손 안 댐).
+  - 이나(DZXeAW8S9IQ) 7/19 글리치 stat(2,724,900) 삭제 → 누적 단조 회복(대시보드 57만 부풀림 해소). '누적 하락' 알림 원인.
+  - 김뿌잉뿌잉 프로필-URL 고아행(`instagram.com/kimbbuingg/reels/`) 삭제(진짜 릴스 `Da7UuzGJmXn`는 정상 추적 유지), account_name "ㅏ요!"→"김뿌잉뿌잉".
+  - 활성인데 7/21 수집 놓친 IG 10건 재수집(measured_at=7/22, 역행 가드 통과값만).
+- **커밋 2개(origin/refactor/monitoring-decompose) → main 반영 요청(Codex)**:
+  - `89a8de7` feat: 위성/온드 확정사망 자동종료 (`run_monitoring.py`). evergreen 예외 유지, notes 확정사망신호+7일미수집만 종료, "공개·지역제한" 표기 제외. **GHA cron=main이라 main 반영 필요**.
+  - `c91163f` fix: IG 비-게시물 URL 입구 차단 (`url-utils.isInstagramNonPostUrl` + `marketing/sync`·`sponsored-write`). 프로필 URL(`/계정/reels/`) 등록 차단 → URL오류 알림(김뿌잉뿌잉) 재발 원천 차단. **웹=prod 배포 필요**. tsc·단위테스트 통과, 런타임은 배포 후 확인.
+- **보류**: 패턴2(조회수 스파이크 과대값 가드) — mono 가드가 감소만 막고 증가는 무통과라 글리치 스파이크가 max 오염. 임계값 미정으로 미구현.
+
+
 
 ## 2026-07-21 상태열에 '오류' 추가 — URL이 게시물 링크 아님(수집불가) (Claude)
 
