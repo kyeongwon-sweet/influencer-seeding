@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## 2026-07-23 [부정댓글봇] #1 바이럴 재스캔 되돌림 + #2 무시→오탐 기록 배포 (Claude)
+- **⚠️ 되돌림(사용자 지시 "돈 아까움")**: negative-comment-monitor(master) 커밋 `a1d2aab`("feat(delta): 최근 바이럴 게시물 하루 1회 재스캔")를 `git revert`(`c1a4e2c`). **바이럴 시간주기 재스캔은 도입 안 함** — Codex/다른 세션이 만든 것이나 사용자가 비용 이유로 거부. **재추가하지 말 것.** 미탐 대응은 필요 시 수동 스윕으로.
+- **#2 배포(influencer-seeding main `f6abdb1`)**: injibot-action 라우트 — **[무시] 클릭 시 `negative_comment_alerts`를 slack_channel_id+slack_ts로 찾아 review_decision='false_positive' PATCH**(reviewed_by/at). 봇 분류기가 이 값을 classifier hash 무관 최우선 정상 처리(오탐 피드백 루프 라이브). Vercel 배포 success. getServerSupabase 사용, best-effort.
+- **#7 유지**: 봇 `gas.js` HTML 오류 명확화(`1d728f9`, 다른 세션 작성) 그대로 둠 — 시트 헤더 장애 즉시 진단.
+- 참고: [완료]·[숨김]→답글 삭제(`49a64e5`)는 라이브 확인됨(테스트 답글 삭제 동작). 부모 스레드 문구 2줄로 변경(봇 `dea450c`).
+
 ## 2026-07-23 신규 바이럴 게시물 비용 수동 패치(9건) — syncPricing과 멱등 (Claude)
 - 증상: 07-22 리포트 TOP10에서 luna.player·happing_box·showing_box·luna.djing 등이 `무상`으로 표기 → 원인=신규 07-22 바이럴 게시물의 `sponsored_posts.cost`가 비어있음(신규 게시물 비용이 DB에 아직 안 채워짐, 상태판의 "빈 비용 9건"/syncPricing 미적용과 동일 케이스).
 - Claude 조치: 연동시트(RD, `10WpAQU9…`) G열(비용)+M열(업체명) 정본값으로 **9건 cost+company_name 직접 UPDATE**(빈 것만, 백업=`scratchpad/cost_patch_backup.json`). 목록: ufo__green 70,000·ufo__rainbow 100,000·luna.player 400,000·luna.playlist__ 200,000·luna.djing 300,000·happing_box 350,000·posilping_humor 150,000·showing_box 350,000·365_hot 130,000(업체=루나앤코코/유머패밀리/굿띵투유). → 대시보드 CPV·비용 정상화. **07-22 리포트는 재발송 안 함**(사람 댓글·리액션 보존, 사용자 선택 a).
