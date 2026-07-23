@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
+import { getServerSupabase } from "@/lib/supabase-server";
 
 // injibot(부정 댓글 알림) 버튼 클릭 처리(Slack Interactivity).
 // injibot Slack 앱 → Interactivity & Shortcuts → Request URL:
@@ -61,6 +62,24 @@ export async function POST(req: NextRequest) {
 
   const userId: string = payload.user?.id || "";
   const when = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 16).replace("T", " ");
+
+  // [무시] = 오탐 → 분류기 피드백용으로 기록. 사람 판정은 classifier hash와 무관하게 최우선 적용된다.
+  // 식별은 slack_channel_id + slack_ts(댓글 원문 미사용). best-effort — 실패해도 버튼 UX는 계속.
+  if (actionId === "ignore") {
+    const channelId: string = payload.channel?.id || "";
+    const messageTs: string = payload.message?.ts || "";
+    if (channelId && messageTs) {
+      try {
+        await getServerSupabase()
+          .from("negative_comment_alerts")
+          .update({ review_decision: "false_positive", reviewed_by: userId, reviewed_at: new Date().toISOString() })
+          .eq("slack_channel_id", channelId)
+          .eq("slack_ts", messageTs);
+      } catch (e) {
+        console.error("[injibot-action] 오탐(false_positive) 기록 실패", e);
+      }
+    }
+  }
 
   // 원 메시지의 버튼(actions) 블록을 제거하고 처리 결과 컨텍스트를 덧붙인다.
   const origBlocks: any[] = payload.message?.blocks || [];
