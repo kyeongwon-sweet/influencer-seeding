@@ -1,5 +1,16 @@
 # AI Shared Status
 
+## 2026-07-23 락 재검증(정상)·라이브 exportStats/syncNew 인라인 편집·김뿌잉뿌잉 현황 (Claude)
+- **🔴 라이브 Apps Script 인라인 편집 2건 — repo/브랜치 어디에도 없음(라이브에만). Codex가 라이브 편집 시 덮지 말 것, repo `Combined_Sheet_AppsScript.gs` 동기화 때 포함할 것:**
+  - **edit #1 (exportStats → 누적 자동 채움)**: exportStats의 증분 `setFormulas(incFormulas)` 직후에 호출 추가 → 이제 📥 한 번에 증분+누적 둘 다 채워짐. (기존: 누적=`refreshCumulativeViews`가 메뉴에 없고 dailyAuto 09:30에서만 실행돼 낮 신규행 누적을 수동입력하던 문제. 플레인 래퍼는 재진입 락이라 안전.)
+    `...setFormulas(incFormulas); try { refreshCumulativeViews(); } catch (e) { Logger.log(e); }`
+  - **edit #2 (syncNew 프로필 URL 가드, 사용자 직접 적용)**: `runSync_`의 `values.forEach`에서 `if (!ALLOWED_URL_RE.test(rawUrl)) { skipped++; return; }` 바로 다음 줄에 추가 → shortcode 없는 IG 프로필/릴스목록 URL의 DB 재삽입 차단(김뿌잉뿌잉 재발경로=이 .gs엔 가드 없었음; 웹 `c91163f`는 marketing/sync·bulk만 덮음).
+    `if (/instagram\.com/i.test(rawUrl) && !/\/(p|reels|reel|tv)\/[A-Za-z0-9_-]+/i.test(rawUrl)) { skipped++; return; }`
+- **락(_WriteGuard) 재검증 = 정상, 롤백 불필요**: 라이브 실행기록(scriptId 1XogwTHJb…) 최근 전부 "완료됨"·SHEET_LOCKED 0건(syncAllWithConfirm 37s·importStats·checkSheetIssues·onEdit 다수). **7/22 "락 100% 실패" 항목은 해소됨**(reentrant 정상 동작, `__wgimpl` 래퍼 라이브 존재 확인). → 락 건드리지 말 것.
+- **즉시완화**: `refreshCumulativeViews` 1회 실행 완료(누적 전체 재계산, 13:13 KST).
+- **김뿌잉뿌잉 현황(실측)**: DB 전수 프로필형 IG URL 0건(kimbbuingg 포함 0), 정상 reel `ig:Da7UuzGJmXn`+유튜브 쇼츠 미러 추적중, 시트도 정상 = **현재 재발 아님**. ⚠️ 사용자는 "틱톡+인스타 2개"인데 DB는 "인스타+유튜브미러(WT1_whbG_70)" → 유튜브 미러가 실제 틱톡이어야 하는지 확인 대기.
+- **미해결(Codex 몫 유지)**: `c91163f`·`89a8de7` main 반영 / syncPricing XLOOKUP(00f518b) / syncNew 자정 트리거(3acd858) / run_monitoring 바이럴 핸들 저장(723ee0d) / not_found_streak 삭제정책 배포.
+
 ## 2026-07-23 요청(Codex): syncPricing이 바이럴 비용/업체명을 '값' 대신 '수식'으로 채우기 (Claude)
 - **사용자 설계**: syncPricing이 바이럴 행에만, 비용(F)·업체명(M)이 **빈칸일 때만** 정적 값 대신 **XLOOKUP 수식**을 삽입. → 신규 바이럴 행 자동 확장 + 협찬/온드 미접촉(수기 보존) + 특별딜(수기 예외단가) 보존(빈칸만) + 매핑 단가 변경 시 sync 재실행 없이 자동 반영 + 동기화 실패에도 셀 생존.
 - **매핑 시트**: gid 1649102171(탭 "AI 바이럴 대시보드 연동"), 열 = 채널명(A)·업체명(B)·포맷(C, 릴스/배너)·단가(D). 콘텐츠 시트 바이럴 채널분류 영상→릴스, 배너→배너 매핑.
