@@ -5,6 +5,12 @@
 - ⚠️ 브랜치 **코드** 병합(refactor→main)·prod 배포는 여전히 Codex 소관. 이 병합은 상황판(문서)만 합친 것.
 - 앞으로 모든 세션은 이 main 상황판을 정본으로 갱신 권장(재분기 방지).
 
+## 2026-07-23 [배포] injibot [완료]·[숨김] → 스레드 답글 삭제 (Claude)
+- **변경**: `web/app/api/slack/injibot-action/route.ts` — complete/hide 클릭 시 `response_url`로 `delete_original:true`(원 메시지 삭제). 그 외(승인/보류/숨김해제/무시)는 기존대로 상태 컨텍스트 교체. 새 토큰·Slack 설정 불필요.
+- **의도**: 부정댓글 봇(negative-comment-monitor)이 **날짜×채널분류 부모 스레드에 답글로** 발송하도록 바꿨고(그쪽 repo `829719c`), 완료/숨김 답글을 삭제해 스레드엔 **미처리만** 남기려는 것. 사용자 요청.
+- **배포**: `main` 직접 커밋·push(`49a64e5`). pre-push tsc 통과 + 로컬 `next build` 통과. Vercel main 자동배포. ⚠️refactor 브랜치와 무관한 main 단독 픽스(리팩터 배포 아님).
+- **연계(negative-comment-monitor repo, master)**: 스레드 발송(`829719c`, `supabase/005 alert_threads` 사용자 SQL 실행 필요)·오탐 피드백 루프(`671dad1`, 컬럼 `supabase/004`). ⚠️이 라이브 라우트는 아직 **무시(ignore)→false_positive 기록은 안 함**(상태 교체만) — FP 루프 라이브 반영하려면 이 라우트에 recordFalsePositive(Supabase PATCH) 추가 필요(후속).
+
 ## 2026-07-22 수집/시트 빈칸 전수조사 + DB 손질 + 커밋 2개 (Claude)
 
 - **시트 빈칸/수집 결론(전수조사)**: DB→시트 write 버그 없음. DB에 값 있는 건 100% 시트 반영됨. 빈칸은 ①조회수 없는 포맷(배너·피드) ②미수집(스크래퍼 간헐/지역제한/삭제) ③오늘치(T-1) ④종료글 ⑤신규 0조회수 계정 — 대부분 정상.
