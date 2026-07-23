@@ -1,5 +1,19 @@
 # AI Shared Status
 
+## 2026-07-23 [신규기능] 소재명(E열)을 DB·대시보드에도 동기화(보존) — Codex 라이브/DB 반영 요청 (Claude)
+**사용자 요청/의도:** 소재명이 **지금 시트(E열)에만 존재** → RD시트 재정렬로 데이터 소실됐던 사례처럼 **날아갈 위험**. 그래서 **시트·DB·대시보드 3곳에 모두 저장**해 보존. (참고: 소재명 형식 파일명은 이미 `project_name`으로 DB에 있고 대시보드 17항목 파싱 중이나, **소재명 E열 자체는 미동기화** — 별개 컬럼으로 확정 보존 원함.)
+**현재 상태(검증):** `sponsored_posts`에 소재명 컬럼 없음. `syncCreators`만 소재명(E)을 읽어 기획자/제작자 파생. → 바로 아래 "기획자·제작자 동기화" 항목과 **동일 패턴**으로 추가하면 됨.
+**제안 스펙 (컬럼명 `asset_name`, snake_case English 관례 일치):**
+- **① DB (Codex):** `ALTER TABLE sponsored_posts ADD COLUMN asset_name text;`
+- **② web/ (Claude 가능, 단 ① 이후 배포):** `web/lib/sponsored-write.ts` META에 `asset_name` 추가(기획자·제작자 추가한 것과 동일 방식). 소재명은 시트에서만 입력되는 보존용이므로 **SHEET_WINS 포함 권장**(시트값이 정본). 타입에 `asset_name?: string`.
+- **③ 라이브 Apps Script "AI 트래킹 대시보드 연동.gs" (Codex, Claude 라이브쓰기 분류기 차단):**
+  - `FIELD_BY_HEADER`에 `"소재명": "asset_name",` 추가(이게 없으면 ②는 무해한 no-op — 바로 아래 항목 교훈과 동일).
+  - `FIELD_TO_HEADER`(역맵) `asset_name: "소재명",`.
+  - `pullFromDB` fillFields에 `"asset_name"` 추가 → **DB→시트 빈칸 복구(소실 방지 핵심)**.
+  - syncNew obj 빌드 2곳에 `if (fieldCols.asset_name) obj.asset_name = String(row[fieldCols.asset_name-1]||"").trim()||null;`.
+- **④ 대시보드 표시 (Claude 가능, ① 이후):** monitoring 표/상세에 소재명 열 노출. *위치 사용자 확인 후.*
+**⚠️ 배포 순서(동기화 무결성):** ①DB → ②web → ③Apps Script. 순서 어기면 업서트 오류/무해 no-op. [[feedback-sync-integrity-nonnegotiable]] — 각 단계 후 syncNew/pullFromDB 1회 성공 검증.
+
 ## 2026-07-23 기획자·제작자 시트→DB 동기화(시트 무조건 우선) — 서버 배포, Apps Script 남음 (Claude)
 - **서버 배포됨(main `b95f657`, 프로덕션 자동배포)**: `web/lib/sponsored-write.ts` META에 `planner`·`creator` 추가 + `SHEET_WINS=new Set(["planner","creator"])`로 이 둘만 manual_fields 보호 예외 → **시트값이 대시보드 수동값도 덮음(시트 무조건 우선, 사용자 요청)**. 기존엔 META에 planner/creator가 없어 시트 기획자/제작자가 DB에 아예 반영 안 됐음.
   - ⚠️ **Codex: sponsored-write 수정 시 이 2필드 SHEET_WINS 정책 유지**(되돌리지 말 것).
