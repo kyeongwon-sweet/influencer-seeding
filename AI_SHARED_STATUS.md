@@ -1,5 +1,23 @@
 # AI Shared Status
 
+## 2026-07-22 🚨 확정: _WriteGuard(withDocLock_)가 시트 함수 100% 실패시킴 — SHEET_LOCKED (Claude)
+- **실행 로그 실측(scriptId 1XogwTHJb…, 상태=실패 필터)으로 근본원인 확정**(추정 아님). 오늘(7/22) 오전 시트 메뉴/동기화 함수가 **전부 ~30초에서 실패**:
+  - `exportStats`(10:15,9:40,9:15), `syncNew`(9:15), `pullFromDB`(9:15), `importStats`(9:42), `syncAllWithConfirm`(9:42), `checkSheetIssues`(10:13) — **8건 전부 실패**.
+- **오류 메시지(3건 스택 직접 확인)**: `Error: SHEET_LOCKED: 다른 작업이 시트를 수정 중입니다. 잠시 후 다시 실행해주세요(동시편집 방지).`
+  - `at withDocLock_(:1768) ← exportStats(:1800)`
+  - `at withDocLock_(:1767) ← importStats(:1804)`
+  - `at withDocLock_(:1763) ← runSync_(:1081) ← syncNew(:477)`  ← **중첩(syncNew→runSync_) = 재진입 자기교착 의심**
+- **의미**: Codex가 라이브 적용한 `_WriteGuard`의 `withDocLock_`이 **문서락을 30초 내 획득 못 해 SHEET_LOCKED를 하드 throw** → 정당한 단독 실행까지 100% 실패. "수집은 됐는데 시트에 자동/수동 반영 안 됨(신규광고 등록·비용/업체명 매핑·조회수 역채움·누적/증분 갱신 전부)"의 **진짜 현재 근본원인**. (아래 dailyAuto 100% 항목도 같은 락일 가능성 큼.)
+- **락을 못 얻는 이유(가설, 우선순위순)**: ① **재진입 실패** — `withDocLock_`가 reentrant여야 하나 syncNew가 이미 락 보유 중 runSync_가 같은 문서락 재획득 시도→자기교착(중첩 스택이 증거). ② **편집트리거 폭주 경합** — onEdit/onStatusEdit_/syncManualCreatorsOnEdit가 분당 수십 회 발화(사용자 채널명 편집 중)하며 wrapped `syncCreators`/`syncStatus` 경유로 문서락을 계속 점유 → 메뉴 함수 30초 굶주림. ③ **고아 실행 점유** — 장기 실행(예: 실패 onEdit 150초)이 락 미해제.
+- 🚨 **사용자 지시(2026-07-22)**: "DB↔시트 양방향 동기화가 끊기면 절대 안 된다." → 동기화 복구가 **모든 것에 우선**. 행밀림 방지(_WriteGuard 목적)보다 동기화 무결성이 상위 규칙.
+- ⚠️ **Codex 요청(최우선, 코드 수정 필요)**:
+  0. **🔴 지금 즉시 = _WriteGuard 래핑 롤백**(래핑 해제, 함수 본문은 그대로). 완벽한 재진입 수정을 기다리지 말 것 — exportStats·importStats·syncNew·pullFromDB·syncAll 전멸(동기화 100% 마비)이 사용자 절대규칙 위반 상태. 롤백으로 동기화부터 복구한 뒤 1~3을 별도로.
+  1. (근본) **withDocLock_ 재진입 실제 동작 수정**(같은 실행 내 wrapped→wrapped 호출 시 재획득 금지). syncNew→runSync_ 중첩 자기교착이 주범. exportStats는 단독 프레임인데도 SHEET_LOCKED → 자기교착 syncNew의 30초 락 점유/편집트리거와도 경합.
+  2. **편집트리거(onEdit/onStatusEdit_/syncManualCreatorsOnEdit)는 문서락 잡지 말 것**(또는 tryLock 짧게), 메뉴/무인 함수와 락 경합 제거.
+  3. **하드 throw 대신 완화**: waitLock 실패 시 SHEET_LOCKED로 죽이지 말고 짧은 재시도/그레이스풀 진행, 타임아웃 상향.
+  - ✅ **복구 검증(필수)**: 수정/롤백 후 exportStats·importStats·syncNew **각 1회 성공 로그**로 동기화 재개 확인. 이 검증 없이는 "고침" 아님.
+- **Claude 미조치 사유**: 수정 대상이 **라이브 Apps Script 코드(withDocLock_)** → 하네스가 라이브 코드 쓰기 차단 + Codex 소유 코드라 라이브 직접 편집 시 클로버 위험. **진단(스택·라인번호)까지 완료해 넘김.** (설정 레벨 응급 완화 옵션=문제 편집트리거 임시 비활성은 사용자 결정 대기.)
+
 ## 2026-07-22 ⚠️ dailyAuto 100% 실패 발견 + 자정수집前 신규등록 자동화 요청 (Claude)
 - 사용자 요청: 매일 **자정 수집(GHA 00:41 KST) 전에 syncNew(신규 등록)를 자동 실행**되게 → 당일 시트에 넣은 게시물이 그날 measured_at로 수집돼 증분 몰림(첫측정=전체) 방지. (현재 sheet→DB 등록은 dailyAuto 09:30=수집 이후라, 당일 오후 등록분이 다음날로 밀려 증분 소급 몰림. 7/20·7/22 증분 튄 근본.)
 - ⚠️ **핵심 발견 — dailyAuto 트리거 오류율 100%**: Apps Script 트리거 페이지(scriptId 1XogwTHJb…)에서 `dailyAuto`(시간기반, 09:30, =syncAll+pullFromDB+exportStats) **최종실행 2026-07-22 09:34, 오류율 100%**. 즉 **자동 동기화가 매번 실패** 중 → "수집은 됐는데 시트에 자동 반영 안 됨(exportStats/누적/증분 자동 미갱신)"의 유력 근본원인. **수동 버튼(🔄 refreshSheetDerivedFields / 📥 exportStats)은 작동**(사용자 실행 시 '상태 동기화 완료 1206행' 확인)하나 **트리거(무인) 실행은 실패**.
@@ -15,6 +33,17 @@
 - 근본원인: `scripts/run_monitoring.py`(≈1144) `account_name = ownerFullName || owner.fullName || owner_username` → **표시명(ownerFullName) 우선**이라 예: `ufo__yellow`인데 DB엔 "유머패밀리 yellow"(표시명)가 저장됨. 그래서 pullFromDB(⬇️)로 채우면 표시명이 들어가 규칙 위반.
 - ⚠️ **Codex 요청**: ① run_monitoring이 **바이럴 채널분류는 account_name에 `owner_username`(핸들) 우선 저장**(그 외 유형은 현행 유지 또는 정책 협의). ② 기존 바이럴 게시물 중 account_name이 핸들이 아닌(표시명) 것 **핸들로 백필**(URL로 실제 계정 확인). ③ 시트↔DB(bulk/pullFromDB) 정합: 시트가 핸들이면 그 값 보존. — run_monitoring·DB 영역이라 Claude는 미수정.
 - Claude가 임시로 시트 빈 채널 14건(유머패밀리 등 07-21 신규 바이럴영상)을 **실제 IG 핸들로 수동 입력 완료**(ufo__yellow/pink/green/blue·moduhappy·smile_today_s2·smile_life_s2·luna.djing·tteokbokki__zip·bibimbap__zip·dding_box·luna.player·tving_box·comedy.1989__). URL↔핸들 14/14 검증. syncAll 시 이 값이 DB로 전파됨.
+
+### 2026-07-22 (갱신) — 🔴 최우선 격상 + 재발 확인 + 검증된 핸들 매핑 제공 (Claude)
+- **재발 확인**: 사용자가 다시 "이상한값(표시명)이 또 들어갔다"고 지적. 07-22 신규 바이럴 다수가 또 표시명(유머패밀리 night, 스마일_꼬북_♥(스마일컴퍼니), 썸에서연애까지, 타임머신 등)·빈칸으로 들어옴 → **run_monitoring 미수정으로 계속 재발 중**. 수동 정정은 땜질(새 게시물마다 반복). **근본수정(run_monitoring handle 저장 + DB 백필) 최우선.**
+- **Claude 2차 수동정정 완료**: 바이럴(영상) 표시명/빈칸 **28건**을 각 IG 게시물 직접 판독→실제 핸들로 입력, URL(shortcode) 기준 28/28 검증. **아래 매핑은 실측이므로 Codex의 DB 백필에 그대로 사용 가능**(재스크랩 불필요):
+  - `유머패밀리 night→ufo__night`, `red→ufo__red`, `green→ufo__green`, `orange→ufo__orange`, `rainbow→ufo__rainbow`, `pink→ufo__pink`, `brown→ufo__brown`, `skyblue→ufo__skyblue`
+  - `스마일_꼬북_♥(스마일컴퍼니)→smile_ggobuk_s2`, `스마일_투데이_❤(스마일컴퍼니)→smile_today_s2`, `스마일_라이프_❤(스마일컴퍼니)→smile_life_s2`, `스마일_킹_♥(스마일컴퍼니)→smile_king_s2`
+  - `썸에서연애까지→some2lve`, `타임머신→ho1y_time`, 빈칸→`luna.player·luna.playlist__·luna.djing·happing_box·posilping_humor·showing_box·365_hot`
+- **⚠️ 처리 못한 것**: shortcode `DZKJ678kpNw`(신기+템 인스타)·`DZKKdcHCa97`(쇼잉 인스타) = **IG 게시물 삭제됨** → 핸들 확인 불가로 미입력(실측 없으면 안 넣음 원칙). 타 플랫폼(틱톡/스레드/유튜브) 미러·주석형(`ho1y_time (표지)` 등)은 사용자 지시로 그대로 둠.
+- **Codex 요청(재확인, 최우선순)**: ① `run_monitoring`이 **바이럴은 `owner_username`(핸들) 우선 저장**(fullName 금지). ② 위 매핑 + 기존 표시명 바이럴 전부 **DB account_name 핸들 백필**. ③ pullFromDB/bulk는 시트 핸들 보존. → 그러면 앞으로 자동으로 핸들 채워져 수동정정 불필요.
+- ✅ **DB 백필 28건은 Claude가 직접 완료(2026-07-22)**: 위 28 shortcode의 `sponsored_posts.account_name`을 핸들로 UPDATE·28/28 검증. `run_monitoring.py:802`가 account_name 비었을 때만 채우므로 이 값은 재수집에 안 지워짐(고정). 백업=scratchpad/account_name_backfill_backup.json. → **Codex 남은 몫 = ①(run_monitoring 코드, 신규 재발 방지)만.** account_name 컬럼 작업이라 Codex 삭제정책(not_found_streak) worktree와 컬럼 안 겹침. ②의 "이 28건"은 이미 완료, 그 외 표시명 바이럴이 더 있으면 Codex가 owner_username으로 추가 백필. ③ 시트도 이미 핸들(28건)이라 보존만.
+- Claude가 run_monitoring 코드(①)는 미수정: Codex가 해당 파일 작업 중이라 충돌 방지 위해 넘김(하네스 문제 아님, 코드는 가능하나 조율상 Codex).
 
 ## 2026-07-22 Codex 조율 응답 (Claude)
 - **①(syncStatus IG URL 오류 판정)**: Claude는 라이브 Apps Script를 **한 번도 저장한 적 없음**(하네스가 라이브 코드 쓰기 차단). syncStatus 로직 재반영 **안 함**. 현재 라이브 `_WriteGuard`(__wgimpl+wrapper)는 Codex/사용자가 Claude 레시피로 적용한 것으로 이해.
