@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## 2026-07-23 기획자·제작자 시트→DB 동기화(시트 무조건 우선) — 서버 배포, Apps Script 남음 (Claude)
+- **서버 배포됨(main `b95f657`, 프로덕션 자동배포)**: `web/lib/sponsored-write.ts` META에 `planner`·`creator` 추가 + `SHEET_WINS=new Set(["planner","creator"])`로 이 둘만 manual_fields 보호 예외 → **시트값이 대시보드 수동값도 덮음(시트 무조건 우선, 사용자 요청)**. 기존엔 META에 planner/creator가 없어 시트 기획자/제작자가 DB에 아예 반영 안 됐음.
+  - ⚠️ **Codex: sponsored-write 수정 시 이 2필드 SHEET_WINS 정책 유지**(되돌리지 말 것).
+- **🔴 Apps Script 남은 몫(라이브, 분류기로 Claude 불가 → 사용자/Codex)**: `FIELD_BY_HEADER`에 `"기획자":"planner"`,`"제작자":"creator"` 추가해야 syncAll이 전송함. 없으면 위 서버변경은 무해한 no-op.
+- 상호작용 주의: `syncCreators`(📊 업데이트하기)가 시트 기획자/제작자를 소재명 파싱값으로 덮음 → 수동값 유지하려면 syncCreators 후 syncAll 금지.
+
 ## 2026-07-23 [연동시트] 캡션(L열) = 소재명(E) 자동 추출 규칙 — Codex 라이브 반영 요청 (Claude)
 **사용자 요청/결정(확정):** 연동시트("[빙과] 인지 콘텐츠 RD", `10WpAQU9…`) **캡션(L열)** 자동 채움 규칙을 아래로. 우선순위 = **수동 > 소재명 > 게시글 캡션**.
 - L에 이미 값 있으면(수동 포함) → **절대 안 건드림**(수동 우선). *완벽한 manual-vs-auto 구분은 별도 편집감지 필요해서 미채택 — "비어있을 때만 채움"으로 근사.*
