@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## 🚨 2026-07-23 배너 도달수 시트→DB 미동기화 + 수동 패치 적용 — Codex 근본수정 필요 (Claude)
+**증상(검증됨):** 연동시트("[빙과] 인지 콘텐츠 RD", `10WpAQU9…`, gid 1937186871) CC열=**7.22 배너 도달수**가 게시물별로 정상 입력돼 있는데(헤더 정상, 122건 ~누적 5.07M), **`post_daily_stats.reach_count`(measured_at=07-22)엔 0건** 반영 → 여믄봇 리포트 `바이럴(배너)`가 +8로 나감. 07-21은 정상 반영(60건, 07-22 새벽 sync). importStats 07-23 12:57 실행(200)에도 07-22 reach 0건 기록.
+**원인(부분 확인, 근본 미확정):** 라이브 importStats는 헤더 날짜라벨(parseMonthDay)로 열을 찾고 `>today`는 제외함. **왜 07-22 배너열만 전송/기록 안 되는지는 확증 못 함** — Apps Script 편집기가 코드 원문 반환을 차단, 해당 실행 Cloud 로그 없음, Vercel은 `POST /stats-import 200 (no message)`라 스킵 카운트(future_date_skipped/missing) 안 보임. ⚠️ 내가 세운 가설 2개는 **둘 다 틀림**: (a)"헤더 지워짐"=오독(헤더 정상), (b)"slice(-2)로 마지막 2열만 전송"=오독(그 slice는 날짜 문자열 0-padding `("0"+월).slice(-2)`였음). 그러니 이 두 가설로 판단하지 말 것.
+- 관련 정황(별개): stats-import route에 `measured_at > yesterdayKST` 스킵(당일 입력은 다음날에야 저장). 그리고 importStats/편집트리거가 문서락 경합으로 매우 느림(importStats 764s, onStatusEdit_ 475s) — 기존 _WriteGuard 항목과 동일 원인.
+**Claude 수동 패치(적용 완료):** 시트 정본 기준으로 07-22 배너 도달수를 `post_daily_stats`에 직접 UPDATE(122건, manual=true, measured_at=07-22, URL 매칭, 종료<07-22 1건 제외). 백업=`scratchpad/banner_patch_backup.json`(세션 로컬). → 리포트 배너 반영됨(+1,408,425 도달수). **이건 07-22 1회 언블록일 뿐, sync 근본버그는 그대로.**
+**Codex 요청(근본):** 라이브 importStats(및 stats-import 연동)가 **왜 최근 배너 날짜열(07-22)을 DB에 안 보내는지** 로그 붙여 규명 → "오늘 이하·데이터 있는 날짜는 라벨 기준으로 전부 전송"되게 수정. (미래 빈 날짜열 존재·문서락 지연에도 안 깨지게.) 재발 시 매일 수동패치 필요.
+⚠️ Claude는 라이브 Apps Script·run_monitoring 수정 금지 규칙 준수 — 진단·수동패치까지만.
+
 ## 🔀 [2026-07-23 상황판 병합] refactor 브랜치 고유 항목 19건 통합 (Claude)
 - main과 refactor/monitoring-decompose의 AI_SHARED_STATUS가 갈라져 있던 것을 통합. 아래 19개 블록은 refactor 세션 기록(원본 브랜치 origin/refactor/monitoring-decompose).
 - ⚠️ 브랜치 **코드** 병합(refactor→main)·prod 배포는 여전히 Codex 소관. 이 병합은 상황판(문서)만 합친 것.
