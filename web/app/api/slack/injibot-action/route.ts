@@ -32,6 +32,10 @@ const ACTION_LABEL: Record<string, string> = {
   ignore: "무시(오탐) 🙈",
 };
 
+// [완료]·[숨김] = 처리 완료 → 원 메시지(스레드 답글)를 삭제해 스레드엔 '미처리'만 남긴다.
+// 그 외(승인/보류/숨김해제/무시)는 기존대로 상태 컨텍스트로 교체.
+const DELETE_ON_RESOLVE = new Set(["complete", "hide"]);
+
 export async function POST(req: NextRequest) {
   const raw = await req.text();
   const secret = (process.env.INJIBOT_SIGNING_SECRET || "").trim();
@@ -68,10 +72,13 @@ export async function POST(req: NextRequest) {
 
   try {
     if (payload.response_url) {
+      const body = DELETE_ON_RESOLVE.has(actionId)
+        ? { delete_original: true } // 완료·숨김 → 답글 삭제
+        : { replace_original: true, blocks: keptBlocks };
       await fetch(payload.response_url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ replace_original: true, blocks: keptBlocks }),
+        body: JSON.stringify(body),
       });
     }
   } catch (e) {
