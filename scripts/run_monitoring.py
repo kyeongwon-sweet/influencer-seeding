@@ -435,13 +435,25 @@ def run():
                     continue
                 ct = p.get("channel_type") or ""
                 pn = p.get("project_name") or ""
-                if "온드미디어" in ct or "위성채널" in pn or "온드미디어" in pn:
-                    continue
                 pa = p.get("posted_at")
                 cap = p.get("content_summary") or ""
+                notes = p.get("notes") or ""
                 age = (today_d - date.fromisoformat(str(pa)[:10])).days if pa else None
                 lm = last_meas.get(p["id"])
                 gap = (today_d - date.fromisoformat(lm)).days if lm else None
+                # 위성채널·온드미디어는 evergreen(계속 추적) → 나이/공백만으로는 자동종료 안 함.
+                #   (수집 일시 실패·지역제한·저조회 신규계정을 오종료하지 않기 위함. channel_type/project_name 둘 다로 판정 — pn 표기 누락분도 보호)
+                # 단, '확정 사망'이 notes에 기록됐고(삭제/비공개/VIDEO_UNAVAILABLE/POST_NOT_FOUND) 7일 이상 미수집이면 종료.
+                #   '살아있음(공개·지역제한)' 표기가 있으면 제외 → 살아있는데 못 긁는 케이스 오종료 방지.
+                is_evergreen = ("위성채널" in ct or "온드미디어" in ct or "위성채널" in pn or "온드미디어" in pn)
+                if is_evergreen:
+                    DEAD_MARK = ("VIDEO_UNAVAILABLE", "POST_NOT_FOUND", "Apify not_found", "삭제/비공개", "비공개 전환", "비공개 동영상")
+                    ALIVE_MARK = ("공개(oembed", "영상은 공개", "지역제한")
+                    dead_confirmed = any(k in notes for k in DEAD_MARK) and not any(k in notes for k in ALIVE_MARK)
+                    stale = (gap is not None and gap >= 7) or (gap is None and age is not None and age >= 7)
+                    if dead_confirmed and stale:
+                        to_end.append(p["id"])
+                    continue
                 if (("배너" in ct and age is not None and age >= 7)
                         or ("배너" not in ct and age is not None and age >= 14)
                         or (gap is not None and gap >= 7)
