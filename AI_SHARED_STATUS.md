@@ -9,7 +9,13 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
-Last updated: 2026-07-23 (Claude: 락 재검증 정상[롤백 불필요]·라이브 exportStats/syncNew 인라인 편집 2건[repo 미반영]·김뿌잉뿌잉 현재 정상)
+Last updated: 2026-07-23 (Claude: 기획자·제작자 시트→DB 동기화[시트 우선] 서버배포+Apps Script 남음 · 락 재검증 정상 · 라이브 인라인 편집 · 김뿌잉뿌잉 정상)
+
+## 2026-07-23 기획자·제작자 시트→DB 동기화(시트 무조건 우선) — 서버 배포, Apps Script 남음 (Claude)
+- **서버 배포됨(main `b95f657`, 프로덕션 자동배포)**: `web/lib/sponsored-write.ts` META에 `planner`·`creator` 추가 + `SHEET_WINS=new Set(["planner","creator"])`로 이 둘만 manual_fields 보호 예외 → **시트값이 대시보드 수동값도 덮음(시트 무조건 우선, 사용자 요청)**. 기존엔 META에 planner/creator가 없어 시트 기획자/제작자가 DB에 아예 반영 안 됐음.
+  - ⚠️ **Codex: sponsored-write 수정 시 이 2필드 SHEET_WINS 정책 유지**(되돌리지 말 것).
+- **🔴 Apps Script 남은 몫(라이브, 분류기로 Claude 불가 → 사용자/Codex)**: `FIELD_BY_HEADER`에 `"기획자":"planner"`,`"제작자":"creator"` 추가해야 syncAll이 전송함. 없으면 위 서버변경은 무해한 no-op.
+- 상호작용 주의: `syncCreators`(📊 업데이트하기)가 시트 기획자/제작자를 소재명 파싱값으로 덮음 → 수동값 유지하려면 syncCreators 후 syncAll 금지.
 
 ## 2026-07-23 락 재검증(정상)·라이브 exportStats/syncNew 인라인 편집·김뿌잉뿌잉 현황 (Claude)
 - **🔴 라이브 Apps Script 인라인 편집 2건 — repo/브랜치 어디에도 없음(라이브에만). Codex가 라이브 편집 시 덮지 말 것, repo `Combined_Sheet_AppsScript.gs` 동기화 때 포함할 것:**
