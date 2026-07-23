@@ -19,7 +19,7 @@ Last updated: 2026-07-23 (Claude: 락 재검증 정상[롤백 불필요]·라이
     `if (/instagram\.com/i.test(rawUrl) && !/\/(p|reels|reel|tv)\/[A-Za-z0-9_-]+/i.test(rawUrl)) { skipped++; return; }`
 - **락(_WriteGuard) 재검증 = 정상, 롤백 불필요**: 라이브 실행기록(scriptId 1XogwTHJb…) 최근 전부 "완료됨"·SHEET_LOCKED 0건(syncAllWithConfirm 37s·importStats·checkSheetIssues·onEdit 다수). **7/22 "락 100% 실패" 항목은 해소됨**(reentrant 정상 동작, `__wgimpl` 래퍼 라이브 존재 확인). → 락 건드리지 말 것.
 - **즉시완화**: `refreshCumulativeViews` 1회 실행 완료(누적 전체 재계산, 13:13 KST).
-- **김뿌잉뿌잉 현황(실측)**: DB 전수 프로필형 IG URL 0건(kimbbuingg 포함 0), 정상 reel `ig:Da7UuzGJmXn`+유튜브 쇼츠 미러 추적중, 시트도 정상 = **현재 재발 아님**. ⚠️ 사용자는 "틱톡+인스타 2개"인데 DB는 "인스타+유튜브미러(WT1_whbG_70)" → 유튜브 미러가 실제 틱톡이어야 하는지 확인 대기.
+- **김뿌잉뿌잉 현황(실측)**: DB 전수 프로필형 IG URL 0건(kimbbuingg 포함 0), 정상 reel `ig:Da7UuzGJmXn`+유튜브 쇼츠 미러 추적중, 시트도 정상 = **현재 재발 아님**. ✅ 유튜브 쇼츠 미러(WT1_whbG_70) 정상 확인(사용자 2026-07-23) — 이상 없음.
 - **미해결(Codex 몫 유지)**: `c91163f`·`89a8de7` main 반영 / syncPricing XLOOKUP(00f518b) / syncNew 자정 트리거(3acd858) / run_monitoring 바이럴 핸들 저장(723ee0d) / not_found_streak 삭제정책 배포.
 
 ## 2026-07-22 수집/시트 빈칸 전수조사 + DB 손질 + 커밋 2개 (Claude)
