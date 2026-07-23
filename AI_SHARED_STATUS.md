@@ -1,5 +1,17 @@
 # AI Shared Status
 
+## 2026-07-23 요청(Codex): syncPricing이 바이럴 비용/업체명을 '값' 대신 '수식'으로 채우기 (Claude)
+- **사용자 설계**: syncPricing이 바이럴 행에만, 비용(F)·업체명(M)이 **빈칸일 때만** 정적 값 대신 **XLOOKUP 수식**을 삽입. → 신규 바이럴 행 자동 확장 + 협찬/온드 미접촉(수기 보존) + 특별딜(수기 예외단가) 보존(빈칸만) + 매핑 단가 변경 시 sync 재실행 없이 자동 반영 + 동기화 실패에도 셀 생존.
+- **매핑 시트**: gid 1649102171(탭 "AI 바이럴 대시보드 연동"), 열 = 채널명(A)·업체명(B)·포맷(C, 릴스/배너)·단가(D). 콘텐츠 시트 바이럴 채널분류 영상→릴스, 배너→배너 매핑.
+- **Codex 요청(syncPricing 수정)**: 바이럴 행(채널분류에 "바이럴") 중 비용 빈칸 셀에 아래 형태 수식을 `setFormula`(정적 setValue 대신). 업체명도 동일(단가→업체명 열). 협찬/온드/비바이럴·이미 값 있는 셀은 건드리지 말 것.
+  ```
+  =IFERROR(XLOOKUP($C2 & IF(REGEXMATCH($D2,"배너"),"배너","릴스"), '<매핑탭>'!$A$2:$A & '<매핑탭>'!$C$2:$C, '<매핑탭>'!$D$2:$D), "")
+  ```
+  (탭명·열은 Codex가 라이브 기준 확정. IFERROR로 #N/A 방지, 매칭 없으면 빈칸 유지.)
+- **주의**: ① 매핑 탭 rename/이동 시 #REF → 탭 안정 유지. ② DB(exportStats/bulk)는 수식의 '계산된 값'을 읽으므로 정합 OK(실측=계약단가). ③ 비용열은 syncPricing/pullFromDB만 쓰고 둘 다 '빈칸만'이라 수식 덮어쓰기 없음(안전).
+- Claude 미조치: syncPricing은 라이브 Apps Script 코드 → 하네스 차단 + Codex 소유. 스펙만 제공.
+- 참고: 현재 빈 비용 9건(ufo__green·ufo__rainbow·luna.player·luna.playlist__·luna.djing·happing_box·posilping_humor·showing_box·365_hot)은 매핑에 단가 다 있음 → 이 수식/또는 🔄로 채워짐.
+
 ## 2026-07-23 자정수집前 syncNew 시간트리거 — Codex 코드 생성 요청 (Claude)
 - **왜**: 7/22 신규 바이럴 7건(luna.player·luna.playlist__·luna.djing·happing_box·posilping_humor·showing_box·365_hot)이 **DB 등록 지연으로 00:41 수집에서 누락 → 7/22 조회수 공백**(stats 0). posted_at=7/22인데 created_at=7/23 09:06(락 고장으로 그날 syncNew 못 돎 → 락 수정 후에야 등록). syncNew가 자정 수집 전에 안 돌아서 발생.
 - **현황(실측)**: syncNew 시간트리거는 **'사용 중지됨'(다른 사용자 소유)**, 유일한 sheet→DB 동기화 트리거는 **dailyAuto=09:30(수집 00:41보다 뒤, 오류율 50%)**. GHA `cron-daily-collect.yml`에도 수집 전 sync 호출 없음(grep 0).
