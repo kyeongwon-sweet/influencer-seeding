@@ -63,6 +63,12 @@ function fillCaptionFromAsset_() {
 ```
 - **동시편집 정책:** 편집 트리거와 장시간 문서락을 공유하지 않음. 라이브 최신본에 함수 단위로만 반영하고 repo 전체→live 덮어쓰기 금지.
 - **완료 판정:** `dailyAuto` 1회 성공 + ① 기존 수동 캡션 유지 ② 소재명 매칭 빈칸은 추출값 ③ 소재명 불일치 빈칸은 `pullFromDB` 캡션으로 채워짐, 세 케이스 실측.
+## 2026-07-24 [Codex] 소재명(asset_name) 동기화 DB/web/Apps Script 반영
+- **DB 완료(실측):** Supabase SQL Editor에서 `ALTER TABLE public.sponsored_posts ADD COLUMN IF NOT EXISTS asset_name text;` 실행 성공. REST 검증 `sponsored_posts?select=id,asset_name&limit=1` → 200, `asset_name:null` 반환 확인.
+- **web 완료(로컬):** `origin/feat/asset-name-sync`의 `web/lib/sponsored-write.ts` 변경을 최신 `origin/main` 위로 cherry-pick/rebase 완료. `META`와 upsert row에 `asset_name` 포함.
+- **Apps Script 완료(라이브 검증):** 서버본에 `"소재명": "asset_name"`, `asset_name: "소재명"`, `obj.asset_name`, `pullFromDB fillFields asset_name`, `p.asset_name` 저장. 새로고침 후 각 검색어 1건씩 확인, 미저장/문법 오류 없음. 라이브에는 기존 `기획자/제작자` 매핑과 `normalizeCaption_` 최신 변경도 유지됨.
+- **검증:** `npm test` 37개 통과, `tsc --noEmit --incremental false` 통과, `npm run build` 통과, `web/lib/sponsored-write.ts` 단독 ESLint 통과. 전체 lint는 최신 main의 기존 5개 오류(`injibot-action`, `stats-import`, `injibot-review`)로 실패.
+- **남은 단계:** main push/배포, 배포 후 `syncNew`/DB 조회로 소재명 round-trip 확인. 원본 repo dirty 파일은 건드리지 않음.
 
 ## 2026-07-24 [최우선] 배너 날짜열 → DB reach 미동기화 근본원인 확정·서버 배포 (Codex)
 - **근본원인 확정:** Apps Script `importStats`가 `if (channelType.indexOf("배너") >= 0) return;`으로 **배너 행 전체를 전송에서 제외**하고 있었음. 반면 서버 `stats-import`에는 배너 입력을 `reach_count`로 저장하는 정상 경로가 이미 존재해, 시트와 서버 정책이 서로 어긋난 것이 07-22 누락의 직접 원인. "헤더 소실"·`slice(-2)` 가설은 사용하지 않음(둘 다 오진).

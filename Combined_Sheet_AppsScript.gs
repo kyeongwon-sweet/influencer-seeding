@@ -51,6 +51,7 @@ const FIELD_BY_HEADER = {
   "채널명": "account_name",
   "업체명": "company_name",
   "캡션": "content_summary",
+  "소재명": "asset_name",
   "채널분류": "channel_type",
   "프로젝트명": "project_name",
   "상품명": "product_name",
@@ -63,7 +64,7 @@ const ALLOWED_URL_RE = /^https:\/\/([a-z0-9-]+\.)*(instagram\.com|youtube\.com|y
 // 필드 → 표시용 컬럼명 (빈칸 검사 보고용)
 const FIELD_LABEL = {
   posted_at: "업로드일", url: "게시물URL", account_name: "채널명", content_summary: "캡션",
-  channel_type: "채널 분류", project_name: "프로젝트명", product_name: "상품명", cost: "비용",
+  asset_name: "소재명", channel_type: "채널 분류", project_name: "프로젝트명", product_name: "상품명", cost: "비용",
   company_name: "업체명",
 };
 
@@ -233,6 +234,7 @@ function collectRows_(onlyNew) {
     if (fieldCols.account_name)    obj.account_name    = String(row[fieldCols.account_name - 1] || "").trim() || null;
     if (fieldCols.company_name)    obj.company_name    = String(row[fieldCols.company_name - 1] || "").trim() || null;
     if (fieldCols.content_summary) obj.content_summary = String(row[fieldCols.content_summary - 1] || "").trim() || null;
+    if (fieldCols.asset_name)      obj.asset_name      = String(row[fieldCols.asset_name - 1] || "").trim() || null;
     if (fieldCols.channel_type)    obj.channel_type    = String(row[fieldCols.channel_type - 1] || "").trim() || null;
     if (fieldCols.project_name)    obj.project_name    = String(row[fieldCols.project_name - 1] || "").trim() || null;
     if (fieldCols.product_name)    obj.product_name    = String(row[fieldCols.product_name - 1] || "").trim() || null;
@@ -491,7 +493,7 @@ function pullFromDB() {
     }
 
     // 채울 필드(시트에 해당 헤더가 있는 것만)
-    const fillFields = ["posted_at", "account_name", "company_name", "content_summary", "channel_type", "project_name", "product_name", "cost"];
+    const fillFields = ["posted_at", "account_name", "company_name", "content_summary", "asset_name", "channel_type", "project_name", "product_name", "cost"];
 
     let added = 0, filled = 0;
     posts.forEach(p => {
@@ -918,6 +920,7 @@ function importStats() {
         if (fieldCols.account_name)    p.account_name    = String(row[fieldCols.account_name - 1] || "").trim() || null;
         if (fieldCols.company_name)    p.company_name    = String(row[fieldCols.company_name - 1] || "").trim() || null;
         if (fieldCols.content_summary) p.content_summary = String(row[fieldCols.content_summary - 1] || "").trim() || null;
+        if (fieldCols.asset_name)      p.asset_name      = String(row[fieldCols.asset_name - 1] || "").trim() || null;
         if (fieldCols.channel_type)    p.channel_type    = String(row[fieldCols.channel_type - 1] || "").trim() || null;
         if (fieldCols.project_name)    p.project_name    = String(row[fieldCols.project_name - 1] || "").trim() || null;
         if (fieldCols.product_name)    p.product_name    = String(row[fieldCols.product_name - 1] || "").trim() || null;
