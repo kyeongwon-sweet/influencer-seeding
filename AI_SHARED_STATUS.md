@@ -9,7 +9,18 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
-Last updated: 2026-07-22 (Claude: 시트↔DB 수집 전수조사 + 위성/온드 사망 종료·이나 글리치·김뿌잉뿌잉 고아 DB손질 + 커밋 2개[위성 자동종료·IG URL가드] main 반영 요청)
+Last updated: 2026-07-23 (Claude: 락 재검증 정상[롤백 불필요]·라이브 exportStats/syncNew 인라인 편집 2건[repo 미반영]·김뿌잉뿌잉 현재 정상)
+
+## 2026-07-23 락 재검증(정상)·라이브 exportStats/syncNew 인라인 편집·김뿌잉뿌잉 현황 (Claude)
+- **🔴 라이브 Apps Script 인라인 편집 2건 — repo/브랜치 어디에도 없음(라이브에만). Codex가 라이브 편집 시 덮지 말 것, repo `Combined_Sheet_AppsScript.gs` 동기화 때 포함할 것:**
+  - **edit #1 (exportStats → 누적 자동 채움)**: exportStats의 증분 `setFormulas(incFormulas)` 직후에 호출 추가 → 이제 📥 한 번에 증분+누적 둘 다 채워짐. (기존: 누적=`refreshCumulativeViews`가 메뉴에 없고 dailyAuto 09:30에서만 실행돼 낮 신규행 누적을 수동입력하던 문제. 플레인 래퍼는 재진입 락이라 안전.)
+    `...setFormulas(incFormulas); try { refreshCumulativeViews(); } catch (e) { Logger.log(e); }`
+  - **edit #2 (syncNew 프로필 URL 가드, 사용자 직접 적용)**: `runSync_`의 `values.forEach`에서 `if (!ALLOWED_URL_RE.test(rawUrl)) { skipped++; return; }` 바로 다음 줄에 추가 → shortcode 없는 IG 프로필/릴스목록 URL의 DB 재삽입 차단(김뿌잉뿌잉 재발경로=이 .gs엔 가드 없었음; 웹 `c91163f`는 marketing/sync·bulk만 덮음).
+    `if (/instagram\.com/i.test(rawUrl) && !/\/(p|reels|reel|tv)\/[A-Za-z0-9_-]+/i.test(rawUrl)) { skipped++; return; }`
+- **락(_WriteGuard) 재검증 = 정상, 롤백 불필요**: 라이브 실행기록(scriptId 1XogwTHJb…) 최근 전부 "완료됨"·SHEET_LOCKED 0건(syncAllWithConfirm 37s·importStats·checkSheetIssues·onEdit 다수). **7/22 "락 100% 실패" 항목은 해소됨**(reentrant 정상 동작, `__wgimpl` 래퍼 라이브 존재 확인). → 락 건드리지 말 것.
+- **즉시완화**: `refreshCumulativeViews` 1회 실행 완료(누적 전체 재계산, 13:13 KST).
+- **김뿌잉뿌잉 현황(실측)**: DB 전수 프로필형 IG URL 0건(kimbbuingg 포함 0), 정상 reel `ig:Da7UuzGJmXn`+유튜브 쇼츠 미러 추적중, 시트도 정상 = **현재 재발 아님**. ⚠️ 사용자는 "틱톡+인스타 2개"인데 DB는 "인스타+유튜브미러(WT1_whbG_70)" → 유튜브 미러가 실제 틱톡이어야 하는지 확인 대기.
+- **미해결(Codex 몫 유지)**: `c91163f`·`89a8de7` main 반영 / syncPricing XLOOKUP(00f518b) / syncNew 자정 트리거(3acd858) / run_monitoring 바이럴 핸들 저장(723ee0d) / not_found_streak 삭제정책 배포.
 
 ## 2026-07-22 수집/시트 빈칸 전수조사 + DB 손질 + 커밋 2개 (Claude)
 
