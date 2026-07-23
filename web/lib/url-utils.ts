@@ -67,6 +67,17 @@ export function normalizeUrl(url: string): string | null {
  */
 export const ALLOWED_POST_URL_RE = /^https:\/\/([a-z0-9-]+\.)*(instagram\.com|youtube\.com|youtu\.be|tiktok\.com|facebook\.com|threads\.com|threads\.net|x\.com|twitter\.com|t\.co|kakao\.com|naver\.com)\//i;
 
+/**
+ * 인스타 URL인데 '특정 게시물 링크'가 아님(프로필/릴스 목록 등 — shortcode 없음).
+ * 예: instagram.com/kimbbuingg/reels/ → true(거부 대상). instagram.com/reel/CODE/ → false.
+ * 이런 URL은 수집 불가라 등록해두면 notify_status가 매번 'URL오류'로 알림 → 쓰기 경로에서 입구 차단용.
+ * (notify_status.py의 URL오류 판정과 동일 기준 유지.)
+ */
+export function isInstagramNonPostUrl(url: string): boolean {
+  const u = String(url || "");
+  return /instagram\.com/i.test(u) && !/\/(p|reels|reel|tv)\/[A-Za-z0-9_-]+/i.test(u);
+}
+
 export function normalizeYouTubeUrl(url: string): string | null {
   if (!url) return null;
   try {

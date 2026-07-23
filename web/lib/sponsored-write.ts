@@ -1,5 +1,5 @@
 import type { getServerSupabase } from "@/lib/supabase-server";
-import { normalizeUrl, ALLOWED_POST_URL_RE } from "@/lib/url-utils";
+import { normalizeUrl, ALLOWED_POST_URL_RE, isInstagramNonPostUrl } from "@/lib/url-utils";
 import { normalizeChannelType, isFreeChannel } from "@/app/monitoring/lib";
 import { triggerCaptionBackfill, needsCaption } from "@/lib/github-dispatch";
 import { todayKST } from "@/lib/dateRule";
@@ -73,6 +73,7 @@ export async function upsertSponsoredRows(
     })
     .filter(r => {
       if (!r.url || !ALLOWED_POST_URL_RE.test(r.url)) return false;
+      if (isInstagramNonPostUrl(r.url)) return false;  // IG 프로필/릴스목록(게시물 링크 아님) 차단 — 깨진 행·URL오류 알림 방지
       if (seen.has(r.url)) return false;
       seen.add(r.url);
       return true;
