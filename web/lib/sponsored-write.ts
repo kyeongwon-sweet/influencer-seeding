@@ -85,7 +85,9 @@ export async function upsertSponsoredRows(
     return { summary: { upserted: 0, created: 0, meta_filled: 0, ended_marked: 0 } };
   }
 
-  const META = ["posted_at", "account_name", "company_name", "content_summary", "channel_type", "project_name", "product_name", "cost"];
+  const META = ["posted_at", "account_name", "company_name", "content_summary", "channel_type", "project_name", "product_name", "planner", "creator", "cost"];
+  // 기획자·제작자는 '시트 무조건 우선'(사용자 2026-07-23): 대시보드 수동값(manual_fields)도 시트값으로 덮는다.
+  const SHEET_WINS = new Set(["planner", "creator"]);
 
   // 기존 게시물(id+메타) 조회 — '빈 값만 채우기' 비교용.
   // ⚠️ URL이 많으면 .in() 쿼리 URL 길이 한도 초과로 400(Bad Request) → 80개씩 청크로 조회.
@@ -177,7 +179,7 @@ export async function upsertSponsoredRows(
     for (const f of META) {
       // 수동 수정 필드(캡션 포함)는 보존 — 대시보드에서 마지막으로 고친 값을 시트가 덮지 않음.
       // (캡션도 이제 동일 정책. 시트 빈칸이면 아래 valPresent에서 skip → needsCaption 자동 불러오기가 채움)
-      if (manual.includes(f)) continue;
+      if (!SHEET_WINS.has(f) && manual.includes(f)) continue;
       const val = (r as Record<string, unknown>)[f];
       const valPresent = val !== null && val !== undefined && val !== "";
       if (!valPresent) continue; // 시트가 비면 기존 유지(지우지 않음)
