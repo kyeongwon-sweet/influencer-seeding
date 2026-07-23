@@ -5,7 +5,7 @@
 **현재 상태(검증):** `sponsored_posts`에 소재명 컬럼 없음. `syncCreators`만 소재명(E)을 읽어 기획자/제작자 파생. → 바로 아래 "기획자·제작자 동기화" 항목과 **동일 패턴**으로 추가하면 됨.
 **제안 스펙 (컬럼명 `asset_name`, snake_case English 관례 일치):**
 - **① DB (Codex):** `ALTER TABLE sponsored_posts ADD COLUMN asset_name text;`
-- **② web/ (Claude 가능, 단 ① 이후 배포):** `web/lib/sponsored-write.ts` META에 `asset_name` 추가(기획자·제작자 추가한 것과 동일 방식). 소재명은 시트에서만 입력되는 보존용이므로 **SHEET_WINS 포함 권장**(시트값이 정본). 타입에 `asset_name?: string`.
+- **② web/ ✅ 준비 완료 — 브랜치 `feat/asset-name-sync`(커밋 `3c1b991`):** `web/lib/sponsored-write.ts` META+row에 `asset_name` 추가(기획자·제작자와 동일 방식, SHEET_WINS 미포함=기본 fill/보존 동작). **⚠️ ①DB 컬럼 ADD 후에만 이 브랜치를 main에 머지**(컬럼 없이 배포 시 SELECT `${META}` 에러로 동기화 붕괴 — 그래서 일부러 main 아닌 브랜치에 둠). 타입은 route.ts가 loose(Record)라 별도 불필요.
 - **③ 라이브 Apps Script "AI 트래킹 대시보드 연동.gs" (Codex, Claude 라이브쓰기 분류기 차단):**
   - `FIELD_BY_HEADER`에 `"소재명": "asset_name",` 추가(이게 없으면 ②는 무해한 no-op — 바로 아래 항목 교훈과 동일).
   - `FIELD_TO_HEADER`(역맵) `asset_name: "소재명",`.
