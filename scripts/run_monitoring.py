@@ -766,6 +766,33 @@ def run():
                     stats_by_key[key] = cur
                 print(f"[LOG] data-slayer 선택 폴백 완료: 조회수 {merged}건 채움")
 
+            # 🛟 comments_count 보강(2026-07-24): 기본 IG 액터가 play는 주면서 commentsCount를 빼먹는 경우가 있어
+            #    바이럴 게시물 다수가 comments_count=null → 부정댓글 봇 델타 신호가 비어 재스캔을 못 함(미탐 원인).
+            #    play 유무와 무관하게 '이번 수집에서 comments_count 없는 IG글'만 data-slayer로 보강(일일 30건 상한).
+            #    ⚠️ null만 채우고 실측(non-null)은 덮지 않음. data-slayer도 없으면 그대로 비워둠(값 지어내지 않음).
+            cmt_missing = [u for u in ig_urls
+                           if (stats_by_key.get(_stats_key(u)) or {}).get("comments_count") is None]
+            if cmt_missing:
+                cap = cmt_missing[:30]
+                print(f"[LOG] comments_count 누락 {len(cmt_missing)}건 → data-slayer 보강 {len(cap)}건 호출")
+                fb2 = _fetch_ig_fallback(cap)
+                filled = 0
+                for u in cap:
+                    m = fb2.get(_ig_shortcode(u) or "")
+                    if not m or m.get("comments_count") is None:
+                        continue
+                    key = _stats_key(u)
+                    cur = stats_by_key.get(key) or {"url": u}
+                    cur["comments_count"] = m["comments_count"]
+                    for fld in ("play_count", "likes_count"):
+                        if cur.get(fld) is None and m.get(fld) is not None:
+                            cur[fld] = m[fld]
+                    if m.get("content_summary") and not cur.get("content_summary"):
+                        cur["content_summary"] = m["content_summary"]
+                    stats_by_key[key] = cur
+                    filled += 1
+                print(f"[LOG] comments_count 보강 완료: {filled}건")
+
         rows = []
         # 직전(오늘 이전) 누적값 일괄 조회 — per-post 개별 쿼리(N+1) 제거.
         # .lt(TODAY)라서 같은 날 재수집 시 '오늘 행'을 기준값으로 삼지 않음(멱등) — 글리치로 부푼 값이 clamp로 고착되는 것 방지.
