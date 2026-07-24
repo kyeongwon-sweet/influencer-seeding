@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { getServerSupabase } from "@/lib/supabase-server";
+import { recordFalsePositiveReview } from "@/lib/injibot-review";
 
 // injibot(부정 댓글 알림) 버튼 클릭 처리(Slack Interactivity).
 // injibot Slack 앱 → Interactivity & Shortcuts → Request URL:
@@ -70,11 +71,14 @@ export async function POST(req: NextRequest) {
     const messageTs: string = payload.message?.ts || "";
     if (channelId && messageTs) {
       try {
-        await getServerSupabase()
-          .from("negative_comment_alerts")
-          .update({ review_decision: "false_positive", reviewed_by: userId, reviewed_at: new Date().toISOString() })
-          .eq("slack_channel_id", channelId)
-          .eq("slack_ts", messageTs);
+        const result = await recordFalsePositiveReview(getServerSupabase(), {
+          channelId,
+          messageTs,
+          userId,
+        });
+        if (!result.ok) {
+          console.error("[injibot-action] 오탐(false_positive) 기록 실패", result.error);
+        }
       } catch (e) {
         console.error("[injibot-action] 오탐(false_positive) 기록 실패", e);
       }
