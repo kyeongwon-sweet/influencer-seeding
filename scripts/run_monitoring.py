@@ -625,17 +625,20 @@ def run():
         try:
             active_ids = [p["id"] for p in all_posts if not p.get("ended_at")]
             max_metric_by_post = {}
+            manual_tracked_ids = set()  # 수동 입력(manual=true) stat이 하나라도 있는 post → 자동종료 예외(수동값 보존)
             for _i in range(0, len(active_ids), 100):
                 _c = active_ids[_i:_i + 100]
                 _f = 0
                 while True:
-                    _r = (db.table("post_daily_stats").select("post_id, play_count, reach_count")
+                    _r = (db.table("post_daily_stats").select("post_id, play_count, reach_count, manual")
                           .in_("post_id", _c).range(_f, _f + 999).execute())
                     _pg = _r.data or []
                     for _x in _pg:
                         _metric = row_metric(_x)
                         if _metric > max_metric_by_post.get(_x["post_id"], 0):
                             max_metric_by_post[_x["post_id"]] = _metric
+                        if _x.get("manual"):
+                            manual_tracked_ids.add(_x["post_id"])
                     if len(_pg) < 1000:
                         break
                     _f += 1000
@@ -647,6 +650,7 @@ def run():
                     p,
                     target_date=TODAY,
                     max_metric=max_metric_by_post.get(p["id"], 0),
+                    manual_tracked=(p["id"] in manual_tracked_ids),
                 )
                 if decision.should_end:
                     to_end.append(p["id"])

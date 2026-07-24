@@ -55,6 +55,7 @@ def classify_auto_end(
     *,
     target_date: str,
     max_metric: int = 0,
+    manual_tracked: bool = False,
 ) -> AutoEndDecision:
     # 수동 트래킹 재개 존중: ended_at을 사람이 직접 관리(manual_fields 포함)하면 자동종료로 덮지 않는다.
     # (대시보드/시트에서 수동으로 살린 글이 나이 규칙으로 매일 재종료돼 수동 입력이 사라지던 버그 수정.)
@@ -67,6 +68,12 @@ def classify_auto_end(
 
     if is_auto_end_excluded(post):
         return AutoEndDecision(False, "excluded_channel_project", None, None, int(max_metric or 0))
+
+    # 수동 입력값 보존(사용자 지시 2026-07-24): 팀이 손으로 조회수를 입력 중인 글(manual stat 존재,
+    # 대개 틱톡 민감·유튜브 비공개 등 자동수집 불가라 수동추적)은 나이 규칙으로 종료하지 않는다.
+    # 종료되면 exportStats가 종료일 이후 수동값을 지워 매일 사라지던 문제의 근본 차단.
+    if manual_tracked:
+        return AutoEndDecision(False, "manual_stat_tracked", None, None, int(max_metric or 0))
 
     metric = int(max_metric or 0)
     if metric >= HIGH_METRIC_THRESHOLD:
