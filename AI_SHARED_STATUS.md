@@ -5,7 +5,8 @@
 **근본원인(확정):** `scripts/auto_end_rules.py` `classify_auto_end`가 **manual_fields를 무시** → 사람이 수동으로 살린(ended_at 재개) 글도 나이 규칙(>14일·<50만)으로 **매일 재종료**됨. 종료되면 exportStats가 종료일 이후 값을 지우고 시트에서 빠짐. 이나 틱톡(307K)·유튜브(255K)는 6월 게시(40일+)·50만 미만이라 매일 자동종료 대상이었음. (IG 2.1M은 50만 초과라 high_metric 예외로 활성 유지 — 자동종료 피해자 아님.)
 **수정(main `9c3690b`, GHA 오늘밤부터 적용):** `classify_auto_end`에 manual_fields 예외 추가 — **`ended_at`이 manual_fields에 있으면 자동종료 안 함**(수동 재개 존중). run_monitoring이 manual_fields를 select해 전달. 로컬 테스트: manual ended_at→예외, 옛글 종료·50만 예외는 회귀 없음.
 **DB 수정(라이브, 사용자 지시로 Claude 직접):** 이나 틱톡(`aebdda27…`)·유튜브(`eeae1521…`) `ended_at=NULL` 복구(둘 다 manual_fields에 ended_at 있어 이제 재종료 안 됨). 백업=`scratchpad/ina_posts_backup.json`. ⚠️ 원래 DB정정은 Codex 도메인이나 사용자가 "네가 해" 직접지시 → 백업·타겟·검증 후 처리. Codex: 되돌리지 말 것(사용자 결정=계속 추적).
-**남은 이슈(미해결):** IG 2.1M(`DZXeAW8S9IQ`, 활성)이 시트에 없음 — pullFromDB가 활성 협찬글을 시트에 안 넣는 별개 갭(DB 1298 vs 시트 857, list-for-sheet/페이지네이션/linkKey는 정상 확인). 사용자가 수동 재추가하면 이제 유지됨(활성+보호). 근본(pullFromDB 자동추가)은 라이브 Apps Script 확인 필요.
+**정정(2026-07-24):** 앞서 "IG 2.1M/미러가 시트에 없음"이라 적었으나 **오진**이었음 — **gviz CSV 캐시가 오래된 스냅샷을 반환**해 실제 존재하는 행이 안 보였던 것(날짜열 헤더가 빈칸으로 오던 것과 같은 캐시 문제). `/export?format=csv&cb=` 캐시버스터로 재확인: 3개 미러 모두 **시트에 정상 존재**(이나 인스타 `/reel/DZXeAW8S9IQ/` 트래킹중, 틱톡·유튜브 각 1행, 데이터·7/23까지 있음). ⚠️ **교훈: 이 시트 검증은 gviz(`/gviz/tq`) 캐시 신뢰 금지 — `/export?format=csv&cb=<uniq>` 쓰거나 라이브 대조.** DB 1298 vs 시트 857 차이는 대부분 종료 IG·위성/온드(정상 제외). "pullFromDB가 활성글 누락" 결론도 이 캐시 오진에 기반했으니 폐기.
+**행 삭제 주체:** 시트 행 삭제 코드는 `removeDuplicateLinks`(수동 메뉴) 하나뿐이고 URL키 기준이라 서로 다른 미러는 안 지움. 자동화(dailyAuto)는 행 삭제 안 함. → 값이 사라진 진짜 원인은 위 자동종료 재종료(이미 수정), 행 삭제 아님.
 
 ## 2026-07-23 [신규기능] 소재명(E열)을 DB·대시보드에도 동기화(보존) — Codex 라이브/DB 반영 요청 (Claude)
 **사용자 요청/의도:** 소재명이 **지금 시트(E열)에만 존재** → RD시트 재정렬로 데이터 소실됐던 사례처럼 **날아갈 위험**. 그래서 **시트·DB·대시보드 3곳에 모두 저장**해 보존. (참고: 소재명 형식 파일명은 이미 `project_name`으로 DB에 있고 대시보드 17항목 파싱 중이나, **소재명 E열 자체는 미동기화** — 별개 컬럼으로 확정 보존 원함.)
