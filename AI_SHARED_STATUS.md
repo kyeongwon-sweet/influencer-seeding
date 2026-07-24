@@ -1,5 +1,21 @@
 # AI Shared Status
 
+## 2026-07-24 요청(Codex): 연동시트 소재명(E)↔DB 동기화 매핑 + project_name/asset_name 정본 통일 (Claude, 사용자 승인)
+- **실측**: DB 총 1,298 = 연동시트 1,298(게시물 일치, AI대시보드=DB뷰). 소재명(파일명)은 DB **project_name**에 보존(1,201건), 시트 소재명(E)과 표본 5/5 값 일치. 전용 **asset_name 필드는 전부 빈값**(미사용).
+- **문제**: 연동시트 "소재명"(E)이 Apps Script `FIELD_BY_HEADER`에 매핑 없음(그 안의 "프로젝트명"→project_name은 시트에 없는 **죽은 키**). → **시트 소재명 편집이 DB로 동기화 안 됨**(지금은 마케팅 파이프라인 등으로 값이 우연히 일치, 향후 시트 편집 시 어긋날 수 있음).
+- **요청**:
+  (a) `FIELD_BY_HEADER`에 "소재명" 매핑 추가 → 시트 소재명(E)이 DB로 동기화되게(대상 필드는 (b)에서 정한 정본).
+  (b) **소재명 정본 필드 통일**: 현재 소재명=project_name, asset_name=빈값. 하나로 통일(asset_name을 소재명 정본으로 삼고 project_name값 이관, 또는 project_name 유지+asset_name 제거). 서버 `sponsored-write` META·marketing/sync·run_monitoring 경로 정합 확인.
+  - ⚠️ 죽은 키 "프로젝트명"→project_name도 정리(시트에 프로젝트명 열 없음).
+  - 검증: 시트 소재명 편집→DB 반영, 기존 1,201건 값 일치 유지, 대시보드 표시 정합.
+- Claude 미조치: 라이브 Apps Script(FIELD_BY_HEADER) + 서버/DB 스키마 결정 필요 → Codex.
+
+## 2026-07-24 [수집] comments_count 누락 IG글 data-slayer 보강 (Claude)
+- **문제**: 기본 IG 액터(apify/instagram-scraper)가 play는 주면서 `commentsCount`를 빼먹는 경우가 있어 바이럴 게시물 다수 `post_daily_stats.comments_count`=null → negative-comment-monitor 델타가 noSignal로 스킵→재스캔 못 함→미탐(365_hot·happing_box). 기존 폴백은 **play 누락 시에만** 돌아 이 케이스 못 잡음.
+- **수정(`afe6770`, `scripts/run_monitoring.py`)**: primary 수집 후 play 무관하게 **comments_count 없는 IG글만 data-slayer로 하루 30건 상한 보강**. null만 채우고 실측 non-null은 안 덮음, data-slayer도 없으면 비워둠(값 지어내지 않음, 무결성 규칙 준수). 비용 ~$0.2/일 상한. py_compile 통과.
+- **검증**: 다음 일일 run_monitoring(GHA cron) 로그 `comments_count 보강 완료: N건` + 이후 봇 noSignal 감소로 확인 예정(아직 라이브 미실행, 미검증). 사용자 결정=(b1) 근본보강(재스캔 아님).
+- 참고: injibot ignore→false_positive는 Codex가 `web/lib/injibot-review.ts` 헬퍼로 리팩터(내 로직 유지·테스트 추가). [완료]·[숨김]→삭제(`49a64e5`) 유지.
+
 ## 2026-07-24 [최우선 요청] 캡션(L열) = 소재명(E) 자동 추출 — 라이브 Apps Script 반영 필요
 **사용자 결정(확정):** 연동시트("[빙과] 인지 콘텐츠 RD", `10WpAQU9…`) 캡션(L열) 자동 채움 우선순위는 **수동값 > 소재명 추출값 > 게시글 캡션**.
 - L에 값이 이미 있으면(수동 포함) **절대 변경하지 않음**.
