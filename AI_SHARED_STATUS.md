@@ -65,9 +65,9 @@ function fillCaptionFromAsset_() {
 - **완료 판정:** `dailyAuto` 1회 성공 + ① 기존 수동 캡션 유지 ② 소재명 매칭 빈칸은 추출값 ③ 소재명 불일치 빈칸은 `pullFromDB` 캡션으로 채워짐, 세 케이스 실측.
 ## 2026-07-24 [Codex] 소재명(asset_name) 동기화 DB/web/Apps Script 반영
 - **DB 완료(실측):** Supabase SQL Editor에서 `ALTER TABLE public.sponsored_posts ADD COLUMN IF NOT EXISTS asset_name text;` 실행 성공. REST 검증 `sponsored_posts?select=id,asset_name&limit=1` → 200, `asset_name:null` 반환 확인.
-- **web 완료(로컬):** `origin/feat/asset-name-sync`의 `web/lib/sponsored-write.ts` 변경을 최신 `origin/main` 위로 cherry-pick/rebase 완료. `META`와 upsert row에 `asset_name` 포함.
+- **web 완료(로컬):** `origin/feat/asset-name-sync`의 `web/lib/sponsored-write.ts` 변경을 최신 `origin/main` 위로 cherry-pick/rebase 완료. `META`와 upsert row에 `asset_name` 포함. 추가 검증 중 `pullFromDB` 소스인 `list-for-sheet`가 `asset_name`을 내려주지 않는 것을 확인해 조회 컬럼에도 추가함.
 - **Apps Script 완료(라이브 검증):** 서버본에 `"소재명": "asset_name"`, `asset_name: "소재명"`, `obj.asset_name`, `pullFromDB fillFields asset_name`, `p.asset_name` 저장. 새로고침 후 각 검색어 1건씩 확인, 미저장/문법 오류 없음. 라이브에는 기존 `기획자/제작자` 매핑과 `normalizeCaption_` 최신 변경도 유지됨.
-- **검증:** `npm test` 37개 통과, `tsc --noEmit --incremental false` 통과, `npm run build` 통과, `web/lib/sponsored-write.ts` 단독 ESLint 통과. 전체 lint는 최신 main의 기존 5개 오류(`injibot-action`, `stats-import`, `injibot-review`)로 실패.
+- **검증:** `npm test` 37개 통과, `tsc --noEmit --incremental false` 통과, `npm run build` 통과, 변경 파일(`sponsored-write.ts`, `list-for-sheet/route.ts`) 단독 ESLint 통과. 전체 lint는 최신 main의 기존 5개 오류(`injibot-action`, `stats-import`, `injibot-review`)로 실패.
 - **남은 단계:** main push/배포, 배포 후 `syncNew`/DB 조회로 소재명 round-trip 확인. 원본 repo dirty 파일은 건드리지 않음.
 
 ## 2026-07-24 [최우선] 배너 날짜열 → DB reach 미동기화 근본원인 확정·서버 배포 (Codex)
