@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 2026-07-24 [최우선] 배너 날짜열 → DB reach 미동기화 근본원인 확정·서버 배포 (Codex)
+- **근본원인 확정:** Apps Script `importStats`가 `if (channelType.indexOf("배너") >= 0) return;`으로 **배너 행 전체를 전송에서 제외**하고 있었음. 반면 서버 `stats-import`에는 배너 입력을 `reach_count`로 저장하는 정상 경로가 이미 존재해, 시트와 서버 정책이 서로 어긋난 것이 07-22 누락의 직접 원인. "헤더 소실"·`slice(-2)` 가설은 사용하지 않음(둘 다 오진).
+- **서버 완료(main `5378e62`, `-mu` 프로덕션 Ready 확인):** 시트 수기 입력 날짜 상한을 `yesterdayKST()`→`maxDateKST()`(KST 오늘)로 완화. 자정 자동수집/T-1 리포트 정책은 별도 경로라 그대로 유지. 오늘 이후 미래 날짜만 차단.
+- **Apps Script 패치 준비(repo 함수 단위):** 배너 제외를 제거하고, 날짜 헤더 라벨 기준 `오늘 이하 + 숫자값 있음`인 **배너 셀은 동일값이어도 전량 전송**. 비배너는 기존 forward-fill 동일값 생략 유지. `importStats_scan/result` 구조화 로그와 배너 반영/미래날짜 스킵 카운트 추가. 회귀테스트·타입검사·Next build·Apps Script 문법검사 통과.
+- **라이브 반영 대기:** 정본 Apps Script 탭에 다른 Claude 세션 활성 표시가 있어 동시저장 규칙에 따라 저장을 보류함. 활성 세션 종료 후 `importStats__wgimpl` 함수만 최소 패치 → 실행 1회 → 로그의 `banner_stats_to_send/banner_reach_inserted` 및 DB 검증 예정. repo 전체→live 덮어쓰기 금지.
+- **재실행 전 기준값(DB 확인):** 2026-07-22 배너 reach **122행**, 전부 `manual=true`, 합계 **5,074,259**. Claude 수동패치와 일치. 재동기화 후에도 122행·합계가 같아야 멱등 성공이며, 이 기준값을 변경·추정하지 말 것.
+
 ## 2026-07-24 [자동종료 수동값 보존] 수동 입력 글 전체를 자동종료 예외 처리 (Claude, 사용자 지시 "수동값 보존")
 - **배경**: 이나뿐 아니라 **21건**(무상시딩10·바이럴9·협찬2)이 나이규칙(>14일·<50만)으로 곧 자동종료 → exportStats가 종료일 이후 **수동 입력값 삭제** → 매일 사라짐. (대부분 age 15, 즉 7/09 게시분이 임계 막 넘김.)
 - **수정(main `f5a55d1`, GHA 오늘밤 적용)**: `auto_end_rules.classify_auto_end`에 `manual_tracked` 예외 추가 — **post_daily_stats에 manual=true stat이 하나라도 있으면 자동종료 안 함**(팀이 손으로 추적 중인 글=보존). run_monitoring이 stats에서 manual 집계해 전달. 캡션 명시적 종료('삭제/보관/종료')는 여전히 종료, manual_fields·나이·50만 등 회귀 없음(로컬 테스트 4케이스 통과). 앞선 `9c3690b`(manual_fields ended_at 예외)와 함께 이중 보호.
