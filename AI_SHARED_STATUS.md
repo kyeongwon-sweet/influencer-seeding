@@ -9,14 +9,22 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
-Last updated: 2026-07-24 (Claude: 캡션추출 정정[.디자인 정규식 폐기→part8, 커버 759/782]·캡션함수 미구현 확인 · 소재명 동기화·ARRAYFORMULA 요청)
+Last updated: 2026-07-24 (Claude: 캡션 자동채움 fillCaptionFromAsset_ 라이브 구현·실행·검증 완료[findHeaderCol_ 누락 수정, 수동 763건 보존])
+
+## 2026-07-24 [완료·검증] 캡션(L) 자동채움 fillCaptionFromAsset_ 라이브 구현+실행 (Claude, 사용자 지시 "네가 실행해줘")
+**아래 "미구현" 항목 해소.** `fillCaptionFromAsset_`(part8 규칙)+dailyAuto 배선(runSync_ 앞) 라이브 반영·수동 실행·실측 검증 완료.
+- **근본 원인**: 라이브 Apps Script에 헤더열 조회 헬퍼 `findHeaderCol_`가 없어(repo `Combined_Sheet_AppsScript.gs:1103`엔 존재—divergence) `fillCaptionFromAsset_`이 `ReferenceError`로 dailyAuto에서 매일 조용히 실패 중이었음. → 라이브에 `findHeaderCol_` 추가(영구 필요, 지우지 말 것). repo↔라이브 재정합=Codex.
+- **대상 시트 확정(실측)**: 스프레드시트 `1QWpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak`(파일명 "[빙과] 인지 콘텐츠 RD"), 탭 `콘텐츠 대시보드 연동` gid=1937186871, 소재명=E(5)·캡션=L(12), 1300행. (별개 `1EITk9hx…`=마케팅T 대시보드로 무관.)
+- **실행 결과(gviz 실측)**: 소재명 `[`시작 782행 중 빈 캡션 0(채울 것 전부 채움), part8 자동채움 19, **수동/원본 캡션 763건 보존**. 남은 빈 캡션 7건=소재명 비표준(추출 불가)→공란 유지(값 안 지어냄).
+- **안전장치**: 값 있는 셀(수동 포함) 절대 안 덮음(`trim()!=="" → continue`), 실측 763건 보존 확인.
+- **후속(Codex)**: repo에 라이브 함수 반영, fillCaptionFromAsset_ 잠금(withDocLock_) 밖 검토(L열 경합 위험 낮음).
 
 ## 2026-07-24 [정정·최우선] 캡션 추출 규칙: ".디자인" 정규식 폐기 → part8 추출 (Claude, 실측+사용자 승인 A안)
 - ⚠️ 다른 세션 "캡션(L)=소재명 자동추출" 스펙의 정규식 `/_([^_]+\.[^_]+)\.디자인/`은 **폐기**. 실측: 구조적 소재명 782개 중 136개(17%, "디자인" 든 것만)만 매치 → 83% 놓침.
 - **정정 규칙(사용자 승인)**: 캡션 = **소재명 `_` 분리 9번째 구획 = part[8]**. 예: `..._.배너_제주에서뭐하지.__황경원_...` → `제주에서뭐하지`. 배너·릴스 모두 part8이 설명.
   - 정리: 후행 `.X`/`.x`·후행 `.` 제거. JS: `s.split("_")[8]?.replace(/\.(x|X)$/,'').replace(/\.$/,'').trim()`. 커버리지 **759/782(97%)**, 빈값 23(비표준)은 게시글 캡션 폴백.
 - 우선순위(수동>소재명 part8>게시글)·실행순서(`fillCaptionFromAsset_()`→`pullFromDB()` 앞) 유지.
-- **미구현**: 933c071은 문서 커밋, 코드에 `fillCaptionFromAsset_` 없음. Codex가 part8 규칙으로 구현.
+- ~~**미구현**~~ → **✅ 2026-07-24 라이브 구현·검증 완료(Claude)**. 최상단 "[완료·검증] 캡션(L) 자동채움" 참조. repo 반영은 Codex.
 
 ## 2026-07-24 요청(Codex): 연동시트 소재명(E)↔DB 동기화 매핑 + project_name/asset_name 정본 통일 (Claude, 사용자 승인)
 - **실측**: DB 총 1,298 = 연동시트 1,298(게시물 일치, AI대시보드=DB뷰). 소재명(파일명)은 DB **project_name**에 보존(1,201건), 시트 소재명(E)과 표본 5/5 값 일치. 전용 **asset_name 필드는 전부 빈값**(미사용).
