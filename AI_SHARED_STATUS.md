@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 2026-07-24 [배너 도달수 07-23] 수동패치 + 근본=importStats 미자동실행/배포 (Claude)
+**증상:** 리포트(DB) 07-23 배너 reach 0건인데 시트엔 125건. 사용자가 "📊 일자별 조회수 입력"(importStats) 눌렀는데도 안 들어옴.
+**코드 상태(확인):** stats-import·importStats **둘 다 배너 reach 처리 O + `maxDateKST=오늘`이라 당일 허용**(Codex `5378e62` "import banner reach through current KST date", `d85fc9a` 배너=reach_count). **코드는 맞음.**
+**그럼 왜 안 됐나(미확정, 후보):** ① **`5378e62`가 프로덕션(-mu)에 미배포**(Vercel 수동배포) → 사용자가 눌렀을 때 라이브(구버전)가 배너 스킵/거부. ② 라이브 importStats(Apps Script)가 옛 버전. ③ 클릭 시점이 07-23 값 입력 전. → **확정하려면 Apps Script 실행로그(importStats_result: banner_reach_inserted/future_date_skipped) 또는 prod 배포버전 확인 필요.**
+**Claude 조치(즉시):** 07-23 배너 reach 125건을 시트 실값으로 `post_daily_stats` upsert(measured_at=07-23, manual=true, 합계 5,358,170, 종료·미매칭 0). 백업불필요(신규 insert, 이전 0건). → 리포트 정상.
+**Codex 근본(재발 차단):** ① **`5378e62` 프로덕션 배포 확인/배포.** ② **importStats를 dailyAuto에 추가**(현재 메뉴 버튼만, 자동실행 아님 — 83행) → 매일 자동 sync되어 수동클릭·매일 패치 불필요. ③ 배너 reach는 run_monitoring 스크랩 불가(수기 입력)라 importStats가 유일 경로임을 유의.
+
 ## 2026-07-24 [완료·검증] dailyAuto 30분 타임아웃 근본수정 — pullFromDB 셀단위 읽기→배치 (Claude)
 - **문제**: dailyAuto(매일 9:30)가 최근 66.67% 실패. 실행로그 = **최대 실행시간 30분(1802초) 초과 타임아웃**. runSync_는 ~1분에 끝나는데 다음 `pullFromDB`가 ~28분 hang. `pullFromDB`·`importStats` 단독 실행도 1802초 타임아웃.
 - **근본원인**: `pullFromDB__wgimpl`(라이브)/`pullFromDB`(repo)가 `posts.forEach`(≈1298) × `fillFields.forEach`(≈11) 안에서 **셀마다 `cell.getValue()`** → 약 1.4만 회 개별 왕복 → 수십 분.
