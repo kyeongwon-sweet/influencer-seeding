@@ -897,6 +897,11 @@ function importStats() {
 
     const today = todayStr_();
     let future = 0;
+    let futureDateCells = 0;
+    let blankDateCells = 0;
+    let carrySkipped = 0;
+    let bannerRows = 0;
+    let bannerStats = 0;
     const stats = [];
     const postByKey = {}; // url-key → 광고 메타 (첫 행 우선). 없는 광고 생성용, 기존은 서버가 덮어쓰지 않음.
     values.forEach(row => {
@@ -920,32 +925,66 @@ function importStats() {
         postByKey[key] = p;
       }
 
-      // ⚠️ 이어받기(forward-fill) 값 재저장 차단: exportStats가 공백을 '직전 누적값'으로 채워두므로,
-      //    직전 칸과 값이 같은 셀은 '표시용 이어받기'이지 새 실측이 아니다 → DB로 보내지 않는다(가짜 측정 방지).
-      //    실제로 누적이 안 변한 날도 스킵되지만 정보량 0이고 safeIncrement가 표시단계에서 이어받으므로 무해.
-      // 배너 날짜값은 reach_count이므로 play_count 입력 경로에서는 전송하지 않는다.
       const channelType = fieldCols.channel_type ? String(row[fieldCols.channel_type - 1] || "") : "";
-      if (channelType.indexOf("배너") >= 0) return;
+      const isBanner = channelType.indexOf("배너") >= 0;
+      if (isBanner) bannerRows++;
+
+      // 날짜 헤더 라벨을 기준으로 오늘(KST) 이하의 숫자 셀을 전송한다.
+      // 배너 입력은 서버 stats-import가 reach_count로 저장하므로 여기서 제외하면 안 된다.
+      // 비배너만 기존 forward-fill 중복 생략을 유지한다. 배너는 도달수가 같은 날도
+      // 실제 수기 스냅샷일 수 있으므로 값이 있는 날짜를 모두 보낸다.
       let prevN = null;
       dateCols.forEach(dc => {
+        if (dc.date > today) {
+          if (toNumber_(row[dc.col - 1]) !== null) futureDateCells++;
+          return;
+        }
         if (isBeforePostedDate_(dc.date, postedAt)) return; // 업로드 전 날짜는 조회수 저장 대상 아님
         const n = toNumber_(row[dc.col - 1]);
-        if (n === null) return; // 빈칸/비숫자 → 측정 없음, 스킵
-        if (prevN !== null && n === prevN) return; // 직전과 동일 = 이어받기 값 → 스킵
+        if (n === null) { blankDateCells++; return; } // 빈칸/비숫자 → 측정 없음, 스킵
+        if (!isBanner && prevN !== null && n === prevN) { carrySkipped++; return; }
         stats.push({ url: url, measured_at: dc.date, play_count: n });
+        if (isBanner) bannerStats++;
         prevN = n;
       });
     });
+
+    Logger.log(JSON.stringify({
+      event: "importStats_scan",
+      today: today,
+      rows: values.length,
+      date_columns: dateCols.length,
+      first_date: dateCols[0].date,
+      last_date: dateCols[dateCols.length - 1].date,
+      stats_to_send: stats.length,
+      banner_rows: bannerRows,
+      banner_stats_to_send: bannerStats,
+      future_post_rows_skipped: future,
+      future_date_cells_skipped: futureDateCells,
+      blank_date_cells_skipped: blankDateCells,
+      non_banner_carry_skipped: carrySkipped,
+    }));
 
     if (stats.length === 0) { safeAlert_("입력할 조회수 데이터가 없습니다."); return; }
 
     const posts = Object.keys(postByKey).map(k => postByKey[k]);
     const res = postStats_({ posts: posts, stats: stats });
+    Logger.log(JSON.stringify({
+      event: "importStats_result",
+      inserted: res.inserted || 0,
+      banner_reach_inserted: res.banner_reach_inserted || 0,
+      future_date_skipped: res.future_date_skipped || 0,
+      missing_urls: res.missing_urls || 0,
+      dropped_decrease: res.dropped_decrease || 0,
+    }));
     let msg = `✅ 일자별 조회수 ${res.inserted}건 입력 완료.\n(날짜 ${dateCols.length}개 열 · 매칭 게시물 ${res.matched_urls}개`;
     msg += res.created_posts ? ` · 신규 광고 ${res.created_posts}개 자동 생성)` : `)`;
+    if (res.banner_reach_inserted) msg += `\n🖼️ 배너 도달수 ${res.banner_reach_inserted}건 반영.`;
     if (res.meta_filled) msg += `\n📝 기존 광고의 빈 항목 ${res.meta_filled}건을 시트 값으로 채움(채널 분류 등).`;
     if (res.ended_marked) msg += `\n🛑 캡션 '삭제/보관' ${res.ended_marked}건 → '종료' 처리됨.`;
     if (future) msg += `\n⏭️ 업로드일이 오늘 이후인 행 ${future}건 제외(아직 게시 전).`;
+    if (futureDateCells) msg += `\n⏭️ 오늘 이후 날짜 셀 ${futureDateCells}건 제외.`;
+    if (res.future_date_skipped) msg += `\n⏭️ 서버에서 오늘 이후 날짜 ${res.future_date_skipped}건 제외.`;
     if (res.pre_posted_skipped) msg += `\n🛡️ 업로드일 이전 조회수 ${res.pre_posted_skipped}건은 서버에서 저장 제외.`;
     if (res.dropped_decrease) {
       msg += `\n🛡️ 누적 조회수가 직전보다 낮은(수집 오류) ${res.dropped_decrease}건은 저장 제외.`;

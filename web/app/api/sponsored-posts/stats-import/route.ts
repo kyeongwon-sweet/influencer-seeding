@@ -5,7 +5,7 @@ import { normalizeUrl, postIdentityKey, ALLOWED_POST_URL_RE } from "@/lib/url-ut
 import { filterMonotonicStats, type GuardInput } from "@/lib/stats-guard";
 import { normalizeChannelType, isFreeChannel } from "@/app/monitoring/lib";
 import { resolveTikTokShortUrl } from "@/lib/sponsored-write";
-import { todayKST, yesterdayKST } from "@/lib/dateRule";
+import { maxDateKST, todayKST } from "@/lib/dateRule";
 import { notifyBot } from "@/lib/slack";
 
 export const dynamic = "force-dynamic";
@@ -244,7 +244,9 @@ export async function POST(req: NextRequest) {
   const prePosted: Array<{ url: string; date: string }> = [];
   const postEnded: Array<{ url: string; date: string; ended_at: string }> = [];
   const futureDated: Array<{ url: string; date: string; max_date: string }> = [];
-  const maxStatsDate = yesterdayKST();
+  // 이 라우트는 시트에서 사람이 확정해 입력한 값을 받는 경로다. KST 당일값까지 허용한다.
+  // 자정 자동수집·리포트의 T-1 정책은 별도 경로에서 유지하며, 미래 날짜만 차단한다.
+  const maxStatsDate = maxDateKST();
   let incoming: GuardInput[] = [];
   const bannerRows: Array<{ post_id: string; measured_at: string; reach_count: number; manual: boolean }> = [];
   const postIdSet = new Set<string>();
@@ -252,7 +254,7 @@ export async function POST(req: NextRequest) {
     const pid = idByKey.get(it.key) ?? idByUrl.get(it.url);
     if (!pid) { missing.add(it.url); continue; }
     const measuredDate = String(it.measured_at).slice(0, 10);
-    // Sheet round-trips may contain today's open cells. Persist only finalized snapshots through yesterday.
+    // 시트 수기 입력은 당일값까지 저장하고, 실제 미래 날짜만 차단한다.
     if (measuredDate > maxStatsDate) {
       futureDated.push({ url: it.url, date: measuredDate, max_date: maxStatsDate });
       continue;
