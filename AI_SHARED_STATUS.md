@@ -1,5 +1,53 @@
 # AI Shared Status
 
+## 2026-07-24 [최우선 요청] 캡션(L열) = 소재명(E) 자동 추출 — 라이브 Apps Script 반영 필요
+**사용자 결정(확정):** 연동시트("[빙과] 인지 콘텐츠 RD", `10WpAQU9…`) 캡션(L열) 자동 채움 우선순위는 **수동값 > 소재명 추출값 > 게시글 캡션**.
+- L에 값이 이미 있으면(수동 포함) **절대 변경하지 않음**.
+- L이 빈칸이고 소재명(E)이 `/_([^_]+\.[^_]+)\.디자인/`에 맞으면 `m[1]`을 캡션으로 입력.
+- L이 빈칸이고 소재명에서 추출할 수 없으면 기존 `pullFromDB`가 게시글 캡션을 채움.
+- 추출 캡션이 다음 `syncAll`에서 DB `content_summary`로 전송되어 게시글 캡션을 대체하는 것은 사용자 승인 완료.
+
+**필수 실행 순서:** `fillCaptionFromAsset_()`는 반드시 `dailyAuto`의 `pullFromDB()` **앞**에서 실행. 당일 DB 반영까지 하려면 `runSync_(false)`보다도 먼저 실행:
+```javascript
+function dailyAuto() {
+  // ... 상태 기록
+  const captionOk = fillCaptionFromAsset_();
+  if (captionOk === false) errors.push("fillCaptionFromAsset failed");
+
+  const syncOk = runSync_(false);
+  if (syncOk === false) errors.push("syncAll failed");
+
+  const pullOk = pullFromDB();
+  // ... 나머지 exportStats/파생필드 갱신
+}
+```
+
+**라이브에 추가할 함수(빈칸만 기록):**
+```javascript
+function fillCaptionFromAsset_() {
+  const sheet = getSheet_();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < CONFIG.DATA_START_ROW) return true;
+  const assetCol = findHeaderCol_(sheet, ["소재명"]);
+  const capCol = findHeaderCol_(sheet, ["캡션"]);
+  if (!assetCol || !capCol) return true;
+  const n = lastRow - CONFIG.DATA_START_ROW + 1;
+  const assets = sheet.getRange(CONFIG.DATA_START_ROW, assetCol, n, 1).getValues();
+  const caps = sheet.getRange(CONFIG.DATA_START_ROW, capCol, n, 1).getValues();
+  const reCap = /_([^_]+\.[^_]+)\.디자인/;
+  let filled = 0;
+  for (let i = 0; i < n; i++) {
+    if (String(caps[i][0]).trim() !== "") continue;
+    const m = String(assets[i][0] || "").match(reCap);
+    if (m) { caps[i][0] = m[1]; filled++; }
+  }
+  if (filled) sheet.getRange(CONFIG.DATA_START_ROW, capCol, n, 1).setValues(caps);
+  return true;
+}
+```
+- **동시편집 정책:** 편집 트리거와 장시간 문서락을 공유하지 않음. 라이브 최신본에 함수 단위로만 반영하고 repo 전체→live 덮어쓰기 금지.
+- **완료 판정:** `dailyAuto` 1회 성공 + ① 기존 수동 캡션 유지 ② 소재명 매칭 빈칸은 추출값 ③ 소재명 불일치 빈칸은 `pullFromDB` 캡션으로 채워짐, 세 케이스 실측.
+
 ## 2026-07-24 [최우선] 배너 날짜열 → DB reach 미동기화 근본원인 확정·서버 배포 (Codex)
 - **근본원인 확정:** Apps Script `importStats`가 `if (channelType.indexOf("배너") >= 0) return;`으로 **배너 행 전체를 전송에서 제외**하고 있었음. 반면 서버 `stats-import`에는 배너 입력을 `reach_count`로 저장하는 정상 경로가 이미 존재해, 시트와 서버 정책이 서로 어긋난 것이 07-22 누락의 직접 원인. "헤더 소실"·`slice(-2)` 가설은 사용하지 않음(둘 다 오진).
 - **서버 완료(main `5378e62`, `-mu` 프로덕션 Ready 확인):** 시트 수기 입력 날짜 상한을 `yesterdayKST()`→`maxDateKST()`(KST 오늘)로 완화. 자정 자동수집/T-1 리포트 정책은 별도 경로라 그대로 유지. 오늘 이후 미래 날짜만 차단.
@@ -48,39 +96,6 @@
   - ⚠️ **Codex: sponsored-write 수정 시 이 2필드 SHEET_WINS 정책 유지**(되돌리지 말 것).
 - **🔴 Apps Script 남은 몫(라이브, 분류기로 Claude 불가 → 사용자/Codex)**: `FIELD_BY_HEADER`에 `"기획자":"planner"`,`"제작자":"creator"` 추가해야 syncAll이 전송함. 없으면 위 서버변경은 무해한 no-op.
 - 상호작용 주의: `syncCreators`(📊 업데이트하기)가 시트 기획자/제작자를 소재명 파싱값으로 덮음 → 수동값 유지하려면 syncCreators 후 syncAll 금지.
-
-## 2026-07-23 [연동시트] 캡션(L열) = 소재명(E) 자동 추출 규칙 — Codex 라이브 반영 요청 (Claude)
-**사용자 요청/결정(확정):** 연동시트("[빙과] 인지 콘텐츠 RD", `10WpAQU9…`) **캡션(L열)** 자동 채움 규칙을 아래로. 우선순위 = **수동 > 소재명 > 게시글 캡션**.
-- L에 이미 값 있으면(수동 포함) → **절대 안 건드림**(수동 우선). *완벽한 manual-vs-auto 구분은 별도 편집감지 필요해서 미채택 — "비어있을 때만 채움"으로 근사.*
-- L 빈칸 + 소재명(E) 패턴 매칭 → **소재명에서 추출값**(`m[1]`).
-- L 빈칸 + 소재명 없음 → 기존 pullFromDB가 **게시글 캡션** 채움(그대로).
-- 정규식: `/_([^_]+\.[^_]+)\.디자인/` (E열 소재명 대상).
-- ✅ 사용자 Q2 확인: **캡션이 syncNew로 DB `content_summary`에 흘러가 추출값이 게시글 캡션을 대체하는 것 OK**(의도된 동작).
-**⚠️ 실행 순서 함정:** dailyAuto = `syncAll → pullFromDB → exportStats → syncStatus/refreshCumulativeViews/syncCreators/syncPricing`. 캡션 추출을 syncCreators에 넣으면 **pullFromDB가 먼저 빈칸을 게시글 캡션으로 채운 뒤라 소재명 추출이 안 먹힘.** → 캡션 추출 스텝은 **pullFromDB보다 먼저**(가능하면 syncAll 전, DB 동기화까지 당일 반영) 돌아야 함.
-**Codex 반영(라이브 Apps Script, Claude는 라이브 쓰기 차단):** 신규 함수 `fillCaptionFromAsset_()`(fill-empty, 소재명 매칭 시 추출값 write) 추가 + dailyAuto에서 pullFromDB **앞에** 호출. 스니펫:
-```javascript
-function fillCaptionFromAsset_() {
-  const sheet = getSheet_();
-  const lastRow = sheet.getLastRow();
-  if (lastRow < CONFIG.DATA_START_ROW) return true;
-  const assetCol = findHeaderCol_(sheet, ["소재명"]);
-  const capCol   = findHeaderCol_(sheet, ["캡션"]);
-  if (!assetCol || !capCol) return true;
-  const n = lastRow - CONFIG.DATA_START_ROW + 1;
-  const assets = sheet.getRange(CONFIG.DATA_START_ROW, assetCol, n, 1).getValues();
-  const caps   = sheet.getRange(CONFIG.DATA_START_ROW, capCol,   n, 1).getValues();
-  const reCap = /_([^_]+\.[^_]+)\.디자인/;
-  let cf = 0;
-  for (let i = 0; i < n; i++) {
-    if (String(caps[i][0]).trim() !== "") continue;      // 이미 값(수동 포함) → 유지
-    const m = String(assets[i][0] || "").match(reCap);
-    if (m) { caps[i][0] = m[1]; cf++; }                  // 빈칸 + 소재명 → 추출값
-  }
-  if (cf) sheet.getRange(CONFIG.DATA_START_ROW, capCol, n, 1).setValues(caps);
-  return true;
-}
-```
-_WriteGuard `withDocLock_` 래핑 대상에 추가 권장. **적용 후 dailyAuto 1회 성공 + 캡션 3케이스(수동유지/소재명추출/빈칸→캡션) 실측 검증 후 배포**([[feedback-sync-integrity-nonnegotiable]] 계열).
 
 ## 2026-07-23 [부정댓글봇] #1 바이럴 재스캔 되돌림 + #2 무시→오탐 기록 배포 (Claude)
 - **⚠️ 되돌림(사용자 지시 "돈 아까움")**: negative-comment-monitor(master) 커밋 `a1d2aab`("feat(delta): 최근 바이럴 게시물 하루 1회 재스캔")를 `git revert`(`c1a4e2c`). **바이럴 시간주기 재스캔은 도입 안 함** — Codex/다른 세션이 만든 것이나 사용자가 비용 이유로 거부. **재추가하지 말 것.** 미탐 대응은 필요 시 수동 스윕으로.
