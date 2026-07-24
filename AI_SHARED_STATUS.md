@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 2026-07-24 [완료·검증] syncNew 트리거 23:00 → 자정 00:00(KST) 이동 (Claude, 사용자 지시)
+- **변경**: 신규 게시물 등록 트리거 `syncNew`를 밤 11시 → **자정 00:00(자정~오전 1시 창)** 으로 이동.
+- **왜 1시가 아니라 00:00?**: 사용자 최초 요청은 "새벽 1시"였으나, GHA 예약 **메인 수집이 00:41 KST**(`cron-daily-collect.yml`, 백업 02:41·04:41은 주실행 실패 시만). syncNew를 01:00에 두면 00:41 수집보다 **뒤**라 그날 낮 신규 글이 수집을 놓쳐 첫 조회수 하루 지연(레이스). → 사용자 승인으로 **수집 직전인 00:00**으로 결정(관측상 GHA가 1~2시로 지연돼도 syncNew가 앞섬).
+- **라이브 반영(검증)**: Apps Script 트리거 UI에서 syncNew(소유자=나, 시간기반) 시간을 "오후 11시~자정"→"**자정~오전 1시 사이**"로 수정·저장. 재확인 완료. (GMT+09:00)
+- **코드**: `Combined_Sheet_AppsScript.gs`(main) `installDailyTrigger`의 `.atHour(23)`→`.atHour(0)` + 알림/주석 수정.
+- ⚠️ **divergence 주의(Codex)**: **라이브·refactor 브랜치의 `installDailyTrigger`는 애초에 syncNew 트리거를 생성하지 않음**(dailyAuto만 생성). 즉 현재 라이브 syncNew 트리거는 과거 버전/수동 생성분이며, 라이브 `installDailyTrigger`를 재실행하면 (필터가 syncNew도 지우므로) **syncNew 트리거가 삭제됨**. repo(main)만 syncNew를 00:00으로 생성. → repo↔라이브 `installDailyTrigger` 정합 필요(syncNew 생성 여부·시각 통일).
+
 ## 2026-07-24 [완료·검증] 캡션(L) 자동채움 fillCaptionFromAsset_ 라이브 구현+실행 (Claude, 사용자 지시 "네가 실행해줘")
 **결론: 아래 "미구현" 항목들 해소.** `fillCaptionFromAsset_`(part8 규칙) + dailyAuto 배선(runSync_ 앞) 라이브 반영 완료, 수동 실행+실측 검증 완료.
 - **근본 원인 발견·수정**: 라이브 Apps Script("AI 트래킹 대시보드 연동.gs")에 헤더열 조회 헬퍼 `findHeaderCol_`가 **없었음**(repo Combined_Sheet_AppsScript.gs:1103엔 존재 — 라이브가 뒤처져 divergence). 그래서 `fillCaptionFromAsset_`이 `ReferenceError: findHeaderCol_ is not defined`로 **dailyAuto에서 매일 조용히 실패**하던 상태. → 라이브 파일 끝에 `findHeaderCol_` 추가(주석 포함)해서 해결. **이 헬퍼는 영구 필요(지우지 말 것).** repo↔라이브 재정합은 Codex.

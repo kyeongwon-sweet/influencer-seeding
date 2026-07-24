@@ -1384,14 +1384,15 @@ function installDailyTrigger() {
     .nearMinute(CONFIG.TRIGGER_MINUTE)
     .create();
 
-  // 자정 수집(00:41 KST) 전에 당일 신규 행을 DB에 등록해 수집 누락을 막는다.
+  // 자정 수집(00:41 KST) 직전(자정~오전 1시 창)에 당일 신규 행을 DB에 등록해 수집 누락을 막는다.
+  // (2026-07-24 사용자 지시로 23시→자정 00:00으로 이동. 라이브 트리거는 트리거 UI로 이미 00:00 반영.)
   ScriptApp.newTrigger("syncNew")
     .timeBased()
-    .atHour(23)
+    .atHour(0)
     .everyDays(1)
     .create();
 
-  safeAlert_(`✅ 자동 동기화를 켰습니다.\n• 매일 23시: 신규 광고 syncNew(00:41 자정수집 전)\n• 매일 오전 ${CONFIG.TRIGGER_HOUR}:${CONFIG.TRIGGER_MINUTE} (±15분): 전체 양방향 dailyAuto\n• 12:20 리포트 전에 분류 동기화`);
+  safeAlert_(`✅ 자동 동기화를 켰습니다.\n• 매일 자정(00:00~01:00): 신규 광고 syncNew(00:41 자정수집 직전)\n• 매일 오전 ${CONFIG.TRIGGER_HOUR}:${CONFIG.TRIGGER_MINUTE} (±15분): 전체 양방향 dailyAuto\n• 12:20 리포트 전에 분류 동기화`);
 }
 
 function removeDailyTrigger() {
