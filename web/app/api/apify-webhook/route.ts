@@ -343,7 +343,17 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
 
     const updates: Record<string, unknown> = {};
     if (!post.posted_at && s.posted_at) updates.posted_at = s.posted_at;
-    if (!post.account_name && s.account_name) updates.account_name = s.account_name;
+    // 바이럴은 계정 핸들(owner_username) 우선 — run_monitoring collected_account_name_update와 동일 정책.
+    // (표시명 우선이면 매 스크랩마다 '유머패밀리 night' 같은 표시명이 다시 박혀 채널명이 계속 되돌아옴.)
+    {
+      const isViral = String(post.channel_type || "").includes("바이럴");
+      const handle = String(s.owner_username || "").replace(/^@/, "").trim();
+      if (isViral && handle) {
+        if (handle !== post.account_name) updates.account_name = handle;
+      } else if (!post.account_name && s.account_name) {
+        updates.account_name = s.account_name;
+      }
+    }
     if (!post.content_summary && s.content_summary) updates.content_summary = s.content_summary;
     if (!post.influencer_id && s.owner_username) {
       const profileUrl = `https://www.instagram.com/${s.owner_username}/`;
