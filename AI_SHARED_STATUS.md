@@ -1,5 +1,10 @@
 # AI Shared Status
 
+## 2026-07-24 [바이럴 채널명=핸들 — 정정] 되돌림엔 3번째 경로(syncAll) + DB 핸들 PATCH·보호 (Claude)
+**정정:** 앞서 "apify-webhook만 고치면 됨"이라 했으나 **틀림.** 되돌림 경로 **3개**: ①run_monitoring(Codex 수정✅) ②apify-webhook(Claude `7acdf31`✅) ③ **`sponsored-write`=syncAll(시트→DB, 9:30)이 시트의 표시명을 DB account_name에 덮어씀**(account_name은 SHEET_WINS 아님·manual 미보호였음). 게다가 **시트 채널명 자체가 표시명**이고 이를 핸들로 써넣는 함수 없음(pullFromDB=빈칸만). → 수집을 핸들로 고쳐도 syncAll이 매일 표시명으로 되돌림.
+**Claude 조치(DB, 18건):** 되살아난 바이럴 IG글 owner_username 스크랩→ **account_name=핸들 PATCH + manual_fields에 'account_name' 추가(보호)**. 백업=`scratchpad/acct_backup.json`. → 대시보드·리포트 즉시 정상 + **syncAll이 이제 account_name 스킵(line189)해 안 되돌림**. 매핑: 유머패밀리 night/pink/red/navy→ufo__night/pink/red/navy · 루나플레이어→luna.player · 도토리채널→dotori_channel · 해핑박스→happing_box · 띵박스→dding_box · 원스타비디오→one_star_video · 스마일라이프/투데이→smile_life_s2/smile_today_s2 · 감동을드립니다→sksk1sksk0 · happy__pyeong/text_pyeong/ho1y_time/anavocado12345/365_hot(표지)→동일핸들. ⚠️ 쇼잉(인스타)·신기+템(인스타) 2건은 스크래퍼가 owner_username 미반환 → 수동 확인 필요.
+**남음(Codex, 안전):** ①**시트 채널명 표시셀→핸들 일괄쓰기**(위 매핑, `writeColumnByKey_`로 URL기준=브라우저 사고 없이). Claude는 라이브시트 셀 다수 수동편집=사고 이력이라 미실행. ②근본: syncAll이 바이럴 account_name을 표시명으로 덮지 않게 하거나(핸들우선), pullFromDB가 바이럴 채널명을 DB핸들로 overwrite(빈칸만 아님)하도록.
+
 ## 2026-07-24 [바이럴 채널명=핸들] 되돌림 근본원인=apify-webhook(수집 경로 2개 중 미수정 쌍둥이) (Claude, 사용자 반복 지적)
 **증상:** 바이럴 채널명을 핸들로 넣기로 했는데 계속 표시명('유머패밀리 night'·'루나 플레이어 • Luna player' 등)으로 되돌아옴. 실측: 바이럴 843개 중 **31개가 표시명**, 최근 7/23~24 IG글(`/p/DbIg…`)이 그것.
 **근본원인:** account_name 쓰는 경로가 **2개**인데 하나만 고쳐짐. ① `run_monitoring`(매일 수집)=Codex `52a3c85`로 핸들우선 수정됨 ✅. ② **`apify-webhook`(신규 등록 즉시 스크랩+data-slayer 폴백)=여전히 `ownerFullName`(표시명) 우선(266행)·update(346행)에 바이럴 핸들 로직 없음** ❌ → 신규 바이럴글이 등록 즉시 표시명으로 박혀 되돌아옴.
