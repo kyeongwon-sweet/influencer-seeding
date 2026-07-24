@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## 2026-07-24 [완료·검증] 캡션(L) 자동채움 fillCaptionFromAsset_ 라이브 구현+실행 (Claude, 사용자 지시 "네가 실행해줘")
+**결론: 아래 "미구현" 항목들 해소.** `fillCaptionFromAsset_`(part8 규칙) + dailyAuto 배선(runSync_ 앞) 라이브 반영 완료, 수동 실행+실측 검증 완료.
+- **근본 원인 발견·수정**: 라이브 Apps Script("AI 트래킹 대시보드 연동.gs")에 헤더열 조회 헬퍼 `findHeaderCol_`가 **없었음**(repo Combined_Sheet_AppsScript.gs:1103엔 존재 — 라이브가 뒤처져 divergence). 그래서 `fillCaptionFromAsset_`이 `ReferenceError: findHeaderCol_ is not defined`로 **dailyAuto에서 매일 조용히 실패**하던 상태. → 라이브 파일 끝에 `findHeaderCol_` 추가(주석 포함)해서 해결. **이 헬퍼는 영구 필요(지우지 말 것).** repo↔라이브 재정합은 Codex.
+- **정확한 대상 시트 확정(logSheetInfo 실측)**: 스프레드시트 `1QWpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak`(파일명 "[빙과] 인지 콘텐츠 RD"), 탭 `콘텐츠 대시보드 연동` gid=**1937186871**, **소재명=E열(5)·캡션=L열(12)**, 1300행. ⚠️ 아래 옛 항목의 "10WpAQU9"는 이 ID(1QWpAQU9…) 약칭. (별개 `1EITk9hx…`=마케팅T 대시보드로 무관.)
+- **실행 결과 실측(gviz CSV)**: 소재명 `[`시작(추출가능) 782행 중 빈 캡션 **0**(=채울 것 전부 채움), part8 자동채움 19, **수동/원본 캡션 763건 그대로 보존**(part8과 다른 실제 문장). 전체 남은 빈 캡션 7건은 전부 소재명 비표준(추출 불가)→**공란 유지**(무결성 규칙: 값 안 지어냄).
+- **안전장치**: `fillCaptionFromAsset_`은 `if(String(cap[i][0]).trim()!=="")continue;`로 **값 있는(수동 포함) 셀 절대 안 덮음** — 실측 763건 보존으로 확인. 추출=part8, 후행 `.x/.X`·`.` 제거.
+- **미해결/후속**: (1) fillCaptionFromAsset_ 자체는 withDocLock_ 잠금 밖(단 L열은 exportStats/importStats가 안 쓰므로 경합 위험 낮음). (2) repo에 이 라이브 함수 반영(현재 라이브만 보유). → Codex.
+
 ## 2026-07-24 [검증] syncPricing XLOOKUP 정규화 보완 — Codex 배포 전 반영 (Claude 실측)
 **배경**: Codex 미커밋 syncPricing이 setValue→XLOOKUP 수식 전환(수식화=writer 축소, 방향 맞음). 단 구 `priceChannelKey_`(소문자+공백제거+`_+`→`_`) 정규화를 빼서, 시트 채널명 vs 가격매핑 A열의 **언더스코어 개수·대소문자 불일치** 시 매칭 실패.
 **실측(843 바이럴행, /export CSV 시뮬)**: 구 매칭 808 vs 신 XLOOKUP 797 → **11건 불일치**(Ufo_NIGHT/RED/ORANGE 등 = 시트 싱글`_` vs 매핑 더블`__`). ⚠️ **단 그 11건 전부 현재 업체명·비용 이미 채워져 있어 blank-only 스킵 → 즉시 피해 0. 미래(싱글`_` 신규글·클리어 시)만 위험.** 긴급도 낮음.
@@ -20,7 +28,7 @@ const mapKeyRange = 'ARRAYFORMULA(' + norm_(mapName + '!$A$2:$A&' + mapName + '!
   - **정리**: 후행 변형표기 `.X`/`.x` 및 후행 `.` 제거. 예: `류라이괴식 구라.X` → `류라이괴식 구라`, `제주에서뭐하지.` → `제주에서뭐하지`. (JS: `s.split("_")[8]?.replace(/\.(x|X)$/,'').replace(/\.$/,'').trim()`)
   - **실측 커버리지: part8 있음 759/782(97%)**. 빈값 23개(비표준 구획수 2/3/9/10/11)는 게시글 캡션 폴백.
 - 우선순위(수동 > 소재명 part8 > 게시글 캡션)·실행순서(`fillCaptionFromAsset_()` → `pullFromDB()` 앞)는 아래 스펙 유지.
-- **상태: 미구현**(`933c071`은 문서 커밋일 뿐, 코드 `Combined_Sheet_AppsScript.gs`에 `fillCaptionFromAsset_` 없음). Codex가 **이 part8 규칙으로** 구현할 것.
+- ~~**상태: 미구현**~~ → **✅ 2026-07-24 라이브 구현·검증 완료(Claude)**. 최상단 "[완료·검증] 캡션(L) 자동채움" 항목 참조. 라이브 `fillCaptionFromAsset_`(part8)+`findHeaderCol_` 추가. repo `Combined_Sheet_AppsScript.gs` 반영은 Codex.
 
 ## 2026-07-24 요청(Codex): 연동시트 소재명(E)↔DB 동기화 매핑 + project_name/asset_name 정본 통일 (Claude, 사용자 승인)
 - **실측**: DB 총 1,298 = 연동시트 1,298(게시물 일치, AI대시보드=DB뷰). 소재명(파일명)은 DB **project_name**에 보존(1,201건), 시트 소재명(E)과 표본 5/5 값 일치. 전용 **asset_name 필드는 전부 빈값**(미사용).
