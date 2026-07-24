@@ -9,7 +9,13 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
-Last updated: 2026-07-24 (Claude: 캡션 자동채움 fillCaptionFromAsset_ 라이브 구현·실행·검증 완료[findHeaderCol_ 누락 수정, 수동 763건 보존])
+Last updated: 2026-07-24 (Claude: syncNew 트리거 23시→자정 00:00 이동[라이브 UI 반영·검증] + 캡션 자동채움 라이브 구현·검증)
+
+## 2026-07-24 [완료·검증] syncNew 트리거 23:00 → 자정 00:00(KST) 이동 (Claude, 사용자 지시)
+- **변경**: 신규 게시물 등록 트리거 `syncNew`를 밤 11시 → **자정 00:00(자정~오전 1시 창)**.
+- **왜 1시가 아니라 00:00?**: 최초 요청 "새벽 1시"였으나 GHA 예약 **메인 수집이 00:41 KST**(cron-daily-collect.yml). 01:00이면 수집보다 뒤라 그날 신규 글 첫 수집 하루 지연(레이스). → 사용자 승인으로 수집 직전 **00:00**.
+- **라이브 반영(검증)**: 트리거 UI에서 syncNew 시간을 "자정~오전 1시 사이"로 수정·저장·재확인(GMT+09:00).
+- ⚠️ **divergence(Codex)**: 라이브·**refactor 브랜치 `installDailyTrigger`는 syncNew 트리거를 생성하지 않음**(dailyAuto만). 라이브 syncNew는 과거/수동 생성분이며, 라이브 installDailyTrigger 재실행 시 (필터가 syncNew 삭제하므로) syncNew 트리거가 사라짐. main repo만 `.atHour(0)`로 syncNew 생성. → repo↔라이브 installDailyTrigger 정합 필요.
 
 ## 2026-07-24 [완료·검증] 캡션(L) 자동채움 fillCaptionFromAsset_ 라이브 구현+실행 (Claude, 사용자 지시 "네가 실행해줘")
 **아래 "미구현" 항목 해소.** `fillCaptionFromAsset_`(part8 규칙)+dailyAuto 배선(runSync_ 앞) 라이브 반영·수동 실행·실측 검증 완료.
