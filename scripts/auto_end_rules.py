@@ -56,6 +56,12 @@ def classify_auto_end(
     target_date: str,
     max_metric: int = 0,
 ) -> AutoEndDecision:
+    # 수동 트래킹 재개 존중: ended_at을 사람이 직접 관리(manual_fields 포함)하면 자동종료로 덮지 않는다.
+    # (대시보드/시트에서 수동으로 살린 글이 나이 규칙으로 매일 재종료돼 수동 입력이 사라지던 버그 수정.)
+    manual = post.get("manual_fields") or []
+    if isinstance(manual, (list, tuple)) and "ended_at" in manual:
+        return AutoEndDecision(False, "manual_ended_at", None, None, int(max_metric or 0))
+
     if has_caption_end_keyword(post):
         return AutoEndDecision(True, "caption_keyword", None, None, int(max_metric or 0))
 
