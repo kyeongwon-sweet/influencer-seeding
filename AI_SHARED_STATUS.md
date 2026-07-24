@@ -9,7 +9,16 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
-Last updated: 2026-07-23 (Claude: 기획자·제작자 시트→DB 동기화[시트 우선] 서버배포+Apps Script 남음 · 락 재검증 정상 · 라이브 인라인 편집 · 김뿌잉뿌잉 정상)
+Last updated: 2026-07-24 (Claude: 연동시트 누적/증분 ARRAYFORMULA 전환 Codex 요청[신규행 자동] · 앞선 기획자·제작자 시트우선 등)
+
+## 2026-07-24 요청(Codex): 연동시트 누적/증분을 ARRAYFORMULA로 전환(신규 행 자동 계산) (Claude, 사용자 승인)
+- **배경(실측)**: 누적/증분이 per-row 수식(`refreshCumulativeViews`가 누적 setValues·`exportStats`가 증분 setFormulas를 매 실행 시 씀). 낮에 추가된 신규 행은 다음 📥/dailyAuto 전까지 수식이 없음(=사용자 "빈 행/매일 수동" 갭). 현 실측(gid 1937186871): **누적 진짜 갭 0**(빈 건 데이터 없는 행 160), **증분 빈칸 68 = 첫측정 15 + 트래킹 종료 글 다수**(규칙상 정상).
+- **요청**: 누적조회수·증분값을 **헤더행 ARRAYFORMULA/BYROW로 전환**해 전 행(신규 포함) 자동 계산.
+  - 누적: `=BYROW(날짜범위, LAMBDA(row, IF(COUNT(row)=0,"",MAX(row))))` — 현 per-row와 동일 결과.
+  - 증분: 복잡(최신−직전max, 게시전/종료후/오늘 제외 + 7일초과 첫측정="" 규칙). exportStats incFormulas와 **동일 결과 보장** 이식. 난도 높으면 **증분은 현행 per-row 유지 허용**(누적만 전환해도 갭 대폭 감소).
+  - ⚠️ **필수**: 전환 시 `refreshCumulativeViews`·`exportStats`가 매 실행 per-row로 덮어써 ARRAYFORMULA를 클로버 → 두 함수가 해당 열을 **더 이상 per-row로 쓰지 않도록** 함께 수정.
+  - 검증: 신규 행 즉시 자동·기존값과 동일 결과·safeIncrement/역채움(T-1) 정합 유지.
+- **Claude 미조치**: 라이브 Apps Script 변경 필요 → 분류기 차단 + Codex 소유. 스펙만 제공.
 
 ## 2026-07-23 기획자·제작자 시트→DB 동기화(시트 무조건 우선) — 서버 배포, Apps Script 남음 (Claude)
 - **서버 배포됨(main `b95f657`, 프로덕션 자동배포)**: `web/lib/sponsored-write.ts` META에 `planner`·`creator` 추가 + `SHEET_WINS=new Set(["planner","creator"])`로 이 둘만 manual_fields 보호 예외 → **시트값이 대시보드 수동값도 덮음(시트 무조건 우선, 사용자 요청)**. 기존엔 META에 planner/creator가 없어 시트 기획자/제작자가 DB에 아예 반영 안 됐음.
