@@ -67,7 +67,7 @@ const ALLOWED_URL_RE = /^https:\/\/([a-z0-9-]+\.)*(instagram\.com|youtube\.com|y
 const FIELD_LABEL = {
   posted_at: "업로드일", url: "게시물URL", account_name: "채널명", content_summary: "캡션",
   asset_name: "소재명", channel_type: "채널 분류", project_name: "프로젝트명", product_name: "상품명", cost: "비용",
-  company_name: "업체명",
+  company_name: "업체명", planner: "기획자", creator: "제작자",
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -241,6 +241,8 @@ function collectRows_(onlyNew) {
     if (fieldCols.channel_type)    obj.channel_type    = String(row[fieldCols.channel_type - 1] || "").trim() || null;
     if (fieldCols.project_name)    obj.project_name    = String(row[fieldCols.project_name - 1] || "").trim() || null;
     if (fieldCols.product_name)    obj.product_name    = String(row[fieldCols.product_name - 1] || "").trim() || null;
+    if (fieldCols.planner)         obj.planner         = String(row[fieldCols.planner - 1] || "").trim() || null;
+    if (fieldCols.creator)         obj.creator         = String(row[fieldCols.creator - 1] || "").trim() || null;
     if (fieldCols.cost)            obj.cost            = toNumber_(row[fieldCols.cost - 1]);
 
     const key = urlKey_(rawUrl);
@@ -361,7 +363,8 @@ function scanBlanks_() {
     .getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, lastCol)
     .getValues();
   // 업체명(company_name)은 바이럴에만 있는 선택 항목 → 빈칸 검사 대상에서 제외(빈칸이 정상).
-  const fields = Object.keys(fieldCols).filter(f => f !== "company_name");
+  const fields = ["posted_at", "url", "account_name", "content_summary", "channel_type", "project_name", "product_name", "cost"]
+    .filter(f => fieldCols[f]);
   const cell = (row, f) => String(row[fieldCols[f] - 1] == null ? "" : row[fieldCols[f] - 1]).trim();
 
   const blanks = [];
@@ -496,7 +499,7 @@ function pullFromDB() {
     }
 
     // 채울 필드(시트에 해당 헤더가 있는 것만)
-    const fillFields = ["posted_at", "account_name", "company_name", "content_summary", "asset_name", "channel_type", "project_name", "product_name", "cost"];
+    const fillFields = ["posted_at", "account_name", "company_name", "content_summary", "asset_name", "channel_type", "project_name", "product_name", "planner", "creator", "cost"];
 
     let added = 0, filled = 0;
     posts.forEach(p => {
@@ -928,6 +931,8 @@ function importStats() {
         if (fieldCols.channel_type)    p.channel_type    = String(row[fieldCols.channel_type - 1] || "").trim() || null;
         if (fieldCols.project_name)    p.project_name    = String(row[fieldCols.project_name - 1] || "").trim() || null;
         if (fieldCols.product_name)    p.product_name    = String(row[fieldCols.product_name - 1] || "").trim() || null;
+        if (fieldCols.planner)         p.planner         = String(row[fieldCols.planner - 1] || "").trim() || null;
+        if (fieldCols.creator)         p.creator         = String(row[fieldCols.creator - 1] || "").trim() || null;
         if (fieldCols.cost)            p.cost            = toNumber_(row[fieldCols.cost - 1]);
         postByKey[key] = p;
       }
@@ -1313,42 +1318,41 @@ function syncPricing() {
   if (!fieldCols.account_name || !fieldCols.channel_type || !fieldCols.company_name || !fieldCols.cost) return true;
   const pricing = getPricingSheet_();
   if (!pricing) throw new Error("가격/업체명 매핑 시트를 찾을 수 없습니다.");
-  const rows = pricing.getDataRange().getValues();
-  const companyByChannel = {};
-  const priceByChannelFormat = {};
-  for (let i = 1; i < rows.length; i++) {
-    const key = priceChannelKey_(rows[i][0]);
-    const company = String(rows[i][1] == null ? "" : rows[i][1]).trim();
-    const format = String(rows[i][2] == null ? "" : rows[i][2]).trim();
-    const price = toNumber_(rows[i][3]);
-    addUniqueMapValue_(companyByChannel, key, company);
-    if (format && price !== null) addUniqueMapValue_(priceByChannelFormat, key + "|" + format, price);
-  }
+
   const n = lastRow - CONFIG.DATA_START_ROW + 1;
   const data = sheet.getRange(CONFIG.DATA_START_ROW, 1, n, sheet.getLastColumn()).getValues();
-  let filledCompany = 0, filledCost = 0, ambiguous = 0;
+  const accountLetter = colLetter_(fieldCols.account_name);
+  const typeLetter = colLetter_(fieldCols.channel_type);
+  const mapName = "'" + String(pricing.getName()).replace(/'/g, "''") + "'";
+  const mapKeyRange = mapName + "!$A$2:$A&" + mapName + "!$C$2:$C";
+  let filledCompany = 0, filledCost = 0;
+
   for (let r = 0; r < n; r++) {
     const row = data[r];
-    const key = priceChannelKey_(row[fieldCols.account_name - 1]);
     const type = String(row[fieldCols.channel_type - 1] || "");
-    if (!key || type.indexOf("바이럴") < 0) continue;
-    const company = onlyUniqueMapValue_(companyByChannel, key);
-    if ((row[fieldCols.company_name - 1] === "" || row[fieldCols.company_name - 1] == null) && company) {
-      sheet.getRange(CONFIG.DATA_START_ROW + r, fieldCols.company_name).setValue(company);
+    const account = String(row[fieldCols.account_name - 1] || "").trim();
+    if (!account || type.indexOf("바이럴") < 0) continue;
+
+    const rowNum = CONFIG.DATA_START_ROW + r;
+    const formatExpr = 'IF(REGEXMATCH($' + typeLetter + rowNum + ',"배너"),"배너",IF(REGEXMATCH($'
+      + typeLetter + rowNum + ',"영상|릴스|숏폼"),"릴스",""))';
+    const lookupExpr = '$' + accountLetter + rowNum + '&' + formatExpr;
+
+    if (row[fieldCols.company_name - 1] === "" || row[fieldCols.company_name - 1] == null) {
+      sheet.getRange(rowNum, fieldCols.company_name).setFormula(
+        '=IFERROR(XLOOKUP(' + lookupExpr + ',' + mapKeyRange + ',' + mapName + '!$B$2:$B),"")'
+      );
       filledCompany++;
-    } else if (!company && companyByChannel[key]) {
-      ambiguous++;
     }
-    const format = pricingFormatFromType_(type);
-    const price = format ? onlyUniqueMapValue_(priceByChannelFormat, key + "|" + format) : null;
-    if ((row[fieldCols.cost - 1] === "" || row[fieldCols.cost - 1] == null) && price !== null) {
-      sheet.getRange(CONFIG.DATA_START_ROW + r, fieldCols.cost).setValue(Number(price));
+
+    if (row[fieldCols.cost - 1] === "" || row[fieldCols.cost - 1] == null) {
+      sheet.getRange(rowNum, fieldCols.cost).setFormula(
+        '=IFERROR(XLOOKUP(' + lookupExpr + ',' + mapKeyRange + ',' + mapName + '!$D$2:$D),"")'
+      );
       filledCost++;
-    } else if (format && !price && priceByChannelFormat[key + "|" + format]) {
-      ambiguous++;
     }
   }
-  SpreadsheetApp.getActive().toast("가격/업체명 채움: 업체 " + filledCompany + ", 비용 " + filledCost + ", 애매함 " + ambiguous, "완료", 5);
+  SpreadsheetApp.getActive().toast("가격/업체명 XLOOKUP 삽입: 업체 " + filledCompany + ", 비용 " + filledCost, "완료", 5);
   return true;
 }
 
@@ -1365,7 +1369,14 @@ function installDailyTrigger() {
     .nearMinute(CONFIG.TRIGGER_MINUTE)
     .create();
 
-  safeAlert_(`✅ 매일 오전 ${CONFIG.TRIGGER_HOUR}:${CONFIG.TRIGGER_MINUTE} (±15분) 자동 동기화를 켰습니다.\n• 시트→사이트: 전체 메타 syncAll\n• 사이트→시트: 대시보드 추가분/수집 조회수 가져오기\n• 12:20 리포트 전에 분류 동기화`);
+  // 자정 수집(00:41 KST) 전에 당일 신규 행을 DB에 등록해 수집 누락을 막는다.
+  ScriptApp.newTrigger("syncNew")
+    .timeBased()
+    .atHour(23)
+    .everyDays(1)
+    .create();
+
+  safeAlert_(`✅ 자동 동기화를 켰습니다.\n• 매일 23시: 신규 광고 syncNew(00:41 자정수집 전)\n• 매일 오전 ${CONFIG.TRIGGER_HOUR}:${CONFIG.TRIGGER_MINUTE} (±15분): 전체 양방향 dailyAuto\n• 12:20 리포트 전에 분류 동기화`);
 }
 
 function removeDailyTrigger() {
