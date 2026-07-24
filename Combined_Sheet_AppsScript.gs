@@ -55,6 +55,8 @@ const FIELD_BY_HEADER = {
   "채널분류": "channel_type",
   "프로젝트명": "project_name",
   "상품명": "product_name",
+  "기획자": "planner",
+  "제작자": "creator",
   "비용": "cost",
 };
 
@@ -225,6 +227,7 @@ function collectRows_(onlyNew) {
     if (onlyNew && status) return; // 이미 추가된 행
 
     if (!ALLOWED_URL_RE.test(rawUrl)) { skipped++; return; } // 지원 안 되는 URL
+    if (/instagram\.com/i.test(rawUrl) && !/\/(p|reels|reel|tv)\/[A-Za-z0-9_-]+/i.test(rawUrl)) { skipped++; return; }
 
     const postedAt = fieldCols.posted_at ? toDateStr_(row[fieldCols.posted_at - 1]) : null;
     if (postedAt && postedAt > today) { future++; return; } // 업로드일이 오늘 이후 → 아직 게시 전, 제외
@@ -823,6 +826,7 @@ function exportStats() {
         incWritten++;
       }
       sheet.getRange(CONFIG.DATA_START_ROW, incrementCol, nRows, 1).setFormulas(incFormulas);
+      try { refreshCumulativeViews(); } catch (e) { Logger.log(e); }
     }
 
     let msg = `✅ 수집 조회수를 시트에 반영했습니다.\n새 날짜 열 ${addedCols}개 추가 · 실측 갱신 ${filled}칸 · 공백 이어받기 ${carried}칸 · 업로드 전 값 삭제 ${prePostedCleared}칸 · 종료 이후 값 삭제 ${endedCleared}칸 · 증분 수식 ${incWritten}행 · 기존값 보존 ${preserved}칸 · 매칭 게시물 ${matched}개 · 날짜 열 ${dateCols.length}개`;
