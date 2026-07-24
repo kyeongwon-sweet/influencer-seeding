@@ -450,6 +450,11 @@ function pullFromDB() {
     // 채울 필드(시트에 해당 헤더가 있는 것만)
     const fillFields = ["posted_at", "account_name", "company_name", "content_summary", "channel_type", "project_name", "product_name", "cost"];
 
+    // 성능(2026-07-24): 셀단위 getValue 반복(≈행수×필드수 왕복)이 30분 실행한도를 초과시켜 dailyAuto가 타임아웃되던 문제.
+    // 데이터 블록을 1회만 읽어 메모리에서 빈칸 판정한다. 쓰기는 기존대로 빈 셀만 개별 setValue(수식·조회수 열 보존).
+    const _pfN = (lastRow >= CONFIG.DATA_START_ROW) ? (lastRow - CONFIG.DATA_START_ROW + 1) : 0;
+    const _pfBlock = _pfN > 0 ? sheet.getRange(CONFIG.DATA_START_ROW, 1, _pfN, sheet.getLastColumn()).getValues() : [];
+
     let added = 0, filled = 0;
     posts.forEach(p => {
       const key = linkKey_(String(p.url || ""));   // 시트 인덱스와 동일 기준 — DB /p/ ↔ 시트 /reel/ 매칭되어 재추가 안 됨
@@ -463,7 +468,8 @@ function pullFromDB() {
           if (f === "content_summary") { if (/바이럴|위성/.test(String(p.channel_type == null ? "" : p.channel_type))) return; val = String(val).replace(/[\r\n]+/g, " ").trim(); }
           if (val === "") return;
           const cell = sheet.getRange(rowNum, fieldCols[f]);
-          if (String(cell.getValue()).trim() === "") { cell.setValue(val); filled++; }
+          const _pfBi = rowNum - CONFIG.DATA_START_ROW, _pfCi = fieldCols[f] - 1, _pfCur = (_pfBi >= 0 && _pfBi < _pfBlock.length) ? _pfBlock[_pfBi][_pfCi] : "";
+          if (String(_pfCur == null ? "" : _pfCur).trim() === "") { cell.setValue(val); if (_pfBi >= 0 && _pfBi < _pfBlock.length) _pfBlock[_pfBi][_pfCi] = val; filled++; }
         });
       } else {
         // 신규 — 새 행에 메타 셀만 기록(조회수·등록상태 열은 그대로 비워둠 → 다른 열 안 건드림)

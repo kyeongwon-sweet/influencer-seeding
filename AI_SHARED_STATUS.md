@@ -9,7 +9,15 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
-Last updated: 2026-07-24 (Claude: syncNew 트리거 23시→자정 00:00 이동[라이브 UI 반영·검증] + 캡션 자동채움 라이브 구현·검증)
+Last updated: 2026-07-24 (Claude: dailyAuto 30분 타임아웃 근본수정[pullFromDB 배치읽기, 1802초→26초 검증] + syncNew 자정 이동 + 캡션 자동채움)
+
+## 2026-07-24 [완료·검증] dailyAuto 30분 타임아웃 근본수정 — pullFromDB 셀단위 읽기→배치 (Claude)
+- **문제**: dailyAuto(9:30) 최근 66.67% 실패 = **30분(1802초) 실행한도 초과 타임아웃**. runSync_는 ~1분에 끝나고 다음 `pullFromDB`가 ~28분 hang(단독 실행도 1802초 타임아웃).
+- **근본원인**: pullFromDB가 `posts.forEach`(≈1298)×`fillFields.forEach`(≈11) 안에서 **셀마다 `cell.getValue()`** → ≈1.4만 왕복.
+- **수정**: 블록을 **1회 getValues()로 읽어 메모리 빈칸 판정**. ⚠️ 쓰기는 기존대로 빈 셀만 개별 setValue(블록 통째 setValues는 증분/누적 **수식·조회수 파괴** → 금지). 읽기만 배치.
+- **검증**: 라이브 `pullFromDB__wgimpl` 실행 = **26초 완료, 에러 0, 오덮어쓰기 0**. 1802초→26초(~70배). dailyAuto 뒤 단계(exportStats·누적)도 이제 실행됨.
+- **repo**: main·refactor 두 브랜치 동일 패치.
+- 후속(Codex): importStats도 동일 패턴 → 배치화 필요.
 
 ## 2026-07-24 [완료·검증] syncNew 트리거 23:00 → 자정 00:00(KST) 이동 (Claude, 사용자 지시)
 - **변경**: 신규 게시물 등록 트리거 `syncNew`를 밤 11시 → **자정 00:00(자정~오전 1시 창)**.
