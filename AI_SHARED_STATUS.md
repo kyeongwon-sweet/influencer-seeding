@@ -1,5 +1,18 @@
 # AI Shared Status
 
+## 2026-07-24 [검증] syncPricing XLOOKUP 정규화 보완 — Codex 배포 전 반영 (Claude 실측)
+**배경**: Codex 미커밋 syncPricing이 setValue→XLOOKUP 수식 전환(수식화=writer 축소, 방향 맞음). 단 구 `priceChannelKey_`(소문자+공백제거+`_+`→`_`) 정규화를 빼서, 시트 채널명 vs 가격매핑 A열의 **언더스코어 개수·대소문자 불일치** 시 매칭 실패.
+**실측(843 바이럴행, /export CSV 시뮬)**: 구 매칭 808 vs 신 XLOOKUP 797 → **11건 불일치**(Ufo_NIGHT/RED/ORANGE 등 = 시트 싱글`_` vs 매핑 더블`__`). ⚠️ **단 그 11건 전부 현재 업체명·비용 이미 채워져 있어 blank-only 스킵 → 즉시 피해 0. 미래(싱글`_` 신규글·클리어 시)만 위험.** 긴급도 낮음.
+**검증된 보완(붙여넣기용, syncPricing)**: XLOOKUP 양쪽을 정규화로 감싸 구 동작 재현 →
+```javascript
+const norm_ = (s) => 'REGEXREPLACE(REGEXREPLACE(LOWER(' + s + '),"\\s+",""),"_+","_")';
+const lookupExpr  = norm_('$' + accountLetter + rowNum + '&' + formatExpr);
+const mapKeyRange = 'ARRAYFORMULA(' + norm_(mapName + '!$A$2:$A&' + mapName + '!$C$2:$C') + ')';
+// company/cost XLOOKUP 줄은 lookupExpr·mapKeyRange만 위 것으로 사용
+```
+시뮬 결과 이 보완이 **11건 중 10건 해소**(807 vs 808). 남은 1건 `ho1y_time`은 언더스코어 무관 — 매핑에 그 계정+포맷(릴스) 행이 없는 데이터 갭(구는 업체명을 포맷 무시로 느슨 매칭). 필요 시 매핑에 행 추가 or 업체명 lookup만 포맷 무시.
+**Codex**: 위 패치를 syncPricing에 반영 후 배포. ⚠️ 라이브 .gs=Codex 미커밋 진행중이라 Claude가 직접 미적용(덮어쓰기 방지). 데이터 근본은 시트 채널명 `Ufo__RED`/`ufo__red`/`Ufo_RED` 표기 난립 정리.
+
 ## 2026-07-24 [정정·최우선] 캡션 추출 규칙: ".디자인" 정규식 폐기 → part8 추출 (Claude, 실측+사용자 승인 A안)
 - ⚠️ **아래 "캡션(L)=소재명 자동추출" 스펙의 정규식 `/_([^_]+\.[^_]+)\.디자인/`은 폐기.** 실측: 구조적 소재명 782개 중 **136개(17%, "디자인" 든 것만) 매치** → 83% 놓침.
 - **정정 규칙(사용자 승인)**: 캡션 = **소재명을 `_`로 분리한 9번째 구획 = part[8]**.
