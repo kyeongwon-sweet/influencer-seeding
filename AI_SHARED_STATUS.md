@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## 2026-07-24 [바이럴 채널명=핸들] 되돌림 근본원인=apify-webhook(수집 경로 2개 중 미수정 쌍둥이) (Claude, 사용자 반복 지적)
+**증상:** 바이럴 채널명을 핸들로 넣기로 했는데 계속 표시명('유머패밀리 night'·'루나 플레이어 • Luna player' 등)으로 되돌아옴. 실측: 바이럴 843개 중 **31개가 표시명**, 최근 7/23~24 IG글(`/p/DbIg…`)이 그것.
+**근본원인:** account_name 쓰는 경로가 **2개**인데 하나만 고쳐짐. ① `run_monitoring`(매일 수집)=Codex `52a3c85`로 핸들우선 수정됨 ✅. ② **`apify-webhook`(신규 등록 즉시 스크랩+data-slayer 폴백)=여전히 `ownerFullName`(표시명) 우선(266행)·update(346행)에 바이럴 핸들 로직 없음** ❌ → 신규 바이럴글이 등록 즉시 표시명으로 박혀 되돌아옴.
+**수정(main `7acdf31`):** apify-webhook 346행 account_name 업데이트를 바이럴=`owner_username`(핸들) 우선으로 통일(run_monitoring `collected_account_name_update`와 동일). ⚠️ web 라우트라 **Vercel 배포=Codex** 몫(main 반영됨, prod 배포 필요).
+**기존 31건 정정:** 스크랩되는 IG 바이럴은 오늘밤 run_monitoring(Codex 핸들우선)이 자동 backfill(collected_account_name_update가 표시명→핸들 덮음). 스크랩 안 되는 바이럴(배너) tiktok 몇 건은 수동 정정 필요할 수 있음.
+
 ## 2026-07-24 [완료·검증] syncNew 트리거 23:00 → 자정 00:00(KST) 이동 (Claude, 사용자 지시)
 - **변경**: 신규 게시물 등록 트리거 `syncNew`를 밤 11시 → **자정 00:00(자정~오전 1시 창)** 으로 이동.
 - **왜 1시가 아니라 00:00?**: 사용자 최초 요청은 "새벽 1시"였으나, GHA 예약 **메인 수집이 00:41 KST**(`cron-daily-collect.yml`, 백업 02:41·04:41은 주실행 실패 시만). syncNew를 01:00에 두면 00:41 수집보다 **뒤**라 그날 낮 신규 글이 수집을 놓쳐 첫 조회수 하루 지연(레이스). → 사용자 승인으로 **수집 직전인 00:00**으로 결정(관측상 GHA가 1~2시로 지연돼도 syncNew가 앞섬).
