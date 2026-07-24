@@ -9,7 +9,14 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
-Last updated: 2026-07-24 (Claude: 소재명 DB보존 확인[project_name, 시트와 5/5 일치]·소재명 동기화매핑+asset_name통일 Codex요청 · 누적/증분 ARRAYFORMULA 요청 · 기획자/제작자 시트우선)
+Last updated: 2026-07-24 (Claude: 캡션추출 정정[.디자인 정규식 폐기→part8, 커버 759/782]·캡션함수 미구현 확인 · 소재명 동기화·ARRAYFORMULA 요청)
+
+## 2026-07-24 [정정·최우선] 캡션 추출 규칙: ".디자인" 정규식 폐기 → part8 추출 (Claude, 실측+사용자 승인 A안)
+- ⚠️ 다른 세션 "캡션(L)=소재명 자동추출" 스펙의 정규식 `/_([^_]+\.[^_]+)\.디자인/`은 **폐기**. 실측: 구조적 소재명 782개 중 136개(17%, "디자인" 든 것만)만 매치 → 83% 놓침.
+- **정정 규칙(사용자 승인)**: 캡션 = **소재명 `_` 분리 9번째 구획 = part[8]**. 예: `..._.배너_제주에서뭐하지.__황경원_...` → `제주에서뭐하지`. 배너·릴스 모두 part8이 설명.
+  - 정리: 후행 `.X`/`.x`·후행 `.` 제거. JS: `s.split("_")[8]?.replace(/\.(x|X)$/,'').replace(/\.$/,'').trim()`. 커버리지 **759/782(97%)**, 빈값 23(비표준)은 게시글 캡션 폴백.
+- 우선순위(수동>소재명 part8>게시글)·실행순서(`fillCaptionFromAsset_()`→`pullFromDB()` 앞) 유지.
+- **미구현**: 933c071은 문서 커밋, 코드에 `fillCaptionFromAsset_` 없음. Codex가 part8 규칙으로 구현.
 
 ## 2026-07-24 요청(Codex): 연동시트 소재명(E)↔DB 동기화 매핑 + project_name/asset_name 정본 통일 (Claude, 사용자 승인)
 - **실측**: DB 총 1,298 = 연동시트 1,298(게시물 일치, AI대시보드=DB뷰). 소재명(파일명)은 DB **project_name**에 보존(1,201건), 시트 소재명(E)과 표본 5/5 값 일치. 전용 **asset_name 필드는 전부 빈값**(미사용).
