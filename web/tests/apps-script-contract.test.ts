@@ -22,8 +22,11 @@ test("Apps Script mirror keeps live metadata and URL guards", () => {
 
 test("syncPricing inserts blank-only XLOOKUP formulas and preserves existing cells", () => {
   assert.match(appsScript, /function syncPricing\(\)/);
-  assert.match(appsScript, /row\[fieldCols\.company_name - 1\] === ""/);
-  assert.match(appsScript, /row\[fieldCols\.cost - 1\] === ""/);
+  assert.match(appsScript, /company === "" \|\| company == null/);
+  assert.match(appsScript, /cost === "" \|\| cost == null/);
+  assert.match(appsScript, /type === "위성채널" \|\| type === "온드미디어"/);
+  assert.match(appsScript, /fieldCols\.company_name\)\.clearContent\(\)/);
+  assert.match(appsScript, /fieldCols\.cost\)\.setValue\(0\)/);
   assert.match(appsScript, /setFormula\(\s*'=IFERROR\(XLOOKUP\('/s);
   assert.match(appsScript, /!\$B\$2:\$B/);
   assert.match(appsScript, /!\$D\$2:\$D/);

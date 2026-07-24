@@ -1331,21 +1331,36 @@ function syncPricing() {
     const row = data[r];
     const type = String(row[fieldCols.channel_type - 1] || "");
     const account = String(row[fieldCols.account_name - 1] || "").trim();
+    const rowNum = CONFIG.DATA_START_ROW + r;
+    const company = row[fieldCols.company_name - 1];
+    const cost = row[fieldCols.cost - 1];
+
+    if (type === "위성채널" || type === "온드미디어") {
+      if (company !== "" && company != null) {
+        sheet.getRange(rowNum, fieldCols.company_name).clearContent();
+        filledCompany++;
+      }
+      if (cost === "" || cost == null || Number(cost) !== 0) {
+        sheet.getRange(rowNum, fieldCols.cost).setValue(0);
+        filledCost++;
+      }
+      continue;
+    }
+
     if (!account || type.indexOf("바이럴") < 0) continue;
 
-    const rowNum = CONFIG.DATA_START_ROW + r;
     const formatExpr = 'IF(REGEXMATCH($' + typeLetter + rowNum + ',"배너"),"배너",IF(REGEXMATCH($'
       + typeLetter + rowNum + ',"영상|릴스|숏폼"),"릴스",""))';
     const lookupExpr = '$' + accountLetter + rowNum + '&' + formatExpr;
 
-    if (row[fieldCols.company_name - 1] === "" || row[fieldCols.company_name - 1] == null) {
+    if (company === "" || company == null) {
       sheet.getRange(rowNum, fieldCols.company_name).setFormula(
         '=IFERROR(XLOOKUP(' + lookupExpr + ',' + mapKeyRange + ',' + mapName + '!$B$2:$B),"")'
       );
       filledCompany++;
     }
 
-    if (row[fieldCols.cost - 1] === "" || row[fieldCols.cost - 1] == null) {
+    if (cost === "" || cost == null) {
       sheet.getRange(rowNum, fieldCols.cost).setFormula(
         '=IFERROR(XLOOKUP(' + lookupExpr + ',' + mapKeyRange + ',' + mapName + '!$D$2:$D),"")'
       );
