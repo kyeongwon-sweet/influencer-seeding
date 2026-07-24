@@ -10,6 +10,11 @@ from functools import wraps
 from db import get_client
 from url_utils import normalize_url
 from auto_end_rules import classify_auto_end, row_metric
+from not_found_policy import (
+    NOT_FOUND_REVIEW_THRESHOLD,
+    is_not_found_review_eligible,
+    next_not_found_state,
+)
 
 
 OVERRECORDED_WARNINGS = []
@@ -127,6 +132,25 @@ APIFY_IG_ACTOR = os.getenv("APIFY_IG_ACTOR_ID", "apify/instagram-scraper")
 # GHA는 MONITORING_DATE(KST)를 항상 주입. 폴백(로컬 실행)도 러너 로컬시각 대신 KST로 계산 — UTC 러너에서 하루 밀림 방지.
 # 새벽 예약 수집은 직전일 최종 스냅샷이므로 기본 귀속일은 KST 어제다.
 TODAY = os.getenv("MONITORING_DATE") or ((datetime.now(timezone.utc) + timedelta(hours=9)).date() - timedelta(days=1)).isoformat()
+
+
+def _record_not_found_observation(db, post: dict, detected: bool):
+    """Track Instagram-only not_found streaks without changing notes or ended_at."""
+    if not is_not_found_review_eligible(post.get("url") or ""):
+        return
+    updates, needs_alert = next_not_found_state(post, detected, TODAY)
+    if not updates:
+        return
+    db.table("sponsored_posts").update(updates).eq("id", post["id"]).execute()
+    post.update(updates)
+    if needs_alert:
+        _send_status_alert(
+            "🚨 [협찬 모니터링] Instagram 게시물 접근 실패가 3일 연속 확인됐습니다.\n"
+            "자동 제외·종료하지 않았습니다. 확인 후 제외 여부를 결정해 주세요.\n"
+            f"- {post.get('account_name') or '-'}\n"
+            f"- {post.get('url') or '-'}"
+        )
+        print(f"  [ALERT] IG not_found {NOT_FOUND_REVIEW_THRESHOLD}일 연속, 검토 요청: {post.get('url')}")
 
 
 def _ig_shortcode(url: str) -> str | None:
@@ -611,7 +635,7 @@ def run():
         _start, _PAGE = 0, 1000
         while True:
             _res = db.table("sponsored_posts").select(
-                "id, url, posted_at, account_name, influencer_id, ended_at, content_summary, notes, channel_type, project_name, product_name, manual_fields"
+                "id, url, posted_at, account_name, influencer_id, ended_at, content_summary, notes, channel_type, project_name, product_name, manual_fields, not_found_streak, not_found_last_at, review_requested_at"
             ).range(_start, _start + _PAGE - 1).execute()
             _chunk = _res.data or []
             all_posts.extend(_chunk)
@@ -820,12 +844,12 @@ def run():
                 except Exception:
                     pass
 
-            # 🗑️ 삭제/비공개 자동 태깅 — Apify not_found 감지 시 특이사항(notes)에 기록.
-            #    수동노트 보존: notes가 비어 있을 때만 기입(사람이 적어둔 특이사항은 절대 덮지 않음).
-            if s.get("deleted") and not (post.get("notes") or "").strip():
-                auto_note = f"게시물 삭제/비공개 감지(자동 {TODAY}, Apify not_found) — 조회수 최종값에서 정지, 확인 필요"
-                db.table("sponsored_posts").update({"notes": auto_note}).eq("id", post["id"]).execute()
-                print(f"  🗑️  삭제 감지 자동 태깅: {post['url']}")
+            # Apify IG not_found는 간헐 오탐이 있어 3일 연속일 때 알림만 보낸다.
+            # TikTok not_found는 종료·제외·streak 판정에 절대 사용하지 않는다.
+            if s.get("deleted") and is_not_found_review_eligible(post.get("url") or ""):
+                _record_not_found_observation(db, post, True)
+                continue
+            _record_not_found_observation(db, post, False)
 
             updates = {}
             if not post.get("posted_at") and s.get("posted_at"):
