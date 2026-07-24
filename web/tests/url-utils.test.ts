@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   normalizeUrl,
   ALLOWED_POST_URL_RE,
+  isInstagramNonPostUrl,
   normalizeInstagramUrl,
   normalizeYouTubeUrl,
 } from "../lib/url-utils.ts";
@@ -16,6 +17,24 @@ test("normalizeUrl: 프로토콜·trailing slash 통일 + 쿼리 제거", () => 
   assert.equal(normalizeUrl("instagram.com/p/ABC/"), "https://www.instagram.com/p/ABC/");
   assert.equal(normalizeUrl(""), null);
   assert.equal(normalizeUrl("not a url"), null);
+});
+
+test("isInstagramNonPostUrl: 프로필·목록은 차단하고 게시물 shortcode는 허용", () => {
+  for (const u of [
+    "https://www.instagram.com/kimbbuingg/",
+    "https://www.instagram.com/kimbbuingg/reels/",
+    "https://instagram.com/explore/",
+  ]) {
+    assert.equal(isInstagramNonPostUrl(u), true, `차단해야 함: ${u}`);
+  }
+  for (const u of [
+    "https://www.instagram.com/p/ABC_123/",
+    "https://www.instagram.com/reel/ABC_123/",
+    "https://www.instagram.com/user/reels/ABC_123/",
+    "https://www.youtube.com/shorts/ABC_123/",
+  ]) {
+    assert.equal(isInstagramNonPostUrl(u), false, `허용해야 함: ${u}`);
+  }
 });
 
 test("normalizeUrl: 같은 게시물의 다른 표기는 동일 URL로 정규화(중복 제거 기반)", () => {

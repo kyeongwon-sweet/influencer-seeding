@@ -108,6 +108,15 @@ export function postIdentityKey(url: string): string | null {
  */
 export const ALLOWED_POST_URL_RE = /^https:\/\/([a-z0-9-]+\.)*(instagram\.com|youtube\.com|youtu\.be|tiktok\.com|facebook\.com|threads\.com|threads\.net|x\.com|twitter\.com|t\.co|kakao\.com|naver\.com)\//i;
 
+/**
+ * Instagram URL이지만 특정 게시물 shortcode가 없는 프로필·목록 URL인지 판정한다.
+ * 이런 URL은 수집할 수 없으므로 모든 sponsored-post 쓰기 입구에서 차단한다.
+ */
+export function isInstagramNonPostUrl(url: string): boolean {
+  const u = String(url || "");
+  return /instagram\.com/i.test(u) && !/\/(p|reels|reel|tv)\/[A-Za-z0-9_-]+/i.test(u);
+}
+
 export function normalizeYouTubeUrl(url: string): string | null {
   if (!url) return null;
   try {

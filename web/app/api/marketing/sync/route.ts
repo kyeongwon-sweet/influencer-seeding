@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { normalizeUrl } from "@/lib/url-utils";
+import { normalizeUrl, isInstagramNonPostUrl } from "@/lib/url-utils";
 import { normalizeChannelType, isFreeChannel } from "@/app/monitoring/lib";
 
 /**
@@ -34,11 +34,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "data 배열이 없습니다" }, { status: 400 });
   }
 
-  // URL 검증: Instagram 또는 YouTube만 허용
+  // URL 검증: Instagram 또는 YouTube만 허용. Instagram은 특정 게시물 링크만 받는다.
   const ALLOWED_URL_RE = /^https:\/\/(www\.)?(instagram\.com|youtube\.com)\//;
   const records = body.data.filter((r: Record<string, unknown>) =>
-    r.url && ALLOWED_URL_RE.test(String(r.url))
+    r.url && ALLOWED_URL_RE.test(String(r.url)) && !isInstagramNonPostUrl(String(r.url))
   );
+  const droppedInvalidUrl = body.data.filter((r: Record<string, unknown>) =>
+    r.url && ALLOWED_URL_RE.test(String(r.url)) && isInstagramNonPostUrl(String(r.url))
+  ).length;
+  if (droppedInvalidUrl > 0) {
+    console.warn(`[marketing/sync] IG 비-게시물 URL ${droppedInvalidUrl}건 스킵`);
+  }
 
   if (records.length === 0) {
     return NextResponse.json({
@@ -92,6 +98,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       upserted: cleaned.length,
+      skipped_invalid_url: droppedInvalidUrl,
       sync_timestamp: new Date().toISOString(),
       message: `${cleaned.length}개 레코드 동기화 완료`
     });

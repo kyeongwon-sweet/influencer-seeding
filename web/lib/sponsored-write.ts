@@ -1,5 +1,5 @@
 import type { getServerSupabase } from "@/lib/supabase-server";
-import { normalizeUrl, postIdentityKey, ALLOWED_POST_URL_RE } from "@/lib/url-utils";
+import { normalizeUrl, postIdentityKey, ALLOWED_POST_URL_RE, isInstagramNonPostUrl } from "@/lib/url-utils";
 import { normalizeChannelType, isFreeChannel } from "@/app/monitoring/lib";
 import { triggerCaptionBackfill, needsCaption } from "@/lib/github-dispatch";
 import { todayKST } from "@/lib/dateRule";
@@ -76,6 +76,7 @@ export async function upsertSponsoredRows(
     })
     .filter(r => {
       if (!r.url || !ALLOWED_POST_URL_RE.test(r.url)) return false;
+      if (isInstagramNonPostUrl(r.url)) return false;
       const key = r.normalized_key ?? r.url;
       if (seen.has(key)) return false;
       seen.add(key);
