@@ -1,5 +1,14 @@
 # AI Shared Status
 
+## 2026-07-24 요청(Codex): 연동시트 누적/증분을 ARRAYFORMULA로 전환(신규 행 자동 계산) (Claude, 사용자 승인)
+- **배경(실측)**: 누적/증분이 per-row 수식(`refreshCumulativeViews`가 누적 setValues·`exportStats`가 증분 setFormulas를 매 실행 시 씀). 낮에 추가된 신규 행은 다음 📥/dailyAuto 전까지 수식이 없음(=사용자 "빈 행/매일 수동" 갭). 현 실측(gid 1937186871): **누적 진짜 갭 0**(빈 건 데이터 없는 행 160), **증분 빈칸 68 = 첫측정 15 + 트래킹 종료 글 다수**(규칙상 정상). 남은 개선 = 신규 행 즉시 자동화.
+- **요청**: 누적조회수·증분값을 **헤더행 ARRAYFORMULA/BYROW로 전환**해 전 행(신규 포함) 자동 계산.
+  - 누적: `=BYROW(날짜범위, LAMBDA(row, IF(COUNT(row)=0,"",MAX(row))))` — 현 per-row `IF(COUNT=0,"",MAX())`와 동일 결과.
+  - 증분: 복잡(최신 실측−직전 max, 게시전/종료후/오늘 제외 + 7일초과 첫측정="" 규칙). exportStats의 incFormulas 로직과 **동일 결과 보장**하며 BYROW+LAMBDA로 이식. 난도 높으면 **증분은 현행 per-row 유지도 허용**(누적만 전환해도 갭 대폭 감소).
+  - ⚠️ **필수**: 전환 시 `refreshCumulativeViews`(누적)·`exportStats`(증분)가 매 실행 per-row로 덮어써 ARRAYFORMULA를 클로버 → 두 함수가 해당 열을 **더 이상 per-row로 쓰지 않도록** 함께 수정(안 그러면 매일 지워짐).
+  - 검증: 신규 행 즉시 자동·기존값과 동일 결과·safeIncrement/역채움(T-1) 정합 유지.
+- **Claude 미조치**: 라이브 Apps Script(refreshCumulativeViews/exportStats) 변경 필요 → 분류기 차단 + Codex 소유. 스펙만 제공.
+
 ## 2026-07-24 [자동종료 버그] 수동 트래킹 재개가 매일 재종료되던 버그 수정 + 이나 미러 종료해제 (Claude, 사용자 직접지시)
 **증상:** 사용자가 이나 IG/유튜브/틱톡 조회수를 수동 입력해도 다음날 사라짐.
 **근본원인(확정):** `scripts/auto_end_rules.py` `classify_auto_end`가 **manual_fields를 무시** → 사람이 수동으로 살린(ended_at 재개) 글도 나이 규칙(>14일·<50만)으로 **매일 재종료**됨. 종료되면 exportStats가 종료일 이후 값을 지우고 시트에서 빠짐. 이나 틱톡(307K)·유튜브(255K)는 6월 게시(40일+)·50만 미만이라 매일 자동종료 대상이었음. (IG 2.1M은 50만 초과라 high_metric 예외로 활성 유지 — 자동종료 피해자 아님.)
