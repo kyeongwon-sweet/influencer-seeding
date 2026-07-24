@@ -9,6 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 from db import get_client
 from url_utils import normalize_url
+from account_name_policy import collected_account_name_update
 from auto_end_rules import classify_auto_end, row_metric
 from not_found_policy import (
     NOT_FOUND_REVIEW_THRESHOLD,
@@ -854,8 +855,9 @@ def run():
             updates = {}
             if not post.get("posted_at") and s.get("posted_at"):
                 updates["posted_at"] = s["posted_at"]
-            if not post.get("account_name") and s.get("account_name"):
-                updates["account_name"] = s["account_name"]
+            account_name_update = collected_account_name_update(post, s)
+            if account_name_update is not None:
+                updates["account_name"] = account_name_update
             # 시트에 캡션이 없으면 스크랩한 캡션으로 채움(비어 있을 때만 — 수동/시트 캡션 보존). webhook과 동일.
             if not post.get("content_summary") and s.get("content_summary"):
                 updates["content_summary"] = s["content_summary"]
