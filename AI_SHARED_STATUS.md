@@ -9,7 +9,13 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
-Last updated: 2026-07-24 (Claude: 연동시트 누적/증분 ARRAYFORMULA 전환 Codex 요청[신규행 자동] · 앞선 기획자·제작자 시트우선 등)
+Last updated: 2026-07-24 (Claude: 소재명 DB보존 확인[project_name, 시트와 5/5 일치]·소재명 동기화매핑+asset_name통일 Codex요청 · 누적/증분 ARRAYFORMULA 요청 · 기획자/제작자 시트우선)
+
+## 2026-07-24 요청(Codex): 연동시트 소재명(E)↔DB 동기화 매핑 + project_name/asset_name 정본 통일 (Claude, 사용자 승인)
+- **실측**: DB 총 1,298 = 연동시트 1,298(게시물 일치, AI대시보드=DB뷰). 소재명(파일명)은 DB **project_name**에 보존(1,201건), 시트 소재명(E)과 표본 5/5 값 일치. 전용 **asset_name 필드는 전부 빈값**(미사용).
+- **문제**: 연동시트 "소재명"(E)이 `FIELD_BY_HEADER`에 매핑 없음(그 안의 "프로젝트명"→project_name은 시트에 없는 **죽은 키**). → **시트 소재명 편집이 DB로 동기화 안 됨**(지금은 값이 우연히 일치, 향후 어긋날 수 있음).
+- **요청**: (a) FIELD_BY_HEADER에 "소재명" 매핑 추가(시트→DB 동기화). (b) 소재명 정본 필드 통일(project_name vs 빈 asset_name 중 하나로) — 서버 sponsored-write META·marketing/sync·run_monitoring 정합. ⚠️죽은 키 "프로젝트명"도 정리. 검증: 시트 편집→DB 반영, 기존 1,201건 일치 유지.
+- Claude 미조치: 라이브 Apps Script + 서버/DB 스키마 결정 → Codex.
 
 ## 2026-07-24 요청(Codex): 연동시트 누적/증분을 ARRAYFORMULA로 전환(신규 행 자동 계산) (Claude, 사용자 승인)
 - **배경(실측)**: 누적/증분이 per-row 수식(`refreshCumulativeViews`가 누적 setValues·`exportStats`가 증분 setFormulas를 매 실행 시 씀). 낮에 추가된 신규 행은 다음 📥/dailyAuto 전까지 수식이 없음(=사용자 "빈 행/매일 수동" 갭). 현 실측(gid 1937186871): **누적 진짜 갭 0**(빈 건 데이터 없는 행 160), **증분 빈칸 68 = 첫측정 15 + 트래킹 종료 글 다수**(규칙상 정상).
