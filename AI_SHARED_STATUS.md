@@ -68,7 +68,8 @@ function fillCaptionFromAsset_() {
 - **web 완료(로컬):** `origin/feat/asset-name-sync`의 `web/lib/sponsored-write.ts` 변경을 최신 `origin/main` 위로 cherry-pick/rebase 완료. `META`와 upsert row에 `asset_name` 포함. 추가 검증 중 `pullFromDB` 소스인 `list-for-sheet`가 `asset_name`을 내려주지 않는 것을 확인해 조회 컬럼에도 추가함.
 - **Apps Script 완료(라이브 검증):** 서버본에 `"소재명": "asset_name"`, `asset_name: "소재명"`, `obj.asset_name`, `pullFromDB fillFields asset_name`, `p.asset_name` 저장. 새로고침 후 각 검색어 1건씩 확인, 미저장/문법 오류 없음. 라이브에는 기존 `기획자/제작자` 매핑과 `normalizeCaption_` 최신 변경도 유지됨.
 - **검증:** `npm test` 37개 통과, `tsc --noEmit --incremental false` 통과, `npm run build` 통과, 변경 파일(`sponsored-write.ts`, `list-for-sheet/route.ts`) 단독 ESLint 통과. 전체 lint는 최신 main의 기존 5개 오류(`injibot-action`, `stats-import`, `injibot-review`)로 실패.
-- **남은 단계:** main push/배포, 배포 후 `syncNew`/DB 조회로 소재명 round-trip 확인. 원본 repo dirty 파일은 건드리지 않음.
+- **배포:** main `b6fcc64` push, Vercel production `dpl_AkLnCHHsAF5wQmBQFxfQcQwmefSZ` Ready, `influencer-seeding-mu.vercel.app` alias 연결 확인.
+- **운영 API 검증 주의:** DB 컬럼/배포/라이브 Apps Script 저장은 확인됐지만, 운영 `bulk`/`list-for-sheet` 직접 호출은 401로 막힘. `vercel env ls`에는 `CRON_SECRET`이 있으나 `vercel env pull --environment=production` 결과의 `CRON_SECRET` 값은 빈 문자열이었고, 동일 값으로 호출 시 401. 따라서 다음 확인은 **Vercel `CRON_SECRET` 실값과 Apps Script Script Properties의 `CRON_SECRET` 정합 재확인** 후 `syncNew` 또는 최소 bulk round-trip 실행 필요. 원본 repo dirty 파일은 건드리지 않음.
 
 ## 2026-07-24 [최우선] 배너 날짜열 → DB reach 미동기화 근본원인 확정·서버 배포 (Codex)
 - **근본원인 확정:** Apps Script `importStats`가 `if (channelType.indexOf("배너") >= 0) return;`으로 **배너 행 전체를 전송에서 제외**하고 있었음. 반면 서버 `stats-import`에는 배너 입력을 `reach_count`로 저장하는 정상 경로가 이미 존재해, 시트와 서버 정책이 서로 어긋난 것이 07-22 누락의 직접 원인. "헤더 소실"·`slice(-2)` 가설은 사용하지 않음(둘 다 오진).
