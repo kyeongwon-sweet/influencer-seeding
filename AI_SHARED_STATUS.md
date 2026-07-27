@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 2026-07-27 [Codex 완료·정합] 라이브 Apps Script 보호 항목 재확인 + 캡션 자가치유 repo 통일
+- **트리거 divergence 해소 확인:** 라이브와 `origin/main` 모두 `installDailyTrigger()`가 기존 `syncNew`·`dailyAuto` 트리거를 제거한 뒤 `dailyAuto`와 `syncNew atHour(0)`를 함께 재생성한다. 따라서 메뉴로 자동 추가를 다시 켜도 자정 `syncNew`가 사라지지 않는다.
+- **`importStats` 배치판 확인:** 라이브와 repo 모두 데이터 전체 범위를 `getValues()`로 한 번 읽고 행 배열을 순회한다. `importStats` 함수 내부 셀 단위 `getValue()`/`setValue()`는 0회다. `dailyAuto`에 포함해도 과거 셀 단위 1,802초 판으로 회귀하지 않는다.
+- **라이브 보호 항목 확인:** `findHeaderCol_` 1개, `pullFromDB`의 `_pfBlock`, `.디자인N` 제거, `fillCaptionFromAsset_ → runSync_ → pullFromDB` 순서가 모두 존재한다. 라이브는 읽기 전용으로 확인했으며 재저장·재실행하지 않았다.
+- **남은 미세 divergence 해소:** repo의 `fillCaptionFromAsset_`도 라이브처럼 값이 이미 있는 캡션의 끝 `.디자인N`만 자가치유하도록 통일했다. 일반 문장 속 “디자인”은 점 접미사 패턴이 아니므로 건드리지 않으며, 그 외 기존 수동 캡션은 보존한다.
+- **계약 테스트:** 기존 캡션 자가치유, `.디자인N` 패턴, 빈 캡션 part8 추출이 repo에서 유지되는지 `apps-script-contract.test.ts`에 추가했다.
+
 ## 2026-07-27 [검증완료·종결] 바이럴 채널명 gviz 라이브 교차검증 PASS + 트리거 안전성 + dailyAuto 33% 오류 (Claude)
 - **✅ 채널명 종결**: Codex의 `overwriteViralHandles` 라이브 실행(55건)을 Claude가 **로그인 브라우저 gviz 재읽기로 교차검증**. 355행 표본 바이럴 91건 중 표시명 **53→6**. 남은 6개 **전부 의도적 라벨**(`이평(틱톡 미러링)`·`힐링하고 가세요`·`foxzzal(스레드/미러링)`·`신기+템`·`숏믈리에`·`신기+템(인스타)`). 규칙(실계정→핸들/라벨유지) 정확 적용. dailyAuto 자가치유(`22a8a5f`)로 재발도 차단됨.
 - **✅ installDailyTrigger 안전(사용자 우려 해소)**: repo `installDailyTrigger`는 **이미 옵션(a)** — syncNew+dailyAuto 둘 다 삭제 후 **둘 다 재생성**(`dailyAuto` 9:30 + `syncNew` atHour(0) 자정). 계약테스트 존재. **라이브 트리거 실측**(triggers 페이지): 시간기반 `syncNew` 2026-07-27 00:09 실행(0% 오류)·`dailyAuto` 09:34 실행 **둘 다 생존**. Codex가 라이브 .gs=repo 전체 일치 확인했으므로 라이브 함수도 (a). → "자동 동기화 켜기" 버튼 눌러도 안전. (잔재: '다른 사용자' 소유 사용중지 syncNew 1개·updateExpectedViews 2개 — 무해)

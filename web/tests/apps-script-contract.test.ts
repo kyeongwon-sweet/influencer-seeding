@@ -61,6 +61,18 @@ test("dailyAuto imports sheet stats before exporting DB stats back to the sheet"
   assert.ok(importIdx < exportIdx);
 });
 
+test("fillCaptionFromAsset_ keeps the live existing-caption self-heal", () => {
+  const start = appsScript.indexOf("function fillCaptionFromAsset_()");
+  const end = appsScript.indexOf("function dailyAuto()", start);
+  const body = appsScript.slice(start, end);
+  assert.notEqual(start, -1);
+  assert.match(body, /const currentCaption = String\(caps\[i\]\[0\] \|\| ""\)/);
+  assert.match(body, /currentCaption\.trim\(\) !== ""/);
+  assert.match(body, /normalizedCaption !== currentCaption/);
+  assert.match(body, /\\s\*\\\.디자인\\s\*\\d\*\\s\*\$/);
+  assert.match(body, /split\("_"\)\[8\]/);
+});
+
 test("syncCreators only fills blanks and preserves manual planner/creator values", () => {
   const start = appsScript.indexOf("function syncCreators()");
   const end = appsScript.indexOf("function getPricingSheet_()", start);

@@ -615,7 +615,20 @@ function fillCaptionFromAsset_() {
   const caps = sheet.getRange(CONFIG.DATA_START_ROW, capCol, n, 1).getValues();
   let filled = 0;
   for (let i = 0; i < n; i++) {
-    if (String(caps[i][0]).trim() !== "") continue;
+    const currentCaption = String(caps[i][0] || "");
+    if (currentCaption.trim() !== "") {
+      // 라이브와 동일하게 기존 캡션도 파일명 버전 접미사만 자가치유한다.
+      // 앞의 점(.)이 필수라 일반 문장 속 "디자인" 단어는 건드리지 않는다.
+      const normalizedCaption = currentCaption
+        .replace(/\s*\.디자인\s*\d*\s*$/, "")
+        .replace(/\.+\s*$/, "")
+        .trim();
+      if (normalizedCaption !== currentCaption) {
+        caps[i][0] = normalizedCaption;
+        filled++;
+      }
+      continue;
+    }
     const part = String(assets[i][0] || "").split("_")[8] || "";
     // 파일명 버전표기 .디자인N(예: .디자인1/.디자인2) 접미사 제거 후 .x/후행점 정리 (라이브와 통일, 2026-07-27)
     const caption = String(part).replace(/\s*\.디자인\s*\d*\s*$/, "").replace(/\.(x|X)$/, "").replace(/\.$/, "").trim();
