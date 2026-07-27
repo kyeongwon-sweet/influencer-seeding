@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 2026-07-27 [Claude 검증완료] 작업경계 읽기검증 5항목 (읽기전용, 무수정, 이상시 보고만)
+- **#1 dailyAuto 33.3% → 종결 표시**: Apps Script 실행기록(status=실패 필터) 확인. 마지막 dailyAuto 실패=`편집기 10:06:42`(syncCreators__wgimpl, 수정 전 잔여). 이후 `10:17 수동 완료`·`09:34 스케줄 완료(127초)`, 실패 없음. 새 단계 실패 재발 증거 없음 → **33.3%는 과거 이력으로 종결**. (다음 예약 07-28 09:34가 최종 재확인, 실패 시에만 보고)
+- **#2 not_found(a0adbbc) 정상**: `not_found_streak>0` 현재 **0건**(활성 IG not_found 사례 없음=정상 dormant). 비-IG(TikTok 등) streak **0**(미대상 ✓), streak발 `ended_at` **0**(IG not_found 자동종료 안 함 ✓), 사람 notes 무수정. run_monitoring 07-27 실행됨(comments 351건 기록). 오작동 징후 없음. 실제 발화는 IG not_found 발생 시 검증 가능.
+- **#3 comments_count 정상 / Apify는 별도소관**: `post_daily_stats.comments_count` 07-27 351·07-26 488·07-25 460건 정상 채움. ⚠️ **data-slayer 30/일 상한 + Apify 잔액경고는 `negative-comment-monitor`(별도 repo/시스템) 소관** — 이 DB `cost_alert_log` 조회 400. 그쪽 GHA/로그로 확인 필요(Claude 이 세션 범위 밖) → Codex/별도 세션.
+- **#4 ho1y_time+릴스 매핑(사용자 결정 대상)**: DB상 **ho1y_time 18건 전부 매핑됨(동후작가/₩60,000), 릴스 누락 0, ho1y_time 누락 0**. 활성 바이럴 업체명/단가 누락은 **4건뿐이며 전부 비-IG 미러링 라벨**: `이평(틱톡 미러링)`·`힐링하고 가세요`·`돈 되는 정보(틱톡/서비스)`·`foxzzal(스레드/미러링)`. 미러링/무상 성격이라 의도적 미매핑일 수 있음 → **사용자 결정 필요**(종료 포함 시 9건). 시트측 gap이면 별도 지정 요망.
+- **#5 경계 준수**: DB 대량수정·시트 일괄쓰기·라이브 Apps Script 저장 **안 함**. 89a8de7 미이식·refactor 미머지. 옛 완료항목 재개방 안 함.
+
 ## 2026-07-27 [Codex 완료·정합] 라이브 Apps Script 보호 항목 재확인 + 캡션 자가치유 repo 통일
 - **트리거 divergence 해소 확인:** 라이브와 `origin/main` 모두 `installDailyTrigger()`가 기존 `syncNew`·`dailyAuto` 트리거를 제거한 뒤 `dailyAuto`와 `syncNew atHour(0)`를 함께 재생성한다. 따라서 메뉴로 자동 추가를 다시 켜도 자정 `syncNew`가 사라지지 않는다.
 - **`importStats` 배치판 확인:** 라이브와 repo 모두 데이터 전체 범위를 `getValues()`로 한 번 읽고 행 배열을 순회한다. `importStats` 함수 내부 셀 단위 `getValue()`/`setValue()`는 0회다. `dailyAuto`에 포함해도 과거 셀 단위 1,802초 판으로 회귀하지 않는다.
