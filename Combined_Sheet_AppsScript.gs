@@ -44,6 +44,13 @@ const CONFIG = {
   STATS_START_YEAR: 2026,    // 가장 왼쪽 날짜 열의 연도. 월이 줄면(예: 12→1) 자동으로 +1년 처리.
 };
 
+// 라이브 배포 드리프트 감시용 버전 스탬프 — importStats가 서버(stats-import)에 보고하고,
+// 서버 기대값(EXPECTED_IMPORTSTATS_CLIENT)과 다르면 임포트 때마다 Slack 경고가 울린다.
+// 왜: 라이브 .gs는 git 밖(수동 붙여넣기 배포)이라 stale 베이스 붙여넣기로 패치가 조용히
+// 되돌아가도 흔적이 없다(2026-07-27 배너 스킵 잔존 사고 — "반영 완료" 기록과 라이브 실물 불일치).
+// 규약: importStats 관련 라이브 반영 때마다 이 값과 서버 기대값을 같은 커밋에서 함께 올린다(계약테스트로 짝 강제).
+const IMPORTSTATS_CLIENT_VERSION = "2026-07-27-banner-fix";
+
 // 헤더명(공백 제거·소문자) → API 필드 매핑
 const FIELD_BY_HEADER = {
   "업로드일": "posted_at",
@@ -1240,7 +1247,7 @@ function importStats() {
     if (stats.length === 0) { safeAlert_("입력할 조회수 데이터가 없습니다."); return; }
 
     const posts = Object.keys(postByKey).map(k => postByKey[k]);
-    const res = postStats_({ posts: posts, stats: stats });
+    const res = postStats_({ posts: posts, stats: stats, client_version: IMPORTSTATS_CLIENT_VERSION });
     Logger.log(JSON.stringify({
       event: "importStats_result",
       inserted: res.inserted || 0,

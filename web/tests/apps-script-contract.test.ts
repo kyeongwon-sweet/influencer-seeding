@@ -72,6 +72,26 @@ test("cumulative anchor self-heals: onEdit hook + spill-block detection + warnin
   assert.match(refBody, /setWarningOnly\(true\)/);
 });
 
+test("importStats client_version handshake stays paired with server expectation", () => {
+  // 라이브 배포 드리프트 감시: .gs 버전 스탬프와 서버 기대값은 같은 커밋에서 함께 갱신돼야 한다.
+  const gsVer = appsScript.match(/const IMPORTSTATS_CLIENT_VERSION = "([^"]+)"/);
+  assert.ok(gsVer, ".gs에 IMPORTSTATS_CLIENT_VERSION 상수가 있어야 함");
+  const route = readFileSync(
+    new URL("../app/api/sponsored-posts/stats-import/route.ts", import.meta.url),
+    "utf8",
+  );
+  const svVer = route.match(/const EXPECTED_IMPORTSTATS_CLIENT = "([^"]+)"/);
+  assert.ok(svVer, "stats-import 라우트에 EXPECTED_IMPORTSTATS_CLIENT 상수가 있어야 함");
+  assert.equal(gsVer![1], svVer![1], "클라이언트/서버 버전 스탬프는 항상 같은 값으로 갱신");
+  // importStats가 실제로 버전을 전송
+  assert.match(appsScript, /postStats_\(\{ posts: posts, stats: stats, client_version: IMPORTSTATS_CLIENT_VERSION \}\)/);
+  // 서버는 불일치 시 경고만 하고 처리는 막지 않음(경고 후 return 없음)
+  const warnIdx = route.indexOf("라이브 Apps Script 버전 불일치");
+  assert.notEqual(warnIdx, -1);
+  const afterWarn = route.slice(warnIdx, warnIdx + 400);
+  assert.doesNotMatch(afterWarn, /status: 4\d\d/);
+});
+
 test("warnDateColumnEdit_ alerts on today/future date-column manual entry without touching values", () => {
   const start = appsScript.indexOf("function warnDateColumnEdit_(");
   assert.notEqual(start, -1, "warnDateColumnEdit_ 함수가 있어야 함");

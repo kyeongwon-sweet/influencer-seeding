@@ -43,6 +43,19 @@ export async function POST(req: NextRequest) {
   }
   const postsIn: Array<Record<string, unknown>> = Array.isArray(body?.posts) ? body.posts : [];
 
+  // 🛡️ 라이브 Apps Script 배포 드리프트 감시 — 라이브 .gs는 git 밖(수동 붙여넣기 배포)이라
+  // stale 베이스 붙여넣기로 패치가 조용히 되돌아가도 흔적이 없다(2026-07-27 배너 스킵 잔존 사고).
+  // importStats가 보고하는 client_version이 기대값과 다르면(구버전 잔존/사본 프로젝트 오저장/배포 누락)
+  // 임포트 때마다 Slack 경고를 울려 드리프트를 그날 안에 드러낸다. 처리 자체는 막지 않는다(경고만).
+  const EXPECTED_IMPORTSTATS_CLIENT = "2026-07-27-banner-fix";
+  const clientVersion = typeof body?.client_version === "string" ? body.client_version : null;
+  if (clientVersion !== EXPECTED_IMPORTSTATS_CLIENT) {
+    await notifyBot(
+      `⚠️ [시트 조회수 입력] 라이브 Apps Script 버전 불일치 — 보고 ${clientVersion ?? "(미보고=구버전)"} ≠ 기대 ${EXPECTED_IMPORTSTATS_CLIENT}. ` +
+      `라이브 importStats가 최신 main과 다릅니다(배포 드리프트/사본 오저장 의심). 최신 main 기준으로 라이브 재반영 필요.`
+    ).catch(() => {});
+  }
+
   // 틱톡 단축링크(vt.tiktok)를 실제 영상 URL로 선해석 — 안 하면 단축형 그대로 저장·매칭돼
   // 수집 실패·정식링크 재등록 시 중복·조회수 미매칭이 생김(2026-07-07 시으니네(TT) 사례).
   // 고유 vt 링크당 네트워크 1회(드묾), 해석 실패 시 원본 유지.
