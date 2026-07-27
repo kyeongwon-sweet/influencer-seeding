@@ -793,13 +793,29 @@ def run():
 
             # 🛟 comments_count 보강(2026-07-24): 기본 IG 액터가 play는 주면서 commentsCount를 빼먹는 경우가 있어
             #    바이럴 게시물 다수가 comments_count=null → 부정댓글 봇 델타 신호가 비어 재스캔을 못 함(미탐 원인).
-            #    play 유무와 무관하게 '이번 수집에서 comments_count 없는 IG글'만 data-slayer로 보강(일일 30건 상한).
+            #    play 유무와 무관하게 '이번 수집에서 comments_count 없는 IG글'만 data-slayer로 보강(회차당 30건 상한).
             #    ⚠️ null만 채우고 실측(non-null)은 덮지 않음. data-slayer도 없으면 그대로 비워둠(값 지어내지 않음).
-            cmt_missing = [u for u in ig_urls
-                           if (stats_by_key.get(_stats_key(u)) or {}).get("comments_count") is None]
+            #    ⚠️ 오늘(measured_at=TODAY) 이미 채워진 글은 건너뛴다(2026-07-27) — 하루 여러 회차가 같은 글을
+            #       중복 보강하던 비용 제거 + 회차를 거치며 남은 null만 채워 하루 안에 수렴(봇 noSignal 실제 감소).
+            cand = [u for u in ig_urls
+                    if (stats_by_key.get(_stats_key(u)) or {}).get("comments_count") is None]
+            url2pid = {p["url"]: p["id"] for p in posts}
+            cand_pids = [url2pid[u] for u in cand if u in url2pid]
+            filled_today = set()
+            for c in range(0, len(cand_pids), 100):
+                chunk = cand_pids[c:c + 100]
+                try:
+                    res = (db.table("post_daily_stats").select("post_id, comments_count")
+                           .eq("measured_at", TODAY).in_("post_id", chunk).execute())
+                    for r in (res.data or []):
+                        if r.get("comments_count") is not None:
+                            filled_today.add(r["post_id"])
+                except Exception as e:
+                    print(f"  [WARN] comments_count 오늘 보강여부 조회 실패: {e}")
+            cmt_missing = [u for u in cand if url2pid.get(u) not in filled_today]
             if cmt_missing:
                 cap = cmt_missing[:30]
-                print(f"[LOG] comments_count 누락 {len(cmt_missing)}건 → data-slayer 보강 {len(cap)}건 호출")
+                print(f"[LOG] comments_count 누락 {len(cand)}건(오늘 보강됨 {len(cand) - len(cmt_missing)} 제외 → 대상 {len(cmt_missing)}) → data-slayer {len(cap)}건 호출")
                 fb2 = _fetch_ig_fallback(cap)
                 filled = 0
                 for u in cap:
