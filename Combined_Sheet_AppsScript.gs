@@ -1254,8 +1254,10 @@ function refreshCumulativeViews() {
   if (!cumCol) return true;
   const headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
   const dateCols = [];
+  const dateRe = /^\s*\d{1,2}\s*[.]\s*\d{1,2}(\s|\(|$)/;
   for (let i = CONFIG.STATS_FIRST_COL - 1; i < headers.length; i++) {
-    if (headerDate_(headers[i])) dateCols.push(i + 1);
+    const header = headers[i];
+    if (header instanceof Date || dateRe.test(String(header))) dateCols.push(i + 1);
   }
   if (!dateCols.length) return true;
 
@@ -1263,16 +1265,22 @@ function refreshCumulativeViews() {
   const lastDateCol = Math.max.apply(null, dateCols);
   const firstDate = colLetter_(firstDateCol);
   const lastDate = colLetter_(lastDateCol);
-  const marker = "AUTO_CUMULATIVE_BYROW_V1_" + firstDate + "_" + lastDate;
+  const marker = "AUTO_CUMULATIVE_BYROW_V3_" + firstDate + "_" + lastDate;
   const anchor = sheet.getRange(CONFIG.DATA_START_ROW, cumCol);
   const existing = anchor.getFormula();
   let installed = false;
-  let legacy = [];
+  let legacy = [
+    { url: "https://www.tiktok.com/@ssulbox_1/video/76543907066471252699", value: 955 },
+    { url: "https://www.tiktok.com/@sseoltteugi/video/7655617136307588372", value: 1017 },
+    { url: "https://www.instagram.com/p/DaNeLbcmOXE/", value: 550 },
+  ];
 
   if (!existing || existing.indexOf(marker) < 0) {
     const lastRow = sheet.getLastRow();
     const n = Math.max(0, lastRow - CONFIG.DATA_START_ROW + 1);
     const urlCol = buildFieldCols_(sheet).url;
+    const legacyByUrl = {};
+    legacy.forEach(item => { legacyByUrl[item.url] = true; });
     if (n > 0) {
       const urls = sheet.getRange(CONFIG.DATA_START_ROW, urlCol, n, 1).getValues();
       const values = sheet.getRange(CONFIG.DATA_START_ROW, cumCol, n, 1).getValues();
@@ -1282,25 +1290,26 @@ function refreshCumulativeViews() {
         const url = String(urls[i][0] || "").trim();
         const value = values[i][0];
         const hasDateMetric = daily[i].some(v => typeof v === "number" && v > 0);
-        if (url && formulas[i][0] === "" && value !== "" && value != null && !hasDateMetric) {
+        if (url && !legacyByUrl[url] && formulas[i][0] === "" && value !== "" && value != null && !hasDateMetric) {
           legacy.push({ url: url, value: value });
+          legacyByUrl[url] = true;
         }
       }
     }
 
     const urlLetter = colLetter_(urlCol);
     const startRow = CONFIG.DATA_START_ROW;
-    let result = "base";
+    let result = "b";
     for (let i = legacy.length - 1; i >= 0; i--) {
       const escapedUrl = legacy[i].url.replace(/"/g, '""');
       const value = typeof legacy[i].value === "number"
         ? String(legacy[i].value)
         : '"' + String(legacy[i].value).replace(/"/g, '""') + '"';
-      result = 'IF(' + urlLetter + startRow + ':' + urlLetter + '=\"' + escapedUrl + '\",' + value + ',' + result + ')';
+      result = 'IF(u=\"' + escapedUrl + '\",' + value + ',' + result + ')';
     }
     const formula = '=LET(marker,N(\"' + marker + '\"),' +
       'base,BYROW(' + firstDate + startRow + ':' + lastDate + ',LAMBDA(r,IF(COUNT(r)=0,\"\",MAX(r)))),' +
-      'IF(marker=0,IF(' + urlLetter + startRow + ':' + urlLetter + '=\"\",\"\",' + result + '),\"\"))';
+      'MAP(' + urlLetter + startRow + ':' + urlLetter + ',base,LAMBDA(u,b,IF(marker=0,IF(u=\"\",\"\",' + result + '),\"\"))))';
 
     sheet.getRange(CONFIG.DATA_START_ROW, cumCol, sheet.getMaxRows() - CONFIG.DATA_START_ROW + 1, 1).clearContent();
     anchor.setFormula(formula);
