@@ -112,6 +112,34 @@ function safeAlert_(msg) {
   try { SpreadsheetApp.getUi().alert(msg); } catch (e) { Logger.log(msg); }
 }
 
+const AUTO_WRITE_ACTIVE_UNTIL_PROP = "SHEET_AUTO_WRITE_ACTIVE_UNTIL";
+const AUTO_WRITE_GUARD_MS = 12 * 60 * 1000;
+
+function isAutoWriteActive_() {
+  const until = Number(PropertiesService.getScriptProperties().getProperty(AUTO_WRITE_ACTIVE_UNTIL_PROP) || 0);
+  return until > Date.now();
+}
+
+function withAutoWriteGuard_(fn) {
+  const props = PropertiesService.getScriptProperties();
+  props.setProperty(AUTO_WRITE_ACTIVE_UNTIL_PROP, String(Date.now() + AUTO_WRITE_GUARD_MS));
+  try {
+    return fn();
+  } finally {
+    props.deleteProperty(AUTO_WRITE_ACTIVE_UNTIL_PROP);
+  }
+}
+
+function skipEditDuringAutoWrite_(name) {
+  if (!isAutoWriteActive_()) return false;
+  Logger.log("edit_trigger_skipped " + JSON.stringify({
+    trigger: name,
+    reason: "auto_write_active",
+    at: new Date().toISOString(),
+  }));
+  return true;
+}
+
 function getSheet_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheets().find(s => s.getSheetId() === CONFIG.SHEET_GID);
@@ -732,91 +760,95 @@ function scheduleDailyAutoRetry_(failedStageNames, sourceStartedAt) {
 }
 
 function dailyAutoRetry_() {
-  const props = PropertiesService.getScriptProperties();
-  const raw = props.getProperty("DAILY_AUTO_RETRY_PENDING_JSON");
-  removeDailyAutoRetryTriggers_();
-  props.deleteProperty("DAILY_AUTO_RETRY_PENDING_JSON");
-  if (!raw) {
-    Logger.log("dailyAuto_retry_skip: pending stages 없음");
-    return true;
-  }
+  return withAutoWriteGuard_(function() {
+    const props = PropertiesService.getScriptProperties();
+    const raw = props.getProperty("DAILY_AUTO_RETRY_PENDING_JSON");
+    removeDailyAutoRetryTriggers_();
+    props.deleteProperty("DAILY_AUTO_RETRY_PENDING_JSON");
+    if (!raw) {
+      Logger.log("dailyAuto_retry_skip: pending stages 없음");
+      return true;
+    }
 
-  let pending;
-  try {
-    pending = JSON.parse(raw);
-  } catch (e) {
-    throw new Error("dailyAuto retry payload 파싱 실패: " + e.message);
-  }
-  const wanted = DAILY_AUTO_RETRYABLE_STAGES_
-    .filter(name => (pending.stages || []).indexOf(name) >= 0);
-  const defs = {};
-  dailyAutoStageDefs_().forEach(pair => { defs[pair[0]] = pair[1]; });
-  const startedAt = new Date().toISOString();
-  const stages = wanted.map(name => runDailyAutoStage_(name, defs[name]));
-  const errors = stages.filter(stage => stage.status !== "OK");
-  const status = errors.length
-    ? "ERROR: " + errors.map(stage => stage.name + ": " + stage.error).join(" | ")
-    : "OK";
-  props.setProperties({
-    DAILY_AUTO_LAST_RETRY_STARTED_AT: startedAt,
-    DAILY_AUTO_LAST_RETRY_FINISHED_AT: new Date().toISOString(),
-    DAILY_AUTO_LAST_RETRY_STATUS: status,
-    DAILY_AUTO_LAST_RETRY_STAGES_JSON: JSON.stringify(stages),
-  }, false);
-  Logger.log("dailyAuto_retry_result " + JSON.stringify({
-    source_started_at: pending.source_started_at || null,
-    status: status,
-    stages: stages,
-  }));
-  if (errors.length) throw new Error(status);
-  return true;
+    let pending;
+    try {
+      pending = JSON.parse(raw);
+    } catch (e) {
+      throw new Error("dailyAuto retry payload 파싱 실패: " + e.message);
+    }
+    const wanted = DAILY_AUTO_RETRYABLE_STAGES_
+      .filter(name => (pending.stages || []).indexOf(name) >= 0);
+    const defs = {};
+    dailyAutoStageDefs_().forEach(pair => { defs[pair[0]] = pair[1]; });
+    const startedAt = new Date().toISOString();
+    const stages = wanted.map(name => runDailyAutoStage_(name, defs[name]));
+    const errors = stages.filter(stage => stage.status !== "OK");
+    const status = errors.length
+      ? "ERROR: " + errors.map(stage => stage.name + ": " + stage.error).join(" | ")
+      : "OK";
+    props.setProperties({
+      DAILY_AUTO_LAST_RETRY_STARTED_AT: startedAt,
+      DAILY_AUTO_LAST_RETRY_FINISHED_AT: new Date().toISOString(),
+      DAILY_AUTO_LAST_RETRY_STATUS: status,
+      DAILY_AUTO_LAST_RETRY_STAGES_JSON: JSON.stringify(stages),
+    }, false);
+    Logger.log("dailyAuto_retry_result " + JSON.stringify({
+      source_started_at: pending.source_started_at || null,
+      status: status,
+      stages: stages,
+    }));
+    if (errors.length) throw new Error(status);
+    return true;
+  });
 }
 
 function dailyAuto() {
-  const props = PropertiesService.getScriptProperties();
-  const startedAt = new Date().toISOString();
-  props.setProperties({
-    DAILY_AUTO_LAST_STARTED_AT: startedAt,
-    DAILY_AUTO_LAST_STATUS: "RUNNING",
-  }, false);
+  return withAutoWriteGuard_(function() {
+    const props = PropertiesService.getScriptProperties();
+    const startedAt = new Date().toISOString();
+    props.setProperties({
+      DAILY_AUTO_LAST_STARTED_AT: startedAt,
+      DAILY_AUTO_LAST_STATUS: "RUNNING",
+    }, false);
 
-  const stages = dailyAutoStageDefs_()
-    .map(pair => runDailyAutoStage_(pair[0], pair[1]));
-  const errors = stages.filter(stage => stage.status !== "OK");
-  const failedNames = errors.map(stage => stage.name);
-  let retryScheduled = [];
-  try {
-    retryScheduled = scheduleDailyAutoRetry_(failedNames, startedAt);
-  } catch (e) {
-    const retryScheduleStage = {
-      name: "scheduleRetry",
-      status: "ERROR",
-      duration_ms: 0,
-      error: dailyAutoErrorText_(e),
-    };
-    stages.push(retryScheduleStage);
-    errors.push(retryScheduleStage);
-    Logger.log("dailyAuto_retry_schedule_error " + JSON.stringify(retryScheduleStage));
-  }
-  const finishedAt = new Date().toISOString();
-  const status = errors.length
-    ? "ERROR: " + errors.map(stage => stage.name + ": " + stage.error).join(" | ")
-    : "OK";
-  props.setProperties({
-    DAILY_AUTO_LAST_FINISHED_AT: finishedAt,
-    DAILY_AUTO_LAST_STATUS: status,
-    DAILY_AUTO_LAST_STAGES_JSON: JSON.stringify(stages),
-    DAILY_AUTO_LAST_RETRY_SCHEDULED_JSON: JSON.stringify(retryScheduled),
-  }, false);
-  Logger.log("dailyAuto_result " + JSON.stringify({
-    status: status,
-    started_at: startedAt,
-    finished_at: finishedAt,
-    retry_scheduled: retryScheduled,
-    stages: stages,
-  }));
-  if (errors.length) throw new Error(status);
-  return true;
+    const stages = dailyAutoStageDefs_()
+      .map(pair => runDailyAutoStage_(pair[0], pair[1]));
+    const errors = stages.filter(stage => stage.status !== "OK");
+    const failedNames = errors.map(stage => stage.name);
+    let retryScheduled = [];
+    try {
+      retryScheduled = scheduleDailyAutoRetry_(failedNames, startedAt);
+    } catch (e) {
+      const retryScheduleStage = {
+        name: "scheduleRetry",
+        status: "ERROR",
+        duration_ms: 0,
+        error: dailyAutoErrorText_(e),
+      };
+      stages.push(retryScheduleStage);
+      errors.push(retryScheduleStage);
+      Logger.log("dailyAuto_retry_schedule_error " + JSON.stringify(retryScheduleStage));
+    }
+    const finishedAt = new Date().toISOString();
+    const status = errors.length
+      ? "ERROR: " + errors.map(stage => stage.name + ": " + stage.error).join(" | ")
+      : "OK";
+    props.setProperties({
+      DAILY_AUTO_LAST_FINISHED_AT: finishedAt,
+      DAILY_AUTO_LAST_STATUS: status,
+      DAILY_AUTO_LAST_STAGES_JSON: JSON.stringify(stages),
+      DAILY_AUTO_LAST_RETRY_SCHEDULED_JSON: JSON.stringify(retryScheduled),
+    }, false);
+    Logger.log("dailyAuto_result " + JSON.stringify({
+      status: status,
+      started_at: startedAt,
+      finished_at: finishedAt,
+      retry_scheduled: retryScheduled,
+      stages: stages,
+    }));
+    if (errors.length) throw new Error(status);
+    return true;
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1370,8 +1402,10 @@ function postTrackingRows_(rows) {
 function onStatusEdit_(e) {
   try {
     if (!e || !e.range || !e.source) return;
+    if (skipEditDuringAutoWrite_("onStatusEdit_")) return;
     const sheet = e.range.getSheet();
     if (sheet.getSheetId() !== CONFIG.SHEET_GID) return;
+    healCumulativeOnEdit_(e, sheet);  // 누적(H) 열이 편집됐으면 즉시 자가치유 — 다중셀 붙여넣기도 잡아야 하므로 단일셀 제한보다 앞에서
     if (e.range.getRow() < CONFIG.DATA_START_ROW || e.range.getNumRows() !== 1 || e.range.getNumColumns() !== 1) return;
     const statusCol = findHeaderCol_(sheet, ["상태"]);
     if (!statusCol || e.range.getColumn() !== statusCol) return;
@@ -1463,6 +1497,20 @@ function syncStatus() {
   return true;
 }
 
+// 누적(H) 열 편집 감지 → 앵커 수식 소실/스필 차단을 그 자리에서 복구.
+// H는 H2 배열수식 하나가 열 전체를 채우는 구조라, 앵커 삭제나 아래쪽 셀 수기 입력(#REF! 차단) 한 번이면
+// 열 전체가 사라진다(2026-07-27 실사고). 다음날 09:30까지 기다리지 않고 편집 즉시 치유한다.
+function healCumulativeOnEdit_(e, sheet) {
+  try {
+    const cumCol = findHeaderCol_(sheet, ["누적 조회수", "누적조회수"]);
+    if (!cumCol) return;
+    if (e.range.getLastColumn() < cumCol || e.range.getColumn() > cumCol) return;  // H열 미포함 편집
+    refreshCumulativeViews();  // 마커·스필 상태 점검 후 필요할 때만 재설치(멱등)
+  } catch (err) {
+    Logger.log("healCumulativeOnEdit_: " + (err.stack || err.message));
+  }
+}
+
 function refreshCumulativeViews() {
   const sheet = getSheet_();
   const lastCol = sheet.getLastColumn();
@@ -1484,6 +1532,9 @@ function refreshCumulativeViews() {
   const marker = "AUTO_CUMULATIVE_BYROW_V3_" + firstDate + "_" + lastDate;
   const anchor = sheet.getRange(CONFIG.DATA_START_ROW, cumCol);
   const existing = anchor.getFormula();
+  // 수식은 남아 있어도 아래쪽 셀에 값이 들어오면 스필이 막혀 #REF!가 되고 열 전체가 빈다.
+  // 마커 검사만으로는 이 상태를 못 잡으므로 앵커 표시값이 오류면 재설치 대상으로 취급한다.
+  const anchorBlocked = !!existing && String(anchor.getDisplayValue()).charAt(0) === "#";
   let installed = false;
   let legacy = [
     { url: "https://www.tiktok.com/@ssulbox_1/video/76543907066471252699", value: 955 },
@@ -1491,7 +1542,7 @@ function refreshCumulativeViews() {
     { url: "https://www.instagram.com/p/DaNeLbcmOXE/", value: 550 },
   ];
 
-  if (!existing || existing.indexOf(marker) < 0) {
+  if (!existing || existing.indexOf(marker) < 0 || anchorBlocked) {
     const lastRow = sheet.getLastRow();
     const n = Math.max(0, lastRow - CONFIG.DATA_START_ROW + 1);
     const urlCol = buildFieldCols_(sheet).url;
@@ -1532,12 +1583,28 @@ function refreshCumulativeViews() {
     installed = true;
   }
 
+  // H열 경고 보호: 편집 자체는 막지 않되(수기 정정 워크플로 보존) 실수 편집 전에 경고창을 띄운다.
+  // 수기 누적값이 필요한 행은 어차피 위 legacy 흡수로 수식에 보존되므로 물리값을 남길 이유가 없다.
+  try {
+    const guarded = sheet.getProtections(SpreadsheetApp.ProtectionType.RANGE)
+      .some(p => p.getDescription() === "AUTO_CUM_GUARD");
+    if (!guarded) {
+      sheet.getRange(1, cumCol, sheet.getMaxRows(), 1)
+        .protect()
+        .setDescription("AUTO_CUM_GUARD")
+        .setWarningOnly(true);
+    }
+  } catch (err) {
+    Logger.log("AUTO_CUM_GUARD: " + (err.stack || err.message));
+  }
+
   SpreadsheetApp.getActive().toast(
     installed
-      ? "누적 조회수 BYROW 수식 설치 완료" + (legacy.length ? " · 수동값 보존 " + legacy.length + "건" : "")
+      ? (anchorBlocked ? "누적 조회수 스필 차단(수기 입력) 감지 → 수식 재설치 완료. 수기 값은 날짜열에 입력하세요."
+                       : "누적 조회수 BYROW 수식 설치 완료") + (legacy.length ? " · 수동값 보존 " + legacy.length + "건" : "")
       : "누적 조회수 BYROW 수식 정상",
     "완료",
-    4
+    installed && anchorBlocked ? 8 : 4
   );
   return true;
 }

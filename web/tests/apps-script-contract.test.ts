@@ -47,6 +47,31 @@ test("syncPricing inserts blank-only XLOOKUP formulas and preserves existing cel
   assert.doesNotMatch(body, /getRange\(rowNum,[\s\S]*?\.(?:setValue|setFormula|clearContent)\(/);
 });
 
+test("cumulative anchor self-heals: onEdit hook + spill-block detection + warning-only guard", () => {
+  // ① onStatusEdit_가 다중셀 제한 전에 H열 자가치유를 호출
+  const editStart = appsScript.indexOf("function onStatusEdit_(e)");
+  assert.notEqual(editStart, -1);
+  const editBody = appsScript.slice(editStart, appsScript.indexOf("function installStatusEditTrigger()", editStart));
+  const healCallIdx = editBody.indexOf("healCumulativeOnEdit_(e, sheet)");
+  const singleCellIdx = editBody.indexOf("getNumRows() !== 1");
+  assert.notEqual(healCallIdx, -1, "onStatusEdit_가 healCumulativeOnEdit_를 호출해야 함");
+  assert.ok(healCallIdx < singleCellIdx, "자가치유는 단일셀 제한보다 먼저(다중셀 붙여넣기도 감지)");
+  // ② healCumulativeOnEdit_는 H열 미포함 편집이면 즉시 반환, 포함이면 refreshCumulativeViews 호출
+  const healStart = appsScript.indexOf("function healCumulativeOnEdit_(");
+  assert.notEqual(healStart, -1);
+  const healBody = appsScript.slice(healStart, appsScript.indexOf("function refreshCumulativeViews()", healStart));
+  assert.match(healBody, /getLastColumn\(\) < cumCol \|\| e\.range\.getColumn\(\) > cumCol\) return/);
+  assert.match(healBody, /refreshCumulativeViews\(\)/);
+  // ③ refreshCumulativeViews가 스필 차단(#REF!)을 재설치 조건에 포함
+  const refStart = appsScript.indexOf("function refreshCumulativeViews()");
+  const refBody = appsScript.slice(refStart, appsScript.indexOf("function parseCreator_(", refStart));
+  assert.match(refBody, /anchorBlocked = !!existing && String\(anchor\.getDisplayValue\(\)\)\.charAt\(0\) === "#"/);
+  assert.match(refBody, /existing\.indexOf\(marker\) < 0 \|\| anchorBlocked/);
+  // ④ H열 경고 보호(AUTO_CUM_GUARD, warning-only) 멱등 설치
+  assert.match(refBody, /AUTO_CUM_GUARD/);
+  assert.match(refBody, /setWarningOnly\(true\)/);
+});
+
 test("overwriteViralHandles_ only touches viral account_name and self-heals daily via dailyAuto", () => {
   const start = appsScript.indexOf("function overwriteViralHandles_()");
   assert.notEqual(start, -1, "overwriteViralHandles_ 함수가 있어야 함");
@@ -66,18 +91,24 @@ test("overwriteViralHandles_ only touches viral account_name and self-heals dail
 
 test("dailyAuto records every stage and imports stats before exporting DB stats", () => {
   const defsStart = appsScript.indexOf("function dailyAutoStageDefs_()");
+  const dailyStart = appsScript.indexOf("function dailyAuto()");
   const importIdx = appsScript.indexOf('["importStats", importStats]', defsStart);
   const exportIdx = appsScript.indexOf('["exportStats", exportStats]', defsStart);
   assert.notEqual(defsStart, -1);
+  assert.notEqual(dailyStart, -1);
   assert.notEqual(importIdx, -1);
   assert.notEqual(exportIdx, -1);
   assert.ok(importIdx < exportIdx);
   assert.match(appsScript, /duration_ms: finishedMs - startedMs/);
   assert.match(appsScript, /DAILY_AUTO_LAST_STAGES_JSON/);
   assert.match(appsScript, /dailyAuto_stage /);
+  assert.match(appsScript.slice(dailyStart), /return withAutoWriteGuard_\(function\(\)/);
 });
 
 test("dailyAuto retries only pull/import/export once after seven minutes", () => {
+  const retryStart = appsScript.indexOf("function dailyAutoRetry_()");
+  const dailyStart = appsScript.indexOf("function dailyAuto()", retryStart);
+  assert.notEqual(retryStart, -1);
   assert.match(
     appsScript,
     /DAILY_AUTO_RETRYABLE_STAGES_ = \["pullFromDB", "importStats", "exportStats"\]/,
@@ -85,13 +116,25 @@ test("dailyAuto retries only pull/import/export once after seven minutes", () =>
   assert.match(appsScript, /DAILY_AUTO_RETRY_DELAY_MS_ = 7 \* 60 \* 1000/);
   assert.match(appsScript, /newTrigger\("dailyAutoRetry_"\)[\s\S]*?\.after\(DAILY_AUTO_RETRY_DELAY_MS_\)/);
   assert.match(appsScript, /function dailyAutoRetry_\(\)/);
+  assert.match(appsScript.slice(retryStart, dailyStart), /return withAutoWriteGuard_\(function\(\)/);
   assert.doesNotMatch(
     appsScript.slice(
-      appsScript.indexOf("function dailyAutoRetry_()"),
-      appsScript.indexOf("function dailyAuto()", appsScript.indexOf("function dailyAutoRetry_()")),
+      retryStart,
+      dailyStart,
     ),
     /scheduleDailyAutoRetry_/,
   );
+});
+
+test("automatic sheet writes suppress edit-trigger fanout", () => {
+  const statusEditStart = appsScript.indexOf("function onStatusEdit_(e)");
+  assert.notEqual(statusEditStart, -1);
+  assert.match(appsScript, /AUTO_WRITE_ACTIVE_UNTIL_PROP/);
+  assert.match(appsScript, /function isAutoWriteActive_/);
+  assert.match(appsScript, /function withAutoWriteGuard_/);
+  assert.match(appsScript, /function skipEditDuringAutoWrite_/);
+  assert.match(appsScript, /edit_trigger_skipped/);
+  assert.match(appsScript.slice(statusEditStart), /skipEditDuringAutoWrite_\("onStatusEdit_"\)/);
 });
 
 test("fillCaptionFromAsset_ keeps the live existing-caption self-heal", () => {
