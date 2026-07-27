@@ -1,5 +1,18 @@
 # AI Shared Status
 
+## 2026-07-27 [Codex 완료·검증] 라이브 Apps Script 최신 main 기준 부분 반영
+- **기준 정정 확인:** `origin/main`은 `23c1be1`이 아니라 `a88eb31`이 최신이며, 그 안에 `ca401b8`, `6355bbb`, `23c1be1`이 모두 포함됨. 따라서 라이브 반영은 stale `23c1be1` 기준이 아니라 최신 main의 `Combined_Sheet_AppsScript.gs` 기준으로 검증.
+- **라이브 프로젝트:** `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn` / 파일 `AI 트래킹 대시보드 연동.gs`.
+- **반영 방식:** 전체 파일 덮어쓰기 금지. 라이브 서버본에는 `_WriteGuard` 래퍼와 라이브 전용 보강이 있어, 복사한 라이브 파일을 기준으로 `dailyAuto`, `refreshCumulativeViews__wgimpl`, `syncPricing__wgimpl` 3개만 함수 단위 교체.
+- **포함 확인:** `dailyAuto()`에 `importStats()`가 `pullFromDB()` 다음, `exportStats()` 앞에 들어감. `refreshCumulativeViews__wgimpl()`은 `AUTO_CUMULATIVE_BYROW_V3_*` + 날짜열 정규식 감지 + TikTok/IG legacy override 3건 보존. `syncPricing__wgimpl()`은 `REGEXREPLACE(REGEXREPLACE(LOWER(...), "\\s+", ""), "_+", "_")` 정규화 XLOOKUP 방식으로 반영.
+- **보존 확인:** `_WriteGuard`/`withDocLock_`/`__wgimpl` 구조, `asset_name`, 상태 편집 트리거, `applyNewColumnLayout` 삭제 상태를 보존. 전체 붙여넣기 전 클립보드 재복사 비교 통과.
+- **검증:** 저장 후 Apps Script 탭 새로고침, 서버에서 다시 내려온 전체 코드 재복사. 패치본과 newline-normalized 동일, 마커 `AUTO_CUMULATIVE_BYROW_V3`, `dailyAuto importStats`, `syncPricing` 정규화, `_WriteGuard` 보존, `applyNewColumnLayout` 없음 확인.
+- **남음:** 시트 바이럴 채널명 51개 표시명→핸들 일괄수정은 `handle_mapping.json`이 현재 worktree에 없고, 상황판에는 18건+수동확인 2건 근거만 있음. 실제 쓰기 전 연동 시트에서 표시명 잔존 URL 51개와 URL→핸들 매핑을 확정해야 함.
+
+## 2026-07-27 [검증완료] BYROW 누적조회수 라이브 실측 PASS + 바이럴 채널명 "51" 정정 (Claude)
+- **BYROW 실측 PASS**: Codex 라이브 반영본을 시트에서 실측. 누적조회수(H) 1234/1409행(87%) 양수(나머지=배너 reach/미수집/종료/빈행, 정상). 표본 15/15 전부 `H = 최신 날짜열 값` 일치. **legacy override 3건 정확**(ssulbox 955·sseoltteugi 1017·DaNeLbcmOXE 550). marker `AUTO_CUMULATIVE_BYROW_V3` 시트 반영 확인.
+- **⚠️ 바이럴 채널명 "51개" 정정 → 실제 안전 수정가능은 6개**: 시트 바이럴 채널명 실측 = 핸들정상 848 + 표시명 67. 표시명 67 분해: IG·DB핸들확보 **6**(유일 기계적 안전), IG·DB도표시명 ~49(상당수 의도적 브랜딩 `신기+템(인스타)` 등), YouTube 3, TikTok 8, Threads 1(DB=None). **51은 근거없는 수치였음(정정).** 나머지 61은 "의도/오류" 행별 사람 판단 필요 → 일괄쓰기 금지. Codex 보류 판단이 정확.
+
 ## 2026-07-27 [완료·검증] 주말 배너 도달수 07-24/25/26 백필 (Claude, 사용자 지시)
 - **갭**: 시트(팀 입력, 정본) > DB. 07-24 27→67건(+40, 합계 2,397,194→2,982,972), 07-25 동일, 07-26 23→39건(+16, →2,246,255). 근본=importStats가 아직 **라이브 미반영**(Codex가 repo dailyAuto엔 추가 완료, line 14-18)이라 자동 sync 안 됨 → 그 전까지 수동 백필.
 - **검증(쓰기 전)**: 07-24==07-25 완전동일(67/67, 합계 동일)은 **시트·DB 양쪽에 이미 존재**하던 팀 입력 스냅샷(reach 무성장 시 동일 → 리포트 전일대비 0). 내가 만든 왜곡 아님. 열매핑도 헤더 라벨 7.24/7.25/7.26=idx 82/83/84 확인.
