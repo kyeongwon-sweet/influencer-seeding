@@ -1,5 +1,10 @@
 # AI Shared Status
 
+## 2026-07-27 [수집] comments_count 보강 수렴 개선 + 주말 커버리지 홀 회수 (Claude)
+- **주말 커버리지 홀**: 7/24~27 부정댓글 알림이 전부 위성채널뿐 → evergreen(위성/온드)만 매회차 스캔되고 바이럴/협찬은 comment_count null이면 스킵(noSignal). 캐치업 스윕(비-evergreen 179개)으로 **미탐 4건 회수**(bibimbap 바이럴배너 3+박홍 틱톡 1). 상위20도 포함, 추가 0.
+- **b1 개선(`9705446`, run_monitoring.py)**: comments_count 보강이 `measured_at=TODAY`에 이미 채운 글은 제외 → 하루 여러 회차 중복 보강 제거 + 남은 null만 채워 하루 안에 수렴(봇 noSignal 실감소 기대). 다음 크론에서 검증.
+- **Apify 예산소진 재발방지(negative-comment-monitor `36ef292`)**: 주말 스윕 중 Apify 402(한도 $200에 $162 사용, 사용자 상향). 봇이 매 실행 후 잔여 조회→잔여<$20이면 하루1회 Slack 경고(cost_alert_log kind=apify_balance). ⚠️수동 스윕은 예산 감안 최소로.
+
 ## 2026-07-27 [Codex 진행] dailyAuto importStats 자동화 + syncPricing 정규화 반영
 - **① 완료(repo):** `dailyAuto()`에 `importStats()`를 `pullFromDB()` 다음, `exportStats()` 앞에 추가. 목적은 시트 날짜열의 수기/배너 도달수를 DB `post_daily_stats`에 먼저 올린 뒤, 같은 실행 안에서 DB→시트 역채움이 따라가게 하는 것. 배너 도달수 자동동기화의 재발 차단 경로.
 - **③ 완료(repo):** `syncPricing()` XLOOKUP 키를 `LOWER` + 공백 제거 + 연속 `_` 축약 정규화로 감싸 상황판 검증패치 반영. `Ufo_NIGHT` vs `Ufo__NIGHT` 같은 언더스코어/대소문자 차이의 미래 매칭 실패를 줄임.
