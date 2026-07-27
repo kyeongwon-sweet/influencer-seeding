@@ -1,5 +1,17 @@
 # AI Shared Status
 
+## 2026-07-27 [검증완료·종결] 바이럴 채널명 gviz 라이브 교차검증 PASS + 트리거 안전성 + dailyAuto 33% 오류 (Claude)
+- **✅ 채널명 종결**: Codex의 `overwriteViralHandles` 라이브 실행(55건)을 Claude가 **로그인 브라우저 gviz 재읽기로 교차검증**. 355행 표본 바이럴 91건 중 표시명 **53→6**. 남은 6개 **전부 의도적 라벨**(`이평(틱톡 미러링)`·`힐링하고 가세요`·`foxzzal(스레드/미러링)`·`신기+템`·`숏믈리에`·`신기+템(인스타)`). 규칙(실계정→핸들/라벨유지) 정확 적용. dailyAuto 자가치유(`22a8a5f`)로 재발도 차단됨.
+- **✅ installDailyTrigger 안전(사용자 우려 해소)**: repo `installDailyTrigger`는 **이미 옵션(a)** — syncNew+dailyAuto 둘 다 삭제 후 **둘 다 재생성**(`dailyAuto` 9:30 + `syncNew` atHour(0) 자정). 계약테스트 존재. **라이브 트리거 실측**(triggers 페이지): 시간기반 `syncNew` 2026-07-27 00:09 실행(0% 오류)·`dailyAuto` 09:34 실행 **둘 다 생존**. Codex가 라이브 .gs=repo 전체 일치 확인했으므로 라이브 함수도 (a). → "자동 동기화 켜기" 버튼 눌러도 안전. (잔재: '다른 사용자' 소유 사용중지 syncNew 1개·updateExpectedViews 2개 — 무해)
+- **⚠️ dailyAuto 라이브 오류율 33.3%**(triggers 페이지, 최근 실행 1/3 실패) — 별건 조사 필요. Codex line 14의 `syncCreators__wgimpl` ReferenceError 수정 이후 잔여인지, importStats/overwriteViralHandles 추가 단계 중 실패인지 실행로그 확인 요망. 데이터 유실은 아님(각 단계 try/catch 격리·다음 회차 복구).
+
+## 2026-07-27 [Codex 완료·검증] overwriteViralHandles_ 라이브 확인 + 1회 수동 실행
+- **기준:** `origin/main` 최신은 `22a8a5f`이며, `overwriteViralHandles_`를 `dailyAuto`에 추가한 커밋이 HEAD에 있음.
+- **라이브 Apps Script 확인:** 프로젝트 `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn`의 fresh editor 서버본을 전체 복사해 검사. 이미 `function overwriteViralHandles_`, 메뉴 항목 `overwriteViralHandles`, `dailyAuto`의 `overwriteViralHandles_` 연결, `AUTO_CUMULATIVE_BYROW_V3`, `dailyAuto importStats`, `_WriteGuard`가 모두 존재함을 확인. 따라서 추가 저장/덮어쓰기 없음.
+- **수동 실행 1차:** Apps Script 실행 드롭다운에서 `overwriteViralHandles` 선택 후 실행. 로그: `바이럴 채널명 → DB 핸들 정정 완료 · 변경: 55건`, 실행 완료. 샘플: `365_hot (실시간 예능)→365_hot`, `모두의 행복→moduhappy`, `스마일_라이프_❤(스마일컴퍼니)→smile_life_s2`, `유머패밀리 orange→ufo__orange`, `루나 플레이어→luna.player`, `티빙 박스→tving_box`.
+- **실제 반영 검증:** 같은 함수 즉시 재실행. 로그: `변경: 0건`, 실행 완료. 즉 첫 실행 결과가 실제 시트에 반영되어 DB 핸들과 이미 수렴했음을 확인.
+- **참고:** Chrome gviz 직접 탭은 `ERR_BLOCKED_BY_CLIENT`, 셸 gviz는 응답 형식이 필터/표현 탓에 파싱 부적합했으므로 Apps Script 자체 재실행 no-op 검증을 채택. Claude가 필요하면 별도 gviz/DB 기준으로 잔존 표시명 검증 가능.
+
 ## 🚨 2026-07-27 [확정규칙·긴급] 바이럴 채널명 = 실계정 표시명→핸들 / 라벨만 유지 (사용자 재확정, Claude)
 - **⚠️ Claude·Codex 모두에게: 아래가 최종 규칙. 시트 표시명을 "유지"로 되돌리지 말 것(줄다리기 중단).**
 - **규칙(사용자 재확정)**: 시트 바이럴 채널명(C열)에서 **① 실제 계정 표시명 → IG 핸들로 변경**(`유머패밀리 skyblue`→`ufo__skyblue`, `루나 플레이어 • Luna player`→`luna.player`, `스마일_투데이_❤`→`smile_today_s2`). **② 의도적 라벨만 유지**(`신기+템(인스타)`·`쇼잉(인스타)`·`(표지)`·비-IG 미러링). 구분 기준=**DB account_name**(실계정=핸들 보유, 라벨=DB에도 라벨).
