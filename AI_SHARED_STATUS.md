@@ -1,5 +1,17 @@
 # AI Shared Status
 
+## 2026-07-27 [완료·검증] 주말 배너 도달수 07-24/25/26 백필 (Claude, 사용자 지시)
+- **갭**: 시트(팀 입력, 정본) > DB. 07-24 27→67건(+40, 합계 2,397,194→2,982,972), 07-25 동일, 07-26 23→39건(+16, →2,246,255). 근본=importStats가 아직 **라이브 미반영**(Codex가 repo dailyAuto엔 추가 완료, line 14-18)이라 자동 sync 안 됨 → 그 전까지 수동 백필.
+- **검증(쓰기 전)**: 07-24==07-25 완전동일(67/67, 합계 동일)은 **시트·DB 양쪽에 이미 존재**하던 팀 입력 스냅샷(reach 무성장 시 동일 → 리포트 전일대비 0). 내가 만든 왜곡 아님. 열매핑도 헤더 라벨 7.24/7.25/7.26=idx 82/83/84 확인.
+- **조치**: 시트 실값으로 `post_daily_stats` upsert(on_conflict post_id+measured_at, reach_count·manual만 갱신, 다른 컬럼 불변). 173건. 매칭실패 0·종료제외 0. 쓰기 후 DB=시트 정확 일치 재확인.
+- **재발차단**: importStats **라이브 반영되면** 이 수동 백필 불필요(dailyAuto가 매일 시트→DB 반영).
+
+## 2026-07-27 [완료·검증] 캡션 끝 ".디자인N" 접미사 제거 (Claude, 사용자 지시)
+- **문제**: 캡션 자동채움(fillCaptionFromAsset_)이 소재명 part8을 넣을 때 파일명 버전표기 `.디자인1`/`.디자인2` 등이 딸려 들어감(기존 정리 로직이 `.x`/`.`만 떼고 `.디자인N`은 안 뗌).
+- **수정(라이브 `fillCaptionFromAsset_`, find/replace 2곳)**: (1) 추출 정리에 `.replace(/\s*\.디자인\s*\d*\s*$/,"")` 추가. (2) 값 있는 셀도 실행 시 **끝의 `.디자인N`만 정규화**(수동/실제 캡션 문장은 그대로, 접미사만 제거). 정규식은 앞에 점(`.`) 필수 → "좋은 디자인"처럼 정상 단어는 안 건드림.
+- **적용·검증**: `dailyAuto` 수동 실행(9:36→9:39, 3분, 무에러 완료) → fillCaptionFromAsset_이 맨 앞에서 기존 `.디자인N` 정리 + syncAll이 정리된 캡션을 DB(content_summary)로 반영. dailyAuto 전체 정상 완료(pullFromDB 배치수정도 재확인: 신규0·빈칸0 빠름).
+- ⚠️ 시트 직접 재확인은 브라우저 계정이 해당 스프레드시트 미접근이라 못 함(코드+무에러 실행으로 확인). fillCaptionFromAsset_은 **라이브 전용**(repo `Combined_Sheet_AppsScript.gs`엔 없음) → repo 반영 대상 없음.
+
 ## 2026-07-27 [수집] comments_count 보강 수렴 개선 + 주말 커버리지 홀 회수 (Claude)
 - **주말 커버리지 홀**: 7/24~27 부정댓글 알림이 전부 위성채널뿐 → evergreen(위성/온드)만 매회차 스캔되고 바이럴/협찬은 comment_count null이면 스킵(noSignal). 캐치업 스윕(비-evergreen 179개)으로 **미탐 4건 회수**(bibimbap 바이럴배너 3+박홍 틱톡 1). 상위20도 포함, 추가 0.
 - **b1 개선(`9705446`, run_monitoring.py)**: comments_count 보강이 `measured_at=TODAY`에 이미 채운 글은 제외 → 하루 여러 회차 중복 보강 제거 + 남은 null만 채워 하루 안에 수렴(봇 noSignal 실감소 기대). 다음 크론에서 검증.
