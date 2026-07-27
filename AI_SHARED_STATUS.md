@@ -9,7 +9,13 @@ Rules:
 - Do not write secrets, tokens, service-role keys, cookies, or private credentials here.
 - If a claim was not verified in the current session, mark it as unverified.
 
-Last updated: 2026-07-24 (Claude: dailyAuto 30분 타임아웃 근본수정[pullFromDB 배치읽기, 1802초→26초 검증] + syncNew 자정 이동 + 캡션 자동채움)
+Last updated: 2026-07-27 (Claude: 캡션 ".디자인N" 접미사 제거[fillCaptionFromAsset_, dailyAuto 실행 검증] + [7-24] dailyAuto 타임아웃 근본수정·syncNew 자정 이동·캡션 자동채움)
+
+## 2026-07-27 [완료·검증] 캡션 끝 ".디자인N" 접미사 제거 (Claude, 사용자 지시)
+- **문제**: 캡션 자동채움이 소재명 part8을 넣을 때 파일명 버전표기 `.디자인1`/`.디자인2`가 딸려 들어감(정리 로직이 `.x`/`.`만 뗌).
+- **수정(라이브 fillCaptionFromAsset_)**: (1) 추출 정리에 `.replace(/\s*\.디자인\s*\d*\s*$/,"")` 추가. (2) 값 있는 셀도 실행 시 끝의 `.디자인N`만 정규화(실제 캡션·수동값 문장은 보존, 접미사만). 정규식 앞점(`.`) 필수 → "좋은 디자인" 안 건드림.
+- **적용·검증**: dailyAuto 수동 실행(3분 무에러 완료) → 기존 `.디자인N` 정리 + syncAll이 DB(content_summary) 반영. pullFromDB 배치수정도 재확인(빠름).
+- ⚠️ 시트 직접 재확인은 브라우저 계정 미접근이라 못 함. fillCaptionFromAsset_은 라이브 전용(repo에 없음).
 
 ## 2026-07-24 [완료·검증] dailyAuto 30분 타임아웃 근본수정 — pullFromDB 셀단위 읽기→배치 (Claude)
 - **문제**: dailyAuto(9:30) 최근 66.67% 실패 = **30분(1802초) 실행한도 초과 타임아웃**. runSync_는 ~1분에 끝나고 다음 `pullFromDB`가 ~28분 hang(단독 실행도 1802초 타임아웃).
