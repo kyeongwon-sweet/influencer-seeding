@@ -544,6 +544,28 @@ function pullFromDB() {
   }
 }
 
+function fillCaptionFromAsset_() {
+  const sheet = getSheet_();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < CONFIG.DATA_START_ROW) return true;
+  const assetCol = findHeaderCol_(sheet, ["소재명"]);
+  const capCol = findHeaderCol_(sheet, ["캡션"]);
+  if (!assetCol || !capCol) return true;
+
+  const n = lastRow - CONFIG.DATA_START_ROW + 1;
+  const assets = sheet.getRange(CONFIG.DATA_START_ROW, assetCol, n, 1).getValues();
+  const caps = sheet.getRange(CONFIG.DATA_START_ROW, capCol, n, 1).getValues();
+  let filled = 0;
+  for (let i = 0; i < n; i++) {
+    if (String(caps[i][0]).trim() !== "") continue;
+    const part = String(assets[i][0] || "").split("_")[8] || "";
+    const caption = String(part).replace(/\.(x|X)$/, "").replace(/\.$/, "").trim();
+    if (caption) { caps[i][0] = caption; filled++; }
+  }
+  if (filled) sheet.getRange(CONFIG.DATA_START_ROW, capCol, n, 1).setValues(caps);
+  return true;
+}
+
 // 매일 자동: 시트→DB(전체 syncAll) + DB→시트(대시보드 추가분 가져오기)를 함께 수행.
 // syncNew(신규만)→syncAll 변경(2026-07-06): 기존 행의 시트 수정(업로드일 정정 등)이 DB로
 // 전파되지 않아 시트·DB 게시일이 어긋나던 문제 해소(640행 7/2↔7/4 사례).
@@ -556,6 +578,14 @@ function dailyAuto() {
     DAILY_AUTO_LAST_STARTED_AT: startedAt,
     DAILY_AUTO_LAST_STATUS: "RUNNING",
   }, false);
+
+  try {
+    const captionOk = fillCaptionFromAsset_();
+    if (captionOk === false) errors.push("fillCaptionFromAsset failed");
+  } catch (e) {
+    errors.push("fillCaptionFromAsset threw: " + (e.stack || e.message));
+    Logger.log("dailyAuto fillCaptionFromAsset: " + (e.stack || e.message));
+  }
 
   const syncOk = runSync_(false);
   if (syncOk === false) errors.push("syncAll failed");

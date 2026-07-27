@@ -54,6 +54,13 @@ const mapKeyRange = 'ARRAYFORMULA(' + norm_(mapName + '!$A$2:$A&' + mapName + '!
 시뮬 결과 이 보완이 **11건 중 10건 해소**(807 vs 808). 남은 1건 `ho1y_time`은 언더스코어 무관 — 매핑에 그 계정+포맷(릴스) 행이 없는 데이터 갭(구는 업체명을 포맷 무시로 느슨 매칭). 필요 시 매핑에 행 추가 or 업체명 lookup만 포맷 무시.
 **Codex**: 위 패치를 syncPricing에 반영 후 배포. ⚠️ 라이브 .gs=Codex 미커밋 진행중이라 Claude가 직접 미적용(덮어쓰기 방지). 데이터 근본은 시트 채널명 `Ufo__RED`/`ufo__red`/`Ufo_RED` 표기 난립 정리.
 
+## 2026-07-27 [Codex 완료] 라이브 Apps Script 캡션 part8 + 배너 도달수 import 반영
+- **라이브 Apps Script 실제본 저장/검증 완료:** 프로젝트 `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn`의 `AI 트래킹 대시보드 연동.gs`에 함수 단위로 반영. 저장 후 같은 탭 새로고침 + 완전히 새 탭 재오픈으로 서버 지속 여부 확인.
+- **캡션(L열)=소재명(E열) 자동추출:** `fillCaptionFromAsset_()`/`fillCaptionFromAsset__wgimpl` 추가. L열이 비어 있을 때만 소재명을 `_`로 나눈 9번째 구획(`split("_")[8]`)을 쓰고, 후행 `.X`/`.x`/`.`를 제거. `dailyAuto`에서 `runSync_(false)`보다 먼저 실행되므로 추출값이 같은 실행의 syncAll로 DB `content_summary`까지 올라갈 수 있음. 예전 `reCap`/`.디자인` 정규식은 라이브 검색 결과 없음.
+- **배너 도달수 import:** `importStats__wgimpl`의 배너 행 스킵(`if (channelType.indexOf("\\ubc30\\ub108") >= 0) return;`) 제거. `const isBanner = channelType.indexOf("배너") >= 0;`, `if (!isBanner && prevN !== null && n === prevN) return;` 구조로 비배너만 기존 동일값 생략을 유지하고, 배너는 값이 있는 날짜를 서버로 전송. 서버 `stats-import`가 배너 입력을 `reach_count`로 저장하는 기존 경로를 사용함.
+- **검증 마커:** 새 탭 재오픈 후 `fillCaptionFromAsset__wgimpl`, `split("_")[8]`, `dailyAuto fillCaptionFromAsset`, `const isBanner = channelType.indexOf("배너") >= 0;`, `배너도 서버에서 reach_count로 저장하므로 전송한다`, `if (!isBanner && prevN !== null && n === prevN) return;` 검색 성공. 예전 배너 스킵 라인과 `reCap`은 검색 결과 없음.
+- **미실행/잔여:** `dailyAuto`/`importStats` 실제 실행은 이번 턴에서 누르지 않음. 이유: 운영 `CRON_SECRET` 정합 이슈가 이전 검증에서 남아 있고, `importStats`는 대량 DB upsert 부작용이 있어 저장/서버 지속 검증까지만 수행. 다음 실제 검증은 Script Properties와 Vercel `CRON_SECRET` 정합 확인 후 `importStats` 1회 실행 → `banner_reach_inserted`/DB reach_count 멱등 확인.
+
 ## 2026-07-24 [정정·최우선] 캡션 추출 규칙: ".디자인" 정규식 폐기 → part8 추출 (Claude, 실측+사용자 승인 A안)
 - ⚠️ **아래 "캡션(L)=소재명 자동추출" 스펙의 정규식 `/_([^_]+\.[^_]+)\.디자인/`은 폐기.** 실측: 구조적 소재명 782개 중 **136개(17%, "디자인" 든 것만) 매치** → 83% 놓침.
 - **정정 규칙(사용자 승인)**: 캡션 = **소재명을 `_`로 분리한 9번째 구획 = part[8]**.
@@ -61,7 +68,7 @@ const mapKeyRange = 'ARRAYFORMULA(' + norm_(mapName + '!$A$2:$A&' + mapName + '!
   - **정리**: 후행 변형표기 `.X`/`.x` 및 후행 `.` 제거. 예: `류라이괴식 구라.X` → `류라이괴식 구라`, `제주에서뭐하지.` → `제주에서뭐하지`. (JS: `s.split("_")[8]?.replace(/\.(x|X)$/,'').replace(/\.$/,'').trim()`)
   - **실측 커버리지: part8 있음 759/782(97%)**. 빈값 23개(비표준 구획수 2/3/9/10/11)는 게시글 캡션 폴백.
 - 우선순위(수동 > 소재명 part8 > 게시글 캡션)·실행순서(`fillCaptionFromAsset_()` → `pullFromDB()` 앞)는 아래 스펙 유지.
-- ~~**상태: 미구현**~~ → **✅ 2026-07-24 라이브 구현·검증 완료(Claude)**. 최상단 "[완료·검증] 캡션(L) 자동채움" 항목 참조. 라이브 `fillCaptionFromAsset_`(part8)+`findHeaderCol_` 추가. repo `Combined_Sheet_AppsScript.gs` 반영은 Codex.
+- ~~**상태: 미구현**~~ → **✅ 구현 완료.** 2026-07-24 Claude가 라이브 구현·실행 검증(`fillCaptionFromAsset_` part8 + `findHeaderCol_`) 완료했고, 2026-07-27 Codex가 라이브 서버 실제본 재검증 및 repo `Combined_Sheet_AppsScript.gs` part8 반영을 완료.
 
 ## 2026-07-24 요청(Codex): 연동시트 소재명(E)↔DB 동기화 매핑 + project_name/asset_name 정본 통일 (Claude, 사용자 승인)
 - **실측**: DB 총 1,298 = 연동시트 1,298(게시물 일치, AI대시보드=DB뷰). 소재명(파일명)은 DB **project_name**에 보존(1,201건), 시트 소재명(E)과 표본 5/5 값 일치. 전용 **asset_name 필드는 전부 빈값**(미사용).
@@ -138,7 +145,7 @@ function fillCaptionFromAsset_() {
 - **근본원인 확정:** Apps Script `importStats`가 `if (channelType.indexOf("배너") >= 0) return;`으로 **배너 행 전체를 전송에서 제외**하고 있었음. 반면 서버 `stats-import`에는 배너 입력을 `reach_count`로 저장하는 정상 경로가 이미 존재해, 시트와 서버 정책이 서로 어긋난 것이 07-22 누락의 직접 원인. "헤더 소실"·`slice(-2)` 가설은 사용하지 않음(둘 다 오진).
 - **서버 완료(main `5378e62`, `-mu` 프로덕션 Ready 확인):** 시트 수기 입력 날짜 상한을 `yesterdayKST()`→`maxDateKST()`(KST 오늘)로 완화. 자정 자동수집/T-1 리포트 정책은 별도 경로라 그대로 유지. 오늘 이후 미래 날짜만 차단.
 - **Apps Script 패치 준비(repo 함수 단위):** 배너 제외를 제거하고, 날짜 헤더 라벨 기준 `오늘 이하 + 숫자값 있음`인 **배너 셀은 동일값이어도 전량 전송**. 비배너는 기존 forward-fill 동일값 생략 유지. `importStats_scan/result` 구조화 로그와 배너 반영/미래날짜 스킵 카운트 추가. 회귀테스트·타입검사·Next build·Apps Script 문법검사 통과.
-- **라이브 반영 대기:** 정본 Apps Script 탭에 다른 Claude 세션 활성 표시가 있어 동시저장 규칙에 따라 저장을 보류함. 활성 세션 종료 후 `importStats__wgimpl` 함수만 최소 패치 → 실행 1회 → 로그의 `banner_stats_to_send/banner_reach_inserted` 및 DB 검증 예정. repo 전체→live 덮어쓰기 금지.
+- **라이브 반영 완료(2026-07-27 Codex):** 정본 Apps Script 서버 실제본에 배너 스킵 제거와 비배너 동일값 생략 유지 로직 저장. 같은 탭 새로고침 + 완전히 새 탭 재오픈으로 `isBanner`, 배너 전송 주석, 비배너 `prevN` 가드, 기존 스킵 라인 제거를 확인. repo 전체→live 덮어쓰기 없이 함수 단위로 반영.
 - **재실행 전 기준값(DB 확인):** 2026-07-22 배너 reach **122행**, 전부 `manual=true`, 합계 **5,074,259**. Claude 수동패치와 일치. 재동기화 후에도 122행·합계가 같아야 멱등 성공이며, 이 기준값을 변경·추정하지 말 것.
 
 ## 2026-07-24 [자동종료 수동값 보존] 수동 입력 글 전체를 자동종료 예외 처리 (Claude, 사용자 지시 "수동값 보존")

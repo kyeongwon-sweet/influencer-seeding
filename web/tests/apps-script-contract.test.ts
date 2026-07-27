@@ -32,10 +32,10 @@ test("syncPricing inserts blank-only XLOOKUP formulas and preserves existing cel
   assert.match(appsScript, /!\$D\$2:\$D/);
 });
 
-test("daily trigger installs and removes the 23:00 syncNew trigger", () => {
+test("daily trigger installs and removes the 00:00 syncNew trigger", () => {
   assert.match(
     appsScript,
-    /newTrigger\("syncNew"\)[\s\S]*?\.atHour\(23\)[\s\S]*?\.everyDays\(1\)/,
+    /newTrigger\("syncNew"\)[\s\S]*?\.atHour\(0\)[\s\S]*?\.everyDays\(1\)/,
   );
   assert.match(
     appsScript,
