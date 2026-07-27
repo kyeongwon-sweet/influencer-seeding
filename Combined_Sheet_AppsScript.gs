@@ -84,6 +84,7 @@ function onOpen() {
     .addItem("📥 수집 조회수 시트로 채우기 (I~열)", "exportStats")
     .addItem("♻️ 전체 다시 추가", "syncAll")
     .addItem("⬇️ 대시보드 추가분 시트로 가져오기", "pullFromDB")
+    .addItem("🔤 바이럴 채널명 → 핸들 정정", "overwriteViralHandles")
     .addSeparator()
     .addItem("🔎 빈칸 검사 (A~H)", "checkBlanks")
     .addItem("🔁 중복 URL 검사", "checkDuplicates")
@@ -544,6 +545,63 @@ function pullFromDB() {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// 바이럴 채널명 → DB 핸들 일괄 덮어쓰기 (시트에 잔존한 표시명 정정)
+// ═══════════════════════════════════════════════════════════════
+// 배경: pullFromDB는 '빈칸만' 채워서, 시트에 한 번 들어간 표시명(예: '유미패밀리 skyblue')을
+//       DB 정본 핸들(예: 'ufo__skyblue')로 못 바꾼다. 이 함수는 그 잔존 표시명을 정정한다.
+// 안전장치: ① '바이럴' 행만  ② 채널명(account_name) 열만  ③ DB값이 비면 유지(빈칸 덮어쓰기 금지)
+//           ④ 동일하면 no-op  ⑤ 다른 열·수식·조회수·비바이럴 행 무손상(해당 열 1회 배치 되쓰기).
+//   ※ DB가 정본이라 의도적 라벨(예: '신기+템(인스타)')은 DB에도 그대로 있어 그 값으로 유지된다.
+function overwriteViralHandles_() {
+  try {
+    const sheet = getSheet_();
+    const fieldCols = buildFieldCols_(sheet);
+    const accCol = fieldCols.account_name, typeCol = fieldCols.channel_type, urlCol = fieldCols.url;
+    if (!accCol || !typeCol || !urlCol) throw new Error("채널명/채널분류/URL 열을 찾지 못함");
+
+    const res = UrlFetchApp.fetch(CONFIG.LIST_API_URL, { method: "get", headers: authHeaders_(), muteHttpExceptions: true });
+    if (res.getResponseCode() !== 200) throw new Error(`API ${res.getResponseCode()}: ${res.getContentText()}`);
+    const posts = (JSON.parse(res.getContentText()).posts) || [];
+    const handleByKey = {};
+    posts.forEach(p => {
+      const key = linkKey_(String(p.url || ""));
+      const name = String(p.account_name || "").trim();
+      if (key && name) handleByKey[key] = name;   // DB 정본 채널명
+    });
+
+    const lastRow = sheet.getLastRow();
+    const n = (lastRow >= CONFIG.DATA_START_ROW) ? (lastRow - CONFIG.DATA_START_ROW + 1) : 0;
+    if (n <= 0) { safeAlert_("데이터 행이 없습니다."); return true; }
+
+    const urls  = sheet.getRange(CONFIG.DATA_START_ROW, urlCol,  n, 1).getValues();
+    const types = sheet.getRange(CONFIG.DATA_START_ROW, typeCol, n, 1).getValues();
+    const accs  = sheet.getRange(CONFIG.DATA_START_ROW, accCol,  n, 1).getValues();  // 이 배열만 수정 후 1회 되쓰기
+
+    let changed = 0; const samples = [];
+    for (let i = 0; i < n; i++) {
+      if (String(types[i][0] || "").indexOf("바이럴") < 0) continue;   // 바이럴 행만
+      const key = linkKey_(String(urls[i][0] || ""));
+      if (!key) continue;
+      const dbName = handleByKey[key];
+      if (!dbName) continue;                       // DB에 값 없으면 유지(빈칸 덮어쓰기 금지)
+      const cur = String(accs[i][0] || "").trim();
+      if (cur === dbName) continue;                // 동일 → no-op
+      if (samples.length < 15) samples.push(`'${cur}' → '${dbName}'`);
+      accs[i][0] = dbName;                         // 메모리 배열만 수정(비바이럴/동일 행은 원값 유지)
+      changed++;
+    }
+    if (changed > 0) sheet.getRange(CONFIG.DATA_START_ROW, accCol, n, 1).setValues(accs);
+    safeAlert_(`🔤 바이럴 채널명 → DB 핸들 정정 완료\n• 변경: ${changed}건\n${samples.join("\n")}`);
+    return true;
+  } catch (e) {
+    safeAlert_("❌ 바이럴 채널명 정정 오류\n" + e.message);
+    Logger.log(e.stack || e.message);
+    return false;
+  }
+}
+function overwriteViralHandles() { return overwriteViralHandles_(); }
+
 function fillCaptionFromAsset_() {
   const sheet = getSheet_();
   const lastRow = sheet.getLastRow();
@@ -559,7 +617,8 @@ function fillCaptionFromAsset_() {
   for (let i = 0; i < n; i++) {
     if (String(caps[i][0]).trim() !== "") continue;
     const part = String(assets[i][0] || "").split("_")[8] || "";
-    const caption = String(part).replace(/\.(x|X)$/, "").replace(/\.$/, "").trim();
+    // 파일명 버전표기 .디자인N(예: .디자인1/.디자인2) 접미사 제거 후 .x/후행점 정리 (라이브와 통일, 2026-07-27)
+    const caption = String(part).replace(/\s*\.디자인\s*\d*\s*$/, "").replace(/\.(x|X)$/, "").replace(/\.$/, "").trim();
     if (caption) { caps[i][0] = caption; filled++; }
   }
   if (filled) sheet.getRange(CONFIG.DATA_START_ROW, capCol, n, 1).setValues(caps);
