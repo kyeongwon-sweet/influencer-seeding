@@ -1242,9 +1242,7 @@ function syncStatus() {
 
 function refreshCumulativeViews() {
   const sheet = getSheet_();
-  const lastRow = sheet.getLastRow();
   const lastCol = sheet.getLastColumn();
-  if (lastRow < CONFIG.DATA_START_ROW) return true;
   const cumCol = findHeaderCol_(sheet, ["누적 조회수", "누적조회수"]);
   if (!cumCol) return true;
   const headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
@@ -1253,25 +1251,62 @@ function refreshCumulativeViews() {
     if (headerDate_(headers[i])) dateCols.push(i + 1);
   }
   if (!dateCols.length) return true;
-  const first = colLetter_(Math.min.apply(null, dateCols));
-  const last = colLetter_(Math.max.apply(null, dateCols));
-  const n = lastRow - CONFIG.DATA_START_ROW + 1;
-  const data = sheet.getRange(CONFIG.DATA_START_ROW, 1, n, lastCol).getValues();
-  const currentValues = sheet.getRange(CONFIG.DATA_START_ROW, cumCol, n, 1).getValues();
-  const currentFormulas = sheet.getRange(CONFIG.DATA_START_ROW, cumCol, n, 1).getFormulas();
-  const formulas = [];
-  for (let i = 0; i < n; i++) {
-    const r = CONFIG.DATA_START_ROW + i;
-    const hasDateMetric = dateCols.some(c => typeof data[i][c - 1] === "number" && data[i][c - 1] > 0);
-    const manualValue = currentFormulas[i][0] === "" && currentValues[i][0] !== "" && currentValues[i][0] != null;
-    if (!hasDateMetric && manualValue) {
-      formulas.push([currentValues[i][0]]);
-    } else {
-      formulas.push(["=IF(COUNT(" + first + r + ":" + last + r + ")=0,\"\",MAX(" + first + r + ":" + last + r + "))"]);
+
+  const firstDateCol = Math.min.apply(null, dateCols);
+  const lastDateCol = Math.max.apply(null, dateCols);
+  const firstDate = colLetter_(firstDateCol);
+  const lastDate = colLetter_(lastDateCol);
+  const marker = "AUTO_CUMULATIVE_BYROW_V1_" + firstDate + "_" + lastDate;
+  const anchor = sheet.getRange(CONFIG.DATA_START_ROW, cumCol);
+  const existing = anchor.getFormula();
+  let installed = false;
+  let legacy = [];
+
+  if (!existing || existing.indexOf(marker) < 0) {
+    const lastRow = sheet.getLastRow();
+    const n = Math.max(0, lastRow - CONFIG.DATA_START_ROW + 1);
+    const urlCol = buildFieldCols_(sheet).url;
+    if (n > 0) {
+      const urls = sheet.getRange(CONFIG.DATA_START_ROW, urlCol, n, 1).getValues();
+      const values = sheet.getRange(CONFIG.DATA_START_ROW, cumCol, n, 1).getValues();
+      const formulas = sheet.getRange(CONFIG.DATA_START_ROW, cumCol, n, 1).getFormulas();
+      const daily = sheet.getRange(CONFIG.DATA_START_ROW, firstDateCol, n, lastDateCol - firstDateCol + 1).getValues();
+      for (let i = 0; i < n; i++) {
+        const url = String(urls[i][0] || "").trim();
+        const value = values[i][0];
+        const hasDateMetric = daily[i].some(v => typeof v === "number" && v > 0);
+        if (url && formulas[i][0] === "" && value !== "" && value != null && !hasDateMetric) {
+          legacy.push({ url: url, value: value });
+        }
+      }
     }
+
+    const urlLetter = colLetter_(urlCol);
+    const startRow = CONFIG.DATA_START_ROW;
+    let result = "base";
+    for (let i = legacy.length - 1; i >= 0; i--) {
+      const escapedUrl = legacy[i].url.replace(/"/g, '""');
+      const value = typeof legacy[i].value === "number"
+        ? String(legacy[i].value)
+        : '"' + String(legacy[i].value).replace(/"/g, '""') + '"';
+      result = 'IF(' + urlLetter + startRow + ':' + urlLetter + '=\"' + escapedUrl + '\",' + value + ',' + result + ')';
+    }
+    const formula = '=LET(marker,N(\"' + marker + '\"),' +
+      'base,BYROW(' + firstDate + startRow + ':' + lastDate + ',LAMBDA(r,IF(COUNT(r)=0,\"\",MAX(r)))),' +
+      'IF(marker=0,IF(' + urlLetter + startRow + ':' + urlLetter + '=\"\",\"\",' + result + '),\"\"))';
+
+    sheet.getRange(CONFIG.DATA_START_ROW, cumCol, sheet.getMaxRows() - CONFIG.DATA_START_ROW + 1, 1).clearContent();
+    anchor.setFormula(formula);
+    installed = true;
   }
-  sheet.getRange(CONFIG.DATA_START_ROW, cumCol, n, 1).setValues(formulas);
-  SpreadsheetApp.getActive().toast("누적 조회수 수식 갱신: " + n + "행", "완료", 4);
+
+  SpreadsheetApp.getActive().toast(
+    installed
+      ? "누적 조회수 BYROW 수식 설치 완료" + (legacy.length ? " · 수동값 보존 " + legacy.length + "건" : "")
+      : "누적 조회수 BYROW 수식 정상",
+    "완료",
+    4
+  );
   return true;
 }
 
