@@ -9,8 +9,8 @@
 
 ## 2026-07-27 [검증완료·종결] 바이럴 채널명 gviz 라이브 교차검증 PASS + 트리거 안전성 + dailyAuto 33% 오류 (Claude)
 - **✅ 채널명 종결**: Codex의 `overwriteViralHandles` 라이브 실행(55건)을 Claude가 **로그인 브라우저 gviz 재읽기로 교차검증**. 355행 표본 바이럴 91건 중 표시명 **53→6**. 남은 6개 **전부 의도적 라벨**(`이평(틱톡 미러링)`·`힐링하고 가세요`·`foxzzal(스레드/미러링)`·`신기+템`·`숏믈리에`·`신기+템(인스타)`). 규칙(실계정→핸들/라벨유지) 정확 적용. dailyAuto 자가치유(`22a8a5f`)로 재발도 차단됨.
-- **✅ installDailyTrigger 안전(사용자 우려 해소)**: repo `installDailyTrigger`는 **이미 옵션(a)** — syncNew+dailyAuto 둘 다 삭제 후 **둘 다 재생성**(`dailyAuto` 9:30 + `syncNew` atHour(0) 자정). 계약테스트 존재. **라이브 트리거 실측**(triggers 페이지): 시간기반 `syncNew` 2026-07-27 00:09 실행(0% 오류)·`dailyAuto` 09:34 실행 **둘 다 생존**. Codex가 라이브 .gs=repo 전체 일치 확인했으므로 라이브 함수도 (a). → "자동 동기화 켜기" 버튼 눌러도 안전. (잔재: '다른 사용자' 소유 사용중지 syncNew 1개·updateExpectedViews 2개 — 무해)
-- **⚠️ dailyAuto 라이브 오류율 33.3%**(triggers 페이지, 최근 실행 1/3 실패) — 별건 조사 필요. Codex line 14의 `syncCreators__wgimpl` ReferenceError 수정 이후 잔여인지, importStats/overwriteViralHandles 추가 단계 중 실패인지 실행로그 확인 요망. 데이터 유실은 아님(각 단계 try/catch 격리·다음 회차 복구).
+- **⚠️→✅ installDailyTrigger (내 이전 판단 정정)**: repo는 이미 옵션(a)가 맞으나, **라이브 함수는 옛 버그판이었음**(syncNew 삭제만 하고 재생성 안 함) — 내가 "Codex가 전체 일치 확인했으니 라이브도 (a)·버튼 안전"이라 한 건 **오류**. **사용자 우려가 정확했음.** Codex가 라이브 `installDailyTrigger` 1함수만 repo본으로 교체·저장·실행·트리거UI로 검증(dailyAuto+syncNew 둘 다 생성 확인) → 이제 라이브도 (a). 상세=위 Codex 항목.
+- **✅ dailyAuto 33.3% 원인규명·해결(Claude 독립확인=Codex 일치)**: 실패행 `dailyAuto 편집기 10:06:42 201초`의 Cloud로그에 `syncCreators: ReferenceError: syncCreators__wgimpl is not defined`(+중간 transient `IllegalStateException`). = 이미 고친 `syncCreators__wgimpl` 누락의 **과거 잔여 1건**. Codex 검증: 이후 `dailyAuto 10:17 완료`·`09:34 스케줄 127초 완료`로 재발 없음. 33%는 롤링윈도 잔여 통계라 성공 누적 시 자연 감소. 타임아웃건(07-21/22/24)은 별개 옛 pullFromDB 셀단위 문제로 07-24 배치읽기(`ddbd1fb`)로 이미 해결.
 
 ## 2026-07-27 [Codex 완료·검증] overwriteViralHandles_ 라이브 확인 + 1회 수동 실행
 - **기준:** `origin/main` 최신은 `22a8a5f`이며, `overwriteViralHandles_`를 `dailyAuto`에 추가한 커밋이 HEAD에 있음.
