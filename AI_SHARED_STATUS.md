@@ -25,7 +25,12 @@
 
 ## 상세 이력
 
-## 2026-07-27 [🚨근본원인·수정대기] 배너 도달수 시트→DB 전면 불통 = 라이브 importStats에 구버전 배너 스킵 잔존 (Claude, 저녁 실측)
+## 2026-07-27 [✅해결완료] 배너 도달수 시트→DB 불통 — Claude가 라이브 1줄 수정·실행·검증 (20시)
+- **조치**: 사용자 지시("네가 해")로 Claude가 라이브 편집기 UI(정규식 찾기/바꾸기)로 importStats 1235행 `if (channelType.indexOf("배너") >= 0) return;` → 주석으로 대체, Ctrl+S 저장(재로드로 서버 지속 확인). Monaco JS 주입은 하네스 차단이나 **편집기 UI 경로는 가능**(선례 갱신).
+- **검증**: importStats 재실행 → **7/26 배너 도달수 manual 94건 DB 반영**(bibimbap__zip 126,888·happing_box 102,718·ufo__night 130,280/83,078·365_hot 12,000 표본 확인). 7/27은 시트에 값 없어 0(정상).
+- **잔여(Codex)**: 완전판 이식 — repo importStats(isBanner 분기+비배너 carry 생략+Logger 카운터)로 함수 단위 교체 권장(현 라이브는 스킵 제거만 된 최소 수정 상태, 동작은 정상). 동명 사본 프로젝트 3개 중 어디에 오전 반영이 갔는지 확인해 정리.
+
+## 2026-07-27 [🚨근본원인·해결됨↑] 배너 도달수 시트→DB 전면 불통 = 라이브 importStats에 구버전 배너 스킵 잔존 (Claude, 저녁 실측)
 - **증상**: 오전 수기 입력된 배너 도달수(bibimbap__zip 126,888·happing_box 102,718 등 7/26 이후 입력분)가 importStats 수동 실행(19:09, 233초 완료·1,556건 입력)에도 DB 미반영. 대화상자에 "배너 도달수 N건 반영" 줄 자체가 없음 = banner_reach_inserted 0.
 - **근본원인(라이브 코드 실측, Monaco 추출)**: 라이브 "AI 트래킹 대시보드 연동.gs" importStats에 **`if (channelType.indexOf("배너") >= 0) return;` 구버전 배너 행 스킵이 그대로 존재**. repo판(isBanner=전송, 서버가 reach 저장)과 다름. ⚠️ **오전 Codex 기록("배너 스킵 제거 라이브 반영·마커 검증")과 라이브 실물 불일치** — 미저장/동명 사본 프로젝트(3개!) 오저장/원복 중 하나로 추정. 서버(stats-import)는 정상(normalizeUrl·배너 reach 저장 검증됨, ?img_index=1도 무해).
 - **연쇄 해명**: 7/24 "07-23 배너 안 들어옴" 미확정 후보 ②(라이브 importStats 옛 버전)가 정답. 그간 배너 DB값은 전부 수동 백필분.
