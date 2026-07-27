@@ -72,6 +72,26 @@ test("cumulative anchor self-heals: onEdit hook + spill-block detection + warnin
   assert.match(refBody, /setWarningOnly\(true\)/);
 });
 
+test("warnDateColumnEdit_ alerts on today/future date-column manual entry without touching values", () => {
+  const start = appsScript.indexOf("function warnDateColumnEdit_(");
+  assert.notEqual(start, -1, "warnDateColumnEdit_ 함수가 있어야 함");
+  const body = appsScript.slice(start, appsScript.indexOf("function healCumulativeOnEdit_(", start));
+  // onStatusEdit_에 배선(자가치유 다음)
+  const editStart = appsScript.indexOf("function onStatusEdit_(e)");
+  const editBody = appsScript.slice(editStart, appsScript.indexOf("function installStatusEditTrigger()", editStart));
+  assert.match(editBody, /warnDateColumnEdit_\(e, sheet\)/);
+  // exportStats와 동일한 연도 롤오버 규칙으로 열→날짜 매핑
+  assert.match(body, /parseMonthDay_\(header\[c - 1\]\)/);
+  assert.match(body, /if \(prevMonth !== null && md\.mo < prevMonth\) year\+\+/);
+  // 미래=경고, 오늘=안내, KST 오늘 기준
+  assert.match(body, /todayStr_\(\)/);
+  assert.match(body, /d > today/);
+  assert.match(body, /d === today/);
+  // 값 무수정(무결성 절대규칙): setValue/clearContent 금지, toast만
+  assert.doesNotMatch(body, /\.(setValue|setValues|clearContent|setFormula)\(/);
+  assert.match(body, /toast\(/);
+});
+
 test("overwriteViralHandles_ only touches viral account_name and self-heals daily via dailyAuto", () => {
   const start = appsScript.indexOf("function overwriteViralHandles_()");
   assert.notEqual(start, -1, "overwriteViralHandles_ 함수가 있어야 함");

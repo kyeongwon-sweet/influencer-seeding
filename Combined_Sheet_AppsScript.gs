@@ -1406,6 +1406,7 @@ function onStatusEdit_(e) {
     const sheet = e.range.getSheet();
     if (sheet.getSheetId() !== CONFIG.SHEET_GID) return;
     healCumulativeOnEdit_(e, sheet);  // 누적(H) 열이 편집됐으면 즉시 자가치유 — 다중셀 붙여넣기도 잡아야 하므로 단일셀 제한보다 앞에서
+    warnDateColumnEdit_(e, sheet);    // 날짜열 수기 입력 안내(미래=경고·오늘=규칙 리마인드, 값 무수정)
     if (e.range.getRow() < CONFIG.DATA_START_ROW || e.range.getNumRows() !== 1 || e.range.getNumColumns() !== 1) return;
     const statusCol = findHeaderCol_(sheet, ["상태"]);
     if (!statusCol || e.range.getColumn() !== statusCol) return;
@@ -1495,6 +1496,49 @@ function syncStatus() {
     4
   );
   return true;
+}
+
+// 날짜열 수기 입력 안내: 미래 열은 무조건 실수라 경고, 오늘 열은 입력 규칙 리마인드만.
+// 값은 절대 건드리지 않는다(무결성 절대규칙: 자동 보정 금지, 감지 알림만) — 배너 도달수의
+// 당일 입력은 stats-import가 공식 허용하는 워크플로라 막으면 안 됨. 2026-07-27 "금일 도달수
+// 랜덤 기재" 신고의 원인이 규칙 공백(수기 입력 날짜열 기준 부재)이어서 안내로 재발 차단.
+function warnDateColumnEdit_(e, sheet) {
+  try {
+    if (e.range.getRow() < CONFIG.DATA_START_ROW) return;
+    const c1 = e.range.getColumn(), c2 = e.range.getLastColumn();
+    if (c2 < CONFIG.STATS_FIRST_COL) return;  // 날짜열 영역 밖
+    const lastCol = sheet.getLastColumn();
+    const header = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+    // exportStats/importStats와 동일 규칙으로 열→날짜 매핑(월 줄면 +1년)
+    let year = CONFIG.STATS_START_YEAR, prevMonth = null;
+    const dateByCol = {};
+    for (let c = CONFIG.STATS_FIRST_COL; c <= lastCol; c++) {
+      const md = parseMonthDay_(header[c - 1]);
+      if (!md) continue;
+      if (prevMonth !== null && md.mo < prevMonth) year++;
+      prevMonth = md.mo;
+      dateByCol[c] = `${year}-${("0" + md.mo).slice(-2)}-${("0" + md.da).slice(-2)}`;
+    }
+    const today = todayStr_();
+    let future = null, isToday = false;
+    for (let c = Math.max(c1, CONFIG.STATS_FIRST_COL); c <= c2; c++) {
+      const d = dateByCol[c];
+      if (!d) continue;
+      if (d > today && (!future || d < future)) future = d;
+      else if (d === today) isToday = true;
+    }
+    if (future) {
+      SpreadsheetApp.getActive().toast(
+        "⚠️ 미래 날짜(" + future + ") 열에 값을 입력했습니다. 열 위치를 확인하세요 — 미래 값은 리포트·DB 동기화에서 무시되거나 오염됩니다.",
+        "날짜열 확인", 8);
+    } else if (isToday) {
+      SpreadsheetApp.getActive().toast(
+        "오늘(" + today + ") 열에 입력했습니다. '지금 확인한 최신 누적'이면 맞고, 어제 기준 값이면 어제 열로 옮겨주세요. (자동수집은 어제까지만 채워 오늘 열은 수기 전용입니다)",
+        "날짜열 안내", 8);
+    }
+  } catch (err) {
+    Logger.log("warnDateColumnEdit_: " + (err.stack || err.message));
+  }
 }
 
 // 누적(H) 열 편집 감지 → 앵커 수식 소실/스필 차단을 그 자리에서 복구.
