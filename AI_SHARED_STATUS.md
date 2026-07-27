@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## 2026-07-27 [Codex 진행] dailyAuto importStats 자동화 + syncPricing 정규화 반영
+- **① 완료(repo):** `dailyAuto()`에 `importStats()`를 `pullFromDB()` 다음, `exportStats()` 앞에 추가. 목적은 시트 날짜열의 수기/배너 도달수를 DB `post_daily_stats`에 먼저 올린 뒤, 같은 실행 안에서 DB→시트 역채움이 따라가게 하는 것. 배너 도달수 자동동기화의 재발 차단 경로.
+- **③ 완료(repo):** `syncPricing()` XLOOKUP 키를 `LOWER` + 공백 제거 + 연속 `_` 축약 정규화로 감싸 상황판 검증패치 반영. `Ufo_NIGHT` vs `Ufo__NIGHT` 같은 언더스코어/대소문자 차이의 미래 매칭 실패를 줄임.
+- **검증:** `Combined_Sheet_AppsScript.gs` Apps Script 문법 검사 통과. `npm.cmd test -- apps-script-contract.test.ts importStats-contract.test.ts` 실행 결과 42개 통과/0 실패. 계약 테스트에 `dailyAuto`의 `importStats → exportStats` 순서와 XLOOKUP 정규화 마커 추가.
+- **아직 live 미반영:** 이번 항목은 `C:\Users\hwangkw\_yeomun_wt` 로컬 main에 반영된 상태. 라이브 Apps Script에는 아직 저장하지 않았음. 라이브 반영 시 반드시 최신 main 기준으로 `dailyAuto`, `syncPricing`, BYROW 변경을 함께 확인하고 stale 탭 저장 금지.
+- **② 미진행:** 시트 바이럴 채널명 51개 표시명→핸들 일괄수정은 실제 셀 write 작업이라, `URL → 핸들` 51개 매핑 원본 확정 후 `writeColumnByKey_` 방식으로 처리해야 함. 현재 상황판에는 18건+수동확인 2건 근거는 있으나 51개 전체 매핑 리스트는 아직 확인 필요.
+- **④ 미진행:** URL-key 락 경합 리팩터는 범위가 큼. `exportStats`/`syncStatus`/편집트리거가 같은 문서락을 길게 잡는 구조를 함수별로 분리·단축하는 작업이라 별도 브랜치/검증 필요.
+
 ## 2026-07-24 [배너 도달수 07-23] 수동패치 + 근본=importStats 미자동실행/배포 (Claude)
 **증상:** 리포트(DB) 07-23 배너 reach 0건인데 시트엔 125건. 사용자가 "📊 일자별 조회수 입력"(importStats) 눌렀는데도 안 들어옴.
 **코드 상태(확인):** stats-import·importStats **둘 다 배너 reach 처리 O + `maxDateKST=오늘`이라 당일 허용**(Codex `5378e62` "import banner reach through current KST date", `d85fc9a` 배너=reach_count). **코드는 맞음.**

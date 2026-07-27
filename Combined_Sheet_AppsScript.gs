@@ -566,7 +566,7 @@ function fillCaptionFromAsset_() {
   return true;
 }
 
-// 매일 자동: 시트→DB(전체 syncAll) + DB→시트(대시보드 추가분 가져오기)를 함께 수행.
+// 매일 자동: 시트→DB(전체 syncAll) + 시트 날짜값→DB(importStats) + DB→시트(대시보드 추가분 가져오기)를 함께 수행.
 // syncNew(신규만)→syncAll 변경(2026-07-06): 기존 행의 시트 수정(업로드일 정정 등)이 DB로
 // 전파되지 않아 시트·DB 게시일이 어긋나던 문제 해소(640행 7/2↔7/4 사례).
 // 서버(bulk)가 '비어있지 않은 값만 덮기 + manual_fields 보존'이라 전체 재전송도 안전.
@@ -595,6 +595,13 @@ function dailyAuto() {
   } catch (e) {
     errors.push("pullFromDB threw: " + (e.stack || e.message));
     Logger.log("dailyAuto pullFromDB: " + (e.stack || e.message));
+  }
+  try {
+    const importOk = importStats();
+    if (importOk === false) errors.push("importStats failed");
+  } catch (e) {
+    errors.push("importStats threw: " + (e.stack || e.message));
+    Logger.log("dailyAuto importStats: " + (e.stack || e.message));
   }
   try {
     const exportOk = exportStats();
@@ -1134,7 +1141,7 @@ function checkDuplicates() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 자동 트리거 (매일 9:30, dailyAuto 실행: syncAll → pullFromDB → exportStats)
+// 자동 트리거 (매일 9:30, dailyAuto 실행: syncAll → pullFromDB → importStats → exportStats)
 // ═══════════════════════════════════════════════════════════════
 function findHeaderCol_(sheet, names) {
   const lastCol = sheet.getLastColumn();
@@ -1395,7 +1402,8 @@ function syncPricing() {
   const accountLetter = colLetter_(fieldCols.account_name);
   const typeLetter = colLetter_(fieldCols.channel_type);
   const mapName = "'" + String(pricing.getName()).replace(/'/g, "''") + "'";
-  const mapKeyRange = mapName + "!$A$2:$A&" + mapName + "!$C$2:$C";
+  const norm_ = (s) => 'REGEXREPLACE(REGEXREPLACE(LOWER(' + s + '),"\\s+",""),"_+","_")';
+  const mapKeyRange = 'ARRAYFORMULA(' + norm_(mapName + '!$A$2:$A&' + mapName + '!$C$2:$C') + ')';
   let filledCompany = 0, filledCost = 0;
 
   for (let r = 0; r < n; r++) {
@@ -1422,7 +1430,7 @@ function syncPricing() {
 
     const formatExpr = 'IF(REGEXMATCH($' + typeLetter + rowNum + ',"배너"),"배너",IF(REGEXMATCH($'
       + typeLetter + rowNum + ',"영상|릴스|숏폼"),"릴스",""))';
-    const lookupExpr = '$' + accountLetter + rowNum + '&' + formatExpr;
+    const lookupExpr = norm_('$' + accountLetter + rowNum + '&' + formatExpr);
 
     if (company === "" || company == null) {
       sheet.getRange(rowNum, fieldCols.company_name).setFormula(

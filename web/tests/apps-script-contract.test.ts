@@ -27,9 +27,21 @@ test("syncPricing inserts blank-only XLOOKUP formulas and preserves existing cel
   assert.match(appsScript, /type === "위성채널" \|\| type === "온드미디어"/);
   assert.match(appsScript, /fieldCols\.company_name\)\.clearContent\(\)/);
   assert.match(appsScript, /fieldCols\.cost\)\.setValue\(0\)/);
+  assert.match(appsScript, /const norm_ = \(s\) => 'REGEXREPLACE\(REGEXREPLACE\(LOWER\('/);
+  assert.match(appsScript, /ARRAYFORMULA\('/);
   assert.match(appsScript, /setFormula\(\s*'=IFERROR\(XLOOKUP\('/s);
   assert.match(appsScript, /!\$B\$2:\$B/);
   assert.match(appsScript, /!\$D\$2:\$D/);
+});
+
+test("dailyAuto imports sheet stats before exporting DB stats back to the sheet", () => {
+  const dailyStart = appsScript.indexOf("function dailyAuto()");
+  const importIdx = appsScript.indexOf("const importOk = importStats();", dailyStart);
+  const exportIdx = appsScript.indexOf("const exportOk = exportStats();", dailyStart);
+  assert.notEqual(dailyStart, -1);
+  assert.notEqual(importIdx, -1);
+  assert.notEqual(exportIdx, -1);
+  assert.ok(importIdx < exportIdx);
 });
 
 test("daily trigger installs and removes the 00:00 syncNew trigger", () => {
