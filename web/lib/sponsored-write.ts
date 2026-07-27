@@ -4,6 +4,7 @@ import { normalizeChannelType, isFreeChannel } from "@/app/monitoring/lib";
 import { triggerCaptionBackfill, needsCaption } from "@/lib/github-dispatch";
 import { todayKST } from "@/lib/dateRule";
 import { startActorRun } from "@/lib/apify";
+import { accountNameForSponsoredWrite } from "@/lib/account-name-policy";
 
 type Supabase = ReturnType<typeof getServerSupabase>;
 
@@ -62,7 +63,7 @@ export async function upsertSponsoredRows(
         url,
         normalized_key: postIdentityKey(url),
         posted_at:       r.posted_at || null,
-        account_name:    cleanName(r.account_name),
+        account_name:    accountNameForSponsoredWrite(url, channel_type, cleanName(r.account_name)),
         company_name:    free ? null : (r.company_name || null),
         content_summary: r.content_summary || null,
         channel_type,
