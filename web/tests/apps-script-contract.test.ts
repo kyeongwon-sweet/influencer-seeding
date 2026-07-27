@@ -44,6 +44,15 @@ test("dailyAuto imports sheet stats before exporting DB stats back to the sheet"
   assert.ok(importIdx < exportIdx);
 });
 
+test("syncCreators only fills blanks and preserves manual planner/creator values", () => {
+  const start = appsScript.indexOf("function syncCreators()");
+  const end = appsScript.indexOf("function getPricingSheet_()", start);
+  const body = appsScript.slice(start, end);
+  assert.match(body, /const key = linkKey_\(String\(currentUrls\[i\]\[0\]/);
+  assert.match(body, /\(planners\[i\]\[0\] === "" \|\| planners\[i\]\[0\] == null\) && plannerByKey\[key\]/);
+  assert.match(body, /\(makers\[i\]\[0\] === "" \|\| makers\[i\]\[0\] == null\) && makerByKey\[key\]/);
+});
+
 test("daily trigger installs and removes the 00:00 syncNew trigger", () => {
   assert.match(
     appsScript,

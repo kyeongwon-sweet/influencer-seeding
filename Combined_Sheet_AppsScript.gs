@@ -1342,23 +1342,51 @@ function syncCreators() {
   const sheet = getSheet_();
   const lastRow = sheet.getLastRow();
   if (lastRow < CONFIG.DATA_START_ROW) return true;
+  const fieldCols = buildFieldCols_(sheet);
   const sourceCol = findHeaderCol_(sheet, ["소재명"]);
   const plannerCol = findHeaderCol_(sheet, ["기획자"]);
   const makerCol = findHeaderCol_(sheet, ["제작자", "PD", "디자이너"]);
-  if (!sourceCol || !plannerCol || !makerCol) return true;
+  if (!fieldCols.url || !sourceCol || !plannerCol || !makerCol) return true;
   const n = lastRow - CONFIG.DATA_START_ROW + 1;
+  const urls = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.url, n, 1).getValues();
   const source = sheet.getRange(CONFIG.DATA_START_ROW, sourceCol, n, 1).getValues();
-  const planners = sheet.getRange(CONFIG.DATA_START_ROW, plannerCol, n, 1).getValues();
-  const makers = sheet.getRange(CONFIG.DATA_START_ROW, makerCol, n, 1).getValues();
-  let filled = 0;
+  const plannerByKey = {};
+  const makerByKey = {};
   for (let i = 0; i < n; i++) {
+    const key = linkKey_(String(urls[i][0] || ""));
+    if (!key) continue;
     const parsed = parseCreator_(source[i][0]);
-    if (parsed.mk) { planners[i][0] = parsed.mk; filled++; }
-    if (parsed.pd) { makers[i][0] = parsed.pd; filled++; }
+    if (parsed.mk) plannerByKey[key] = parsed.mk;
+    if (parsed.pd) makerByKey[key] = parsed.pd;
   }
-  sheet.getRange(CONFIG.DATA_START_ROW, plannerCol, n, 1).setValues(planners);
-  sheet.getRange(CONFIG.DATA_START_ROW, makerCol, n, 1).setValues(makers);
-  SpreadsheetApp.getActive().toast("기획자/제작자 갱신: " + filled + "칸", "완료", 4);
+
+  // 쓰기 직전에 URL과 현재값을 다시 읽어 행 이동을 따라가고, 수동값은 보존한다.
+  const currentN = sheet.getLastRow() - CONFIG.DATA_START_ROW + 1;
+  if (currentN < 1) return true;
+  const currentUrls = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.url, currentN, 1).getValues();
+  const planners = sheet.getRange(CONFIG.DATA_START_ROW, plannerCol, currentN, 1).getValues();
+  const makers = sheet.getRange(CONFIG.DATA_START_ROW, makerCol, currentN, 1).getValues();
+  let plannerFilled = 0;
+  let makerFilled = 0;
+  for (let i = 0; i < currentN; i++) {
+    const key = linkKey_(String(currentUrls[i][0] || ""));
+    if (!key) continue;
+    if ((planners[i][0] === "" || planners[i][0] == null) && plannerByKey[key]) {
+      planners[i][0] = plannerByKey[key];
+      plannerFilled++;
+    }
+    if ((makers[i][0] === "" || makers[i][0] == null) && makerByKey[key]) {
+      makers[i][0] = makerByKey[key];
+      makerFilled++;
+    }
+  }
+  if (plannerFilled) sheet.getRange(CONFIG.DATA_START_ROW, plannerCol, currentN, 1).setValues(planners);
+  if (makerFilled) sheet.getRange(CONFIG.DATA_START_ROW, makerCol, currentN, 1).setValues(makers);
+  SpreadsheetApp.getActive().toast(
+    "기획자/제작자 빈칸 채움: " + (plannerFilled + makerFilled) + "칸",
+    "완료",
+    4
+  );
   return true;
 }
 
