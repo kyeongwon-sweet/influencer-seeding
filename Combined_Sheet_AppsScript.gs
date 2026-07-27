@@ -673,6 +673,7 @@ function dailyAuto() {
     ["syncStatus", syncStatus],
     ["refreshCumulativeViews", refreshCumulativeViews],
     ["syncCreators", syncCreators],
+    ["overwriteViralHandles", overwriteViralHandles_],  // 바이럴 채널명 표시명 잔존을 매일 DB 핸들로 자가치유(재발 차단)
     ["syncPricing", syncPricing],
   ].forEach(([name, fn]) => {
     try {

@@ -5,7 +5,8 @@
 - **규칙(사용자 재확정)**: 시트 바이럴 채널명(C열)에서 **① 실제 계정 표시명 → IG 핸들로 변경**(`유머패밀리 skyblue`→`ufo__skyblue`, `루나 플레이어 • Luna player`→`luna.player`, `스마일_투데이_❤`→`smile_today_s2`). **② 의도적 라벨만 유지**(`신기+템(인스타)`·`쇼잉(인스타)`·`(표지)`·비-IG 미러링). 구분 기준=**DB account_name**(실계정=핸들 보유, 라벨=DB에도 라벨).
 - **⚠️ 이전 상충 정정**: (a) Claude가 "바이럴 채널명 처리대상 없음·재론금지"로 적은 건 **오류**(→ /export CSV **stale 캐시**가 핸들로 보여줘 오판. 브라우저 gviz 라이브 read로 표시명 53+/355행 확인, 스크린샷과 일치). (b) Codex가 "시트 브랜딩표기 유지 사용자확정"으로 **53셀을 표시명으로 원복**한 것이 "채널명이 다시 돌아온" 원인 — 이 원복이 위 규칙과 상충하므로 **더 이상 원복 금지**. 단 `(표지)`·`(인스타)` 등 진짜 라벨 유지는 맞음.
 - **수정 도구**: repo `overwriteViralHandles_()` (`856f8dc`, 메뉴 "🔤 바이럴 채널명 → 핸들 정정"). 시트←DB 덮어쓰기, **바이럴 행·채널명 열만·DB빈값 skip·동일 no-op·배치 1회 되쓰기**(다른 열/수식/조회수/비바이럴 무손상). 실계정은 핸들로 바뀌고 라벨은 DB에 라벨이라 그대로 유지됨.
-- **실행 대기**: 라이브 Apps Script 배포+실행 필요(Claude는 하네스 차단으로 라이브 저장 불가). Codex 복귀 시 배포·1회 실행, 또는 사용자가 스크립트 편집기에서 함수 실행. 실행 후 Claude가 gviz 라이브로 검증 예정.
+- **🔁 재발 근본차단(Claude, 사용자 지시 "다신 재발 안 하게")**: `overwriteViralHandles_`를 **dailyAuto 함수배열에 추가**(syncCreators 다음, syncPricing 앞) → 매일 시트 바이럴 채널명이 DB 핸들로 **자가치유**. 팀이 새 행에 표시명 입력해도 다음날 자동 핸들화(라벨은 DB에 라벨이라 유지). 계약테스트 추가(`apps-script-contract.test.ts`, 6/6 pass): 바이럴 한정·DB빈값 skip·동일 no-op·채널명열만·dailyAuto 포함 검증.
+- **⚠️ Codex 실행 지시(사용자: "코덱스한테 시킬래")**: 라이브 Apps Script에 최신 main 기준으로 **① `overwriteViralHandles_` 함수+메뉴, ② dailyAuto 배열의 `["overwriteViralHandles", overwriteViralHandles_]`** 반영 후 **1회 수동 실행**(즉시 정정). stale 탭 저장 금지. 실행되면 Claude가 gviz 라이브로 잔존 표시명 검증. (Claude는 하네스 차단으로 라이브 저장·실행 불가)
 
 ## 2026-07-27 [정합] repo fillCaptionFromAsset_에 캡션 ".디자인N" 제거 반영 (Claude, 라이브↔repo divergence 해소)
 - **divergence 발견**: 라이브 `fillCaptionFromAsset_`엔 내가 넣은 `.디자인N`(예: `.디자인1`/`.디자인2`) 접미사 제거가 있으나, Codex가 repo에 추가한 판(`c67cc9d`, line 562)엔 없었음. → repo를 라이브에 배포하면 `.디자인N`이 되살아나는 위험.

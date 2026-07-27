@@ -34,6 +34,23 @@ test("syncPricing inserts blank-only XLOOKUP formulas and preserves existing cel
   assert.match(appsScript, /!\$D\$2:\$D/);
 });
 
+test("overwriteViralHandles_ only touches viral account_name and self-heals daily via dailyAuto", () => {
+  const start = appsScript.indexOf("function overwriteViralHandles_()");
+  assert.notEqual(start, -1, "overwriteViralHandles_ 함수가 있어야 함");
+  const end = appsScript.indexOf("function overwriteViralHandles()", start);
+  const body = appsScript.slice(start, end);
+  // 바이럴 행만 처리
+  assert.match(body, /indexOf\("바이럴"\) < 0\) continue/);
+  // DB 빈값이면 덮어쓰기 금지(빈칸으로 안 지움)
+  assert.match(body, /if \(!dbName\) continue/);
+  // 동일하면 no-op
+  assert.match(body, /if \(cur === dbName\) continue/);
+  // 채널명(account_name) 열만 되쓰기
+  assert.match(body, /setValues\(accs\)/);
+  // dailyAuto가 매일 실행(재발 차단)
+  assert.match(appsScript, /\["overwriteViralHandles", overwriteViralHandles_\]/);
+});
+
 test("dailyAuto imports sheet stats before exporting DB stats back to the sheet", () => {
   const dailyStart = appsScript.indexOf("function dailyAuto()");
   const importIdx = appsScript.indexOf("const importOk = importStats();", dailyStart);
