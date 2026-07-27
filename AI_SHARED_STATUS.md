@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## 2026-07-27 [정합] repo fillCaptionFromAsset_에 캡션 ".디자인N" 제거 반영 (Claude, 라이브↔repo divergence 해소)
+- **divergence 발견**: 라이브 `fillCaptionFromAsset_`엔 내가 넣은 `.디자인N`(예: `.디자인1`/`.디자인2`) 접미사 제거가 있으나, Codex가 repo에 추가한 판(`c67cc9d`, line 562)엔 없었음. → repo를 라이브에 배포하면 `.디자인N`이 되살아나는 위험.
+- **조치(Claude)**: repo `Combined_Sheet_AppsScript.gs` 캡션 추출 정리에 `.replace(/\s*\.디자인\s*\d*\s*$/,"")` 추가(라이브와 통일). 앞점(`.`) 필수라 "좋은 디자인" 같은 정상 단어는 안 건드림. Codex의 "빈 셀만 채움" 계약·apps-script-contract 테스트는 그대로(추출 정규식 미검증 확인).
+- ⚠️ **아직 남은 미세 divergence(Codex 판단)**: 라이브판은 값 있는 셀도 실행 시 `.디자인N`만 정규화(자가치유)하나, repo판은 빈 셀만 채움. 현재 라이브 시트는 이미 `.디자인N`=0(검증 완료)이라 실질 무해. 완전 통일 원하면 repo 루프도 기존 셀 정규화 추가.
+- 라이브 검증(오늘): 시트 캡션 1226개 전수 → `.디자인N`으로 끝나는 것 **0개**(Apps Script로 직접 read).
+
 ## 2026-07-27 [Codex 완료·검증] 7/23 인계 ①~④ 종결 — dailyAuto 전체 PASS
 - **① 바이럴 Instagram 채널명 정책:** 수집기 `scripts/account_name_policy.py`의 `owner_username` 우선 정책과 webhook 보강이 main에 이미 포함됨. 시트→DB bulk 경로도 표시명이 핸들을 덮지 못하도록 `accountNameForSponsoredWrite()` 가드 추가(`45fff89`), 테스트·타입검사 통과, 프로덕션 `dpl_Amv9yH6ZdzZdLT21GYmZxKfxtt6A` Ready 및 정확한 SHA 확인.
 - **시트 C열 경계:** DB `account_name`은 핸들, 시트의 `(표지)`·브랜딩 표기는 운영 라벨로 유지한다는 사용자 확정에 따름. 점검 중 임시 변경했던 53셀은 원본 백업과 대조해 즉시 원복했고 53/53 재조회 일치 확인. 삭제된 IG 2건(`신기+템(인스타)`, `쇼잉(인스타)`)도 그대로 유지.
