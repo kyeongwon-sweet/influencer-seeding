@@ -100,20 +100,58 @@ function assertRowCountStable_(sheet, expectedLastRow, where) {
  * @param targetCol     기록할 컬럼 인덱스(1-based)
  * @param keyToValue    { linkKey: value } 맵
  * @param keyFn         URL → linkKey 함수(라이브의 linkKey_ 그대로 전달)
+ * @param shouldWrite   선택: (current, next, key, url, row) → boolean. 수동값 보존 등에 사용.
  * @return 변경된 셀 수
  */
-function writeColumnByKey_(sheet, dataStartRow, urlCol, targetCol, keyToValue, keyFn) {
+function writeColumnByKey_(sheet, dataStartRow, urlCol, targetCol, keyToValue, keyFn, shouldWrite) {
   var n = sheet.getLastRow() - dataStartRow + 1;
   if (n < 1) return 0;
   var urls = sheet.getRange(dataStartRow, urlCol, n, 1).getValues();   // 쓰기 직전 최신 위치
   var cur  = sheet.getRange(dataStartRow, targetCol, n, 1).getValues();
-  var changed = 0;
+  var edits = [];
   for (var i = 0; i < n; i++) {
-    var k = keyFn(String(urls[i][0] || ''));
+    var url = String(urls[i][0] || '');
+    var k = keyFn(url);
     if (!k || !(k in keyToValue)) continue;   // 매칭 없으면 절대 안 건드림
     var v = keyToValue[k];
-    if (cur[i][0] !== v) { cur[i][0] = v; changed++; }
+    if (shouldWrite && !shouldWrite(cur[i][0], v, k, url, dataStartRow + i)) continue;
+    if (cur[i][0] !== v) edits.push({ row: dataStartRow + i, value: v });
   }
-  if (changed) sheet.getRange(dataStartRow, targetCol, n, 1).setValues(cur);
+  return writeColumnRuns_(sheet, targetCol, edits);
+}
+
+/**
+ * 같은 컬럼의 변경 셀을 연속 행 묶음으로 배치 기록한다.
+ * 전체 컬럼을 되쓰지 않아 수동값/수식의 불필요한 재기록과 API 왕복을 함께 줄인다.
+ * edits: [{row: 1-based row, value: scalar}]
+ * expectedLastRow: 선택. 계산 시점의 lastRow를 넘기면 여러 컬럼 배치 사이 행변경도 차단.
+ * return: 변경된 셀 수
+ */
+function writeColumnRuns_(sheet, targetCol, edits, expectedLastRow) {
+  if (!edits || !edits.length) return 0;
+  var sorted = edits.slice().sort(function(a, b) { return a.row - b.row; });
+  var stableLastRow = expectedLastRow == null ? sheet.getLastRow() : expectedLastRow;
+  var start = 0;
+  var changed = 0;
+  while (start < sorted.length) {
+    var end = start + 1;
+    while (end < sorted.length && sorted[end].row === sorted[end - 1].row + 1) end++;
+    var values = [];
+    for (var i = start; i < end; i++) values.push([sorted[i].value]);
+    assertRowCountStable_(sheet, stableLastRow, "writeColumnRuns");
+    sheet.getRange(sorted[start].row, targetCol, values.length, 1).setValues(values);
+    changed += values.length;
+    start = end;
+  }
   return changed;
+}
+
+function countColumnRuns_(edits) {
+  if (!edits || !edits.length) return 0;
+  var sorted = edits.slice().sort(function(a, b) { return a.row - b.row; });
+  var runs = 1;
+  for (var i = 1; i < sorted.length; i++) {
+    if (sorted[i].row !== sorted[i - 1].row + 1) runs++;
+  }
+  return runs;
 }

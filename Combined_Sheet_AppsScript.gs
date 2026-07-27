@@ -642,69 +642,181 @@ function fillCaptionFromAsset_() {
 // syncNew(신규만)→syncAll 변경(2026-07-06): 기존 행의 시트 수정(업로드일 정정 등)이 DB로
 // 전파되지 않아 시트·DB 게시일이 어긋나던 문제 해소(640행 7/2↔7/4 사례).
 // 서버(bulk)가 '비어있지 않은 값만 덮기 + manual_fields 보존'이라 전체 재전송도 안전.
+//
+// 운영 관측:
+// - 각 단계의 시작/종료/소요시간/오류를 Script Properties + 실행 로그에 남긴다.
+// - pullFromDB/importStats/exportStats만 실패 시 7분 뒤 실패 단계만 1회 재시도한다.
+// - 재시도도 실패하면 더 예약하지 않고 오류를 남겨 무한 트리거 생성을 막는다.
+const DAILY_AUTO_RETRY_DELAY_MS_ = 7 * 60 * 1000;
+const DAILY_AUTO_RETRYABLE_STAGES_ = ["pullFromDB", "importStats", "exportStats"];
+
+function dailyAutoErrorText_(e) {
+  // Script Properties 단일 값 제한을 넘지 않도록 스택은 단계당 700자로 제한한다.
+  return String((e && (e.stack || e.message)) || e).slice(0, 700);
+}
+
+function dailyAutoStageDefs_() {
+  return [
+    ["fillCaptionFromAsset", fillCaptionFromAsset_],
+    ["syncAll", function() { return runSync_(false); }],
+    ["pullFromDB", pullFromDB],
+    ["importStats", importStats],
+    ["exportStats", exportStats],
+    ["syncStatus", syncStatus],
+    ["refreshCumulativeViews", refreshCumulativeViews],
+    ["syncCreators", syncCreators],
+    ["overwriteViralHandles", overwriteViralHandles_],
+    ["syncPricing", syncPricing],
+  ];
+}
+
+function runDailyAutoStage_(name, fn) {
+  const startedMs = Date.now();
+  const startedAt = new Date(startedMs).toISOString();
+  try {
+    const result = fn();
+    if (result === false) throw new Error(name + " returned false");
+    const finishedMs = Date.now();
+    const stage = {
+      name: name,
+      status: "OK",
+      started_at: startedAt,
+      finished_at: new Date(finishedMs).toISOString(),
+      duration_ms: finishedMs - startedMs,
+    };
+    Logger.log("dailyAuto_stage " + JSON.stringify(stage));
+    return stage;
+  } catch (e) {
+    const finishedMs = Date.now();
+    const stage = {
+      name: name,
+      status: "ERROR",
+      started_at: startedAt,
+      finished_at: new Date(finishedMs).toISOString(),
+      duration_ms: finishedMs - startedMs,
+      error: dailyAutoErrorText_(e),
+    };
+    Logger.log("dailyAuto_stage " + JSON.stringify(stage));
+    return stage;
+  }
+}
+
+function removeDailyAutoRetryTriggers_() {
+  const retryTriggers = ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === "dailyAutoRetry_");
+  retryTriggers.forEach(t => ScriptApp.deleteTrigger(t));
+  return retryTriggers.length;
+}
+
+function scheduleDailyAutoRetry_(failedStageNames, sourceStartedAt) {
+  const retryable = DAILY_AUTO_RETRYABLE_STAGES_
+    .filter(name => failedStageNames.indexOf(name) >= 0);
+  const props = PropertiesService.getScriptProperties();
+  removeDailyAutoRetryTriggers_();
+  if (!retryable.length) {
+    props.deleteProperty("DAILY_AUTO_RETRY_PENDING_JSON");
+    return [];
+  }
+  props.setProperty("DAILY_AUTO_RETRY_PENDING_JSON", JSON.stringify({
+    source_started_at: sourceStartedAt,
+    stages: retryable,
+    scheduled_at: new Date().toISOString(),
+    attempt: 1,
+  }));
+  ScriptApp.newTrigger("dailyAutoRetry_")
+    .timeBased()
+    .after(DAILY_AUTO_RETRY_DELAY_MS_)
+    .create();
+  Logger.log("dailyAuto_retry_scheduled " + JSON.stringify(retryable));
+  return retryable;
+}
+
+function dailyAutoRetry_() {
+  const props = PropertiesService.getScriptProperties();
+  const raw = props.getProperty("DAILY_AUTO_RETRY_PENDING_JSON");
+  removeDailyAutoRetryTriggers_();
+  props.deleteProperty("DAILY_AUTO_RETRY_PENDING_JSON");
+  if (!raw) {
+    Logger.log("dailyAuto_retry_skip: pending stages 없음");
+    return true;
+  }
+
+  let pending;
+  try {
+    pending = JSON.parse(raw);
+  } catch (e) {
+    throw new Error("dailyAuto retry payload 파싱 실패: " + e.message);
+  }
+  const wanted = DAILY_AUTO_RETRYABLE_STAGES_
+    .filter(name => (pending.stages || []).indexOf(name) >= 0);
+  const defs = {};
+  dailyAutoStageDefs_().forEach(pair => { defs[pair[0]] = pair[1]; });
+  const startedAt = new Date().toISOString();
+  const stages = wanted.map(name => runDailyAutoStage_(name, defs[name]));
+  const errors = stages.filter(stage => stage.status !== "OK");
+  const status = errors.length
+    ? "ERROR: " + errors.map(stage => stage.name + ": " + stage.error).join(" | ")
+    : "OK";
+  props.setProperties({
+    DAILY_AUTO_LAST_RETRY_STARTED_AT: startedAt,
+    DAILY_AUTO_LAST_RETRY_FINISHED_AT: new Date().toISOString(),
+    DAILY_AUTO_LAST_RETRY_STATUS: status,
+    DAILY_AUTO_LAST_RETRY_STAGES_JSON: JSON.stringify(stages),
+  }, false);
+  Logger.log("dailyAuto_retry_result " + JSON.stringify({
+    source_started_at: pending.source_started_at || null,
+    status: status,
+    stages: stages,
+  }));
+  if (errors.length) throw new Error(status);
+  return true;
+}
+
 function dailyAuto() {
   const props = PropertiesService.getScriptProperties();
   const startedAt = new Date().toISOString();
-  const errors = [];
   props.setProperties({
     DAILY_AUTO_LAST_STARTED_AT: startedAt,
     DAILY_AUTO_LAST_STATUS: "RUNNING",
   }, false);
 
+  const stages = dailyAutoStageDefs_()
+    .map(pair => runDailyAutoStage_(pair[0], pair[1]));
+  const errors = stages.filter(stage => stage.status !== "OK");
+  const failedNames = errors.map(stage => stage.name);
+  let retryScheduled = [];
   try {
-    const captionOk = fillCaptionFromAsset_();
-    if (captionOk === false) errors.push("fillCaptionFromAsset failed");
+    retryScheduled = scheduleDailyAutoRetry_(failedNames, startedAt);
   } catch (e) {
-    errors.push("fillCaptionFromAsset threw: " + (e.stack || e.message));
-    Logger.log("dailyAuto fillCaptionFromAsset: " + (e.stack || e.message));
+    const retryScheduleStage = {
+      name: "scheduleRetry",
+      status: "ERROR",
+      duration_ms: 0,
+      error: dailyAutoErrorText_(e),
+    };
+    stages.push(retryScheduleStage);
+    errors.push(retryScheduleStage);
+    Logger.log("dailyAuto_retry_schedule_error " + JSON.stringify(retryScheduleStage));
   }
-
-  const syncOk = runSync_(false);
-  if (syncOk === false) errors.push("syncAll failed");
-  try {
-    const pullOk = pullFromDB();
-    if (pullOk === false) errors.push("pullFromDB failed");
-  } catch (e) {
-    errors.push("pullFromDB threw: " + (e.stack || e.message));
-    Logger.log("dailyAuto pullFromDB: " + (e.stack || e.message));
-  }
-  try {
-    const importOk = importStats();
-    if (importOk === false) errors.push("importStats failed");
-  } catch (e) {
-    errors.push("importStats threw: " + (e.stack || e.message));
-    Logger.log("dailyAuto importStats: " + (e.stack || e.message));
-  }
-  try {
-    const exportOk = exportStats();
-    if (exportOk === false) errors.push("exportStats failed");
-  } catch (e) {
-    errors.push("exportStats threw: " + (e.stack || e.message));
-    Logger.log("dailyAuto exportStats: " + (e.stack || e.message));
-  }
-  [
-    ["syncStatus", syncStatus],
-    ["refreshCumulativeViews", refreshCumulativeViews],
-    ["syncCreators", syncCreators],
-    ["overwriteViralHandles", overwriteViralHandles_],  // 바이럴 채널명 표시명 잔존을 매일 DB 핸들로 자가치유(재발 차단)
-    ["syncPricing", syncPricing],
-  ].forEach(([name, fn]) => {
-    try {
-      const ok = fn();
-      if (ok === false) errors.push(name + " failed");
-    } catch (e) {
-      errors.push(name + " threw: " + (e.stack || e.message));
-      Logger.log("dailyAuto " + name + ": " + (e.stack || e.message));
-    }
-  });
-
   const finishedAt = new Date().toISOString();
-  const status = errors.length ? `ERROR: ${errors.join(" | ")}` : "OK";
+  const status = errors.length
+    ? "ERROR: " + errors.map(stage => stage.name + ": " + stage.error).join(" | ")
+    : "OK";
   props.setProperties({
     DAILY_AUTO_LAST_FINISHED_AT: finishedAt,
     DAILY_AUTO_LAST_STATUS: status,
+    DAILY_AUTO_LAST_STAGES_JSON: JSON.stringify(stages),
+    DAILY_AUTO_LAST_RETRY_SCHEDULED_JSON: JSON.stringify(retryScheduled),
   }, false);
+  Logger.log("dailyAuto_result " + JSON.stringify({
+    status: status,
+    started_at: startedAt,
+    finished_at: finishedAt,
+    retry_scheduled: retryScheduled,
+    stages: stages,
+  }));
   if (errors.length) throw new Error(status);
+  return true;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1306,17 +1418,29 @@ function syncStatus() {
   posts.forEach(p => { if (p && p.url) ended[linkKey_(p.url)] = !!p.ended_at; });
   const n = lastRow - CONFIG.DATA_START_ROW + 1;
   const urls = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.url, n, 1).getValues();
-  const out = urls.map(r => {
+  const statusByKey = {};
+  urls.forEach(r => {
     const url = String(r[0] || "").trim();
-    if (!url) return [""];
-    const uu = url.toLowerCase();
-    if (uu.indexOf("instagram.com") >= 0 && !/\/(p|reels|reel|tv)\/[a-z0-9_-]+/i.test(uu)) return ["오류"];
+    if (!url) return;
     const k = linkKey_(url);
-    if (!(k in ended)) return [""];
-    return [ended[k] ? "트래킹 종료" : "트래킹 중"];
+    if (!k) return;
+    const uu = url.toLowerCase();
+    if (uu.indexOf("instagram.com") >= 0 && !/\/(p|reels|reel|tv)\/[a-z0-9_-]+/i.test(uu)) {
+      statusByKey[k] = "오류";
+      return;
+    }
+    statusByKey[k] = (k in ended) ? (ended[k] ? "트래킹 종료" : "트래킹 중") : "";
   });
-  sheet.getRange(CONFIG.DATA_START_ROW, statusCol, n, 1).setValues(out);
-  SpreadsheetApp.getActive().toast("상태 동기화 완료: " + n + "행", "완료", 4);
+  // URL을 쓰기 직전에 다시 읽어 현재 행 위치를 찾아 기록한다. 정렬·행삽입 후에도 이웃 행에 상태가 밀리지 않는다.
+  const changed = writeColumnByKey_(
+    sheet,
+    CONFIG.DATA_START_ROW,
+    fieldCols.url,
+    statusCol,
+    statusByKey,
+    linkKey_
+  );
+  SpreadsheetApp.getActive().toast("상태 동기화 완료: 변경 " + changed + "행", "완료", 4);
   return true;
 }
 
@@ -1433,28 +1557,27 @@ function syncCreators() {
     if (parsed.pd) makerByKey[key] = parsed.pd;
   }
 
-  // 쓰기 직전에 URL과 현재값을 다시 읽어 행 이동을 따라가고, 수동값은 보존한다.
-  const currentN = sheet.getLastRow() - CONFIG.DATA_START_ROW + 1;
-  if (currentN < 1) return true;
-  const currentUrls = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.url, currentN, 1).getValues();
-  const planners = sheet.getRange(CONFIG.DATA_START_ROW, plannerCol, currentN, 1).getValues();
-  const makers = sheet.getRange(CONFIG.DATA_START_ROW, makerCol, currentN, 1).getValues();
-  let plannerFilled = 0;
-  let makerFilled = 0;
-  for (let i = 0; i < currentN; i++) {
-    const key = linkKey_(String(currentUrls[i][0] || ""));
-    if (!key) continue;
-    if ((planners[i][0] === "" || planners[i][0] == null) && plannerByKey[key]) {
-      planners[i][0] = plannerByKey[key];
-      plannerFilled++;
-    }
-    if ((makers[i][0] === "" || makers[i][0] == null) && makerByKey[key]) {
-      makers[i][0] = makerByKey[key];
-      makerFilled++;
-    }
-  }
-  if (plannerFilled) sheet.getRange(CONFIG.DATA_START_ROW, plannerCol, currentN, 1).setValues(planners);
-  if (makerFilled) sheet.getRange(CONFIG.DATA_START_ROW, makerCol, currentN, 1).setValues(makers);
+  // URL을 쓰기 직전에 다시 읽어 현재 행을 찾고, 빈 셀만 연속행 단위로 기록한다.
+  // 수동 기획자/제작자 값은 predicate가 false라 절대 덮지 않는다.
+  const blankOnly = function(current) { return current === "" || current == null; };
+  const plannerFilled = writeColumnByKey_(
+    sheet,
+    CONFIG.DATA_START_ROW,
+    fieldCols.url,
+    plannerCol,
+    plannerByKey,
+    linkKey_,
+    blankOnly
+  );
+  const makerFilled = writeColumnByKey_(
+    sheet,
+    CONFIG.DATA_START_ROW,
+    fieldCols.url,
+    makerCol,
+    makerByKey,
+    linkKey_,
+    blankOnly
+  );
   SpreadsheetApp.getActive().toast(
     "기획자/제작자 빈칸 채움: " + (plannerFilled + makerFilled) + "칸",
     "완료",
@@ -1499,6 +1622,7 @@ function pricingFormatFromType_(channelType) {
 }
 
 function syncPricing() {
+  const startedMs = Date.now();
   const sheet = getSheet_();
   const lastRow = sheet.getLastRow();
   if (lastRow < CONFIG.DATA_START_ROW) return true;
@@ -1509,12 +1633,15 @@ function syncPricing() {
 
   const n = lastRow - CONFIG.DATA_START_ROW + 1;
   const data = sheet.getRange(CONFIG.DATA_START_ROW, 1, n, sheet.getLastColumn()).getValues();
+  const companyFormulas = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.company_name, n, 1).getFormulas();
+  const costFormulas = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.cost, n, 1).getFormulas();
   const accountLetter = colLetter_(fieldCols.account_name);
   const typeLetter = colLetter_(fieldCols.channel_type);
   const mapName = "'" + String(pricing.getName()).replace(/'/g, "''") + "'";
   const norm_ = (s) => 'REGEXREPLACE(REGEXREPLACE(LOWER(' + s + '),"\\s+",""),"_+","_")';
   const mapKeyRange = 'ARRAYFORMULA(' + norm_(mapName + '!$A$2:$A&' + mapName + '!$C$2:$C') + ')';
-  let filledCompany = 0, filledCost = 0;
+  const companyEdits = [];
+  const costEdits = [];
 
   for (let r = 0; r < n; r++) {
     const row = data[r];
@@ -1525,13 +1652,11 @@ function syncPricing() {
     const cost = row[fieldCols.cost - 1];
 
     if (type === "위성채널" || type === "온드미디어") {
-      if (company !== "" && company != null) {
-        sheet.getRange(rowNum, fieldCols.company_name).clearContent();
-        filledCompany++;
+      if ((company !== "" && company != null) || companyFormulas[r][0]) {
+        companyEdits.push({ row: rowNum, value: "" });
       }
-      if (cost === "" || cost == null || Number(cost) !== 0) {
-        sheet.getRange(rowNum, fieldCols.cost).setValue(0);
-        filledCost++;
+      if (cost === "" || cost == null || Number(cost) !== 0 || costFormulas[r][0]) {
+        costEdits.push({ row: rowNum, value: 0 });
       }
       continue;
     }
@@ -1542,29 +1667,50 @@ function syncPricing() {
       + typeLetter + rowNum + ',"영상|릴스|숏폼"),"릴스",""))';
     const lookupExpr = norm_('$' + accountLetter + rowNum + '&' + formatExpr);
 
-    if (company === "" || company == null) {
-      sheet.getRange(rowNum, fieldCols.company_name).setFormula(
-        '=IFERROR(XLOOKUP(' + lookupExpr + ',' + mapKeyRange + ',' + mapName + '!$B$2:$B),"")'
-      );
-      filledCompany++;
+    if ((company === "" || company == null) && !companyFormulas[r][0]) {
+      companyEdits.push({
+        row: rowNum,
+        value: '=IFERROR(XLOOKUP(' + lookupExpr + ',' + mapKeyRange + ',' + mapName + '!$B$2:$B),"")',
+      });
     }
 
-    if (cost === "" || cost == null) {
-      sheet.getRange(rowNum, fieldCols.cost).setFormula(
-        '=IFERROR(XLOOKUP(' + lookupExpr + ',' + mapKeyRange + ',' + mapName + '!$D$2:$D),"")'
-      );
-      filledCost++;
+    if ((cost === "" || cost == null) && !costFormulas[r][0]) {
+      costEdits.push({
+        row: rowNum,
+        value: '=IFERROR(XLOOKUP(' + lookupExpr + ',' + mapKeyRange + ',' + mapName + '!$D$2:$D),"")',
+      });
     }
   }
-  SpreadsheetApp.getActive().toast("가격/업체명 XLOOKUP 삽입: 업체 " + filledCompany + ", 비용 " + filledCost, "완료", 5);
+
+  // 계산 중 행 삽입/삭제가 있었으면 잘못된 행에 쓰지 않고 다음 실행으로 넘긴다.
+  assertRowCountStable_(sheet, lastRow, "syncPricing");
+  const companyRuns = countColumnRuns_(companyEdits);
+  const costRuns = countColumnRuns_(costEdits);
+  const filledCompany = writeColumnRuns_(sheet, fieldCols.company_name, companyEdits, lastRow);
+  const filledCost = writeColumnRuns_(sheet, fieldCols.cost, costEdits, lastRow);
+  const durationMs = Date.now() - startedMs;
+  Logger.log("syncPricing_result " + JSON.stringify({
+    duration_ms: durationMs,
+    company_cells: filledCompany,
+    company_runs: companyRuns,
+    cost_cells: filledCost,
+    cost_runs: costRuns,
+  }));
+  SpreadsheetApp.getActive().toast(
+    "가격/업체명 배치 반영: 업체 " + filledCompany + ", 비용 " + filledCost
+      + " · " + durationMs + "ms",
+    "완료",
+    5
+  );
   return true;
 }
 
 function installDailyTrigger() {
-  // 기존 트리거(구버전 syncNew 포함) 제거 후 양방향 dailyAuto로 재등록
+  // 기존 트리거(구버전 syncNew·남은 1회 재시도 포함) 제거 후 양방향 dailyAuto로 재등록
   ScriptApp.getProjectTriggers()
-    .filter(t => t.getHandlerFunction() === "syncNew" || t.getHandlerFunction() === "dailyAuto")
+    .filter(t => ["syncNew", "dailyAuto", "dailyAutoRetry_"].indexOf(t.getHandlerFunction()) >= 0)
     .forEach(t => ScriptApp.deleteTrigger(t));
+  PropertiesService.getScriptProperties().deleteProperty("DAILY_AUTO_RETRY_PENDING_JSON");
 
   ScriptApp.newTrigger("dailyAuto")
     .timeBased()
@@ -1585,8 +1731,10 @@ function installDailyTrigger() {
 }
 
 function removeDailyTrigger() {
-  const triggers = ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === "syncNew" || t.getHandlerFunction() === "dailyAuto");
+  const triggers = ScriptApp.getProjectTriggers()
+    .filter(t => ["syncNew", "dailyAuto", "dailyAutoRetry_"].indexOf(t.getHandlerFunction()) >= 0);
   triggers.forEach(t => ScriptApp.deleteTrigger(t));
+  PropertiesService.getScriptProperties().deleteProperty("DAILY_AUTO_RETRY_PENDING_JSON");
   safeAlert_(`⏹ 자동 동기화를 껐습니다. (${triggers.length}개 트리거 제거)`);
 }
 

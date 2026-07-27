@@ -1,10 +1,35 @@
 # AI Shared Status
 
+## 현재 운영 요약 — 2026-07-27 KST
+
+### 현재 미해결
+- **효율화 배포 진행 중:** `dailyAuto` 단계별 시간·성공기록, 실패한 `pullFromDB/importStats/exportStats`만 7분 뒤 1회 재시도, `syncStatus/syncCreators` URL-key 쓰기, `syncPricing` 연속행 배치 쓰기를 repo에서 구현·검증 중. 라이브 Apps Script에는 아직 반영 전.
+- **URL-key 2단계:** 1단계(`syncStatus`, `syncCreators`) 안정화 후 `exportStats` 등 날짜열 writer를 별도 shadow 비교로 전환. 한 번에 전체 writer를 바꾸지 않는다.
+- **운영 확인:** 라이브 반영 후 `dailyAuto` 1회 수동 검증 및 다음 예약 실행의 단계별 소요시간·재시도 트리거 유무를 확인해야 종결.
+- **데이터 결정:** `ho1y_time + 릴스`는 이미 동후작가/60,000원으로 18건 모두 매핑돼 누락 없음. 남은 활성 미매핑 4건은 전부 비-IG 미러링 라벨(`이평(틱톡 미러링)`·`힐링하고 가세요`·`돈 되는 정보(틱톡/서비스)`·`foxzzal(스레드/미러링)`)이라 유료 매핑 여부만 사용자 결정 대기.
+
+### 완료
+- 라이브 `installDailyTrigger`는 `dailyAuto`와 자정 `syncNew`를 함께 재생성하며 트리거 UI 검증까지 완료.
+- 과거 `dailyAuto` 오류율 33.3%는 `syncCreators__wgimpl` 유실의 롤링 잔여 이력으로 원인·복구 확인. 이후 수동·예약 실행 성공.
+- `pullFromDB` 배치 읽기(약 1.4만 셀 왕복 제거), `importStats` 전체행 배치 읽기, 배너 reach 전송, BYROW 누적, 캡션 part8·`.디자인N` 정리, 바이럴 핸들 자가치유가 라이브에 존재.
+- 라이브→repo 캡션 자가치유 정합 완료(`3a03960`), 계약 테스트 포함.
+
+### 폐기된 지시·재작업 금지
+- repo 전체를 라이브 Apps Script에 붙여넣기 금지. 항상 **live → repo 확인 후 함수 단위 반영**.
+- `_WriteGuard` 전체 롤백 금지. 과거 `SHEET_LOCKED` 100% 실패 지시는 재진입 수정 전 기록이라 폐기.
+- `89a8de7` 위성·온드 확정사망 자동종료를 `main`에 이식하지 않음. IG 전용 3일 `not_found` 검토 정책(`a0adbbc`)과 TikTok 종료 금지가 정본.
+- 바이럴 실제 계정 채널명을 표시명으로 원복 금지. 실제 계정은 핸들, 의도적 라벨만 유지.
+- stale `refactor/monitoring-decompose` 전체 머지 금지. 필요한 변경만 최신 `main`에 선별 이식.
+
+---
+
+## 상세 이력
+
 ## 2026-07-27 [Claude 검증완료] 작업경계 읽기검증 5항목 (읽기전용, 무수정, 이상시 보고만)
 - **#1 dailyAuto 33.3% → 종결 표시**: Apps Script 실행기록(status=실패 필터) 확인. 마지막 dailyAuto 실패=`편집기 10:06:42`(syncCreators__wgimpl, 수정 전 잔여). 이후 `10:17 수동 완료`·`09:34 스케줄 완료(127초)`, 실패 없음. 새 단계 실패 재발 증거 없음 → **33.3%는 과거 이력으로 종결**. (다음 예약 07-28 09:34가 최종 재확인, 실패 시에만 보고)
 - **#2 not_found(a0adbbc) 정상**: `not_found_streak>0` 현재 **0건**(활성 IG not_found 사례 없음=정상 dormant). 비-IG(TikTok 등) streak **0**(미대상 ✓), streak발 `ended_at` **0**(IG not_found 자동종료 안 함 ✓), 사람 notes 무수정. run_monitoring 07-27 실행됨(comments 351건 기록). 오작동 징후 없음. 실제 발화는 IG not_found 발생 시 검증 가능.
 - **#3 comments_count 정상 / Apify는 별도소관**: `post_daily_stats.comments_count` 07-27 351·07-26 488·07-25 460건 정상 채움. ⚠️ **data-slayer 30/일 상한 + Apify 잔액경고는 `negative-comment-monitor`(별도 repo/시스템) 소관** — 이 DB `cost_alert_log` 조회 400. 그쪽 GHA/로그로 확인 필요(Claude 이 세션 범위 밖) → Codex/별도 세션.
-- **#4 ho1y_time+릴스 매핑(사용자 결정 대상)**: DB상 **ho1y_time 18건 전부 매핑됨(동후작가/₩60,000), 릴스 누락 0, ho1y_time 누락 0**. 활성 바이럴 업체명/단가 누락은 **4건뿐이며 전부 비-IG 미러링 라벨**: `이평(틱톡 미러링)`·`힐링하고 가세요`·`돈 되는 정보(틱톡/서비스)`·`foxzzal(스레드/미러링)`. 미러링/무상 성격이라 의도적 미매핑일 수 있음 → **사용자 결정 필요**(종료 포함 시 9건). 시트측 gap이면 별도 지정 요망.
+- **#4 ho1y_time+릴스 매핑**: DB상 **ho1y_time 18건 전부 매핑됨(동후작가/₩60,000), 릴스 누락 0, ho1y_time 누락 0**. 활성 바이럴 업체명/단가 누락은 **4건뿐이며 전부 비-IG 미러링 라벨**: `이평(틱톡 미러링)`·`힐링하고 가세요`·`돈 되는 정보(틱톡/서비스)`·`foxzzal(스레드/미러링)`. 미러링/무상 성격이라 의도적 미매핑일 수 있어 사용자 결정 대기.
 - **#5 경계 준수**: DB 대량수정·시트 일괄쓰기·라이브 Apps Script 저장 **안 함**. 89a8de7 미이식·refactor 미머지. 옛 완료항목 재개방 안 함.
 
 ## 2026-07-27 [Codex 완료·정합] 라이브 Apps Script 보호 항목 재확인 + 캡션 자가치유 repo 통일
