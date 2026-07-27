@@ -1440,7 +1440,26 @@ function syncStatus() {
     statusByKey,
     linkKey_
   );
-  SpreadsheetApp.getActive().toast("상태 동기화 완료: 변경 " + changed + "행", "완료", 4);
+  // URL을 지운 행은 key가 없으므로 별도 최신행 스냅샷에서 기존 자동 상태를 정리한다.
+  // 이 쓰기도 최신 행 번호를 다시 읽은 뒤 연속 구간만 기록해 행 이동 창을 최소화한다.
+  const latestLastRow = sheet.getLastRow();
+  const latestN = Math.max(0, latestLastRow - CONFIG.DATA_START_ROW + 1);
+  const clearedEdits = [];
+  if (latestN > 0) {
+    const latestUrls = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.url, latestN, 1).getValues();
+    const latestStatuses = sheet.getRange(CONFIG.DATA_START_ROW, statusCol, latestN, 1).getValues();
+    for (let i = 0; i < latestN; i++) {
+      if (String(latestUrls[i][0] || "").trim() !== "") continue;
+      if (String(latestStatuses[i][0] || "").trim() === "") continue;
+      clearedEdits.push({ row: CONFIG.DATA_START_ROW + i, value: "" });
+    }
+  }
+  const cleared = writeColumnRuns_(sheet, statusCol, clearedEdits, latestLastRow);
+  SpreadsheetApp.getActive().toast(
+    "상태 동기화 완료: 변경 " + changed + "행, 빈 URL 정리 " + cleared + "행",
+    "완료",
+    4
+  );
   return true;
 }
 

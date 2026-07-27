@@ -128,7 +128,11 @@ test("URL-key writers re-read current URLs and write only changed row runs", () 
   assert.match(writeGuard, /if \(shouldWrite && !shouldWrite/);
   const statusStart = appsScript.indexOf("function syncStatus()");
   const statusEnd = appsScript.indexOf("function refreshCumulativeViews()", statusStart);
-  assert.match(appsScript.slice(statusStart, statusEnd), /writeColumnByKey_\(/);
+  const statusBody = appsScript.slice(statusStart, statusEnd);
+  assert.match(statusBody, /writeColumnByKey_\(/);
+  assert.match(statusBody, /const latestLastRow = sheet\.getLastRow\(\)/);
+  assert.match(statusBody, /if \(String\(latestUrls\[i\]\[0\] \|\| ""\)\.trim\(\) !== ""\) continue/);
+  assert.match(statusBody, /writeColumnRuns_\(sheet, statusCol, clearedEdits, latestLastRow\)/);
 });
 
 test("writeColumnByKey_ follows the latest URL order and preserves nonblank manual cells", () => {
