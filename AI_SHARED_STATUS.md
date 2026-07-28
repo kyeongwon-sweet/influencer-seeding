@@ -1,5 +1,14 @@
 # AI Shared Status
 
+## 2026-07-28 [Codex 완료] 누적 조회수 빈칸 직접 백필 + 시트 실측 반영
+- **사용자 요청:** 누적 조회수(H)가 비어 있는 종료/활성 게시물 중, 링크 접속/API 조회가 가능한 것은 직접 긁어서 최종 누적 조회수를 채우기. 범위는 `협찬(인플루언서)`, `바이럴(영상)`, `협찬(먹스타)`, `협찬(파워채널/매거진)`, `무상시딩(영상)`만.
+- **구현(repo):** `scripts/backfill_zero_metric_posts.py`와 수동 workflow `.github/workflows/backfill-zero-metric-posts.yml` 추가. 첫 실행 뒤 시트 export 정책과 맞지 않는 점을 발견해 `1b372bb`에서 기준 날짜를 수정: 기본은 KST 어제, 종료글은 `ended_at` 날짜로 저장. 오늘 값만 있는 종료글은 “시트에 export 가능한 값 있음”으로 보지 않게 계약 테스트 추가. 이후 `scripts/report_blank_sheet_metrics.py`와 `.github/workflows/report-blank-sheet-metrics.yml`로 남은 시트 H 공백 중 DB에 실제 metric이 있는 행을 분리.
+- **실행 결과:** 첫 real run `30333303009`는 39개 중 25개를 오늘 날짜로 upsert했으나, 시트가 오늘/종료 이후 날짜를 비우는 정책 때문에 미반영. 수정 후 real run `30333983571`은 38개 중 25개를 export 가능한 날짜로 upsert(`instagram 21`, `youtube 3`, `tiktok 1`, unfilled 13). report run `30334487094` 기준, 실제 시트 H 공백 중 DB metric으로 채울 수 있는 행은 5개뿐.
+- **라이브 시트 반영:** Apps Script 라이브 프로젝트에 새 일회용 파일 `repair_zero_metrics_20260728.gs`를 추가하고 `repairZeroMetricBlanks20260728()` 실행. 이 함수는 행 URL의 `linkKey_`가 기대 URL과 다르면 중단하고, 기존 날짜칸에 다른 값이 있으면 덮어쓰지 않도록 방어. 실행 로그: `written 5: 7.1365=5871, 7.1369=203936, 7.1188=158727, 7.271432=3261, 7.271434=1919`.
+- **실측 검증:** Google Sheets CSV 재조회로 `BT65=5871`, `BT69=203936`, `BR88=158727`, `CH1432=3261`, `CH1434=1919` 확인. H열은 각각 `H65=5,871`, `H69=203,936`, `H88=158,727`, `H1432=3,261`, `H1434=1,919`. 중간 UI 실수로 `CD65`에 값이 들어갔으나 즉시 비웠고 최종 CSV에서 `CD65=''` 확인.
+- **남은 공백:** 요청 범위 740행 중 H 공백은 12행. 이 중 view-capable DB/API 기준 unfillable 11행: rows 10,11,12,13,14,15,19,26,27,463,1451. row 1451은 업로드일이 2026-07-28이라 자동수집 기준(KST 어제까지)에서는 아직 시트 반영 대상이 아님. row 163은 Naver clip URL이라 이번 IG/YT/TikTok/Twitter API 직접 조회 범위 밖.
+- **주의:** Apps Script에 추가한 `repair_zero_metrics_20260728.gs`는 일회용 복구 파일이다. 재실행해도 URL/기존값 가드가 있어 같은 값이면 멱등이지만, 장기 운영 로직은 repo의 backfill/report workflow와 기존 `exportStats`를 기준으로 판단할 것.
+
 ## 2026-07-28 [사용자 결정·Codex 진행] 비용 공백 정책 / IG 메타데이터 전용 재수집 / 0조회 백필 감사
 - **비-IG 미러링 4개 비용 정책 확정:** 사람이 비용 셀에 직접 `0`을 입력한 경우만 무상으로 본다. 비용 미입력은 미확정이므로 자동화가 `0`을 채우지 않고 빈칸을 유지한다. 현재 `syncPricing`과 웹 무료채널 가드는 위성채널·온드미디어만 자동 0원 처리하므로 이 정책과 일치한다.
 - **IG 메타데이터 9건 재수집 승인:** 일반 일일수집과 분리해 `METADATA_RECOLLECT_ONLY=1`일 때 `account_name`이 빈 Instagram 게시물 URL만 고르는 전용 경로를 추가한다. 수동 workflow 입력 `metadata_only`에서는 캡션·브랜드지표·유튜브트렌드·B2B 단계를 건너뛴다.
