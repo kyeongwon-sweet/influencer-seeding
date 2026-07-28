@@ -237,7 +237,8 @@ async function collect(req: NextRequest) {
           }
         }
 
-        if (isBannerChannelType(post.channel_type)) {
+        // 틱톡 배너(사진/슬라이드쇼)는 실제 playCount가 있어 조회수로 수집한다(run_monitoring과 동일). 그 외 배너는 reach 전용.
+        if (isBannerChannelType(post.channel_type) && !String(post.url || "").includes("tiktok.com")) {
           statsToInsert.push({
             post_id: post.id,
             measured_at: measuredAt,
