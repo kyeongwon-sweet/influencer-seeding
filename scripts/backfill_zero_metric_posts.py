@@ -35,9 +35,9 @@ from run_monitoring import (
 )
 
 
-MEASURED_AT = os.getenv("BACKFILL_MEASURED_AT") or (
-    datetime.now(timezone.utc) + timedelta(hours=9)
-).date().isoformat()
+BASE_MEASURED_AT = os.getenv("BACKFILL_MEASURED_AT") or (
+    (datetime.now(timezone.utc) + timedelta(hours=9)).date() - timedelta(days=1)
+).isoformat()
 DRY_RUN = os.getenv("DRY_RUN", "1").lower() in ("1", "true", "yes")
 LIMIT = int(os.getenv("BACKFILL_LIMIT", "0") or "0")
 PAGE = 1000
@@ -100,15 +100,15 @@ def fetch_all_posts(db) -> list[dict[str, Any]]:
     return posts
 
 
-def positive_metric_post_ids(db, post_ids: list[str]) -> set[str]:
-    has_metric: set[str] = set()
+def positive_metric_dates(db, post_ids: list[str]) -> dict[str, list[str]]:
+    has_metric: dict[str, list[str]] = {}
     for i in range(0, len(post_ids), 100):
         chunk = post_ids[i:i + 100]
         start = 0
         while True:
             res = (
                 db.table("post_daily_stats")
-                .select("post_id,play_count,reach_count")
+                .select("post_id,measured_at,play_count,reach_count")
                 .in_("post_id", chunk)
                 .range(start, start + PAGE - 1)
                 .execute()
@@ -116,17 +116,29 @@ def positive_metric_post_ids(db, post_ids: list[str]) -> set[str]:
             rows = res.data or []
             for row in rows:
                 if row_metric(row) > 0:
-                    has_metric.add(row["post_id"])
+                    has_metric.setdefault(row["post_id"], []).append(str(row.get("measured_at") or "")[:10])
             if len(rows) < PAGE:
                 break
             start += PAGE
     return has_metric
 
 
-def select_targets(posts: list[dict[str, Any]], has_metric: set[str]) -> list[dict[str, Any]]:
+def target_measured_at(post: dict[str, Any]) -> str:
+    ended_at = str(post.get("ended_at") or "")[:10]
+    if ended_at and ended_at < BASE_MEASURED_AT:
+        return ended_at
+    return BASE_MEASURED_AT
+
+
+def has_exportable_metric(post: dict[str, Any], metric_dates: dict[str, list[str]]) -> bool:
+    target_date = target_measured_at(post)
+    return any(date and date <= target_date for date in metric_dates.get(post["id"], []))
+
+
+def select_targets(posts: list[dict[str, Any]], metric_dates: dict[str, list[str]]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for post in posts:
-        if post.get("id") in has_metric:
+        if has_exportable_metric(post, metric_dates):
             continue
         if not is_allowed_channel_type(post.get("channel_type")):
             continue
@@ -134,8 +146,9 @@ def select_targets(posts: list[dict[str, Any]], has_metric: set[str]) -> list[di
         platform = platform_of(url)
         if not platform:
             continue
+        post["_measured_at"] = target_measured_at(post)
         posted_at = str(post.get("posted_at") or "")[:10]
-        if posted_at and posted_at > MEASURED_AT:
+        if posted_at and posted_at > post["_measured_at"]:
             continue
         post["_platform"] = platform
         out.append(post)
@@ -161,7 +174,7 @@ def add_row(rows: list[dict[str, Any]], post: dict[str, Any], stat: dict[str, An
         return False
     rows.append({
         "post_id": post["id"],
-        "measured_at": MEASURED_AT,
+        "measured_at": post["_measured_at"],
         "play_count": play,
         "likes_count": stat.get("likes_count") if "likes_count" in stat else stat.get("likes"),
         "comments_count": stat.get("comments_count") if "comments_count" in stat else stat.get("comments"),
@@ -269,26 +282,29 @@ def run() -> dict[str, Any]:
     db = get_client()
     posts = fetch_all_posts(db)
     candidate_ids = [p["id"] for p in posts if is_allowed_channel_type(p.get("channel_type"))]
-    has_metric = positive_metric_post_ids(db, candidate_ids)
-    targets = select_targets(posts, has_metric)
+    metric_dates = positive_metric_dates(db, candidate_ids)
+    targets = select_targets(posts, metric_dates)
 
     by_platform = Counter(p["_platform"] for p in targets)
     by_channel = Counter(str(p.get("channel_type") or "") for p in targets)
+    by_target_date = Counter(p["_measured_at"] for p in targets)
     print("[BACKFILL] " + json.dumps({
         "dry_run": DRY_RUN,
-        "measured_at": MEASURED_AT,
+        "base_measured_at": BASE_MEASURED_AT,
         "all_posts": len(posts),
         "allowed_channel_posts": len(candidate_ids),
-        "positive_metric_posts": len(has_metric),
+        "positive_metric_posts": len(metric_dates),
         "targets": len(targets),
         "by_platform": dict(by_platform),
         "by_channel": dict(by_channel),
+        "by_target_date": dict(by_target_date),
         "sample": [
             {
                 "id": p["id"],
                 "url": p.get("url"),
                 "channel_type": p.get("channel_type"),
                 "ended_at": p.get("ended_at"),
+                "measured_at": p["_measured_at"],
             }
             for p in targets[:20]
         ],
