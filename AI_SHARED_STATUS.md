@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 2026-07-28 [Codex 완료·라이브 시트 보강] RD_Main 날짜값 → 콘텐츠 대시보드 연동 빈칸 보강
+- 사용자 요청: `콘텐츠 대시보드 연동` 게시물 중 `(미사용)RD_Main`에 같은 URL/날짜 데이터가 있는데 콘텐츠 연동 날짜칸이 빈 곳을 가져오기.
+- dry-run: live CSV 기준 RD_Main header row 9, 공통 날짜 37개. 콘텐츠 빈칸 후보 314칸/73행, 기존 콘텐츠 값과 RD_Main 값이 다른 충돌 후보 1,227칸/215행. 충돌 후보는 덮어쓰기 금지로 보존.
+- 라이브 실행: Apps Script one-off `repair_rd_main_import_20260728.gs` 현재 파일을 `repairRdMainGapCells20260728()` 로직으로 교체 저장 후 기존 선택 함수 wrapper `repairRdMainMetrics20260728()`로 실행. 로그: `written=314`, `noOp=0`, `duplicateSkipped=11`, `noRdSkipped=1039`, `conflictSkipped=1227`, `commonDates=37`, `refreshed=true`, 오류 없음. 실행 시간 22:25:49~22:29:58 KST.
+- 검증: 실행 후 live CSV 재검증에서 RD_Main 숫자값이 있고 콘텐츠 날짜칸이 빈 후보 `candidate_cells=0`, `candidate_rows=0`. 날짜 헤더가 `26.6.23.(화)` 형태로 표시되어 검증 스크립트의 날짜 파서를 보강해 재확인했다.
+- H 누적조회수 검증: 새로 채운 대표 행 29/30/53/59/60/64의 H값이 각 행 날짜칸 최대값과 모두 일치(row 29=37008, 30=30027, 53=148657, 59=275899, 60=323300, 64=8833). `refreshCumulativeViews()` 실행됨.
+- 주의: 충돌 후보 1,227칸은 콘텐츠에 이미 값이 있어서 RD_Main과 다르더라도 건드리지 않았다. 이건 “없는 날짜만 가져오기” 요청 범위 밖이다.
 ## 2026-07-28 [Codex 진행] H/I 빈칸도 수식 보유하도록 Apps Script 정본 보강
 - 사용자 질문: `콘텐츠 대시보드 연동`에서 누적조회수(H)와 증분값(I)이 아예 빈칸인 행이 있는데, 미출력이어도 수식은 걸려 있어야 하는 것 아니냐는 확인.
 - 원인 확인: repo `Combined_Sheet_AppsScript.gs` 최신 구현에서 `refreshCumulativeViews()`는 날짜 숫자 실측이 하나도 없는 행에 H 수식을 쓰지 않고 `""`로 비웠다. `exportStats()`도 증분 계산 대상 refs가 0개면 I열에 `""`를 써서 수식 자체가 없었다. 즉 빈칸은 일부 행에서 “수식 결과 빈칸”이 아니라 “수식 미설치”였다.
