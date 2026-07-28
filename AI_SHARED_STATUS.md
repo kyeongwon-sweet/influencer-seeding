@@ -1,11 +1,24 @@
 # AI Shared Status
 
+## 2026-07-28 [Codex 진행] -mu 보호 페이지 404 원인 확인 + middleware 수정
+- 현상 검증: `https://influencer-seeding-mu.vercel.app`, `/monitoring`, `/home`이 404. 단 `/api/sponsored-posts/stats-for-sheet`는 401, `/api/sponsored-posts/stats-import`는 405로 API 라우트는 살아 있음.
+- 원인: 응답 헤더 `X-Clerk-Auth-Reason: protect-rewrite, dev-browser-missing`, `X-Matched-Path: /_not-found`. 즉 도메인/배포 전체 장애가 아니라 Clerk middleware가 미로그인 보호 페이지를 sign-in redirect 대신 404로 숨김.
+- 수정: `web/middleware.ts`의 `auth.protect()`에 `unauthenticatedUrl: new URL("/sign-in", request.url).toString()` 명시. public API 예외는 그대로 유지.
+- 검증: `npm.cmd run build` 통과, `/monitoring` route가 build output에 포함됨, `npx.cmd eslint middleware.ts --max-warnings=0` 통과. 배포 후 `-mu/monitoring`은 404가 아니라 sign-in redirect/로그인 화면으로 떠야 함.
 ## 2026-07-28 [Claude 완료·main 반영] 증분 리포트: 위성채널 배너+영상 한 라인 합산
 - **사용자 지시:** "앞으로 위성채널은 위성채널(배너/영상)으로 묶어서 계산해."
 - **배경:** channel_type `위성채널 (배너)`는 활성 **1건**(이슈박스 틱톡 photo, 07-27 게시, 틱톡 photo라 조회수/도달수 수집 불가 → `post_daily_stats` 행 없음)뿐인데, 배너 특수처리 때문에 `위성채널 (배너) (당일 배너 미수집)` 별도 줄이 노출됐다.
 - **수정(`scripts/notify_increments.py`, main `88c714e`):** `_norm_ch`에서 `위성채널*` → `위성채널 (배너/영상)`로 합침. `banner_cts` 수집과 채널분류 표시 분기에서 `위성채널` 제외 → 배너 '미수집' 특수라인 안 만들고 일반 합산 라인(`+N 무상`)으로 표기. **DB channel_type은 안 건드림(리포트 표시/합산만).** DRY_RUN 07-27 검증: `위성채널 (배너/영상) +125,206 무상` 1줄, 바이럴(배너) `(도달수)` 라인은 그대로 정상.
 - **주의:** 이 스크립트는 **main에서만** 최신(refactor/monitoring-decompose 브랜치의 notify_increments.py는 인지광고·DELETE_TS 등 다수 기능이 빠진 구버전이니 거기서 수정/커밋 금지).
 
+## 2026-07-28 [Codex 완료] RD_Main 날짜값 → 콘텐츠 대시보드 연동 백필
+- 요청: `콘텐츠 대시보드 연동`에서 날짜별 조회수/도달수 값이 전부 비어 있는 행 중 `(미사용)RD_Main`에 값이 있는 게시물을 찾아 날짜값을 가져오기.
+- 검증: live CSV 기준 `콘텐츠 대시보드 연동` 날짜열 97개, `(미사용)RD_Main` 실제 헤더는 9행. URL canonical key(IG/YT/TT)와 날짜 헤더 정규화(`6. 1 (월)` → `6.1`)로 비교.
+- 사전 결과: RD_Main 값 보유 key 407개, 대상 행 119개, 복사 가능 날짜셀 504개, 값 충돌 0개.
+- 라이브 반영: Apps Script 라이브 프로젝트 `1XogwTHJb...`에 1회용 파일 `repair_rd_main_import_20260728.gs` 추가 후 `repairRdMainMetrics20260728()` 실행. 대상 행 URL key를 다시 검증하고, 대상 셀이 빈 경우만 setValue. 다른 값이 있으면 중단하도록 가드.
+- 사후 검증: Google Sheets CSV 재조회 결과 504/504 셀이 RD_Main 값과 일치, missing 0, different 0. 이후 재비교 결과 `remaining_blank_date_rows_with_rd_data=0`.
+- 참고: 전체 시트에서 날짜값은 있는데 H가 빈 예외 1행은 row 2214 신규 2026.7.28 행으로, 날짜칸 값이 숫자가 아니라 `@`인 상태. 이번 RD_Main 백필 대상/숫자 metric 누락과는 별개.
+- 추가 검증(사용자 재확인): live CSV 기준 URL 있는 데이터행 1,454개 중 날짜별 조회수/도달수 칸이 전부 빈 행은 44개. 이번 RD_Main 백필 119행/504셀은 504/504 원본값 일치, 새로 채운 119행의 H 누적조회수도 119/119 날짜값 최대치와 일치. 숫자 날짜값이 있는데 H가 빈 행은 0개. 단, `@` 같은 비숫자 날짜값 때문에 H가 빈 예외 1행(row 2214)은 별도 정리 대상.
 ## 2026-07-28 [Claude 읽기검증] 부정댓글 커버리지 DB측 데이터 + backfill/메타 Codex완료 확인
 - **부정댓글 감시 갭(#4)**: 감시대상 선정(`getSponsoredRpaTargets_`)은 negative-comment-monitor repo 소관 → Claude 직접검증 불가. DB측만 산출: **최근 14일(posted≥07-14) 게시물 577건** = 바이럴영상 205·바이럴배너 202·위성 137·협찬인플 21·무상영상 7·기타 5(활성 524·종료 53). 감시 330이면 ~247 제외 — 배너 203+위성 137로 상당수 설명되나, 이전 미탐 13건(고댓글 협찬/바이럴/위성 혼재)은 그것만으론 부족. → ✅ **해결확인(2026-07-28)**: 봇 repo가 GAS 감시대상 **330→604 확장(v80)** + firstScan throttle(60)/댓글우선(`66e8588`)으로 커버리지 홀 근본 수정. 위 577 대비 604 대상이면 커버됨.
 - **backfill(#2)·IG메타(#3) = Codex 완료 확인**(위 Codex 항목): Claude 재실행/재작업 안 함. ⚠️ 참고: 내 dry-run "DB 양수이력 0 = 315건"은 Codex의 "시트 H 공백 ~12건(fillable 5)"과 **정의가 달라 넓게 잡힌 수치**(H는 날짜열로 이미 채워진 경우 다수). actionable은 Codex 감사수치 기준 — **315로 재수집 금지.**

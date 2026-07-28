@@ -34,7 +34,9 @@ export default clerkMiddleware(async (auth, request) => {
   if (isPublicRoute(request)) return;
 
   // 1) 로그인 여부 (미로그인 → 자동 sign-in 리다이렉트)
-  await auth.protect();
+  await auth.protect({
+    unauthenticatedUrl: new URL("/sign-in", request.url).toString(),
+  });
 
   // 2) 회사 도메인 검사 — @lalasweet.kr 계정만 통과, 그 외는 차단.
   const { userId } = await auth();
