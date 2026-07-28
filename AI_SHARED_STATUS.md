@@ -19,7 +19,8 @@
 - 과거 `dailyAuto` 오류율 33.3%는 `syncCreators__wgimpl` 유실의 롤링 잔여 이력으로 원인·복구 확인. 이후 수동·예약 실행 성공.
 - `pullFromDB` 배치 읽기(약 1.4만 셀 왕복 제거), `importStats` 전체행 배치 읽기, 배너 reach 전송, BYROW 누적, 캡션 part8·`.디자인N` 정리, 바이럴 핸들 자가치유가 라이브에 존재.
 - 라이브→repo 캡션 자가치유 정합 완료(`3a03960`), 계약 테스트 포함.
-- **틱톡 배너=조회수 수집**(사용자 지시 2026-07-28, `ed55901`+`4049662`): 3개 수집경로(run_monitoring:896 + collect-now:240 + apify-webhook:367)의 배너-스킵에 `and not tiktok` 예외 추가 → 틱톡 배너(사진/슬라이드쇼)는 playCount 저장(실측 유머박스 1559·이슈뜨기 528, `isSlideshow`). `_inc_metric`·`stats-for-sheet`가 이미 `reach ?? play` 폴백이라 증분·시트 역채움까지 조회수로 자동 반영. **미매칭 이슈**: 대상 3건(이슈박스/이슈뜨기/유머박스, 위성채널 배너)은 posted 07-27이라 다음 수집 사이클부터 적재됨. ⚠️ **Vercel 수동배포 필요**(collect-now/apify-webhook 변경분, Codex). CompanyPanel은 배너를 '도달수' 라벨로 표시(틱톡 배너 play가 그 라벨로 보임, cosmetic — 필요시 후속).
+- **틱톡 배너=조회수 수집**(사용자 지시 2026-07-28, `ed55901`+`4049662`): 3개 수집경로(run_monitoring:896 + collect-now:240 + apify-webhook:367)의 배너-스킵에 `and not tiktok` 예외 추가 → 틱톡 배너(사진/슬라이드쇼)는 playCount 저장(실측 유머박스 1559·이슈뜨기 528, `isSlideshow`). `_inc_metric`·`stats-for-sheet`가 이미 `reach ?? play` 폴백이라 증분·시트 역채움까지 조회수로 자동 반영. **미매칭 이슈**: 대상 3건(이슈박스/이슈뜨기/유머박스, 위성채널 배너)은 posted 07-27이라 다음 수집 사이클부터 적재됨. **✅ Vercel 프로덕션 배포 완료**(Claude, `vercel promote` env-var 방식, dpl `jdmtum0dx`=collect-now/apify-webhook 변경 포함, 전 라우트 302 정상 검증). ⚠️ **배포는 커밋 `2da5ae0` 기준**이라 이후 main(`3643a22` 등)은 미반영 — Codex 다음 배포 시 최신 반영. CompanyPanel은 배너를 '도달수' 라벨로 표시(틱톡 배너 play가 그 라벨로 보임, cosmetic — 필요시 후속).
+- **⚠️ `-mu` 도메인 404 관찰(Codex 확인 요망)**: `influencer-seeding-mu.vercel.app`은 어느 배포를 가리켜도 전 라우트 404(직접 배포 URL은 302 정상). 배포와 무관한 도메인 attach 문제로 보임. 메모리 "-mu 404" 알려진 현상과 일치. 팀 실제 접속 URL/커스텀도메인 점검 필요.
 
 ### 폐기된 지시·재작업 금지
 - repo 전체를 라이브 Apps Script에 붙여넣기 금지. 항상 **live → repo 확인 후 함수 단위 반영**.
