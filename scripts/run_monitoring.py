@@ -217,6 +217,11 @@ def _needs_metadata_recollect(post):
     )
 
 
+def _select_metadata_recollect_posts(posts):
+    """Return only the narrow, explicitly approved IG metadata repair targets."""
+    return [post for post in posts if _needs_metadata_recollect(post)]
+
+
 def _same_day_measured_ids(db, posts, measured_at=TODAY):
     """Return post ids that already have the needed measurement for measured_at.
 
@@ -709,6 +714,11 @@ def run():
             and (not p.get("posted_at") or str(p.get("posted_at"))[:10] <= TODAY)
         ]
         print(f"[LOG] 추적 게시물: {len(posts)}개 (종료/업로드전 제외 {len(all_posts) - len(posts)}개)")
+
+        metadata_only = os.getenv("METADATA_RECOLLECT_ONLY", "0").lower() in ("1", "true", "yes")
+        if metadata_only:
+            posts = _select_metadata_recollect_posts(posts)
+            print(f"[LOG] METADATA_RECOLLECT_ONLY=1 - blank-account IG posts only: {len(posts)}")
 
         recollect_all = os.getenv("RECOLLECT_ALL", "0").lower() in ("1", "true", "yes")
         if recollect_all:
