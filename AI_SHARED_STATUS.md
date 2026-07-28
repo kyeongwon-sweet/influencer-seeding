@@ -6,7 +6,8 @@
 - **가드:** `CRON_SECRET` Bearer 인증 fail-closed, 오늘(KST) 이후 날짜 제외, 업로드일 이전 제외, 종료일 이후 제외, DB가 비배너인 매칭 제외, 비용과 동일한 값 제외, 같은 게시물·같은 날짜에 서로 다른 값이 있으면 skip/report. `dry_run=1` 지원.
 - **스케줄:** GitHub Actions `banner-reach-sync.yml`이 매시 17분 `POST /api/sponsored-posts/banner-reach-sync` 호출. 수동 `workflow_dispatch` 가능.
 - **검증:** `npm.cmd test` 57/57 pass, 새 파일 범위 `eslint` pass, `npm.cmd run build` pass(Next route 목록에 `/api/sponsored-posts/banner-reach-sync` 표시). 전체 `npm.cmd run lint`는 기존 `injibot-action`/`injibot-review`/`stats-import _key` 잔여 lint 에러 때문에 fail이며, 새 route의 lint 에러는 없음.
-- **남은 운영 검증:** 로컬 repo에는 운영 `.env.local`이 없어 실제 서비스계정 Sheet read는 미실행. 배포 후 `POST /api/sponsored-posts/banner-reach-sync?dry_run=1`을 prod에서 먼저 호출해 `would_upsert`, `missing_urls`, `non_banner_db_skipped`를 확인한 뒤 dry_run 없이 1회 실행. 403이면 시트를 `GOOGLE_SA_CLIENT_EMAIL`에 뷰어 공유해야 함.
+- **배포/실측:** commit `9e7fac1` pushed to `origin/main`, GitHub Build Test pass, Vercel production Ready `dpl_Ezu7YAxdanmCabiFTomRN6VZqfLx` alias `https://influencer-seeding-mu.vercel.app`. 무인증 POST는 401 확인. GitHub Actions 수동 dry-run(run `30330026596`) 결과 `would_upsert=71`, `sheet_rows=1449`, `banner_rows=492`, `date_columns=97`, `missing_urls=0`, `non_banner_db_skipped=0`, `pre_posted_skipped=0`, `post_ended_skipped=0`, `cost_as_reach_skipped=0`, `duplicate_conflict_skipped=0`. 실제 실행(run `30330043246`) 결과 `upserted=71`, HTTP 200.
+- **남은 관찰:** hourly schedule은 매시 17분 자동 실행. 오늘 수동 실행으로 현재 71건은 DB 반영 완료. 다음 정기 실행에서 같은 route가 성공하는지만 GitHub Actions 목록에서 확인하면 됨. 403이 뜨면 시트를 `GOOGLE_SA_CLIENT_EMAIL`에 뷰어 공유해야 하나, dry-run/실쓰기 모두 통과했으므로 현재 공유는 정상으로 보임.
 
 ## 현재 운영 요약 — 2026-07-27 KST
 
