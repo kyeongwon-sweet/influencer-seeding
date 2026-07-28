@@ -893,8 +893,10 @@ def run():
 
             play_count = s.get("play_count")
 
-            # Banner posts have no play metric. Daily reach is stored by reach_rows below.
-            if "\ubc30\ub108" in (post.get("channel_type") or ""):
+            # Banner posts have no play metric \u2014 reach only. Daily reach is stored by reach_rows below.
+            # \uc608\uc678: \ud2f1\ud1a1 \ubc30\ub108(\uc0ac\uc9c4/\uc2ac\ub77c\uc774\ub4dc\uc1fc)\ub294 \uc2e4\uc81c playCount\uac00 \uc788\uc5b4 \uc870\ud68c\uc218\ub85c \uc218\uc9d1\ud55c\ub2e4(\uc0ac\uc6a9\uc790 \uc9c0\uc2dc 2026-07-28).
+            _is_tiktok = "tiktok.com" in (post.get("url") or "")
+            if "\ubc30\ub108" in (post.get("channel_type") or "") and not _is_tiktok:
                 rows.append({
                     "post_id": post["id"],
                     "measured_at": TODAY,
