@@ -49,7 +49,7 @@ jobs:
           raw_imgs = re.findall(r'https://images\.ctfassets\.net/[^\s"<>]+\.(?:png|jpg|jpeg|webp)', html)
           encoded_imgs = re.findall(r'https?%3A%2F%2Fimages\.ctfassets\.net[^\s"<>&]+?\.(?:png|jpg|jpeg|webp)', html)
           decoded_imgs = [urllib.parse.unquote(u) for u in encoded_imgs]
-          imgs = list(dict.fromkeys(raw_imgs + decoded_imgs))[:2]
+          imgs = list(dict.fromkeys(raw_imgs + decoded_imgs))[:3]
           print(f"이미지 {len(imgs)}개 발견")
           if not imgs:
               print("이미지 없음 — 전송 중단 (사이트 구조 변경 또는 메뉴 미업로드)")
@@ -65,7 +65,7 @@ jobs:
                   }
               }
           ]
-          titles = ["가정식 도시락", "프레시밀"]
+          titles = ["가정식 도시락", "프레시밀", "식단표"]
           for i, url in enumerate(imgs):
               blocks.append({
                   "type": "image",
