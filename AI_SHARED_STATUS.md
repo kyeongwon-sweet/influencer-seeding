@@ -1,5 +1,10 @@
 # AI Shared Status
 
+## 2026-07-28 [Claude 읽기검증] 부정댓글 커버리지 DB측 데이터 + backfill/메타 Codex완료 확인
+- **부정댓글 감시 갭(#4)**: 감시대상 선정(`getSponsoredRpaTargets_`)은 negative-comment-monitor repo 소관 → Claude 직접검증 불가. DB측만 산출: **최근 14일(posted≥07-14) 게시물 577건** = 바이럴영상 205·바이럴배너 202·위성 137·협찬인플 21·무상영상 7·기타 5(활성 524·종료 53). 감시 330이면 ~247 제외 — 배너 203+위성 137로 상당수 설명되나, 이전 미탐 13건(고댓글 협찬/바이럴/위성 혼재)은 그것만으론 부족. → **Codex가 bot repo `getSponsoredRpaTargets_`의 14일창·포함조건을 이 분류와 대조** 필요(그 안에 고댓글 협찬/바이럴 누락 조건 확인).
+- **backfill(#2)·IG메타(#3) = Codex 완료 확인**(위 Codex 항목): Claude 재실행/재작업 안 함. ⚠️ 참고: 내 dry-run "DB 양수이력 0 = 315건"은 Codex의 "시트 H 공백 ~12건(fillable 5)"과 **정의가 달라 넓게 잡힌 수치**(H는 날짜열로 이미 채워진 경우 다수). actionable은 Codex 감사수치 기준 — **315로 재수집 금지.**
+- **#1 dailyAuto 단계검증**: 다음 예약 실행 시(새 단계관측 dailyAuto 라이브 반영 후) 읽기검증 예정.
+
 ## 2026-07-28 [Codex 완료] 누적 조회수 빈칸 직접 백필 + 시트 실측 반영
 - **사용자 요청:** 누적 조회수(H)가 비어 있는 종료/활성 게시물 중, 링크 접속/API 조회가 가능한 것은 직접 긁어서 최종 누적 조회수를 채우기. 범위는 `협찬(인플루언서)`, `바이럴(영상)`, `협찬(먹스타)`, `협찬(파워채널/매거진)`, `무상시딩(영상)`만.
 - **구현(repo):** `scripts/backfill_zero_metric_posts.py`와 수동 workflow `.github/workflows/backfill-zero-metric-posts.yml` 추가. 첫 실행 뒤 시트 export 정책과 맞지 않는 점을 발견해 `1b372bb`에서 기준 날짜를 수정: 기본은 KST 어제, 종료글은 `ended_at` 날짜로 저장. 오늘 값만 있는 종료글은 “시트에 export 가능한 값 있음”으로 보지 않게 계약 테스트 추가. 이후 `scripts/report_blank_sheet_metrics.py`와 `.github/workflows/report-blank-sheet-metrics.yml`로 남은 시트 H 공백 중 DB에 실제 metric이 있는 행을 분리.
