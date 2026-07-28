@@ -124,9 +124,8 @@ def positive_metric_dates(db, post_ids: list[str]) -> dict[str, list[str]]:
 
 
 def target_measured_at(post: dict[str, Any]) -> str:
-    ended_at = str(post.get("ended_at") or "")[:10]
-    if ended_at and ended_at < BASE_MEASURED_AT:
-        return ended_at
+    # Store when this repair actually measured the post. The sheet/export layer
+    # is responsible for preserving the final H value for ended posts.
     return BASE_MEASURED_AT
 
 
