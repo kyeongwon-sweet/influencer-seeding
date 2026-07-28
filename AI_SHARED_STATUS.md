@@ -2,6 +2,12 @@
 
 ## 현재 운영 요약 — 2026-07-27 KST
 
+### 🔴 [부정댓글] 루틴 감시 커버리지 홀 — Codex 근본수정 요망 (Claude 2026-07-27)
+- **증상**: 오늘 수동 종합 검토로 **미탐 13건 회수**(주말캐치업 4 + 바이럴영상 dding_box 1 + DB전체 댓글많은 top60 검토 8[협찬3·배너3·위성2]). top61~120은 댓글 5개 이하로 0건 → 미탐은 고댓글글에 집중. 개별 실수 아니라 **구조적**.
+- **근본원인(추정, Codex 도메인)**: ① **감시대상(GAS sponsoredTargets ~330) < 실제 최근14일 게시물(563)** → 고댓글 게시물 상당수가 감시 밖(`getSponsoredRpaTargets_` 14일창/포함조건 점검 필요). ② delta 신호(comment_count) 갱신 지연. ③ 위성(evergreen)에서도 놓침 → 틱톡/IG 수집 간헐 실패. (b1 comments_count 보강 `afe6770`/`9705446`은 신호 존재는 도우나 대상 누락은 못 메움.)
+- **요청**: GAS 감시대상이 최근 협찬/바이럴 게시물을 충분히 포함하는지, 왜 194 바이럴영상 중 일부만 대상인지 점검. 봇 repo(negative-comment-monitor)는 GAS가 준 것만 감시하므로 근본은 GAS/시트 커버리지.
+- **완료느낌표**: injibot `reactions:write` 스코프 사용자 추가·검증됨(빈 스레드 반응 성공). 답글0→부모 완료느낌표 자동(`a88eb31`) 라이브.
+
 ### 현재 미해결
 - **효율화 배포 진행 중:** `dailyAuto` 단계별 시간·성공기록, 실패한 `pullFromDB/importStats/exportStats`만 7분 뒤 1회 재시도, `syncStatus/syncCreators` URL-key 쓰기, `syncPricing` 연속행 배치 쓰기를 repo에서 구현·검증 중. 라이브 Apps Script에는 아직 반영 전.
 - **URL-key 2단계:** 1단계(`syncStatus`, `syncCreators`) 안정화 후 `exportStats` 등 날짜열 writer를 별도 shadow 비교로 전환. 한 번에 전체 writer를 바꾸지 않는다.
