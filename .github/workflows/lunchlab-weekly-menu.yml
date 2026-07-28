@@ -65,7 +65,7 @@ jobs:
                   }
               }
           ]
-          titles = ["가정식 도시락", "프레시밀", "식단표"]
+          titles = ["가정식 도시락", "프레시밀", "라이트밀"]
           for i, url in enumerate(imgs):
               blocks.append({
                   "type": "image",
