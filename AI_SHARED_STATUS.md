@@ -9,6 +9,7 @@
 - **완료느낌표**: injibot `reactions:write` 스코프 사용자 추가·검증됨(빈 스레드 반응 성공). 답글0→부모 완료느낌표 자동(`a88eb31`) 라이브.
 
 ### 현재 미해결
+- **🔴 라이브 importStats 버전 드리프트(Codex 재반영 요망, Claude 진단 2026-07-28):** 서버 stats-import(route line 48-54)가 라이브 `client_version`을 `2026-07-27-banner-fix`와 대조하는데 **라이브가 미보고(=버전 필드 이전 구버전)**. repo는 정확(`IMPORTSTATS_CLIENT_VERSION` line 52 + 배너 행 포함 line 62-80 + postStats_ 전송 line 1250). **Claude는 라이브 Apps Script 저장 불가(하네스 차단) → Codex가 main importStats 함수단위 반영**(client_version 전송부+배너포함 포함, stale탭 금지). 반영 후 importStats 1회 실행해 드리프트 경고 소멸 확인. ⚠️ **데이터 무결성**: 라이브가 배너 스킵까지 구버전이면 과거 시트 배너 도달수 입력이 반영 안 됐을 수 있어 재확인 필요.
 - **효율화 배포 진행 중:** `dailyAuto` 단계별 시간·성공기록, 실패한 `pullFromDB/importStats/exportStats`만 7분 뒤 1회 재시도, `syncStatus/syncCreators` URL-key 쓰기, `syncPricing` 연속행 배치 쓰기를 repo에서 구현·검증 중. 라이브 Apps Script에는 아직 반영 전.
 - **URL-key 2단계:** 1단계(`syncStatus`, `syncCreators`) 안정화 후 `exportStats` 등 날짜열 writer를 별도 shadow 비교로 전환. 한 번에 전체 writer를 바꾸지 않는다.
 - **운영 확인:** 라이브 반영 후 `dailyAuto` 1회 수동 검증 및 다음 예약 실행의 단계별 소요시간·재시도 트리거 유무를 확인해야 종결.
