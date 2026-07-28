@@ -17,10 +17,9 @@ jobs:
           import urllib.request, re, json, os, sys, urllib.parse
           from datetime import date, timedelta
 
-          # 1. 이번 주 월요일 계산 (오늘이 월요일이면 오늘, 아니면 다음 월요일)
+          # 1. 이번 주 월요일 계산 (오늘 요일 무관, 항상 이번 주 월요일)
           today = date.today()
-          days_to_monday = (7 - today.weekday()) % 7
-          monday = today + timedelta(days=days_to_monday)
+          monday = today - timedelta(days=today.weekday())
           # 주차 계산: 월 첫날 기준 첫 번째 월요일로부터 몇 번째 주인지
           month = monday.month
           first_of_month = date(monday.year, month, 1)
