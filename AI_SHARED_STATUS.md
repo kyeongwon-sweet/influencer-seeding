@@ -28,12 +28,12 @@
 - **배포/실측:** commit `9e7fac1` pushed to `origin/main`, GitHub Build Test pass, Vercel production Ready `dpl_Ezu7YAxdanmCabiFTomRN6VZqfLx` alias `https://influencer-seeding-mu.vercel.app`. 무인증 POST는 401 확인. GitHub Actions 수동 dry-run(run `30330026596`) 결과 `would_upsert=71`, `sheet_rows=1449`, `banner_rows=492`, `date_columns=97`, `missing_urls=0`, `non_banner_db_skipped=0`, `pre_posted_skipped=0`, `post_ended_skipped=0`, `cost_as_reach_skipped=0`, `duplicate_conflict_skipped=0`. 실제 실행(run `30330043246`) 결과 `upserted=71`, HTTP 200.
 - **남은 관찰:** hourly schedule은 매시 17분 자동 실행. 오늘 수동 실행으로 현재 71건은 DB 반영 완료. 다음 정기 실행에서 같은 route가 성공하는지만 GitHub Actions 목록에서 확인하면 됨. 403이 뜨면 시트를 `GOOGLE_SA_CLIENT_EMAIL`에 뷰어 공유해야 하나, dry-run/실쓰기 모두 통과했으므로 현재 공유는 정상으로 보임.
 
-## 2026-07-28 [Codex 완료·main 배포 대기] importStats 라이브 복구 + asset_name 정본 + URL-key 2단계
+## 2026-07-28 [Codex 완료] importStats 라이브 복구 + asset_name 정본 + URL-key 2단계
 - **라이브 importStats 드리프트 해소:** 정본 프로젝트 `1XogwTHJb…`의 최신 서버본을 다시 읽고 `IMPORTSTATS_CLIENT_VERSION=2026-07-27-banner-fix`와 `importStats__wgimpl`만 함수 단위 반영했다. `_WriteGuard`·다른 함수는 보존했으며 저장본 정규화 비교 일치. 실실행 완료(13:37~13:39 KST): 2,199행/97개 날짜열 스캔, 일반 1,208건·배너 reach 3,951건 반영, `missing_urls=0`, 미래날짜 0, 감소가드 59건 제외. 시트 정본의 과거 배너값도 멱등 재전송돼 별도 임의 백필 불필요.
-- **`asset_name` 정본 전환(repo):** 시트의 비어있지 않은 소재명을 bulk·stats-import에서 `manual_fields`보다 우선하는 정본으로 지정. 대시보드 표/검색/PD파싱/정렬/CSV/모바일·일반 추가도 `asset_name`을 쓰며, `project_name`은 미이관 레코드 표시용 읽기 폴백만 유지. 프로덕션 배포 뒤 importStats를 한 번 더 실행하면 기존 DB 소재명이 시트 기준으로 이관된다.
+- **`asset_name` 정본 전환:** 시트의 비어있지 않은 소재명을 bulk·stats-import에서 `manual_fields`보다 우선하는 정본으로 지정. 대시보드 표/검색/PD파싱/정렬/CSV/모바일·일반 추가도 `asset_name`을 쓰며, `project_name`은 미이관 레코드 표시용 읽기 폴백만 유지. 프로덕션 배포 뒤 라이브 `importStats` 재실행(14:26:29~14:28:08 KST) 완료: 빈 메타데이터 1,439건 시트 기준 채움, `missing_urls=0`. DB 전수 읽기 검증: 1,449건 중 `asset_name` 비어있지 않음 1,416건, legacy `project_name`만 남은 행 0건, 둘 다 빈 행 33건.
 - **무상시딩 정책 불변:** 제외어는 위성채널·온드미디어만 유지. 무상시딩(피드)은 기존 7일, 영상은 14일 나이정책(고성과·수동값 예외 포함)을 유지하며 회귀 테스트로 고정.
 - **URL-key 2단계:** `exportStats` 날짜값은 쓰기 직전 URL열·날짜블록을 한 번씩 재조회해 URL→현재행으로 재배열하고, 쓰기 직전 URL 순서를 다시 확인한 뒤 연속 날짜열 블록당 1회 기록한다. 중복키·동시 수기수정은 스킵하고, 증분 수식은 행순서 변화 시 쓰지 않고 실패단계 재시도로 넘긴다. 열별 재조회/셀-run 시범판은 실제로 느려 즉시 중지·폐기(재사용 금지). 라이브 최적화판 `exportStats` 실실행(14:00:24~14:01:20 KST) 완료: 56초, URL-key 오류 0, 중복 URL 변경 14칸은 정본을 임의 선택하지 않고 안전하게 보류, 증분 수식 89행 갱신.
-- **검증:** 최신 `origin/main`의 배너 reach 직접읽기 이중화를 보존해 리베이스. 웹 테스트 60/60, TypeScript, Next.js production build, Python 자동종료 테스트, Apps Script 문법 모두 통과. 최신 main/prod 배포 후 `asset_name` DB 이관용 importStats 1회 재실행만 남음.
+- **검증·배포:** 최신 `origin/main`의 배너 reach 직접읽기 및 종료글 H열 최종값 보존 변경을 모두 보존해 리베이스. 웹 테스트 62/62, TypeScript, Next.js production build, Python 자동종료 테스트, Apps Script 문법 모두 통과. commit `cd9aaf1`을 `origin/main`에 push했고 Vercel production `dpl_cTroTmeUyuyz366eLMckd5vkSFa3` Ready, `influencer-seeding-mu.vercel.app` alias 연결 확인. 루트 404는 앱의 루트 라우트 특성이고 `/api/sponsored-posts/stats-import`는 무인증 401로 정상 응답해 과거 “전 라우트 404” 상태가 아님.
 
 ## 현재 운영 요약 — 2026-07-27 KST
 
