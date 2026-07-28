@@ -29,7 +29,7 @@ export default function FiltersBar({ filters, setFilters, pdOptions, productOpti
       />
       <input
         type="text"
-        placeholder="프로젝트명"
+        placeholder="소재명"
         value={filters.project}
         onChange={e => setFilters(p => ({ ...p, project: e.target.value }))}
         className={`filter-input w-28 ${filters.project ? "border-a-blue" : ""}`}

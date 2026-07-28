@@ -18,6 +18,13 @@
 - **배포/실측:** commit `9e7fac1` pushed to `origin/main`, GitHub Build Test pass, Vercel production Ready `dpl_Ezu7YAxdanmCabiFTomRN6VZqfLx` alias `https://influencer-seeding-mu.vercel.app`. 무인증 POST는 401 확인. GitHub Actions 수동 dry-run(run `30330026596`) 결과 `would_upsert=71`, `sheet_rows=1449`, `banner_rows=492`, `date_columns=97`, `missing_urls=0`, `non_banner_db_skipped=0`, `pre_posted_skipped=0`, `post_ended_skipped=0`, `cost_as_reach_skipped=0`, `duplicate_conflict_skipped=0`. 실제 실행(run `30330043246`) 결과 `upserted=71`, HTTP 200.
 - **남은 관찰:** hourly schedule은 매시 17분 자동 실행. 오늘 수동 실행으로 현재 71건은 DB 반영 완료. 다음 정기 실행에서 같은 route가 성공하는지만 GitHub Actions 목록에서 확인하면 됨. 403이 뜨면 시트를 `GOOGLE_SA_CLIENT_EMAIL`에 뷰어 공유해야 하나, dry-run/실쓰기 모두 통과했으므로 현재 공유는 정상으로 보임.
 
+## 2026-07-28 [Codex 완료·main 배포 대기] importStats 라이브 복구 + asset_name 정본 + URL-key 2단계
+- **라이브 importStats 드리프트 해소:** 정본 프로젝트 `1XogwTHJb…`의 최신 서버본을 다시 읽고 `IMPORTSTATS_CLIENT_VERSION=2026-07-27-banner-fix`와 `importStats__wgimpl`만 함수 단위 반영했다. `_WriteGuard`·다른 함수는 보존했으며 저장본 정규화 비교 일치. 실실행 완료(13:37~13:39 KST): 2,199행/97개 날짜열 스캔, 일반 1,208건·배너 reach 3,951건 반영, `missing_urls=0`, 미래날짜 0, 감소가드 59건 제외. 시트 정본의 과거 배너값도 멱등 재전송돼 별도 임의 백필 불필요.
+- **`asset_name` 정본 전환(repo):** 시트의 비어있지 않은 소재명을 bulk·stats-import에서 `manual_fields`보다 우선하는 정본으로 지정. 대시보드 표/검색/PD파싱/정렬/CSV/모바일·일반 추가도 `asset_name`을 쓰며, `project_name`은 미이관 레코드 표시용 읽기 폴백만 유지. 프로덕션 배포 뒤 importStats를 한 번 더 실행하면 기존 DB 소재명이 시트 기준으로 이관된다.
+- **무상시딩 정책 불변:** 제외어는 위성채널·온드미디어만 유지. 무상시딩(피드)은 기존 7일, 영상은 14일 나이정책(고성과·수동값 예외 포함)을 유지하며 회귀 테스트로 고정.
+- **URL-key 2단계:** `exportStats` 날짜값은 쓰기 직전 URL열·날짜블록을 한 번씩 재조회해 URL→현재행으로 재배열하고, 쓰기 직전 URL 순서를 다시 확인한 뒤 연속 날짜열 블록당 1회 기록한다. 중복키·동시 수기수정은 스킵하고, 증분 수식은 행순서 변화 시 쓰지 않고 실패단계 재시도로 넘긴다. 열별 재조회/셀-run 시범판은 실제로 느려 즉시 중지·폐기(재사용 금지). 라이브 최적화판 `exportStats` 실실행(14:00:24~14:01:20 KST) 완료: 56초, URL-key 오류 0, 중복 URL 변경 14칸은 정본을 임의 선택하지 않고 안전하게 보류, 증분 수식 89행 갱신.
+- **검증:** 최신 `origin/main`의 배너 reach 직접읽기 이중화를 보존해 리베이스. 웹 테스트 60/60, TypeScript, Next.js production build, Python 자동종료 테스트, Apps Script 문법 모두 통과. 최신 main/prod 배포 후 `asset_name` DB 이관용 importStats 1회 재실행만 남음.
+
 ## 현재 운영 요약 — 2026-07-27 KST
 
 ### 🔴 [부정댓글] 루틴 감시 커버리지 홀 — Codex 근본수정 요망 (Claude 2026-07-27)
@@ -27,10 +34,7 @@
 - **완료느낌표**: injibot `reactions:write` 스코프 사용자 추가·검증됨(빈 스레드 반응 성공). 답글0→부모 완료느낌표 자동(`a88eb31`) 라이브.
 
 ### 현재 미해결
-- **🔴 라이브 importStats 버전 드리프트(Codex 재반영 요망, Claude 진단 2026-07-28):** 서버 stats-import(route line 48-54)가 라이브 `client_version`을 `2026-07-27-banner-fix`와 대조하는데 **라이브가 미보고(=버전 필드 이전 구버전)**. repo는 정확(`IMPORTSTATS_CLIENT_VERSION` line 52 + 배너 행 포함 line 62-80 + postStats_ 전송 line 1250). **Claude는 라이브 Apps Script 저장 불가(하네스 차단) → Codex가 main importStats 함수단위 반영**(client_version 전송부+배너포함 포함, stale탭 금지). 반영 후 importStats 1회 실행해 드리프트 경고 소멸 확인. ⚠️ **데이터 무결성**: 라이브가 배너 스킵까지 구버전이면 과거 시트 배너 도달수 입력이 반영 안 됐을 수 있어 재확인 필요.
-- **효율화 배포 진행 중:** `dailyAuto` 단계별 시간·성공기록, 실패한 `pullFromDB/importStats/exportStats`만 7분 뒤 1회 재시도, `syncStatus/syncCreators` URL-key 쓰기, `syncPricing` 연속행 배치 쓰기를 repo에서 구현·검증 중. 라이브 Apps Script에는 아직 반영 전.
-- **URL-key 2단계:** 1단계(`syncStatus`, `syncCreators`) 안정화 후 `exportStats` 등 날짜열 writer를 별도 shadow 비교로 전환. 한 번에 전체 writer를 바꾸지 않는다.
-- **운영 확인:** 라이브 반영 후 `dailyAuto` 1회 수동 검증 및 다음 예약 실행의 단계별 소요시간·재시도 트리거 유무를 확인해야 종결.
+- **운영 확인:** 다음 예약 `dailyAuto`의 단계별 소요시간·성공 여부와 실패단계 7분 후 1회 재시도 유무를 확인하면 과거 오류율 항목을 종결할 수 있다. URL-key는 `syncStatus`·`syncCreators`·`exportStats`까지 단계 반영 완료했으며, 나머지 writer는 실측 후 순차 전환한다.
 - **데이터 결정:** `ho1y_time + 릴스`는 이미 동후작가/60,000원으로 18건 모두 매핑돼 누락 없음. 남은 활성 미매핑 4건은 전부 비-IG 미러링 라벨(`이평(틱톡 미러링)`·`힐링하고 가세요`·`돈 되는 정보(틱톡/서비스)`·`foxzzal(스레드/미러링)`)이라 유료 매핑 여부만 사용자 결정 대기.
 
 ### 완료

@@ -7,7 +7,7 @@ import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
 import { isValidEntryDate } from "@/lib/dateRule";
 import { companyForAccount } from "@/lib/companyMap";
 import { batchFetch } from "@/lib/batchFetch";
-import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, INIT_FILTERS, CHANNEL_TYPES, STICKY_COL_ORDER, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, getFilteredStats, pickRangeStats, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, viewIncrement, safeIncrement, pickMetric, pdOf, productLabel, effectiveReach, bannerDailyMetric, weekKeyOf, pearson, alignedPairs, bestLag, alignMulti, multipleR2, parseCsvLine } from "./lib";
+import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, INIT_FILTERS, CHANNEL_TYPES, STICKY_COL_ORDER, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, getFilteredStats, pickRangeStats, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, viewIncrement, safeIncrement, pickMetric, pdOf, productLabel, effectiveReach, bannerDailyMetric, assetNameOf, weekKeyOf, pearson, alignedPairs, bestLag, alignMulti, multipleR2, parseCsvLine } from "./lib";
 import CorrelationPanel from "./components/CorrelationPanel";
 import DayOfWeekPanel, { type DowData } from "./components/DayOfWeekPanel";
 import CompanyPanel, { type CompanyData } from "./components/CompanyPanel";
@@ -23,7 +23,7 @@ export default function MonitoringPage() {
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ url: "", product_name: "", project_name: "", channel_type: "", cost: "", content_summary: "" });
+  const [form, setForm] = useState({ url: "", product_name: "", asset_name: "", channel_type: "", cost: "", content_summary: "" });
   const [adding, setAdding] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [csvRows, setCsvRows] = useState<CsvRow[]>([]);
@@ -78,12 +78,12 @@ export default function MonitoringPage() {
 
     // 1️⃣ 모든 게시물에 적용되는 필터 (제로비도 포함)
     if (filters.name && !displayName.includes(filters.name.toLowerCase())) return false;
-    if (filters.project && !(post.project_name ?? "").toLowerCase().includes(filters.project.toLowerCase())) return false;
+    if (filters.project && !assetNameOf(post).toLowerCase().includes(filters.project.toLowerCase())) return false;
     if (filters.caption && !(post.content_summary ?? "").toLowerCase().includes(filters.caption.toLowerCase())) return false;
     if (filters.products.length > 0 && !filters.products.includes(post.product_name ?? "")) return false;
     if (filters.channelTypes.length > 0 && !filters.channelTypes.some(ct => (post.channel_type ?? "").replace(/\s+/g, "") === ct.replace(/\s+/g, ""))) return false;
     if (filters.companies.length > 0 && !filters.companies.includes(post.company_name?.trim() || companyForAccount(post.account_name ?? post.influencers?.name, post.channel_type) || "")) return false;
-    if (filters.pdNames.length > 0 && !filters.pdNames.includes(pdOf(post.project_name))) return false;
+    if (filters.pdNames.length > 0 && !filters.pdNames.includes(pdOf(assetNameOf(post)))) return false;
 
     // 게시일 필터 (posted_at 기준)
     if (filters.postedFrom && (!post.posted_at || post.posted_at < filters.postedFrom)) return false;
@@ -109,9 +109,9 @@ export default function MonitoringPage() {
     new Set(posts.map(p => p.company_name?.trim() || companyForAccount(p.account_name ?? p.influencers?.name, p.channel_type) || "").filter(Boolean))
   ).sort((a, b) => a.localeCompare(b, "ko")), [posts]);
 
-  // PD/디자이너 옵션 — project_name이 파싱되는 게시물만 (빈 값 제외)
+  // PD/디자이너 옵션 — asset_name 정본(legacy project_name 폴백)이 파싱되는 게시물만
   const pdOptions = useMemo(() => Array.from(
-    new Set(posts.map(p => pdOf(p.project_name)).filter((v): v is string => Boolean(v)))
+    new Set(posts.map(p => pdOf(assetNameOf(p))).filter((v): v is string => Boolean(v)))
   ).sort((a, b) => a.localeCompare(b, "ko")), [posts]);
 
   const hasFilter = filters.name !== "" || filters.project !== "" || filters.caption !== "" || filters.products.length > 0 || filters.channelTypes.length > 0 || filters.companies.length > 0 || filters.pdNames.length > 0 || filters.dateFrom !== "" || filters.dateTo !== "" || filters.postedFrom !== "" || filters.postedTo !== "";
@@ -815,7 +815,7 @@ export default function MonitoringPage() {
       body: JSON.stringify({
         url: form.url,
         product_name: form.product_name || null,
-        project_name: form.project_name || null,
+        asset_name: form.asset_name || null,
         channel_type: form.channel_type || null,
         cost: form.cost !== "" ? Number(form.cost) : null,
         content_summary: form.content_summary.trim() || null,
@@ -827,7 +827,7 @@ export default function MonitoringPage() {
       toast(`추가 실패: ${(err as { error?: string }).error ?? "오류가 발생했습니다."}`, "error");
       return;
     }
-    setForm({ url: "", product_name: "", project_name: "", channel_type: "", cost: "", content_summary: "" });
+    setForm({ url: "", product_name: "", asset_name: "", channel_type: "", cost: "", content_summary: "" });
     setShowAdd(false);
     await loadPosts();
     toast("게시물이 추가됐습니다.", "success");
@@ -845,7 +845,7 @@ export default function MonitoringPage() {
       const rows: CsvRow[] = lines.slice(1).map(line => {
         const cols = parseCsvLine(line);
         return {
-          project_name: cols[0] || null,
+          asset_name: cols[0] || null,
           product_name: cols[1] || null,
           channel_type: normalizeChannelType(cols[2]),
           url: cols[3] ?? "",
@@ -862,7 +862,7 @@ export default function MonitoringPage() {
   }
 
   function downloadTemplate() {
-    const csv = "프로젝트명,상품명,채널분류,게시물URL,인플루언서명,게시일(YYYY-MM-DD),비용(원),도달수\n예시프로젝트,예시상품,인플루언서,https://www.instagram.com/p/xxxxx/,홍길동,2025-05-01,500000,12000";
+    const csv = "소재명,상품명,채널분류,게시물URL,인플루언서명,게시일(YYYY-MM-DD),비용(원),도달수\n예시소재,예시상품,인플루언서,https://www.instagram.com/p/xxxxx/,홍길동,2025-05-01,500000,12000";
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -911,7 +911,7 @@ export default function MonitoringPage() {
     switch (sortCol) {
       case "인플루언서": av = (a.account_name ?? a.influencers?.name ?? "").toLowerCase(); bv = (b.account_name ?? b.influencers?.name ?? "").toLowerCase(); break;
       case "업체명": av = (a.company_name?.trim() || companyForAccount(a.account_name ?? a.influencers?.name, a.channel_type) || "").toLowerCase(); bv = (b.company_name?.trim() || companyForAccount(b.account_name ?? b.influencers?.name, b.channel_type) || "").toLowerCase(); break;
-      case "프로젝트명": av = (a.project_name ?? "").toLowerCase(); bv = (b.project_name ?? "").toLowerCase(); break;
+      case "프로젝트명": av = assetNameOf(a).toLowerCase(); bv = assetNameOf(b).toLowerCase(); break;
       case "상품명": av = (a.product_name ?? "").toLowerCase(); bv = (b.product_name ?? "").toLowerCase(); break;
       case "증분량":
         av = viewIncrement(a, sa, disp.get(a.id)?.prev ?? null) ?? -Infinity;
@@ -947,7 +947,7 @@ export default function MonitoringPage() {
   });
 
   function downloadCSV() {
-    const headers = ["업로드일", "인플루언서", "링크", "프로젝트명", "상품명", "채널분류", "증분량", "조회수", "도달수", "비용(원)", "조회당비용(원)", "도달당비용(원)"];
+    const headers = ["업로드일", "인플루언서", "링크", "소재명", "상품명", "채널분류", "증분량", "조회수", "도달수", "비용(원)", "조회당비용(원)", "도달당비용(원)"];
     const rows = sortedPosts.map(post => {
       // 🔒 필터 불변식: CSV도 화면과 동일한 값 규칙(pickRangeStats) — 필터 무시하고 latest를 내보내
       //   '화면≠내보내기'가 되던 버그(2026-07-06) 수정
@@ -963,7 +963,7 @@ export default function MonitoringPage() {
         post.posted_at ?? "",
         post.account_name ?? post.influencers?.name ?? "",
         post.url ?? "",
-        post.project_name ?? "",
+        assetNameOf(post),
         post.product_name ?? "",
         post.channel_type ?? "",
         (viewIncrement(post, s, prev) ?? ""),
@@ -1781,7 +1781,7 @@ export default function MonitoringPage() {
             <p className="text-a-ink-muted leading-relaxed">협찬 게시물의 조회수·좋아요·댓글과 비용 효율(조회당·도달당비용)을 날짜별로 자동 추적하고, 검색량·전환 광고비·B2B 발주량과 함께 비교합니다.</p>
           </HelpSection>
           <HelpSection title="버튼 설명">
-            <HelpItem label="+ 게시물 추가 —">협찬 게시물 URL과 프로젝트명·상품명을 입력해 추적 대상으로 등록합니다.</HelpItem>
+            <HelpItem label="+ 게시물 추가 —">협찬 게시물 URL과 소재명·상품명을 입력해 추적 대상으로 등록합니다.</HelpItem>
             <HelpItem label="CSV 업로드 —">여러 게시물을 CSV로 한 번에 등록합니다. 템플릿을 내려받아 채운 뒤 올리세요.</HelpItem>
             <HelpItem label="지금 수집 —">등록된 모든 게시물의 현재 수치를 즉시 수집합니다. GitHub Actions 자동 수집과 별개로 수동으로도 실행 가능합니다.</HelpItem>
             <HelpItem label="엑셀 다운로드 —">현재 필터가 적용된 게시물 목록을 CSV로 내려받습니다.</HelpItem>
@@ -1816,15 +1816,15 @@ export default function MonitoringPage() {
             <div className="flex items-start justify-between mb-4">
               <h2 id="modal-add-title" className="font-semibold tracking-tight">게시물 추가</h2>
               <button
-                onClick={() => { setShowAdd(false); setForm({ url: "", product_name: "", project_name: "", channel_type: "", cost: "", content_summary: "" }); }}
+                onClick={() => { setShowAdd(false); setForm({ url: "", product_name: "", asset_name: "", channel_type: "", cost: "", content_summary: "" }); }}
                 aria-label="닫기"
                 className="-mr-1.5 -mt-1.5 p-1.5 rounded-lg text-a-ink-muted hover:text-a-ink hover:bg-a-parchment transition">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
               </button>
             </div>
             <div className="space-y-3">
-              <input placeholder="프로젝트명" value={form.project_name}
-                onChange={e => setForm(p => ({ ...p, project_name: e.target.value }))}
+              <input placeholder="소재명" value={form.asset_name}
+                onChange={e => setForm(p => ({ ...p, asset_name: e.target.value }))}
                 className="w-full border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-sm placeholder:text-a-ink-muted focus:outline-none focus:border-a-blue focus:ring-1 focus:ring-a-blue transition" />
               <input placeholder="상품명" value={form.product_name}
                 onChange={e => setForm(p => ({ ...p, product_name: e.target.value }))}
@@ -1853,7 +1853,7 @@ export default function MonitoringPage() {
               <p className="text-xs text-a-ink-muted">인플루언서 계정명과 게시일은 수집 실행 시 자동으로 가져옵니다.</p>
             </div>
             <div className="flex gap-2 mt-5 justify-end">
-              <button onClick={() => { setShowAdd(false); setForm({ url: "", product_name: "", project_name: "", channel_type: "", cost: "", content_summary: "" }); }}
+              <button onClick={() => { setShowAdd(false); setForm({ url: "", product_name: "", asset_name: "", channel_type: "", cost: "", content_summary: "" }); }}
                 className="btn-ghost">취소</button>
               <button onClick={addPost} disabled={adding || !form.url} className="btn-primary px-5 py-2 text-sm">
                 {adding ? "추가 중..." : "추가"}
@@ -1867,7 +1867,7 @@ export default function MonitoringPage() {
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-[70]">
           <div className="bg-white rounded-[22px] p-6 w-[820px] shadow-[0_8px_40px_rgba(0,0,0,0.12)]">
             <h2 className="font-semibold tracking-tight mb-1">CSV 일괄 업로드</h2>
-            <p className="text-xs text-a-ink-muted mb-4">컬럼 순서: 프로젝트명, 상품명, 채널분류, 게시물URL, 인플루언서명, 게시일, 비용, 도달수 (5~8번째 컬럼 생략 가능)</p>
+            <p className="text-xs text-a-ink-muted mb-4">컬럼 순서: 소재명, 상품명, 채널분류, 게시물URL, 인플루언서명, 게시일, 비용, 도달수 (5~8번째 컬럼 생략 가능)</p>
             <div className="flex items-center gap-2 mb-4">
               <button onClick={downloadTemplate}
                 className="text-xs px-3.5 py-1.5 rounded-full border border-a-hairline text-a-ink-muted hover:bg-a-parchment transition">
@@ -1887,7 +1887,7 @@ export default function MonitoringPage() {
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="border-b border-a-hairline text-a-ink-muted">
-                        <th className="px-3 py-1.5 text-left font-medium">프로젝트명</th>
+                        <th className="px-3 py-1.5 text-left font-medium">소재명</th>
                         <th className="px-3 py-1.5 text-left font-medium">상품명</th>
                         <th className="px-3 py-1.5 text-left font-medium">채널분류</th>
                         <th className="px-3 py-1.5 text-left font-medium">URL</th>
@@ -1900,7 +1900,7 @@ export default function MonitoringPage() {
                     <tbody>
                       {csvRows.map((r, i) => (
                         <tr key={i} className="border-b border-a-divider last:border-0">
-                          <td className="px-3 py-1.5 text-a-ink-muted">{r.project_name ?? "-"}</td>
+                          <td className="px-3 py-1.5 text-a-ink-muted">{r.asset_name ?? r.project_name ?? "-"}</td>
                           <td className="px-3 py-1.5 text-a-ink-muted">{r.product_name ?? "-"}</td>
                           <td className="px-3 py-1.5 text-a-ink-muted">{r.channel_type ?? "-"}</td>
                           <td className="px-3 py-1.5 text-a-blue max-w-[120px] truncate">{r.url}</td>
@@ -1936,7 +1936,7 @@ export default function MonitoringPage() {
                   {trendPost.account_name ?? trendPost.influencers?.name ?? "-"}
                 </h2>
                 <p className="text-xs text-a-ink-muted mt-0.5">
-                  {[trendPost.project_name, trendPost.product_name].filter(Boolean).join(" · ")}
+                  {[assetNameOf(trendPost), trendPost.product_name].filter(Boolean).join(" · ")}
                 </p>
               </div>
               <button onClick={() => setTrendPost(null)}

@@ -18,6 +18,7 @@ export type Post = {
   posted_at: string | null;
   product_name: string | null;
   project_name: string | null;
+  asset_name: string | null;
   account_name: string | null;
   company_name: string | null;
   channel_type: string | null;
@@ -33,7 +34,7 @@ export type Post = {
   all_stats: DailyStats[];
 };
 
-export type CsvRow = { url: string; project_name: string | null; product_name: string | null; channel_type: string | null; account_name: string | null; posted_at: string | null; cost: number | null; reach_count: number | null };
+export type CsvRow = { url: string; asset_name: string | null; project_name?: string | null; product_name: string | null; channel_type: string | null; account_name: string | null; posted_at: string | null; cost: number | null; reach_count: number | null };
 
 export type B2bDaily = {
   date: string;
@@ -44,7 +45,7 @@ export type B2bDaily = {
 
 export type Filters = { name: string; project: string; caption: string; products: string[]; channelTypes: string[]; companies: string[]; pdNames: string[]; dateFrom: string; dateTo: string; postedFrom: string; postedTo: string };
 export const INIT_FILTERS: Filters = { name: "", project: "", caption: "", products: [], channelTypes: [], companies: [], pdNames: [], dateFrom: "", dateTo: "", postedFrom: "", postedTo: "" };
-export type EditCell = { postId: string; field: "project_name" | "product_name" | "channel_type" | "cost" | "reach_count" | "account_name" | "company_name" | "posted_at" | "notes" | "content_summary" | "likes_count" | "comments_count"; value: string; measuredAt?: string };
+export type EditCell = { postId: string; field: "asset_name" | "project_name" | "product_name" | "channel_type" | "cost" | "reach_count" | "account_name" | "company_name" | "posted_at" | "notes" | "content_summary" | "likes_count" | "comments_count"; value: string; measuredAt?: string };
 export const CHANNEL_TYPES = [
   "바이럴(배너)",
   "바이럴(영상)",
@@ -113,6 +114,12 @@ export function normalizeChannelType(value: string | null): string | null {
 export function isFreeChannel(channelType: unknown): boolean {
   const ct = String(channelType ?? "");
   return ct.includes("위성") || ct.includes("온드");
+}
+
+// 소재명 정본은 sponsored_posts.asset_name이다. project_name은 과거 레코드가
+// 아직 이관되지 않은 동안 화면을 비우지 않기 위한 읽기 전용 폴백으로만 사용한다.
+export function assetNameOf(post: Pick<Post, "asset_name" | "project_name">): string {
+  return post.asset_name?.trim() || post.project_name?.trim() || "";
 }
 
 // 표시 전용: 괄호 앞에 공백 추가 ("바이럴(배너)" → "바이럴 (배너)"). 저장값은 그대로, 화면에만 적용(필터 매칭은 공백 무시).
@@ -256,7 +263,7 @@ export function pickMetric(s: DailyStats): number | null {
   return s.play_count;
 }
 
-// 소재명 규칙(파일명 생성기)으로 작성된 project_name을 17개 차원으로 파싱.
+// 소재명 규칙(파일명 생성기) 문자열을 17개 차원으로 파싱.
 // 예: [26.06]F_V_DB혼_바이럴_상시_바이럴형_CU단독강조_var1.릴스_퀄리티근황.X_1P_황경원_260615_빙과_이수현
 export const PROJECT_PARSE_COLS = [
   "제작월", "채널구분", "영상/이미지 구분", "제품코드", "광고종류", "스킴명", "대분류 포맷",

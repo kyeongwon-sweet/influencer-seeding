@@ -967,6 +967,7 @@ function exportStats() {
     let matched = 0, missing = 0, shortcodeFormatMatched = 0;
     const rowMap = new Array(nRows);
     const rowKeys = new Array(nRows);
+    const keyRowCounts = {};
     const postedAtByRow = new Array(nRows);
     for (let i = 0; i < nRows; i++) {
       postedAtByRow[i] = toDateStr_(postedVals[i][0]);
@@ -974,6 +975,7 @@ function exportStats() {
       if (!url) { rowMap[i] = null; rowKeys[i] = null; continue; }
       const key = linkKey_(url);
       rowKeys[i] = key;
+      if (key) keyRowCounts[key] = (keyRowCounts[key] || 0) + 1;
       const m = byKey[key];
       if (m) {
         rowMap[i] = m; matched++;
@@ -1044,21 +1046,101 @@ function exportStats() {
         }
       }
     }
-    // 변경된 날짜 열만 기록(비-날짜 열은 절대 안 건드림)
+    // 변경된 날짜 열만 URL-key로 기록한다. URL열·날짜블록을 쓰기 직전 각각 한 번만
+    // 다시 읽어 현재 URL→행 위치를 만든다(날짜열마다 재조회하지 않아 왕복 폭증 방지).
+    // 계산 뒤 사람이 정렬해도 현재 URL 위치로 쓰며, 중복 URL은 안전하게 건너뛴다.
+    const latestLastRowForDates = sheet.getLastRow();
+    if (latestLastRowForDates !== lastRow) {
+      safeAlert_(`⚠️ 실행 중 행 수가 ${lastRow}→${latestLastRowForDates}로 바뀌어 날짜값 쓰기를 중단했습니다. 잠시 후 다시 실행됩니다.`);
+      return false;
+    }
+    const latestUrlsForDates = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.url, nRows, 1).getValues();
+    const latestDateBlock = sheet.getRange(CONFIG.DATA_START_ROW, firstCol, nRows, width).getValues();
+    const latestRowByKey = {}, latestKeyCounts = {};
+    for (let i = 0; i < nRows; i++) {
+      const key = linkKey_(String(latestUrlsForDates[i][0] || "").trim());
+      if (!key) continue;
+      latestKeyCounts[key] = (latestKeyCounts[key] || 0) + 1;
+      latestRowByKey[key] = i;
+    }
+    const finalDateBlock = latestDateBlock.map(function(row) { return row.slice(); });
+    let dateKeyWrites = 0, dateKeyConflicts = 0, concurrentCellSkips = 0;
     dateCols.forEach(dc => {
       const bi = dc.col - firstCol;
-      let changed = false;
-      const colVals = new Array(nRows);
       for (let i = 0; i < nRows; i++) {
-        colVals[i] = [newBlock[i][bi]];
-        if (newBlock[i][bi] !== block[i][bi]) changed = true;
+        const key = rowKeys[i];
+        if (!key || newBlock[i][bi] === block[i][bi]) continue;
+        if (keyRowCounts[key] > 1 || latestKeyCounts[key] > 1) { dateKeyConflicts++; continue; }
+        const latestIndex = latestRowByKey[key];
+        if (latestIndex === undefined) { concurrentCellSkips++; continue; }
+        const current = latestDateBlock[latestIndex][bi];
+        // 계산 이후 사람이 같은 셀을 수정했다면 그 최신 수기값을 보존한다.
+        if (current !== block[i][bi]) { concurrentCellSkips++; continue; }
+        if (current !== newBlock[i][bi]) {
+          finalDateBlock[latestIndex][bi] = newBlock[i][bi];
+          dateKeyWrites++;
+        }
       }
-      if (changed) sheet.getRange(CONFIG.DATA_START_ROW, dc.col, nRows, 1).setValues(colVals);
+    });
+
+    // 쓰기 직전 URL 순서를 한 번 더 확인한다. 바뀌었으면 한 칸도 쓰지 않고 재시도한다.
+    const preWriteUrls = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.url, nRows, 1).getValues();
+    let preWriteOrderChanged = false;
+    for (let i = 0; i < nRows; i++) {
+      if (linkKey_(String(preWriteUrls[i][0] || "").trim()) !== linkKey_(String(latestUrlsForDates[i][0] || "").trim())) {
+        preWriteOrderChanged = true; break;
+      }
+    }
+    if (preWriteOrderChanged) {
+      safeAlert_("⚠️ 날짜값 쓰기 직전 행 정렬이 감지돼 전체 쓰기를 취소했습니다. 잠시 후 다시 실행됩니다.");
+      return false;
+    }
+
+    // 날짜열은 보통 하나의 연속 블록이다. 비-날짜 열이 끼어 있어도 그 열은 건드리지 않도록
+    // 연속 날짜열 그룹별로 한 번만 setValues한다(2,000행×97열도 수십 번이 아닌 1~2회 쓰기).
+    const dateColGroups = [];
+    for (let i = 0; i < dateCols.length; i++) {
+      const col = dateCols[i].col;
+      const prev = dateColGroups.length ? dateColGroups[dateColGroups.length - 1] : null;
+      if (!prev || col !== prev.end + 1) dateColGroups.push({ start: col, end: col });
+      else prev.end = col;
+    }
+    dateColGroups.forEach(function(group) {
+      const startBi = group.start - firstCol;
+      const groupWidth = group.end - group.start + 1;
+      let changed = false;
+      for (let i = 0; i < nRows && !changed; i++) {
+        for (let j = 0; j < groupWidth; j++) {
+          if (finalDateBlock[i][startBi + j] !== latestDateBlock[i][startBi + j]) { changed = true; break; }
+        }
+      }
+      if (!changed) return;
+      assertRowCountStable_(sheet, latestLastRowForDates, "exportStats.dateBlock");
+      const values = finalDateBlock.map(function(row) { return row.slice(startBi, startBi + groupWidth); });
+      sheet.getRange(CONFIG.DATA_START_ROW, group.start, nRows, groupWidth).setValues(values);
     });
 
     const incrementCol = getIncrementCol_(sheet);
     let incWritten = 0;
     if (incrementCol) {
+      // 증분 수식은 아직 행번호를 참조하는 3단계 대상이다. 날짜값은 이미 URL-key로
+      // 안전하게 썼지만, 계산 중 정렬이 있었다면 수식은 쓰지 않고 다음 재시도로 넘긴다.
+      const formulaLastRow = sheet.getLastRow();
+      if (formulaLastRow !== lastRow) {
+        safeAlert_(`⚠️ 실행 중 행 수가 ${lastRow}→${formulaLastRow}로 바뀌어 증분 수식 쓰기를 중단했습니다. 날짜값은 URL 기준으로 안전하게 반영됐으며 잠시 후 다시 실행됩니다.`);
+        return false;
+      }
+      const formulaUrls = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.url, nRows, 1).getValues();
+      let urlOrderChanged = false;
+      for (let i = 0; i < nRows; i++) {
+        const latestKey = linkKey_(String(formulaUrls[i][0] || "").trim());
+        const originalKey = rowKeys[i] || ""; // 빈 URL: 초기 null과 재조회 ""를 같은 값으로 취급
+        if (latestKey !== originalKey) { urlOrderChanged = true; break; }
+      }
+      if (urlOrderChanged) {
+        safeAlert_("⚠️ 실행 중 행 정렬이 감지돼 증분 수식 쓰기를 중단했습니다. 날짜값은 URL 기준으로 안전하게 반영됐으며 잠시 후 다시 실행됩니다.");
+        return false;
+      }
       const incFormulas = [];
       for (let i = 0; i < nRows; i++) {
         const url = String(urlVals[i][0] || "").trim();
@@ -1135,12 +1217,14 @@ function exportStats() {
       if (cumChanged) cumRange.setValues(cumOut);
     }
 
-    let msg = `✅ 수집 조회수를 시트에 반영했습니다.\n새 날짜 열 ${addedCols}개 추가 · 실측 갱신 ${filled}칸 · 공백 이어받기 ${carried}칸 · 업로드 전 값 삭제 ${prePostedCleared}칸 · 종료 이후 값 삭제 ${endedCleared}칸 · 증분 수식 ${incWritten}행 · 기존값 보존 ${preserved}칸 · 매칭 게시물 ${matched}개 · 날짜 열 ${dateCols.length}개`;
+    let msg = `✅ 수집 조회수를 시트에 반영했습니다.\n새 날짜 열 ${addedCols}개 추가 · URL-key 날짜 쓰기 ${dateKeyWrites}칸 · 실측 갱신 ${filled}칸 · 공백 이어받기 ${carried}칸 · 업로드 전 값 삭제 ${prePostedCleared}칸 · 종료 이후 값 삭제 ${endedCleared}칸 · 증분 수식 ${incWritten}행 · 기존값 보존 ${preserved}칸 · 매칭 게시물 ${matched}개 · 날짜 열 ${dateCols.length}개`;
     if (endedFinalFilled) msg += `\n🛑 트래킹 종료글 H열 빈칸 ${endedFinalFilled}행에 DB 최종 누적값을 보존했습니다.`;
     if (endedFinalNoMetric) msg += `\n⚠️ 트래킹 종료됐지만 DB 조회수/도달수 이력이 없는 행 ${endedFinalNoMetric}개는 최종값을 채울 수 없습니다.`;
     if (shortcodeFormatMatched) msg += `\n🔁 /reel·/tv 잔재 URL ${shortcodeFormatMatched}개는 shortcode 기준으로 정상 매칭했습니다.`;
     if (missing) msg += `\n⚠️ 시트엔 있으나 대시보드에 수집기록이 없는 URL ${missing}개(아직 수집 전이거나 미등록).`;
     if (futureCleared) msg += `\n🗓️ 오늘·미래(수집일-1 이후) 날짜칸 ${futureCleared}개를 비웠습니다.`;
+    if (dateKeyConflicts) msg += `\n⚠️ 중복 URL 키의 변경 ${dateKeyConflicts}칸은 어느 행이 정본인지 불명확해 쓰지 않았습니다.`;
+    if (concurrentCellSkips) msg += `\n🛡️ 계산 뒤 사람이 수정한 ${concurrentCellSkips}칸은 최신 수기값을 보존했습니다.`;
     if (orphanRows) msg += `\n🧟 URL 없이 숫자만 있는 '고아 행' ${orphanRows}개 발견 — 행 삭제로 정리하세요(데이터는 DB에 있음).`;
     safeAlert_(msg);
     return true;

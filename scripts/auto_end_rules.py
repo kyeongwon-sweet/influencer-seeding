@@ -31,7 +31,7 @@ def is_short_lived_type(channel_type: Any) -> bool:
 def is_auto_end_excluded(post: dict[str, Any]) -> bool:
     haystack = " ".join(
         text_of(post.get(field))
-        for field in ("channel_type", "project_name", "product_name")
+        for field in ("channel_type", "asset_name", "project_name", "product_name")
     )
     return any(term in haystack for term in AUTO_END_EXCLUDED_TERMS)
 

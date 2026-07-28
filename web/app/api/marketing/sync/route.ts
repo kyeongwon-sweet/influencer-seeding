@@ -13,7 +13,8 @@ import { normalizeChannelType, isFreeChannel } from "@/app/monitoring/lib";
  *     posted_at?: string,        // ISO 8601 또는 YYYY-MM-DD
  *     url: string,               // Instagram/YouTube URL (필수)
  *     channel?: string,          // 채널분류 (instagram, youtube, 등)
- *     project_name?: string,     // 프로젝트명
+ *     asset_name?: string,       // 소재명(정본)
+ *     project_name?: string,     // 구 클라이언트 호환 입력(소재명 폴백)
  *     product_name?: string,     // 상품명
  *     cost?: number,             // 비용
  *     caption?: string,          // 게시물 캡션 (현재 저장되지 않음)
@@ -73,6 +74,9 @@ export async function POST(req: NextRequest) {
       url: normalizeUrl(String(r.url)) || (String(r.url).replace(/\/$/, "") + "/"),  // 정규화(쿼리 제거 + 끝 /) — bulk/sync와 통일
       posted_at,
       channel_type,
+      asset_name: r.asset_name
+        ? String(r.asset_name).trim()
+        : (r.project_name ? String(r.project_name).trim() : null),
       project_name: r.project_name ? String(r.project_name).trim() : null,
       product_name: r.product_name ? String(r.product_name).trim() : null,
       cost: free ? 0 : (r.cost != null ? Number(r.cost) : null),

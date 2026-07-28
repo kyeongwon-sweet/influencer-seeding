@@ -47,6 +47,26 @@ def test_owned_or_satellite_channel_is_excluded():
     assert decision.reason == "excluded_channel_project"
 
 
+def test_free_seeding_policy_stays_age_based_not_excluded():
+    decision = classify_auto_end(
+        _post(channel_type="무상시딩 (피드)"),
+        target_date="2026-07-15",
+        max_metric=100_000,
+    )
+    assert decision.should_end is True
+    assert decision.reason == "age_after_7"
+
+
+def test_asset_name_participates_in_owned_channel_exclusion():
+    decision = classify_auto_end(
+        _post(channel_type="협찬 (인플루언서)", asset_name="온드미디어_리컷"),
+        target_date="2026-07-15",
+        max_metric=100_000,
+    )
+    assert decision.should_end is False
+    assert decision.reason == "excluded_channel_project"
+
+
 def test_caption_end_keyword_still_forces_end():
     decision = classify_auto_end(_post(content_summary="삭제 예정"), target_date="2026-07-15", max_metric=2_100_000)
     assert decision.should_end is True

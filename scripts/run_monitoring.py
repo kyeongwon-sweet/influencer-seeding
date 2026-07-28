@@ -636,7 +636,7 @@ def run():
         _start, _PAGE = 0, 1000
         while True:
             _res = db.table("sponsored_posts").select(
-                "id, url, posted_at, account_name, influencer_id, ended_at, content_summary, notes, channel_type, project_name, product_name, manual_fields, not_found_streak, not_found_last_at, review_requested_at"
+                "id, url, posted_at, account_name, influencer_id, ended_at, content_summary, notes, channel_type, asset_name, project_name, product_name, manual_fields, not_found_streak, not_found_last_at, review_requested_at"
             ).range(_start, _start + _PAGE - 1).execute()
             _chunk = _res.data or []
             all_posts.extend(_chunk)

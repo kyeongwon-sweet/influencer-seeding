@@ -2,7 +2,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 // 게시물 표 — monitoring/page.tsx 에서 추출. 모든 상태/핸들러는 부모(MonitoringPage) 소유(props).
 // 인라인 편집/정렬/선택/열 리사이즈는 전부 부모 함수를 props로 받아 그대로 호출 → 동작 동일.
-import { type Post, type EditCell, type DailyStats, type Filters, pickRangeStats, hasNotableChange, viewIncrement, incrementTooltip, INCREMENT_HEADER_TOOLTIP, fmt, fmtChannelType, effectiveReach, bannerDailyMetric, pickMetric, CHANNEL_TYPES, INIT_FILTERS, CHART } from "../lib";
+import { type Post, type EditCell, type DailyStats, type Filters, pickRangeStats, hasNotableChange, viewIncrement, incrementTooltip, INCREMENT_HEADER_TOOLTIP, fmt, fmtChannelType, effectiveReach, bannerDailyMetric, assetNameOf, pickMetric, CHANNEL_TYPES, INIT_FILTERS, CHART } from "../lib";
 import { MIN_ENTRY_DATE, maxDateKST } from "@/lib/dateRule";
 import { companyForAccount } from "@/lib/companyMap";
 import { productCodeOf } from "@/lib/productCode";
@@ -204,7 +204,7 @@ function PostsTable(props: Props) {
                   <TH w={colWidths["인플루언서"]} fixed onResize={e => startResize("인플루언서", e)} {...sp("인플루언서")}>인플루언서</TH>
                   <TH w={colWidths["업체명"]} fixed onResize={e => startResize("업체명", e)} {...sp("업체명")}>업체명</TH>
                   <TH w={colWidths["상품명"]} fixed onResize={e => startResize("상품명", e)} {...sp("상품명")}>상품명</TH>
-                  <TH w={colWidths["프로젝트명"]} fixed onResize={e => startResize("프로젝트명", e)} {...sp("프로젝트명")}>프로젝트명</TH>
+                  <TH w={colWidths["프로젝트명"]} fixed onResize={e => startResize("프로젝트명", e)} {...sp("프로젝트명")}>소재명</TH>
                   <TH className="border-l border-a-divider" right w={colWidths["비용"]} onResize={e => startResize("비용", e)} {...sp("비용")}>비용(원)</TH>
                   <TH right w={colWidths["조회수"]} onResize={e => startResize("조회수", e)} {...sp("조회수")}>
                     <span className="group/views relative">
@@ -255,7 +255,7 @@ function PostsTable(props: Props) {
                     <td className="sticky top-10 z-20 bg-blue-50" />{/* 인플루언서 */}
                     <td className="sticky top-10 z-20 bg-blue-50" />{/* 업체명 */}
                     <td className="sticky top-10 z-20 bg-blue-50" />{/* 상품명 */}
-                    <td className="sticky top-10 z-20 bg-blue-50" />{/* 프로젝트명 */}
+                    <td className="sticky top-10 z-20 bg-blue-50" />{/* 소재명 */}
                     <td className="px-3 py-2.5 text-right tabular-nums text-a-ink border-l border-a-divider sticky top-10 z-20 bg-blue-50">{tableTotals.cost.toLocaleString()}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-a-blue sticky top-10 z-20 bg-blue-50">{tableTotals.views.toLocaleString()}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-a-ink sticky top-10 z-20 bg-blue-50">{tableTotals.views > 0 ? (tableTotals.cost / tableTotals.views).toFixed(2) : "-"}</td>{/* 전체 평균 조회당비용 = 비용합계 ÷ 조회수합계 */}
@@ -399,16 +399,16 @@ function PostsTable(props: Props) {
                         )}
                       </TD>
                       <TD muted w={colWidths["프로젝트명"]} fixed>
-                        {editCell?.postId === post.id && editCell?.field === "project_name" ? (
+                        {editCell?.postId === post.id && editCell?.field === "asset_name" ? (
                           <input autoFocus value={editCell.value}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
-                            onBlur={() => patchPost(post.id, "project_name", editCell.value)}
-                            onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "project_name", editCell.value); if (e.key === "Escape") { e.preventDefault(); setEditCell(null); }; }}
+                            onBlur={() => patchPost(post.id, "asset_name", editCell.value)}
+                            onKeyDown={e => { if (e.key === "Enter") patchPost(post.id, "asset_name", editCell.value); if (e.key === "Escape") { e.preventDefault(); setEditCell(null); }; }}
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5" />
                         ) : (
-                          <span onClick={() => setEditCell({ postId: post.id, field: "project_name", value: post.project_name ?? "" })}
+                          <span onClick={() => setEditCell({ postId: post.id, field: "asset_name", value: assetNameOf(post) })}
                             className="block truncate cursor-text text-a-ink-muted hover:text-a-blue transition-colors">
-                            {post.project_name ?? "-"}
+                            {assetNameOf(post) || "-"}
                           </span>
                         )}
                       </TD>
@@ -574,7 +574,7 @@ function PostsTable(props: Props) {
                       </td>
                       <td style={{ minWidth: colWidths["삭제"] }} className="px-3 py-3 text-right whitespace-nowrap">
                         <button
-                          onClick={() => setEditCell({ postId: post.id, field: "project_name", value: post.project_name ?? "" })}
+                          onClick={() => setEditCell({ postId: post.id, field: "asset_name", value: assetNameOf(post) })}
                           className="text-a-ink-muted hover:text-a-ink transition opacity-0 group-hover:opacity-100 mr-2"
                           title="수정">
                           <svg width="12" height="12" viewBox="0 0 20 20" fill="none">

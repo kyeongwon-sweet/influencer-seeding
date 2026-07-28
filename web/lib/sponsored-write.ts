@@ -69,7 +69,7 @@ export async function upsertSponsoredRows(
         channel_type,
         project_name:    r.project_name || null,
         product_name:    r.product_name || null,
-        asset_name:      r.asset_name || null,   // 소재명 보존(시트 E열) — ⚠️ DB에 asset_name 컬럼 있어야 함
+        asset_name:      r.asset_name || null,
         planner:         r.planner || null,
         creator:         r.creator || null,
         cost:            free ? 0 : (r.cost != null && r.cost !== "" ? Number(r.cost) : null),
@@ -88,11 +88,10 @@ export async function upsertSponsoredRows(
     return { summary: { upserted: 0, created: 0, meta_filled: 0, ended_marked: 0 } };
   }
 
-  // ⚠️ asset_name(소재명 보존): DB에 asset_name 컬럼이 생긴 뒤에만 이 브랜치를 main에 머지할 것.
-  // 컬럼 없이 배포하면 아래 SELECT `${META.join(", ")}`가 에러 → 동기화 전체가 깨짐.
   const META = ["posted_at", "account_name", "company_name", "content_summary", "channel_type", "project_name", "product_name", "asset_name", "planner", "creator", "cost"];
-  // 기획자·제작자는 '시트 무조건 우선'(사용자 2026-07-23): 대시보드 수동값(manual_fields)도 시트값으로 덮는다.
-  const SHEET_WINS = new Set(["planner", "creator"]);
+  // 기획자·제작자와 소재명은 시트 정본: 대시보드 manual_fields보다 시트의 비어있지 않은 값이 우선한다.
+  // 빈 시트값은 rows 생성 단계부터 null이라 아래 valPresent 가드가 DB 값을 지우지 않는다.
+  const SHEET_WINS = new Set(["asset_name", "planner", "creator"]);
 
   // 기존 게시물(id+메타) 조회 — '빈 값만 채우기' 비교용.
   // ⚠️ URL이 많으면 .in() 쿼리 URL 길이 한도 초과로 400(Bad Request) → 80개씩 청크로 조회.

@@ -235,6 +235,44 @@ test("URL-key writers re-read current URLs and write only changed row runs", () 
   assert.match(statusBody, /writeColumnRuns_\(sheet, statusCol, clearedEdits, latestLastRow\)/);
 });
 
+test("exportStats phase 2 writes date values by URL key and guards row-based formulas", () => {
+  const start = appsScript.indexOf("function exportStats()");
+  const end = appsScript.indexOf("function parseMonthDay_", start);
+  const body = appsScript.slice(start, end);
+  assert.notEqual(start, -1);
+  assert.match(body, /const latestUrlsForDates = sheet\.getRange\(CONFIG\.DATA_START_ROW, fieldCols\.url, nRows, 1\)\.getValues\(\)/);
+  assert.match(body, /const latestDateBlock = sheet\.getRange\(CONFIG\.DATA_START_ROW, firstCol, nRows, width\)\.getValues\(\)/);
+  assert.match(body, /const latestRowByKey = \{\}, latestKeyCounts = \{\}/);
+  assert.match(body, /const latestIndex = latestRowByKey\[key\]/);
+  assert.match(body, /if \(current !== block\[i\]\[bi\]\)/);
+  assert.match(body, /finalDateBlock\[latestIndex\]\[bi\] = newBlock\[i\]\[bi\]/);
+  assert.match(body, /const preWriteUrls = sheet\.getRange\(CONFIG\.DATA_START_ROW, fieldCols\.url, nRows, 1\)\.getValues\(\)/);
+  assert.match(body, /if \(preWriteOrderChanged\)[\s\S]*?return false/);
+  assert.match(body, /const dateColGroups = \[\]/);
+  assert.match(body, /sheet\.getRange\(CONFIG\.DATA_START_ROW, group\.start, nRows, groupWidth\)\.setValues\(values\)/);
+  assert.match(body, /keyRowCounts\[key\] > 1 \|\| latestKeyCounts\[key\] > 1/);
+  assert.doesNotMatch(body, /writeColumnRuns_\(sheet, dc\.col/);
+  assert.match(body, /const formulaUrls = sheet\.getRange\(CONFIG\.DATA_START_ROW, fieldCols\.url, nRows, 1\)\.getValues\(\)/);
+  assert.match(body, /const originalKey = rowKeys\[i\] \|\| ""/);
+  assert.match(body, /if \(urlOrderChanged\)[\s\S]*?return false/);
+});
+
+test("asset_name is sent from the sheet and remains the canonical sheet-wins field", () => {
+  assert.match(appsScript, /"소재명":\s*"asset_name"/);
+  assert.match(appsScript, /p\.asset_name\s*=/);
+  const statsRoute = readFileSync(
+    new URL("../app/api/sponsored-posts/stats-import/route.ts", import.meta.url),
+    "utf8",
+  );
+  const sponsoredWrite = readFileSync(
+    new URL("../lib/sponsored-write.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(statsRoute, /POST_FIELDS = \[[^\]]*"asset_name"/);
+  assert.match(statsRoute, /SHEET_WINS = new Set\(\["asset_name"\]\)/);
+  assert.match(sponsoredWrite, /SHEET_WINS = new Set\(\["asset_name", "planner", "creator"\]\)/);
+});
+
 test("writeColumnByKey_ follows the latest URL order and preserves nonblank manual cells", () => {
   const helpers = new Function(
     `${writeGuard}\nreturn { writeColumnByKey_: writeColumnByKey_ };`,

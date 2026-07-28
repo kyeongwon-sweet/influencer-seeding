@@ -18,7 +18,7 @@ function fmtTime(iso: string) {
 // 모바일 전용 경량 게시물 추가 화면. 무거운 모니터링 대시보드를 로드하지 않고
 // 폰에서 URL만 붙여넣어 바로 추가할 수 있게 한다. (사이드바 없이 전체 폭 — AppShell BARE_ROUTES)
 // 저장 로직은 모니터링 모달의 addPost와 동일: POST /api/sponsored-posts (단건).
-const EMPTY = { url: "", product_name: "", project_name: "", channel_type: "", cost: "", content_summary: "" };
+const EMPTY = { url: "", product_name: "", asset_name: "", channel_type: "", cost: "", content_summary: "" };
 
 export default function MobileAddPage() {
   const [form, setForm] = useState(EMPTY);
@@ -50,7 +50,7 @@ export default function MobileAddPage() {
         body: JSON.stringify({
           url: form.url.trim(),
           product_name: form.product_name || null,
-          project_name: form.project_name || null,
+          asset_name: form.asset_name || null,
           channel_type: form.channel_type || null,
           cost: parseNumInput(form.cost),
           content_summary: form.content_summary.trim() || null,
@@ -116,8 +116,8 @@ export default function MobileAddPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-a-ink-muted mb-1">프로젝트명</label>
-              <input placeholder="선택" value={form.project_name} onChange={set("project_name")} className={inputCls} />
+              <label className="block text-xs font-medium text-a-ink-muted mb-1">소재명</label>
+              <input placeholder="선택" value={form.asset_name} onChange={set("asset_name")} className={inputCls} />
             </div>
             <div>
               <label className="block text-xs font-medium text-a-ink-muted mb-1">상품명</label>

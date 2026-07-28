@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   pearson, solveLinear, multipleR2, movingAvg, weekKeyOf, weekLabelOf,
-  padDomain, effectiveReach, bannerDailyMetric, alignedPairs, bestLag, parseCsvLine, pickRangeStats, viewIncrement, safeIncrement,
+  padDomain, effectiveReach, bannerDailyMetric, assetNameOf, alignedPairs, bestLag, parseCsvLine, pickRangeStats, viewIncrement, safeIncrement,
 } from "../app/monitoring/lib.ts";
 
 const close = (a: number, b: number, eps = 1e-9) => Math.abs(a - b) < eps;
@@ -67,6 +67,12 @@ test("bannerDailyMetric: reach 우선, 없으면 play 폴백, 둘 다 없으면 
   assert.equal(bannerDailyMetric(undefined), null);
 });
 
+test("assetNameOf: asset_name이 정본이고 project_name은 legacy 폴백", () => {
+  assert.equal(assetNameOf({ asset_name: "  정본 소재  ", project_name: "옛 프로젝트" }), "정본 소재");
+  assert.equal(assetNameOf({ asset_name: "", project_name: "  옛 프로젝트  " }), "옛 프로젝트");
+  assert.equal(assetNameOf({ asset_name: null, project_name: null }), "");
+});
+
 test("alignedPairs / bestLag: lag 정렬 + 최적 시차 탐지", () => {
   // x가 1일 선행하면 lag=1에서 완전 상관
   const x = new Map([["2026-06-01", 1], ["2026-06-02", 2], ["2026-06-03", 3]]);
@@ -91,7 +97,7 @@ test("pickRangeStats+viewIncrement: 범위 밖 게시물은 값·증분 없음('
   const stat = (d: string, play: number | null) => ({ measured_at: d, play_count: play, likes_count: null, comments_count: null });
   const mkPost = (stats: ReturnType<typeof stat>[]) => ({
     id: "t", url: "https://www.instagram.com/p/X/", posted_at: "2026-07-05",
-    product_name: null, project_name: null, account_name: null, company_name: null,
+    product_name: null, project_name: null, asset_name: null, account_name: null, company_name: null,
     channel_type: null, cost: null, reach_count: null, notes: null, content_summary: null,
     created_at: "2026-07-05", ended_at: null, influencers: null,
     latest_stats: stats[stats.length - 1] ?? null,

@@ -86,7 +86,8 @@ export async function POST(req: NextRequest) {
   const items = [...byKey.values()];
 
   // 광고 메타: 정규화 + url 중복 제거 (첫 값 우선)
-  const POST_FIELDS = ["posted_at", "account_name", "company_name", "content_summary", "channel_type", "project_name", "product_name", "cost"];
+  const POST_FIELDS = ["posted_at", "account_name", "company_name", "content_summary", "asset_name", "channel_type", "project_name", "product_name", "cost"];
+  const SHEET_WINS = new Set(["asset_name"]);
   const postByUrl = new Map<string, Record<string, unknown>>();
   for (const p of postsIn) {
     if (!p || !p.url) continue;
@@ -198,12 +199,12 @@ export async function POST(req: NextRequest) {
     const manual = Array.isArray(ex.manual_fields) ? (ex.manual_fields as string[]) : [];
     const upd: Record<string, unknown> = {};
     for (const f of POST_FIELDS) {
-      if (manual.includes(f)) continue; // 대시보드 수동 편집(캡션 포함) 보존 — 시트가 덮지 않음
+      if (!SHEET_WINS.has(f) && manual.includes(f)) continue; // 소재명은 시트 정본, 그 외 대시보드 수동 편집 보존
       const cur = ex[f];
       const curEmpty = cur === null || cur === undefined || cur === "";
       // meta[f]는 시트의 비어있지 않은 값만 들어있음(위 clean 생성 기준)
-      // 캡션은 시트값 우선(정본, 단 위 manual 잠금은 예외) → 비어있지 않아도 덮음. 그 외는 '빈 값만 채우기'.
-      if (meta[f] !== undefined && (curEmpty || f === "content_summary")) upd[f] = meta[f];
+      // 캡션과 소재명은 시트값 우선. 단 캡션은 manual 잠금 예외가 있고, 소재명은 SHEET_WINS라 항상 시트 정본.
+      if (meta[f] !== undefined && (curEmpty || f === "content_summary" || SHEET_WINS.has(f))) upd[f] = meta[f];
     }
     // 무상채널 자가치유: 위성/온드에 기존 업체명·광고비가 남아있으면 강제 제거(owned-satellite-no-cost-rule)
     if (isFreeChannel(ex.channel_type)) {
