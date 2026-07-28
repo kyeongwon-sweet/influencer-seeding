@@ -47,29 +47,31 @@ test("syncPricing inserts blank-only XLOOKUP formulas and preserves existing cel
   assert.doesNotMatch(body, /getRange\(rowNum,[\s\S]*?\.(?:setValue|setFormula|clearContent)\(/);
 });
 
-test("cumulative anchor self-heals: onEdit hook + spill-block detection + warning-only guard", () => {
-  // ① onStatusEdit_가 다중셀 제한 전에 H열 자가치유를 호출
+test("cumulative V4: per-row formulas, manual values preserved, no spill anchor", () => {
+  // ① onStatusEdit_가 다중셀 제한 전에 H열 재충전 훅을 호출
   const editStart = appsScript.indexOf("function onStatusEdit_(e)");
   assert.notEqual(editStart, -1);
   const editBody = appsScript.slice(editStart, appsScript.indexOf("function installStatusEditTrigger()", editStart));
   const healCallIdx = editBody.indexOf("healCumulativeOnEdit_(e, sheet)");
   const singleCellIdx = editBody.indexOf("getNumRows() !== 1");
   assert.notEqual(healCallIdx, -1, "onStatusEdit_가 healCumulativeOnEdit_를 호출해야 함");
-  assert.ok(healCallIdx < singleCellIdx, "자가치유는 단일셀 제한보다 먼저(다중셀 붙여넣기도 감지)");
+  assert.ok(healCallIdx < singleCellIdx, "재충전 훅은 단일셀 제한보다 먼저(다중셀 붙여넣기도 감지)");
   // ② healCumulativeOnEdit_는 H열 미포함 편집이면 즉시 반환, 포함이면 refreshCumulativeViews 호출
   const healStart = appsScript.indexOf("function healCumulativeOnEdit_(");
   assert.notEqual(healStart, -1);
   const healBody = appsScript.slice(healStart, appsScript.indexOf("function refreshCumulativeViews()", healStart));
   assert.match(healBody, /getLastColumn\(\) < cumCol \|\| e\.range\.getColumn\(\) > cumCol\) return/);
   assert.match(healBody, /refreshCumulativeViews\(\)/);
-  // ③ refreshCumulativeViews가 스필 차단(#REF!)을 재설치 조건에 포함
+  // ③ V4: 행별 수식(=IF(COUNT(...)=0,"",MAX(...))) — 스필 앵커·마커·clearContent 없음
   const refStart = appsScript.indexOf("function refreshCumulativeViews()");
   const refBody = appsScript.slice(refStart, appsScript.indexOf("function parseCreator_(", refStart));
-  assert.match(refBody, /anchorBlocked = !!existing && String\(anchor\.getDisplayValue\(\)\)\.charAt\(0\) === "#"/);
-  assert.match(refBody, /existing\.indexOf\(marker\) < 0 \|\| anchorBlocked/);
-  // ④ H열 경고 보호(AUTO_CUM_GUARD, warning-only) 멱등 설치
-  assert.match(refBody, /AUTO_CUM_GUARD/);
-  assert.match(refBody, /setWarningOnly\(true\)/);
+  assert.match(refBody, /"=IF\(COUNT\(" \+ firstDate \+ r \+ ":" \+ lastDate \+ r \+ "\)=0,\\"\\",MAX\(/);
+  assert.doesNotMatch(refBody, /AUTO_CUMULATIVE_BYROW/);
+  assert.doesNotMatch(refBody, /clearContent\(\)/);
+  // ④ 수동 입력 보존: 수식 아닌 값이고 자동 MAX와 다르면 그대로 유지
+  assert.match(refBody, /!hasFormula && hasValue && Number\(cur\) !== rowMax/);
+  // ⑤ 날짜 실측 없는 행의 기존 값(legacy·수기 트래킹)도 보존
+  assert.match(refBody, /if \(!hasFormula && hasValue\) \{ out\.push\(\[cur\]\); manualKept\+\+; \}/);
 });
 
 test("importStats client_version handshake stays paired with server expectation", () => {

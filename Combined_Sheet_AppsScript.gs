@@ -1563,6 +1563,14 @@ function healCumulativeOnEdit_(e, sheet) {
 }
 
 function refreshCumulativeViews() {
+  // V4(행별 수식, 2026-07-27 사용자 지시): H는 행마다 =IF(COUNT(첫날짜{r}:끝날짜{r})=0,"",MAX(...)) 개별 수식.
+  // 스필(BYROW 앵커) 폐기 이유: 앵커 삭제(오전)·경로 한 칸 값 유입(#REF, 저녁)만으로 열 전체가 비는
+  // 사고가 하루 2번 발생. 팀이 수기 입력·정렬·행 붙여넣기를 일상적으로 하는 시트라
+  // '한 점 고장 = 전체 고장' 구조 자체를 제거한다. 행별 수식은 그 행만 영향받고(1행 붙여넣기 무해),
+  // 상대참조라 정렬을 따라가며, 지워진 칸은 다음 갱신 때 그 행만 재충전된다.
+  // 수동 입력 공식 허용: 수식 아닌 '값'이 든 칸은 절대 덮지 않는다. 단 값==그 행 날짜열 MAX면
+  // (스필 마이그레이션 잔값/자동값과 동일한 중복 수기) 수식으로 환원해 자동 갱신을 복원한다
+  // — 실제 정정(값≠MAX)만 수동 입력으로 취급해 보존.
   const sheet = getSheet_();
   const lastCol = sheet.getLastColumn();
   const cumCol = findHeaderCol_(sheet, ["누적 조회수", "누적조회수"]);
@@ -1580,82 +1588,43 @@ function refreshCumulativeViews() {
   const lastDateCol = Math.max.apply(null, dateCols);
   const firstDate = colLetter_(firstDateCol);
   const lastDate = colLetter_(lastDateCol);
-  const marker = "AUTO_CUMULATIVE_BYROW_V3_" + firstDate + "_" + lastDate;
-  const anchor = sheet.getRange(CONFIG.DATA_START_ROW, cumCol);
-  const existing = anchor.getFormula();
-  // 수식은 남아 있어도 아래쪽 셀에 값이 들어오면 스필이 막혀 #REF!가 되고 열 전체가 빈다.
-  // 마커 검사만으로는 이 상태를 못 잡으므로 앵커 표시값이 오류면 재설치 대상으로 취급한다.
-  const anchorBlocked = !!existing && String(anchor.getDisplayValue()).charAt(0) === "#";
-  let installed = false;
-  let legacy = [
-    { url: "https://www.tiktok.com/@ssulbox_1/video/76543907066471252699", value: 955 },
-    { url: "https://www.tiktok.com/@sseoltteugi/video/7655617136307588372", value: 1017 },
-    { url: "https://www.instagram.com/p/DaNeLbcmOXE/", value: 550 },
-  ];
+  const lastRow = sheet.getLastRow();
+  const n = Math.max(0, lastRow - CONFIG.DATA_START_ROW + 1);
+  if (!n) return true;
+  const range = sheet.getRange(CONFIG.DATA_START_ROW, cumCol, n, 1);
+  const values = range.getValues();     // 스필 표시값·수동값 모두 값으로 읽힘(마이그레이션 겸용)
+  const formulas = range.getFormulas();
+  const daily = sheet.getRange(CONFIG.DATA_START_ROW, firstDateCol, n, lastDateCol - firstDateCol + 1).getValues();
 
-  if (!existing || existing.indexOf(marker) < 0 || anchorBlocked) {
-    const lastRow = sheet.getLastRow();
-    const n = Math.max(0, lastRow - CONFIG.DATA_START_ROW + 1);
-    const urlCol = buildFieldCols_(sheet).url;
-    const legacyByUrl = {};
-    legacy.forEach(item => { legacyByUrl[item.url] = true; });
-    if (n > 0) {
-      const urls = sheet.getRange(CONFIG.DATA_START_ROW, urlCol, n, 1).getValues();
-      const values = sheet.getRange(CONFIG.DATA_START_ROW, cumCol, n, 1).getValues();
-      const formulas = sheet.getRange(CONFIG.DATA_START_ROW, cumCol, n, 1).getFormulas();
-      const daily = sheet.getRange(CONFIG.DATA_START_ROW, firstDateCol, n, lastDateCol - firstDateCol + 1).getValues();
-      for (let i = 0; i < n; i++) {
-        const url = String(urls[i][0] || "").trim();
-        const value = values[i][0];
-        const hasDateMetric = daily[i].some(v => typeof v === "number" && v > 0);
-        if (url && !legacyByUrl[url] && formulas[i][0] === "" && value !== "" && value != null && !hasDateMetric) {
-          legacy.push({ url: url, value: value });
-          legacyByUrl[url] = true;
-        }
-      }
+  const out = [];
+  let wrote = 0, manualKept = 0;
+  for (let i = 0; i < n; i++) {
+    const r = CONFIG.DATA_START_ROW + i;
+    const hasFormula = formulas[i][0] !== "";
+    const cur = values[i][0];
+    const hasValue = cur !== "" && cur != null;
+    let rowMax = null;
+    for (let j = 0; j < daily[i].length; j++) {
+      const v = daily[i][j];
+      if (typeof v === "number" && v > 0 && (rowMax === null || v > rowMax)) rowMax = v;
     }
-
-    const urlLetter = colLetter_(urlCol);
-    const startRow = CONFIG.DATA_START_ROW;
-    let result = "b";
-    for (let i = legacy.length - 1; i >= 0; i--) {
-      const escapedUrl = legacy[i].url.replace(/"/g, '""');
-      const value = typeof legacy[i].value === "number"
-        ? String(legacy[i].value)
-        : '"' + String(legacy[i].value).replace(/"/g, '""') + '"';
-      result = 'IF(u=\"' + escapedUrl + '\",' + value + ',' + result + ')';
+    if (rowMax !== null) {
+      // 진짜 수동 정정(값이 있고 수식이 아니며 자동 MAX와 다름)만 보존
+      if (!hasFormula && hasValue && Number(cur) !== rowMax) { out.push([cur]); manualKept++; continue; }
+      out.push(["=IF(COUNT(" + firstDate + r + ":" + lastDate + r + ")=0,\"\",MAX(" + firstDate + r + ":" + lastDate + r + "))"]);
+      wrote++;
+      continue;
     }
-    const formula = '=LET(marker,N(\"' + marker + '\"),' +
-      'base,BYROW(' + firstDate + startRow + ':' + lastDate + ',LAMBDA(r,IF(COUNT(r)=0,\"\",MAX(r)))),' +
-      'MAP(' + urlLetter + startRow + ':' + urlLetter + ',base,LAMBDA(u,b,IF(marker=0,IF(u=\"\",\"\",' + result + '),\"\"))))';
-
-    sheet.getRange(CONFIG.DATA_START_ROW, cumCol, sheet.getMaxRows() - CONFIG.DATA_START_ROW + 1, 1).clearContent();
-    anchor.setFormula(formula);
-    installed = true;
+    // 날짜 실측이 없는 행: 값이 있으면(구 legacy 3건·수기 전용 트래킹) 값 그대로 보존. 수식/빈칸은 비움.
+    if (!hasFormula && hasValue) { out.push([cur]); manualKept++; }
+    else { out.push([""]); }
   }
-
-  // H열 경고 보호: 편집 자체는 막지 않되(수기 정정 워크플로 보존) 실수 편집 전에 경고창을 띄운다.
-  // 수기 누적값이 필요한 행은 어차피 위 legacy 흡수로 수식에 보존되므로 물리값을 남길 이유가 없다.
-  try {
-    const guarded = sheet.getProtections(SpreadsheetApp.ProtectionType.RANGE)
-      .some(p => p.getDescription() === "AUTO_CUM_GUARD");
-    if (!guarded) {
-      sheet.getRange(1, cumCol, sheet.getMaxRows(), 1)
-        .protect()
-        .setDescription("AUTO_CUM_GUARD")
-        .setWarningOnly(true);
-    }
-  } catch (err) {
-    Logger.log("AUTO_CUM_GUARD: " + (err.stack || err.message));
-  }
+  range.setValues(out);  // '='로 시작하는 문자열은 수식으로 들어감 — 값·수식 혼합 1회 배치 쓰기
 
   SpreadsheetApp.getActive().toast(
-    installed
-      ? (anchorBlocked ? "누적 조회수 스필 차단(수기 입력) 감지 → 수식 재설치 완료. 수기 값은 날짜열에 입력하세요."
-                       : "누적 조회수 BYROW 수식 설치 완료") + (legacy.length ? " · 수동값 보존 " + legacy.length + "건" : "")
-      : "누적 조회수 BYROW 수식 정상",
+    "누적 조회수 행별 수식 " + wrote + "행 갱신 · 수동/레거시 값 보존 " + manualKept + "건",
     "완료",
-    installed && anchorBlocked ? 8 : 4
+    4
   );
   return true;
 }
