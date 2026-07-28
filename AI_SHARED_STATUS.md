@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## 2026-07-28 [Codex 완료·자정 실행 예약] zero-metric backfill measured_at=2026-07-28 고정
+- 사용자 결정: 정확성 우선. 종료글도 `ended_at`으로 백데이트하지 않고, 실제 수집 기준일 `2026-07-28`로 저장한다. 과거 날짜 조작 금지.
+- repo 반영: `scripts/backfill_zero_metric_posts.py`의 `target_measured_at()`을 항상 `BASE_MEASURED_AT` 반환으로 수정하고, 회귀 테스트를 갱신했다. commit `bca76a6 fix: store zero-metric backfill on measured date` pushed to `origin/main`.
+- 검증: 로컬 `python scripts\test_backfill_zero_metric_posts.py` 통과. GitHub Actions dry-run `30362007660` 성공, `base_measured_at=2026-07-28`, `targets=39`, `by_target_date={"2026-07-28":39}`, platform breakdown `instagram=35`, `youtube=4`.
+- 주의: 이전 dry-run의 315건 숫자는 RD_Main/직접 백필/DB 이력 보강 전 기준이라 현재 실행 대상이 아니다. 현재 live 기준 남은 대상은 dry-run 검증상 39건.
+- 다음 실행: 2026-07-29 00:10 KST에 이 Codex task heartbeat로 real workflow 실행 예정. 실행 명령은 `gh workflow run backfill-zero-metric-posts.yml --repo kyeongwon-sweet/influencer-seeding --ref main -f dry_run=false -f measured_at=2026-07-28 -f limit=0`.
 ## 2026-07-28 [Codex 진행] -mu 보호 페이지 404 원인 확인 + middleware 수정
 - 현상 검증: `https://influencer-seeding-mu.vercel.app`, `/monitoring`, `/home`이 404. 단 `/api/sponsored-posts/stats-for-sheet`는 401, `/api/sponsored-posts/stats-import`는 405로 API 라우트는 살아 있음.
 - 원인: 응답 헤더 `X-Clerk-Auth-Reason: protect-rewrite, dev-browser-missing`, `X-Matched-Path: /_not-found`. 즉 도메인/배포 전체 장애가 아니라 Clerk middleware가 미로그인 보호 페이지를 sign-in redirect 대신 404로 숨김.
