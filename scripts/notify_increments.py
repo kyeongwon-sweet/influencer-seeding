@@ -333,8 +333,10 @@ def main():
             bchunk = bres.data or []
             for b in bchunk:
                 # 쫀득바(JD)만: 상품명에 JD 없는 배너 채널은 라인 노출 안 함(사용자 지시).
-                if not b.get("ended_at") and b.get("channel_type") and "jd" in (b.get("product_name") or "").lower():
-                    banner_cts.add((b.get("channel_type") or "").strip())
+                # 위성채널(배너)은 위성채널 라인에 묶여 계산되므로 별도 '미수집' 라인 강제 안 함(사용자 지시).
+                bct = (b.get("channel_type") or "").strip()
+                if not b.get("ended_at") and bct and "jd" in (b.get("product_name") or "").lower() and "위성채널" not in bct:
+                    banner_cts.add(bct)
             if len(bchunk) < 1000:
                 break
             boff += 1000
@@ -357,7 +359,12 @@ def main():
                 total += _v
 
     def _norm_ch(ct):
-        return "무상시딩 (영상+피드)" if "무상시딩" in (ct or "") else ((ct or "").strip() or "미분류")
+        c = (ct or "").strip()
+        if "무상시딩" in c:
+            return "무상시딩 (영상+피드)"
+        if c.startswith("위성채널"):
+            return "위성채널 (배너/영상)"   # 위성채널 배너+영상 한 라인으로 묶어 계산(사용자 지시)
+        return c or "미분류"
 
     by_channel = {}
     for it in items:
@@ -416,7 +423,7 @@ def main():
     lines.append("`CPV는 누적 기준`")
     lines.append("")
     for ct, s in sorted(by_channel.items(), key=lambda x: x[1], reverse=True):
-        if "배너" in ct:
+        if "배너" in ct and "위성채널" not in ct:  # 위성채널(배너/영상)은 배너 특수라인 아닌 일반 합산 라인
             # 배너값은 '증분'만 쓴다(사용자 지시 — 누적 아님). 배너는 매일이 아니라 며칠 간격 수집이라
             #   그날 수집이 없으면 증분 0 → '당일 미수집'으로 표기(값이 0이 아니라 수집이 없던 날).
             if s > 0:
