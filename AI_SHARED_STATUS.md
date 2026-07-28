@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## 2026-07-28 [Codex 진행] H/I 빈칸도 수식 보유하도록 Apps Script 정본 보강
+- 사용자 질문: `콘텐츠 대시보드 연동`에서 누적조회수(H)와 증분값(I)이 아예 빈칸인 행이 있는데, 미출력이어도 수식은 걸려 있어야 하는 것 아니냐는 확인.
+- 원인 확인: repo `Combined_Sheet_AppsScript.gs` 최신 구현에서 `refreshCumulativeViews()`는 날짜 숫자 실측이 하나도 없는 행에 H 수식을 쓰지 않고 `""`로 비웠다. `exportStats()`도 증분 계산 대상 refs가 0개면 I열에 `""`를 써서 수식 자체가 없었다. 즉 빈칸은 일부 행에서 “수식 결과 빈칸”이 아니라 “수식 미설치”였다.
+- repo 수정: H는 날짜 숫자가 없어도 `=IF(COUNT(...)=0,"",MAX(...))` 행별 수식을 항상 설치한다. I는 계산 대상이 없을 때도 `=IF(COUNT(...)=0,"","")` 빈 결과 sentinel 수식을 설치해 수식 파손과 데이터 없음이 구분되게 했다. 기존 수동/legacy H 값 보존 규칙은 유지.
+- 검증: `npm.cmd test -- apps-script-contract.test.ts` 실행 결과 전체 node:test 64/64 통과. 새 계약 테스트가 H 빈행 수식 유지와 I sentinel 수식 유지를 검증한다.
+- 남은 일: live Apps Script에 함수 단위 반영 후 `refreshCumulativeViews`/`exportStats` 실행 또는 dailyAuto 대기. live 반영 전에는 실제 시트 빈 H/I에 수식이 아직 없을 수 있다.
 ## 2026-07-28 [Codex 완료·자정 실행 예약] zero-metric backfill measured_at=2026-07-28 고정
 - 사용자 결정: 정확성 우선. 종료글도 `ended_at`으로 백데이트하지 않고, 실제 수집 기준일 `2026-07-28`로 저장한다. 과거 날짜 조작 금지.
 - repo 반영: `scripts/backfill_zero_metric_posts.py`의 `target_measured_at()`을 항상 `BASE_MEASURED_AT` 반환으로 수정하고, 회귀 테스트를 갱신했다. commit `bca76a6 fix: store zero-metric backfill on measured date` pushed to `origin/main`.

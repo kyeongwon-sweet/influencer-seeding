@@ -1322,7 +1322,10 @@ function exportStats() {
           }
         }
         if (refs.length === 0) {
-          incFormulas.push([""]);
+          const firstDateRef = colLetter_(firstCol) + rowNum;
+          const lastDateRef = colLetter_(firstCol + width - 1) + rowNum;
+          // Keep a blank-result formula so an empty I cell still has a repairable formula.
+          incFormulas.push([`=IF(COUNT(${firstDateRef}:${lastDateRef})=0,"","")`]);
           continue;
         }
         if (refs.length === 1) {
@@ -1895,9 +1898,13 @@ function refreshCumulativeViews() {
       wrote++;
       continue;
     }
-    // 날짜 실측이 없는 행: 값이 있으면(구 legacy 3건·수기 전용 트래킹) 값 그대로 보존. 수식/빈칸은 비움.
+    // 날짜 실측이 없는 행: 값이 있으면(구 legacy 3건·수기 전용 트래킹) 값 그대로 보존.
+    // 값이 없으면 빈 결과 수식을 깔아 "데이터 없음"과 "수식 파손"을 구분한다.
     if (!hasFormula && hasValue) { out.push([cur]); manualKept++; }
-    else { out.push([""]); }
+    else {
+      out.push(["=IF(COUNT(" + firstDate + r + ":" + lastDate + r + ")=0,\"\",MAX(" + firstDate + r + ":" + lastDate + r + "))"]);
+      wrote++;
+    }
   }
   range.setValues(out);  // '='로 시작하는 문자열은 수식으로 들어감 — 값·수식 혼합 1회 배치 쓰기
 

@@ -66,12 +66,24 @@ test("cumulative V4: per-row formulas, manual values preserved, no spill anchor"
   const refStart = appsScript.indexOf("function refreshCumulativeViews()");
   const refBody = appsScript.slice(refStart, appsScript.indexOf("function parseCreator_(", refStart));
   assert.match(refBody, /"=IF\(COUNT\(" \+ firstDate \+ r \+ ":" \+ lastDate \+ r \+ "\)=0,\\"\\",MAX\(/);
+  assert.match(refBody, /"데이터 없음"과 "수식 파손"을 구분/);
+  assert.doesNotMatch(refBody, /else \{ out\.push\(\[""\]\); \}/);
   assert.doesNotMatch(refBody, /AUTO_CUMULATIVE_BYROW/);
   assert.doesNotMatch(refBody, /clearContent\(\)/);
   // ④ 수동 입력 보존: 수식 아닌 값이고 자동 MAX와 다르면 그대로 유지
   assert.match(refBody, /!hasFormula && hasValue && Number\(cur\) !== rowMax/);
   // ⑤ 날짜 실측 없는 행의 기존 값(legacy·수기 트래킹)도 보존
   assert.match(refBody, /if \(!hasFormula && hasValue\) \{ out\.push\(\[cur\]\); manualKept\+\+; \}/);
+});
+
+test("exportStats leaves blank-result formulas in empty increment cells", () => {
+  const start = appsScript.indexOf("function exportStats()");
+  const body = appsScript.slice(start, appsScript.indexOf("function refreshCumulativeViews()", start));
+  assert.notEqual(start, -1);
+  assert.match(body, /const firstDateRef = colLetter_\(firstCol\) \+ rowNum/);
+  assert.match(body, /const lastDateRef = colLetter_\(firstCol \+ width - 1\) \+ rowNum/);
+  assert.match(body, /incFormulas\.push\(\[`=IF\(COUNT\(\$\{firstDateRef\}:\$\{lastDateRef\}\)=0,"",""\)`\]\)/);
+  assert.doesNotMatch(body, /incFormulas\.push\(\[""\]\)/);
 });
 
 test("exportStats preserves final DB metric in blank cumulative cells for ended posts", () => {
