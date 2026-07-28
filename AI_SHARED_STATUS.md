@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## 2026-07-28 [Codex 완료·라이브 반영 대기] 트래킹 종료글 H열 최종 누적값 보존
+- **사용자 신고:** `콘텐츠 대시보드 연동`에서 `상태=트래킹 종료`인데 `누적 조회수(H)`가 빈 행이 존재. 라이브 시트 실측 예시 `10:15행`: H/I 빈칸, 날짜열 `O:DG`도 전부 빈칸.
+- **원인:** 기존 `refreshCumulativeViews`는 날짜열 양수값의 `MAX`만 H에 쓰고, 날짜열이 전부 빈 경우 H를 비운다. `exportStats`도 종료일 뒤 DB 측정값은 날짜열에서 제거하므로, 종료 전 날짜칸에 표시 가능한 값이 없으면 DB에 최종값이 있어도 H가 비어 남을 수 있었다.
+- **repo 수정:** `Combined_Sheet_AppsScript.gs`의 `exportStats`가 DB 응답의 날짜별 metric 중 **오늘 이전 최댓값**을 `finalMetricByKey`로 보관하고, `ended_at`이 있는 행의 H열이 빈칸/무수식일 때만 해당 최종값을 H에 값으로 채운다. 날짜별 히스토리 칸에는 소급 기입하지 않아 측정일 왜곡을 피한다. DB에도 양수 조회수/도달수 이력이 없으면 채우지 않고 경고 카운트에 포함한다.
+- **서버 보강:** `web/app/api/sponsored-posts/stats-for-sheet/route.ts`가 종료됐지만 `post_daily_stats` 양수 metric이 없는 글도 `stats: []`로 응답해 Apps Script가 “종료됐지만 최종값 없음”을 진단할 수 있게 했다.
+- **검증:** `npm test` 59/59 pass, 변경 파일 한정 ESLint pass, `npm run build` pass. 전체 `npm run lint`는 기존 unrelated `injibot-action`/`stats-import _key`/`injibot-review` 에러 때문에 fail(이번 변경 파일 에러 없음).
+- **남은 반영:** 서버 route는 커밋/푸시 후 Vercel 배포 필요. Apps Script는 라이브 서버본 기준으로 `fetchCollectedStats_` 주석 + `exportStats` 함수 내부 변경만 함수 단위 반영 후 `exportStats` 1회 실행해 `트래킹 종료글 H열 빈칸 ...행` 메시지와 실제 H열 채움 여부 확인.
+
 ## 2026-07-28 [Codex 완료·배포 대기] 배너 도달수 서버 직접읽기 이중화 구현
 - **범위:** repo에 서버 route `web/app/api/sponsored-posts/banner-reach-sync/route.ts`, 시트 파서 `web/lib/sheet-banner-reach.ts`, GitHub Actions hourly workflow `.github/workflows/banner-reach-sync.yml`, 계약 테스트 `web/tests/banner-reach-sync.test.ts` 추가. `web/middleware.ts` public route도 추가.
 - **동작:** 서버가 서비스계정으로 연동 시트 `10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak` / gid `1937186871` / `A1:ZZ5000`을 직접 읽고, `채널 분류/채널분류`가 `배너`인 행의 날짜열 값만 기존 DB 게시물에 매칭해 `post_daily_stats.reach_count`로 upsert한다. 일반 영상 `play_count`는 건드리지 않음. 신규 게시물 생성도 하지 않고 missing으로 보고만 한다.

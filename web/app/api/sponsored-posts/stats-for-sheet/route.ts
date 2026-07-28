@@ -87,8 +87,19 @@ export async function GET(req: NextRequest) {
     ended_at: activeKey.has(key) ? null : endedByKey.get(key) ?? null,
     stats: [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b)),
   }));
+  let endedWithoutStats = 0;
+  for (const [key, endedAt] of endedByKey.entries()) {
+    if (activeKey.has(key) || byKey.has(key)) continue;
+    endedWithoutStats++;
+    posts.push({
+      url: urlByKey.get(key) ?? key,
+      key,
+      ended_at: endedAt,
+      stats: [],
+    });
+  }
   return NextResponse.json(
-    { posts, pre_posted_dropped: prePostedDropped },
+    { posts, pre_posted_dropped: prePostedDropped, ended_without_stats: endedWithoutStats },
     { headers: { "Cache-Control": "no-store" } }
   );
 }

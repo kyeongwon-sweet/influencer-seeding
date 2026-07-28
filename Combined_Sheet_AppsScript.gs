@@ -871,7 +871,7 @@ function fetchCollectedStats_() {
   });
   const code = res.getResponseCode();
   if (code !== 200) throw new Error(`API ${code}: ${res.getContentText()}`);
-  return (JSON.parse(res.getContentText()).posts) || []; // [{url, key, ended_at, stats:[[date,metric],...]}]
+  return (JSON.parse(res.getContentText()).posts) || []; // [{url, key, ended_at, stats:[[date,metric],...]}] — 종료·통계없음 글은 stats:[]
 }
 
 function exportStats() {
@@ -897,15 +897,22 @@ function exportStats() {
     // 대시보드 수집 조회수 → linkKey(shortcode/영상ID) → {date: play} + 등장 날짜 수집
     const byKey = {};
     const endedByKey = {};
+    const finalMetricByKey = {};
     const allDatesSet = {};
+    const today = todayStr_();
     fetchCollectedStats_().forEach(p => {
       const k = linkKey_(String(p.key || p.url || ""));
       if (!k) return;
       if (p.ended_at) endedByKey[k] = String(p.ended_at).slice(0, 10);
       const m = byKey[k] || (byKey[k] = {});
       (p.stats || []).forEach(pair => {
-        if (!(pair[1] > 0)) return; // 0·음수·비숫자 방어 — 시트에 0 찍힘/기존값 덮음/빈 열 추가 방지(엔드포인트도 >0만 반환)
-        m[pair[0]] = pair[1]; allDatesSet[pair[0]] = true;
+        const metric = Number(pair[1]);
+        const measuredAt = String(pair[0]).slice(0, 10);
+        if (!(metric > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(measuredAt)) return; // 0·음수·비숫자 방어 — 시트에 0 찍힘/기존값 덮음/빈 열 추가 방지(엔드포인트도 >0만 반환)
+        m[measuredAt] = metric; allDatesSet[measuredAt] = true;
+        if (measuredAt < today && (!(finalMetricByKey[k] > 0) || metric > finalMetricByKey[k])) {
+          finalMetricByKey[k] = metric;
+        }
       });
     });
 
@@ -915,7 +922,6 @@ function exportStats() {
     const existingSet = {};
     dateCols.forEach(dc => existingSet[dc.date] = true);
     const maxExisting = dateCols.length ? dateCols[dateCols.length - 1].date : null;
-    const today = todayStr_();
     const newDates = Object.keys(allDatesSet)
       .filter(d => !existingSet[d] && d <= today && (maxExisting === null || d > maxExisting))
       .sort();
@@ -1099,7 +1105,39 @@ function exportStats() {
       try { refreshCumulativeViews(); } catch (e) { Logger.log(e); }
     }
 
+    // 종료글 최종값 보존: 날짜열에 표시 가능한 실측이 없어 H가 빈칸이더라도,
+    // DB에 양수 조회수/도달수 이력이 있으면 "최종 누적 조회수" 값만 H열에 보존한다.
+    // 날짜별 히스토리 칸에 소급 기입하면 측정일을 왜곡하므로 H열 빈칸만 채운다.
+    let endedFinalFilled = 0, endedFinalNoMetric = 0;
+    const cumulativeCol = findHeaderCol_(sheet, ["누적 조회수", "누적조회수"]);
+    if (cumulativeCol) {
+      const cumRange = sheet.getRange(CONFIG.DATA_START_ROW, cumulativeCol, nRows, 1);
+      const cumVals = cumRange.getValues();
+      const cumFormulas = cumRange.getFormulas();
+      const cumOut = cumVals.map(row => [row[0]]);
+      let cumChanged = false;
+      for (let i = 0; i < nRows; i++) {
+        const key = rowKeys[i];
+        if (!key || !endedByKey[key]) continue;
+        const hasFormula = cumFormulas[i][0] !== "";
+        const cur = cumVals[i][0];
+        const hasValue = cur !== "" && cur != null;
+        if (hasFormula || hasValue) continue;
+        const finalMetric = finalMetricByKey[key];
+        if (finalMetric > 0) {
+          cumOut[i][0] = finalMetric;
+          cumChanged = true;
+          endedFinalFilled++;
+        } else {
+          endedFinalNoMetric++;
+        }
+      }
+      if (cumChanged) cumRange.setValues(cumOut);
+    }
+
     let msg = `✅ 수집 조회수를 시트에 반영했습니다.\n새 날짜 열 ${addedCols}개 추가 · 실측 갱신 ${filled}칸 · 공백 이어받기 ${carried}칸 · 업로드 전 값 삭제 ${prePostedCleared}칸 · 종료 이후 값 삭제 ${endedCleared}칸 · 증분 수식 ${incWritten}행 · 기존값 보존 ${preserved}칸 · 매칭 게시물 ${matched}개 · 날짜 열 ${dateCols.length}개`;
+    if (endedFinalFilled) msg += `\n🛑 트래킹 종료글 H열 빈칸 ${endedFinalFilled}행에 DB 최종 누적값을 보존했습니다.`;
+    if (endedFinalNoMetric) msg += `\n⚠️ 트래킹 종료됐지만 DB 조회수/도달수 이력이 없는 행 ${endedFinalNoMetric}개는 최종값을 채울 수 없습니다.`;
     if (shortcodeFormatMatched) msg += `\n🔁 /reel·/tv 잔재 URL ${shortcodeFormatMatched}개는 shortcode 기준으로 정상 매칭했습니다.`;
     if (missing) msg += `\n⚠️ 시트엔 있으나 대시보드에 수집기록이 없는 URL ${missing}개(아직 수집 전이거나 미등록).`;
     if (futureCleared) msg += `\n🗓️ 오늘·미래(수집일-1 이후) 날짜칸 ${futureCleared}개를 비웠습니다.`;

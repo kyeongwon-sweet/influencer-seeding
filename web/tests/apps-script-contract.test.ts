@@ -74,6 +74,21 @@ test("cumulative V4: per-row formulas, manual values preserved, no spill anchor"
   assert.match(refBody, /if \(!hasFormula && hasValue\) \{ out\.push\(\[cur\]\); manualKept\+\+; \}/);
 });
 
+test("exportStats preserves final DB metric in blank cumulative cells for ended posts", () => {
+  const start = appsScript.indexOf("function exportStats()");
+  const end = appsScript.indexOf("// ═══════════════════════════════════════════════════════════════\n// 일자별 조회수 입력", start);
+  const body = appsScript.slice(start, end);
+  assert.notEqual(start, -1);
+  assert.match(body, /const finalMetricByKey = \{\}/);
+  assert.match(body, /const today = todayStr_\(\)/);
+  assert.match(body, /if \(measuredAt < today && \(!\(finalMetricByKey\[k\] > 0\) \|\| metric > finalMetricByKey\[k\]\)\)/);
+  assert.match(body, /const cumulativeCol = findHeaderCol_\(sheet, \["누적 조회수", "누적조회수"\]\)/);
+  assert.match(body, /if \(hasFormula \|\| hasValue\) continue/);
+  assert.match(body, /cumOut\[i\]\[0\] = finalMetric/);
+  assert.match(body, /트래킹 종료글 H열 빈칸/);
+  assert.match(body, /DB 조회수\/도달수 이력이 없는 행/);
+});
+
 test("importStats client_version handshake stays paired with server expectation", () => {
   // 라이브 배포 드리프트 감시: .gs 버전 스탬프와 서버 기대값은 같은 커밋에서 함께 갱신돼야 한다.
   const gsVer = appsScript.match(/const IMPORTSTATS_CLIENT_VERSION = "([^"]+)"/);
