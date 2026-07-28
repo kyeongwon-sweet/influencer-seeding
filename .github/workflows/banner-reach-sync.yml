@@ -1,0 +1,30 @@
+name: Banner Reach Sheet Sync
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Check Sheet/DB matching without writing reach_count"
+        type: boolean
+        default: true
+
+env:
+  APP_URL: "https://influencer-seeding-mu.vercel.app"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync banner reach cells from Sheet
+        env:
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true && '1' || '0' }}
+        run: |
+          code=$(curl -sS -X POST -o /tmp/banner-reach-sync.out -w "%{http_code}" \
+            "$APP_URL/api/sponsored-posts/banner-reach-sync?dry_run=$DRY_RUN" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          cat /tmp/banner-reach-sync.out
+          echo ""
+          echo "HTTP ${code}"
+          [ "${code:0:1}" = "2" ] || { echo "::error::banner reach sync failed HTTP=$code"; exit 1; }

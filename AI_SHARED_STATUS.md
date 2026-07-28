@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## 2026-07-28 [Codex 완료·배포 대기] 배너 도달수 서버 직접읽기 이중화 구현
+- **범위:** repo에 서버 route `web/app/api/sponsored-posts/banner-reach-sync/route.ts`, 시트 파서 `web/lib/sheet-banner-reach.ts`, GitHub Actions hourly workflow `.github/workflows/banner-reach-sync.yml`, 계약 테스트 `web/tests/banner-reach-sync.test.ts` 추가. `web/middleware.ts` public route도 추가.
+- **동작:** 서버가 서비스계정으로 연동 시트 `10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak` / gid `1937186871` / `A1:ZZ5000`을 직접 읽고, `채널 분류/채널분류`가 `배너`인 행의 날짜열 값만 기존 DB 게시물에 매칭해 `post_daily_stats.reach_count`로 upsert한다. 일반 영상 `play_count`는 건드리지 않음. 신규 게시물 생성도 하지 않고 missing으로 보고만 한다.
+- **가드:** `CRON_SECRET` Bearer 인증 fail-closed, 오늘(KST) 이후 날짜 제외, 업로드일 이전 제외, 종료일 이후 제외, DB가 비배너인 매칭 제외, 비용과 동일한 값 제외, 같은 게시물·같은 날짜에 서로 다른 값이 있으면 skip/report. `dry_run=1` 지원.
+- **스케줄:** GitHub Actions `banner-reach-sync.yml`이 매시 17분 `POST /api/sponsored-posts/banner-reach-sync` 호출. 수동 `workflow_dispatch` 가능.
+- **검증:** `npm.cmd test` 57/57 pass, 새 파일 범위 `eslint` pass, `npm.cmd run build` pass(Next route 목록에 `/api/sponsored-posts/banner-reach-sync` 표시). 전체 `npm.cmd run lint`는 기존 `injibot-action`/`injibot-review`/`stats-import _key` 잔여 lint 에러 때문에 fail이며, 새 route의 lint 에러는 없음.
+- **남은 운영 검증:** 로컬 repo에는 운영 `.env.local`이 없어 실제 서비스계정 Sheet read는 미실행. 배포 후 `POST /api/sponsored-posts/banner-reach-sync?dry_run=1`을 prod에서 먼저 호출해 `would_upsert`, `missing_urls`, `non_banner_db_skipped`를 확인한 뒤 dry_run 없이 1회 실행. 403이면 시트를 `GOOGLE_SA_CLIENT_EMAIL`에 뷰어 공유해야 함.
+
 ## 현재 운영 요약 — 2026-07-27 KST
 
 ### 🔴 [부정댓글] 루틴 감시 커버리지 홀 — Codex 근본수정 요망 (Claude 2026-07-27)
@@ -16,6 +24,7 @@
 - **데이터 결정:** `ho1y_time + 릴스`는 이미 동후작가/60,000원으로 18건 모두 매핑돼 누락 없음. 남은 활성 미매핑 4건은 전부 비-IG 미러링 라벨(`이평(틱톡 미러링)`·`힐링하고 가세요`·`돈 되는 정보(틱톡/서비스)`·`foxzzal(스레드/미러링)`)이라 유료 매핑 여부만 사용자 결정 대기.
 
 ### 완료
+- **누적(H) V4 라이브 정합화(Codex 2026-07-28):** 사용자 요청은 `7014c10` BYROW 3중 방어였으나, 최신 정본은 `3a0e750` V4(행별 수식·수동값 보존)라 7014c10을 그대로 반영하지 않음. 라이브 서버본 재복사 결과 `anchorBlocked` 잔재+V4 일부가 섞인 상태였고 `healCumulativeOnEdit_`가 없었음 → 활성 `refreshCumulativeViews__wgimpl`을 최신 V4 본문으로 함수 단위 교체, `healCumulativeOnEdit_` 추가, `onStatusEdit_`에 H열 훅을 단일셀 제한보다 앞에 삽입. 저장 후 Chrome 새로고침/재복사 검증: `healCumulativeOnEdit_` 있음, 활성 함수 `AUTO_CUMULATIVE_BYROW` 없음, `clearContent()` 없음, 수동값 보존 조건 있음. 실제 실행 기록: `refreshCumulativeViews` 2026-07-28 13:35:47, 12.127초, 완료됨. Sheets 커넥터 실측: `H2:H20`, `H495:H505` 모두 `=IF(COUNT(Or:DGr)=0,"",MAX(Or:DGr))` V4 행별 수식과 값 정상. **주의:** H500 임시값 입력→제거 테스트는 V4 정책(수동값 공식 보존)과 충돌하므로 미실행.
 - 라이브 `installDailyTrigger`는 `dailyAuto`와 자정 `syncNew`를 함께 재생성하며 트리거 UI 검증까지 완료.
 - 과거 `dailyAuto` 오류율 33.3%는 `syncCreators__wgimpl` 유실의 롤링 잔여 이력으로 원인·복구 확인. 이후 수동·예약 실행 성공.
 - `pullFromDB` 배치 읽기(약 1.4만 셀 왕복 제거), `importStats` 전체행 배치 읽기, 배너 reach 전송, BYROW 누적, 캡션 part8·`.디자인N` 정리, 바이럴 핸들 자가치유가 라이브에 존재.
@@ -33,6 +42,15 @@
 ---
 
 ## 상세 이력
+
+## 2026-07-28 [Codex 완료] 누적(H) V4 라이브 정합화 — 7014c10 BYROW 방어 대신 최신 V4 유지
+- **판단 정정:** 사용자 요청은 `main 7014c10`의 BYROW 스필 파손 3중 방어였지만, 현재 `origin/main` 최신 정본은 `3a0e750` 이후의 **V4 행별 수식 구조**다. 7014c10을 그대로 라이브에 넣으면 최신 V4를 BYROW 계열로 되돌릴 위험이 있어, 먼저 `AI_SHARED_STATUS.md`와 `HEAD`의 계약테스트를 확인하고 V4 기준으로 반영했다.
+- **라이브 서버본 실측:** Chrome 로그인 세션으로 Apps Script 프로젝트 `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn` fresh 편집기 본문을 복사. 라이브는 `anchorBlocked` 잔재와 V4 일부가 섞여 있었고, `healCumulativeOnEdit_`는 없었으며 활성 `refreshCumulativeViews__wgimpl`에 BYROW 마커가 남아 있었다.
+- **반영:** 전체 덮어쓰기 금지 원칙대로 함수 단위만 수정. 활성 `refreshCumulativeViews__wgimpl`을 최신 V4 본문으로 교체, `healCumulativeOnEdit_(e, sheet)` 추가, `onStatusEdit_`에는 `sheetId` 검사 직후·단일셀 제한 전 위치에 H열 편집 훅 추가. 라이브 전용 `withDocLock_` 래퍼, `onEdit`, `syncManualCreatorsOnEdit`, `_WriteGuard` 계열은 보존.
+- **저장 검증:** 저장 후 편집기 새로고침/재복사로 서버 지속 확인. 활성 함수 기준 `AUTO_CUMULATIVE_BYROW` 없음, `clearContent()` 없음, `V4(행별 수식...)` 주석과 수동값 보존 조건(`!hasFormula && hasValue && Number(cur) !== rowMax`, 날짜 실측 없는 값 보존) 확인.
+- **실행 검증:** Apps Script 실행 기록에서 `refreshCumulativeViews`가 `2026-07-28 13:35:47`, `12.127초`, `완료됨`으로 확인됨.
+- **시트 실측:** Google Sheets 커넥터로 `콘텐츠 대시보드 연동` 탭(gid `1937186871`) 확인. `H2:H20`과 `H495:H505` 모두 `=IF(COUNT(O행:DG행)=0,"",MAX(O행:DG행))` 형태의 V4 행별 수식과 계산값 정상. 예: `H500 = =IF(COUNT(O500:DG500)=0,"",MAX(O500:DG500))`, 표시값 `75,843`.
+- **주의:** 요청에 있던 `H500` 임시값 입력→값 제거 테스트는 수행하지 않음. V4 정책은 수동 누적값을 공식 보존하므로 임의값을 넣으면 "지워지는 것"이 아니라 "보존되는 것"이 맞다. 따라서 해당 테스트는 최신 정본과 충돌한다.
 
 ## 2026-07-28 [✅완료] 이미지(비영상) IG 게시물의 '조회수 미수집' 오알림 제거 (Claude, 사용자 신고 ufo__blue)
 - **신고**: 상태 알림에 "활성 게시물인데 조회수 미수집 (2026-07-27 측정) 1건 — ufo__blue · 바이럴(영상) /p/DbSsTx5lCzy/".
@@ -93,7 +111,8 @@
 - **후속(팀)**: 내일 아침 importStats가 7/27=19,000을 DB로 가져감(당일 입력 허용 설계) — 실제 도달수면 정상, 오입력이면 시트에서 삭제하면 끝(DB 아직 미반영이라 지금 지우면 흔적 없음). 배너 도달수를 "어느 날짜 열에" 적을지(확인 전일 vs 당일) 팀 규칙 합의 권장.
 - **재발방지 구현(repo, 라이브 대기)**: `warnDateColumnEdit_` 신설 + `onStatusEdit_` 배선 — 날짜열 수기 입력 시 **미래 열=⚠️경고 토스트, 오늘 열=규칙 리마인드 토스트**. 값은 절대 무수정(무결성 절대규칙: 감지 알림만·당일 입력은 공식 허용 워크플로라 차단 안 함). 연도 롤오버 포함 exportStats와 동일 열→날짜 매핑. 계약테스트 53/53 pass. **Codex 라이브 반영**: 위 H열 3중 방어와 같은 배치로 함수 추가+onStatusEdit_ 한 줄 배선.
 
-## 2026-07-27 [재발방지·repo완료→라이브 대기] 누적(H) 수식 파손 3중 방어 (Claude, 사용자 지시)
+## 2026-07-27 [대체됨] 누적(H) BYROW 수식 파손 3중 방어 (Claude, 사용자 지시)
+- **2026-07-28 Codex 정정:** 이 항목은 당시 BYROW 스필 구조 기준의 대기 항목이었고, 이후 `3a0e750` V4(행별 수식·수동값 보존)로 구조 자체가 바뀌어 대체됨. Codex가 2026-07-28에 라이브를 최신 V4 기준으로 정합화했고, `healCumulativeOnEdit_`/`onStatusEdit_` 훅/활성 `refreshCumulativeViews__wgimpl` V4 반영 및 실행·시트 실측을 완료했다. 따라서 아래의 "라이브 반영 필요"와 "H500 임시값 입력→값 제거" 지시는 더 이상 정본이 아니다.
 - **배경**: H열은 H2 배열수식(BYROW) 하나가 열 전체를 스필하는 구조 → 앵커 삭제 또는 아래 셀 수기 입력(#REF! 스필차단) 한 번이면 열 전체 소실(오늘 실사고, 팀 실행취소로 복구됨). 기존 방어는 다음날 09:30 재설치뿐이고, **마커 검사만으론 스필차단(수식 멀쩡+값 입력)을 못 잡았음**.
 - **구현(repo `Combined_Sheet_AppsScript.gs`)**: ① `healCumulativeOnEdit_` 신설 — 기존 onEdit 트리거(`onStatusEdit_`)가 H열 포함 편집 감지 시 즉시 `refreshCumulativeViews()` 호출(다중셀 붙여넣기도 감지되게 단일셀 제한보다 앞에 배치). ② `refreshCumulativeViews`에 **스필차단 감지** 추가(`anchorBlocked`=수식 존재+표시값 "#" 시작) → 재설치 조건에 포함, 차단 유발 수기값은 legacy 규칙대로 흡수(날짜열 없는 행=수식에 보존)/제거(날짜열 있는 행=파생값이라 정리), 안내 토스트. ③ H열 **경고 보호**(`AUTO_CUM_GUARD`, warning-only, 멱등) — 편집은 가능하되 실수 전 경고.
 - **검증**: 계약테스트 추가(hook 위치·차단감지·가드), `apps-script-contract` 52/52 pass, .gs 문법 OK.
