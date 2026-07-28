@@ -1,0 +1,40 @@
+name: Backfill Zero Metric Posts
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "대상만 확인하고 DB 쓰기/Apify 호출은 하지 않음"
+        type: boolean
+        default: true
+      measured_at:
+        description: "저장할 측정일(YYYY-MM-DD). 비우면 실행일 KST"
+        type: string
+        default: ""
+      limit:
+        description: "최대 처리 건수(0=전체)"
+        type: string
+        default: "0"
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Backfill current metrics
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+          BACKFILL_MEASURED_AT: ${{ inputs.measured_at }}
+          BACKFILL_LIMIT: ${{ inputs.limit }}
+          PYTHONUNBUFFERED: "1"
+        run: cd scripts && python backfill_zero_metric_posts.py
