@@ -234,6 +234,7 @@ def main():
     active = [a for a in posts if not a.get("ended_at")]
     waiting = uncollectable = banner_skip = 0
     check = []  # (account, 사유, url)
+    cand = []   # 미측정 후보 — 이미지(비영상) 판별 대기 (id, account, url)
     for a in active:
         if "수동추적 제외" in str(a.get("notes") or ""):
             continue
@@ -253,11 +254,34 @@ def main():
         elif "instagram.com" in u and not re.search(r"/(?:p|reels|reel|tv)/[A-Za-z0-9_-]+", u):
             check.append((a.get("account_name"), "URL오류(게시물 링크 아님)", a.get("url")))
         else:
-            check.append((a.get("account_name"), "미측정", a.get("url")))
+            cand.append((a["id"], a.get("account_name"), a.get("url")))
+
+    # 이미지(비영상) 게시물 제외 — 스크랩이 성공하면(likes 존재) 영상은 반드시 play_count가 있다.
+    #   따라서 이력상 play_count가 한 번도 없고 likes만 있으면 조회수가 없는 이미지 게시물 → '미측정' 아님.
+    #   (영상이 오늘만 실패한 경우엔 이전 날짜에 play_count 이력이 있어 제외되지 않고 정상 점검된다.)
+    image_skip = 0
+    if cand:
+        hist = {}
+        for cids in _chunks([x[0] for x in cand], 100):
+            hres = db.table("post_daily_stats").select("post_id, play_count, likes_count").in_("post_id", cids).execute()
+            for h in (hres.data or []):
+                d = hist.setdefault(h["post_id"], {"play": False, "likes": False})
+                if h.get("play_count") is not None:
+                    d["play"] = True
+                if h.get("likes_count") is not None:
+                    d["likes"] = True
+        for pid, nm, url in cand:
+            d = hist.get(pid)
+            if d and d["likes"] and not d["play"]:
+                image_skip += 1     # 이미지 게시물(조회수 없음) → 미측정 아님
+            else:
+                check.append((nm, "미측정", url))
+
     unmeasured = waiting + uncollectable + len(check)
     if unmeasured:
         btail = f" · 배너 {banner_skip} 제외(도달수 측정)" if banner_skip else ""
-        text += f"\n\n⚠️ 오늘 미측정 활성 {unmeasured}건 (신규대기 {waiting} · 수집불가 {uncollectable} · 점검 {len(check)}){btail}"
+        itail = f" · 이미지 {image_skip} 제외(조회수 없음)" if image_skip else ""
+        text += f"\n\n⚠️ 오늘 미측정 활성 {unmeasured}건 (신규대기 {waiting} · 수집불가 {uncollectable} · 점검 {len(check)}){btail}{itail}"
         for nm, reason, url in check[:8]:
             tail = (url or "").rstrip("/").split("/")[-1]
             text += f"\n  · {nm} [{reason}] {tail}"
