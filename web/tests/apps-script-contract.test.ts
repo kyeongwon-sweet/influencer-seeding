@@ -146,6 +146,38 @@ test("overwriteViralHandles_ only touches viral account_name and self-heals dail
   assert.match(appsScript, /\["overwriteViralHandles", overwriteViralHandles_\]/);
 });
 
+test("refreshSheetDerivedFields fills existing channel metadata before pricing", () => {
+  assert.match(
+    appsScript,
+    /\.addItem\("🔄 채널명, 트래킹 상태, 누적 조회수, 제작자, 업체명\/비용 업데이트하기", "refreshSheetDerivedFields"\)/,
+  );
+
+  const fillStart = appsScript.indexOf("function fillExistingMetadataFromDB_()");
+  const refreshStart = appsScript.indexOf("function refreshSheetDerivedFields()");
+  const overwriteStart = appsScript.indexOf("function overwriteViralHandles_()");
+  assert.notEqual(fillStart, -1, "기존 행 DB 메타데이터 보강 함수가 있어야 함");
+  assert.notEqual(refreshStart, -1, "통합 업데이트 함수가 있어야 함");
+  assert.ok(fillStart < overwriteStart, "DB 메타 보강은 핸들 정정 함수보다 앞에 둔다");
+
+  const fillBody = appsScript.slice(fillStart, refreshStart);
+  assert.match(fillBody, /const fillFields = \["account_name", "company_name", "cost"\]/);
+  assert.match(fillBody, /const postByKey = \{\}/);
+  assert.match(fillBody, /if \(hasFormula\) return/);
+  assert.match(fillBody, /matched_rows: matchedRows/);
+  assert.match(fillBody, /missing_post_rows: missingPostRows/);
+  assert.match(fillBody, /blank_db_account_name: blankDbByField\.account_name/);
+  assert.doesNotMatch(fillBody, /sheet\.getLastRow\(\) \+ 1/);
+  assert.doesNotMatch(fillBody, /setValue\(p\.url\)/);
+
+  const refreshBody = appsScript.slice(refreshStart);
+  const metadataIdx = refreshBody.indexOf('["채널명/DB 메타", fillExistingMetadataFromDB_]');
+  const pricingIdx = refreshBody.indexOf('["업체명/비용", syncPricing]');
+  assert.notEqual(metadataIdx, -1);
+  assert.notEqual(pricingIdx, -1);
+  assert.ok(metadataIdx < pricingIdx, "채널명/DB 메타 보강 후 업체명/비용 계산을 실행해야 함");
+  assert.match(refreshBody, /\["바이럴 채널명", overwriteViralHandles_\]/);
+});
+
 test("dailyAuto records every stage and imports stats before exporting DB stats", () => {
   const defsStart = appsScript.indexOf("function dailyAutoStageDefs_()");
   const dailyStart = appsScript.indexOf("function dailyAuto()");

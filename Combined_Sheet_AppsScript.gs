@@ -92,6 +92,7 @@ function onOpen() {
     .addItem("♻️ 전체 다시 추가", "syncAll")
     .addItem("⬇️ 대시보드 추가분 시트로 가져오기", "pullFromDB")
     .addItem("🔤 바이럴 채널명 → 핸들 정정", "overwriteViralHandles")
+    .addItem("🔄 채널명, 트래킹 상태, 누적 조회수, 제작자, 업체명/비용 업데이트하기", "refreshSheetDerivedFields")
     .addSeparator()
     .addItem("🔎 빈칸 검사 (A~H)", "checkBlanks")
     .addItem("🔁 중복 URL 검사", "checkDuplicates")
@@ -509,6 +510,45 @@ function fmtVal_(field, v) {
   return v;  // cost는 숫자 그대로, 나머지는 문자열
 }
 
+function assertRowCountStable_(sheet, expectedLastRow, label) {
+  const actualLastRow = sheet.getLastRow();
+  if (actualLastRow !== expectedLastRow) {
+    throw new Error(`${label}: 실행 중 행 수가 ${expectedLastRow} → ${actualLastRow}로 변경되어 중단했습니다.`);
+  }
+}
+
+function countColumnRuns_(edits) {
+  if (!edits || edits.length === 0) return 0;
+  const sorted = edits.slice().sort((a, b) => a.row - b.row);
+  let runs = 1;
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i].row !== sorted[i - 1].row + 1) runs++;
+  }
+  return runs;
+}
+
+function writeColumnRuns_(sheet, col, edits, expectedLastRow) {
+  if (!edits || edits.length === 0) return 0;
+  assertRowCountStable_(sheet, expectedLastRow, "writeColumnRuns");
+  const sorted = edits.slice().sort((a, b) => a.row - b.row);
+  let written = 0;
+  let startRow = sorted[0].row;
+  let values = [[sorted[0].value]];
+  for (let i = 1; i < sorted.length; i++) {
+    const edit = sorted[i];
+    if (edit.row === startRow + values.length) {
+      values.push([edit.value]);
+      continue;
+    }
+    sheet.getRange(startRow, col, values.length, 1).setValues(values);
+    written += values.length;
+    startRow = edit.row;
+    values = [[edit.value]];
+  }
+  sheet.getRange(startRow, col, values.length, 1).setValues(values);
+  return written + values.length;
+}
+
 function pullFromDB() {
   try {
     const sheet = getSheet_();
@@ -577,6 +617,124 @@ function pullFromDB() {
     safeAlert_("❌ DB→시트 반영 오류\n" + e.message);
     Logger.log(e.stack || e.message);
     return false;
+  }
+}
+
+// 기존 URL 행만 DB 메타데이터로 보강한다. pullFromDB처럼 신규 행을 추가하지 않는다.
+function fillExistingMetadataFromDB_() {
+  try {
+    const sheet = getSheet_();
+    const fieldCols = buildFieldCols_(sheet);
+    const urlCol = fieldCols.url;
+    if (!urlCol) throw new Error("게시글URL 열을 찾을 수 없습니다.");
+
+    const lastRow = sheet.getLastRow();
+    const n = (lastRow >= CONFIG.DATA_START_ROW) ? (lastRow - CONFIG.DATA_START_ROW + 1) : 0;
+    if (n <= 0) return true;
+
+    const res = UrlFetchApp.fetch(CONFIG.LIST_API_URL, {
+      method: "get",
+      headers: authHeaders_(),
+      muteHttpExceptions: true,
+    });
+    if (res.getResponseCode() !== 200) throw new Error(`API ${res.getResponseCode()}: ${res.getContentText()}`);
+    const posts = (JSON.parse(res.getContentText()).posts) || [];
+    const postByKey = {};
+    posts.forEach(p => {
+      const key = linkKey_(String(p.url || ""));
+      if (key) postByKey[key] = p;
+    });
+
+    const fillFields = ["account_name", "company_name", "cost"];
+    const data = sheet.getRange(CONFIG.DATA_START_ROW, 1, n, sheet.getLastColumn()).getValues();
+    const formulasByField = {};
+    fillFields.forEach(f => {
+      if (fieldCols[f]) {
+        formulasByField[f] = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols[f], n, 1).getFormulas();
+      }
+    });
+
+    const editsByField = {};
+    fillFields.forEach(f => editsByField[f] = []);
+    const blankDbByField = {};
+    fillFields.forEach(f => blankDbByField[f] = 0);
+    let matchedRows = 0, missingPostRows = 0;
+    const missingSamples = [], blankSamples = [];
+
+    for (let i = 0; i < n; i++) {
+      const key = linkKey_(String(data[i][urlCol - 1] || ""));
+      const post = key ? postByKey[key] : null;
+      if (!post) {
+        if (key) {
+          missingPostRows++;
+          if (missingSamples.length < 5) missingSamples.push(String(data[i][urlCol - 1] || ""));
+        }
+        continue;
+      }
+      matchedRows++;
+      fillFields.forEach(f => {
+        const col = fieldCols[f];
+        if (!col) return;
+        const val = fmtVal_(f, post[f]);
+        const cur = data[i][col - 1];
+        const hasFormula = formulasByField[f] && formulasByField[f][i] && formulasByField[f][i][0];
+        if (hasFormula) return;
+        if (String(cur == null ? "" : cur).trim() !== "") return;
+        if (val === "") {
+          blankDbByField[f]++;
+          if (blankSamples.length < 5) blankSamples.push(`${f}: ${String(data[i][urlCol - 1] || "")}`);
+          return;
+        }
+        editsByField[f].push({ row: CONFIG.DATA_START_ROW + i, value: val });
+      });
+    }
+
+    assertRowCountStable_(sheet, lastRow, "fillExistingMetadataFromDB");
+    const filledAccount = writeColumnRuns_(sheet, fieldCols.account_name, editsByField.account_name, lastRow);
+    const filledCompany = writeColumnRuns_(sheet, fieldCols.company_name, editsByField.company_name, lastRow);
+    const filledCost = writeColumnRuns_(sheet, fieldCols.cost, editsByField.cost, lastRow);
+    Logger.log("fillExistingMetadataFromDB_result " + JSON.stringify({
+      matched_rows: matchedRows,
+      missing_post_rows: missingPostRows,
+      account_name_cells: filledAccount,
+      company_name_cells: filledCompany,
+      cost_cells: filledCost,
+      blank_db_account_name: blankDbByField.account_name,
+      blank_db_company_name: blankDbByField.company_name,
+      blank_db_cost: blankDbByField.cost,
+      missing_samples: missingSamples,
+      blank_samples: blankSamples,
+    }));
+    return true;
+  } catch (e) {
+    safeAlert_("❌ 기존 행 DB 메타데이터 보강 오류\n" + e.message);
+    Logger.log(e.stack || e.message);
+    return false;
+  }
+}
+
+function refreshSheetDerivedFields() {
+  const steps = [
+    ["채널명/DB 메타", fillExistingMetadataFromDB_],
+    ["바이럴 채널명", overwriteViralHandles_],
+    ["트래킹 상태", syncStatus],
+    ["누적 조회수", refreshCumulativeViews],
+    ["제작자", syncCreators],
+    ["업체명/비용", syncPricing],
+  ];
+  const failed = [];
+  steps.forEach(([name, fn]) => {
+    try {
+      if (fn() === false) failed.push(name);
+    } catch (e) {
+      failed.push(name);
+      Logger.log(`refreshSheetDerivedFields_${name}_error ` + (e.stack || e.message));
+    }
+  });
+  if (failed.length) {
+    SpreadsheetApp.getActive().toast(`일부 업데이트 실패: ${failed.join(", ")}`, "확인 필요", 8);
+  } else {
+    SpreadsheetApp.getActive().toast("채널명, 트래킹 상태, 누적 조회수, 제작자, 업체명/비용 업데이트 완료", "완료", 5);
   }
 }
 

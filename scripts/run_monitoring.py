@@ -207,6 +207,16 @@ def _tracks_play_count(url):
     )
 
 
+def _needs_metadata_recollect(post):
+    """이미 조회수 행이 있어도 IG 계정명이 비어 있으면 1회 재수집해 owner_username을 회복한다."""
+    url = post.get("url") or ""
+    return (
+        not str(post.get("account_name") or "").strip()
+        and "instagram.com" in url.lower()
+        and _ig_shortcode(url)
+    )
+
+
 def _same_day_measured_ids(db, posts, measured_at=TODAY):
     """Return post ids that already have the needed measurement for measured_at.
 
@@ -706,9 +716,13 @@ def run():
         else:
             measured_ids = _same_day_measured_ids(db, posts)
             if measured_ids:
+                metadata_recollect_ids = {p["id"] for p in posts if p.get("id") in measured_ids and _needs_metadata_recollect(p)}
                 before = len(posts)
-                posts = [p for p in posts if p["id"] not in measured_ids]
-                print(f"[LOG] 💸 Apify 비용 가드: {TODAY} 이미 측정된 {before - len(posts)}건 제외, 미측정 {len(posts)}건만 수집")
+                posts = [p for p in posts if p["id"] not in measured_ids or p["id"] in metadata_recollect_ids]
+                print(
+                    f"[LOG] 💸 Apify 비용 가드: {TODAY} 이미 측정된 {before - len(posts)}건 제외, "
+                    f"메타데이터 보강 {len(metadata_recollect_ids)}건 포함, 수집 대상 {len(posts)}건"
+                )
 
         if not posts:
             print("[WARN] 추적 중인 게시물이 없습니다.")

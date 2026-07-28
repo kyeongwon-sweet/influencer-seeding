@@ -1,5 +1,15 @@
 # AI Shared Status
 
+## 2026-07-28 [Codex 완료·라이브 반영] 채널명/비용/업체명 버튼 보강 + 원인 확정
+- **사용자 신고:** `콘텐츠 대시보드 연동` 814행대에서 `채널명(C)`, `비용(G)`, `업체명(M)`이 비어 있음. 메뉴의 `트래킹 상태, 누적 조회수, 제작자, 업체명 업데이트하기`를 눌러도 채워지지 않음.
+- **원인:** 라이브 `refreshSheetDerivedFields`는 기존에 `syncStatus → refreshCumulativeViews → syncCreators → syncPricing`만 실행했다. `syncPricing`은 `채널명 + 채널분류`가 있어야 가격표 XLOOKUP을 만들 수 있으므로, C열이 비어 있으면 업체명/비용도 채우지 못한다.
+- **Apps Script 수정:** 라이브 서버본을 새로 복사한 뒤 함수 단위로만 반영. 새 `fillExistingMetadataFromDB_()`는 `pullFromDB`와 달리 **신규 행을 추가하지 않고**, 이미 시트에 있는 URL 행만 DB `list-for-sheet` 응답으로 매칭해 빈 `account_name/company_name/cost`만 채운다. 통합 버튼은 `채널명/DB 메타 → 바이럴 채널명 → 트래킹 상태 → 누적 조회수 → 제작자 → 업체명/비용` 순서로 실행하도록 변경. 메뉴 문구도 `채널명, 트래킹 상태, 누적 조회수, 제작자, 업체명/비용 업데이트하기`로 수정.
+- **라이브 검증:** 저장 → 새로고침 → 서버본 재복사 확인: `fillExistingMetadataFromDB_`, 새 메뉴 문구, 기존 `dateKeyWrites`, `writeColumnRuns_` 모두 존재. `refreshSheetDerivedFields` 실제 실행 완료. 로그: `matched_rows=1450`, `missing_post_rows=0`, `account_name_cells=0`, `company_name_cells=0`, `cost_cells=0`, `blank_db_account_name=9`, `blank_db_cost=9`.
+- **해석:** 버튼/URL 매칭 문제가 아니라, 신고된 9개 IG 릴은 DB `sponsored_posts.account_name`과 `cost` 자체가 비어 있다. URL에는 핸들이 없으므로 Apps Script만으로는 안전하게 추측해 채울 수 없다.
+- **수집기 보강(repo):** `scripts/run_monitoring.py` 비용 가드를 수정해, 같은 날 조회수 행이 이미 있어도 `account_name`이 빈 IG 숏코드 게시물은 “메타데이터 보강 필요”로 재수집 대상에 남긴다. 다음 수집에서 Apify 응답의 `owner_username`이 들어오면 기존 `collected_account_name_update` 정책으로 DB 채널명이 채워지고, 이후 버튼/dailyAuto가 시트 C열과 가격표 기반 업체명/비용을 채울 수 있다.
+- **검증:** `npm test` 63/63 pass, `npx eslint tests/apps-script-contract.test.ts --max-warnings=0` pass, `npm run build` pass, `py scripts/test_metadata_recollect.py` pass, `py scripts/test_account_name_policy.py` pass, `py scripts/test_auto_end_rules.py` pass. `python` 명령은 Windows Store shim이라 `py`로 실행.
+- **남은 즉시 조치:** 이 9개 행을 바로 채우려면 다음 IG 수집을 한 번 돌려 DB 메타를 복구한 뒤 `refreshSheetDerivedFields`를 다시 실행해야 한다. Apify 비용은 빈 계정명 IG 9건 범위로 제한되도록 repo를 수정했지만, 현재 로컬에는 운영 secret이 없어 Codex가 즉시 GHA/수집 실행까지는 하지 못함.
+
 ## 2026-07-28 [Codex 완료·라이브 반영 완료] 트래킹 종료글 H열 최종 누적값 보존
 - **사용자 신고:** `콘텐츠 대시보드 연동`에서 `상태=트래킹 종료`인데 `누적 조회수(H)`가 빈 행이 존재. 라이브 시트 실측 예시 `10:15행`: H/I 빈칸, 날짜열 `O:DG`도 전부 빈칸.
 - **원인:** 기존 `refreshCumulativeViews`는 날짜열 양수값의 `MAX`만 H에 쓰고, 날짜열이 전부 빈 경우 H를 비운다. `exportStats`도 종료일 뒤 DB 측정값은 날짜열에서 제거하므로, 종료 전 날짜칸에 표시 가능한 값이 없으면 DB에 최종값이 있어도 H가 비어 남을 수 있었다.
