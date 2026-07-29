@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## 2026-07-29 [Codex 완료] 진행 합의 항목 처리 — photo 검증 예약·stash 정리·clasp 확인·배너 reach 실측
+- **TikTok `/photo/` 다음 run 검증:** 2026-07-30 05:20 KST 확인 카드를 앱에 띄움(사용자 승인 필요). 확인 범위: `issuebox_/photo/76672043078207603388`, `issuetteugi/photo/7667152002266287378` 등 `/photo/`가 요청뿐 아니라 실제 play/reach 값으로 적재됐는지, 같은 날짜 `manual=true` 보존, 이슈박스 종료 상태 유지. 데이터 쓰기 없이 검증만 수행하도록 지시.
+- **이미 관찰된 production 수집 신호:** `Monitoring Backup & Retry` run `30443801895`에서 `MONITORING_DATE=2026-07-28`, `틱톡 photo 수집: 실값 2건 / 2개 요청`, `manual=True same-date rows preserved in run_monitoring: skipped auto upsert 154` 확인. 즉 `/photo/`와 수기값 보존은 최신 run에서 긍정 신호가 있음. 내일 예약은 한 번 더 독립 재검증용.
+- **배너 reach 서버 직접읽기 실측:** 직전 정규 run `30441187457`은 구 파서 때문에 `date_columns=0`, `upserted=0`. Codex가 2자리 연도 접두 헤더 파서 보강 후 dry-run `30447987441`에서 `date_columns=97`, `banner_rows=512`, `extracted_cells=6760`, `would_upsert=6728`, `missing_urls=0` 확인. 이어 실제 run `30448068040` 실행 성공: `upserted=6728`, `post_ended_skipped=18`, `duplicate_conflict_skipped=7`, HTTP 200. 배너 날짜열 직접읽기 경로는 복구됨.
+- **stash 정리:** `stash@{0}: codex-temp-auto-write-guard-before-origin-sync`는 현재 main의 `AUTO_WRITE_TAIL_GUARD_MS=90초`, `dailyAutoStageDefs_`, `buildUrlKeyIndex_`보다 오래된 초안임을 diff로 확인하고 삭제 완료. 현재 stash 없음.
+- **worktree 정리:** 삭제 가능한 clean+main 포함 worktree 없음. `C:\tmp\influencer-*` 중 다수가 dirty 또는 main 미포함 ahead/detached 상태라 보존. Claude 계열 worktree도 건드리지 않음.
+- **Apps Script clasp 경로:** `node scripts/prepare_apps_script_deploy.mjs` dry-run 성공(`dist/apps-script` 생성, scriptId `1XogwTHJb...`). 전역 `clasp`는 없음. `npx @google/clasp status`는 동작하지만 원격 명령 `deployments`는 `No credentials found`로 실패. 결론: repo→dist 준비는 가능, 실제 live push는 Google clasp 인증 전까지 불가. 그 전에는 기존 원칙대로 fresh 서버본 확인 후 함수 단위 graft만 허용.
+
 ## 🔴 2026-07-29 [Claude→Codex 인계] 조회수0 백필 오적재 75건 삭제 요청 (Claude 백필 버그, 사용자 승인)
 - **근본원인(Claude 실수)**: 어제 7/28 백필의 후보 산정 쿼리(PostgREST `or=(play_count.gt.0,reach_count.gt.0)` + `post_id=in.(…)` 조합 버그)가 **이미 이력 있는 게시물을 "이력0"으로 오분류**. 결과: 백필 116건 전부 실제로 이전 이력 보유(진짜 이력0=0). 그 중 **종료글 75건에 07-28 auto 행을 잘못 추가**.
 - **증상(07-28 일일리포트 정합성 특이)**: 누적 하락(준맛 인스타 378,186→128,060·아하하 131,314→71,100·욤 신상간식 12,999→11,638)·복사 오염(a___romii·____ziini) — **전부 이 75건**.
