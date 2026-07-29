@@ -1,5 +1,15 @@
 # AI Shared Status
 
+## 2026-07-29 [Codex 확인·정리] live exportStats / syncStatus / worktree
+- **live Apps Script exportStats 확인:** Chrome 로그인 세션으로 production Apps Script `1XogwTHJb...` 편집기를 열고, `AI 트래킹 대시보드 연동.gs` 전체를 선택·복사해 읽기 검증했다. 길이 126,088자, `exportStats__wgimpl` 존재, 최신 증분 수식 마커 `SEQUENCE(1,COLUMNS(rng),COLUMN(` 존재, 구식 `cols,COLUMN(rng)` 부재. 즉 증분 전멸을 만든 live 본문은 제거된 상태다. `clasp pull`은 CLI 자격증명 없음(`No credentials found`)으로 불가.
+- **live Apps Script 신규 repo safeguard 미반영:** 위 live 복사본에는 `auditLinkedSheetFormulas_`, `AUTO_WRITE_TAIL_GUARD_MS`, `buildUrlKeyIndex_`가 아직 없다. 이들은 repo `32a790c` 이후 준비 완료 상태이며, 실제 live 반영은 fresh 서버본 확인 후 함수 단위 graft 또는 인증된 clasp 경로로 진행해야 한다.
+- **Formula Audit production 복구 확인:** 기존 failure `30429484609`는 날짜 헤더 0개 인식 오류였고, main `d6b27f3` 배포 뒤 workflow `30429742250`이 HTTP 200으로 성공했다. 결과: `totalRows=1510`, H error 0, I error 0, `emptyButData=0`, `mismatch=0`, `healthy=true`.
+- **TikTok `/photo/` 정규 run 관찰:** 최신 정규 Daily Collect 로그 `30397810136`에서 `issuebox_/photo/76672043078207603388`와 `issuetteugi/photo/7667152002266287378`가 수집 대상에 들어간 것은 확인했다. 다만 해당 run은 상세 photo 집계 로그 추가 전이라 “실값 N/M”은 다음 정규 run에서 확인해야 한다. Apify 비용 때문에 수동 full collect는 실행하지 않았다.
+- **syncStatus 실측:** live Apps Script에서 `syncStatus`를 수동 실행했고 오류 없이 완료됐다. 이후 시트 CSV 재확인: row 1379 `issuebox_/photo/76672043078207603388` H=`1,923`, I=`947`, 상태=`트래킹 종료`; row 1380 `issuetteugi/photo/7667152002266287378` H=`915`, I=`387`, 상태=`트래킹 중`; row 2213 `issuebox_/photo/7667158750612049160/` 상태=`트래킹 종료`.
+- **worktree 정리:** clean + `origin/main` 포함 확인 후 `C:\tmp\asset-name-sync`, `C:\tmp\wt-r26`, `C:\Users\hwangkw\Documents\인지 증분 대시보드\.codex-dailyauto-wt`, `C:\Users\hwangkw\Documents\인지 증분 대시보드\.codex-main-worktree` 제거. Claude 경로와 dirty/unmerged worktree는 보존.
+- **stash 보존:** `stash@{0}: codex-temp-auto-write-guard-before-origin-sync`는 오래된 dailyAuto/onEdit 초안이 포함되어 있어 바로 삭제하지 않았다. 현재 main보다 낡은 방식이 섞여 있으므로, 필요 부분만 재검토 후 이관하거나 사용자 승인 후 삭제.
+- **다음 확인 예약:** 2026-07-30 05:20 KST heartbeat 카드 생성. 승인되면 다음 정규 수집 로그에서 `/photo/` 실값 집계, manual same-date 보존 production 실측, 이슈박스 상태 유지 여부를 재확인한다.
+
 ## 2026-07-29 [Claude 완료] 일단이나연 YT 07-28 = 42,680 복원 (3,067로 유실됐던 것) + 7/28 리포트 재발송
 - **문제:** 사용자 "일단이나연 4만+ 올랐는데 급상승에 없음". 확인하니 DB `post_daily_stats` 07-28 = **3,067(옛 수집오류값)**, 단일 행. 상태판엔 "07-28=42,680 유지"로 적혀 있었으나 **실제 DB엔 3,067로 되돌아가 있었음**(중복행 제거/정정 유실 추정).
 - **실측 재확인:** yt-dlp `vx9Ijz7QG0k` = **43,463회**(현재), 업로드 2026-07-28. 7/28 검증값 42,680 유효.
