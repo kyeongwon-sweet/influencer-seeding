@@ -36,10 +36,18 @@ jobs:
           else
             python repair_ended_overrecord_stats.py --date "${{ inputs.date }}"
           fi
+      - name: Inspect or repair status integrity anomalies
+        run: |
+          cd scripts
+          if [ "${{ inputs.apply }}" = "true" ]; then
+            python repair_status_integrity_anomalies.py --apply
+          else
+            python repair_status_integrity_anomalies.py
+          fi
       - name: Upload backup
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ended-overrecord-backup-${{ inputs.date }}-${{ github.run_id }}
-          path: data/backups/ended_overrecord_*.json
+          path: data/backups/*.json
           if-no-files-found: ignore
