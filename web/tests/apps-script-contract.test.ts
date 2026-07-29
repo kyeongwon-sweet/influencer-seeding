@@ -66,6 +66,7 @@ test("cumulative V4: per-row formulas, manual values preserved, no spill anchor"
   const refStart = appsScript.indexOf("function refreshCumulativeViews()");
   const refBody = appsScript.slice(refStart, appsScript.indexOf("function parseCreator_(", refStart));
   assert.match(refBody, /"=IF\(COUNT\(" \+ firstDate \+ r \+ ":" \+ lastDate \+ r \+ "\)=0,\\"\\",MAX\(/);
+  assert.match(refBody, /const dateRe = \/\^\\s\*\(\?:\\d\{2,4\}/);
   assert.match(refBody, /"데이터 없음"과 "수식 파손"을 구분/);
   assert.doesNotMatch(refBody, /else \{ out\.push\(\[""\]\); \}/);
   assert.doesNotMatch(refBody, /AUTO_CUMULATIVE_BYROW/);

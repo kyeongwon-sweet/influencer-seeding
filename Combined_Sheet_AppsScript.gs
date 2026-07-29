@@ -1865,7 +1865,7 @@ function refreshCumulativeViews() {
   if (!cumCol) return true;
   const headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
   const dateCols = [];
-  const dateRe = /^\s*\d{1,2}\s*[.]\s*\d{1,2}(\s|\(|$)/;
+  const dateRe = /^\s*(?:\d{2,4}\s*[.]\s*)?\d{1,2}\s*[.]\s*\d{1,2}\s*[.]?\s*(\s|\(|$)/;
   for (let i = CONFIG.STATS_FIRST_COL - 1; i < headers.length; i++) {
     const header = headers[i];
     if (header instanceof Date || dateRe.test(String(header))) dateCols.push(i + 1);
