@@ -238,7 +238,7 @@ test("overwriteViralHandles_ only touches viral account_name and self-heals dail
 test("refreshSheetDerivedFields fills existing channel metadata before pricing", () => {
   assert.match(
     appsScript,
-    /\.addItem\("🔄 채널명, 트래킹 상태, 누적 조회수, 제작자, 업체명\/비용 업데이트하기", "refreshSheetDerivedFields"\)/,
+    /\.addItem\("파생정보 전체 업데이트", "refreshSheetDerivedFields"\)/,
   );
 
   const fillStart = appsScript.indexOf("function fillExistingMetadataFromDB_()");
@@ -443,4 +443,68 @@ test("daily trigger installs and removes the 00:00 syncNew trigger", () => {
     /function removeDailyTrigger\(\)[\s\S]*?\["syncNew", "dailyAuto", "dailyAutoRetry_"\]/,
   );
   assert.match(appsScript, /\["syncNew", "dailyAuto", "dailyAutoRetry_"\]/);
+});
+
+test("menu exposes two primary actions and four focused submenus", () => {
+  const start = appsScript.indexOf("function onOpen()");
+  const end = appsScript.indexOf("function syncAllWithConfirm()", start);
+  assert.notEqual(start, -1);
+  const body = appsScript.slice(start, end);
+  assert.match(body, /addItem\("신규 전송 미리보기", "previewNew"\)/);
+  assert.match(body, /addItem\("신규 광고 추가", "syncNew"\)/);
+  assert.match(body, /createMenu\("📊 조회수"\)/);
+  assert.match(body, /createMenu\("🔄 메타데이터 · 복구"\)/);
+  assert.match(body, /createMenu\("🔎 점검 · 정리"\)/);
+  assert.match(body, /createMenu\(automationMenuLabel_\(\)\)/);
+  assert.match(body, /addItem\("시트 변경사항 DB 반영", "syncAllWithConfirm"\)/);
+  assert.doesNotMatch(body, /바이럴 채널명.*핸들 정정/);
+  assert.doesNotMatch(body, /전체 다시 추가/);
+});
+
+test("automation menu reports trigger state while status view remains read-only", () => {
+  const labelStart = appsScript.indexOf("function automationMenuLabel_()");
+  const labelEnd = appsScript.indexOf("function onOpen()", labelStart);
+  const labelBody = appsScript.slice(labelStart, labelEnd);
+  assert.doesNotMatch(labelBody, /getProjectTriggers/);
+  assert.match(labelBody, /DAILY_AUTO_LAST_FINISHED_AT/);
+  assert.match(labelBody, /자동화 ✅ 켜짐/);
+  assert.match(labelBody, /자동화 ⏹ 꺼짐/);
+
+  const setupStart = appsScript.indexOf("function checkSetup()");
+  const setupEnd = appsScript.indexOf("function checkDuplicates()", setupStart);
+  const setupBody = appsScript.slice(setupStart, setupEnd);
+  assert.match(setupBody, /자동 동기화 상태:/);
+  assert.doesNotMatch(setupBody, /(?:newTrigger|deleteTrigger|setProperty)\(/);
+
+  const installStart = appsScript.indexOf("function installDailyTrigger()");
+  const removeStart = appsScript.indexOf("function removeDailyTrigger()", installStart);
+  const installBody = appsScript.slice(installStart, removeStart);
+  const removeBody = appsScript.slice(removeStart, appsScript.indexOf("function summarizeByCompany()", removeStart));
+  assert.match(installBody, /setProperty\("AUTO_SYNC_ENABLED", "true"\)/);
+  assert.match(removeBody, /setProperty\("AUTO_SYNC_ENABLED", "false"\)/);
+
+  const dailyStart = appsScript.indexOf("function dailyAuto()");
+  const dailyEnd = appsScript.indexOf("function fetchCollectedStats_", dailyStart);
+  assert.match(appsScript.slice(dailyStart, dailyEnd), /AUTO_SYNC_ENABLED: "true"/);
+});
+
+test("sheet-to-DB confirmation and result report diff-only server outcome", () => {
+  const confirmStart = appsScript.indexOf("function syncAllWithConfirm()");
+  const confirmEnd = appsScript.indexOf("// ═", confirmStart);
+  const confirmBody = appsScript.slice(confirmStart, confirmEnd);
+  assert.match(confirmBody, /시트 변경사항 DB 반영/);
+  assert.match(confirmBody, /URL 기준으로 비교/);
+  assert.match(confirmBody, /시트 빈칸으로 기존 DB 값을 지우지 않습니다/);
+  assert.match(confirmBody, /의도적인 빈칸은 '-'로 표시/);
+
+  const postStart = appsScript.indexOf("function postRows_(rows)");
+  const postEnd = appsScript.indexOf("function markRegistered_", postStart);
+  assert.match(appsScript.slice(postStart, postEnd), /created: data\.created \|\| 0/);
+
+  const runStart = appsScript.indexOf("function runSync_(onlyNew)");
+  const runEnd = appsScript.indexOf("function syncNew()", runStart);
+  const runBody = appsScript.slice(runStart, runEnd);
+  assert.match(runBody, /비교한 행: \$\{count\}건/);
+  assert.match(runBody, /새로 추가: \$\{created\}건/);
+  assert.match(runBody, /값이 달라 수정: \$\{filled\}건/);
 });

@@ -80,32 +80,74 @@ const FIELD_LABEL = {
 // ═══════════════════════════════════════════════════════════════
 // 메뉴
 // ═══════════════════════════════════════════════════════════════
+function automationMenuLabel_() {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const enabled = props.getProperty("AUTO_SYNC_ENABLED");
+    if (enabled === "false") return "⏰ 자동화 ⏹ 꺼짐";
+    if (enabled === "true") return "⏰ 자동화 ✅ 켜짐";
+
+    // simple onOpen에서는 트리거 목록 API가 권한 오류를 내므로 호출하지 않는다.
+    // 명시적 켜기/끄기 상태가 아직 없는 구버전은 최근 dailyAuto 실행 기록으로 1회 이관한다.
+    const lastFinished = Date.parse(props.getProperty("DAILY_AUTO_LAST_FINISHED_AT") || "");
+    if (Number.isFinite(lastFinished) && Date.now() - lastFinished < 36 * 60 * 60 * 1000) {
+      return "⏰ 자동화 ✅ 켜짐";
+    }
+    return "⏰ 자동화 ⚠️ 상태 확인";
+  } catch (err) {
+    Logger.log("automationMenuLabel_: " + (err.stack || err.message));
+    return "⏰ 자동화 ⚠️ 상태 확인";
+  }
+}
+
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
-  // 🚀 광고 모니터링 (협찬 모니터링 연동)
+
+  const statsMenu = ui.createMenu("📊 조회수")
+    .addItem("시트 → DB 조회수 반영", "importStats")
+    .addItem("DB → 시트 조회수 반영", "exportStats");
+
+  const metadataMenu = ui.createMenu("🔄 메타데이터 · 복구")
+    .addItem("대시보드 추가분 가져오기", "pullFromDB")
+    .addItem("파생정보 전체 업데이트", "refreshSheetDerivedFields")
+    .addItem("시트 변경사항 DB 반영", "syncAllWithConfirm");
+
+  const checkMenu = ui.createMenu("🔎 점검 · 정리")
+    .addItem("빈칸 · 중복 URL 검사", "checkSheetIssues")
+    .addItem("중복 링크 삭제", "removeDuplicateLinks");
+
+  const automationMenu = ui.createMenu(automationMenuLabel_())
+    .addItem("자동화 상태 · 최근 실행 보기", "checkSetup")
+    .addItem("자동 동기화 켜기 · 복구", "installDailyTrigger")
+    .addItem("자동 동기화 끄기", "removeDailyTrigger");
+
   ui.createMenu("🚀 광고 모니터링")
-    .addItem("👀 전송 미리보기 (신규)", "previewNew")
-    .addItem("✅ 신규 광고 추가", "syncNew")
+    .addItem("신규 전송 미리보기", "previewNew")
+    .addItem("신규 광고 추가", "syncNew")
     .addSeparator()
-    .addItem("📊 일자별 조회수 입력 (I~열)", "importStats")
-    .addItem("📥 수집 조회수 시트로 채우기 (I~열)", "exportStats")
-    .addItem("♻️ 전체 다시 추가", "syncAll")
-    .addItem("⬇️ 대시보드 추가분 시트로 가져오기", "pullFromDB")
-    .addItem("🔤 바이럴 채널명 → 핸들 정정", "overwriteViralHandles")
-    .addItem("🔄 채널명, 트래킹 상태, 누적 조회수, 제작자, 업체명/비용 업데이트하기", "refreshSheetDerivedFields")
-    .addSeparator()
-    .addItem("🔎 빈칸 검사 (A~H)", "checkBlanks")
-    .addItem("🔁 중복 URL 검사", "checkDuplicates")
-    .addItem("🧹 중복 링크 정리 (하나만 남김)", "removeDuplicateLinks")
-    .addItem("🔍 설정 확인", "checkSetup")
-    .addSeparator()
-    .addItem("⏰ 매일 9:30 자동 추가 켜기", "installDailyTrigger")
-    .addItem("⏹ 자동 추가 끄기", "removeDailyTrigger")
+    .addSubMenu(statsMenu)
+    .addSubMenu(metadataMenu)
+    .addSubMenu(checkMenu)
+    .addSubMenu(automationMenu)
     .addToUi();
-  // 💻 배너 인사이트 요청
+
   ui.createMenu("💻배너 인사이트 요청")
     .addItem("업체별 채널 조회", "summarizeByCompany")
     .addToUi();
+}
+
+function syncAllWithConfirm() {
+  const ui = SpreadsheetApp.getUi();
+  const result = ui.alert(
+    "시트 변경사항 DB 반영",
+    "시트 행을 URL 기준으로 비교하고 DB와 값이 다른 필드만 수정합니다.\n\n동일한 값은 건너뛰고, 시트 빈칸으로 기존 DB 값을 지우지 않습니다. 의도적인 빈칸은 '-'로 표시합니다.\n\n계속할까요?",
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (result !== ui.Button.OK) {
+    SpreadsheetApp.getActive().toast("변경사항 반영을 취소했습니다.", "취소", 4);
+    return;
+  }
+  runSync_(false);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -459,9 +501,10 @@ function postRows_(rows) {
   if (code !== 200) throw new Error(`API ${code}: ${body}`);
   const data = JSON.parse(body);
   return {
-    count: data.upserted != null ? data.upserted : rows.length, // 처리(전송) 건수
-    ended: data.ended_marked || 0,                              // 캡션 '삭제/보관' → 종료 처리 건수
-    filled: data.meta_filled || 0,                              // 기존 광고의 빈 항목을 시트 값으로 채운 건수
+    count: data.upserted != null ? data.upserted : rows.length,
+    created: data.created || 0,
+    ended: data.ended_marked || 0,
+    filled: data.meta_filled || 0,
   };
 }
 
@@ -477,14 +520,18 @@ function runSync_(onlyNew) {
   try {
     const { rows, rowNums, statusCol, skipped, dupCount, future } = collectRows_(onlyNew);
     if (rows.length === 0) {
-      safeAlert_((onlyNew ? "추가할 신규 광고가 없습니다." : "추가할 광고가 없습니다.") + noteExtra_(skipped, dupCount, future));
+      safeAlert_((onlyNew ? "추가할 신규 광고가 없습니다." : "반영할 시트 행이 없습니다.") + noteExtra_(skipped, dupCount, future));
       return true;
     }
-    const { count, ended, filled } = postRows_(rows);
+    const { count, created, ended, filled } = postRows_(rows);
     markRegistered_(getSheet_(), statusCol, rowNums);
-    let okMsg = `✅ ${count}개 광고를 사이트에 반영했습니다.`;
-    if (filled) okMsg += `\n📝 기존 광고의 빈 항목 ${filled}건을 시트 값으로 채움(채널 분류·비용 등).`;
-    if (ended) okMsg += `\n🛑 캡션 '삭제/보관' ${ended}건 → '종료' 처리됨.`;
+    let okMsg;
+    if (onlyNew) {
+      okMsg = `✅ 신규 광고 확인 완료\n• 비교한 행: ${count}건\n• 새로 추가: ${created}건\n• 기존 행 변경: ${filled}건`;
+    } else {
+      okMsg = `✅ 시트 변경사항 DB 반영 완료\n• 비교한 행: ${count}건\n• 새로 추가: ${created}건\n• 값이 달라 수정: ${filled}건`;
+    }
+    if (ended) okMsg += `\n• 삭제/보관 캡션으로 종료: ${ended}건`;
     safeAlert_(okMsg + noteExtra_(skipped, dupCount, future) + blankNote_());
     return true;
   } catch (e) {
@@ -972,6 +1019,7 @@ function dailyAuto() {
     const props = PropertiesService.getScriptProperties();
     const startedAt = new Date().toISOString();
     props.setProperties({
+      AUTO_SYNC_ENABLED: "true",
       DAILY_AUTO_LAST_STARTED_AT: startedAt,
       DAILY_AUTO_LAST_STATUS: "RUNNING",
     }, false);
@@ -1599,7 +1647,7 @@ function checkSetup() {
     const triggers = ScriptApp.getProjectTriggers()
       .filter(t => t.getHandlerFunction() === "syncNew" || t.getHandlerFunction() === "dailyAuto");
     const dailyAutoCount = triggers.filter(t => t.getHandlerFunction() === "dailyAuto").length;
-    const legacySyncNewCount = triggers.filter(t => t.getHandlerFunction() === "syncNew").length;
+    const midnightSyncNewCount = triggers.filter(t => t.getHandlerFunction() === "syncNew").length;
     const props = PropertiesService.getScriptProperties();
     const lastStarted = props.getProperty("DAILY_AUTO_LAST_STARTED_AT") || "-";
     const lastFinished = props.getProperty("DAILY_AUTO_LAST_FINISHED_AT") || "-";
@@ -1611,7 +1659,8 @@ function checkSetup() {
       `탭: ${sheet.getName()}\n` +
       `인식된 필드: ${Object.keys(fieldCols).join(", ")}\n\n` +
       `🕘 스크립트 시간대: ${scriptTimezone} / KST 오늘: ${kstToday}\n` +
-      `⏰ 자동 동기화 트리거: dailyAuto ${dailyAutoCount}개, 구버전 syncNew ${legacySyncNewCount}개\n` +
+      `⏰ 자동 동기화 상태: ${dailyAutoCount === 1 && midnightSyncNewCount === 1 ? "✅ 켜짐" : "⚠️ 복구 필요"}\n` +
+      `트리거: dailyAuto ${dailyAutoCount}개, 자정 syncNew ${midnightSyncNewCount}개\n` +
       `예정: 매일 ${CONFIG.TRIGGER_HOUR}:${CONFIG.TRIGGER_MINUTE} KST 전후(12:20 리포트 전)\n` +
       `마지막 dailyAuto 시작: ${lastStarted}\n` +
       `마지막 dailyAuto 종료: ${lastFinished}\n` +
@@ -2390,6 +2439,7 @@ function installDailyTrigger() {
     .filter(t => ["syncNew", "dailyAuto", "dailyAutoRetry_"].indexOf(t.getHandlerFunction()) >= 0)
     .forEach(t => ScriptApp.deleteTrigger(t));
   PropertiesService.getScriptProperties().deleteProperty("DAILY_AUTO_RETRY_PENDING_JSON");
+  PropertiesService.getScriptProperties().setProperty("AUTO_SYNC_ENABLED", "true");
   ensureDateHeaderChangeTrigger_();
   applyLinkedSheetInputValidation_();
 
@@ -2416,6 +2466,7 @@ function removeDailyTrigger() {
     .filter(t => ["syncNew", "dailyAuto", "dailyAutoRetry_"].indexOf(t.getHandlerFunction()) >= 0);
   triggers.forEach(t => ScriptApp.deleteTrigger(t));
   PropertiesService.getScriptProperties().deleteProperty("DAILY_AUTO_RETRY_PENDING_JSON");
+  PropertiesService.getScriptProperties().setProperty("AUTO_SYNC_ENABLED", "false");
   safeAlert_(`⏹ 자동 동기화를 껐습니다. (${triggers.length}개 트리거 제거)`);
 }
 
