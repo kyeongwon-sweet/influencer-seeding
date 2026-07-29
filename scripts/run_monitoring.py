@@ -435,7 +435,14 @@ def _tt_id(url: str):
 def _tt_canonical(url: str) -> str:
     """틱톡 단축/비표준 URL(vt.tiktok.com 등)을 /video/ID 표준 URL로 해석. 이미 표준이면 그대로.
     리다이렉트 Location 헤더만 따라가 본문 요청·차단을 피한다. 실패 시 원본 반환."""
-    if not url or _tt_id(url):
+    if not url:
+        return url
+    # 틱톡 photo(슬라이드) 게시물: 액터 postURLs 모드가 /photo/를 못 읽고 /video/ID만 조회 가능(실측).
+    # id는 동일하므로 /photo/ID → /video/ID로 표준화하면 play/digg 정상 수집됨(위성채널·바이럴 배너 소재 누락 해결).
+    mp = re.search(r'(/@[^/]+)/photo/(\d+)', url)
+    if mp:
+        return "https://www.tiktok.com" + mp.group(1) + "/video/" + mp.group(2)
+    if _tt_id(url):
         return url
     import urllib.request, urllib.error, urllib.parse
 
