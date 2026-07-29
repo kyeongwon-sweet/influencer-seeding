@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 2026-07-29 [Codex 긴급복구 완료] 증분(I) V2 전멸 원인확정 + live I열 즉시 복구
+- **원인 확정:** live I열 V2 수식의 `cols,COLUMN(rng)`가 Google Sheets에서 날짜범위와 같은 1xN 배열이 아니라 단일값처럼 평가됨. 그 결과 `FILTER(cols,rng>0)`가 `FILTER has mismatched range sizes. Expected row count: 1. column count: 1. Actual row count: 1, column count: 97.` 오류를 냈고, 바깥 `IFERROR(...,"")`가 전 행을 빈칸으로 삼켰다. 로케일/쉼표 문제가 아니라 `COLUMN(rng)` 배열 생성 방식 문제.
+- **live 시트 복구:** Apps Script 실행 없이 Google Sheets API로 `콘텐츠 대시보드 연동!I2:I2214`에 검증된 수식 직접 재설치. 새 수식은 `cols,SEQUENCE(1,COLUMNS(rng),COLUMN($O행),1)`로 열번호 배열을 만든다. 임시 숨김 디버그 탭에서 원본 오류와 수정 수식 계산을 확인한 뒤 디버그 탭 삭제.
+- **실측 검증:** `/export` CSV 기준 URL행 1,510, 누적(H) 값 1,454, 증분(I) 값 1,451, H #REF 0, I #REF 0. 누적이 있는데 증분 빈칸인 행은 3개(row 511/558/629)만 남음. 임시 날짜열 삽입→삭제 후 재검증도 동일: I 값 1,451, I #REF 0. 대표 셀 I1408=`3,067`, I1434=`0`.
+- **repo 정본 수정:** `Combined_Sheet_AppsScript.gs`의 `exportStats` 증분 생성부도 같은 `SEQUENCE` 수식으로 교체. 계약테스트는 `COLUMN(rng)` 금지와 `SEQUENCE` 사용을 검증하도록 보강. `npm.cmd test` = **71/71 pass**.
+- **주의:** 현재 도구로는 live Apps Script 프로젝트 파일을 직접 저장/실행하는 전용 경로(`clasp`/문서 세션)가 없어, live Apps Script 본문 자체가 repo 수정과 동일해졌는지는 아직 별도 확인 필요. 다음에 Apps Script 편집기 접근 가능한 세션이 있으면 `exportStats` 증분 생성부가 `SEQUENCE(1,COLUMNS(rng),COLUMN(...),1)`인지 확인·graft해야 한다. 그 전까지는 I열 현재 표시는 복구돼 있지만, 예전 live `exportStats`를 다시 실행하면 재전멸 위험이 있다.
+
 ## 2026-07-29 [Codex 완료·검증] 팀수기값 우선 보존 2차 가드 + collect-now 보강
 - **동시작업 확인:** `origin/main`에 이미 `54f643f fix(monitoring): 자동수집이 manual=True stat 보존(스킵)`와 `759c9c1 docs...`가 올라와 있어, 로컬 수정 전 `git rebase --autostash origin/main`으로 정합했다. 중복 커밋/덮어쓰기 없이 원격 구현은 유지.
 - **추가 보강 이유:** 원격 `54f643f`는 “직전 최신 stat이 manual=True인 게시물”을 이후 정규 수집에서 스킵한다. 다만 같은 날짜에 이미 `manual=True` 행이 있는데 자동 upsert가 같은 `(post_id, measured_at)`를 다시 쓰는 경로는 남아 있었다. 사용자 사례(팀수기값 2,056 < 자동 2,112)는 이 같은 날짜 upsert 덮어쓰기 위험에 해당.

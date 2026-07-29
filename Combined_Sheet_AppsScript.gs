@@ -1340,12 +1340,14 @@ function exportStats() {
         // 마지막 유효값 − 그 이전 최대(음수는 0), 유효값 1개면 전액.
         // (부수 개선: 오늘 열에 수기값이 들어오면 그 값이 최신으로 잡혀 증분이 즉시 반영됨)
         const rngRef = "$" + colLetter_(firstCol) + rowNum + ":$" + colLetter_(firstCol + width - 1) + rowNum;
+        const firstCellRef = "$" + colLetter_(firstCol) + rowNum;
         incFormulas.push([
           "=IFERROR(LET(rng," + rngRef +
-          ",cols,COLUMN(rng),lastC,MAX(FILTER(cols,rng>0))" +
-          ",lastV,INDEX(rng,1,lastC-COLUMN($" + colLetter_(firstCol) + rowNum + ")+1)" +
-          ",prev,IFERROR(FILTER(rng,cols<lastC,rng>0),)" +
-          ',IF(COUNT(prev)=0,lastV,MAX(0,lastV-MAX(prev)))),"")'
+          ",cols,SEQUENCE(1,COLUMNS(rng),COLUMN(" + firstCellRef + "),1)" +
+          ",lastC,MAX(FILTER(cols,rng>0))" +
+          ",lastV,INDEX(rng,1,lastC-COLUMN(" + firstCellRef + ")+1)" +
+          ",prev,FILTER(rng,cols<lastC,rng>0)" +
+          ',IFERROR(MAX(0,lastV-MAX(prev)),lastV)),"")'
         ]);
         incWritten++;
       }

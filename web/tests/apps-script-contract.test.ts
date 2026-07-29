@@ -92,8 +92,10 @@ test("increment V2: row-range formulas replace cell-address lists (column-op & s
   const body = appsScript.slice(start, appsScript.indexOf("function refreshCumulativeViews()", start));
   // 행-범위 수식: 마지막 유효값 − 이전 최대 (범위 참조라 열 삽입/삭제·정렬에 안전)
   assert.match(body, /=IFERROR\(LET\(rng," \+ rngRef/);
+  assert.match(body, /cols,SEQUENCE\(1,COLUMNS\(rng\),COLUMN\(" \+ firstCellRef \+ "\),1\)/);
   assert.match(body, /lastC,MAX\(FILTER\(cols,rng>0\)\)/);
-  assert.match(body, /IF\(COUNT\(prev\)=0,lastV,MAX\(0,lastV-MAX\(prev\)\)\)/);
+  assert.match(body, /IFERROR\(MAX\(0,lastV-MAX\(prev\)\),lastV\)/);
+  assert.doesNotMatch(body, /cols,COLUMN\(rng\)/);
   // 옛 셀주소 목록(MAX({CE743,...})) 생성 코드 금지 — 열 삭제 시 #REF! 전멸의 원인(2026-07-27 사고)
   assert.doesNotMatch(body, /MAX\(\{\$\{prevRefs/);
   assert.doesNotMatch(body, /prevRefs\.join/);
