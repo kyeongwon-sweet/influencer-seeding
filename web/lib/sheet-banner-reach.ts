@@ -44,20 +44,31 @@ function googleSerialDateToYmd(serial: number): string | null {
   return d.toISOString().slice(0, 10);
 }
 
+function formatYmd(year: number, month: number, day: number): string | null {
+  if (year < 2000 || year > 2099) return null;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 export function parseSheetDate(value: SheetValue): string | null {
   if (typeof value === "number") return googleSerialDateToYmd(value);
   const s = String(value ?? "").trim();
   if (!s) return null;
 
-  let m = s.match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+  let m = s.match(/^\s*(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
   if (m) {
-    return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+    return formatYmd(Number(m[1]), Number(m[2]), Number(m[3]));
   }
 
-  m = s.match(/(\d{1,2})\D+(\d{1,2})/);
+  m = s.match(/^\s*(\d{2})\D+(\d{1,2})\D+(\d{1,2})/);
+  if (m) {
+    return formatYmd(2000 + Number(m[1]), Number(m[2]), Number(m[3]));
+  }
+
+  m = s.match(/^\s*(\d{1,2})\D+(\d{1,2})/);
   if (!m) return null;
   const year = new Date().getFullYear();
-  return `${year}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`;
+  return formatYmd(year, Number(m[1]), Number(m[2]));
 }
 
 export function parseMonthDay(value: SheetValue): { month: number; day: number } | null {

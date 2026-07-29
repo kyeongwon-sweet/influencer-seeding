@@ -33,7 +33,9 @@ test("sheet banner reach parser accepts current headers and skips unsafe cells",
 test("sheet banner reach parser handles compact headers, serial dates, and numbers", () => {
   assert.equal(normalizeSheetHeader("채널 분류"), "채널분류");
   assert.equal(parseSheetDate(46218), "2026-07-15");
+  assert.equal(parseSheetDate("26.7.16.(목)"), "2026-07-16");
   assert.deepEqual(parseMonthDay(46218), { month: 7, day: 15 });
+  assert.deepEqual(parseMonthDay("26.7.16.(목)"), { month: 7, day: 16 });
   assert.equal(toSheetNumber("₩ 12,345원"), 12345);
 });
 

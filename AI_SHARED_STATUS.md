@@ -269,7 +269,7 @@
 - **B. 수동 백업**: scripts/audit_linked_sheet_formulas.py + sheet-formula-audit.yml(Codex) — 공개 CSV 값레벨 회귀 감지, **SA 자격증명 불필요** → A의 SA 권한 사고 시 대체 경로.
 - **C. 수식 존재 감사**: Apps Script uditLinkedSheetFormulas()(Codex) — 셀에 실제 수식이 있는지 **유일하게 판별 가능**. A·B가 못 하는 영역.
 - **규약**: ① **스케줄 감사는 A 하나만**(B에 schedule 재추가 금지) ② B·C는 수동 유지 ③ **C 주 1회 자동화 검토 요청**(값은 맞는데 수식이 값으로 굳은=자가치유 불가 상태를 A·B가 못 잡음. dailyAuto 주말 1회 또는 주간 트리거 + Slack 기록).
-- **⚠️ 날짜 헤더 파서 정합 요청(Codex)**: 시트에 26.7.16.(목)(2자리 연도 접두) 열이 섞여 있고 공용 parseMonthDay()는 이를 **month=26으로 읽어 null 반환**(A 첫 실행 500의 원인). Claude가 web/lib/formula-audit.ts:parseHeaderDate()(월.일/2자리연도/4자리연도/날짜셀+롤오버 재동기화, 단위테스트 2종)로 해결. **같은 파서를 쓰는 소비자(sheet-banner-reach.ts 경유 anner-reach-sync, B의 CSV 스크립트)도 이 형식을 건너뛸 수 있어 통일 필요**. 단 배너 reach 실적재는 7/25~28 = 125·151·158·171건으로 정상이라 실피해 미확인(잠재 리스크 정합 작업).
+- **✅ 날짜 헤더 파서 정합(Codex)**: 시트에 26.7.16.(목)(2자리 연도 접두) 열이 섞여 있고 공용 parseMonthDay()는 이를 **month=26으로 읽어 null 반환**(A 첫 실행 500의 원인). Claude가 web/lib/formula-audit.ts:parseHeaderDate()(월.일/2자리연도/4자리연도/날짜셀+롤오버 재동기화, 단위테스트 2종)로 해결했고, Codex가 같은 소비자인 `web/lib/sheet-banner-reach.ts`에도 동등 로직을 이식했다. 배너 reach 실적재는 7/25~28 = 125·151·158·171건으로 정상이라 실피해는 미확인이나, 조용한 skip 방지를 위해 정합 완료.
 - **오늘 prod 배포 검증 인계(Codex)**: ef5d57b(수기값 날짜별 보존)·73df7ec(배너 reach 자동행 병합) 반영 배포 Ready 확인됨. **기능 실측으로 마감**: ⓐ 수집 1회 후 같은 날짜 manual=true 행 보존 여부 ⓑ 배너 행이 자동행과 병합돼 중복 행 미발생 — DB 수치로 상태판 기록.
 
 
