@@ -1,5 +1,9 @@
 # AI Shared Status
 
+## 2026-07-29 [Codex 재확인] live exportStats 증분 생성부 저장 상태
+- **사용자 요청 실측:** production Apps Script `1XogwTHJb...` 편집기에서 `AI 트래킹 대시보드 연동.gs` 전체를 다시 복사해 `exportStats__wgimpl` 본문을 확인했다. 증분 생성부는 `cols,SEQUENCE(1,COLUMNS(rng),COLUMN(...),1)` 형태이며, 구식 `cols,COLUMN(rng)`는 없다.
+- **저장 상태:** 확인 시점 live 파일 길이 126,088자, 미저장 표시 없음. `Ctrl+S` no-op 저장 후에도 `Drive에 저장됨`, 저장 버튼 비활성, `저장되지 않은 변경사항` 없음. 즉 최신 증분 생성부는 live에 이미 저장된 상태다.
+
 ## 2026-07-29 [Codex 확인·정리] live exportStats / syncStatus / worktree
 - **live Apps Script exportStats 확인:** Chrome 로그인 세션으로 production Apps Script `1XogwTHJb...` 편집기를 열고, `AI 트래킹 대시보드 연동.gs` 전체를 선택·복사해 읽기 검증했다. 길이 126,088자, `exportStats__wgimpl` 존재, 최신 증분 수식 마커 `SEQUENCE(1,COLUMNS(rng),COLUMN(` 존재, 구식 `cols,COLUMN(rng)` 부재. 즉 증분 전멸을 만든 live 본문은 제거된 상태다. `clasp pull`은 CLI 자격증명 없음(`No credentials found`)으로 불가.
 - **live Apps Script 신규 repo safeguard 미반영:** 위 live 복사본에는 `auditLinkedSheetFormulas_`, `AUTO_WRITE_TAIL_GUARD_MS`, `buildUrlKeyIndex_`가 아직 없다. 이들은 repo `32a790c` 이후 준비 완료 상태이며, 실제 live 반영은 fresh 서버본 확인 후 함수 단위 graft 또는 인증된 clasp 경로로 진행해야 한다.
