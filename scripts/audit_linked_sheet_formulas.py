@@ -82,6 +82,8 @@ def run(max_h_value_i_blank: int) -> dict[str, object]:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--max-h-value-i-blank", type=int, default=10)
+    # DB-aware formula-audit separately validates every row. This CSV fallback
+    # cannot distinguish legitimate >7-day backlog blanks, currently 13 rows.
+    parser.add_argument("--max-h-value-i-blank", type=int, default=20)
     args = parser.parse_args()
     run(args.max_h_value_i_blank)

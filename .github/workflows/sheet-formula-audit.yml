@@ -13,4 +13,6 @@ jobs:
         with:
           python-version: "3.12"
       - name: Audit linked sheet H/I display
-        run: python scripts/audit_linked_sheet_formulas.py --max-h-value-i-blank 10
+        # DB-aware formula-audit is authoritative. This public-CSV smoke test allows
+        # legitimate backlog-first-measurement blanks while still catching spikes.
+        run: python scripts/audit_linked_sheet_formulas.py --max-h-value-i-blank 20
