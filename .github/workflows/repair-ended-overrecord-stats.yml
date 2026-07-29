@@ -44,6 +44,10 @@ jobs:
           else
             python repair_status_integrity_anomalies.py
           fi
+      - name: Inspect current monitoring status
+        run: |
+          cd scripts
+          python inspect_monitoring_status.py --date "${{ inputs.date }}"
       - name: Upload backup
         if: always()
         uses: actions/upload-artifact@v4
