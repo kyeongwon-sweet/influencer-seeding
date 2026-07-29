@@ -8,7 +8,7 @@ import urllib.request
 from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 from db import get_client
-from url_utils import normalize_url
+from url_utils import normalize_url, tt_video_id as _tt_id, tt_canonical_form
 from account_name_policy import collected_account_name_update
 from auto_end_rules import classify_auto_end, row_metric
 from not_found_policy import (
@@ -426,23 +426,12 @@ def _fetch_youtube_api(urls: list) -> dict:
     return out
 
 
-def _tt_id(url: str):
-    """틱톡 영상 ID 추출"""
-    m = re.search(r'/video/(\d+)', url or "")
-    return m.group(1) if m else None
-
-
 def _tt_canonical(url: str) -> str:
     """틱톡 단축/비표준 URL(vt.tiktok.com 등)을 /video/ID 표준 URL로 해석. 이미 표준이면 그대로.
-    리다이렉트 Location 헤더만 따라가 본문 요청·차단을 피한다. 실패 시 원본 반환."""
-    if not url:
-        return url
-    # 틱톡 photo(슬라이드) 게시물: 액터 postURLs 모드가 /photo/를 못 읽고 /video/ID만 조회 가능(실측).
-    # id는 동일하므로 /photo/ID → /video/ID로 표준화하면 play/digg 정상 수집됨(위성채널·바이럴 배너 소재 누락 해결).
-    mp = re.search(r'(/@[^/]+)/photo/(\d+)', url)
-    if mp:
-        return "https://www.tiktok.com" + mp.group(1) + "/video/" + mp.group(2)
-    if _tt_id(url):
+    리다이렉트 Location 헤더만 따라가 본문 요청·차단을 피한다. 실패 시 원본 반환.
+    photo(슬라이드쇼) → /video/ 표준화는 url_utils.tt_canonical_form(순수·테스트 대상)에서 수행."""
+    url = tt_canonical_form(url)   # /photo/ID → /video/ID (슬라이드쇼 소재 조회수 누락 방지)
+    if not url or _tt_id(url):
         return url
     import urllib.request, urllib.error, urllib.parse
 

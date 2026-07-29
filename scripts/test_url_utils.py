@@ -1,0 +1,30 @@
+from url_utils import normalize_url, tt_video_id, tt_canonical_form
+
+
+def test_normalize_url_strips_query_hash_and_slash():
+    assert normalize_url("https://instagram.com/p/ABC/?utm_x=1#c") == "https://instagram.com/p/ABC"
+    assert normalize_url("https://youtube.com/shorts/XYZ?si=abc/") == "https://youtube.com/shorts/XYZ"
+
+
+def test_tt_video_id_extracts_from_video_url():
+    assert tt_video_id("https://www.tiktok.com/@foo/video/7665895022981565716/") == "7665895022981565716"
+    assert tt_video_id("https://vt.tiktok.com/ZSabc/") is None
+    assert tt_video_id("") is None
+
+
+def test_tt_canonical_form_rewrites_photo_to_video():
+    # 회귀 방지: 틱톡 photo(슬라이드쇼)는 /video/로 표준화돼야 액터가 조회수를 반환한다.
+    assert tt_canonical_form(
+        "https://www.tiktok.com/@issuetteugi/photo/7667152002266287378/"
+    ) == "https://www.tiktok.com/@issuetteugi/video/7667152002266287378"
+    # 표준화 후엔 video id가 잡혀야 함(수집·매칭 경로가 이 id로 동작).
+    assert tt_video_id(
+        tt_canonical_form("https://www.tiktok.com/@issuebox_/photo/7667158750612049160/")
+    ) == "7667158750612049160"
+
+
+def test_tt_canonical_form_passthrough_for_non_photo():
+    v = "https://www.tiktok.com/@foo/video/123"
+    assert tt_canonical_form(v) == v
+    assert tt_canonical_form("https://vt.tiktok.com/ZSabc/") == "https://vt.tiktok.com/ZSabc/"
+    assert tt_canonical_form("") == ""

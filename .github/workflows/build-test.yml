@@ -8,6 +8,20 @@ on:
   workflow_dispatch:
 
 jobs:
+  # 파이썬 수집기 단위 테스트 — URL 정규화·자동종료·not-found·계정명 정책 등 회귀 방지.
+  # (그간 scripts/test_*.py 가 CI에서 안 돌아 조용히 깨질 수 있었음. 틱톡 photo 조회수 누락 재발방지)
+  python-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install -r requirements.txt pytest
+      - name: Run python unit tests
+        run: cd scripts && python -m pytest -q
+
   build:
     runs-on: ubuntu-latest
 
