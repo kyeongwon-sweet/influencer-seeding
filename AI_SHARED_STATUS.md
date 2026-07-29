@@ -3,7 +3,7 @@
 ## 2026-07-29 [Codex 완료] 대시보드/API 읽기량 1차 효율화
 - **대시보드 API 경량화:** `GET /api/sponsored-posts`의 `sponsored_posts.select("*")`를 화면에서 실제 사용하는 컬럼만 읽는 `POST_COLS`로 교체했다. `all_stats`는 화면 차트/필터/스파크라인이 사용하므로 제거하지 않았다. 기능 표면은 유지하면서 게시물 메타 응답 크기와 DB 전송량을 줄이는 1차 패치.
 - **수식 감사 DB 읽기량 축소:** `/api/sponsored-posts/formula-audit`가 시트 날짜열 범위 밖 `post_daily_stats`까지 전량 읽던 부분을, 시트에서 감지한 `minAuditDate~maxAuditDate` 범위로 제한했다. 감사 판정은 원래 시트 날짜열 안의 날짜만 쓰므로 결과 규칙은 동일하다.
-- **검증:** `npm.cmd test -- --runInBand` = 84/84 pass, `npm.cmd run build` pass, `git diff --check` pass. production 반영 후 formula-audit 재실행으로 동일 정합을 확인할 예정.
+- **검증:** `npm.cmd test -- --runInBand` = 84/84 pass, `npm.cmd run build` pass, `git diff --check` pass. production deployment `5658157250` success(`cac9196`). 배포 후 Formula Audit run `30455653260`도 `healthy=true`, H error 0, H 데이터有빈칸 0, I error 0, I mismatch 0, anomalies `[]`.
 - **남은 고비용 과제:** Apify 비용은 코드 읽기량과 별개다. 다음 최적화는 수집 대상 큐를 더 좁히는 방식(미측정/활성/플랫폼별 retry queue 중심, full collect 빈도 축소, `/photo`/manual 보존 검증 유지)으로 별도 브랜치에서 다룰 것.
 
 ## 2026-07-29 [Codex 확인] formula-audit I mismatch 20건 회복 확인
