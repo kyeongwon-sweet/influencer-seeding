@@ -289,16 +289,23 @@ test("linked sheet H/I audit is available from Apps Script and GitHub Actions", 
   assert.match(appsScript, /increment_ref_errors/);
   assert.match(appsScript, /linked_sheet_formula_audit/);
 
-  const workflow = readFileSync(
+  const csvWorkflow = readFileSync(
     new URL("../../.github/workflows/sheet-formula-audit.yml", import.meta.url),
+    "utf8",
+  );
+  const canonicalWorkflow = readFileSync(
+    new URL("../../.github/workflows/formula-audit.yml", import.meta.url),
     "utf8",
   );
   const auditScript = readFileSync(
     new URL("../../scripts/audit_linked_sheet_formulas.py", import.meta.url),
     "utf8",
   );
-  assert.match(workflow, /python scripts\/audit_linked_sheet_formulas\.py/);
-  assert.match(workflow, /cron: "30 1 \* \* \*"/);
+  assert.match(canonicalWorkflow, /cron: "10 1 \* \* \*"/);
+  assert.match(canonicalWorkflow, /\/api\/sponsored-posts\/formula-audit/);
+  assert.match(csvWorkflow, /workflow_dispatch:/);
+  assert.doesNotMatch(csvWorkflow, /\n\s*schedule:/);
+  assert.match(csvWorkflow, /python scripts\/audit_linked_sheet_formulas\.py/);
   assert.match(auditScript, /#REF/);
   assert.match(auditScript, /increment column is fully blank/);
 });
