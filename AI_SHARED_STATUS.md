@@ -127,6 +127,13 @@
 
 ## 상세 이력
 
+## 2026-07-29 [✅완료] 자정수집 리포트 '확인필요'에서 위성/온드 제외 — 알림 규칙 불일치 수정 (Claude, 사용자 신고 s_3.mag 2건)
+- **신고**: injibot 자정수집 리포트에 "⚠️ 확인필요 — 활성 게시물인데 조회수 미수집 (2026-07-28 측정) 2건: s_3.mag · 위성채널" (/p/DbVdOjvFKI3/, /p/DbLMD9Oma7P/).
+- **정체/출처**: s_3.mag = 위성채널(자사 위성 IG) 게시물 2건, 07-28 20:49 KST 배치 등록(시트 위성채널 동기화 유입). 07-28 자동 스크랩이 둘 다 likes=-1(지표 못읽음)·play=null.
+- **근본원인**: '확인필요' 알림 출처는 `daily_collect_report.py`(injibot C0B659HEYDV)인데 여기가 **위성채널·온드미디어를 제외하지 않았음**. 위성/온드는 불규칙 수집이라 미측정 정상(2026-07-15 사용자 지시)이고 `notify_status.py`(`ec4c1da`)엔 이미 반영됐으나 이 리포트 스크립트에만 누락 → 규칙 불일치 오탐.
+- **수정(main `3f2933f`)**: real_miss 판정에 배너·피드/사진 다음으로 `위성채널/온드미디어` 제외 추가(internal_cnt), 본문에 '위성/온드 N' 표기(조용한 드롭 방지). dry-run(07-28): 확인필요 **2→0**, 위성/온드 173 제외, 확보율 302/302=100%.
+- **⚠️ 파일 오지정 정정**: 아래 07-28 ufo__blue 항목에서 이 알림을 `notify_status.py`로 고쳤다 기록했으나 **실제 '확인필요' 알림 출처는 `daily_collect_report.py`**. notify_status 수정(`f00307c`)은 별개 알림('오늘 미측정 활성')용이라 무해하지만 이 알림엔 무효였음. Codex는 이미 `daily_collect_report.py`에 피드/사진 제외(`812f17f`)·종료/미수집 분리(`01ac03f`)를 넣어둔 상태였고, 이번에 위성/온드 제외를 같은 파일에 통일.
+
 ## 2026-07-28 [Codex 완료] 누적(H) V4 라이브 정합화 — 7014c10 BYROW 방어 대신 최신 V4 유지
 - **판단 정정:** 사용자 요청은 `main 7014c10`의 BYROW 스필 파손 3중 방어였지만, 현재 `origin/main` 최신 정본은 `3a0e750` 이후의 **V4 행별 수식 구조**다. 7014c10을 그대로 라이브에 넣으면 최신 V4를 BYROW 계열로 되돌릴 위험이 있어, 먼저 `AI_SHARED_STATUS.md`와 `HEAD`의 계약테스트를 확인하고 V4 기준으로 반영했다.
 - **라이브 서버본 실측:** Chrome 로그인 세션으로 Apps Script 프로젝트 `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn` fresh 편집기 본문을 복사. 라이브는 `anchorBlocked` 잔재와 V4 일부가 섞여 있었고, `healCumulativeOnEdit_`는 없었으며 활성 `refreshCumulativeViews__wgimpl`에 BYROW 마커가 남아 있었다.
