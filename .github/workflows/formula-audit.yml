@@ -1,0 +1,27 @@
+name: Formula Audit (수식 전수감사)
+
+# 매일 아침 dailyAuto(09:30 KST)의 수식 재기입 직후, 연동시트 누적(H)·증분(I)을
+# DB 재현값과 전수 대조해 Slack으로 보고한다(읽기 전용, 수정 없음).
+# 배경: 수식 파손은 조용히 발생해 사람이 늦게 발견해 왔다(7/27 #REF! 전멸, 7/29 V2 회귀).
+on:
+  schedule:
+    - cron: "10 1 * * *"   # 01:10 UTC = 10:10 KST (매일·주말 포함)
+  workflow_dispatch:
+
+env:
+  APP_URL: "https://influencer-seeding-mu.vercel.app"
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run formula audit & report to Slack
+        run: |
+          code=$(curl -sS -X POST -o /tmp/formula-audit.out -w "%{http_code}" \
+            --max-time 280 \
+            "$APP_URL/api/sponsored-posts/formula-audit" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          cat /tmp/formula-audit.out
+          echo ""
+          echo "HTTP ${code}"
+          [ "${code:0:1}" = "2" ] || { echo "::error::formula audit failed HTTP=$code (라우트 미배포면 Vercel prod 배포 필요)"; exit 1; }

@@ -16,6 +16,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/sponsored-posts/list-for-sheet(.*)",
   "/api/sponsored-posts/stats-for-sheet(.*)",
   "/api/sponsored-posts/tracking-by-url(.*)",
+  "/api/sponsored-posts/formula-audit(.*)",  // 수식 전수감사 크론(자체 CRON_SECRET 검사)
   "/api/sponsored-posts/banner-reach-sync(.*)",
   // Vercel 크론 라우트 (각 라우트가 자체 CRON_SECRET 검사 → 미들웨어는 통과시킴)
   "/api/marketing/sync(.*)",
