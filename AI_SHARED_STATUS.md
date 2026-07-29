@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 2026-07-29 [Claude 완료·main 반영] 틱톡 photo(슬라이드쇼) 정규 자동수집 fix + 위성채널 배너/영상 리포트 합산
+- **근본원인 규명·해결(#3 미해결 항목 종결):** 아래 "⚠️ /photo/ 슬라이드쇼 매일 재수집 미검증" 항목의 원인 = `run_monitoring._tt_canonical`이 `/photo/ID`를 그대로 둠 → clockworks postURLs 모드가 `/video/`로 바꿔 조회하다 `POST_NOT_FOUND_OR_PRIVATE` 반환 → **위성채널·바이럴 배너 슬라이드쇼 소재 조회수가 매일 통째로 누락**. 실측: 이슈뜨기 `/photo/7667152002266287378`를 `/video/`형으로 넣으면 **play=584** 정상 반환.
+  - **fix(main `3de4452`):** `_tt_canonical`에 `/photo/ID → /video/ID` 표준화 추가. `_tt_id`(video 전용)는 canonical 뒤 /video/만 보므로 변경 불필요. 문법·로직 검증 완료. 다음 정규 일일수집부터 photo 슬라이드쇼 자동 수집됨.
+  - **영향:** 틱톡 photo 12건(활성 7). 병렬세션이 이슈박스 배너 2건(`7667158750612049160`, `76672043078207603388`) private 종료 처리 후에도, 이슈뜨기·유머박스 등 살아있는 photo 소재는 이 fix로 자동수집 대상이 됨(그간 수동 보강분 대체).
+- **리포트 위성채널 배너/영상 합산(main `88c714e`/`6148088`):** 사용자 지시로 `notify_increments._norm_ch`에서 `위성채널*` → `위성채널 (배너/영상)` 한 라인 합산, 배너 '미수집' 특수라인 미생성. DB channel_type 불변(표시/합산만).
+- **⚠️ 브랜치 주의:** notify_increments.py·run_monitoring.py 둘 다 **main이 정본**. refactor/monitoring-decompose 브랜치본은 구버전/재작성본이라 거기서 수정 금지.
+
 ## 2026-07-28 [Claude 실행완료] 조회수 0 백필 116건 + 개별 3건 수정 (사용자 지시)
 - **⚠️ Codex: 조회수 이력 0 백필은 Claude가 실행함 — 재실행 금지.** measured_at=**2026-07-28**(수집일-1 컨벤션, ended_at 소급 아님, 사용자 확정). 접속가능 116건 upsert(IG 106·TikTok 3·YouTube 7), **접속실패/삭제 27건은 스킵**(값 지어내기 금지). 대상=사용자 지정 채널분류(바이럴영상·협찬인플·무상영상·먹스타·파워채널) 중 DB 양수이력 0. 직접조회로 116/116 기록 검증.
   - ⚠️ **종료글 시트 H 표시는 Codex 몫**: DB/대시보드엔 바로 반영되나, 종료글이 시트 H에 뜨려면 exportStats final-H가 오늘 백필값 반영해야 함(라이브 Apps Script=Claude 차단).
