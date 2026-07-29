@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## 2026-07-29 [Claude 완료·main] 재발방지 3종: 틱톡 photo수집 순수모듈화+테스트+CI / manual보존 가드 (사용자 "제대로 수정, 재발방지")
+- **① 틱톡 URL 로직 순수모듈 추출 + 회귀테스트(`c47aa62`):** `_tt_id`/`_tt_canonical`의 순수 로직을 `url_utils`(`tt_video_id`·`tt_canonical_form`)로 단일출처화. `test_url_utils.py`로 photo→video 표준화 회귀 잠금. ⇒ **리팩터 브랜치가 run_monitoring을 재작성·머지해도 이 fix가 조용히 사라지면 테스트가 실패**로 잡음.
+- **② 파이썬 테스트 CI 도입(`c47aa62`):** 그간 `build-test.yml`은 npm 테스트만 돌리고 `scripts/test_*.py`는 **CI에서 안 돌아** 파이썬 회귀가 방치될 수 있었음. `python-tests` 잡 추가(pip install + pytest, 현재 33건 통과) → push/PR마다 실행.
+- **③ manual=True 보존 가드(`ebb8c03`) — Codex '별도 합의 필요' 항목 종결:** 사용자 결정("팀수기값이 정답")에 따라 `_store_aux_rows`에 구현. ⚠️ **이게 없으면 ①의 photo 자동수집 ON이 팀 수기값을 mono-max로 덮음**(유머박스 auto2,112>수기2,056 사례). 이제 직전 최신 stat이 manual이면 자동 play/likes 저장을 스킵. 대상 보조플랫폼 manual 17건(틱톡10·유튜브7) 한정. 재개하려면 사람이 manual 값/플래그 정리. ⇒ 아래 Codex 엔트리의 "manual 우선 보존 정책 별도 합의 필요"는 이로써 해결됨.
+- **주의(브랜치):** run_monitoring.py·url_utils.py·notify_increments.py·build-test.yml 모두 **main 정본**. refactor/monitoring-decompose는 구버전이니 거기서 수정 금지, 머지 시 위 3종 포함 필수(테스트가 지킴).
+
 ## 2026-07-29 [Codex 완료·라이브 반영] 증분(I) V2 graft + 누적(H) 날짜헤더 감지 보강
 - **00:10 KST 백필 카드:** heartbeat는 도착했으나, 최상단 기록상 Claude가 이미 measured_at=2026-07-28로 116건 upsert를 완료했고 `재실행 금지`가 명시되어 있어 Codex는 중복 실행하지 않음.
 - **repo 보강:** `Combined_Sheet_AppsScript.gs`의 `refreshCumulativeViews()` 날짜열 감지 정규식을 `26.7.28.(화)` 같은 연도 포함 헤더까지 인식하도록 확장. 계약테스트에 회귀 방지 assertion 추가.
@@ -8,7 +14,7 @@
 - **라이브 잔재 정리:** 미호출 함수 `refreshCumulativeViews__wgimpl_OLD_V3`, `__sortRefTest` 제거 확인. 저장 후 새로고침 재복사 검증: 증분 V2 marker 있음, `finalMetricByKey` 있음, 연도 포함 dateRe 있음, old function marker 없음.
 - **라이브 실행:** `refreshCumulativeViews` 14:38:40~14:38:50 완료. `exportStats` 14:39:41~14:40:32 완료. 로그: 새 날짜 열 0, URL-key 날짜 쓰기 10, 실측 갱신 5, 공백 이어받기 9, 증분 수식 1421행, 기존값 보존 19, 매칭 게시물 1454, 날짜 열 97, 미수집 URL 56, 중복 URL 키 보류 4.
 - **기능 실측:** one-off 감사 `auditMetricFormulas20260729` 결과 URL 행 1510 기준 `hBlankNoFormula=0`, `iBlankNoFormula=0`, `hRefErrors=0`, `iRefErrors=0`. 임시 날짜열 삽입 후 삭제 감사 `auditIncrementRefAfterTempDateColumn20260729`: insertedAfter=111, deletedTempCol=112, scannedRows=2212, `incrementRefErrors=0`. 열 조작 뒤 재감사도 H/I 수식 누락 0, #REF 0.
-- **남은 확인:** TikTok `/photo/` 슬라이드쇼 정규 재수집은 별도 서버 수집 경로에서 계속 관찰 필요. 상태판 상단의 manual 우선값 보존 정책(`manual=True` 값이 자동수집 mono-max로 덮이지 않게 할지)은 사용자/Claude와 별도 합의 필요.
+- **남은 확인:** TikTok `/photo/` 슬라이드쇼 정규 재수집은 별도 서버 수집 경로에서 계속 관찰 필요. (manual 우선값 보존 정책은 위 Claude 엔트리 ③에서 해결)
 
 ## 2026-07-29 [Claude 정정완료] 위성 틱톡 슬라이드쇼 3건 팀수기값 우선 정정 (사용자 지시 "팀수기값 우선")
 - **문제**: 위성채널 틱톡 사진/슬라이드쇼는 팀이 시트에 수기로 조회수 입력하는데, 어제 내 틱톡배너 자동수집이 값을 넣어 **시트(수기) ↔ DB(자동)가 어긋남**. 사용자 확정: **팀수기값(시트)이 정답**.
