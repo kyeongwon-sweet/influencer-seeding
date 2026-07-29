@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## 2026-07-29 [Claude 검증완료] 라이브 exportStats 증분 수식 = 안전(범위기반), 단 5eb662f SEQUENCE형은 아님
+- **Codex가 도구로 확정 못 한 항목을 Claude가 monaco로 라이브 코드 직접 판독**(script.google.com 편집기, `monaco.editor.getModels()`, 136KB).
+- **✅ 재실행 시 증분 #REF! 전멸 위험 없음**: 라이브 exportStats는 **범위기반 수식**(`IFERROR(LET(rng,...))` + `cols,COLUMN(rng)`)을 사용. 2026-07-27 사고 원인이던 **셀주소 목록 생성기(`prevRefs`/활성 `MAX({cell,...})`)는 제거됨**(prevRefs 0건, 활성 MAX({ 0건, 유일한 `MAX({`는 경고 주석). 열 삽입/삭제 안전.
+- **⚠️ 최신 5eb662f(SEQUENCE형) 아님**: 라이브는 `cols,SEQUENCE(1,COLUMNS(rng),...)` 없음 = **중간 V2(`cols,COLUMN(rng)`)**. main보다 한 단계 뒤. 카타스트로픽 위험은 없으나 완전 정합 원하면 Codex가 exportStats 증분부만 SEQUENCE형으로 함수단위 graft 권장(라이브 저장=Claude 차단, Codex 몫). stale 탭 저장 금지.
+- **판단**: Codex 우려("old exportStats 재실행 시 증분 전멸")는 **현 라이브엔 미해당**(옛 생성기 없음). 급하지 않음. main=5eb662f 정합은 유지.
+
 ## 2026-07-29 [Codex 긴급복구 완료] 증분(I) V2 전멸 원인확정 + live I열 즉시 복구
 - **원인 확정:** live I열 V2 수식의 `cols,COLUMN(rng)`가 Google Sheets에서 날짜범위와 같은 1xN 배열이 아니라 단일값처럼 평가됨. 그 결과 `FILTER(cols,rng>0)`가 `FILTER has mismatched range sizes. Expected row count: 1. column count: 1. Actual row count: 1, column count: 97.` 오류를 냈고, 바깥 `IFERROR(...,"")`가 전 행을 빈칸으로 삼켰다. 로케일/쉼표 문제가 아니라 `COLUMN(rng)` 배열 생성 방식 문제.
 - **live 시트 복구:** Apps Script 실행 없이 Google Sheets API로 `콘텐츠 대시보드 연동!I2:I2214`에 검증된 수식 직접 재설치. 새 수식은 `cols,SEQUENCE(1,COLUMNS(rng),COLUMN($O행),1)`로 열번호 배열을 만든다. 임시 숨김 디버그 탭에서 원본 오류와 수정 수식 계산을 확인한 뒤 디버그 탭 삭제.
