@@ -1371,10 +1371,19 @@ function exportStats() {
           }
         }
         if (refs.length === 0) {
-          const firstDateRef = colLetter_(firstCol) + rowNum;
-          const lastDateRef = colLetter_(firstCol + width - 1) + rowNum;
-          // Keep a blank-result formula so an empty I cell still has a repairable formula.
-          incFormulas.push([`=IF(COUNT(${firstDateRef}:${lastDateRef})=0,"","")`]);
+          // DB 참조가 아직 없는 /photo/·미러링 행도 시트 날짜값으로 증분을 계산한다.
+          // 날짜값이 전혀 없으면 IFERROR가 빈 결과를 내므로 수식 복구 가능 상태도 유지된다.
+          const rngRef = "$" + colLetter_(firstCol) + rowNum + ":$" + colLetter_(firstCol + width - 1) + rowNum;
+          const firstCellRef = "$" + colLetter_(firstCol) + rowNum;
+          incFormulas.push([
+            "=IFERROR(LET(rng," + rngRef +
+            ",cols,SEQUENCE(1,COLUMNS(rng),COLUMN(" + firstCellRef + "),1)" +
+            ",lastC,MAX(FILTER(cols,rng>0))" +
+            ",lastV,INDEX(rng,1,lastC-COLUMN(" + firstCellRef + ")+1)" +
+            ",prev,FILTER(rng,cols<lastC,rng>0)" +
+            ',IFERROR(MAX(0,lastV-MAX(prev)),lastV)),"")'
+          ]);
+          incWritten++;
           continue;
         }
         // 백로그 첫 측정(게시 7일 초과)만 빈칸 — 스파이크 방지 규칙 유지(판정은 DB 측정일 기반).

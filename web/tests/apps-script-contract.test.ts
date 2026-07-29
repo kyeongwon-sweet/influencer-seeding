@@ -77,13 +77,15 @@ test("cumulative V4: per-row formulas, manual values preserved, no spill anchor"
   assert.match(refBody, /if \(!hasFormula && hasValue\) \{ out\.push\(\[cur\]\); manualKept\+\+; \}/);
 });
 
-test("exportStats leaves blank-result formulas in empty increment cells", () => {
+test("exportStats calculates increments from the sheet range when DB refs are absent", () => {
   const start = appsScript.indexOf("function exportStats()");
   const body = appsScript.slice(start, appsScript.indexOf("function refreshCumulativeViews()", start));
   assert.notEqual(start, -1);
-  assert.match(body, /const firstDateRef = colLetter_\(firstCol\) \+ rowNum/);
-  assert.match(body, /const lastDateRef = colLetter_\(firstCol \+ width - 1\) \+ rowNum/);
-  assert.match(body, /incFormulas\.push\(\[`=IF\(COUNT\(\$\{firstDateRef\}:\$\{lastDateRef\}\)=0,"",""\)`\]\)/);
+  const noRefs = body.slice(body.indexOf("if (refs.length === 0)"), body.indexOf("// 백로그 첫 측정", body.indexOf("if (refs.length === 0)")));
+  assert.match(noRefs, /const rngRef = "\$" \+ colLetter_\(firstCol\) \+ rowNum/);
+  assert.match(noRefs, /cols,SEQUENCE\(1,COLUMNS\(rng\),COLUMN\(" \+ firstCellRef \+ "\),1\)/);
+  assert.match(noRefs, /IFERROR\(MAX\(0,lastV-MAX\(prev\)\),lastV\)/);
+  assert.doesNotMatch(noRefs, /IF\(COUNT\(/);
   assert.doesNotMatch(body, /incFormulas\.push\(\[""\]\)/);
 });
 
