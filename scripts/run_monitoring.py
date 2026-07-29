@@ -133,6 +133,72 @@ APIFY_IG_ACTOR = os.getenv("APIFY_IG_ACTOR_ID", "apify/instagram-scraper")
 # GHA는 MONITORING_DATE(KST)를 항상 주입. 폴백(로컬 실행)도 러너 로컬시각 대신 KST로 계산 — UTC 러너에서 하루 밀림 방지.
 # 새벽 예약 수집은 직전일 최종 스냅샷이므로 기본 귀속일은 KST 어제다.
 TODAY = os.getenv("MONITORING_DATE") or ((datetime.now(timezone.utc) + timedelta(hours=9)).date() - timedelta(days=1)).isoformat()
+MISSING_VIEW_EVENTS = []
+
+
+def _metric_value(row: dict | None):
+    if not row:
+        return None
+    for field in ("play_count", "reach_count", "views"):
+        value = row.get(field)
+        if value is not None:
+            try:
+                return int(value)
+            except Exception:
+                return value
+    return None
+
+
+def _record_missing_view_event(post: dict, platform: str, reason: str, *, stat=None, existing=None, extra=None):
+    event = {
+        "measured_at": TODAY,
+        "post_id": post.get("id"),
+        "account_name": post.get("account_name"),
+        "url": post.get("url"),
+        "channel_type": post.get("channel_type"),
+        "posted_at": str(post.get("posted_at") or "")[:10] or None,
+        "platform": platform,
+        "reason": reason,
+        "previous_metric": _metric_value(existing),
+        "returned_metric": _metric_value(stat),
+    }
+    if stat:
+        event["returned_posted_at"] = str(stat.get("posted_at") or "")[:10] or None
+        event["deleted"] = bool(stat.get("deleted") or stat.get("error"))
+    if extra:
+        event.update(extra)
+    MISSING_VIEW_EVENTS.append(event)
+    print(
+        "[VIEW_MISSING] "
+        + json.dumps(
+            {
+                "account_name": event["account_name"],
+                "platform": platform,
+                "reason": reason,
+                "url": event["url"],
+                "previous_metric": event["previous_metric"],
+                "returned_metric": event["returned_metric"],
+                "returned_posted_at": event.get("returned_posted_at"),
+            },
+            ensure_ascii=False,
+            default=str,
+        )
+    )
+
+
+def _flush_missing_view_events():
+    if not MISSING_VIEW_EVENTS:
+        return
+    out_dir = os.getenv("VIEW_MISSING_LOG_DIR") or os.getenv("RUNNER_TEMP") or os.getcwd()
+    try:
+        os.makedirs(out_dir, exist_ok=True)
+        path = os.path.join(out_dir, f"view_missing_events_{TODAY}.jsonl")
+        with open(path, "w", encoding="utf-8") as f:
+            for event in MISSING_VIEW_EVENTS:
+                f.write(json.dumps(event, ensure_ascii=False, default=str) + "\n")
+        print(f"[VIEW_MISSING_SUMMARY] count={len(MISSING_VIEW_EVENTS)} path={path}")
+    except Exception as e:
+        print(f"[WARN] view missing event log write failed: {e}")
 
 
 def _record_not_found_observation(db, post: dict, detected: bool):
@@ -329,21 +395,24 @@ def _store_aux_rows(db, rows, posts, stats, key_fn, label, *, views="clamp", cap
             cap = s[caption_field][:caption_limit] if caption_limit else s[caption_field]
             db.table("sponsored_posts").update({"content_summary": cap}).eq("id", post["id"]).execute()
         if not s:
+            _record_missing_view_event(post, label, "no_collector_response")
             continue
+        existing = last_stat.get(post["id"], {})
         if s.get("error"):
             # 액터가 명시적 에러(삭제/비공개/민감/수집불가) 반환 → 특이사항 자동 태깅(notes 빈 것만, 수동 특이사항 보존)
             # + 행 저장 안 함(직전값 유지). 모든 보조 매체(YT·틱톡·스레드·FB·X) 공통 처리.
             if not (post.get("notes") or "").strip():
                 note = f"{label} 수집 불가 감지(자동 {TODAY}, {s.get('error')}) — 조회수 최종값에서 정지, 확인 필요"
                 db.table("sponsored_posts").update({"notes": note}).eq("id", post["id"]).execute()
+            _record_missing_view_event(post, label, "collector_error", stat=s, existing=existing)
             continue
-        existing = last_stat.get(post["id"], {})
         # 팀 수기값 보호는 '같은 post_id+measured_at' 행에만 적용한다.
         # 이전 날짜가 manual=True라는 이유로 이후 날짜 수집까지 영구 중단하면 TikTok photo 등
         # 보조 플랫폼의 일별 시계열이 끊긴다. 저장 직전 _preserve_same_date_manual_stats와
         # ignore_duplicates가 같은 날짜의 수기 행을 절대 덮지 않으면서 다음 날짜 수집은 허용한다.
         play = None if views == "none" else s.get("views")
         if views == "clamp" and (not play or play <= 0):
+            _record_missing_view_event(post, label, "missing_or_zero_view", stat=s, existing=existing)
             continue  # 🛡️ 0/미반환은 접근불가 → 저장 안 함(0으로 덮어쓰면 누적 붕괴)
         if play is not None and existing.get("play_count") is not None and play < existing.get("play_count"):
             _record_overrecord_candidate(post, label, play, existing)
@@ -920,6 +989,7 @@ def run():
             key = _stats_key(post["url"])
             s = stats_by_key.get(key)
             if not s:
+                _record_missing_view_event(post, "Instagram", "no_collector_response")
                 print(f"  매칭 실패: {post['url']} (key={key})")
                 continue
 
@@ -931,6 +1001,13 @@ def run():
                     post_date = date.fromisoformat(str(post["posted_at"])[:10])
                     stat_date = date.fromisoformat(str(s["posted_at"])[:10])
                     if abs((stat_date - post_date).days) > 1:
+                        _record_missing_view_event(
+                            post,
+                            "Instagram",
+                            "posted_at_mismatch",
+                            stat=s,
+                            extra={"expected_posted_at": str(post_date), "actual_posted_at": str(stat_date)},
+                        )
                         print(
                             f"  [WARN] IG 게시일 불일치 응답 제외: {post['url']} "
                             f"(sheet={post_date}, apify={stat_date}, key={key})"
@@ -942,6 +1019,7 @@ def run():
             # Apify IG not_found는 간헐 오탐이 있어 3일 연속일 때 알림만 보낸다.
             # TikTok not_found는 종료·제외·streak 판정에 절대 사용하지 않는다.
             if s.get("deleted") and is_not_found_review_eligible(post.get("url") or ""):
+                _record_missing_view_event(post, "Instagram", "not_found", stat=s)
                 _record_not_found_observation(db, post, True)
                 continue
             _record_not_found_observation(db, post, False)
@@ -985,6 +1063,7 @@ def run():
 
             # 조회수 검증
             if play_count is None:
+                _record_missing_view_event(post, "Instagram", "missing_play_count", stat=s, existing=existing)
                 # Apify가 조회수를 반환하지 않음 (게시물 타입상 조회수 없을 수 있음)
                 print(f"  ⚠️  조회수 없음: {post['url']} (account={s.get('account_name')})")
                 play_count = None
@@ -996,6 +1075,7 @@ def run():
                     print(f"  ⚠️  IG 조회수 0(글리치) → 직전값 유지 {post['url']} (→{existing.get('play_count')})")
                     play_count = existing.get("play_count")
                 else:
+                    _record_missing_view_event(post, "Instagram", "zero_play_no_previous", stat=s, existing=existing)
                     print(f"  ⚠️  IG 조회수 0(글리치)·직전값 없음 → 미적재 {post['url']}")
                     continue
             elif existing.get("play_count") is not None and play_count < existing.get("play_count"):
@@ -1200,6 +1280,7 @@ def run():
         except Exception as e:
             print(f"[WARN] 일별 스냅샷 저장 실패(무시): {e}")
 
+        _flush_missing_view_events()
         if job_id:
             db.table("jobs").update({"status": "done"}).eq("id", job_id).execute()
 

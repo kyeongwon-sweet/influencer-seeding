@@ -1,0 +1,42 @@
+name: View Missing Queue
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Date to inspect (YYYY-MM-DD, KST measured_at)"
+        required: true
+      include_all:
+        description: "Include non-retryable diagnostics"
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Build queue
+        run: |
+          cd scripts
+          if [ "${{ inputs.include_all }}" = "true" ]; then
+            python build_view_missing_queue.py --date "${{ inputs.date }}" --out-dir "$RUNNER_TEMP" --include-all
+          else
+            python build_view_missing_queue.py --date "${{ inputs.date }}" --out-dir "$RUNNER_TEMP"
+          fi
+      - name: Upload queue
+        uses: actions/upload-artifact@v4
+        with:
+          name: view-missing-queue-${{ inputs.date }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/view_missing_queue_*.json
+          if-no-files-found: error

@@ -48,10 +48,16 @@ jobs:
         run: |
           cd scripts
           python inspect_monitoring_status.py --date "${{ inputs.date }}"
+      - name: Build missing view retry queue
+        run: |
+          cd scripts
+          python build_view_missing_queue.py --date "${{ inputs.date }}" --out-dir "$RUNNER_TEMP" --include-all
       - name: Upload backup
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ended-overrecord-backup-${{ inputs.date }}-${{ github.run_id }}
-          path: data/backups/*.json
+          path: |
+            data/backups/*.json
+            ${{ runner.temp }}/view_missing_queue_*.json
           if-no-files-found: ignore

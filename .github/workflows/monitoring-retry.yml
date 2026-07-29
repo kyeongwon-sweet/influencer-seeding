@@ -116,3 +116,22 @@ jobs:
           export MONITORING_DATE=$(TZ=Asia/Seoul date -d 'yesterday' +%F)
           echo "MONITORING_DATE=${MONITORING_DATE}"
           cd scripts && python run_monitoring.py
+
+      - name: Build missing view retry queue
+        if: always()
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          export MONITORING_DATE=$(TZ=Asia/Seoul date -d 'yesterday' +%F)
+          cd scripts && python build_view_missing_queue.py --date "${MONITORING_DATE}" --out-dir "$RUNNER_TEMP"
+
+      - name: Upload missing view diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: missing-view-diagnostics-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/view_missing_events_*.jsonl
+            ${{ runner.temp }}/view_missing_queue_*.json
+          if-no-files-found: ignore

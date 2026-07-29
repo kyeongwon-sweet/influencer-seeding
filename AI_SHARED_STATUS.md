@@ -2777,3 +2777,20 @@ Codex `b50b201`이 자동수집 measured_at을 '어제(수집일-1)'→'KST 오�
   - 미측정 12건은 대체로 “수집 요청에서 빠짐”이 아니라 “응답은 왔지만 조회수 필드가 0/null이거나 게시일 가드에 걸려 저장하지 않음”.
   - `ddo_chichi` 07-23 이력은 게시일 오기인지 과거 이력 오적재인지 사람 확인 필요. 자동 삭제하지 않음.
   - 과거 Slack에 보였던 `a___romii`, `____ziini`, `준맛`, `아하하`, `욤 신상간식`, `oxeeep` 오염/하락은 현재 DB dry-run에서는 재현되지 않음. 다른 세션에서 이미 정리됐거나 알림 시점 이후 상태가 변한 것으로 판단.
+
+## 2026-07-29 Codex: 조회수 미반환 상세 로그 + 재시도 큐
+
+- 사용자 지적: `ddo_chichi`에는 7/23 조회수 데이터가 없는데, 기존 진단이 `post_daily_stats` row 존재만 보고 '게시일 이전 조회수 이력'처럼 말할 수 있었음.
+- 수정: `scripts/repair_status_integrity_anomalies.py`의 early-history 판정을 `play_count/reach_count 양수 metric` 기준으로 변경. likes/comments만 있거나 metric 없는 row는 조회수/도달수 이력 경고로 보지 않음.
+- 수집 상세 로그: `scripts/run_monitoring.py`에 `[VIEW_MISSING]` 이벤트와 `view_missing_events_YYYY-MM-DD.jsonl` 출력 추가.
+  - 기록 사유: `no_collector_response`, `collector_error`, `missing_or_zero_view`, `posted_at_mismatch`, `not_found`, `missing_play_count`, `zero_play_no_previous` 등.
+  - 이벤트에는 URL, 계정명, 플랫폼, DB posted_at, 응답 posted_at, 이전 metric, 반환 metric을 같이 기록.
+- 재시도/검증 큐: `scripts/build_view_missing_queue.py` 추가.
+  - 수집 후 DB 상태 기준으로 `view_missing_queue_YYYY-MM-DD.json` 생성.
+  - `missing_same_day_row`, `same_day_row_without_view_metric`, `same_day_non_positive_metric`, `likely_image_no_view`를 분리.
+  - retryable 후보와 비재시도 진단 후보를 나눔.
+- workflow 연결:
+  - `cron-daily-collect.yml`, `monitoring-retry.yml`: 수집 후 큐 생성 + `view_missing_events_*.jsonl`, `view_missing_queue_*.json` artifact 업로드.
+  - `view-missing-queue.yml`: 비용 없이 수동으로 특정 날짜 큐만 생성 가능.
+  - `repair-ended-overrecord-stats.yml`: dry-run 진단 결과에도 큐 artifact 포함.
+- 검증: 로컬 `py -3 -m py_compile ...` 통과, `npm.cmd test -- --runInBand` 84/84 통과.

@@ -69,7 +69,11 @@ def main() -> None:
         posted_at = str(post.get("posted_at") or "")[:10]
         if not posted_at:
             continue
-        first_date = min(str(r["measured_at"])[:10] for r in rows)
+        positive_rows = [r for r in rows if metric(r) > 0]
+        if not positive_rows:
+            continue
+        first_row = min(positive_rows, key=lambda r: str(r["measured_at"])[:10])
+        first_date = str(first_row["measured_at"])[:10]
         if first_date < posted_at:
             early.append({
                 "post_id": pid,
@@ -77,6 +81,7 @@ def main() -> None:
                 "url": post.get("url"),
                 "posted_at": posted_at,
                 "first_measured_at": first_date,
+                "first_metric": metric(first_row),
             })
 
     copy_hits = []

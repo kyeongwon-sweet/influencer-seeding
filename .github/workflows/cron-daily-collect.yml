@@ -148,6 +148,27 @@ jobs:
           set -o pipefail
           python run_monitoring.py 2>&1 | tee "$RUNNER_TEMP/collect.log"
 
+      - name: Build missing view retry queue
+        if: always() && github.event.inputs.status_test != 'true'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          cd scripts
+          DATE="${{ steps.check.outputs.kdate }}"
+          if [ -z "$DATE" ]; then DATE=$(TZ=Asia/Seoul date -d 'yesterday' +%F); fi
+          python build_view_missing_queue.py --date "$DATE" --out-dir "$RUNNER_TEMP"
+
+      - name: Upload missing view diagnostics
+        if: always() && github.event.inputs.status_test != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: missing-view-diagnostics-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/view_missing_events_*.jsonl
+            ${{ runner.temp }}/view_missing_queue_*.json
+          if-no-files-found: ignore
+
       # 정상 수집 시 상태 요약은 09:30 리포트 '댓글'로만 게시(daily-increment-report.yml).
       # 여기선 '수집 실패 시에만' 황경원 DM으로 즉시 알림(ONLY_ON_FAILURE) — 실패 blind spot 방지.
       - name: 수집 실패 시 알럿 (황경원 DM)
