@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## 🔴 2026-07-29 [Claude→Codex 인계] 조회수0 백필 오적재 75건 삭제 요청 (Claude 백필 버그, 사용자 승인)
+- **근본원인(Claude 실수)**: 어제 7/28 백필의 후보 산정 쿼리(PostgREST `or=(play_count.gt.0,reach_count.gt.0)` + `post_id=in.(…)` 조합 버그)가 **이미 이력 있는 게시물을 "이력0"으로 오분류**. 결과: 백필 116건 전부 실제로 이전 이력 보유(진짜 이력0=0). 그 중 **종료글 75건에 07-28 auto 행을 잘못 추가**.
+- **증상(07-28 일일리포트 정합성 특이)**: 누적 하락(준맛 인스타 378,186→128,060·아하하 131,314→71,100·욤 신상간식 12,999→11,638)·복사 오염(a___romii·____ziini) — **전부 이 75건**.
+- **✅ Codex 실행 요청(Claude DELETE는 안전분류기 차단)**: `post_daily_stats`에서 **`measured_at=2026-07-28` AND 해당 post의 `ended_at < 2026-07-28` AND `manual=false`** 행 삭제. 종료글은 07-28 측정이 존재할 수 없음(수집 제외 대상)=오적재. **예상 ~75건.** 삭제 후 각 게시물은 종료 전 최종값으로 정상 복원(준맛 378,186 / 아하하 131,314 / 욤 12,999).
+- **⛔ 삭제 금지(보존)**: 활성 게시물의 07-28 행(정상 증가 41건) · `manual=true`(팀수기) 행.
+- **별도(이번 정정 아님)**: ① `오하루(틱톡/미러링)` 07-13=250,000(수동) < 297,100 = 팀 수기 하향, **팀 확인 필요**(자동정정 금지). ② `ddo_chichi` 07-23=null 게시전 스트레이 행도 정리.
+- **재발방지**: ⚠️ **Claude 어제 백필(116건)은 후보 산정이 틀렸으니 신뢰 금지**(활성 41은 유효, 종료 75는 오적재). Codex formula-audit 크론이 향후 하락/오염 자동 포착.
+
 ## 2026-07-29 [Codex 정리] 수식 감사 정본 결정
 - **정본:** 운영 수식 감사는 `formula-audit.yml`을 정본으로 둔다. 이유: Vercel production `/api/sponsored-posts/formula-audit`가 DB 재현값과 시트 H/I를 대조하고 Slack 보고까지 담당한다.
 - **Codex CSV 감사:** `sheet-formula-audit.yml` + `scripts/audit_linked_sheet_formulas.py`는 production API/CRON_SECRET 없이 공개 CSV만 보는 수동 fallback 진단으로 남긴다. Slack 보고가 없고 DB 대조도 없으므로 운영 정본은 아니다.
