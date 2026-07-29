@@ -2758,3 +2758,22 @@ Codex `b50b201`이 자동수집 measured_at을 '어제(수집일-1)'→'KST 오�
 - `web/lib/sponsored-write.ts`에서 일반 등록/메타 매칭은 이미 `normalized_key/postIdentityKey` 기준이었으나, 캡션 `삭제/보관` → `ended_at` 처리만 URL exact `.in("url", ...)` 경로가 남아 있었음.
 - `/reel/`↔`/p/`, TikTok `www` 유무처럼 같은 게시물인데 URL 문자열이 다른 경우 종료처리가 샐 수 있어, 기존 행은 identity로 찾은 `id` 기준 업데이트, 신규/미확인 행만 URL fallback으로 처리하도록 보강.
 - 검증: `npm.cmd test` 31개 통과, `node --check --experimental-strip-types web/lib/sponsored-write.ts` 통과.
+
+## 2026-07-29 Codex: 상태 알림 재검증(미측정/정합성)
+
+- 검증 기준: GitHub Actions `repair-ended-overrecord-stats.yml` dry-run, DB 쓰기 없음.
+- 커밋: `e6b9b23 chore(db): inspect monitoring status gaps`로 Slack 미발송 읽기 전용 진단 `scripts/inspect_monitoring_status.py` 추가.
+- 2026-07-28 기준 dry-run: https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/30452534928
+  - `ENDED_OVERRECORD_RESULT`: candidate_rows 0. 종료 후 2026-07-28 자동 오적재 행은 현재 DB 기준 없음.
+  - `STATUS_INTEGRITY_RESULT`: early_count 1(ddo_chichi 07-24 게시 / 07-23 이력), copy_hit_count 0, drop_count 9, repairable_rows 0. 하락 9건은 모두 `manual=true` 수기값이라 자동 삭제 대상 아님.
+  - `MONITORING_STATUS_RESULT`: today_stat_rows 664, waiting_count 4, check_count 12, unmeasured_total 16. Slack 알림의 17건과 유사하나 현재 DB 기준은 16건.
+  - check 12 샘플은 Slack 알림과 같은 `ufo__orange(DbF3rTIPL9F)`, `365_hot(DbF7N6iBsao)`, `이나 (인스타)(DZXeAW8S9IQ)`, `luna.player(DbF5tu0vXdl)` 등.
+- 2026-07-29 기준 dry-run: https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/30452638973
+  - 아직 일자 수집이 거의 없는 상태라 today_stat_rows 5, unmeasured_total 316으로 커짐. 사용자가 붙인 알림은 2026-07-28 수집 결과로 보는 것이 맞음.
+- 최근 수집 로그 확인:
+  - 2026-07-28 정규 수집 run `30397810136`: IG 수집 대상 175개, Apify 결과 175/175. `DZXeAW8S9IQ`는 sheet posted_at=2026-06-07, apify posted_at=2026-06-09라 게시일 불일치 가드로 저장 제외.
+  - 2026-07-29 백업 수집 run `30443801895`: IG 수집 대상 193개, Apify 결과 193/193, data-slayer fallback 조회수 0건 보강. TikTok photo는 실값 2/2, manual=True same-date 154건 보존 확인.
+- 해석:
+  - 미측정 12건은 대체로 “수집 요청에서 빠짐”이 아니라 “응답은 왔지만 조회수 필드가 0/null이거나 게시일 가드에 걸려 저장하지 않음”.
+  - `ddo_chichi` 07-23 이력은 게시일 오기인지 과거 이력 오적재인지 사람 확인 필요. 자동 삭제하지 않음.
+  - 과거 Slack에 보였던 `a___romii`, `____ziini`, `준맛`, `아하하`, `욤 신상간식`, `oxeeep` 오염/하락은 현재 DB dry-run에서는 재현되지 않음. 다른 세션에서 이미 정리됐거나 알림 시점 이후 상태가 변한 것으로 판단.
