@@ -263,6 +263,16 @@
 
 ## 상세 이력
 
+## 2026-07-29 [정본규약] 수식 감사 = 3중 구조(중복 아님·역할 분리) + 오늘 배포 검증 인계 (Claude↔Codex 정합)
+- **중복 해소 확인**: Codex가 83f0b3c로 CSV 감사를 수동 전용(workflow_dispatch only)으로 변경 → 아침 Slack 중복 보고 위험 없음. 계약테스트 정합(81eaf0) 후 전체 84/84 pass 재확인(Claude).
+- **A. 일일 자동(정본)**: /api/sponsored-posts/formula-audit + .github/workflows/formula-audit.yml — **매일 10:10 KST 자동 + Slack 보고**. Sheets API 값 + DB 재현 대조로 오류셀(#REF!)·데이터有 H빈칸·증분 불일치 탐지. ⚠️ **수식 존재 여부는 원리적으로 못 봄**(API가 값만 반환). 배포·실측 완료: 행 1,510 · 누적 정합 1,450(수동보존 1·보존값 3·빈칸정상 56) · 증분 정합 1,451(빈칸정상 59) · **오류셀 0·불일치 0**.
+- **B. 수동 백업**: scripts/audit_linked_sheet_formulas.py + sheet-formula-audit.yml(Codex) — 공개 CSV 값레벨 회귀 감지, **SA 자격증명 불필요** → A의 SA 권한 사고 시 대체 경로.
+- **C. 수식 존재 감사**: Apps Script uditLinkedSheetFormulas()(Codex) — 셀에 실제 수식이 있는지 **유일하게 판별 가능**. A·B가 못 하는 영역.
+- **규약**: ① **스케줄 감사는 A 하나만**(B에 schedule 재추가 금지) ② B·C는 수동 유지 ③ **C 주 1회 자동화 검토 요청**(값은 맞는데 수식이 값으로 굳은=자가치유 불가 상태를 A·B가 못 잡음. dailyAuto 주말 1회 또는 주간 트리거 + Slack 기록).
+- **⚠️ 날짜 헤더 파서 정합 요청(Codex)**: 시트에 26.7.16.(목)(2자리 연도 접두) 열이 섞여 있고 공용 parseMonthDay()는 이를 **month=26으로 읽어 null 반환**(A 첫 실행 500의 원인). Claude가 web/lib/formula-audit.ts:parseHeaderDate()(월.일/2자리연도/4자리연도/날짜셀+롤오버 재동기화, 단위테스트 2종)로 해결. **같은 파서를 쓰는 소비자(sheet-banner-reach.ts 경유 anner-reach-sync, B의 CSV 스크립트)도 이 형식을 건너뛸 수 있어 통일 필요**. 단 배너 reach 실적재는 7/25~28 = 125·151·158·171건으로 정상이라 실피해 미확인(잠재 리스크 정합 작업).
+- **오늘 prod 배포 검증 인계(Codex)**: ef5d57b(수기값 날짜별 보존)·73df7ec(배너 reach 자동행 병합) 반영 배포 Ready 확인됨. **기능 실측으로 마감**: ⓐ 수집 1회 후 같은 날짜 manual=true 행 보존 여부 ⓑ 배너 행이 자동행과 병합돼 중복 행 미발생 — DB 수치로 상태판 기록.
+
+
 ## 2026-07-29 [신설·repo완료→배포 대기] 매일 아침 수식 전수감사 크론 → Slack 보고 (Claude, 사용자 승인)
 - **왜**: 수식 파손이 조용히 발생해 사람이 늦게 발견(7/27 열삭제發 #REF! 전멸, 7/29 증분 V2 회귀). 이제 매일 10:10 KST(주말 포함, dailyAuto 수식 재기입 직후) 서버가 시트 실물(H·I)을 DB 재현값과 전수 대조해 Slack으로 자동 보고.
 - **구현(d0361cf)**: /api/sponsored-posts/formula-audit(CRON_SECRET, SA 읽기전용, 무수정-감지알림만) + .github/workflows/formula-audit.yml(10 1 * * *) + web/lib/formula-audit.ts 순수로직+단위테스트 6종(전체 77/77, tsc OK). 판정: 오류셀(#REF 등)·데이터有 H빈칸·증분 이중기대값(시트V2·DB규칙 — V2 전환기 오탐 방지) 불일치만 🔴, 정상이면 ✅ 한 줄.
