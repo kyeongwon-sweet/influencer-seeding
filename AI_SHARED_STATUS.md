@@ -1,7 +1,7 @@
 # AI Shared Status
 
 ## 2026-07-29 [Codex 완료] manual 일자행 불변 + TikTok photo 일별수집 재개
-- **팀수기 절대보존:** `run_monitoring`, `collect-now`, `apify-webhook`, 배너 reach 스냅샷의 자동 `post_daily_stats` 저장을 같은 `(post_id, measured_at)` 기존행 무시(`ignoreDuplicates`)로 변경했다. 기존 manual 사전조회도 유지하고, 웹 경로는 사전조회 실패 시 쓰기를 중단(fail-closed)한다. 따라서 자동값이 더 높아도 같은 날짜의 `manual=True` 행을 덮지 않는다.
+- **팀수기 절대보존:** `run_monitoring`, `collect-now`, `apify-webhook`의 자동 `post_daily_stats` 저장을 같은 `(post_id, measured_at)` 기존행 무시(`ignoreDuplicates`)로 변경했다. 기존 manual 사전조회도 유지하고, 웹 경로는 사전조회 실패 시 쓰기를 중단(fail-closed)한다. 배너 reach 스냅샷은 같은 실행에서 먼저 만든 자동 행에 reach를 합쳐야 하므로 upsert를 유지하되, 같은 날짜 manual 행을 사전 제외한다. 따라서 자동값이 더 높아도 같은 날짜의 `manual=True` 행을 덮지 않는다.
 - **다음 날짜는 계속 수집:** 보조 플랫폼의 “직전 최신행이 manual이면 이후 날짜도 영구 스킵”하던 과잉 가드를 제거했다. 수기행 자체는 불변이지만 다음 날짜의 자동 실측은 새 일자행으로 적재된다.
 - **TikTok `/photo/`:** `/photo/ID → /video/ID` 요청·결과 매칭을 동일 ID로 쓰는 경로를 회귀테스트로 고정하고, 정규수집 로그에 `틱톡 photo 수집: 실값 N건 / M개 요청`을 추가했다. 2026-07-29 직전 예약수집은 photo fix 이전 커밋이라 매칭 실패가 정상적으로 재현됐고, 다음 예약수집부터 새 경로의 실측 건수를 확인할 수 있다.
 - **백필 116건:** `measured_at=2026-07-28` 백필은 재실행하지 않았다. 백필 스크립트도 실수로 재실행되더라도 기존 일자행을 바꾸지 않도록 `ignore_duplicates`를 추가했다.

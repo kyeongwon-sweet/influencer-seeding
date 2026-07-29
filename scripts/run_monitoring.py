@@ -1178,11 +1178,9 @@ def run():
                           for b in banners if not b.get("ended_at") and (b.get("reach_count") or 0) > 0]
             reach_rows = _preserve_same_date_manual_stats(db, reach_rows, "banner reach snapshot")
             if reach_rows:
-                db.table("post_daily_stats").upsert(
-                    reach_rows,
-                    on_conflict="post_id,measured_at",
-                    ignore_duplicates=True,
-                ).execute()
+                # 같은 실행에서 먼저 만든 자동 배너 행(likes/comments)에 reach_count를 병합해야 하므로
+                # 여기만 upsert를 유지한다. 같은 날짜 manual 행은 바로 위 사전조회에서 이미 제외된다.
+                db.table("post_daily_stats").upsert(reach_rows, on_conflict="post_id,measured_at").execute()
                 print(f"[LOG] 📸 배너 도달수 스냅샷: {len(reach_rows)}건 ({TODAY})")
         except Exception as e:
             print(f"[WARN] 배너 도달수 스냅샷 실패(무시): {e}")
