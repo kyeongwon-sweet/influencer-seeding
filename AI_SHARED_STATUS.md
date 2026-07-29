@@ -5,6 +5,8 @@
 - **추가 보강 이유:** 원격 `54f643f`는 “직전 최신 stat이 manual=True인 게시물”을 이후 정규 수집에서 스킵한다. 다만 같은 날짜에 이미 `manual=True` 행이 있는데 자동 upsert가 같은 `(post_id, measured_at)`를 다시 쓰는 경로는 남아 있었다. 사용자 사례(팀수기값 2,056 < 자동 2,112)는 이 같은 날짜 upsert 덮어쓰기 위험에 해당.
 - **repo 수정:** `scripts/run_monitoring.py`에 같은 날짜 manual 행 조회 후 저장 직전 제외 가드 추가. 정규 수집 rows와 배너 reach snapshot 모두 `manual=True` 같은 날짜 행은 upsert하지 않는다. `web/app/api/apify-webhook/route.ts`, `web/app/api/monitoring/collect-now/route.ts`도 같은 날짜 manual 행을 `rowsToUpsert`/`statsToUpsert`에서 제외하고 `manual_preserved`를 응답/잡 payload에 남긴다.
 - **회귀 방지 테스트:** `scripts/test_manual_stat_preservation.py`, `web/tests/manual-stat-preservation.test.ts` 추가. 검증 완료: `py -3 -m pytest scripts` = **35/35 pass**, `npm.cmd test` = **68/68 pass**, `npm.cmd run build` = **pass**.
+- **원격/배포 확인:** commit `122198c`는 `origin/main`에 포함됨. 이후 동시 세션의 `8e97c85`/`b1ab6f5`도 그 위에 fast-forward로 쌓였고, 최신 main CI `30427132425`는 build/python-tests 모두 성공. Vercel production `influencer-seeding-9q1zbiow9...`가 15:07 KST Ready이며 `https://influencer-seeding-mu.vercel.app` alias를 잡고 있음(도메인 HEAD: `/sign-in` 200).
+- **시트 실측:** `콘텐츠 대시보드 연동` export에서 이슈박스 `/photo/76672043078207603388`는 row 1379, H=`1,923`, 상태=`트래킹 중`으로 확인. 즉 종료 DB 반영 후 `syncStatus`가 아직 시트 상태를 바꾸지 않은 상태. Codex 로컬에는 `.clasp.json`/`clasp`/연결 Sheets 세션이 없어 안전하게 live Apps Script 실행 불가. 다음 가능한 작업은 Apps Script 메뉴의 “채널명, 트래킹 상태...” 실행 또는 `syncStatus` 직접 실행 후 row 1379 상태 재검증.
 - **주의:** TikTok `/photo/` 슬라이드쇼 수집 로직 자체는 main `3de4452`의 `/photo/ID -> /video/ID` 표준화와 `scripts/test_url_utils.py`로 보호 중. 이번 Codex 보강은 그 수집값이 팀수기값을 다시 덮지 못하게 하는 저장단 가드다. 다음 정규 run_monitoring 로그에서 `/photo/` 활성 소재가 실제로 수집되는지 관찰 필요.
 
 ## 2026-07-29 [Codex 완료·라이브 반영] 연동 시트 입력 검증/붙여넣기 경고
