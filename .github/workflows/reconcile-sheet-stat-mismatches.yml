@@ -1,0 +1,49 @@
+name: Reconcile Sheet Stat Mismatches
+
+on:
+  workflow_dispatch:
+    inputs:
+      before_date:
+        description: "Only reconcile measured dates before this date"
+        required: true
+        default: "2026-07-29"
+      expected_count:
+        description: "Fail closed unless the candidate count matches"
+        required: true
+        default: "29"
+      apply:
+        description: "Apply sheet-source values after backup"
+        type: boolean
+        default: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Reconcile direct date values
+        run: |
+          cd scripts
+          args=(--before-date "${{ inputs.before_date }}" --expected-count "${{ inputs.expected_count }}")
+          if [ "${{ inputs.apply }}" = "true" ]; then
+            args+=(--apply)
+          fi
+          python reconcile_sheet_stat_mismatches.py "${args[@]}"
+      - name: Upload backup
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sheet-stat-mismatch-backup-${{ github.run_id }}
+          path: scripts/data/backups/sheet_stat_mismatch_*.json
+          if-no-files-found: error
