@@ -7,6 +7,14 @@
 - **회귀 방지 테스트:** `scripts/test_manual_stat_preservation.py`, `web/tests/manual-stat-preservation.test.ts` 추가. 검증 완료: `py -3 -m pytest scripts` = **35/35 pass**, `npm.cmd test` = **68/68 pass**, `npm.cmd run build` = **pass**.
 - **주의:** TikTok `/photo/` 슬라이드쇼 수집 로직 자체는 main `3de4452`의 `/photo/ID -> /video/ID` 표준화와 `scripts/test_url_utils.py`로 보호 중. 이번 Codex 보강은 그 수집값이 팀수기값을 다시 덮지 못하게 하는 저장단 가드다. 다음 정규 run_monitoring 로그에서 `/photo/` 활성 소재가 실제로 수집되는지 관찰 필요.
 
+## 2026-07-29 [Codex 완료·라이브 반영] 연동 시트 입력 검증/붙여넣기 경고
+- **라이브 적용:** 정본 Apps Script `1XogwTHJb...`의 저장 직전 서버본을 다시 복사한 뒤 함수 단위로만 graft. `onStatusEdit_`의 단일셀 제한 전에 다중셀 붙여넣기 검증을 연결했고, 기존 `_WriteGuard`·동기화 함수는 변경하지 않음. 저장 후 서버본 재복사 결과 예상 변경과 정확히 일치, JS 문법 정상.
+- **검증 규칙:** A=실제 날짜, B=http(s) URL, F=대문자 영문+한글 포함, G=숫자, J/K=한글 이름. O 이후는 **실제 날짜 헤더 열만** 숫자를 허용하며 행의 업로드일 전·KST 오늘 이후 입력을 거부. `등록상태`와 관리 열은 제외.
+- **이중 방어:** Google Sheets 데이터 검증은 `strict=true`로 잘못된 입력을 거부하고 도움말 표시. 설치형 `onStatusEdit_`는 일반 붙여넣기가 검증 규칙 자체를 덮는 경우도 범위를 다시 검사해 toast+로그 알림. 기존 셀을 자동 삭제·보정하지 않음.
+- **자동 유지:** 새 우측 날짜열 생성 시 같은 조회수 검증을 자동 적용하고, `installDailyTrigger` 재실행 시 전체 입력 검증도 복구. `installLinkedSheetInputValidation` 15:02 KST 실행 완료(3초, 오류 없음).
+- **실측:** A2/B2/F2/G2/J2/K2/O2/DG2와 최하단 2214행까지 custom formula+strict 확인, DH(등록상태)는 검증 없음. URL행 1,510개 기준 H/I 수식 없는 행 0, F/G/K 규칙 위반 0.
+- **기존값 중 별도 판단 필요(이번 작업에서 미수정):** URL 중복 2그룹(871·874행 `DAXydLzgF-2`, 1500·1507행 `DBVX9XvMMo3`), A열 텍스트형 날짜 55행(1434행부터), J열 한글 완성형이 아닌 `ᄋ` 3행(722~724). 자동 정리는 하지 않음.
+
 ## 2026-07-29 [Claude 완료·main] 재발방지 3종: 틱톡 photo수집 순수모듈화+테스트+CI / manual보존 가드 (사용자 "제대로 수정, 재발방지")
 - **① 틱톡 URL 로직 순수모듈 추출 + 회귀테스트(`c47aa62`):** `_tt_id`/`_tt_canonical`의 순수 로직을 `url_utils`(`tt_video_id`·`tt_canonical_form`)로 단일출처화. `test_url_utils.py`로 photo→video 표준화 회귀 잠금. ⇒ **리팩터 브랜치가 run_monitoring을 재작성·머지해도 이 fix가 조용히 사라지면 테스트가 실패**로 잡음.
 - **② 파이썬 테스트 CI 도입(`c47aa62`):** 그간 `build-test.yml`은 npm 테스트만 돌리고 `scripts/test_*.py`는 **CI에서 안 돌아** 파이썬 회귀가 방치될 수 있었음. `python-tests` 잡 추가(pip install + pytest, 현재 33건 통과) → push/PR마다 실행.
