@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { fetchSheetTabValues } from "@/lib/google-sheets";
-import { normalizeSheetHeader, parseMonthDay, toSheetNumber } from "@/lib/sheet-banner-reach";
+import { normalizeSheetHeader, toSheetNumber } from "@/lib/sheet-banner-reach";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl, postIdentityKey } from "@/lib/url-utils";
 import { todayKST } from "@/lib/dateRule";
 import { notifyBot } from "@/lib/slack";
-import { auditRows, formatAuditMessage, type AuditPost, type SheetAuditRow } from "@/lib/formula-audit";
+import { auditRows, formatAuditMessage, parseHeaderDate, type AuditPost, type SheetAuditRow } from "@/lib/formula-audit";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -56,20 +56,18 @@ async function handler(req: NextRequest) {
     return NextResponse.json({ error: "header not found" }, { status: 500 });
   }
 
-  // 날짜 열: exportStats/importStats와 동일 규칙(월이 줄면 +1년)
+  // 날짜 열: 월.일 / 2자리연도 접두(26.7.16) / 4자리연도 / 날짜셀 혼재를 모두 인식(parseHeaderDate).
   const dateCols: Array<{ idx: number; date: string }> = [];
-  let year = STATS_START_YEAR;
-  let prevMonth: number | null = null;
+  const state = { year: STATS_START_YEAR, prevMonth: null as number | null };
   for (let c = incCol + 1; c < header.length; c += 1) {
-    const md = parseMonthDay(header[c] as string | number | null);
-    if (!md) continue;
-    if (prevMonth !== null && md.month < prevMonth) year += 1;
-    prevMonth = md.month;
-    dateCols.push({ idx: c, date: `${year}-${String(md.month).padStart(2, "0")}-${String(md.day).padStart(2, "0")}` });
+    const ymd = parseHeaderDate(header[c] as string | number | null, state);
+    if (ymd) dateCols.push({ idx: c, date: ymd });
   }
   if (dateCols.length === 0) {
-    await notifyBot("🔴 [수식 전수감사] 날짜 열을 찾지 못했습니다.").catch(() => {});
-    return NextResponse.json({ error: "no date columns" }, { status: 500 });
+    // 실패 시 자기진단: 헤더 표본을 함께 알려 원인(형식 변경 등)을 즉시 알 수 있게 한다.
+    const sample = header.slice(incCol + 1, incCol + 9).map((h) => String(h ?? "")).join(" | ");
+    await notifyBot(`🔴 [수식 전수감사] 날짜 열을 찾지 못했습니다 — 헤더 표본: ${sample}`).catch(() => {});
+    return NextResponse.json({ error: "no date columns", headerSample: sample }, { status: 500 });
   }
 
   // 시트 행 파싱 (raw 셀은 UNFORMATTED라 오류셀은 "#REF!" 같은 문자열로 온다)

@@ -36,6 +36,56 @@ export type AuditResult = {
 
 const ANOMALY_CAP = 12;
 
+// 날짜 헤더 파싱 — 시트에 3종이 혼재한다(운영 실측):
+//   ① "5. 17 (일)"·"6.1" (월.일, 연도 없음 → 롤오버 추정)
+//   ② "26.7.16.(목)" (2자리 연도 접두 — Codex가 .gs에 인식 추가한 형식. 기존 공용 parseMonthDay는
+//      이걸 month=26으로 읽어 null을 반환했다 → 최신 날짜열이 조용히 무시되던 원인)
+//   ③ 날짜 셀(직렬 숫자) 또는 "2026-07-16"
+// 연도가 명시된 형식은 그 연도를 그대로 쓰고, 없으면 월 감소 시 +1년 롤오버로 추정한다.
+export function parseHeaderDate(
+  value: string | number | boolean | null,
+  state: { year: number; prevMonth: number | null },
+): string | null {
+  if (value == null || value === "") return null;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    // Google 직렬 날짜(1899-12-30 기준)
+    const ms = Math.round((value - 25569) * 86400000);
+    const d = new Date(ms);
+    if (!Number.isNaN(d.getTime()) && d.getUTCFullYear() >= 2000 && d.getUTCFullYear() < 2100) {
+      state.prevMonth = d.getUTCMonth() + 1;
+      state.year = d.getUTCFullYear();
+      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+    }
+    return null;
+  }
+  const s = String(value).trim();
+  if (!s) return null;
+
+  const commit = (y: number, mo: number, da: number): string | null => {
+    if (mo < 1 || mo > 12 || da < 1 || da > 31) return null;
+    state.year = y;
+    state.prevMonth = mo;
+    return `${y}-${String(mo).padStart(2, "0")}-${String(da).padStart(2, "0")}`;
+  };
+
+  // 4자리 연도
+  let m = s.match(/^\s*(\d{4})\s*[.\-/]\s*(\d{1,2})\s*[.\-/]\s*(\d{1,2})/);
+  if (m) return commit(Number(m[1]), Number(m[2]), Number(m[3]));
+  // 2자리 연도 접두 (26.7.16 / 26-7-16)
+  m = s.match(/^\s*(\d{2})\s*[.\-/]\s*(\d{1,2})\s*[.\-/]\s*(\d{1,2})/);
+  if (m) return commit(2000 + Number(m[1]), Number(m[2]), Number(m[3]));
+  // 월.일 (연도 없음 → 롤오버 추정)
+  m = s.match(/^\s*(\d{1,2})\s*[.\-/]\s*(\d{1,2})/);
+  if (m) {
+    const mo = Number(m[1]);
+    const da = Number(m[2]);
+    if (mo < 1 || mo > 12 || da < 1 || da > 31) return null;
+    const year = state.prevMonth !== null && mo < state.prevMonth ? state.year + 1 : state.year;
+    return commit(year, mo, da);
+  }
+  return null;
+}
+
 function isErrorCell(v: number | string | null): boolean {
   return typeof v === "string" && v.trim().startsWith("#");
 }

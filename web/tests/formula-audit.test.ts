@@ -1,6 +1,26 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { auditRows, formatAuditMessage, type AuditPost, type SheetAuditRow } from "../lib/formula-audit.ts";
+import { auditRows, formatAuditMessage, parseHeaderDate, type AuditPost, type SheetAuditRow } from "../lib/formula-audit.ts";
+
+test("parseHeaderDate: 월.일 / 2자리연도 접두 / 4자리연도 / 날짜셀 혼재 인식", () => {
+  const st = { year: 2026, prevMonth: null as number | null };
+  assert.equal(parseHeaderDate("5. 17 (일)", st), "2026-05-17");
+  assert.equal(parseHeaderDate("6.1", st), "2026-06-01");
+  // 2자리 연도 접두 — 기존 공용 parseMonthDay가 month=26으로 읽어 놓쳤던 형식
+  assert.equal(parseHeaderDate("26.7.16.(목)", st), "2026-07-16");
+  assert.equal(parseHeaderDate("2026-07-18", st), "2026-07-18");
+  assert.equal(parseHeaderDate("등록상태", st), null);
+  assert.equal(parseHeaderDate("", st), null);
+});
+
+test("parseHeaderDate: 연도 없는 헤더는 월 감소 시 +1년 롤오버", () => {
+  const st = { year: 2026, prevMonth: null as number | null };
+  assert.equal(parseHeaderDate("12.30", st), "2026-12-30");
+  assert.equal(parseHeaderDate("1.2", st), "2027-01-02");
+  // 연도 명시 헤더가 오면 그 연도로 재동기화
+  assert.equal(parseHeaderDate("26.7.16", st), "2026-07-16");
+  assert.equal(parseHeaderDate("7.17", st), "2026-07-17");
+});
 
 const TODAY = "2026-07-30";
 
