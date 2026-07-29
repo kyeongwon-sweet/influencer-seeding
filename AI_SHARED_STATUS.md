@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## 2026-07-29 [Codex 확인] formula-audit I mismatch 20건 회복 확인
+- **증상:** Formula Audit run `30453685716`(2026-07-29 21:55 KST)이 `I 오류셀 0·불일치 20`으로 Slack 빨간 알림을 냈다. 샘플은 TikTok/Threads/미러링 행의 `I빈칸(기대값有)`이며, H열은 오류/데이터有빈칸 모두 0이었다.
+- **원인 범위:** 감사 자체는 값 기준으로 정상 동작했다. 당시 I열 값이 없는 20행이 실제로 있었고, 직후 main `5802704 fix(sheet): calculate increments without DB refs`가 exportStats 증분 수식을 보강했다. 이 보강은 DB refs가 없는 `/photo`·미러링류도 시트 날짜값 범위로 증분을 계산하게 한다.
+- **실측 복구:** 공개 CSV fallback 감사 재실행 결과 I값 행이 `1421 -> 1441`로 증가했다. 이어 정본 Formula Audit run `30454570769`(수동 재실행) 결과 `healthy=true`, `inc.ok=1441`, `inc.mismatch=0`, `h.emptyButData=0`, `H/I errorCells=0`, anomalies `[]`.
+- **결론:** 사용자가 전달한 빨간 알림은 후속 수식 보강 및 I열 재생성 후 회복 완료. 현재 기준 H/I 정합성은 production formula-audit에서 통과했다.
+
 ## 2026-07-29 [Codex 완료] 진행 합의 항목 처리 — photo 검증 예약·stash 정리·clasp 확인·배너 reach 실측
 - **TikTok `/photo/` 다음 run 검증:** 2026-07-30 05:20 KST 확인 카드를 앱에 띄움(사용자 승인 필요). 확인 범위: `issuebox_/photo/76672043078207603388`, `issuetteugi/photo/7667152002266287378` 등 `/photo/`가 요청뿐 아니라 실제 play/reach 값으로 적재됐는지, 같은 날짜 `manual=true` 보존, 이슈박스 종료 상태 유지. 데이터 쓰기 없이 검증만 수행하도록 지시.
 - **이미 관찰된 production 수집 신호:** `Monitoring Backup & Retry` run `30443801895`에서 `MONITORING_DATE=2026-07-28`, `틱톡 photo 수집: 실값 2건 / 2개 요청`, `manual=True same-date rows preserved in run_monitoring: skipped auto upsert 154` 확인. 즉 `/photo/`와 수기값 보존은 최신 run에서 긍정 신호가 있음. 내일 예약은 한 번 더 독립 재검증용.
