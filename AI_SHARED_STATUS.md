@@ -1,5 +1,10 @@
 # AI Shared Status
 
+## 2026-07-29 [Codex 정리] 수식 감사 정본 결정
+- **정본:** 운영 수식 감사는 `formula-audit.yml`을 정본으로 둔다. 이유: Vercel production `/api/sponsored-posts/formula-audit`가 DB 재현값과 시트 H/I를 대조하고 Slack 보고까지 담당한다.
+- **Codex CSV 감사:** `sheet-formula-audit.yml` + `scripts/audit_linked_sheet_formulas.py`는 production API/CRON_SECRET 없이 공개 CSV만 보는 수동 fallback 진단으로 남긴다. Slack 보고가 없고 DB 대조도 없으므로 운영 정본은 아니다.
+- **중복 방지:** `sheet-formula-audit.yml`의 daily schedule을 제거하고 `workflow_dispatch` 전용으로 전환했다. 따라서 매일 아침 자동 감사/Slack 보고는 `formula-audit.yml` 하나만 돈다.
+
 ## 2026-07-29 [Codex 재확인] live exportStats 증분 생성부 저장 상태
 - **사용자 요청 실측:** production Apps Script `1XogwTHJb...` 편집기에서 `AI 트래킹 대시보드 연동.gs` 전체를 다시 복사해 `exportStats__wgimpl` 본문을 확인했다. 증분 생성부는 `cols,SEQUENCE(1,COLUMNS(rng),COLUMN(...),1)` 형태이며, 구식 `cols,COLUMN(rng)`는 없다.
 - **저장 상태:** 확인 시점 live 파일 길이 126,088자, 미저장 표시 없음. `Ctrl+S` no-op 저장 후에도 `Drive에 저장됨`, 저장 버튼 비활성, `저장되지 않은 변경사항` 없음. 즉 최신 증분 생성부는 live에 이미 저장된 상태다.
