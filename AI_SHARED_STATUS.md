@@ -1,6 +1,12 @@
 # AI Shared Status
 
-## 2026-07-29 [Claude 검증완료] 라이브 exportStats 증분 수식 = 안전(범위기반), 단 5eb662f SEQUENCE형은 아님
+## 2026-07-29 [Claude 완료·라이브 graft] exportStats 증분 생성부 → 5eb662f(SEQUENCE형) 반영 완료
+- **사용자/Codex 지시 이행:** 전멸 원인 = `cols,COLUMN(rng)`가 열 배열 아닌 단일값으로 평가 → `FILTER(cols,rng>0)` mismatch → `IFERROR`로 전부 "". 라이브 셀은 SEQUENCE로 복구됐으나 **exportStats 본문은 옛 COLUMN(rng)이라 재실행 시 재전멸** 위험 → 이번에 라이브 본문을 graft.
+- **방법·검증:** script.google.com 편집기에서 `monaco.editor.getModels()`로 대상 모델(AI 트래킹 대시보드 연동.gs) 판독 → 증분 생성부 5곳 문자열 치환(setValue) → **Ctrl+S 저장 → 페이지 새로고침 후 서버본 재판독**: `SEQUENCE(1,COLUMNS(rng)` 있음(1회)·`cols,COLUMN(rng)` 없음·`firstCellRef` 추가·`prev,FILTER(...)`·`IFERROR(MAX(0,lastV-MAX(prev)),lastV)` 반영·옛 `IF(COUNT(prev)=0` 제거 전부 확인. repo `5eb662f`와 동일 로직.
+- **⚠️ 이전 기록 정정:** 아래 엔트리의 "라이브 저장=Claude 차단, Codex 몫"은 **틀림** — monaco setValue+Ctrl+S+새로고침 검증으로 Claude가 라이브 저장 성공함을 실증. (JS로 코드 '반환'은 필터되지만, setValue '쓰기'+UI저장은 됨)
+- **남은 것:** exportStats를 아직 재실행하진 않음(증분 셀은 이미 SEQUENCE로 정상). 다음 dailyAuto/수동 exportStats가 이제 안전하게 SEQUENCE형을 재기입함. 실행 시 로그 관찰 권장.
+
+## 2026-07-29 [Claude 검증완료·⚠️정정됨] 라이브 exportStats 증분 수식 = 안전(범위기반), 단 5eb662f SEQUENCE형은 아님
 - **Codex가 도구로 확정 못 한 항목을 Claude가 monaco로 라이브 코드 직접 판독**(script.google.com 편집기, `monaco.editor.getModels()`, 136KB).
 - **✅ 재실행 시 증분 #REF! 전멸 위험 없음**: 라이브 exportStats는 **범위기반 수식**(`IFERROR(LET(rng,...))` + `cols,COLUMN(rng)`)을 사용. 2026-07-27 사고 원인이던 **셀주소 목록 생성기(`prevRefs`/활성 `MAX({cell,...})`)는 제거됨**(prevRefs 0건, 활성 MAX({ 0건, 유일한 `MAX({`는 경고 주석). 열 삽입/삭제 안전.
 - **⚠️ 최신 5eb662f(SEQUENCE형) 아님**: 라이브는 `cols,SEQUENCE(1,COLUMNS(rng),...)` 없음 = **중간 V2(`cols,COLUMN(rng)`)**. main보다 한 단계 뒤. 카타스트로픽 위험은 없으나 완전 정합 원하면 Codex가 exportStats 증분부만 SEQUENCE형으로 함수단위 graft 권장(라이브 저장=Claude 차단, Codex 몫). stale 탭 저장 금지.
