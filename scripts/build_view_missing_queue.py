@@ -58,6 +58,20 @@ def is_view_capable(post: dict[str, Any]) -> bool:
     return platform(value) in {"instagram", "youtube", "tiktok", "x"}
 
 
+def exclusion_reason(post: dict[str, Any]) -> str | None:
+    channel_type = str(post.get("channel_type") or "")
+    url = (post.get("url") or "").lower()
+    if "수동추적 제외" in str(post.get("notes") or ""):
+        return "manual_note"
+    if "위성채널" in channel_type or "온드미디어" in channel_type:
+        return "internal_channel"
+    if "무상시딩" in channel_type:
+        return "free_seed_manual"
+    if "배너" in channel_type and "tiktok.com" not in url:
+        return "non_tiktok_banner_reach_only"
+    return None
+
+
 def metric(row: dict[str, Any] | None) -> int | None:
     if not row:
         return None
@@ -88,13 +102,13 @@ def main() -> None:
         "sponsored_posts",
         "id,url,account_name,created_at,posted_at,ended_at,channel_type,notes",
     )
-    eligible = [
+    raw_eligible = [
         post for post in posts
         if not post.get("ended_at")
-        and "수동추적 제외" not in str(post.get("notes") or "")
         and (not post.get("posted_at") or str(post.get("posted_at"))[:10] <= target)
         and is_view_capable(post)
     ]
+    eligible = [post for post in raw_eligible if not exclusion_reason(post)]
     eligible_ids = [post["id"] for post in eligible if post.get("id")]
 
     same_day_rows: dict[str, list[dict[str, Any]]] = {}
@@ -136,7 +150,36 @@ def main() -> None:
                 state["has_likes_or_comments"] = True
 
     queue: list[dict[str, Any]] = []
-    excluded = {"measured": 0, "likely_image_no_view": 0, "not_retryable": 0}
+    excluded = {
+        "measured": 0,
+        "likely_image_no_view": 0,
+        "not_retryable": 0,
+        "manual_note": 0,
+        "internal_channel": 0,
+        "free_seed_manual": 0,
+        "non_tiktok_banner_reach_only": 0,
+    }
+    for post in raw_eligible:
+        reason = exclusion_reason(post)
+        if not reason:
+            continue
+        excluded[reason] += 1
+        if args.include_all:
+            queue.append({
+                "post_id": post.get("id"),
+                "account_name": post.get("account_name"),
+                "url": post.get("url"),
+                "tail": tail(post.get("url")),
+                "platform": platform(post.get("url")),
+                "channel_type": post.get("channel_type"),
+                "posted_at": str(post.get("posted_at") or "")[:10] or None,
+                "created_at": str(post.get("created_at") or "")[:10] or None,
+                "reason": reason,
+                "retryable": False,
+                "same_day_rows": 0,
+                "last_metric": None,
+                "last_metric_date": None,
+            })
     for post in eligible:
         rows = same_day_rows.get(post["id"], [])
         best_today = max((metric(row) or 0 for row in rows), default=0)
