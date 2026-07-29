@@ -6,6 +6,7 @@
 - **실측 검증:** `/export` CSV 기준 URL행 1,510, 누적(H) 값 1,454, 증분(I) 값 1,451, H #REF 0, I #REF 0. 누적이 있는데 증분 빈칸인 행은 3개(row 511/558/629)만 남음. 임시 날짜열 삽입→삭제 후 재검증도 동일: I 값 1,451, I #REF 0. 대표 셀 I1408=`3,067`, I1434=`0`.
 - **repo 정본 수정:** `Combined_Sheet_AppsScript.gs`의 `exportStats` 증분 생성부도 같은 `SEQUENCE` 수식으로 교체. 계약테스트는 `COLUMN(rng)` 금지와 `SEQUENCE` 사용을 검증하도록 보강. `npm.cmd test` = **71/71 pass**.
 - **주의:** 현재 도구로는 live Apps Script 프로젝트 파일을 직접 저장/실행하는 전용 경로(`clasp`/문서 세션)가 없어, live Apps Script 본문 자체가 repo 수정과 동일해졌는지는 아직 별도 확인 필요. 다음에 Apps Script 편집기 접근 가능한 세션이 있으면 `exportStats` 증분 생성부가 `SEQUENCE(1,COLUMNS(rng),COLUMN(...),1)`인지 확인·graft해야 한다. 그 전까지는 I열 현재 표시는 복구돼 있지만, 예전 live `exportStats`를 다시 실행하면 재전멸 위험이 있다.
+- **✅ 독립 재감사 확인(Claude 세션B, ~15:30):** 별도 `/export` CSV 재다운로드로 검증 — 증분 채움 **1,451**, 누적>0 빈칸 **3(행 511·558·629)**, #REF! 0 = Codex 수치와 완전 일치. 남은 3건은 **날짜열 데이터 없는 수동/레거시 누적값**(위성 ssulbox_1·sseoltteugi, 무상시딩 피드 DaNeLbc)이라 범위수식이 계산할 원본이 없어 증분 빈칸 = 정상. **내 🔴 회귀경보(fd500db) 해소 처리.** 유일한 잔여 리스크 = 위 '주의'의 **live exportStats 본문 graft 미확인(재전멸 위험)** — Apps Script 편집기 세션에서 확정 필요.
 
 ## 2026-07-29 [Codex 완료·검증] 팀수기값 우선 보존 2차 가드 + collect-now 보강
 - **동시작업 확인:** `origin/main`에 이미 `54f643f fix(monitoring): 자동수집이 manual=True stat 보존(스킵)`와 `759c9c1 docs...`가 올라와 있어, 로컬 수정 전 `git rebase --autostash origin/main`으로 정합했다. 중복 커밋/덮어쓰기 없이 원격 구현은 유지.
