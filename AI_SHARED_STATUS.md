@@ -1,5 +1,15 @@
 # AI Shared Status
 
+## 2026-07-29 [Codex 완료·라이브 반영] 증분(I) V2 graft + 누적(H) 날짜헤더 감지 보강
+- **00:10 KST 백필 카드:** heartbeat는 도착했으나, 최상단 기록상 Claude가 이미 measured_at=2026-07-28로 116건 upsert를 완료했고 `재실행 금지`가 명시되어 있어 Codex는 중복 실행하지 않음.
+- **repo 보강:** `Combined_Sheet_AppsScript.gs`의 `refreshCumulativeViews()` 날짜열 감지 정규식을 `26.7.28.(화)` 같은 연도 포함 헤더까지 인식하도록 확장. 계약테스트에 회귀 방지 assertion 추가.
+- **repo 검증:** `npm.cmd test` = **65/65 pass**.
+- **라이브 Apps Script 반영:** 저장 직전 라이브 서버본을 재복사해 해시 동일 확인 후 함수 단위 graft. `exportStats__wgimpl`은 main 최신 `exportStats` 구현으로 교체(증분 V2 행-범위 수식 + 종료글 final H 보존 포함), `refreshCumulativeViews__wgimpl`은 연도 포함 날짜헤더 정규식 포함 최신 V4로 교체. `_WriteGuard` wrapper와 라이브 전용 구조는 보존.
+- **라이브 잔재 정리:** 미호출 함수 `refreshCumulativeViews__wgimpl_OLD_V3`, `__sortRefTest` 제거 확인. 저장 후 새로고침 재복사 검증: 증분 V2 marker 있음, `finalMetricByKey` 있음, 연도 포함 dateRe 있음, old function marker 없음.
+- **라이브 실행:** `refreshCumulativeViews` 14:38:40~14:38:50 완료. `exportStats` 14:39:41~14:40:32 완료. 로그: 새 날짜 열 0, URL-key 날짜 쓰기 10, 실측 갱신 5, 공백 이어받기 9, 증분 수식 1421행, 기존값 보존 19, 매칭 게시물 1454, 날짜 열 97, 미수집 URL 56, 중복 URL 키 보류 4.
+- **기능 실측:** one-off 감사 `auditMetricFormulas20260729` 결과 URL 행 1510 기준 `hBlankNoFormula=0`, `iBlankNoFormula=0`, `hRefErrors=0`, `iRefErrors=0`. 임시 날짜열 삽입 후 삭제 감사 `auditIncrementRefAfterTempDateColumn20260729`: insertedAfter=111, deletedTempCol=112, scannedRows=2212, `incrementRefErrors=0`. 열 조작 뒤 재감사도 H/I 수식 누락 0, #REF 0.
+- **남은 확인:** TikTok `/photo/` 슬라이드쇼 정규 재수집은 별도 서버 수집 경로에서 계속 관찰 필요. 상태판 상단의 manual 우선값 보존 정책(`manual=True` 값이 자동수집 mono-max로 덮이지 않게 할지)은 사용자/Claude와 별도 합의 필요.
+
 ## 2026-07-29 [Claude 정정완료] 위성 틱톡 슬라이드쇼 3건 팀수기값 우선 정정 (사용자 지시 "팀수기값 우선")
 - **문제**: 위성채널 틱톡 사진/슬라이드쇼는 팀이 시트에 수기로 조회수 입력하는데, 어제 내 틱톡배너 자동수집이 값을 넣어 **시트(수기) ↔ DB(자동)가 어긋남**. 사용자 확정: **팀수기값(시트)이 정답**.
 - **정정(DB 7/28 = 시트 팀수기값, manual=True)**: 유머박스 자동2,112→**2,056** · 이슈뜨기 자동584→**915** · 이슈박스 (없음)→**1,923**. 3건 DB=시트 검증 완료. 7/27은 원래 일치(976/528/1561).
@@ -158,6 +168,7 @@
 - **V2 구현(repo `0d4854e`, 테스트 65/65)**: exportStats 증분 생성부를 행-범위 수식으로 교체 — `=IFERROR(LET(rng,$O{r}:$DG{r}, ..., IF(COUNT(prev)=0, lastV, MAX(0,lastV-MAX(prev)))),"")`. 의미 동일(마지막 유효값−이전 최대, 1개면 전액), 백로그(게시 7일 초과 첫 측정)는 `=""` 수식(빈칸 표시+수식 유지 규약). **범위 참조라 열 삽입/삭제 자동 적응 + 정렬 추종** — Codex의 "증분 3단계 URL-key 전환" 필요성 자체를 낮춤(정렬 중단 가드는 유지, 무해).
 - **부수 개선**: 당일 열 수기값 입력 시 증분 즉시 반영(기존은 다음날 수식 재기입까지 이전 기준).
 - **⚠️ Codex 라이브 graft**: exportStats 증분 생성부(V2)를 최신 main 기준 함수 단위 반영 + `__sortRefTest` 삭제. 반영 후 exportStats 1회 실행→열 하나 임시 삽입/삭제해도 #REF! 없음 실측(기능 검증 규약).
+- **🔴🔴 회귀 경보(2026-07-29 ~15시, Claude 세션B 재감사) — V2 라이브 반영이 증분 열을 전멸시킴**: `/export` CSV 두 시점 전수 대조 결과 **증분 값 채워진 행 1,402 → 0** (누적>0 행 1,454개 전부 빈칸). **#REF!는 0** = V2 수식 `=IFERROR(LET(rng,…,lastC,MAX(FILTER(cols,rng>0)),…,prev,IFERROR(FILTER(rng,cols<lastC,rng>0),)…),"")`가 **전 행 평가오류 → 바깥 IFERROR가 전부 "" 로 삼킴**. 8.8M(YT shorts M1tGUhkv7mI)·217만(IG reel DZXeAW8S9IQ)·84만 등 대형 활성글 포함 전멸. 누적(H)·DB는 무손상(시트 증분 '표시'만 전멸). **원인 유력**: 라이브 graft 수식의 LET/FILTER 배열 평가(로케일/`,)` 빈인자/열범위 `$O:$DG`가 실제 마지막 날짜열 DH(112)와 어긋남 등) 실패. **조치(Codex, 긴급)**: 라이브 exportStats 증분 수식 1개 셀 실측 디버그(=IFERROR 벗겨 실제 오류 확인) 후 수정, 또는 마지막 정상본으로 롤백 → exportStats 1회 재실행해 1,400+행 재충전 확인. repo 테스트는 65/65 통과라 **repo≠라이브 graft 버전 차이 의심**. 완료되면 세션B 재감사.
 - **📋 전수감사 근거·요청(2026-07-29, 사용자 지시 "전수조사", Claude 세션B)**: 라이브 시트 `/export` CSV 2,212행 전수 + DB 대조(신선도 검증 통과: 시트 누적=DB 최댓값 일치). **누적(H)=정상**(#REF!·수식깨짐 0, 날짜값 있으면 누적 존재, 수동/레거시 4건만 예외=무해). **증분(I): 누적>0인데 빈칸 52행** — 조회수無 플랫폼 8(스레드·X·치지직·FB, N/A 정상)+gap>7 2(설계 정상)+신규단일측정·flat reach 배너 다수(정상 범주) 외, **다측정 조회수 게시물 빈칸이 V1 셀주소 수식 파손의 잔재**. → **V2 라이브 graft + exportStats 1회 재실행 시 채워질 것.** 대표 잔재행: IG `/p/DYFBwz5GlJ7`(행2)·`/p/DbIiQuTCYZp`(행1250, reach flat이라 0 정상)·`/reels/DajQm68TK9W`(행1434)·틱톡배너 `photo/7665233491407260949`(행1203) 등. **graft 후 Claude 세션B 재감사 예정**(증분 빈칸이 정상 범주만 남는지 확정).
 
 ## 2026-07-29 [✅완료] 자정수집 리포트 '확인필요'에서 위성/온드 제외 — 알림 규칙 불일치 수정 (Claude, 사용자 신고 s_3.mag 2건)
