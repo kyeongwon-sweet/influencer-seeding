@@ -99,6 +99,8 @@ async function collect(req: NextRequest) {
       likes_count: number | null;
       comments_count: number | null;
     }> = [];
+    const sameDateManual = new Set<string>();
+    let skipped = 0;
 
     // Instagram 게시물만 필터링
     // ⚠️ shortcode 없는 프로필형 URL(.../username/reels/)은 제외 — 액터가 계정 게시물을 통째로 긁어 과수집됨
@@ -209,10 +211,17 @@ async function collect(req: NextRequest) {
             }
             if (!page || page.length < PAGE) break;
           }
+          const { data: manualPage } = await supabase
+            .from("post_daily_stats")
+            .select("post_id, measured_at, manual")
+            .in("post_id", idsChunk)
+            .eq("measured_at", measuredAt)
+            .eq("manual", true);
+          for (const s of manualPage ?? []) {
+            sameDateManual.add(`${s.post_id}|${String(s.measured_at).slice(0, 10)}`);
+          }
         }
       }
-
-      let skipped = 0;
 
       // 5️⃣ 각 게시물별로 개별 데이터 저장 & 검증
       for (const post of igPosts) {
@@ -289,12 +298,18 @@ async function collect(req: NextRequest) {
     }
 
     // 4. Supabase에 저장
-    if (statsToInsert.length > 0) {
-      console.log(`[LOG] 💾 ${statsToInsert.length}개 행 저장 중...`);
+    const statsToUpsert = statsToInsert.filter((row) =>
+      !sameDateManual.has(`${row.post_id}|${String(row.measured_at).slice(0, 10)}`)
+    );
+    const manualPreserved = statsToInsert.length - statsToUpsert.length;
+    if (manualPreserved > 0) skipped += manualPreserved;
+
+    if (statsToUpsert.length > 0) {
+      console.log(`[LOG] 💾 ${statsToUpsert.length}개 행 저장 중...`);
 
       const { error: insertError } = await supabase
         .from("post_daily_stats")
-        .upsert(statsToInsert, {
+        .upsert(statsToUpsert, {
           onConflict: "post_id,measured_at",
         });
 
@@ -303,7 +318,7 @@ async function collect(req: NextRequest) {
         throw new Error(`Failed to save stats: ${insertError.message}`);
       }
 
-      console.log(`[SUCCESS] ✅ 데이터 수집 완료: ${statsToInsert.length}개행`);
+      console.log(`[SUCCESS] ✅ 데이터 수집 완료: ${statsToUpsert.length}개행`);
     }
 
     return NextResponse.json({
@@ -313,7 +328,8 @@ async function collect(req: NextRequest) {
       pre_posted_skipped: prePostedSkipped,
       ended_skipped: endedSkipped,
       instagram_posts: igPosts.length,
-      stats_collected: statsToInsert.length,
+      stats_collected: statsToUpsert.length,
+      manual_preserved: manualPreserved,
       measured_at: measuredAt,
     });
   } catch (error) {

@@ -291,6 +291,7 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
   const lastKnownPlay = new Map<string, number>();
   const lastMeasuredAt = new Map<string, string>();
   const lastWasManual = new Map<string, boolean>();
+  const sameDateManual = new Set<string>();
   {
     const batchIds = [...new Set(eligiblePosts.map((p: { id: string }) => p.id).filter(Boolean))];
     const ID_CHUNK = 120, PAGE = 1000;
@@ -301,6 +302,7 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
         if (!lastKnownPlay.has(s.post_id) && s.play_count != null) lastKnownPlay.set(s.post_id, s.play_count);
         if (!lastMeasuredAt.has(s.post_id)) lastMeasuredAt.set(s.post_id, s.measured_at);
         if (!lastWasManual.has(s.post_id)) lastWasManual.set(s.post_id, Boolean(s.manual));
+        if (s.manual && String(s.measured_at).slice(0, 10) === today) sameDateManual.add(`${s.post_id}|${today}`);
       }
     };
     for (let c = 0; c < batchIds.length; c += ID_CHUNK) {
@@ -405,8 +407,13 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
       )
     );
   }
-  if (rows.length > 0) {
-    await supabase.from('post_daily_stats').upsert(rows, { onConflict: 'post_id,measured_at' });
+  const rowsToUpsert = rows.filter((row: { post_id: string; measured_at: string }) =>
+    !sameDateManual.has(`${row.post_id}|${String(row.measured_at).slice(0, 10)}`)
+  );
+  const manualPreserved = rows.length - rowsToUpsert.length;
+  if (manualPreserved > 0) skipped += manualPreserved;
+  if (rowsToUpsert.length > 0) {
+    await supabase.from('post_daily_stats').upsert(rowsToUpsert, { onConflict: 'post_id,measured_at' });
   }
   if (overRecorded.length > 0) {
     const sample = overRecorded.slice(0, 8)
@@ -418,12 +425,12 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
       `${sample}${overRecorded.length > 8 ? `\n- ...외 ${overRecorded.length - 8}건` : ''}`
     );
   }
-  await supabase.from('jobs').update({ status: 'done', payload: { saved: rows.length, skipped } }).eq('id', jobId);
+  await supabase.from('jobs').update({ status: 'done', payload: { saved: rowsToUpsert.length, skipped, manual_preserved: manualPreserved } }).eq('id', jobId);
 
   // 자동 수집(크론, user_email 없음)만 Slack 통지 — 수동 버튼 노이즈 방지
   const { data: jobRow } = await supabase.from('jobs').select('user_email').eq('id', jobId).single();
   if (!(jobRow as { user_email: string | null } | null)?.user_email) {
-    await notifyJob('협찬 모니터링', 'ok', `${rows.length}건 적재${skipped ? `, 스킵 ${skipped}` : ''}`);
+    await notifyJob('협찬 모니터링', 'ok', `${rowsToUpsert.length}건 적재${skipped ? `, 스킵 ${skipped}` : ''}`);
   }
 }
 

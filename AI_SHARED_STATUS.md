@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 2026-07-29 [Codex 완료·검증] 팀수기값 우선 보존 2차 가드 + collect-now 보강
+- **동시작업 확인:** `origin/main`에 이미 `54f643f fix(monitoring): 자동수집이 manual=True stat 보존(스킵)`와 `759c9c1 docs...`가 올라와 있어, 로컬 수정 전 `git rebase --autostash origin/main`으로 정합했다. 중복 커밋/덮어쓰기 없이 원격 구현은 유지.
+- **추가 보강 이유:** 원격 `54f643f`는 “직전 최신 stat이 manual=True인 게시물”을 이후 정규 수집에서 스킵한다. 다만 같은 날짜에 이미 `manual=True` 행이 있는데 자동 upsert가 같은 `(post_id, measured_at)`를 다시 쓰는 경로는 남아 있었다. 사용자 사례(팀수기값 2,056 < 자동 2,112)는 이 같은 날짜 upsert 덮어쓰기 위험에 해당.
+- **repo 수정:** `scripts/run_monitoring.py`에 같은 날짜 manual 행 조회 후 저장 직전 제외 가드 추가. 정규 수집 rows와 배너 reach snapshot 모두 `manual=True` 같은 날짜 행은 upsert하지 않는다. `web/app/api/apify-webhook/route.ts`, `web/app/api/monitoring/collect-now/route.ts`도 같은 날짜 manual 행을 `rowsToUpsert`/`statsToUpsert`에서 제외하고 `manual_preserved`를 응답/잡 payload에 남긴다.
+- **회귀 방지 테스트:** `scripts/test_manual_stat_preservation.py`, `web/tests/manual-stat-preservation.test.ts` 추가. 검증 완료: `py -3 -m pytest scripts` = **35/35 pass**, `npm.cmd test` = **68/68 pass**, `npm.cmd run build` = **pass**.
+- **주의:** TikTok `/photo/` 슬라이드쇼 수집 로직 자체는 main `3de4452`의 `/photo/ID -> /video/ID` 표준화와 `scripts/test_url_utils.py`로 보호 중. 이번 Codex 보강은 그 수집값이 팀수기값을 다시 덮지 못하게 하는 저장단 가드다. 다음 정규 run_monitoring 로그에서 `/photo/` 활성 소재가 실제로 수집되는지 관찰 필요.
+
 ## 2026-07-29 [Claude 완료·main] 재발방지 3종: 틱톡 photo수집 순수모듈화+테스트+CI / manual보존 가드 (사용자 "제대로 수정, 재발방지")
 - **① 틱톡 URL 로직 순수모듈 추출 + 회귀테스트(`c47aa62`):** `_tt_id`/`_tt_canonical`의 순수 로직을 `url_utils`(`tt_video_id`·`tt_canonical_form`)로 단일출처화. `test_url_utils.py`로 photo→video 표준화 회귀 잠금. ⇒ **리팩터 브랜치가 run_monitoring을 재작성·머지해도 이 fix가 조용히 사라지면 테스트가 실패**로 잡음.
 - **② 파이썬 테스트 CI 도입(`c47aa62`):** 그간 `build-test.yml`은 npm 테스트만 돌리고 `scripts/test_*.py`는 **CI에서 안 돌아** 파이썬 회귀가 방치될 수 있었음. `python-tests` 잡 추가(pip install + pytest, 현재 33건 통과) → push/PR마다 실행.

@@ -192,6 +192,60 @@ def _prev_stats(db, post_ids):
     return last
 
 
+def _row_key(row):
+    return f"{row.get('post_id')}|{str(row.get('measured_at'))[:10]}"
+
+
+def _filter_manual_preserved_rows(rows, manual_keys):
+    """Keep auto collection from overwriting same-date manual stat rows."""
+    kept = []
+    skipped = []
+    for row in rows:
+        if _row_key(row) in manual_keys:
+            skipped.append(row)
+        else:
+            kept.append(row)
+    return kept, skipped
+
+
+def _same_date_manual_stat_keys(db, rows):
+    ids_by_date = {}
+    for row in rows:
+        pid = row.get("post_id")
+        measured_at = str(row.get("measured_at") or "")[:10]
+        if not pid or not measured_at:
+            continue
+        ids_by_date.setdefault(measured_at, set()).add(pid)
+
+    keys = set()
+    for measured_at, ids in ids_by_date.items():
+        id_list = list(ids)
+        for i in range(0, len(id_list), 200):
+            res = (
+                db.table("post_daily_stats")
+                .select("post_id, measured_at, manual")
+                .eq("measured_at", measured_at)
+                .eq("manual", True)
+                .in_("post_id", id_list[i:i + 200])
+                .execute()
+            )
+            for row in res.data or []:
+                keys.add(f"{row['post_id']}|{str(row['measured_at'])[:10]}")
+    return keys
+
+
+def _preserve_same_date_manual_stats(db, rows, label):
+    if not rows:
+        return rows
+    manual_keys = _same_date_manual_stat_keys(db, rows)
+    if not manual_keys:
+        return rows
+    kept, skipped = _filter_manual_preserved_rows(rows, manual_keys)
+    if skipped:
+        print(f"[WARN] manual=True same-date rows preserved in {label}: skipped auto upsert {len(skipped)}")
+    return kept
+
+
 def _tracks_play_count(url):
     u = (url or "").lower()
     return any(
@@ -1081,6 +1135,7 @@ def run():
             if _pc is not None and _pc <= 0:
                 _prev = (last_stat.get(_r["post_id"]) or {}).get("play_count")
                 _r["play_count"] = _prev if (_prev and _prev > 0) else None
+        rows = _preserve_same_date_manual_stats(db, rows, "run_monitoring")
         if rows:
             print(f"[LOG] 데이터 저장 시작: {len(rows)}건")
             result = db.table("post_daily_stats").upsert(rows, on_conflict="post_id,measured_at").execute()
@@ -1111,6 +1166,7 @@ def run():
             # 🛡️ reach 0/음수는 '미집계'다 → 저장 안 함(0 baseline 방지). 실제 도달수(>0)만 스냅샷.
             reach_rows = [{"post_id": b["id"], "measured_at": TODAY, "reach_count": b["reach_count"]}
                           for b in banners if not b.get("ended_at") and (b.get("reach_count") or 0) > 0]
+            reach_rows = _preserve_same_date_manual_stats(db, reach_rows, "banner reach snapshot")
             if reach_rows:
                 db.table("post_daily_stats").upsert(reach_rows, on_conflict="post_id,measured_at").execute()
                 print(f"[LOG] 📸 배너 도달수 스냅샷: {len(reach_rows)}건 ({TODAY})")
