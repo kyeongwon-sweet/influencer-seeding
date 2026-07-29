@@ -308,7 +308,7 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
     for (let c = 0; c < batchIds.length; c += ID_CHUNK) {
       const idsChunk = batchIds.slice(c, c + ID_CHUNK);
       for (let from = 0; ; from += PAGE) {
-        const { data: page } = await supabase
+        const { data: page, error: statReadError } = await supabase
           .from('post_daily_stats')
           .select('post_id, play_count, measured_at, manual')
           .in('post_id', idsChunk)
@@ -316,6 +316,9 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
           .lte('measured_at', today)
           .order('measured_at', { ascending: false })
           .range(from, from + PAGE - 1);
+        if (statReadError) {
+          throw new Error(`manual stat preservation preflight failed: ${statReadError.message}`);
+        }
         collectPrev(page as PrevRow[] | null);
         if (!page || page.length < PAGE) break;
       }
@@ -413,7 +416,10 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
   const manualPreserved = rows.length - rowsToUpsert.length;
   if (manualPreserved > 0) skipped += manualPreserved;
   if (rowsToUpsert.length > 0) {
-    await supabase.from('post_daily_stats').upsert(rowsToUpsert, { onConflict: 'post_id,measured_at' });
+    await supabase.from('post_daily_stats').upsert(rowsToUpsert, {
+      onConflict: 'post_id,measured_at',
+      ignoreDuplicates: true,
+    });
   }
   if (overRecorded.length > 0) {
     const sample = overRecorded.slice(0, 8)

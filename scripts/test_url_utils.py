@@ -1,4 +1,5 @@
 from url_utils import normalize_url, tt_video_id, tt_canonical_form
+from run_monitoring import _tt_canonical
 
 
 def test_normalize_url_strips_query_hash_and_slash():
@@ -28,3 +29,11 @@ def test_tt_canonical_form_passthrough_for_non_photo():
     assert tt_canonical_form(v) == v
     assert tt_canonical_form("https://vt.tiktok.com/ZSabc/") == "https://vt.tiktok.com/ZSabc/"
     assert tt_canonical_form("") == ""
+
+
+def test_run_monitoring_photo_request_and_result_use_the_same_video_id():
+    photo = "https://www.tiktok.com/@healing0315/photo/7665233491407260949/"
+    canonical = _tt_canonical(photo)
+
+    assert canonical == "https://www.tiktok.com/@healing0315/video/7665233491407260949"
+    assert tt_video_id(canonical) == "7665233491407260949"

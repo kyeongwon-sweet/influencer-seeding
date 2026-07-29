@@ -11,13 +11,17 @@ test("run_monitoring preserves same-date manual stat rows before auto upsert", (
   assert.match(runMonitoring, /\.eq\("manual", True\)/);
   assert.match(runMonitoring, /rows = _preserve_same_date_manual_stats\(db, rows, "run_monitoring"\)/);
   assert.match(runMonitoring, /reach_rows = _preserve_same_date_manual_stats\(db, reach_rows, "banner reach snapshot"\)/);
+  assert.doesNotMatch(runMonitoring, /if existing\.get\("manual"\):\s+continue/);
+  assert.match(runMonitoring, /ignore_duplicates=True/);
 });
 
 test("apify webhook skips same-date manual rows before post_daily_stats upsert", () => {
   assert.match(apifyWebhook, /const sameDateManual = new Set<string>\(\)/);
   assert.match(apifyWebhook, /s\.manual && String\(s\.measured_at\)\.slice\(0, 10\) === today/);
   assert.match(apifyWebhook, /const rowsToUpsert = rows\.filter/);
-  assert.match(apifyWebhook, /\.upsert\(rowsToUpsert, \{ onConflict: 'post_id,measured_at' \}\)/);
+  assert.match(apifyWebhook, /\.upsert\(rowsToUpsert, \{/);
+  assert.match(apifyWebhook, /manual stat preservation preflight failed/);
+  assert.match(apifyWebhook, /ignoreDuplicates: true/);
   assert.match(apifyWebhook, /manual_preserved: manualPreserved/);
 });
 
@@ -27,5 +31,7 @@ test("collect-now skips same-date manual rows before post_daily_stats upsert", (
   assert.match(collectNow, /\.eq\("manual", true\)/);
   assert.match(collectNow, /const statsToUpsert = statsToInsert\.filter/);
   assert.match(collectNow, /\.upsert\(statsToUpsert, \{/);
+  assert.match(collectNow, /manual stat preservation preflight failed/);
+  assert.match(collectNow, /ignoreDuplicates: true/);
   assert.match(collectNow, /manual_preserved: manualPreserved/);
 });

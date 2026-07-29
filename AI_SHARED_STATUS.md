@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## 2026-07-29 [Codex 완료] manual 일자행 불변 + TikTok photo 일별수집 재개
+- **팀수기 절대보존:** `run_monitoring`, `collect-now`, `apify-webhook`, 배너 reach 스냅샷의 자동 `post_daily_stats` 저장을 같은 `(post_id, measured_at)` 기존행 무시(`ignoreDuplicates`)로 변경했다. 기존 manual 사전조회도 유지하고, 웹 경로는 사전조회 실패 시 쓰기를 중단(fail-closed)한다. 따라서 자동값이 더 높아도 같은 날짜의 `manual=True` 행을 덮지 않는다.
+- **다음 날짜는 계속 수집:** 보조 플랫폼의 “직전 최신행이 manual이면 이후 날짜도 영구 스킵”하던 과잉 가드를 제거했다. 수기행 자체는 불변이지만 다음 날짜의 자동 실측은 새 일자행으로 적재된다.
+- **TikTok `/photo/`:** `/photo/ID → /video/ID` 요청·결과 매칭을 동일 ID로 쓰는 경로를 회귀테스트로 고정하고, 정규수집 로그에 `틱톡 photo 수집: 실값 N건 / M개 요청`을 추가했다. 2026-07-29 직전 예약수집은 photo fix 이전 커밋이라 매칭 실패가 정상적으로 재현됐고, 다음 예약수집부터 새 경로의 실측 건수를 확인할 수 있다.
+- **백필 116건:** `measured_at=2026-07-28` 백필은 재실행하지 않았다. 백필 스크립트도 실수로 재실행되더라도 기존 일자행을 바꾸지 않도록 `ignore_duplicates`를 추가했다.
+- **worktree 정합:** `_yeomun_wt`의 `Combined_Sheet_AppsScript.gs` UU와 staged 운영 효율화 변경은 `32a790c`로 해소·커밋되어 origin/main과 정합된 상태에서 본 작업을 시작했다.
+- **라이브 Apps Script 단일 작성자 규칙:** 라이브 저장 전 상태판에 작성자·대상 함수를 선언하고 다른 세션은 read-only로 전환한다. 작성자는 저장 직전 서버본을 다시 읽어 함수 단위로만 graft하고, Ctrl+S 뒤 새로고침·서버본 재판독을 마친 후 커밋/소스 식별자와 함께 잠금 해제를 기록한다. 전체 repo→live 붙여넣기와 동시 저장은 금지한다.
+
 ## 2026-07-29 [Codex repo완료] Apps Script 운영 효율화 5종 1차 고정
 - **범위:** 사용자 요청 5종 중 repo에서 안전하게 고정 가능한 부분을 먼저 반영했다. live 시트 값은 쓰지 않았고, live Apps Script도 아직 push하지 않았다.
 - **Apps Script 배포 자동화:** `.clasp.json`을 production scriptId `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn` + `rootDir=dist/apps-script`로 추가하고, `scripts/prepare_apps_script_deploy.mjs`를 추가했다. 기본은 dry-run으로 `dist/apps-script`만 만들며, 실제 `clasp push`는 `--push` + `APPS_SCRIPT_ALLOW_PUSH=1` + `APPS_SCRIPT_EXPECTED_SCRIPT_ID`가 모두 맞아야만 실행된다.

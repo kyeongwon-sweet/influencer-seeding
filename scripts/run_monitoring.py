@@ -338,11 +338,10 @@ def _store_aux_rows(db, rows, posts, stats, key_fn, label, *, views="clamp", cap
                 db.table("sponsored_posts").update({"notes": note}).eq("id", post["id"]).execute()
             continue
         existing = last_stat.get(post["id"], {})
-        # 🛡️ 팀 수기값 우선(사용자 지시): 직전 최신 stat이 manual=True면 자동수집으로 덮지 않고 보존(스킵).
-        #   틱톡 슬라이드쇼처럼 공개 playCount가 팀 실측과 달라도 사람이 입력·정정한 값이 정답이다.
-        #   (재개하려면 해당 행의 manual 플래그/값을 사람이 정리) — AI_SHARED_STATUS '팀수기값 우선' 참조.
-        if existing.get("manual"):
-            continue
+        # 팀 수기값 보호는 '같은 post_id+measured_at' 행에만 적용한다.
+        # 이전 날짜가 manual=True라는 이유로 이후 날짜 수집까지 영구 중단하면 TikTok photo 등
+        # 보조 플랫폼의 일별 시계열이 끊긴다. 저장 직전 _preserve_same_date_manual_stats와
+        # ignore_duplicates가 같은 날짜의 수기 행을 절대 덮지 않으면서 다음 날짜 수집은 허용한다.
         play = None if views == "none" else s.get("views")
         if views == "clamp" and (not play or play <= 0):
             continue  # 🛡️ 0/미반환은 접근불가 → 저장 안 함(0으로 덮어쓰면 누적 붕괴)
@@ -1071,6 +1070,13 @@ def run():
                             tt_stats[vid] = s
                 got = sum(1 for s in tt_stats.values() if (s.get("views") or 0) > 0)
                 print(f"[LOG] 틱톡 수집: 실값 {got}건 / {len(tt_posts)}개 요청")
+                tt_photo_posts = [p for p in tt_posts if re.search(r"/photo/\d+", p.get("url") or "")]
+                if tt_photo_posts:
+                    photo_got = sum(
+                        1 for p in tt_photo_posts
+                        if (tt_stats.get(_tt_id(tt_canon[p["url"]])) or {}).get("views", 0) > 0
+                    )
+                    print(f"[LOG] 틱톡 photo 수집: 실값 {photo_got}건 / {len(tt_photo_posts)}개 요청")
                 _store_aux_rows(db, rows, tt_posts, tt_stats, lambda p: _tt_id(tt_canon[p["url"]]), "틱톡",
                                 views="clamp", caption_field="content_summary")
             except Exception as e:
@@ -1138,7 +1144,11 @@ def run():
         rows = _preserve_same_date_manual_stats(db, rows, "run_monitoring")
         if rows:
             print(f"[LOG] 데이터 저장 시작: {len(rows)}건")
-            result = db.table("post_daily_stats").upsert(rows, on_conflict="post_id,measured_at").execute()
+            result = db.table("post_daily_stats").upsert(
+                rows,
+                on_conflict="post_id,measured_at",
+                ignore_duplicates=True,
+            ).execute()
             print(f"[LOG] ✅ 데이터 저장 완료: {len(rows)}건")
             # (역방향 baseline=0 자동추가 제거 — '전날에 play_count=0을 심는' 안티패턴이 baseline-zero 파괴의 원인이었음.
             #  증분은 safeIncrement가 '첫 유효측정=그날 전체(업로드날 성과), 이후 델타'로 처리하므로 baseline=0 불필요.)
@@ -1168,7 +1178,11 @@ def run():
                           for b in banners if not b.get("ended_at") and (b.get("reach_count") or 0) > 0]
             reach_rows = _preserve_same_date_manual_stats(db, reach_rows, "banner reach snapshot")
             if reach_rows:
-                db.table("post_daily_stats").upsert(reach_rows, on_conflict="post_id,measured_at").execute()
+                db.table("post_daily_stats").upsert(
+                    reach_rows,
+                    on_conflict="post_id,measured_at",
+                    ignore_duplicates=True,
+                ).execute()
                 print(f"[LOG] 📸 배너 도달수 스냅샷: {len(reach_rows)}건 ({TODAY})")
         except Exception as e:
             print(f"[WARN] 배너 도달수 스냅샷 실패(무시): {e}")

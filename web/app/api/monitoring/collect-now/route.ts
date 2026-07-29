@@ -211,12 +211,15 @@ async function collect(req: NextRequest) {
             }
             if (!page || page.length < PAGE) break;
           }
-          const { data: manualPage } = await supabase
+          const { data: manualPage, error: manualReadError } = await supabase
             .from("post_daily_stats")
             .select("post_id, measured_at, manual")
             .in("post_id", idsChunk)
             .eq("measured_at", measuredAt)
             .eq("manual", true);
+          if (manualReadError) {
+            throw new Error(`manual stat preservation preflight failed: ${manualReadError.message}`);
+          }
           for (const s of manualPage ?? []) {
             sameDateManual.add(`${s.post_id}|${String(s.measured_at).slice(0, 10)}`);
           }
@@ -311,6 +314,7 @@ async function collect(req: NextRequest) {
         .from("post_daily_stats")
         .upsert(statsToUpsert, {
           onConflict: "post_id,measured_at",
+          ignoreDuplicates: true,
         });
 
       if (insertError) {

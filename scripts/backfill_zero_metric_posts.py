@@ -331,7 +331,12 @@ def run() -> dict[str, Any]:
 
     rows = [row for row in rows if positive_int(row.get("play_count"))]
     if rows:
-        db.table("post_daily_stats").upsert(rows, on_conflict="post_id,measured_at").execute()
+        # one-off 백필을 실수로 재실행해도 기존 팀 수기/자동 일자행을 변경하지 않는다.
+        db.table("post_daily_stats").upsert(
+            rows,
+            on_conflict="post_id,measured_at",
+            ignore_duplicates=True,
+        ).execute()
 
     result = {
         "targets": len(targets),
