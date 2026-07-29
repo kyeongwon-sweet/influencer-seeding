@@ -1328,20 +1328,25 @@ function exportStats() {
           incFormulas.push([`=IF(COUNT(${firstDateRef}:${lastDateRef})=0,"","")`]);
           continue;
         }
-        if (refs.length === 1) {
-          let firstOk = true;
-          if (postedAt) {
-            const gapDays = (Date.parse(refs[0].date) - Date.parse(String(postedAt).slice(0, 10))) / 86400000;
-            if (gapDays > 7) firstOk = false;
-          }
-          incFormulas.push([firstOk ? `=IF(N(${refs[0].ref})>0,${refs[0].ref},"")` : ""]);
-          if (firstOk) incWritten++;
-          continue;
+        // 백로그 첫 측정(게시 7일 초과)만 빈칸 — 스파이크 방지 규칙 유지(판정은 DB 측정일 기반).
+        if (refs.length === 1 && postedAt) {
+          const gapDays = (Date.parse(refs[0].date) - Date.parse(String(postedAt).slice(0, 10))) / 86400000;
+          if (gapDays > 7) { incFormulas.push(['=""']); continue; }  // 표시 빈칸이되 수식은 유지(복구 가능 칸 규약)
         }
-        const latest = refs[refs.length - 1].ref;
-        const prevRefs = refs.slice(0, -1).map(r => r.ref);
-        const prevMax = prevRefs.length === 1 ? prevRefs[0] : `MAX({${prevRefs.join(",")}})`;
-        incFormulas.push([`=IF(N(${latest})<=0,"",MAX(0,${latest}-${prevMax}))`]);
+        // V2(행-범위 수식, 2026-07-29): 기존 셀주소 목록(MAX({CE743,...}))은 참조한 날짜 '열'이
+        // 삭제/삽입되면 #REF!로 전멸했다(7/27 저녁 실사고. 정렬 자체는 상대참조가 행을 따라감을
+        // 운영 시트 실측으로 확인 — H열 V4가 팀 정렬 수차례 후에도 1,278행 정합 유지).
+        // 범위 참조는 열 증감에 자동 적응하고 행과 함께 이동한다. 의미는 기존과 동일:
+        // 마지막 유효값 − 그 이전 최대(음수는 0), 유효값 1개면 전액.
+        // (부수 개선: 오늘 열에 수기값이 들어오면 그 값이 최신으로 잡혀 증분이 즉시 반영됨)
+        const rngRef = "$" + colLetter_(firstCol) + rowNum + ":$" + colLetter_(firstCol + width - 1) + rowNum;
+        incFormulas.push([
+          "=IFERROR(LET(rng," + rngRef +
+          ",cols,COLUMN(rng),lastC,MAX(FILTER(cols,rng>0))" +
+          ",lastV,INDEX(rng,1,lastC-COLUMN($" + colLetter_(firstCol) + rowNum + ")+1)" +
+          ",prev,IFERROR(FILTER(rng,cols<lastC,rng>0),)" +
+          ',IF(COUNT(prev)=0,lastV,MAX(0,lastV-MAX(prev)))),"")'
+        ]);
         incWritten++;
       }
       sheet.getRange(CONFIG.DATA_START_ROW, incrementCol, nRows, 1).setFormulas(incFormulas);
