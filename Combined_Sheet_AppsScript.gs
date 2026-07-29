@@ -1700,8 +1700,9 @@ function onStatusEdit_(e) {
     if (skipEditDuringAutoWrite_("onStatusEdit_")) return;
     const sheet = e.range.getSheet();
     if (sheet.getSheetId() !== CONFIG.SHEET_GID) return;
+    const hasInputIssue = validateLinkedSheetInputOnEdit_(e, sheet);  // 잘못된 단일 입력·다중셀 붙여넣기 즉시 경고(기존 값 자동삭제 금지)
     healCumulativeOnEdit_(e, sheet);  // 누적(H) 열이 편집됐으면 즉시 자가치유 — 다중셀 붙여넣기도 잡아야 하므로 단일셀 제한보다 앞에서
-    warnDateColumnEdit_(e, sheet);    // 날짜열 수기 입력 안내(미래=경고·오늘=규칙 리마인드, 값 무수정)
+    if (!hasInputIssue) warnDateColumnEdit_(e, sheet);  // 검증 오류가 없을 때만 오늘 날짜열 안내(오류 토스트 덮어쓰기 방지)
     if (e.range.getRow() < CONFIG.DATA_START_ROW || e.range.getNumRows() !== 1 || e.range.getNumColumns() !== 1) return;
     const statusCol = findHeaderCol_(sheet, ["상태"]);
     if (!statusCol || e.range.getColumn() !== statusCol) return;
@@ -1716,6 +1717,187 @@ function onStatusEdit_(e) {
     Logger.log("onStatusEdit_: " + (err.stack || err.message));
     SpreadsheetApp.getActive().toast("상태 DB 반영 실패: " + err.message, "오류", 6);
   }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 연동 시트 입력 검증 — 값은 자동 수정/삭제하지 않고, 잘못된 입력을 거부하거나 즉시 알린다.
+// A: 실제 날짜, B: URL, F: 대문자 영문+한글 상품명, G: 숫자, J/K: 한글 사람 이름.
+// O 이후는 '날짜 제목이 붙은 열'만 조회수 영역으로 취급한다. 등록상태 등 관리 열은 제외한다.
+// 조회수는 숫자만 허용하며, 해당 행 업로드일 전이나 KST 오늘 이후 날짜 열에는 입력할 수 없다.
+const LINKED_INPUT_FIRST_DATE_COL_ = 15;  // O열
+
+function isBlankLinkedInput_(value) {
+  return value === "" || value == null;
+}
+
+function isValidLinkedDateValue_(value) {
+  return isBlankLinkedInput_(value)
+    || (value instanceof Date && !isNaN(value.getTime()));
+}
+
+function isValidLinkedUrlValue_(value) {
+  return isBlankLinkedInput_(value)
+    || /^https?:\/\/\S+$/i.test(String(value).trim());
+}
+
+function isValidLinkedProductValue_(value) {
+  if (isBlankLinkedInput_(value)) return true;
+  const text = String(value).trim();
+  return /[A-Z]/.test(text) && /[가-힣]/.test(text);
+}
+
+function isValidLinkedPersonName_(value) {
+  return isBlankLinkedInput_(value) || /^[가-힣]+$/.test(String(value).trim());
+}
+
+function dateKeyFromLinkedValue_(value) {
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, CONFIG.KST_TIMEZONE, "yyyy-MM-dd");
+  }
+  return "";
+}
+
+function linkedDateColumns_(sheet) {
+  const lastCol = sheet.getLastColumn();
+  if (lastCol < LINKED_INPUT_FIRST_DATE_COL_) return {};
+  const headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+  const statusCol = headers.findIndex(function(value) {
+    return norm_(value) === norm_(CONFIG.STATUS_HEADER);
+  }) + 1;
+  const endCol = statusCol > 0 ? statusCol - 1 : lastCol;
+  const out = {};
+  for (let col = LINKED_INPUT_FIRST_DATE_COL_; col <= endCol; col++) {
+    const key = dateKeyFromLinkedValue_(headers[col - 1]);
+    if (key) out[col] = key;
+  }
+  return out;
+}
+
+function validateLinkedSheetInputOnEdit_(e, sheet) {
+  try {
+    const range = e.range;
+    if (range.getLastRow() < CONFIG.DATA_START_ROW) return false;
+
+    const rowStart = Math.max(range.getRow(), CONFIG.DATA_START_ROW);
+    const rowEnd = range.getLastRow();
+    const colStart = range.getColumn();
+    const colEnd = range.getLastColumn();
+    const values = sheet.getRange(rowStart, colStart, rowEnd - rowStart + 1, colEnd - colStart + 1).getValues();
+    const uploadDates = sheet.getRange(rowStart, 1, rowEnd - rowStart + 1, 1).getValues();
+    const dateColumns = linkedDateColumns_(sheet);
+    const today = todayStr_();
+    const issues = [];
+    let totalIssues = 0;
+
+    function addIssue(row, col, reason) {
+      totalIssues++;
+      if (issues.length < 12) issues.push(colLetter_(col) + row + " " + reason);
+    }
+
+    for (let r = rowStart; r <= rowEnd; r++) {
+      for (let c = colStart; c <= colEnd; c++) {
+        const value = values[r - rowStart][c - colStart];
+        if (c === 1 && !isValidLinkedDateValue_(value)) {
+          addIssue(r, c, "업로드일은 실제 날짜만 가능합니다.");
+        } else if (c === 2 && !isValidLinkedUrlValue_(value)) {
+          addIssue(r, c, "http(s) URL만 가능합니다.");
+        } else if (c === 6 && !isValidLinkedProductValue_(value)) {
+          addIssue(r, c, "상품명은 대문자 영문과 한글을 모두 포함해야 합니다.");
+        } else if (c === 7 && !isBlankLinkedInput_(value) && !(typeof value === "number" && isFinite(value))) {
+          addIssue(r, c, "비용은 숫자만 가능합니다.");
+        } else if ((c === 10 || c === 11) && !isValidLinkedPersonName_(value)) {
+          addIssue(r, c, "기획자·제작자는 한글 이름만 가능합니다.");
+        }
+
+        const statDate = dateColumns[c];
+        if (!statDate || isBlankLinkedInput_(value)) continue;
+        if (!(typeof value === "number" && isFinite(value))) {
+          addIssue(r, c, "날짜열에는 숫자만 가능합니다.");
+          continue;
+        }
+        const uploadDate = dateKeyFromLinkedValue_(uploadDates[r - rowStart][0]);
+        if (!uploadDate) addIssue(r, c, "업로드일이 실제 날짜가 아니어서 입력일을 검증할 수 없습니다.");
+        else if (statDate < uploadDate) addIssue(r, c, "업로드일(" + uploadDate + ") 이전에는 입력할 수 없습니다.");
+        if (statDate > today) addIssue(r, c, "오늘(" + today + ")보다 미래에는 입력할 수 없습니다.");
+      }
+    }
+
+    if (issues.length) {
+      SpreadsheetApp.getActive().toast(
+        issues.slice(0, 5).join("\n") + (totalIssues > 5 ? "\n외 " + (totalIssues - 5) + "건" : ""),
+        "⚠️ 입력 규칙 위반",
+        10
+      );
+      Logger.log("linked_input_validation " + JSON.stringify({
+        range: range.getA1Notation(),
+        issue_count: totalIssues,
+        issues: issues,
+      }));
+    }
+    return totalIssues > 0;
+  } catch (err) {
+    Logger.log("validateLinkedSheetInputOnEdit_: " + (err.stack || err.message));
+    return false;
+  }
+}
+
+function linkedValidationRule_(formula, helpText) {
+  return SpreadsheetApp.newDataValidation()
+    .requireFormulaSatisfied(formula)
+    .setAllowInvalid(false)
+    .setHelpText(helpText)
+    .build();
+}
+
+function applyDateInputValidation_(sheet, startCol, numCols) {
+  if (numCols <= 0) return;
+  const rowCount = Math.max(1, sheet.getMaxRows() - CONFIG.DATA_START_ROW + 1);
+  const topLeft = colLetter_(startCol) + CONFIG.DATA_START_ROW;
+  const formula = '=OR(' + topLeft + '="",AND(ISNUMBER(' + topLeft + '),'
+    + colLetter_(startCol) + '$1<=TODAY(),ISNUMBER($A' + CONFIG.DATA_START_ROW + '),'
+    + colLetter_(startCol) + '$1>=$A' + CONFIG.DATA_START_ROW + '))';
+  sheet.getRange(CONFIG.DATA_START_ROW, startCol, rowCount, numCols).setDataValidation(
+    linkedValidationRule_(formula, "숫자만 입력할 수 있습니다. 업로드일 이전 및 오늘 이후 날짜에는 입력할 수 없습니다.")
+  );
+}
+
+function applyLinkedSheetInputValidation_() {
+  const sheet = getSheet_();
+  const rowCount = Math.max(1, sheet.getMaxRows() - CONFIG.DATA_START_ROW + 1);
+  const rules = [
+    [1, '=OR(A2="",AND(ISNUMBER(A2),A2>0))', "업로드일은 실제 날짜만 입력하세요."],
+    [2, '=OR(B2="",REGEXMATCH(TO_TEXT(B2),"^https?://[^[:space:]]+$"))', "http(s) URL만 입력하세요."],
+    [6, '=OR(F2="",AND(REGEXMATCH(TO_TEXT(F2),"[A-Z]"),REGEXMATCH(TO_TEXT(F2),"[가-힣]")))', "대문자 영문과 한글을 모두 포함한 상품명만 입력하세요."],
+    [7, '=OR(G2="",ISNUMBER(G2))', "비용은 숫자만 입력하세요."],
+    [10, '=OR(J2="",REGEXMATCH(TO_TEXT(J2),"^[가-힣]+$"))', "한글로만 된 사람 이름을 입력하세요."],
+    [11, '=OR(K2="",REGEXMATCH(TO_TEXT(K2),"^[가-힣]+$"))', "한글로만 된 사람 이름을 입력하세요."],
+  ];
+  rules.forEach(function(item) {
+    sheet.getRange(CONFIG.DATA_START_ROW, item[0], rowCount, 1)
+      .setDataValidation(linkedValidationRule_(item[1], item[2]));
+  });
+
+  const dateColumns = linkedDateColumns_(sheet);
+  const cols = Object.keys(dateColumns).map(Number).sort(function(a, b) { return a - b; });
+  if (cols.length) {
+    let runStart = cols[0], previous = cols[0];
+    for (let i = 1; i <= cols.length; i++) {
+      const col = cols[i];
+      if (i < cols.length && col === previous + 1) {
+        previous = col;
+        continue;
+      }
+      applyDateInputValidation_(sheet, runStart, previous - runStart + 1);
+      runStart = col;
+      previous = col;
+    }
+  }
+  return true;
+}
+
+function installLinkedSheetInputValidation() {
+  applyLinkedSheetInputValidation_();
+  safeAlert_("✅ 입력 검증을 적용했습니다. 잘못된 입력은 거부하고, 다중셀 붙여넣기 위반은 즉시 알립니다.");
 }
 
 function installStatusEditTrigger() {
@@ -2103,12 +2285,111 @@ function syncPricing() {
   return true;
 }
 
+const DATE_HEADER_FORMAT_ = "yy.m.d.(ddd)";
+
+function dateFromHeaderValue_(value, fallbackYear) {
+  if (value instanceof Date && !isNaN(value.getTime())) return new Date(value.getTime());
+  const text = String(value == null ? "" : value).trim();
+  const ymd = text.match(/^(\d{2}|\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+  if (ymd) {
+    let year = Number(ymd[1]);
+    if (year < 100) year += 2000;
+    const month = Number(ymd[2]), day = Number(ymd[3]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return Utilities.parseDate(
+        year + "-" + ("0" + month).slice(-2) + "-" + ("0" + day).slice(-2),
+        CONFIG.KST_TIMEZONE,
+        "yyyy-MM-dd"
+      );
+    }
+  }
+  const md = parseMonthDay_(value);
+  if (!md) return null;
+  return Utilities.parseDate(
+    fallbackYear + "-" + ("0" + md.mo).slice(-2) + "-" + ("0" + md.da).slice(-2),
+    CONFIG.KST_TIMEZONE,
+    "yyyy-MM-dd"
+  );
+}
+
+function fillInsertedDateHeadersOnChange_(e) {
+  if (!e || e.changeType !== "INSERT_COLUMN") return;
+  const ss = e.source || SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getActiveSheet();
+  if (!sheet || sheet.getSheetId() !== CONFIG.SHEET_GID) return;
+
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+  const statusCol = headers.findIndex(function(value) {
+    return norm_(value) === norm_(CONFIG.STATUS_HEADER);
+  }) + 1;
+  if (!statusCol) return;
+
+  let lastDateCol = statusCol - 1;
+  while (lastDateCol >= LINKED_INPUT_FIRST_DATE_COL_
+    && String(headers[lastDateCol - 1] == null ? "" : headers[lastDateCol - 1]).trim() === "") {
+    lastDateCol--;
+  }
+  const insertedCount = statusCol - lastDateCol - 1;
+  if (insertedCount <= 0) return;
+
+  let year = CONFIG.STATS_START_YEAR, previousMonth = null, lastDate = null;
+  for (let col = LINKED_INPUT_FIRST_DATE_COL_; col <= lastDateCol; col++) {
+    const value = headers[col - 1];
+    const parsed = dateFromHeaderValue_(value, year);
+    if (!parsed) continue;
+    const month = parsed.getMonth() + 1;
+    if (!(value instanceof Date) && previousMonth !== null && month < previousMonth) {
+      year++;
+      lastDate = dateFromHeaderValue_(value, year);
+    } else {
+      lastDate = parsed;
+      year = parsed.getFullYear();
+    }
+    previousMonth = month;
+  }
+  if (!lastDate) return;
+
+  const nextDates = [];
+  for (let i = 1; i <= insertedCount; i++) nextDates.push(new Date(lastDate.getTime() + i * 86400000));
+  sheet.getRange(CONFIG.HEADER_ROW, lastDateCol + 1, 1, insertedCount)
+    .setValues([nextDates])
+    .setNumberFormat(DATE_HEADER_FORMAT_);
+  applyDateInputValidation_(sheet, lastDateCol + 1, insertedCount);
+}
+
+function fillInsertedDateHeadersOnChange(e) {
+  return fillInsertedDateHeadersOnChange_(e);
+}
+
+function ensureDateHeaderChangeTrigger_() {
+  const triggers = ScriptApp.getProjectTriggers().filter(function(trigger) {
+    return trigger.getHandlerFunction() === "fillInsertedDateHeadersOnChange";
+  });
+  triggers.slice(1).forEach(function(trigger) { ScriptApp.deleteTrigger(trigger); });
+  if (triggers.length) return false;
+  ScriptApp.newTrigger("fillInsertedDateHeadersOnChange")
+    .forSpreadsheet(SpreadsheetApp.getActiveSpreadsheet())
+    .onChange()
+    .create();
+  return true;
+}
+
+function installDateHeaderChangeTrigger() {
+  const created = ensureDateHeaderChangeTrigger_();
+  safeAlert_(created
+    ? "✅ 우측 날짜열 자동 생성 기능을 켰습니다."
+    : "✅ 우측 날짜열 자동 생성 기능이 이미 켜져 있습니다.");
+}
+
 function installDailyTrigger() {
   // 기존 트리거(구버전 syncNew·남은 1회 재시도 포함) 제거 후 양방향 dailyAuto로 재등록
   ScriptApp.getProjectTriggers()
     .filter(t => ["syncNew", "dailyAuto", "dailyAutoRetry_"].indexOf(t.getHandlerFunction()) >= 0)
     .forEach(t => ScriptApp.deleteTrigger(t));
   PropertiesService.getScriptProperties().deleteProperty("DAILY_AUTO_RETRY_PENDING_JSON");
+  ensureDateHeaderChangeTrigger_();
+  applyLinkedSheetInputValidation_();
 
   ScriptApp.newTrigger("dailyAuto")
     .timeBased()

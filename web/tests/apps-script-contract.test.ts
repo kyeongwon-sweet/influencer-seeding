@@ -156,6 +156,66 @@ test("warnDateColumnEdit_ alerts on today/future date-column manual entry withou
   assert.match(body, /toast\(/);
 });
 
+test("linked-sheet edit validation covers fixed fields and date-history paste rules", () => {
+  const start = appsScript.indexOf("function validateLinkedSheetInputOnEdit_(");
+  const end = appsScript.indexOf("function linkedValidationRule_(", start);
+  assert.notEqual(start, -1, "입력 검증 함수가 있어야 함");
+  const body = appsScript.slice(start, end);
+
+  assert.match(body, /c === 1 && !isValidLinkedDateValue_/);
+  assert.match(body, /c === 2 && !isValidLinkedUrlValue_/);
+  assert.match(body, /c === 6 && !isValidLinkedProductValue_/);
+  assert.match(body, /c === 7/);
+  assert.match(body, /c === 10 \|\| c === 11/);
+  assert.match(body, /const dateColumns = linkedDateColumns_\(sheet\)/);
+  assert.match(body, /statDate < uploadDate/);
+  assert.match(body, /statDate > today/);
+  assert.match(body, /typeof value === "number" && isFinite\(value\)/);
+  assert.doesNotMatch(body, /\.(?:clearContent|setValue|setValues)\(/);
+  assert.match(body, /SpreadsheetApp\.getActive\(\)\.toast\(/);
+
+  const editStart = appsScript.indexOf("function onStatusEdit_(e)");
+  const editEnd = appsScript.indexOf("function installStatusEditTrigger()", editStart);
+  const editBody = appsScript.slice(editStart, editEnd);
+  assert.match(editBody, /validateLinkedSheetInputOnEdit_\(e, sheet\)/);
+  assert.ok(
+    editBody.indexOf("validateLinkedSheetInputOnEdit_(e, sheet)") < editBody.indexOf("getNumRows() !== 1"),
+    "다중셀 붙여넣기도 단일셀 제한 전에 검증해야 함",
+  );
+});
+
+test("linked-sheet data validation rejects invalid input without including registration status", () => {
+  const start = appsScript.indexOf("function applyLinkedSheetInputValidation_()");
+  const end = appsScript.indexOf("function installLinkedSheetInputValidation()", start);
+  assert.notEqual(start, -1);
+  const body = appsScript.slice(start, end);
+  assert.match(body, /\[1, '=OR\(A2="",AND\(ISNUMBER\(A2\),A2>0\)\)'/);
+  assert.match(body, /\[2, '=OR\(B2="",REGEXMATCH/);
+  assert.match(body, /\[6, '=OR\(F2="",AND\(REGEXMATCH/);
+  assert.match(body, /\[7, '=OR\(G2="",ISNUMBER\(G2\)\)'/);
+  assert.match(body, /\[10, '=OR\(J2="",REGEXMATCH/);
+  assert.match(body, /\[11, '=OR\(K2="",REGEXMATCH/);
+  assert.match(body, /linkedDateColumns_\(sheet\)/);
+  assert.match(appsScript, /setAllowInvalid\(false\)/);
+
+  const dateColsStart = appsScript.indexOf("function linkedDateColumns_(sheet)");
+  const dateColsEnd = appsScript.indexOf("function validateLinkedSheetInputOnEdit_", dateColsStart);
+  const dateColsBody = appsScript.slice(dateColsStart, dateColsEnd);
+  assert.match(dateColsBody, /CONFIG\.STATUS_HEADER/);
+  assert.match(dateColsBody, /const endCol = statusCol > 0 \? statusCol - 1 : lastCol/);
+});
+
+test("new date columns receive real dates, display format, and input validation", () => {
+  const start = appsScript.indexOf("function fillInsertedDateHeadersOnChange_(e)");
+  const end = appsScript.indexOf("function fillInsertedDateHeadersOnChange(e)", start);
+  assert.notEqual(start, -1);
+  const body = appsScript.slice(start, end);
+  assert.match(body, /e\.changeType !== "INSERT_COLUMN"/);
+  assert.match(body, /new Date\(lastDate\.getTime\(\) \+ i \* 86400000\)/);
+  assert.match(body, /setNumberFormat\(DATE_HEADER_FORMAT_\)/);
+  assert.match(body, /applyDateInputValidation_\(sheet, lastDateCol \+ 1, insertedCount\)/);
+});
+
 test("overwriteViralHandles_ only touches viral account_name and self-heals daily via dailyAuto", () => {
   const start = appsScript.indexOf("function overwriteViralHandles_()");
   assert.notEqual(start, -1, "overwriteViralHandles_ 함수가 있어야 함");
