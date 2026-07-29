@@ -2794,3 +2794,23 @@ Codex `b50b201`이 자동수집 measured_at을 '어제(수집일-1)'→'KST 오�
   - `view-missing-queue.yml`: 비용 없이 수동으로 특정 날짜 큐만 생성 가능.
   - `repair-ended-overrecord-stats.yml`: dry-run 진단 결과에도 큐 artifact 포함.
 - 검증: 로컬 `py -3 -m py_compile ...` 통과, `npm.cmd test -- --runInBand` 84/84 통과.
+
+## 2026-07-29 Codex: 조회수 미반환 큐 최종 검증
+
+- 커밋:
+  - `d6550da chore(monitoring): add missing view diagnostics queue`
+  - `23d01b9 fix(monitoring): exclude non-actionable view queue items`
+- CI:
+  - push build `30453776415` success.
+  - follow-up push build `30454017363` success.
+- 실DB dry-run:
+  - `repair-ended-overrecord-stats.yml` run `30453805974` success.
+  - `STATUS_INTEGRITY_RESULT`: early_count 0, copy_hit_count 0, drop_count 1(manual=true), repairable_rows 0.
+  - 결론: `ddo_chichi`는 양수 play/reach 기준으로 7/23 조회수/도달수 이력 경고가 재현되지 않음. 사용자 지적이 맞았고, 기존 진단은 row 존재 기준이라 오해 소지가 있었음.
+- 운영 기본 큐 검증:
+  - `view-missing-queue.yml` run `30454035825` success.
+  - 2026-07-28 기준 eligible 288, measured 276, queue_count 12, retryable_count 12.
+  - by_reason: missing_same_day_row 12. by_platform: instagram 12.
+  - excluded: internal_channel 203, free_seed_manual 30, non_tiktok_banner_reach_only 178.
+  - 샘플/주요 12건은 Slack 점검 12건과 일치: ufo__orange, 365_hot, 이나(인스타), luna.player, happing_box, showing_box, ufo__rainbow, posilping_humor, luna.playlist__, smile_ggobuk_s2, some2lve, luna.djing.
+- 동시작업 참고: 최종 확인 시 origin/main HEAD에 다른 세션 커밋 `5802704 fix(sheet): calculate increments without DB refs`가 추가되어 있었음. 내 변경(d6550da/23d01b9)은 main에 포함되어 있고 작업트리는 clean.
