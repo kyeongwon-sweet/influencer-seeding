@@ -1,16 +1,24 @@
 # AI Shared Status
 
+## 2026-07-29 [Codex repo완료] Apps Script 운영 효율화 5종 1차 고정
+- **범위:** 사용자 요청 5종 중 repo에서 안전하게 고정 가능한 부분을 먼저 반영했다. live 시트 값은 쓰지 않았고, live Apps Script도 아직 push하지 않았다.
+- **Apps Script 배포 자동화:** `.clasp.json`을 production scriptId `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn` + `rootDir=dist/apps-script`로 추가하고, `scripts/prepare_apps_script_deploy.mjs`를 추가했다. 기본은 dry-run으로 `dist/apps-script`만 만들며, 실제 `clasp push`는 `--push` + `APPS_SCRIPT_ALLOW_PUSH=1` + `APPS_SCRIPT_EXPECTED_SCRIPT_ID`가 모두 맞아야만 실행된다.
+- **dailyAuto/onEdit:** 기존 단계별 로그·부분 재시도 구조는 유지. 자동 bulk write 뒤 늦게 도착하는 onEdit 폭주를 줄이기 위해 `AUTO_WRITE_TAIL_GUARD_MS=90초`를 추가했다. 자동 쓰기 실행 직후 90초 동안 편집 트리거가 `edit_trigger_skipped`로 즉시 종료된다.
+- **URL key 캐시:** `_WriteGuard.gs`에 `buildUrlKeyIndex_()`를 추가하고 `writeColumnByKey_()`가 URL key를 한 번 계산한 인덱스를 재사용하게 했다. `syncStatus`, `syncCreators`, `overwriteViralHandles_` 계열 URL-key writer 공통화의 첫 단계다.
+- **시트 전수감사:** Apps Script에 읽기전용 `auditLinkedSheetFormulas_()`/`auditLinkedSheetFormulas()`를 추가했다. H/I blank-no-formula, #REF, H값 있음+I빈칸 수를 로그/알림으로 확인한다. GitHub Actions `sheet-formula-audit.yml`도 추가해 매일 10:30 KST 및 수동 실행으로 공개 CSV 기준 `#REF`·증분 전멸·H값+I빈칸 과다를 잡는다. 메뉴 버튼 연결은 동시세션의 메뉴 재정리와 겹쳐 이번 커밋에서는 보류했다.
+- **검증:** `node scripts/prepare_apps_script_deploy.mjs` dry-run 성공. `py -3 scripts/audit_linked_sheet_formulas.py --max-h-value-i-blank 10` 실측 성공: URL 1510, H값 1454, I값 1451, H #REF 0, I #REF 0, H값+I빈칸 3. `npm.cmd test` = 82/82 pass. `npm.cmd run build` pass.
+- **주의/다음 단계:** 이번 커밋은 repo 준비 완료 상태다. live Apps Script에 실제 반영하려면 먼저 fresh `clasp pull` 또는 편집기 서버본 확인 후 drift를 비교하고, 문제가 없을 때만 `APPS_SCRIPT_ALLOW_PUSH=1 APPS_SCRIPT_EXPECTED_SCRIPT_ID=... node scripts/prepare_apps_script_deploy.mjs --push`를 사용한다. 기존 원칙대로 stale 탭 전체 저장 금지.
+
 ## 2026-07-29 [Claude 완료·라이브 graft] exportStats 증분 생성부 → 5eb662f(SEQUENCE형) 반영 완료
 - **사용자/Codex 지시 이행:** 전멸 원인 = `cols,COLUMN(rng)`가 열 배열 아닌 단일값으로 평가 → `FILTER(cols,rng>0)` mismatch → `IFERROR`로 전부 "". 라이브 셀은 SEQUENCE로 복구됐으나 **exportStats 본문은 옛 COLUMN(rng)이라 재실행 시 재전멸** 위험 → 이번에 라이브 본문을 graft.
 - **방법·검증:** script.google.com 편집기에서 `monaco.editor.getModels()`로 대상 모델(AI 트래킹 대시보드 연동.gs) 판독 → 증분 생성부 5곳 문자열 치환(setValue) → **Ctrl+S 저장 → 페이지 새로고침 후 서버본 재판독**: `SEQUENCE(1,COLUMNS(rng)` 있음(1회)·`cols,COLUMN(rng)` 없음·`firstCellRef` 추가·`prev,FILTER(...)`·`IFERROR(MAX(0,lastV-MAX(prev)),lastV)` 반영·옛 `IF(COUNT(prev)=0` 제거 전부 확인. repo `5eb662f`와 동일 로직.
 - **⚠️ 이전 기록 정정:** 아래 엔트리의 "라이브 저장=Claude 차단, Codex 몫"은 **틀림** — monaco setValue+Ctrl+S+새로고침 검증으로 Claude가 라이브 저장 성공함을 실증. (JS로 코드 '반환'은 필터되지만, setValue '쓰기'+UI저장은 됨)
 - **남은 것:** exportStats를 아직 재실행하진 않음(증분 셀은 이미 SEQUENCE로 정상). 다음 dailyAuto/수동 exportStats가 이제 안전하게 SEQUENCE형을 재기입함. 실행 시 로그 관찰 권장.
 
-## 2026-07-29 [Claude 검증완료·⚠️정정됨] 라이브 exportStats 증분 수식 = 안전(범위기반), 단 5eb662f SEQUENCE형은 아님
-- **Codex가 도구로 확정 못 한 항목을 Claude가 monaco로 라이브 코드 직접 판독**(script.google.com 편집기, `monaco.editor.getModels()`, 136KB).
-- **✅ 재실행 시 증분 #REF! 전멸 위험 없음**: 라이브 exportStats는 **범위기반 수식**(`IFERROR(LET(rng,...))` + `cols,COLUMN(rng)`)을 사용. 2026-07-27 사고 원인이던 **셀주소 목록 생성기(`prevRefs`/활성 `MAX({cell,...})`)는 제거됨**(prevRefs 0건, 활성 MAX({ 0건, 유일한 `MAX({`는 경고 주석). 열 삽입/삭제 안전.
-- **⚠️ 최신 5eb662f(SEQUENCE형) 아님**: 라이브는 `cols,SEQUENCE(1,COLUMNS(rng),...)` 없음 = **중간 V2(`cols,COLUMN(rng)`)**. main보다 한 단계 뒤. 카타스트로픽 위험은 없으나 완전 정합 원하면 Codex가 exportStats 증분부만 SEQUENCE형으로 함수단위 graft 권장(라이브 저장=Claude 차단, Codex 몫). stale 탭 저장 금지.
-- **판단**: Codex 우려("old exportStats 재실행 시 증분 전멸")는 **현 라이브엔 미해당**(옛 생성기 없음). 급하지 않음. main=5eb662f 정합은 유지.
+## 2026-07-29 [과거 중간판 판독·후속 확인 완료] 라이브 exportStats 증분 수식
+- **과거 판독:** Claude가 monaco로 당시 라이브 코드를 직접 판독했을 때는 셀주소 목록 생성기는 제거됐지만 `cols,COLUMN(rng)`를 쓰는 중간 V2였다.
+- **✅ 후속 확인 완료:** Claude 세션B가 라이브 `exportStats__wgimpl`을 다시 직접 확인했다. 현재 수식은 `SEQUENCE(1,COLUMNS(rng),COLUMN(...),1)`이고 `cols,COLUMN(rng)`는 **0건**이다.
+- **현재 판단:** repo `5eb662f`와 라이브가 같은 SEQUENCE형으로 정합됐다. 이전의 “live 본문 graft 미확인/Codex 반영 필요” 경고는 폐기하며, 재실행에 따른 증분 전멸 위험은 해소됐다.
 
 ## 2026-07-29 [Codex 긴급복구 완료] 증분(I) V2 전멸 원인확정 + live I열 즉시 복구
 - **원인 확정:** live I열 V2 수식의 `cols,COLUMN(rng)`가 Google Sheets에서 날짜범위와 같은 1xN 배열이 아니라 단일값처럼 평가됨. 그 결과 `FILTER(cols,rng>0)`가 `FILTER has mismatched range sizes. Expected row count: 1. column count: 1. Actual row count: 1, column count: 97.` 오류를 냈고, 바깥 `IFERROR(...,"")`가 전 행을 빈칸으로 삼켰다. 로케일/쉼표 문제가 아니라 `COLUMN(rng)` 배열 생성 방식 문제.

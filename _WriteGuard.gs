@@ -103,15 +103,35 @@ function assertRowCountStable_(sheet, expectedLastRow, where) {
  * @param shouldWrite   선택: (current, next, key, url, row) → boolean. 수동값 보존 등에 사용.
  * @return 변경된 셀 수
  */
+function buildUrlKeyIndex_(urlValues, keyFn) {
+  var keysByIndex = [];
+  var countsByKey = {};
+  var firstIndexByKey = {};
+  for (var i = 0; i < urlValues.length; i++) {
+    var raw = Array.isArray(urlValues[i]) ? urlValues[i][0] : urlValues[i];
+    var key = keyFn(String(raw || ''));
+    keysByIndex[i] = key || '';
+    if (!key) continue;
+    countsByKey[key] = (countsByKey[key] || 0) + 1;
+    if (!(key in firstIndexByKey)) firstIndexByKey[key] = i;
+  }
+  return {
+    keysByIndex: keysByIndex,
+    countsByKey: countsByKey,
+    firstIndexByKey: firstIndexByKey
+  };
+}
+
 function writeColumnByKey_(sheet, dataStartRow, urlCol, targetCol, keyToValue, keyFn, shouldWrite) {
   var n = sheet.getLastRow() - dataStartRow + 1;
   if (n < 1) return 0;
   var urls = sheet.getRange(dataStartRow, urlCol, n, 1).getValues();   // 쓰기 직전 최신 위치
   var cur  = sheet.getRange(dataStartRow, targetCol, n, 1).getValues();
+  var urlIndex = buildUrlKeyIndex_(urls, keyFn);
   var edits = [];
   for (var i = 0; i < n; i++) {
     var url = String(urls[i][0] || '');
-    var k = keyFn(url);
+    var k = urlIndex.keysByIndex[i];
     if (!k || !(k in keyToValue)) continue;   // 매칭 없으면 절대 안 건드림
     var v = keyToValue[k];
     if (shouldWrite && !shouldWrite(cur[i][0], v, k, url, dataStartRow + i)) continue;

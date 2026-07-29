@@ -283,6 +283,45 @@ test("dailyAuto records every stage and imports stats before exporting DB stats"
   assert.match(appsScript.slice(dailyStart), /return withAutoWriteGuard_\(function\(\)/);
 });
 
+test("linked sheet H/I audit is available from Apps Script and GitHub Actions", () => {
+  assert.match(appsScript, /function auditLinkedSheetFormulas_\(\)/);
+  assert.match(appsScript, /cumulative_blank_no_formula/);
+  assert.match(appsScript, /increment_ref_errors/);
+  assert.match(appsScript, /linked_sheet_formula_audit/);
+
+  const workflow = readFileSync(
+    new URL("../../.github/workflows/sheet-formula-audit.yml", import.meta.url),
+    "utf8",
+  );
+  const auditScript = readFileSync(
+    new URL("../../scripts/audit_linked_sheet_formulas.py", import.meta.url),
+    "utf8",
+  );
+  assert.match(workflow, /python scripts\/audit_linked_sheet_formulas\.py/);
+  assert.match(workflow, /cron: "30 1 \* \* \*"/);
+  assert.match(auditScript, /#REF/);
+  assert.match(auditScript, /increment column is fully blank/);
+});
+
+test("Apps Script clasp deploy path is staged and guarded", () => {
+  const clasp = readFileSync(new URL("../../.clasp.json", import.meta.url), "utf8");
+  const manifest = readFileSync(
+    new URL("../../apps-script/appsscript.json", import.meta.url),
+    "utf8",
+  );
+  const deploy = readFileSync(
+    new URL("../../scripts/prepare_apps_script_deploy.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(clasp, /"rootDir": "dist\/apps-script"/);
+  assert.match(clasp, /1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn/);
+  assert.match(manifest, /"runtimeVersion": "V8"/);
+  assert.match(deploy, /APPS_SCRIPT_ALLOW_PUSH/);
+  assert.match(deploy, /APPS_SCRIPT_EXPECTED_SCRIPT_ID/);
+  assert.match(deploy, /SEQUENCE\(1,COLUMNS\(rng\),COLUMN\(/);
+  assert.match(deploy, /Refusing clasp push/);
+});
+
 test("dailyAuto retries only pull/import/export once after seven minutes", () => {
   const retryStart = appsScript.indexOf("function dailyAutoRetry_()");
   const dailyStart = appsScript.indexOf("function dailyAuto()", retryStart);
@@ -308,9 +347,11 @@ test("automatic sheet writes suppress edit-trigger fanout", () => {
   const statusEditStart = appsScript.indexOf("function onStatusEdit_(e)");
   assert.notEqual(statusEditStart, -1);
   assert.match(appsScript, /AUTO_WRITE_ACTIVE_UNTIL_PROP/);
+  assert.match(appsScript, /AUTO_WRITE_TAIL_GUARD_MS = 90 \* 1000/);
   assert.match(appsScript, /function isAutoWriteActive_/);
   assert.match(appsScript, /function withAutoWriteGuard_/);
   assert.match(appsScript, /function skipEditDuringAutoWrite_/);
+  assert.match(appsScript, /Date\.now\(\) \+ AUTO_WRITE_TAIL_GUARD_MS/);
   assert.match(appsScript, /edit_trigger_skipped/);
   assert.match(appsScript.slice(statusEditStart), /skipEditDuringAutoWrite_\("onStatusEdit_"\)/);
 });
@@ -339,6 +380,7 @@ test("syncCreators only fills blanks and preserves manual planner/creator values
 });
 
 test("URL-key writers re-read current URLs and write only changed row runs", () => {
+  assert.match(writeGuard, /function buildUrlKeyIndex_\(/);
   assert.match(writeGuard, /function writeColumnByKey_\(/);
   assert.match(
     writeGuard,
@@ -396,7 +438,7 @@ test("asset_name is sent from the sheet and remains the canonical sheet-wins fie
 
 test("writeColumnByKey_ follows the latest URL order and preserves nonblank manual cells", () => {
   const helpers = new Function(
-    `${writeGuard}\nreturn { writeColumnByKey_: writeColumnByKey_ };`,
+    `${writeGuard}\nreturn { writeColumnByKey_: writeColumnByKey_, buildUrlKeyIndex_: buildUrlKeyIndex_ };`,
   )() as {
     writeColumnByKey_: (
       sheet: unknown,
@@ -407,7 +449,19 @@ test("writeColumnByKey_ follows the latest URL order and preserves nonblank manu
       keyFn: (url: string) => string,
       shouldWrite: (current: unknown) => boolean,
     ) => number;
+    buildUrlKeyIndex_: (
+      values: unknown[][],
+      keyFn: (url: string) => string,
+    ) => {
+      keysByIndex: string[];
+      countsByKey: Record<string, number>;
+      firstIndexByKey: Record<string, number>;
+    };
   };
+  const index = helpers.buildUrlKeyIndex_([["u2"], ["u1"], ["u2"]], url => url);
+  assert.deepEqual(index.keysByIndex, ["u2", "u1", "u2"]);
+  assert.deepEqual(index.countsByKey, { u2: 2, u1: 1 });
+  assert.deepEqual(index.firstIndexByKey, { u2: 0, u1: 1 });
   const writes: Array<{ row: number; col: number; values: unknown[][] }> = [];
   const sheet = {
     getLastRow: () => 4,

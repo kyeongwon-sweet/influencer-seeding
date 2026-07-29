@@ -164,6 +164,7 @@ function safeAlert_(msg) {
 
 const AUTO_WRITE_ACTIVE_UNTIL_PROP = "SHEET_AUTO_WRITE_ACTIVE_UNTIL";
 const AUTO_WRITE_GUARD_MS = 12 * 60 * 1000;
+const AUTO_WRITE_TAIL_GUARD_MS = 90 * 1000;
 
 function isAutoWriteActive_() {
   const until = Number(PropertiesService.getScriptProperties().getProperty(AUTO_WRITE_ACTIVE_UNTIL_PROP) || 0);
@@ -176,7 +177,7 @@ function withAutoWriteGuard_(fn) {
   try {
     return fn();
   } finally {
-    props.deleteProperty(AUTO_WRITE_ACTIVE_UNTIL_PROP);
+    props.setProperty(AUTO_WRITE_ACTIVE_UNTIL_PROP, String(Date.now() + AUTO_WRITE_TAIL_GUARD_MS));
   }
 }
 
@@ -2152,6 +2153,92 @@ function refreshCumulativeViews() {
     4
   );
   return true;
+}
+
+function auditLinkedSheetFormulas_() {
+  const sheet = getSheet_();
+  const fieldCols = buildFieldCols_(sheet);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < CONFIG.DATA_START_ROW) {
+    const emptyResult = {
+      url_rows: 0,
+      cumulative_blank_no_formula: 0,
+      increment_blank_no_formula: 0,
+      cumulative_ref_errors: 0,
+      increment_ref_errors: 0,
+      cumulative_value_increment_blank: 0,
+    };
+    Logger.log("linked_sheet_formula_audit " + JSON.stringify(emptyResult));
+    return emptyResult;
+  }
+
+  const n = lastRow - CONFIG.DATA_START_ROW + 1;
+  const incrementCol = getIncrementCol_(sheet);
+  const cumulativeCol = incrementCol ? incrementCol - 1 : null;
+  if (!incrementCol || !cumulativeCol) throw new Error("H/I metric columns not found");
+
+  const urls = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.url, n, 1).getValues();
+  const cumulativeValues = sheet.getRange(CONFIG.DATA_START_ROW, cumulativeCol, n, 1).getDisplayValues();
+  const cumulativeFormulas = sheet.getRange(CONFIG.DATA_START_ROW, cumulativeCol, n, 1).getFormulas();
+  const incrementValues = sheet.getRange(CONFIG.DATA_START_ROW, incrementCol, n, 1).getDisplayValues();
+  const incrementFormulas = sheet.getRange(CONFIG.DATA_START_ROW, incrementCol, n, 1).getFormulas();
+
+  const samples = [];
+  const result = {
+    url_rows: 0,
+    cumulative_blank_no_formula: 0,
+    increment_blank_no_formula: 0,
+    cumulative_ref_errors: 0,
+    increment_ref_errors: 0,
+    cumulative_value_increment_blank: 0,
+    samples: samples,
+  };
+
+  for (let i = 0; i < n; i++) {
+    const url = String(urls[i][0] || "").trim();
+    if (!url) continue;
+    result.url_rows++;
+    const row = CONFIG.DATA_START_ROW + i;
+    const h = String(cumulativeValues[i][0] || "").trim();
+    const hFormula = String(cumulativeFormulas[i][0] || "");
+    const inc = String(incrementValues[i][0] || "").trim();
+    const incFormula = String(incrementFormulas[i][0] || "");
+    if (!h && !hFormula) {
+      result.cumulative_blank_no_formula++;
+      if (samples.length < 8) samples.push("H" + row + " blank/no-formula " + url);
+    }
+    if (!inc && !incFormula) {
+      result.increment_blank_no_formula++;
+      if (samples.length < 8) samples.push("I" + row + " blank/no-formula " + url);
+    }
+    if (h.indexOf("#REF!") >= 0) {
+      result.cumulative_ref_errors++;
+      if (samples.length < 8) samples.push("H" + row + " #REF " + url);
+    }
+    if (inc.indexOf("#REF!") >= 0) {
+      result.increment_ref_errors++;
+      if (samples.length < 8) samples.push("I" + row + " #REF " + url);
+    }
+    if (h && !inc) result.cumulative_value_increment_blank++;
+  }
+
+  Logger.log("linked_sheet_formula_audit " + JSON.stringify(result));
+  return result;
+}
+
+function auditLinkedSheetFormulas() {
+  const result = auditLinkedSheetFormulas_();
+  safeAlert_(
+    "Sheet H/I formula audit\n" +
+    "URL rows: " + result.url_rows + "\n" +
+    "H blank/no formula: " + result.cumulative_blank_no_formula + "\n" +
+    "I blank/no formula: " + result.increment_blank_no_formula + "\n" +
+    "H #REF: " + result.cumulative_ref_errors + "\n" +
+    "I #REF: " + result.increment_ref_errors + "\n" +
+    "H value + I blank: " + result.cumulative_value_increment_blank + "\n" +
+    (result.samples && result.samples.length ? "\nSamples:\n" + result.samples.join("\n") : "")
+  );
+  return result;
 }
 
 function parseCreator_(name) {
