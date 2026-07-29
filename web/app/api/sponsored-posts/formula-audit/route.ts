@@ -98,6 +98,9 @@ async function handler(req: NextRequest) {
 
   // DB: 게시물 + 일별 실측(배너=reach 우선) — id 2차 정렬 페이지네이션
   const supabase = getServerSupabase();
+  const auditDates = rows.flatMap((row) => row.dates.map((d) => d.date));
+  const minAuditDate = auditDates.length > 0 ? auditDates.reduce((a, b) => a < b ? a : b) : null;
+  const maxAuditDate = auditDates.length > 0 ? auditDates.reduce((a, b) => a > b ? a : b) : null;
   const posts = new Map<string, AuditPost>();
   const idToKey = new Map<string, string>();
   {
@@ -121,9 +124,12 @@ async function handler(req: NextRequest) {
       if (!data || data.length < PAGE) break;
     }
     for (let from = 0; ; from += PAGE) {
-      const { data, error } = await supabase
+      let query = supabase
         .from("post_daily_stats")
-        .select("post_id, measured_at, play_count, reach_count, id")
+        .select("post_id, measured_at, play_count, reach_count, id");
+      if (minAuditDate) query = query.gte("measured_at", minAuditDate);
+      if (maxAuditDate) query = query.lte("measured_at", maxAuditDate);
+      const { data, error } = await query
         .order("post_id", { ascending: true })
         .order("measured_at", { ascending: true })
         .order("id", { ascending: true })

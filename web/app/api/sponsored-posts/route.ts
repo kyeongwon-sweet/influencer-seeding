@@ -30,6 +30,24 @@ type SponsoredPostRow = Record<string, unknown> & {
   post_daily_stats?: DailyStatRow[];
 };
 
+const POST_COLS = [
+  "id",
+  "url",
+  "posted_at",
+  "product_name",
+  "project_name",
+  "asset_name",
+  "account_name",
+  "company_name",
+  "channel_type",
+  "cost",
+  "reach_count",
+  "notes",
+  "content_summary",
+  "created_at",
+  "ended_at",
+].join(", ");
+
 export async function GET(req: NextRequest) {
   // URL 정규화 마이그레이션 엔드포인트
   // (req.url 은 Vercel 런타임에서 쿼리가 누락될 수 있어 req.nextUrl 사용)
@@ -83,12 +101,12 @@ export async function GET(req: NextRequest) {
     for (let from = 0; ; from += PAGE) {
       const { data: page, error: postsError } = await supabase
         .from("sponsored_posts")
-        .select("*")
+        .select(POST_COLS)
         .order("created_at", { ascending: false })
         .range(from, from + PAGE - 1);
       // graceful degrade: 한 페이지 조회가 실패해도 500으로 대시보드 전체를 죽이지 않고, 지금까지 모은 것으로 진행.
       if (postsError) { console.error("[sponsored-posts] posts 조회 실패:", postsError.message); break; }
-      posts.push(...(page ?? []));
+      posts.push(...((page ?? []) as unknown as SponsoredPostRow[]));
       if (!page || page.length < PAGE) break;
     }
   }

@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## 2026-07-29 [Codex 완료] 대시보드/API 읽기량 1차 효율화
+- **대시보드 API 경량화:** `GET /api/sponsored-posts`의 `sponsored_posts.select("*")`를 화면에서 실제 사용하는 컬럼만 읽는 `POST_COLS`로 교체했다. `all_stats`는 화면 차트/필터/스파크라인이 사용하므로 제거하지 않았다. 기능 표면은 유지하면서 게시물 메타 응답 크기와 DB 전송량을 줄이는 1차 패치.
+- **수식 감사 DB 읽기량 축소:** `/api/sponsored-posts/formula-audit`가 시트 날짜열 범위 밖 `post_daily_stats`까지 전량 읽던 부분을, 시트에서 감지한 `minAuditDate~maxAuditDate` 범위로 제한했다. 감사 판정은 원래 시트 날짜열 안의 날짜만 쓰므로 결과 규칙은 동일하다.
+- **검증:** `npm.cmd test -- --runInBand` = 84/84 pass, `npm.cmd run build` pass, `git diff --check` pass. production 반영 후 formula-audit 재실행으로 동일 정합을 확인할 예정.
+- **남은 고비용 과제:** Apify 비용은 코드 읽기량과 별개다. 다음 최적화는 수집 대상 큐를 더 좁히는 방식(미측정/활성/플랫폼별 retry queue 중심, full collect 빈도 축소, `/photo`/manual 보존 검증 유지)으로 별도 브랜치에서 다룰 것.
+
 ## 2026-07-29 [Codex 확인] formula-audit I mismatch 20건 회복 확인
 - **증상:** Formula Audit run `30453685716`(2026-07-29 21:55 KST)이 `I 오류셀 0·불일치 20`으로 Slack 빨간 알림을 냈다. 샘플은 TikTok/Threads/미러링 행의 `I빈칸(기대값有)`이며, H열은 오류/데이터有빈칸 모두 0이었다.
 - **원인 범위:** 감사 자체는 값 기준으로 정상 동작했다. 당시 I열 값이 없는 20행이 실제로 있었고, 직후 main `5802704 fix(sheet): calculate increments without DB refs`가 exportStats 증분 수식을 보강했다. 이 보강은 DB refs가 없는 `/photo`·미러링류도 시트 날짜값 범위로 증분을 계산하게 한다.
