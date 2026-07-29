@@ -5,6 +5,7 @@
 - **수정:** 두 workflow의 사전 체크를 기존 inline DB 쿼리 대신 `scripts/build_view_missing_queue.py` 결과의 `retryable_count` 기준으로 변경했다. `retryable_count=0`이면 수집을 건너뛰고, 큐 JSON은 그대로 artifact로 업로드한다.
 - **재시도 비용 절감:** `scripts/run_monitoring.py`에 `VIEW_MISSING_TARGET_ONLY`/`VIEW_MISSING_QUEUE_FILE` 모드를 추가했다. 첫 정규 수집(00:41 KST)은 기존처럼 전체 수집을 유지하고, 이후 Daily backup 창(02:41/04:41 KST)과 `Monitoring Backup & Retry` 스케줄은 retryable queue의 post_id만 수집한다. 수동 workflow_dispatch와 `RECOLLECT_ALL=1`, metadata-only는 기존 동작을 보존한다.
 - **검증:** `python -m py_compile scripts/build_view_missing_queue.py scripts/run_monitoring.py` 통과, `git diff --check` 통과, `js-yaml`로 두 workflow 파싱 통과, `npm.cmd test -- --runInBand` 84/84 pass, `npm.cmd run build` pass.
+- **원격 큐 실측:** 읽기전용 `View Missing Queue` run `30457183927` 성공. `2026-07-28` 기준 `eligible=288`, `queue_count=12`, `retryable_count=12`, `by_platform={"instagram":12}`, `by_reason={"missing_same_day_row":12}`. 이전 broad check의 `missing_views≈168~170`보다 실제 재시도 대상이 훨씬 작음을 확인했다.
 - **운영 확인 필요:** 다음 scheduled run 로그에서 `view_queue eligible=... queue=... retryable=...`와 `VIEW_MISSING_TARGET_ONLY=1 - retryable queue targets: N/M posts`가 찍히는지 확인. 기대 효과는 retry 창에서 IG/TikTok/YT 요청 수가 기존 175~193건 수준에서 retryable queue 규모로 줄어드는 것이다.
 
 ## 2026-07-29 [Codex 완료] 대시보드/API 읽기량 1차 효율화
