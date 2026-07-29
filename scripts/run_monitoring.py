@@ -284,6 +284,11 @@ def _store_aux_rows(db, rows, posts, stats, key_fn, label, *, views="clamp", cap
                 db.table("sponsored_posts").update({"notes": note}).eq("id", post["id"]).execute()
             continue
         existing = last_stat.get(post["id"], {})
+        # 🛡️ 팀 수기값 우선(사용자 지시): 직전 최신 stat이 manual=True면 자동수집으로 덮지 않고 보존(스킵).
+        #   틱톡 슬라이드쇼처럼 공개 playCount가 팀 실측과 달라도 사람이 입력·정정한 값이 정답이다.
+        #   (재개하려면 해당 행의 manual 플래그/값을 사람이 정리) — AI_SHARED_STATUS '팀수기값 우선' 참조.
+        if existing.get("manual"):
+            continue
         play = None if views == "none" else s.get("views")
         if views == "clamp" and (not play or play <= 0):
             continue  # 🛡️ 0/미반환은 접근불가 → 저장 안 함(0으로 덮어쓰면 누적 붕괴)
