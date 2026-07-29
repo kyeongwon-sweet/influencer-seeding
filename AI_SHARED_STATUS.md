@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 2026-07-29 [Codex 완료] Apify 수집 비용 가드 2차 — retryable queue 기준 수집
+- **문제 확인:** 최신 Actions 로그에서 `Daily Collect`/`Monitoring Backup & Retry`가 넓은 `missing_views` 기준으로 계속 `missing`을 판정했다. 실제로는 내부채널·무상시딩 수동추적·비틱톡 배너 reach-only·이미지형 no-view 등 제외해야 할 항목이 섞여 있어, 소수 누락 때문에 Apify가 반복 호출되는 구조였다.
+- **수정:** 두 workflow의 사전 체크를 기존 inline DB 쿼리 대신 `scripts/build_view_missing_queue.py` 결과의 `retryable_count` 기준으로 변경했다. `retryable_count=0`이면 수집을 건너뛰고, 큐 JSON은 그대로 artifact로 업로드한다.
+- **재시도 비용 절감:** `scripts/run_monitoring.py`에 `VIEW_MISSING_TARGET_ONLY`/`VIEW_MISSING_QUEUE_FILE` 모드를 추가했다. 첫 정규 수집(00:41 KST)은 기존처럼 전체 수집을 유지하고, 이후 Daily backup 창(02:41/04:41 KST)과 `Monitoring Backup & Retry` 스케줄은 retryable queue의 post_id만 수집한다. 수동 workflow_dispatch와 `RECOLLECT_ALL=1`, metadata-only는 기존 동작을 보존한다.
+- **검증:** `python -m py_compile scripts/build_view_missing_queue.py scripts/run_monitoring.py` 통과, `git diff --check` 통과, `js-yaml`로 두 workflow 파싱 통과, `npm.cmd test -- --runInBand` 84/84 pass, `npm.cmd run build` pass.
+- **운영 확인 필요:** 다음 scheduled run 로그에서 `view_queue eligible=... queue=... retryable=...`와 `VIEW_MISSING_TARGET_ONLY=1 - retryable queue targets: N/M posts`가 찍히는지 확인. 기대 효과는 retry 창에서 IG/TikTok/YT 요청 수가 기존 175~193건 수준에서 retryable queue 규모로 줄어드는 것이다.
+
 ## 2026-07-29 [Codex 완료] 대시보드/API 읽기량 1차 효율화
 - **대시보드 API 경량화:** `GET /api/sponsored-posts`의 `sponsored_posts.select("*")`를 화면에서 실제 사용하는 컬럼만 읽는 `POST_COLS`로 교체했다. `all_stats`는 화면 차트/필터/스파크라인이 사용하므로 제거하지 않았다. 기능 표면은 유지하면서 게시물 메타 응답 크기와 DB 전송량을 줄이는 1차 패치.
 - **수식 감사 DB 읽기량 축소:** `/api/sponsored-posts/formula-audit`가 시트 날짜열 범위 밖 `post_daily_stats`까지 전량 읽던 부분을, 시트에서 감지한 `minAuditDate~maxAuditDate` 범위로 제한했다. 감사 판정은 원래 시트 날짜열 안의 날짜만 쓰므로 결과 규칙은 동일하다.

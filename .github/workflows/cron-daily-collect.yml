@@ -62,62 +62,17 @@ jobs:
         run: |
           export TODAY=$(TZ=Asia/Seoul date -d 'yesterday' +%F)
           echo "kdate=${TODAY}" >> "$GITHUB_OUTPUT"
-          STATUS=$(cd scripts && python << 'EOF' | tail -n1
-          import os
-          from db import get_client
-          db = get_client()
-          today = os.environ["TODAY"]
-          posts = db.table("sponsored_posts").select("id, url, posted_at, ended_at").execute()
-
-          def tracks_play_count(url):
-              u = (url or "").lower()
-              return any(
-                  host in u
-                  for host in (
-                      "instagram.com",
-                      "youtube.com",
-                      "youtu.be",
-                      "tiktok.com",
-                      "twitter.com",
-                      "x.com",
-                  )
-              )
-
-          eligible = [
-              p for p in (posts.data or [])
-              if not p.get("ended_at")
-              and (not p.get("posted_at") or str(p.get("posted_at"))[:10] <= today)
-              and tracks_play_count(p.get("url"))
-          ]
-          eligible_ids = [p["id"] for p in eligible]
-
-          measured_ids = set()
-          for i in range(0, len(eligible_ids), 100):
-              chunk = eligible_ids[i:i + 100]
-              if not chunk:
-                  continue
-              r = (
-                  db.table("post_daily_stats")
-                  .select("post_id")
-                  .eq("measured_at", today)
-                  .filter("play_count", "not.is", "null")
-                  .in_("post_id", chunk)
-                  .execute()
-              )
-              measured_ids.update(row["post_id"] for row in (r.data or []) if row.get("post_id"))
-
-          missing_ids = [post_id for post_id in eligible_ids if post_id not in measured_ids]
-          import sys
-          print(
-              f"eligible_views={len(eligible_ids)} measured_views={len(measured_ids)} "
-              f"missing_views={len(missing_ids)} sample_missing={missing_ids[:10]}",
-              file=sys.stderr,
-          )
-          print("ok" if not missing_ids else "missing")
-          EOF
-          )
+          cd scripts
+          python build_view_missing_queue.py --date "$TODAY" --out-dir "$RUNNER_TEMP"
+          SUMMARY_FILE="$RUNNER_TEMP/view_missing_queue_${TODAY}.json"
+          RETRYABLE=$(python -c "import json, os; print(json.load(open(os.environ['SUMMARY_FILE'], encoding='utf-8'))['retryable_count'])")
+          QUEUE_COUNT=$(python -c "import json, os; print(json.load(open(os.environ['SUMMARY_FILE'], encoding='utf-8'))['queue_count'])")
+          ELIGIBLE=$(python -c "import json, os; print(json.load(open(os.environ['SUMMARY_FILE'], encoding='utf-8'))['eligible'])")
+          if [ "$RETRYABLE" -gt 0 ]; then STATUS=missing; else STATUS=ok; fi
+          echo "view_queue eligible=${ELIGIBLE} queue=${QUEUE_COUNT} retryable=${RETRYABLE}"
           echo "오늘(KST ${TODAY}) → ${STATUS}"
           echo "status=${STATUS}" >> "$GITHUB_OUTPUT"
+          echo "retryable=${RETRYABLE}" >> "$GITHUB_OUTPUT"
 
       - name: Decide collect
         id: decide
@@ -142,22 +97,13 @@ jobs:
           MONITORING_DATE: ${{ steps.check.outputs.kdate }}   # 새벽 예약수집은 전일 최종값으로 적재
           RECOLLECT_ALL: ${{ github.event.inputs.recollect_all == 'true' && '1' || '0' }}
           METADATA_RECOLLECT_ONLY: ${{ github.event.inputs.metadata_only == 'true' && '1' || '0' }}
+          VIEW_MISSING_QUEUE_FILE: ${{ runner.temp }}/view_missing_queue_${{ steps.check.outputs.kdate }}.json
+          VIEW_MISSING_TARGET_ONLY: ${{ github.event_name == 'schedule' && github.event.schedule != '41 15 * * *' && '1' || '0' }}
         # 실패 사유 알럿용으로 출력을 로그 파일에 캡처(pipefail로 python 실패가 단계 실패에 반영).
         run: |
           cd scripts
           set -o pipefail
           python run_monitoring.py 2>&1 | tee "$RUNNER_TEMP/collect.log"
-
-      - name: Build missing view retry queue
-        if: always() && github.event.inputs.status_test != 'true'
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: |
-          cd scripts
-          DATE="${{ steps.check.outputs.kdate }}"
-          if [ -z "$DATE" ]; then DATE=$(TZ=Asia/Seoul date -d 'yesterday' +%F); fi
-          python build_view_missing_queue.py --date "$DATE" --out-dir "$RUNNER_TEMP"
 
       - name: Upload missing view diagnostics
         if: always() && github.event.inputs.status_test != 'true'

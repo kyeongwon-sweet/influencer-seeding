@@ -342,6 +342,26 @@ def _select_metadata_recollect_posts(posts):
     return [post for post in posts if _needs_metadata_recollect(post)]
 
 
+def _target_ids_from_missing_queue(path):
+    if not path:
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+    except FileNotFoundError:
+        print(f"[WARN] VIEW_MISSING_QUEUE_FILE not found: {path}")
+        return set()
+    except Exception as e:
+        print(f"[WARN] VIEW_MISSING_QUEUE_FILE read failed({path}): {e}")
+        return set()
+
+    target_ids = set()
+    for item in payload.get("queue") or []:
+        if item.get("retryable") and item.get("post_id"):
+            target_ids.add(item["post_id"])
+    return target_ids
+
+
 def _same_day_measured_ids(db, posts, measured_at=TODAY):
     """Return post ids that already have the needed measurement for measured_at.
 
@@ -844,6 +864,17 @@ def run():
             print(f"[LOG] METADATA_RECOLLECT_ONLY=1 - blank-account IG posts only: {len(posts)}")
 
         recollect_all = os.getenv("RECOLLECT_ALL", "0").lower() in ("1", "true", "yes")
+        target_only = os.getenv("VIEW_MISSING_TARGET_ONLY", "0").lower() in ("1", "true", "yes")
+        if target_only and not recollect_all and not metadata_only:
+            target_ids = _target_ids_from_missing_queue(os.getenv("VIEW_MISSING_QUEUE_FILE"))
+            if target_ids is not None:
+                before = len(posts)
+                posts = [p for p in posts if p.get("id") in target_ids]
+                print(
+                    f"[LOG] VIEW_MISSING_TARGET_ONLY=1 - retryable queue targets: "
+                    f"{len(posts)}/{before} posts"
+                )
+
         if recollect_all:
             print(f"[LOG] 🔁 RECOLLECT_ALL=1 — {TODAY} 기존 측정행이 있어도 전체 재수집")
         else:

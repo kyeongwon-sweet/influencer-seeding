@@ -35,68 +35,23 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           export TODAY_KST=$(TZ=Asia/Seoul date -d 'yesterday' +%F)
-          STATUS=$(cd scripts && python << 'EOF' | tail -n1
-          import os
-          import sys
-          from db import get_client
-
-          db = get_client()
-          today = os.environ["TODAY_KST"]
-
-          def tracks_play_count(url):
-              u = (url or "").lower()
-              return any(
-                  host in u
-                  for host in (
-                      "instagram.com",
-                      "youtube.com",
-                      "youtu.be",
-                      "tiktok.com",
-                      "twitter.com",
-                      "x.com",
-                  )
-              )
-
-          posts = db.table("sponsored_posts").select("id, url, posted_at, ended_at").execute()
-          eligible = [
-              p for p in (posts.data or [])
-              if not p.get("ended_at")
-              and (not p.get("posted_at") or str(p.get("posted_at"))[:10] <= today)
-              and tracks_play_count(p.get("url"))
-          ]
-          eligible_ids = [p["id"] for p in eligible]
-
-          measured_ids = set()
-          for i in range(0, len(eligible_ids), 100):
-              chunk = eligible_ids[i:i + 100]
-              if not chunk:
-                  continue
-              r = (
-                  db.table("post_daily_stats")
-                  .select("post_id")
-                  .eq("measured_at", today)
-                  .filter("play_count", "not.is", "null")
-                  .in_("post_id", chunk)
-                  .execute()
-              )
-              measured_ids.update(row["post_id"] for row in (r.data or []) if row.get("post_id"))
-
-          missing_ids = [post_id for post_id in eligible_ids if post_id not in measured_ids]
-          print(
-              f"eligible_views={len(eligible_ids)} measured_views={len(measured_ids)} "
-              f"missing_views={len(missing_ids)} sample_missing={missing_ids[:10]}",
-              file=sys.stderr,
-          )
-          print("ok" if not missing_ids else "missing")
-          EOF
-          )
+          cd scripts
+          python build_view_missing_queue.py --date "$TODAY_KST" --out-dir "$RUNNER_TEMP"
+          SUMMARY_FILE="$RUNNER_TEMP/view_missing_queue_${TODAY_KST}.json"
+          RETRYABLE=$(python -c "import json, os; print(json.load(open(os.environ['SUMMARY_FILE'], encoding='utf-8'))['retryable_count'])")
+          QUEUE_COUNT=$(python -c "import json, os; print(json.load(open(os.environ['SUMMARY_FILE'], encoding='utf-8'))['queue_count'])")
+          ELIGIBLE=$(python -c "import json, os; print(json.load(open(os.environ['SUMMARY_FILE'], encoding='utf-8'))['eligible'])")
+          if [ "$RETRYABLE" -gt 0 ]; then STATUS=missing; else STATUS=ok; fi
+          echo "view_queue eligible=${ELIGIBLE} queue=${QUEUE_COUNT} retryable=${RETRYABLE}"
           echo "today(${TODAY_KST}) => ${STATUS}"
+          echo "kdate=${TODAY_KST}" >> "$GITHUB_OUTPUT"
           echo "status=${STATUS}" >> "$GITHUB_OUTPUT"
+          echo "retryable=${RETRYABLE}" >> "$GITHUB_OUTPUT"
 
       - name: Decide collect
         id: decide
         run: |
-          if [ "${{ github.event.schedule }}" = "15 15 * * *" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ steps.check.outputs.status }}" = "missing" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ steps.check.outputs.status }}" = "missing" ]; then
             echo "collecting"
             echo "go=1" >> "$GITHUB_OUTPUT"
           else
@@ -112,19 +67,12 @@ jobs:
           APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
           SKIP_APIFY: "0"
           RECOLLECT_ALL: ${{ github.event.inputs.recollect_all == 'true' && '1' || '0' }}
+          VIEW_MISSING_QUEUE_FILE: ${{ runner.temp }}/view_missing_queue_${{ steps.check.outputs.kdate }}.json
+          VIEW_MISSING_TARGET_ONLY: ${{ github.event_name == 'workflow_dispatch' && '0' || '1' }}
         run: |
           export MONITORING_DATE=$(TZ=Asia/Seoul date -d 'yesterday' +%F)
           echo "MONITORING_DATE=${MONITORING_DATE}"
           cd scripts && python run_monitoring.py
-
-      - name: Build missing view retry queue
-        if: always()
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: |
-          export MONITORING_DATE=$(TZ=Asia/Seoul date -d 'yesterday' +%F)
-          cd scripts && python build_view_missing_queue.py --date "${MONITORING_DATE}" --out-dir "$RUNNER_TEMP"
 
       - name: Upload missing view diagnostics
         if: always()
