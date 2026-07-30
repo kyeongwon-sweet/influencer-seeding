@@ -474,6 +474,21 @@ test("asset_name is sent from the sheet and remains the canonical sheet-wins fie
   assert.match(sponsoredWrite, /SHEET_WINS = new Set\(\["asset_name", "planner", "creator"\]\)/);
 });
 
+test("sponsored sheet bulk create path is duplicate-safe", () => {
+  const sponsoredWrite = readFileSync(
+    new URL("../lib/sponsored-write.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    sponsoredWrite,
+    /\.upsert\(createRows, \{ onConflict: "url", ignoreDuplicates: true \}\)/,
+  );
+  assert.doesNotMatch(
+    sponsoredWrite,
+    /supportsNormalizedKey[\s\S]*?\.insert\(createRows\)/,
+  );
+});
+
 test("writeColumnByKey_ follows the latest URL order and preserves nonblank manual cells", () => {
   const helpers = new Function(
     `${writeGuard}\nreturn { writeColumnByKey_: writeColumnByKey_, buildUrlKeyIndex_: buildUrlKeyIndex_ };`,
