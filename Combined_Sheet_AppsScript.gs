@@ -36,6 +36,7 @@ const CONFIG = {
   LIST_API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/list-for-sheet",  // DB→시트 반영(대시보드 추가분 가져오기)용 조회
   STATS_EXPORT_API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/stats-for-sheet",  // 자동수집 조회수 → 시트 I열~ 역채움용 조회
   SCHEDULE_HEARTBEAT_URL: "https://influencer-seeding-mu.vercel.app/api/ops/schedule-heartbeat",  // GitHub 크론 생존 감시(구글 스케줄러가 호출 = 크로스 프로바이더)
+  COLLECT_FALLBACK_URL: "https://influencer-seeding-mu.vercel.app/api/ops/collect-fallback",      // 자정수집 누락 시 Apify 폴백 수집(비어 있을 때만 동작)
   HEADER_ROW: 1,
   DATA_START_ROW: 2,
   STATUS_HEADER: "등록상태",
@@ -2565,6 +2566,30 @@ function removeScheduleHeartbeatTrigger() {
   const triggers = ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === "scheduleHeartbeat");
   triggers.forEach(t => ScriptApp.deleteTrigger(t));
   safeAlert_("스케줄 하트비트 트리거를 제거했습니다. (" + triggers.length + "개)");
+}
+
+// 자정수집 폴백 — 구글 트리거가 새벽 05:00 KST에 호출한다(GitHub의 00:41·02:41·04:41 시도 이후).
+// 그날 자동수집 행이 비어 있을 때만 서버가 Apify 폴백을 시작하므로, GitHub 수집이 정상이면 무동작이다.
+// (2026-07-30 GitHub 스케줄 전면 정지 사고 대비 — 데이터가 비는 것을 원천 차단)
+function collectFallback() {
+  const res = UrlFetchApp.fetch(CONFIG.COLLECT_FALLBACK_URL, {
+    method: "post",
+    headers: authHeaders_(),
+    muteHttpExceptions: true,
+  });
+  const code = res.getResponseCode();
+  const body = res.getContentText();
+  Logger.log("[collectFallback] HTTP " + code + " " + body.slice(0, 500));
+  if (code !== 200) throw new Error("collectFallback HTTP " + code + ": " + body.slice(0, 200));
+  return true;
+}
+
+function installCollectFallbackTrigger() {
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === "collectFallback")
+    .forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger("collectFallback").timeBased().atHour(5).everyDays(1).create();
+  safeAlert_("✅ 자정수집 폴백 트리거(매일 05시 KST, 구글 스케줄러)를 설치했습니다.");
 }
 
 function installDailyTrigger() {

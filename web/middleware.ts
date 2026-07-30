@@ -18,6 +18,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/sponsored-posts/tracking-by-url(.*)",
   "/api/sponsored-posts/formula-audit(.*)",  // 수식 전수감사 크론(자체 CRON_SECRET 검사)
   "/api/ops/schedule-heartbeat(.*)",         // 크로스 프로바이더 스케줄 하트비트(Apps Script/외부 핑, 자체 CRON_SECRET 검사)
+  "/api/ops/collect-fallback(.*)",           // 자정수집 폴백(구글 트리거가 호출, 자체 CRON_SECRET 검사)
   "/api/sponsored-posts/banner-reach-sync(.*)",
   // Vercel 크론 라우트 (각 라우트가 자체 CRON_SECRET 검사 → 미들웨어는 통과시킴)
   "/api/marketing/sync(.*)",
