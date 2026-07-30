@@ -4,6 +4,7 @@
 - **Claude 수정 확인:** `f3664e6`는 `cron-daily-collect.yml`/`monitoring-retry.yml`의 `SUMMARY_FILE`을 `export`로 바꾼 정확한 fix다. `91c01ae`는 workflow env 린터와 cron watchdog을 추가했고, CI run `30503187076`에서 사고 케이스 검출·워크플로 25개 린트·watchdog 테스트가 모두 통과했다. watchdog 수동 run `30503204635`도 `최근 70분 실패 0, 신선도 경고 0`으로 성공.
 - **로컬 재검증:** `PYTHONIOENCODING=utf-8` 기준 `test_lint_workflow_env.py`, `lint_workflow_env.py`, `test_cron_watchdog.py` 모두 통과. Windows 기본 CP949에서는 이모지 출력 때문에 실패처럼 보일 수 있으나 테스트 로직 문제는 아니다.
 - **추가 보강:** `Monitoring Backup & Retry` 수동 실행 기본값을 `target_only=true`로 바꿔, 사람이 복구하려고 눌렀을 때 전체 재수집으로 비용이 튀지 않게 했다. `recollect_all=true`를 명시한 경우에만 target-only를 끈다. `scripts/test_monitoring_retry_workflow.py`로 이 계약을 고정했다.
+- **실측 확인:** 수동 retry run `30504361927`을 `target_only=true`로 실행. 로그상 `VIEW_MISSING_TARGET_ONLY: 1`, `retryable queue targets: 20/764 posts` 확인. 전체 764건이 아니라 IG 12건 + TikTok 8건만 처리했고, TikTok은 `실값 8건 / 8개 요청`, `데이터 저장 완료: 8건`으로 성공. 후속 queue run `30504575295` 결과 잔여 `retryable_count=12`, `by_platform={"instagram":12}`. 즉 target-only 가드는 실제 작동했고, 남은 것은 수집기가 값을 못 준 IG 12건이다.
 
 ## 2026-07-30 [Codex 확인·main] Daily Collect 3회 실패 복구 확인 + TikTok null views 재발방지
 - **장애 원인 검증:** 7/30 KST 새벽 Daily Collect 3회 실패는 `3702ae9`의 workflow env 버그가 맞다. `SUMMARY_FILE="..."`을 shell 변수로만 만들고 Python에서 `os.environ["SUMMARY_FILE"]`로 읽어 `KeyError`가 발생했다. 실패 run은 35~42초에 종료되어 실제 수집이 시작되지 않았다.
