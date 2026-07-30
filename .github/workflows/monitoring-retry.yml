@@ -37,7 +37,7 @@ jobs:
           export TODAY_KST=$(TZ=Asia/Seoul date -d 'yesterday' +%F)
           cd scripts
           python build_view_missing_queue.py --date "$TODAY_KST" --out-dir "$RUNNER_TEMP"
-          SUMMARY_FILE="$RUNNER_TEMP/view_missing_queue_${TODAY_KST}.json"
+          export SUMMARY_FILE="$RUNNER_TEMP/view_missing_queue_${TODAY_KST}.json"
           RETRYABLE=$(python -c "import json, os; print(json.load(open(os.environ['SUMMARY_FILE'], encoding='utf-8'))['retryable_count'])")
           QUEUE_COUNT=$(python -c "import json, os; print(json.load(open(os.environ['SUMMARY_FILE'], encoding='utf-8'))['queue_count'])")
           ELIGIBLE=$(python -c "import json, os; print(json.load(open(os.environ['SUMMARY_FILE'], encoding='utf-8'))['eligible'])")

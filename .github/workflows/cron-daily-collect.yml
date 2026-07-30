@@ -64,7 +64,7 @@ jobs:
           echo "kdate=${TODAY}" >> "$GITHUB_OUTPUT"
           cd scripts
           python build_view_missing_queue.py --date "$TODAY" --out-dir "$RUNNER_TEMP"
-          SUMMARY_FILE="$RUNNER_TEMP/view_missing_queue_${TODAY}.json"
+          export SUMMARY_FILE="$RUNNER_TEMP/view_missing_queue_${TODAY}.json"
           RETRYABLE=$(python -c "import json, os; print(json.load(open(os.environ['SUMMARY_FILE'], encoding='utf-8'))['retryable_count'])")
           QUEUE_COUNT=$(python -c "import json, os; print(json.load(open(os.environ['SUMMARY_FILE'], encoding='utf-8'))['queue_count'])")
           ELIGIBLE=$(python -c "import json, os; print(json.load(open(os.environ['SUMMARY_FILE'], encoding='utf-8'))['eligible'])")
