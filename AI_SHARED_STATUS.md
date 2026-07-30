@@ -319,6 +319,14 @@
 
 ## 상세 이력
 
+## 2026-07-30 [🔴진행중] GitHub 스케줄 전면 정지(09:11 KST 이후) + 워치독 맹점 수정 (Claude)
+- **증상**: influencer-seeding 스케줄 런이 **00:11Z(09:11 KST) 이후 전무** — 배너 sync(매시간)·KPI(10:05)·재시도(11:00)·수식감사(10:10)·워치독(10:35) 전부 미발화. negative-comment-monitor도 01:02Z 이후 없음 → **계정/플랫폼 레벨 현상**. push 트리거 런은 정상, repo PUBLIC·Actions enabled, GitHub Status는 operational(스케줄 지연·드롭은 status에 안 잡히는 경우 많음).
+- **오늘 커버 조치(수동 실행)**: ③수식감사 → **healthy** (1,572행 · H정합 1,514 · 증분정합 1,505 · 오류셀 0 · 불일치 0), 배너 sync 1회, 워치독 1회. ①자정수집은 09:12 수동 복구본 성공(7/29 자동 463행).
+- **🔴 워치독 맹점 발견·수정 (`5288ac6`)**: 신선도 검사가 event 무관 성공을 보던 탓에 **수동 실행이 신선도를 채워 스케줄 정지를 못 잡았다**(정지 중 "이상 없음" 오보고 실측). `fetch_last_success`를 **event=schedule**로 좁히고 계약테스트 추가. 수정 후 실데이터 검증: `cron-daily-collect 최근 스케줄 성공 29.4h 전`, `formula-audit 스케줄 성공 기록 없음` 정확 검출.
+- **남은 구조적 한계(사용자 결정 대기)**: 워치독도 같은 GitHub 스케줄러에 의존 → 스케줄러가 죽으면 경보 자체가 못 뜬다. **크로스 프로바이더 하트비트** 필요(예: Apps Script 시간트리거가 Vercel 엔드포인트를 호출해 GitHub 스케줄 신선도 확인 → Slack).
+- **재개 확인 필요**: 스케줄이 자연 복구되는지 다음 정시(배너 sync 12:17 KST 등)에 재확인. 복구 안 되면 GitHub Support 문의 또는 임시로 Apps Script/Vercel 트리거 대체 검토.
+
+
 ## 2026-07-29 [정본규약] 수식 감사 = 3중 구조(중복 아님·역할 분리) + 오늘 배포 검증 인계 (Claude↔Codex 정합)
 - **중복 해소 확인**: Codex가 83f0b3c로 CSV 감사를 수동 전용(workflow_dispatch only)으로 변경 → 아침 Slack 중복 보고 위험 없음. 계약테스트 정합(81eaf0) 후 전체 84/84 pass 재확인(Claude).
 - **A. 일일 자동(정본)**: /api/sponsored-posts/formula-audit + .github/workflows/formula-audit.yml — **매일 10:10 KST 자동 + Slack 보고**. Sheets API 값 + DB 재현 대조로 오류셀(#REF!)·데이터有 H빈칸·증분 불일치 탐지. ⚠️ **수식 존재 여부는 원리적으로 못 봄**(API가 값만 반환). 배포·실측 완료: 행 1,510 · 누적 정합 1,450(수동보존 1·보존값 3·빈칸정상 56) · 증분 정합 1,451(빈칸정상 59) · **오류셀 0·불일치 0**.
