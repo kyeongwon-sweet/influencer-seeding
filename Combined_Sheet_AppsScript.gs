@@ -671,7 +671,7 @@ function pullFromDB() {
 }
 
 // 기존 URL 행만 DB 메타데이터로 보강한다. pullFromDB처럼 신규 행을 추가하지 않는다.
-function fillExistingMetadataFromDB_() {
+function fillExistingMetadataFromDB_(silent) {
   try {
     const sheet = getSheet_();
     const fieldCols = buildFieldCols_(sheet);
@@ -757,7 +757,7 @@ function fillExistingMetadataFromDB_() {
     }));
     return true;
   } catch (e) {
-    safeAlert_("❌ 기존 행 DB 메타데이터 보강 오류\n" + e.message);
+    if (!silent) safeAlert_("❌ 기존 행 DB 메타데이터 보강 오류\n" + e.message);
     Logger.log(e.stack || e.message);
     return false;
   }
@@ -765,7 +765,7 @@ function fillExistingMetadataFromDB_() {
 
 function refreshSheetDerivedFields() {
   const steps = [
-    ["채널명/DB 메타", fillExistingMetadataFromDB_],
+    ["채널명/DB 메타", function() { return fillExistingMetadataFromDB_(true); }],
     ["바이럴 채널명", function() { return overwriteViralHandles_(true); }],
     ["트래킹 상태", syncStatus],
     ["누적 조회수", refreshCumulativeViews],
@@ -774,11 +774,19 @@ function refreshSheetDerivedFields() {
   ];
   const failed = [];
   steps.forEach(([name, fn]) => {
+    const startedMs = Date.now();
+    Logger.log("refreshSheetDerivedFields_step_start " + name);
     try {
       if (fn() === false) failed.push(name);
     } catch (e) {
       failed.push(name);
       Logger.log(`refreshSheetDerivedFields_${name}_error ` + (e.stack || e.message));
+    } finally {
+      Logger.log("refreshSheetDerivedFields_step_end " + JSON.stringify({
+        name: name,
+        duration_ms: Date.now() - startedMs,
+        failed: failed.indexOf(name) >= 0,
+      }));
     }
   });
   if (failed.length) {
@@ -840,7 +848,7 @@ function overwriteViralHandles_(silent) {
     }
     return true;
   } catch (e) {
-    safeAlert_("❌ 바이럴 채널명 정정 오류\n" + e.message);
+    if (!silent) safeAlert_("❌ 바이럴 채널명 정정 오류\n" + e.message);
     Logger.log(e.stack || e.message);
     return false;
   }
@@ -2280,12 +2288,20 @@ function syncCreators() {
   const source = sheet.getRange(CONFIG.DATA_START_ROW, sourceCol, n, 1).getValues();
   const plannerByKey = {};
   const makerByKey = {};
+  let invalidPlannerSkipped = 0;
+  let invalidMakerSkipped = 0;
   for (let i = 0; i < n; i++) {
     const key = linkKey_(String(urls[i][0] || ""));
     if (!key) continue;
     const parsed = parseCreator_(source[i][0]);
-    if (parsed.mk) plannerByKey[key] = parsed.mk;
-    if (parsed.pd) makerByKey[key] = parsed.pd;
+    if (parsed.mk) {
+      if (isValidLinkedPersonName_(parsed.mk)) plannerByKey[key] = parsed.mk;
+      else invalidPlannerSkipped++;
+    }
+    if (parsed.pd) {
+      if (isValidLinkedPersonName_(parsed.pd)) makerByKey[key] = parsed.pd;
+      else invalidMakerSkipped++;
+    }
   }
 
   // URL을 쓰기 직전에 다시 읽어 현재 행을 찾고, 빈 셀만 연속행 단위로 기록한다.
@@ -2314,6 +2330,12 @@ function syncCreators() {
     "완료",
     4
   );
+  Logger.log("syncCreators_result " + JSON.stringify({
+    planner_filled: plannerFilled,
+    maker_filled: makerFilled,
+    invalid_planner_skipped: invalidPlannerSkipped,
+    invalid_maker_skipped: invalidMakerSkipped,
+  }));
   return true;
 }
 

@@ -247,7 +247,7 @@ test("refreshSheetDerivedFields fills existing channel metadata before pricing",
     /\.addItem\("파생정보 전체 업데이트", "refreshSheetDerivedFields"\)/,
   );
 
-  const fillStart = appsScript.indexOf("function fillExistingMetadataFromDB_()");
+  const fillStart = appsScript.indexOf("function fillExistingMetadataFromDB_(");
   const refreshStart = appsScript.indexOf("function refreshSheetDerivedFields()");
   const overwriteStart = appsScript.indexOf("function overwriteViralHandles_(");
   assert.notEqual(fillStart, -1, "기존 행 DB 메타데이터 보강 함수가 있어야 함");
@@ -265,7 +265,9 @@ test("refreshSheetDerivedFields fills existing channel metadata before pricing",
   assert.doesNotMatch(fillBody, /setValue\(p\.url\)/);
 
   const refreshBody = appsScript.slice(refreshStart);
-  const metadataIdx = refreshBody.indexOf('["채널명/DB 메타", fillExistingMetadataFromDB_]');
+  const metadataIdx = refreshBody.indexOf(
+    '["채널명/DB 메타", function() { return fillExistingMetadataFromDB_(true); }]',
+  );
   const pricingIdx = refreshBody.indexOf('["업체명/비용", syncPricing]');
   assert.notEqual(metadataIdx, -1);
   assert.notEqual(pricingIdx, -1);
@@ -274,6 +276,13 @@ test("refreshSheetDerivedFields fills existing channel metadata before pricing",
     refreshBody,
     /\["바이럴 채널명", function\(\) \{ return overwriteViralHandles_\(true\); \}\]/,
   );
+  assert.match(
+    refreshBody,
+    /\["채널명\/DB 메타", function\(\) \{ return fillExistingMetadataFromDB_\(true\); \}\]/,
+  );
+  assert.match(fillBody, /if \(!silent\) safeAlert_/);
+  assert.match(refreshBody, /refreshSheetDerivedFields_step_start/);
+  assert.match(refreshBody, /refreshSheetDerivedFields_step_end/);
 });
 
 test("dailyAuto records every stage and imports stats before exporting DB stats", () => {
@@ -392,6 +401,10 @@ test("syncCreators only fills blanks and preserves manual planner/creator values
   assert.equal((body.match(/writeColumnByKey_\(/g) ?? []).length, 2);
   assert.match(body, /plannerByKey,[\s\S]*?linkKey_,[\s\S]*?blankOnly/);
   assert.match(body, /makerByKey,[\s\S]*?linkKey_,[\s\S]*?blankOnly/);
+  assert.match(body, /isValidLinkedPersonName_\(parsed\.mk\)/);
+  assert.match(body, /isValidLinkedPersonName_\(parsed\.pd\)/);
+  assert.match(body, /invalid_planner_skipped: invalidPlannerSkipped/);
+  assert.match(body, /invalid_maker_skipped: invalidMakerSkipped/);
   assert.doesNotMatch(body, /setValues\(planners\)|setValues\(makers\)/);
 });
 
