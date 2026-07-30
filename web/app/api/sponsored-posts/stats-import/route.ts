@@ -174,7 +174,11 @@ export async function POST(req: NextRequest) {
   let created = 0;
   const toCreate = [...postByUrl.entries()].filter(([key, p]) => !idByKey.has(key) && !idByUrl.has(String(p.url))).map(([, p]) => p);
   if (toCreate.length > 0) {
-    const createRows = supportsNormalizedKey ? toCreate : toCreate.map(({ normalized_key: _key, ...p }) => p);
+    const createRows = supportsNormalizedKey ? toCreate : toCreate.map((p) => {
+      const row = { ...p };
+      delete row.normalized_key;
+      return row;
+    });
     const writeQuery = supportsNormalizedKey
       ? supabase.from("sponsored_posts").insert(createRows)
       : supabase.from("sponsored_posts").upsert(createRows, { onConflict: "url", ignoreDuplicates: true });

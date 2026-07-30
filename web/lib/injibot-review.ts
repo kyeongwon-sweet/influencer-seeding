@@ -3,6 +3,17 @@ type SupabaseUpdateResult = {
   error?: { message?: string } | null;
 };
 
+type SupabaseUpdateQuery = {
+  eq(column: string, value: string): SupabaseUpdateQuery;
+  select(columns: string): PromiseLike<SupabaseUpdateResult>;
+};
+
+type SupabaseClientLike = {
+  from(table: string): {
+    update(values: Record<string, unknown>): SupabaseUpdateQuery;
+  };
+};
+
 export type FalsePositiveReviewInput = {
   channelId: string;
   messageTs: string;
@@ -17,7 +28,7 @@ export type FalsePositiveReviewResult = {
 };
 
 export async function recordFalsePositiveReview(
-  supabase: any,
+  supabase: SupabaseClientLike,
   { channelId, messageTs, userId, reviewedAt = new Date().toISOString() }: FalsePositiveReviewInput
 ): Promise<FalsePositiveReviewResult> {
   if (!channelId || !messageTs) {

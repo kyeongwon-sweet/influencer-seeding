@@ -38,6 +38,23 @@ const ACTION_LABEL: Record<string, string> = {
 // 그 외(승인/보류/숨김해제/무시)는 기존대로 상태 컨텍스트로 교체.
 const DELETE_ON_RESOLVE = new Set(["complete", "hide"]);
 
+type SlackBlock = { type?: string; [key: string]: unknown };
+
+type SlackMessage = {
+  ts?: string;
+  thread_ts?: string;
+  blocks?: SlackBlock[];
+};
+
+type SlackActionPayload = {
+  type?: string;
+  actions?: Array<{ action_id?: string }>;
+  user?: { id?: string };
+  channel?: { id?: string };
+  message?: SlackMessage;
+  response_url?: string;
+};
+
 export async function POST(req: NextRequest) {
   const raw = await req.text();
   const secret = (process.env.INJIBOT_SIGNING_SECRET || "").trim();
@@ -49,9 +66,9 @@ export async function POST(req: NextRequest) {
 
   const payloadStr = new URLSearchParams(raw).get("payload");
   if (!payloadStr) return NextResponse.json({ ok: true });
-  let payload: any;
+  let payload: SlackActionPayload;
   try {
-    payload = JSON.parse(payloadStr);
+    payload = JSON.parse(payloadStr) as SlackActionPayload;
   } catch {
     return NextResponse.json({ ok: true });
   }
@@ -86,7 +103,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 원 메시지의 버튼(actions) 블록을 제거하고 처리 결과 컨텍스트를 덧붙인다.
-  const origBlocks: any[] = payload.message?.blocks || [];
+  const origBlocks: SlackBlock[] = payload.message?.blocks || [];
   const keptBlocks = origBlocks.filter((b) => b.type !== "actions");
   keptBlocks.push({
     type: "context",
@@ -120,8 +137,8 @@ export async function POST(req: NextRequest) {
         const rep = await fetch(
           `https://slack.com/api/conversations.replies?channel=${channelId}&ts=${parentTs}&limit=100`,
           { headers: { authorization: `Bearer ${token}` } },
-        ).then((r) => r.json());
-        const msgs: any[] = rep.messages || [];
+        ).then((r) => r.json() as Promise<{ messages?: SlackMessage[] }>);
+        const msgs: SlackMessage[] = rep.messages || [];
         // 부모와 '방금 지운 답글'(response_url delete_original 반영 지연 대비)을 제외한 남은 답글.
         const remaining = msgs.filter((m) => m.ts !== parentTs && m.ts !== deletedTs);
         if (msgs.length > 0 && remaining.length === 0) {
