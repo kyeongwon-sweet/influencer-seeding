@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 2026-07-30 [Codex live 완료] Apps Script scheduleHeartbeat 설치 + 수동 실측
+- **라이브 반영:** Apps Script production project `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn`에 새 파일 `schedule_heartbeat.gs`를 추가했다. 기존 대형 `AI 트래킹 대시보드 연동.gs`는 덮어쓰지 않았다. 새 파일은 `CONFIG.SCHEDULE_HEARTBEAT_URL`을 런타임에서 보장하고 `scheduleHeartbeat()`, `installScheduleHeartbeatTrigger()`, `removeScheduleHeartbeatTrigger()`만 담는다. 편집기 수동 실행에서 UI alert가 멈춤을 만들 수 있어 live 보강 파일은 `safeAlert_` 대신 `Logger.log`만 사용한다.
+- **트리거 설치:** `installScheduleHeartbeatTrigger()`를 실행해 기존 `scheduleHeartbeat` 트리거를 삭제 후 `everyHours(2)` 시간 기반 트리거를 생성했다. Apps Script 트리거 페이지에서 `나 / Head / 시간 기반 / scheduleHeartbeat` 행 확인.
+- **수동 실측:** 설치 함수가 저장 직후 `scheduleHeartbeat()`를 1회 호출하도록 live 파일을 보강한 뒤 실행. 실행 로그 `2026-07-30 11:59 KST`: `GitHub schedule heartbeat trigger installed: every 2 hours.`, `[scheduleHeartbeat] HTTP 200 {"ok":true,"healthy":false,...}` 확인. 응답 findings에는 `cron-daily-collect.yml` 자정수집 stale, `formula-audit.yml` 수식감사 schedule 없음이 포함됐다.
+- **GitHub 상태 확인:** 12:00 KST 기준 `banner-reach-sync.yml`은 마지막 schedule 성공이 09:11 KST이고 이후 11:32 KST 수동 실행만 있음. `formula-audit.yml`도 수동 실행만 보이고 schedule 이벤트 없음. 즉 heartbeat 경보는 현재 Actions 이력과 일치한다.
+- **주의:** 작업트리에 Codex가 만들지 않은 미추적 파일 `web/app/api/ops/collect-fallback/`, `web/lib/collect-fallback.ts`가 있어 건드리지 않았다.
+
 ## 2026-07-30 [Codex 진행] VIEW_MISSING 진단 오탐 방지 + retry 안전테스트 CI 연결
 - **Claude 인계 검증:** `scripts/run_monitoring.py`의 IG 결과 처리 루프가 `posts` 전체를 순회해 TikTok/YouTube 글에도 `platform=Instagram`, `reason=no_collector_response` 진단 이벤트를 남기는 문제가 맞다. 뒤의 YouTube/TikTok 전용 루프가 정상 수집해도 앞선 VIEW_MISSING 이벤트는 취소되지 않아 로그/아티팩트 신뢰도를 떨어뜨렸다. retry 큐는 DB 기준이라 수집 대상 자체는 오염되지 않는다는 판단도 맞다.
 - **Codex 조치:** `_is_instagram_collectable_url()`를 추가하고 IG 진단/저장 루프 진입 전에 non-IG 및 IG 프로필형 URL을 `continue`하도록 수정했다. 이제 TikTok `/photo/`, YouTube Shorts 등은 IG `no_collector_response`로 기록되지 않고 각 플랫폼 전용 루프에서만 판단된다.
