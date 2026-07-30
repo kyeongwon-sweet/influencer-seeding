@@ -335,6 +335,26 @@
 
 ## 상세 이력
 
+## 2026-07-30 [인시던트 총정리 + 이중화 완성] GitHub 스케줄 전면 정지 대응 (Claude, 사용자 승인)
+- **사건 A(해결)**: 어젯밤 `3702ae9`가 워크플로에 `export` 없는 쉘 변수를 넣어 자정수집이 KeyError로 40초 만에 사망(백업 재시도 3회 동반 전멸) → `f3664e6` 수정, 09:12 수동 복구 성공(23분25초). **7/29 자동 적재 5행 → 463행 복구 확인**.
+- **사건 B(미해결·플랫폼)**: **GitHub Actions 스케줄이 00:11Z(09:11 KST) 이후 전면 정지**. 12:07 KST 현재 3시간째 0건(배너 sync·KPI·재시도·수식감사·워치독 모두). negative-comment-monitor도 01:02Z 이후 없음 → 계정/플랫폼 레벨. push 트리거·수동 dispatch는 정상, repo PUBLIC·Actions enabled, GitHub Status는 operational.
+- **오늘 4종 수동 커버**: ③수식감사 healthy(**1,572행 · 누적정합 1,514 · 증분정합 1,505 · 오류셀 0 · 불일치 0**), ①배너 sync 1회, ①자정수집 복구본 성공, ④injibot 07:33 정상(정지 이전), ②부정댓글 10:02까지 정상.
+
+### 재발방지 4종(모두 실측 검증 완료)
+1. **워크플로 env 린터**(`lint_workflow_env.py` + `workflow-lint.yml`) — 사고 클래스(export 없는 쉘변수를 os.environ가 읽음) 검출. **사고 파일 `3702ae9`에 걸어 3건 검출** 확인, 현재 26개 워크플로 통과.
+2. **크론 워치독**(`cron_watchdog.py` + `cron-watchdog.yml`, 매시간) — 실패 + 미발화 감지 Slack. ⚠️**맹점 수정(`5288ac6`)**: 신선도가 event 무관 성공을 보던 탓에 수동 실행이 스케줄 정지를 가림 → **event=schedule 로 좁힘**(계약테스트 고정).
+3. **크로스 프로바이더 하트비트**(`/api/ops/schedule-heartbeat` + GAS `scheduleHeartbeat` 2시간 트리거, `f77fbaa`) — GitHub 밖(구글 스케줄러)에서 감시. **Codex 라이브 설치 완료(`56ea4eb`) + 실제 Slack 도착 실증**(자정수집 29.9h·수식감사 기록없음 2건 정확 검출).
+4. **자정수집 폴백**(`/api/ops/collect-fallback` + GAS `collectFallback` 05시 트리거, `5a75266`) — 그날 자동행이 임계(100) 미만일 때만 `apify-collect` 위임(웹훅 적재, 서버리스 타임아웃 무관). dry-run 실측: `2026-07-29 자동행 444건 → already_collected(무동작)`. 중복수집·비용 0 확인.
+
+### ⚠️ Codex 인계 1건 — 폴백 라이브 설치(오늘 밤 리스크 직결)
+- 라이브 .gs에 `CONFIG.COLLECT_FALLBACK_URL` + `collectFallback()` + `installCollectFallbackTrigger()` 함수단위 반영 → `installCollectFallbackTrigger()` 1회 실행(매일 05시 KST).
+- 검증: `collectFallback()` 수동 1회 → 현재 상태면 `already_collected`(444행) 무동작 확인.
+- **미설치 상태에서 GitHub 스케줄이 계속 죽어 있으면 오늘 밤 00:41 자정수집이 안 돌고 7/30 데이터가 빈다.** 그 경우 사람이 `Daily Collect` 수동 dispatch 필요.
+
+### 예상되는 알림(정상 동작)
+- 배너 sync는 3시간 임계라 12:11 KST 이후 하트비트에 3번째 항목으로 추가될 전망. 자정수집·수식감사 항목은 **스케줄 실행이 성공해야** 사라진다(수동 실행으로는 안 사라짐 — 의도된 설계).
+
+
 ## 2026-07-30 [🔴진행중] GitHub 스케줄 전면 정지(09:11 KST 이후) + 워치독 맹점 수정 (Claude)
 - **증상**: influencer-seeding 스케줄 런이 **00:11Z(09:11 KST) 이후 전무** — 배너 sync(매시간)·KPI(10:05)·재시도(11:00)·수식감사(10:10)·워치독(10:35) 전부 미발화. negative-comment-monitor도 01:02Z 이후 없음 → **계정/플랫폼 레벨 현상**. push 트리거 런은 정상, repo PUBLIC·Actions enabled, GitHub Status는 operational(스케줄 지연·드롭은 status에 안 잡히는 경우 많음).
 - **오늘 커버 조치(수동 실행)**: ③수식감사 → **healthy** (1,572행 · H정합 1,514 · 증분정합 1,505 · 오류셀 0 · 불일치 0), 배너 sync 1회, 워치독 1회. ①자정수집은 09:12 수동 복구본 성공(7/29 자동 463행).
