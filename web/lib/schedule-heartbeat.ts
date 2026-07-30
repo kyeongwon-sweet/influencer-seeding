@@ -20,6 +20,12 @@ export const WATCH_TARGETS: WatchTarget[] = [
 ];
 
 export type HeartbeatFinding = { workflow: string; label: string; ageHours: number | null; lastAt: string | null };
+export type HeartbeatRun = {
+  updatedAt: string;
+  conclusion: string | null;
+  event: string;
+  url: string;
+};
 
 export function evaluateSchedules(
   lastScheduleSuccess: Record<string, string | null>,
@@ -46,18 +52,36 @@ function kst(iso: string): string {
   return `${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")} ${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
 }
 
-export function formatHeartbeat(findings: HeartbeatFinding[], repo: string): { text: string; healthy: boolean } {
+function recoveryNote(run: HeartbeatRun | null | undefined): string {
+  if (!run || run.event === "schedule") return "";
+  return ` / 최근 성공 실행(${run.event}) ${kst(run.updatedAt)} KST — 데이터 복구됨`;
+}
+
+export function formatHeartbeat(
+  findings: HeartbeatFinding[],
+  repo: string,
+  latestSchedule: Record<string, HeartbeatRun | null> = {},
+  latestSuccess: Record<string, HeartbeatRun | null> = {},
+): { text: string; healthy: boolean } {
   if (findings.length === 0) {
     return { text: `✅ [스케줄 하트비트] ${repo} — 감시 대상 ${WATCH_TARGETS.length}종 모두 정상 주기 내`, healthy: true };
   }
   const lines = [
-    `🔴 [스케줄 하트비트] ${repo} — GitHub 스케줄 미발화 의심 ${findings.length}건`,
+    `🔴 [스케줄 하트비트] ${repo} — GitHub 스케줄 이상 ${findings.length}건`,
     "(이 알림은 Google/외부 스케줄러가 보냅니다 — GitHub 크론이 죽어도 도착합니다)",
-    ...findings.map((f) =>
-      f.ageHours == null
-        ? `• ${f.label}(${f.workflow}) — 스케줄 성공 기록 없음`
-        : `• ${f.label}(${f.workflow}) — 최근 스케줄 성공 ${f.ageHours.toFixed(1)}시간 전(${kst(f.lastAt!)} KST)`
-    ),
+    ...findings.map((f) => {
+      const latest = latestSchedule[f.workflow];
+      const recovery = recoveryNote(latestSuccess[f.workflow]);
+      if (latest && latest.conclusion && latest.conclusion !== "success") {
+        const previousSuccess = f.ageHours == null
+          ? "이전 스케줄 성공 기록 없음"
+          : `최근 스케줄 성공 ${f.ageHours.toFixed(1)}시간 전(${kst(f.lastAt!)} KST)`;
+        return `• ${f.label}(${f.workflow}) — 스케줄은 발화했지만 ${latest.conclusion}(${kst(latest.updatedAt)} KST), ${previousSuccess}${recovery}`;
+      }
+      return f.ageHours == null
+        ? `• ${f.label}(${f.workflow}) — 스케줄 실행/성공 기록 없음${recovery}`
+        : `• ${f.label}(${f.workflow}) — 최근 스케줄 성공 ${f.ageHours.toFixed(1)}시간 전(${kst(f.lastAt!)} KST), 미발화·지연 의심${recovery}`;
+    }),
   ];
   return { text: lines.join("\n"), healthy: false };
 }

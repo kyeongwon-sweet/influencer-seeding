@@ -27,10 +27,41 @@ test("2026-07-30 사고 재현: 스케줄 성공 기록 없음 + 주기 초과 �
   assert.equal(f.length, 2);
   const m = formatHeartbeat(f, "kyeongwon-sweet/influencer-seeding");
   assert.ok(!m.healthy);
-  assert.match(m.text, /수식감사.*스케줄 성공 기록 없음/s);
+  assert.match(m.text, /수식감사.*스케줄 실행\/성공 기록 없음/s);
   assert.match(m.text, /자정수집.*29\.4시간 전/s);
   // 이 알림이 GitHub 밖에서 온다는 사실이 본문에 남아야 한다(운영자 오해 방지)
   assert.match(m.text, /GitHub 크론이 죽어도 도착/);
+});
+
+test("스케줄 실패를 미발화로 오표기하지 않고 수동 복구도 함께 표시", () => {
+  const f = evaluateSchedules(
+    allFresh({ "cron-daily-collect.yml": iso(32.3) }),
+    NOW,
+  );
+  const m = formatHeartbeat(
+    f,
+    "repo",
+    {
+      "cron-daily-collect.yml": {
+        updatedAt: iso(6),
+        conclusion: "failure",
+        event: "schedule",
+        url: "https://example.com/failure",
+      },
+    },
+    {
+      "cron-daily-collect.yml": {
+        updatedAt: iso(2),
+        conclusion: "success",
+        event: "workflow_dispatch",
+        url: "https://example.com/recovery",
+      },
+    },
+  );
+  assert.ok(!m.healthy);
+  assert.match(m.text, /스케줄은 발화했지만 failure/);
+  assert.match(m.text, /최근 성공 실행\(workflow_dispatch\).*데이터 복구됨/);
+  assert.doesNotMatch(m.text, /미발화 의심 1건/);
 });
 
 test("배너 sync는 3시간 기준 — 2시간은 정상, 4시간은 이상", () => {

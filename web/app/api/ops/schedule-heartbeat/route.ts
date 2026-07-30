@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { notifyBot } from "@/lib/slack";
-import { WATCH_TARGETS, evaluateSchedules, formatHeartbeat } from "@/lib/schedule-heartbeat";
+import {
+  WATCH_TARGETS,
+  evaluateSchedules,
+  formatHeartbeat,
+  type HeartbeatRun,
+} from "@/lib/schedule-heartbeat";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -20,8 +25,15 @@ export const runtime = "nodejs";
 
 const REPO = process.env.OPS_GITHUB_REPO || "kyeongwon-sweet/influencer-seeding";
 
-async function lastScheduleSuccess(repo: string, workflow: string): Promise<string | null> {
-  const url = `https://api.github.com/repos/${repo}/actions/workflows/${workflow}/runs?status=success&event=schedule&per_page=1`;
+type GitHubRun = {
+  updated_at: string;
+  conclusion: string | null;
+  event: string;
+  html_url: string;
+};
+
+async function latestRun(repo: string, workflow: string, query: string): Promise<HeartbeatRun | null> {
+  const url = `https://api.github.com/repos/${repo}/actions/workflows/${workflow}/runs?${query}&per_page=1`;
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
@@ -30,9 +42,20 @@ async function lastScheduleSuccess(repo: string, workflow: string): Promise<stri
   if (process.env.OPS_GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.OPS_GITHUB_TOKEN}`;
   const res = await fetch(url, { headers, cache: "no-store" });
   if (!res.ok) throw new Error(`GitHub ${res.status} (${workflow})`);
-  const json = (await res.json()) as { workflow_runs?: Array<{ updated_at: string }> };
+  const json = (await res.json()) as { workflow_runs?: GitHubRun[] };
   const runs = json.workflow_runs ?? [];
-  return runs.length > 0 ? runs[0].updated_at : null;
+  if (runs.length === 0) return null;
+  const run = runs[0];
+  return {
+    updatedAt: run.updated_at,
+    conclusion: run.conclusion,
+    event: run.event,
+    url: run.html_url,
+  };
+}
+
+async function lastScheduleSuccess(repo: string, workflow: string): Promise<string | null> {
+  return (await latestRun(repo, workflow, "status=success&event=schedule"))?.updatedAt ?? null;
 }
 
 async function handler(req: NextRequest) {
@@ -53,7 +76,24 @@ async function handler(req: NextRequest) {
   }
 
   const findings = evaluateSchedules(last, new Date());
-  const { text, healthy } = formatHeartbeat(findings, REPO);
+  const latestSchedule: Record<string, HeartbeatRun | null> = {};
+  const latestSuccess: Record<string, HeartbeatRun | null> = {};
+  await Promise.all(findings.flatMap((finding) => [
+    latestRun(REPO, finding.workflow, "event=schedule")
+      .then((run) => { latestSchedule[finding.workflow] = run; })
+      .catch((e) => {
+        errors.push(e instanceof Error ? e.message : String(e));
+        latestSchedule[finding.workflow] = null;
+      }),
+    latestRun(REPO, finding.workflow, "status=success")
+      .then((run) => { latestSuccess[finding.workflow] = run; })
+      .catch((e) => {
+        errors.push(e instanceof Error ? e.message : String(e));
+        latestSuccess[finding.workflow] = null;
+      }),
+  ]));
+
+  const { text, healthy } = formatHeartbeat(findings, REPO, latestSchedule, latestSuccess);
   const message = errors.length > 0 ? `${text}\n⚠️ GitHub 조회 오류 ${errors.length}건: ${errors.slice(0, 3).join(" / ")}` : text;
 
   // 정상일 때 매번 알리면 소음이라, 이상(또는 조회 실패)일 때만 발송한다.
@@ -65,6 +105,8 @@ async function handler(req: NextRequest) {
     repo: REPO,
     findings,
     lastScheduleSuccess: last,
+    latestSchedule,
+    latestSuccess,
     errors,
   });
 }
