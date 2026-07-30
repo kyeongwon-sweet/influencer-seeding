@@ -57,6 +57,12 @@ def main() -> int:
     if not any("성공 기록 없음" in x for x in s):
         fails.append(f"④성공 기록 없음 경고 누락: {s}")
 
+    # ④-2 신선도는 '스케줄' 성공만 봐야 한다(2026-07-30 교훈).
+    #     수동 실행이 신선도를 채우면 스케줄러 정지를 못 잡으므로, 조회 URL에 event=schedule이 있어야 함.
+    src = (Path(__file__).resolve().parent / "cron_watchdog.py").read_text(encoding="utf-8")
+    if "event=schedule" not in src:
+        fails.append("④-2 fetch_last_success가 event=schedule로 좁히지 않음(수동 실행이 신선도를 오염)")
+
     # ⑤ 매시간 배너 sync가 4시간째 성공 없음 → 경고(3h 기준), 26h 대상은 조용
     s = check_freshness(all_fresh(**{"banner-reach-sync.yml": ts_ago(4 * 60)}), NOW)
     if len(s) != 1 or "banner-reach-sync" not in s[0]:

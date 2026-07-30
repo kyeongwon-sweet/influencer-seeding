@@ -74,20 +74,28 @@ def check_freshness(last_success: dict[str, str | None], now: datetime) -> list[
     for wf, max_age in FRESHNESS_HOURS.items():
         ts = last_success.get(wf)
         if not ts:
-            stale.append(f"⚠️ {wf} — 성공 기록 없음(스케줄 미발화/전면 실패 의심)")
+            stale.append(f"⚠️ {wf} — 스케줄 성공 기록 없음(미발화/전면 실패 의심)")
             continue
         age_h = (now - datetime.fromisoformat(ts.replace("Z", "+00:00"))).total_seconds() / 3600
         if age_h > max_age:
             stale.append(
-                f"⚠️ {wf} — 최근 성공이 {age_h:.1f}시간 전({kst(ts)} KST), 기대 주기 {max_age:g}h 초과"
+                f"⚠️ {wf} — 최근 스케줄 성공이 {age_h:.1f}시간 전({kst(ts)} KST), 기대 주기 {max_age:g}h 초과"
             )
     return stale
 
 
 def fetch_last_success(repo: str, wf: str, token: str) -> str | None:
-    """워크플로 파일명 기준 가장 최근 성공 런의 updated_at(ISO) 또는 None."""
+    """워크플로 파일명 기준 가장 최근 **스케줄** 성공 런의 updated_at(ISO) 또는 None.
+
+    ⚠️ event=schedule 로 좁히는 게 핵심(2026-07-30 실측 교훈): 이벤트를 안 가리면
+    사람이 돌린 workflow_dispatch가 신선도를 채워버려 **스케줄러 정지를 못 잡는다**.
+    실제로 이날 GitHub 스케줄이 2시간 넘게 멈췄는데 수동 실행들 때문에 '이상 없음'으로 보고됐다.
+    """
     try:
-        data = _api(f"/repos/{repo}/actions/workflows/{wf}/runs?status=success&per_page=1", token)
+        data = _api(
+            f"/repos/{repo}/actions/workflows/{wf}/runs?status=success&event=schedule&per_page=1",
+            token,
+        )
     except urllib.error.HTTPError as e:
         print(f"[watchdog] {wf} 조회 실패 HTTP {e.code}")
         return None
