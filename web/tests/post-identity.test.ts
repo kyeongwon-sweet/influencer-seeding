@@ -21,6 +21,10 @@ test("postIdentityKey: TikTok and YouTube URL variants map to one post key", () 
     postIdentityKey("https://tiktok.com/@ryuraikj/video/7652295124399000839/"),
     "tt:7652295124399000839"
   );
+  assert.equal(
+    postIdentityKey("https://www.tiktok.com/@humorbox_/photo/7667158750612049160/?is_from_webapp=1"),
+    "tt:7667158750612049160"
+  );
   assert.equal(postIdentityKey("https://youtu.be/14NN3A0vRDE?si=x"), "yt:14NN3A0vRDE");
   assert.equal(postIdentityKey("https://www.youtube.com/watch?v=14NN3A0vRDE"), "yt:14NN3A0vRDE");
   assert.equal(postIdentityKey("https://www.youtube.com/shorts/14NN3A0vRDE"), "yt:14NN3A0vRDE");

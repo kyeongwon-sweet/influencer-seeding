@@ -29,11 +29,11 @@ export type UpsertSummary = {
 // 반드시 네트워크 해석이 필요 — 안 하면 단축링크가 그대로 저장돼 수집 실패·수동 교체·정식링크 재등록 시 중복이 생김
 // (2026-07-07 시으니네(TT) 사례). 해석 실패 시 원본 유지(다음 동기화 때 재시도).
 export async function resolveTikTokShortUrl(url: string): Promise<string> {
-  if (!/^https?:\/\/vt\.tiktok\.com\//i.test(url)) return url;
+  if (!/^https?:\/\/v[tm]\.tiktok\.com\//i.test(url)) return url;
   try {
     const res = await fetch(url, { method: "HEAD", redirect: "manual", signal: AbortSignal.timeout(5000) });
     const loc = res.headers.get("location");
-    if (loc && /tiktok\.com\/.+\/video\/\d+/.test(loc)) return loc.split("?")[0];
+    if (loc && /tiktok\.com\/.+\/(?:video|photo)\/\d+/.test(loc)) return loc.split("?")[0];
   } catch { /* 해석 실패 → 원본 유지 */ }
   return url;
 }

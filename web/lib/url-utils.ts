@@ -80,7 +80,7 @@ export function postIdentityKey(url: string): string | null {
     }
 
     if (host.includes("tiktok.com")) {
-      const m = u.pathname.match(/\/video\/(\d+)/);
+      const m = u.pathname.match(/\/(?:video|photo)\/(\d+)/);
       if (m) return `tt:${m[1]}`;
     }
 
