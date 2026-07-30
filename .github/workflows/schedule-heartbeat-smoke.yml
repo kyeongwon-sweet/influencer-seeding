@@ -24,3 +24,14 @@ jobs:
           echo ""
           echo "HTTP ${code}"
           [ "${code:0:1}" = "2" ] || { echo "::error::schedule heartbeat failed HTTP=$code"; exit 1; }
+      - name: Call collect fallback (dry-run only)
+        # dry_run=1 고정 — 스모크가 실제 Apify 수집을 시작하면 비용이 발생한다.
+        run: |
+          code=$(curl -sS -X POST -o /tmp/fallback.out -w "%{http_code}" \
+            --max-time 120 \
+            "$APP_URL/api/ops/collect-fallback?dry_run=1" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          cat /tmp/fallback.out
+          echo ""
+          echo "HTTP ${code}"
+          [ "${code:0:1}" = "2" ] || { echo "::error::collect fallback failed HTTP=$code"; exit 1; }
