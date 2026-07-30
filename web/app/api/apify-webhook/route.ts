@@ -5,6 +5,7 @@ import { normalizeYouTubeUrl, normalizeInstagramUrl } from "@/lib/url-utils";
 import { notifyBot, notifyJob } from "@/lib/slack";
 import { todayKST } from "@/lib/dateRule";
 import { isBannerChannelType } from "@/lib/banner-metric";
+import { looksLikeEngagementCountAsViews } from "@/lib/ig-metric-guard";
 
 // ── 지표 계산 (metrics.py 포팅) ─────────────────────────────────────
 
@@ -328,6 +329,7 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
   const rows = [];
   const pendingUpdates: { id: string; updates: Record<string, unknown> }[] = [];
   const overRecorded: Array<{ account: string | null; url: string; observed: number; stored: number; storedDate: string | null }> = [];
+  const suspiciousFirstPlay: Array<{ account: string | null; url: string; play: number; likes: unknown; comments: unknown }> = [];
   let skipped = 0;
   for (const post of eligiblePosts) {
     const key = statsKey(post.url);
@@ -380,6 +382,22 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
     const newPlay = s.play_count;
     const prevPlay = lastKnownPlay.get(post.id);
     if (newPlay == null || Number(newPlay) <= 0) { skipped++; continue; }
+    if (looksLikeEngagementCountAsViews({
+      playCount: newPlay,
+      likesCount: s.likes_count,
+      commentsCount: s.comments_count,
+      previousPlay: prevPlay,
+    })) {
+      suspiciousFirstPlay.push({
+        account: (post.account_name as string | null) ?? null,
+        url: post.url,
+        play: Number(newPlay),
+        likes: s.likes_count,
+        comments: s.comments_count,
+      });
+      skipped++;
+      continue;
+    }
     if (prevPlay != null && Number(newPlay) < prevPlay) {
       const observed = Number(newPlay);
       if (
@@ -429,6 +447,15 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
       `🚨 [협찬 모니터링] 자동 실측이 기존 수동 누적값보다 크게 낮습니다.\n` +
       `값은 자동으로 낮추지 않았고 기존 스킵/clamp 규칙대로 유지했습니다. 실제값 확인 후 시트+DB를 함께 정정하세요.\n` +
       `${sample}${overRecorded.length > 8 ? `\n- ...외 ${overRecorded.length - 8}건` : ''}`
+    );
+  }
+  if (suspiciousFirstPlay.length > 0) {
+    const sample = suspiciousFirstPlay.slice(0, 8)
+      .map(r => `- ${r.account ?? '-'} play=${r.play.toLocaleString()} likes=${String(r.likes ?? '-')} comments=${String(r.comments ?? '-')} ${r.url}`)
+      .join('\n');
+    await notifyBot(
+      `[monitoring] Suspicious first IG play metrics were skipped and left for retry.\n` +
+      `${sample}${suspiciousFirstPlay.length > 8 ? `\n- ...${suspiciousFirstPlay.length - 8} more` : ''}`
     );
   }
   await supabase.from('jobs').update({ status: 'done', payload: { saved: rowsToUpsert.length, skipped, manual_preserved: manualPreserved } }).eq('id', jobId);

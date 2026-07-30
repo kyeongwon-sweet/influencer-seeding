@@ -4,6 +4,7 @@ import { createApifyClient } from "@/lib/apify";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { todayKST } from "@/lib/dateRule";
 import { isBannerChannelType } from "@/lib/banner-metric";
+import { looksLikeEngagementCountAsViews, pickInstagramPlayMetric, toPositiveMetric } from "@/lib/ig-metric-guard";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -165,7 +166,8 @@ async function collect(req: NextRequest) {
           console.warn(`   [WARN] 요청하지 않은 IG 응답 제외: ${url} (key=${sc})`);
           continue;
         }
-        const views = toMetric(item.videoPlayCount ?? item.videoViewCount ?? item.impressions ?? item.viewCount ?? item.count);
+        const pickedPlay = pickInstagramPlayMetric(item as Record<string, unknown>, url);
+        const views = pickedPlay.value ?? 0;
         const likes = toMetric(item.likesCount ?? item.likeCount);
         const comments = toMetric(item.commentsCount ?? item.commentCount ?? item.comments);
         const ts = item.timestamp || item.takenAt;
@@ -271,6 +273,20 @@ async function collect(req: NextRequest) {
 
         // 🛡️ 재발방지(공통): 조회수 0/미집계는 '수집 실패'다 → 저장 안 함(0을 baseline으로 남기지 않음).
         //    run_monitoring·apify-webhook과 동일 원칙.
+        if (looksLikeEngagementCountAsViews({
+          playCount: stats.views,
+          likesCount: stats.likes,
+          commentsCount: stats.comments,
+          previousPlay: toPositiveMetric(prevPlay),
+        })) {
+          console.warn(
+            `   [WARN] suspicious first IG play skipped: ${cleanUrl} ` +
+            `(play=${stats.views}, likes=${stats.likes}, comments=${stats.comments})`
+          );
+          skipped++;
+          continue;
+        }
+
         if (!(stats.views > 0)) {
           console.warn(`   ⏭️ 조회수 0/미집계 → 저장 안 함(직전값 유지): ${cleanUrl}`);
           skipped++;

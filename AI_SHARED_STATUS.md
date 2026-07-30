@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 2026-07-30 [Codex 완료] IG Reels 낮은 첫 조회수 오적재 재발방지
+- **사용자 신고:** `DbX2FTOJU81`, `DbX12ego9Hp`, `DbX2ETzt4Le` 3개 IG Reels의 2026-07-29 조회수가 낮은 값으로 자동 적재되어 사용자가 수동 정정함.
+- **원인:** 기존 방어는 `0/null` 및 "직전 누적보다 낮은 값"만 막았다. 신규 게시물의 첫 측정에는 직전 `play_count`가 없어, Apify 응답의 `views/count/impressions` 같은 모호한 필드 또는 좋아요/댓글 수와 비슷한 낮은 양수값이 조회수로 저장될 수 있었다.
+- **수정:** `scripts/run_monitoring.py`는 IG Reels에서 `videoPlayCount/videoViewCount`만 신뢰하고 generic `views/count` fallback은 쓰지 않도록 보강했다. 또한 첫 측정값이 좋아요/댓글 수와 비정상적으로 가까우면 `implausible_play_engagement_ratio`로 기록하고 저장하지 않아 retry/fallback 대상에 남긴다.
+- **web 경로:** `web/lib/ig-metric-guard.ts` 공통 가드를 추가하고 `apify-webhook`, `monitoring/collect-now` 양쪽에 연결했다. 의심 첫 조회수는 DB upsert하지 않고 skipped 처리하며 webhook은 Slack 경보 샘플을 남긴다.
+- **검증:** `py -3 -m py_compile scripts/run_monitoring.py` 통과, `npm.cmd test -- --runInBand` 98/98 통과, `npm.cmd run build` 통과, touched-file ESLint 통과. 전체 `npm.cmd run lint`는 기존 unrelated 오류 6개(`injibot-action`, `stats-import`, `injibot-review`)로 실패.
+
 ## 2026-07-30 [Codex 복구 완료] 채널리스트 D열 오염 복구 + E열 URL 정리 재검증
 - **사고/원인:** `GSX라라스윗_리얼 쫀득바 마케팅 플랜_26.07` / `채널 리스트 (0729업뎃)` gid `589690704`에서 E열 URL 쿼리 파라미터 제거 작업 중 선택 범위를 잘못 잡아 D열 `채널명` 일부/전체가 E열 URL로 덮였다. D열은 채널명이 맞고 URL로 바뀌면 안 된다.
 - **복구 방식:** 전체 스프레드시트 버전 복원은 11:40 이후 다른 사용자 수정까지 되돌릴 위험이 있어 사용하지 않았다. 버전 기록에서 Codex 작업 직전 후보인 `2026-07-30 13:59 KST` 버전을 열고 `수정되지 않은 행 표시`를 켠 뒤, D열 원본 채널명 1,043개를 추출했다. 추출값은 `C:\Users\hwangkw\AppData\Local\Temp\channel_list_D_restore_source_20260730_1359.tsv`에 보관.

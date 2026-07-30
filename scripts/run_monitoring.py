@@ -27,6 +27,55 @@ def _has_positive_views(stats: dict | None) -> bool:
     return ((stats or {}).get("views") or 0) > 0
 
 
+def _positive_int(value):
+    try:
+        n = int(value)
+    except Exception:
+        return None
+    return n if n > 0 else None
+
+
+def _is_instagram_reel_url(url: str | None) -> bool:
+    return bool(re.search(r"/(?:reel|reels|tv)/[A-Za-z0-9_-]+", url or "", re.I))
+
+
+def _pick_instagram_play_count(item: dict, url: str | None):
+    """Return a trusted IG play count and the source field used.
+
+    IG Reels must use explicit video fields. Generic fields such as views/count
+    have repeatedly represented engagement-like counts on fresh Reels, which is
+    worse than leaving the post retryable.
+    """
+    for field in ("videoPlayCount", "videoViewCount"):
+        n = _positive_int(item.get(field))
+        if n is not None:
+            return n, field
+
+    if _is_instagram_reel_url(url):
+        return None, None
+
+    for field in ("impressions", "viewCount", "views", "count"):
+        n = _positive_int(item.get(field))
+        if n is not None:
+            return n, field
+    return None, None
+
+
+def _looks_like_engagement_count_as_views(play_count, likes_count, comments_count, existing: dict | None = None) -> bool:
+    if (existing or {}).get("play_count"):
+        return False
+    play = _positive_int(play_count)
+    if play is None:
+        return False
+    likes = _positive_int(likes_count)
+    if likes is not None and likes >= 100 and play <= max(likes * 3, likes + 50):
+        return True
+    comments = _positive_int(comments_count)
+    if comments is not None and comments >= 20 and play <= comments * 20:
+        return True
+    return False
+
+
 def _send_status_alert(text: str):
     """Best-effort Slack alert. Never fail monitoring because alert delivery failed."""
     try:
@@ -1122,6 +1171,18 @@ def run():
                     _record_missing_view_event(post, "Instagram", "zero_play_no_previous", stat=s, existing=existing)
                     print(f"  ⚠️  IG 조회수 0(글리치)·직전값 없음 → 미적재 {post['url']}")
                     continue
+            elif _looks_like_engagement_count_as_views(
+                play_count,
+                s.get("likes_count"),
+                s.get("comments_count"),
+                existing,
+            ):
+                _record_missing_view_event(post, "Instagram", "implausible_play_engagement_ratio", stat=s, existing=existing)
+                print(
+                    f"  [WARN] IG suspicious first play skipped: {post['url']} "
+                    f"(play={play_count}, likes={s.get('likes_count')}, comments={s.get('comments_count')})"
+                )
+                continue
             elif existing.get("play_count") is not None and play_count < existing.get("play_count"):
                 _record_overrecord_candidate(post, "Instagram", play_count, existing)
                 # 누적값인데 줄어들었다 = 오류(글리치) 또는 IG 정상 미세감소(중복/봇 필터링 지터).
@@ -1453,6 +1514,8 @@ def _fetch_stats(urls: list) -> list:
         )
 
         # 📊 상세 로깅: 조회수 필드 분석
+        play_count, play_count_source = _pick_instagram_play_count(item, url)
+
         available_count_fields = {
             "videoPlayCount": item.get("videoPlayCount"),
             "videoViewCount": item.get("videoViewCount"),
@@ -1482,6 +1545,7 @@ def _fetch_stats(urls: list) -> list:
         result.append({
             "url": url,
             "play_count": play_count,
+            "play_count_source": play_count_source,
             "likes_count": item.get("likesCount") or item.get("likes"),
             "comments_count": item.get("commentsCount") or item.get("comments"),
             "posted_at": posted_at,
