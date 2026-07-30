@@ -89,6 +89,15 @@ test("exportStats calculates increments from the sheet range when DB refs are ab
   assert.doesNotMatch(body, /incFormulas\.push\(\[""\]\)/);
 });
 
+test("Apps Script linkKey_ maps TikTok video and photo URLs to the same tt identity form", () => {
+  const start = appsScript.indexOf("function linkKey_(u)");
+  const end = appsScript.indexOf("function removeDuplicateLinks()", start);
+  const body = appsScript.slice(start, end);
+  assert.notEqual(start, -1);
+  assert.match(body, /\(\?:video\|photo\)/);
+  assert.match(body, /return "tt:" \+ tt\[1\]/);
+});
+
 test("increment V2: row-range formulas replace cell-address lists (column-op & sort safe)", () => {
   const start = appsScript.indexOf("function exportStats()");
   const body = appsScript.slice(start, appsScript.indexOf("function refreshCumulativeViews()", start));

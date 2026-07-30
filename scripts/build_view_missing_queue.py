@@ -58,12 +58,20 @@ def is_view_capable(post: dict[str, Any]) -> bool:
     return platform(value) in {"instagram", "youtube", "tiktok", "x"}
 
 
+def is_tiktok_view_post(url: str | None) -> bool:
+    value = (url or "").lower()
+    return bool(
+        "tiktok.com" in value
+        and re.search(r"/(?:video|photo)/\d+", value)
+    )
+
+
 def exclusion_reason(post: dict[str, Any]) -> str | None:
     channel_type = str(post.get("channel_type") or "")
     url = (post.get("url") or "").lower()
     if "수동추적 제외" in str(post.get("notes") or ""):
         return "manual_note"
-    if "위성채널" in channel_type or "온드미디어" in channel_type:
+    if ("위성채널" in channel_type or "온드미디어" in channel_type) and not is_tiktok_view_post(url):
         return "internal_channel"
     if "무상시딩" in channel_type:
         return "free_seed_manual"

@@ -369,7 +369,8 @@ function linkKey_(u) {
         || u.match(/youtube\.com\/(?:embed|live|v)\/([A-Za-z0-9_-]{6,})/)
         || (/youtube\.com\/watch/.test(u) ? u.match(/[?&]v=([A-Za-z0-9_-]{6,})/) : null);
   if (yt) return "yt:" + yt[1];
-  var tt = u.match(/tiktok\.com\/(?:.*\/)?video\/(\d+)/i) || u.match(/\/video\/(\d+)/);
+  var tt = u.match(/tiktok\.com\/(?:.*\/)?(?:video|photo)\/(\d+)/i)
+        || u.match(/\/(?:video|photo)\/(\d+)/i);
   if (tt) return "tt:" + tt[1];
   return urlKey_(u);
 }

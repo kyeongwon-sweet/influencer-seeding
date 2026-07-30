@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 2026-07-30 [Codex 완료] 7/29 TikTok 누락 78건 복구 + `/photo/` 재발 방지
+- **원인 확정:** 수동 복구 run `30501969410`에서 TikTok 115건 중 89건을 수집했지만, `/photo/` 응답의 `views=null` 비교 예외로 `_store_aux_rows` 전에 TikTok 묶음 전체가 폐기됐다. 메인 수집 458건은 저장되어 workflow가 성공으로 끝났기 때문에 플랫폼 부분 실패가 가려졌다.
+- **DB 복구:** 당시 Apify 원본 dataset `otInGUr7GUaQvzOb7` + retry dataset `NwWk5AgYmXNX6xP8x`를 사용해 7/29 누락 78행을 삽입했다. 기존 동일일 행은 건드리지 않았고, 백업/계획은 `scratchpad/tiktok_2026-07-29_backfill_2026-07-30T07-36-55-575Z.json`. 재조회 결과 78/78 존재, 값 불일치 0.
+- **시트 복구:** 라이브 Apps Script `repair_tiktok_20260729.gs`로 대상 URL만 처리했다. 1차 `/video/` 72행(33 교체·39 이미 동일), `/photo/` 인식 보완 후 3행 추가 교체. 최종 재실행 실측 `found_rows=78`, `already_correct=78`, `written=0`, 충돌/누락 0. 썰뜨기 TikTok `7665977180072987925`의 `26.7.29.(수)` 값은 **50,100**.
+- **라이브 재발 방지:** 정본 Apps Script의 `linkKey_`가 TikTok `/video/`와 `/photo/`를 모두 `tt:<id>`로 매핑하도록 함수 단위 수정·서버 저장. 원래 복구 함수(별도 photo 보정 없음)로 다시 실행해 `found_rows=78`을 기능 실측했다.
+- **repo/재시도 보강:** `Combined_Sheet_AppsScript.gs`에도 같은 `/photo/` 키 규칙을 반영. `build_view_missing_queue.py`는 위성/온드라도 TikTok `/video|photo/`는 `internal_channel`에서 제외하지 않아 예약 retry 대상으로 포함한다. Python 단위테스트 3건, web 전체 99/99 통과.
+
 ## 2026-07-30 [Codex 완료] IG Reels 낮은 첫 조회수 오적재 재발방지
 - **사용자 신고:** `DbX2FTOJU81`, `DbX12ego9Hp`, `DbX2ETzt4Le` 3개 IG Reels의 2026-07-29 조회수가 낮은 값으로 자동 적재되어 사용자가 수동 정정함.
 - **원인:** 기존 방어는 `0/null` 및 "직전 누적보다 낮은 값"만 막았다. 신규 게시물의 첫 측정에는 직전 `play_count`가 없어, Apify 응답의 `views/count/impressions` 같은 모호한 필드 또는 좋아요/댓글 수와 비슷한 낮은 양수값이 조회수로 저장될 수 있었다.
