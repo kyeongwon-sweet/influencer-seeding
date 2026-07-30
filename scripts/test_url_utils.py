@@ -1,5 +1,5 @@
 from url_utils import normalize_url, tt_video_id, tt_canonical_form
-from run_monitoring import _tt_canonical
+from run_monitoring import _has_positive_views, _tt_canonical
 
 
 def test_normalize_url_strips_query_hash_and_slash():
@@ -37,3 +37,10 @@ def test_run_monitoring_photo_request_and_result_use_the_same_video_id():
 
     assert canonical == "https://www.tiktok.com/@healing0315/video/7665233491407260949"
     assert tt_video_id(canonical) == "7665233491407260949"
+
+
+def test_positive_view_counter_treats_null_as_not_measured():
+    assert _has_positive_views({"views": None}) is False
+    assert _has_positive_views({}) is False
+    assert _has_positive_views(None) is False
+    assert _has_positive_views({"views": 1}) is True

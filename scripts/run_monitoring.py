@@ -23,6 +23,10 @@ OVERRECORDED_RATIO = 0.8
 OVERRECORDED_MIN_DIFF = 1000
 
 
+def _has_positive_views(stats: dict | None) -> bool:
+    return ((stats or {}).get("views") or 0) > 0
+
+
 def _send_status_alert(text: str):
     """Best-effort Slack alert. Never fail monitoring because alert delivery failed."""
     try:
@@ -1177,15 +1181,15 @@ def run():
                 if retry_urls:
                     print(f"[LOG] 틱톡 미반환 {len(retry_urls)}건 재시도")
                     for vid, s in _fetch_tiktok(retry_urls).items():
-                        if (s.get("views") or 0) > 0:
+                        if _has_positive_views(s):
                             tt_stats[vid] = s
-                got = sum(1 for s in tt_stats.values() if (s.get("views") or 0) > 0)
+                got = sum(1 for s in tt_stats.values() if _has_positive_views(s))
                 print(f"[LOG] 틱톡 수집: 실값 {got}건 / {len(tt_posts)}개 요청")
                 tt_photo_posts = [p for p in tt_posts if re.search(r"/photo/\d+", p.get("url") or "")]
                 if tt_photo_posts:
                     photo_got = sum(
                         1 for p in tt_photo_posts
-                        if (tt_stats.get(_tt_id(tt_canon[p["url"]])) or {}).get("views", 0) > 0
+                        if _has_positive_views(tt_stats.get(_tt_id(tt_canon[p["url"]])))
                     )
                     print(f"[LOG] 틱톡 photo 수집: 실값 {photo_got}건 / {len(tt_photo_posts)}개 요청")
                 _store_aux_rows(db, rows, tt_posts, tt_stats, lambda p: _tt_id(tt_canon[p["url"]]), "틱톡",
