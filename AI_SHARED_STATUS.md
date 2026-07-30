@@ -1,5 +1,14 @@
 # AI Shared Status
 
+## 2026-07-30 [➡️ Codex 실행요청·Claude 사전 de-risk 완료] B열 URL 뒤 ?파라미터 제거 (연동시트)
+- **작업(사용자 지시)**: `콘텐츠 대시보드 연동`(gid 1937186871) **B열(게시물URL)에서 `?igsh=`·`?utm_source=`·`?img_index=` 등 물음표 뒤 파라미터 제거**, 로우 URL만 남기기. **사용자 강조: 링크 변형·오타·순서 오염 절대 금지.** 대상 **89셀**(img_index 41·igsh 25·utm_source 23), 데이터행 ~1573까지.
+- **✅ Claude 사전 검증(안전 확인, 실측)**:
+  1. 89개 전부 `?` 제거해도 **shortcode(ig:/yt:/tt:) 조인키 변화 0개** → DB↔시트 매칭·tracking-by-url(전부 shortcode 기준) 무영향.
+  2. **DB `sponsored_posts.url`에 `?` 포함 0건** → 파라미터는 시트에만 존재, **DB→시트 sync가 되쓸 소스 없음**(되돌림 리스크 없음).
+  3. 지목된 트리거(`syncManualCreatorsOnEdit`·`onStatusEdit_`·`fillInsertedDateHeadersOnChange`)는 **onEdit(사용자편집) 전용 → Apps Script `setValue`는 이를 발동 안 함**. 즉 '트리거 되돌림' 우려는 근거 약함. **이전 시도 실패 원인은 실행측**(대상 탭 오지정/스크립트 버그/검증 CSV 캐시 stale)일 가능성.
+- **➡️ Codex 실행 레시피(사용자가 Codex 실행 지정)**: ① 실행 전 **B열 전체 백업**(값 스냅샷). ② Apps Script 1회용 — **`?` 포함 셀만** `range.setValue(url.split('?')[0])` (다른 셀/열/행순서 무접촉). ③ **같은 실행 내 `SpreadsheetApp.flush()` 후 재-read해 before/after 로그**(캐시 무관 적용 확정). ④ 종료 후 **캐시버스터 CSV로 89→0 재검증**. ⚠️ CSV 단독 "완료" 단정 금지(gviz stale) — Apps Script 재read가 1차 증거.
+- Claude 로컬 백업 스냅샷: `scratchpad/sheet_url.csv`(참고용). 실행은 Codex.
+
 ## 2026-07-30 [Codex live 완료] Apps Script scheduleHeartbeat 설치 + 수동 실측
 - **라이브 반영:** Apps Script production project `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn`에 새 파일 `schedule_heartbeat.gs`를 추가했다. 기존 대형 `AI 트래킹 대시보드 연동.gs`는 덮어쓰지 않았다. 새 파일은 `CONFIG.SCHEDULE_HEARTBEAT_URL`을 런타임에서 보장하고 `scheduleHeartbeat()`, `installScheduleHeartbeatTrigger()`, `removeScheduleHeartbeatTrigger()`만 담는다. 편집기 수동 실행에서 UI alert가 멈춤을 만들 수 있어 live 보강 파일은 `safeAlert_` 대신 `Logger.log`만 사용한다.
 - **트리거 설치:** `installScheduleHeartbeatTrigger()`를 실행해 기존 `scheduleHeartbeat` 트리거를 삭제 후 `everyHours(2)` 시간 기반 트리거를 생성했다. Apps Script 트리거 페이지에서 `나 / Head / 시간 기반 / scheduleHeartbeat` 행 확인.
