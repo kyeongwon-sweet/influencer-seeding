@@ -9,6 +9,10 @@ on:
     - cron: "0 2,5,8 * * *"  # 11/14/17 KST
   workflow_dispatch:
     inputs:
+      target_only:
+        description: "Only collect retryable missing-view queue targets"
+        type: boolean
+        default: true
       recollect_all:
         description: "Force recollect all posts for MONITORING_DATE"
         type: boolean
@@ -68,7 +72,7 @@ jobs:
           SKIP_APIFY: "0"
           RECOLLECT_ALL: ${{ github.event.inputs.recollect_all == 'true' && '1' || '0' }}
           VIEW_MISSING_QUEUE_FILE: ${{ runner.temp }}/view_missing_queue_${{ steps.check.outputs.kdate }}.json
-          VIEW_MISSING_TARGET_ONLY: ${{ github.event_name == 'workflow_dispatch' && '0' || '1' }}
+          VIEW_MISSING_TARGET_ONLY: ${{ github.event.inputs.recollect_all == 'true' && '0' || (github.event_name == 'workflow_dispatch' && github.event.inputs.target_only == 'false' && '0' || '1') }}
         run: |
           export MONITORING_DATE=$(TZ=Asia/Seoul date -d 'yesterday' +%F)
           echo "MONITORING_DATE=${MONITORING_DATE}"
