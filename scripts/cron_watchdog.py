@@ -93,6 +93,7 @@ def check_freshness(
     last_success: dict[str, str | None],
     now: datetime,
     any_success: dict[str, SuccessRun | None] | None = None,
+    latest_schedule: dict[str, SuccessRun | None] | None = None,
 ) -> list[str]:
     """워크플로별 '최근 성공 시각'이 기대 주기를 넘겼는지. 순수 함수 — 테스트 대상.
 
@@ -103,23 +104,52 @@ def check_freshness(
     for wf, max_age in FRESHNESS_HOURS.items():
         ts = last_success.get(wf)
         note = _manual_recovery_note((any_success or {}).get(wf), now, max_age)
+        latest = (latest_schedule or {}).get(wf)
+        latest_ts = latest.get("updated_at") if latest else None
+        latest_conclusion = latest.get("conclusion") if latest else None
+        fired_but_failed = (
+            latest_conclusion in FAILURE_CONCLUSIONS
+            and latest_ts
+            and (not ts or _parse_github_ts(latest_ts) > _parse_github_ts(ts))
+        )
         if not ts:
-            stale.append(f"⚠️ {wf} — 스케줄 성공 기록 없음(미발화/전면 실패 의심){note}")
+            if fired_but_failed:
+                stale.append(
+                    f"❌ {wf} — 예약 실행은 발화했지만 {latest_conclusion}"
+                    f"({kst(latest_ts)} KST), 스케줄 성공 기록 없음{note}"
+                )
+            else:
+                stale.append(f"⚠️ {wf} — 스케줄 성공 기록 없음(미발화/전면 실패 의심){note}")
             continue
         age_h = (now - _parse_github_ts(ts)).total_seconds() / 3600
         if age_h > max_age:
-            stale.append(
-                f"⚠️ {wf} — 최근 스케줄 성공이 {age_h:.1f}시간 전({kst(ts)} KST), "
-                f"기대 주기 {max_age:g}h 초과{note}"
-            )
+            if fired_but_failed:
+                stale.append(
+                    f"❌ {wf} — 예약 실행은 발화했지만 {latest_conclusion}"
+                    f"({kst(latest_ts)} KST), 최근 스케줄 성공은 "
+                    f"{age_h:.1f}시간 전({kst(ts)} KST){note}"
+                )
+            else:
+                stale.append(
+                    f"⚠️ {wf} — 최근 스케줄 성공이 {age_h:.1f}시간 전({kst(ts)} KST), "
+                    f"기대 주기 {max_age:g}h 초과{note}"
+                )
     return stale
 
 
-def fetch_last_success_run(repo: str, wf: str, token: str, event: str | None = None) -> SuccessRun | None:
-    """워크플로 파일명 기준 가장 최근 성공 런 정보. event가 있으면 해당 이벤트로 제한."""
-    query = "status=success&per_page=1"
+def fetch_last_run(
+    repo: str,
+    wf: str,
+    token: str,
+    event: str | None = None,
+    status: str | None = None,
+) -> SuccessRun | None:
+    """워크플로 파일명 기준 가장 최근 런 정보. event/status가 있으면 해당 값으로 제한."""
+    query = "per_page=1"
     if event:
         query += f"&event={event}"
+    if status:
+        query += f"&status={status}"
     try:
         data = _api(f"/repos/{repo}/actions/workflows/{wf}/runs?{query}", token)
     except urllib.error.HTTPError as e:
@@ -132,8 +162,14 @@ def fetch_last_success_run(repo: str, wf: str, token: str, event: str | None = N
     return {
         "updated_at": str(run["updated_at"]),
         "event": str(run.get("event", "")),
+        "conclusion": str(run.get("conclusion", "")),
         "html_url": str(run.get("html_url", "")),
     }
+
+
+def fetch_last_success_run(repo: str, wf: str, token: str, event: str | None = None) -> SuccessRun | None:
+    """워크플로 파일명 기준 가장 최근 성공 런 정보. event가 있으면 해당 이벤트로 제한."""
+    return fetch_last_run(repo, wf, token, event=event, status="success")
 
 
 def fetch_last_success(repo: str, wf: str, token: str) -> str | None:
@@ -187,7 +223,8 @@ def main() -> int:
     failures = classify_failures(runs, now, window_min)
     last_success = {wf: fetch_last_success(repo, wf, token) for wf in FRESHNESS_HOURS}
     any_success = {wf: fetch_last_success_run(repo, wf, token) for wf in FRESHNESS_HOURS}
-    stale = check_freshness(last_success, now, any_success)
+    latest_schedule = {wf: fetch_last_run(repo, wf, token, event="schedule") for wf in FRESHNESS_HOURS}
+    stale = check_freshness(last_success, now, any_success, latest_schedule)
 
     if not failures and not stale:
         print(f"[watchdog] ✅ 이상 없음 — 조회 {len(runs)}건, 최근 {window_min}분 실패 0, 신선도 경고 0")
@@ -198,7 +235,7 @@ def main() -> int:
         lines.append(f"*최근 {window_min}분 실패 {len(failures)}건*")
         lines += ["• " + f for f in failures[:8]]
     if stale:
-        lines.append(f"*미발화/지연 의심 {len(stale)}건*")
+        lines.append(f"*스케줄 이상 {len(stale)}건*")
         lines += ["• " + s for s in stale[:8]]
     text = "\n".join(lines)
     print(text)

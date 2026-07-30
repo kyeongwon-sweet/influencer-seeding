@@ -65,6 +65,31 @@ def main() -> int:
     if not any("cron-daily-collect" in x and "workflow_dispatch" in x and "데이터 freshness" in x for x in s):
         fails.append(f"③-2수동 복구 설명 누락: {s}")
 
+    # ③-3 예약 실행이 실제 발화한 뒤 실패했고 수동 복구된 경우:
+    #      미발화가 아니라 예약 실패로 분류하고 데이터 복구 상태도 함께 설명한다.
+    s = check_freshness(
+        all_fresh(**{"cron-daily-collect.yml": ts_ago(35 * 60)}),
+        NOW,
+        {"cron-daily-collect.yml": {
+            "updated_at": ts_ago(7 * 60),
+            "event": "workflow_dispatch",
+            "html_url": "https://x/manual",
+        }},
+        {"cron-daily-collect.yml": {
+            "updated_at": ts_ago(10 * 60),
+            "event": "schedule",
+            "conclusion": "failure",
+            "html_url": "https://x/scheduled-failure",
+        }},
+    )
+    if not any(
+        "cron-daily-collect" in x
+        and "예약 실행은 발화했지만 failure" in x
+        and "데이터 freshness" in x
+        for x in s
+    ):
+        fails.append(f"③-3예약 실패/수동 복구 분류 오류: {s}")
+
     # ④ 성공 기록 자체가 없음(전면 실패) → 경고
     s = check_freshness(all_fresh(**{"cron-daily-collect.yml": None}), NOW)
     if not any("성공 기록 없음" in x for x in s):
@@ -92,7 +117,7 @@ def main() -> int:
         for x in fails:
             print("  - " + x)
         return 1
-    print("✅ test_cron_watchdog 통과 (사고재현·정상·미발화·수동복구·기록없음·주기초과·비정상종료 7종)")
+    print("✅ test_cron_watchdog 통과 (사고재현·정상·미발화·예약실패·수동복구·기록없음·주기초과·비정상종료 8종)")
     return 0
 
 
