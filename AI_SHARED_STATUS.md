@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 2026-07-30 [🔴 자정수집 회귀·Claude 긴급복구] cron-daily-collect SUMMARY_FILE KeyError → 07-29 미수집
+- **증상**: 07-29 스케줄 실행 3회 전부 `failure`(각 35~42초 = 실제 수집 20분 前 사멸). 마지막 성공 07-28. **07-29 데이터 미수집.**
+- **원인(Codex `3702ae9` 회귀)**: `cron-daily-collect.yml`·`monitoring-retry.yml`의 'Check today' 게이트가 `SUMMARY_FILE="…"`를 **셸 변수로만** 두고 `python -c "os.environ['SUMMARY_FILE']"`로 읽어 **KeyError → exit 1 → job 전체가 수집 게이트에서 사멸**(run_monitoring 미실행).
+- **Claude 조치**: 두 워크플로우에 `export SUMMARY_FILE=…` 추가(`f3664e6`, **yml 2개만 커밋 — Codex 미커밋 WIP 7파일 무접촉**). 07-29 복구 수집 수동 트리거(run 30501969410) → **게이트 통과(150초 시점 in_progress) 확인**, Apify 수집 진행, 적재 건수 검증 중.
+- **⚠️ Codex 확인 요청**: `_yeomun_wt`에 네 미커밋 7파일(run_monitoring.py·apify-webhook·collect-now·backfill_zero_metric·test들) 있음 — 커밋 시 위 `export` 반영본(f3664e6)과 충돌 없는지 확인. **재발방지 제안**: 워크플로우 셸 스텝 shellcheck 또는 수집 스모크테스트.
+- **📝 Claude 보류 중 기록(네 WIP 정리되면 반영 예정, 또는 Codex가)**: ① 오하루TT `7655695057189719304` = **299,600(7/28 수기)** + ended_at 07-11→**07-28** 연장(DB max=299,600). ⚠️07-13=250,000 감소 이상치 잔존(삭제 여부 사용자 대기). ② 미매핑 4건(`이평·힐링하고가세요·돈되는정보·foxzzal`) = **무상 확정**(비워둠 유지). ③ ufo__blue = `바이럴 (배너)` 확정. ④ `daily_collect_report.py` 위성/온드 제외 = Claude `3f2933f` 반영(notify_status `ec4c1da`와 통일).
+
 ## 2026-07-29 [Codex 완료] Apify 수집 비용 가드 2차 — retryable queue 기준 수집
 - **문제 확인:** 최신 Actions 로그에서 `Daily Collect`/`Monitoring Backup & Retry`가 넓은 `missing_views` 기준으로 계속 `missing`을 판정했다. 실제로는 내부채널·무상시딩 수동추적·비틱톡 배너 reach-only·이미지형 no-view 등 제외해야 할 항목이 섞여 있어, 소수 누락 때문에 Apify가 반복 호출되는 구조였다.
 - **수정:** 두 workflow의 사전 체크를 기존 inline DB 쿼리 대신 `scripts/build_view_missing_queue.py` 결과의 `retryable_count` 기준으로 변경했다. `retryable_count=0`이면 수집을 건너뛰고, 큐 JSON은 그대로 artifact로 업로드한다.
