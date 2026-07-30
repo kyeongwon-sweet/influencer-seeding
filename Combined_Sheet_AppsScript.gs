@@ -35,6 +35,7 @@ const CONFIG = {
   TRACKING_API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/tracking-by-url",
   LIST_API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/list-for-sheet",  // DB→시트 반영(대시보드 추가분 가져오기)용 조회
   STATS_EXPORT_API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/stats-for-sheet",  // 자동수집 조회수 → 시트 I열~ 역채움용 조회
+  SCHEDULE_HEARTBEAT_URL: "https://influencer-seeding-mu.vercel.app/api/ops/schedule-heartbeat",  // GitHub 크론 생존 감시(구글 스케줄러가 호출 = 크로스 프로바이더)
   HEADER_ROW: 1,
   DATA_START_ROW: 2,
   STATUS_HEADER: "등록상태",
@@ -2527,6 +2528,43 @@ function installDateHeaderChangeTrigger() {
   safeAlert_(created
     ? "✅ 우측 날짜열 자동 생성 기능을 켰습니다."
     : "✅ 우측 날짜열 자동 생성 기능이 이미 켜져 있습니다.");
+}
+
+// ═══════════════════════════════════════════════════════════════
+// GitHub 스케줄 하트비트 — 구글(Apps Script) 시간 트리거가 호출한다.
+// 2026-07-30 사고: GitHub Actions 스케줄이 두 repo 모두 전면 정지했는데, 감시자(cron-watchdog)도
+// 같은 GitHub 스케줄러에 실려 있어 경보가 못 떴다(사람이 먼저 발견). 감시자는 반드시 다른
+// 제공자의 스케줄러에서 돌아야 하므로, 구글 트리거가 Vercel 라우트를 호출해 판정·Slack 통보한다.
+// 이상 없으면 조용하고, 미발화/주기초과·조회실패일 때만 Slack이 온다.
+// ═══════════════════════════════════════════════════════════════
+function scheduleHeartbeat() {
+  const res = UrlFetchApp.fetch(CONFIG.SCHEDULE_HEARTBEAT_URL, {
+    method: "post",
+    headers: authHeaders_(),
+    muteHttpExceptions: true,
+  });
+  const code = res.getResponseCode();
+  const body = res.getContentText();
+  Logger.log("[scheduleHeartbeat] HTTP " + code + " " + body.slice(0, 500));
+  if (code !== 200) {
+    // 라우트 자체가 죽은 경우도 침묵하면 안 되니 로그에 남기고 실패로 끝낸다(트리거 실패 기록됨).
+    throw new Error("scheduleHeartbeat HTTP " + code + ": " + body.slice(0, 200));
+  }
+  return true;
+}
+
+function installScheduleHeartbeatTrigger() {
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === "scheduleHeartbeat")
+    .forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger("scheduleHeartbeat").timeBased().everyHours(2).create();
+  safeAlert_("✅ GitHub 스케줄 하트비트(2시간 간격, 구글 트리거)를 설치했습니다.");
+}
+
+function removeScheduleHeartbeatTrigger() {
+  const triggers = ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === "scheduleHeartbeat");
+  triggers.forEach(t => ScriptApp.deleteTrigger(t));
+  safeAlert_("스케줄 하트비트 트리거를 제거했습니다. (" + triggers.length + "개)");
 }
 
 function installDailyTrigger() {

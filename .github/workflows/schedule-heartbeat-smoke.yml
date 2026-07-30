@@ -1,0 +1,26 @@
+name: Schedule Heartbeat Smoke (수동 확인용)
+
+# 하트비트 라우트가 살아있는지 사람이 눌러 확인하는 용도.
+# ⚠️ 일부러 schedule 트리거를 넣지 않는다 — 이 하트비트의 존재 이유가 "GitHub 스케줄러 장애 감지"이므로
+#    실제 주기 호출은 반드시 GitHub 밖(Apps Script 시간 트리거 = Google 스케줄러)에서 이뤄져야 한다.
+on:
+  workflow_dispatch:
+
+env:
+  APP_URL: "https://influencer-seeding-mu.vercel.app"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call schedule heartbeat
+        run: |
+          code=$(curl -sS -X POST -o /tmp/heartbeat.out -w "%{http_code}" \
+            --max-time 120 \
+            "$APP_URL/api/ops/schedule-heartbeat" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          cat /tmp/heartbeat.out
+          echo ""
+          echo "HTTP ${code}"
+          [ "${code:0:1}" = "2" ] || { echo "::error::schedule heartbeat failed HTTP=$code"; exit 1; }
