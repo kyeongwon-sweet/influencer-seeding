@@ -52,6 +52,19 @@ def main() -> int:
     if not any("cron-daily-collect" in x and "26h" in x for x in s):
         fails.append(f"③30시간 경과 경고 누락: {s}")
 
+    # ③-2 스케줄은 늦었지만 수동 복구가 성공한 경우: 경고는 유지하되 데이터 복구 문구를 붙인다.
+    s = check_freshness(
+        all_fresh(**{"cron-daily-collect.yml": ts_ago(30 * 60)}),
+        NOW,
+        {"cron-daily-collect.yml": {
+            "updated_at": ts_ago(60),
+            "event": "workflow_dispatch",
+            "html_url": "https://x/manual",
+        }},
+    )
+    if not any("cron-daily-collect" in x and "workflow_dispatch" in x and "데이터 freshness" in x for x in s):
+        fails.append(f"③-2수동 복구 설명 누락: {s}")
+
     # ④ 성공 기록 자체가 없음(전면 실패) → 경고
     s = check_freshness(all_fresh(**{"cron-daily-collect.yml": None}), NOW)
     if not any("성공 기록 없음" in x for x in s):
@@ -79,7 +92,7 @@ def main() -> int:
         for x in fails:
             print("  - " + x)
         return 1
-    print("✅ test_cron_watchdog 통과 (사고재현·정상·미발화·기록없음·주기초과·비정상종료 6종)")
+    print("✅ test_cron_watchdog 통과 (사고재현·정상·미발화·수동복구·기록없음·주기초과·비정상종료 7종)")
     return 0
 
 

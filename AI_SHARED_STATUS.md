@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## 2026-07-30 [Codex 완료] cron watchdog 메시지 분리 — 스케줄 건강도 vs 데이터 복구 상태
+- **배경:** Slack 워치독이 `cron-daily-collect.yml — 최근 스케줄 성공 31.5시간 전`을 정확히 잡았지만, 같은 날 수동 복구 `workflow_dispatch` run `30501969410`이 성공해 07-29 데이터가 적재된 사실은 메시지에 드러나지 않았다. 결과적으로 "스케줄러가 안 돈 문제"와 "데이터가 아직 비어 있는 문제"가 섞여 보였다.
+- **수정:** `scripts/cron_watchdog.py`의 freshness 판정은 계속 **event=schedule만** 본다(수동 실행이 스케줄 정지를 가리지 않음). 대신 각 워크플로의 최신 성공 run 전체(event 무관)를 별도로 조회해, 스케줄 지연 경고 줄 끝에 `최근 성공 실행(workflow_dispatch)은 ... 데이터 freshness는 복구됨` 메모를 붙인다.
+- **효과:** GitHub schedule 미발화/지연은 계속 빨간 경고로 남고, 사람이 수동 복구했거나 대체 경로가 성공한 경우에는 데이터 복구 상태도 함께 보인다.
+- **검증:** `py -3 -m py_compile scripts/cron_watchdog.py scripts/test_cron_watchdog.py` 통과, `py -3 scripts/test_cron_watchdog.py` 통과. 회귀 테스트에 "스케줄 지연 + 수동 복구 성공" 케이스를 추가했다.
+
 ## 2026-07-30 [Codex 완료] 연동시트 B열 URL 쿼리 파라미터 제거
 - **대상:** `[빙과] 인지 콘텐츠 RD` / `콘텐츠 대시보드 연동` gid `1937186871` / B열 `게시물URL`.
 - **실행 전 백업:** 캐시버스터 CSV를 로컬에 저장: `C:\Users\hwangkw\AppData\Local\Temp\linked_sheet_before_url_cleanup.csv`.

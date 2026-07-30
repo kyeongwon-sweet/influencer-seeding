@@ -18,6 +18,8 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
+SuccessRun = dict[str, str]
+
 # 워크플로 파일명 → 최근 성공이 이 시간(h)보다 오래되면 '안 돌았음'으로 경고
 FRESHNESS_HOURS: dict[str, float] = {
     "cron-daily-collect.yml": 26,        # 매일 00:41 KST(+백업 2회)
@@ -64,7 +66,34 @@ def classify_failures(runs: list[dict], now: datetime, window_min: int) -> list[
     return out
 
 
-def check_freshness(last_success: dict[str, str | None], now: datetime) -> list[str]:
+def _parse_github_ts(ts: str) -> datetime:
+    return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+
+
+def _manual_recovery_note(any_success: SuccessRun | None, now: datetime, max_age: float) -> str:
+    """스케줄 경고를 유지하되, 수동 복구/대체 성공이 있으면 데이터 상태를 함께 설명한다."""
+    if not any_success:
+        return ""
+    ts = any_success.get("updated_at")
+    if not ts:
+        return ""
+    age_h = (now - _parse_github_ts(ts)).total_seconds() / 3600
+    event = any_success.get("event") or "unknown"
+    if event == "schedule":
+        return ""
+    if age_h <= max_age:
+        return (
+            f" / 단, 최근 성공 실행({event})은 {age_h:.1f}시간 전({kst(ts)} KST)이라 "
+            "데이터 freshness는 복구됨"
+        )
+    return f" / 최근 성공 실행({event})도 {age_h:.1f}시간 전({kst(ts)} KST)"
+
+
+def check_freshness(
+    last_success: dict[str, str | None],
+    now: datetime,
+    any_success: dict[str, SuccessRun | None] | None = None,
+) -> list[str]:
     """워크플로별 '최근 성공 시각'이 기대 주기를 넘겼는지. 순수 함수 — 테스트 대상.
 
     ⚠️ 전체 런 목록(per_page=100)에서 찾으면 실행량 많은 날 오래된 성공이 밀려나 오탐이 난다.
@@ -73,15 +102,38 @@ def check_freshness(last_success: dict[str, str | None], now: datetime) -> list[
     stale: list[str] = []
     for wf, max_age in FRESHNESS_HOURS.items():
         ts = last_success.get(wf)
+        note = _manual_recovery_note((any_success or {}).get(wf), now, max_age)
         if not ts:
-            stale.append(f"⚠️ {wf} — 스케줄 성공 기록 없음(미발화/전면 실패 의심)")
+            stale.append(f"⚠️ {wf} — 스케줄 성공 기록 없음(미발화/전면 실패 의심){note}")
             continue
-        age_h = (now - datetime.fromisoformat(ts.replace("Z", "+00:00"))).total_seconds() / 3600
+        age_h = (now - _parse_github_ts(ts)).total_seconds() / 3600
         if age_h > max_age:
             stale.append(
-                f"⚠️ {wf} — 최근 스케줄 성공이 {age_h:.1f}시간 전({kst(ts)} KST), 기대 주기 {max_age:g}h 초과"
+                f"⚠️ {wf} — 최근 스케줄 성공이 {age_h:.1f}시간 전({kst(ts)} KST), "
+                f"기대 주기 {max_age:g}h 초과{note}"
             )
     return stale
+
+
+def fetch_last_success_run(repo: str, wf: str, token: str, event: str | None = None) -> SuccessRun | None:
+    """워크플로 파일명 기준 가장 최근 성공 런 정보. event가 있으면 해당 이벤트로 제한."""
+    query = "status=success&per_page=1"
+    if event:
+        query += f"&event={event}"
+    try:
+        data = _api(f"/repos/{repo}/actions/workflows/{wf}/runs?{query}", token)
+    except urllib.error.HTTPError as e:
+        print(f"[watchdog] {wf} 조회 실패 HTTP {e.code}")
+        return None
+    runs = data.get("workflow_runs", [])
+    if not runs:
+        return None
+    run = runs[0]
+    return {
+        "updated_at": str(run["updated_at"]),
+        "event": str(run.get("event", "")),
+        "html_url": str(run.get("html_url", "")),
+    }
 
 
 def fetch_last_success(repo: str, wf: str, token: str) -> str | None:
@@ -91,16 +143,8 @@ def fetch_last_success(repo: str, wf: str, token: str) -> str | None:
     사람이 돌린 workflow_dispatch가 신선도를 채워버려 **스케줄러 정지를 못 잡는다**.
     실제로 이날 GitHub 스케줄이 2시간 넘게 멈췄는데 수동 실행들 때문에 '이상 없음'으로 보고됐다.
     """
-    try:
-        data = _api(
-            f"/repos/{repo}/actions/workflows/{wf}/runs?status=success&event=schedule&per_page=1",
-            token,
-        )
-    except urllib.error.HTTPError as e:
-        print(f"[watchdog] {wf} 조회 실패 HTTP {e.code}")
-        return None
-    runs = data.get("workflow_runs", [])
-    return str(runs[0]["updated_at"]) if runs else None
+    run = fetch_last_success_run(repo, wf, token, event="schedule")
+    return run["updated_at"] if run else None
 
 
 def notify(text: str) -> None:
@@ -142,7 +186,8 @@ def main() -> int:
     now = datetime.now(timezone.utc)
     failures = classify_failures(runs, now, window_min)
     last_success = {wf: fetch_last_success(repo, wf, token) for wf in FRESHNESS_HOURS}
-    stale = check_freshness(last_success, now)
+    any_success = {wf: fetch_last_success_run(repo, wf, token) for wf in FRESHNESS_HOURS}
+    stale = check_freshness(last_success, now, any_success)
 
     if not failures and not stale:
         print(f"[watchdog] ✅ 이상 없음 — 조회 {len(runs)}건, 최근 {window_min}분 실패 0, 신선도 경고 0")
