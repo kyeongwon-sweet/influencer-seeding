@@ -1,5 +1,14 @@
 # AI Shared Status
 
+## 2026-07-30 [Codex 확인·main] Daily Collect 3회 실패 복구 확인 + TikTok null views 재발방지
+- **장애 원인 검증:** 7/30 KST 새벽 Daily Collect 3회 실패는 `3702ae9`의 workflow env 버그가 맞다. `SUMMARY_FILE="..."`을 shell 변수로만 만들고 Python에서 `os.environ["SUMMARY_FILE"]`로 읽어 `KeyError`가 발생했다. 실패 run은 35~42초에 종료되어 실제 수집이 시작되지 않았다.
+- **이미 반영된 복구:** 동시세션 `f3664e6`가 `cron-daily-collect.yml`/`monitoring-retry.yml`에 `export SUMMARY_FILE=...`를 추가했다. 이후 수동 복구 run `30501969410` 성공 확인: IG 542/542 응답, manual same-date 152건 보존, 총 458건 저장, snapshot `2026-07-29` 저장.
+- **복구 후 잔여 큐:** `View Missing Queue` run `30503190840` 성공. 2026-07-29 기준 `eligible=319`, `queue_count=20`, `retryable_count=20`, platform `instagram=12`, `tiktok=8`. 7/29 전체 공백은 복구됐고, 잔여 20건은 다음 retry 대상으로 남아 있다.
+- **추가 원인 발견:** 복구 run에서 TikTok은 `실값 89건 / 115개 요청`까지 받았지만, `/photo/` 실값 카운트 로그 계산부가 `views: null`을 `None > 0`으로 비교해 TikTok 저장 블록이 부분 실패했다. 수집 결과 자체가 아니라 저장 직전 보조 플랫폼 블록의 null 처리 버그다.
+- **Codex 조치:** `b4b7909 fix(monitoring): tolerate null tiktok photo views`를 main에 push. `_has_positive_views()` 헬퍼로 `views: None`을 양수 아님으로 처리하고, TikTok retry/summary/photo 카운트에 동일 적용. `scripts/test_url_utils.py`에 null views 회귀 테스트 추가.
+- **검증:** local `py_compile` 통과, `web` unit test 84/84 pass. GitHub Actions Build Test run `30503372417` 성공: python-tests와 web build 모두 pass.
+- **주의:** 현재 `monitoring-retry.yml`의 `workflow_dispatch`는 `VIEW_MISSING_TARGET_ONLY=0`이라 수동 실행하면 전체 재수집으로 번질 수 있다. 잔여 20건 즉시 회수를 위해 수동 retry를 누르지 말고, 11:00/14:00/17:00 KST 예약 retry의 target-only 경로를 보거나 별도 안전 input을 만든 뒤 실행해야 한다.
+
 ## 2026-07-30 [🔴 자정수집 회귀·Claude 긴급복구] cron-daily-collect SUMMARY_FILE KeyError → 07-29 미수집
 - **증상**: 07-29 스케줄 실행 3회 전부 `failure`(각 35~42초 = 실제 수집 20분 前 사멸). 마지막 성공 07-28. **07-29 데이터 미수집.**
 - **원인(Codex `3702ae9` 회귀)**: `cron-daily-collect.yml`·`monitoring-retry.yml`의 'Check today' 게이트가 `SUMMARY_FILE="…"`를 **셸 변수로만** 두고 `python -c "os.environ['SUMMARY_FILE']"`로 읽어 **KeyError → exit 1 → job 전체가 수집 게이트에서 사멸**(run_monitoring 미실행).
