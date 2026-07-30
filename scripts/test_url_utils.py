@@ -1,5 +1,5 @@
 from url_utils import normalize_url, tt_video_id, tt_canonical_form
-from run_monitoring import _has_positive_views, _tt_canonical
+from run_monitoring import _has_positive_views, _is_instagram_collectable_url, _tt_canonical
 
 
 def test_normalize_url_strips_query_hash_and_slash():
@@ -44,3 +44,11 @@ def test_positive_view_counter_treats_null_as_not_measured():
     assert _has_positive_views({}) is False
     assert _has_positive_views(None) is False
     assert _has_positive_views({"views": 1}) is True
+
+
+def test_instagram_diagnostics_skip_non_instagram_posts():
+    assert _is_instagram_collectable_url("https://www.instagram.com/p/DZXeAW8S9IQ/") is True
+    assert _is_instagram_collectable_url("https://www.instagram.com/reel/DZXeAW8S9IQ/") is True
+    assert _is_instagram_collectable_url("https://www.tiktok.com/@issuebox_/photo/76672043078207603388") is False
+    assert _is_instagram_collectable_url("https://www.youtube.com/shorts/vx9Ijz7QG0k") is False
+    assert _is_instagram_collectable_url("https://www.instagram.com/some_account/reels/") is False

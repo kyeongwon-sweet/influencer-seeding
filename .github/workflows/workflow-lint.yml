@@ -9,6 +9,7 @@ on:
       - ".github/workflows/**"
       - "scripts/lint_workflow_env.py"
       - "scripts/test_lint_workflow_env.py"
+      - "scripts/test_monitoring_retry_workflow.py"
   pull_request:
     paths:
       - ".github/workflows/**"
@@ -30,5 +31,7 @@ jobs:
         run: python scripts/test_lint_workflow_env.py
       - name: Lint all workflows
         run: python scripts/lint_workflow_env.py
+      - name: Monitoring retry workflow safety test
+        run: python scripts/test_monitoring_retry_workflow.py
       - name: Watchdog logic tests
         run: python scripts/test_cron_watchdog.py

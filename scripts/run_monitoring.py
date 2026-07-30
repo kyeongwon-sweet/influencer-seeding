@@ -230,6 +230,11 @@ def _ig_shortcode(url: str) -> str | None:
     return m.group(1) if m else None
 
 
+def _is_instagram_collectable_url(url: str) -> bool:
+    u = (url or "").lower()
+    return "instagram.com" in u and _ig_shortcode(url) is not None
+
+
 def _prev_stats(db, post_ids):
     """게시물들의 '오늘 이전' 최신 통계를 {post_id: row} 로 반환 (mono가드 기준값).
 
@@ -1021,11 +1026,15 @@ def run():
         # .lt(TODAY)라서 같은 날 재수집 시 '오늘 행'을 기준값으로 삼지 않음(멱등) — 글리치로 부푼 값이 clamp로 고착되는 것 방지.
         last_stat = _prev_stats(db, [p["id"] for p in posts])
         for post in posts:
-            key = _stats_key(post["url"])
+            post_url = post.get("url") or ""
+            if not _is_instagram_collectable_url(post_url):
+                continue
+
+            key = _stats_key(post_url)
             s = stats_by_key.get(key)
             if not s:
                 _record_missing_view_event(post, "Instagram", "no_collector_response")
-                print(f"  매칭 실패: {post['url']} (key={key})")
+                print(f"  매칭 실패: {post_url} (key={key})")
                 continue
 
             # Guard against Apify returning a different post for a requested URL.

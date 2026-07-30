@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## 2026-07-30 [Codex 진행] VIEW_MISSING 진단 오탐 방지 + retry 안전테스트 CI 연결
+- **Claude 인계 검증:** `scripts/run_monitoring.py`의 IG 결과 처리 루프가 `posts` 전체를 순회해 TikTok/YouTube 글에도 `platform=Instagram`, `reason=no_collector_response` 진단 이벤트를 남기는 문제가 맞다. 뒤의 YouTube/TikTok 전용 루프가 정상 수집해도 앞선 VIEW_MISSING 이벤트는 취소되지 않아 로그/아티팩트 신뢰도를 떨어뜨렸다. retry 큐는 DB 기준이라 수집 대상 자체는 오염되지 않는다는 판단도 맞다.
+- **Codex 조치:** `_is_instagram_collectable_url()`를 추가하고 IG 진단/저장 루프 진입 전에 non-IG 및 IG 프로필형 URL을 `continue`하도록 수정했다. 이제 TikTok `/photo/`, YouTube Shorts 등은 IG `no_collector_response`로 기록되지 않고 각 플랫폼 전용 루프에서만 판단된다.
+- **CI 갭 보강:** 기존 `scripts/test_monitoring_retry_workflow.py`가 어떤 CI에도 연결되지 않았던 것을 `.github/workflows/workflow-lint.yml`에 추가했다. 앞으로 수동 `Monitoring Backup & Retry`가 target-only 기본값을 잃으면 workflow lint에서 잡힌다.
+- **로컬 검증:** `py_compile` 통과. `PYTHONIOENCODING=utf-8` 기준 `test_monitoring_retry_workflow.py`, `test_lint_workflow_env.py`, `lint_workflow_env.py`, `test_cron_watchdog.py` 통과. 로컬 Python에는 `pytest`/`supabase`가 없어 `test_url_utils.py` 전체 pytest는 Actions에서 최종 확인 예정.
+
 ## 2026-07-30 [Codex 진행] 자정수집 재발방지 추가 확인 + 수동 retry 비용가드 보강
 - **Claude 수정 확인:** `f3664e6`는 `cron-daily-collect.yml`/`monitoring-retry.yml`의 `SUMMARY_FILE`을 `export`로 바꾼 정확한 fix다. `91c01ae`는 workflow env 린터와 cron watchdog을 추가했고, CI run `30503187076`에서 사고 케이스 검출·워크플로 25개 린트·watchdog 테스트가 모두 통과했다. watchdog 수동 run `30503204635`도 `최근 70분 실패 0, 신선도 경고 0`으로 성공.
 - **로컬 재검증:** `PYTHONIOENCODING=utf-8` 기준 `test_lint_workflow_env.py`, `lint_workflow_env.py`, `test_cron_watchdog.py` 모두 통과. Windows 기본 CP949에서는 이모지 출력 때문에 실패처럼 보일 수 있으나 테스트 로직 문제는 아니다.
