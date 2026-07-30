@@ -1,0 +1,34 @@
+name: Workflow Lint (크론 스모크)
+
+# 2026-07-30 사고 재발방지: 워크플로 run 블록에 export 없는 쉘 변수를 python os.environ가 읽어
+# 자정수집이 KeyError로 전멸했다. 워크플로를 건드리는 커밋마다 이 클래스를 CI에서 잡는다.
+# stdlib만 사용 → 설치 없이 20초 내 완료(비공개 전환 시 Actions 분 소모도 미미).
+on:
+  push:
+    paths:
+      - ".github/workflows/**"
+      - "scripts/lint_workflow_env.py"
+      - "scripts/test_lint_workflow_env.py"
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Self-test (사고 케이스 검출 확인)
+        run: python scripts/test_lint_workflow_env.py
+      - name: Lint all workflows
+        run: python scripts/lint_workflow_env.py
+      - name: Watchdog logic tests
+        run: python scripts/test_cron_watchdog.py

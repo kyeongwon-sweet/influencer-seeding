@@ -1,0 +1,37 @@
+name: Cron Watchdog (자동화 감시)
+
+# 2026-07-30 사고 재발방지: 자정수집이 3회 전부 죽었는데 알림이 없어 아침에 사람이 발견했다.
+# 매시간 ① 최근 실패/취소/타임아웃 런 ② 기대 주기보다 오래된 '미발화' 워크플로를 Slack DM으로 보고.
+# 읽기 전용(GitHub API 조회 + Slack 발송), 의존성 없음(stdlib).
+on:
+  schedule:
+    - cron: "35 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Slack 발송 없이 콘솔 출력만"
+        type: boolean
+        default: false
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Watch cron health
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          STATUS_USER: U0B2Y0ZC8QZ
+          WINDOW_MIN: "70"
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true && '1' || '0' }}
+        run: python scripts/cron_watchdog.py
