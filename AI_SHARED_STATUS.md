@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## 2026-07-30 [Codex 완료] 연동시트 B열 URL 쿼리 파라미터 제거
+- **대상:** `[빙과] 인지 콘텐츠 RD` / `콘텐츠 대시보드 연동` gid `1937186871` / B열 `게시물URL`.
+- **실행 전 백업:** 캐시버스터 CSV를 로컬에 저장: `C:\Users\hwangkw\AppData\Local\Temp\linked_sheet_before_url_cleanup.csv`.
+- **실행 방식:** Apps Script 1회용 함수는 사전검증에서만 중단되어 시트 쓰기 없음. 이후 시트에서 `B1:B1573` 범위만 선택해, 기존 CSV의 B열 값을 기준으로 `?` 뒤를 제거한 단일 컬럼 TSV를 붙여넣음. 다른 열은 붙여넣지 않음.
+- **검증:** 캐시버스터 CSV 재다운로드 `linked_sheet_after_url_cleanup_2.csv` 기준 B열 `?` 포함 URL **89 -> 0**. `img_index=`, `utm_source=`, `igsh=` 잔여 모두 0.
+- **diff 검증:** 행 수 동일(`1572` data rows), 다른 열 변경 0. B열 변경은 총 91셀로 집계됨: 요청 대상 쿼리 제거 89셀 + Google Sheets 붙여넣기 과정에서 기존 앞/뒤 공백만 정리된 2셀(row 718 trailing space, row 1341 leading space). 91셀 모두 URL join key 변화 0.
+- **Apps Script 주의/복구:** 작업 중 cleanup 파일 편집 시도 과정에서 메인 파일 1행에 `installCollectFinstallCollectF`가 임시로 들어가 프로젝트 파싱 오류가 발생했으나, 즉시 메인 파일 첫 30자만 삭제해 `/**` 시작으로 복구 저장함. 복구 후 메인 파일 prefix를 재확인했고 미저장 초안은 새로고침으로 폐기함. 남은 1회용 `cleanup_url_params_20260730.gs` 파일은 운영 경로에서 호출되지 않음.
+
 ## 2026-07-30 [➡️ Codex 실행요청·Claude 사전 de-risk 완료] B열 URL 뒤 ?파라미터 제거 (연동시트)
 - **작업(사용자 지시)**: `콘텐츠 대시보드 연동`(gid 1937186871) **B열(게시물URL)에서 `?igsh=`·`?utm_source=`·`?img_index=` 등 물음표 뒤 파라미터 제거**, 로우 URL만 남기기. **사용자 강조: 링크 변형·오타·순서 오염 절대 금지.** 대상 **89셀**(img_index 41·igsh 25·utm_source 23), 데이터행 ~1573까지.
 - **✅ Claude 사전 검증(안전 확인, 실측)**:
