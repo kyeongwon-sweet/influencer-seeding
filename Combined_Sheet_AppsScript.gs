@@ -766,7 +766,7 @@ function fillExistingMetadataFromDB_() {
 function refreshSheetDerivedFields() {
   const steps = [
     ["채널명/DB 메타", fillExistingMetadataFromDB_],
-    ["바이럴 채널명", overwriteViralHandles_],
+    ["바이럴 채널명", function() { return overwriteViralHandles_(true); }],
     ["트래킹 상태", syncStatus],
     ["누적 조회수", refreshCumulativeViews],
     ["제작자", syncCreators],
@@ -796,7 +796,7 @@ function refreshSheetDerivedFields() {
 // 안전장치: ① '바이럴' 행만  ② 채널명(account_name) 열만  ③ DB값이 비면 유지(빈칸 덮어쓰기 금지)
 //           ④ 동일하면 no-op  ⑤ 다른 열·수식·조회수·비바이럴 행 무손상(해당 열 1회 배치 되쓰기).
 //   ※ DB가 정본이라 의도적 라벨(예: '신기+템(인스타)')은 DB에도 그대로 있어 그 값으로 유지된다.
-function overwriteViralHandles_() {
+function overwriteViralHandles_(silent) {
   try {
     const sheet = getSheet_();
     const fieldCols = buildFieldCols_(sheet);
@@ -835,7 +835,9 @@ function overwriteViralHandles_() {
       changed++;
     }
     if (changed > 0) sheet.getRange(CONFIG.DATA_START_ROW, accCol, n, 1).setValues(accs);
-    safeAlert_(`🔤 바이럴 채널명 → DB 핸들 정정 완료\n• 변경: ${changed}건\n${samples.join("\n")}`);
+    if (!silent) {
+      safeAlert_(`🔤 바이럴 채널명 → DB 핸들 정정 완료\n• 변경: ${changed}건\n${samples.join("\n")}`);
+    }
     return true;
   } catch (e) {
     safeAlert_("❌ 바이럴 채널명 정정 오류\n" + e.message);
@@ -843,7 +845,7 @@ function overwriteViralHandles_() {
     return false;
   }
 }
-function overwriteViralHandles() { return overwriteViralHandles_(); }
+function overwriteViralHandles() { return overwriteViralHandles_(false); }
 
 function fillCaptionFromAsset_() {
   const sheet = getSheet_();
@@ -908,7 +910,7 @@ function dailyAutoStageDefs_() {
     ["syncStatus", syncStatus],
     ["refreshCumulativeViews", refreshCumulativeViews],
     ["syncCreators", syncCreators],
-    ["overwriteViralHandles", overwriteViralHandles_],
+    ["overwriteViralHandles", function() { return overwriteViralHandles_(true); }],
     ["syncPricing", syncPricing],
   ];
 }

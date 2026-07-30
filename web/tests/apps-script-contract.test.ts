@@ -221,7 +221,7 @@ test("new date columns receive real dates, display format, and input validation"
 });
 
 test("overwriteViralHandles_ only touches viral account_name and self-heals daily via dailyAuto", () => {
-  const start = appsScript.indexOf("function overwriteViralHandles_()");
+  const start = appsScript.indexOf("function overwriteViralHandles_(");
   assert.notEqual(start, -1, "overwriteViralHandles_ 함수가 있어야 함");
   const end = appsScript.indexOf("function overwriteViralHandles()", start);
   const body = appsScript.slice(start, end);
@@ -234,7 +234,11 @@ test("overwriteViralHandles_ only touches viral account_name and self-heals dail
   // 채널명(account_name) 열만 되쓰기
   assert.match(body, /setValues\(accs\)/);
   // dailyAuto가 매일 실행(재발 차단)
-  assert.match(appsScript, /\["overwriteViralHandles", overwriteViralHandles_\]/);
+  assert.match(
+    appsScript,
+    /\["overwriteViralHandles", function\(\) \{ return overwriteViralHandles_\(true\); \}\]/,
+  );
+  assert.match(body, /if \(!silent\) \{\s*safeAlert_/);
 });
 
 test("refreshSheetDerivedFields fills existing channel metadata before pricing", () => {
@@ -245,7 +249,7 @@ test("refreshSheetDerivedFields fills existing channel metadata before pricing",
 
   const fillStart = appsScript.indexOf("function fillExistingMetadataFromDB_()");
   const refreshStart = appsScript.indexOf("function refreshSheetDerivedFields()");
-  const overwriteStart = appsScript.indexOf("function overwriteViralHandles_()");
+  const overwriteStart = appsScript.indexOf("function overwriteViralHandles_(");
   assert.notEqual(fillStart, -1, "기존 행 DB 메타데이터 보강 함수가 있어야 함");
   assert.notEqual(refreshStart, -1, "통합 업데이트 함수가 있어야 함");
   assert.ok(fillStart < overwriteStart, "DB 메타 보강은 핸들 정정 함수보다 앞에 둔다");
@@ -266,7 +270,10 @@ test("refreshSheetDerivedFields fills existing channel metadata before pricing",
   assert.notEqual(metadataIdx, -1);
   assert.notEqual(pricingIdx, -1);
   assert.ok(metadataIdx < pricingIdx, "채널명/DB 메타 보강 후 업체명/비용 계산을 실행해야 함");
-  assert.match(refreshBody, /\["바이럴 채널명", overwriteViralHandles_\]/);
+  assert.match(
+    refreshBody,
+    /\["바이럴 채널명", function\(\) \{ return overwriteViralHandles_\(true\); \}\]/,
+  );
 });
 
 test("dailyAuto records every stage and imports stats before exporting DB stats", () => {
