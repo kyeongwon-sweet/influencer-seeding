@@ -106,7 +106,8 @@
   - **검증필요 미러글(= 복사 확정 아님, 재수집으로 실제값 확인 필수. 이나틱톡처럼 진짜일 수 있음)**: 이나(유튜브/미러링) `14NN3A0vRDE` 280,312 · 박홍(틱톡/미러링) `7663451770055691527` 349,000 · 진씨네벌크업(틱톡/미러링) `7663507695651097876` 141,400 · 프롬서희(틱톡/미러링) `7660459402415148309` 96,600 · 빙이(틱톡/미러링) `7667916390921162005` 111,200 · 빵친장(틱톡/미러링) `7666434810696535316` 77,000 등. **각 게시물 재수집 실측 후, 궤적 급점프 + 시트 불일치가 둘 다 있을 때만 복사로 판정·정정.**
 - **원인규명 완료(Codex)**: DB-only 스파이크가 남을 수 있었던 경로는 `dailyAuto → importStats → stats-import`가 자동 입력까지 `manual=true`로 저장하던 구조다. 위 출처 분리 패치로 재발 차단.
 
-## 2026-08-03 [Claude] 수식감사에 '값 정체' 검사 추가 (`8a63818`+`c50f5ec`) — ⚠️ **배포 필요(미반영)**
+## 2026-08-03 [Claude→Codex 완료] 수식감사 '값 정체' 검사 (`8a63818`+`c50f5ec`) — ✅ **프로덕션 반영 확인**
+- **라이브 확정(2026-08-03 18:43 KST):** Formula Audit run `30802627056`이 프로덕션 `https://influencer-seeding-mu.vercel.app`을 호출해 **HTTP 200**, `stale=5`를 반환했다. 대상은 `jjin.mood_`, `nasso_home`, `ddo_chichi`, `green_fun_diary`, `Ufo__PINK`이며 수식 오류·증분 mismatch는 0이다. 아래의 옛 “배포 필요/미반영” 표시는 이 실측으로 폐기한다.
 - **막으려는 사각**: 이 감사는 시트 내부 정합만 봐서, 삭제된 74건·게시일 불일치 6건이 며칠째 값이 멈춰 있어도 나흘 내리 "이상 없음"으로 보고했다. **수식 정합 ≠ 값 유입**.
 - **추가 규칙**: 활성(미종료) + 지표 있는 채널(배너·피드·위성/온드 제외) + 게시 2일 초과인 행에서 **마지막 실측이 2일 넘게 없으면 `stale`**. 헤드라인도 `이상 없음` → **`수식 이상 없음`**으로 좁히고 정체 건수를 반드시 덧붙인다(healthy=false).
 - **⚠️ 내가 처음 잘못 만들었다가 자체 검증에서 잡음**: 판정을 시트 날짜칸 기준으로 짰더니 실제 정체 3건을 **0건**으로 보고했다. `exportStats`가 '측정 없음' 빈칸을 직전 누적값으로 **이어받아 채우기** 때문에 시트는 항상 연속처럼 보인다 → 판정 근거를 `post_daily_stats` 실측으로 교체(`c50f5ec`), 그 함정을 회귀 테스트로 고정.
@@ -335,7 +336,7 @@
 - **증상**: 07-29 스케줄 실행 3회 전부 `failure`(각 35~42초 = 실제 수집 20분 前 사멸). 마지막 성공 07-28. **07-29 데이터 미수집.**
 - **원인(Codex `3702ae9` 회귀)**: `cron-daily-collect.yml`·`monitoring-retry.yml`의 'Check today' 게이트가 `SUMMARY_FILE="…"`를 **셸 변수로만** 두고 `python -c "os.environ['SUMMARY_FILE']"`로 읽어 **KeyError → exit 1 → job 전체가 수집 게이트에서 사멸**(run_monitoring 미실행).
 - **Claude 조치**: 두 워크플로우에 `export SUMMARY_FILE=…` 추가(`f3664e6`, **yml 2개만 커밋 — Codex 미커밋 WIP 7파일 무접촉**). 07-29 복구 수집 수동 트리거(run 30501969410) → **게이트 통과(150초 시점 in_progress) 확인**, Apify 수집 진행, 적재 건수 검증 중.
-- **⚠️ Codex 확인 요청**: `_yeomun_wt`에 네 미커밋 7파일(run_monitoring.py·apify-webhook·collect-now·backfill_zero_metric·test들) 있음 — 커밋 시 위 `export` 반영본(f3664e6)과 충돌 없는지 확인. **재발방지 제안**: 워크플로우 셸 스텝 shellcheck 또는 수집 스모크테스트.
+- **✅ 미커밋 WIP 정리 확인(2026-08-03):** 당시 `_yeomun_wt`의 7파일 변경은 이후 기능별 커밋들(`run_monitoring.py`/`apify-webhook`/`collect-now` 및 테스트)로 main에 반영됐고, `f3664e6`의 workflow `export SUMMARY_FILE`도 현재 main에 공존한다. 최신 `origin/main=57f0e34` 기준 tracked 수정·staged·unmerged 파일 0건으로 재확인했다. 비공개 진단·복구 산출물은 공개 repo에 커밋하지 않고 workspace의 private backup 경로로 이관했다.
 - **📝 Claude 보류 중 기록(네 WIP 정리되면 반영 예정, 또는 Codex가)**: ① 오하루TT `7655695057189719304` = **299,600(7/28 수기)** + ended_at 07-11→**07-28** 연장(DB max=299,600). ⚠️07-13=250,000 감소 이상치 잔존(삭제 여부 사용자 대기). ② 미매핑 4건(`이평·힐링하고가세요·돈되는정보·foxzzal`) = **무상 확정**(비워둠 유지). ③ ufo__blue = `바이럴 (배너)` 확정. ④ `daily_collect_report.py` 위성/온드 제외 = Claude `3f2933f` 반영(notify_status `ec4c1da`와 통일).
 
 ## 2026-07-29 [Codex 완료] Apify 수집 비용 가드 2차 — retryable queue 기준 수집
@@ -387,12 +388,12 @@
 
 ## 2026-07-29 [Codex 확인·정리] live exportStats / syncStatus / worktree
 - **live Apps Script exportStats 확인:** Chrome 로그인 세션으로 production Apps Script `1XogwTHJb...` 편집기를 열고, `AI 트래킹 대시보드 연동.gs` 전체를 선택·복사해 읽기 검증했다. 길이 126,088자, `exportStats__wgimpl` 존재, 최신 증분 수식 마커 `SEQUENCE(1,COLUMNS(rng),COLUMN(` 존재, 구식 `cols,COLUMN(rng)` 부재. 즉 증분 전멸을 만든 live 본문은 제거된 상태다. `clasp pull`은 CLI 자격증명 없음(`No credentials found`)으로 불가.
-- **live Apps Script 신규 repo safeguard 미반영:** 위 live 복사본에는 `auditLinkedSheetFormulas_`, `AUTO_WRITE_TAIL_GUARD_MS`, `buildUrlKeyIndex_`가 아직 없다. 이들은 repo `32a790c` 이후 준비 완료 상태이며, 실제 live 반영은 fresh 서버본 확인 후 함수 단위 graft 또는 인증된 clasp 경로로 진행해야 한다.
+- **live Apps Script 신규 safeguard 반영 완료(2026-08-03 19:47 KST):** production 프로젝트의 fresh 서버본을 `clasp pull`로 다시 받은 뒤 전체 덮어쓰기 없이 `auditLinkedSheetFormulas_`/`auditLinkedSheetFormulas`, `AUTO_WRITE_TAIL_GUARD_MS`, `buildUrlKeyIndex_`와 이를 사용하는 writer만 함수 단위 graft했다. 저장 후 재차 `clasp pull`한 서버본에서 내부/공개 감사 함수 각 1개, tail guard 상수·사용부, URL index 함수·사용부를 확인했다. 라이브 `auditLinkedSheetFormulas` 실측도 완료: URL 1,731행, H/I blank-no-formula 0/0, H/I `#REF!` 0/0, H값+I빈칸 8건, 실행 오류 0. 이 항목의 이전 `미반영` 경고는 폐기한다.
 - **Formula Audit production 복구 확인:** 기존 failure `30429484609`는 날짜 헤더 0개 인식 오류였고, main `d6b27f3` 배포 뒤 workflow `30429742250`이 HTTP 200으로 성공했다. 결과: `totalRows=1510`, H error 0, I error 0, `emptyButData=0`, `mismatch=0`, `healthy=true`.
 - **TikTok `/photo/` 정규 run 관찰:** 최신 정규 Daily Collect 로그 `30397810136`에서 `issuebox_/photo/76672043078207603388`와 `issuetteugi/photo/7667152002266287378`가 수집 대상에 들어간 것은 확인했다. 다만 해당 run은 상세 photo 집계 로그 추가 전이라 “실값 N/M”은 다음 정규 run에서 확인해야 한다. Apify 비용 때문에 수동 full collect는 실행하지 않았다.
 - **syncStatus 실측:** live Apps Script에서 `syncStatus`를 수동 실행했고 오류 없이 완료됐다. 이후 시트 CSV 재확인: row 1379 `issuebox_/photo/76672043078207603388` H=`1,923`, I=`947`, 상태=`트래킹 종료`; row 1380 `issuetteugi/photo/7667152002266287378` H=`915`, I=`387`, 상태=`트래킹 중`; row 2213 `issuebox_/photo/7667158750612049160/` 상태=`트래킹 종료`.
 - **worktree 정리:** clean + `origin/main` 포함 확인 후 `C:\tmp\asset-name-sync`, `C:\tmp\wt-r26`, `C:\Users\hwangkw\Documents\인지 증분 대시보드\.codex-dailyauto-wt`, `C:\Users\hwangkw\Documents\인지 증분 대시보드\.codex-main-worktree` 제거. Claude 경로와 dirty/unmerged worktree는 보존.
-- **stash 보존:** `stash@{0}: codex-temp-auto-write-guard-before-origin-sync`는 오래된 dailyAuto/onEdit 초안이 포함되어 있어 바로 삭제하지 않았다. 현재 main보다 낡은 방식이 섞여 있으므로, 필요 부분만 재검토 후 이관하거나 사용자 승인 후 삭제.
+- **stash 기록 정리(폐기된 옛 상태):** 이 시점에는 `codex-temp-auto-write-guard-before-origin-sync`를 보존했으나, 이후 main의 tail guard·단계별 retry·URL key index와 비교해 오래된 중복 초안임을 확인하고 삭제했다. 2026-08-03 재확인 기준 stash 0건이며, 현재 상태는 위 2026-07-29 `stash 정리` 완료 항목을 따른다.
 - **다음 확인 예약:** 2026-07-30 05:20 KST heartbeat 카드 생성. 승인되면 다음 정규 수집 로그에서 `/photo/` 실값 집계, manual same-date 보존 production 실측, 이슈박스 상태 유지 여부를 재확인한다.
 
 ## 2026-07-29 [Claude 완료] 일단이나연 YT 07-28 = 42,680 복원 (3,067로 유실됐던 것) + 7/28 리포트 재발송
