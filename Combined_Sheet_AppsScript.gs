@@ -37,6 +37,7 @@ const CONFIG = {
   STATS_EXPORT_API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/stats-for-sheet",  // 자동수집 조회수 → 시트 I열~ 역채움용 조회
   SCHEDULE_HEARTBEAT_URL: "https://influencer-seeding-mu.vercel.app/api/ops/schedule-heartbeat",  // GitHub 크론 생존 감시(구글 스케줄러가 호출 = 크로스 프로바이더)
   COLLECT_FALLBACK_URL: "https://influencer-seeding-mu.vercel.app/api/ops/collect-fallback",      // 자정수집 누락 시 Apify 폴백 수집(비어 있을 때만 동작)
+  AUDIT_FALLBACK_URL: "https://influencer-seeding-mu.vercel.app/api/ops/audit-fallback",          // 아침 수식감사 미발화 시 폴백 감사(오늘 감사 없을 때만 동작)
   HEADER_ROW: 1,
   DATA_START_ROW: 2,
   STATUS_HEADER: "등록상태",
@@ -2615,6 +2616,44 @@ function installCollectFallbackTrigger() {
     .forEach(t => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger("collectFallback").timeBased().atHour(5).everyDays(1).create();
   safeAlert_("✅ 자정수집 폴백 트리거(매일 05시 KST, 구글 스케줄러)를 설치했습니다.");
+}
+
+function removeCollectFallbackTrigger() {
+  const triggers = ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === "collectFallback");
+  triggers.forEach(t => ScriptApp.deleteTrigger(t));
+  safeAlert_("자정수집 폴백 트리거를 제거했습니다. (" + triggers.length + "개)");
+}
+
+// 아침 수식감사 폴백 — 구글 트리거가 11:00 KST에 호출한다(GitHub 예정 10:10 이후 충분한 버퍼).
+// 2026-08-03 실측: formula-audit 스케줄이 사흘 내리 13:2x~13:3x로 밀렸고 이 날은 10:17까지도 미발화라
+// 사람이 손으로 dispatch해야 했다. 기존 감시는 '최근 성공 26시간 이내'라는 나이 기준이라 어제 늦게
+// 성공하면 오늘 아침 미실행을 구조적으로 못 잡는다 → 경고 대신 **직접 실행**으로 보장한다.
+// 오늘 이미 감사가 돌았으면 서버가 무동작으로 끝내므로 중복 알림은 없다.
+function auditFallback() {
+  const res = UrlFetchApp.fetch(CONFIG.AUDIT_FALLBACK_URL, {
+    method: "post",
+    headers: authHeaders_(),
+    muteHttpExceptions: true,
+  });
+  const code = res.getResponseCode();
+  const body = res.getContentText();
+  Logger.log("[auditFallback] HTTP " + code + " " + body.slice(0, 500));
+  if (code !== 200) throw new Error("auditFallback HTTP " + code + ": " + body.slice(0, 200));
+  return true;
+}
+
+function installAuditFallbackTrigger() {
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === "auditFallback")
+    .forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger("auditFallback").timeBased().atHour(11).everyDays(1).create();
+  safeAlert_("✅ 아침 수식감사 폴백 트리거(매일 11시 KST, 구글 스케줄러)를 설치했습니다.");
+}
+
+function removeAuditFallbackTrigger() {
+  const triggers = ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === "auditFallback");
+  triggers.forEach(t => ScriptApp.deleteTrigger(t));
+  safeAlert_("수식감사 폴백 트리거를 제거했습니다. (" + triggers.length + "개)");
 }
 
 function installDailyTrigger() {
