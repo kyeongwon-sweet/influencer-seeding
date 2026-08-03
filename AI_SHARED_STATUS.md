@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 2026-08-03 [Codex 완료] 협찬 낮 시간 중간값 고착 재발 방지
+- **원인 실측:** 등록 직후 `collect-now`가 같은 `measured_at`의 자동행을 먼저 만들면, 자정 `run_monitoring.py`의 `_same_day_measured_ids()` 비용 가드가 이를 최종 측정 완료로 오인해 재수집을 제외했다. 예약 실행 자체는 7/31~8/2 모두 성공했지만, 7/31 `잘먹는 햄띠` IG(20:12 KST 42,178), 8/1 `아미쇼`·`원진운`(22:44 KST 166,492·213,555)이 낮/밤 중간값으로 남았다.
+- **수정:** `cron-daily-collect.yml`의 00:41 KST 주 실행에만 `FINAL_SNAPSHOT=1`을 전달한다. 주 실행은 같은 날짜 자동행이 있어도 전일 최종값을 다시 측정하고, 02:41·04:41 백업 실행은 기존 비용 가드와 missing-target-only를 유지한다.
+- **수기값 보호:** 재수집하더라도 DB upsert 직전 `_preserve_same_date_manual_stats()`가 `manual=true` 동일일 행을 제외하므로 팀 수기값은 덮어쓰지 않는다.
+- **검증:** `test_final_snapshot_collection.py` 신규 4건, 기존 `test_manual_stat_preservation.py`, `test_monitoring_retry_workflow.py`, `py_compile` 모두 통과.
+- **별도 누락:** 활성 협찬 중 7/31~8/2 실제 DB 일자행 누락은 `이나 (인스타)` 1건뿐. 시트/DB/Apify 게시일이 서로 달라 `posted_at_mismatch`로 제외되는 별도 정합 문제이며 임의 백필하지 않음.
+
 ## 2026-08-03 [Claude 검증] 폴백 트리거 실전 발화 확인 — 추가 설치 불필요(read-only)
 - **트리거 존재·발화 실측:** 라이브 트리거 목록에 `collectFallback`(시간 기반/Head/소유자 나), **최종 실행 08-03 05:07:21 KST, 오류율 0%**. `scheduleHeartbeat`도 08:28:45 정상. → Codex 설치분이 실제로 돌고 있음. **중복 설치하지 않았음.**
 - **판정 결과(무동작)가 정상임을 DB로 교차검증:** 8/2 측정 자동행 **807건(고유 post_id 807, 중복 0)이 전부 08-03 01시대 KST에 기록** = 00:41 자정수집이 정상 수행. 05시대 신규 쓰기 0행 → 폴백은 `already_collected`로 위임하지 않음(중복수집·Apify 비용 0).

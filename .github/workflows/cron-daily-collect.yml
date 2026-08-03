@@ -96,6 +96,9 @@ jobs:
           PYTHONUNBUFFERED: "1"
           MONITORING_DATE: ${{ steps.check.outputs.kdate }}   # 새벽 예약수집은 전일 최종값으로 적재
           RECOLLECT_ALL: ${{ github.event.inputs.recollect_all == 'true' && '1' || '0' }}
+          # 주 실행은 등록 직후의 낮 시간 중간값이 있어도 전일 최종값을 다시 측정한다.
+          # 02:41/04:41 백업은 기존 측정행을 제외해 Apify 비용 가드를 유지한다.
+          FINAL_SNAPSHOT: ${{ github.event_name == 'schedule' && github.event.schedule == '41 15 * * *' && '1' || '0' }}
           METADATA_RECOLLECT_ONLY: ${{ github.event.inputs.metadata_only == 'true' && '1' || '0' }}
           VIEW_MISSING_QUEUE_FILE: ${{ runner.temp }}/view_missing_queue_${{ steps.check.outputs.kdate }}.json
           VIEW_MISSING_TARGET_ONLY: ${{ github.event_name == 'schedule' && github.event.schedule != '41 15 * * *' && '1' || '0' }}

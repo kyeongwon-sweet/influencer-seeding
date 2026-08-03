@@ -456,6 +456,18 @@ def _same_day_measured_ids(db, posts, measured_at=TODAY):
     return done
 
 
+def _should_apply_same_day_cost_guard(*, recollect_all=False, final_snapshot=False):
+    """Return whether an existing same-date row may skip collection.
+
+    Daytime collect-now/webhook runs can create a partial same-date snapshot.
+    The first nightly run must refresh those automatic rows to the end-of-day
+    value. Backup/retry runs may keep the cost guard because the primary final
+    snapshot has already run. Same-date manual rows remain protected again at
+    write time by _preserve_same_date_manual_stats().
+    """
+    return not recollect_all and not final_snapshot
+
+
 def _store_aux_rows(db, rows, posts, stats, key_fn, label, *, views="clamp", caption_field=None, caption_limit=None):
     """보조 플랫폼(YT/틱톡/스레드/FB/X) 공통 저장 루프 — 5개 블록의 복붙을 단일 구현으로.
 
@@ -922,6 +934,7 @@ def run():
             print(f"[LOG] METADATA_RECOLLECT_ONLY=1 - blank-account IG posts only: {len(posts)}")
 
         recollect_all = os.getenv("RECOLLECT_ALL", "0").lower() in ("1", "true", "yes")
+        final_snapshot = os.getenv("FINAL_SNAPSHOT", "0").lower() in ("1", "true", "yes")
         target_only = os.getenv("VIEW_MISSING_TARGET_ONLY", "0").lower() in ("1", "true", "yes")
         if target_only and not recollect_all and not metadata_only:
             target_ids = _target_ids_from_missing_queue(os.getenv("VIEW_MISSING_QUEUE_FILE"))
@@ -935,7 +948,15 @@ def run():
 
         if recollect_all:
             print(f"[LOG] 🔁 RECOLLECT_ALL=1 — {TODAY} 기존 측정행이 있어도 전체 재수집")
-        else:
+        elif final_snapshot:
+            print(
+                f"[LOG] 🌙 FINAL_SNAPSHOT=1 — {TODAY} 낮 시간 중간값을 "
+                "자정 최종값으로 재수집(동일 수기값은 저장 직전 보존)"
+            )
+        elif _should_apply_same_day_cost_guard(
+            recollect_all=recollect_all,
+            final_snapshot=final_snapshot,
+        ):
             measured_ids = _same_day_measured_ids(db, posts)
             if measured_ids:
                 metadata_recollect_ids = {p["id"] for p in posts if p.get("id") in measured_ids and _needs_metadata_recollect(p)}
