@@ -298,7 +298,19 @@ export async function POST(req: NextRequest) {
   //   그 행을 저장하지 않는다(남의 값이 DB로 유입돼 대시보드까지 오염되는 것을 원천 차단).
   //   단일 우연 일치는 통과(다른 게시물이 같은 라운드 숫자일 수 있음) — '같은 타 게시물과 2일 이상 일치'만 차단.
   //   (2026-07 라밍 카카오 행에 몽글 값이 수동 오입력된 사례 재발 방지. 의심분은 Slack 알림.)
-  const copySuspected: Array<{ url: string; date: string; value: number; source: string }> = [];
+  const urlByPidForImport = new Map<string, string>([...idByUrl.entries()].map(([u, id]) => [id, u]));
+  const labelByPid = new Map<string, string>();
+  for (const ex of existingByUrl.values()) {
+    if (ex.id && ex.account_name) labelByPid.set(String(ex.id), String(ex.account_name));
+  }
+  for (const [, meta] of postByUrl) {
+    const postKey = postIdentityKey(String(meta.url)) ?? String(meta.url);
+    const id = idByKey.get(postKey) ?? idByUrl.get(String(meta.url));
+    if (id && meta.account_name && !labelByPid.has(id)) labelByPid.set(id, String(meta.account_name));
+  }
+  const describePost = (pid: string) => labelByPid.get(pid) ?? urlByPidForImport.get(pid) ?? pid;
+
+  const copySuspected: Array<{ target: string; url: string; date: string; value: number; source: string }> = [];
   if (incoming.length > 0) {
     const dates = [...new Set(incoming.map(r => r.measured_at))];
     const vals = [...new Set(incoming.map(r => r.play_count).filter((v): v is number => typeof v === "number" && v > 0))];
@@ -346,18 +358,16 @@ export async function POST(req: NextRequest) {
       }
     }
     if (copyKeys.size > 0) {
-      const accByPid = new Map<string, string>();
       const urlByPid = new Map<string, string>();
       for (const [u, id] of idByUrl) urlByPid.set(id, u);
-      for (const ex of existingByUrl.values()) { if (ex.account_name) accByPid.set(String(ex.id), String(ex.account_name)); }
-      for (const [u, m] of postByUrl) { const id = idByUrl.get(u); if (id && m.account_name && !accByPid.has(id)) accByPid.set(id, String(m.account_name)); }
       incoming = incoming.filter(r => {
         if (copyKeys.has(`${r.post_id}|${r.measured_at.slice(0, 10)}`)) {
           copySuspected.push({
+            target: describePost(r.post_id),
             url: urlByPid.get(r.post_id) ?? r.post_id,
             date: r.measured_at,
             value: r.play_count as number,
-            source: accByPid.get(copySource.get(r.post_id) ?? "") ?? "?",
+            source: describePost(copySource.get(r.post_id) ?? ""),
           });
           return false;
         }
@@ -368,7 +378,7 @@ export async function POST(req: NextRequest) {
 
   // 3-c) 🛡️ 중복 날짜열 감지 — 시트에 같은 날짜 열이 중복되면 한 (게시물,날짜)에 서로 다른 값이 2개 들어온다.
   //   어느 게 진짜인지 알 수 없으므로 그 (게시물,날짜)는 저장하지 않고 건너뛰고 알림(추측 금지).
-  const urlById = new Map<string, string>([...idByUrl.entries()].map(([u, id]) => [id, u]));
+  const urlById = urlByPidForImport;
   const dupConflict: Array<{ url: string; date: string; values: number[] }> = [];
   {
     const byKey = new Map<string, number[]>();
@@ -465,13 +475,13 @@ export async function POST(req: NextRequest) {
 
   // 4-c) 🛡️ 급변 감지 — 들어온 값이 그 게시물의 '자동수집 실측 최댓값'의 3배 이상이면 과대 오입력 의심.
   //   저장 보류 + 알림(alert-only, 자동보정 아님). 자동 실측이 있는 게시물만 대상(없으면 판정 불가라 통과).
-  const spikeSuspected: Array<{ url: string; date: string; value: number; auto_max: number }> = [];
+  const spikeSuspected: Array<{ target: string; url: string; date: string; value: number; auto_max: number }> = [];
   {
     const kept: GuardInput[] = [];
     for (const r of incomingForGuard) {
       const autoMax = maxAutoByPost.get(r.post_id) ?? 0;
       if (autoMax > 0 && (r.play_count as number) >= autoMax * 3) {
-        spikeSuspected.push({ url: urlById.get(r.post_id) ?? r.post_id, date: r.measured_at, value: r.play_count as number, auto_max: autoMax });
+        spikeSuspected.push({ target: describePost(r.post_id), url: urlById.get(r.post_id) ?? r.post_id, date: r.measured_at, value: r.play_count as number, auto_max: autoMax });
       } else kept.push(r);
     }
     incomingForGuard.length = 0; incomingForGuard.push(...kept);
@@ -518,7 +528,7 @@ export async function POST(req: NextRequest) {
   // 복사 의심 스킵분 → 여믄봇 Slack 알림(사람이 확인·정정). DB 유입은 이미 차단됨(위 필터).
   if (copySuspected.length > 0) {
     const s = copySuspected.slice(0, 6)
-      .map(c => `${c.date.slice(5, 10)} ${Number(c.value).toLocaleString()}←${c.source}`).join(", ");
+      .map(c => `${c.target} ${c.date.slice(5, 10)} ${Number(c.value).toLocaleString()}←${c.source}`).join(", ");
     await notifyBot(`🚨 [시트 조회수 입력] 복사 의심 ${copySuspected.length}행 스킵 — 다른 게시물 값과 여러 날 일치라 DB 유입 차단. 시트 확인·정정 필요: ${s}`);
   }
 
@@ -529,7 +539,7 @@ export async function POST(req: NextRequest) {
   }
   // 급변 감지분 → 알림(자동 실측의 3배 이상 = 과대 오입력 의심, 보류). 사람이 실제 값 확인.
   if (spikeSuspected.length > 0) {
-    const s = spikeSuspected.slice(0, 6).map(c => `${c.date.slice(5, 10)} ${c.value.toLocaleString()}(자동실측 ${c.auto_max.toLocaleString()})`).join(", ");
+    const s = spikeSuspected.slice(0, 6).map(c => `${c.target} ${c.date.slice(5, 10)} ${c.value.toLocaleString()}(자동실측 ${c.auto_max.toLocaleString()})`).join(", ");
     await notifyBot(`🚨 [시트 조회수 입력] 급변 의심 ${spikeSuspected.length}행 보류 — 자동수집 실측의 3배↑. 실제 급상승이면 재입력, 오입력이면 정정: ${s}`);
   }
 

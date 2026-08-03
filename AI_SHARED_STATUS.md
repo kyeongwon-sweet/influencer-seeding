@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## 2026-08-03 [Codex 완료] 시트 조회수 입력 오염 차단 알림 가독성 보강
+- **상황:** `stats-import`가 복사 의심 10행과 급변 의심 5행을 DB 유입 전에 정상 차단했다. 현재 차단 기준은 유지.
+- **실측:** `콘텐츠 대시보드 연동` 날짜열 확인: `7/29=CK`, `7/30=CL`, `8/2=CO`. 복사 의심 샘플은 1023~1025행, 급변 의심 샘플은 1097·1495·1581·1657·1658행에서 확인. 이 값들은 DB로 들어간 게 아니라 시트 정정 대상이다.
+- **repo 보강:** Slack 알림 샘플에 대상 채널명(`target`)을 포함하도록 `stats-import`를 수정했다. 다음부터 `박홍 07-29 482,920←먹샘`, `nasso_home 07-29 324,433(자동실측 3,261)`처럼 바로 찾을 수 있게 된다.
+- **검증:** `web` `npm.cmd test` **110/110 pass**, `npx.cmd eslint app/api/sponsored-posts/stats-import/route.ts tests/importStats-contract.test.ts` pass.
+
 ## 2026-08-03 [Claude 재발방지] 아침 수식감사 폴백 (`2a0a04e`, 라이브 반영 확인)
 - **사고(오늘 실측):** `formula-audit.yml`(10:10 KST 예정)이 10:17까지 미발화 → **사람이 손으로 dispatch**해야 오늘 감사가 돌았다. 07-31·08-01·08-02도 전부 13:2x~13:3x 발화(GitHub 스케줄러 지연).
 - **근본원인:** 기존 감시(`cron_watchdog.FRESHNESS_HOURS`, `schedule-heartbeat.WATCH_TARGETS`)가 전부 **나이(26h) 기준**이라 *어제 13:31에 성공했으면 오늘 아침 미실행이 26h 안에 들어와 경고 자체가 안 뜬다*. 감시의 구조적 사각.

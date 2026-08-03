@@ -16,3 +16,9 @@ test("stats-import: 시트 수기 입력은 KST 당일까지 허용", () => {
   assert.match(route, /const maxStatsDate = maxDateKST\(\);/);
   assert.doesNotMatch(route, /const maxStatsDate = yesterdayKST\(\);/);
 });
+
+test("stats-import: suspicious sheet stat alerts identify the target account", () => {
+  assert.match(route, /copySuspected: Array<\{ target: string;/);
+  assert.match(route, /spikeSuspected: Array<\{ target: string;/);
+  assert.match(route, /\$\{c\.target\} \$\{c\.date\.slice\(5, 10\)\}/);
+});
