@@ -47,8 +47,10 @@ export async function POST(req: NextRequest) {
   // stale 베이스 붙여넣기로 패치가 조용히 되돌아가도 흔적이 없다(2026-07-27 배너 스킵 잔존 사고).
   // importStats가 보고하는 client_version이 기대값과 다르면(구버전 잔존/사본 프로젝트 오저장/배포 누락)
   // 임포트 때마다 Slack 경고를 울려 드리프트를 그날 안에 드러낸다. 처리 자체는 막지 않는다(경고만).
-  const EXPECTED_IMPORTSTATS_CLIENT = "2026-07-27-banner-fix";
+  const EXPECTED_IMPORTSTATS_CLIENT = "2026-08-03-import-source-v2";
   const clientVersion = typeof body?.client_version === "string" ? body.client_version : null;
+  const importSource = body?.source === "daily_auto" ? "daily_auto" : "manual_sheet";
+  const isManualImport = importSource === "manual_sheet";
   if (clientVersion !== EXPECTED_IMPORTSTATS_CLIENT) {
     await notifyBot(
       `⚠️ [시트 조회수 입력] 라이브 Apps Script 버전 불일치 — 보고 ${clientVersion ?? "(미보고=구버전)"} ≠ 기대 ${EXPECTED_IMPORTSTATS_CLIENT}. ` +
@@ -262,7 +264,7 @@ export async function POST(req: NextRequest) {
   const prePosted: Array<{ url: string; date: string }> = [];
   const postEnded: Array<{ url: string; date: string; ended_at: string }> = [];
   const futureDated: Array<{ url: string; date: string; max_date: string }> = [];
-  // 이 라우트는 시트에서 사람이 확정해 입력한 값을 받는 경로다. KST 당일값까지 허용한다.
+  // 수동 메뉴와 dailyAuto가 함께 쓰는 시트 import 경로다. 출처와 무관하게 KST 당일값까지 허용한다.
   // 자정 자동수집·리포트의 T-1 정책은 별도 경로에서 유지하며, 미래 날짜만 차단한다.
   const maxStatsDate = maxDateKST();
   let incoming: GuardInput[] = [];
@@ -272,7 +274,7 @@ export async function POST(req: NextRequest) {
     const pid = idByKey.get(it.key) ?? idByUrl.get(it.url);
     if (!pid) { missing.add(it.url); continue; }
     const measuredDate = String(it.measured_at).slice(0, 10);
-    // 시트 수기 입력은 당일값까지 저장하고, 실제 미래 날짜만 차단한다.
+    // 시트 입력은 당일값까지 저장하고, 실제 미래 날짜만 차단한다.
     if (measuredDate > maxStatsDate) {
       futureDated.push({ url: it.url, date: measuredDate, max_date: maxStatsDate });
       continue;
@@ -286,7 +288,7 @@ export async function POST(req: NextRequest) {
     if (endedAt && measuredDate > endedAt) { postEnded.push({ url: it.url, date: it.measured_at, ended_at: endedAt }); continue; }
     // 배너: reach_count로 저장(입력값=도달수). 비배너: 기존대로 play_count(누적 mono가드 대상).
     if (isBannerByUrl.get(it.key) ?? isBannerByUrl.get(it.url)) {
-      bannerRows.push({ post_id: pid, measured_at: it.measured_at, reach_count: it.play_count, manual: true });
+      bannerRows.push({ post_id: pid, measured_at: it.measured_at, reach_count: it.play_count, manual: isManualImport });
     } else {
       incoming.push({ post_id: pid, measured_at: it.measured_at, play_count: it.play_count });
     }
@@ -494,7 +496,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 4-c) 🛡️ 급변 감지 — 들어온 값이 그 게시물의 '자동수집 실측 최댓값'의 3배 이상이면 과대 오입력 의심.
-  //   사람이 메뉴로 반영한 시트 값은 정본이므로 저장은 보존하고 알림만 남긴다. 자동 실측이 있는 게시물만 대상.
+  //   저장은 보존하고 알림만 남기되, manual 여부는 importSource 정책을 따른다. 자동 실측이 있는 게시물만 대상.
   const spikeSuspected: Array<{ target: string; url: string; date: string; value: number; auto_max: number }> = [];
   {
     for (const r of incomingForGuard) {
@@ -505,12 +507,27 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const overwroteManual = incomingForGuard.filter(i => manualSet.has(`${i.post_id}|${i.measured_at}`)).length;
+  // dailyAuto는 시트 값을 동기화하되 사람이 확정한 같은 날짜의 수기값은 절대 덮지 않는다.
+  // 메뉴에서 직접 실행한 manual_sheet만 기존 수기값을 새 시트값으로 갱신할 수 있다.
+  const preservedManual: GuardInput[] = [];
+  const incomingWritable = incomingForGuard.filter((i) => {
+    if (isManualImport || !manualSet.has(`${i.post_id}|${i.measured_at}`)) return true;
+    preservedManual.push(i);
+    return false;
+  });
+  const bannerRowsWritable = bannerRows.filter((r) => {
+    if (isManualImport || !manualSet.has(`${r.post_id}|${r.measured_at}`)) return true;
+    preservedManual.push({ post_id: r.post_id, measured_at: r.measured_at, play_count: r.reach_count });
+    return false;
+  });
+  const overwroteManual = isManualImport
+    ? incomingForGuard.filter(i => manualSet.has(`${i.post_id}|${i.measured_at}`)).length
+    : 0;
 
   // 5) 누적 감소 가드 (lib/stats-guard.ts — 테스트로 검증되는 순수 함수)
-  const { kept: keptRows, dropped } = filterMonotonicStats(incomingForGuard, existingStats);
-  // 시트 입력분도 '사람이 손댄 값'으로 표시 → 밤 자동수집이 덮지 않음(표시 우선 규칙과 일관).
-  const statsRows = keptRows.map(r => ({ ...r, manual: true }));
+  const { kept: keptRows, dropped } = filterMonotonicStats(incomingWritable, existingStats);
+  // 메뉴 직접 실행만 사람 수기값이다. dailyAuto 값은 자동 실측이 이후 교정할 수 있게 manual=false.
+  const statsRows = keptRows.map(r => ({ ...r, manual: isManualImport }));
   const droppedDecrease = dropped.length;
   // 진단용: 제외된 건 샘플(어떤 글의 어느 날짜 값이, 어느 날짜의 어떤 값에 막혔는지)
   const urlByPid = new Map<string, string>([...idByUrl.entries()].map(([u, id]) => [id, u]));
@@ -534,20 +551,20 @@ export async function POST(req: NextRequest) {
 
   // 배너 도달수 입력분 upsert (reach_count). play_count는 안 건드림(배너는 조회수 없음).
   let bannerInserted = 0;
-  if (bannerRows.length > 0) {
+  if (bannerRowsWritable.length > 0) {
     const { data, error } = await supabase
       .from("post_daily_stats")
-      .upsert(bannerRows, { onConflict: "post_id,measured_at" })
+      .upsert(bannerRowsWritable, { onConflict: "post_id,measured_at" })
       .select();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     bannerInserted = (data ?? []).length;
   }
 
-  // 복사 의심분 → 여믄봇 Slack 경고. 시트 수기값은 정본이므로 DB에는 manual=true로 보존한다.
+  // 복사 의심분 → 여믄봇 Slack 경고. 출처에 따라 수기/자동 플래그를 분리한다.
   if (copySuspected.length > 0) {
     const s = copySuspected.slice(0, 6)
       .map(c => `${c.target} ${c.date.slice(5, 10)} ${Number(c.value).toLocaleString()}←${c.source}(${c.metric === "reach_count" ? "도달" : "조회"})`).join(", ");
-    await notifyBot(`⚠️ [시트 조회수 입력] 복사 의심 ${copySuspected.length}행 경고 — 수기 입력 원칙에 따라 DB에는 manual=true로 반영했습니다. 오입력이면 각 URL 실측값으로 시트를 정정 후 다시 반영하세요: ${s}`);
+    await notifyBot(`⚠️ [시트 조회수 입력/${importSource}] 복사 의심 ${copySuspected.length}행 경고 — DB에는 manual=${isManualImport}로 반영했습니다. 오입력이면 각 URL 실측값으로 시트를 정정 후 다시 반영하세요: ${s}`);
   }
 
   // 중복 날짜열 감지분 → 알림(같은 날짜에 값 2개 = 시트 중복 열 오염, 어느 게 진짜인지 몰라 스킵).
@@ -558,8 +575,16 @@ export async function POST(req: NextRequest) {
   // 급변 감지분 → 알림(자동 실측의 3배 이상 = 과대 오입력 의심). 사람이 입력한 시트값은 보존한다.
   if (spikeSuspected.length > 0) {
     const s = spikeSuspected.slice(0, 6).map(c => `${c.target} ${c.date.slice(5, 10)} ${c.value.toLocaleString()}(자동실측 ${c.auto_max.toLocaleString()})`).join(", ");
-    await notifyBot(`⚠️ [시트 조회수 입력] 급변 의심 ${spikeSuspected.length}행 경고 — 수기 입력 원칙에 따라 DB에는 반영했습니다. 오입력이면 시트에서 정정 후 다시 반영하세요: ${s}`);
+    await notifyBot(`⚠️ [시트 조회수 입력/${importSource}] 급변 의심 ${spikeSuspected.length}행 경고 — DB에는 manual=${isManualImport}로 반영했습니다. 오입력이면 시트에서 정정 후 다시 반영하세요: ${s}`);
   }
+
+  console.info("stats_import_result", {
+    source: importSource,
+    manual: isManualImport,
+    inserted,
+    bannerInserted,
+    preservedManual: preservedManual.length,
+  });
 
   return NextResponse.json({
     ok: true,
@@ -573,6 +598,9 @@ export async function POST(req: NextRequest) {
     spike_suspected_warned: spikeSuspected.length,
     spike_suspected_sample: spikeSuspected.slice(0, 10),
     banner_reach_inserted: bannerInserted,
+    source: importSource,
+    manual: isManualImport,
+    preserved_manual: preservedManual.length,
     created_posts: created,
     meta_filled: metaFilled,
     ended_marked: endedMarked,

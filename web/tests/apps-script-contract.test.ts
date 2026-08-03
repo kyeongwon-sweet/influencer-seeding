@@ -142,7 +142,7 @@ test("importStats client_version handshake stays paired with server expectation"
   assert.ok(svVer, "stats-import 라우트에 EXPECTED_IMPORTSTATS_CLIENT 상수가 있어야 함");
   assert.equal(gsVer![1], svVer![1], "클라이언트/서버 버전 스탬프는 항상 같은 값으로 갱신");
   // importStats가 실제로 버전을 전송
-  assert.match(appsScript, /postStats_\(\{ posts: posts, stats: stats, client_version: IMPORTSTATS_CLIENT_VERSION \}\)/);
+  assert.match(appsScript, /client_version: IMPORTSTATS_CLIENT_VERSION,[\s\S]*?source: importSource/);
   // 서버는 불일치 시 경고만 하고 처리는 막지 않음(경고 후 return 없음)
   const warnIdx = route.indexOf("라이브 Apps Script 버전 불일치");
   assert.notEqual(warnIdx, -1);
@@ -306,7 +306,7 @@ test("refreshSheetDerivedFields fills existing channel metadata before pricing",
 test("dailyAuto records every stage and imports stats before exporting DB stats", () => {
   const defsStart = appsScript.indexOf("function dailyAutoStageDefs_()");
   const dailyStart = appsScript.indexOf("function dailyAuto()");
-  const importIdx = appsScript.indexOf('["importStats", importStats]', defsStart);
+  const importIdx = appsScript.indexOf('["importStats", function() { return importStats("daily_auto"); }]', defsStart);
   const exportIdx = appsScript.indexOf('["exportStats", exportStats]', defsStart);
   assert.notEqual(defsStart, -1);
   assert.notEqual(dailyStart, -1);

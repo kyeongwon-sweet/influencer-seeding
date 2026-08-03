@@ -52,7 +52,7 @@ const CONFIG = {
 // 왜: 라이브 .gs는 git 밖(수동 붙여넣기 배포)이라 stale 베이스 붙여넣기로 패치가 조용히
 // 되돌아가도 흔적이 없다(2026-07-27 배너 스킵 잔존 사고 — "반영 완료" 기록과 라이브 실물 불일치).
 // 규약: importStats 관련 라이브 반영 때마다 이 값과 서버 기대값을 같은 커밋에서 함께 올린다(계약테스트로 짝 강제).
-const IMPORTSTATS_CLIENT_VERSION = "2026-07-27-banner-fix";
+const IMPORTSTATS_CLIENT_VERSION = "2026-08-03-import-source-v2";
 
 // 헤더명(공백 제거·소문자) → API 필드 매핑
 const FIELD_BY_HEADER = {
@@ -915,7 +915,7 @@ function dailyAutoStageDefs_() {
     ["fillCaptionFromAsset", fillCaptionFromAsset_],
     ["syncAll", function() { return runSync_(false); }],
     ["pullFromDB", pullFromDB],
-    ["importStats", importStats],
+    ["importStats", function() { return importStats("daily_auto"); }],
     ["exportStats", exportStats],
     ["syncStatus", syncStatus],
     ["refreshCumulativeViews", refreshCumulativeViews],
@@ -1506,8 +1506,11 @@ function postStats_(payload) {
   return JSON.parse(body); // { ok, inserted, created_posts, matched_urls, missing_urls, missing_sample }
 }
 
-function importStats() {
+function importStats(source) {
   try {
+    // 메뉴에서 직접 실행하면 수기 확정값, dailyAuto에서 호출하면 자동 동기화값이다.
+    // 서버가 이 출처를 기준으로 manual 플래그와 기존 수기행 보존 정책을 적용한다.
+    const importSource = source === "daily_auto" ? "daily_auto" : "manual_sheet";
     const sheet = getSheet_();
     const fieldCols = buildFieldCols_(sheet);
     const lastRow = sheet.getLastRow();
@@ -1609,7 +1612,12 @@ function importStats() {
     if (stats.length === 0) { safeAlert_("입력할 조회수 데이터가 없습니다."); return; }
 
     const posts = Object.keys(postByKey).map(k => postByKey[k]);
-    const res = postStats_({ posts: posts, stats: stats, client_version: IMPORTSTATS_CLIENT_VERSION });
+    const res = postStats_({
+      posts: posts,
+      stats: stats,
+      client_version: IMPORTSTATS_CLIENT_VERSION,
+      source: importSource,
+    });
     Logger.log(JSON.stringify({
       event: "importStats_result",
       inserted: res.inserted || 0,
@@ -1617,6 +1625,8 @@ function importStats() {
       future_date_skipped: res.future_date_skipped || 0,
       missing_urls: res.missing_urls || 0,
       dropped_decrease: res.dropped_decrease || 0,
+      source: importSource,
+      preserved_manual: res.preserved_manual || 0,
     }));
     let msg = `✅ 일자별 조회수 ${res.inserted}건 입력 완료.\n(날짜 ${dateCols.length}개 열 · 매칭 게시물 ${res.matched_urls}개`;
     msg += res.created_posts ? ` · 신규 광고 ${res.created_posts}개 자동 생성)` : `)`;

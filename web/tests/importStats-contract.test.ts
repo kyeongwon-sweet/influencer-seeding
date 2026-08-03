@@ -36,3 +36,15 @@ test("stats-import: cross-post copies and spikes are preserved with warnings", (
   assert.match(route, /spike_suspected_warned:\s*spikeSuspected\.length/);
   assert.doesNotMatch(route, /incomingForGuard\.push\(\.\.\.kept\)/);
 });
+
+test("stats-import: dailyAuto values stay automatic and cannot overwrite human manual rows", () => {
+  assert.match(appsScript, /function importStats\(source\)/);
+  assert.match(appsScript, /importStats\("daily_auto"\)/);
+  assert.match(appsScript, /source: importSource/);
+  assert.match(route, /const importSource = body\?\.source === "daily_auto" \? "daily_auto" : "manual_sheet"/);
+  assert.match(route, /const isManualImport = importSource === "manual_sheet"/);
+  assert.match(route, /const incomingWritable = incomingForGuard\.filter/);
+  assert.match(route, /!manualSet\.has\(`\$\{i\.post_id\}\|\$\{i\.measured_at\}`\)/);
+  assert.match(route, /const statsRows = keptRows\.map\(r => \(\{ \.\.\.r, manual: isManualImport \}\)\)/);
+  assert.match(route, /preserved_manual: preservedManual\.length/);
+});
