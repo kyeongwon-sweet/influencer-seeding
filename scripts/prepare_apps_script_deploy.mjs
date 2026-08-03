@@ -18,16 +18,23 @@ function assertMarker(name, ok) {
 
 const combined = read("Combined_Sheet_AppsScript.gs");
 const guard = read("_WriteGuard.gs");
+const insightInquiry = read("apps-script/인사이트_문의_메시지_자동생성.gs");
 assertMarker("increment V2 SEQUENCE formula", combined.includes("SEQUENCE(1,COLUMNS(rng),COLUMN("));
 assertMarker("no broken COLUMN(rng) increment formula", !combined.includes("cols,COLUMN(rng)"));
 assertMarker("formula audit function", combined.includes("function auditLinkedSheetFormulas_()"));
 assertMarker("auto write guard", combined.includes("function withAutoWriteGuard_"));
 assertMarker("URL key index helper", guard.includes("function buildUrlKeyIndex_("));
+assertMarker("insight inquiry menu", combined.includes("addInsightInquiryMenu_();"));
+assertMarker("insight inquiry implementation", insightInquiry.includes("function insightInquiryBuildToday()"));
 
 rmSync(distDir, { recursive: true, force: true });
 mkdirSync(distDir, { recursive: true });
 copyFileSync(join(repoRoot, "Combined_Sheet_AppsScript.gs"), join(distDir, "Code.gs"));
 copyFileSync(join(repoRoot, "_WriteGuard.gs"), join(distDir, "_WriteGuard.gs"));
+copyFileSync(
+  join(repoRoot, "apps-script", "인사이트_문의_메시지_자동생성.gs"),
+  join(distDir, "인사이트_문의_메시지_자동생성.gs"),
+);
 copyFileSync(join(repoRoot, "apps-script", "appsscript.json"), join(distDir, "appsscript.json"));
 
 console.log(`[APPS_SCRIPT_PREPARED] rootDir=${distDir}`);

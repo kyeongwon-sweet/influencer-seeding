@@ -134,9 +134,7 @@ function onOpen() {
     .addSubMenu(automationMenu)
     .addToUi();
 
-  ui.createMenu("💻배너 인사이트 요청")
-    .addItem("업체별 채널 조회", "summarizeByCompany")
-    .addToUi();
+  addInsightInquiryMenu_();
 }
 
 function syncAllWithConfirm() {

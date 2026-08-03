@@ -33,8 +33,12 @@
  *         ├ 자동화 상태 · 최근 실행 보기             checkSetup
  *         ├ 자동 동기화 켜기 · 복구                  installDailyTrigger
  *         └ 자동 동기화 끄기                         removeDailyTrigger
- *   💻배너 인사이트 요청
- *     └ 업체별 채널 조회                             summarizeByCompany
+ *   📮 인사이트문의
+ *     ├ 오늘 문의 메시지 만들기                      insightInquiryBuildToday
+ *     ├ 날짜 직접 지정해서 만들기                    insightInquiryBuildForDate
+ *     ├ 진단 (내용이 안 나올 때)                     insightInquiryDiagnose
+ *     ├ 매일 오전 자동생성 켜기                      insightInquiryEnableDailyTrigger
+ *     └ 자동생성 끄기                                insightInquiryDisableDailyTrigger
  *
  * 누적 조회수·증분을 갱신하는 버튼(자주 찾는 것):
  *   - 둘 다: 📊 조회수 → "DB → 시트 조회수·누적·증분 반영" (exportStats)
@@ -94,7 +98,5 @@ function onOpen() {
     .addSubMenu(automationMenu)
     .addToUi();
 
-  ui.createMenu("💻배너 인사이트 요청")
-    .addItem("업체별 채널 조회", "summarizeByCompany")
-    .addToUi();
+  addInsightInquiryMenu_();
 }

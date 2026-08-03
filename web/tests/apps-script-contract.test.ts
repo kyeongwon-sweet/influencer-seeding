@@ -577,6 +577,26 @@ test("menu exposes two primary actions and four focused submenus", () => {
   assert.match(body, /addItem\("시트 변경사항 DB 반영", "syncAllWithConfirm"\)/);
   assert.doesNotMatch(body, /바이럴 채널명.*핸들 정정/);
   assert.doesNotMatch(body, /전체 다시 추가/);
+  assert.match(body, /addInsightInquiryMenu_\(\)/);
+  assert.doesNotMatch(body, /createMenu\("💻배너 인사이트 요청"\)/);
+});
+
+test("insight inquiry replaces the legacy banner lookup menu", () => {
+  const inquiryScript = readFileSync(
+    new URL("../../apps-script/인사이트_문의_메시지_자동생성.gs", import.meta.url),
+    "utf8",
+  );
+  assert.match(inquiryScript, /createMenu\("📮 인사이트문의"\)/);
+  assert.match(inquiryScript, /function insightInquiryBuildToday\(\)/);
+  assert.match(inquiryScript, /function insightInquiryBuildForDate\(\)/);
+  assert.match(inquiryScript, /function insightInquiryDiagnose\(\)/);
+  assert.match(inquiryScript, /function insightInquiryEnableDailyTrigger\(\)/);
+  assert.match(inquiryScript, /function insightInquiryDisableDailyTrigger\(\)/);
+  assert.match(inquiryScript, /업로드일/);
+  assert.match(inquiryScript, /게시물URL/);
+  assert.match(inquiryScript, /채널분류/);
+  assert.match(inquiryScript, /업체명/);
+  assert.doesNotMatch(inquiryScript, /^function onOpen\(\)/m);
 });
 
 test("automation menu reports trigger state while status view remains read-only", () => {
