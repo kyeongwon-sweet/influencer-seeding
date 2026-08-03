@@ -5,6 +5,8 @@ import { triggerCaptionBackfill, needsCaption } from "@/lib/github-dispatch";
 import { todayKST } from "@/lib/dateRule";
 import { startActorRun } from "@/lib/apify";
 import { accountNameForSponsoredWrite } from "@/lib/account-name-policy";
+import { notifyBot } from "@/lib/slack";
+import { lockedFieldDrift, formatLockedDrift, type LockedDrift } from "@/lib/locked-field-drift";
 
 type Supabase = ReturnType<typeof getServerSupabase>;
 
@@ -13,6 +15,10 @@ export type UpsertSummary = {
   created: number;
   meta_filled: number;
   ended_marked: number;
+  /** 잠금(manual_fields) 때문에 시트값이 무시된 건수 — 0이 아니면 시트와 DB가 조용히 어긋나 있다는 뜻. */
+  locked_drift?: number;
+  /** 위 드리프트 샘플(최대 8건). 사람이 어느 행을 볼지 알 수 있게. */
+  locked_drift_sample?: LockedDrift[];
 };
 
 /**
@@ -177,6 +183,7 @@ export async function upsertSponsoredRows(
 
   // 기존 게시물 → '변경분만' 덮어씀(manual_fields 보존[캡션 포함]·빈값 유지·동일값 skip).
   let metaFilled = 0;
+  const lockedDrift: LockedDrift[] = [];
   const metaUpdates: { id: string; upd: Record<string, unknown> }[] = [];
   for (const r of rows) {
     const ex = existingByIdentity.get(r.normalized_key ?? r.url) ?? existingByUrl.get(r.url);
@@ -186,7 +193,19 @@ export async function upsertSponsoredRows(
     for (const f of META) {
       // 수동 수정 필드(캡션 포함)는 보존 — 대시보드에서 마지막으로 고친 값을 시트가 덮지 않음.
       // (캡션도 이제 동일 정책. 시트 빈칸이면 아래 valPresent에서 skip → needsCaption 자동 불러오기가 채움)
-      if (!SHEET_WINS.has(f) && manual.includes(f)) continue;
+      if (!SHEET_WINS.has(f) && manual.includes(f)) {
+        // ⚠️ 무시하되 조용히 넘기지 않는다 — 시트가 다른 값을 갖고 있으면 그건 '영구 드리프트'다.
+        //    (이나 posted_at 사고: 시트를 고쳐도 DB에 안 닿아 게시일 가드가 매일 실측을 버렸다)
+        if (lockedFieldDrift((r as Record<string, unknown>)[f], ex[f])) {
+          lockedDrift.push({
+            url: r.url,
+            field: f,
+            sheet: String((r as Record<string, unknown>)[f]),
+            db: String(ex[f] ?? ""),
+          });
+        }
+        continue;
+      }
       const val = (r as Record<string, unknown>)[f];
       const valPresent = val !== null && val !== undefined && val !== "";
       if (!valPresent) continue; // 시트가 비면 기존 유지(지우지 않음)
@@ -260,5 +279,19 @@ export async function upsertSponsoredRows(
   // 캡션 빈 IG 글이 이번 배치에 있으면 캡션 보강 즉시 트리거(이벤트 기반)
   if (rows.some(r => needsCaption(r.url, r.content_summary))) await triggerCaptionBackfill(source);
 
-  return { summary: { upserted: rows.length, created, meta_filled: metaFilled, ended_marked: endedMarked } };
+  // 잠금 때문에 무시된 시트값이 있으면 Slack으로 알린다 — 시트를 아무리 고쳐도 DB에 안 닿는
+  // 상태라 사람이 개입해야만 풀린다(잠금 해제 후 재동기화). 없으면 조용하다.
+  const driftMsg = formatLockedDrift(lockedDrift);
+  if (driftMsg) await notifyBot(driftMsg).catch(() => {});
+
+  return {
+    summary: {
+      upserted: rows.length,
+      created,
+      meta_filled: metaFilled,
+      ended_marked: endedMarked,
+      locked_drift: lockedDrift.length,
+      locked_drift_sample: lockedDrift.slice(0, 8),
+    },
+  };
 }
