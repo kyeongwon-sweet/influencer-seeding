@@ -266,7 +266,7 @@ export async function POST(req: NextRequest) {
   // 자정 자동수집·리포트의 T-1 정책은 별도 경로에서 유지하며, 미래 날짜만 차단한다.
   const maxStatsDate = maxDateKST();
   let incoming: GuardInput[] = [];
-  const bannerRows: Array<{ post_id: string; measured_at: string; reach_count: number; manual: boolean }> = [];
+  let bannerRows: Array<{ post_id: string; measured_at: string; reach_count: number; manual: boolean }> = [];
   const postIdSet = new Set<string>();
   for (const it of items) {
     const pid = idByKey.get(it.key) ?? idByUrl.get(it.url);
@@ -310,66 +310,91 @@ export async function POST(req: NextRequest) {
   }
   const describePost = (pid: string) => labelByPid.get(pid) ?? urlByPidForImport.get(pid) ?? pid;
 
-  const copySuspected: Array<{ target: string; url: string; date: string; value: number; source: string }> = [];
-  if (incoming.length > 0) {
-    const dates = [...new Set(incoming.map(r => r.measured_at))];
-    const vals = [...new Set(incoming.map(r => r.play_count).filter((v): v is number => typeof v === "number" && v > 0))];
+  type CopyCandidate = {
+    post_id: string;
+    measured_at: string;
+    value: number;
+    metric: "play_count" | "reach_count";
+  };
+  const copyCandidates: CopyCandidate[] = [
+    ...incoming.map(r => ({ post_id: r.post_id, measured_at: r.measured_at, value: r.play_count as number, metric: "play_count" as const })),
+    ...bannerRows.map(r => ({ post_id: r.post_id, measured_at: r.measured_at, value: r.reach_count, metric: "reach_count" as const })),
+  ];
+  const copySuspected: Array<{
+    target: string;
+    url: string;
+    date: string;
+    value: number;
+    source: string;
+    metric: "play_count" | "reach_count";
+  }> = [];
+  const copyKeys = new Set<string>(); // `${metric}|${pid}|${date}` — DB 저장 제외
+  if (copyCandidates.length > 0) {
     const dvOwners = new Map<string, Set<string>>();
     const VCHUNK = 100;
-    for (let i = 0; i < vals.length && dates.length > 0; i += VCHUNK) {
-      const { data: rows, error } = await supabase
-        .from("post_daily_stats")
-        .select("post_id, measured_at, play_count")
-        .in("measured_at", dates)
-        .in("play_count", vals.slice(i, i + VCHUNK));
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      for (const r of (rows ?? []) as Array<{ post_id: string; measured_at: string; play_count: number }>) {
-        const k = `${String(r.measured_at).slice(0, 10)}|${r.play_count}`;
-        let set = dvOwners.get(k); if (!set) { set = new Set(); dvOwners.set(k, set); }
-        set.add(r.post_id);
+    for (const metric of ["play_count", "reach_count"] as const) {
+      const metricCandidates = copyCandidates.filter(r => r.metric === metric);
+      const dates = [...new Set(metricCandidates.map(r => r.measured_at))];
+      const vals = [...new Set(metricCandidates.map(r => r.value).filter(v => Number.isFinite(v) && v > 0))];
+      for (let i = 0; i < vals.length && dates.length > 0; i += VCHUNK) {
+        const { data: rows, error } = await supabase
+          .from("post_daily_stats")
+          .select(`post_id, measured_at, ${metric}`)
+          .in("measured_at", dates)
+          .in(metric, vals.slice(i, i + VCHUNK));
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+        for (const row of (rows ?? []) as unknown as Array<Record<string, unknown>>) {
+          const value = Number(row[metric]);
+          if (!Number.isFinite(value) || value <= 0) continue;
+          // 조회(play) 값을 배너 도달(reach)에 복사한 사고도 잡아야 하므로 소스 metric은 합쳐서 비교한다.
+          const key = `${String(row.measured_at).slice(0, 10)}|${value}`;
+          let owners = dvOwners.get(key);
+          if (!owners) { owners = new Set(); dvOwners.set(key, owners); }
+          owners.add(String(row.post_id));
+        }
       }
     }
-    // (pid → 타 게시물) 별 일치 날짜 집계 → 같은 타 게시물과 2일 이상 일치하면 복사로 판정
-    const matchDates = new Map<string, Set<string>>(); // `${pid}|${other}` → set(date)
-    for (const r of incoming) {
-      const d = r.measured_at.slice(0, 10);
-      // 🛡️ 라운드 값(1000단위)은 서로 다른 게시물이 우연히 같은 값을 갖기 쉬워(예: 36,000·135,000)
-      //   복사 판정에서 제외한다(scan_cross_post_copies.py is_round과 동일 기준). 비-라운드 다일 일치만 진짜 복사로 차단.
-      if (typeof r.play_count === "number" && r.play_count % 1000 === 0) continue;
-      const owners = dvOwners.get(`${d}|${r.play_count}`);
+
+    // 같은 타 게시물과 같은 비-라운드 값이 2일 이상 겹칠 때만 복사로 판정한다.
+    // 미러 채널도 URL별 독립 측정이므로 예외를 두지 않고, 배너 reach에도 동일 기준을 적용한다.
+    const matchDates = new Map<string, Set<string>>(); // `${metric}|${pid}|${other}` → set(date)
+    for (const r of copyCandidates) {
+      const date = r.measured_at.slice(0, 10);
+      if (r.value % 1000 === 0) continue;
+      const owners = dvOwners.get(`${date}|${r.value}`);
       if (!owners) continue;
-      // 🛡️ 오탐 방지: 그 게시물이 '이미 그 날짜에 그 값'을 갖고 있으면(자기 기존값 재입력) 복사 아님 → 스킵 안 함.
-      //   (원본/기존 데이터가 다른 게시물에 복사돼 있어도, 원본의 재입력까지 막던 문제 해결. 새 값 오붙임만 차단.)
-      if (owners.has(r.post_id)) continue;
       for (const other of owners) {
         if (other === r.post_id) continue;
-        const mk = `${r.post_id}|${other}`;
-        let set = matchDates.get(mk); if (!set) { set = new Set(); matchDates.set(mk, set); }
-        set.add(d);
+        const matchKey = `${r.metric}|${r.post_id}|${other}`;
+        let dates = matchDates.get(matchKey);
+        if (!dates) { dates = new Set(); matchDates.set(matchKey, dates); }
+        dates.add(date);
       }
     }
-    const copyKeys = new Set<string>();            // `${pid}|${date}` → 스킵 대상
-    const copySource = new Map<string, string>();  // pid → 복사원 post_id
-    for (const [mk, dset] of matchDates) {
-      if (dset.size >= 2) {
-        const [pid, other] = mk.split("|");
-        for (const d of dset) copyKeys.add(`${pid}|${d}`);
-        if (!copySource.has(pid)) copySource.set(pid, other);
-      }
+
+    const copySource = new Map<string, string>(); // `${metric}|${pid}` → source post_id
+    for (const [matchKey, dates] of matchDates) {
+      if (dates.size < 2) continue;
+      const [metric, pid, other] = matchKey.split("|") as ["play_count" | "reach_count", string, string];
+      for (const date of dates) copyKeys.add(`${metric}|${pid}|${date}`);
+      if (!copySource.has(`${metric}|${pid}`)) copySource.set(`${metric}|${pid}`, other);
     }
     if (copyKeys.size > 0) {
       const urlByPid = new Map<string, string>();
       for (const [u, id] of idByUrl) urlByPid.set(id, u);
-      for (const r of incoming) {
-        if (!copyKeys.has(`${r.post_id}|${r.measured_at.slice(0, 10)}`)) continue;
+      for (const r of copyCandidates) {
+        if (!copyKeys.has(`${r.metric}|${r.post_id}|${r.measured_at.slice(0, 10)}`)) continue;
         copySuspected.push({
           target: describePost(r.post_id),
           url: urlByPid.get(r.post_id) ?? r.post_id,
           date: r.measured_at,
-          value: r.play_count as number,
-          source: describePost(copySource.get(r.post_id) ?? ""),
+          value: r.value,
+          source: describePost(copySource.get(`${r.metric}|${r.post_id}`) ?? ""),
+          metric: r.metric,
         });
       }
+      incoming = incoming.filter(r => !copyKeys.has(`play_count|${r.post_id}|${r.measured_at.slice(0, 10)}`));
+      bannerRows = bannerRows.filter(r => !copyKeys.has(`reach_count|${r.post_id}|${r.measured_at.slice(0, 10)}`));
     }
   }
 
@@ -520,11 +545,11 @@ export async function POST(req: NextRequest) {
     bannerInserted = (data ?? []).length;
   }
 
-  // 복사 의심분 → 여믄봇 Slack 알림(사람이 확인·정정). 시트 수기값은 정본이므로 DB에는 manual=true로 반영한다.
+  // 복사 의심분 → DB 적재를 차단하고 여믄봇 Slack 알림. 미러 채널도 게시물별 독립 측정이므로 예외 없음.
   if (copySuspected.length > 0) {
     const s = copySuspected.slice(0, 6)
-      .map(c => `${c.target} ${c.date.slice(5, 10)} ${Number(c.value).toLocaleString()}←${c.source}`).join(", ");
-    await notifyBot(`⚠️ [시트 조회수 입력] 복사 의심 ${copySuspected.length}행 경고 — 수기 입력 원칙에 따라 DB에는 반영했습니다. 오입력이면 시트에서 정정 후 다시 반영하세요: ${s}`);
+      .map(c => `${c.target} ${c.date.slice(5, 10)} ${Number(c.value).toLocaleString()}←${c.source}(${c.metric === "reach_count" ? "도달" : "조회"})`).join(", ");
+    await notifyBot(`⛔ [시트 조회수 입력] 복사 의심 ${copySuspected.length}행 차단 — 미러 포함 게시물별 독립 측정 원칙에 따라 DB에는 반영하지 않았습니다. 각 URL 실측값으로 시트를 정정 후 다시 반영하세요: ${s}`);
   }
 
   // 중복 날짜열 감지분 → 알림(같은 날짜에 값 2개 = 시트 중복 열 오염, 어느 게 진짜인지 몰라 스킵).
@@ -541,8 +566,8 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     inserted,
-    copy_suspected_skipped: 0,
-    copy_suspected_warned: copySuspected.length,
+    copy_suspected_skipped: copySuspected.length,
+    copy_suspected_warned: 0,
     copy_suspected_sample: copySuspected.slice(0, 10),
     dup_column_skipped: dupConflict.length,
     dup_column_sample: dupConflict.slice(0, 10),
