@@ -108,7 +108,7 @@ function onOpen() {
 
   const statsMenu = ui.createMenu("📊 조회수")
     .addItem("시트 → DB 조회수 반영", "importStats")
-    .addItem("DB → 시트 조회수 반영", "exportStats");
+    .addItem("DB → 시트 조회수·누적·증분 반영", "exportStats");
 
   const metadataMenu = ui.createMenu("🔄 메타데이터 · 복구")
     .addItem("대시보드 추가분 가져오기", "pullFromDB")

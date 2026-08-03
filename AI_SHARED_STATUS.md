@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## 2026-08-03 [Codex 완료] 조회수 메뉴명·IG `/p/` 정책 확인 + 2개 폴백 자가치유
+- **조회수 메뉴:** 라이브 Apps Script와 repo에서 `DB → 시트 조회수 반영`을 `DB → 시트 조회수·누적·증분 반영`으로 변경했다. 함수는 기존 `exportStats` 그대로이며 일자값 역채움, I열 증분 재설치, H열 누적 갱신을 함께 수행한다.
+- **IG `/p/` 확인:** 등록 동기화는 입력 URL을 먼저 `normalizeUrl()`로 통과시켜 `/reel/`·`/reels/`·`/tv/`도 동일 shortcode의 `/p/<code>/` 표준형으로 접는다. 이어 `normalized_key=ig:<shortcode>`로 다시 중복 판정한다. 메타데이터 전용 즉시수집의 `/p/` 필터는 Reel 누락이 아니라 중복 방지 정규화 이후 표준형 필터이므로 유지한다.
+- **수식감사 폴백:** 최신 라이브 서버본에 `AUDIT_FALLBACK_URL`과 `auditFallback`/설치/제거 함수만 graft·저장했다. `installAuditFallbackTrigger()` 실행 후 트리거 목록에서 시간 기반 `auditFallback` 1개를 확인했다. 수동 실측은 `HTTP 200`, `reason=already_done`, `todayRuns=2`로 정상 무동작.
+- **부정댓글 폴백:** `negative-comment-monitor` master `477fd77`에 `heartbeat.yml`의 `actions: write`와 stale 시 `monitor.yml` 자동 dispatch를 반영·push했다. 성공 실행이 있으면 무동작하고, 없으면 자동 dispatch 후 Slack에 자가치유 사실을 알린다. 전체 테스트 **162/162 pass**.
+
 ## 2026-08-03 [Codex 정정 완료] 시트 수기 조회수는 의심이어도 보존·반영
 - **사용자 원칙 재확인:** 시트에 사람이 수동 입력한 조회수/도달수는 수정 없이 보존한다. 자동수집값이나 복사/급변 의심 가드가 수기값을 다른 값으로 되돌리면 안 된다.
 - **문제 원인:** 직전 `stats-import` 구현은 복사 의심/급변 의심 값을 DB 쓰기 전에 스킵했다. 그 결과 이후 DB→시트 반영(`exportStats`)에서 DB의 기존 자동값이 다시 내려와, 사람이 입력한 8/2 값이 바뀔 수 있었다.
@@ -17,9 +23,9 @@
 - **근본원인:** 기존 감시(`cron_watchdog.FRESHNESS_HOURS`, `schedule-heartbeat.WATCH_TARGETS`)가 전부 **나이(26h) 기준**이라 *어제 13:31에 성공했으면 오늘 아침 미실행이 26h 안에 들어와 경고 자체가 안 뜬다*. 감시의 구조적 사각.
 - **대책(경고 추가가 아니라 자가치유):** `/api/ops/audit-fallback` + 구글 트리거 `auditFallback`(11:00 KST). 오늘(KST) 감사 성공이 없으면 `/api/sponsored-posts/formula-audit`를 직접 호출, 있으면 무동작(중복 Slack 0). **자정수집 폴백과 정책이 의도적으로 반대** — GitHub 조회 실패 시 여기선 **실행**한다(감사는 읽기 전용·비용 0, 미실행 피해가 더 큼).
 - 단위테스트 7종(사고 재현·KST 날짜경계·dry-run·실행실패). web 109/109·tsc·build 통과. 라이브 검증: `/api/ops/audit-fallback` 401(존재+인증), 없는 경로 307 대조.
-- ⚠️ **남은 1스텝(Codex 요청):** 라이브 .gs에 `auditFallback`/`installAuditFallbackTrigger`/`removeAuditFallbackTrigger` 반영 후 `installAuditFallbackTrigger()` 1회 실행. 정본 코드는 repo `Combined_Sheet_AppsScript.gs`. **라이브 붙여넣기는 Codex 담당**(내가 에디터 드롭다운 타입어헤드로 라이브 파일을 오염시킨 전례 있음).
+- ✅ **라이브 설치 완료(Codex):** `auditFallback`/설치/제거 함수와 URL을 최신 서버본에 함수 단위로 반영했고, 11시 시간 기반 트리거 1개 및 수동 `already_done` 실측까지 확인했다.
 - 커밋 시 당시 미커밋 상태였던 Codex의 `.gs` 훅(personCols·CPV)은 **의도적으로 제외**하고 내 훅만 스테이징했다(작업트리 공유 중).
-- **미해결(Codex repo 이관):** `negative-comment-monitor`의 아침 스캔(09:13~09:52 KST 창)이 오늘 전부 미발화 — 마지막 스케줄 08:56. `heartbeat.yml`(14:00·17:00 KST)은 **감지만 하고 복구는 안 한다**. 같은 repo `GITHUB_TOKEN`(actions: write)로 `monitor.yml` 자동 dispatch를 넣으면 자가치유 완성.
+- ✅ **부정댓글 자가치유 완료(Codex `477fd77`):** `heartbeat.yml`이 오늘 성공 없음 감지 시 같은 repo의 `monitor.yml`을 자동 dispatch하고 Slack에 복구 요청 사실을 알린다. 크레덴셜 추가 없이 `GITHUB_TOKEN`의 `actions: write`를 사용한다.
 
 ## 2026-08-03 [Codex 완료] 연동시트 CPV(J) 추가 대응 — 입력검증 헤더기준화
 - **상황:** `콘텐츠 대시보드 연동` 라이브 헤더가 `J=CPV, K=기획자, L=제작자`로 확인됨. 기존 Apps Script 입력검증은 J/K를 기획자/제작자로 하드코딩해 CPV 숫자 입력을 사람 이름 오류로 볼 수 있었음.

@@ -12,6 +12,7 @@ const writeGuard = readFileSync(
 );
 
 test("Apps Script mirror keeps live metadata and URL guards", () => {
+  assert.match(appsScript, /"DB → 시트 조회수·누적·증분 반영",\s*"exportStats"/);
   assert.match(appsScript, /"기획자":\s*"planner"/);
   assert.match(appsScript, /"제작자":\s*"creator"/);
   assert.match(appsScript, /obj\.planner\s*=/);
