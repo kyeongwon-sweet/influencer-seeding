@@ -137,7 +137,9 @@ def main():
 
     P = round(100 * val_nb / active_nb) if active_nb else 0
     newN = len(new_times)
-    first = min(new_times).strftime("%H:%M") if new_times else "--:--"
+    # 대표 '수집 시각'은 대량 배치(정기 자정수집)를 반영해야 함. min은 소수의 당일 조기 측정
+    # (그날 새로 추가된 게시물의 저녁 첫 측정 등)에 끌려가 자정 전 시각으로 오표기됨 → 중앙값 사용.
+    first = sorted(new_times)[len(new_times) // 2].strftime("%H:%M") if new_times else "--:--"
     success = newN >= 100
 
     if not success:
