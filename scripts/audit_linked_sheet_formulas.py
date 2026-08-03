@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Read-only regression audit for the linked content sheet metric display.
 
-This public CSV audit cannot see formulas. It catches value-level regressions
+This authenticated value audit cannot see formulas. It catches value-level regressions
 such as #REF!, an all-blank increment column, or a sudden jump in rows where
 H has a cumulative value but I is blank. Formula-presence auditing is handled
 inside Apps Script by auditLinkedSheetFormulas().
@@ -10,23 +10,12 @@ inside Apps Script by auditLinkedSheetFormulas().
 from __future__ import annotations
 
 import argparse
-import csv
-import io
 import json
-import time
-import urllib.request
-
-SHEET_ID = "10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak"
-GID = "1937186871"
+from linked_sheet_reader import fetch_linked_sheet_rows
 
 
 def fetch_rows() -> list[list[str]]:
-    url = (
-        f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export"
-        f"?format=csv&gid={GID}&cb={int(time.time() * 1000)}"
-    )
-    text = urllib.request.urlopen(url, timeout=60).read().decode("utf-8-sig")
-    return list(csv.reader(io.StringIO(text)))
+    return fetch_linked_sheet_rows()
 
 
 def run(max_h_value_i_blank: int) -> dict[str, object]:
@@ -82,7 +71,7 @@ def run(max_h_value_i_blank: int) -> dict[str, object]:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    # DB-aware formula-audit separately validates every row. This CSV fallback
+    # DB-aware formula-audit separately validates every row. This value-only fallback
     # cannot distinguish legitimate >7-day backlog blanks, currently 13 rows.
     parser.add_argument("--max-h-value-i-blank", type=int, default=20)
     args = parser.parse_args()

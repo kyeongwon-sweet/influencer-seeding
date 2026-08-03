@@ -3,12 +3,8 @@
 
 from __future__ import annotations
 
-import csv
-import io
 import json
 import re
-import time
-import urllib.request
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 from typing import Any
@@ -16,10 +12,9 @@ from typing import Any
 from auto_end_rules import row_metric
 from backfill_zero_metric_posts import is_allowed_channel_type, platform_of
 from db import get_client
+from linked_sheet_reader import fetch_linked_sheet_rows
 
 
-SHEET_ID = "10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak"
-GID = "1937186871"
 BASE_MEASURED_AT = (
     (datetime.now(timezone.utc) + timedelta(hours=9)).date() - timedelta(days=1)
 ).isoformat()
@@ -52,12 +47,7 @@ def target_measured_at(post: dict[str, Any] | None) -> str:
 
 
 def fetch_sheet_rows() -> list[dict[str, Any]]:
-    url = (
-        f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export"
-        f"?format=csv&gid={GID}&cb={int(time.time() * 1000)}"
-    )
-    text = urllib.request.urlopen(url, timeout=60).read().decode("utf-8-sig")
-    rows = list(csv.reader(io.StringIO(text)))
+    rows = fetch_linked_sheet_rows()
     out: list[dict[str, Any]] = []
     for row_num, row in enumerate(rows[1:], start=2):
         if len(row) < 8:

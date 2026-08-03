@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 2026-08-03 [Codex 구현·배포대기] 비공개 연동시트 인증 읽기 + 일일 증분리포트 자동발송 재개
+- **사용자 승인 2건 반영:** 시트를 공개하지 않고 서버 인증 라우트를 사용하며, 중단됐던 일일 증분리포트 자동 스케줄을 재개한다.
+- **인증 읽기:** `/api/ops/linked-sheet-values`는 `CRON_SECRET` 인증 후 서비스계정으로 정본 시트 `gid=1937186871`, 고정범위 `A1:CZ3000`만 반환한다. 임의 spreadsheet/range 쿼리는 받지 않는다.
+- **익명 export 제거:** `audit_linked_sheet_formulas.py`, `report_blank_sheet_metrics.py`, `reconcile_sheet_stat_mismatches.py`를 공용 `linked_sheet_reader.py`로 전환. 세 GHA workflow는 기존 `CRON_SECRET`만 사용하고 Google SA 키를 직접 보유하지 않는다.
+- **자동발송:** `daily-increment-report.yml` 12:20 KST 주 실행 + 13:20/14:20/15:20 백업 스케줄 복원. 첫 성공 후 기존 DEDUP가 백업 중복발송을 막는다. 근거: 최신 배너 sync 실측 `banner_rows=565`, `missing_urls=0`.
+- **검증:** Python 51/51, web 123/123, `tsc --noEmit`, Next production build 통과. 라이브 배포·인증 호출 실측은 push 후 확인 예정.
+
 ## 2026-08-03 [Claude 완료] posted_at 잠금 나머지 10건 전수 검증 — **수정 불필요**, 대신 드리프트 감지 추가 (`9c21afd`)
 - **판정: DB 날짜가 다 맞다 → 잠금을 풀 이유가 없다.** 잠금을 그냥 해제하면 (검증 안 된) 시트값이 정확한 DB값을 덮을 수 있어 **일괄 해제하지 않았다.**
   - **틱톡 4건 정확** — video id 상위 32비트=업로드 unix ts로 계산: 유머박스 07-15 18:27 · 이슈박스 07-15 18:10 · 이슈뜨기 07-15 17:43 · 썰뜨기 07-13 18:08 (KST) = DB와 일치.

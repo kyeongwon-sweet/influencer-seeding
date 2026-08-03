@@ -4,24 +4,17 @@
 from __future__ import annotations
 
 import argparse
-import csv
-import io
 import json
 import re
-import urllib.request
 from collections import defaultdict
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
 from db import get_client
+from linked_sheet_reader import fetch_linked_sheet_rows
 
 
-SHEET_CSV = (
-    "https://docs.google.com/spreadsheets/d/"
-    "10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak/export"
-    "?format=csv&gid=1937186871"
-)
 PAGE = 1000
 
 
@@ -104,8 +97,7 @@ def main() -> None:
     args = parser.parse_args()
     cutoff = date.fromisoformat(args.before_date)
 
-    with urllib.request.urlopen(SHEET_CSV, timeout=90) as response:
-        rows = list(csv.reader(io.StringIO(response.read().decode("utf-8-sig"))))
+    rows = fetch_linked_sheet_rows()
     headers = rows[0]
     date_columns = {index: parse_date(value) for index, value in enumerate(headers) if index >= 14}
     date_columns = {index: value for index, value in date_columns.items() if value}

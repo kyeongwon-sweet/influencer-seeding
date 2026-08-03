@@ -7,12 +7,15 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      APP_URL: "https://influencer-seeding-mu.vercel.app"
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Audit linked sheet H/I display
-        # DB-aware formula-audit is authoritative. This public-CSV smoke test allows
+        # DB-aware formula-audit is authoritative. This authenticated smoke test allows
         # legitimate backlog-first-measurement blanks while still catching spikes.
         run: python scripts/audit_linked_sheet_formulas.py --max-h-value-i-blank 20
