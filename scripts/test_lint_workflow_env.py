@@ -86,11 +86,11 @@ def main() -> int:
             failures.append(f"오탐({name}): {got}")
 
     if failures:
-        print("🔴 test_lint_workflow_env 실패")
+        print("[FAIL] test_lint_workflow_env 실패")
         for f in failures:
             print("  - " + f)
         return 1
-    print("✅ test_lint_workflow_env 통과 (사고 케이스 검출 1건 · 정상 패턴 오탐 0건)")
+    print("[OK] test_lint_workflow_env 통과 (사고 케이스 검출 1건 / 정상 패턴 오탐 0건)")
     return 0
 
 

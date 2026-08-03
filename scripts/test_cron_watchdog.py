@@ -113,11 +113,11 @@ def main() -> int:
         fails.append(f"⑥timed_out/cancelled 미검출: {f}")
 
     if fails:
-        print("🔴 test_cron_watchdog 실패")
+        print("[FAIL] test_cron_watchdog 실패")
         for x in fails:
             print("  - " + x)
         return 1
-    print("✅ test_cron_watchdog 통과 (사고재현·정상·미발화·예약실패·수동복구·기록없음·주기초과·비정상종료 8종)")
+    print("[OK] test_cron_watchdog 통과 (사고재현/정상/미발화/예약실패/수동복구/기록없음/주기초과/비정상종료 8종)")
     return 0
 
 

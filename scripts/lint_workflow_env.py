@@ -83,11 +83,11 @@ def main() -> int:
     for f in files:
         all_problems += scan_text(f.read_text(encoding="utf-8"), f.name)
     if all_problems:
-        print("[lint_workflow_env] 🔴 문제 발견:")
+        print("[lint_workflow_env] [FAIL] 문제 발견:")
         for p in all_problems:
             print("  - " + p)
         return 1
-    print(f"[lint_workflow_env] ✅ 통과 — 워크플로 {len(files)}개, run 블록 env 불일치 0건")
+    print(f"[lint_workflow_env] [OK] 통과 - 워크플로 {len(files)}개, run 블록 env 불일치 0건")
     return 0
 
 

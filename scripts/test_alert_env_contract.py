@@ -73,11 +73,11 @@ def main() -> int:
         checked += 1
         problems += check_file(path)
     if problems:
-        print("🔴 알림 env 계약 위반")
+        print("[FAIL] 알림 env 계약 위반")
         for p in problems:
             print("  - " + p)
         return 1
-    print(f"✅ 알림 env 계약 통과 (워크플로 {checked}개 검사)")
+    print(f"[OK] 알림 env 계약 통과 (워크플로 {checked}개 검사)")
     return 0
 
 
