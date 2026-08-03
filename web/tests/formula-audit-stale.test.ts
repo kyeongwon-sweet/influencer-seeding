@@ -8,8 +8,16 @@ import { auditRows, formatAuditMessage, isMetriclessChannel, type AuditPost, typ
 
 const TODAY = "2026-08-03";
 
-function mkPost(over: Partial<AuditPost> = {}): AuditPost {
-  return { posted: "2026-07-01", ended: null, channelType: "바이럴 (영상)", measured: new Map(), ...over };
+// ⚠️ 정체 판정은 **DB 실측(measured)** 기준이다. 시트 날짜칸은 '공백 이어받기'로 채워져
+//    끊김이 보이지 않기 때문(첫 구현이 시트 기준이라 실제 3건을 0건으로 놓쳤다).
+function mkPost(measured: Array<[string, number]> = [], over: Partial<AuditPost> = {}): AuditPost {
+  return {
+    posted: "2026-07-01",
+    ended: null,
+    channelType: "바이럴 (영상)",
+    measured: new Map(measured),
+    ...over,
+  };
 }
 
 function mkRow(label: string, dates: Array<[string, number]>): SheetAuditRow {
@@ -30,56 +38,64 @@ function run(rows: SheetAuditRow[], posts: Array<[string, AuditPost]>) {
   return auditRows(rows, new Map(posts), TODAY);
 }
 
-test("사고 재현: 활성 게시물인데 값이 7/30에서 멈췄으면 정체로 잡는다", () => {
+test("사고 재현: 실측이 7/30에서 멈췄으면 정체로 잡는다", () => {
   const row = mkRow("Ufo__green", [["2026-07-29", 3000], ["2026-07-30", 3655]]);
-  const r = run([row], [["Ufo__green", mkPost()]]);
+  const r = run([row], [["Ufo__green", mkPost([["2026-07-29", 3000], ["2026-07-30", 3655]])]]);
   assert.equal(r.stale, 1);
-  assert.match(r.staleNotes[0], /값정체 Ufo__green: 마지막 값 2026-07-30/);
+  assert.match(r.staleNotes[0], /값정체 Ufo__green: 마지막 실측 2026-07-30/);
   // 수식 자체는 정합이라 기존 지표는 깨끗해야 한다 — 그게 이 사각의 본질
   assert.equal(r.h.errorCells + r.h.emptyButData + r.inc.errorCells + r.inc.mismatch, 0);
 });
 
+test("🚨 시트가 '공백 이어받기'로 최근 날짜까지 채워져 있어도, 실측이 끊겼으면 정체로 잡는다", () => {
+  // 실제 사고 형태: 시트엔 8/02까지 값이 보이지만 DB 실측은 7/22가 마지막(이어받기 표시 보정).
+  const row = mkRow("jjin.mood_", [["2026-07-22", 1854], ["2026-08-01", 1854], ["2026-08-02", 1854]]);
+  const r = run([row], [["jjin.mood_", mkPost([["2026-07-22", 1854]])]]);
+  assert.equal(r.stale, 1, "시트 기준으로 보면 놓친다 — DB 실측으로 봐야 잡힌다");
+  assert.match(r.staleNotes[0], /마지막 실측 2026-07-22/);
+});
+
 test("메시지가 '이상 없음'만 말하지 않고 정체를 반드시 덧붙인다", () => {
   const row = mkRow("Ufo__green", [["2026-07-30", 3655]]);
-  const { text, healthy } = formatAuditMessage(run([row], [["Ufo__green", mkPost()]]));
+  const { text, healthy } = formatAuditMessage(run([row], [["Ufo__green", mkPost([["2026-07-30", 3655]])]]));
   assert.match(text, /수식 이상 없음/);
   assert.match(text, /값 정체 1건/);
   assert.equal(healthy, false, "정체가 있으면 healthy가 아니어야 한다");
 });
 
-test("어제까지 값이 들어왔으면 정체 아님", () => {
+test("어제까지 실측이 들어왔으면 정체 아님", () => {
   const row = mkRow("정상글", [["2026-08-01", 100], ["2026-08-02", 120]]);
-  const r = run([row], [["정상글", mkPost()]]);
+  const r = run([row], [["정상글", mkPost([["2026-08-01", 100], ["2026-08-02", 120]])]]);
   assert.equal(r.stale, 0);
   assert.equal(formatAuditMessage(r).healthy, true);
 });
 
-test("종료글은 값이 멈춰 있어도 정체 아님(정상)", () => {
+test("종료글은 실측이 멈춰 있어도 정체 아님(정상)", () => {
   const row = mkRow("종료글", [["2026-07-20", 500]]);
-  const r = run([row], [["종료글", mkPost({ ended: "2026-08-03" })]]);
+  const r = run([row], [["종료글", mkPost([["2026-07-20", 500]], { ended: "2026-08-03" })]]);
   assert.equal(r.stale, 0);
 });
 
 test("배너·피드·위성/온드는 매일 값이 없는 게 정상 — 제외", () => {
   for (const ct of ["바이럴 (배너)", "협찬 (피드)", "위성채널", "온드미디어"]) {
     assert.equal(isMetriclessChannel(ct), true, ct);
-    const r = run([mkRow(ct, [["2026-07-20", 10]])], [[ct, mkPost({ channelType: ct })]]);
+    const r = run([mkRow(ct, [["2026-07-20", 10]])], [[ct, mkPost([["2026-07-20", 10]], { channelType: ct })]]);
     assert.equal(r.stale, 0, ct);
   }
   assert.equal(isMetriclessChannel("바이럴 (영상)"), false);
 });
 
-test("갓 올린 글(어제 게시)은 아직 값이 없어도 정체 아님", () => {
+test("갓 올린 글(어제 게시)은 아직 실측이 없어도 정체 아님", () => {
   const row: SheetAuditRow = { key: "신규", label: "신규", h: null, inc: null, dates: [] };
-  const r = run([row], [["신규", mkPost({ posted: "2026-08-02" })]]);
+  const r = run([row], [["신규", mkPost([], { posted: "2026-08-02" })]]);
   assert.equal(r.stale, 0);
 });
 
-test("오래된 활성 글인데 값이 한 번도 없으면 정체", () => {
+test("오래된 활성 글인데 실측이 한 번도 없으면 정체", () => {
   const row: SheetAuditRow = { key: "무측정", label: "무측정", h: null, inc: null, dates: [] };
-  const r = run([row], [["무측정", mkPost({ posted: "2026-07-01" })]]);
+  const r = run([row], [["무측정", mkPost([], { posted: "2026-07-01" })]]);
   assert.equal(r.stale, 1);
-  assert.match(r.staleNotes[0], /마지막 값 없음/);
+  assert.match(r.staleNotes[0], /마지막 실측 없음/);
 });
 
 test("DB에 없는 행은 판단하지 않는다(오탐 방지)", () => {

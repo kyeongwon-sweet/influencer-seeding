@@ -158,10 +158,14 @@ export function auditRows(
         && p0.posted <= staleCutoff            // 갓 올린 글은 아직 값이 없는 게 정상
         && !isMetriclessChannel(p0.channelType); // 배너·피드·위성/온드는 매일 값이 없는 게 정상
       if (eligible) {
-        const lastDate = row.dates.length ? row.dates[row.dates.length - 1].date : null;
-        if (!lastDate || lastDate < staleCutoff) {
+        // ⚠️ 반드시 **DB 실측**으로 판정한다. 시트 날짜칸은 exportStats가 '측정 없음' 빈칸을 직전
+        //    누적값으로 이어받아 채우므로(표시 보정), 시트만 보면 수집이 끊겨도 연속처럼 보인다.
+        //    (첫 구현이 시트 기준이라 실제 정체 3건을 0건으로 놓쳤다 — 2026-08-03 자체 검증에서 발견)
+        const measuredDates = [...p0!.measured.keys()].sort();
+        const lastMeasured = measuredDates.length ? measuredDates[measuredDates.length - 1] : null;
+        if (!lastMeasured || lastMeasured < staleCutoff) {
           res.stale += 1;
-          staleNote(`값정체 ${row.label}: 마지막 값 ${lastDate ?? "없음"} (게시 ${p0!.posted})`);
+          staleNote(`값정체 ${row.label}: 마지막 실측 ${lastMeasured ?? "없음"} (게시 ${p0!.posted})`);
         }
       }
     }
