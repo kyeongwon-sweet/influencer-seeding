@@ -1,10 +1,10 @@
 
 # AI Shared Status
 
-## 2026-08-03 [Codex 부분완료] 비공개 repo 하트비트 404 오탐 차단 + 전용 토큰 대기
+## 2026-08-03 [Codex 완료] 비공개 repo 하트비트 인증 복구 + 404 오탐 차단
 - **원인 확정:** repo 비공개 전환 뒤 production에 `OPS_GITHUB_TOKEN`이 없어 GitHub Actions 조회가 workflow별 404를 반환했고, 이를 `null=실행 기록 없음`으로 취급해 크론 5개가 모두 사라진 것처럼 오탐했다.
 - **코드·배포:** main `d972180`에서 `OPS_GITHUB_TOKEN` 우선 + 기존 `GITHUB_TOKEN` 후순위 호환을 하트비트와 audit-fallback에 공통 적용했다. 조회 실패 workflow는 미발화 판정에서 제외해 앞으로 인증 오류가 나도 “스케줄 5개 미실행”으로 표시하지 않고 **GitHub 조회 실패·판정 보류**만 알린다. web test 138/138, build, pre-push typecheck 통과; production Ready 확인.
-- **운영 실측:** smoke run `30818572666`은 새 배포를 HTTP 200으로 호출했고 `findings=[]`로 오탐 5건이 제거됐다. 다만 기존 Vercel `GITHUB_TOKEN`은 private Actions API에서 **401**이므로 인증 복구 자체는 미완료다. 전용 fine-grained PAT(repo=`influencer-seeding`, Actions read-only)를 Vercel Production `OPS_GITHUB_TOKEN`으로 등록해야 한다.
+- **운영 실측:** 기존 Vercel `GITHUB_TOKEN`은 private Actions API에서 401이었으나, 사용자가 새 fine-grained PAT(repo=`influencer-seeding`, Actions read-only)를 `OPS_GITHUB_TOKEN`으로 등록했다. 최신 production 재배포 후 smoke run `30820310088`에서 **HTTP 200, `healthy=true`, `findings=[]`, `errors=[]`** 확인. 자정수집·수식감사·오류게시글 리포트·데이터검증·배너 sync 5개의 실제 최근 schedule 성공 시간이 모두 반환되어 인증 복구와 오탐 제거를 함께 실증했다.
 - **Actions 한도 실측:** GitHub Billing에서 2026-08 현재 **129/2,000분**, billed `$0`, 잔여 1,871분. Actions budget은 `$0` + Stop usage Yes라 포함량 소진 시 workflow가 멈추지만 현재 사용률 6.45%로 즉시 위험은 없다.
 
 ## 2026-08-03 [Claude 독립 검증] reconcile 12개 게시물 = 라이브 시트·DB 완전 일치 확인 → 추가 쓰기 불필요
