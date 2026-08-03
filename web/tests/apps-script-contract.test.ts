@@ -211,6 +211,7 @@ test("linked-sheet data validation rejects invalid input without including regis
   assert.match(body, /const fieldCols = buildFieldCols_\(sheet\)/);
   assert.match(body, /const cpvCol = findHeaderCol_\(sheet, \["CPV", "cpv"\]\)/);
   assert.match(body, /rules\.push\(\[cpvCol, '=OR\('/);
+  assert.match(body, /cpvCell \+ '="\?",ISNUMBER/);
   assert.match(body, /\[fieldCols\.planner, fieldCols\.creator\]\.forEach/);
   assert.match(body, /rules\.push\(\[col, '=OR\('/);
   assert.doesNotMatch(body, /\[10, '=OR\(J2="",REGEXMATCH/);

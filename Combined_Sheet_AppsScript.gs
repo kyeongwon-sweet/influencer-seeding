@@ -1954,7 +1954,7 @@ function applyLinkedSheetInputValidation_() {
   ];
   if (cpvCol) {
     const cpvCell = colLetter_(cpvCol) + CONFIG.DATA_START_ROW;
-    rules.push([cpvCol, '=OR(' + cpvCell + '="",ISNUMBER(' + cpvCell + '))', "CPV는 숫자 또는 빈칸만 입력하세요."]);
+    rules.push([cpvCol, '=OR(' + cpvCell + '="",' + cpvCell + '="?",ISNUMBER(' + cpvCell + '))', "CPV는 숫자, ?, 또는 빈칸만 입력하세요."]);
   }
   [fieldCols.planner, fieldCols.creator].forEach(function(col) {
     if (!col) return;

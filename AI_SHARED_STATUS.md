@@ -13,6 +13,7 @@
 - **상황:** `콘텐츠 대시보드 연동` 라이브 헤더가 `J=CPV, K=기획자, L=제작자`로 확인됨. 기존 Apps Script 입력검증은 J/K를 기획자/제작자로 하드코딩해 CPV 숫자 입력을 사람 이름 오류로 볼 수 있었음.
 - **repo 수정:** `Combined_Sheet_AppsScript.gs`의 `validateLinkedSheetInputOnEdit_`와 `applyLinkedSheetInputValidation_`을 헤더 기반으로 변경. CPV 열은 숫자/빈칸 허용, 기획자/제작자는 현재 헤더 위치 기준으로 한글 이름 검증. 계약테스트도 고정열 회귀 방지로 갱신. 커밋 `b2e4a90`.
 - **live 시트 즉시 조치:** Google Sheets API로 `콘텐츠 대시보드 연동!J2:L2244` 입력규칙을 직접 반영하고 재조회 검증 완료. `J2`는 `=OR(J2="",ISNUMBER(J2))`, `K2/L2`는 한글 이름 검증.
+- **추가 조치(비용 0원 CPV 표시):** 사용자 요청으로 라이브 `J2:J2244` 수식을 `=IF(G2="","",IF(N(G2)=0,0,IFERROR(G2/H2,"?")))` 계열로 일괄 갱신. 비용 빈칸은 빈칸, 비용 0원은 조회수 유무와 무관하게 CPV 0, 비용>0인데 누적조회수 없음은 기존처럼 `?`. J열 입력규칙도 `?` 허용으로 맞춤.
 - **주의:** 현재 Codex 환경에는 clasp 인증이 없어 Apps Script 코드 본문 `clasp push`는 `No credentials found`로 실패. repo는 정본 반영됨. 라이브 Apps Script 코드 본문은 인증 가능한 세션에서 `b2e4a90` 기준 push/저장하면 완전 정합.
 
 ## 2026-08-03 [Codex 완료] 등록 즉시 수집을 메타데이터 전용으로 분리
