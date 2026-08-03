@@ -1860,6 +1860,11 @@ function validateLinkedSheetInputOnEdit_(e, sheet) {
     const values = sheet.getRange(rowStart, colStart, rowEnd - rowStart + 1, colEnd - colStart + 1).getValues();
     const uploadDates = sheet.getRange(rowStart, 1, rowEnd - rowStart + 1, 1).getValues();
     const dateColumns = linkedDateColumns_(sheet);
+    const fieldCols = buildFieldCols_(sheet);
+    const personCols = {};
+    [fieldCols.planner, fieldCols.creator].forEach(function(col) {
+      if (col) personCols[col] = true;
+    });
     const today = todayStr_();
     const issues = [];
     let totalIssues = 0;
@@ -1880,7 +1885,7 @@ function validateLinkedSheetInputOnEdit_(e, sheet) {
           addIssue(r, c, "상품명은 대문자 영문과 한글을 모두 포함해야 합니다.");
         } else if (c === 7 && !isBlankLinkedInput_(value) && !(typeof value === "number" && isFinite(value))) {
           addIssue(r, c, "비용은 숫자만 가능합니다.");
-        } else if ((c === 10 || c === 11) && !isValidLinkedPersonName_(value)) {
+        } else if (personCols[c] && !isValidLinkedPersonName_(value)) {
           addIssue(r, c, "기획자·제작자는 한글 이름만 가능합니다.");
         }
 
@@ -1939,14 +1944,23 @@ function applyDateInputValidation_(sheet, startCol, numCols) {
 function applyLinkedSheetInputValidation_() {
   const sheet = getSheet_();
   const rowCount = Math.max(1, sheet.getMaxRows() - CONFIG.DATA_START_ROW + 1);
+  const fieldCols = buildFieldCols_(sheet);
+  const cpvCol = findHeaderCol_(sheet, ["CPV", "cpv"]);
   const rules = [
     [1, '=OR(A2="",AND(ISNUMBER(A2),A2>0))', "업로드일은 실제 날짜만 입력하세요."],
     [2, '=OR(B2="",REGEXMATCH(TO_TEXT(B2),"^https?://[^[:space:]]+$"))', "http(s) URL만 입력하세요."],
     [6, '=OR(F2="",AND(REGEXMATCH(TO_TEXT(F2),"[A-Z]"),REGEXMATCH(TO_TEXT(F2),"[가-힣]")))', "대문자 영문과 한글을 모두 포함한 상품명만 입력하세요."],
     [7, '=OR(G2="",ISNUMBER(G2))', "비용은 숫자만 입력하세요."],
-    [10, '=OR(J2="",REGEXMATCH(TO_TEXT(J2),"^[가-힣]+$"))', "한글로만 된 사람 이름을 입력하세요."],
-    [11, '=OR(K2="",REGEXMATCH(TO_TEXT(K2),"^[가-힣]+$"))', "한글로만 된 사람 이름을 입력하세요."],
   ];
+  if (cpvCol) {
+    const cpvCell = colLetter_(cpvCol) + CONFIG.DATA_START_ROW;
+    rules.push([cpvCol, '=OR(' + cpvCell + '="",ISNUMBER(' + cpvCell + '))', "CPV는 숫자 또는 빈칸만 입력하세요."]);
+  }
+  [fieldCols.planner, fieldCols.creator].forEach(function(col) {
+    if (!col) return;
+    const cell = colLetter_(col) + CONFIG.DATA_START_ROW;
+    rules.push([col, '=OR(' + cell + '="",REGEXMATCH(TO_TEXT(' + cell + '),"^[가-힣]+$"))', "한글로만 된 사람 이름을 입력하세요."]);
+  });
   rules.forEach(function(item) {
     sheet.getRange(CONFIG.DATA_START_ROW, item[0], rowCount, 1)
       .setDataValidation(linkedValidationRule_(item[1], item[2]));

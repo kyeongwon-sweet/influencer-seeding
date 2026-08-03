@@ -179,7 +179,9 @@ test("linked-sheet edit validation covers fixed fields and date-history paste ru
   assert.match(body, /c === 2 && !isValidLinkedUrlValue_/);
   assert.match(body, /c === 6 && !isValidLinkedProductValue_/);
   assert.match(body, /c === 7/);
-  assert.match(body, /c === 10 \|\| c === 11/);
+  assert.match(body, /const fieldCols = buildFieldCols_\(sheet\)/);
+  assert.match(body, /personCols\[c\]/);
+  assert.doesNotMatch(body, /c === 10 \|\| c === 11/);
   assert.match(body, /const dateColumns = linkedDateColumns_\(sheet\)/);
   assert.match(body, /statDate < uploadDate/);
   assert.match(body, /statDate > today/);
@@ -206,8 +208,13 @@ test("linked-sheet data validation rejects invalid input without including regis
   assert.match(body, /\[2, '=OR\(B2="",REGEXMATCH/);
   assert.match(body, /\[6, '=OR\(F2="",AND\(REGEXMATCH/);
   assert.match(body, /\[7, '=OR\(G2="",ISNUMBER\(G2\)\)'/);
-  assert.match(body, /\[10, '=OR\(J2="",REGEXMATCH/);
-  assert.match(body, /\[11, '=OR\(K2="",REGEXMATCH/);
+  assert.match(body, /const fieldCols = buildFieldCols_\(sheet\)/);
+  assert.match(body, /const cpvCol = findHeaderCol_\(sheet, \["CPV", "cpv"\]\)/);
+  assert.match(body, /rules\.push\(\[cpvCol, '=OR\('/);
+  assert.match(body, /\[fieldCols\.planner, fieldCols\.creator\]\.forEach/);
+  assert.match(body, /rules\.push\(\[col, '=OR\('/);
+  assert.doesNotMatch(body, /\[10, '=OR\(J2="",REGEXMATCH/);
+  assert.doesNotMatch(body, /\[11, '=OR\(K2="",REGEXMATCH/);
   assert.match(body, /linkedDateColumns_\(sheet\)/);
   assert.match(appsScript, /setAllowInvalid\(false\)/);
 
