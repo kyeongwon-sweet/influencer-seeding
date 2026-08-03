@@ -1,5 +1,14 @@
 # AI Shared Status
 
+## 2026-08-03 [Claude 재발방지] 아침 수식감사 폴백 (`2a0a04e`, 라이브 반영 확인)
+- **사고(오늘 실측):** `formula-audit.yml`(10:10 KST 예정)이 10:17까지 미발화 → **사람이 손으로 dispatch**해야 오늘 감사가 돌았다. 07-31·08-01·08-02도 전부 13:2x~13:3x 발화(GitHub 스케줄러 지연).
+- **근본원인:** 기존 감시(`cron_watchdog.FRESHNESS_HOURS`, `schedule-heartbeat.WATCH_TARGETS`)가 전부 **나이(26h) 기준**이라 *어제 13:31에 성공했으면 오늘 아침 미실행이 26h 안에 들어와 경고 자체가 안 뜬다*. 감시의 구조적 사각.
+- **대책(경고 추가가 아니라 자가치유):** `/api/ops/audit-fallback` + 구글 트리거 `auditFallback`(11:00 KST). 오늘(KST) 감사 성공이 없으면 `/api/sponsored-posts/formula-audit`를 직접 호출, 있으면 무동작(중복 Slack 0). **자정수집 폴백과 정책이 의도적으로 반대** — GitHub 조회 실패 시 여기선 **실행**한다(감사는 읽기 전용·비용 0, 미실행 피해가 더 큼).
+- 단위테스트 7종(사고 재현·KST 날짜경계·dry-run·실행실패). web 109/109·tsc·build 통과. 라이브 검증: `/api/ops/audit-fallback` 401(존재+인증), 없는 경로 307 대조.
+- ⚠️ **남은 1스텝(Codex 요청):** 라이브 .gs에 `auditFallback`/`installAuditFallbackTrigger`/`removeAuditFallbackTrigger` 반영 후 `installAuditFallbackTrigger()` 1회 실행. 정본 코드는 repo `Combined_Sheet_AppsScript.gs`. **라이브 붙여넣기는 Codex 담당**(내가 에디터 드롭다운 타입어헤드로 라이브 파일을 오염시킨 전례 있음).
+- 커밋 시 당시 미커밋 상태였던 Codex의 `.gs` 훅(personCols·CPV)은 **의도적으로 제외**하고 내 훅만 스테이징했다(작업트리 공유 중).
+- **미해결(Codex repo 이관):** `negative-comment-monitor`의 아침 스캔(09:13~09:52 KST 창)이 오늘 전부 미발화 — 마지막 스케줄 08:56. `heartbeat.yml`(14:00·17:00 KST)은 **감지만 하고 복구는 안 한다**. 같은 repo `GITHUB_TOKEN`(actions: write)로 `monitor.yml` 자동 dispatch를 넣으면 자가치유 완성.
+
 ## 2026-08-03 [Codex 완료] 연동시트 CPV(J) 추가 대응 — 입력검증 헤더기준화
 - **상황:** `콘텐츠 대시보드 연동` 라이브 헤더가 `J=CPV, K=기획자, L=제작자`로 확인됨. 기존 Apps Script 입력검증은 J/K를 기획자/제작자로 하드코딩해 CPV 숫자 입력을 사람 이름 오류로 볼 수 있었음.
 - **repo 수정:** `Combined_Sheet_AppsScript.gs`의 `validateLinkedSheetInputOnEdit_`와 `applyLinkedSheetInputValidation_`을 헤더 기반으로 변경. CPV 열은 숫자/빈칸 허용, 기획자/제작자는 현재 헤더 위치 기준으로 한글 이름 검증. 계약테스트도 고정열 회귀 방지로 갱신. 커밋 `b2e4a90`.
