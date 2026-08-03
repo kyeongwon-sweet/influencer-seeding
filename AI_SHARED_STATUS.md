@@ -1,6 +1,12 @@
 
 # AI Shared Status
 
+## 2026-08-03 [Codex 부분완료] 비공개 repo 하트비트 404 오탐 차단 + 전용 토큰 대기
+- **원인 확정:** repo 비공개 전환 뒤 production에 `OPS_GITHUB_TOKEN`이 없어 GitHub Actions 조회가 workflow별 404를 반환했고, 이를 `null=실행 기록 없음`으로 취급해 크론 5개가 모두 사라진 것처럼 오탐했다.
+- **코드·배포:** main `d972180`에서 `OPS_GITHUB_TOKEN` 우선 + 기존 `GITHUB_TOKEN` 후순위 호환을 하트비트와 audit-fallback에 공통 적용했다. 조회 실패 workflow는 미발화 판정에서 제외해 앞으로 인증 오류가 나도 “스케줄 5개 미실행”으로 표시하지 않고 **GitHub 조회 실패·판정 보류**만 알린다. web test 138/138, build, pre-push typecheck 통과; production Ready 확인.
+- **운영 실측:** smoke run `30818572666`은 새 배포를 HTTP 200으로 호출했고 `findings=[]`로 오탐 5건이 제거됐다. 다만 기존 Vercel `GITHUB_TOKEN`은 private Actions API에서 **401**이므로 인증 복구 자체는 미완료다. 전용 fine-grained PAT(repo=`influencer-seeding`, Actions read-only)를 Vercel Production `OPS_GITHUB_TOKEN`으로 등록해야 한다.
+- **Actions 한도 실측:** GitHub Billing에서 2026-08 현재 **129/2,000분**, billed `$0`, 잔여 1,871분. Actions budget은 `$0` + Stop usage Yes라 포함량 소진 시 workflow가 멈추지만 현재 사용률 6.45%로 즉시 위험은 없다.
+
 ## 2026-08-03 [Claude 독립 검증] reconcile 12개 게시물 = 라이브 시트·DB 완전 일치 확인 → 추가 쓰기 불필요
 - **사용자 요청**: 6개(민쥬니·money_stroy123·Da7UuzGJmXn / 진씨네·8ZKR7HRpf_c·kkamddeu)를 "시트 정본으로 DB·대시보드 반영" 지시. **검증 결과 이미 반영돼 있어 새 쓰기 안 함(불필요).**
 - **실측(로그인 브라우저 gviz 라이브 + Supabase 직접조회 대조, 07-27~08-02)**: 12개 게시물 전부 **라이브 시트 = DB 정확히 일치**. B그룹 6개(민쥬니 07-29/30 90,729/101,926 · money 1,022/1,026 · Da7 47,038/47,366 · 진씨네 274,613/277,558 · 8ZKR 23,903/26,150 · kkamddeu 9,083/9,992) + A그룹 6개(먹샘 482,920/494,165 · 박홍 327,300/332,400 · DbNyGcjsZ4J 199,379/206,412 · 빵친장 66,100/69,300 · 깜뜨IG 31,760/33,545 · Da5JCiizisa 1,216/1,218) 모두 시트=DB.
