@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
+import { excludeFailedGitHubLookups, resolveGitHubActionsToken } from "@/lib/github-actions-auth";
 import { notifyBot } from "@/lib/slack";
 import {
   WATCH_TARGETS,
@@ -39,7 +40,8 @@ async function latestRun(repo: string, workflow: string, query: string): Promise
     "X-GitHub-Api-Version": "2022-11-28",
     "User-Agent": "schedule-heartbeat",
   };
-  if (process.env.OPS_GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.OPS_GITHUB_TOKEN}`;
+  const token = resolveGitHubActionsToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(url, { headers, cache: "no-store" });
   if (!res.ok) throw new Error(`GitHub ${res.status} (${workflow})`);
   const json = (await res.json()) as { workflow_runs?: GitHubRun[] };
@@ -65,17 +67,22 @@ async function handler(req: NextRequest) {
 
   const last: Record<string, string | null> = {};
   const errors: string[] = [];
+  const lookupFailed = new Set<string>();
   for (const t of WATCH_TARGETS) {
     try {
       last[t.workflow] = await lastScheduleSuccess(REPO, t.workflow);
     } catch (e) {
       errors.push(e instanceof Error ? e.message : String(e));
-      // 조회 실패는 '이상 없음'으로 삼키지 않는다 — 알림에 그대로 노출.
-      last[t.workflow] = null;
+      // 조회 실패는 '스케줄 기록 없음'이 아니다. 해당 workflow의 판정을 보류한다.
+      lookupFailed.add(t.workflow);
     }
   }
 
-  const findings = evaluateSchedules(last, new Date());
+  const findings = evaluateSchedules(
+    last,
+    new Date(),
+    excludeFailedGitHubLookups(WATCH_TARGETS, lookupFailed),
+  );
   const latestSchedule: Record<string, HeartbeatRun | null> = {};
   const latestSuccess: Record<string, HeartbeatRun | null> = {};
   await Promise.all(findings.flatMap((finding) => [
@@ -94,20 +101,26 @@ async function handler(req: NextRequest) {
   ]));
 
   const { text, healthy } = formatHeartbeat(findings, REPO, latestSchedule, latestSuccess);
-  const message = errors.length > 0 ? `${text}\n⚠️ GitHub 조회 오류 ${errors.length}건: ${errors.slice(0, 3).join(" / ")}` : text;
+  const uniqueErrors = [...new Set(errors)];
+  const lookupMessage = uniqueErrors.length > 0
+    ? `⚠️ [스케줄 하트비트] ${REPO} — GitHub 조회 실패 ${uniqueErrors.length}건, 해당 스케줄 상태 판정 보류\n${uniqueErrors.slice(0, 3).join(" / ")}`
+    : "";
+  const message = lookupMessage
+    ? (findings.length > 0 ? `${text}\n${lookupMessage}` : lookupMessage)
+    : text;
 
   // 정상일 때 매번 알리면 소음이라, 이상(또는 조회 실패)일 때만 발송한다.
-  if (!healthy || errors.length > 0) await notifyBot(message).catch(() => {});
+  if (!healthy || uniqueErrors.length > 0) await notifyBot(message).catch(() => {});
 
   return NextResponse.json({
     ok: true,
-    healthy: healthy && errors.length === 0,
+    healthy: healthy && uniqueErrors.length === 0,
     repo: REPO,
     findings,
     lastScheduleSuccess: last,
     latestSchedule,
     latestSuccess,
-    errors,
+    errors: uniqueErrors,
   });
 }
 
