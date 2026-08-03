@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## 2026-08-03 [Codex 완료] 연동시트 CPV(J) 추가 대응 — 입력검증 헤더기준화
+- **상황:** `콘텐츠 대시보드 연동` 라이브 헤더가 `J=CPV, K=기획자, L=제작자`로 확인됨. 기존 Apps Script 입력검증은 J/K를 기획자/제작자로 하드코딩해 CPV 숫자 입력을 사람 이름 오류로 볼 수 있었음.
+- **repo 수정:** `Combined_Sheet_AppsScript.gs`의 `validateLinkedSheetInputOnEdit_`와 `applyLinkedSheetInputValidation_`을 헤더 기반으로 변경. CPV 열은 숫자/빈칸 허용, 기획자/제작자는 현재 헤더 위치 기준으로 한글 이름 검증. 계약테스트도 고정열 회귀 방지로 갱신. 커밋 `b2e4a90`.
+- **live 시트 즉시 조치:** Google Sheets API로 `콘텐츠 대시보드 연동!J2:L2244` 입력규칙을 직접 반영하고 재조회 검증 완료. `J2`는 `=OR(J2="",ISNUMBER(J2))`, `K2/L2`는 한글 이름 검증.
+- **주의:** 현재 Codex 환경에는 clasp 인증이 없어 Apps Script 코드 본문 `clasp push`는 `No credentials found`로 실패. repo는 정본 반영됨. 라이브 Apps Script 코드 본문은 인증 가능한 세션에서 `b2e4a90` 기준 push/저장하면 완전 정합.
+
 ## 2026-08-03 [Codex 완료] 등록 즉시 수집을 메타데이터 전용으로 분리
 - **정책:** 시트/CSV로 신규 IG 게시물이 등록되면 Apify 즉시 호출은 유지하되, 캡션·계정 핸들·게시일·인플루언서 연결만 보강한다. webhook에 `metadataOnly=1`을 전달하며 `post_daily_stats`에는 중간 조회수를 쓰지 않는다.
 - **자정 최종값:** 00:41 KST `FINAL_SNAPSHOT`만 일자별 조회수를 처음 저장한다. 기존 동일일 자동 중간행이 남아 있는 경우에도 `ignore_duplicates=false` 동작으로 최종값을 갱신한다. `manual=true` 동일일 행은 upsert 전 필터링되어 계속 절대 보존된다.
