@@ -254,6 +254,34 @@ def _flush_missing_view_events():
         print(f"[WARN] view missing event log write failed: {e}")
 
 
+def _flush_posted_at_mismatch_alert():
+    """게시일 불일치로 '정상 응답을 버린' 건을 사람에게 알린다.
+
+    2026-08-03 실측: `jjin.mood_`·`ddo_chichi`·`nasso_home` 3건이 Apify가 조회수를 정상 반환했는데도
+    (3,544 / 1,945 / 3,276) 시트 게시일과 실제 게시일이 달라 가드에 걸려 조용히 버려지고 있었다.
+    URL 키(shortcode)는 정확히 일치하므로 이건 '다른 게시물 응답'이 아니라 **시트 게시일 오입력**이다.
+    가드는 보수적으로 유지하되(값을 함부로 넣지 않음), 조용히 사라지지 않도록 알림만 낸다.
+    ⚠️ posted_at은 절대 자동 수정하지 않는다 — 사람이 시트에서 정정해야 다음 수집부터 자동 복구된다.
+    """
+    events = [e for e in MISSING_VIEW_EVENTS if e.get("reason") == "posted_at_mismatch"]
+    if not events:
+        return
+    sample = events[:8]
+    lines = [
+        f"🚨 [협찬 모니터링] 시트 게시일이 실제와 달라 조회수를 버린 게시물 {len(events)}건",
+        "Apify는 값을 정상 반환했지만 게시일이 1일 초과로 어긋나 저장하지 않았습니다.",
+        "**시트의 게시일을 실제 값으로 정정**하면 다음 수집부터 자동 복구됩니다(게시일은 자동 수정하지 않습니다).",
+    ]
+    for e in sample:
+        lines.append(
+            f"- {e.get('account_name') or '-'} 시트={e.get('expected_posted_at')} "
+            f"실제={e.get('actual_posted_at')} (미저장 조회수 {e.get('returned_metric')}) {e.get('url')}"
+        )
+    if len(events) > len(sample):
+        lines.append(f"- ...외 {len(events) - len(sample)}건")
+    _send_status_alert("\n".join(lines))
+
+
 def _record_not_found_observation(db, post: dict, detected: bool):
     """Track Instagram-only not_found streaks without changing notes or ended_at."""
     if not is_not_found_review_eligible(post.get("url") or ""):
@@ -1413,6 +1441,7 @@ def run():
             print(f"[WARN] 일별 스냅샷 저장 실패(무시): {e}")
 
         _flush_missing_view_events()
+        _flush_posted_at_mismatch_alert()
         if job_id:
             db.table("jobs").update({"status": "done"}).eq("id", job_id).execute()
 
