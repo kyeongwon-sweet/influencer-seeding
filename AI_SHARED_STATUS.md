@@ -161,6 +161,8 @@
 - **worktree 정리:** 삭제 가능한 clean+main 포함 worktree 없음. `C:\tmp\influencer-*` 중 다수가 dirty 또는 main 미포함 ahead/detached 상태라 보존. Claude 계열 worktree도 건드리지 않음.
 - **Apps Script clasp 경로:** `node scripts/prepare_apps_script_deploy.mjs` dry-run 성공(`dist/apps-script` 생성, scriptId `1XogwTHJb...`). 전역 `clasp`는 없음. `npx @google/clasp status`는 동작하지만 원격 명령 `deployments`는 `No credentials found`로 실패. 결론: repo→dist 준비는 가능, 실제 live push는 Google clasp 인증 전까지 불가. 그 전에는 기존 원칙대로 fresh 서버본 확인 후 함수 단위 graft만 허용.
 
+## ✅ [완결·보관 2026-08-02] 조회수0 백필 오적재 75건 삭제 — 잔여 0건 확인
+- **종결(Claude 실측 2026-08-02, 사용자 승인)**: 오적재 시그니처(`measured_at=2026-07-28 & manual=false & post.ended_at<2026-07-28`) **DB 잔여 0건**(PostgREST `!inner` 조인 조회 `Content-Range */0`) → Codex/백필로 이미 정리 완료. 삭제 요청 종료. 아래는 원본 인계 기록(보관).
 ## 🔴 2026-07-29 [Claude→Codex 인계] 조회수0 백필 오적재 75건 삭제 요청 (Claude 백필 버그, 사용자 승인)
 - **근본원인(Claude 실수)**: 어제 7/28 백필의 후보 산정 쿼리(PostgREST `or=(play_count.gt.0,reach_count.gt.0)` + `post_id=in.(…)` 조합 버그)가 **이미 이력 있는 게시물을 "이력0"으로 오분류**. 결과: 백필 116건 전부 실제로 이전 이력 보유(진짜 이력0=0). 그 중 **종료글 75건에 07-28 auto 행을 잘못 추가**.
 - **증상(07-28 일일리포트 정합성 특이)**: 누적 하락(준맛 인스타 378,186→128,060·아하하 131,314→71,100·욤 신상간식 12,999→11,638)·복사 오염(a___romii·____ziini) — **전부 이 75건**.
