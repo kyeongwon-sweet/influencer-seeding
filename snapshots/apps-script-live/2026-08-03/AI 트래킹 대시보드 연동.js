@@ -1,0 +1,3015 @@
+/**
+ * ═══════════════════════════════════════════════════════════════
+ * 광고 데이터 시트 → 협찬 모니터링 사이트 추가 (Google Apps Script)
+ * ═══════════════════════════════════════════════════════════════
+ *
+ * 동작: 시트의 광고 행을 읽어 → 사이트(/api/sponsored-posts/bulk)에 추가(upsert)
+ *       조회수 수집은 사이트(/monitoring)가 자동으로 수행함.
+ *
+ * 시트 컬럼 (gid=1937186871, 1행 헤더):
+ *   업로드일 | 게시물URL | 채널명 | 캡션 | 채널 분류 | 프로젝트명 | 상품명 | 비용
+ *
+ * 플랫폼: 인스타그램 · 유튜브 · 틱톡 URL 추가 가능.
+ *
+ * "신규만 추가": I열(등록상태)이 비어 있는 행만 골라 보내고,
+ *               성공하면 등록상태에 타임스탬프를 기록 → 매일 새로 추가된 광고만 올라감.
+ *
+ * 엔드포인트: /api/sponsored-posts/bulk (무인증 공개 추가 라우트, 모든 플랫폼 허용)
+ *
+ * ───────────────────────────────────────────────────────────────
+ * [최초 1회 설정]  ※ 시크릿/키 설정 필요 없음
+ * 1) 확장 프로그램 → Apps Script 에 이 파일 내용을 붙여넣기 → 💾 저장
+ * 2) 시트 새로고침 → 상단 "🚀 광고 모니터링" 메뉴
+ * 3) (자동화) 메뉴 → "⏰ 매일 9:30 자동 추가 켜기" 1회 클릭 → 권한 승인
+ * ───────────────────────────────────────────────────────────────
+ */
+
+// ═══════════════════════════════════════════════════════════════
+// 설정
+// ═══════════════════════════════════════════════════════════════
+const CONFIG = {
+  SHEET_GID: 1937186871,
+  KST_TIMEZONE: "Asia/Seoul",
+  API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/bulk",
+  STATS_API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/stats-import",
+  LIST_API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/list-for-sheet",  // DB→시트 반영(대시보드 추가분 가져오기)용 조회
+  STATS_EXPORT_API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/stats-for-sheet",  // 자동수집 조회수 → 시트 I열~ 역채움용 조회
+  TRACKING_API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/tracking-by-url", // 상태 수동 수정 → DB 트래킹 종료/해제
+  AUDIT_FALLBACK_URL: "https://influencer-seeding-mu.vercel.app/api/ops/audit-fallback",  // 아침 수식감사 미발화 시 폴백 감사
+  HEADER_ROW: 1,
+  DATA_START_ROW: 2,
+  STATUS_HEADER: "등록상태",
+  TRIGGER_HOUR: 9,
+  TRIGGER_MINUTE: 30,
+  STATS_FIRST_COL: 9,        // 일자별 조회수 시작 열 (I열). 끝 열은 자동(데이터가 AE 넘어 늘어나도 OK).
+  STATS_START_YEAR: 2026,    // 가장 왼쪽 날짜 열의 연도. 월이 줄면(예: 12→1) 자동으로 +1년 처리.
+};
+
+const IMPORTSTATS_CLIENT_VERSION = "2026-08-03-import-source-v2";
+
+// 헤더명(공백 제거·소문자) → API 필드 매핑
+const FIELD_BY_HEADER = {
+  "업로드일": "posted_at",
+  "게시물url": "url",
+  "채널명": "account_name",
+  "업체명": "company_name",
+  "캡션": "content_summary",
+    "소재명": "asset_name",
+        
+  "채널분류": "channel_type",
+  "프로젝트명": "project_name",
+  "상품명": "product_name",
+  "기획자": "planner",
+  "제작자": "creator",
+  "비용": "cost",
+};
+
+// 사이트가 허용하는 URL (인스타 / 유튜브 / 틱톡 / 페이스북 / 스레드 / X(트위터) / 카카오 숏폼 / 네이버 클립, 다단계 서브도메인 포함). 서버 필터와 동일.
+const ALLOWED_URL_RE = /^https:\/\/([a-z0-9-]+\.)*(instagram\.com|youtube\.com|youtu\.be|tiktok\.com|facebook\.com|threads\.com|threads\.net|x\.com|twitter\.com|t\.co|kakao\.com|naver\.com)\//i;
+
+// 필드 → 표시용 컬럼명 (빈칸 검사 보고용)
+const FIELD_LABEL = {
+  posted_at: "업로드일", url: "게시물URL", account_name: "채널명", content_summary: "캡션",
+    asset_name: "소재명",
+  channel_type: "채널 분류", project_name: "프로젝트명", product_name: "상품명", cost: "비용",
+  company_name: "업체명", planner: "기획자", creator: "제작자",
+};
+
+// ═══════════════════════════════════════════════════════════════
+// 메뉴
+// ═══════════════════════════════════════════════════════════════
+function automationMenuLabel_() {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const enabled = props.getProperty("AUTO_SYNC_ENABLED");
+    if (enabled === "false") return "⏰ 자동화 ⏹ 꺼짐";
+    if (enabled === "true") return "⏰ 자동화 ✅ 켜짐";
+
+    // simple onOpen에서는 트리거 목록 API가 권한 오류를 내므로 호출하지 않는다.
+    // 명시적 켜기/끄기 상태가 아직 없는 구버전은 최근 dailyAuto 실행 기록으로 1회 이관한다.
+    const lastFinished = Date.parse(props.getProperty("DAILY_AUTO_LAST_FINISHED_AT") || "");
+    if (Number.isFinite(lastFinished) && Date.now() - lastFinished < 36 * 60 * 60 * 1000) {
+      return "⏰ 자동화 ✅ 켜짐";
+    }
+    return "⏰ 자동화 ⚠️ 상태 확인";
+  } catch (err) {
+    Logger.log("automationMenuLabel_: " + (err.stack || err.message));
+    return "⏰ 자동화 ⚠️ 상태 확인";
+  }
+}
+
+function onOpen() {
+  const ui = SpreadsheetApp.getUi();
+
+  const statsMenu = ui.createMenu("📊 조회수")
+    .addItem("시트 → DB 조회수 반영", "importStats")
+    .addItem("DB → 시트 조회수·누적·증분 반영", "exportStats");
+
+  const metadataMenu = ui.createMenu("🔄 메타데이터 · 복구")
+    .addItem("대시보드 추가분 가져오기", "pullFromDB")
+    .addItem("파생정보 전체 업데이트", "refreshSheetDerivedFields")
+    .addItem("시트 변경사항 DB 반영", "syncAllWithConfirm");
+
+  const checkMenu = ui.createMenu("🔎 점검 · 정리")
+    .addItem("빈칸 · 중복 URL 검사", "checkSheetIssues")
+    .addItem("중복 링크 삭제", "removeDuplicateLinks");
+
+  const automationMenu = ui.createMenu(automationMenuLabel_())
+    .addItem("자동화 상태 · 최근 실행 보기", "checkSetup")
+    .addItem("자동 동기화 켜기 · 복구", "installDailyTrigger")
+    .addItem("자동 동기화 끄기", "removeDailyTrigger");
+
+  ui.createMenu("🚀 광고 모니터링")
+    .addItem("신규 전송 미리보기", "previewNew")
+    .addItem("신규 광고 추가", "syncNew")
+    .addSeparator()
+    .addSubMenu(statsMenu)
+    .addSubMenu(metadataMenu)
+    .addSubMenu(checkMenu)
+    .addSubMenu(automationMenu)
+    .addToUi();
+
+  addInsightInquiryMenu_();
+}
+
+function norm_(v) {
+  return String(v == null ? "" : v).replace(/\s+/g, "").toLowerCase();
+}
+
+// 트리거(UI 없는 환경)에서도 안전하게 동작하는 알림
+function safeAlert_(msg) {
+  try { SpreadsheetApp.getUi().alert(msg); } catch (e) { Logger.log(msg); }
+}
+
+const AUTO_WRITE_ACTIVE_UNTIL_PROP = "SHEET_AUTO_WRITE_ACTIVE_UNTIL";
+const AUTO_WRITE_GUARD_MS = 12 * 60 * 1000;
+
+function isAutoWriteActive_() {
+  const until = Number(PropertiesService.getScriptProperties().getProperty(AUTO_WRITE_ACTIVE_UNTIL_PROP) || 0);
+  return until > Date.now();
+}
+
+function withAutoWriteGuard_(fn) {
+  const props = PropertiesService.getScriptProperties();
+  props.setProperty(AUTO_WRITE_ACTIVE_UNTIL_PROP, String(Date.now() + AUTO_WRITE_GUARD_MS));
+  try {
+    return fn();
+  } finally {
+    props.deleteProperty(AUTO_WRITE_ACTIVE_UNTIL_PROP);
+  }
+}
+
+function skipEditDuringAutoWrite_(name) {
+  if (!isAutoWriteActive_()) return false;
+  Logger.log("edit_trigger_skipped " + JSON.stringify({
+    trigger: name,
+    reason: "auto_write_active",
+    at: new Date().toISOString(),
+  }));
+  return true;
+}
+
+function getSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheets().find(s => s.getSheetId() === CONFIG.SHEET_GID);
+  if (!sheet) throw new Error(`gid=${CONFIG.SHEET_GID} 탭을 찾을 수 없습니다.`);
+  return sheet;
+}
+
+/** 헤더 → 컬럼 인덱스(1-based) 매핑. {field: colIndex} */
+function buildFieldCols_(sheet) {
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+  const fieldCols = {};
+  headers.forEach((h, i) => {
+    const field = FIELD_BY_HEADER[norm_(h)];
+    if (field) fieldCols[field] = i + 1;
+  });
+  if (!fieldCols.url) throw new Error("'게시물URL' 헤더를 찾지 못했습니다. 1행 헤더를 확인하세요.");
+  return fieldCols;
+}
+
+/** 등록상태 컬럼 인덱스(1-based). 없으면 헤더 끝에 생성. */
+function getStatusCol_(sheet) {
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+  const idx = headers.findIndex(h => norm_(h) === norm_(CONFIG.STATUS_HEADER));
+  if (idx !== -1) return idx + 1;
+
+  // 헤더가 깨진 흔적이 있으면 새 등록상태 열을 만들지 않고 중단한다.
+  const suspicious = headers.findIndex(function (h, i) {
+    const raw = String(h == null ? "" : h).trim();
+    const left = i > 0 ? String(headers[i - 1] == null ? "" : headers[i - 1]).trim() : "";
+    return raw === "#N/A" || (left === "◀◀ 열 순서 수정 금지!!" && raw !== CONFIG.STATUS_HEADER);
+  });
+  if (suspicious !== -1) {
+    throw new Error("등록상태 헤더를 찾지 못했고 " + colLetter_(suspicious + 1) + "열에서 깨진 헤더가 감지됐습니다. 새 열을 만들지 않았습니다.");
+  }
+
+  const col = lastCol + 1;
+  sheet.getRange(CONFIG.HEADER_ROW, col).setValue(CONFIG.STATUS_HEADER);
+  return col;
+}
+
+function getIncrementCol_(sheet) {
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+  const idx = headers.findIndex(h => norm_(h) === norm_("증분값"));
+  return idx === -1 ? null : idx + 1;
+}
+
+function colLetter_(col) {
+  let s = "";
+  while (col > 0) {
+    const m = (col - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    col = Math.floor((col - 1) / 26);
+  }
+  return s;
+}
+
+function toDateStr_(v) {
+  if (v instanceof Date && !isNaN(v.getTime())) {
+    return Utilities.formatDate(v, Session.getScriptTimeZone(), "yyyy-MM-dd");
+  }
+  const s = String(v || "").trim();
+  if (!s) return null;
+  const m = s.match(/^(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+  if (m) return `${m[1]}-${("0" + m[2]).slice(-2)}-${("0" + m[3]).slice(-2)}`;
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : Utilities.formatDate(d, Session.getScriptTimeZone(), "yyyy-MM-dd");
+}
+
+function isBeforePostedDate_(date, postedAt) {
+  return !!postedAt && !!date && date < postedAt;
+}
+
+function toNumber_(v) {
+  if (v === "" || v == null) return null;
+  if (typeof v === "number") return v;
+  const n = Number(String(v).replace(/[^0-9.\-]/g, ""));
+  return isNaN(n) ? null : n;
+}
+
+/** KST 기준 오늘 (YYYY-MM-DD). 업로드일이 이보다 크면 미래 = 아직 게시 전. */
+function todayStr_() {
+  return Utilities.formatDate(new Date(), CONFIG.KST_TIMEZONE, "yyyy-MM-dd");
+}
+
+/** 캡션은 빈값을 그대로 두고, 값이 있으면 모든 줄바꿈/연속 공백을 한 칸으로 정리. */
+function normalizeCaption_(v) {
+  const s = String(v == null ? "" : v).replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
+  return s || null;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 행 읽기
+// ═══════════════════════════════════════════════════════════════
+/**
+ * @param {boolean} onlyNew - true면 등록상태가 비어있는 행만
+ * @returns {{rows, rowNums, statusCol, skipped:number}}
+ */
+function collectRows_(onlyNew) {
+  const sheet = getSheet_();
+  const fieldCols = buildFieldCols_(sheet);
+  const statusCol = getStatusCol_(sheet);
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  const today = todayStr_();
+  let skipped = 0, dupCount = 0, future = 0;
+  if (lastRow < CONFIG.DATA_START_ROW) return { rows: [], rowNums: [], statusCol, skipped, dupCount, future };
+
+  const values = sheet
+    .getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, lastCol)
+    .getValues();
+
+  const byKey = {}; // 정규화된 URL → 전송 객체 (첫 행 우선, 중복 제거)
+  const rowNums = [];
+
+  values.forEach((row, i) => {
+    const rowNum = CONFIG.DATA_START_ROW + i;
+    const rawUrl = String(row[fieldCols.url - 1] || "").trim();
+    if (!rawUrl) return; // URL 없는 빈 행
+
+    const status = String(row[statusCol - 1] || "").trim();
+    if (onlyNew && status) return; // 이미 추가된 행
+
+    if (!ALLOWED_URL_RE.test(rawUrl)) { skipped++; return; } // 지원 안 되는 URL
+    if (/instagram\.com/i.test(rawUrl) && !/\/(p|reels|reel|tv)\/[A-Za-z0-9_-]+/i.test(rawUrl)) { skipped++; return; } // 프로필/릴스목록 등 shortcode 없는 IG URL은 DB 삽입 안 함(김뿌잉뿌잉 재발 방지)
+
+    const postedAt = fieldCols.posted_at ? toDateStr_(row[fieldCols.posted_at - 1]) : null;
+    if (postedAt && postedAt > today) { future++; return; } // 업로드일이 오늘 이후 → 아직 게시 전, 제외
+
+    const obj = { url: rawUrl };
+    if (fieldCols.posted_at)       obj.posted_at       = postedAt;
+    if (fieldCols.account_name)    obj.account_name    = String(row[fieldCols.account_name - 1] || "").trim() || null;
+    if (fieldCols.company_name)    obj.company_name    = String(row[fieldCols.company_name - 1] || "").trim() || null;
+    if (fieldCols.content_summary) obj.content_summary = normalizeCaption_(row[fieldCols.content_summary - 1]);
+        if (fieldCols.asset_name)      obj.asset_name      = String(row[fieldCols.asset_name - 1] || "").trim() || null;
+    if (fieldCols.channel_type)    obj.channel_type    = String(row[fieldCols.channel_type - 1] || "").trim() || null;
+    if (fieldCols.project_name)    obj.project_name    = String(row[fieldCols.project_name - 1] || "").trim() || null;
+    if (fieldCols.product_name)    obj.product_name    = String(row[fieldCols.product_name - 1] || "").trim() || null;
+    if (fieldCols.cost)            obj.cost            = toNumber_(row[fieldCols.cost - 1]);
+    if (fieldCols.planner)         obj.planner         = String(row[fieldCols.planner - 1] || "").trim() || null;
+    if (fieldCols.creator)         obj.creator         = String(row[fieldCols.creator - 1] || "").trim() || null;
+
+    const key = urlKey_(rawUrl);
+    if (byKey[key]) { dupCount++; rowNums.push(rowNum); return; } // 같은 URL 중복 → 전송 1번만, 행은 등록 처리
+    byKey[key] = obj;
+    rowNums.push(rowNum);
+  });
+
+  const rows = Object.keys(byKey).map(k => byKey[k]);
+  return { rows, rowNums, statusCol, skipped, dupCount, future };
+}
+
+/** 중복 판정용 URL 키: 쿼리스트링·끝슬래시 제거 + 소문자 (서버 정규화와 동일 기준) */
+function urlKey_(u) {
+  // 서버 normalizeUrl(web/lib/url-utils.ts)과 동일 규칙으로 정규화 — 안 맞추면 시트↔DB가
+  // 도메인/스킴 변형(www.threads.com↔threads.com, http↔https)을 다른 글로 봐서 pullFromDB가
+  // 이미 있는 글을 새 행으로 재추가함(2026-07-08 스레드·페북 중복 3건 사례).
+  var s = String(u || "").trim().toLowerCase();
+  s = s.split("?")[0].split("#")[0];    // 쿼리·프래그먼트 제거
+  s = s.replace(/^https?:\/\//, "");    // 스킴 제거(http/https 동일 취급)
+  s = s.replace(/^www\./, "");          // 선행 www 제거(서버와 동일; m.blog 등 유의미 서브도메인은 보존)
+  s = s.replace(/\/{2,}/g, "/");        // 경로 이중슬래시 축약
+  s = s.replace(/\/+$/, "");            // 트레일링 슬래시 제거
+  return s;
+}
+
+/** 링크 동일성 키 — 같은 게시물이면 경로가 달라도 같은 키.
+ *  IG는 shortcode(/p/·/reel/·/reels/·/tv/ 통일), 틱톡은 영상ID, 그 외는 urlKey_. (서버 정규화와 동일 기준) */
+function linkKey_(u) {
+  u = String(u || "").trim();
+    var canonical = u.match(/^(ig|yt|tt):(.+)$/i);
+  if (canonical) return canonical[1].toLowerCase() + ":" + canonical[2];
+  // /p/·/reel/ 앞에 계정명이 낀 형태(instagram.com/<user>/p/<code>/)도 인식 — 서버 normalizeUrl과 동일.
+  // (계정명 무시하고 경로 어디에 있든 /p|reel|reels|tv/<code>를 shortcode로. 2026-07-08 anavocado 중복 사례)
+  var ig = u.match(/instagram\.com\/(?:[^/?#]+\/)*(?:p|reels|reel|tv)\/([A-Za-z0-9_-]+)/i);
+  if (ig) return "ig:" + ig[1];
+  // 유튜브: 영상ID로 통일(www/non-www·shorts·watch·youtu.be 모두 동일 영상). ID는 대소문자 구분(소문자화 X).
+  var yt = u.match(/youtube\.com\/shorts\/([A-Za-z0-9_-]{6,})/)
+        || u.match(/youtu\.be\/([A-Za-z0-9_-]{6,})/)
+        || u.match(/youtube\.com\/(?:embed|live|v)\/([A-Za-z0-9_-]{6,})/)
+        || (/youtube\.com\/watch/.test(u) ? u.match(/[?&]v=([A-Za-z0-9_-]{6,})/) : null);
+  if (yt) return "yt:" + yt[1];
+  var tt = u.match(/tiktok\.com\/(?:.*\/)?(?:video|photo)\/(\d+)/i) || u.match(/\/(?:video|photo)\/(\d+)/i);
+  if (tt) return "tt:" + tt[1];
+  return urlKey_(u);
+}
+
+function buildUrlKeyList_(urlValues, keyFn) {
+  const fn = keyFn || linkKey_;
+  return urlValues.map(row => fn(String(row[0] || "")));
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// 🧹 중복 링크 정리 — 겹치는 링크 행을 각 1개만 남기고 삭제
+// ═══════════════════════════════════════════════════════════════
+// 같은 게시물(IG shortcode·틱톡 영상ID·정규화 URL 동일)을 그룹으로 묶어, 그룹마다
+// '데이터가 가장 많이 채워진 행' 1개만 남기고 나머지 행을 삭제(데이터 손실 최소화).
+// 아래→위로 삭제해 행번호 밀림 방지. 조회수는 DB(post_daily_stats)에 있어 안전.
+function removeDuplicateLinks__wgimpl() {
+  try {
+    var sheet = getSheet_();
+    var fc = buildFieldCols_(sheet);
+    var urlCol = fc.url;
+    var lastRow = sheet.getLastRow();
+    if (lastRow < CONFIG.DATA_START_ROW) { safeAlert_("데이터가 없습니다."); return; }
+    var lastCol = sheet.getLastColumn();
+    var vals = sheet.getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, lastCol).getValues();
+
+    var groups = {};
+    vals.forEach(function (row, i) {
+      var u = String(row[urlCol - 1] || "").trim();
+      if (!u) return;
+      var k = linkKey_(u);
+      var filled = row.filter(function (c) { return String(c).trim() !== ""; }).length;
+      (groups[k] = groups[k] || []).push({ row: CONFIG.DATA_START_ROW + i, filled: filled, url: u });
+    });
+
+    var toDelete = [], deleted = [], dupGroups = 0;
+    Object.keys(groups).forEach(function (k) {
+      var rows = groups[k];
+      if (rows.length <= 1) return;
+      dupGroups++;
+      rows.sort(function (a, b) { return b.filled - a.filled || a.row - b.row; }); // 데이터 많은 것 우선, 동률이면 위쪽
+      var keep = rows[0];
+      rows.slice(1).forEach(function (r) {
+        toDelete.push(r.row);
+        deleted.push("· 삭제 " + r.row + "행: " + r.url + "\n   (남김 " + keep.row + "행: " + keep.url + ")");
+      });
+    });
+
+    if (!toDelete.length) { safeAlert_("✅ 겹치는 링크 없음 — 정리할 게 없습니다."); return; }
+    toDelete.sort(function (a, b) { return b - a; }).forEach(function (r) { sheet.deleteRow(r); }); // 아래→위
+    Logger.log("중복 링크 정리 삭제 목록:\n" + deleted.join("\n"));
+    safeAlert_("🧹 중복 링크 정리 완료\n중복 그룹 " + dupGroups + "개 → " + toDelete.length + "행 삭제(각 그룹 1행만 남김).\n(행번호는 삭제 전 기준)\n\n" + deleted.join("\n"));
+  } catch (e) {
+    safeAlert_("❌ 오류\n" + e.message);
+    Logger.log(e.stack || e.message);
+  }
+}
+
+function noteExtra_(skipped, dupCount, future) {
+  let s = "";
+  if (dupCount) s += `\n\n🔁 시트 내 중복 URL ${dupCount}건은 1건으로 합쳐 전송(중복 추가 방지).`;
+  if (future)   s += `\n⏭️ 업로드일이 오늘 이후인 행 ${future}건 제외(아직 게시 전).`;
+  if (skipped)  s += `\n⚠️ 지원 플랫폼(IG/YT/TikTok/FB/Threads/X/카카오/네이버) URL이 아니어서 제외됨: ${skipped}건`;
+  return s;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 빈칸 검사 (A~H 필수 컬럼)
+// ═══════════════════════════════════════════════════════════════
+/** 값이 하나라도 있는 행 중, A~H에 빈칸이 있는 행 목록. [{row, missing:[컬럼명]}] */
+function scanBlanks_() {
+  const sheet = getSheet_();
+  const fieldCols = buildFieldCols_(sheet);
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < CONFIG.DATA_START_ROW) return [];
+
+  const values = sheet
+    .getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, lastCol)
+    .getValues();
+  // 업체명(company_name)은 바이럴에만 있는 선택 항목 → 빈칸 검사 대상에서 제외(빈칸이 정상).
+  const fields = Object.keys(fieldCols).filter(f => f !== "company_name");
+  const cell = (row, f) => String(row[fieldCols[f] - 1] == null ? "" : row[fieldCols[f] - 1]).trim();
+
+  const blanks = [];
+  values.forEach((row, i) => {
+    // 완전히 빈 행(아래쪽 여백 등)은 검사 제외 — A~H 중 하나라도 값이 있어야 검사 대상
+    if (!fields.some(f => cell(row, f) !== "")) return;
+    const missing = fields.filter(f => cell(row, f) === "").map(f => FIELD_LABEL[f] || f);
+    if (missing.length) blanks.push({ row: CONFIG.DATA_START_ROW + i, missing: missing });
+  });
+  return blanks;
+}
+
+/** 액션 결과창에 덧붙일 짧은 빈칸 경고 (없으면 빈 문자열) */
+function blankNote_() {
+  try {
+    const blanks = scanBlanks_();
+    if (!blanks.length) return "";
+    const ex = blanks.slice(0, 5).map(b => `${b.row}행(${b.missing.join("·")})`).join(", ");
+    return `\n\n⚠️ A~H에 빈칸이 있는 행 ${blanks.length}개: ${ex}${blanks.length > 5 ? " 외…" : ""}\n('🔎 빈칸 검사'로 전체 확인)`;
+  } catch (e) { return ""; }
+}
+
+/** 메뉴: A~H 빈칸 전체 검사 */
+function checkBlanks() {
+  try {
+    const blanks = scanBlanks_();
+    if (blanks.length === 0) { safeAlert_("✅ 빈칸 없음 — 값이 있는 모든 행의 A~H가 채워져 있습니다."); return; }
+    const lines = blanks.slice(0, 20).map(b => `  ${b.row}행: ${b.missing.join(", ")}`).join("\n");
+    safeAlert_(`⚠️ 빈칸이 있는 행 ${blanks.length}개\n(A~H 중 비어있는 칸)\n\n${lines}${blanks.length > 20 ? `\n  … 외 ${blanks.length - 20}행` : ""}`);
+  } catch (e) {
+    safeAlert_("❌ 오류\n" + e.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 전송 (/bulk 로 행 배열 POST, Bearer 인증)
+// ═══════════════════════════════════════════════════════════════
+// 스크립트 속성 CRON_SECRET 을 Bearer 토큰으로 전송. (프로젝트 설정 > 스크립트 속성)
+function authHeaders_() {
+  const secret = PropertiesService.getScriptProperties().getProperty("CRON_SECRET");
+  if (!secret) throw new Error("스크립트 속성 'CRON_SECRET' 이 설정되지 않았습니다. (프로젝트 설정 > 스크립트 속성)");
+  return { Authorization: "Bearer " + secret };
+}
+
+function postTrackingStatus_(rows) {
+  const res = UrlFetchApp.fetch(CONFIG.TRACKING_API_URL, {
+    method: "post",
+    contentType: "application/json",
+    headers: authHeaders_(),
+    payload: JSON.stringify({ rows: rows }),
+    muteHttpExceptions: true,
+  });
+  const code = res.getResponseCode();
+  const body = res.getContentText();
+  if (code !== 200) throw new Error("트래킹 상태 API " + code + ": " + body);
+  return JSON.parse(body);
+}
+
+function postRows_(rows) {
+  const res = UrlFetchApp.fetch(CONFIG.API_URL, {
+    method: "post",
+    contentType: "application/json",
+    headers: authHeaders_(),
+    payload: JSON.stringify(rows),
+    muteHttpExceptions: true,
+  });
+  const code = res.getResponseCode();
+  const body = res.getContentText();
+  if (code !== 200) throw new Error(`API ${code}: ${body}`);
+  const data = JSON.parse(body);
+  return {
+    count: data.upserted != null ? data.upserted : rows.length,
+    created: data.created || 0,
+    ended: data.ended_marked || 0,
+    filled: data.meta_filled || 0,
+  };
+}
+
+function markRegistered_(sheet, statusCol, rowNums) {
+  const stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm");
+  rowNums.forEach(r => sheet.getRange(r, statusCol).setValue("✅ " + stamp));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 메뉴 핸들러
+// ═══════════════════════════════════════════════════════════════
+function runSync___wgimpl(onlyNew) {
+  try {
+    const { rows, rowNums, statusCol, skipped, dupCount, future } = collectRows_(onlyNew);
+    if (rows.length === 0) {
+      safeAlert_((onlyNew ? "추가할 신규 광고가 없습니다." : "반영할 시트 행이 없습니다.") + noteExtra_(skipped, dupCount, future));
+      return true;
+    }
+    const { count, created, ended, filled } = postRows_(rows);
+    markRegistered_(getSheet_(), statusCol, rowNums);
+    let okMsg;
+    if (onlyNew) {
+      okMsg = `✅ 신규 광고 확인 완료\n• 비교한 행: ${count}건\n• 새로 추가: ${created}건\n• 기존 행 변경: ${filled}건`;
+    } else {
+      okMsg = `✅ 시트 변경사항 DB 반영 완료\n• 비교한 행: ${count}건\n• 새로 추가: ${created}건\n• 값이 달라 수정: ${filled}건`;
+    }
+    if (ended) okMsg += `\n• 삭제/보관 캡션으로 종료: ${ended}건`;
+    safeAlert_(okMsg + noteExtra_(skipped, dupCount, future) + blankNote_());
+    return true;
+  } catch (e) {
+    safeAlert_("❌ 오류\n" + e.message);
+    Logger.log(e.stack || e.message);
+    return false;
+  }
+}
+
+function syncNew()  { runSync_(true); }
+function syncAll()  { runSync_(false); }
+
+// 메뉴용 안전 wrapper: 전체 재전송은 자주 쓰되, 실수 클릭을 막기 위해 확인창을 거친다.
+function syncAllWithConfirm() {
+  const ui = SpreadsheetApp.getUi();
+  const result = ui.alert(
+    "시트 변경사항 DB 반영",
+    "시트 행을 URL 기준으로 비교하고 DB와 값이 다른 필드만 수정합니다.\n\n동일한 값은 건너뛰고, 시트 빈칸으로 기존 DB 값을 지우지 않습니다. 의도적인 빈칸은 '-'로 표시합니다.\n\n계속할까요?",
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (result !== ui.Button.OK) {
+    SpreadsheetApp.getActive().toast("변경사항 반영을 취소했습니다.", "취소", 4);
+    return;
+  }
+  runSync_(false);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 도우미
+// ═══════════════════════════════════════════════════════════════
+function fillExistingMetadataFromDB_(silent) {
+  try {
+    const sheet = getSheet_();
+    const fieldCols = buildFieldCols_(sheet);
+    const urlCol = fieldCols.url;
+    if (!urlCol) throw new Error("게시글URL 열을 찾을 수 없습니다.");
+
+    const lastRow = sheet.getLastRow();
+    const n = (lastRow >= CONFIG.DATA_START_ROW) ? (lastRow - CONFIG.DATA_START_ROW + 1) : 0;
+    if (n <= 0) return true;
+
+    const res = UrlFetchApp.fetch(CONFIG.LIST_API_URL, {
+      method: "get",
+      headers: authHeaders_(),
+      muteHttpExceptions: true,
+    });
+    if (res.getResponseCode() !== 200) throw new Error(`API ${res.getResponseCode()}: ${res.getContentText()}`);
+    const posts = (JSON.parse(res.getContentText()).posts) || [];
+    const postByKey = {};
+    posts.forEach(p => {
+      const key = linkKey_(String(p.url || ""));
+      if (key) postByKey[key] = p;
+    });
+
+    const fillFields = ["account_name", "company_name", "cost"];
+    const data = sheet.getRange(CONFIG.DATA_START_ROW, 1, n, sheet.getLastColumn()).getValues();
+    const formulasByField = {};
+    fillFields.forEach(f => {
+      if (fieldCols[f]) {
+        formulasByField[f] = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols[f], n, 1).getFormulas();
+      }
+    });
+
+    const editsByField = {};
+    fillFields.forEach(f => editsByField[f] = []);
+    const blankDbByField = {};
+    fillFields.forEach(f => blankDbByField[f] = 0);
+    let matchedRows = 0, missingPostRows = 0;
+    const missingSamples = [], blankSamples = [];
+
+    for (let i = 0; i < n; i++) {
+      const key = linkKey_(String(data[i][urlCol - 1] || ""));
+      const post = key ? postByKey[key] : null;
+      if (!post) {
+        if (key) {
+          missingPostRows++;
+          if (missingSamples.length < 5) missingSamples.push(String(data[i][urlCol - 1] || ""));
+        }
+        continue;
+      }
+      matchedRows++;
+      fillFields.forEach(f => {
+        const col = fieldCols[f];
+        if (!col) return;
+        const val = fmtVal_(f, post[f]);
+        const cur = data[i][col - 1];
+        const hasFormula = formulasByField[f] && formulasByField[f][i] && formulasByField[f][i][0];
+        if (hasFormula) return;
+        if (String(cur == null ? "" : cur).trim() !== "") return;
+        if (val === "") {
+          blankDbByField[f]++;
+          if (blankSamples.length < 5) blankSamples.push(`${f}: ${String(data[i][urlCol - 1] || "")}`);
+          return;
+        }
+        editsByField[f].push({ row: CONFIG.DATA_START_ROW + i, value: val });
+      });
+    }
+
+    assertRowCountStable_(sheet, lastRow, "fillExistingMetadataFromDB");
+    const filledAccount = writeColumnRuns_(sheet, fieldCols.account_name, editsByField.account_name, lastRow);
+    const filledCompany = writeColumnRuns_(sheet, fieldCols.company_name, editsByField.company_name, lastRow);
+    const filledCost = writeColumnRuns_(sheet, fieldCols.cost, editsByField.cost, lastRow);
+    Logger.log("fillExistingMetadataFromDB_result " + JSON.stringify({
+      matched_rows: matchedRows,
+      missing_post_rows: missingPostRows,
+      account_name_cells: filledAccount,
+      company_name_cells: filledCompany,
+      cost_cells: filledCost,
+      blank_db_account_name: blankDbByField.account_name,
+      blank_db_company_name: blankDbByField.company_name,
+      blank_db_cost: blankDbByField.cost,
+      missing_samples: missingSamples,
+      blank_samples: blankSamples,
+    }));
+    return true;
+  } catch (e) {
+    if (!silent) safeAlert_("❌ 기존 행 DB 메타데이터 보강 오류\n" + e.message);
+    Logger.log(e.stack || e.message);
+    return false;
+  }
+}
+
+function refreshSheetDerivedFields() {
+  const steps = [
+    ["채널명/DB 메타", function() { return fillExistingMetadataFromDB_(true); }],
+    ["바이럴 채널명", function() { return overwriteViralHandles_(true); }],
+    ["트래킹 상태", syncStatus],
+    ["누적 조회수", refreshCumulativeViews],
+    ["제작자", syncCreators],
+    ["업체명/비용", syncPricing],
+  ];
+  const failed = [];
+  steps.forEach(function (step) {
+    try {
+      if (step[1]() === false) failed.push(step[0]);
+    } catch (e) {
+      failed.push(step[0]);
+      Logger.log(step[0] + " 업데이트 오류: " + (e.stack || e.message));
+    }
+  });
+  if (failed.length) safeAlert_("일부 업데이트 실패:\n" + failed.join("\n"));
+  else SpreadsheetApp.getActive().toast("채널명, 트래킹 상태, 누적 조회수, 제작자, 업체명/비용 업데이트 완료", "완료", 5);
+}
+function checkSheetIssues__wgimpl() {
+  try {
+    const sheet = getSheet_();
+    const fieldCols = buildFieldCols_(sheet);
+    const lastRow = sheet.getLastRow();
+    const lastCol = sheet.getLastColumn();
+    const blanks = scanBlanks_();
+    const dupGroups = [];
+
+    if (lastRow >= CONFIG.DATA_START_ROW) {
+      const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, lastCol).getValues();
+      const byKey = {};
+      values.forEach(function (row, i) {
+        const rawUrl = String(row[fieldCols.url - 1] || "").trim();
+        if (!rawUrl || !ALLOWED_URL_RE.test(rawUrl)) return;
+        const key = urlKey_(rawUrl);
+        (byKey[key] = byKey[key] || []).push({ row: CONFIG.DATA_START_ROW + i, url: rawUrl });
+      });
+      Object.keys(byKey).forEach(function (key) { if (byKey[key].length > 1) dupGroups.push(byKey[key]); });
+    }
+
+    if (!blanks.length && !dupGroups.length) {
+      safeAlert_("✅ 빈칸/중복 URL 없음 — 추가 전 점검 통과");
+      return;
+    }
+
+    let msg = "🔎 시트 점검 결과";
+    if (blanks.length) {
+      msg += "\n\n⚠️ A~H 빈칸 " + blanks.length + "행";
+      msg += "\n" + blanks.slice(0, 10).map(function (b) { return "· " + b.row + "행: " + b.missing.join(", "); }).join("\n");
+      if (blanks.length > 10) msg += "\n… 외 " + (blanks.length - 10) + "행";
+    } else {
+      msg += "\n\n✅ A~H 빈칸 없음";
+    }
+
+    if (dupGroups.length) {
+      msg += "\n\n🔁 중복 URL " + dupGroups.length + "건";
+      msg += "\n" + dupGroups.slice(0, 10).map(function (g) {
+        const rows = g.map(function (e) { return e.row; });
+        return "· 전송 " + rows[0] + "행 / 무시 " + rows.slice(1).join(",") + "행\n  " + g[0].url;
+      }).join("\n");
+      if (dupGroups.length > 10) msg += "\n… 외 " + (dupGroups.length - 10) + "건";
+    } else {
+      msg += "\n\n✅ 중복 URL 없음";
+    }
+    safeAlert_(msg);
+  } catch (e) {
+    safeAlert_("❌ 시트 점검 오류\n" + e.message);
+    Logger.log(e.stack || e.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DB → 시트 반영 (대시보드에서 추가한 게시물을 시트로 가져오기)
+// ═══════════════════════════════════════════════════════════════
+// 방향: [DB] → [시트]. (시트→DB는 syncNew/syncAll, 이건 그 반대)
+// 동작: DB의 모든 게시물을 조회해, URL이 시트에 없으면 새 행 추가.
+//       이미 있는 행은 '빈 칸만' DB값으로 채움(계정명·업로드일 등 — 수동 입력분은 보존).
+// 인증: bulk와 동일한 Bearer CRON_SECRET. 조회수(일자별)·등록상태 열은 건드리지 않음.
+function fmtVal_(field, v) {
+  if (v == null) return "";
+  if (field === "posted_at") return toDateStr_(v) || "";
+  return v;  // cost는 숫자 그대로, 나머지는 문자열
+}
+
+function pullFromDB__wgimpl() {
+  try {
+    const sheet = getSheet_();
+    const fieldCols = buildFieldCols_(sheet);   // {field: 1-based col}
+    const urlCol = fieldCols.url;
+
+    const res = UrlFetchApp.fetch(CONFIG.LIST_API_URL, {
+      method: "get",
+      headers: authHeaders_(),
+      muteHttpExceptions: true,
+    });
+    if (res.getResponseCode() !== 200) throw new Error(`API ${res.getResponseCode()}: ${res.getContentText()}`);
+    const posts = (JSON.parse(res.getContentText()).posts) || [];
+
+    // 시트 기존 URL → 행번호
+    const lastRow = sheet.getLastRow();
+    const rowByKey = {};
+    if (lastRow >= CONFIG.DATA_START_ROW) {
+      const urls = sheet.getRange(CONFIG.DATA_START_ROW, urlCol, lastRow - CONFIG.DATA_START_ROW + 1, 1).getValues();
+      urls.forEach((r, i) => {
+        const u = String(r[0] || "").trim();
+        if (u) rowByKey[linkKey_(u)] = CONFIG.DATA_START_ROW + i;   // shortcode/영상ID 기준 — /p/·/reel/ 등 경로만 달라도 같은 글로 인식
+      });
+    }
+
+    // 채울 필드(시트에 해당 헤더가 있는 것만)
+    const fillFields = ["posted_at", "account_name", "company_name", "content_summary", "asset_name", "channel_type", "project_name", "product_name", "cost", "planner", "creator"];
+    
+
+    var _pfN = (lastRow >= CONFIG.DATA_START_ROW) ? (lastRow - CONFIG.DATA_START_ROW + 1) : 0; var _pfBlock = _pfN > 0 ? sheet.getRange(CONFIG.DATA_START_ROW, 1, _pfN, sheet.getLastColumn()).getValues() : []; let added = 0, filled = 0;
+    posts.forEach(p => {
+      const key = linkKey_(String(p.url || ""));   // 시트 인덱스와 동일 기준 — DB /p/ ↔ 시트 /reel/ 매칭되어 재추가 안 됨
+      if (!key) return;
+      if (rowByKey[key]) {
+        // 기존 행 — 빈 칸만 DB값으로 채움(수동 편집 보존)
+        const rowNum = rowByKey[key];
+        fillFields.forEach(f => {
+          if (!fieldCols[f]) return;
+          let val = fmtVal_(f, p[f]); if (f === "content_summary") { if (/\uBC14\uC774\uB7F4|\uC704\uC131/.test(String(p.channel_type == null ? "" : p.channel_type))) return; val = String(val).replace(/[\r\n]+/g, " ").trim(); }
+          if (val === "") return;
+          const cell = sheet.getRange(rowNum, fieldCols[f]);
+          var _pfBi = rowNum - CONFIG.DATA_START_ROW, _pfCi = fieldCols[f] - 1, _pfCur = (_pfBi >= 0 && _pfBi < _pfBlock.length) ? _pfBlock[_pfBi][_pfCi] : ""; if (String(_pfCur == null ? "" : _pfCur).trim() === "") { cell.setValue(val); if (_pfBi >= 0 && _pfBi < _pfBlock.length) _pfBlock[_pfBi][_pfCi] = val; filled++; }
+        });
+      } else {
+        // 신규 — 새 행에 메타 셀만 기록(조회수·등록상태 열은 그대로 비워둠 → 다른 열 안 건드림)
+        const targetRow = sheet.getLastRow() + 1;
+        sheet.getRange(targetRow, urlCol).setValue(p.url);
+        fillFields.forEach(f => {
+          if (!fieldCols[f]) return;
+          let val = fmtVal_(f, p[f]); if (f === "content_summary") { if (/\uBC14\uC774\uB7F4|\uC704\uC131/.test(String(p.channel_type == null ? "" : p.channel_type))) return; val = String(val).replace(/[\r\n]+/g, " ").trim(); }
+          if (val !== "") sheet.getRange(targetRow, fieldCols[f]).setValue(val);
+        });
+        rowByKey[key] = targetRow;
+        added++;
+      }
+    });
+
+    safeAlert_(`⬇️ DB→시트 반영 완료\n• 신규 행 추가: ${added}건\n• 기존 행 빈칸 채움: ${filled}건`);
+    return true;
+  } catch (e) {
+    safeAlert_("❌ DB→시트 반영 오류\n" + e.message);
+    Logger.log(e.stack || e.message);
+    return false;
+  }
+}
+
+function fillCaptionFromAsset_() {
+  const sheet = getSheet_();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < CONFIG.DATA_START_ROW) return true;
+  const assetCol = findHeaderCol_(sheet, ["소재명"]);
+  const capCol = findHeaderCol_(sheet, ["캡션"]);
+  if (!assetCol || !capCol) return true;
+
+  const n = lastRow - CONFIG.DATA_START_ROW + 1;
+  const assets = sheet.getRange(CONFIG.DATA_START_ROW, assetCol, n, 1).getValues();
+  const caps = sheet.getRange(CONFIG.DATA_START_ROW, capCol, n, 1).getValues();
+  let filled = 0;
+  for (let i = 0; i < n; i++) {
+    const currentCaption = String(caps[i][0] || "");
+    if (currentCaption.trim() !== "") {
+      // 라이브와 동일하게 기존 캡션도 파일명 버전 접미사만 자가치유한다.
+      // 앞의 점(.)이 필수라 일반 문장 속 "디자인" 단어는 건드리지 않는다.
+      const normalizedCaption = currentCaption
+        .replace(/\s*\.디자인\s*\d*\s*$/, "")
+        .replace(/\.+\s*$/, "")
+        .trim();
+      if (normalizedCaption !== currentCaption) {
+        caps[i][0] = normalizedCaption;
+        filled++;
+      }
+      continue;
+    }
+    const part = String(assets[i][0] || "").split("_")[8] || "";
+    // 파일명 버전표기 .디자인N(예: .디자인1/.디자인2) 접미사 제거 후 .x/후행점 정리 (라이브와 통일, 2026-07-27)
+    const caption = String(part).replace(/\s*\.디자인\s*\d*\s*$/, "").replace(/\.(x|X)$/, "").replace(/\.$/, "").trim();
+    if (caption) { caps[i][0] = caption; filled++; }
+  }
+  if (filled) sheet.getRange(CONFIG.DATA_START_ROW, capCol, n, 1).setValues(caps);
+  return true;
+}
+
+// 매일 자동: 시트→DB(전체 syncAll) + 시트 날짜값→DB(importStats) + DB→시트(대시보드 추가분 가져오기)를 함께 수행.
+// syncNew(신규만)→syncAll 변경(2026-07-06): 기존 행의 시트 수정(업로드일 정정 등)이 DB로
+// 전파되지 않아 시트·DB 게시일이 어긋나던 문제 해소(640행 7/2↔7/4 사례).
+// 서버(bulk)가 '비어있지 않은 값만 덮기 + manual_fields 보존'이라 전체 재전송도 안전.
+//
+// 운영 관측:
+// - 각 단계의 시작/종료/소요시간/오류를 Script Properties + 실행 로그에 남긴다.
+// - pullFromDB/importStats/exportStats만 실패 시 7분 뒤 실패 단계만 1회 재시도한다.
+// - 재시도도 실패하면 더 예약하지 않고 오류를 남겨 무한 트리거 생성을 막는다.
+const DAILY_AUTO_RETRY_DELAY_MS_ = 7 * 60 * 1000;
+const DAILY_AUTO_RETRYABLE_STAGES_ = ["pullFromDB", "importStats", "exportStats"];
+
+function dailyAutoErrorText_(e) {
+  // Script Properties 단일 값 제한을 넘지 않도록 스택은 단계당 700자로 제한한다.
+  return String((e && (e.stack || e.message)) || e).slice(0, 700);
+}
+
+function dailyAutoStageDefs_() {
+  return [
+    ["fillCaptionFromAsset", fillCaptionFromAsset_],
+    ["syncAll", function() { return runSync_(false); }],
+    ["pullFromDB", pullFromDB],
+    ["importStats", function() { return importStats("daily_auto"); }],
+    ["exportStats", exportStats],
+    ["syncStatus", syncStatus],
+    ["refreshCumulativeViews", refreshCumulativeViews],
+    ["syncCreators", syncCreators],
+    ["overwriteViralHandles", function() { return overwriteViralHandles_(true); }],
+    ["syncPricing", syncPricing],
+  ];
+}
+
+function runDailyAutoStage_(name, fn) {
+  const startedMs = Date.now();
+  const startedAt = new Date(startedMs).toISOString();
+  try {
+    const result = fn();
+    if (result === false) throw new Error(name + " returned false");
+    const finishedMs = Date.now();
+    const stage = {
+      name: name,
+      status: "OK",
+      started_at: startedAt,
+      finished_at: new Date(finishedMs).toISOString(),
+      duration_ms: finishedMs - startedMs,
+    };
+    Logger.log("dailyAuto_stage " + JSON.stringify(stage));
+    return stage;
+  } catch (e) {
+    const finishedMs = Date.now();
+    const stage = {
+      name: name,
+      status: "ERROR",
+      started_at: startedAt,
+      finished_at: new Date(finishedMs).toISOString(),
+      duration_ms: finishedMs - startedMs,
+      error: dailyAutoErrorText_(e),
+    };
+    Logger.log("dailyAuto_stage " + JSON.stringify(stage));
+    return stage;
+  }
+}
+
+function removeDailyAutoRetryTriggers_() {
+  const retryTriggers = ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === "dailyAutoRetry_");
+  retryTriggers.forEach(t => ScriptApp.deleteTrigger(t));
+  return retryTriggers.length;
+}
+
+function scheduleDailyAutoRetry_(failedStageNames, sourceStartedAt) {
+  const retryable = DAILY_AUTO_RETRYABLE_STAGES_
+    .filter(name => failedStageNames.indexOf(name) >= 0);
+  const props = PropertiesService.getScriptProperties();
+  removeDailyAutoRetryTriggers_();
+  if (!retryable.length) {
+    props.deleteProperty("DAILY_AUTO_RETRY_PENDING_JSON");
+    return [];
+  }
+  props.setProperty("DAILY_AUTO_RETRY_PENDING_JSON", JSON.stringify({
+    source_started_at: sourceStartedAt,
+    stages: retryable,
+    scheduled_at: new Date().toISOString(),
+    attempt: 1,
+  }));
+  ScriptApp.newTrigger("dailyAutoRetry_")
+    .timeBased()
+    .after(DAILY_AUTO_RETRY_DELAY_MS_)
+    .create();
+  Logger.log("dailyAuto_retry_scheduled " + JSON.stringify(retryable));
+  return retryable;
+}
+
+function dailyAutoRetry_() {
+  return withAutoWriteGuard_(function() {
+    const props = PropertiesService.getScriptProperties();
+    const raw = props.getProperty("DAILY_AUTO_RETRY_PENDING_JSON");
+    removeDailyAutoRetryTriggers_();
+    props.deleteProperty("DAILY_AUTO_RETRY_PENDING_JSON");
+    if (!raw) {
+      Logger.log("dailyAuto_retry_skip: pending stages 없음");
+      return true;
+    }
+
+    let pending;
+    try {
+      pending = JSON.parse(raw);
+    } catch (e) {
+      throw new Error("dailyAuto retry payload 파싱 실패: " + e.message);
+    }
+    const wanted = DAILY_AUTO_RETRYABLE_STAGES_
+      .filter(name => (pending.stages || []).indexOf(name) >= 0);
+    const defs = {};
+    dailyAutoStageDefs_().forEach(pair => { defs[pair[0]] = pair[1]; });
+    const startedAt = new Date().toISOString();
+    const stages = wanted.map(name => runDailyAutoStage_(name, defs[name]));
+    const errors = stages.filter(stage => stage.status !== "OK");
+    const status = errors.length
+      ? "ERROR: " + errors.map(stage => stage.name + ": " + stage.error).join(" | ")
+      : "OK";
+    props.setProperties({
+      DAILY_AUTO_LAST_RETRY_STARTED_AT: startedAt,
+      DAILY_AUTO_LAST_RETRY_FINISHED_AT: new Date().toISOString(),
+      DAILY_AUTO_LAST_RETRY_STATUS: status,
+      DAILY_AUTO_LAST_RETRY_STAGES_JSON: JSON.stringify(stages),
+    }, false);
+    Logger.log("dailyAuto_retry_result " + JSON.stringify({
+      source_started_at: pending.source_started_at || null,
+      status: status,
+      stages: stages,
+    }));
+    if (errors.length) throw new Error(status);
+    return true;
+  });
+}
+
+function dailyAuto() {
+  return withAutoWriteGuard_(function() {
+    const props = PropertiesService.getScriptProperties();
+    const startedAt = new Date().toISOString();
+    props.setProperties({
+      AUTO_SYNC_ENABLED: "true",
+      DAILY_AUTO_LAST_STARTED_AT: startedAt,
+      DAILY_AUTO_LAST_STATUS: "RUNNING",
+    }, false);
+
+    const stages = dailyAutoStageDefs_()
+      .map(pair => runDailyAutoStage_(pair[0], pair[1]));
+    const errors = stages.filter(stage => stage.status !== "OK");
+    const failedNames = errors.map(stage => stage.name);
+    let retryScheduled = [];
+    try {
+      retryScheduled = scheduleDailyAutoRetry_(failedNames, startedAt);
+    } catch (e) {
+      const retryScheduleStage = {
+        name: "scheduleRetry",
+        status: "ERROR",
+        duration_ms: 0,
+        error: dailyAutoErrorText_(e),
+      };
+      stages.push(retryScheduleStage);
+      errors.push(retryScheduleStage);
+      Logger.log("dailyAuto_retry_schedule_error " + JSON.stringify(retryScheduleStage));
+    }
+    const finishedAt = new Date().toISOString();
+    const status = errors.length
+      ? "ERROR: " + errors.map(stage => stage.name + ": " + stage.error).join(" | ")
+      : "OK";
+    props.setProperties({
+      DAILY_AUTO_LAST_FINISHED_AT: finishedAt,
+      DAILY_AUTO_LAST_STATUS: status,
+      DAILY_AUTO_LAST_STAGES_JSON: JSON.stringify(stages),
+      DAILY_AUTO_LAST_RETRY_SCHEDULED_JSON: JSON.stringify(retryScheduled),
+    }, false);
+    Logger.log("dailyAuto_result " + JSON.stringify({
+      status: status,
+      started_at: startedAt,
+      finished_at: finishedAt,
+      retry_scheduled: retryScheduled,
+      stages: stages,
+    }));
+    if (errors.length) throw new Error(status);
+    return true;
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 수집 조회수 → 시트 I열~ 역채움 (대시보드 자동수집분을 시트로 내림)
+// importStats(시트→DB)의 반대. 새 날짜는 우측에 열 자동 추가 후, 수집값 있는 날짜 칸만 갱신
+// (없으면 기존값 유지=수동 입력 보존). dailyAuto(매일 9:30)에 연결돼 자동 확장·갱신.
+// ═══════════════════════════════════════════════════════════════
+function fetchCollectedStats_() {
+  const res = UrlFetchApp.fetch(CONFIG.STATS_EXPORT_API_URL, {
+    method: "get",
+    headers: authHeaders_(),
+    muteHttpExceptions: true,
+  });
+  const code = res.getResponseCode();
+  if (code !== 200) throw new Error(`API ${code}: ${res.getContentText()}`);
+  return (JSON.parse(res.getContentText()).posts) || []; // [{url, ended_at, stats:[[date,metric],...]}]
+}
+
+function exportStats__wgimpl() {
+  try {
+    const sheet = getSheet_();
+    const fieldCols = buildFieldCols_(sheet);
+    const lastRow = sheet.getLastRow();
+    const lastCol = sheet.getLastColumn();
+    if (lastRow < CONFIG.DATA_START_ROW) { safeAlert_("데이터 행이 없습니다."); return; }
+    const header = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+
+    // 날짜 컬럼 자동 인식 (importStats와 동일 규칙: I열~ 스캔, 월 줄면 +1년)
+    const dateCols = [];
+    let year = CONFIG.STATS_START_YEAR, prevMonth = null;
+    for (let c = CONFIG.STATS_FIRST_COL; c <= lastCol; c++) {
+      const md = parseMonthDay_(header[c - 1]);
+      if (!md) continue;
+      if (prevMonth !== null && md.mo < prevMonth) year++;
+      prevMonth = md.mo;
+      dateCols.push({ col: c, date: `${year}-${("0" + md.mo).slice(-2)}-${("0" + md.da).slice(-2)}` });
+    }
+
+    // 대시보드 수집 조회수 → linkKey(shortcode/영상ID) → {date: play} + 등장 날짜 수집
+    const byKey = {};
+    const endedByKey = {};
+    const finalMetricByKey = {};
+    const allDatesSet = {};
+    const today = todayStr_();
+    fetchCollectedStats_().forEach(p => {
+      const k = linkKey_(String(p.key || p.url || ""));
+      if (!k) return;
+      if (p.ended_at) endedByKey[k] = String(p.ended_at).slice(0, 10);
+      const m = byKey[k] || (byKey[k] = {});
+      (p.stats || []).forEach(pair => {
+        const metric = Number(pair[1]);
+        const measuredAt = String(pair[0]).slice(0, 10);
+        if (!(metric > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(measuredAt)) return; // 0·음수·비숫자 방어 — 시트에 0 찍힘/기존값 덮음/빈 열 추가 방지(엔드포인트도 >0만 반환)
+        m[measuredAt] = metric; allDatesSet[measuredAt] = true;
+        if (measuredAt < today && (!(finalMetricByKey[k] > 0) || metric > finalMetricByKey[k])) {
+          finalMetricByKey[k] = metric;
+        }
+      });
+    });
+
+    // ── 우측 날짜열 자동 추가 ──
+    // 수집 데이터의 날짜 중 '기존 마지막 날짜열보다 뒤(우측)이고 오늘(KST) 이하'인 날짜만 새 열로 삽입.
+    // (중간 백필용 열 삽입은 안 함 — 우측으로만 확장. 헤더/등록상태는 이름 기반 조회라 열 삽입에도 안 깨짐)
+    const existingSet = {};
+    dateCols.forEach(dc => existingSet[dc.date] = true);
+    const maxExisting = dateCols.length ? dateCols[dateCols.length - 1].date : null;
+    const newDates = Object.keys(allDatesSet)
+      .filter(d => !existingSet[d] && d <= today && (maxExisting === null || d > maxExisting))
+      .sort();
+    let addedCols = 0;
+    if (newDates.length) {
+      const anchor = dateCols.length ? dateCols[dateCols.length - 1].col : sheet.getLastColumn();
+      sheet.insertColumnsAfter(anchor, newDates.length);
+      const headerRow = newDates.map(d => { const p = d.split("-"); return `${+p[1]}.${+p[2]}`; }); // "2026-07-08" → "7.8"
+      sheet.getRange(CONFIG.HEADER_ROW, anchor + 1, 1, newDates.length).setValues([headerRow]);
+      newDates.forEach((d, i) => dateCols.push({ col: anchor + 1 + i, date: d }));
+      addedCols = newDates.length;
+    }
+    if (dateCols.length === 0) { safeAlert_("날짜 열도 없고 추가할 수집 날짜도 없습니다. (1행 날짜 헤더 또는 수집 데이터 확인)"); return; }
+
+    // 중복 날짜열 감지: 같은 날짜가 2개 이상이면 역채움/증분 기준이 흔들려 오염될 수 있으므로 중단.
+    {
+      const dateSeen = {}, dupDates = [];
+      dateCols.forEach(dc => {
+        if (dateSeen[dc.date]) {
+          if (dupDates.indexOf(dc.date) < 0) dupDates.push(dc.date);
+        } else {
+          dateSeen[dc.date] = true;
+        }
+      });
+      if (dupDates.length) {
+        const s = dupDates.slice(0, 10).map(d => { const p = d.split("-"); return `${+p[1]}.${+p[2]}`; }).join(", ");
+        safeAlert_(`🚨 중복 날짜 열 ${dupDates.length}개 발견 — 역채움·증분 오염 우려. 📥 중단. 시트에서 중복 날짜 열을 하나만 남기고 재실행하세요.\n중복 날짜: ${s}${dupDates.length > 10 ? " ..." : ""}`);
+        return;
+      }
+    }
+
+    const nRows = lastRow - CONFIG.DATA_START_ROW + 1;
+    const urlVals = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.url, nRows, 1).getValues();
+    const postedVals = fieldCols.posted_at
+      ? sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.posted_at, nRows, 1).getValues()
+      : new Array(nRows).fill([null]);
+    const firstCol = dateCols[0].col, lastDateCol = dateCols[dateCols.length - 1].col;
+    const width = lastDateCol - firstCol + 1;
+    // 현재값 1회 읽기(읽기는 수식 비파괴). ⚠️ 쓰기는 '날짜 열 단위'로만 → 날짜 아닌 열(수식·메모 등)은 절대 안 건드림.
+    const block = sheet.getRange(CONFIG.DATA_START_ROW, firstCol, nRows, width).getValues();
+
+    // 행별 매칭 맵 선계산 + 매칭/누락 카운트
+    let matched = 0, missing = 0, shortcodeFormatMatched = 0;
+    const rowMap = new Array(nRows);
+    const rowKeys = new Array(nRows);
+    const keyRowCounts = {};
+    const postedAtByRow = new Array(nRows);
+    for (let i = 0; i < nRows; i++) {
+      postedAtByRow[i] = toDateStr_(postedVals[i][0]);
+      const url = String(urlVals[i][0] || "").trim();
+      if (!url) { rowMap[i] = null; rowKeys[i] = null; continue; }
+      const key = linkKey_(url);
+      rowKeys[i] = key;
+      if (key) keyRowCounts[key] = (keyRowCounts[key] || 0) + 1;
+      const m = byKey[key];
+      if (m) {
+        rowMap[i] = m; matched++;
+        if (/instagram\.com\/(?:[^/?#]+\/)*(?:reels|reel|tv)\//i.test(url)) shortcodeFormatMatched++;
+      }
+      else { rowMap[i] = null; if (ALLOWED_URL_RE.test(url)) missing++; }
+    }
+
+    // 행별 좌→우 forward-fill: 실측(>0)은 반영하고 기준값(lastVal) 갱신, '측정 없음' 빈칸은 직전 누적값으로 이어받는다.
+    //   → 종료·수집누락·play_count null로 생기는 날짜 공백에도 누적조회수가 줄어(끊겨) 보이지 않게 하는 '표시 보정'.
+    //   ⚠️ DB(post_daily_stats)엔 아무것도 안 씀(safeIncrement·증분 규칙 불변). 이어받기 값은 importStats가 재저장 안 함(아래 가드).
+    //   배너 등 '양수 조회수가 한 번도 없는' 행은 lastVal이 안 생겨 자동 제외(빈칸 유지).
+    //   기존 실측·수동값은 절대 안 덮고, 빈칸 또는 직전값 이어받기였던 칸만 새 실측으로 교체.
+    let filled = 0, carried = 0, prePostedCleared = 0, preserved = 0, orphanRows = 0, futureCleared = 0, endedCleared = 0;
+    const carriedCells = {};
+    const newBlock = block.map(r => r.slice());
+    for (let i = 0; i < nRows; i++) {
+      const m = rowMap[i];
+      // 🛡️ URL 없는 '고아' 행은 절대 건드리지 않는다(ffill로 숫자 옆번짐 차단). 데이터 남은 고아는 카운트→경고.
+      if (!String(urlVals[i][0] || "").trim()) {
+        for (let j = 0; j < dateCols.length; j++) {
+          const c = block[i][dateCols[j].col - firstCol];
+          if (c !== "" && c !== null) { orphanRows++; break; }
+        }
+        continue;
+      }
+      let lastVal = null;
+      const endedAt = rowKeys[i] ? endedByKey[rowKeys[i]] : null;
+      for (let j = 0; j < dateCols.length; j++) {
+        const bi = dateCols[j].col - firstCol;
+        const date = dateCols[j].date;
+        const cell = block[i][bi];
+        const postedAt = postedAtByRow[i];
+        if (isBeforePostedDate_(date, postedAt)) {
+          if (cell !== "" && cell !== null) { newBlock[i][bi] = ""; prePostedCleared++; }
+          lastVal = null;
+          continue;
+        }
+        if (endedAt && date > endedAt) {
+          if (cell !== "" && cell !== null) { newBlock[i][bi] = ""; endedCleared++; }
+          lastVal = null;
+          continue;
+        }
+        // 🛡️ 오늘·미래 날짜칸은 채우지 않고 비운다(수집일-1까지만; 대시보드 '오늘 제외'와 일치).
+        if (date >= today) {
+          if (cell !== "" && cell !== null) { newBlock[i][bi] = ""; futureCleared++; }
+          lastVal = null;
+          continue;
+        }
+        const collected = m ? m[date] : undefined;
+        if (collected > 0) {                                   // 실측값 도착 → 빈 칸만 채움 + 기준 갱신
+          const isBlank = cell === "" || cell === null;
+          // 🛡️ 값이 이미 든 칸(수동 입력·기존 실측)은 절대 안 덮는다 — 빈 칸만 실측으로 채운다.
+          //    예전엔 isCarried(직전값과 같으면 덮기)도 덮었는데, '평평한 수동값'(배너 도달수는 며칠씩 동일)이
+          //    carry로 오인돼 역채움이 사용자 수동입력을 덮어버리는 버그가 있었음. 빈 칸만 채우도록 축소(수동값 보호).
+          if (isBlank) {
+            if (cell !== collected) { newBlock[i][bi] = collected; filled++; }
+            lastVal = collected;
+          } else if (typeof cell === "number" && cell > 0) {
+            lastVal = cell;
+            if (cell !== collected) preserved++;
+          }
+        } else if (typeof cell === "number" && cell > 0) {     // 기존 실측/수동값 → 유지 + 기준 갱신
+          lastVal = cell;
+        } else if (lastVal != null && (cell === "" || cell === null)) { // '완전 빈칸'만 이어받기
+          newBlock[i][bi] = lastVal; carried++;                // (0·텍스트 등 다른 내용이 든 셀은 절대 안 덮음)
+          carriedCells[i + ":" + bi] = true;
+        }
+      }
+    }
+    // 변경된 날짜 열만 URL-key로 기록한다. URL열·날짜블록을 쓰기 직전 각각 한 번만
+    // 다시 읽어 현재 URL→행 위치를 만든다(날짜열마다 재조회하지 않아 왕복 폭증 방지).
+    // 계산 뒤 사람이 정렬해도 현재 URL 위치로 쓰며, 중복 URL은 안전하게 건너뛴다.
+    const latestLastRowForDates = sheet.getLastRow();
+    if (latestLastRowForDates !== lastRow) {
+      safeAlert_(`⚠️ 실행 중 행 수가 ${lastRow}→${latestLastRowForDates}로 바뀌어 날짜값 쓰기를 중단했습니다. 잠시 후 다시 실행됩니다.`);
+      return false;
+    }
+    const latestUrlsForDates = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.url, nRows, 1).getValues();
+    const latestDateBlock = sheet.getRange(CONFIG.DATA_START_ROW, firstCol, nRows, width).getValues();
+    const latestRowByKey = {}, latestKeyCounts = {};
+    for (let i = 0; i < nRows; i++) {
+      const key = linkKey_(String(latestUrlsForDates[i][0] || "").trim());
+      if (!key) continue;
+      latestKeyCounts[key] = (latestKeyCounts[key] || 0) + 1;
+      latestRowByKey[key] = i;
+    }
+    const finalDateBlock = latestDateBlock.map(function(row) { return row.slice(); });
+    let dateKeyWrites = 0, dateKeyConflicts = 0, concurrentCellSkips = 0;
+    dateCols.forEach(dc => {
+      const bi = dc.col - firstCol;
+      for (let i = 0; i < nRows; i++) {
+        const key = rowKeys[i];
+        if (!key || newBlock[i][bi] === block[i][bi]) continue;
+        if (keyRowCounts[key] > 1 || latestKeyCounts[key] > 1) { dateKeyConflicts++; continue; }
+        const latestIndex = latestRowByKey[key];
+        if (latestIndex === undefined) { concurrentCellSkips++; continue; }
+        const current = latestDateBlock[latestIndex][bi];
+        // 계산 이후 사람이 같은 셀을 수정했다면 그 최신 수기값을 보존한다.
+        if (current !== block[i][bi]) { concurrentCellSkips++; continue; }
+        if (current !== newBlock[i][bi]) {
+          finalDateBlock[latestIndex][bi] = newBlock[i][bi];
+          dateKeyWrites++;
+        }
+      }
+    });
+
+    // 쓰기 직전 URL 순서를 한 번 더 확인한다. 바뀌었으면 한 칸도 쓰지 않고 재시도한다.
+    const preWriteUrls = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.url, nRows, 1).getValues();
+    let preWriteOrderChanged = false;
+    for (let i = 0; i < nRows; i++) {
+      if (linkKey_(String(preWriteUrls[i][0] || "").trim()) !== linkKey_(String(latestUrlsForDates[i][0] || "").trim())) {
+        preWriteOrderChanged = true; break;
+      }
+    }
+    if (preWriteOrderChanged) {
+      safeAlert_("⚠️ 날짜값 쓰기 직전 행 정렬이 감지돼 전체 쓰기를 취소했습니다. 잠시 후 다시 실행됩니다.");
+      return false;
+    }
+
+    // 날짜열은 보통 하나의 연속 블록이다. 비-날짜 열이 끼어 있어도 그 열은 건드리지 않도록
+    // 연속 날짜열 그룹별로 한 번만 setValues한다(2,000행×97열도 수십 번이 아닌 1~2회 쓰기).
+    const dateColGroups = [];
+    for (let i = 0; i < dateCols.length; i++) {
+      const col = dateCols[i].col;
+      const prev = dateColGroups.length ? dateColGroups[dateColGroups.length - 1] : null;
+      if (!prev || col !== prev.end + 1) dateColGroups.push({ start: col, end: col });
+      else prev.end = col;
+    }
+    dateColGroups.forEach(function(group) {
+      const startBi = group.start - firstCol;
+      const groupWidth = group.end - group.start + 1;
+      let changed = false;
+      for (let i = 0; i < nRows && !changed; i++) {
+        for (let j = 0; j < groupWidth; j++) {
+          if (finalDateBlock[i][startBi + j] !== latestDateBlock[i][startBi + j]) { changed = true; break; }
+        }
+      }
+      if (!changed) return;
+      assertRowCountStable_(sheet, latestLastRowForDates, "exportStats.dateBlock");
+      const values = finalDateBlock.map(function(row) { return row.slice(startBi, startBi + groupWidth); });
+      sheet.getRange(CONFIG.DATA_START_ROW, group.start, nRows, groupWidth).setValues(values);
+    });
+
+    const incrementCol = getIncrementCol_(sheet);
+    let incWritten = 0;
+    if (incrementCol) {
+      // 증분 수식은 아직 행번호를 참조하는 3단계 대상이다. 날짜값은 이미 URL-key로
+      // 안전하게 썼지만, 계산 중 정렬이 있었다면 수식은 쓰지 않고 다음 재시도로 넘긴다.
+      const formulaLastRow = sheet.getLastRow();
+      if (formulaLastRow !== lastRow) {
+        safeAlert_(`⚠️ 실행 중 행 수가 ${lastRow}→${formulaLastRow}로 바뀌어 증분 수식 쓰기를 중단했습니다. 날짜값은 URL 기준으로 안전하게 반영됐으며 잠시 후 다시 실행됩니다.`);
+        return false;
+      }
+      const formulaUrls = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.url, nRows, 1).getValues();
+      let urlOrderChanged = false;
+      for (let i = 0; i < nRows; i++) {
+        const latestKey = linkKey_(String(formulaUrls[i][0] || "").trim());
+        const originalKey = rowKeys[i] || ""; // 빈 URL: 초기 null과 재조회 ""를 같은 값으로 취급
+        if (latestKey !== originalKey) { urlOrderChanged = true; break; }
+      }
+      if (urlOrderChanged) {
+        safeAlert_("⚠️ 실행 중 행 정렬이 감지돼 증분 수식 쓰기를 중단했습니다. 날짜값은 URL 기준으로 안전하게 반영됐으며 잠시 후 다시 실행됩니다.");
+        return false;
+      }
+      const incFormulas = [];
+      for (let i = 0; i < nRows; i++) {
+        const url = String(urlVals[i][0] || "").trim();
+        const m = rowMap[i];
+        const postedAt = postedAtByRow[i];
+        const endedAt = rowKeys[i] ? endedByKey[rowKeys[i]] : null;
+        const rowNum = CONFIG.DATA_START_ROW + i;
+        const refs = [];
+        if (url && m) {
+          for (let j = 0; j < dateCols.length; j++) {
+            const dc = dateCols[j];
+            const bi = dc.col - firstCol;
+            if (isBeforePostedDate_(dc.date, postedAt)) continue;
+            if (endedAt && dc.date > endedAt) continue;
+            if (dc.date >= today) continue;
+            if (carriedCells[i + ":" + bi]) continue;
+            if (!(m[dc.date] > 0)) continue;
+            const n = toNumber_(newBlock[i][bi]);
+            if (n == null || n <= 0) continue;
+            refs.push({ ref: colLetter_(dc.col) + rowNum, date: dc.date });
+          }
+        }
+        if (refs.length === 0) {
+          const firstDateRef = colLetter_(firstCol) + rowNum;
+          const lastDateRef = colLetter_(firstCol + width - 1) + rowNum;
+          // Keep a blank-result formula so an empty I cell still has a repairable formula.
+          incFormulas.push(["=IFERROR(LET(rng,$" + firstDateRef + ":$" + lastDateRef + ",cols,SEQUENCE(1,COLUMNS(rng),COLUMN($" + firstDateRef + "),1),lastC,MAX(FILTER(cols,rng>0)),lastV,INDEX(rng,1,lastC-COLUMN($" + firstDateRef + ")+1),prev,FILTER(rng,cols<lastC,rng>0),IFERROR(MAX(0,lastV-MAX(prev)),lastV)),\"\")"]);
+          incWritten++;
+          continue;
+        }
+        // 백로그 첫 측정(게시 7일 초과)만 빈칸 — 스파이크 방지 규칙 유지(판정은 DB 측정일 기반).
+        if (refs.length === 1 && postedAt) {
+          const gapDays = (Date.parse(refs[0].date) - Date.parse(String(postedAt).slice(0, 10))) / 86400000;
+          if (gapDays > 7) { incFormulas.push(['=""']); continue; }  // 표시 빈칸이되 수식은 유지(복구 가능 칸 규약)
+        }
+        // V2(행-범위 수식, 2026-07-29): 기존 셀주소 목록(MAX({CE743,...}))은 참조한 날짜 '열'이
+        // 삭제/삽입되면 #REF!로 전멸했다(7/27 저녁 실사고. 정렬 자체는 상대참조가 행을 따라감을
+        // 운영 시트 실측으로 확인 — H열 V4가 팀 정렬 수차례 후에도 1,278행 정합 유지).
+        // 범위 참조는 열 증감에 자동 적응하고 행과 함께 이동한다. 의미는 기존과 동일:
+        // 마지막 유효값 − 그 이전 최대(음수는 0), 유효값 1개면 전액.
+        // (부수 개선: 오늘 열에 수기값이 들어오면 그 값이 최신으로 잡혀 증분이 즉시 반영됨)
+        const rngRef = "$" + colLetter_(firstCol) + rowNum + ":$" + colLetter_(firstCol + width - 1) + rowNum;
+        const firstCellRef = "$" + colLetter_(firstCol) + rowNum;
+        incFormulas.push([
+          "=IFERROR(LET(rng," + rngRef +
+          ",cols,SEQUENCE(1,COLUMNS(rng),COLUMN(" + firstCellRef + "),1)" +
+          ",lastC,MAX(FILTER(cols,rng>0))" +
+          ",lastV,INDEX(rng,1,lastC-COLUMN(" + firstCellRef + ")+1)" +
+          ",prev,FILTER(rng,cols<lastC,rng>0)" +
+          ',IFERROR(MAX(0,lastV-MAX(prev)),lastV)),"")'
+        ]);
+        incWritten++;
+      }
+      sheet.getRange(CONFIG.DATA_START_ROW, incrementCol, nRows, 1).setFormulas(incFormulas);
+      try { refreshCumulativeViews(); } catch (e) { Logger.log(e); }
+    }
+
+    // 종료글 최종값 보존: 날짜열에 표시 가능한 실측이 없어 H가 빈칸이더라도,
+    // DB에 양수 조회수/도달수 이력이 있으면 "최종 누적 조회수" 값만 H열에 보존한다.
+    // 날짜별 히스토리 칸에 소급 기입하면 측정일을 왜곡하므로 H열 빈칸만 채운다.
+    let endedFinalFilled = 0, endedFinalNoMetric = 0;
+    const cumulativeCol = findHeaderCol_(sheet, ["누적 조회수", "누적조회수"]);
+    if (cumulativeCol) {
+      const cumRange = sheet.getRange(CONFIG.DATA_START_ROW, cumulativeCol, nRows, 1);
+      const cumVals = cumRange.getValues();
+      const cumFormulas = cumRange.getFormulas();
+      const cumOut = cumVals.map(row => [row[0]]);
+      let cumChanged = false;
+      for (let i = 0; i < nRows; i++) {
+        const key = rowKeys[i];
+        if (!key || !endedByKey[key]) continue;
+        const hasFormula = cumFormulas[i][0] !== "";
+        const cur = cumVals[i][0];
+        const hasValue = cur !== "" && cur != null;
+        if (hasFormula || hasValue) continue;
+        const finalMetric = finalMetricByKey[key];
+        if (finalMetric > 0) {
+          cumOut[i][0] = finalMetric;
+          cumChanged = true;
+          endedFinalFilled++;
+        } else {
+          endedFinalNoMetric++;
+        }
+      }
+      if (cumChanged) cumRange.setValues(cumOut);
+    }
+
+    let msg = `✅ 수집 조회수를 시트에 반영했습니다.\n새 날짜 열 ${addedCols}개 추가 · URL-key 날짜 쓰기 ${dateKeyWrites}칸 · 실측 갱신 ${filled}칸 · 공백 이어받기 ${carried}칸 · 업로드 전 값 삭제 ${prePostedCleared}칸 · 종료 이후 값 삭제 ${endedCleared}칸 · 증분 수식 ${incWritten}행 · 기존값 보존 ${preserved}칸 · 매칭 게시물 ${matched}개 · 날짜 열 ${dateCols.length}개`;
+    if (endedFinalFilled) msg += `\n🛑 트래킹 종료글 H열 빈칸 ${endedFinalFilled}행에 DB 최종 누적값을 보존했습니다.`;
+    if (endedFinalNoMetric) msg += `\n⚠️ 트래킹 종료됐지만 DB 조회수/도달수 이력이 없는 행 ${endedFinalNoMetric}개는 최종값을 채울 수 없습니다.`;
+    if (shortcodeFormatMatched) msg += `\n🔁 /reel·/tv 잔재 URL ${shortcodeFormatMatched}개는 shortcode 기준으로 정상 매칭했습니다.`;
+    if (missing) msg += `\n⚠️ 시트엔 있으나 대시보드에 수집기록이 없는 URL ${missing}개(아직 수집 전이거나 미등록).`;
+    if (futureCleared) msg += `\n🗓️ 오늘·미래(수집일-1 이후) 날짜칸 ${futureCleared}개를 비웠습니다.`;
+    if (dateKeyConflicts) msg += `\n⚠️ 중복 URL 키의 변경 ${dateKeyConflicts}칸은 어느 행이 정본인지 불명확해 쓰지 않았습니다.`;
+    if (concurrentCellSkips) msg += `\n🛡️ 계산 뒤 사람이 수정한 ${concurrentCellSkips}칸은 최신 수기값을 보존했습니다.`;
+    if (orphanRows) msg += `\n🧟 URL 없이 숫자만 있는 '고아 행' ${orphanRows}개 발견 — 행 삭제로 정리하세요(데이터는 DB에 있음).`;
+    safeAlert_(msg);
+    return true;
+  } catch (e) {
+    safeAlert_("❌ 오류\n" + e.message);
+    Logger.log(e.stack || e.message);
+    return false;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 일자별 조회수 입력 (I~AE열 → post_daily_stats 백필)
+// ═══════════════════════════════════════════════════════════════
+/** 날짜 헤더("5. 17 (일)", "6.1", Date 값) → {mo, da}. 파싱 불가면 null. */
+function parseMonthDay_(label) {
+  let mo, da;
+  if (label instanceof Date && !isNaN(label.getTime())) {
+    mo = label.getMonth() + 1; da = label.getDate();
+  } else {
+    const m = String(label == null ? "" : label).match(/(\d{1,2})\D+(\d{1,2})/);
+    if (!m) return null;
+    mo = +m[1]; da = +m[2];
+  }
+  if (mo < 1 || mo > 12 || da < 1 || da > 31) return null;
+  const probe = new Date(2000, mo - 1, da); // 윤년 기준이라 2.29는 허용
+  if (probe.getMonth() + 1 !== mo || probe.getDate() !== da) return null;
+  return { mo: mo, da: da };
+}
+
+function postStats_(payload) {
+  const res = UrlFetchApp.fetch(CONFIG.STATS_API_URL, {
+    method: "post",
+    contentType: "application/json",
+    headers: authHeaders_(),
+    payload: JSON.stringify(payload), // { posts: [...], stats: [...] }
+    muteHttpExceptions: true,
+  });
+  const code = res.getResponseCode();
+  const body = res.getContentText();
+  if (code !== 200) throw new Error(`API ${code}: ${body}`);
+  return JSON.parse(body); // { ok, inserted, created_posts, matched_urls, missing_urls, missing_sample }
+}
+
+function importStats__wgimpl(source) {
+  const importSource = source === "daily_auto" ? "daily_auto" : "manual_sheet";
+  try {
+    const sheet = getSheet_();
+    const fieldCols = buildFieldCols_(sheet);
+    const lastRow = sheet.getLastRow();
+    const lastCol = sheet.getLastColumn();
+    const header = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+
+    // 날짜 컬럼 자동 인식 (I열~ 마지막 열까지 스캔 → AE 넘어 늘어나도 자동 반영,
+    // 수정금지/등록상태 등 비-날짜 열은 자동 제외). 월이 줄면 해 넘김(+1년) 처리.
+    const dateCols = [];
+    let year = CONFIG.STATS_START_YEAR;
+    let prevMonth = null;
+    for (let c = CONFIG.STATS_FIRST_COL; c <= lastCol; c++) {
+      const md = parseMonthDay_(header[c - 1]);
+      if (!md) continue;
+      if (prevMonth !== null && md.mo < prevMonth) year++; // 12→1 등 해 넘어감
+      prevMonth = md.mo;
+      dateCols.push({ col: c, date: `${year}-${("0" + md.mo).slice(-2)}-${("0" + md.da).slice(-2)}` });
+    }
+    if (dateCols.length === 0) { safeAlert_("날짜 컬럼(I열~)을 찾지 못했습니다. 헤더를 확인하세요."); return; }
+    if (lastRow < CONFIG.DATA_START_ROW) { safeAlert_("데이터 행이 없습니다."); return; }
+
+    const values = sheet
+      .getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, lastCol)
+      .getValues();
+
+    const today = todayStr_();
+    let future = 0;
+    let futureDateCells = 0;
+    let blankDateCells = 0;
+    let carrySkipped = 0;
+    let bannerRows = 0;
+    let bannerStats = 0;
+    const stats = [];
+    const postByKey = {}; // url-key → 광고 메타 (첫 행 우선). 없는 광고 생성용, 기존은 서버가 덮어쓰지 않음.
+    values.forEach(row => {
+      const url = String(row[fieldCols.url - 1] || "").trim();
+      if (!url || !ALLOWED_URL_RE.test(url)) return; // URL 없거나 미지원
+
+      const postedAt = fieldCols.posted_at ? toDateStr_(row[fieldCols.posted_at - 1]) : null;
+      if (postedAt && postedAt > today) { future++; return; } // 업로드일이 오늘 이후 → 아직 게시 전, 제외
+
+      const key = urlKey_(url);
+      if (!postByKey[key]) {
+        const p = { url: url };
+        if (fieldCols.posted_at)       p.posted_at       = toDateStr_(row[fieldCols.posted_at - 1]);
+        if (fieldCols.account_name)    p.account_name    = String(row[fieldCols.account_name - 1] || "").trim() || null;
+        if (fieldCols.company_name)    p.company_name    = String(row[fieldCols.company_name - 1] || "").trim() || null;
+        if (fieldCols.content_summary) p.content_summary = String(row[fieldCols.content_summary - 1] || "").trim() || null;
+        if (fieldCols.asset_name)      p.asset_name      = String(row[fieldCols.asset_name - 1] || "").trim() || null;
+        if (fieldCols.channel_type)    p.channel_type    = String(row[fieldCols.channel_type - 1] || "").trim() || null;
+        if (fieldCols.project_name)    p.project_name    = String(row[fieldCols.project_name - 1] || "").trim() || null;
+        if (fieldCols.product_name)    p.product_name    = String(row[fieldCols.product_name - 1] || "").trim() || null;
+        if (fieldCols.planner)         p.planner         = String(row[fieldCols.planner - 1] || "").trim() || null;
+        if (fieldCols.creator)         p.creator         = String(row[fieldCols.creator - 1] || "").trim() || null;
+        if (fieldCols.cost)            p.cost            = toNumber_(row[fieldCols.cost - 1]);
+        postByKey[key] = p;
+      }
+
+      const channelType = fieldCols.channel_type ? String(row[fieldCols.channel_type - 1] || "") : "";
+      const isBanner = channelType.indexOf("배너") >= 0;
+      if (isBanner) bannerRows++;
+
+      // 날짜 헤더 라벨을 기준으로 오늘(KST) 이하의 숫자 셀을 전송한다.
+      // 배너 입력은 서버 stats-import가 reach_count로 저장하므로 여기서 제외하면 안 된다.
+      // 비배너만 기존 forward-fill 중복 생략을 유지한다. 배너는 도달수가 같은 날도
+      // 실제 수기 스냅샷일 수 있으므로 값이 있는 날짜를 모두 보낸다.
+      let prevN = null;
+      dateCols.forEach(dc => {
+        if (dc.date > today) {
+          if (toNumber_(row[dc.col - 1]) !== null) futureDateCells++;
+          return;
+        }
+        if (isBeforePostedDate_(dc.date, postedAt)) return; // 업로드 전 날짜는 조회수 저장 대상 아님
+        const n = toNumber_(row[dc.col - 1]);
+        if (n === null) { blankDateCells++; return; } // 빈칸/비숫자 → 측정 없음, 스킵
+        if (!isBanner && prevN !== null && n === prevN) { carrySkipped++; return; }
+        stats.push({ url: url, measured_at: dc.date, play_count: n });
+        if (isBanner) bannerStats++;
+        prevN = n;
+      });
+    });
+
+    Logger.log(JSON.stringify({
+      event: "importStats_scan",
+      today: today,
+      rows: values.length,
+      date_columns: dateCols.length,
+      first_date: dateCols[0].date,
+      last_date: dateCols[dateCols.length - 1].date,
+      stats_to_send: stats.length,
+      banner_rows: bannerRows,
+      banner_stats_to_send: bannerStats,
+      future_post_rows_skipped: future,
+      future_date_cells_skipped: futureDateCells,
+      blank_date_cells_skipped: blankDateCells,
+      non_banner_carry_skipped: carrySkipped,
+    }));
+
+    if (stats.length === 0) { safeAlert_("입력할 조회수 데이터가 없습니다."); return; }
+
+    const posts = Object.keys(postByKey).map(k => postByKey[k]);
+    const res = postStats_({ posts: posts, stats: stats, client_version: IMPORTSTATS_CLIENT_VERSION, source: importSource });
+    Logger.log(JSON.stringify({
+      event: "importStats_result",
+      inserted: res.inserted || 0,
+      banner_reach_inserted: res.banner_reach_inserted || 0,
+      future_date_skipped: res.future_date_skipped || 0,
+      missing_urls: res.missing_urls || 0,
+      dropped_decrease: res.dropped_decrease || 0,
+    }));
+    let msg = `✅ 일자별 조회수 ${res.inserted}건 입력 완료.\n(날짜 ${dateCols.length}개 열 · 매칭 게시물 ${res.matched_urls}개`;
+    msg += res.created_posts ? ` · 신규 광고 ${res.created_posts}개 자동 생성)` : `)`;
+    if (res.banner_reach_inserted) msg += `\n🖼️ 배너 도달수 ${res.banner_reach_inserted}건 반영.`;
+    if (res.meta_filled) msg += `\n📝 기존 광고의 빈 항목 ${res.meta_filled}건을 시트 값으로 채움(채널 분류 등).`;
+    if (res.ended_marked) msg += `\n🛑 캡션 '삭제/보관' ${res.ended_marked}건 → '종료' 처리됨.`;
+    if (future) msg += `\n⏭️ 업로드일이 오늘 이후인 행 ${future}건 제외(아직 게시 전).`;
+    if (futureDateCells) msg += `\n⏭️ 오늘 이후 날짜 셀 ${futureDateCells}건 제외.`;
+    if (res.future_date_skipped) msg += `\n⏭️ 서버에서 오늘 이후 날짜 ${res.future_date_skipped}건 제외.`;
+    if (res.pre_posted_skipped) msg += `\n🛡️ 업로드일 이전 조회수 ${res.pre_posted_skipped}건은 서버에서 저장 제외.`;
+    if (res.dropped_decrease) {
+      msg += `\n🛡️ 누적 조회수가 직전보다 낮은(수집 오류) ${res.dropped_decrease}건은 저장 제외.`;
+      if (res.dropped_sample && res.dropped_sample.length) {
+        const ex = res.dropped_sample.slice(0, 8).map(function(d) {
+          const tail = String(d.url || "").split("/").filter(String).slice(-2).join("/");
+          return `  · ${tail} ${d.date}: 입력 ${d.value} < 기존 ${d.blocked_by}(${d.blocked_date})`;
+        }).join("\n");
+        msg += `\n(예시 — 입력값이 기존값보다 낮아 막힘):\n${ex}`;
+      }
+    }
+    if (res.missing_urls) {
+      msg += `\n\n⚠️ 처리 못한 URL ${res.missing_urls}개 (예: ${(res.missing_sample || []).join(", ")})`;
+    }
+    if (res.overwrote_manual) {
+      msg += `\n\nℹ️ 대시보드에서 수정돼 있던 ${res.overwrote_manual}칸을 시트 값으로 갱신했습니다(가장 최근 입력이 반영됨).`;
+    }
+    msg += `\n\n📌 여기서 입력한 조회수는 대시보드에 반영되며, 밤 자동수집은 이 값을 덮지 않습니다.\n   같은 칸을 대시보드에서 더 나중에 고치면 그 값이 최신으로 우선합니다.`;
+    safeAlert_(msg + blankNote_());
+  } catch (e) {
+    safeAlert_("❌ 오류\n" + e.message);
+    Logger.log(e.stack || e.message);
+  }
+}
+
+function previewNew() {
+  try {
+    const { rows, skipped, dupCount, future } = collectRows_(true);
+    if (rows.length === 0) { safeAlert_("추가할 신규 광고가 없습니다." + noteExtra_(skipped, dupCount, future)); return; }
+    const sample = rows.slice(0, 5)
+      .map((r, i) => `${i + 1}. ${r.url}\n   채널:${r.account_name || "-"} / 분류:${r.channel_type || "-"} / 프로젝트:${r.project_name || "-"} / 비용:${r.cost != null ? r.cost : "-"}`)
+      .join("\n");
+    safeAlert_(`총 ${rows.length}개 추가 예정 (상위 5개 미리보기)\n\n${sample}` + noteExtra_(skipped, dupCount, future));
+  } catch (e) {
+    safeAlert_("❌ 오류\n" + e.message);
+  }
+}
+
+function checkSetup() {
+  try {
+    const sheet = getSheet_();
+    const fieldCols = buildFieldCols_(sheet);
+    const triggers = ScriptApp.getProjectTriggers()
+      .filter(t => t.getHandlerFunction() === "syncNew" || t.getHandlerFunction() === "dailyAuto");
+    const dailyAutoCount = triggers.filter(t => t.getHandlerFunction() === "dailyAuto").length;
+    const midnightSyncNewCount = triggers.filter(t => t.getHandlerFunction() === "syncNew").length;
+    const props = PropertiesService.getScriptProperties();
+    const lastStarted = props.getProperty("DAILY_AUTO_LAST_STARTED_AT") || "-";
+    const lastFinished = props.getProperty("DAILY_AUTO_LAST_FINISHED_AT") || "-";
+    const lastStatus = props.getProperty("DAILY_AUTO_LAST_STATUS") || "기록 없음";
+    const scriptTimezone = Session.getScriptTimeZone();
+    const kstToday = todayStr_();
+    safeAlert_(
+      `✅ 설정 정상\n` +
+      `탭: ${sheet.getName()}\n` +
+      `인식된 필드: ${Object.keys(fieldCols).join(", ")}\n\n` +
+      `🕘 스크립트 시간대: ${scriptTimezone} / KST 오늘: ${kstToday}\n` +
+      `⏰ 자동 동기화 상태: ${dailyAutoCount === 1 && midnightSyncNewCount === 1 ? "✅ 켜짐" : "⚠️ 복구 필요"}\n` +
+      `트리거: dailyAuto ${dailyAutoCount}개, 자정 syncNew ${midnightSyncNewCount}개\n` +
+      `예정: 매일 ${CONFIG.TRIGGER_HOUR}:${CONFIG.TRIGGER_MINUTE} KST 전후(12:20 리포트 전)\n` +
+      `마지막 dailyAuto 시작: ${lastStarted}\n` +
+      `마지막 dailyAuto 종료: ${lastFinished}\n` +
+      `마지막 상태: ${lastStatus}`
+    );
+  } catch (e) {
+    safeAlert_("❌ 설정 오류\n" + e.message);
+  }
+}
+
+// 🔁 중복 URL 검사 — 같은 게시물URL이 여러 행에 있으면 첫 행만 전송되고 나머지는 무시됨.
+// 어느 행이 어느 행과 중복인지(전송/무시) 행 번호로 보여준다.
+function checkDuplicates() {
+  try {
+    const sheet = getSheet_();
+    const fieldCols = buildFieldCols_(sheet);
+    const lastRow = sheet.getLastRow();
+    if (lastRow < CONFIG.DATA_START_ROW) { safeAlert_("데이터 행이 없습니다."); return; }
+    const lastCol = sheet.getLastColumn();
+    const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, lastCol).getValues();
+
+    const byKey = {}; // urlKey → [{row, url}]
+    values.forEach((row, i) => {
+      const rawUrl = String(row[fieldCols.url - 1] || "").trim();
+      if (!rawUrl || !ALLOWED_URL_RE.test(rawUrl)) return;
+      const key = urlKey_(rawUrl);
+      (byKey[key] = byKey[key] || []).push({ row: CONFIG.DATA_START_ROW + i, url: rawUrl });
+    });
+
+    const dups = Object.keys(byKey).map(k => byKey[k]).filter(g => g.length > 1);
+    if (dups.length === 0) { safeAlert_("✅ 중복 URL 없음 — 모든 행의 게시물URL이 고유합니다."); return; }
+
+    const lines = dups.slice(0, 15).map(g => {
+      const rows = g.map(e => e.row);
+      return `· 전송 ${rows[0]}행 / 무시 ${rows.slice(1).join(",")}행\n   ${g[0].url}`;
+    }).join("\n");
+    safeAlert_(`🔁 중복 URL ${dups.length}건\n(같은 URL이 여러 행 → 첫 행만 전송, 나머지 무시)\n무시되는 행의 URL을 그 게시물의 실제 주소로 바꾸세요.\n\n${lines}${dups.length > 15 ? `\n… 외 ${dups.length - 15}건` : ""}`);
+  } catch (e) {
+    safeAlert_("❌ 오류\n" + e.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 자동 트리거 (매일 9:30, dailyAuto 실행: syncAll → pullFromDB → exportStats)
+// ═══════════════════════════════════════════════════════════════
+const DATE_HEADER_FORMAT_ = "yy.m.d.(ddd)";
+
+function dateFromHeaderValue_(value, fallbackYear) {
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return new Date(value.getTime());
+  }
+
+  const text = String(value == null ? "" : value).trim();
+  const ymd = text.match(/^(\d{2}|\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+  if (ymd) {
+    let year = Number(ymd[1]);
+    if (year < 100) year += 2000;
+    const month = Number(ymd[2]);
+    const day = Number(ymd[3]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return Utilities.parseDate(
+        `${year}-${("0" + month).slice(-2)}-${("0" + day).slice(-2)}`,
+        CONFIG.KST_TIMEZONE,
+        "yyyy-MM-dd"
+      );
+    }
+  }
+
+  const md = parseMonthDay_(value);
+  if (!md) return null;
+  return Utilities.parseDate(
+    `${fallbackYear}-${("0" + md.mo).slice(-2)}-${("0" + md.da).slice(-2)}`,
+    CONFIG.KST_TIMEZONE,
+    "yyyy-MM-dd"
+  );
+}
+
+function fillInsertedDateHeadersOnChange_(e) {
+  if (!e || e.changeType !== "INSERT_COLUMN") return;
+  const ss = e.source || SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getActiveSheet();
+  if (!sheet || sheet.getSheetId() !== CONFIG.SHEET_GID) return;
+
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+  const statusCol = headers.findIndex(function(value) {
+    return norm_(value) === norm_(CONFIG.STATUS_HEADER);
+  }) + 1;
+  if (!statusCol) return;
+
+  let lastDateCol = statusCol - 1;
+  while (
+    lastDateCol >= CONFIG.STATS_FIRST_COL
+    && String(headers[lastDateCol - 1] == null ? "" : headers[lastDateCol - 1]).trim() === ""
+  ) {
+    lastDateCol--;
+  }
+  const insertedCount = statusCol - lastDateCol - 1;
+  if (insertedCount <= 0) return;
+
+  let year = CONFIG.STATS_START_YEAR;
+  let previousMonth = null;
+  let lastDate = null;
+  for (let col = CONFIG.STATS_FIRST_COL; col <= lastDateCol; col++) {
+    const value = headers[col - 1];
+    const parsed = dateFromHeaderValue_(value, year);
+    if (!parsed) continue;
+    const month = parsed.getMonth() + 1;
+    if (!(value instanceof Date) && previousMonth !== null && month < previousMonth) {
+      year++;
+      lastDate = dateFromHeaderValue_(value, year);
+    } else {
+      lastDate = parsed;
+      year = parsed.getFullYear();
+    }
+    previousMonth = month;
+  }
+  if (!lastDate) return;
+
+  const nextDates = [];
+  for (let i = 1; i <= insertedCount; i++) {
+    nextDates.push([new Date(lastDate.getTime() + i * 24 * 60 * 60 * 1000)]);
+  }
+  sheet.getRange(CONFIG.HEADER_ROW, lastDateCol + 1, 1, insertedCount)
+    .setValues([nextDates.map(function(row) { return row[0]; })])
+    .setNumberFormat(DATE_HEADER_FORMAT_);
+  applyDateInputValidation_(sheet, lastDateCol + 1, insertedCount);
+}
+
+function fillInsertedDateHeadersOnChange(e) {
+  return fillInsertedDateHeadersOnChange_(e);
+}
+
+function ensureDateHeaderChangeTrigger_() {
+  const triggers = ScriptApp.getProjectTriggers().filter(function(trigger) {
+    return trigger.getHandlerFunction() === "fillInsertedDateHeadersOnChange";
+  });
+  triggers.slice(1).forEach(function(trigger) { ScriptApp.deleteTrigger(trigger); });
+  if (triggers.length) return false;
+  ScriptApp.newTrigger("fillInsertedDateHeadersOnChange")
+    .forSpreadsheet(SpreadsheetApp.getActiveSpreadsheet())
+    .onChange()
+    .create();
+  return true;
+}
+
+function installDateHeaderChangeTrigger() {
+  const created = ensureDateHeaderChangeTrigger_();
+  safeAlert_(created
+    ? "✅ 우측 날짜열 자동 생성 기능을 켰습니다."
+    : "✅ 우측 날짜열 자동 생성 기능이 이미 켜져 있습니다.");
+}
+
+// 아침 수식감사 폴백 — 구글 트리거가 11:00 KST에 호출한다(GitHub 예정 10:10 이후 충분한 버퍼).
+// 2026-08-03 실측: formula-audit 스케줄이 사흘 내리 13:2x~13:3x로 밀렸고 이 날은 10:17까지도 미발화라
+// 사람이 손으로 dispatch해야 했다. 기존 감시는 '최근 성공 26시간 이내'라는 나이 기준이라 어제 늦게
+// 성공하면 오늘 아침 미실행을 구조적으로 못 잡는다 → 경고 대신 **직접 실행**으로 보장한다.
+// 오늘 이미 감사가 돌았으면 서버가 무동작으로 끝내므로 중복 알림은 없다.
+function auditFallback() {
+  const res = UrlFetchApp.fetch(CONFIG.AUDIT_FALLBACK_URL, {
+    method: "post",
+    headers: authHeaders_(),
+    muteHttpExceptions: true,
+  });
+  const code = res.getResponseCode();
+  const body = res.getContentText();
+  Logger.log("[auditFallback] HTTP " + code + " " + body.slice(0, 500));
+  if (code !== 200) throw new Error("auditFallback HTTP " + code + ": " + body.slice(0, 200));
+  return true;
+}
+
+function installAuditFallbackTrigger() {
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === "auditFallback")
+    .forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger("auditFallback").timeBased().atHour(11).everyDays(1).create();
+  safeAlert_("✅ 아침 수식감사 폴백 트리거(매일 11시 KST, 구글 스케줄러)를 설치했습니다.");
+}
+
+function removeAuditFallbackTrigger() {
+  const triggers = ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === "auditFallback");
+  triggers.forEach(t => ScriptApp.deleteTrigger(t));
+  safeAlert_("수식감사 폴백 트리거를 제거했습니다. (" + triggers.length + "개)");
+}
+
+function installDailyTrigger() {
+  // 기존 트리거(구버전 syncNew·남은 1회 재시도 포함) 제거 후 양방향 dailyAuto로 재등록
+  ScriptApp.getProjectTriggers()
+    .filter(t => ["syncNew", "dailyAuto", "dailyAutoRetry_"].indexOf(t.getHandlerFunction()) >= 0)
+    .forEach(t => ScriptApp.deleteTrigger(t));
+  PropertiesService.getScriptProperties().deleteProperty("DAILY_AUTO_RETRY_PENDING_JSON");
+  PropertiesService.getScriptProperties().setProperty("AUTO_SYNC_ENABLED", "true");
+  ensureDateHeaderChangeTrigger_();
+  applyLinkedSheetInputValidation_();
+
+  ScriptApp.newTrigger("dailyAuto")
+    .timeBased()
+    .everyDays(1)
+    .atHour(CONFIG.TRIGGER_HOUR)
+    .nearMinute(CONFIG.TRIGGER_MINUTE)
+    .create();
+
+  // 자정 수집(00:41 KST) 직전(자정~오전 1시 창)에 당일 신규 행을 DB에 등록해 수집 누락을 막는다.
+  // (2026-07-24 사용자 지시로 23시→자정 00:00으로 이동. 라이브 트리거는 트리거 UI로 이미 00:00 반영.)
+  ScriptApp.newTrigger("syncNew")
+    .timeBased()
+    .atHour(0)
+    .everyDays(1)
+    .create();
+
+  safeAlert_(`✅ 자동 동기화를 켰습니다.\n• 매일 자정(00:00~01:00): 신규 광고 syncNew(00:41 자정수집 직전)\n• 매일 오전 ${CONFIG.TRIGGER_HOUR}:${CONFIG.TRIGGER_MINUTE} (±15분): 전체 양방향 dailyAuto\n• 12:20 리포트 전에 분류 동기화`);
+}
+
+function removeDailyTrigger() {
+  const triggers = ScriptApp.getProjectTriggers()
+    .filter(t => ["syncNew", "dailyAuto", "dailyAutoRetry_"].indexOf(t.getHandlerFunction()) >= 0);
+  triggers.forEach(t => ScriptApp.deleteTrigger(t));
+  PropertiesService.getScriptProperties().deleteProperty("DAILY_AUTO_RETRY_PENDING_JSON");
+  PropertiesService.getScriptProperties().setProperty("AUTO_SYNC_ENABLED", "false");
+  safeAlert_(`⏹ 자동 동기화를 껐습니다. (${triggers.length}개 트리거 제거)`);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 💻 배너 인사이트 요청 — 업체별 채널 조회 (기존 기능)
+// ═══════════════════════════════════════════════════════════════
+function summarizeByCompany() {
+  // [콘텐츠 대시보드 연동] 탭(gid=CONFIG.SHEET_GID)을 헤더 이름 기반으로 읽는다.
+  // ⚠️ 이전엔 열 위치(D/G/I/J)·시작행(10)을 하드코딩해, 업체명 열이 삽입되며 다 어긋나 결과가 비었음(2026-07).
+  //    buildFieldCols_로 헤더명(업체명·채널 분류·채널명·게시물URL) 위치를 찾아 앞으로 열이 밀려도 안 깨지게 한다.
+  const sheet = getSheet_();
+  const fc = buildFieldCols_(sheet);
+  const cCompany = fc.company_name, cType = fc.channel_type, cChannel = fc.account_name, cUrl = fc.url;
+  if (!cCompany || !cType) {
+    safeAlert_("헤더에 '업체명'과 '채널 분류' 컬럼이 필요합니다. [콘텐츠 대시보드 연동] 탭 1행 헤더를 확인하세요.");
+    return;
+  }
+
+  const companyMap = {};
+  const lastRow = sheet.getLastRow();
+  if (lastRow >= CONFIG.DATA_START_ROW) {
+    const allRows = sheet.getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, sheet.getLastColumn()).getValues();
+    for (const row of allRows) {
+      if (!String(row[cType - 1] || '').includes('배너')) continue;   // 배너 채널분류만(예: '바이럴 (배너)')
+      const company = String(row[cCompany - 1] || '').trim();
+      if (!company) continue;
+      const channel = (cChannel ? String(row[cChannel - 1] || '').trim() : '') || '(채널명 없음)';
+      const url = cUrl ? String(row[cUrl - 1] || '').trim() : '';
+      if (!companyMap[company]) companyMap[company] = {};
+      if (!companyMap[company][channel]) companyMap[company][channel] = new Set();
+      if (url) companyMap[company][channel].add(url);
+    }
+  }
+
+  const dataJson = JSON.stringify(
+    Object.fromEntries(
+      Object.entries(companyMap).map(([co, channels]) => [
+        co,
+        Object.fromEntries(
+          Object.entries(channels).map(([ch, urls]) => [ch, [...urls]])
+        )
+      ])
+    )
+  );
+
+  const companies = Object.keys(companyMap).sort();
+  const companyOptions = companies.map(c => `<option value="${c}">${c}</option>`).join('');
+
+  const html = HtmlService.createHtmlOutput(`
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { font-family: 'Noto Sans KR', sans-serif; padding: 20px; background: #f8f9fa; margin: 0; }
+  h2 { color: #1a73e8; font-size: 16px; margin-bottom: 16px; }
+  label { font-size: 13px; font-weight: 600; color: #444; display: block; margin-bottom: 4px; }
+  select { width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; margin-bottom: 14px; background: white; }
+  button { width: 100%; padding: 10px; background: #1a73e8; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; margin-bottom: 16px; }
+  button:hover { background: #1558b0; }
+  .result-box { display: none; }
+  .channel-block { background: white; border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; }
+  .channel-name { font-size: 13px; font-weight: 700; color: #1a73e8; margin-bottom: 6px; }
+  .url-list { font-size: 12px; color: #444; line-height: 1.8; word-break: break-all; }
+  .copy-btn { width: 100%; padding: 6px; background: #f1f3f4; color: #444; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; cursor: pointer; margin-top: 8px; }
+  .copy-btn:hover { background: #e0e0e0; }
+  .copy-all-btn { width: 100%; padding: 10px; background: #34a853; color: white; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; margin-bottom: 12px; }
+  .copy-all-btn:hover { background: #2d8f47; }
+  .toast { display: none; position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: #333; color: white; padding: 8px 18px; border-radius: 20px; font-size: 12px; z-index: 999; }
+</style>
+</head>
+<body>
+<h2>🏢 배너 인사이트 요청</h2>
+<label>업체 선택</label>
+<select id="selCompany">
+  <option value="">-- 업체 선택 --</option>
+  ${companyOptions}
+</select>
+<button onclick="showCompany()">조회하기</button>
+<div class="result-box" id="resultBox">
+  <button class="copy-all-btn" onclick="copyAll()">📋 전체 복사</button>
+  <div id="channelList"></div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+const data = ${dataJson};
+function showCompany() {
+  const company = document.getElementById('selCompany').value;
+  if (!company) return;
+  const channels = data[company];
+  if (!channels) return;
+  const listEl = document.getElementById('channelList');
+  listEl.innerHTML = '';
+  for (const [channel, urls] of Object.entries(channels)) {
+    const urlText = urls.join('\\n');
+    const block = document.createElement('div');
+    block.className = 'channel-block';
+    block.innerHTML = \`
+      <div class="channel-name">\${channel}</div>
+      <div class="url-list">\${urls.join('<br>')}</div>
+      <button class="copy-btn" onclick="copyText(\\\`\${channel}\\\\n\${urlText}\\\`)">📋 이 채널 복사</button>
+    \`;
+    listEl.appendChild(block);
+  }
+  document.getElementById('resultBox').style.display = 'block';
+}
+function copyAll() {
+  const company = document.getElementById('selCompany').value;
+  if (!company) return;
+  const channels = data[company];
+  let text = company + '\\n\\n';
+  for (const [channel, urls] of Object.entries(channels)) {
+    text += channel + '\\n' + urls.join('\\n') + '\\n\\n';
+  }
+  copyText(text.trim());
+}
+function copyText(text) {
+  navigator.clipboard.writeText(text).then(() => showToast('복사됐어요!'));
+}
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(() => { t.style.display = 'none'; }, 2000);
+}
+</script>
+</body>
+</html>
+`).setWidth(400).setHeight(580);
+
+  SpreadsheetApp.getUi().showModalDialog(html, '배너 인사이트 요청');
+}
+
+
+function diagnoseJcolumnTemp() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheets = ss.getSheets();
+  var sheet = null;
+  for (var i=0;i<sheets.length;i++){ if (sheets[i].getSheetId() === CONFIG.SHEET_GID) { sheet = sheets[i]; break; } }
+  var lastCol = sheet.getLastColumn();
+  var lastRow = sheet.getLastRow();
+  var headerRow = sheet.getRange(1,1,1,lastCol).getValues()[0];
+  var out = [];
+  out.push('lastCol=' + lastCol + ' lastRow=' + lastRow);
+  for (var c=1;c<=lastCol;c++){
+    if (c<=15 || c>=lastCol-8) out.push(c + ':' + JSON.stringify(headerRow[c-1]));
+  }
+  Logger.log(out.join(' | '));
+  var row22 = sheet.getRange(22,1,1,lastCol).getValues()[0];
+  Logger.log('Row22 J=' + row22[9] + ' cols10to26=' + JSON.stringify(row22.slice(9,26)));
+  var lastFew = row22.slice(Math.max(0,lastCol-8));
+  Logger.log('Row22 lastFewCols=' + JSON.stringify(lastFew));
+}
+
+
+// 대시보드 종료상태(ended_at)를 '상태' 열에 반영: 트래킹 종료 / 트래킹 중. 게시물URL 기준 매칭.
+function getTrackingStatusCol_(sheet) {
+  const col = findHeaderCol_(sheet, ["상태"]);
+  if (col) return col;
+  const next = sheet.getLastColumn() + 1;
+  sheet.getRange(CONFIG.HEADER_ROW, next).setValue("상태");
+  return next;
+}
+
+
+function syncStatus__wgimpl() {
+  const sheet = getSheet_();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < CONFIG.DATA_START_ROW) return true;
+  const fieldCols = buildFieldCols_(sheet);
+  const statusCol = getTrackingStatusCol_(sheet);
+  const resp = UrlFetchApp.fetch(CONFIG.LIST_API_URL, { headers: authHeaders_(), muteHttpExceptions: true });
+  if (resp.getResponseCode() !== 200) throw new Error("상태 동기화 API " + resp.getResponseCode() + ": " + resp.getContentText());
+  const posts = (JSON.parse(resp.getContentText()).posts) || [];
+  const ended = {};
+  posts.forEach(p => { if (p && p.url) ended[linkKey_(p.url)] = !!p.ended_at; });
+  const n = lastRow - CONFIG.DATA_START_ROW + 1;
+  const urls = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.url, n, 1).getValues();
+  const statusByKey = {};
+  urls.forEach(r => {
+    const url = String(r[0] || "").trim();
+    if (!url) return;
+    const k = linkKey_(url);
+    if (!k) return;
+    const uu = url.toLowerCase();
+    if (uu.indexOf("instagram.com") >= 0 && !/\/(p|reels|reel|tv)\/[a-z0-9_-]+/i.test(uu)) {
+      statusByKey[k] = "오류";
+      return;
+    }
+    statusByKey[k] = (k in ended) ? (ended[k] ? "트래킹 종료" : "트래킹 중") : "";
+  });
+  // URL을 쓰기 직전에 다시 읽어 현재 행 위치를 찾아 기록한다. 정렬·행삽입 후에도 이웃 행에 상태가 밀리지 않는다.
+  const changed = writeColumnByKey_(
+    sheet,
+    CONFIG.DATA_START_ROW,
+    fieldCols.url,
+    statusCol,
+    statusByKey,
+    linkKey_
+  );
+  // URL을 지운 행은 key가 없으므로 별도 최신행 스냅샷에서 기존 자동 상태를 정리한다.
+  // 이 쓰기도 최신 행 번호를 다시 읽은 뒤 연속 구간만 기록해 행 이동 창을 최소화한다.
+  const latestLastRow = sheet.getLastRow();
+  const latestN = Math.max(0, latestLastRow - CONFIG.DATA_START_ROW + 1);
+  const clearedEdits = [];
+  if (latestN > 0) {
+    const latestUrls = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.url, latestN, 1).getValues();
+    const latestStatuses = sheet.getRange(CONFIG.DATA_START_ROW, statusCol, latestN, 1).getValues();
+    for (let i = 0; i < latestN; i++) {
+      if (String(latestUrls[i][0] || "").trim() !== "") continue;
+      if (String(latestStatuses[i][0] || "").trim() === "") continue;
+      clearedEdits.push({ row: CONFIG.DATA_START_ROW + i, value: "" });
+    }
+  }
+  const cleared = writeColumnRuns_(sheet, statusCol, clearedEdits, latestLastRow);
+  SpreadsheetApp.getActive().toast(
+    "상태 동기화 완료: 변경 " + changed + "행, 빈 URL 정리 " + cleared + "행",
+    "완료",
+    4
+  );
+  return true;
+}
+
+
+// 누적 조회수 = 날짜열(헤더가 M.D 형태)만 대상으로 한 행별 최댓값을 '값'으로 기록.
+// 보조열(#REF!/타임스탬프/잔여숫자)을 아예 읽지 않아 오류 없음. dailyAuto 연결(매일 갱신).
+
+
+function parseCreator_(name) {
+  var r = { mk: "", pd: "" };
+  if (!name || name.charAt(0) !== "[") return r;
+  var parts = name.split("_");
+  if (parts.length < 3) return r;
+  if (parts.length > 10) r.mk = String(parts[10]).trim();
+  if (parts.length > 13) {
+    var tail = parts.slice(13).join("_").trim().replace(/\.(mp4|mov|png|jpe?g|gif|webp|zip|pdf)$/i, "");
+    r.pd = (tail.split("_").pop() || "").trim().replace(/\s*\(\d+\)\s*$/, "").trim();
+  }
+  return r;
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// 단가/업체명 자동 매핑
+// - AI 바이럴 대시보드 연동: 채널명→업체명, 채널명+포맷→단가
+// - 콘텐츠 대시보드 연동의 과거 확정값도 보조 기준으로 학습(충돌 없는 조합만)
+// - 바이럴 (영상)→릴스, 바이럴 (배너)→배너
+// - 위성채널/온드미디어→업체명 공란, 비용 0
+// - 채널명/채널분류 편집 시 해당 행 즉시 반영. 바이럴 기존 수동값은 보존.
+// ═══════════════════════════════════════════════════════════════
+var PRICING_CHANNEL_ALIASES = {
+  // "표시용 채널명": "AI 연동 탭의 채널명"
+};
+
+function getPricingSheet_() {
+  var target = 1649102171;
+  var shs = SpreadsheetApp.getActive().getSheets();
+  for (var i = 0; i < shs.length; i++) {
+    if (shs[i].getSheetId() === target) return shs[i];
+  }
+  return null;
+}
+
+function pricingKey_(v) {
+  var s = String(v == null ? "" : v).trim().toLowerCase();
+  try { s = s.normalize("NFKC"); } catch (e) {}
+  return s.replace(/\s+/g, "");
+}
+
+function pricingFormat_(channelType) {
+  var ct = String(channelType == null ? "" : channelType);
+  if (ct.indexOf("영상") >= 0) return "릴스";
+  if (ct.indexOf("배너") >= 0) return "배너";
+  return "";
+}
+
+function addPricingCandidate_(bag, key, value) {
+  if (!key || value === "" || value == null) return;
+  if (!bag[key]) bag[key] = {};
+  bag[key][String(value)] = true;
+}
+
+function uniquePricingMap_(bag) {
+  var out = {}, conflicts = [];
+  Object.keys(bag).forEach(function (key) {
+    var values = Object.keys(bag[key]);
+    if (values.length === 1) out[key] = values[0];
+    else if (values.length > 1) conflicts.push(key);
+  });
+  return { map: out, conflicts: conflicts };
+}
+
+function buildPricingMaps_(targetSheet, cols) {
+  var link = getPricingSheet_();
+  if (!link) throw new Error("단가 매핑: AI 바이럴 대시보드 연동 탭을 찾지 못했습니다.");
+
+  var sourceCoBag = {}, sourcePriceBag = {};
+  var lv = link.getDataRange().getValues();
+  for (var i = 1; i < lv.length; i++) {
+    var rawChannel = String(lv[i][0] == null ? "" : lv[i][0]).trim();
+    var channel = pricingKey_(rawChannel);
+    if (!channel) continue;
+    var company = String(lv[i][1] == null ? "" : lv[i][1]).trim();
+    var format = String(lv[i][2] == null ? "" : lv[i][2]).trim();
+    var price = parseFloat(String(lv[i][3] == null ? "" : lv[i][3]).replace(/[^0-9.-]/g, ""));
+    addPricingCandidate_(sourceCoBag, channel, company);
+    if (format && isFinite(price)) addPricingCandidate_(sourcePriceBag, channel + "|" + format, price);
+  }
+  var sourceCoResult = uniquePricingMap_(sourceCoBag);
+  var sourcePriceResult = uniquePricingMap_(sourcePriceBag);
+
+  var historyCoBag = {}, historyPriceBag = {};
+  var n = Math.max(0, targetSheet.getLastRow() - CONFIG.DATA_START_ROW + 1);
+  if (n > 0) {
+    var data = targetSheet.getRange(CONFIG.DATA_START_ROW, 1, n, targetSheet.getLastColumn()).getValues();
+    data.forEach(function (row) {
+      var ct = String(row[cols.typeCol - 1] == null ? "" : row[cols.typeCol - 1]);
+      if (ct.indexOf("바이럴") < 0) return;
+      var channel = pricingKey_(row[cols.chCol - 1]);
+      var format = pricingFormat_(ct);
+      if (!channel) return;
+      var company = String(row[cols.coCol - 1] == null ? "" : row[cols.coCol - 1]).trim();
+      var price = parseFloat(String(row[cols.costCol - 1] == null ? "" : row[cols.costCol - 1]).replace(/[^0-9.-]/g, ""));
+      addPricingCandidate_(historyCoBag, channel, company);
+      if (format && isFinite(price)) addPricingCandidate_(historyPriceBag, channel + "|" + format, price);
+    });
+  }
+  var historyCoResult = uniquePricingMap_(historyCoBag);
+  var historyPriceResult = uniquePricingMap_(historyPriceBag);
+
+  var companyMap = sourceCoResult.map;
+  Object.keys(historyCoResult.map).forEach(function (key) {
+    if (!(key in companyMap)) companyMap[key] = historyCoResult.map[key];
+  });
+  var priceMap = sourcePriceResult.map;
+  Object.keys(historyPriceResult.map).forEach(function (key) {
+    if (!(key in priceMap)) priceMap[key] = historyPriceResult.map[key];
+  });
+
+  var aliases = {};
+  Object.keys(PRICING_CHANNEL_ALIASES).forEach(function (from) {
+    aliases[pricingKey_(from)] = pricingKey_(PRICING_CHANNEL_ALIASES[from]);
+  });
+
+  return {
+    companyMap: companyMap,
+    priceMap: priceMap,
+    aliases: aliases,
+    conflicts: sourceCoResult.conflicts.concat(sourcePriceResult.conflicts, historyCoResult.conflicts, historyPriceResult.conflicts)
+  };
+}
+
+function getPricingCols_(sheet) {
+  var lastCol = sheet.getLastColumn();
+  var headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+  var norm = headers.map(function (h) { return norm_(h); });
+  var cols = {
+    chCol: norm.indexOf(norm_("채널명")) + 1,
+    typeCol: norm.indexOf(norm_("채널분류")) + 1,
+    coCol: norm.indexOf(norm_("업체명")) + 1,
+    costCol: norm.indexOf(norm_("비용")) + 1
+  };
+  if (!cols.chCol || !cols.typeCol || !cols.coCol || !cols.costCol) {
+    throw new Error("단가 매핑: 채널명/채널분류/업체명/비용 열을 찾지 못했습니다.");
+  }
+  return cols;
+}
+
+function applyPricingRow_(sheet, rowNum, cols, maps) {
+  if (rowNum < CONFIG.DATA_START_ROW) return { company: 0, cost: 0 };
+  var row = sheet.getRange(rowNum, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var ct = String(row[cols.typeCol - 1] == null ? "" : row[cols.typeCol - 1]).trim();
+  var companyCell = sheet.getRange(rowNum, cols.coCol);
+  var costCell = sheet.getRange(rowNum, cols.costCol);
+
+  if (ct === "위성채널" || ct === "온드미디어") {
+    var clearedCompany = String(companyCell.getValue() == null ? "" : companyCell.getValue()) !== "";
+    var fixedCost = Number(costCell.getValue()) !== 0 || costCell.getValue() === "";
+    if (clearedCompany) companyCell.clearContent();
+    if (fixedCost) costCell.setValue(0);
+    return { company: clearedCompany ? 1 : 0, cost: fixedCost ? 1 : 0 };
+  }
+
+  if (ct.indexOf("바이럴") < 0) return { company: 0, cost: 0 };
+
+  var rawChannel = String(row[cols.chCol - 1] == null ? "" : row[cols.chCol - 1]).trim();
+  var channel = pricingKey_(rawChannel);
+  if (!channel) return { company: 0, cost: 0 };
+  if (maps.aliases[channel]) channel = maps.aliases[channel];
+
+  var format = pricingFormat_(ct);
+  var filledCompany = 0, filledCost = 0;
+  var curCompany = companyCell.getValue();
+  var curCost = costCell.getValue();
+
+  if ((curCompany === "" || curCompany == null) && maps.companyMap[channel]) {
+    companyCell.setValue(maps.companyMap[channel]);
+    filledCompany = 1;
+  }
+  var priceKey = channel + "|" + format;
+  if ((curCost === "" || curCost == null) && format && (priceKey in maps.priceMap)) {
+    costCell.setValue(Number(maps.priceMap[priceKey]));
+    filledCost = 1;
+  }
+  return { company: filledCompany, cost: filledCost };
+}
+
+function syncPricing__wgimpl() {
+  const startedMs = Date.now();
+  const sheet = getSheet_();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < CONFIG.DATA_START_ROW) return true;
+  const fieldCols = buildFieldCols_(sheet);
+  if (!fieldCols.account_name || !fieldCols.channel_type || !fieldCols.company_name || !fieldCols.cost) return true;
+  const pricing = getPricingSheet_();
+  if (!pricing) throw new Error("가격/업체명 매핑 시트를 찾을 수 없습니다.");
+
+  const n = lastRow - CONFIG.DATA_START_ROW + 1;
+  const data = sheet.getRange(CONFIG.DATA_START_ROW, 1, n, sheet.getLastColumn()).getValues();
+  const companyFormulas = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.company_name, n, 1).getFormulas();
+  const costFormulas = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.cost, n, 1).getFormulas();
+  const accountLetter = colLetter_(fieldCols.account_name);
+  const typeLetter = colLetter_(fieldCols.channel_type);
+  const mapName = "'" + String(pricing.getName()).replace(/'/g, "''") + "'";
+  const norm_ = (s) => 'REGEXREPLACE(REGEXREPLACE(LOWER(' + s + '),"\\s+",""),"_+","_")';
+  const mapKeyRange = 'ARRAYFORMULA(' + norm_(mapName + '!$A$2:$A&' + mapName + '!$C$2:$C') + ')';
+  const companyEdits = [];
+  const costEdits = [];
+
+  for (let r = 0; r < n; r++) {
+    const row = data[r];
+    const type = String(row[fieldCols.channel_type - 1] || "");
+    const account = String(row[fieldCols.account_name - 1] || "").trim();
+    const rowNum = CONFIG.DATA_START_ROW + r;
+    const company = row[fieldCols.company_name - 1];
+    const cost = row[fieldCols.cost - 1];
+
+    if (type === "위성채널" || type === "온드미디어") {
+      if ((company !== "" && company != null) || companyFormulas[r][0]) {
+        companyEdits.push({ row: rowNum, value: "" });
+      }
+      if (cost === "" || cost == null || Number(cost) !== 0 || costFormulas[r][0]) {
+        costEdits.push({ row: rowNum, value: 0 });
+      }
+      continue;
+    }
+
+    if (!account || type.indexOf("바이럴") < 0) continue;
+
+    const formatExpr = 'IF(REGEXMATCH($' + typeLetter + rowNum + ',"배너"),"배너",IF(REGEXMATCH($'
+      + typeLetter + rowNum + ',"영상|릴스|숏폼"),"릴스",""))';
+    const lookupExpr = norm_('$' + accountLetter + rowNum + '&' + formatExpr);
+
+    if ((company === "" || company == null) && !companyFormulas[r][0]) {
+      companyEdits.push({
+        row: rowNum,
+        value: '=IFERROR(XLOOKUP(' + lookupExpr + ',' + mapKeyRange + ',' + mapName + '!$B$2:$B),"")',
+      });
+    }
+
+    if ((cost === "" || cost == null) && !costFormulas[r][0]) {
+      costEdits.push({
+        row: rowNum,
+        value: '=IFERROR(XLOOKUP(' + lookupExpr + ',' + mapKeyRange + ',' + mapName + '!$D$2:$D),"")',
+      });
+    }
+  }
+
+  // 계산 중 행 삽입/삭제가 있었으면 잘못된 행에 쓰지 않고 다음 실행으로 넘긴다.
+  assertRowCountStable_(sheet, lastRow, "syncPricing");
+  const companyRuns = countColumnRuns_(companyEdits);
+  const costRuns = countColumnRuns_(costEdits);
+  const filledCompany = writeColumnRuns_(sheet, fieldCols.company_name, companyEdits, lastRow);
+  const filledCost = writeColumnRuns_(sheet, fieldCols.cost, costEdits, lastRow);
+  const durationMs = Date.now() - startedMs;
+  Logger.log("syncPricing_result " + JSON.stringify({
+    duration_ms: durationMs,
+    company_cells: filledCompany,
+    company_runs: companyRuns,
+    cost_cells: filledCost,
+    cost_runs: costRuns,
+  }));
+  SpreadsheetApp.getActive().toast(
+    "가격/업체명 배치 반영: 업체 " + filledCompany + ", 비용 " + filledCost
+      + " · " + durationMs + "ms",
+    "완료",
+    5
+  );
+  return true;
+}
+
+
+// 설치형 편집 트리거 전용: 기획자/제작자 수동 수정값을 즉시 DB로 전송.
+function syncManualCreatorsOnEdit(e) {
+  try {
+    if (!e || !e.range) return;
+    if (skipEditDuringAutoWrite_("syncManualCreatorsOnEdit")) return;
+    var sheet = e.range.getSheet();
+    if (sheet.getSheetId() !== CONFIG.SHEET_GID) return;
+    if (e.range.getLastRow() < CONFIG.DATA_START_ROW) return;
+
+    var fieldCols = buildFieldCols_(sheet);
+    if (!fieldCols.url) return;
+    var headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var statusCol = headers.findIndex(function (h) { return norm_(h) === norm_("상태"); }) + 1;
+    var firstCol = e.range.getColumn();
+    var lastCol = e.range.getLastColumn();
+    var touchesPlanner = !!fieldCols.planner && firstCol <= fieldCols.planner && lastCol >= fieldCols.planner;
+    var touchesCreator = !!fieldCols.creator && firstCol <= fieldCols.creator && lastCol >= fieldCols.creator;
+    var touchesStatus = !!statusCol && firstCol <= statusCol && lastCol >= statusCol;
+    if (!touchesPlanner && !touchesCreator && !touchesStatus) return;
+
+    var firstRow = Math.max(CONFIG.DATA_START_ROW, e.range.getRow());
+    var rowCount = e.range.getLastRow() - firstRow + 1;
+    var width = Math.max(fieldCols.url, fieldCols.planner || 0, fieldCols.creator || 0, statusCol || 0);
+    var values = sheet.getRange(firstRow, 1, rowCount, width).getValues();
+    var creatorRows = [];
+    var trackingRows = [];
+    values.forEach(function (row) {
+      var url = String(row[fieldCols.url - 1] || "").trim();
+      if (!url || !ALLOWED_URL_RE.test(url)) return;
+      if (touchesPlanner || touchesCreator) {
+        creatorRows.push({
+          url: url,
+          planner: fieldCols.planner ? String(row[fieldCols.planner - 1] || "").trim() || null : null,
+          creator: fieldCols.creator ? String(row[fieldCols.creator - 1] || "").trim() || null : null
+        });
+      }
+      if (touchesStatus) {
+        var status = String(row[statusCol - 1] || "").trim();
+        if (status === "트래킹 종료") trackingRows.push({ url: url, ended_at: todayStr_() });
+        else if (status === "트래킹 중" || status === "") trackingRows.push({ url: url, ended_at: null });
+        else throw new Error("상태 값은 '트래킹 중' 또는 '트래킹 종료'만 사용할 수 있습니다: " + status);
+      }
+    });
+    if (creatorRows.length) postRows_(creatorRows);
+    if (trackingRows.length) postTrackingStatus_(trackingRows);
+  } catch (err) {
+    Logger.log("수동 편집 즉시 전송 오류: " + (err.stack || err.message));
+    try { SpreadsheetApp.getActive().toast(String(err.message || err), "전송 오류", 7); } catch (_) {}
+  }
+}
+
+function installCreatorEditTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (trigger) {
+    if (trigger.getHandlerFunction() === "syncManualCreatorsOnEdit") ScriptApp.deleteTrigger(trigger);
+  });
+  ScriptApp.newTrigger("syncManualCreatorsOnEdit")
+    .forSpreadsheet(SpreadsheetApp.getActive())
+    .onEdit()
+    .create();
+  SpreadsheetApp.getActive().toast("상태/기획자/제작자 수정 즉시 DB 전송이 켜졌습니다.", "설치 완료", 5);
+}
+
+function onEdit(e) {
+  try {
+    if (!e || !e.range) return;
+    if (skipEditDuringAutoWrite_("onEdit")) return;
+    var sheet = e.range.getSheet();
+    if (sheet.getSheetId() !== CONFIG.SHEET_GID) return;
+    if (e.range.getLastRow() < CONFIG.DATA_START_ROW) return;
+
+    // 캡션을 수동 입력하면 시트 자체도 한 줄로 정리한다. 빈값은 빈값으로 유지한다.
+    var editHeaders = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var captionCol = editHeaders.findIndex(function (h) { return norm_(h) === norm_("캡션"); }) + 1;
+    var editFirstCol = e.range.getColumn();
+    var editLastCol = e.range.getLastColumn();
+    if (captionCol && editFirstCol <= captionCol && editLastCol >= captionCol) {
+      var capFirstRow = Math.max(CONFIG.DATA_START_ROW, e.range.getRow());
+      var capRows = e.range.getLastRow() - capFirstRow + 1;
+      var capRange = sheet.getRange(capFirstRow, captionCol, capRows, 1);
+      var capValues = capRange.getValues().map(function (r) {
+        var normalized = normalizeCaption_(r[0]);
+        return [normalized == null ? "" : normalized];
+      });
+      capRange.setValues(capValues);
+    }
+
+    var cols = getPricingCols_(sheet);
+    var firstCol = e.range.getColumn();
+    var lastCol = e.range.getLastColumn();
+    var touchesChannel = firstCol <= cols.chCol && lastCol >= cols.chCol;
+    var touchesType = firstCol <= cols.typeCol && lastCol >= cols.typeCol;
+    if (!touchesChannel && !touchesType) return;
+
+    var maps = buildPricingMaps_(sheet, cols);
+    var firstRow = Math.max(CONFIG.DATA_START_ROW, e.range.getRow());
+    var lastRow = e.range.getLastRow();
+    for (var rowNum = firstRow; rowNum <= lastRow; rowNum++) {
+      applyPricingRow_(sheet, rowNum, cols, maps);
+    }
+    if (maps.conflicts.length) Logger.log("단가 자동 매핑 제외 충돌 키: " + maps.conflicts.join(", "));
+  } catch (err) {
+    Logger.log("onEdit 단가 자동 매핑 오류: " + (err.stack || err.message));
+  }
+}
+
+// ===== 동시편집 행 밀림 방지 가드 (2026-07-22) =====
+var __WG_LOCKED__ = false;
+function withDocLockBroken_(fn) {
+  if (__WG_LOCKED__) return fn();
+  return fn(); // EMERGENCY ROLLBACK: bypass broken document lock
+  var lock = LockService.getDocumentLock();
+  if (!lock.tryLock(30000)) {
+    throw new Error('SHEET_LOCKED: 다른 작업이 시트를 수정 중입니다. 잠시 후 다시 실행하세요(동시편집 방지).');
+  }
+  __WG_LOCKED__ = true;
+  try {
+    return fn();
+  } finally {
+    __WG_LOCKED__ = false;
+    lock.releaseLock();
+  }
+}
+function assertRowCountStable_(sheet, expectedLastRow, where) {
+  var now = sheet.getLastRow();
+  if (now !== expectedLastRow) {
+    throw new Error('행 수 변경으로 쓰기 취소(' + (where || '') + '): '
+      + expectedLastRow + '→' + now + '. 시트가 동시 편집됨 — 다시 실행하세요.');
+  }
+}
+function writeColumnByKey_(sheet, dataStartRow, urlCol, targetCol, keyToValue, keyFn, shouldWrite) {
+  var n = sheet.getLastRow() - dataStartRow + 1;
+  if (n < 1) return 0;
+  var urls = sheet.getRange(dataStartRow, urlCol, n, 1).getValues();   // 쓰기 직전 최신 위치
+  var cur  = sheet.getRange(dataStartRow, targetCol, n, 1).getValues();
+  var edits = [];
+  for (var i = 0; i < n; i++) {
+    var url = String(urls[i][0] || '');
+    var k = keyFn(url);
+    if (!k || !(k in keyToValue)) continue;   // 매칭 없으면 절대 안 건드림
+    var v = keyToValue[k];
+    if (shouldWrite && !shouldWrite(cur[i][0], v, k, url, dataStartRow + i)) continue;
+    if (cur[i][0] !== v) edits.push({ row: dataStartRow + i, value: v });
+  }
+  return writeColumnRuns_(sheet, targetCol, edits);
+}
+
+function writeColumnRuns_(sheet, targetCol, edits, expectedLastRow) {
+  if (!edits || !edits.length) return 0;
+  var sorted = edits.slice().sort(function(a, b) { return a.row - b.row; });
+  var stableLastRow = expectedLastRow == null ? sheet.getLastRow() : expectedLastRow;
+  var start = 0;
+  var changed = 0;
+  while (start < sorted.length) {
+    var end = start + 1;
+    while (end < sorted.length && sorted[end].row === sorted[end - 1].row + 1) end++;
+    var values = [];
+    for (var i = start; i < end; i++) values.push([sorted[i].value]);
+    assertRowCountStable_(sheet, stableLastRow, "writeColumnRuns");
+    sheet.getRange(sorted[start].row, targetCol, values.length, 1).setValues(values);
+    changed += values.length;
+    start = end;
+  }
+  return changed;
+}
+
+function countColumnRuns_(edits) {
+  if (!edits || !edits.length) return 0;
+  var sorted = edits.slice().sort(function(a, b) { return a.row - b.row; });
+  var runs = 1;
+  for (var i = 1; i < sorted.length; i++) {
+    if (sorted[i].row !== sorted[i - 1].row + 1) runs++;
+  }
+  return runs;
+}
+function exportStats(){ var a=arguments,t=this; return withDocLock_(function(){ return exportStats__wgimpl.apply(t,a); }); }
+function syncStatus(){ var a=arguments,t=this; return withDocLock_(function(){ return syncStatus__wgimpl.apply(t,a); }); }
+function healCumulativeOnEdit_(e, sheet) {
+  try {
+    const cumCol = findHeaderCol_(sheet, ["누적 조회수", "누적조회수"]);
+    if (!cumCol) return;
+    if (e.range.getLastColumn() < cumCol || e.range.getColumn() > cumCol) return;  // H열 미포함 편집
+    refreshCumulativeViews();  // 마커·스필 상태 점검 후 필요할 때만 재설치(멱등)
+  } catch (err) {
+    Logger.log("healCumulativeOnEdit_: " + (err.stack || err.message));
+  }
+}
+
+function refreshCumulativeViews(){ var a=arguments,t=this; return withDocLock_(function(){ return refreshCumulativeViews__wgimpl.apply(t,a); }); }
+function syncCreators(){ var a=arguments,t=this; return withDocLock_(function(){ return syncCreators__wgimpl.apply(t,a); }); }
+function syncPricing(){ var a=arguments,t=this; return withDocLock_(function(){ return syncPricing__wgimpl.apply(t,a); }); }
+function importStats(){ var a=arguments,t=this; return withDocLock_(function(){ return importStats__wgimpl.apply(t,a); }); }
+function runSync_(){ var a=arguments,t=this; return withDocLock_(function(){ return runSync___wgimpl.apply(t,a); }); }
+function pullFromDB(){ var a=arguments,t=this; return withDocLock_(function(){ return pullFromDB__wgimpl.apply(t,a); }); }
+function removeDuplicateLinks(){ var a=arguments,t=this; return withDocLock_(function(){ return removeDuplicateLinks__wgimpl.apply(t,a); }); }
+function checkSheetIssues(){ var a=arguments,t=this; return withDocLock_(function(){ return checkSheetIssues__wgimpl.apply(t,a); }); }
+
+// ===== 상태열 수동 수정 → DB 트래킹 상태 즉시 반영 =====
+function findStatusCol_(sheet) {
+  var headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, sheet.getLastColumn()).getValues()[0];
+  for (var i = 0; i < headers.length; i++) {
+    if (norm_(headers[i]) === norm_("상태")) return i + 1;
+  }
+  return 0;
+}
+
+function trackingEndedAtFromStatus_(value) {
+  var s = String(value == null ? "" : value).trim();
+  if (!s) return undefined;
+  if (s.indexOf("종료") >= 0) return todayStr_();
+  if (s.indexOf("중") >= 0 || s.indexOf("재개") >= 0) return null;
+  return undefined;
+}
+
+function postTrackingRows_(rows) {
+  if (!rows.length) return { updated: 0, missing: [] };
+  var res = UrlFetchApp.fetch(CONFIG.TRACKING_API_URL, {
+    method: "post",
+    contentType: "application/json",
+    headers: authHeaders_(),
+    payload: JSON.stringify({ rows: rows }),
+    muteHttpExceptions: true
+  });
+  var code = res.getResponseCode();
+  var body = res.getContentText();
+  if (code !== 200) throw new Error("tracking-by-url API " + code + ": " + body);
+  return JSON.parse(body);
+}
+
+function onStatusEdit_(e) {
+  try {
+    if (!e || !e.range || !e.source) return;
+    if (skipEditDuringAutoWrite_("onStatusEdit_")) return;
+    var sheet = e.range.getSheet();
+    if (sheet.getSheetId() !== CONFIG.SHEET_GID) return;
+    var hasInputIssue = validateLinkedSheetInputOnEdit_(e, sheet);  // 잘못된 단일 입력·다중셀 붙여넣기 즉시 경고
+    healCumulativeOnEdit_(e, sheet);  // 누적(H) 열 편집 즉시 재충전 — 다중셀 붙여넣기도 잡아야 하므로 단일셀 제한보다 앞에서
+    if (e.range.getRow() < CONFIG.DATA_START_ROW || e.range.getNumRows() !== 1 || e.range.getNumColumns() !== 1) return;
+    var statusCol = findStatusCol_(sheet);
+    if (!statusCol || e.range.getColumn() !== statusCol) return;
+    var endedAt = trackingEndedAtFromStatus_(e.value);
+    if (endedAt === undefined) return;
+    var fieldCols = buildFieldCols_(sheet);
+    var url = String(sheet.getRange(e.range.getRow(), fieldCols.url).getValue() || "").trim();
+    if (!url) return;
+    var result = postTrackingRows_([{ url: url, ended_at: endedAt }]);
+    SpreadsheetApp.getActive().toast("상태 DB 반영: " + (result.updated || 0) + "건", "완료", 4);
+  } catch (err) {
+    Logger.log("onStatusEdit_: " + (err.stack || err.message));
+    SpreadsheetApp.getActive().toast("상태 DB 반영 실패: " + err.message, "오류", 6);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 연동 시트 입력 검증 — 값은 자동 수정/삭제하지 않고, 잘못된 입력을 거부하거나 즉시 알린다.
+// A: 실제 날짜, B: URL, F: 대문자 영문+한글 상품명, G: 숫자, J/K: 한글 사람 이름.
+// O 이후는 '날짜 제목이 붙은 열'만 조회수 영역으로 취급한다. 등록상태 등 관리 열은 제외한다.
+// 조회수는 숫자만 허용하며, 해당 행 업로드일 전이나 KST 오늘 이후 날짜 열에는 입력할 수 없다.
+const LINKED_INPUT_FIRST_DATE_COL_ = 15;  // O열
+
+function isBlankLinkedInput_(value) {
+  return value === "" || value == null;
+}
+
+function isValidLinkedDateValue_(value) {
+  return isBlankLinkedInput_(value)
+    || (value instanceof Date && !isNaN(value.getTime()));
+}
+
+function isValidLinkedUrlValue_(value) {
+  return isBlankLinkedInput_(value)
+    || /^https?:\/\/\S+$/i.test(String(value).trim());
+}
+
+function isValidLinkedProductValue_(value) {
+  if (isBlankLinkedInput_(value)) return true;
+  const text = String(value).trim();
+  return /[A-Z]/.test(text) && /[가-힣]/.test(text);
+}
+
+function isValidLinkedPersonName_(value) {
+  return isBlankLinkedInput_(value) || /^[가-힣]+$/.test(String(value).trim());
+}
+
+function dateKeyFromLinkedValue_(value) {
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, CONFIG.KST_TIMEZONE, "yyyy-MM-dd");
+  }
+  return "";
+}
+
+function linkedDateColumns_(sheet) {
+  const lastCol = sheet.getLastColumn();
+  if (lastCol < LINKED_INPUT_FIRST_DATE_COL_) return {};
+  const headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+  const statusCol = headers.findIndex(function(value) {
+    return norm_(value) === norm_(CONFIG.STATUS_HEADER);
+  }) + 1;
+  const endCol = statusCol > 0 ? statusCol - 1 : lastCol;
+  const out = {};
+  for (let col = LINKED_INPUT_FIRST_DATE_COL_; col <= endCol; col++) {
+    const key = dateKeyFromLinkedValue_(headers[col - 1]);
+    if (key) out[col] = key;
+  }
+  return out;
+}
+
+function validateLinkedSheetInputOnEdit_(e, sheet) {
+  try {
+    const range = e.range;
+    if (range.getLastRow() < CONFIG.DATA_START_ROW) return false;
+
+    const rowStart = Math.max(range.getRow(), CONFIG.DATA_START_ROW);
+    const rowEnd = range.getLastRow();
+    const colStart = range.getColumn();
+    const colEnd = range.getLastColumn();
+    const values = sheet.getRange(rowStart, colStart, rowEnd - rowStart + 1, colEnd - colStart + 1).getValues();
+    const uploadDates = sheet.getRange(rowStart, 1, rowEnd - rowStart + 1, 1).getValues();
+    const dateColumns = linkedDateColumns_(sheet);
+    const today = todayStr_();
+    const issues = [];
+    let totalIssues = 0;
+
+    function addIssue(row, col, reason) {
+      totalIssues++;
+      if (issues.length < 12) issues.push(colLetter_(col) + row + " " + reason);
+    }
+
+    for (let r = rowStart; r <= rowEnd; r++) {
+      for (let c = colStart; c <= colEnd; c++) {
+        const value = values[r - rowStart][c - colStart];
+        if (c === 1 && !isValidLinkedDateValue_(value)) {
+          addIssue(r, c, "업로드일은 실제 날짜만 가능합니다.");
+        } else if (c === 2 && !isValidLinkedUrlValue_(value)) {
+          addIssue(r, c, "http(s) URL만 가능합니다.");
+        } else if (c === 6 && !isValidLinkedProductValue_(value)) {
+          addIssue(r, c, "상품명은 대문자 영문과 한글을 모두 포함해야 합니다.");
+        } else if (c === 7 && !isBlankLinkedInput_(value) && !(typeof value === "number" && isFinite(value))) {
+          addIssue(r, c, "비용은 숫자만 가능합니다.");
+        } else if ((c === 10 || c === 11) && !isValidLinkedPersonName_(value)) {
+          addIssue(r, c, "기획자·제작자는 한글 이름만 가능합니다.");
+        }
+
+        const statDate = dateColumns[c];
+        if (!statDate || isBlankLinkedInput_(value)) continue;
+        if (!(typeof value === "number" && isFinite(value))) {
+          addIssue(r, c, "날짜열에는 숫자만 가능합니다.");
+          continue;
+        }
+        const uploadDate = dateKeyFromLinkedValue_(uploadDates[r - rowStart][0]);
+        if (!uploadDate) addIssue(r, c, "업로드일이 실제 날짜가 아니어서 입력일을 검증할 수 없습니다.");
+        else if (statDate < uploadDate) addIssue(r, c, "업로드일(" + uploadDate + ") 이전에는 입력할 수 없습니다.");
+        if (statDate > today) addIssue(r, c, "오늘(" + today + ")보다 미래에는 입력할 수 없습니다.");
+      }
+    }
+
+    if (issues.length) {
+      SpreadsheetApp.getActive().toast(
+        issues.slice(0, 5).join("\n") + (totalIssues > 5 ? "\n외 " + (totalIssues - 5) + "건" : ""),
+        "⚠️ 입력 규칙 위반",
+        10
+      );
+      Logger.log("linked_input_validation " + JSON.stringify({
+        range: range.getA1Notation(),
+        issue_count: totalIssues,
+        issues: issues,
+      }));
+    }
+    return totalIssues > 0;
+  } catch (err) {
+    Logger.log("validateLinkedSheetInputOnEdit_: " + (err.stack || err.message));
+    return false;
+  }
+}
+
+function linkedValidationRule_(formula, helpText) {
+  return SpreadsheetApp.newDataValidation()
+    .requireFormulaSatisfied(formula)
+    .setAllowInvalid(false)
+    .setHelpText(helpText)
+    .build();
+}
+
+function applyDateInputValidation_(sheet, startCol, numCols) {
+  if (numCols <= 0) return;
+  const rowCount = Math.max(1, sheet.getMaxRows() - CONFIG.DATA_START_ROW + 1);
+  const topLeft = colLetter_(startCol) + CONFIG.DATA_START_ROW;
+  const formula = '=OR(' + topLeft + '="",AND(ISNUMBER(' + topLeft + '),'
+    + colLetter_(startCol) + '$1<=TODAY(),ISNUMBER($A' + CONFIG.DATA_START_ROW + '),'
+    + colLetter_(startCol) + '$1>=$A' + CONFIG.DATA_START_ROW + '))';
+  sheet.getRange(CONFIG.DATA_START_ROW, startCol, rowCount, numCols).setDataValidation(
+    linkedValidationRule_(formula, "숫자만 입력할 수 있습니다. 업로드일 이전 및 오늘 이후 날짜에는 입력할 수 없습니다.")
+  );
+}
+
+function applyLinkedSheetInputValidation_() {
+  const sheet = getSheet_();
+  const rowCount = Math.max(1, sheet.getMaxRows() - CONFIG.DATA_START_ROW + 1);
+  const rules = [
+    [1, '=OR(A2="",AND(ISNUMBER(A2),A2>0))', "업로드일은 실제 날짜만 입력하세요."],
+    [2, '=OR(B2="",REGEXMATCH(TO_TEXT(B2),"^https?://[^[:space:]]+$"))', "http(s) URL만 입력하세요."],
+    [6, '=OR(F2="",AND(REGEXMATCH(TO_TEXT(F2),"[A-Z]"),REGEXMATCH(TO_TEXT(F2),"[가-힣]")))', "대문자 영문과 한글을 모두 포함한 상품명만 입력하세요."],
+    [7, '=OR(G2="",ISNUMBER(G2))', "비용은 숫자만 입력하세요."],
+    [10, '=OR(J2="",REGEXMATCH(TO_TEXT(J2),"^[가-힣]+$"))', "한글로만 된 사람 이름을 입력하세요."],
+    [11, '=OR(K2="",REGEXMATCH(TO_TEXT(K2),"^[가-힣]+$"))', "한글로만 된 사람 이름을 입력하세요."],
+  ];
+  rules.forEach(function(item) {
+    sheet.getRange(CONFIG.DATA_START_ROW, item[0], rowCount, 1)
+      .setDataValidation(linkedValidationRule_(item[1], item[2]));
+  });
+
+  const dateColumns = linkedDateColumns_(sheet);
+  const cols = Object.keys(dateColumns).map(Number).sort(function(a, b) { return a - b; });
+  if (cols.length) {
+    let runStart = cols[0], previous = cols[0];
+    for (let i = 1; i <= cols.length; i++) {
+      const col = cols[i];
+      if (i < cols.length && col === previous + 1) {
+        previous = col;
+        continue;
+      }
+      applyDateInputValidation_(sheet, runStart, previous - runStart + 1);
+      runStart = col;
+      previous = col;
+    }
+  }
+  return true;
+}
+
+function installLinkedSheetInputValidation() {
+  applyLinkedSheetInputValidation_();
+  safeAlert_("✅ 입력 검증을 적용했습니다. 잘못된 입력은 거부하고, 다중셀 붙여넣기 위반은 즉시 알립니다.");
+}
+
+function installStatusEditTrigger() {
+  ScriptApp.getProjectTriggers().filter(function(t) { return t.getHandlerFunction() === "onStatusEdit_"; }).forEach(function(t) { ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger("onStatusEdit_").forSpreadsheet(SpreadsheetApp.getActive()).onEdit().create();
+  safeAlert_("상태 열 수기수정 즉시 DB 반영 트리거를 설치했습니다.");
+}
+
+function removeStatusEditTrigger() {
+  var triggers = ScriptApp.getProjectTriggers().filter(function(t) { return t.getHandlerFunction() === "onStatusEdit_"; });
+  triggers.forEach(function(t) { ScriptApp.deleteTrigger(t); });
+  safeAlert_("상태 열 DB 반영 트리거를 제거했습니다. (" + triggers.length + "개)");
+}
+
+
+// ===== 재진입 안전 문서락 (2026-07-23) =====
+var __WG_LOCK_DEPTH__ = 0;
+function withDocLock_(fn) {
+  if (__WG_LOCK_DEPTH__ > 0) {
+    __WG_LOCK_DEPTH__++;
+    try { return fn(); } finally { __WG_LOCK_DEPTH__--; }
+  }
+  var lock = LockService.getDocumentLock();
+  var acquired = false;
+  for (var attempt = 0; attempt < 3 && !acquired; attempt++) {
+    try { acquired = lock.tryLock(5000); }
+    catch (lockErr) { Logger.log('문서락 획득 오류, 락 없이 계속: ' + lockErr.message); break; }
+    if (!acquired && attempt < 2) Utilities.sleep(500);
+  }
+  if (!acquired) {
+    Logger.log('SHEET_LOCK_BUSY: 동기화를 중단하지 않고 락 없이 계속합니다.');
+    return fn();
+  }
+  __WG_LOCK_DEPTH__ = 1;
+  try { return fn(); }
+  finally {
+    __WG_LOCK_DEPTH__ = 0;
+    try { lock.releaseLock(); } catch (releaseErr) { Logger.log('문서락 해제 경고: ' + releaseErr.message); }
+  }
+}
+
+// 캡션 자동채움용 헤더 열 조회 헬퍼 (fillCaptionFromAsset_ 의존, 2026-07-24 추가)
+function findHeaderCol_(sheet, names){ var lc=sheet.getLastColumn(); var hdr=sheet.getRange(CONFIG.DATA_START_ROW-1,1,1,lc).getValues()[0]; for(var j=0;j<hdr.length;j++){ if(names.indexOf(String(hdr[j]).trim())>=0) return j+1; } return null; }
+
+
+ function syncCreators__wgimpl() {
+  const sheet = getSheet_();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < CONFIG.DATA_START_ROW) return true;
+  const fieldCols = buildFieldCols_(sheet);
+  const sourceCol = findHeaderCol_(sheet, ["소재명"]);
+  const plannerCol = findHeaderCol_(sheet, ["기획자"]);
+  const makerCol = findHeaderCol_(sheet, ["제작자", "PD", "디자이너"]);
+  if (!fieldCols.url || !sourceCol || !plannerCol || !makerCol) return true;
+  const n = lastRow - CONFIG.DATA_START_ROW + 1;
+  const urls = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.url, n, 1).getValues();
+  const source = sheet.getRange(CONFIG.DATA_START_ROW, sourceCol, n, 1).getValues();
+  const plannerByKey = {};
+  const makerByKey = {};
+  let invalidPlannerSkipped = 0;
+  let invalidMakerSkipped = 0;
+  for (let i = 0; i < n; i++) {
+    const key = linkKey_(String(urls[i][0] || ""));
+    if (!key) continue;
+    const parsed = parseCreator_(source[i][0]);
+    if (parsed.mk) {
+      if (isValidLinkedPersonName_(parsed.mk)) plannerByKey[key] = parsed.mk;
+      else invalidPlannerSkipped++;
+    }
+    if (parsed.pd) {
+      if (isValidLinkedPersonName_(parsed.pd)) makerByKey[key] = parsed.pd;
+      else invalidMakerSkipped++;
+    }
+  }
+
+  // URL을 쓰기 직전에 다시 읽어 현재 행을 찾고, 빈 셀만 연속행 단위로 기록한다.
+  // 수동 기획자/제작자 값은 predicate가 false라 절대 덮지 않는다.
+  const blankOnly = function(current) { return current === "" || current == null; };
+  const plannerFilled = writeColumnByKey_(
+    sheet,
+    CONFIG.DATA_START_ROW,
+    fieldCols.url,
+    plannerCol,
+    plannerByKey,
+    linkKey_,
+    blankOnly
+  );
+  const makerFilled = writeColumnByKey_(
+    sheet,
+    CONFIG.DATA_START_ROW,
+    fieldCols.url,
+    makerCol,
+    makerByKey,
+    linkKey_,
+    blankOnly
+  );
+  SpreadsheetApp.getActive().toast(
+    "기획자/제작자 빈칸 채움: " + (plannerFilled + makerFilled) + "칸",
+    "완료",
+    4
+  );
+  Logger.log("syncCreators_result " + JSON.stringify({
+    planner_filled: plannerFilled,
+    maker_filled: makerFilled,
+    invalid_planner_skipped: invalidPlannerSkipped,
+    invalid_maker_skipped: invalidMakerSkipped,
+  }));
+  return true;
+}
+
+function overwriteViralHandles_(){try{const sheet=getSheet_();const fieldCols=buildFieldCols_(sheet);const accCol=fieldCols.account_name,typeCol=fieldCols.channel_type,urlCol=fieldCols.url;if(!accCol||!typeCol||!urlCol)throw new Error("채널명/채널분류/URL 열을 찾지 못함");const res=UrlFetchApp.fetch(CONFIG.LIST_API_URL,{method:"get",headers:authHeaders_(),muteHttpExceptions:true});if(res.getResponseCode()!==200)throw new Error("API "+res.getResponseCode()+": "+res.getContentText());const posts=(JSON.parse(res.getContentText()).posts)||[];const handleByKey={};posts.forEach(function(p){const key=linkKey_(String(p.url||""));const name=String(p.account_name||"").trim();if(key&&name)handleByKey[key]=name;});const lastRow=sheet.getLastRow();const n=(lastRow>=CONFIG.DATA_START_ROW)?(lastRow-CONFIG.DATA_START_ROW+1):0;if(n<=0){safeAlert_("데이터 행이 없습니다.");return true;}const urls=sheet.getRange(CONFIG.DATA_START_ROW,urlCol,n,1).getValues();const types=sheet.getRange(CONFIG.DATA_START_ROW,typeCol,n,1).getValues();const accs=sheet.getRange(CONFIG.DATA_START_ROW,accCol,n,1).getValues();let changed=0;const samples=[];for(let i=0;i<n;i++){if(String(types[i][0]||"").indexOf("바이럴")<0)continue;const key=linkKey_(String(urls[i][0]||""));if(!key)continue;const dbName=handleByKey[key];if(!dbName)continue;const cur=String(accs[i][0]||"").trim();if(cur===dbName)continue;if(samples.length<15)samples.push("["+cur+"] → ["+dbName+"]");accs[i][0]=dbName;changed++;}if(changed>0)sheet.getRange(CONFIG.DATA_START_ROW,accCol,n,1).setValues(accs);safeAlert_("🔤 바이럴 채널명 → DB 핸들 정정 완료\n• 변경: "+changed+"건\n"+samples.join("\n"));return true;}catch(e){safeAlert_("❌ 바이럴 채널명 정정 오류\n"+e.message);Logger.log(e.stack||e.message);return false;}}
+function overwriteViralHandles(){return overwriteViralHandles_();}
+
+
+
+// ═══════════════════════════════════════════════════════════════
+// 누적 조회수 V4 (2026-07-27, 행별 수식 + 수동 입력 허용)
+// 스필(BYROW 앵커) 폐기: 앵커 삭제·경로 한 칸 값 유입만으로 열 전체가 비는 사고가 하루 2번 발생.
+// 행별 수식은 그 행만 영향받고(1행 붙여넣기 무해), 상대참조라 정렬을 따라간다.
+// 수동 입력 공식 허용: 수식 아닌 '값' 칸은 안 덮음(값==행 MAX면 수식으로 환원, 정정만 보존).
+// 구판은 old cumulative V3로 보관(미호출) — Codex 정리 대상.
+// ═══════════════════════════════════════════════════════════════
+function refreshCumulativeViews__wgimpl() {
+  // V4(행별 수식, 2026-07-27 사용자 지시): H는 행마다 =IF(COUNT(첫날짜{r}:끝날짜{r})=0,"",MAX(...)) 개별 수식.
+  // 스필(BYROW 앵커) 폐기 이유: 앵커 삭제(오전)·경로 한 칸 값 유입(#REF, 저녁)만으로 열 전체가 비는
+  // 사고가 하루 2번 발생. 팀이 수기 입력·정렬·행 붙여넣기를 일상적으로 하는 시트라
+  // '한 점 고장 = 전체 고장' 구조 자체를 제거한다. 행별 수식은 그 행만 영향받고(1행 붙여넣기 무해),
+  // 상대참조라 정렬을 따라가며, 지워진 칸은 다음 갱신 때 그 행만 재충전된다.
+  // 수동 입력 공식 허용: 수식 아닌 '값'이 든 칸은 절대 덮지 않는다. 단 값==그 행 날짜열 MAX면
+  // (스필 마이그레이션 잔값/자동값과 동일한 중복 수기) 수식으로 환원해 자동 갱신을 복원한다
+  // — 실제 정정(값≠MAX)만 수동 입력으로 취급해 보존.
+  const sheet = getSheet_();
+  const lastCol = sheet.getLastColumn();
+  const cumCol = findHeaderCol_(sheet, ["누적 조회수", "누적조회수"]);
+  if (!cumCol) return true;
+  const headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+  const dateCols = [];
+  const dateRe = /^\s*(?:\d{2,4}\s*[.]\s*)?\d{1,2}\s*[.]\s*\d{1,2}\s*[.]?\s*(\s|\(|$)/;
+  for (let i = CONFIG.STATS_FIRST_COL - 1; i < headers.length; i++) {
+    const header = headers[i];
+    if (header instanceof Date || dateRe.test(String(header))) dateCols.push(i + 1);
+  }
+  if (!dateCols.length) return true;
+
+  const firstDateCol = Math.min.apply(null, dateCols);
+  const lastDateCol = Math.max.apply(null, dateCols);
+  const firstDate = colLetter_(firstDateCol);
+  const lastDate = colLetter_(lastDateCol);
+  const lastRow = sheet.getLastRow();
+  const n = Math.max(0, lastRow - CONFIG.DATA_START_ROW + 1);
+  if (!n) return true;
+  const range = sheet.getRange(CONFIG.DATA_START_ROW, cumCol, n, 1);
+  const values = range.getValues();     // 스필 표시값·수동값 모두 값으로 읽힘(마이그레이션 겸용)
+  const formulas = range.getFormulas();
+  const daily = sheet.getRange(CONFIG.DATA_START_ROW, firstDateCol, n, lastDateCol - firstDateCol + 1).getValues();
+
+  const out = [];
+  let wrote = 0, manualKept = 0;
+  for (let i = 0; i < n; i++) {
+    const r = CONFIG.DATA_START_ROW + i;
+    const hasFormula = formulas[i][0] !== "";
+    const cur = values[i][0];
+    const hasValue = cur !== "" && cur != null;
+    let rowMax = null;
+    for (let j = 0; j < daily[i].length; j++) {
+      const v = daily[i][j];
+      if (typeof v === "number" && v > 0 && (rowMax === null || v > rowMax)) rowMax = v;
+    }
+    if (rowMax !== null) {
+      // 진짜 수동 정정(값이 있고 수식이 아니며 자동 MAX와 다름)만 보존
+      if (!hasFormula && hasValue && Number(cur) !== rowMax) { out.push([cur]); manualKept++; continue; }
+      out.push(["=IF(COUNT(" + firstDate + r + ":" + lastDate + r + ")=0,\"\",MAX(" + firstDate + r + ":" + lastDate + r + "))"]);
+      wrote++;
+      continue;
+    }
+    // 날짜 실측이 없는 행: 값이 있으면(구 legacy 3건·수기 전용 트래킹) 값 그대로 보존.
+    // 값이 없으면 빈 결과 수식을 깔아 "데이터 없음"과 "수식 파손"을 구분한다.
+    if (!hasFormula && hasValue) { out.push([cur]); manualKept++; }
+    else {
+      out.push(["=IF(COUNT(" + firstDate + r + ":" + lastDate + r + ")=0,\"\",MAX(" + firstDate + r + ":" + lastDate + r + "))"]);
+      wrote++;
+    }
+  }
+  range.setValues(out);  // '='로 시작하는 문자열은 수식으로 들어감 — 값·수식 혼합 1회 배치 쓰기
+
+  SpreadsheetApp.getActive().toast(
+    "누적 조회수 행별 수식 " + wrote + "행 갱신 · 수동/레거시 값 보존 " + manualKept + "건",
+    "완료",
+    4
+  );
+  return true;
+}
+
+// 임시 실험(2026-07-28, 검증 후 삭제): 정렬이 행 수식의 상대참조를 행과 함께 옮기는지 확정.
+// 별도 임시 스프레드시트를 만들어 실험 — 운영 시트 무접촉. 결과는 Logger로.
+
+
+
+// ═══════════════════════════════════════════════════════════════
+// 자정수집 폴백 (2026-07-30 추가) — 구글 스케줄러가 GitHub 장애를 대신 메운다.
+// 매일 05:00 KST(= GitHub 00:41·02:41·04:41 시도 이후)에 서버 판정을 호출하고,
+// 그날 자동수집 행이 비어 있을 때만 서버가 Apify 수집을 시작한다(웹훅이 적재).
+// 정상 수집됐으면 무동작 → 중복수집·Apify 비용 0.
+// repo 정본: web/app/api/ops/collect-fallback + Combined_Sheet_AppsScript.gs
+// ═══════════════════════════════════════════════════════════════
+function collectFallback() {
+  var url = (typeof CONFIG !== "undefined" && CONFIG.COLLECT_FALLBACK_URL)
+    ? CONFIG.COLLECT_FALLBACK_URL
+    : "https://influencer-seeding-mu.vercel.app/api/ops/collect-fallback";
+  var res = UrlFetchApp.fetch(url, {
+    method: "post",
+    headers: authHeaders_(),
+    muteHttpExceptions: true,
+  });
+  var code = res.getResponseCode();
+  var body = res.getContentText();
+  Logger.log("[collectFallback] HTTP " + code + " " + body.slice(0, 500));
+  if (code !== 200) throw new Error("collectFallback HTTP " + code + ": " + body.slice(0, 200));
+  return true;
+}
+
+function installCollectFallbackTrigger() {
+  ScriptApp.getProjectTriggers()
+    .filter(function (t) { return t.getHandlerFunction() === "collectFallback"; })
+    .forEach(function (t) { ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger("collectFallback").timeBased().atHour(5).everyDays(1).create();
+  Logger.log("collectFallback 트리거 설치 완료(매일 05시 KST)");
+  return true;
+}
+
+function removeCollectFallbackTrigger() {
+  var triggers = ScriptApp.getProjectTriggers().filter(function (t) { return t.getHandlerFunction() === "collectFallback"; });
+  triggers.forEach(function (t) { ScriptApp.deleteTrigger(t); });
+  Logger.log("collectFallback 트리거 제거: " + triggers.length + "개");
+  return true;
+}

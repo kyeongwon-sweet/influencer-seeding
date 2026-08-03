@@ -7,6 +7,13 @@
 - **경위**: 아침 reconcile(08:04) 스냅샷의 틀린 시트값은 **Codex의 21칸 직접 정정(상태판 '한 행 밀림 오염 정정' 항목) + 사용자의 3건 수기 수정**으로 이미 DB 정본값으로 교체됨. DB는 처음부터 정확(어제 재수집·궤적 확인), 대시보드는 DB를 읽으므로 이미 정상.
 - **결론**: DB·시트·대시보드 3자 정합 + 정확 확인. **reconcile 12개 물질적 mismatch 해소.** 남은 소차이 36건은 수집시점 지터(무해). ⚠️ 앞으로도 이 건에 `reconcile --apply` 쓰지 말 것(DB가 정본).
 
+## 2026-08-03 [Codex 완료] 라이브 Apps Script 전 파일 clasp 백업 + c50f5ec 프로덕션 확인
+- **clasp pull:** 업무 계정으로 `@google/clasp 3.3.0` 인증 후 정본 프로젝트 `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn`를 **live → repo 단방향**으로 pull했다. `clasp push`는 실행하지 않았다.
+- **복구 기준선:** `snapshots/apps-script-live/2026-08-03/`에 라이브 11개 파일(소스 10 + manifest 1)을 원문 그대로 보존하고 SHA-256 전수 일치(11/11)를 확인했다. 공개 저장소 반영 전 잠재 시크릿 검사 결과 literal 토큰/키는 없고 `PropertiesService`의 `CRON_SECRET` 참조만 있었다.
+- **드리프트:** 라이브 전용 파일 8개와 메인 함수 차이를 `DIFF_REPORT.md`에 기록했다. 라이브 main은 적용된 `__wgimpl` 래퍼·레거시 진단 코드, repo는 최신 감사·검증 헬퍼를 각각 갖고 있어 어느 쪽도 통째 덮지 않았다. 라이브 manifest에만 있던 `showViewsSummary` 매크로와 webapp 설정은 의미가 명확해 repo `apps-script/appsscript.json`에 반영했다.
+- **인사이트 문의 정합:** 라이브 `인사이트_문의_메시지_자동생성.js`와 repo `.gs`는 줄바꿈을 제외하고 diff 0으로 확인했다.
+- **값 정체 감사 배포:** `c50f5ec`은 현재 `origin/main`의 조상이며, 프로덕션 `-mu`가 가리키는 Ready 배포의 빌드 로그에서 `main` 커밋 `c139b4d`를 확인했다. 따라서 DB 실측 기반 값 정체 검사는 이미 프로덕션에 포함돼 있어 추가 `vercel --prod`는 실행하지 않았다.
+
 ## 2026-08-03 [Codex 완료] 배너 인사이트 메뉴를 인사이트 문의 자동생성으로 교체
 - **라이브 적용:** 정본 공유 Apps Script(`1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn`)에서 기존 상단 `💻배너 인사이트 요청` 메뉴를 제거하고 첨부 기능 기반 `📮 인사이트문의` 메뉴로 교체했다. 다른 라이브 코드는 덮어쓰지 않고 기존 문의 파일과 `onOpen()`의 메뉴 블록만 함수 단위로 반영했다.
 - **메뉴 실측:** 시트를 새로 열어 상단에 `🚀 광고 모니터링` + `📮 인사이트문의`만 표시되고, 하위에 `오늘 문의 메시지 만들기`, `날짜 직접 지정해서 만들기`, `🔍 진단`, `매일 오전 자동생성 켜기`, `자동생성 끄기`가 표시되는 것을 확인했다. 기존 `💻배너 인사이트 요청`은 0개다.
