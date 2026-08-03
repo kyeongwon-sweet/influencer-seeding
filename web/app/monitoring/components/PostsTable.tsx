@@ -34,10 +34,10 @@ function TH({ children, right, col, onSort, sorted, className: cls, w, leftPos, 
       }
       style={isSticky ? { width: w, minWidth: w, left: leftPos } : fixed && w ? { width: w, minWidth: w, maxWidth: w } : w ? { minWidth: w } : undefined}
       className={[
-        "relative px-3 py-3 text-xs font-medium whitespace-nowrap select-none",
+        "sticky top-0 relative px-3 py-3 text-xs font-medium whitespace-nowrap select-none",
         right ? "text-right" : "text-left",
         sortable ? `cursor-pointer transition-colors ${sorted ? "text-a-ink" : "text-a-ink-muted hover:text-a-ink"}` : "text-a-ink-muted",
-        isSticky ? "sticky z-40 bg-white" : "bg-white",
+        isSticky ? "z-40 bg-white" : "z-30 bg-white",
         // 헤더 하단선: sticky th에서 border-b는 안 칠해질 수 있어 inset box-shadow로 그림 (isLast는 좌측 그림자와 합성)
         isLast ? "shadow-[2px_0_5px_rgba(0,0,0,0.06),inset_0_-1.5px_0_#d1d5db]" : "shadow-[inset_0_-1.5px_0_#d1d5db]",
         cls ?? "",
@@ -184,9 +184,9 @@ function PostsTable(props: Props) {
             <div className="p-8 text-center text-a-ink-muted text-sm">로딩 중...</div>
           ) : (
             <table ref={tableRef} className="w-full text-sm">
-              <thead className="sticky top-0 z-30">
+              <thead>
                 <tr className="border-b border-a-hairline">
-                  <th className="pl-3 pr-1 py-3 sticky z-40 bg-white shadow-[inset_0_-1.5px_0_#d1d5db]" style={{ left: 0, width: 36, minWidth: 36 }}>
+                  <th className="pl-3 pr-1 py-3 sticky top-0 z-40 bg-white shadow-[inset_0_-1.5px_0_#d1d5db]" style={{ left: 0, width: 36, minWidth: 36 }}>
                     <input type="checkbox" className="w-3.5 h-3.5 accent-a-blue cursor-pointer"
                       checked={filteredPosts.length > 0 && filteredPosts.every(p => selected.has(p.id))}
                       onChange={toggleSelectAll} />
