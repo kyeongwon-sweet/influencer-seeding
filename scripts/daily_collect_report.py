@@ -77,7 +77,7 @@ def main():
     # 전체 게시물 메타
     posts = []; frm = 0
     while True:
-        pg = get("/rest/v1/sponsored_posts?select=id,account_name,channel_type,url,notes,ended_at&limit=1000&offset=%d" % frm)
+        pg = get("/rest/v1/sponsored_posts?select=id,account_name,channel_type,url,notes,ended_at,posted_at,created_at,not_found_streak,review_requested_at&limit=1000&offset=%d" % frm)
         posts += pg
         if len(pg) < 1000: break
         frm += 1000
@@ -135,6 +135,54 @@ def main():
         else:
             real_miss.append(item)           # 활성인데 미수집 — 진짜 문제
 
+    # ⚠️ 2026-08-03 사고: 위 루프는 '어제 측정행이 있는 게시물'만 순회한다. Apify가 not_found를 주면
+    #    행 자체가 안 생기므로 그런 게시물은 확인필요에도, 확보율 분모에도 안 들어가 통째로 사라졌다
+    #    (IG 접근불가 74건이 4일 연속 "364건 중 364건(100%) · 확인필요 0"으로 보고됨).
+    #    → 행이 아예 없는 활성 게시물도 미수집으로 집계한다.
+    measured_ids = {r["post_id"] for r in rows}
+
+    # 최근 7일 자동/수기 이력 — '수기로만 관리되는 게시물'을 접근실패로 오분류하지 않기 위해.
+    # (예: 이나(인스타) 미러링 글은 값이 전부 수기 입력이라 자동 측정행이 원래 없다)
+    week_ago = (datetime.date.fromisoformat(yday) - datetime.timedelta(days=6)).isoformat()
+    auto_ids, manual_ids = set(), set()
+    frm = 0
+    while True:
+        pg = get("/rest/v1/post_daily_stats?select=post_id,manual&measured_at=gte.%s&measured_at=lte.%s&limit=1000&offset=%d" % (week_ago, yday, frm))
+        for r in pg:
+            (manual_ids if r.get("manual") else auto_ids).add(r["post_id"])
+        if len(pg) < 1000: break
+        frm += 1000
+
+    norow_miss = []
+    manual_only = []
+    for p in posts:
+        if p["id"] in measured_ids:
+            continue
+        ct = p.get("channel_type") or ""
+        if "배너" in ct or any(k in ct for k in ("피드", "사진", "이미지", "위성채널", "온드미디어")):
+            continue                      # 위 루프와 동일한 제외 규칙(조회수 지표 없음)
+        if is_ended(p):
+            continue                      # 종료글은 값 없음이 정상
+        posted = (p.get("posted_at") or "")[:10]
+        created = (p.get("created_at") or "")[:10]
+        if not posted or posted > yday:
+            continue                      # 아직 게시 전 → 미측정이 정상
+        if created > yday:
+            continue                      # 어제 이후 등록분 → 어제 수집 대상이 아님
+        if p["id"] not in auto_ids and p["id"] in manual_ids:
+            manual_only.append(p)         # 수기 관리 글 — 자동 측정행이 없는 게 정상, 확보율 제외
+            continue
+        streak = p.get("not_found_streak") or 0
+        active_nb += 1
+        norow_miss.append({"account_name": p.get("account_name"), "channel_type": ct, "url": p.get("url"),
+                           "reason": ("접근 실패 not_found %d일" % streak) if streak else "미수집(원인 미상)"})
+    real_miss += norow_miss
+
+    # IG 접근불가 검토대상: 3일 연속 not_found로 검토 플래그가 찍힌 미종료 게시물(배너 포함).
+    # 상태 기반이라 이미 쌓인 백로그도 매일 다시 보인다(이벤트 알림은 한 번 놓치면 영영 안 보임).
+    nf_review = [p for p in posts
+                 if (p.get("not_found_streak") or 0) >= 3 and not p.get("ended_at")]
+
     P = round(100 * val_nb / active_nb) if active_nb else 0
     newN = len(new_times)
     # 대표 '수집 시각'은 대량 배치(정기 자정수집)를 반영해야 함. min은 소수의 당일 조기 측정
@@ -144,8 +192,13 @@ def main():
 
     if not success:
         note = "신규 적재 %d건뿐 — GHA 로그 확인" % newN
-    elif real_miss:
-        note = "확인필요(미수집) %d건 — 상세 스레드 참고" % len(real_miss)
+    elif real_miss or nf_review:
+        parts = []
+        if real_miss:
+            parts.append("확인필요(미수집) %d건" % len(real_miss))
+        if nf_review:
+            parts.append("IG 접근불가 검토대상 %d건" % len(nf_review))
+        note = " · ".join(parts) + " — 상세 스레드 참고"
     else:
         note = "없음"
 
@@ -156,16 +209,31 @@ def main():
         "📊 자정 수집 %s 알림 (%s)\n\n"
         "• %s  %s 수집\n"
         "• 측정 대상(배너·피드·위성/온드·종료 제외): %d건 중 값 확보 %d건(%d%%) · 확인필요 %d건\n"
-        "• 종료(삭제/비공개) %d · 배너 %d · 피드/사진 %d · 위성/온드 %d — 조회수 지표 없어 확보율 제외\n"
+        "• 종료(삭제/비공개) %d · 배너 %d · 피드/사진 %d · 위성/온드 %d · 수기관리 %d — 조회수 지표 없어 확보율 제외\n"
+        "• IG 접근불가(3일↑ not_found, 미종료): %d건\n"
         "• 특이사항: %s"
-    ) % (status_word, today, status_icon, first, active_nb, val_nb, P, len(real_miss), len(ended_miss), b_tot, feed_cnt, internal_cnt, note)
+    ) % (status_word, today, status_icon, first, active_nb, val_nb, P, len(real_miss), len(ended_miss), b_tot, feed_cnt, internal_cnt, len(manual_only), len(nf_review), note)
 
     thread = None
+    sections = []
     if real_miss:
         lines = ["⚠️ 확인필요 — 활성 게시물인데 조회수 미수집 (%s 측정) %d건\n" % (yday, len(real_miss))]
         for i, f in enumerate(real_miss, 1):
-            lines.append("%d. %s · %s\n   %s" % (i, f.get("account_name") or "계정명 미등록", f.get("channel_type") or "-", f.get("url") or "-"))
-        thread = "\n".join(lines)
+            tail = "  [%s]" % f["reason"] if f.get("reason") else ""
+            lines.append("%d. %s · %s%s\n   %s" % (i, f.get("account_name") or "계정명 미등록", f.get("channel_type") or "-", tail, f.get("url") or "-"))
+        sections.append("\n".join(lines))
+    if nf_review:
+        lines = ["🚨 IG 접근불가 검토대상 %d건 — 3일 이상 not_found. 자동 종료하지 않았습니다.\n"
+                 "   삭제/비공개면 종료 처리, 아니면 URL 확인이 필요합니다. (누적 조회수는 마지막 실측에서 정지)\n" % len(nf_review)]
+        for i, p in enumerate(sorted(nf_review, key=lambda x: -(x.get("not_found_streak") or 0))[:30], 1):
+            lines.append("%d. %s · %s · %d일 연속\n   %s" % (
+                i, p.get("account_name") or "계정명 미등록", p.get("channel_type") or "-",
+                p.get("not_found_streak") or 0, p.get("url") or "-"))
+        if len(nf_review) > 30:
+            lines.append("... 외 %d건" % (len(nf_review) - 30))
+        sections.append("\n".join(lines))
+    if sections:
+        thread = "\n\n".join(sections)
 
     print("===== 본문 =====")
     print(body)

@@ -102,6 +102,12 @@ jobs:
           METADATA_RECOLLECT_ONLY: ${{ github.event.inputs.metadata_only == 'true' && '1' || '0' }}
           VIEW_MISSING_QUEUE_FILE: ${{ runner.temp }}/view_missing_queue_${{ steps.check.outputs.kdate }}.json
           VIEW_MISSING_TARGET_ONLY: ${{ github.event_name == 'schedule' && github.event.schedule != '41 15 * * *' && '1' || '0' }}
+          # ⚠️ run_monitoring.py 자체가 보내는 알림용(IG 접근불가 3일 연속 검토요청·수동 과대기록 경고).
+          # 2026-08-03 실측 사고: 이 두 키가 없어 `_send_status_alert`가 조용히 return —
+          # 로그엔 `[ALERT] IG not_found 3일 연속` 이 찍혔는데 Slack엔 **한 번도** 안 갔다(74건 방치).
+          # 전달 경로가 봇토큰+채널 / 웹훅뿐이라 둘 다 없으면 예외도 실패로그도 없다. 절대 지우지 말 것.
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          STATUS_USER: U0B2Y0ZC8QZ   # 황경원 Slack user id (DM)
         # 실패 사유 알럿용으로 출력을 로그 파일에 캡처(pipefail로 python 실패가 단계 실패에 반영).
         run: |
           cd scripts

@@ -10,6 +10,7 @@ on:
       - "scripts/lint_workflow_env.py"
       - "scripts/test_lint_workflow_env.py"
       - "scripts/test_monitoring_retry_workflow.py"
+      - "scripts/test_alert_env_contract.py"
   pull_request:
     paths:
       - ".github/workflows/**"
@@ -35,3 +36,6 @@ jobs:
         run: python scripts/test_monitoring_retry_workflow.py
       - name: Watchdog logic tests
         run: python scripts/test_cron_watchdog.py
+      # 2026-08-03 사고: 수집 스텝에 Slack 키가 없어 'IG 접근불가 3일 연속' 알림이 한 번도 안 갔다.
+      - name: Alert env contract (알림 스크립트 스텝에 Slack 키 존재)
+        run: python scripts/test_alert_env_contract.py
