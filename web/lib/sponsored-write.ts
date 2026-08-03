@@ -13,7 +13,6 @@ export type UpsertSummary = {
   created: number;
   meta_filled: number;
   ended_marked: number;
-  skipped_no_product?: number; // 상품명 공백이라 신규 추가에서 제외된 소재 수
 };
 
 /**
@@ -131,11 +130,8 @@ export async function upsertSponsoredRows(
     }
   }
 
-  // 신규 URL → 전체 메타로 생성. 단, 상품명(product_name) 공백 소재는 대시보드에 추가하지 않음
-  // (2026-08-03 사용자 지시, 모든 채널유형). 생성만 차단 — 기존 게시물 업데이트/메타 보정에는 영향 없음.
-  const newRows = rows.filter(r => !existingByIdentity.has(r.normalized_key ?? r.url) && !existingByUrl.has(r.url));
-  const noProductSkipped = newRows.filter(r => !String(r.product_name ?? "").trim()).length;
-  const toCreate = newRows.filter(r => String(r.product_name ?? "").trim() !== "");
+  // 신규 URL → 전체 메타로 생성
+  const toCreate = rows.filter(r => !existingByIdentity.has(r.normalized_key ?? r.url) && !existingByUrl.has(r.url));
   let created = 0;
   if (toCreate.length > 0) {
     const createRows = supportsNormalizedKey ? toCreate : toCreate.map(({ normalized_key, ...r }) => {
@@ -264,5 +260,5 @@ export async function upsertSponsoredRows(
   // 캡션 빈 IG 글이 이번 배치에 있으면 캡션 보강 즉시 트리거(이벤트 기반)
   if (rows.some(r => needsCaption(r.url, r.content_summary))) await triggerCaptionBackfill(source);
 
-  return { summary: { upserted: rows.length, created, meta_filled: metaFilled, ended_marked: endedMarked, skipped_no_product: noProductSkipped } };
+  return { summary: { upserted: rows.length, created, meta_filled: metaFilled, ended_marked: endedMarked } };
 }

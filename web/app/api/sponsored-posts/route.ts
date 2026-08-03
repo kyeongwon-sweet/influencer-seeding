@@ -102,6 +102,10 @@ export async function GET(req: NextRequest) {
       const { data: page, error: postsError } = await supabase
         .from("sponsored_posts")
         .select(POST_COLS)
+        // 상품명(product_name) 공백 소재는 AI 대시보드에 표시하지 않음 (2026-08-03 사용자 지시, 모든 채널유형).
+        // DB·시트 데이터는 보존 — 화면 조회에서만 제외. 수집(cron)·리포트·sync는 별도 service-key 라우트라 무영향.
+        .not("product_name", "is", null)
+        .neq("product_name", "")
         .order("created_at", { ascending: false })
         .range(from, from + PAGE - 1);
       // graceful degrade: 한 페이지 조회가 실패해도 500으로 대시보드 전체를 죽이지 않고, 지금까지 모은 것으로 진행.
