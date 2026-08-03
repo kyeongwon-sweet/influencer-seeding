@@ -28,10 +28,11 @@ const WORKFLOW = "formula-audit.yml";
 async function fetchTodaySuccessCount(todayKstDate: string): Promise<number> {
   try {
     const url = `https://api.github.com/repos/${REPO}/actions/workflows/${WORKFLOW}/runs?status=success&per_page=20`;
-    const res = await fetch(url, {
-      headers: { Accept: "application/vnd.github+json", "User-Agent": "audit-fallback" },
-      cache: "no-store",
-    });
+    // repo가 비공개면 비인증 조회는 404 → 매일 '조회 실패'로 판정해 폴백 감사를 중복 실행한다.
+    // schedule-heartbeat와 같은 규약으로 OPS_GITHUB_TOKEN을 쓴다(있으면 인증, 없으면 기존 동작).
+    const headers: Record<string, string> = { Accept: "application/vnd.github+json", "User-Agent": "audit-fallback" };
+    if (process.env.OPS_GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.OPS_GITHUB_TOKEN}`;
+    const res = await fetch(url, { headers, cache: "no-store" });
     if (!res.ok) return -1;
     const json = (await res.json()) as { workflow_runs?: Array<{ updated_at: string; conclusion: string | null }> };
     const runs = (json.workflow_runs ?? []).map((r) => ({ updatedAt: r.updated_at, conclusion: r.conclusion }));
