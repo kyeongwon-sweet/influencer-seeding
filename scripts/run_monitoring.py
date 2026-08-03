@@ -1468,9 +1468,11 @@ def run():
 def _fetch_ig_fallback(urls: list) -> dict:
     """기본 IG 액터(apify/instagram-scraper)가 인스타 차단으로 no_items만 반환할 때, data-slayer/instagram-post-details로 조회수 보강.
     반환: {shortcode: {play_count, likes_count, comments_count, content_summary}}.
-    ⚠️ metrics.play_count는 기존 videoPlayCount 시리즈와 연속됨(2026-06-29 실측 비율 1.000). 비용↑(~2.7배)이라 차단 감지 시에만 호출한다.
+    ⚠️ data-slayer의 aggregate metric은 Facebook 교차게시 값을 포함할 수 있으므로 Instagram 전용값만 사용한다.
+    비용↑(~2.7배)이라 차단 감지 시에만 호출한다.
     ⚠️ data-slayer의 caption은 객체({text,...}) — apify(문자열)와 형식이 달라 .text를 꺼낸다."""
     from apify_client import ApifyClient
+    from instagram_metric_policy import pick_instagram_metric
     client = ApifyClient(os.getenv("APIFY_API_TOKEN"))
     out = {}
     for i in range(0, len(urls), 40):
@@ -1485,9 +1487,9 @@ def _fetch_ig_fallback(urls: list) -> dict:
                 cap = it.get("caption")
                 cap_text = cap.get("text") if isinstance(cap, dict) else (cap if isinstance(cap, str) else None)
                 out[code] = {
-                    "play_count": m.get("play_count"),
-                    "likes_count": m.get("like_count"),
-                    "comments_count": m.get("comment_count"),
+                    "play_count": pick_instagram_metric(m, "play_count", "fb_play_count", "ig_play_count"),
+                    "likes_count": pick_instagram_metric(m, "like_count", "fb_like_count"),
+                    "comments_count": pick_instagram_metric(m, "comment_count", "fb_comment_count"),
                     "content_summary": (cap_text or "")[:300] or None,
                 }
         except Exception as e:

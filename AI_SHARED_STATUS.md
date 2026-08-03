@@ -1,6 +1,13 @@
 
 # AI Shared Status
 
+## 2026-08-03 [Codex] 먹여원 누적 하락 원인 규명 — data-slayer Facebook 합산 누출 차단
+- **대상:** 먹여원 `DYg7tuLxRel`. DB는 6/29 수기 `28,247` 뒤 6/30 자동 `27,125`, 7/7 수기 `27,369`로 내려가 수식감사에 잡혔다.
+- **실측:** data-slayer 재수집 run `dKNkILEmf3TYb5aJG`는 aggregate `play_count=29,272`, 그 안의 `ig_play_count=28,117`, `fb_play_count=1,155`를 함께 반환했다. 로그인 없는 Instagram 실물도 좋아요 `664`·댓글 `9`; data-slayer aggregate는 `672`·`10`이고 Facebook 부분은 `8`·`1`이라 정확히 합산 누출임을 교차확인했다.
+- **원인:** `_fetch_ig_fallback()`이 aggregate `play_count/like_count/comment_count`를 그대로 Instagram 지표로 저장했다. 폴백일에는 IG+FB, 기본 수집일에는 IG-only가 섞여 누적 하락처럼 보였다.
+- **코드 수정:** 명시적 `ig_play_count`를 우선하고, 좋아요·댓글은 aggregate에서 `fb_*` 부분을 제외한다. Facebook breakdown이 없는 옛 응답만 aggregate를 폴백한다. 순수 정책 테스트를 추가했다.
+- **데이터 정정 대기:** 6/28 `28,211`, 6/29 `28,247`은 합산값으로 확정됐지만 당시 IG-only 정확값은 남아 있지 않다. 값을 지어내지 않기 위해 백업 후 두 셀/DB 지표를 비우고, 6/27 `26,952` → 6/30 `27,125`의 검증된 시계열을 유지하는 방안을 사용자 승인 후 적용한다.
+
 ## 2026-08-03 [Claude 완료] reconcile 59후보 판별 — ⚠️ **--apply 절대 금지**(DB가 정본, 시트가 stale)
 - **판별 방법**: reconcile 워크플로 읽기전용(run `30795862912`, apply=false, expected=59) → 59건 확정, 0건 적용. 백업 아티팩트 `sheet_stat_mismatch_20260803_080406.json`. **큰 차이 13개 게시물 전부 재수집 + DB 궤적(07-27~08-02) 대조**로 정본 판정.
 - **🚨 핵심 결론(reconcile 가정이 반대)**: reconcile은 "시트=정본"으로 DB를 시트값으로 덮는데, 실측하니 **큰 차이 13건 전부 DB가 정확(궤적 매끄러움+실측 일치)하고 시트값이 틀림**(stale·교차오염). `--apply` 하면 **맞는 DB를 틀린 시트값으로 파괴**한다. Codex가 읽기전용(0 적용)으로 둔 게 정답.
