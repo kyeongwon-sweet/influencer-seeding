@@ -360,19 +360,16 @@ export async function POST(req: NextRequest) {
     if (copyKeys.size > 0) {
       const urlByPid = new Map<string, string>();
       for (const [u, id] of idByUrl) urlByPid.set(id, u);
-      incoming = incoming.filter(r => {
-        if (copyKeys.has(`${r.post_id}|${r.measured_at.slice(0, 10)}`)) {
-          copySuspected.push({
-            target: describePost(r.post_id),
-            url: urlByPid.get(r.post_id) ?? r.post_id,
-            date: r.measured_at,
-            value: r.play_count as number,
-            source: describePost(copySource.get(r.post_id) ?? ""),
-          });
-          return false;
-        }
-        return true;
-      });
+      for (const r of incoming) {
+        if (!copyKeys.has(`${r.post_id}|${r.measured_at.slice(0, 10)}`)) continue;
+        copySuspected.push({
+          target: describePost(r.post_id),
+          url: urlByPid.get(r.post_id) ?? r.post_id,
+          date: r.measured_at,
+          value: r.play_count as number,
+          source: describePost(copySource.get(r.post_id) ?? ""),
+        });
+      }
     }
   }
 
@@ -474,17 +471,15 @@ export async function POST(req: NextRequest) {
   }
 
   // 4-c) 🛡️ 급변 감지 — 들어온 값이 그 게시물의 '자동수집 실측 최댓값'의 3배 이상이면 과대 오입력 의심.
-  //   저장 보류 + 알림(alert-only, 자동보정 아님). 자동 실측이 있는 게시물만 대상(없으면 판정 불가라 통과).
+  //   사람이 메뉴로 반영한 시트 값은 정본이므로 저장은 보존하고 알림만 남긴다. 자동 실측이 있는 게시물만 대상.
   const spikeSuspected: Array<{ target: string; url: string; date: string; value: number; auto_max: number }> = [];
   {
-    const kept: GuardInput[] = [];
     for (const r of incomingForGuard) {
       const autoMax = maxAutoByPost.get(r.post_id) ?? 0;
       if (autoMax > 0 && (r.play_count as number) >= autoMax * 3) {
         spikeSuspected.push({ target: describePost(r.post_id), url: urlById.get(r.post_id) ?? r.post_id, date: r.measured_at, value: r.play_count as number, auto_max: autoMax });
-      } else kept.push(r);
+      }
     }
-    incomingForGuard.length = 0; incomingForGuard.push(...kept);
   }
 
   const overwroteManual = incomingForGuard.filter(i => manualSet.has(`${i.post_id}|${i.measured_at}`)).length;
@@ -525,11 +520,11 @@ export async function POST(req: NextRequest) {
     bannerInserted = (data ?? []).length;
   }
 
-  // 복사 의심 스킵분 → 여믄봇 Slack 알림(사람이 확인·정정). DB 유입은 이미 차단됨(위 필터).
+  // 복사 의심분 → 여믄봇 Slack 알림(사람이 확인·정정). 시트 수기값은 정본이므로 DB에는 manual=true로 반영한다.
   if (copySuspected.length > 0) {
     const s = copySuspected.slice(0, 6)
       .map(c => `${c.target} ${c.date.slice(5, 10)} ${Number(c.value).toLocaleString()}←${c.source}`).join(", ");
-    await notifyBot(`🚨 [시트 조회수 입력] 복사 의심 ${copySuspected.length}행 스킵 — 다른 게시물 값과 여러 날 일치라 DB 유입 차단. 시트 확인·정정 필요: ${s}`);
+    await notifyBot(`⚠️ [시트 조회수 입력] 복사 의심 ${copySuspected.length}행 경고 — 수기 입력 원칙에 따라 DB에는 반영했습니다. 오입력이면 시트에서 정정 후 다시 반영하세요: ${s}`);
   }
 
   // 중복 날짜열 감지분 → 알림(같은 날짜에 값 2개 = 시트 중복 열 오염, 어느 게 진짜인지 몰라 스킵).
@@ -537,20 +532,22 @@ export async function POST(req: NextRequest) {
     const s = dupConflict.slice(0, 6).map(c => `${c.date.slice(5, 10)} [${c.values.map(v => v.toLocaleString()).join("/")}]`).join(", ");
     await notifyBot(`🚨 [시트 조회수 입력] 중복 날짜열 의심 ${dupConflict.length}건 스킵 — 한 게시물·날짜에 값이 2개(중복 열). 시트 날짜 열 정규화 필요: ${s}`);
   }
-  // 급변 감지분 → 알림(자동 실측의 3배 이상 = 과대 오입력 의심, 보류). 사람이 실제 값 확인.
+  // 급변 감지분 → 알림(자동 실측의 3배 이상 = 과대 오입력 의심). 사람이 입력한 시트값은 보존한다.
   if (spikeSuspected.length > 0) {
     const s = spikeSuspected.slice(0, 6).map(c => `${c.target} ${c.date.slice(5, 10)} ${c.value.toLocaleString()}(자동실측 ${c.auto_max.toLocaleString()})`).join(", ");
-    await notifyBot(`🚨 [시트 조회수 입력] 급변 의심 ${spikeSuspected.length}행 보류 — 자동수집 실측의 3배↑. 실제 급상승이면 재입력, 오입력이면 정정: ${s}`);
+    await notifyBot(`⚠️ [시트 조회수 입력] 급변 의심 ${spikeSuspected.length}행 경고 — 수기 입력 원칙에 따라 DB에는 반영했습니다. 오입력이면 시트에서 정정 후 다시 반영하세요: ${s}`);
   }
 
   return NextResponse.json({
     ok: true,
     inserted,
-    copy_suspected_skipped: copySuspected.length,
+    copy_suspected_skipped: 0,
+    copy_suspected_warned: copySuspected.length,
     copy_suspected_sample: copySuspected.slice(0, 10),
     dup_column_skipped: dupConflict.length,
     dup_column_sample: dupConflict.slice(0, 10),
-    spike_suspected_skipped: spikeSuspected.length,
+    spike_suspected_skipped: 0,
+    spike_suspected_warned: spikeSuspected.length,
     spike_suspected_sample: spikeSuspected.slice(0, 10),
     banner_reach_inserted: bannerInserted,
     created_posts: created,

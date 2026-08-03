@@ -22,3 +22,11 @@ test("stats-import: suspicious sheet stat alerts identify the target account", (
   assert.match(route, /spikeSuspected: Array<\{ target: string;/);
   assert.match(route, /\$\{c\.target\} \$\{c\.date\.slice\(5, 10\)\}/);
 });
+
+test("stats-import: suspicious manual sheet stats warn but are not skipped", () => {
+  assert.match(route, /copy_suspected_skipped:\s*0/);
+  assert.match(route, /copy_suspected_warned:\s*copySuspected\.length/);
+  assert.match(route, /spike_suspected_skipped:\s*0/);
+  assert.match(route, /spike_suspected_warned:\s*spikeSuspected\.length/);
+  assert.doesNotMatch(route, /incomingForGuard\.push\(\.\.\.kept\)/);
+});
