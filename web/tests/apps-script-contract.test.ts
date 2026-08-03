@@ -467,7 +467,7 @@ test("exportStats phase 2 writes date values by URL key and guards row-based for
   assert.match(body, /if \(urlOrderChanged\)[\s\S]*?return false/);
 });
 
-test("asset_name is sent from the sheet and remains the canonical sheet-wins field", () => {
+test("sheet-owned metadata remains canonical across both sheet sync paths", () => {
   assert.match(appsScript, /"소재명":\s*"asset_name"/);
   assert.match(appsScript, /p\.asset_name\s*=/);
   const statsRoute = readFileSync(
@@ -479,8 +479,10 @@ test("asset_name is sent from the sheet and remains the canonical sheet-wins fie
     "utf8",
   );
   assert.match(statsRoute, /POST_FIELDS = \[[^\]]*"asset_name"/);
-  assert.match(statsRoute, /SHEET_WINS = new Set\(\["asset_name"\]\)/);
-  assert.match(sponsoredWrite, /SHEET_WINS = new Set\(\["asset_name", "planner", "creator"\]\)/);
+  assert.match(statsRoute, /SHEET_WINS = new Set\(\["asset_name", "content_summary", "cost"\]\)/);
+  assert.match(sponsoredWrite, /SHEET_WINS = new Set\(\["asset_name", "content_summary", "cost", "planner", "creator"\]\)/);
+  assert.match(statsRoute, /manual\.filter\(f => !assertedSheetWins\.has\(f\)\)/);
+  assert.match(sponsoredWrite, /manual\.filter\(f => !assertedSheetWins\.has\(f\)\)/);
 });
 
 test("sponsored sheet bulk create path is duplicate-safe", () => {

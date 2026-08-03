@@ -27,8 +27,8 @@ export type UpsertSummary = {
  * 정책(시트 동기화와 동일):
  * - 필드 명시 매핑 + 빈값→null 정제, URL 정규화, 허용 플랫폼만, 배치 내 중복 URL 제거
  * - 신규 URL → 전체 메타로 생성
- * - 기존 URL → 비어있지 않은 값만 덮어씀. 단 ① manual_fields(대시보드 수동 수정)는 보존,
- *   ② 캡션(content_summary)만 항상 입력값 우선, ③ 빈 값은 기존 유지(지우지 않음)
+ * - 기존 URL → 비어있지 않은 값만 덮어씀. 단 ① 시트 정본 필드는 manual_fields보다 우선,
+ *   ② 그 외 manual_fields(대시보드 수동 수정)는 보존, ③ 빈 값은 기존 유지(지우지 않음)
  * - 캡션에 '삭제'/'보관' 포함 행 → ended_at 종료 처리(이미 종료면 유지)
  */
 // 틱톡 단축링크(vt.tiktok.com/...)를 실제 영상 URL로 해석. 순수 정규화(normalizeUrl)로는 ID를 알 수 없어
@@ -95,9 +95,10 @@ export async function upsertSponsoredRows(
   }
 
   const META = ["posted_at", "account_name", "company_name", "content_summary", "channel_type", "project_name", "product_name", "asset_name", "planner", "creator", "cost"];
-  // 기획자·제작자와 소재명은 시트 정본: 대시보드 manual_fields보다 시트의 비어있지 않은 값이 우선한다.
+  // 소재명·캡션·비용·기획자·제작자는 시트 정본: 대시보드 manual_fields보다
+  // 시트의 비어있지 않은 값이 우선한다.
   // 빈 시트값은 rows 생성 단계부터 null이라 아래 valPresent 가드가 DB 값을 지우지 않는다.
-  const SHEET_WINS = new Set(["asset_name", "planner", "creator"]);
+  const SHEET_WINS = new Set(["asset_name", "content_summary", "cost", "planner", "creator"]);
 
   // 기존 게시물(id+메타) 조회 — '빈 값만 채우기' 비교용.
   // ⚠️ URL이 많으면 .in() 쿼리 URL 길이 한도 초과로 400(Bad Request) → 80개씩 청크로 조회.
@@ -181,7 +182,7 @@ export async function upsertSponsoredRows(
     }
   }
 
-  // 기존 게시물 → '변경분만' 덮어씀(manual_fields 보존[캡션 포함]·빈값 유지·동일값 skip).
+  // 기존 게시물 → '변경분만' 덮어씀(시트 정본 필드 우선·그 외 manual_fields 보존·빈값 유지·동일값 skip).
   let metaFilled = 0;
   const lockedDrift: LockedDrift[] = [];
   const metaUpdates: { id: string; upd: Record<string, unknown> }[] = [];
@@ -214,6 +215,16 @@ export async function upsertSponsoredRows(
       if (String(val).trim() === String(ex[f] ?? "").trim()) continue;
       upd[f] = val;
     }
+    // 시트 정본 필드에 남아 있던 대시보드 잠금은 해당 행을 동기화할 때 함께 정리한다.
+    // 다른 필드의 수동 잠금은 그대로 보존한다.
+    const assertedSheetWins = new Set(
+      META.filter(f => {
+        const val = (r as Record<string, unknown>)[f];
+        return SHEET_WINS.has(f) && val !== null && val !== undefined && val !== "";
+      }),
+    );
+    const manualWithoutSheetWins = manual.filter(f => !assertedSheetWins.has(f));
+    if (manualWithoutSheetWins.length !== manual.length) upd.manual_fields = manualWithoutSheetWins;
     // 무상채널 자가치유: 위성/온드에 기존 업체명·광고비가 남아있으면 강제로 비운다(시트 정정이 DB에 안 닿는 갭 보정)
     if (isFreeChannel(r.channel_type)) {
       if (ex.company_name != null) upd.company_name = null;
