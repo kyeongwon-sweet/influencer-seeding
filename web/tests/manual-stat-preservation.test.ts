@@ -12,7 +12,7 @@ test("run_monitoring preserves same-date manual stat rows before auto upsert", (
   assert.match(runMonitoring, /rows = _preserve_same_date_manual_stats\(db, rows, "run_monitoring"\)/);
   assert.match(runMonitoring, /reach_rows = _preserve_same_date_manual_stats\(db, reach_rows, "banner reach snapshot"\)/);
   assert.doesNotMatch(runMonitoring, /if existing\.get\("manual"\):\s+continue/);
-  assert.match(runMonitoring, /ignore_duplicates=True/);
+  assert.match(runMonitoring, /ignore_duplicates=_should_apply_same_day_cost_guard/);
 });
 
 test("apify webhook skips same-date manual rows before post_daily_stats upsert", () => {

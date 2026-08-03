@@ -14,6 +14,12 @@ def test_primary_final_snapshot_does_not_skip_daytime_auto_value():
     )
 
 
+def test_primary_final_snapshot_updates_existing_auto_row_on_conflict():
+    source = (ROOT / "scripts" / "run_monitoring.py").read_text(encoding="utf-8")
+
+    assert "ignore_duplicates=_should_apply_same_day_cost_guard(" in source
+
+
 def test_backup_run_keeps_same_day_cost_guard():
     assert _should_apply_same_day_cost_guard(
         recollect_all=False,

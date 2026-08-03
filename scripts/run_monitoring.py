@@ -1353,7 +1353,13 @@ def run():
             result = db.table("post_daily_stats").upsert(
                 rows,
                 on_conflict="post_id,measured_at",
-                ignore_duplicates=True,
+                # FINAL_SNAPSHOT/RECOLLECT_ALL은 등록 직후 생긴 동일일 자동 중간행을
+                # 최종값으로 교체해야 한다. manual=True 동일일 행은 위
+                # _preserve_same_date_manual_stats()에서 이미 제외되어 안전하다.
+                ignore_duplicates=_should_apply_same_day_cost_guard(
+                    recollect_all=recollect_all,
+                    final_snapshot=final_snapshot,
+                ),
             ).execute()
             print(f"[LOG] ✅ 데이터 저장 완료: {len(rows)}건")
             # (역방향 baseline=0 자동추가 제거 — '전날에 play_count=0을 심는' 안티패턴이 baseline-zero 파괴의 원인이었음.

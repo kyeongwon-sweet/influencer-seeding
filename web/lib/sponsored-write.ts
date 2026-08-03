@@ -145,8 +145,8 @@ export async function upsertSponsoredRows(
     if (ie) return { error: `[신규생성] ${ie.message} | code=${ie.code ?? ""} | details=${ie.details ?? ""} | hint=${ie.hint ?? ""}` };
     created = (ins ?? []).length;
 
-    // 🆕 등록 동기화 시 캡션·첫 조회수 즉시 수집 — 신규 IG '게시물' 중 캡션 없는 것만 Apify 1회 스크랩.
-    // apify-webhook이 캡션(비어있을 때만)·계정명·오늘 stats를 채움 → 별도 backfill(GHA)을 기다릴 필요 없음.
+    // 🆕 등록 동기화 시 캡션·계정 메타데이터 즉시 수집 — 신규 IG '게시물' 중 캡션 없는 것만 Apify 1회 스크랩.
+    // 등록 시점 조회수는 일자별 최종값이 아니므로 metadataOnly=1을 보내 post_daily_stats에 저장하지 않는다.
     // (GH_DISPATCH_TOKEN 기반 즉시 트리거가 미설정으로 한 번도 안 돌아, 2026-07-06 신규 11건 캡션이 종일 비었던 문제의 근본 해법)
     // 가드: shortcode 있는 게시물 URL만(프로필형 directUrls 과수집 방지), 배치당 100개 캡.
     const igNew = [...new Set(
@@ -165,7 +165,7 @@ export async function upsertSponsoredRows(
         const runError = await startActorRun(
           "apify/instagram-scraper",
           { directUrls: igNew, resultsType: "posts", resultsLimit: igNew.length, addParentData: true },
-          `${appUrl}/api/apify-webhook?token=${encodeURIComponent(webhookSecret)}&jobId=${job.id}&jobType=monitoring`
+          `${appUrl}/api/apify-webhook?token=${encodeURIComponent(webhookSecret)}&jobId=${job.id}&jobType=monitoring&metadataOnly=1`
         ).then(() => null).catch((e: unknown) => e);
         if (runError) {
           // 스크랩 실패해도 등록 자체엔 영향 없음(캡션은 크론 안전망·자정 수집이 커버)

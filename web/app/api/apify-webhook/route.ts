@@ -202,7 +202,13 @@ export async function POST(req: NextRequest) {
     const items = await fetchDatasetItems(datasetId) as Record<string, unknown>[];
 
     if (jobType === 'monitoring') {
-      await handleMonitoring(supabase, jobId, items, searchParams.get('measuredAt') || searchParams.get('date') || undefined);
+      await handleMonitoring(
+        supabase,
+        jobId,
+        items,
+        searchParams.get('measuredAt') || searchParams.get('date') || undefined,
+        searchParams.get('metadataOnly') === '1',
+      );
 
     } else if (jobType === 'listup') {
       const platform = searchParams.get('platform') || 'instagram';
@@ -230,7 +236,13 @@ export async function POST(req: NextRequest) {
 
 // ── 모니터링 ────────────────────────────────────────────────────────
 
-async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, jobId: string, items: Record<string, unknown>[], measuredAt?: string) {
+async function handleMonitoring(
+  supabase: ReturnType<typeof getServerSupabase>,
+  jobId: string,
+  items: Record<string, unknown>[],
+  measuredAt?: string,
+  metadataOnly = false,
+) {
   const today = measuredAt || todayKST();
   const { data: posts } = await supabase.from('sponsored_posts').select('id, url, posted_at, account_name, influencer_id, ended_at, asset_name, project_name, content_summary, channel_type');
   const eligiblePosts = (posts || []).filter((p) => {
@@ -293,7 +305,7 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
   const lastMeasuredAt = new Map<string, string>();
   const lastWasManual = new Map<string, boolean>();
   const sameDateManual = new Set<string>();
-  {
+  if (!metadataOnly) {
     const batchIds = [...new Set(eligiblePosts.map((p: { id: string }) => p.id).filter(Boolean))];
     const ID_CHUNK = 120, PAGE = 1000;
     type PrevRow = { post_id: string; play_count: number | null; measured_at: string; manual: boolean | null };
@@ -370,6 +382,10 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
     if (Object.keys(updates).length > 0) {
       pendingUpdates.push({ id: post.id, updates });
     }
+
+    // 등록 즉시 수집은 캡션·계정명·게시일 등 메타데이터만 보강한다.
+    // 중간 시점 조회수를 일자별 최종값으로 남기지 않고, 자정 FINAL_SNAPSHOT이 처음 저장한다.
+    if (metadataOnly) continue;
 
     // 틱톡 배너(사진/슬라이드쇼)는 실제 playCount가 있어 조회수로 수집한다(run_monitoring과 동일). 그 외 배너는 reach 전용.
     if (isBannerChannelType(post.channel_type) && !String(post.url || "").includes("tiktok.com")) {
@@ -458,11 +474,20 @@ async function handleMonitoring(supabase: ReturnType<typeof getServerSupabase>, 
       `${sample}${suspiciousFirstPlay.length > 8 ? `\n- ...${suspiciousFirstPlay.length - 8} more` : ''}`
     );
   }
-  await supabase.from('jobs').update({ status: 'done', payload: { saved: rowsToUpsert.length, skipped, manual_preserved: manualPreserved } }).eq('id', jobId);
+  await supabase.from('jobs').update({
+    status: 'done',
+    payload: {
+      saved: rowsToUpsert.length,
+      skipped,
+      manual_preserved: manualPreserved,
+      metadata_only: metadataOnly,
+      metadata_updated: pendingUpdates.length,
+    },
+  }).eq('id', jobId);
 
   // 자동 수집(크론, user_email 없음)만 Slack 통지 — 수동 버튼 노이즈 방지
   const { data: jobRow } = await supabase.from('jobs').select('user_email').eq('id', jobId).single();
-  if (!(jobRow as { user_email: string | null } | null)?.user_email) {
+  if (!metadataOnly && !(jobRow as { user_email: string | null } | null)?.user_email) {
     await notifyJob('협찬 모니터링', 'ok', `${rowsToUpsert.length}건 적재${skipped ? `, 스킵 ${skipped}` : ''}`);
   }
 }

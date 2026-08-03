@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## 2026-08-03 [Codex 완료] 등록 즉시 수집을 메타데이터 전용으로 분리
+- **정책:** 시트/CSV로 신규 IG 게시물이 등록되면 Apify 즉시 호출은 유지하되, 캡션·계정 핸들·게시일·인플루언서 연결만 보강한다. webhook에 `metadataOnly=1`을 전달하며 `post_daily_stats`에는 중간 조회수를 쓰지 않는다.
+- **자정 최종값:** 00:41 KST `FINAL_SNAPSHOT`만 일자별 조회수를 처음 저장한다. 기존 동일일 자동 중간행이 남아 있는 경우에도 `ignore_duplicates=false` 동작으로 최종값을 갱신한다. `manual=true` 동일일 행은 upsert 전 필터링되어 계속 절대 보존된다.
+- **경로 분리:** 대시보드의 수동 `지금 수집`, 일반 monitoring webhook, 자정/백업 수집은 기존 지표 저장 기능을 유지한다. 신규 등록에서 발생한 webhook에만 메타데이터 전용 표식이 붙는다.
+- **검증:** web 전체 **102/102**, Python final-snapshot·manual-preservation 회귀 테스트, `tsc --noEmit`, touched-file ESLint, Python `py_compile` 통과.
+
 ## 2026-08-03 [Codex 완료] 협찬 낮 시간 중간값 고착 재발 방지
 - **원인 실측:** 등록 직후 `collect-now`가 같은 `measured_at`의 자동행을 먼저 만들면, 자정 `run_monitoring.py`의 `_same_day_measured_ids()` 비용 가드가 이를 최종 측정 완료로 오인해 재수집을 제외했다. 예약 실행 자체는 7/31~8/2 모두 성공했지만, 7/31 `잘먹는 햄띠` IG(20:12 KST 42,178), 8/1 `아미쇼`·`원진운`(22:44 KST 166,492·213,555)이 낮/밤 중간값으로 남았다.
 - **수정:** `cron-daily-collect.yml`의 00:41 KST 주 실행에만 `FINAL_SNAPSHOT=1`을 전달한다. 주 실행은 같은 날짜 자동행이 있어도 전일 최종값을 다시 측정하고, 02:41·04:41 백업 실행은 기존 비용 가드와 missing-target-only를 유지한다.
