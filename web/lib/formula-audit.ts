@@ -16,8 +16,24 @@
 export type AuditPost = {
   posted: string | null;   // YYYY-MM-DD
   ended: string | null;    // YYYY-MM-DD
+  channelType?: string | null;
   measured: Map<string, number>; // YYYY-MM-DD → 양수 지표(배너=reach 우선, 그 외 play)
 };
+
+// 값 정체(수집 끊김) 판정 기준: 자동수집은 '어제'까지 채우므로 2일 넘게 새 값이 없으면 이상.
+export const STALE_DAYS = 2;
+
+/** 조회수 지표가 매일 들어오지 않는 게 정상인 채널 — 정체 판정에서 제외. */
+export function isMetriclessChannel(channelType: string | null | undefined): boolean {
+  const ct = String(channelType ?? "");
+  return /배너|피드|사진|이미지|위성채널|온드미디어/.test(ct);
+}
+
+function shiftDate(day: string, delta: number): string {
+  const d = new Date(day + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + delta);
+  return d.toISOString().slice(0, 10);
+}
 
 export type SheetAuditRow = {
   key: string;             // postIdentityKey
@@ -32,6 +48,15 @@ export type AuditResult = {
   h: { ok: number; manualKept: number; emptyOk: number; valueOnly: number; errorCells: number; emptyButData: number };
   inc: { ok: number; emptyOk: number; errorCells: number; mismatch: number };
   anomalies: string[];     // 사람이 읽을 요약 라인 (상한 있음)
+  /**
+   * 값 정체 — 수식은 멀쩡한데 **새 값이 안 들어오는** 행.
+   *
+   * ⚠️ 이 감사가 원래 못 보던 사각이다(2026-08-03 실측): 게시물이 삭제된 74건과 게시일 불일치로
+   * 버려진 6건이 조회수가 며칠째 멈춰 있었는데, 시트끼리는 앞뒤가 맞아 나흘 내리 "이상 없음"으로
+   * 보고됐다. 수식 정합만으로는 "값이 통째로 안 들어온다"를 절대 알 수 없다.
+   */
+  stale: number;
+  staleNotes: string[];
 };
 
 const ANOMALY_CAP = 12;
@@ -114,12 +139,32 @@ export function auditRows(
     h: { ok: 0, manualKept: 0, emptyOk: 0, valueOnly: 0, errorCells: 0, emptyButData: 0 },
     inc: { ok: 0, emptyOk: 0, errorCells: 0, mismatch: 0 },
     anomalies: [],
+    stale: 0,
+    staleNotes: [],
   };
   const note = (line: string) => { if (res.anomalies.length < ANOMALY_CAP) res.anomalies.push(line); };
+  // 정체 노트는 별도 상한 — 수식 이상 노트를 밀어내지 않게 한다.
+  const staleNote = (line: string) => { if (res.staleNotes.length < ANOMALY_CAP) res.staleNotes.push(line); };
+  const staleCutoff = shiftDate(todayKst, -STALE_DAYS);
 
   for (const row of rows) {
     const positives = row.dates.map((d) => d.value);
     const rowMax = positives.length ? Math.max(...positives) : null;
+
+    // ── 값 정체(수집 끊김) ── 수식과 무관하게, '새 값이 들어오는지'를 본다.
+    {
+      const p0 = posts.get(row.key);
+      const eligible = p0 && !p0.ended && p0.posted
+        && p0.posted <= staleCutoff            // 갓 올린 글은 아직 값이 없는 게 정상
+        && !isMetriclessChannel(p0.channelType); // 배너·피드·위성/온드는 매일 값이 없는 게 정상
+      if (eligible) {
+        const lastDate = row.dates.length ? row.dates[row.dates.length - 1].date : null;
+        if (!lastDate || lastDate < staleCutoff) {
+          res.stale += 1;
+          staleNote(`값정체 ${row.label}: 마지막 값 ${lastDate ?? "없음"} (게시 ${p0!.posted})`);
+        }
+      }
+    }
 
     // ── H(누적) ──
     if (isErrorCell(row.h)) {
@@ -178,9 +223,16 @@ export function auditRows(
 
 export function formatAuditMessage(r: AuditResult): { text: string; healthy: boolean } {
   const problems = r.h.errorCells + r.h.emptyButData + r.inc.errorCells + r.inc.mismatch;
+  const staleTail = r.stale > 0
+    ? `\n🟠 값 정체 ${r.stale}건 — 수식은 정상인데 새 값이 ${STALE_DAYS}일 넘게 안 들어옵니다(삭제·수집실패 의심)\n`
+      + r.staleNotes.slice(0, 8).map((s) => "• " + s).join("\n")
+      + (r.stale > 8 ? `\n• ...외 ${r.stale - 8}건` : "")
+    : "";
+  // ⚠️ '이상 없음'은 **수식 정합**에 한한 말이다. 값이 안 들어오는 건 별도로 반드시 붙인다
+  //    (그렇지 않으면 74건이 멈춰 있어도 "이상 없음"으로 읽힌다 — 2026-08-03 실제 사고).
   const head = problems === 0
-    ? `✅ [수식 전수감사] 이상 없음 — 행 ${r.totalRows} · 누적 정합 ${r.h.ok}(수동보존 ${r.h.manualKept}·보존값 ${r.h.valueOnly}·빈칸정상 ${r.h.emptyOk}) · 증분 정합 ${r.inc.ok}(빈칸정상 ${r.inc.emptyOk})`
+    ? `✅ [수식 전수감사] 수식 이상 없음 — 행 ${r.totalRows} · 누적 정합 ${r.h.ok}(수동보존 ${r.h.manualKept}·보존값 ${r.h.valueOnly}·빈칸정상 ${r.h.emptyOk}) · 증분 정합 ${r.inc.ok}(빈칸정상 ${r.inc.emptyOk})`
     : `🔴 [수식 전수감사] 이상 ${problems}건 — H 오류셀 ${r.h.errorCells}·데이터有빈칸 ${r.h.emptyButData} / I 오류셀 ${r.inc.errorCells}·불일치 ${r.inc.mismatch} (행 ${r.totalRows}, 정합 H ${r.h.ok}·I ${r.inc.ok})`;
   const body = problems === 0 ? "" : "\n" + r.anomalies.map((a) => "• " + a).join("\n");
-  return { text: head + body, healthy: problems === 0 };
+  return { text: head + body + staleTail, healthy: problems === 0 && r.stale === 0 };
 }

@@ -108,7 +108,7 @@ async function handler(req: NextRequest) {
     for (let from = 0; ; from += PAGE) {
       const { data, error } = await supabase
         .from("sponsored_posts")
-        .select("id, url, posted_at, ended_at")
+        .select("id, url, posted_at, ended_at, channel_type")
         .order("id", { ascending: true })
         .range(from, from + PAGE - 1);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -118,6 +118,7 @@ async function handler(req: NextRequest) {
         posts.set(key, {
           posted: p.posted_at ? String(p.posted_at).slice(0, 10) : null,
           ended: p.ended_at ? String(p.ended_at).slice(0, 10) : null,
+          channelType: p.channel_type ? String(p.channel_type) : null,
           measured: new Map(),
         });
       }
