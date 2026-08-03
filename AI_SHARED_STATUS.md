@@ -272,7 +272,7 @@
 - **실측 재확인:** yt-dlp `vx9Ijz7QG0k` = **43,463회**(현재), 업로드 2026-07-28. 7/28 검증값 42,680 유효.
 - **조치:** DB 07-28 `play_count` 3,067 → **42,680**(manual=True), 변경전 백업(scratchpad `inayeon_0728_backup.json`). safeIncrement(07-28)=42,680 확인. 7/28 리포트 DM 재발송(REPLACE) → 급상승 **#9 +42,680** 반영(DRY 대조).
 - **⚠️ 되돌리지 말 것:** 실측 기반 manual 정정. 자동수집/중복제거로 다시 3,067로 내리지 말 것. 게시물 = JD멜(쫀득바)·협찬(인플루언서)·게시 07-28.
-- **부수 관찰(미조치):** 리포트상 일단이나연 CPV 702.9원으로 유독 높음 → cost 과다입력 가능성, 확인 필요(별건).
+- **부수 관찰 → ✅ 종결(2026-08-03 사용자 확인):** 일단이나연 CPV 702.9원은 **정상**(실제로 비싼 배치). cost 오입력 아님 — Codex/누구도 이 건 cost는 쫓지 말 것.
 
 ## 2026-07-29 [Codex 완료] manual 일자행 불변 + TikTok photo 일별수집 재개
 - **팀수기 절대보존:** `run_monitoring`, `collect-now`, `apify-webhook`의 자동 `post_daily_stats` 저장을 같은 `(post_id, measured_at)` 기존행 무시(`ignoreDuplicates`)로 변경했다. 기존 manual 사전조회도 유지하고, 웹 경로는 사전조회 실패 시 쓰기를 중단(fail-closed)한다. 배너 reach 스냅샷은 같은 실행에서 먼저 만든 자동 행에 reach를 합쳐야 하므로 upsert를 유지하되, 같은 날짜 manual 행을 사전 제외한다. 따라서 자동값이 더 높아도 같은 날짜의 `manual=True` 행을 덮지 않는다.
