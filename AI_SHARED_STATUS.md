@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## 2026-08-03 [Claude 완료] posted_at 잠금 나머지 10건 전수 검증 — **수정 불필요**, 대신 드리프트 감지 추가 (`9c21afd`)
+- **판정: DB 날짜가 다 맞다 → 잠금을 풀 이유가 없다.** 잠금을 그냥 해제하면 (검증 안 된) 시트값이 정확한 DB값을 덮을 수 있어 **일괄 해제하지 않았다.**
+  - **틱톡 4건 정확** — video id 상위 32비트=업로드 unix ts로 계산: 유머박스 07-15 18:27 · 이슈박스 07-15 18:10 · 이슈뜨기 07-15 17:43 · 썰뜨기 07-13 18:08 (KST) = DB와 일치.
+  - **유튜브 2건 정확** — `meta[itemprop=uploadDate]`: `v8OlRA0ObPI` 07-15 18:00 · `ctLPxYtyvN8` 07-15 18:13 (KST) = DB와 일치.
+  - **나머지 4건은 종료글**(happing_box·tving_box·nato.tving·라밍) — 수집 대상이 아니라 posted_at이 동작에 영향 없음. IG 3건은 삭제되어 실물 확인 불가.
+- **진짜 위험은 잠금이 아니라 침묵**이었다 → `upsertSponsoredRows`가 잠금 때문에 시트값을 skip할 때, **시트값이 DB와 다르면** 집계해 Slack 알림 + `summary.locked_drift` 반환. 순수 로직 `web/lib/locked-field-drift.ts`로 분리, 테스트 7종(web 119/119 통과, tsc·build OK).
+- 이제 이나 같은 사례가 생기면 **다음 동기화에서 바로 드러난다**(시트 고쳐도 DB에 안 닿는 상태를 사람이 인지 → 잠금 해제 후 재동기화).
+
 ## 2026-08-03 [Claude 완료] 시트→DB 동기화 실행 + `manual_fields` posted_at 잠금 발견·해제
 - **사용자 지시로 Claude가 시트 메뉴 `🔄 메타데이터·복구 → 시트 변경사항 DB 반영`(syncAllWithConfirm)을 직접 실행.** 셀은 무편집(메뉴·다이얼로그만 조작, 요소 ref 클릭). 이유: `dailyAuto` syncAll은 09:23 KST라 그때까지 기다리면 오늘 밤 00:41 수집이 또 옛 게시일로 버려진다.
 - **결과 4/5 반영**: jjin.mood_ 7/08 · nasso_home 7/03 · ddo_chichi 7/22 · lm_not_sweet_ 6/12. 보류 건 `DZhEhrEIJpb`는 6/10 유지(수기값 보존).
