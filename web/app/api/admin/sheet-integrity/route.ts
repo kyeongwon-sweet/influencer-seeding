@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { fetchSheetTabValues } from "@/lib/google-sheets";
+import { parseHeaderDate } from "@/lib/formula-audit";
 import { normalizeUrl } from "@/lib/url-utils";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +14,6 @@ export const runtime = "nodejs";
 // 게시일 기준은 시트 날짜셀 파싱 대신 DB posted_at(URL 정규화 조인) — 삭제 기준과 동일 소스.
 const SHEET_ID = "10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak";
 const GID = 1937186871;
-const STATS_FIRST_COL = 9;   // I열부터 일자별 조회수 (Combined_Sheet_AppsScript CONFIG와 동일)
 const STATS_START_YEAR = 2026;
 
 export async function GET() {
@@ -30,20 +30,19 @@ export async function GET() {
   }
   if (values.length < 2) return NextResponse.json({ error: "시트 데이터 없음" }, { status: 502 });
 
-  // 헤더 파싱: 게시물URL 열 + 날짜 열(I열~, "M/D" 헤더, 월이 줄면 해 넘김)
+  // 헤더 파싱: 게시물URL·증분 열 + 날짜 열. Sheets API의 날짜 직렬값(number)과
+  // 텍스트 날짜를 모두 공용 parser로 처리한다(Date 헤더를 문자열 정규식으로 오독하지 않음).
   const header = values[0];
   const norm = (v: unknown) => String(v ?? "").replace(/\s+/g, "").toLowerCase();
   const urlCol = header.findIndex(h => norm(h) === "게시물url");
   if (urlCol === -1) return NextResponse.json({ error: "'게시물URL' 헤더 없음" }, { status: 502 });
+  const incCol = header.findIndex(h => ["증분값", "증분"].includes(norm(h)));
+  if (incCol === -1) return NextResponse.json({ error: "'증분값' 헤더 없음" }, { status: 502 });
   const dateCols: { col: number; date: string }[] = [];
-  let year = STATS_START_YEAR, prevMonth: number | null = null;
-  for (let c = STATS_FIRST_COL - 1; c < header.length; c++) {
-    const m = String(header[c] ?? "").match(/(\d{1,2})\D+(\d{1,2})/);
-    if (!m) continue;
-    const mo = +m[1], da = +m[2];
-    if (prevMonth !== null && mo < prevMonth) year++;
-    prevMonth = mo;
-    dateCols.push({ col: c, date: `${year}-${String(mo).padStart(2, "0")}-${String(da).padStart(2, "0")}` });
+  const dateState = { year: STATS_START_YEAR, prevMonth: null as number | null };
+  for (let c = incCol + 1; c < header.length; c++) {
+    const parsed = parseHeaderDate(header[c] as string | number | boolean | null, dateState);
+    if (parsed) dateCols.push({ col: c, date: parsed });
   }
 
   // DB posted_at 조인 (URL 정규화 키)

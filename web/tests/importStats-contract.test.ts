@@ -23,11 +23,11 @@ test("stats-import: suspicious sheet stat alerts identify the target account", (
   assert.match(route, /\$\{c\.target\} \$\{c\.date\.slice\(5, 10\)\}/);
 });
 
-test("stats-import: cross-post copies are blocked for both video and banner, while spikes only warn", () => {
-  assert.match(route, /copy_suspected_skipped:\s*copySuspected\.length/);
-  assert.match(route, /copy_suspected_warned:\s*0/);
-  assert.match(route, /incoming = incoming\.filter\(r => !copyKeys\.has\(`play_count\|/);
-  assert.match(route, /bannerRows = bannerRows\.filter\(r => !copyKeys\.has\(`reach_count\|/);
+test("stats-import: cross-post copies and spikes are preserved with warnings", () => {
+  assert.match(route, /copy_suspected_skipped:\s*0/);
+  assert.match(route, /copy_suspected_warned:\s*copySuspected\.length/);
+  assert.doesNotMatch(route, /incoming = incoming\.filter\(r => !copyKeys\.has\(`play_count\|/);
+  assert.doesNotMatch(route, /bannerRows = bannerRows\.filter\(r => !copyKeys\.has\(`reach_count\|/);
   assert.match(route, /for \(const metric of \["play_count", "reach_count"\] as const\)/);
   assert.match(route, /const key = `\$\{String\(row\.measured_at\).*\|\$\{value\}`/s);
   assert.match(route, /dvOwners\.get\(`\$\{date\}\|\$\{r\.value\}`\)/);

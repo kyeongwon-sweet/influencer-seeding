@@ -266,7 +266,7 @@ export async function POST(req: NextRequest) {
   // 자정 자동수집·리포트의 T-1 정책은 별도 경로에서 유지하며, 미래 날짜만 차단한다.
   const maxStatsDate = maxDateKST();
   let incoming: GuardInput[] = [];
-  let bannerRows: Array<{ post_id: string; measured_at: string; reach_count: number; manual: boolean }> = [];
+  const bannerRows: Array<{ post_id: string; measured_at: string; reach_count: number; manual: boolean }> = [];
   const postIdSet = new Set<string>();
   for (const it of items) {
     const pid = idByKey.get(it.key) ?? idByUrl.get(it.url);
@@ -393,8 +393,6 @@ export async function POST(req: NextRequest) {
           metric: r.metric,
         });
       }
-      incoming = incoming.filter(r => !copyKeys.has(`play_count|${r.post_id}|${r.measured_at.slice(0, 10)}`));
-      bannerRows = bannerRows.filter(r => !copyKeys.has(`reach_count|${r.post_id}|${r.measured_at.slice(0, 10)}`));
     }
   }
 
@@ -545,11 +543,11 @@ export async function POST(req: NextRequest) {
     bannerInserted = (data ?? []).length;
   }
 
-  // 복사 의심분 → DB 적재를 차단하고 여믄봇 Slack 알림. 미러 채널도 게시물별 독립 측정이므로 예외 없음.
+  // 복사 의심분 → 여믄봇 Slack 경고. 시트 수기값은 정본이므로 DB에는 manual=true로 보존한다.
   if (copySuspected.length > 0) {
     const s = copySuspected.slice(0, 6)
       .map(c => `${c.target} ${c.date.slice(5, 10)} ${Number(c.value).toLocaleString()}←${c.source}(${c.metric === "reach_count" ? "도달" : "조회"})`).join(", ");
-    await notifyBot(`⛔ [시트 조회수 입력] 복사 의심 ${copySuspected.length}행 차단 — 미러 포함 게시물별 독립 측정 원칙에 따라 DB에는 반영하지 않았습니다. 각 URL 실측값으로 시트를 정정 후 다시 반영하세요: ${s}`);
+    await notifyBot(`⚠️ [시트 조회수 입력] 복사 의심 ${copySuspected.length}행 경고 — 수기 입력 원칙에 따라 DB에는 manual=true로 반영했습니다. 오입력이면 각 URL 실측값으로 시트를 정정 후 다시 반영하세요: ${s}`);
   }
 
   // 중복 날짜열 감지분 → 알림(같은 날짜에 값 2개 = 시트 중복 열 오염, 어느 게 진짜인지 몰라 스킵).
@@ -566,8 +564,8 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     inserted,
-    copy_suspected_skipped: copySuspected.length,
-    copy_suspected_warned: 0,
+    copy_suspected_skipped: 0,
+    copy_suspected_warned: copySuspected.length,
     copy_suspected_sample: copySuspected.slice(0, 10),
     dup_column_skipped: dupConflict.length,
     dup_column_sample: dupConflict.slice(0, 10),
