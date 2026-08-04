@@ -1,5 +1,5 @@
 ﻿"use client";
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
@@ -89,6 +89,251 @@ function formatElapsed(s: number): string {
 // 업로드일 유효 범위 — 공용 규칙(lib/dateRule)과 동일해 로컬 중복 제거, alias만 유지
 const maxUploadDate = maxDateKST;
 const isValidUploadDate = isValidEntryDate;
+
+
+type EditField = "mentioned_product" | "exposure_type" | "account_name" | "content_summary" | "uploaded_at" | "view_count" | "notes" | "platform";
+
+type MentionRowProps = {
+  m: Mention;
+  colWidths: number[];
+  /** 이 행이 편집 중일 때만 값이 있다. 다른 행의 편집은 이 행을 다시 그리지 않는다. */
+  edit: { field: EditField; value: string } | null;
+  // ⚠️ 아래 콜백은 부모에서 **한 번 만들어 재사용**해야 한다(매 렌더 새 화살표 함수를 넘기면 memo가 무력화됨).
+  //    그래서 행 id를 인자로 받는 형태로 둔다.
+  onStartEdit: (id: string, field: EditField, value: string) => void;
+  onEditValue: (value: string) => void;
+  onCancelEdit: () => void;
+  onPatchField: (id: string, field: EditField, value: string) => void;
+  onPatchProduct: (id: string, value: string) => void;
+  onDelete: (id: string) => void;
+};
+
+// 행을 memo로 감싸 셀 하나를 편집할 때 나머지 행이 다시 그려지지 않게 한다.
+// (100행 × 셀 8개 + 아이콘들 = 편집 중 타자마다 수천 개 엘리먼트를 재조정하던 비용 제거)
+const MentionRow = memo(function MentionRow({
+  m, colWidths, edit, onStartEdit, onEditValue, onCancelEdit, onPatchField, onPatchProduct, onDelete,
+}: MentionRowProps) {
+  const thumb = m.thumbnail_url || getThumbnailUrl(m.url);
+  const platformShort = platformLabel(m.platform);
+  return (
+                    <tr key={m.id} className="group border-b border-a-divider last:border-0 hover:bg-a-parchment/60 transition-colors [content-visibility:auto] [contain-intrinsic-size:auto_57px]">
+                      {/* 썸네일 */}
+                      <td className="px-2 py-2 w-16">
+                        <a href={m.url} target="_blank" rel="noreferrer" className="block hover:opacity-80 transition-opacity">
+                          {thumb
+                            ? <img src={thumb} alt="" loading="lazy" decoding="async" className="w-12 h-9 object-cover rounded" />
+                            : <div className="w-12 h-9 bg-a-parchment rounded flex items-center justify-center text-[10px] text-a-ink-muted font-medium">{platformShort}</div>
+                          }
+                        </a>
+                      </td>
+                      <td style={{ minWidth: colWidths[0], width: colWidths[0] }} className="px-4 py-4 whitespace-nowrap overflow-hidden">
+                        {edit?.field === "account_name" ? (
+                          <input autoFocus value={edit!.value}
+                            onChange={e => onEditValue(e.target.value)}
+                            onBlur={() => onPatchField(m.id, "account_name", edit!.value)}
+                            onKeyDown={e => { if (e.key === "Enter") onPatchField(m.id, "account_name", edit!.value); if (e.key === "Escape") onCancelEdit(); }}
+                            className="w-full text-sm font-medium bg-transparent border-b border-a-blue outline-none py-0.5" />
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <a href={m.url} target="_blank" rel="noreferrer"
+                              className="inline-flex items-center gap-1 font-medium hover:text-a-blue transition-colors group/link">
+                              {m.account_name ?? <span className="text-a-ink-muted text-xs">링크</span>}
+                              <svg width="10" height="10" viewBox="0 0 14 14" fill="none" className="opacity-0 group-hover/link:opacity-50 flex-shrink-0 transition-opacity">
+                                <path d="M5.5 2.5H2.5a1 1 0 00-1 1v8a1 1 0 001 1h8a1 1 0 001-1V9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M8.5 1.5h4m0 0v4m0-4L6 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </a>
+                            <button onClick={() => onStartEdit(m.id, "account_name", m.account_name ?? "")}
+                              className="opacity-0 group-hover:opacity-100 text-a-ink-muted hover:text-a-ink transition flex-shrink-0" title="이름 수정">
+                              <svg width="11" height="11" viewBox="0 0 20 20" fill="none">
+                                <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ minWidth: colWidths[1] }} className="px-4 py-4 text-xs text-a-ink-muted whitespace-nowrap"
+                        onDoubleClick={() => onStartEdit(m.id, "platform", normPlatform(m.platform))}>
+                        {edit?.field === "platform" ? (
+                          <select autoFocus value={edit!.value}
+                            onChange={e => onPatchField(m.id, "platform", e.target.value)}
+                            onBlur={() => onCancelEdit()}
+                            onKeyDown={e => { if (e.key === "Escape") onCancelEdit(); }}
+                            className="text-xs bg-transparent border-b border-a-blue outline-none py-0.5">
+                            {!PLATFORMS.includes(normPlatform(m.platform)) && m.platform && (
+                              <option value={m.platform}>{platformLabel(m.platform)}</option>
+                            )}
+                            {PLATFORMS.map(pl => <option key={pl} value={pl}>{pl}</option>)}
+                          </select>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <span>{platformLabel(m.platform)}</span>
+                            <button onClick={() => onStartEdit(m.id, "platform", normPlatform(m.platform))}
+                              className="opacity-0 group-hover:opacity-100 text-a-ink-muted hover:text-a-ink transition flex-shrink-0" title="플랫폼 수정">
+                              <svg width="11" height="11" viewBox="0 0 20 20" fill="none">
+                                <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ minWidth: colWidths[2] }} className="px-4 py-4 text-xs text-a-ink-muted max-w-[320px]">
+                        {edit?.field === "content_summary" ? (
+                          <textarea autoFocus value={edit!.value}
+                            onChange={e => onEditValue(e.target.value)}
+                            onBlur={() => onPatchField(m.id, "content_summary", edit!.value)}
+                            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onPatchField(m.id, "content_summary", edit!.value); } if (e.key === "Escape") onCancelEdit(); }}
+                            rows={2}
+                            className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 resize-none leading-relaxed" />
+                        ) : (
+                          <div className="flex items-start gap-1 cursor-text" onDoubleClick={() => onStartEdit(m.id, "content_summary", m.content_summary ?? "")}>
+                            <span className="line-clamp-2 leading-relaxed flex-1">{m.content_summary ?? "-"}</span>
+                            <button onClick={() => onStartEdit(m.id, "content_summary", m.content_summary ?? "")}
+                              className="opacity-0 group-hover:opacity-100 text-a-ink-muted hover:text-a-ink transition flex-shrink-0 mt-0.5" title="내용 수정">
+                              <svg width="11" height="11" viewBox="0 0 20 20" fill="none">
+                                <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ minWidth: colWidths[3] }} className="px-4 py-4 whitespace-nowrap">
+                        {edit?.field === "mentioned_product" ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              autoFocus
+                              value={edit!.value}
+                              onChange={e => onEditValue(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === "Enter") onPatchProduct(m.id, edit!.value);
+                                if (e.key === "Escape") onCancelEdit();
+                              }}
+                              placeholder="쉼표로 구분해 복수 입력"
+                              className="flex-1 text-xs bg-transparent border-b border-a-blue outline-none py-0.5 min-w-0"
+                            />
+                            <button onClick={() => onPatchProduct(m.id, edit!.value)}
+                              className="text-a-blue hover:text-a-blue-hover flex-shrink-0 transition" title="저장">
+                              <svg width="12" height="12" viewBox="0 0 20 20" fill="none">
+                                <path d="M4 10l5 5 8-8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                            <button onClick={() => onCancelEdit()}
+                              className="text-a-ink-muted hover:text-a-ink flex-shrink-0 transition" title="취소">
+                              <svg width="10" height="10" viewBox="0 0 20 20" fill="none">
+                                <path d="M4 4l12 12M16 4L4 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                              </svg>
+                            </button>
+                          </div>
+                        ) : (
+                          <span
+                            onClick={() => onStartEdit(m.id, "mentioned_product", m.mentioned_product ?? "")}
+                            className="flex flex-wrap gap-1 cursor-text">
+                            {m.mentioned_product
+                              ? m.mentioned_product.split(",").map(p => p.trim()).filter(Boolean).map(p => (
+                                  <span key={p} className="text-xs bg-a-parchment px-2 py-0.5 rounded-full text-a-ink hover:text-a-blue transition-colors">{p}</span>
+                                ))
+                              : <span className="text-xs text-gray-300">클릭해서 입력</span>}
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ minWidth: colWidths[4] }} className="px-4 py-4 text-xs text-a-ink-muted whitespace-nowrap">
+                        {edit?.field === "uploaded_at" ? (
+                          <input autoFocus type="date" value={edit!.value} min="2020-01-01" max={maxUploadDate()}
+                            onChange={e => onEditValue(e.target.value)}
+                            onBlur={() => onPatchField(m.id, "uploaded_at", edit!.value)}
+                            onKeyDown={e => { if (e.key === "Enter") onPatchField(m.id, "uploaded_at", edit!.value); if (e.key === "Escape") onCancelEdit(); }}
+                            className="text-xs bg-transparent border-b border-a-blue outline-none py-0.5" />
+                        ) : (
+                          <div className="flex items-center gap-1 cursor-text" onDoubleClick={() => onStartEdit(m.id, "uploaded_at", m.uploaded_at?.slice(0, 10) ?? "")}>
+                            <span>{formatDate(m.uploaded_at)}</span>
+                            <button onClick={() => onStartEdit(m.id, "uploaded_at", m.uploaded_at?.slice(0, 10) ?? "")}
+                              className="opacity-0 group-hover:opacity-100 text-a-ink-muted hover:text-a-ink transition flex-shrink-0" title="업로드일 수정">
+                              <svg width="11" height="11" viewBox="0 0 20 20" fill="none">
+                                <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ minWidth: colWidths[5] }} className="px-4 py-4 text-xs text-right tabular-nums whitespace-nowrap text-a-ink">
+                        {edit?.field === "view_count" ? (
+                          <input autoFocus type="number" value={edit!.value}
+                            onChange={e => onEditValue(e.target.value)}
+                            onBlur={() => onPatchField(m.id, "view_count", edit!.value)}
+                            onKeyDown={e => { if (e.key === "Enter") onPatchField(m.id, "view_count", edit!.value); if (e.key === "Escape") onCancelEdit(); }}
+                            className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
+                        ) : (
+                          <div className="flex items-center justify-end gap-1 cursor-text" onDoubleClick={() => onStartEdit(m.id, "view_count", m.view_count != null ? String(m.view_count) : "")}>
+                            <button onClick={() => onStartEdit(m.id, "view_count", m.view_count != null ? String(m.view_count) : "")}
+                              className="opacity-0 group-hover:opacity-100 text-a-ink-muted hover:text-a-ink transition flex-shrink-0" title="조회수 수정">
+                              <svg width="11" height="11" viewBox="0 0 20 20" fill="none">
+                                <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                            {m.view_count != null ? m.view_count.toLocaleString() : <span className="text-gray-300">-</span>}
+                          </div>
+                        )}
+                      </td>
+                      {/* 유형 */}
+                      <td style={{ minWidth: colWidths[6] }} className="px-4 py-4 whitespace-nowrap">
+                        {edit?.field === "exposure_type" ? (
+                          <select autoFocus value={edit!.value}
+                            onChange={e => onEditValue(e.target.value)}
+                            onBlur={() => onPatchField(m.id, "exposure_type", edit!.value)}
+                            onKeyDown={e => { if (e.key === "Enter") onPatchField(m.id, "exposure_type", edit!.value); if (e.key === "Escape") onCancelEdit(); }}
+                            className="text-xs bg-transparent border-b border-a-blue outline-none py-0.5 w-full">
+                            <option value="">-</option>
+                            <option value="무가시딩">무가시딩</option>
+                            <option value="오가닉">오가닉</option>
+                            <option value="연예인 언급">연예인 언급</option>
+                            <option value="아이돌 언급">아이돌 언급</option>
+                          </select>
+                        ) : (
+                          <span
+                            onClick={() => onStartEdit(m.id, "exposure_type", m.exposure_type ?? "")}
+                            className={`text-xs cursor-text ${m.exposure_type ? "bg-a-parchment px-2 py-0.5 rounded-full text-a-ink" : "text-gray-300"}`}>
+                            {m.exposure_type ?? "클릭"}
+                          </span>
+                        )}
+                      </td>
+                      {/* 특이사항 */}
+                      <td style={{ minWidth: colWidths[7] }} className="px-4 py-4">
+                        {edit?.field === "notes" ? (
+                          <textarea
+                            autoFocus
+                            rows={2}
+                            value={edit!.value}
+                            onChange={e => onEditValue(e.target.value)}
+                            onBlur={() => onPatchField(m.id, "notes", edit!.value)}
+                            onKeyDown={e => { if (e.key === "Escape") onCancelEdit(); }}
+                            className="text-xs w-full bg-transparent border-b border-a-blue outline-none py-0.5 resize-none text-a-ink"
+                          />
+                        ) : (
+                          <span
+                            onClick={() => onStartEdit(m.id, "notes", m.notes ?? "")}
+                            className="text-xs cursor-text text-a-ink-muted hover:text-a-ink transition-colors line-clamp-2 block"
+                          >
+                            {m.notes || <span className="text-gray-300">-</span>}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-4 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => onStartEdit(m.id, "mentioned_product", m.mentioned_product ?? "")}
+                            className="text-a-ink-muted hover:text-a-ink transition"
+                            title="수정">
+                            <svg width="12" height="12" viewBox="0 0 20 20" fill="none">
+                              <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          </button>
+                          <button onClick={() => onDelete(m.id)}
+                            className="text-a-ink-muted hover:text-red-500 text-xs transition">삭제</button>
+                        </div>
+                      </td>
+                    </tr>
+  );
+});
 
 export default function OrganicPage() {
   const { toasts, show: toast } = useToast();
@@ -483,6 +728,20 @@ export default function OrganicPage() {
   }
 
   // 매 렌더(검색 타이핑 등) 전체 재필터/재정렬 방지
+  // 행에 넘기는 콜백은 **한 번만 만들어 재사용**한다. 매 렌더 새 화살표 함수를 넘기면
+  // MentionRow의 memo가 매번 "props가 바뀌었다"고 판단해 아무 효과가 없다.
+  // 실제 구현(patch/delete)은 렌더마다 새로 만들어지므로 ref로 최신 것을 가리킨다.
+  const rowActionsRef = useRef({ patchMentionField, patchProduct, deleteMention });
+  rowActionsRef.current = { patchMentionField, patchProduct, deleteMention };
+  const rowHandlers = useMemo(() => ({
+    onStartEdit: (id: string, field: EditField, value: string) => setEditCell({ id, field, value }),
+    onEditValue: (value: string) => setEditCell(c => (c ? { ...c, value } : null)),
+    onCancelEdit: () => setEditCell(null),
+    onPatchField: (id: string, field: EditField, value: string) => rowActionsRef.current.patchMentionField(id, field, value),
+    onPatchProduct: (id: string, value: string) => rowActionsRef.current.patchProduct(id, value),
+    onDelete: (id: string) => rowActionsRef.current.deleteMention(id),
+  }), []);
+
   // 검색어는 타자마다 전체 목록을 다시 거르면 입력이 버벅인다 → 지연값으로 걸러 입력 자체는 즉시 반응하게.
   const deferredName = useDeferredValue(filters.name);
 
@@ -782,228 +1041,15 @@ export default function OrganicPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleRows.map(m => {
-                    const thumb = m.thumbnail_url || getThumbnailUrl(m.url);
-                    const platformShort = platformLabel(m.platform);
-                    return (
-                    <tr key={m.id} className="group border-b border-a-divider last:border-0 hover:bg-a-parchment/60 transition-colors [content-visibility:auto] [contain-intrinsic-size:auto_57px]">
-                      {/* 썸네일 */}
-                      <td className="px-2 py-2 w-16">
-                        <a href={m.url} target="_blank" rel="noreferrer" className="block hover:opacity-80 transition-opacity">
-                          {thumb
-                            ? <img src={thumb} alt="" loading="lazy" decoding="async" className="w-12 h-9 object-cover rounded" />
-                            : <div className="w-12 h-9 bg-a-parchment rounded flex items-center justify-center text-[10px] text-a-ink-muted font-medium">{platformShort}</div>
-                          }
-                        </a>
-                      </td>
-                      <td style={{ minWidth: colWidths[0], width: colWidths[0] }} className="px-4 py-4 whitespace-nowrap overflow-hidden">
-                        {editCell?.id === m.id && editCell.field === "account_name" ? (
-                          <input autoFocus value={editCell.value}
-                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
-                            onBlur={() => patchMentionField(m.id, "account_name", editCell.value)}
-                            onKeyDown={e => { if (e.key === "Enter") patchMentionField(m.id, "account_name", editCell.value); if (e.key === "Escape") setEditCell(null); }}
-                            className="w-full text-sm font-medium bg-transparent border-b border-a-blue outline-none py-0.5" />
-                        ) : (
-                          <div className="flex items-center gap-1.5">
-                            <a href={m.url} target="_blank" rel="noreferrer"
-                              className="inline-flex items-center gap-1 font-medium hover:text-a-blue transition-colors group/link">
-                              {m.account_name ?? <span className="text-a-ink-muted text-xs">링크</span>}
-                              <svg width="10" height="10" viewBox="0 0 14 14" fill="none" className="opacity-0 group-hover/link:opacity-50 flex-shrink-0 transition-opacity">
-                                <path d="M5.5 2.5H2.5a1 1 0 00-1 1v8a1 1 0 001 1h8a1 1 0 001-1V9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                                <path d="M8.5 1.5h4m0 0v4m0-4L6 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            </a>
-                            <button onClick={() => setEditCell({ id: m.id, field: "account_name", value: m.account_name ?? "" })}
-                              className="opacity-0 group-hover:opacity-100 text-a-ink-muted hover:text-a-ink transition flex-shrink-0" title="이름 수정">
-                              <svg width="11" height="11" viewBox="0 0 20 20" fill="none">
-                                <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ minWidth: colWidths[1] }} className="px-4 py-4 text-xs text-a-ink-muted whitespace-nowrap"
-                        onDoubleClick={() => setEditCell({ id: m.id, field: "platform", value: normPlatform(m.platform) })}>
-                        {editCell?.id === m.id && editCell.field === "platform" ? (
-                          <select autoFocus value={editCell.value}
-                            onChange={e => patchMentionField(m.id, "platform", e.target.value)}
-                            onBlur={() => setEditCell(null)}
-                            onKeyDown={e => { if (e.key === "Escape") setEditCell(null); }}
-                            className="text-xs bg-transparent border-b border-a-blue outline-none py-0.5">
-                            {!PLATFORMS.includes(normPlatform(m.platform)) && m.platform && (
-                              <option value={m.platform}>{platformLabel(m.platform)}</option>
-                            )}
-                            {PLATFORMS.map(pl => <option key={pl} value={pl}>{pl}</option>)}
-                          </select>
-                        ) : (
-                          <div className="flex items-center gap-1">
-                            <span>{platformLabel(m.platform)}</span>
-                            <button onClick={() => setEditCell({ id: m.id, field: "platform", value: normPlatform(m.platform) })}
-                              className="opacity-0 group-hover:opacity-100 text-a-ink-muted hover:text-a-ink transition flex-shrink-0" title="플랫폼 수정">
-                              <svg width="11" height="11" viewBox="0 0 20 20" fill="none">
-                                <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ minWidth: colWidths[2] }} className="px-4 py-4 text-xs text-a-ink-muted max-w-[320px]">
-                        {editCell?.id === m.id && editCell.field === "content_summary" ? (
-                          <textarea autoFocus value={editCell.value}
-                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
-                            onBlur={() => patchMentionField(m.id, "content_summary", editCell.value)}
-                            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); patchMentionField(m.id, "content_summary", editCell.value); } if (e.key === "Escape") setEditCell(null); }}
-                            rows={2}
-                            className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 resize-none leading-relaxed" />
-                        ) : (
-                          <div className="flex items-start gap-1 cursor-text" onDoubleClick={() => setEditCell({ id: m.id, field: "content_summary", value: m.content_summary ?? "" })}>
-                            <span className="line-clamp-2 leading-relaxed flex-1">{m.content_summary ?? "-"}</span>
-                            <button onClick={() => setEditCell({ id: m.id, field: "content_summary", value: m.content_summary ?? "" })}
-                              className="opacity-0 group-hover:opacity-100 text-a-ink-muted hover:text-a-ink transition flex-shrink-0 mt-0.5" title="내용 수정">
-                              <svg width="11" height="11" viewBox="0 0 20 20" fill="none">
-                                <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ minWidth: colWidths[3] }} className="px-4 py-4 whitespace-nowrap">
-                        {editCell?.id === m.id && editCell.field === "mentioned_product" ? (
-                          <div className="flex items-center gap-1">
-                            <input
-                              autoFocus
-                              value={editCell.value}
-                              onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
-                              onKeyDown={e => {
-                                if (e.key === "Enter") patchProduct(m.id, editCell.value);
-                                if (e.key === "Escape") setEditCell(null);
-                              }}
-                              placeholder="쉼표로 구분해 복수 입력"
-                              className="flex-1 text-xs bg-transparent border-b border-a-blue outline-none py-0.5 min-w-0"
-                            />
-                            <button onClick={() => patchProduct(m.id, editCell.value)}
-                              className="text-a-blue hover:text-a-blue-hover flex-shrink-0 transition" title="저장">
-                              <svg width="12" height="12" viewBox="0 0 20 20" fill="none">
-                                <path d="M4 10l5 5 8-8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            </button>
-                            <button onClick={() => setEditCell(null)}
-                              className="text-a-ink-muted hover:text-a-ink flex-shrink-0 transition" title="취소">
-                              <svg width="10" height="10" viewBox="0 0 20 20" fill="none">
-                                <path d="M4 4l12 12M16 4L4 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                              </svg>
-                            </button>
-                          </div>
-                        ) : (
-                          <span
-                            onClick={() => setEditCell({ id: m.id, field: "mentioned_product", value: m.mentioned_product ?? "" })}
-                            className="flex flex-wrap gap-1 cursor-text">
-                            {m.mentioned_product
-                              ? m.mentioned_product.split(",").map(p => p.trim()).filter(Boolean).map(p => (
-                                  <span key={p} className="text-xs bg-a-parchment px-2 py-0.5 rounded-full text-a-ink hover:text-a-blue transition-colors">{p}</span>
-                                ))
-                              : <span className="text-xs text-gray-300">클릭해서 입력</span>}
-                          </span>
-                        )}
-                      </td>
-                      <td style={{ minWidth: colWidths[4] }} className="px-4 py-4 text-xs text-a-ink-muted whitespace-nowrap">
-                        {editCell?.id === m.id && editCell.field === "uploaded_at" ? (
-                          <input autoFocus type="date" value={editCell.value} min="2020-01-01" max={maxUploadDate()}
-                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
-                            onBlur={() => patchMentionField(m.id, "uploaded_at", editCell.value)}
-                            onKeyDown={e => { if (e.key === "Enter") patchMentionField(m.id, "uploaded_at", editCell.value); if (e.key === "Escape") setEditCell(null); }}
-                            className="text-xs bg-transparent border-b border-a-blue outline-none py-0.5" />
-                        ) : (
-                          <div className="flex items-center gap-1 cursor-text" onDoubleClick={() => setEditCell({ id: m.id, field: "uploaded_at", value: m.uploaded_at?.slice(0, 10) ?? "" })}>
-                            <span>{formatDate(m.uploaded_at)}</span>
-                            <button onClick={() => setEditCell({ id: m.id, field: "uploaded_at", value: m.uploaded_at?.slice(0, 10) ?? "" })}
-                              className="opacity-0 group-hover:opacity-100 text-a-ink-muted hover:text-a-ink transition flex-shrink-0" title="업로드일 수정">
-                              <svg width="11" height="11" viewBox="0 0 20 20" fill="none">
-                                <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ minWidth: colWidths[5] }} className="px-4 py-4 text-xs text-right tabular-nums whitespace-nowrap text-a-ink">
-                        {editCell?.id === m.id && editCell.field === "view_count" ? (
-                          <input autoFocus type="number" value={editCell.value}
-                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
-                            onBlur={() => patchMentionField(m.id, "view_count", editCell.value)}
-                            onKeyDown={e => { if (e.key === "Enter") patchMentionField(m.id, "view_count", editCell.value); if (e.key === "Escape") setEditCell(null); }}
-                            className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
-                        ) : (
-                          <div className="flex items-center justify-end gap-1 cursor-text" onDoubleClick={() => setEditCell({ id: m.id, field: "view_count", value: m.view_count != null ? String(m.view_count) : "" })}>
-                            <button onClick={() => setEditCell({ id: m.id, field: "view_count", value: m.view_count != null ? String(m.view_count) : "" })}
-                              className="opacity-0 group-hover:opacity-100 text-a-ink-muted hover:text-a-ink transition flex-shrink-0" title="조회수 수정">
-                              <svg width="11" height="11" viewBox="0 0 20 20" fill="none">
-                                <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            </button>
-                            {m.view_count != null ? m.view_count.toLocaleString() : <span className="text-gray-300">-</span>}
-                          </div>
-                        )}
-                      </td>
-                      {/* 유형 */}
-                      <td style={{ minWidth: colWidths[6] }} className="px-4 py-4 whitespace-nowrap">
-                        {editCell?.id === m.id && editCell.field === "exposure_type" ? (
-                          <select autoFocus value={editCell.value}
-                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
-                            onBlur={() => patchMentionField(m.id, "exposure_type", editCell.value)}
-                            onKeyDown={e => { if (e.key === "Enter") patchMentionField(m.id, "exposure_type", editCell.value); if (e.key === "Escape") setEditCell(null); }}
-                            className="text-xs bg-transparent border-b border-a-blue outline-none py-0.5 w-full">
-                            <option value="">-</option>
-                            <option value="무가시딩">무가시딩</option>
-                            <option value="오가닉">오가닉</option>
-                            <option value="연예인 언급">연예인 언급</option>
-                            <option value="아이돌 언급">아이돌 언급</option>
-                          </select>
-                        ) : (
-                          <span
-                            onClick={() => setEditCell({ id: m.id, field: "exposure_type", value: m.exposure_type ?? "" })}
-                            className={`text-xs cursor-text ${m.exposure_type ? "bg-a-parchment px-2 py-0.5 rounded-full text-a-ink" : "text-gray-300"}`}>
-                            {m.exposure_type ?? "클릭"}
-                          </span>
-                        )}
-                      </td>
-                      {/* 특이사항 */}
-                      <td style={{ minWidth: colWidths[7] }} className="px-4 py-4">
-                        {editCell?.id === m.id && editCell.field === "notes" ? (
-                          <textarea
-                            autoFocus
-                            rows={2}
-                            value={editCell.value}
-                            onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
-                            onBlur={() => patchMentionField(m.id, "notes", editCell.value)}
-                            onKeyDown={e => { if (e.key === "Escape") setEditCell(null); }}
-                            className="text-xs w-full bg-transparent border-b border-a-blue outline-none py-0.5 resize-none text-a-ink"
-                          />
-                        ) : (
-                          <span
-                            onClick={() => setEditCell({ id: m.id, field: "notes", value: m.notes ?? "" })}
-                            className="text-xs cursor-text text-a-ink-muted hover:text-a-ink transition-colors line-clamp-2 block"
-                          >
-                            {m.notes || <span className="text-gray-300">-</span>}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-4 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button
-                            onClick={() => setEditCell({ id: m.id, field: "mentioned_product", value: m.mentioned_product ?? "" })}
-                            className="text-a-ink-muted hover:text-a-ink transition"
-                            title="수정">
-                            <svg width="12" height="12" viewBox="0 0 20 20" fill="none">
-                              <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                            </svg>
-                          </button>
-                          <button onClick={() => deleteMention(m.id)}
-                            className="text-a-ink-muted hover:text-red-500 text-xs transition">삭제</button>
-                        </div>
-                      </td>
-                    </tr>
-                    );
-                  })}
+                  {visibleRows.map(m => (
+                    <MentionRow
+                      key={m.id}
+                      m={m}
+                      colWidths={colWidths}
+                      edit={editCell?.id === m.id ? { field: editCell.field, value: editCell.value } : null}
+                      {...rowHandlers}
+                    />
+                  ))}
                   {mentions.length === 0 && !loading && (
                     <tr>
                       <td colSpan={10} className="px-5 py-14 text-center">
@@ -1210,5 +1256,7 @@ export default function OrganicPage() {
     </div>
   );
 }
+
+
 
 
