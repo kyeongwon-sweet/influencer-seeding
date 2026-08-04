@@ -3,6 +3,12 @@
 
 # AI Shared Status
 
+## 2026-08-04 [Codex 완료] ufo__orange 08-02 DB play_count 직접 NULL 정정
+- 대상 `post_daily_stats.id=7ccb7201-9b91-435f-946d-c40a3c3e20f8` (`post_id=fd7d7955-c83c-4a69-9878-edb4841d6ec9`, `Dbaa_-_y3pq`, `measured_at=2026-08-02`). 대시보드 단건 API가 `play_count=null`을 무시한 잔재를 Supabase SQL로 직접 수정했다.
+- 적용 전 직접 조회: `play_count=117000`, `manual=true`, `reach_count=NULL`. ID·post_id·측정일·예상값·manual 조건을 모두 넣은 단건 `UPDATE ... RETURNING`으로 `play_count`만 `NULL` 처리했다.
+- 독립 재조회 검증: 08-02 행은 `play_count=NULL`, `manual=true`, `reach_count=NULL`; 다음날 08-03 행(`01880df4-25b0-44ed-a86a-7e3ec67d33c9`)은 `play_count=94261`, `manual=true` 유지. 행과 수기 표식은 보존했다.
+- 백업: `C:\Users\hwangkw\Documents\인지 증분 대시보드\backups\ufo_orange_db_null_backup_20260804.json`. 작업용 Vercel 환경변수 임시 파일은 수정 후 삭제했다.
+
 ## 2026-08-04 [Claude 검증] 과대기록 정정 3건 재확인 — 2건 정상, **`ufo__orange` 08-02가 DB에 안 지워짐(잔여 1건)**
 - **검증 방법**: Codex 완료 보고를 그대로 신뢰하지 않고 `post_daily_stats`를 직접 재조회.
 - ✅ `nasso_home` 07-27=3,261 · 07-28=3,261 · 07-29 빈칸 · 07-30 빈칸 · 08-03=3,281 — 정상
