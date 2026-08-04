@@ -6,6 +6,14 @@
 
 # AI Shared Status
 
+## 2026-08-04 [Claude 완료] 무상노출 '노션 불러오기' 제거 + 액션 버튼 줄 이동 (`fbaaaee`, 배포 `dpl_CTJnywHyzAzJhGmF2vH6Q7EX7WFS` Ready)
+- **노션 불러오기 삭제(사용자 요청):** 버튼 + `importFromNotion()` + `importingNotion` state + 도움말 항목 제거. **API 라우트 `/api/organic-mentions/import-notion`은 남겨 뒀다** — 되살릴 땐 버튼만 붙이면 된다. `lib/notion.ts` 등 서버측도 그대로다.
+- **액션 버튼 줄 이동:** `CSV 업로드 / + 게시물 추가 / 엑셀 다운로드 / 지금 수집`(+실행 중 타이머·`지금 확인`)을 상단 sticky 바 → **표 바로 위 오른쪽 정렬 줄**로 내렸다. sticky 바에는 `사용 안내`만 남는다.
+  - ⚠️ **`지금 수집`이 더 이상 sticky가 아니다.** 스크롤을 내리면 화면에서 사라진다. 불편하면 sticky 바로 되돌리거나 그 줄만 sticky 처리하면 된다.
+  - 필터 카드 안(오른쪽 칸)에 넣지 않은 이유: 실측상 필터 6개 + 버튼 4개 = 필요폭 935px > 가용폭 814px라 **가로 스크롤**이 생긴다. 2번째 줄로 넣으면 높이 잠금(`--guide-h`) 때문에 **제품 칩이 7줄 중 3줄만 보이게** 줄어든다. 그래서 표 위로 내렸다(세로 순증 약 34px, `pt-3 → pt-2`로 4px 회수).
+- **버튼 높이:** `btn-primary`는 테두리가 없어 `btn-secondary`(30px)보다 2px 낮았다(28px). `border border-transparent`로 맞췄다. 매직넘버 대신 테두리로 맞춘 이유는 패딩/폰트가 바뀌어도 따라가기 때문.
+- **검증:** `tsc --noEmit`·`npm run build` 통과, lint 신규 경고 없음(기존 2건만). 1280px 뷰포트에서 버튼 줄 넘침 없음.
+
 ## 2026-08-04 [Claude 완료 · ➡️타 페이지 미적용] 무상노출 필터 줄 컨트롤 높이 통일 (`3b8052d`, 배포됨)
 - **원인(실측):** 같은 줄의 컨트롤 높이가 셋으로 갈렸다. `filter-input` **30px**(padding 6px), `type=date` **32px**(네이티브 달력 아이콘이 2px 더 먹음, 같은 클래스인데도), `filter-select` **36px**(`globals.css`에 `min-height:36px` 고정), `btn-ghost py-1` **24px**.
 - **수정:** `filter-select`의 36px가 공용 토큰이라 **그 값에 맞췄다**. 무상노출 필터 줄의 텍스트 입력·날짜 2개·초기화 버튼에 `h-9`(+버튼은 `py-0`) 추가. 실측 재확인: 6개 컨트롤 **높이 36 / 윗변·아랫변 전부 일치**.
