@@ -34,7 +34,7 @@ def asset_source(row: dict[str, Any]) -> str:
 
 
 def load_all_posts(client: Any) -> list[dict[str, Any]]:
-    fields = "id,url,account_name,channel_type,asset_name,project_name,planner,creator,created_at"
+    fields = "id,url,account_name,channel_type,asset_name,project_name,planner,creator,manual_fields,created_at"
     out: list[dict[str, Any]] = []
     page_size = 1000
     start = 0
@@ -137,6 +137,7 @@ def main() -> None:
         has_creator = nonblank(row.get("creator"))
         if not has_planner and not has_creator:
             continue
+        manual_fields = row.get("manual_fields") if isinstance(row.get("manual_fields"), list) else []
         issues.append(
             {
                 "id": row.get("id"),
@@ -147,6 +148,9 @@ def main() -> None:
                 "project_name": row.get("project_name"),
                 "planner": row.get("planner"),
                 "creator": row.get("creator"),
+                "manual_fields": manual_fields,
+                "manual_creator": "creator" in manual_fields,
+                "manual_planner": "planner" in manual_fields,
                 "clear_creator": has_creator,
                 "clear_planner": has_planner,
             }
@@ -154,6 +158,8 @@ def main() -> None:
 
     creator_count = sum(1 for row in issues if row["clear_creator"])
     planner_count = sum(1 for row in issues if row["clear_planner"])
+    manual_creator_count = sum(1 for row in issues if row["clear_creator"] and row["manual_creator"])
+    manual_planner_count = sum(1 for row in issues if row["clear_planner"] and row["manual_planner"])
     selected = [
         row
         for row in issues
@@ -169,6 +175,8 @@ def main() -> None:
         "issue_rows": len(issues),
         "creator_issue_rows": creator_count,
         "planner_issue_rows": planner_count,
+        "manual_creator_issue_rows": manual_creator_count,
+        "manual_planner_issue_rows": manual_planner_count,
         "selected_for_update": len(selected),
         "fields": args.fields,
         "apply": args.apply,
