@@ -15,6 +15,8 @@ test("auto-end reconciliation runs daily before collection in safe end-only mode
   assert.match(workflow, /^  schedule:\s*\n\s+- cron: "17 15 \* \* \*"/m);
   assert.match(workflow, /github\.event_name.*schedule/);
   assert.match(workflow, /end_only="--end-only"/);
+  assert.doesNotMatch(workflow, /end_only=""/);
+  assert.match(workflow, /apply_mode="dry-run-end-only"/);
   assert.match(workflow, /target_date=\$\(TZ=Asia\/Seoul date \+%F\)/);
   assert.match(workflow, /group: auto-end-reconcile/);
 });

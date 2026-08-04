@@ -45,11 +45,10 @@ jobs:
           fi
 
           flag=""
-          end_only=""
-          apply_mode="dry-run"
+          end_only="--end-only"
+          apply_mode="dry-run-end-only"
           if [ "${{ github.event_name }}" = "schedule" ]; then
             flag="--apply"
-            end_only="--end-only"
             apply_mode="scheduled-end-only"
           fi
           if [ "${{ inputs.apply }}" = "true" ]; then
