@@ -57,3 +57,10 @@ jobs:
             args+=(--send)
           fi
           python scripts/audit_invalid_creator_fields.py "${args[@]}"
+      - name: Upload repair backup
+        if: ${{ (github.event.inputs.apply || 'false') == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: invalid-creator-fields-backup-${{ github.run_id }}
+          path: scratchpad/invalid_creator_fields_backup_*.json
+          if-no-files-found: error

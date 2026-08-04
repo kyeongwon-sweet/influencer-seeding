@@ -2358,6 +2358,68 @@ function auditCreatorAssetIntegrity_() {
   return result;
 }
 
+function clearInvalidCreatorsWithBackup() {
+  return withAutoWriteGuard_(function() {
+    const sheet = getSheet_();
+    const lastRow = sheet.getLastRow();
+    if (lastRow < CONFIG.DATA_START_ROW) return { cleared: 0, remaining_creator_issues: 0 };
+    const fieldCols = buildFieldCols_(sheet);
+    const sourceCol = findHeaderCol_(sheet, ["소재명"]);
+    const makerCol = findHeaderCol_(sheet, ["제작자", "PD", "디자이너"]);
+    if (!fieldCols.url || !sourceCol || !makerCol) throw new Error("URL/소재명/제작자 열을 찾지 못했습니다.");
+
+    const n = lastRow - CONFIG.DATA_START_ROW + 1;
+    const lastCol = sheet.getLastColumn();
+    const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, n, lastCol).getValues();
+    const edits = [];
+    const backupRows = [["row", "url", "asset_name", "creator_before"]];
+    for (let i = 0; i < n; i++) {
+      const row = CONFIG.DATA_START_ROW + i;
+      const asset = String(values[i][sourceCol - 1] || "").trim();
+      const maker = String(values[i][makerCol - 1] || "").trim();
+      if (!maker) continue;
+      if (isCreatorParseSource_(asset)) continue;
+      const url = String(values[i][fieldCols.url - 1] || "").trim();
+      backupRows.push([row, url, asset, maker]);
+      edits.push({ row: row, value: "" });
+    }
+
+    if (!edits.length) {
+      const result = { cleared: 0, remaining_creator_issues: 0 };
+      Logger.log("clear_invalid_creators_result " + JSON.stringify(result));
+      SpreadsheetApp.getActive().toast("정리할 제작자 오적재가 없습니다.", "완료", 4);
+      return result;
+    }
+
+    const stamp = Utilities.formatDate(new Date(), "Asia/Seoul", "yyyyMMdd_HHmmss");
+    const backupName = "_codex_invalid_creator_backup_" + stamp;
+    const ss = SpreadsheetApp.getActive();
+    const backup = ss.insertSheet(backupName);
+    backup.getRange(1, 1, backupRows.length, backupRows[0].length).setValues(backupRows);
+    backup.hideSheet();
+
+    const expectedLastRow = sheet.getLastRow();
+    const cleared = writeColumnRuns_(sheet, makerCol, edits, expectedLastRow);
+    SpreadsheetApp.flush();
+
+    const after = sheet.getRange(CONFIG.DATA_START_ROW, 1, n, lastCol).getValues();
+    let remaining = 0;
+    for (let i = 0; i < n; i++) {
+      const asset = String(after[i][sourceCol - 1] || "").trim();
+      const maker = String(after[i][makerCol - 1] || "").trim();
+      if (maker && !isCreatorParseSource_(asset)) remaining++;
+    }
+    const result = { cleared: cleared, backup_sheet: backupName, remaining_creator_issues: remaining };
+    Logger.log("clear_invalid_creators_result " + JSON.stringify(result));
+    SpreadsheetApp.getActive().toast(
+      "제작자 오적재 " + cleared + "칸 정리 · 백업 " + backupName + " · 잔여 " + remaining + "건",
+      "완료",
+      8
+    );
+    return result;
+  });
+}
+
 function syncCreators() {
   const sheet = getSheet_();
   const lastRow = sheet.getLastRow();

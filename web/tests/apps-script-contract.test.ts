@@ -436,6 +436,21 @@ test("syncCreators fills planner/creator only from the same row asset name", () 
   assert.doesNotMatch(body, /setValues\(planners\)|setValues\(makers\)/);
 });
 
+test("invalid creator repair backs up rows and clears creator only", () => {
+  const start = appsScript.indexOf("function clearInvalidCreatorsWithBackup()");
+  const end = appsScript.indexOf("function syncCreators()", start);
+  const body = appsScript.slice(start, end);
+  assert.notEqual(start, -1);
+  assert.match(body, /_codex_invalid_creator_backup_/);
+  assert.match(body, /backupRows = \[\["row", "url", "asset_name", "creator_before"\]\]/);
+  assert.match(body, /if \(isCreatorParseSource_\(asset\)\) continue/);
+  assert.match(body, /edits\.push\(\{ row: row, value: "" \}\)/);
+  assert.match(body, /writeColumnRuns_\(sheet, makerCol, edits, expectedLastRow\)/);
+  assert.match(body, /remaining_creator_issues/);
+  assert.doesNotMatch(body, /plannerCol/);
+  assert.doesNotMatch(body, /writeColumnRuns_\(sheet, planner/);
+});
+
 test("URL-key writers re-read current URLs and write only changed row runs", () => {
   assert.match(writeGuard, /function buildUrlKeyIndex_\(/);
   assert.match(writeGuard, /function writeColumnByKey_\(/);
