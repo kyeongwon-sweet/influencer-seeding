@@ -11,8 +11,10 @@
 - **repo 수정:** `Combined_Sheet_AppsScript.gs`의 `syncCreators`를 행 단위로 변경했다. 이제 **소재명 셀이 `[`로 시작하는 브래킷 파일명일 때만** `parseCreator_`를 실행하고, 파싱된 값은 **같은 행의 빈 기획자/제작자 셀에만** 쓴다. `plannerByKey`/`makerByKey`/`writeColumnByKey_` 경로는 제작자 자동채움에서 제거했다.
 - **감지 가드:** `auditCreatorAssetIntegrity_()` 추가. 소재명이 브래킷 파일명이 아닌데 기획자/제작자가 있으면 `creator_asset_integrity_issue` 로그와 toast로 감지한다. `syncCreators` 마지막에 호출된다.
 - **DB 워치독:** `scripts/audit_invalid_creator_fields.py` + `.github/workflows/invalid-creator-fields.yml` 추가. 매일 10:25 KST에 `sponsored_posts`를 읽어 `asset_name/project_name`이 브래킷 파일명이 아닌데 `creator/planner`가 채워진 행을 세고, 이상이 있으면 Slack DM으로 알린다. 기본은 읽기 전용이며, 수동 dispatch에서 `apply=true`일 때만 백업 후 선택 필드(`creator` 기본)를 지운다.
+- **라이브 Apps Script 반영 완료:** 2026-08-04 17:36 KST `clasp push` 성공. fresh `clasp pull`로 서버본 재확인했고, 라이브 `syncCreators__wgimpl` 내부에는 `plannerByKey`/`makerByKey`/`linkKey_`/`writeColumnByKey_`가 없으며 `creatorSourceText_`/`auditCreatorAssetIntegrity_`/`non_file_name_skipped`가 존재한다. 즉 라이브 버튼도 **그 행 자신의 브래킷 소재명 → 같은 행 빈칸만 채움** 구조로 저장 완료.
+- **DB dry-run 실측:** 워크플로 run `30892095002` 기준 `total_rows=1757`, `issue_rows=142`, `creator_issue_rows=123`, `planner_issue_rows=125`, `manual_creator_issue_rows=0`, `manual_planner_issue_rows=0`, `selected_for_update=123`, `apply=false`. 아직 실제 클리어는 하지 않았다.
 - **검증:** Apps Script 문법 check 통과, `web` 전체 `npm test` 160/160 통과, `tsc --noEmit` 통과, Python compile 통과. `npm run lint`는 이번 수정과 무관한 기존 `web/lib/meta-instagram-comments.ts:62 no-explicit-any` 1건 때문에 실패(경고 15개는 기존).
-- **주의:** 라이브 Apps Script는 repo 정본과 래퍼 구조(`__wgimpl`) divergence가 있으므로 전체 `clasp push` 금지. 라이브 반영 시 fresh `clasp pull`/서버본 기준으로 `syncCreators`와 `auditCreatorAssetIntegrity_`만 함수 단위 graft해야 한다.
+- **주의:** 라이브 Apps Script는 repo 정본과 래퍼 구조(`__wgimpl`) divergence가 있으므로 전체 재빌드 push 금지. 이번 반영은 fresh `clasp pull`/서버본 기준으로 `syncCreators__wgimpl`와 보조 함수만 함수 단위 graft했다.
 
 ## 2026-08-04 [⭐마스터 재발방지·➡️Codex] "데이터 불변식 일일 감사" 통합 — 반복사고 단일 근본 차단
 - **사용자(반복 지적)**: "왜 자꾸 이런 실수를 해? 재발방지 단단히 해." 이번 세션 반복사고(자정수집 SUMMARY_FILE·배너 자동종료 12일·제작자 오적재 455·증분 전멸·행밀림)의 **단일 근본 = 자동 쓰기는 많은데 결과가 맞는지 감시하는 '불변식' 계층이 없다** → 틀린 값/미실행이 조용히 쌓이다 사람이 눈으로 발견. (다세션 속도개발 + 라이브 Apps Script 발산이 악화)
