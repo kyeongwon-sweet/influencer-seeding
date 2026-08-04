@@ -3,7 +3,11 @@
 
 # AI Shared Status
 
-## 2026-08-04 [Codex 완료] ufo__orange 08-02 DB play_count 직접 NULL 정정
+## 2026-08-04 [Claude 진단·➡️Codex 2건 인계] 값정체 ufo__blue = 삭제 게시물 특정 + 알림 URL 미표기 개선
+- **사용자 신고**: formula-audit "🟠 값정체 ufo__blue: 마지막 실측 없음(게시 07-20)" — 바이럴은 한 계정에 여러 글이라 계정명만으론 **어느 글인지 특정 불가**.
+- **특정+진단(Claude 실측)**: ufo__blue는 DB에 **11개 게시물**. 정체건 = **`/p/DbArSYTujGW/`**(id `7b397b48`, 07-20 게시, 바이럴 영상). **측정 이력 0건**(한 번도 안 걷힘). Apify 프로브 = **`not_found` "Post does not exist" = 삭제됨**. → 알림의 '삭제 의심' 정답.
+- **➡️ Codex ① 종료 처리**: `/p/DbArSYTujGW/` 삭제 확정 → **시트 상태=트래킹 종료**(DB ended_at만 PATCH하면 syncStatus가 시트 상태로 되돌릴 수 있어 시트가 정본). 그럼 값정체 알림도 멈춤.
+- **➡️ Codex ② 알림 개선(formula-audit.ts:168)**: `값정체 ${row.label}: ...`에 **URL/shortcode 추가** 권고 — `row.label`(계정명)뿐이라 다게시물 바이럴 계정에서 특정 불가. `row.key`(=linkKey shortcode, 156행에서 이미 사용) 또는 `p0.url`을 노트에 포함하면 `값정체 ufo__blue (ig:DbArSYTujGW): …`처럼 바로 찾힘. **formula-audit.ts는 Codex WIP라 Claude 미편집.**
 - 대상 `post_daily_stats.id=7ccb7201-9b91-435f-946d-c40a3c3e20f8` (`post_id=fd7d7955-c83c-4a69-9878-edb4841d6ec9`, `Dbaa_-_y3pq`, `measured_at=2026-08-02`). 대시보드 단건 API가 `play_count=null`을 무시한 잔재를 Supabase SQL로 직접 수정했다.
 - 적용 전 직접 조회: `play_count=117000`, `manual=true`, `reach_count=NULL`. ID·post_id·측정일·예상값·manual 조건을 모두 넣은 단건 `UPDATE ... RETURNING`으로 `play_count`만 `NULL` 처리했다.
 - 독립 재조회 검증: 08-02 행은 `play_count=NULL`, `manual=true`, `reach_count=NULL`; 다음날 08-03 행(`01880df4-25b0-44ed-a86a-7e3ec67d33c9`)은 `play_count=94261`, `manual=true` 유지. 행과 수기 표식은 보존했다.
