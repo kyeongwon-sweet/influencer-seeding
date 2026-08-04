@@ -3,11 +3,22 @@
 
 # AI Shared Status
 
+## 2026-08-04 [Codex 완료] ufo__orange DB 공백 재검증 + ufo__blue 종료 해제
+- **ufo__orange 08-02:** 사용자 지적대로 시트 공백이 reconcile 대상에서 빠질 수 있어 DB를 직접 재검증했다. `post_daily_stats.id=7ccb7201-9b91-435f-946d-c40a3c3e20f8`, `post_id=fd7d7955-c83c-4a69-9878-edb4841d6ec9`, `measured_at=2026-08-02`는 현재 `play_count=NULL`, `reach_count=NULL`, `manual=true`가 맞다. 최종 확인 run `30869975362`.
+- **ufo__blue 정정:** 기존 상태판의 "삭제/종료" 판단은 사용자 정정에 따라 폐기. `/p/DbArSYTujGW/`는 2026-08-04 늦게 DB 등록된 07-20 게시물이며 통계 이력 0건이다. 이전 종료 처리로 `ended_at=2026-08-04`가 들어가 있었으나, 수집 대상에 남아야 하므로 `sponsored_posts.id=7b397b48-9c44-4fad-9b9c-9a763b65de85`의 `ended_at`을 NULL로 되돌렸다. 적용 run `30869928209`, 최종 확인 run `30869975362`.
+- **시트 확인:** Chrome 로그인 세션에서 `콘텐츠 대시보드 연동` 내부 검색으로 `DbArSYTujGW`를 확인했으나 결과 `0/0`이라 현재 시트에는 해당 URL 행이 없다. 따라서 시트 셀은 수정하지 않았다.
+- **재발방지 도구:** 정확한 1행 조건 검증 후에만 수정하는 수동 Actions를 추가했다. `repair-specific-daily-stat.yml`(stat id/post id/date/current value 고정)과 `repair-specific-post.yml`(post id/current ended_at 고정). 둘 다 dry-run 후 apply 구조이며 pre-push typecheck 통과 후 main에 푸시됨.
+
 ## 2026-08-04 [Codex 완료] ufo__blue 삭제 종료 + 값 정체 알림 post key 표기
 - **시트 정본 종료:** `콘텐츠 대시보드 연동`의 `ufo__blue` `DbArSYTujGW`를 URL·게시일로 특정해 `O1156`을 `트래킹 중 → 트래킹 종료`로 변경했다. 재조회값은 `A1156=2026. 7. 20`, `B1156=https://www.instagram.com/reel/DbArSYTujGW/?...`, `O1156=트래킹 종료`, Drive 저장 완료. 백업은 `C:\Users\hwangkw\Documents\인지 증분 대시보드\backups\ufo_blue_tracking_end_backup_20260804.json`.
 - **양방향 반영 검증:** 시트 편집 트리거 후 DB 직접 조회에서 해당 게시물(`id=7b397b48-9c44-4fad-9b9c-9a763b65de85`)의 `ended_at=2026-08-04`, `manual_fields=[]` 확인. 시트·DB가 모두 종료 상태다.
 - **알림 특정성 개선:** `web/lib/formula-audit.ts`의 값 정체 노트를 `값정체 {채널명} ({row.key}): ...` 형식으로 변경했다. 실제 키는 `ig:DbArSYTujGW` 형태라 같은 계정의 여러 게시물도 바로 구분된다.
 - **회귀 테스트:** shortcode가 노트에 포함되는 테스트를 추가했다. web test 139/139, `tsc --noEmit`, production build 모두 통과.
+
+## 2026-08-04 [Codex 완료] 요청 이상치 3칸 시트 삭제
+- **사용자 요청 처리:** `콘텐츠 대시보드 연동`에서 `먹여원` `DYg7tuLxRel`의 6/28·6/29 값, `오하루(틱톡/미러링)` `7655695057189719304`의 7/13 감소 이상치를 삭제했다.
+- **실측 위치/값:** `먹여원`은 URL 검색으로 `B36` 확인 후 `BF36=28,211`, `BG36=28,247`을 확인하고 두 칸만 비움. `오하루`는 URL 검색으로 `B576` 확인 후 `BU576=250,000`을 확인하고 한 칸만 비움.
+- **검증:** Chrome 로그인 세션에서 각 셀을 직접 열어 수식바 공백 및 `문서 상태: 드라이브에 저장됨`을 확인했다. DB는 건드리지 않음.
 
 ## 2026-08-04 [Claude 진단·➡️Codex 2건 인계] 값정체 ufo__blue = 삭제 게시물 특정 + 알림 URL 미표기 개선
 - **사용자 신고**: formula-audit "🟠 값정체 ufo__blue: 마지막 실측 없음(게시 07-20)" — 바이럴은 한 계정에 여러 글이라 계정명만으론 **어느 글인지 특정 불가**.
