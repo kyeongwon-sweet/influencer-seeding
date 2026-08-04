@@ -952,11 +952,11 @@ export default function OrganicPage() {
             (--guide-h가 아직 없으면 h가 무효라 자동 높이 → 첫 페인트에도 깨지지 않는다) */}
         <div className="flex flex-col gap-1.5 lg:h-[var(--guide-h)]">
         <div className="bg-white rounded-[14px] border border-a-hairline px-3 py-2.5 shrink-0">
-          {/* 한 줄 유지: 줄바꿈 금지 + 좁아지면 가로 스크롤(요소가 잘려 안 보이는 것 방지)
+          {/* 넓은 화면에서는 한 줄, 좁아지면 액션 버튼 묶음만 아래로 접힌다(가로 스크롤로 숨기지 않는다).
               입력/날짜/버튼에 h-9(36px)를 붙여 높이를 통일한다. 원래는 filter-input 30px,
               date 32px(네이티브 달력 아이콘 때문), filter-select 36px로 셋이 제각각이었다.
               `.filter-select`의 min-height:36px가 공용 토큰이라 그 값에 나머지를 맞췄다. */}
-          <div className="flex items-center gap-1.5 flex-nowrap overflow-x-auto">
+          <div className="flex flex-wrap items-center gap-1.5">
             <input
               type="text"
               placeholder="계정명 검색"
@@ -991,10 +991,38 @@ export default function OrganicPage() {
                 onChange={e => setFilters(p => ({ ...p, dateTo: e.target.value }))}
                 className={`filter-input h-9 px-2 w-[118px] ${filters.dateTo ? "border-a-blue" : ""}`} />
             </div>
-            <div className="flex-1" />
             {hasFilter && (
               <button onClick={() => setFilters(INIT_FILTERS)} className="btn-ghost h-9 py-0 shrink-0">초기화</button>
             )}
+            <div className="flex-1 min-w-0" />
+            {/* 액션 버튼 — 2026-08-04 사용자 요청으로 날짜 필터 옆(같은 줄 오른쪽)으로 내렸다.
+                폭이 부족한 화면(우측 칸 940px 미만 ≈ 뷰포트 1380px 미만)에서는 이 묶음만
+                아래 줄로 접힌다. 가로 스크롤로 숨기지 않는 이유는 버튼이 안 보이게 되기 때문. */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button onClick={() => setShowUpload(true)} className="btn-secondary h-9 shrink-0">CSV 업로드</button>
+              <button onClick={() => setShowAdd(true)} className="btn-secondary h-9 shrink-0">+ 게시물 추가</button>
+              <button onClick={downloadCSV} disabled={filtered.length === 0} className="btn-secondary h-9 whitespace-nowrap shrink-0">
+                엑셀 다운로드
+              </button>
+              {running && (
+                <>
+                  <span className="text-xs text-a-ink-muted tabular-nums shrink-0">{formatElapsed(elapsedSeconds)}</span>
+                  <button onClick={checkJob} className="btn-secondary h-9 shrink-0">지금 확인</button>
+                </>
+              )}
+              {/* btn-primary는 테두리가 없어 secondary보다 2px 낮다. 투명 테두리로 높이를 맞춘다. */}
+              <button onClick={runCollection} disabled={running} className="btn-primary h-9 border border-transparent shrink-0">
+                {running ? (
+                  <span className="flex items-center gap-1.5">
+                    <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25"/>
+                      <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
+                    </svg>
+                    실행 중
+                  </span>
+                ) : "지금 수집"}
+              </button>
+            </div>
           </div>
         </div>
         {/* 언급 제품 필터 — 오른쪽 칸의 필터 바로 아래 */}
@@ -1035,33 +1063,7 @@ export default function OrganicPage() {
       </div>
 
       <div className="px-6 pt-2 pb-6">
-        {/* 액션 버튼 줄 — 상단 sticky 바에서 여기로 내렸다(표 바로 위, 오른쪽 정렬).
-            좁은 화면에서 잘리지 않도록 넘치면 가로 스크롤한다. */}
-        <div className="mb-2 flex items-center justify-end gap-1.5 overflow-x-auto">
-          <button onClick={() => setShowUpload(true)} className="btn-secondary shrink-0">CSV 업로드</button>
-          <button onClick={() => setShowAdd(true)} className="btn-secondary shrink-0">+ 게시물 추가</button>
-          <button onClick={downloadCSV} disabled={filtered.length === 0} className="btn-secondary whitespace-nowrap shrink-0">
-            엑셀 다운로드
-          </button>
-          {running && (
-            <>
-              <span className="text-xs text-a-ink-muted tabular-nums shrink-0">{formatElapsed(elapsedSeconds)}</span>
-              <button onClick={checkJob} className="btn-secondary shrink-0">지금 확인</button>
-            </>
-          )}
-          {/* btn-primary는 테두리가 없어 secondary(30px)보다 2px 낮다. 투명 테두리로 높이를 맞춘다. */}
-          <button onClick={runCollection} disabled={running} className="btn-primary border border-transparent shrink-0">
-            {running ? (
-              <span className="flex items-center gap-1.5">
-                <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25"/>
-                  <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
-                </svg>
-                실행 중
-              </span>
-            ) : "지금 수집"}
-          </button>
-        </div>
+        {/* 액션 버튼은 위 필터 줄(날짜 필터 옆)로 옮겼다. 여기엔 표만 남는다. */}
         {/* 테이블 */}
         <div className="bg-white rounded-[18px] border border-a-hairline overflow-hidden">
           <div ref={scrollBoxRef} className="overflow-auto max-h-[calc(100vh-120px)]">
