@@ -1,5 +1,5 @@
 ﻿"use client";
-import { memo, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
@@ -29,6 +29,17 @@ function parentProductOf(p: string): string | null {
   for (const parent of PRODUCT_PARENTS) if (p !== parent && p.endsWith(parent)) return parent;
   return null;
 }
+
+// 상위 제품을 고르면 함께 선택되는 하위 제품(2026-08-04 사용자 지정).
+// ⚠️ 접미사 자동 매칭이 아니라 **명시 목록**이다. 이름은 같은 계열이지만 함께 묶으면 안 되는 것들이 있다:
+//    초코바 ← 넛티초코바·초콜릿초코바 제외 / 듬뿍바 ← 옥수수듬뿍바 제외.
+//    (감귤제로바는 아직 데이터에 없지만 생기면 바로 묶이도록 미리 넣어둔다)
+const PRODUCT_GROUPS: Record<string, string[]> = {
+  "초코바": ["바닐라초코바", "말차초코바", "쿠키앤크림초코바"],
+  "쫀득바": ["멜론쫀득바", "망고쫀득바"],
+  "듬뿍바": ["딸기듬뿍바", "골드키위듬뿍바", "피치망고듬뿍바"],
+  "제로바": ["자두제로바", "포도제로바", "감귤제로바", "오렌지제로바", "골드파인제로바"],
+};
 
 type Mention = {
   id: string;
@@ -358,6 +369,18 @@ export default function OrganicPage() {
   const runningJobIdRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // 오른쪽(필터+제품 칩) 높이를 왼쪽 기준 박스와 똑같이 맞춘다.
+  // 상수로 박아두면 문구를 한 줄만 고쳐도 어긋나므로 실제 높이를 관측해서 쓴다.
+  useEffect(() => {
+    const el = guideBoxRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const apply = () => setGuideHeight(el.offsetHeight || null);
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    apply();
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     loadMentions().finally(() => setLoading(false));
@@ -712,6 +735,17 @@ export default function OrganicPage() {
   // 제품 칩 토글 — 변형(멜론쫀득바 등) 선택 시 상위 라인(쫀득바)도 자동 포함. 변형 해제 시 같은 상위의 다른 변형이 없으면 상위도 해제.
   function toggleProduct(p: string) {
     setFilters(prev => {
+      // 상위 제품(초코바·쫀득바·듬뿍바·제로바)은 지정된 하위 제품과 함께 켜지고 함께 꺼진다.
+      const group = PRODUCT_GROUPS[p];
+      if (group) {
+        if (prev.products.includes(p)) {
+          const drop = new Set([p, ...group]);
+          return { ...prev, products: prev.products.filter(x => !drop.has(x)) };
+        }
+        const add = [p, ...group].filter(x => !prev.products.includes(x));
+        return { ...prev, products: [...prev.products, ...add] };
+      }
+
       const parent = parentProductOf(p);
       if (prev.products.includes(p)) {
         let next = prev.products.filter(x => x !== p);
@@ -799,6 +833,9 @@ export default function OrganicPage() {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const scrollBoxRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLTableRowElement | null>(null);
+  // 왼쪽 '무상 노출 기준' 박스의 실제 높이 → 오른쪽 칸 높이로 그대로 쓴다.
+  const guideBoxRef = useRef<HTMLDivElement | null>(null);
+  const [guideHeight, setGuideHeight] = useState<number | null>(null);
   // 조건이 바뀌면 처음부터 다시 보여준다(스크롤 위치와 어긋나지 않게).
   useEffect(() => { setVisibleCount(PAGE_SIZE); }, [deferredName, filters.platform, filters.products, filters.exposureType, filters.dateFrom, filters.dateTo, sortCol, sortDir]);
   const visibleRows = useMemo(() => sorted.slice(0, visibleCount), [sorted, visibleCount]);
@@ -906,13 +943,18 @@ export default function OrganicPage() {
 
       {/* 상단 2단 배치 — 기준(좌) / 필터(우). 세로로 길게 쌓이던 두 박스를 나란히 놓아 표가 더 보이게 한다.
           좁은 화면(lg 미만)에서는 자동으로 위아래로 쌓인다. */}
-      {/* 좌:우 = 약 42:58. 오른쪽(필터+칩)이 넓어야 칩 줄 수가 줄어든다. */}
-      <div className="mx-6 mt-5 mb-2 grid gap-3 items-start lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+      {/* 왼쪽 기준 박스는 380px로 고정(실측: 이보다 좁으면 '참고 자료' 줄이 접혀 오히려 세로가 늘어난다).
+          남는 폭은 전부 오른쪽에 주고, 오른쪽 높이는 --guide-h(=왼쪽 박스 실제 높이)로 맞춘다. */}
+      <div
+        className="mx-6 mt-5 mb-2 grid gap-3 items-start lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]"
+        style={guideHeight ? ({ "--guide-h": `${guideHeight}px` } as CSSProperties) : undefined}
+      >
       {/* 오른쪽(필터+칩) 높이에 맞춰 여백을 줄인 상태. 더 줄이려면 py/mb/leading을 한 단계씩 내리면 된다. */}
-      <div className="bg-white border border-gray-200 rounded-lg px-5 py-3 shadow-sm self-start">
+      <div ref={guideBoxRef} className="bg-white border border-gray-200 rounded-lg px-5 py-3 shadow-sm self-start">
         <p className="text-sm font-bold text-a-ink mb-2.5">📌 무상 노출 기준</p>
-        {/* 박스가 좁아져도 '댓글 작성' 긴 줄이 접히지 않도록 오른쪽 칸에 폭을 더 준다(접히면 세로가 늘어남). */}
-        <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-4">
+        {/* 왼쪽 칸은 제 글자폭(max-content)만 쓰고 나머지를 오른쪽에 넘긴다.
+            '우리가 언급된 자컨/콘텐츠에 감사댓글'이 접히면 박스 세로가 늘어나기 때문. */}
+        <div className="grid grid-cols-[max-content_minmax(0,1fr)] gap-4">
           <div>
             <p className="text-[13px] font-semibold text-a-ink mb-1.5">✓ 수집 대상:</p>
             <ul className="text-[13px] text-a-ink-muted space-y-0.5 list-none leading-normal">
@@ -955,9 +997,11 @@ export default function OrganicPage() {
         </div>
       </div>
 
-        {/* 오른쪽 칸 = 필터(한 줄) + 그 아래 제품 칩. 두 카드 사이 간격을 좁혀 왼쪽 박스 높이에 맞춘다. */}
-        <div className="flex flex-col gap-1.5">
-        <div className="bg-white rounded-[14px] border border-a-hairline px-3 py-2.5">
+        {/* 오른쪽 칸 = 필터(한 줄) + 그 아래 제품 칩.
+            높이를 왼쪽 박스와 똑같이 고정하고, 남는 제품 칩은 칩 카드 안에서 스크롤한다.
+            (--guide-h가 아직 없으면 h가 무효라 자동 높이 → 첫 페인트에도 깨지지 않는다) */}
+        <div className="flex flex-col gap-1.5 lg:h-[var(--guide-h)]">
+        <div className="bg-white rounded-[14px] border border-a-hairline px-3 py-2.5 shrink-0">
           {/* 한 줄 유지: 줄바꿈 금지 + 좁아지면 가로 스크롤(요소가 잘려 안 보이는 것 방지) */}
           <div className="flex items-center gap-1.5 flex-nowrap overflow-x-auto">
             <input
@@ -1002,7 +1046,7 @@ export default function OrganicPage() {
         </div>
         {/* 언급 제품 필터 — 오른쪽 칸의 필터 바로 아래 */}
         {productOptions.length > 0 && (
-          <div className="bg-white rounded-[14px] border border-a-hairline px-4 py-2.5">
+          <div className="bg-white rounded-[14px] border border-a-hairline px-4 py-2.5 lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
             <div className="flex items-start gap-2.5">
               <div className="flex flex-wrap gap-1.5 flex-1">
                 <button
