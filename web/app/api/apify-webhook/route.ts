@@ -6,6 +6,7 @@ import { notifyBot, notifyJob } from "@/lib/slack";
 import { todayKST } from "@/lib/dateRule";
 import { isBannerChannelType } from "@/lib/banner-metric";
 import { looksLikeEngagementCountAsViews } from "@/lib/ig-metric-guard";
+import { organicExcludeHit } from "@/lib/organic-filter";
 
 // ── 지표 계산 (metrics.py 포팅) ─────────────────────────────────────
 
@@ -820,12 +821,21 @@ function buildRow(item: Record<string, unknown>, platform: string, url: string, 
 async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, jobId: string, items: Record<string, unknown>[], platform: string) {
   const rows: Record<string, unknown>[] = [];
   let collectedCount = 0;
+  let excludedCount = 0;
 
   console.log(`[LOG] ${platform.toUpperCase()} 처리 시작: ${items.length}개`);
 
   for (const item of items) {
     // 공통 필터: 광고 확인
     if (isAd(item)) continue;
+
+    // 공통 필터: 제외어('랄라스윗' 등) — 우리 브랜드가 아니므로 수집하지 않는다.
+    const excludeHit = organicExcludeHit(item);
+    if (excludeHit) {
+      excludedCount++;
+      console.log(`[LOG] ${platform} 제외어 '${excludeHit}' → 건너뜀: ${String(item.url ?? item.webVideoUrl ?? '')}`);
+      continue;
+    }
 
     let url: string | null = null;
     let viewCount = 0;
@@ -916,7 +926,7 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
     }
   }
 
-  console.log(`[LOG] ${platform.toUpperCase()} 수집 완료: ${collectedCount}건 저장`);
+  console.log(`[LOG] ${platform.toUpperCase()} 수집 완료: ${collectedCount}건 저장 (제외어 ${excludedCount}건 건너뜀)`);
 
   if (rows.length > 0) {
     await supabase.from('organic_mentions').upsert(rows, { onConflict: 'url', ignoreDuplicates: false });
