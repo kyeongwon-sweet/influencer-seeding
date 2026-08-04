@@ -797,9 +797,28 @@ export default function OrganicPage() {
   // 화면에 그릴 행 수 제한 — 700행 전부를 DOM에 올리면(행마다 셀 8개 + 수정 아이콘 여러 개)
   // 첫 렌더가 느리고, 필터·정렬·셀 편집 같은 사소한 상태 변화마다 전부 다시 그려 버벅인다.
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const scrollBoxRef = useRef<HTMLDivElement | null>(null);
+  const sentinelRef = useRef<HTMLTableRowElement | null>(null);
   // 조건이 바뀌면 처음부터 다시 보여준다(스크롤 위치와 어긋나지 않게).
   useEffect(() => { setVisibleCount(PAGE_SIZE); }, [deferredName, filters.platform, filters.products, filters.exposureType, filters.dateFrom, filters.dateTo, sortCol, sortDir]);
   const visibleRows = useMemo(() => sorted.slice(0, visibleCount), [sorted, visibleCount]);
+  const hasMore = visibleCount < sorted.length;
+
+  // 표 바닥에 닿으면 자동으로 다음 100행을 붙인다(표가 자체 스크롤 박스라 root를 그 박스로 지정).
+  // rootMargin으로 조금 미리 당겨 로드해 끊기는 느낌을 줄인다.
+  useEffect(() => {
+    const target = sentinelRef.current;
+    const root = scrollBoxRef.current;
+    if (!target || !hasMore) return;
+    const io = new IntersectionObserver(
+      entries => {
+        if (entries.some(e => e.isIntersecting)) setVisibleCount(c => Math.min(c + PAGE_SIZE, sorted.length));
+      },
+      { root: root ?? null, rootMargin: "300px 0px" },
+    );
+    io.observe(target);
+    return () => io.disconnect();
+  }, [hasMore, sorted.length, visibleCount]);
 
   function rsTH(col: string, colIdx: number, sortable = true, right = false) {
     const active = sortCol === col;
@@ -1021,7 +1040,7 @@ export default function OrganicPage() {
       <div className="px-6 pt-3 pb-6">
         {/* 테이블 */}
         <div className="bg-white rounded-[18px] border border-a-hairline overflow-hidden">
-          <div className="overflow-auto max-h-[calc(100vh-120px)]">
+          <div ref={scrollBoxRef} className="overflow-auto max-h-[calc(100vh-120px)]">
             {loading ? (
               <div className="p-8 text-center text-a-ink-muted text-sm">로딩 중...</div>
             ) : (
@@ -1066,19 +1085,18 @@ export default function OrganicPage() {
                       </td>
                     </tr>
                   )}
-                  {sorted.length > visibleRows.length && (
-                    <tr>
+                  {hasMore && (
+                    // 이 행이 화면에 들어오면 위 IntersectionObserver가 다음 100행을 붙인다.
+                    // 관찰이 동작하지 않는 환경(구형 브라우저 등)을 대비해 수동 버튼도 남겨둔다.
+                    <tr ref={sentinelRef}>
                       <td colSpan={10} className="px-5 py-4 text-center border-t border-a-hairline">
-                        <button
-                          onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
-                          className="btn-secondary"
-                        >
-                          더 보기 ({visibleRows.length.toLocaleString()} / {sorted.length.toLocaleString()})
+                        <span className="text-xs text-a-ink-muted mr-3 tabular-nums">
+                          {visibleRows.length.toLocaleString()} / {sorted.length.toLocaleString()} 표시 중 · 스크롤하면 계속 불러옵니다
+                        </span>
+                        <button onClick={() => setVisibleCount(c => Math.min(c + PAGE_SIZE, sorted.length))} className="btn-ghost">
+                          더 보기
                         </button>
-                        <button
-                          onClick={() => setVisibleCount(sorted.length)}
-                          className="btn-ghost ml-2"
-                        >
+                        <button onClick={() => setVisibleCount(sorted.length)} className="btn-ghost ml-1">
                           전체 표시
                         </button>
                       </td>
