@@ -690,6 +690,7 @@ export default function OrganicPage() {
               <option value="무가시딩">무가시딩</option>
               <option value="오가닉">오가닉 노출</option>
               <option value="연예인 언급">연예인 언급</option>
+              <option value="아이돌 언급">아이돌 언급</option>
             </select>
             <div className="w-px h-4 bg-a-hairline mx-0.5 shrink-0" />
             <div className="flex items-center gap-1 shrink-0">
@@ -929,7 +930,7 @@ export default function OrganicPage() {
                           </div>
                         )}
                       </td>
-                      {/* 유형 (무가시딩 / 오가닉) */}
+                      {/* 유형 */}
                       <td style={{ minWidth: colWidths[6] }} className="px-4 py-4 whitespace-nowrap">
                         {editCell?.id === m.id && editCell.field === "exposure_type" ? (
                           <select autoFocus value={editCell.value}
@@ -941,6 +942,7 @@ export default function OrganicPage() {
                             <option value="무가시딩">무가시딩</option>
                             <option value="오가닉">오가닉</option>
                             <option value="연예인 언급">연예인 언급</option>
+                            <option value="아이돌 언급">아이돌 언급</option>
                           </select>
                         ) : (
                           <span
@@ -1179,7 +1181,7 @@ export default function OrganicPage() {
             <HelpItem label="엑셀 다운로드 —">현재 필터가 적용된 목록을 CSV로 내려받습니다.</HelpItem>
           </HelpSection>
           <HelpSection title="유형 분류">
-            <p className="text-a-ink-muted leading-relaxed">각 게시물의 &apos;유형&apos; 셀을 클릭해 무가시딩·오가닉 노출·연예인 언급으로 분류할 수 있고, 상단 필터로 유형별 조회가 가능합니다.</p>
+            <p className="text-a-ink-muted leading-relaxed">각 게시물의 &apos;유형&apos; 셀을 클릭해 무가시딩·오가닉 노출·연예인 언급·아이돌 언급으로 분류할 수 있고, 상단 필터로 유형별 조회가 가능합니다.</p>
           </HelpSection>
           <HelpSection title="셀 편집">
             <p className="text-a-ink-muted leading-relaxed">계정명·캡션·언급 제품·업로드일·조회수·유형·특이사항 셀을 클릭하면 바로 수정됩니다. 언급 제품은 쉼표로 여러 개를 입력할 수 있습니다.</p>
