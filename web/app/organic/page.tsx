@@ -887,11 +887,13 @@ export default function OrganicPage() {
 
       {/* 상단 2단 배치 — 기준(좌) / 필터(우). 세로로 길게 쌓이던 두 박스를 나란히 놓아 표가 더 보이게 한다.
           좁은 화면(lg 미만)에서는 자동으로 위아래로 쌓인다. */}
-      <div className="mx-6 mt-5 mb-2 grid gap-3 items-start lg:grid-cols-2">
+      {/* 좌:우 = 약 42:58. 오른쪽(필터+칩)이 넓어야 칩 줄 수가 줄어든다. */}
+      <div className="mx-6 mt-5 mb-2 grid gap-3 items-start lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
       {/* 오른쪽(필터+칩) 높이에 맞춰 여백을 줄인 상태. 더 줄이려면 py/mb/leading을 한 단계씩 내리면 된다. */}
       <div className="bg-white border border-gray-200 rounded-lg px-5 py-3 shadow-sm self-start">
         <p className="text-sm font-bold text-a-ink mb-2.5">📌 무상 노출 기준</p>
-        <div className="grid grid-cols-2 gap-6">
+        {/* 박스가 좁아져도 '댓글 작성' 긴 줄이 접히지 않도록 오른쪽 칸에 폭을 더 준다(접히면 세로가 늘어남). */}
+        <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-4">
           <div>
             <p className="text-[13px] font-semibold text-a-ink mb-1.5">✓ 수집 대상:</p>
             <ul className="text-[13px] text-a-ink-muted space-y-0.5 list-none leading-normal">
@@ -934,8 +936,8 @@ export default function OrganicPage() {
         </div>
       </div>
 
-        {/* 오른쪽 칸 = 필터(한 줄) + 그 아래 제품 칩 */}
-        <div className="flex flex-col gap-3">
+        {/* 오른쪽 칸 = 필터(한 줄) + 그 아래 제품 칩. 두 카드 사이 간격을 좁혀 왼쪽 박스 높이에 맞춘다. */}
+        <div className="flex flex-col gap-1.5">
         <div className="bg-white rounded-[14px] border border-a-hairline px-3 py-2.5">
           {/* 한 줄 유지: 줄바꿈 금지 + 좁아지면 가로 스크롤(요소가 잘려 안 보이는 것 방지) */}
           <div className="flex items-center gap-1.5 flex-nowrap overflow-x-auto">
