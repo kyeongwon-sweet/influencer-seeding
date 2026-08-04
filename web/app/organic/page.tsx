@@ -616,12 +616,13 @@ export default function OrganicPage() {
       {/* 상단 2단 배치 — 기준(좌) / 필터(우). 세로로 길게 쌓이던 두 박스를 나란히 놓아 표가 더 보이게 한다.
           좁은 화면(lg 미만)에서는 자동으로 위아래로 쌓인다. */}
       <div className="mx-6 mt-5 mb-2 grid gap-3 items-start lg:grid-cols-2">
-      <div className="bg-white border border-gray-200 rounded-lg px-5 py-4 shadow-sm h-full">
-        <p className="text-sm font-bold text-a-ink mb-4">📌 무상 노출 기준</p>
+      {/* 오른쪽(필터+칩) 높이에 맞춰 여백을 줄인 상태. 더 줄이려면 py/mb/leading을 한 단계씩 내리면 된다. */}
+      <div className="bg-white border border-gray-200 rounded-lg px-5 py-3 shadow-sm self-start">
+        <p className="text-sm font-bold text-a-ink mb-2.5">📌 무상 노출 기준</p>
         <div className="grid grid-cols-2 gap-6">
           <div>
-            <p className="text-[13px] font-semibold text-a-ink mb-2">✓ 수집 대상:</p>
-            <ul className="text-[13px] text-a-ink-muted space-y-1 list-none leading-relaxed">
+            <p className="text-[13px] font-semibold text-a-ink mb-1.5">✓ 수집 대상:</p>
+            <ul className="text-[13px] text-a-ink-muted space-y-0.5 list-none leading-normal">
               <li>• 아이돌/연예인</li>
               <li>• 50만+ 인플루언서</li>
               <li>• 50만+ 뷰</li>
@@ -629,8 +630,8 @@ export default function OrganicPage() {
             </ul>
           </div>
           <div>
-            <p className="text-[13px] font-semibold text-a-ink mb-2">💬 댓글 작성:</p>
-            <ul className="text-[13px] text-a-ink-muted space-y-1 list-none leading-relaxed">
+            <p className="text-[13px] font-semibold text-a-ink mb-1.5">💬 댓글 작성:</p>
+            <ul className="text-[13px] text-a-ink-muted space-y-0.5 list-none leading-normal">
               <li>• 우리가 언급된 자컨/콘텐츠에 감사댓글</li>
               <li>• 공계로 샤라웃 (태그 필수!)</li>
               <li>• 주력 인물들에게만 좋아요+답글</li>
@@ -640,7 +641,7 @@ export default function OrganicPage() {
           </div>
         </div>
         {/* 참고 자료 — 새 탭으로 열고, 외부 링크라 noopener 지정 */}
-        <div className="mt-4 pt-3 border-t border-gray-100 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+        <div className="mt-2.5 pt-2 border-t border-gray-100 flex flex-wrap items-center gap-x-4 gap-y-1">
           <span className="text-[13px] font-semibold text-a-ink">🔗 참고 자료:</span>
           <a
             href="https://app.notion.com/p/lalasweet/c933b344ce7f820992c58103f960faa2?v=de13b344ce7f829888a488a6780ccb99"
