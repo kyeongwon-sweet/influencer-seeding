@@ -1,0 +1,48 @@
+name: Repair Specific Post
+
+on:
+  workflow_dispatch:
+    inputs:
+      post_id:
+        description: "sponsored_posts.id to repair"
+        required: true
+      expected_ended_at:
+        description: "Expected current ended_at, or NULL"
+        required: true
+      new_ended_at:
+        description: "New ended_at, or NULL"
+        required: true
+        default: "NULL"
+      apply:
+        description: "Apply update after strict verification"
+        type: boolean
+        default: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Verify and optionally repair one post row
+        run: |
+          args=(
+            --post-id "${{ inputs.post_id }}"
+            --expected-ended-at "${{ inputs.expected_ended_at }}"
+            --new-ended-at "${{ inputs.new_ended_at }}"
+          )
+          if [ "${{ inputs.apply }}" = "true" ]; then
+            args+=(--apply)
+          fi
+          cd scripts
+          python repair_specific_post.py "${args[@]}"
