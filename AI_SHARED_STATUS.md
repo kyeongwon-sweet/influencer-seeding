@@ -8,6 +8,7 @@
 - **보존 검증:** 08-03 실측 `nasso_home=3,281`(`CP700`), `moduhappy=40,804`(`CP1456`)와 두 URL은 변형 없이 유지됐다. 따라서 추가 `exportStats`는 불필요하고, 공백을 다시 이어받기 값으로 채울 위험을 피하려 실행하지 않았다.
 - **`ufo__orange` 판정 확정:** `Dbaa_-_y3pq`는 2026-08-04 02:30 KST경 자정수집 run `30836851602`에서 Apify가 **94,261**을 실제 반환했다. 로그: `clamp ... (94261 → 117000)`. 수기 117,000보다 낮다는 이유로 monotonic 클램프가 실제값을 버렸으므로 **117,000 과대기록이 확정**됐다. 이 단계에서는 요청대로 재수집 판정만 했고, 정확한 08-02 실측은 없으므로 임의 보정하지 않았다.
 - **배포 중복 방지:** `57f0e34`는 이미 `origin/main` 조상이며 `audit-fallback`의 `OPS_GITHUB_TOKEN` 규약도 현재 main/prod에 포함돼 있어 재배포하지 않는다.
+- **라이브 안전장치 재확인:** 2026-08-04 fresh `clasp pull` 기준 `AUTO_WRITE_TAIL_GUARD_MS`, `auditLinkedSheetFormulas_`, `buildUrlKeyIndex_`/`writeColumnByKey_`가 라이브 메인 파일에 모두 존재하며 전체 소스 문법 검사도 통과했다. `32a790c` 미반영 인계는 이미 해소된 상태이므로 중복 graft하지 않는다. 읽기 전용 백업은 `C:\Users\hwangkw\Documents\인지 증분 대시보드\backups\apps-script-live-20260804\`.
 
 ## 2026-08-04 [Claude·Codex 완료] 수기 과대입력이 자동 실측을 덮던 오염 2건 정정 (사용자 승인)
 - **사용자 승인**: 과대기록 Slack 알림(`moduhappy 40,804 < 71,000`, `nasso_home 3,281 < 332,000`)에 대해 **"실측값이 맞다"** 확정.
