@@ -561,6 +561,10 @@ export default function OrganicPage() {
           </button>
           <button onClick={() => setShowUpload(true)} className="btn-secondary">CSV 업로드</button>
           <button onClick={() => setShowAdd(true)} className="btn-secondary">+ 게시물 추가</button>
+          {/* 엑셀 다운로드 — 필터 바가 아니라 상단 버튼 줄에 둔다(필터 한 줄 확보) */}
+          <button onClick={downloadCSV} disabled={filtered.length === 0} className="btn-secondary whitespace-nowrap">
+            엑셀 다운로드
+          </button>
           {running && (
             <>
               <span className="text-xs text-a-ink-muted tabular-nums">{formatElapsed(elapsedSeconds)}</span>
@@ -672,16 +676,12 @@ export default function OrganicPage() {
             {hasFilter && (
               <button onClick={() => setFilters(INIT_FILTERS)} className="btn-ghost py-1 shrink-0">초기화</button>
             )}
-            <button onClick={downloadCSV} disabled={filtered.length === 0} className="btn-secondary shrink-0 whitespace-nowrap">
-              엑셀 다운로드
-            </button>
           </div>
         </div>
         {/* 언급 제품 필터 — 오른쪽 칸의 필터 바로 아래 */}
         {productOptions.length > 0 && (
           <div className="bg-white rounded-[14px] border border-a-hairline px-4 py-2.5">
             <div className="flex items-start gap-2.5">
-              <span className="text-xs font-medium text-a-ink-muted shrink-0 pt-1.5">제품</span>
               <div className="flex flex-wrap gap-1.5 flex-1">
                 <button
                   onClick={() => setFilters(prev => ({ ...prev, products: [] }))}
