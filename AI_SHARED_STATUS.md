@@ -6,6 +6,12 @@
 
 # AI Shared Status
 
+## 2026-08-04 [Claude 완료 · ➡️타 페이지 미적용] 무상노출 필터 줄 컨트롤 높이 통일 (`3b8052d`, 배포됨)
+- **원인(실측):** 같은 줄의 컨트롤 높이가 셋으로 갈렸다. `filter-input` **30px**(padding 6px), `type=date` **32px**(네이티브 달력 아이콘이 2px 더 먹음, 같은 클래스인데도), `filter-select` **36px**(`globals.css`에 `min-height:36px` 고정), `btn-ghost py-1` **24px**.
+- **수정:** `filter-select`의 36px가 공용 토큰이라 **그 값에 맞췄다**. 무상노출 필터 줄의 텍스트 입력·날짜 2개·초기화 버튼에 `h-9`(+버튼은 `py-0`) 추가. 실측 재확인: 6개 컨트롤 **높이 36 / 윗변·아랫변 전부 일치**.
+- **`.filter-input`을 전역으로 고치지 않은 이유:** 같은 30 vs 36 불일치가 `monitoring/components/FiltersBar.tsx`(7곳)·`listup`(3)·`screening`(2)·`contact`(2)에도 있다. `globals.css`의 `.filter-input`에 `min-height:36px`를 주면 한 줄로 전부 해결되지만, **그 페이지들은 로그인 벽 때문에 화면 확인이 안 되는 상태**라 이번 범위에서 뺐다. ➡️ **Codex나 사용자 화면 확인이 가능할 때 전역 수정 권장**(한 줄).
+- **검증:** `tsc --noEmit`·`npm run build` 통과. 배포 `dpl_CdFMsDBLWdqsECRkhaww9tynfsjB` Ready + `-mu` alias. 배포 전 Codex 배포 `Building` 대기 후 진행.
+
 ## 2026-08-04 [Claude 완료] 무상노출 참고자료 위치 이동 + 글자 1pt 축소 (`ffbc247`, 배포됨)
 - **참고 자료 줄을 박스 맨 아래 → 제목 바로 아래로** 옮겼다(`border-t` → `border-b`). 사용자 스크린샷의 파란 박스 지시대로.
 - **글자 1pt 축소:** 기준 목록(소제목 `✓ 수집 대상:`/`💬 댓글 작성:` + 항목 전부) `13px → 12px`, 제품 칩 `text-xs(12px) → 11px`. 참고 자료 줄은 지시 목록에 없어 13px 유지.
