@@ -150,3 +150,70 @@ export function normalizeInstagramUrl(url: string): string | null {
     return null;
   }
 }
+
+// ═══════════════════════════════════════════════════════════════
+// 무상노출(organic_mentions) 링크 중복 판정
+//
+// 요구(2026-08-04): "링크가 같은 게시글은 추가되지 않게. 뒤에 필요없는 utm이 붙어도 자동 중복 처리."
+// 위 `normalizeUrl`이 쿼리스트링을 통째로 버리므로 `?utm_source=`·`?igsh=`·`?fbclid=` 등은 자동으로
+// 사라지고, 인스타 `/reel/`↔`/p/`·`www.` 유무·trailing slash 차이도 한 형태로 접힌다.
+// (유튜브 `watch?v=<id>`는 ID가 쿼리에 있어 normalizeUrl이 예외로 보존한다)
+//
+// ⚠️ 중복 판정은 **정규화된 값끼리** 비교할 것. 노션 임포트가 원본 문자열로 비교해서, 같은 글이라도
+//    파라미터가 붙으면 새 행으로 들어가던 문제가 있었다.
+// (여기 두는 이유: lib 간 상대 import는 tsc가 확장자 없는 경로만 허용하는데 테스트 러너는 확장자를
+//  요구해 서로 충돌한다. URL 정규화의 집인 이 파일에 함께 두면 양쪽 다 문제없다.)
+// ═══════════════════════════════════════════════════════════════
+
+export type Mentionish = Record<string, unknown> & { url?: unknown };
+
+/** 저장·비교용 표준 URL. 정규화가 실패하면(형식 이상) 원본을 그대로 쓴다. */
+export function canonicalMentionUrl(url: unknown): string | null {
+  if (typeof url !== "string") return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  return normalizeUrl(trimmed) ?? trimmed;
+}
+
+export type SplitResult<T> = {
+  /** 저장할 항목(url이 정규화된 상태) */
+  unique: T[];
+  /** 이미 있거나 같은 요청 안에서 겹친 항목 */
+  duplicates: Array<{ item: T; url: string; reason: "existing" | "in_batch" }>;
+  /** 링크가 비어 판정 불가한 항목 */
+  invalid: T[];
+};
+
+/**
+ * 들어온 목록을 (저장할 것 / 중복 / 무효)로 가른다.
+ * @param items    요청 본문의 항목들
+ * @param existing 이미 저장된 URL 목록(정규화 여부 무관 — 여기서 다시 정규화해 비교)
+ */
+export function splitDuplicateMentions<T extends Mentionish>(
+  items: T[],
+  existing: Iterable<string>,
+): SplitResult<T> {
+  const seen = new Set<string>();
+  for (const url of existing) {
+    const key = canonicalMentionUrl(url);
+    if (key) seen.add(key);
+  }
+
+  const out: SplitResult<T> = { unique: [], duplicates: [], invalid: [] };
+  for (const item of items) {
+    const key = canonicalMentionUrl(item.url);
+    if (!key) {
+      out.invalid.push(item);
+      continue;
+    }
+    if (seen.has(key)) {
+      // 이미 DB에 있던 것인지, 이번 요청 안에서 겹친 것인지 구분해 메시지를 정확히 낸다.
+      const reason = out.unique.some((u) => canonicalMentionUrl(u.url) === key) ? "in_batch" : "existing";
+      out.duplicates.push({ item, url: key, reason });
+      continue;
+    }
+    seen.add(key);
+    out.unique.push({ ...item, url: key } as T);
+  }
+  return out;
+}

@@ -1,6 +1,7 @@
-import { auth } from "@clerk/nextjs/server";
+﻿import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
+import { splitDuplicateMentions } from "@/lib/url-utils";
 
 const NOTION_DB_NAME = "고객 생소리 트래킹";
 
@@ -201,17 +202,20 @@ export async function POST() {
     .filter((m) => m.url);
 
   // ── 4. 중복 제거 후 삽입 ──────────────────────────────────────────
+  // ⚠️ 원본 URL 문자열로 비교하면 노션 링크에 붙은 utm/igsh 등 파라미터 때문에 같은 글도
+  //    새 행으로 들어간다. 저장·비교 모두 정규화된 URL 기준으로 한다(수동 추가 경로와 동일 규칙).
   const supabase = getServerSupabase();
   const { data: existing } = await supabase.from("organic_mentions").select("url");
-  const existingUrls = new Set((existing ?? []).map((m: { url: string }) => m.url));
-  const newMentions = mentions.filter((m) => !existingUrls.has(m.url));
+  const existingUrls = (existing ?? []).map((m: { url: string }) => m.url);
+  const { unique: newMentions, duplicates } = splitDuplicateMentions(mentions, existingUrls);
 
   if (newMentions.length === 0) {
-    return NextResponse.json({ added: 0, total: allPages.length });
+    return NextResponse.json({ added: 0, skipped: duplicates.length, total: allPages.length });
   }
 
   const { error } = await supabase.from("organic_mentions").insert(newMentions);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ added: newMentions.length, total: allPages.length });
+  return NextResponse.json({ added: newMentions.length, skipped: duplicates.length, total: allPages.length });
 }
+

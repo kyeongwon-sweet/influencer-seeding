@@ -343,8 +343,14 @@ export default function OrganicPage() {
         toast(data.error ?? "노션 불러오기에 실패했습니다.", "error");
       } else {
         await loadMentions();
+        const skipped = data.skipped ?? 0;
         if (data.added > 0) {
-          toast(`노션에서 ${data.added}건 추가됐습니다.`, "success");
+          toast(
+            skipped > 0
+              ? `노션에서 ${data.added}건 추가됐습니다. 중복 링크 ${skipped}건은 건너뛰었습니다.`
+              : `노션에서 ${data.added}건 추가됐습니다.`,
+            "success",
+          );
         } else {
           toast(`노션 DB 조회 완료 (${data.total ?? 0}건) — 새로운 게시물이 없습니다.`, "info");
         }
@@ -366,11 +372,19 @@ export default function OrganicPage() {
     });
     setUploading(false);
     if (!res.ok) { toast("업로드 중 오류가 발생했습니다.", "error"); return; }
-    const count = csvRows.length;
+    // 서버가 이미 등록된 링크(utm 등 파라미터 차이 포함)를 걸러내므로 실제 추가 건수로 안내한다.
+    const result = await res.json().catch(() => null) as { inserted?: number; skipped?: number } | null;
+    const inserted = result?.inserted ?? csvRows.length;
+    const skipped = result?.skipped ?? 0;
     setCsvRows([]);
     setShowUpload(false);
     await loadMentions();
-    toast(`${count}개 게시물이 추가됐습니다.`, "success");
+    toast(
+      skipped > 0
+        ? `${inserted}개 추가됐습니다. 중복 링크 ${skipped}개는 건너뛰었습니다.`
+        : `${inserted}개 게시물이 추가됐습니다.`,
+      "success",
+    );
   }
 
   function downloadCSV() {
