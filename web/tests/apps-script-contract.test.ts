@@ -415,6 +415,8 @@ test("syncCreators fills planner/creator only from the same row asset name", () 
   const start = appsScript.indexOf("function syncCreators()");
   const end = appsScript.indexOf("function getPricingSheet_()", start);
   const body = appsScript.slice(start, end);
+  assert.match(appsScript, /function creatorSourceText_\(/);
+  assert.match(appsScript, /replace\(\/\^\[⠿●■◆◇★☆⭐\\s\]\+\//);
   assert.match(appsScript, /function isCreatorParseSource_\(/);
   assert.match(appsScript, /function auditCreatorAssetIntegrity_\(/);
   assert.match(body, /if \(!isCreatorParseSource_\(asset\)\)/);

@@ -2286,10 +2286,15 @@ function auditLinkedSheetFormulas() {
   return result;
 }
 
+function creatorSourceText_(value) {
+  return String(value || "").trim().replace(/^[⠿●■◆◇★☆⭐\s]+/, "");
+}
+
 function parseCreator_(name) {
   const result = { mk: "", pd: "" };
-  if (!name || name.charAt(0) !== "[") return result;
-  const parts = String(name).split("_");
+  const source = creatorSourceText_(name);
+  if (!source || source.charAt(0) !== "[") return result;
+  const parts = source.split("_");
   if (parts.length > 10) result.mk = String(parts[10] || "").trim();
   if (parts.length > 13) {
     const tail = parts.slice(13).join("_").trim().replace(/\.(mp4|mov|png|jpe?g|gif|webp|zip|pdf)$/i, "");
@@ -2299,7 +2304,8 @@ function parseCreator_(name) {
 }
 
 function isCreatorParseSource_(value) {
-  return !!value && String(value).trim().charAt(0) === "[";
+  const source = creatorSourceText_(value);
+  return !!source && source.charAt(0) === "[";
 }
 
 function auditCreatorAssetIntegrity_() {

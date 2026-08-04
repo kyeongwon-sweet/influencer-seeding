@@ -12,8 +12,15 @@ from typing import Any
 from supabase import create_client
 
 
+SOURCE_PREFIX_MARKERS = "⠿●■◆◇★☆⭐ \t\r\n"
+
+
+def creator_source_text(value: Any) -> str:
+    return str(value or "").strip().lstrip(SOURCE_PREFIX_MARKERS)
+
+
 def is_creator_parse_source(value: Any) -> bool:
-    return str(value or "").strip().startswith("[")
+    return creator_source_text(value).startswith("[")
 
 
 def nonblank(value: Any) -> bool:
