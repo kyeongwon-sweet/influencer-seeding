@@ -1003,14 +1003,17 @@ export default function OrganicPage() {
             (--guide-h가 아직 없으면 h가 무효라 자동 높이 → 첫 페인트에도 깨지지 않는다) */}
         <div className="flex flex-col gap-1.5 lg:h-[var(--guide-h)]">
         <div className="bg-white rounded-[14px] border border-a-hairline px-3 py-2.5 shrink-0">
-          {/* 한 줄 유지: 줄바꿈 금지 + 좁아지면 가로 스크롤(요소가 잘려 안 보이는 것 방지) */}
+          {/* 한 줄 유지: 줄바꿈 금지 + 좁아지면 가로 스크롤(요소가 잘려 안 보이는 것 방지)
+              입력/날짜/버튼에 h-9(36px)를 붙여 높이를 통일한다. 원래는 filter-input 30px,
+              date 32px(네이티브 달력 아이콘 때문), filter-select 36px로 셋이 제각각이었다.
+              `.filter-select`의 min-height:36px가 공용 토큰이라 그 값에 나머지를 맞췄다. */}
           <div className="flex items-center gap-1.5 flex-nowrap overflow-x-auto">
             <input
               type="text"
               placeholder="계정명 검색"
               value={filters.name}
               onChange={e => setFilters(p => ({ ...p, name: e.target.value }))}
-              className={`filter-input w-24 shrink-0 ${filters.name ? "border-a-blue" : ""}`}
+              className={`filter-input h-9 w-24 shrink-0 ${filters.name ? "border-a-blue" : ""}`}
             />
             <select
               value={filters.platform}
@@ -1033,15 +1036,15 @@ export default function OrganicPage() {
             <div className="flex items-center gap-1 shrink-0">
               <input type="date" value={filters.dateFrom}
                 onChange={e => setFilters(p => ({ ...p, dateFrom: e.target.value }))}
-                className={`filter-input px-2 w-[118px] ${filters.dateFrom ? "border-a-blue" : ""}`} />
+                className={`filter-input h-9 px-2 w-[118px] ${filters.dateFrom ? "border-a-blue" : ""}`} />
               <span className="text-xs text-a-ink-muted">–</span>
               <input type="date" value={filters.dateTo}
                 onChange={e => setFilters(p => ({ ...p, dateTo: e.target.value }))}
-                className={`filter-input px-2 w-[118px] ${filters.dateTo ? "border-a-blue" : ""}`} />
+                className={`filter-input h-9 px-2 w-[118px] ${filters.dateTo ? "border-a-blue" : ""}`} />
             </div>
             <div className="flex-1" />
             {hasFilter && (
-              <button onClick={() => setFilters(INIT_FILTERS)} className="btn-ghost py-1 shrink-0">초기화</button>
+              <button onClick={() => setFilters(INIT_FILTERS)} className="btn-ghost h-9 py-0 shrink-0">초기화</button>
             )}
           </div>
         </div>
