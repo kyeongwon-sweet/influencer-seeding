@@ -5,6 +5,12 @@
 
 # AI Shared Status
 
+## 2026-08-04 [Codex 완료] 무상노출 중복 차단 배포 + DB 인덱스 사전점검
+- **프로덕션 배포:** Claude 인계 커밋 `ac0b6fa`(무상노출 링크 중복 추가 차단)와 `a666339`(무상노출 기준 박스 참고자료 링크 2개)를 포함한 main을 Vercel production에 배포했다. 배포 `dpl_3TdrccSfhcuFukzyHSZWQowqNaV8`, alias `https://influencer-seeding-mu.vercel.app`, `readyState=READY`. `/organic` HTTP 200 확인.
+- **검증:** `web` 기준 `npm test` 155/155 통과, `npm run lint` 에러 0(기존 경고 15), `npm run build` 통과. Vercel production build도 통과.
+- **DB 중복 사전점검:** 수동 workflow `organic-mentions-integrity.yml`을 추가해 run `30883913381`에서 실제 DB를 읽었다. `organic_mentions` 총 702행, exact `url` 중복 그룹 0, 정규화 기준 중복 그룹 1(`https://www.youtube.com/shorts/8h8lQw9LjcQ` trailing slash 차이), query/hash 포함 URL 20건(주로 YouTube watch?v=... 의도 보존).
+- **인덱스 판단:** `CREATE UNIQUE INDEX ... ON organic_mentions(url)`는 exact 중복 0이라 실패 없이 걸 수 있는 상태로 보인다. 다만 이 인덱스는 문자열 기준이라 정규화 기준 중복 1건은 막지 못한다. SQL DDL 실행에는 현재 GitHub secret에 없는 DB 접속 URL/Supabase Management token이 필요하므로 아직 적용하지 않았다. 적용 전 위 1건을 병합/삭제할지 또는 exact index만 걸지 사용자 결정 필요.
+
 ## 2026-08-04 [Claude 검증·정정] `ufo__blue`는 실제 삭제글 = 종료가 맞음 / manual provenance 복구 확인
 - **✅ manual 복구 확인**: `ufo__orange` 07-30·07-31·08-01이 `manual=false`로 되돌아왔다(값 246·88,788·91,220 불변). `8ab9573`로 복구 경로가 provenance를 보존하게 된 것도 확인. 08-02(빈칸)·08-03(94,261)은 수기 유지가 정상.
 - **🔴 내 이전 판단 정정 — `ufo__blue` `DbArSYTujGW`는 삭제된 글이다.** 로그아웃 실물 확인 결과 **og:title 없음 = DEAD**(대조군: 살아있는 글 og 258자 / 삭제글 og 없음). 따라서 **현재 `ended_at=2026-08-04`·시트 `트래킹 종료`가 옳다.** 10:55의 "수집 대상에 남아야 하므로 NULL 복원" 판단은 폐기, 14:32의 유지 결정이 맞다.
