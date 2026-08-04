@@ -53,7 +53,7 @@ jobs:
           if [ "${{ github.event.inputs.apply || 'false' }}" = "true" ]; then
             args+=(--apply)
           fi
-          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event.inputs.send || 'false' }}" = "true" ]; then
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ inputs.send }}" = "true" ]; then
             args+=(--send)
           fi
           python scripts/audit_invalid_creator_fields.py "${args[@]}"

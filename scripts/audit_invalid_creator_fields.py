@@ -27,7 +27,7 @@ def asset_source(row: dict[str, Any]) -> str:
 
 
 def load_all_posts(client: Any) -> list[dict[str, Any]]:
-    fields = "id,url,account_name,channel_type,asset_name,project_name,planner,creator,updated_at"
+    fields = "id,url,account_name,channel_type,asset_name,project_name,planner,creator,created_at"
     out: list[dict[str, Any]] = []
     page_size = 1000
     start = 0
