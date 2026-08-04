@@ -362,7 +362,6 @@ export default function OrganicPage() {
   const [uploading, setUploading] = useState(false);
   const [editCell, setEditCell] = useState<{ id: string; field: "mentioned_product" | "exposure_type" | "account_name" | "content_summary" | "uploaded_at" | "view_count" | "notes" | "platform"; value: string } | null>(null);
   const [showHelp, setShowHelp] = useState(false);
-  const [importingNotion, setImportingNotion] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [showTimeoutError, setShowTimeoutError] = useState(false);
   const resizingRef = useRef<{ colIdx: number; startX: number; startW: number } | null>(null);
@@ -616,32 +615,8 @@ export default function OrganicPage() {
     a.click();
   }
 
-  async function importFromNotion() {
-    setImportingNotion(true);
-    try {
-      const res = await fetch("/api/organic-mentions/import-notion", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) {
-        toast(data.error ?? "노션 불러오기에 실패했습니다.", "error");
-      } else {
-        await loadMentions();
-        const skipped = data.skipped ?? 0;
-        if (data.added > 0) {
-          toast(
-            skipped > 0
-              ? `노션에서 ${data.added}건 추가됐습니다. 중복 링크 ${skipped}건은 건너뛰었습니다.`
-              : `노션에서 ${data.added}건 추가됐습니다.`,
-            "success",
-          );
-        } else {
-          toast(`노션 DB 조회 완료 (${data.total ?? 0}건) — 새로운 게시물이 없습니다.`, "info");
-        }
-      }
-    } catch {
-      toast("노션 불러오기 중 오류가 발생했습니다.", "error");
-    }
-    setImportingNotion(false);
-  }
+  // 노션 불러오기 버튼은 2026-08-04 사용자 요청으로 제거했다.
+  // API 라우트(/api/organic-mentions/import-notion)는 남겨 뒀다 — 다시 필요하면 버튼만 되살리면 된다.
 
   async function uploadCsvRows() {
     if (csvRows.length === 0) return;
@@ -901,7 +876,9 @@ export default function OrganicPage() {
         )}
       </header>
 
-      <div className="sticky top-14 z-[35] bg-white border-b border-a-hairline px-6 h-11 flex items-center justify-between">
+      {/* 액션 버튼(CSV 업로드/게시물 추가/엑셀 다운로드/지금 수집)은 표 바로 위로 내렸다.
+          여기 남은 건 '사용 안내'뿐이다. */}
+      <div className="sticky top-14 z-[35] bg-white border-b border-a-hairline px-6 h-11 flex items-center">
         <button onClick={() => setShowHelp(true)}
           className="flex items-center gap-1.5 text-xs text-a-ink-muted hover:text-a-ink transition">
           <svg width="13" height="13" viewBox="0 0 20 20" fill="none">
@@ -911,34 +888,6 @@ export default function OrganicPage() {
           </svg>
           사용 안내
         </button>
-        <div className="flex items-center gap-1.5">
-          <button onClick={importFromNotion} disabled={importingNotion} className="btn-secondary">
-            {importingNotion ? "불러오는 중..." : "노션 불러오기"}
-          </button>
-          <button onClick={() => setShowUpload(true)} className="btn-secondary">CSV 업로드</button>
-          <button onClick={() => setShowAdd(true)} className="btn-secondary">+ 게시물 추가</button>
-          {/* 엑셀 다운로드 — 필터 바가 아니라 상단 버튼 줄에 둔다(필터 한 줄 확보) */}
-          <button onClick={downloadCSV} disabled={filtered.length === 0} className="btn-secondary whitespace-nowrap">
-            엑셀 다운로드
-          </button>
-          {running && (
-            <>
-              <span className="text-xs text-a-ink-muted tabular-nums">{formatElapsed(elapsedSeconds)}</span>
-              <button onClick={checkJob} className="btn-secondary">지금 확인</button>
-            </>
-          )}
-          <button onClick={runCollection} disabled={running} className="btn-primary">
-            {running ? (
-              <span className="flex items-center gap-1.5">
-                <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25"/>
-                  <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
-                </svg>
-                실행 중
-              </span>
-            ) : "지금 수집"}
-          </button>
-        </div>
       </div>
 
       {/* 상단 2단 배치 — 기준(좌) / 필터(우). 세로로 길게 쌓이던 두 박스를 나란히 놓아 표가 더 보이게 한다.
@@ -1085,7 +1034,34 @@ export default function OrganicPage() {
         </div>
       </div>
 
-      <div className="px-6 pt-3 pb-6">
+      <div className="px-6 pt-2 pb-6">
+        {/* 액션 버튼 줄 — 상단 sticky 바에서 여기로 내렸다(표 바로 위, 오른쪽 정렬).
+            좁은 화면에서 잘리지 않도록 넘치면 가로 스크롤한다. */}
+        <div className="mb-2 flex items-center justify-end gap-1.5 overflow-x-auto">
+          <button onClick={() => setShowUpload(true)} className="btn-secondary shrink-0">CSV 업로드</button>
+          <button onClick={() => setShowAdd(true)} className="btn-secondary shrink-0">+ 게시물 추가</button>
+          <button onClick={downloadCSV} disabled={filtered.length === 0} className="btn-secondary whitespace-nowrap shrink-0">
+            엑셀 다운로드
+          </button>
+          {running && (
+            <>
+              <span className="text-xs text-a-ink-muted tabular-nums shrink-0">{formatElapsed(elapsedSeconds)}</span>
+              <button onClick={checkJob} className="btn-secondary shrink-0">지금 확인</button>
+            </>
+          )}
+          {/* btn-primary는 테두리가 없어 secondary(30px)보다 2px 낮다. 투명 테두리로 높이를 맞춘다. */}
+          <button onClick={runCollection} disabled={running} className="btn-primary border border-transparent shrink-0">
+            {running ? (
+              <span className="flex items-center gap-1.5">
+                <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25"/>
+                  <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
+                </svg>
+                실행 중
+              </span>
+            ) : "지금 수집"}
+          </button>
+        </div>
         {/* 테이블 */}
         <div className="bg-white rounded-[18px] border border-a-hairline overflow-hidden">
           <div ref={scrollBoxRef} className="overflow-auto max-h-[calc(100vh-120px)]">
@@ -1301,7 +1277,6 @@ export default function OrganicPage() {
           </HelpSection>
           <HelpSection title="버튼 설명">
             <HelpItem label="지금 수집 —">Apify로 유튜브·X·틱톡·네이버 블로그·스레드에서 &apos;라라스윗&apos; 언급 게시물을 자동 수집합니다. (인스타그램은 검색 대신 기존 게시물의 조회수만 갱신)</HelpItem>
-            <HelpItem label="노션 불러오기 —">노션 무상노출 DB를 조회해 새 게시물을 자동으로 추가합니다.</HelpItem>
             <HelpItem label="CSV 업로드 —">자동 수집에서 누락된 게시물이나 수기 정리분을 CSV로 일괄 등록합니다.</HelpItem>
             <HelpItem label="+ 게시물 추가 —">게시물을 개별 수동 등록합니다.</HelpItem>
             <HelpItem label="엑셀 다운로드 —">현재 필터가 적용된 목록을 CSV로 내려받습니다.</HelpItem>
