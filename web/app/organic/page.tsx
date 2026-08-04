@@ -581,8 +581,10 @@ export default function OrganicPage() {
         </div>
       </div>
 
-      {/* 무상 노출 가이드 */}
-      <div className="mx-6 mt-5 mb-2 bg-white border border-gray-200 rounded-lg px-5 py-4 shadow-sm">
+      {/* 상단 2단 배치 — 기준(좌) / 필터(우). 세로로 길게 쌓이던 두 박스를 나란히 놓아 표가 더 보이게 한다.
+          좁은 화면(lg 미만)에서는 자동으로 위아래로 쌓인다. */}
+      <div className="mx-6 mt-5 mb-2 grid gap-3 items-start lg:grid-cols-2">
+      <div className="bg-white border border-gray-200 rounded-lg px-5 py-4 shadow-sm h-full">
         <p className="text-sm font-bold text-a-ink mb-4">📌 무상 노출 기준</p>
         <div className="grid grid-cols-2 gap-6">
           <div>
@@ -627,9 +629,8 @@ export default function OrganicPage() {
         </div>
       </div>
 
-      <div className="px-6 pt-3 pb-6">
-        {/* 필터 바 */}
-        <div className="bg-white rounded-[14px] border border-a-hairline px-4 py-2.5 mb-3">
+        {/* 필터 바 — 위 그리드의 오른쪽 칸 */}
+        <div className="bg-white rounded-[14px] border border-a-hairline px-4 py-2.5 h-full">
           <div className="flex items-center gap-2 flex-wrap">
             <input
               type="text"
@@ -673,9 +674,13 @@ export default function OrganicPage() {
               엑셀 다운로드
             </button>
           </div>
-          {/* 언급 제품 필터 — 독립 행, 줄바꿈 흐름 */}
-          {productOptions.length > 0 && (
-            <div className="flex items-start gap-2.5 mt-2.5 pt-2.5 border-t border-a-hairline">
+        </div>
+      </div>
+
+      {/* 언급 제품 필터 — 칩이 30개 가까이라 2단 안에 넣으면 줄바꿈이 심해진다 → 전체 폭으로 분리 */}
+      {productOptions.length > 0 && (
+        <div className="mx-6 mb-3 bg-white rounded-[14px] border border-a-hairline px-4 py-2.5">
+            <div className="flex items-start gap-2.5">
               <span className="text-xs font-medium text-a-ink-muted shrink-0 pt-1.5">제품</span>
               <div className="flex flex-wrap gap-1.5 flex-1">
                 <button
@@ -705,9 +710,10 @@ export default function OrganicPage() {
                 })}
               </div>
             </div>
-          )}
         </div>
+      )}
 
+      <div className="px-6 pb-6">
         {/* 테이블 */}
         <div className="bg-white rounded-[18px] border border-a-hairline overflow-hidden">
           <div className="overflow-auto max-h-[calc(100vh-120px)]">
