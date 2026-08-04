@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
@@ -605,6 +605,26 @@ export default function OrganicPage() {
             </ul>
           </div>
         </div>
+        {/* 참고 자료 — 새 탭으로 열고, 외부 링크라 noopener 지정 */}
+        <div className="mt-4 pt-3 border-t border-gray-100 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+          <span className="text-[13px] font-semibold text-a-ink">🔗 참고 자료:</span>
+          <a
+            href="https://app.notion.com/p/lalasweet/c933b344ce7f820992c58103f960faa2?v=de13b344ce7f829888a488a6780ccb99"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[13px] text-a-blue underline underline-offset-2 hover:text-a-blue-hover"
+          >
+            소스DB
+          </a>
+          <a
+            href="https://docs.google.com/spreadsheets/d/1wiMJI3c28sLyEULN1DzV3r1ewsqim25EHJr6IDCBfYk/edit?gid=0#gid=0"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[13px] text-a-blue underline underline-offset-2 hover:text-a-blue-hover"
+          >
+            연예인 노출 모음
+          </a>
+        </div>
       </div>
 
       <div className="px-6 pt-3 pb-6">
@@ -1119,3 +1139,4 @@ export default function OrganicPage() {
     </div>
   );
 }
+
