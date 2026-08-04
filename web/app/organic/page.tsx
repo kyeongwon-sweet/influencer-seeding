@@ -1,5 +1,5 @@
 ﻿"use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
@@ -414,13 +414,30 @@ export default function OrganicPage() {
     e.preventDefault();
     e.stopPropagation();
     resizingRef.current = { colIdx, startX: e.clientX, startW: colWidths[colIdx] };
+    // mousemove마다 setState하면 표 전체가 매 프레임 다시 그려져 드래그가 뚝뚝 끊긴다.
+    // 프레임당 1회로 합쳐서 반영한다(rAF 스로틀).
+    let frame: number | null = null;
+    let pendingX = e.clientX;
     const onMove = (ev: MouseEvent) => {
       if (!resizingRef.current) return;
-      const newW = Math.max(50, resizingRef.current.startW + ev.clientX - resizingRef.current.startX);
-      setColWidths(prev => { const next = [...prev]; next[resizingRef.current!.colIdx] = newW; return next; });
+      pendingX = ev.clientX;
+      if (frame !== null) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        const r = resizingRef.current;
+        if (!r) return;
+        const newW = Math.max(50, r.startW + pendingX - r.startX);
+        setColWidths(prev => {
+          if (prev[r.colIdx] === newW) return prev;   // 같은 값이면 리렌더 자체를 건너뛴다
+          const next = [...prev];
+          next[r.colIdx] = newW;
+          return next;
+        });
+      });
     };
     const onUp = () => {
       resizingRef.current = null;
+      if (frame !== null) cancelAnimationFrame(frame);
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
@@ -451,12 +468,15 @@ export default function OrganicPage() {
   }
 
   // 매 렌더(검색 타이핑 등) 전체 재필터/재정렬 방지
+  // 검색어는 타자마다 전체 목록을 다시 거르면 입력이 버벅인다 → 지연값으로 걸러 입력 자체는 즉시 반응하게.
+  const deferredName = useDeferredValue(filters.name);
+
   const filtered = useMemo(() => mentions.filter(m => {
     // (광고) 또는 #광고 패턴만 제외 (내돈내산 있으면 통과)
     const cap = (m.content_summary ?? '').toLowerCase();
     if (!cap.includes('내돈내산') && (cap.includes('(광고)') || cap.includes('#광고'))) return false;
 
-    if (filters.name && !(m.account_name ?? "").toLowerCase().includes(filters.name.toLowerCase())) return false;
+    if (deferredName && !(m.account_name ?? "").toLowerCase().includes(deferredName.toLowerCase())) return false;
     if (filters.platform !== "all" && normPlatform(m.platform) !== filters.platform) return false;
     if (filters.products.length > 0) {
       // 콤마로 구분된 복수 제품 지원: 선택된 제품 중 하나라도 포함되면 통과
@@ -467,7 +487,7 @@ export default function OrganicPage() {
     if (filters.dateFrom && (!m.uploaded_at || m.uploaded_at < filters.dateFrom)) return false;
     if (filters.dateTo && (!m.uploaded_at || m.uploaded_at > filters.dateTo)) return false;
     return true;
-  }), [mentions, filters]);
+  }), [mentions, deferredName, filters.platform, filters.products, filters.exposureType, filters.dateFrom, filters.dateTo]);
 
   const hasFilter = filters.name !== "" || filters.platform !== "all" || filters.products.length > 0 || filters.exposureType !== "all" || filters.dateFrom !== "" || filters.dateTo !== "";
 
@@ -500,6 +520,14 @@ export default function OrganicPage() {
     const cmp = av < bv ? -1 : av > bv ? 1 : 0;
     return sortDir === "asc" ? cmp : -cmp;
   }), [filtered, sortCol, sortDir]);
+
+  // 화면에 그릴 행 수 제한 — 700행 전부를 DOM에 올리면(행마다 셀 8개 + 수정 아이콘 여러 개)
+  // 첫 렌더가 느리고, 필터·정렬·셀 편집 같은 사소한 상태 변화마다 전부 다시 그려 버벅인다.
+  const PAGE_SIZE = 100;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  // 조건이 바뀌면 처음부터 다시 보여준다(스크롤 위치와 어긋나지 않게).
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [deferredName, filters.platform, filters.products, filters.exposureType, filters.dateFrom, filters.dateTo, sortCol, sortDir]);
+  const visibleRows = useMemo(() => sorted.slice(0, visibleCount), [sorted, visibleCount]);
 
   function rsTH(col: string, colIdx: number, sortable = true, right = false) {
     const active = sortCol === col;
@@ -738,7 +766,7 @@ export default function OrganicPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sorted.map(m => {
+                  {visibleRows.map(m => {
                     const thumb = m.thumbnail_url || getThumbnailUrl(m.url);
                     const platformShort = platformLabel(m.platform);
                     return (
@@ -972,6 +1000,24 @@ export default function OrganicPage() {
                       <td colSpan={10} className="px-5 py-12 text-center">
                         <p className="text-sm text-a-ink-muted mb-2">필터 조건에 맞는 게시물이 없습니다.</p>
                         <button onClick={() => setFilters(INIT_FILTERS)} className="text-xs text-a-blue hover:underline">필터 초기화</button>
+                      </td>
+                    </tr>
+                  )}
+                  {sorted.length > visibleRows.length && (
+                    <tr>
+                      <td colSpan={10} className="px-5 py-4 text-center border-t border-a-hairline">
+                        <button
+                          onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
+                          className="btn-secondary"
+                        >
+                          더 보기 ({visibleRows.length.toLocaleString()} / {sorted.length.toLocaleString()})
+                        </button>
+                        <button
+                          onClick={() => setVisibleCount(sorted.length)}
+                          className="btn-ghost ml-2"
+                        >
+                          전체 표시
+                        </button>
                       </td>
                     </tr>
                   )}
