@@ -14,7 +14,7 @@ function LinkChip({ href, icon, label }: { href: string; icon: React.ReactNode; 
 
 export default function GlobalActions() {
   return (
-    <div className="fixed top-0 right-0 z-[60] h-11 flex items-center gap-2 px-4">
+    <div className="fixed top-0 right-0 z-[60] h-11 flex items-center gap-2 px-4 bg-white/80 backdrop-blur-sm rounded-bl-2xl">
       <LinkChip
         href="https://www.tiktok.com/"
         label="TikTok"
