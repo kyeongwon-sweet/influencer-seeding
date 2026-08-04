@@ -3,7 +3,19 @@
 
 
 
+
 # AI Shared Status
+
+## 2026-08-04 [Claude 완료·정정] 무상노출 정규화 중복 1건 병합 + **`url` 유니크 제약은 이미 존재**(양쪽 오판 정정)
+- **🚨 정정: `organic_mentions.url`에 유니크 제약이 원래부터 있다.** 병합 첫 시도에서 `23505 duplicate key value violates unique constraint "organic_mentions_url_key"`가 떴다. Codex의 "DDL 권한 부재로 UNIQUE 미적용" 기록과 내 "지금 걸면 된다"는 제안 **둘 다 틀렸다** — 이미 걸려 있었다(제약명이 컬럼 UNIQUE 기본형).
+  - 이게 exact 중복이 0건이던 이유다(우연이 아니라 DB가 막고 있었음). 그런데도 1건이 뚫린 건 `.../8h8lQw9LjcQ` vs `.../8h8lQw9LjcQ/` 로 **문자열이 달랐기 때문**.
+  - **결론: 추가 DDL 불필요.** `ac0b6fa`로 앱이 항상 표준형으로 저장하므로 기존 유니크 제약이 이제 실효적으로 작동한다. `normalized_key` 컬럼 설계는 IG 계정경로형처럼 형태가 더 크게 갈리는 경우까지 막고 싶을 때의 선택지로 남긴다.
+- **병합 처리(사용자 승인 "1. 진행 / 2. 갱신")**: 같은 유튜브 쇼츠 `8h8lQw9LjcQ` 2행 → 1행.
+  - 남긴 행 `d65c59df…`: url `https://www.youtube.com/shorts/8h8lQw9LjcQ/`(표준형) · platform `youtube`→`유튜브` · view_count **2,584**(2026-08-04 유튜브 실측) · 사람이 쓴 문구는 notes로 보존.
+  - 삭제 행 `7c93faf0…`: 수기 12,200 — 실측 2,584의 약 5배 **오입력**으로 확정(영상 제목이 남긴 행 캡션과 일치).
+  - 백업 `scratchpad/organic_dup_backup_20260804.json`. 처리 후 **701행, 정규화 중복 0그룹** 재확인.
+- **⚠️ 작업 순서 주의**: 유니크 제약 때문에 **중복 행을 먼저 삭제한 뒤 남길 행의 url을 표준형으로 갱신**해야 한다. 순서를 바꾸면 23505로 실패한다(첫 시도가 그래서 실패, 데이터 변경은 없었음).
+- **교훈**: 스키마 제약은 추측하지 말고 **쓰기를 시도해 확인**할 것. 그리고 "중복 0건"을 말할 땐 **exact인지 정규화 기준인지 반드시 명시**할 것(내가 exact만 보고 0건이라 보고했다가 Codex가 정규화 중복 1건을 찾았다).
 
 ## 2026-08-04 [Codex 완료] 무상노출 중복 차단 배포 + DB 인덱스 사전점검
 - **프로덕션 배포:** Claude 인계 커밋 `ac0b6fa`(무상노출 링크 중복 추가 차단)와 `a666339`(무상노출 기준 박스 참고자료 링크 2개)를 포함한 main을 Vercel production에 배포했다. 배포 `dpl_3TdrccSfhcuFukzyHSZWQowqNaV8`, alias `https://influencer-seeding-mu.vercel.app`, `readyState=READY`. `/organic` HTTP 200 확인.
