@@ -1,16 +1,23 @@
 name: Auto End Reconcile
 
 on:
+  schedule:
+    - cron: "17 15 * * *"  # 매일 00:17 KST — 00:41 자정수집 전에 오래된 글 종료
   workflow_dispatch:
     inputs:
       target_date:
-        description: "KST 기준 판정일 YYYY-MM-DD"
-        required: true
-        default: "2026-07-14"
+        description: "KST 기준 판정일 YYYY-MM-DD (비우면 오늘)"
+        required: false
+        default: ""
       apply:
         description: "true면 DB ended_at 적용, false면 dry-run만"
-        required: true
-        default: "false"
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: auto-end-reconcile
+  cancel-in-progress: false
 
 jobs:
   reconcile:
@@ -27,19 +34,35 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Reconcile auto-end state
+        id: reconcile
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
+          target_date="${{ inputs.target_date }}"
+          if [ -z "$target_date" ]; then
+            target_date=$(TZ=Asia/Seoul date +%F)
+          fi
+
           flag=""
+          end_only=""
+          apply_mode="dry-run"
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            flag="--apply"
+            end_only="--end-only"
+            apply_mode="scheduled-end-only"
+          fi
           if [ "${{ inputs.apply }}" = "true" ]; then
             flag="--apply"
+            apply_mode="manual-apply"
           fi
-          python scripts/reconcile_auto_end.py --target-date "${{ inputs.target_date }}" $flag
+          echo "target_date=$target_date" >> "$GITHUB_OUTPUT"
+          echo "apply_mode=$apply_mode" >> "$GITHUB_OUTPUT"
+          python scripts/reconcile_auto_end.py --target-date "$target_date" $flag $end_only
 
       - name: Upload reconcile report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: auto-end-reconcile-${{ inputs.target_date }}-${{ inputs.apply }}
-          path: data/output/auto-end-reconcile-${{ inputs.target_date }}.json
+          name: auto-end-reconcile-${{ steps.reconcile.outputs.target_date }}-${{ steps.reconcile.outputs.apply_mode }}
+          path: data/output/auto-end-reconcile-${{ steps.reconcile.outputs.target_date }}.json

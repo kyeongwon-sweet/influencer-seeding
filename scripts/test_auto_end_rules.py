@@ -73,6 +73,27 @@ def test_caption_end_keyword_still_forces_end():
     assert decision.reason == "caption_keyword"
 
 
+def test_manual_ended_at_field_is_never_auto_ended():
+    decision = classify_auto_end(
+        _post(manual_fields=["ended_at"]),
+        target_date="2026-07-15",
+        max_metric=100_000,
+    )
+    assert decision.should_end is False
+    assert decision.reason == "manual_ended_at"
+
+
+def test_manual_stat_tracked_post_is_never_auto_ended():
+    decision = classify_auto_end(
+        _post(),
+        target_date="2026-07-15",
+        max_metric=100_000,
+        manual_tracked=True,
+    )
+    assert decision.should_end is False
+    assert decision.reason == "manual_stat_tracked"
+
+
 def _run_all():
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):

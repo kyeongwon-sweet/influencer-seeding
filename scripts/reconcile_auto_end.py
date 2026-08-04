@@ -17,7 +17,7 @@ from auto_end_rules import classify_auto_end, row_metric
 PAGE = 1000
 POST_SELECT = (
     "id,url,posted_at,account_name,company_name,project_name,product_name,"
-    "channel_type,content_summary,notes,ended_at,reach_count,created_at"
+    "channel_type,asset_name,content_summary,notes,ended_at,reach_count,created_at,manual_fields"
 )
 STAT_SELECT = "post_id,measured_at,play_count,reach_count,manual,created_at"
 
@@ -76,6 +76,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Reconcile sponsored_posts.ended_at from the canonical auto-end rules.")
     parser.add_argument("--target-date", default=kst_today())
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument(
+        "--end-only",
+        action="store_true",
+        help="종료 대상만 적용하고 기존 ended_at은 절대 해제하지 않는다(일일 예약 안전 모드).",
+    )
     parser.add_argument("--out", default="")
     args = parser.parse_args()
 
@@ -84,11 +89,14 @@ def main() -> int:
     stats = fetch_stats_for_posts(client, [p["id"] for p in posts])
 
     max_metric_by_post: dict[str, int] = {}
+    manual_tracked_ids: set[str] = set()
     for row in stats:
         metric = row_metric(row)
         pid = row["post_id"]
         if metric > max_metric_by_post.get(pid, 0):
             max_metric_by_post[pid] = metric
+        if row.get("manual"):
+            manual_tracked_ids.add(pid)
 
     classifications = []
     to_end: list[str] = []
@@ -101,16 +109,17 @@ def main() -> int:
             post,
             target_date=args.target_date,
             max_metric=max(max_metric_by_post.get(post["id"], 0), row_metric(post)),
+            manual_tracked=(post["id"] in manual_tracked_ids),
         )
         current_ended = bool(post.get("ended_at"))
         desired_ended_at = args.target_date if decision.should_end else None
         if decision.should_end and not current_ended:
             action = "end"
             to_end.append(post["id"])
-        elif not decision.should_end and current_ended:
+        elif not decision.should_end and current_ended and not args.end_only:
             action = "clear"
             to_clear.append(post["id"])
-        elif decision.should_end and current_ended:
+        elif current_ended:
             action = "keep_ended"
             keep_ended += 1
         else:
@@ -139,6 +148,7 @@ def main() -> int:
     summary = {
         "target_date": args.target_date,
         "apply": args.apply,
+        "end_only": args.end_only,
         "total_posts": len(posts),
         "to_end": len(to_end),
         "to_clear": len(to_clear),
