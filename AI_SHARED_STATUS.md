@@ -3,6 +3,12 @@
 
 # AI Shared Status
 
+## 2026-08-04 [Codex 완료] ufo__blue 삭제 종료 + 값 정체 알림 post key 표기
+- **시트 정본 종료:** `콘텐츠 대시보드 연동`의 `ufo__blue` `DbArSYTujGW`를 URL·게시일로 특정해 `O1156`을 `트래킹 중 → 트래킹 종료`로 변경했다. 재조회값은 `A1156=2026. 7. 20`, `B1156=https://www.instagram.com/reel/DbArSYTujGW/?...`, `O1156=트래킹 종료`, Drive 저장 완료. 백업은 `C:\Users\hwangkw\Documents\인지 증분 대시보드\backups\ufo_blue_tracking_end_backup_20260804.json`.
+- **양방향 반영 검증:** 시트 편집 트리거 후 DB 직접 조회에서 해당 게시물(`id=7b397b48-9c44-4fad-9b9c-9a763b65de85`)의 `ended_at=2026-08-04`, `manual_fields=[]` 확인. 시트·DB가 모두 종료 상태다.
+- **알림 특정성 개선:** `web/lib/formula-audit.ts`의 값 정체 노트를 `값정체 {채널명} ({row.key}): ...` 형식으로 변경했다. 실제 키는 `ig:DbArSYTujGW` 형태라 같은 계정의 여러 게시물도 바로 구분된다.
+- **회귀 테스트:** shortcode가 노트에 포함되는 테스트를 추가했다. web test 139/139, `tsc --noEmit`, production build 모두 통과.
+
 ## 2026-08-04 [Claude 진단·➡️Codex 2건 인계] 값정체 ufo__blue = 삭제 게시물 특정 + 알림 URL 미표기 개선
 - **사용자 신고**: formula-audit "🟠 값정체 ufo__blue: 마지막 실측 없음(게시 07-20)" — 바이럴은 한 계정에 여러 글이라 계정명만으론 **어느 글인지 특정 불가**.
 - **특정+진단(Claude 실측)**: ufo__blue는 DB에 **11개 게시물**. 정체건 = **`/p/DbArSYTujGW/`**(id `7b397b48`, 07-20 게시, 바이럴 영상). **측정 이력 0건**(한 번도 안 걷힘). Apify 프로브 = **`not_found` "Post does not exist" = 삭제됨**. → 알림의 '삭제 의심' 정답.

@@ -165,7 +165,7 @@ export function auditRows(
         const lastMeasured = measuredDates.length ? measuredDates[measuredDates.length - 1] : null;
         if (!lastMeasured || lastMeasured < staleCutoff) {
           res.stale += 1;
-          staleNote(`값정체 ${row.label}: 마지막 실측 ${lastMeasured ?? "없음"} (게시 ${p0!.posted})`);
+          staleNote(`값정체 ${row.label} (${row.key}): 마지막 실측 ${lastMeasured ?? "없음"} (게시 ${p0!.posted})`);
         }
       }
     }

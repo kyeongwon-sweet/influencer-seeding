@@ -20,13 +20,13 @@ function mkPost(measured: Array<[string, number]> = [], over: Partial<AuditPost>
   };
 }
 
-function mkRow(label: string, dates: Array<[string, number]>): SheetAuditRow {
+function mkRow(label: string, dates: Array<[string, number]>, key = label): SheetAuditRow {
   const ds = dates.map(([date, value]) => ({ date, value }));
   const last = ds.length ? ds[ds.length - 1].value : null;
   const max = ds.length ? Math.max(...ds.map(d => d.value)) : null;
   const prevMax = ds.length > 1 ? Math.max(...ds.slice(0, -1).map(d => d.value)) : null;
   return {
-    key: label,
+    key,
     label,
     h: max,                                            // 누적 = 그 행 최대(정합)
     inc: ds.length ? (prevMax === null ? last : Math.max(0, (last as number) - prevMax)) : null,
@@ -42,9 +42,17 @@ test("사고 재현: 실측이 7/30에서 멈췄으면 정체로 잡는다", () 
   const row = mkRow("Ufo__green", [["2026-07-29", 3000], ["2026-07-30", 3655]]);
   const r = run([row], [["Ufo__green", mkPost([["2026-07-29", 3000], ["2026-07-30", 3655]])]]);
   assert.equal(r.stale, 1);
-  assert.match(r.staleNotes[0], /값정체 Ufo__green: 마지막 실측 2026-07-30/);
+  assert.match(r.staleNotes[0], /값정체 Ufo__green \(Ufo__green\): 마지막 실측 2026-07-30/);
   // 수식 자체는 정합이라 기존 지표는 깨끗해야 한다 — 그게 이 사각의 본질
   assert.equal(r.h.errorCells + r.h.emptyButData + r.inc.errorCells + r.inc.mismatch, 0);
+});
+
+test("값 정체 알림은 같은 계정의 여러 게시물을 구분할 수 있게 URL key를 포함한다", () => {
+  const key = "ig:DbArSYTujGW";
+  const row = mkRow("ufo__blue", [], key);
+  const r = run([row], [[key, mkPost([])]]);
+  assert.equal(r.stale, 1);
+  assert.match(r.staleNotes[0], /값정체 ufo__blue \(ig:DbArSYTujGW\): 마지막 실측 없음/);
 });
 
 test("🚨 시트가 '공백 이어받기'로 최근 날짜까지 채워져 있어도, 실측이 끊겼으면 정체로 잡는다", () => {
