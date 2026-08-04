@@ -2298,6 +2298,60 @@ function parseCreator_(name) {
   return result;
 }
 
+function isCreatorParseSource_(value) {
+  return !!value && String(value).trim().charAt(0) === "[";
+}
+
+function auditCreatorAssetIntegrity_() {
+  const sheet = getSheet_();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < CONFIG.DATA_START_ROW) return { issue_count: 0, samples: [] };
+  const fieldCols = buildFieldCols_(sheet);
+  const sourceCol = findHeaderCol_(sheet, ["소재명"]);
+  const plannerCol = findHeaderCol_(sheet, ["기획자"]);
+  const makerCol = findHeaderCol_(sheet, ["제작자", "PD", "디자이너"]);
+  if (!sourceCol || !plannerCol || !makerCol) return { issue_count: 0, samples: [] };
+
+  const n = lastRow - CONFIG.DATA_START_ROW + 1;
+  const lastCol = sheet.getLastColumn();
+  const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, n, lastCol).getValues();
+  const issues = [];
+  for (let i = 0; i < n; i++) {
+    const row = CONFIG.DATA_START_ROW + i;
+    const asset = String(values[i][sourceCol - 1] || "").trim();
+    const planner = String(values[i][plannerCol - 1] || "").trim();
+    const maker = String(values[i][makerCol - 1] || "").trim();
+    if (!planner && !maker) continue;
+    if (isCreatorParseSource_(asset)) continue;
+    const url = fieldCols.url ? String(values[i][fieldCols.url - 1] || "").trim() : "";
+    issues.push({ row: row, planner: planner, maker: maker, asset: asset, url: url });
+  }
+
+  const result = {
+    issue_count: issues.length,
+    samples: issues.slice(0, 20).map(function(item) {
+      return {
+        row: item.row,
+        planner: item.planner,
+        maker: item.maker,
+        asset: item.asset,
+        url: item.url,
+      };
+    }),
+  };
+  if (issues.length) {
+    Logger.log("creator_asset_integrity_issue " + JSON.stringify(result));
+    SpreadsheetApp.getActive().toast(
+      "소재명 없이 기획자/제작자가 채워진 행 " + issues.length + "건 감지",
+      "⚠️ 제작자 오적재 의심",
+      8
+    );
+  } else {
+    Logger.log("creator_asset_integrity_ok " + JSON.stringify(result));
+  }
+  return result;
+}
+
 function syncCreators() {
   const sheet = getSheet_();
   const lastRow = sheet.getLastRow();
@@ -2308,47 +2362,46 @@ function syncCreators() {
   const makerCol = findHeaderCol_(sheet, ["제작자", "PD", "디자이너"]);
   if (!fieldCols.url || !sourceCol || !plannerCol || !makerCol) return true;
   const n = lastRow - CONFIG.DATA_START_ROW + 1;
-  const urls = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.url, n, 1).getValues();
   const source = sheet.getRange(CONFIG.DATA_START_ROW, sourceCol, n, 1).getValues();
-  const plannerByKey = {};
-  const makerByKey = {};
+  const planners = sheet.getRange(CONFIG.DATA_START_ROW, plannerCol, n, 1).getValues();
+  const makers = sheet.getRange(CONFIG.DATA_START_ROW, makerCol, n, 1).getValues();
+  const plannerEdits = [];
+  const makerEdits = [];
   let invalidPlannerSkipped = 0;
   let invalidMakerSkipped = 0;
+  let nonFileNameSkipped = 0;
   for (let i = 0; i < n; i++) {
-    const key = linkKey_(String(urls[i][0] || ""));
-    if (!key) continue;
-    const parsed = parseCreator_(source[i][0]);
+    const asset = String(source[i][0] || "").trim();
+    if (!isCreatorParseSource_(asset)) {
+      nonFileNameSkipped++;
+      continue;
+    }
+    const parsed = parseCreator_(asset);
     if (parsed.mk) {
-      if (isValidLinkedPersonName_(parsed.mk)) plannerByKey[key] = parsed.mk;
+      if (isValidLinkedPersonName_(parsed.mk)) {
+        const currentPlanner = planners[i][0];
+        if ((currentPlanner === "" || currentPlanner == null) && currentPlanner !== parsed.mk) {
+          plannerEdits.push({ row: CONFIG.DATA_START_ROW + i, value: parsed.mk });
+        }
+      }
       else invalidPlannerSkipped++;
     }
     if (parsed.pd) {
-      if (isValidLinkedPersonName_(parsed.pd)) makerByKey[key] = parsed.pd;
+      if (isValidLinkedPersonName_(parsed.pd)) {
+        const currentMaker = makers[i][0];
+        if ((currentMaker === "" || currentMaker == null) && currentMaker !== parsed.pd) {
+          makerEdits.push({ row: CONFIG.DATA_START_ROW + i, value: parsed.pd });
+        }
+      }
       else invalidMakerSkipped++;
     }
   }
 
-  // URL을 쓰기 직전에 다시 읽어 현재 행을 찾고, 빈 셀만 연속행 단위로 기록한다.
-  // 수동 기획자/제작자 값은 predicate가 false라 절대 덮지 않는다.
-  const blankOnly = function(current) { return current === "" || current == null; };
-  const plannerFilled = writeColumnByKey_(
-    sheet,
-    CONFIG.DATA_START_ROW,
-    fieldCols.url,
-    plannerCol,
-    plannerByKey,
-    linkKey_,
-    blankOnly
-  );
-  const makerFilled = writeColumnByKey_(
-    sheet,
-    CONFIG.DATA_START_ROW,
-    fieldCols.url,
-    makerCol,
-    makerByKey,
-    linkKey_,
-    blankOnly
-  );
+  // 자기 행 소재명에서 파싱된 값만 자기 행의 빈칸에 쓴다. URL key 기반 전파 금지.
+  const expectedLastRow = sheet.getLastRow();
+  const plannerFilled = writeColumnRuns_(sheet, plannerCol, plannerEdits, expectedLastRow);
+  const makerFilled = writeColumnRuns_(sheet, makerCol, makerEdits, expectedLastRow);
+  auditCreatorAssetIntegrity_();
   SpreadsheetApp.getActive().toast(
     "기획자/제작자 빈칸 채움: " + (plannerFilled + makerFilled) + "칸",
     "완료",
@@ -2359,6 +2412,7 @@ function syncCreators() {
     maker_filled: makerFilled,
     invalid_planner_skipped: invalidPlannerSkipped,
     invalid_maker_skipped: invalidMakerSkipped,
+    non_file_name_skipped: nonFileNameSkipped,
   }));
   return true;
 }

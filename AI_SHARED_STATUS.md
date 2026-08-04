@@ -6,6 +6,14 @@
 
 # AI Shared Status
 
+## 2026-08-04 [Codex 진행] 제작자 자동채움 전파 차단 + DB 워치독 추가
+- **원인 코드 확인:** repo `syncCreators`가 기존에 `URL key → 기획자/제작자` 맵을 만든 뒤 `writeColumnByKey_`로 다시 쓰는 구조였다. 이 구조는 같은 키/행 재정렬/키 매칭 이상 시 **그 행 자신의 소재명에서 파싱되지 않은 값이 다른 행으로 전파**될 수 있다.
+- **repo 수정:** `Combined_Sheet_AppsScript.gs`의 `syncCreators`를 행 단위로 변경했다. 이제 **소재명 셀이 `[`로 시작하는 브래킷 파일명일 때만** `parseCreator_`를 실행하고, 파싱된 값은 **같은 행의 빈 기획자/제작자 셀에만** 쓴다. `plannerByKey`/`makerByKey`/`writeColumnByKey_` 경로는 제작자 자동채움에서 제거했다.
+- **감지 가드:** `auditCreatorAssetIntegrity_()` 추가. 소재명이 브래킷 파일명이 아닌데 기획자/제작자가 있으면 `creator_asset_integrity_issue` 로그와 toast로 감지한다. `syncCreators` 마지막에 호출된다.
+- **DB 워치독:** `scripts/audit_invalid_creator_fields.py` + `.github/workflows/invalid-creator-fields.yml` 추가. 매일 10:25 KST에 `sponsored_posts`를 읽어 `asset_name/project_name`이 브래킷 파일명이 아닌데 `creator/planner`가 채워진 행을 세고, 이상이 있으면 Slack DM으로 알린다. 기본은 읽기 전용이며, 수동 dispatch에서 `apply=true`일 때만 백업 후 선택 필드(`creator` 기본)를 지운다.
+- **검증:** Apps Script 문법 check 통과, `web` 전체 `npm test` 160/160 통과, `tsc --noEmit` 통과, Python compile 통과. `npm run lint`는 이번 수정과 무관한 기존 `web/lib/meta-instagram-comments.ts:62 no-explicit-any` 1건 때문에 실패(경고 15개는 기존).
+- **주의:** 라이브 Apps Script는 repo 정본과 래퍼 구조(`__wgimpl`) divergence가 있으므로 전체 `clasp push` 금지. 라이브 반영 시 fresh `clasp pull`/서버본 기준으로 `syncCreators`와 `auditCreatorAssetIntegrity_`만 함수 단위 graft해야 한다.
+
 ## 2026-08-04 [⭐마스터 재발방지·➡️Codex] "데이터 불변식 일일 감사" 통합 — 반복사고 단일 근본 차단
 - **사용자(반복 지적)**: "왜 자꾸 이런 실수를 해? 재발방지 단단히 해." 이번 세션 반복사고(자정수집 SUMMARY_FILE·배너 자동종료 12일·제작자 오적재 455·증분 전멸·행밀림)의 **단일 근본 = 자동 쓰기는 많은데 결과가 맞는지 감시하는 '불변식' 계층이 없다** → 틀린 값/미실행이 조용히 쌓이다 사람이 눈으로 발견. (다세션 속도개발 + 라이브 Apps Script 발산이 악화)
 - **➡️ 단단한 대책 = 개별 알림 말고 '데이터 불변식 일일 감사' 하나로 통합**(formula-audit 확장 or 신규 크론). 매일 아래 위반 건수 세서 >0이면 슬랙(위반=자동화가 틀렸다는 신호):

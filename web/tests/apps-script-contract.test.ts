@@ -411,18 +411,26 @@ test("fillCaptionFromAsset_ keeps the live existing-caption self-heal", () => {
   assert.match(body, /split\("_"\)\[8\]/);
 });
 
-test("syncCreators only fills blanks and preserves manual planner/creator values", () => {
+test("syncCreators fills planner/creator only from the same row asset name", () => {
   const start = appsScript.indexOf("function syncCreators()");
   const end = appsScript.indexOf("function getPricingSheet_()", start);
   const body = appsScript.slice(start, end);
-  assert.match(body, /const blankOnly = function\(current\)/);
-  assert.equal((body.match(/writeColumnByKey_\(/g) ?? []).length, 2);
-  assert.match(body, /plannerByKey,[\s\S]*?linkKey_,[\s\S]*?blankOnly/);
-  assert.match(body, /makerByKey,[\s\S]*?linkKey_,[\s\S]*?blankOnly/);
+  assert.match(appsScript, /function isCreatorParseSource_\(/);
+  assert.match(appsScript, /function auditCreatorAssetIntegrity_\(/);
+  assert.match(body, /if \(!isCreatorParseSource_\(asset\)\)/);
+  assert.match(body, /plannerEdits\.push\(\{ row: CONFIG\.DATA_START_ROW \+ i, value: parsed\.mk \}\)/);
+  assert.match(body, /makerEdits\.push\(\{ row: CONFIG\.DATA_START_ROW \+ i, value: parsed\.pd \}\)/);
+  assert.match(body, /writeColumnRuns_\(sheet, plannerCol, plannerEdits, expectedLastRow\)/);
+  assert.match(body, /writeColumnRuns_\(sheet, makerCol, makerEdits, expectedLastRow\)/);
+  assert.match(body, /auditCreatorAssetIntegrity_\(\)/);
+  assert.doesNotMatch(body, /plannerByKey|makerByKey/);
+  assert.doesNotMatch(body, /writeColumnByKey_\(/);
+  assert.doesNotMatch(body, /linkKey_\(/);
   assert.match(body, /isValidLinkedPersonName_\(parsed\.mk\)/);
   assert.match(body, /isValidLinkedPersonName_\(parsed\.pd\)/);
   assert.match(body, /invalid_planner_skipped: invalidPlannerSkipped/);
   assert.match(body, /invalid_maker_skipped: invalidMakerSkipped/);
+  assert.match(body, /non_file_name_skipped: nonFileNameSkipped/);
   assert.doesNotMatch(body, /setValues\(planners\)|setValues\(makers\)/);
 });
 
