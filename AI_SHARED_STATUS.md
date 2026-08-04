@@ -6,7 +6,8 @@
 - **시트 단일작성 완료:** 정본 시트 `콘텐츠 대시보드 연동`에서 URL과 날짜 헤더를 재확인한 뒤 `nasso_home` `DaU7ckzvS0X`의 07-29(`CK700`)·07-30(`CL700`), `moduhappy` `DbVKzIMz4s4`의 08-02(`CO1456`) 값만 비웠다. Drive 저장 완료와 세 셀 공백을 재조회해 확인했다.
 - **동시 변경 인지:** Claude 인계 시 nasso 두 칸은 324,433/332,000이었지만 Codex 쓰기 직전 라이브 값은 자동 이어받기 3,261/3,261이었다. 실측 없는 날짜이므로 최종 공백 정책은 동일하다. 현재값 기준 백업은 `C:\Users\hwangkw\Documents\인지 증분 대시보드\backups\overrecord_sheet_backup_20260804.json`.
 - **보존 검증:** 08-03 실측 `nasso_home=3,281`(`CP700`), `moduhappy=40,804`(`CP1456`)와 두 URL은 변형 없이 유지됐다. 따라서 추가 `exportStats`는 불필요하고, 공백을 다시 이어받기 값으로 채울 위험을 피하려 실행하지 않았다.
-- **`ufo__orange` 판정 확정:** `Dbaa_-_y3pq`는 2026-08-04 02:30 KST경 자정수집 run `30836851602`에서 Apify가 **94,261**을 실제 반환했다. 로그: `clamp ... (94261 → 117000)`. 수기 117,000보다 낮다는 이유로 monotonic 클램프가 실제값을 버렸으므로 **117,000 과대기록이 확정**됐다. 이 단계에서는 요청대로 재수집 판정만 했고, 정확한 08-02 실측은 없으므로 임의 보정하지 않았다.
+- **`ufo__orange` 판정·정정 완료:** `Dbaa_-_y3pq`는 2026-08-04 02:30 KST경 자정수집 run `30836851602`에서 Apify가 **94,261**을 실제 반환했다. 로그: `clamp ... (94261 → 117000)`. 수기 117,000보다 낮다는 이유로 monotonic 클램프가 실제값을 버렸으므로 **117,000 과대기록이 확정**됐다. 운영 단건 수정 API(HTTP 200)와 시트를 함께 맞춰 **08-02는 실측 없음으로 NULL/공백**, **08-03은 94,261**로 정정했다. 시트 위치는 `CO1580`/`CP1580`, 백업은 `C:\Users\hwangkw\Documents\인지 증분 대시보드\backups\ufo_orange_stat_backup_20260804.json`.
+- **시트 무결성 확인:** URL `B1580`, 날짜 헤더 `CO1=2026-08-02`·`CP1=2026-08-03`, 정정 후 `CO1580` 공백·`CP1580=94,261`, Drive 저장을 재검증했다. 검색 입력칸 식별 중 A1이 잠시 편집됐으나 즉시 원래 헤더 `업로드일`로 복구하고 재조회해 일치 확인했다.
 - **배포 중복 방지:** `57f0e34`는 이미 `origin/main` 조상이며 `audit-fallback`의 `OPS_GITHUB_TOKEN` 규약도 현재 main/prod에 포함돼 있어 재배포하지 않는다.
 - **라이브 안전장치 재확인:** 2026-08-04 fresh `clasp pull` 기준 `AUTO_WRITE_TAIL_GUARD_MS`, `auditLinkedSheetFormulas_`, `buildUrlKeyIndex_`/`writeColumnByKey_`가 라이브 메인 파일에 모두 존재하며 전체 소스 문법 검사도 통과했다. `32a790c` 미반영 인계는 이미 해소된 상태이므로 중복 graft하지 않는다. 읽기 전용 백업은 `C:\Users\hwangkw\Documents\인지 증분 대시보드\backups\apps-script-live-20260804\`.
 
