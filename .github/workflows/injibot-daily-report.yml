@@ -19,6 +19,21 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Install dependencies
+        run: pip install supabase==2.15.1
+      - name: Check overdue auto-end backlog
+        id: auto_end_watchdog
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TZ: "Asia/Seoul"
+        run: |
+          target_date=$(TZ=Asia/Seoul date +%F)
+          python scripts/reconcile_auto_end.py \
+            --target-date "$target_date" \
+            --end-only \
+            --out data/output/auto-end-watchdog.json
       - name: Send injibot daily report
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -26,4 +41,6 @@ jobs:
           INJIBOT_SLACK_TOKEN: ${{ secrets.INJIBOT_SLACK_TOKEN }}
           PYTHONUTF8: "1"
           TZ: "Asia/Seoul"
+          AUTO_END_WATCHDOG_REPORT: data/output/auto-end-watchdog.json
+          AUTO_END_WATCHDOG_OUTCOME: ${{ steps.auto_end_watchdog.outcome }}
         run: python scripts/daily_collect_report.py --send

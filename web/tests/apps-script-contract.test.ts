@@ -646,3 +646,16 @@ test("sheet-to-DB confirmation and result report diff-only server outcome", () =
   assert.match(runBody, /새로 추가: \$\{created\}건/);
   assert.match(runBody, /값이 달라 수정: \$\{filled\}건/);
 });
+
+test("B-column URL cleanup is rerunnable and fails closed on key drift", () => {
+  const cleanupScript = readFileSync(
+    new URL("../../apps-script/cleanup_url_params_20260730.gs", import.meta.url),
+    "utf8",
+  );
+  assert.match(cleanupScript, /function cleanupUrlParamsBColumn20260730\(\)/);
+  assert.match(cleanupScript, /if \(!targets\.length\)/);
+  assert.match(cleanupScript, /Join key changed at row/);
+  assert.match(cleanupScript, /_codex_url_param_backup_/);
+  assert.match(cleanupScript, /remainingQuestionMarks/);
+  assert.doesNotMatch(cleanupScript, /EXPECTED_TOTAL|EXPECTED_COUNTS/);
+});

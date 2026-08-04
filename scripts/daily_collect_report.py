@@ -19,6 +19,38 @@ ENV_PATHS = [
     r"C:\Users\hwangkw\AI\.claude\influencer-seeding\scripts\.env",
 ]
 
+
+def load_auto_end_watchdog(report_path, outcome="success"):
+    """독립 자동종료 검사 결과를 Slack 리포트용으로 정규화한다."""
+    if outcome and outcome != "success":
+        return {
+            "ok": False,
+            "count": None,
+            "line": "🚨 자동종료 워치독 검사 실패 — 종료 누락 여부를 확인할 수 없습니다.",
+            "items": [],
+        }
+    try:
+        with open(report_path, encoding="utf-8") as f:
+            report = json.load(f)
+        items = report.get("to_end") or []
+        count = int((report.get("summary") or {}).get("to_end", len(items)))
+    except Exception as exc:
+        return {
+            "ok": False,
+            "count": None,
+            "line": "🚨 자동종료 워치독 결과 없음 — 종료 누락 여부를 확인할 수 없습니다.",
+            "items": [],
+            "error": type(exc).__name__,
+        }
+    if count > 0:
+        return {
+            "ok": False,
+            "count": count,
+            "line": f"🚨 자동종료 누락 {count}건 — 일일 종료 작업 실패·지연 확인 필요",
+            "items": items,
+        }
+    return {"ok": True, "count": 0, "line": "자동종료 누락 0건", "items": []}
+
 def load_env():
     # os.environ 우선(GHA 시크릿) → 없으면 로컬 .env 파일(예약작업)
     env = dict(os.environ)
@@ -205,6 +237,11 @@ def main():
     status_word = "성공" if success else "실패"
     status_icon = "✅ 성공" if success else "⚠️ 실패"
 
+    watchdog = load_auto_end_watchdog(
+        env.get("AUTO_END_WATCHDOG_REPORT", "data/output/auto-end-watchdog.json"),
+        env.get("AUTO_END_WATCHDOG_OUTCOME", "success"),
+    )
+
     body = (
         "📊 자정 수집 %s 알림 (%s)\n\n"
         "• %s  %s 수집\n"
@@ -213,9 +250,24 @@ def main():
         "• IG 접근불가(3일↑ not_found, 미종료): %d건\n"
         "• 특이사항: %s"
     ) % (status_word, today, status_icon, first, active_nb, val_nb, P, len(real_miss), len(ended_miss), b_tot, feed_cnt, internal_cnt, len(manual_only), len(nf_review), note)
+    body += "\n• " + watchdog["line"]
 
     thread = None
     sections = []
+    if watchdog.get("count"):
+        lines = ["🚨 자동종료 누락 대상 %d건" % watchdog["count"]]
+        for i, item in enumerate(watchdog.get("items", [])[:30], 1):
+            lines.append("%d. %s · %s · 게시 %s · %s일 경과\n   %s" % (
+                i,
+                item.get("account_name") or "계정명 미등록",
+                item.get("channel_type") or "-",
+                item.get("posted_at") or "-",
+                item.get("age_days") if item.get("age_days") is not None else "?",
+                item.get("url") or "-",
+            ))
+        if watchdog["count"] > 30:
+            lines.append("... 외 %d건" % (watchdog["count"] - 30))
+        sections.append("\n".join(lines))
     if real_miss:
         lines = ["⚠️ 확인필요 — 활성 게시물인데 조회수 미수집 (%s 측정) %d건\n" % (yday, len(real_miss))]
         for i, f in enumerate(real_miss, 1):
