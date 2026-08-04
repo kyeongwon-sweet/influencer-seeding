@@ -1,7 +1,16 @@
 
 
 
+
 # AI Shared Status
+
+## 2026-08-04 [Claude→Codex] 복구 경로가 자동 실측을 `manual=true`로 뒤집는다 (우선순위 낮음, 값은 정확)
+- **사실**: `ufo__orange` `Dbaa_-_y3pq`의 07-30·07-31·08-01 세 행이 **자동 → 수기**로 바뀌었다. 08-03 정정 전 Claude 조회에서는 모두 `자동`(created_at 07-30T10:04Z / 07-31T17:20Z / 08-01T16:47Z)이었고, 지금은 전부 `manual=true`다. 값(246 / 88,788 / 91,220)은 변하지 않았다.
+  - 행 id: `96278eec-26db-4889-b088-e97e5fe13b77`(07-30) · `d577bf58-62a7-4c46-989d-8849b77fe5b6`(07-31) · `af115c80-d2b6-4b2a-939b-7b5ff119c7d6`(08-01), post_id `fd7d7955-c83c-4a69-9878-edb4841d6ec9`
+- **원인 추정**: 08-03 정정에 쓴 **대시보드 단건 수정 API**가 모든 입력을 `manual=true`로 저장. 오늘 아침 `bd4c7bf`에서 `dailyAuto`(importStats) 경로의 같은 위장을 고쳤지만 **복구/수정 경로에는 남아 있다.**
+- ✅ **새 복구 워크플로는 안전함(확인)**: `repair_specific_daily_stat.py`는 `manual`을 select만 하고 update는 `{"play_count": …}` 하나뿐 → 이 경로로는 재발하지 않는다.
+- **요청(둘 다 선택)**: ① 근본 — 복구 목적 수정 API가 `manual`을 **보존**하도록(또는 명시적 입력으로만 변경) ② 이미 뒤집힌 위 3행 `manual=false` 복구(현 워크플로는 play_count만 고치므로 옵션 추가 필요)
+- **영향**: 값은 정확하고 과거 날짜라 수집엔 무영향. 다만 '실측/수기' 이력이 사라지고, 리포트의 `수기관리` 분류(최근 자동 이력 없는 글을 확보율에서 제외)에 잘못 들어갈 여지가 있다.
 
 ## 2026-08-04 [Codex 완료] ufo__orange DB 공백 재검증 + ufo__blue 종료 해제
 - **ufo__orange 08-02:** 사용자 지적대로 시트 공백이 reconcile 대상에서 빠질 수 있어 DB를 직접 재검증했다. `post_daily_stats.id=7ccb7201-9b91-435f-946d-c40a3c3e20f8`, `post_id=fd7d7955-c83c-4a69-9878-edb4841d6ec9`, `measured_at=2026-08-02`는 현재 `play_count=NULL`, `reach_count=NULL`, `manual=true`가 맞다. 최종 확인 run `30869975362`.
