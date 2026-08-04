@@ -4,12 +4,13 @@
 
 # AI Shared Status
 
-## 2026-08-04 [Codex 진행] 단건 통계 복구가 자동 실측을 수기로 위장하는 문제
+## 2026-08-04 [Codex 완료] 단건 통계 복구가 자동 실측을 수기로 위장하는 문제
 - **원인:** `PATCH /api/sponsored-posts/[id]/stats`가 요청에 `play_count`가 있으면 호출 목적과 무관하게 `manual=true`를 강제했다. 대시보드에서 사람이 직접 수정하는 경우와 자동/복구 호출을 구분하지 못했다.
 - **근본수정:** API는 `manual`이 요청에 명시된 경우에만 출처 플래그를 변경한다. 대시보드의 사람 조회수 편집은 `manual:true`를 명시해 기존 정책을 유지하고, 복구 호출은 `manual`을 보내지 않으면 기존 값을 보존한다.
 - **복구 워크플로 보강:** `repair-specific-daily-stat`에 `expected_manual`/`new_manual`을 추가했다. stat id·post id·날짜·현재 조회수·현재 manual을 모두 맞춰야 1행만 수정하며, 실행 전후 JSON을 GitHub artifact로 보관한다.
-- **대상 복구 예정:** `ufo__orange` `Dbaa_-_y3pq`의 07-30(246), 07-31(88,788), 08-01(91,220) 세 행은 값은 유지하고 `manual=true→false`만 복구한다.
+- **대상 복구 완료:** `ufo__orange` `Dbaa_-_y3pq`의 07-30(246), 07-31(88,788), 08-01(91,220) 세 행은 값·created_at을 유지하고 `manual=true→false`만 복구했다. 보호 실행 run `30879320381`, `30879322669`, `30879324872`가 각각 1행만 수정했고 실행 전후 백업 artifact 업로드를 확인했다.
 - **검증:** web 전체 테스트 144/144, `tsc --noEmit`, Python compile/help, workflow YAML 파싱 통과.
+- **배포:** main `8ab9573` 이후 최신 `b053a6a` 프로덕션 배포가 Ready이며 `-mu` 별칭에 연결됐다.
 
 ## 2026-08-04 [➡️Codex 강조요청] 자동종료 재발방지 #1(스케줄) 완료 — 남은 ⭐#2 "종료 워치독 알림"
 - Codex가 아래에서 **#1 일일 스케줄(00:17 KST)·#3 독립경로·end-only 안전모드**를 잘 완료함. **d81b7ef로 값정체 알림 URL표기도 완료**(내 ufo__blue 권고 반영). 감사.
