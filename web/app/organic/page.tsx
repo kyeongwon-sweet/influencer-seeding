@@ -876,19 +876,8 @@ export default function OrganicPage() {
         )}
       </header>
 
-      {/* 액션 버튼(CSV 업로드/게시물 추가/엑셀 다운로드/지금 수집)은 표 바로 위로 내렸다.
-          여기 남은 건 '사용 안내'뿐이다. */}
-      <div className="sticky top-14 z-[35] bg-white border-b border-a-hairline px-6 h-11 flex items-center">
-        <button onClick={() => setShowHelp(true)}
-          className="flex items-center gap-1.5 text-xs text-a-ink-muted hover:text-a-ink transition">
-          <svg width="13" height="13" viewBox="0 0 20 20" fill="none">
-            <circle cx="10" cy="10" r="8.5" stroke="currentColor" strokeWidth="1.5"/>
-            <path d="M10 9.5v4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            <circle cx="10" cy="6.5" r="1" fill="currentColor"/>
-          </svg>
-          사용 안내
-        </button>
-      </div>
+      {/* 예전 sticky 안내 바(h-11)는 제거했다 — '사용 안내'가 기준 박스 제목 줄로 들어가서
+          이 줄에 남는 게 없었다. 덕분에 세로 45px을 표에 돌려줬다. */}
 
       {/* 상단 2단 배치 — 기준(좌) / 필터(우). 세로로 길게 쌓이던 두 박스를 나란히 놓아 표가 더 보이게 한다.
           좁은 화면(lg 미만)에서는 자동으로 위아래로 쌓인다. */}
@@ -901,7 +890,19 @@ export default function OrganicPage() {
       >
       {/* 오른쪽(필터+칩) 높이에 맞춰 여백을 줄인 상태. 더 줄이려면 py/mb/leading을 한 단계씩 내리면 된다. */}
       <div ref={guideBoxRef} className="bg-white border border-gray-200 rounded-lg px-5 py-3 shadow-sm self-start">
-        <p className="text-sm font-bold text-a-ink mb-2">📌 무상 노출 기준</p>
+        {/* 제목 줄 오른쪽에 '사용 안내'. 버튼(18px)이 제목 줄 높이(20px)보다 낮아 박스가 커지지 않는다. */}
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <p className="text-sm font-bold text-a-ink">📌 무상 노출 기준</p>
+          <button onClick={() => setShowHelp(true)}
+            className="flex items-center gap-1 text-xs text-a-ink-muted hover:text-a-ink transition shrink-0">
+            <svg width="13" height="13" viewBox="0 0 20 20" fill="none">
+              <circle cx="10" cy="10" r="8.5" stroke="currentColor" strokeWidth="1.5"/>
+              <path d="M10 9.5v4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              <circle cx="10" cy="6.5" r="1" fill="currentColor"/>
+            </svg>
+            사용 안내
+          </button>
+        </div>
         {/* 참고 자료 — 제목 바로 아래. 새 탭으로 열고, 외부 링크라 noopener 지정 */}
         <div className="mb-2.5 pb-2 border-b border-gray-100 flex flex-wrap items-center gap-x-4 gap-y-1">
           <span className="text-[13px] font-semibold text-a-ink">🔗 참고 자료:</span>
