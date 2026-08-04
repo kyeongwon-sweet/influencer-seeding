@@ -35,10 +35,16 @@ export async function PATCH(
       updates[key] = n;
     }
   }
+  if ("manual" in body) {
+    if (typeof body.manual !== "boolean")
+      return NextResponse.json({ error: "manual 값은 true 또는 false여야 합니다." }, { status: 400 });
+    updates.manual = body.manual;
+  }
   if (Object.keys(updates).length === 0)
     return NextResponse.json({ error: "수정할 필드가 없습니다" }, { status: 400 });
   // 조회수를 직접 수정하면 그 (게시물·날짜) 행을 '수동수정'으로 표시 → 시트 동기화가 덮지 않고 보존.
-  if ("play_count" in body) updates.manual = true;
+  // 출처는 호출자가 명시할 때만 바꾼다. 복구 호출이 자동 실측을 수기값으로 위장하지 않으며,
+  // 사람의 화면 편집은 클라이언트가 manual:true를 명시한다.
 
   const supabase = getServerSupabase();
   let postMeta: PostMeta | null = null;

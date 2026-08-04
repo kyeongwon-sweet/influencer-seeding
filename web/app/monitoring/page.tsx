@@ -1164,7 +1164,9 @@ export default function MonitoringPage() {
       const res = await fetch(`/api/sponsored-posts/${postId}/stats`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(measuredAt ? { play_count, measured_at: measuredAt } : { play_count }),
+        body: JSON.stringify(measuredAt
+          ? { play_count, measured_at: measuredAt, manual: true }
+          : { play_count, manual: true }),
       });
 
       if (!res.ok) {

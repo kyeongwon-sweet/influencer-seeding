@@ -4,6 +4,13 @@
 
 # AI Shared Status
 
+## 2026-08-04 [Codex 진행] 단건 통계 복구가 자동 실측을 수기로 위장하는 문제
+- **원인:** `PATCH /api/sponsored-posts/[id]/stats`가 요청에 `play_count`가 있으면 호출 목적과 무관하게 `manual=true`를 강제했다. 대시보드에서 사람이 직접 수정하는 경우와 자동/복구 호출을 구분하지 못했다.
+- **근본수정:** API는 `manual`이 요청에 명시된 경우에만 출처 플래그를 변경한다. 대시보드의 사람 조회수 편집은 `manual:true`를 명시해 기존 정책을 유지하고, 복구 호출은 `manual`을 보내지 않으면 기존 값을 보존한다.
+- **복구 워크플로 보강:** `repair-specific-daily-stat`에 `expected_manual`/`new_manual`을 추가했다. stat id·post id·날짜·현재 조회수·현재 manual을 모두 맞춰야 1행만 수정하며, 실행 전후 JSON을 GitHub artifact로 보관한다.
+- **대상 복구 예정:** `ufo__orange` `Dbaa_-_y3pq`의 07-30(246), 07-31(88,788), 08-01(91,220) 세 행은 값은 유지하고 `manual=true→false`만 복구한다.
+- **검증:** web 전체 테스트 144/144, `tsc --noEmit`, Python compile/help, workflow YAML 파싱 통과.
+
 ## 2026-08-04 [Codex 완료] 바이럴 배너 자동종료 지연 재발방지
 - **원인 확정:** `.github/workflows/auto-end-reconcile.yml`이 수동 실행 전용이라 2026-07-14 이후 정합이 멈췄고, 일일 수집기의 종료 처리만으로는 오래된 배너 백로그가 제때 해소되지 않았다. 그 결과 `365_hot /p/Da2uSCzk643/`처럼 7일 종료 규칙이 약 12일 늦게 반영됐다.
 - **예약 복구:** 매일 **00:17 KST**(UTC 15:17)에 자동종료 정합을 실행하도록 schedule을 추가했다. 00:41 자정수집 전에 오래된 게시물을 정리하며, 판정일은 실행 시점의 KST 날짜를 사용한다.

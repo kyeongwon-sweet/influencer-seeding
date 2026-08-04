@@ -19,6 +19,14 @@ on:
         description: "New play_count, or NULL"
         required: true
         default: "NULL"
+      expected_manual:
+        description: "Expected current manual flag: KEEP, true, or false"
+        required: false
+        default: "KEEP"
+      new_manual:
+        description: "New manual flag: KEEP, true, or false"
+        required: false
+        default: "KEEP"
       inspect_url_contains:
         description: "Optional URL substring to inspect in sponsored_posts"
         required: false
@@ -52,10 +60,20 @@ jobs:
             --measured-at "${{ inputs.measured_at }}"
             --expected-play-count "${{ inputs.expected_play_count }}"
             --new-play-count "${{ inputs.new_play_count }}"
+            --expected-manual "${{ inputs.expected_manual }}"
+            --new-manual "${{ inputs.new_manual }}"
             --inspect-url-contains "${{ inputs.inspect_url_contains }}"
+            --out "../data/output/repair-specific-daily-stat-${{ inputs.stat_id }}.json"
           )
           if [ "${{ inputs.apply }}" = "true" ]; then
             args+=(--apply)
           fi
           cd scripts
           python repair_specific_daily_stat.py "${args[@]}"
+      - name: Upload guarded repair audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: repair-specific-daily-stat-${{ inputs.stat_id }}-${{ github.run_id }}
+          path: data/output/repair-specific-daily-stat-${{ inputs.stat_id }}.json
+          if-no-files-found: warn

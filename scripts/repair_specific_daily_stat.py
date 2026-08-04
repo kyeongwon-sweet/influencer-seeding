@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 from typing import Any
 
 from db import get_client
@@ -19,6 +20,17 @@ def parse_count(value: str) -> int | None:
     if text.upper() in {"", "NULL", "NONE"}:
         return None
     return int(text)
+
+
+def parse_optional_bool(value: str) -> bool | None:
+    text = str(value or "").strip().upper()
+    if text in {"", "KEEP"}:
+        return None
+    if text == "TRUE":
+        return True
+    if text == "FALSE":
+        return False
+    raise argparse.ArgumentTypeError("manual must be KEEP, true, or false")
 
 
 def fetch_stat(stat_id: str) -> dict[str, Any]:
@@ -76,12 +88,19 @@ def main() -> None:
     parser.add_argument("--measured-at", required=True)
     parser.add_argument("--expected-play-count", required=True)
     parser.add_argument("--new-play-count", required=True)
+    parser.add_argument("--expected-manual", default="KEEP")
+    parser.add_argument("--new-manual", default="KEEP")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--inspect-url-contains", default="")
+    parser.add_argument("--out", default="")
     args = parser.parse_args()
 
     expected_play = parse_count(args.expected_play_count)
     new_play = parse_count(args.new_play_count)
+    expected_manual = parse_optional_bool(args.expected_manual)
+    new_manual = parse_optional_bool(args.new_manual)
+    if (expected_manual is None) != (new_manual is None):
+        raise SystemExit("[REPAIR_SPECIFIC_DAILY_STAT_ABORT] expected-manual and new-manual must both be KEEP or both be explicit")
 
     before = fetch_stat(args.stat_id)
     errors = []
@@ -91,6 +110,8 @@ def main() -> None:
         errors.append({"field": "measured_at", "expected": args.measured_at, "actual": before.get("measured_at")})
     if before.get("play_count") != expected_play:
         errors.append({"field": "play_count", "expected": expected_play, "actual": before.get("play_count")})
+    if expected_manual is not None and bool(before.get("manual")) != expected_manual:
+        errors.append({"field": "manual", "expected": expected_manual, "actual": before.get("manual")})
     if errors:
         raise SystemExit("[REPAIR_SPECIFIC_DAILY_STAT_ABORT] " + json.dumps({
             "ok": False,
@@ -101,9 +122,12 @@ def main() -> None:
     update_result: list[dict[str, Any]] = []
     if args.apply:
         db = get_client()
+        updates: dict[str, Any] = {"play_count": new_play}
+        if new_manual is not None:
+            updates["manual"] = new_manual
         update_result = (
             db.table("post_daily_stats")
-            .update({"play_count": new_play})
+            .update(updates)
             .eq("id", args.stat_id)
             .eq("post_id", args.post_id)
             .eq("measured_at", args.measured_at)
@@ -128,11 +152,17 @@ def main() -> None:
         "measured_at": args.measured_at,
         "expected_play_count": expected_play,
         "new_play_count": new_play,
+        "expected_manual": expected_manual,
+        "new_manual": new_manual,
         "before": before,
         "after": after,
         "updated_rows": len(update_result),
         "inspect": inspect_posts(args.inspect_url_contains),
     }
+    if args.out:
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(summary, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     print("[REPAIR_SPECIFIC_DAILY_STAT_RESULT] " + json.dumps(summary, ensure_ascii=False, default=str))
 
 
