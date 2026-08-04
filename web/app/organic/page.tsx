@@ -57,6 +57,9 @@ type CsvRow = {
 // [사용자이름, 플랫폼, 캡션, 언급제품, 업로드일, 조회수, 유형, 특이사항]
 const INIT_COL_WIDTHS = [180, 90, 300, 160, 100, 90, 90, 160];
 
+// 한 번에 그리는 행 수 = 첫 요청으로 받아오는 행 수. 화면·네트워크 양쪽의 첫 부담을 같이 줄인다.
+const PAGE_SIZE = 100;
+
 function getThumbnailUrl(url: string): string | null {
   let m = url.match(/youtube\.com\/shorts\/([^/?&#]+)/);
   if (m) return `https://i.ytimg.com/vi/${m[1]}/mqdefault.jpg`;
@@ -121,10 +124,22 @@ export default function OrganicPage() {
     };
   }, []);
 
+  // 첫 화면을 빨리 띄우기 위해 2단계로 받는다.
+  //   1) 첫 100행(약 41KB) → 표가 바로 보인다(표는 어차피 100행만 그린다)
+  //   2) 나머지(약 283KB) → 뒤이어 붙는다. 필터·정렬·제품목록·엑셀은 전량이 있어야 정확하므로 반드시 채운다.
+  // 서버는 uploaded_at + id 2차 정렬이라 페이지 경계에서 누락/중복이 생기지 않는다.
   async function loadMentions() {
-    const res = await fetch("/api/organic-mentions");
-    const data = await res.json();
-    if (Array.isArray(data)) setMentions(data);
+    const first = await fetch(`/api/organic-mentions?limit=${PAGE_SIZE}&offset=0`).then(r => r.json()).catch(() => null);
+    if (Array.isArray(first)) setMentions(first);
+    if (!Array.isArray(first) || first.length < PAGE_SIZE) return;   // 100행 이하면 이미 전부다
+
+    const rest = await fetch(`/api/organic-mentions?offset=${PAGE_SIZE}`).then(r => r.json()).catch(() => null);
+    if (Array.isArray(rest) && rest.length > 0) {
+      setMentions(prev => {
+        const seen = new Set(prev.map(m => m.id));
+        return [...prev, ...(rest as Mention[]).filter(m => !seen.has(m.id))];
+      });
+    }
   }
 
   async function checkAndResumeJob() {
@@ -523,7 +538,6 @@ export default function OrganicPage() {
 
   // 화면에 그릴 행 수 제한 — 700행 전부를 DOM에 올리면(행마다 셀 8개 + 수정 아이콘 여러 개)
   // 첫 렌더가 느리고, 필터·정렬·셀 편집 같은 사소한 상태 변화마다 전부 다시 그려 버벅인다.
-  const PAGE_SIZE = 100;
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   // 조건이 바뀌면 처음부터 다시 보여준다(스크롤 위치와 어긋나지 않게).
   useEffect(() => { setVisibleCount(PAGE_SIZE); }, [deferredName, filters.platform, filters.products, filters.exposureType, filters.dateFrom, filters.dateTo, sortCol, sortDir]);

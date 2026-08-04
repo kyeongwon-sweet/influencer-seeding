@@ -6,15 +6,44 @@ import { splitDuplicateMentions, type Mentionish } from "@/lib/url-utils";
 
 type OrganicMentionPayload = Mentionish;
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  // 첫 화면을 빨리 띄우기 위한 부분 조회(limit/offset). 파라미터가 없으면 기존처럼 전량 반환한다.
+  // 실측(2026-08-04): 전량 324KB / 첫 100행 41KB.
+  const limitParam = Number(req.nextUrl.searchParams.get("limit"));
+  const offsetParam = Number(req.nextUrl.searchParams.get("offset"));
+  const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 1000) : null;
+  const offset = Number.isFinite(offsetParam) && offsetParam > 0 ? offsetParam : 0;
+
   const supabase = getServerSupabase();
-  const { data, error } = await supabase
+  // ⚠️ uploaded_at 은 중복·NULL이 많아 단독 정렬로 range()를 쓰면 경계 행이 누락/중복된다.
+  //    id를 2차 정렬키로 두어 페이지 경계를 결정적으로 만든다.
+  const baseQuery = () => supabase
     .from("organic_mentions")
     .select("*")
-    .order("uploaded_at", { ascending: false, nullsFirst: false });
+    .order("uploaded_at", { ascending: false, nullsFirst: false })
+    .order("id", { ascending: true });
+
+  let data: unknown[] | null = null;
+  let error: { message: string } | null = null;
+  if (limit !== null) {
+    const res = await baseQuery().range(offset, offset + limit - 1);
+    data = res.data;
+    error = res.error;
+  } else {
+    // limit 미지정 = 전량. Supabase 기본 1000행 상한에 잘리지 않도록 끝까지 페이지네이션한다.
+    const PAGE = 1000;
+    const all: unknown[] = [];
+    for (let from = offset; ; from += PAGE) {
+      const res = await baseQuery().range(from, from + PAGE - 1);
+      if (res.error) { error = res.error; break; }
+      all.push(...(res.data ?? []));
+      if (!res.data || res.data.length < PAGE) break;
+    }
+    data = all;
+  }
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   // 편집 가능한 공유 목록이라 5분 캐시는 수정 반영이 늦음 → 30초로 단축(비용은 거의 그대로, 최신성↑).
