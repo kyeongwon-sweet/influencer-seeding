@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { recordFalsePositiveReview } from "@/lib/injibot-review";
+import { hideMetaAdCommentForSlackMessage } from "@/lib/meta-instagram-comments";
 
 // injibot(부정 댓글 알림) 버튼 클릭 처리(Slack Interactivity).
 // injibot Slack 앱 → Interactivity & Shortcuts → Request URL:
@@ -79,13 +80,13 @@ export async function POST(req: NextRequest) {
   if (!ACTION_LABEL[actionId]) return NextResponse.json({ ok: true });
 
   const userId: string = payload.user?.id || "";
+  const channelId: string = payload.channel?.id || "";
+  const messageTs: string = payload.message?.ts || "";
   const when = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 16).replace("T", " ");
 
   // [무시] = 오탐 → 분류기 피드백용으로 기록. 사람 판정은 classifier hash와 무관하게 최우선 적용된다.
   // 식별은 slack_channel_id + slack_ts(댓글 원문 미사용). best-effort — 실패해도 버튼 UX는 계속.
   if (actionId === "ignore") {
-    const channelId: string = payload.channel?.id || "";
-    const messageTs: string = payload.message?.ts || "";
     if (channelId && messageTs) {
       try {
         const result = await recordFalsePositiveReview(getServerSupabase(), {
@@ -104,6 +105,36 @@ export async function POST(req: NextRequest) {
 
   // 원 메시지의 버튼(actions) 블록을 제거하고 처리 결과 컨텍스트를 덧붙인다.
   const origBlocks: SlackBlock[] = payload.message?.blocks || [];
+
+  // Meta 광고 댓글의 [숨김]은 먼저 실제 Graph API가 성공해야 한다.
+  // Slack button value의 comment id는 신뢰하지 않고 DB의 channel+ts 매핑만 사용한다.
+  if (actionId === "hide" && channelId && messageTs) {
+    try {
+      const hidden = await hideMetaAdCommentForSlackMessage(
+        getServerSupabase(),
+        { channelId, messageTs, graphBase: process.env.META_GRAPH_BASE || "https://graph.facebook.com/v26.0" },
+      );
+      if (hidden.handled && !hidden.ok) {
+        const failureBlocks = [
+          ...origBlocks,
+          { type: "context", elements: [{ type: "mrkdwn", text: `*숨김 실패 — 다시 시도해주세요* · <@${userId}>` }] },
+        ];
+        if (payload.response_url) {
+          await fetch(payload.response_url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ replace_original: true, blocks: failureBlocks }),
+          });
+        }
+        console.error("[injibot-action] Meta 댓글 숨김 실패", hidden.error);
+        return NextResponse.json({ ok: true, hidden: false });
+      }
+    } catch (e) {
+      console.error("[injibot-action] Meta 댓글 숨김 실패", e);
+      return NextResponse.json({ ok: true, hidden: false });
+    }
+  }
+
   const keptBlocks = origBlocks.filter((b) => b.type !== "actions");
   keptBlocks.push({
     type: "context",
