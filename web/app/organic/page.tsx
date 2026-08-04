@@ -1067,7 +1067,9 @@ export default function OrganicPage() {
         {/* 액션 버튼은 위 필터 줄(날짜 필터 옆)로 옮겼다. 여기엔 표만 남는다. */}
         {/* 테이블 */}
         <div className="bg-white rounded-[18px] border border-a-hairline overflow-hidden">
-          <div ref={scrollBoxRef} className="overflow-auto max-h-[calc(100vh-120px)]">
+          {/* scrollbar-inset: 바깥 박스의 rounded-[18px]가 스크롤바 양 끝을 잘라먹어서
+              트랙을 8px 들여놓는다(globals.css). */}
+          <div ref={scrollBoxRef} className="scrollbar-inset overflow-auto max-h-[calc(100vh-120px)]">
             {loading ? (
               <div className="p-8 text-center text-a-ink-muted text-sm">로딩 중...</div>
             ) : (

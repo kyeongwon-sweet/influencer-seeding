@@ -37,6 +37,13 @@ body {
   .text-balance { text-wrap: balance; }
   .scrollbar-none { scrollbar-width: none; }
   .scrollbar-none::-webkit-scrollbar { display: none; }
+  /* 둥근 카드(rounded-[18px] + overflow-hidden) 안에서 스크롤할 때 쓰는 클래스.
+     모서리 곡선이 스크롤바 양 끝을 잘라먹는다. 잘리는 깊이는 스크롤바 왼쪽 끝에서
+     약 5.6px지만 **박스 맨 오른쪽 픽셀에서는 반지름만큼(18px) 잘린다**
+     (y ≥ r − √(r² − (r−d)²), d=0 → y ≥ r). 그래서 들여쓰기는 반지름과 같은 18px이어야
+     한 픽셀도 안 잘린다. 카드 반지름을 바꾸면 이 값도 같이 바꿔야 한다. */
+  .scrollbar-inset::-webkit-scrollbar-track:vertical { margin-block: 18px; }
+  .scrollbar-inset::-webkit-scrollbar-track:horizontal { margin-inline: 18px; }
 }
 
 @layer base {
