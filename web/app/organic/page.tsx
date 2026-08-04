@@ -629,20 +629,22 @@ export default function OrganicPage() {
         </div>
       </div>
 
-        {/* 필터 바 — 위 그리드의 오른쪽 칸 */}
-        <div className="bg-white rounded-[14px] border border-a-hairline px-4 py-2.5 h-full">
-          <div className="flex items-center gap-2 flex-wrap">
+        {/* 오른쪽 칸 = 필터(한 줄) + 그 아래 제품 칩 */}
+        <div className="flex flex-col gap-3">
+        <div className="bg-white rounded-[14px] border border-a-hairline px-3 py-2.5">
+          {/* 한 줄 유지: 줄바꿈 금지 + 좁아지면 가로 스크롤(요소가 잘려 안 보이는 것 방지) */}
+          <div className="flex items-center gap-1.5 flex-nowrap overflow-x-auto">
             <input
               type="text"
               placeholder="계정명 검색"
               value={filters.name}
               onChange={e => setFilters(p => ({ ...p, name: e.target.value }))}
-              className={`filter-input w-32 ${filters.name ? "border-a-blue" : ""}`}
+              className={`filter-input w-24 shrink-0 ${filters.name ? "border-a-blue" : ""}`}
             />
             <select
               value={filters.platform}
               onChange={e => setFilters(p => ({ ...p, platform: e.target.value }))}
-              className={`filter-select ${filters.platform !== "all" ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
+              className={`filter-select shrink-0 ${filters.platform !== "all" ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
             >
               <option value="all">전체 플랫폼</option>
               {PLATFORMS.map(p => <option key={p} value={p}>{p}</option>)}
@@ -650,36 +652,34 @@ export default function OrganicPage() {
             {/* 유형 필터 드롭다운 */}
             <select value={filters.exposureType}
               onChange={e => setFilters(p => ({ ...p, exposureType: e.target.value }))}
-              className={`filter-select ${filters.exposureType !== "all" ? "border-a-blue text-a-blue bg-blue-50" : ""}`}>
+              className={`filter-select shrink-0 ${filters.exposureType !== "all" ? "border-a-blue text-a-blue bg-blue-50" : ""}`}>
               <option value="all">전체 유형</option>
               <option value="무가시딩">무가시딩</option>
               <option value="오가닉">오가닉 노출</option>
               <option value="연예인 언급">연예인 언급</option>
             </select>
-            <div className="w-px h-4 bg-a-hairline mx-0.5" />
-            <div className="flex items-center gap-1.5">
+            <div className="w-px h-4 bg-a-hairline mx-0.5 shrink-0" />
+            <div className="flex items-center gap-1 shrink-0">
               <input type="date" value={filters.dateFrom}
                 onChange={e => setFilters(p => ({ ...p, dateFrom: e.target.value }))}
-                className={`filter-input ${filters.dateFrom ? "border-a-blue" : ""}`} />
+                className={`filter-input px-2 w-[118px] ${filters.dateFrom ? "border-a-blue" : ""}`} />
               <span className="text-xs text-a-ink-muted">–</span>
               <input type="date" value={filters.dateTo}
                 onChange={e => setFilters(p => ({ ...p, dateTo: e.target.value }))}
-                className={`filter-input ${filters.dateTo ? "border-a-blue" : ""}`} />
+                className={`filter-input px-2 w-[118px] ${filters.dateTo ? "border-a-blue" : ""}`} />
             </div>
             <div className="flex-1" />
             {hasFilter && (
-              <button onClick={() => setFilters(INIT_FILTERS)} className="btn-ghost py-1">초기화</button>
+              <button onClick={() => setFilters(INIT_FILTERS)} className="btn-ghost py-1 shrink-0">초기화</button>
             )}
-            <button onClick={downloadCSV} disabled={filtered.length === 0} className="btn-secondary">
+            <button onClick={downloadCSV} disabled={filtered.length === 0} className="btn-secondary shrink-0 whitespace-nowrap">
               엑셀 다운로드
             </button>
           </div>
         </div>
-      </div>
-
-      {/* 언급 제품 필터 — 칩이 30개 가까이라 2단 안에 넣으면 줄바꿈이 심해진다 → 전체 폭으로 분리 */}
-      {productOptions.length > 0 && (
-        <div className="mx-6 mb-3 bg-white rounded-[14px] border border-a-hairline px-4 py-2.5">
+        {/* 언급 제품 필터 — 오른쪽 칸의 필터 바로 아래 */}
+        {productOptions.length > 0 && (
+          <div className="bg-white rounded-[14px] border border-a-hairline px-4 py-2.5">
             <div className="flex items-start gap-2.5">
               <span className="text-xs font-medium text-a-ink-muted shrink-0 pt-1.5">제품</span>
               <div className="flex flex-wrap gap-1.5 flex-1">
@@ -710,10 +710,12 @@ export default function OrganicPage() {
                 })}
               </div>
             </div>
+          </div>
+        )}
         </div>
-      )}
+      </div>
 
-      <div className="px-6 pb-6">
+      <div className="px-6 pt-3 pb-6">
         {/* 테이블 */}
         <div className="bg-white rounded-[18px] border border-a-hairline overflow-hidden">
           <div className="overflow-auto max-h-[calc(100vh-120px)]">
@@ -1145,4 +1147,5 @@ export default function OrganicPage() {
     </div>
   );
 }
+
 
