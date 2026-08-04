@@ -1,0 +1,61 @@
+name: Repair Specific Daily Stat
+
+on:
+  workflow_dispatch:
+    inputs:
+      stat_id:
+        description: "post_daily_stats.id to repair"
+        required: true
+      post_id:
+        description: "Expected sponsored_posts.id"
+        required: true
+      measured_at:
+        description: "Expected measured_at date, YYYY-MM-DD"
+        required: true
+      expected_play_count:
+        description: "Expected current play_count, or NULL"
+        required: true
+      new_play_count:
+        description: "New play_count, or NULL"
+        required: true
+        default: "NULL"
+      inspect_url_contains:
+        description: "Optional URL substring to inspect in sponsored_posts"
+        required: false
+        default: ""
+      apply:
+        description: "Apply update after strict verification"
+        type: boolean
+        default: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Verify and optionally repair one stat row
+        run: |
+          args=(
+            --stat-id "${{ inputs.stat_id }}"
+            --post-id "${{ inputs.post_id }}"
+            --measured-at "${{ inputs.measured_at }}"
+            --expected-play-count "${{ inputs.expected_play_count }}"
+            --new-play-count "${{ inputs.new_play_count }}"
+            --inspect-url-contains "${{ inputs.inspect_url_contains }}"
+          )
+          if [ "${{ inputs.apply }}" = "true" ]; then
+            args+=(--apply)
+          fi
+          cd scripts
+          python repair_specific_daily_stat.py "${args[@]}"
