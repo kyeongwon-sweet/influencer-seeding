@@ -51,6 +51,9 @@ function isHiddenAd(m: { content_summary: string | null }): boolean {
  */
 const PRODUCT_FAMILY_ORDER = ["듬뿍바", "쫀득바", "초코바", "제로바", "요거트바", "파인트", "모나카"];
 
+/** 제품이 아니라 "브랜드 자체 언급"을 뜻하는 값 — 칩 순서에서 전체·미정 다음에 둔다. */
+const BRAND_PRODUCT = "라라스윗";
+
 const PRODUCT_PARENTS = ["쫀득바", "듬뿍바", "제로바", "요거트바", "모나카"];
 function parentProductOf(p: string): string | null {
   for (const parent of PRODUCT_PARENTS) if (p !== parent && p.endsWith(parent)) return parent;
@@ -176,7 +179,7 @@ const MentionRow = memo(function MentionRow({
                           }
                         </a>
                       </td>
-                      <td style={{ minWidth: colWidths[0], width: colWidths[0] }} className="px-4 py-4 whitespace-nowrap overflow-hidden">
+                      <td style={{ minWidth: colWidths[0], width: colWidths[0] }} className="px-4 py-4 text-left whitespace-nowrap overflow-hidden">
                         {edit?.field === "account_name" ? (
                           <input autoFocus value={edit!.value}
                             onChange={e => onEditValue(e.target.value)}
@@ -202,7 +205,7 @@ const MentionRow = memo(function MentionRow({
                           </div>
                         )}
                       </td>
-                      <td style={{ minWidth: colWidths[1] }} className="px-4 py-4 text-xs text-a-ink-muted whitespace-nowrap"
+                      <td style={{ minWidth: colWidths[1] }} className="px-4 py-4 text-xs text-a-ink-muted text-left whitespace-nowrap"
                         onDoubleClick={() => onStartEdit(m.id, "platform", normPlatform(m.platform))}>
                         {edit?.field === "platform" ? (
                           <select autoFocus value={edit!.value}
@@ -227,7 +230,7 @@ const MentionRow = memo(function MentionRow({
                           </div>
                         )}
                       </td>
-                      <td style={{ minWidth: colWidths[2] }} className="px-4 py-4 text-xs text-a-ink-muted max-w-[320px]">
+                      <td style={{ minWidth: colWidths[2] }} className="px-4 py-4 text-xs text-a-ink-muted text-left max-w-[320px]">
                         {edit?.field === "content_summary" ? (
                           <textarea autoFocus value={edit!.value}
                             onChange={e => onEditValue(e.target.value)}
@@ -247,7 +250,7 @@ const MentionRow = memo(function MentionRow({
                           </div>
                         )}
                       </td>
-                      <td style={{ minWidth: colWidths[3] }} className="px-4 py-4 whitespace-nowrap">
+                      <td style={{ minWidth: colWidths[3] }} className="px-4 py-4 text-left whitespace-nowrap">
                         {edit?.field === "mentioned_product" ? (
                           <div className="flex items-center gap-1">
                             <input
@@ -286,7 +289,7 @@ const MentionRow = memo(function MentionRow({
                           </span>
                         )}
                       </td>
-                      <td style={{ minWidth: colWidths[4] }} className="px-4 py-4 text-xs text-a-ink-muted whitespace-nowrap">
+                      <td style={{ minWidth: colWidths[4] }} className="px-4 py-4 text-xs text-a-ink-muted text-left whitespace-nowrap">
                         {edit?.field === "uploaded_at" ? (
                           <input autoFocus type="date" value={edit!.value} min="2020-01-01" max={maxUploadDate()}
                             onChange={e => onEditValue(e.target.value)}
@@ -325,7 +328,7 @@ const MentionRow = memo(function MentionRow({
                         )}
                       </td>
                       {/* 유형 */}
-                      <td style={{ minWidth: colWidths[6] }} className="px-4 py-4 whitespace-nowrap">
+                      <td style={{ minWidth: colWidths[6] }} className="px-4 py-4 text-left whitespace-nowrap">
                         {edit?.field === "exposure_type" ? (
                           <select autoFocus value={edit!.value}
                             onChange={e => onEditValue(e.target.value)}
@@ -346,7 +349,7 @@ const MentionRow = memo(function MentionRow({
                         )}
                       </td>
                       {/* 특이사항 */}
-                      <td style={{ minWidth: colWidths[7] }} className="px-4 py-4">
+                      <td style={{ minWidth: colWidths[7] }} className="px-4 py-4 text-left">
                         {edit?.field === "notes" ? (
                           <textarea
                             autoFocus
@@ -824,6 +827,9 @@ export default function OrganicPage() {
     const all = Array.from(new Set(mentions.flatMap(m => productTokens(m.mentioned_product)))).sort();
     const used = new Set<string>();
     const ordered: string[] = [];
+    // 브랜드 자체 언급은 특정 제품이 아니라 성격이 달라 맨 앞에 둔다.
+    // 화면 순서: 전체 → 미정 → 라라스윗 → 계열들 (2026-08-05 사용자 요청)
+    if (all.includes(BRAND_PRODUCT)) { ordered.push(BRAND_PRODUCT); used.add(BRAND_PRODUCT); }
     for (const family of PRODUCT_FAMILY_ORDER) {
       // 계열 대표 칩이 데이터에 있으면 먼저(없어도 하위는 묶어서 보여준다)
       if (all.includes(family)) { ordered.push(family); used.add(family); }
@@ -903,10 +909,19 @@ export default function OrganicPage() {
       >
         {sortable ? (
           <span onClick={() => handleSort(col)} className="cursor-pointer hover:text-gray-600 transition-colors">
+            {/* 정렬 화살표는 우측 정렬 열(숫자)에서 **왼쪽**에 둔다. 오른쪽에 두면 열 이름이
+                숫자의 우측 끝선보다 화살표 폭만큼 밀려 "헤더와 값이 어긋나 보인다". */}
+            {right && (
+              <span className={`mr-1 ${active ? "text-a-blue" : "opacity-20"}`}>
+                {active ? (sortDir === "asc" ? "↑" : "↓") : "↕"}
+              </span>
+            )}
             {col}
-            <span className={`ml-1 ${active ? "text-a-blue" : "opacity-20"}`}>
-              {active ? (sortDir === "asc" ? "↑" : "↓") : "↕"}
-            </span>
+            {!right && (
+              <span className={`ml-1 ${active ? "text-a-blue" : "opacity-20"}`}>
+                {active ? (sortDir === "asc" ? "↑" : "↓") : "↕"}
+              </span>
+            )}
           </span>
         ) : col}
         <div onMouseDown={e => startResize(e, colIdx)} className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-100 z-10" />
@@ -938,13 +953,101 @@ export default function OrganicPage() {
       {/* 예전 sticky 안내 바(h-11)는 제거했다 — '사용 안내'가 기준 박스 제목 줄로 들어가서
           이 줄에 남는 게 없었다. 덕분에 세로 45px을 표에 돌려줬다. */}
 
+      {/* 필터 + 액션 줄 — **전체 폭**으로 뺐다(2026-08-05 사용자 요청: 한 줄에 들어오게).
+          실측: 한 줄에 약 938px 필요 vs 오른쪽 칸 840px → 우측 칸에 두면 항상 두 줄로 접혔다.
+          전체 폭(1280px 뷰포트 기준 1232px)에서는 한 줄로 들어간다. 칩 영역도 그만큼 넓어졌다. */}
+      <div className="mx-6 mt-5">
+      <div className="bg-white rounded-[14px] border border-a-hairline px-3 py-2.5">
+        {/* 넓은 화면에서는 한 줄, 좁아지면 액션 버튼 묶음만 아래로 접힌다(가로 스크롤로 숨기지 않는다).
+            입력/날짜/버튼에 h-9(36px)를 붙여 높이를 통일한다. 원래는 filter-input 30px,
+            date 32px(네이티브 달력 아이콘 때문), filter-select 36px로 셋이 제각각이었다.
+            `.filter-select`의 min-height:36px가 공용 토큰이라 그 값에 나머지를 맞췄다. */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <input
+            type="text"
+            placeholder="계정명 검색"
+            value={filters.name}
+            onChange={e => setFilters(p => ({ ...p, name: e.target.value }))}
+            className={`filter-input h-9 w-24 shrink-0 ${filters.name ? "border-a-blue" : ""}`}
+          />
+          {/* 캡션 검색 — 본문(content_summary) 부분일치. 계정명보다 긴 문구를 넣게 되므로 폭을 더 준다. */}
+          <input
+            type="text"
+            placeholder="캡션 검색"
+            value={filters.caption}
+            onChange={e => setFilters(p => ({ ...p, caption: e.target.value }))}
+            className={`filter-input h-9 w-32 shrink-0 ${filters.caption ? "border-a-blue" : ""}`}
+          />
+          <select
+            value={filters.platform}
+            onChange={e => setFilters(p => ({ ...p, platform: e.target.value }))}
+            className={`filter-select shrink-0 ${filters.platform !== "all" ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
+          >
+            <option value="all">전체 플랫폼</option>
+            {PLATFORMS.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+          {/* 유형 필터 드롭다운 */}
+          <select value={filters.exposureType}
+            onChange={e => setFilters(p => ({ ...p, exposureType: e.target.value }))}
+            className={`filter-select shrink-0 ${filters.exposureType !== "all" ? "border-a-blue text-a-blue bg-blue-50" : ""}`}>
+            <option value="all">전체 유형</option>
+            <option value="무가시딩">무가시딩</option>
+            <option value="오가닉">오가닉 노출</option>
+            <option value="연예인 언급">연예인 언급</option>
+          </select>
+          <div className="w-px h-4 bg-a-hairline mx-0.5 shrink-0" />
+          <div className="flex items-center gap-1 shrink-0">
+            <input type="date" value={filters.dateFrom}
+              onChange={e => setFilters(p => ({ ...p, dateFrom: e.target.value }))}
+              className={`filter-input h-9 px-2 w-[118px] ${filters.dateFrom ? "border-a-blue" : ""}`} />
+            <span className="text-xs text-a-ink-muted">–</span>
+            <input type="date" value={filters.dateTo}
+              onChange={e => setFilters(p => ({ ...p, dateTo: e.target.value }))}
+              className={`filter-input h-9 px-2 w-[118px] ${filters.dateTo ? "border-a-blue" : ""}`} />
+          </div>
+          {hasFilter && (
+            <button onClick={() => setFilters(INIT_FILTERS)} className="btn-ghost h-9 py-0 shrink-0">초기화</button>
+          )}
+          <div className="flex-1 min-w-0" />
+          {/* 액션 버튼 — 2026-08-04 사용자 요청으로 날짜 필터 옆(같은 줄 오른쪽)으로 내렸다.
+              폭이 부족한 화면(우측 칸 940px 미만 ≈ 뷰포트 1380px 미만)에서는 이 묶음만
+              아래 줄로 접힌다. 가로 스크롤로 숨기지 않는 이유는 버튼이 안 보이게 되기 때문. */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button onClick={() => setShowUpload(true)} className="btn-secondary h-9 shrink-0">CSV 업로드</button>
+            <button onClick={() => setShowAdd(true)} className="btn-secondary h-9 shrink-0">+ 게시물 추가</button>
+            <button onClick={downloadCSV} disabled={filtered.length === 0} className="btn-secondary h-9 whitespace-nowrap shrink-0">
+              엑셀 다운로드
+            </button>
+            {running && (
+              <>
+                <span className="text-xs text-a-ink-muted tabular-nums shrink-0">{formatElapsed(elapsedSeconds)}</span>
+                <button onClick={checkJob} className="btn-secondary h-9 shrink-0">지금 확인</button>
+              </>
+            )}
+            {/* btn-primary는 테두리가 없어 secondary보다 2px 낮다. 투명 테두리로 높이를 맞춘다. */}
+            <button onClick={runCollection} disabled={running} className="btn-primary h-9 border border-transparent shrink-0">
+              {running ? (
+                <span className="flex items-center gap-1.5">
+                  <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25"/>
+                    <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
+                  </svg>
+                  실행 중
+                </span>
+              ) : "지금 수집"}
+            </button>
+          </div>
+        </div>
+      </div>
+      </div>
+
       {/* 상단 2단 배치 — 기준(좌) / 필터(우). 세로로 길게 쌓이던 두 박스를 나란히 놓아 표가 더 보이게 한다.
           좁은 화면(lg 미만)에서는 자동으로 위아래로 쌓인다. */}
       {/* 왼쪽 기준 박스는 380px로 고정. 실측 하한은 350px이고 그보다 좁히면 목록 줄이 접혀
           박스 세로가 215→233→251px로 **오히려 커진다**(1280px 뷰포트, 12px 본문 기준).
           남는 폭은 전부 오른쪽에 주고, 오른쪽 높이는 --guide-h(=왼쪽 박스 실제 높이)로 맞춘다. */}
       <div
-        className="mx-6 mt-5 mb-2 grid gap-3 items-start lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]"
+        className="mx-6 mt-2 mb-2 grid gap-3 items-start lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]"
         style={guideHeight ? ({ "--guide-h": `${guideHeight}px` } as CSSProperties) : undefined}
       >
       {/* 오른쪽(필터+칩) 높이에 맞춰 여백을 줄인 상태. 더 줄이려면 py/mb/leading을 한 단계씩 내리면 된다. */}
@@ -1017,100 +1120,18 @@ export default function OrganicPage() {
         </div>
       </div>
 
-        {/* 오른쪽 칸 = 필터(한 줄) + 그 아래 제품 칩.
-            높이를 왼쪽 박스와 똑같이 고정하고, 남는 제품 칩은 칩 카드 안에서 스크롤한다.
+        {/* 오른쪽 칸 = 제품 칩만(필터 줄은 위에서 전체 폭으로 뺐다).
+            높이를 왼쪽 기준 박스와 똑같이 고정하고, 넘치는 칩은 카드 안에서 스크롤한다.
             (--guide-h가 아직 없으면 h가 무효라 자동 높이 → 첫 페인트에도 깨지지 않는다) */}
         <div className="flex flex-col gap-1.5 lg:h-[var(--guide-h)]">
-        <div className="bg-white rounded-[14px] border border-a-hairline px-3 py-2.5 shrink-0">
-          {/* 넓은 화면에서는 한 줄, 좁아지면 액션 버튼 묶음만 아래로 접힌다(가로 스크롤로 숨기지 않는다).
-              입력/날짜/버튼에 h-9(36px)를 붙여 높이를 통일한다. 원래는 filter-input 30px,
-              date 32px(네이티브 달력 아이콘 때문), filter-select 36px로 셋이 제각각이었다.
-              `.filter-select`의 min-height:36px가 공용 토큰이라 그 값에 나머지를 맞췄다. */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <input
-              type="text"
-              placeholder="계정명 검색"
-              value={filters.name}
-              onChange={e => setFilters(p => ({ ...p, name: e.target.value }))}
-              className={`filter-input h-9 w-24 shrink-0 ${filters.name ? "border-a-blue" : ""}`}
-            />
-            {/* 캡션 검색 — 본문(content_summary) 부분일치. 계정명보다 긴 문구를 넣게 되므로 폭을 더 준다. */}
-            <input
-              type="text"
-              placeholder="캡션 검색"
-              value={filters.caption}
-              onChange={e => setFilters(p => ({ ...p, caption: e.target.value }))}
-              className={`filter-input h-9 w-32 shrink-0 ${filters.caption ? "border-a-blue" : ""}`}
-            />
-            <select
-              value={filters.platform}
-              onChange={e => setFilters(p => ({ ...p, platform: e.target.value }))}
-              className={`filter-select shrink-0 ${filters.platform !== "all" ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
-            >
-              <option value="all">전체 플랫폼</option>
-              {PLATFORMS.map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
-            {/* 유형 필터 드롭다운 */}
-            <select value={filters.exposureType}
-              onChange={e => setFilters(p => ({ ...p, exposureType: e.target.value }))}
-              className={`filter-select shrink-0 ${filters.exposureType !== "all" ? "border-a-blue text-a-blue bg-blue-50" : ""}`}>
-              <option value="all">전체 유형</option>
-              <option value="무가시딩">무가시딩</option>
-              <option value="오가닉">오가닉 노출</option>
-              <option value="연예인 언급">연예인 언급</option>
-            </select>
-            <div className="w-px h-4 bg-a-hairline mx-0.5 shrink-0" />
-            <div className="flex items-center gap-1 shrink-0">
-              <input type="date" value={filters.dateFrom}
-                onChange={e => setFilters(p => ({ ...p, dateFrom: e.target.value }))}
-                className={`filter-input h-9 px-2 w-[118px] ${filters.dateFrom ? "border-a-blue" : ""}`} />
-              <span className="text-xs text-a-ink-muted">–</span>
-              <input type="date" value={filters.dateTo}
-                onChange={e => setFilters(p => ({ ...p, dateTo: e.target.value }))}
-                className={`filter-input h-9 px-2 w-[118px] ${filters.dateTo ? "border-a-blue" : ""}`} />
-            </div>
-            {hasFilter && (
-              <button onClick={() => setFilters(INIT_FILTERS)} className="btn-ghost h-9 py-0 shrink-0">초기화</button>
-            )}
-            <div className="flex-1 min-w-0" />
-            {/* 액션 버튼 — 2026-08-04 사용자 요청으로 날짜 필터 옆(같은 줄 오른쪽)으로 내렸다.
-                폭이 부족한 화면(우측 칸 940px 미만 ≈ 뷰포트 1380px 미만)에서는 이 묶음만
-                아래 줄로 접힌다. 가로 스크롤로 숨기지 않는 이유는 버튼이 안 보이게 되기 때문. */}
-            <div className="flex items-center gap-1.5 shrink-0">
-              <button onClick={() => setShowUpload(true)} className="btn-secondary h-9 shrink-0">CSV 업로드</button>
-              <button onClick={() => setShowAdd(true)} className="btn-secondary h-9 shrink-0">+ 게시물 추가</button>
-              <button onClick={downloadCSV} disabled={filtered.length === 0} className="btn-secondary h-9 whitespace-nowrap shrink-0">
-                엑셀 다운로드
-              </button>
-              {running && (
-                <>
-                  <span className="text-xs text-a-ink-muted tabular-nums shrink-0">{formatElapsed(elapsedSeconds)}</span>
-                  <button onClick={checkJob} className="btn-secondary h-9 shrink-0">지금 확인</button>
-                </>
-              )}
-              {/* btn-primary는 테두리가 없어 secondary보다 2px 낮다. 투명 테두리로 높이를 맞춘다. */}
-              <button onClick={runCollection} disabled={running} className="btn-primary h-9 border border-transparent shrink-0">
-                {running ? (
-                  <span className="flex items-center gap-1.5">
-                    <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
-                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25"/>
-                      <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
-                    </svg>
-                    실행 중
-                  </span>
-                ) : "지금 수집"}
-              </button>
-            </div>
-          </div>
-        </div>
-        {/* 언급 제품 필터 — 오른쪽 칸의 필터 바로 아래 */}
+        {/* 언급 제품 필터 */}
         {(productOptions.length > 0 || unsetProductCount > 0) && (
           <div className="bg-white rounded-[14px] border border-a-hairline px-4 py-2.5 lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
             <div className="flex items-start gap-2.5">
               <div className="flex flex-wrap gap-1.5 flex-1">
                 <button
                   onClick={() => setFilters(prev => ({ ...prev, products: [] }))}
-                  className={`text-[11px] px-3 py-1 rounded-full border whitespace-nowrap shrink-0 transition ${
+                  className={`text-[11px] px-2.5 py-1 rounded-full border whitespace-nowrap shrink-0 transition ${
                     filters.products.length === 0
                       ? "border-a-blue bg-blue-50 text-a-blue font-medium"
                       : "border-a-hairline text-a-ink-muted hover:border-gray-400 hover:text-a-ink"
@@ -1125,7 +1146,7 @@ export default function OrganicPage() {
                   <button
                     onClick={() => toggleProduct(UNSET_PRODUCT)}
                     title="언급제품을 아직 입력하지 않은 게시물"
-                    className={`text-[11px] px-3 py-1 rounded-full border border-dashed whitespace-nowrap shrink-0 transition ${
+                    className={`text-[11px] px-2.5 py-1 rounded-full border border-dashed whitespace-nowrap shrink-0 transition ${
                       filters.products.includes(UNSET_PRODUCT)
                         ? "border-a-blue bg-blue-50 text-a-blue font-medium"
                         : "border-gray-300 text-a-ink-muted hover:border-gray-400 hover:text-a-ink"
@@ -1139,7 +1160,7 @@ export default function OrganicPage() {
                   return (
                     <button key={p}
                       onClick={() => toggleProduct(p)}
-                      className={`text-[11px] px-3 py-1 rounded-full border whitespace-nowrap shrink-0 transition ${
+                      className={`text-[11px] px-2.5 py-1 rounded-full border whitespace-nowrap shrink-0 transition ${
                         active
                           ? "border-a-blue bg-blue-50 text-a-blue font-medium"
                           : "border-a-hairline text-a-ink-muted hover:border-gray-400 hover:text-a-ink"
