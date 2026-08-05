@@ -6,6 +6,12 @@
 
 # AI Shared Status
 
+## 2026-08-05 [Codex 완료] 제작자 오적재 소급 정리 + Claude 배포 인계 확인
+- **라이브 Apps Script 실행:** `clearInvalidCreatorsWithBackup()`를 Apps Script 편집기에서 직접 실행 완료. 결과 로그: `cleared=111`, 백업 탭 `_codex_invalid_creator_backup_20260805_093858`, `remaining_creator_issues=0`. 기획자 열은 건드리지 않고 제작자 열만 정리.
+- **DB 정리:** `invalid-creator-fields.yml`을 `fields=creator`로 dry-run 후 apply. dry-run `creator_issue_rows=116`, apply 결과 `[INVALID_CREATOR_FIELDS_REPAIR] {"updated":116,...}`. 백업 아티팩트 `invalid-creator-fields-backup-30964054004` 업로드 완료.
+- **재검증:** apply 후 dry-run 재실행 결과 `creator_issue_rows=0`, `selected_for_update=0`. 남은 `planner_issue_rows=137`은 이번 합의 범위 밖이라 미수정.
+- **Claude 배포 인계 확인:** Claude가 프로덕션을 `7877fb6` 기준으로 배포했으며, 당시 워크트리의 미커밋 `web/app/globals.css`, `web/app/organic/page.tsx`는 포함되지 않았다는 보고를 확인. 현재 `origin/main`은 이후 커밋까지 포함하므로 organic/globals 최신 UI를 프로덕션에 올리려면 별도 재배포 필요.
+
 ## 2026-08-04 [Claude 완료 · DB 쓰기 5행] 딸기요거트바 → 딸기생요거트바 정정 (`a43ebb2`)
 - 사용자 지시. `organic_mentions.mentioned_product`의 `딸기요거트바` 토큰 **5건**을 `딸기생요거트바`로 바꿨다. 결과: 남은 옛 이름 **0건**, `딸기생요거트바` 보유 행 **4 → 9건**.
 - **안전 절차:** 콤마 **토큰 단위** 비교(부분문자열 치환 금지 — `딸기생요거트바`가 다시 치환되는 사고 방지), 토큰이 아닌 문자열 포함 케이스 0건 확인, 같은 행에 두 이름이 함께 있을 때 중복 생성 방지, **쓰기 전 대상 행 JSON 백업**, **행별 `eq(id)` PATCH**(복합 필터 오분류 이력 때문), 사후 검증(남은 0건 / 기대값 불일치 0건).
