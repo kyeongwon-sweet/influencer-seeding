@@ -6,6 +6,22 @@
 
 # AI Shared Status
 
+## 🔴 2026-08-05 [➡️Codex 확인 필요] main CI 빨간불 — `e9a0331`이 계약 테스트를 깨뜨림
+- `npm test` **171/172**. 실패: `manual-stat-preservation.test.ts:13` — `reach_rows = _preserve_same_date_manual_stats(db, reach_rows, "banner reach snapshot")` 문장을 요구하는데, **`e9a0331`(배너 도달수 단일경로화 — 자동채움·클로버 제거)이 그 경로를 의도적으로 삭제**했다.
+- **build-test 이력:** `f0e6c79` success → **`e9a0331` failure** → 이후 커밋 전부 실패 상속. 즉 원인은 `e9a0331` 하나다.
+- **판단 필요(내가 임의로 안 고쳤다):** ①삭제가 의도대로면 **계약 테스트를 새 불변식(자동 reach 쓰기 없음)으로 갱신**해야 한다. ②아니면 코드를 되살려야 한다. 배너 reach 쓰기 경로가 사라진 셈이라(과거 메모: "배너 reach는 importStats 미지원=run_monitoring 전용") **지금 유일한 쓰기 주체가 무엇인지** 명시가 필요하다(hourly `banner-reach-sync`로 보이나 미확인).
+- CLAUDE.md의 "빌드 테스트 통과 없이 푸시 금지"와 충돌하는 상태다. 내 perf 커밋(`e33a165`)은 tsc·build 통과, 이 실패와 무관(그 파일 미수정).
+
+## 2026-08-05 [Claude 완료] 전 탭 체감속도 개선 3건 (`e33a165`, 배포 `dpl_6VJkmtjxARBAeVqhBiCHLSAd796P`)
+- 사용자: "모든 탭이 로딩이 느리고 버벅여. 코드 리뷰해서 개선." → **추측 없이 실측 후** 원인 3개를 고쳤다.
+- **① 모든 탭 공통 = 미들웨어의 Clerk 왕복.** 공개 라우트가 아닌 **모든 요청**마다 `clerkClient().users.getUser()`로 Clerk에 네트워크 왕복. 홈은 마운트에 API 7개를 부르므로 **한 번 열 때 왕복 8회**가 모든 응답 앞에 붙었다(API 라우트 총 59개). → `userId`별 **10분 TTL 캐시(최대 500)**. 세션 검증(`auth.protect`)은 JWT 로컬 검증이라 네트워크가 없어 캐시 대상이 아니다. 이메일 변경은 최대 TTL만큼 늦게 반영.
+- **② 협찬 모니터링 = 1,785행 무제한 렌더.** `PostsTable`이 전 행을 그렸다(행마다 셀 20여 개 + Sparkline SVG). **100행씩 + 스크롤 무한로드**로 전환(무상노출과 같은 패턴).
+  - **숫자 불변 보장:** 합계 행은 `tableTotals`(필터 전체), 정렬·복사·CSV는 `sortedPosts` 전체를 쓴다 → **표시 행 수와 무관**. 정렬·필터 변경 시에만 처음 100행으로 리셋(데이터 갱신만이면 보던 위치 유지). 정렬 상태 판별용으로 `sortCol`/`sortDir` props 추가.
+- **③ 리스트업 = 썸네일 266개 즉시 로드.** `loading=lazy` `decoding=async` 추가.
+- **⛔ 남은 최대 병목(미착수·사용자 판단 필요): `/api/sponsored-posts` 응답 5.51 MB.** 라우트 로직을 그대로 재현해 실측: 게시물 1,785건 + 일별스탯 31,246행, **`all_stats`가 68.5%(3.77MB)**, 표만 그리는 데 필요한 양은 1,779KB. `all_stats`는 Sparkline·집계 그래프·날짜필터(`pickRangeStats`)가 클라이언트에서 쓰므로 **그냥 못 뺀다.** 줄이려면 (a)집계 그래프용 일별 합계를 서버에서 계산, (b)Sparkline은 화면에 그리는 100행만 지연 로드 — 증분 표시규칙·배너 reach·mono 가드가 얽혀 있어 **화면 검증 없이 손대면 위험**. 승인 시 별도 작업.
+- **참고 실측치(전량 크기):** sponsored_posts 1,785행 1,286KB · post_daily_stats 31,246행 8,521KB · organic_mentions 672행 314KB · influencers 266행 238KB.
+- **검증:** `tsc --noEmit`·`npm run build` 통과. 배포 Ready + `-mu` alias + 라이브 dpl 일치 확인. (테스트 1건 실패는 위 🔴 항목, 이 변경과 무관)
+
 ## 2026-08-05 [Claude 완료] 밴드 곡명 제외어 추가 + 백업 삭제 + **-mu alias 경합 해소** (`5233cc6`, 배포 `dpl_AWHh8LiRR2cAywNjHToKAH8cxZsR`)
 - **✅ 위 'organic UI prod 재배포' 요청 처리됨.** `-mu`가 `dpl_AWHh8LiRR2cAywNjHToKAH8cxZsR`(HEAD `de91bf9` 기준, 작업트리 clean)를 가리키는 것까지 라이브 확인. **위 요청 항목은 완료로 봐도 된다.**
 - **⚠️ alias 경합 발생(기록용):** 내 배포(`dykfcx6cf`, 10:08) **직후 1분 뒤 다른 배포(`ditewfxcg`)가 생성돼 `-mu`를 가져갔다.** 내 배포는 Ready였지만 alias가 없어 **라이브가 아니었다.** `vercel ls`로 in-flight 없음 확인 후 재배포해 alias를 확정했다. → **교훈: `vercel inspect`의 Aliases에 `-mu`가 있는지 매번 확인할 것. Ready ≠ 라이브.**
