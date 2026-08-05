@@ -26,6 +26,10 @@ on:
         description: "이 날짜(KST, YYYY-MM-DD) '이전' 메시지만 대상. 비우면 전체"
         required: false
         default: ""
+      ts_list:
+        description: "선택: 삭제할 ts 목록(콤마/줄바꿈 구분). 넣으면 DM 읽기를 건너뛴다 → im:history 스코프 불필요"
+        required: false
+        default: ""
       max:
         description: "한 번에 삭제할 최대 건수(안전장치)"
         required: true
@@ -48,6 +52,7 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           CHANNEL: ${{ github.event.inputs.channel }}
           BEFORE: ${{ github.event.inputs.before }}
+          TS_LIST: ${{ github.event.inputs.ts_list }}
           MAX: ${{ github.event.inputs.max }}
           DRY_RUN: ${{ github.event.inputs.dry_run }}
           CONFIRM: ${{ github.event.inputs.confirm }}
@@ -69,10 +74,21 @@ jobs:
             echo "대상: 전체 기간"
           fi
 
-          # 1) 봇이 보낸 메시지 ts 수집(페이지네이션). 사람이 쓴 메시지는 애초에 제외한다.
+          # 1) 봇이 보낸 메시지 ts 수집.
           : > /tmp/ts.txt
-          CURSOR=""
           PAGES=0
+
+          # 1-a) ts_list를 받았으면 DM을 읽지 않는다 → `im:history` 스코프가 없어도 동작한다.
+          #      (여믄봇은 DM에 '쓰기'만 해왔으므로 읽기 권한이 없을 수 있다)
+          #      chat.delete는 여전히 봇 자기 메시지만 지우므로, 남의 ts를 넣어도 지워지지 않는다.
+          if [ -n "$TS_LIST" ]; then
+            echo "$TS_LIST" | tr ',' '\n' | tr -d ' \r' | grep -E '^[0-9]+\.[0-9]+$' > /tmp/ts.txt || true
+            GIVEN=$(wc -l < /tmp/ts.txt | tr -d ' ')
+            echo "ts_list 입력 사용 — 유효한 ts $GIVEN건 (DM 읽기 건너뜀)"
+            if [ "$GIVEN" -eq 0 ]; then echo "🛑 ts 형식이 올바르지 않습니다(예: 1783072409.266399)"; exit 1; fi
+          else
+
+          CURSOR=""
           while : ; do
             PAGES=$((PAGES+1))
             ARGS="channel=$CHANNEL&limit=200"
@@ -91,6 +107,8 @@ jobs:
             [ -z "$CURSOR" ] && break
             sleep 1.2   # conversations.history 레이트리밋(Tier 3) 여유
           done
+
+          fi   # ts_list 분기 끝
 
           TOTAL=$(wc -l < /tmp/ts.txt | tr -d ' ')
           echo "----------------------------------------"
