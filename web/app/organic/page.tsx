@@ -1098,9 +1098,12 @@ export default function OrganicPage() {
         </div>
         {/* 왼쪽 칸은 제 글자폭(max-content)만 쓰고 나머지를 오른쪽에 넘긴다.
             '우리가 언급된 자컨/콘텐츠에 감사댓글'이 접히면 박스 세로가 늘어나기 때문. */}
-        {/* gap-4 → gap-7: '💬 댓글 작성' 열을 조금 더 오른쪽으로 밀었다(2026-08-05 사용자 요청).
-            왼쪽 열은 max-content(제 글자폭)이므로 간격만 늘리면 오른쪽 열이 그만큼 이동한다. */}
-        <div className="grid grid-cols-[max-content_minmax(0,1fr)] gap-7">
+        {/* '💬 댓글 작성' 블록을 **박스 오른쪽 끝에 붙인다**(2026-08-05 사용자 요청).
+            두 열을 모두 max-content로 두고 justify-between으로 벌리면, 왼쪽 블록은 왼쪽 끝에
+            오른쪽 블록은 오른쪽 끝에 정렬된다(실측: 시작 x 145 → 271px, 오른쪽 여백은 박스 패딩만).
+            ⚠️ 간격(gap)을 키우는 방식은 못 쓴다 — 오른쪽 열이 minmax(0,1fr)이면 간격을 늘려도
+               블록 내부 텍스트는 좌측에 붙어 있어 "붙었다"는 느낌이 안 나고, 열만 좁아진다. */}
+        <div className="grid grid-cols-[max-content_max-content] justify-between gap-4">
           <div>
             <p className="text-[12px] font-semibold text-a-ink mb-1.5">✓ 수집 대상:</p>
             <ul className="text-[12px] text-a-ink-muted space-y-0.5 list-none leading-normal">
