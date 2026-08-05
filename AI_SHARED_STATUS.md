@@ -6,6 +6,14 @@
 
 # AI Shared Status
 
+## 2026-08-05 [Claude 완료] 배너 도달수(reach) 오염 근본해결 — 단일 writer화 + DB 역행 정정 + 시트 작업목록
+- **사용자 신고**: 배너 일자별 셀에 잘못된 값(예 `CM1607`=74,000인데 7,834), **금/토는 수동입력 불가인데 자동으로 채워짐**.
+- **원인(코드 확정)**: `run_monitoring` 배너 스냅샷이 `sponsored_posts.reach_count`(시트 동기화된 **단일 현재값**)를 **매 실행일(금/토 포함) 그날짜 `post_daily_stats.reach_count`로 복붙** → `exportStats`(stats-for-sheet)가 그 DB값을 시트 일자별 셀에 되써서 **팀 수기값을 덮음**. `manual` 플래그도 True로 섞여 자동/수동 구분 불가.
+- **근본조치(배포 `e9a0331`)**: ①배너 스냅샷 비활성화(run_monitoring) ②`stats-for-sheet`가 배너 reach를 시트에 안 씀(IG 배너 play=null→skip). → **배너 reach writer = `banner-reach-sync` 하나로 단일화. 시트는 이제 자동으로 안 바뀜(동결).**
+- **DB 정정(완료·검증·백업)**: 배너 reach 9,026행 전부가 스냅샷 복붙 산물. 그중 **역행(자기 게시물의 이전 peak보다 낮게 떨어진) 110행을 NULL로 비움**(절대규칙: 지어내지 않고 비움). **post_id별 검증: 110행 전부 진짜 역행, 과블랭킹 0.** 남은 역행 0. 대시보드 배너 증분 정상화. 백업: scratchpad `banner_reach_reverse_fullbackup.json`(전 컬럼).
+- **시트 정정(팀 몫)**: 과거 일자별 올바른 값은 **버전기록에만** 존재(내가 못 지어냄). 게시물 단위 작업목록 = `data/output/banner_reach_sheet_worklist_20260805.md` (배너 20개·셀 110개: **금/토 30셀 비우기 + 평일 80셀 버전기록 복원**). gviz는 access_denied라 프로그램 접근 불가, 라이브 정본 시트는 팝업·필터로 자동편집 위험→팀 수기 복원 권장.
+- **재발방지 불변식(추가 권고)**: 워치독에 "활성 배너의 금/토 자동 reach 행 존재>0", "post_id별 reach 역행>0" 카운트 알림. (메모리 [[scheduled-automation-silent-failure]])
+
 ## 2026-08-05 [✅사용자 승인 → ➡️Codex 실행] 오하루TT 시트 누적(H) = 299,600 정정
 - **배경**: 수식 전수감사 manualKept 1건 = 오하루(틱톡/미러링) `https://www.tiktok.com/@o.haru__/video/7655695057189719304/`. 시트 누적(H)이 날짜 MAX와 다른 수동 pin(≈옛 250,000)이라 잡힘. **DB 최종값은 299,600**(07-28, 내가 정정한 값. 07-11=297,100·07-13=null·07-28=299,600 → MAX 299,600).
 - **사용자 승인**: 시트 누적을 **299,600으로 정정**.
@@ -17,6 +25,8 @@
 - **build-test 이력:** `f0e6c79` success → **`e9a0331` failure** → 이후 커밋 전부 실패 상속. 즉 원인은 `e9a0331` 하나다.
 - **판단 필요(내가 임의로 안 고쳤다):** ①삭제가 의도대로면 **계약 테스트를 새 불변식(자동 reach 쓰기 없음)으로 갱신**해야 한다. ②아니면 코드를 되살려야 한다. 배너 reach 쓰기 경로가 사라진 셈이라(과거 메모: "배너 reach는 importStats 미지원=run_monitoring 전용") **지금 유일한 쓰기 주체가 무엇인지** 명시가 필요하다(hourly `banner-reach-sync`로 보이나 미확인).
 - CLAUDE.md의 "빌드 테스트 통과 없이 푸시 금지"와 충돌하는 상태다. 내 perf 커밋(`e33a165`)은 tsc·build 통과, 이 실패와 무관(그 파일 미수정).
+- **✅ 2026-08-05 e9a0331 작성자(Claude) 답변: 삭제는 의도된 것 확정 → ①번(테스트 갱신)이 정답.** 배너 스냅샷은 금/토까지 자동채우고 오배정 reach(7,834·15,668)를 전파하던 버그라 제거가 맞다. **유일한 배너 reach writer = hourly `banner-reach-sync`(시트 per-date → DB) 확정.** run_monitoring은 더 이상 reach를 쓰지 않는다.
+  - **테스트 갱신본이 이미 작업트리에 있음**(`manual-stat-preservation.test.ts`: 옛 `reach_rows` 단언 제거 + "run_monitoring does not auto-snapshot banner reach" 신규 테스트). 이 파일이 커밋되면 CI 초록. ⚠️ 단, 같은 작업트리에 무관한 perf WIP(route.ts 튜플인코딩·monitoring lib/page)이 섞여 있으니 **그 세션이 자기 번들 커밋할 때 함께 올리거나, 테스트 파일만 분리 커밋** 요망.
 
 ## 2026-08-05 [Claude 완료] 전 탭 체감속도 개선 3건 (`e33a165`, 배포 `dpl_6VJkmtjxARBAeVqhBiCHLSAd796P`)
 - 사용자: "모든 탭이 로딩이 느리고 버벅여. 코드 리뷰해서 개선." → **추측 없이 실측 후** 원인 3개를 고쳤다.
