@@ -7,7 +7,7 @@ import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
 import { isValidEntryDate } from "@/lib/dateRule";
 import { companyForAccount } from "@/lib/companyMap";
 import { batchFetch } from "@/lib/batchFetch";
-import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, INIT_FILTERS, CHANNEL_TYPES, STICKY_COL_ORDER, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, getFilteredStats, pickRangeStats, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, viewIncrement, safeIncrement, pickMetric, pdOf, productLabel, effectiveReach, bannerDailyMetric, assetNameOf, weekKeyOf, pearson, alignedPairs, bestLag, alignMulti, multipleR2, parseCsvLine } from "./lib";
+import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, decodeStatsV2, INIT_FILTERS, CHANNEL_TYPES, STICKY_COL_ORDER, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, getFilteredStats, pickRangeStats, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, viewIncrement, safeIncrement, pickMetric, pdOf, productLabel, effectiveReach, bannerDailyMetric, assetNameOf, weekKeyOf, pearson, alignedPairs, bestLag, alignMulti, multipleR2, parseCsvLine } from "./lib";
 import CorrelationPanel from "./components/CorrelationPanel";
 import DayOfWeekPanel, { type DowData } from "./components/DayOfWeekPanel";
 import CompanyPanel, { type CompanyData } from "./components/CompanyPanel";
@@ -651,7 +651,12 @@ export default function MonitoringPage() {
       return;
     }
     const json = await res.json();
-    let newPosts = Array.isArray(json) ? json : [];
+    // 서버는 일별 이력을 튜플(stats_v2)로 보낸다 — 응답 5.51MB → 2.76MB. 여기서 기존 all_stats와
+    // **완전히 같은 객체 모양**으로 되돌리므로, 아래 모든 계산(증분·누적·배너 reach·정렬·CSV)은
+    // 이 변경을 전혀 모른다. (stats_v2가 없는 옛 응답이면 all_stats를 그대로 쓴다)
+    let newPosts: Post[] = (Array.isArray(json) ? json : []).map((p: Post & { stats_v2?: unknown }) => (
+      p.stats_v2 !== undefined ? { ...p, all_stats: decodeStatsV2(p.stats_v2) } : p
+    ));
 
     // play_count 변화 감지 — 이전 저장된 값과 비교
     if (previousPlayCountsRef.current.size > 0) {

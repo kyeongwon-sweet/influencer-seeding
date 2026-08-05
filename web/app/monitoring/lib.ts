@@ -34,6 +34,33 @@ export type Post = {
   all_stats: DailyStats[];
 };
 
+/**
+ * 서버가 일별 이력을 보내는 압축 형태(튜플). 키 이름이 행마다 반복되는 걸 없앤 것뿐이고
+ * 의미는 기존 `all_stats`와 동일하다. 실측: 응답 5.51MB → 2.76MB.
+ *
+ * ⚠️ 순서는 `/api/sponsored-posts` 라우트의 statsV2 생성 순서와 **반드시 같아야 한다.**
+ *    [측정일(YYYY-MM-DD), 조회수, 좋아요, 댓글, 도달수, 수집여부(1/0)]
+ */
+export type StatTupleV2 = [string, number | null, number | null, number | null, number | null, 0 | 1];
+
+/** 튜플 → 기존 all_stats와 **완전히 같은 객체 모양**으로 복원. 이후 계산 경로는 전혀 바뀌지 않는다. */
+export function decodeStatsV2(tuples: unknown): DailyStats[] {
+  if (!Array.isArray(tuples)) return [];
+  const out: DailyStats[] = [];
+  for (const t of tuples) {
+    if (!Array.isArray(t) || t.length < 6) continue;   // 형태가 어긋나면 조용히 버린다(값을 지어내지 않음)
+    out.push({
+      measured_at: String(t[0]),
+      play_count: t[1] as number | null,
+      likes_count: t[2] as number | null,
+      comments_count: t[3] as number | null,
+      reach_count: t[4] as number | null,
+      play_collected: t[5] === 1,
+    });
+  }
+  return out;
+}
+
 export type CsvRow = { url: string; asset_name: string | null; project_name?: string | null; product_name: string | null; channel_type: string | null; account_name: string | null; posted_at: string | null; cost: number | null; reach_count: number | null };
 
 export type B2bDaily = {
