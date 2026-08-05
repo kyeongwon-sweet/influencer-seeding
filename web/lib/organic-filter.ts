@@ -29,6 +29,42 @@ export const ORGANIC_EXCLUDE_KEYWORDS = [
   "파란달이뜨는날에",
 ];
 
+/**
+ * 아이돌 특전 포카 **양도·판매글** 제외 (2026-08-05 사용자 지시).
+ *
+ * 배경: `다크문 x 라라스윗 아이스크림 케이크`(엔하이픈 콜라보)에 포토카드 특전이 붙어서,
+ * X에 **포카 양도·딜·공동구매 글**이 대량으로 올라오고 검색어 `lalasweet`에 걸려 무상노출로
+ * 들어왔다. 실측 668행 중 **58건**(전부 X)이 그것이었고 삭제했다.
+ *
+ * ⚠️ **`다크문`만으로는 절대 제외하지 않는다.** 다크문 콜라보는 실제 제품이라 공식계정·기사·
+ *    팬 반응 같은 **진짜 브랜드 노출글이 섞여 있다**(실측 26건). 그래서
+ *    **거래 신호 AND 아이돌 문맥**이 동시에 있을 때만 제외한다.
+ *    실측 검증: 이 규칙으로 거래글 55건이 잡히고 진짜 노출글 26건은 하나도 안 잡혔다.
+ */
+const TRADE_SIGNALS = [
+  // 한국어
+  "양도", "판매", "포카", "포토카드", "특전", "교환", "일괄", "택포", "선입금", "나눔",
+  // 영어 팬덤 약어
+  "wts", "wtt", "wtb", "ensell", "for sale", "lucky draw", "럭드", "럭키드로우",
+  // 태국어(엔하이픈 팬덤 거래글이 특히 많다): 즉시배송/딜/가격/예약/장당/마켓
+  "พร้อมส่ง", "ดีล", "ราคา", "จอง", "ใบละ", "ตลาดนัด",
+];
+const IDOL_CONTEXT = [
+  "엔하이픈", "enhypen", "다크문", "dark moon", "darkmoon",
+  "포카", "트카", "럭드", "위버스", "weverse", "ktown", "withmuu", "musicplant",
+];
+
+/** 거래 신호와 아이돌 문맥이 함께 있으면 그 근거를 돌려준다(없으면 null). */
+export function organicTradePostHit(post: Record<string, unknown>): { trade: string; idol: string } | null {
+  // ⚠️ 여기서는 **필드를 합쳐서** 본다(제외어와 달리 두 신호가 캡션·해시태그에 나뉘어 있을 수 있다).
+  const blob = textCandidates(post).join(" ").toLowerCase();
+  const trade = TRADE_SIGNALS.find(k => blob.includes(k));
+  if (!trade) return null;
+  const idol = IDOL_CONTEXT.find(k => blob.includes(k));
+  if (!idol) return null;
+  return { trade, idol };
+}
+
 /** 문자열 후보에서 사람이 읽는 텍스트만 뽑아낸다(플랫폼마다 필드 모양이 달라 객체도 받는다). */
 function textCandidates(post: Record<string, unknown>): string[] {
   const out: string[] = [];

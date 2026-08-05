@@ -6,7 +6,7 @@ import { notifyBot, notifyJob } from "@/lib/slack";
 import { todayKST } from "@/lib/dateRule";
 import { isBannerChannelType } from "@/lib/banner-metric";
 import { looksLikeEngagementCountAsViews } from "@/lib/ig-metric-guard";
-import { organicExcludeHit } from "@/lib/organic-filter";
+import { organicExcludeHit, organicTradePostHit } from "@/lib/organic-filter";
 
 // ── 지표 계산 (metrics.py 포팅) ─────────────────────────────────────
 
@@ -834,6 +834,15 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
     if (excludeHit) {
       excludedCount++;
       console.log(`[LOG] ${platform} 제외어 '${excludeHit}' → 건너뜀: ${String(item.url ?? item.webVideoUrl ?? '')}`);
+      continue;
+    }
+
+    // 공통 필터: 아이돌 특전 포카 양도·판매글(다크문 콜라보 특전) — 브랜드 노출이 아니다.
+    // '다크문'만으로는 절대 안 막는다(진짜 콜라보 노출글이 섞여 있음) → 거래 신호 AND 아이돌 문맥.
+    const tradeHit = organicTradePostHit(item);
+    if (tradeHit) {
+      excludedCount++;
+      console.log(`[LOG] ${platform} 포카 양도글(거래='${tradeHit.trade}' 아이돌='${tradeHit.idol}') → 건너뜀: ${String(item.url ?? item.webVideoUrl ?? '')}`);
       continue;
     }
 

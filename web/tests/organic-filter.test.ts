@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { organicExcludeHit, ORGANIC_EXCLUDE_KEYWORDS } from "../lib/organic-filter.ts";
+import { organicExcludeHit, organicTradePostHit, ORGANIC_EXCLUDE_KEYWORDS } from "../lib/organic-filter.ts";
 
 // 실제로 무상노출에 잘못 수집됐던 캡션들(2026-08-04 DB 실측 16건 중 발췌).
 // 인디 듀오 '랄라스윗(lalasweet)'이 영문 표기를 우리 브랜드와 똑같이 써서 검색에 걸렸다.
@@ -85,4 +85,47 @@ test("⚠️ 곡명이 일상어와 겹치면 정상 게시물도 제외된다(�
   assert.equal(organicExcludeHit({ caption: "불꽃놀이 보면서 라라스윗 먹기" }), "불꽃놀이");
   // 곡명이 없는 정상 게시물은 그대로 통과한다.
   assert.equal(organicExcludeHit({ caption: "여름밤에 라라스윗 딸기듬뿍바" }), null);
+});
+
+// ── 아이돌 특전 포카 양도글 제외 (2026-08-05 사용자 지시로 추가) ─────────────────
+// 실측: 668행 중 58건이 다크문 콜라보 특전 포카 거래글이었고 전부 삭제했다.
+// 아래 캡션은 **실제로 삭제된 글**과 **실제로 보존한 글**을 그대로 옮긴 것이다.
+
+test("실제 양도·거래글은 제외된다", () => {
+  const 거래글 = [
+    "엔하이픈 다크문 라라스윗 특전 포카 양도 ✅️미개봉 7장 일괄 양도 4.0 배송비 0.18 디엠 해주세요",
+    "라라스윗 다크문 케이크 포카 포토카드 양도 Enhypen Dark Moon have: Shion want: Jino wtt 엔하이픈",
+    "엔하이픈 다크문 라라스윗 포토카드 양도 판매 each price enhypen darkmoon wts",
+    "엔하이픈 라라스윗 다크문 포카 교환 나 : 솔론/성훈 님 : 자카/정원 enhypen darkmoon lalasweet",
+    "wts / พร้อมส่ง เฮลลี่ darkmoon lalasweet 200.-รวมส่ง #ตลาดนัดenhypen",
+    "ดีลเกาหลี🇰🇷 DARK MOON | Lalasweet Ice Cream Cake เจค นิกิ - ใบละ 450 - รับมัดจำ",
+    "꒰ พร้อมส่ง♡̷ ꒱ ♡ lucky draw : ktown , weverse shop / dark moon x lalasweet ice cream cake",
+    "#ensell jaan jakah darkmoon lalasweet, rate 12.2 ada yg mau",
+  ];
+  for (const caption of 거래글) {
+    assert.ok(organicTradePostHit({ caption }), `제외 실패: ${caption.slice(0, 40)}`);
+  }
+});
+
+test("진짜 다크문 콜라보 노출글은 통과한다 (실제 보존 데이터)", () => {
+  const 노출글 = [
+    "Lalasweet, the leading low-sugar ice cream brand, has released a collaboration product and limited-edition ice cream cake in partnership with HYBE's original story Dark Moon with ENHYPEN.",
+    "다크문 | 라라스윗 아이스크림 케이크🎂 곧 카카오톡 선물하기에서 만나요!💔 #다크문 #다크문X라라스윗 #워너바이트",
+    "SUNOO got the Dark Moon x Lalasweet Ice Cream cake! ❤️❤️❤️",
+    "shion & jakah photocard from darkmoon x lalasweet was so cuteeeeeeee 🥹🤍",
+    "dark moon x lalasweet ice cream cake collab i tried getting the mini jaan on the cake topper",
+    "Lalasweet x dark moon ice cream cake LO AMO LO AMO",
+    "darkmoon x lalasweet, a korean dessert brand!! sunoo recommended their icecream before",
+  ];
+  for (const caption of 노출글) {
+    assert.equal(organicTradePostHit({ caption }), null, `오탐: ${caption.slice(0, 40)}`);
+  }
+});
+
+test("아이돌 문맥 없는 일반 판매글은 이 필터가 건드리지 않는다", () => {
+  // '판매' 같은 단어만으로 막으면 브랜드 게시물이 날아간다 → 아이돌 문맥이 함께 있어야 한다.
+  assert.equal(organicTradePostHit({ caption: "라라스윗 신제품 판매 시작! 딸기듬뿍바" }), null);
+  assert.equal(organicTradePostHit({ caption: "편의점에서 라라스윗 양도받았어요" }), null);
+  // 반대로 아이돌 문맥만 있고 거래 신호가 없으면 통과
+  assert.equal(organicTradePostHit({ caption: "엔하이픈 다크문 라라스윗 케이크 먹었다" }), null);
 });
