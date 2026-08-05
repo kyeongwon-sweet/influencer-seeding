@@ -69,9 +69,10 @@ export async function GET(req: NextRequest) {
         prePostedDropped++;
         continue;
       }
-      const metric = bannerById.get(s.post_id as string)
-        ? (s.reach_count ?? s.play_count)
-        : s.play_count;
+      // 배너 도달수(reach)는 '시트 수기'가 정본 — DB→시트로 되쓰면 팀 수기값을 덮는다(2026-08-05 클로버 사고).
+      // → 배너도 '수집값(play_count, 예: 틱톡 배너 조회수)'만 시트에 반영하고, 수기 reach 셀은 건드리지 않는다.
+      //   (IG 배너는 play_count가 없어 metric=null → 아래 가드로 skip → 시트 수기 reach 보존.)
+      const metric = bannerById.get(s.post_id as string) ? s.play_count : s.play_count;
       if (metric == null || Number(metric) <= 0) continue;
       const byDate = byKey.get(key) ?? new Map<string, number>();
       const prev = byDate.get(measuredAt);

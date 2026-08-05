@@ -1414,24 +1414,12 @@ def run():
         #    (첫 스냅샷일엔 이전 이력이 없어 도달수 전체가 신규 증분으로 잡힘 = 의도된 규칙)
         #    best-effort: 실패해도 수집 자체엔 영향 없음(경고만).
         try:
-            banners, boff = [], 0
-            while True:
-                bres = (db.table("sponsored_posts").select("id, reach_count, ended_at")
-                        .ilike("channel_type", "%배너%").range(boff, boff + 999).execute())
-                bchunk = bres.data or []
-                banners.extend(bchunk)
-                if len(bchunk) < 1000:
-                    break
-                boff += 1000
-            # 🛡️ reach 0/음수는 '미집계'다 → 저장 안 함(0 baseline 방지). 실제 도달수(>0)만 스냅샷.
-            reach_rows = [{"post_id": b["id"], "measured_at": TODAY, "reach_count": b["reach_count"]}
-                          for b in banners if not b.get("ended_at") and (b.get("reach_count") or 0) > 0]
-            reach_rows = _preserve_same_date_manual_stats(db, reach_rows, "banner reach snapshot")
-            if reach_rows:
-                # 같은 실행에서 먼저 만든 자동 배너 행(likes/comments)에 reach_count를 병합해야 하므로
-                # 여기만 upsert를 유지한다. 같은 날짜 manual 행은 바로 위 사전조회에서 이미 제외된다.
-                db.table("post_daily_stats").upsert(reach_rows, on_conflict="post_id,measured_at").execute()
-                print(f"[LOG] 📸 배너 도달수 스냅샷: {len(reach_rows)}건 ({TODAY})")
+            # ⛔ 배너 도달수 자동 스냅샷 비활성화 (2026-08-05).
+            #    IG 배너 reach는 '시트 수기'가 정본이며 banner-reach-sync(시트 per-date → DB)가 이미 반영한다.
+            #    이 스냅샷은 sponsored_posts.reach_count를 팀 미입력일(금/토 등)에도 매일 자동 기록해서
+            #    (a) 수기 없는 날을 자동 채우고 (b) 잘못된 reach_count(예 7,834·15,668 오배정)를 전파했다.
+            #    → 배너 reach는 banner-reach-sync 단일 경로만 사용한다(양방향 클로버·자동채움 제거).
+            print("[LOG] 배너 도달수 자동 스냅샷 비활성화됨 — banner-reach-sync(시트→DB per-date)가 정본")
         except Exception as e:
             print(f"[WARN] 배너 도달수 스냅샷 실패(무시): {e}")
 
