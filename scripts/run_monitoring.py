@@ -606,6 +606,8 @@ def _fetch_youtube(urls: list) -> dict:
     유튜브는 '캡션'이 따로 없어 영상 제목(title)을 캡션(content_summary)으로 쓴다."""
     from apify_client import ApifyClient
     client = ApifyClient(os.getenv("APIFY_API_TOKEN"))
+    if not urls:              # 빈 배치 → Apify 호출 스킵(빈 startUrls/resultsLimit=0 거부 방지)
+        return {}
     run = client.actor("streamers/youtube-scraper").call(run_input={
         "startUrls": [{"url": u} for u in urls],
         "maxResults": 1,
@@ -709,6 +711,8 @@ def _fetch_tiktok(urls: list) -> dict:
     """틱톡 영상 조회수 수집 (clockworks/tiktok-scraper). 반환: {video_id: {views,likes,comments}}"""
     from apify_client import ApifyClient
     client = ApifyClient(os.getenv("APIFY_API_TOKEN"))
+    if not urls:              # 빈 배치 → Apify 호출 스킵
+        return {}
     run = client.actor("clockworks/tiktok-scraper").call(run_input={
         "postURLs": urls,
         "resultsPerPage": 1,
@@ -746,6 +750,8 @@ def _fetch_threads(urls: list) -> dict:
     """스레드 좋아요/답글 수집 (logical_scrapers/threads-post-scraper). 조회수 없음. 반환: {code: {likes,comments}}"""
     from apify_client import ApifyClient
     client = ApifyClient(os.getenv("APIFY_API_TOKEN"))
+    if not urls:              # 빈 배치 → Apify 호출 스킵
+        return {}
     run = client.actor("logical_scrapers/threads-post-scraper").call(run_input={
         "startUrls": [{"url": u} for u in urls],
     })
@@ -776,6 +782,8 @@ def _fetch_facebook(urls: list) -> dict:
     """페이스북 좋아요/공유 수집 (apify/facebook-posts-scraper). 일반 게시물은 조회수 없음(영상만). 반환: {key: {likes,comments}}"""
     from apify_client import ApifyClient
     client = ApifyClient(os.getenv("APIFY_API_TOKEN"))
+    if not urls:              # 빈 배치 → Apify 호출 스킵(resultsLimit=0 거부 방지)
+        return {}
     run = client.actor("apify/facebook-posts-scraper").call(run_input={
         "startUrls": [{"url": u} for u in urls],
         "resultsLimit": len(urls),  # 요청 URL 수만큼만(단건에 최대 5 요청하던 과수집 제거)
@@ -814,6 +822,8 @@ def _fetch_twitter(urls: list) -> dict:
     X가 조회수(impressions)를 제한적으로 노출 → 없으면 views=None(그날치 건너뜀)."""
     from apify_client import ApifyClient
     client = ApifyClient(os.getenv("APIFY_API_TOKEN"))
+    if not urls:              # 빈 배치 → Apify 호출 스킵
+        return {}
     clean = [_tw_norm(u) for u in urls]
     run = client.actor("apidojo/twitter-scraper-lite").call(run_input={
         "startUrls": clean,
@@ -1500,6 +1510,8 @@ def _fetch_ig_fallback(urls: list) -> dict:
 @retry_on_network_error(max_retries=3, delay=10)
 def _fetch_stats(urls: list) -> list:
     from apify_client import ApifyClient
+    if not urls:              # 빈 배치 → IG 액터 호출 스킵(resultsLimit=0 'must be >= 1' 거부 방지)
+        return []
 
     # ⚠️ Apify API 토큰 확인
     apify_token = os.getenv("APIFY_API_TOKEN")
