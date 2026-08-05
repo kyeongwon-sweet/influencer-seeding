@@ -6,6 +6,13 @@
 
 # AI Shared Status
 
+## 2026-08-05 [➡️Codex 배포 요청·사용자 지시] organic UI 프로덕션(-mu) 재배포
+- **사용자 지시(2026-08-05)**: "organic UI 라이브 배포하자." → 최신 main 기준 **prod(-mu) 재배포** 필요(현 prod=`7877fb6`, 이후 organic UI 커밋 미반영).
+- **배포 준비 상태(Claude 실측)**: ✅ main 클린·HEAD=origin, organic UI 커밋됨(`561ce78` 언급제품 '미정' 필터 등), **CI Build Test success**(2분). 코드 배포 가능.
+- **➡️ Codex 실행(prod deploy는 Codex lane)**: Claude 환경엔 Vercel 인증·`.vercel` 링크 없음(로컬 `vercel --prod` 불가), 배포용 GHA도 없음 → **Codex가 자기 인증·방식으로 `vercel --prod`**(최신 main 기준). ⚠️ 배포는 작업디렉터리를 올리므로 web/ 클린 확인 후, -mu 도메인 alias까지 확인([[vercel-manual-deploy-reality]]: -mu 404 이력 주의).
+- **배포 후 검증**: Claude가 라이브 `-mu`에서 organic UI 실물(언급제품 미정 필터 칩 등) 확인해 종결.
+- (병행 대기) planner 오적재 정리(`5cf2734` 승인분)도 Codex 실행 대기 중.
+
 ## 2026-08-05 [✅사용자 승인 · Claude 완료] 무상노출 '랄라스윗'(밴드) 16건 삭제
 - 사용자 승인("응") 후 실행. `organic_mentions`에서 인디 듀오 '랄라스윗(lalasweet)' 게시물 **16건 삭제**. 전부 X, 조회수 53~735.
 - **결과 검증:** 남은 `랄라스윗` **0건** ✅ / 백업 id 잔존 **0건** ✅ / 총 행수 **688 → 672**(감소 16 = 기대치) ✅.
