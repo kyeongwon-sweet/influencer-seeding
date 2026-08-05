@@ -20,6 +20,10 @@
 - **백업 삭제(사용자 승인):** `data/output/organic_lalasweet_band_deleted_20260805.json` 및 scratchpad 사본 **삭제 완료**. → **랄라스윗 16건은 이제 복원 불가.** `product_rename_backup_딸기요거트바_to_딸기생요거트바.json`은 지시 범위가 아니라 **남겨 뒀다.**
 - **검증:** 테스트 11개(제외어 공백 가드·영문 전용 밴드글·오탐 트레이드오프 포함), 전체 **172/172 통과**, `tsc --noEmit`·`npm run build` 통과, `-mu` 라이브 dpl 일치 확인.
 
+## 2026-08-05 [✅배포·검증 완료] organic UI 프로덕션(-mu) 재배포 — 라이브 실물 확인
+- **배포 완료(사용자/Codex) + Claude 검증**: `-mu` 정상 서빙(루트·/organic 307→sign-in, Vercel, -mu 404 없음). 로그인 브라우저로 `/organic` 실물 확인 = **"미정 31" 언급제품 필터 칩(`561ce78`) 라이브 반영**, 좌하단 "코드 업데이트: 2026-08-05 10:13" = 오늘 최신본. **종결.**
+- (원 지시 기록 보존) ↓
+
 ## 2026-08-05 [➡️Codex 배포 요청·사용자 지시] organic UI 프로덕션(-mu) 재배포
 - **사용자 지시(2026-08-05)**: "organic UI 라이브 배포하자." → 최신 main 기준 **prod(-mu) 재배포** 필요(현 prod=`7877fb6`, 이후 organic UI 커밋 미반영).
 - **배포 준비 상태(Claude 실측)**: ✅ main 클린·HEAD=origin, organic UI 커밋됨(`561ce78` 언급제품 '미정' 필터 등), **CI Build Test success**(2분). 코드 배포 가능.
