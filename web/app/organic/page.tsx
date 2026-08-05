@@ -1095,6 +1095,17 @@ export default function OrganicPage() {
           >
             성덕모먼트
           </a>
+          {/* 트래킹 기준·검색 키워드·확산 매뉴얼 + 하위에 '수동 추가 방법(인수인계)' 페이지가 달려 있다.
+              ⚠️ 사용자가 준 URL의 `#3433b344…` 앵커는 **제목 없는 빈 하위 페이지**를 가리켜서 뺐다
+                 (그리로 보내면 빈 화면). `?source=copy_link` 추적 파라미터도 제거. */}
+          <a
+            href="https://app.notion.com/p/lalasweet/5234a6a53b354a729935799603214434"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[13px] text-a-blue underline underline-offset-2 hover:text-a-blue-hover"
+          >
+            무상노출 트래킹
+          </a>
         </div>
         {/* 왼쪽 칸은 제 글자폭(max-content)만 쓰고 나머지를 오른쪽에 넘긴다.
             '우리가 언급된 자컨/콘텐츠에 감사댓글'이 접히면 박스 세로가 늘어나기 때문. */}
