@@ -1043,11 +1043,14 @@ export default function OrganicPage() {
 
       {/* 상단 2단 배치 — 기준(좌) / 필터(우). 세로로 길게 쌓이던 두 박스를 나란히 놓아 표가 더 보이게 한다.
           좁은 화면(lg 미만)에서는 자동으로 위아래로 쌓인다. */}
-      {/* 왼쪽 기준 박스는 380px로 고정. 실측 하한은 350px이고 그보다 좁히면 목록 줄이 접혀
-          박스 세로가 215→233→251px로 **오히려 커진다**(1280px 뷰포트, 12px 본문 기준).
+      {/* 왼쪽 기준 박스 폭 480px(2026-08-05 사용자 요청으로 380 → 480 확대).
+          실측 근거: 1920px 뷰포트에서는 380~560px 사이 어느 값이어도 **제품 칩 줄 수가 4줄로 동일**
+          (스크롤 없음) → 넓혀도 공짜다. 1280px에서만 칩이 7 → 8줄로 한 줄 늘어난다(이미 스크롤 상태).
+          박스 세로는 어느 폭에서도 215px 유지(줄 접힘 없음).
+          ⚠️ 하한은 350px — 그보다 좁히면 목록 줄이 접혀 세로가 215→233→251px로 **오히려 커진다.**
           남는 폭은 전부 오른쪽에 주고, 오른쪽 높이는 --guide-h(=왼쪽 박스 실제 높이)로 맞춘다. */}
       <div
-        className="mx-6 mt-2 mb-2 grid gap-3 items-start lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]"
+        className="mx-6 mt-2 mb-2 grid gap-3 items-start lg:grid-cols-[minmax(0,480px)_minmax(0,1fr)]"
         style={guideHeight ? ({ "--guide-h": `${guideHeight}px` } as CSSProperties) : undefined}
       >
       {/* 오른쪽(필터+칩) 높이에 맞춰 여백을 줄인 상태. 더 줄이려면 py/mb/leading을 한 단계씩 내리면 된다. */}
