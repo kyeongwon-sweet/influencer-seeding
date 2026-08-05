@@ -810,9 +810,8 @@ export default function OrganicPage() {
     [mentions],
   );
 
-  // 언급제품이 비어 있는 게시물 수 — '미정' 칩 표시 여부와 건수 표기에 쓴다.
-  // 표에서 감추는 광고 행은 빼야 칩 숫자와 실제 표시 행 수가 맞는다(실측: 안 빼면 430 vs 427).
-  // 다른 필터(플랫폼·기간·계정명)까지는 반영하지 않는다 — '전체 데이터 중 미정 건수'라는 뜻.
+  // 언급제품이 비어 있는 게시물 수 — '미정' 칩을 **보일지 말지**에만 쓴다(건수 표기는 사용자 요청으로 제거).
+  // 표에서 감추는 광고 행은 빼야 "칩이 있는데 눌러도 0건" 같은 상태가 안 생긴다.
   const unsetProductCount = useMemo(
     () => mentions.filter(m => !isHiddenAd(m) && productTokens(m.mentioned_product).length === 0).length,
     [mentions],
@@ -1075,7 +1074,8 @@ export default function OrganicPage() {
                 >
                   전체
                 </button>
-                {/* 미정 — 언급제품이 비어 있는 행. 채워야 할 게 몇 건인지 바로 보이게 건수를 붙인다.
+                {/* 미정 — 언급제품이 비어 있는 행. 건수 표기는 2026-08-05 사용자 요청으로 뺐다
+                    (unsetProductCount는 칩을 보일지 말지 판단에만 쓴다).
                     비어 있는 행이 없으면 칩 자체를 숨긴다(누를 이유가 없다). */}
                 {unsetProductCount > 0 && (
                   <button
@@ -1087,7 +1087,7 @@ export default function OrganicPage() {
                         : "border-gray-300 text-a-ink-muted hover:border-gray-400 hover:text-a-ink"
                     }`}
                   >
-                    미정 {unsetProductCount}
+                    미정
                   </button>
                 )}
                 {productOptions.map(p => {
