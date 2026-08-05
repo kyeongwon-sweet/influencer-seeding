@@ -6,6 +6,20 @@
 
 # AI Shared Status
 
+## 2026-08-05 [Claude 완료] 밴드 곡명 제외어 추가 + 백업 삭제 + **-mu alias 경합 해소** (`5233cc6`, 배포 `dpl_AWHh8LiRR2cAywNjHToKAH8cxZsR`)
+- **✅ 위 'organic UI prod 재배포' 요청 처리됨.** `-mu`가 `dpl_AWHh8LiRR2cAywNjHToKAH8cxZsR`(HEAD `de91bf9` 기준, 작업트리 clean)를 가리키는 것까지 라이브 확인. **위 요청 항목은 완료로 봐도 된다.**
+- **⚠️ alias 경합 발생(기록용):** 내 배포(`dykfcx6cf`, 10:08) **직후 1분 뒤 다른 배포(`ditewfxcg`)가 생성돼 `-mu`를 가져갔다.** 내 배포는 Ready였지만 alias가 없어 **라이브가 아니었다.** `vercel ls`로 in-flight 없음 확인 후 재배포해 alias를 확정했다. → **교훈: `vercel inspect`의 Aliases에 `-mu`가 있는지 매번 확인할 것. Ready ≠ 라이브.**
+- **제외어에 밴드 곡명 4개 추가**(사용자 지시): `오월`, `나의낡은오렌지나무`, `불꽃놀이`, `파란달이뜨는날에`. 한글 `랄라스윗` 없이 **영문 `lalasweet`만 쓴 밴드 글**을 잡기 위한 것.
+  - 판정이 공백을 지우고 비교하므로 **제외어도 공백 없는 형태로 저장**한다. 공백이 섞이면 영원히 안 걸리므로 **그걸 막는 테스트**를 넣었다.
+  - **⚠️ 추가 전 오탐 실측(672행):** `오월` 1건(그것도 밴드 커버 글) / 나머지 3개 0건 → **현재 오탐 0건**. 다만 "불꽃놀이 보면서 라라스윗" 같은 정상 글은 원리상 제외된다. 그 동작을 테스트로 명시해 뒀다. 문제되면 해당 곡명만 빼거나 조건부로 전환.
+  - **`lalasweet` 포함 여부를 조건으로 쓰면 안 된다(검증됨):** 남은 672행 중 **196행이 캡션에 `lalasweet`을 포함**한다(다크문 콜라보·요거트바 등 정상 글). 곡명을 `lalasweet` 동반 조건으로 걸면 정상 글이 대량 오탐된다.
+- **잔여 밴드 글 2건(자동으로는 못 잡음, 사용자 판단 필요):**
+  - `x.com/OT_9WICE/status/2059656212862435822` — 신규 곡명(`오월`)에 걸리는 **기존 저장분 1건**. 삭제 여부 미결(지시 없어 보류).
+  - `x.com/outrodhk/status/2059656536860090694` — `cover of may by lalasweet`처럼 **곡명을 영어(`may`)로 쓴 글**. 곡명 제외어로 잡히지 않는다.
+  - 반례 주의: `sakurairoyell` 글의 `DARK MOON X LALASWEET ... COVER`는 **우리 브랜드 정상 글**(만화 표지 얘기). "cover+lalasweet" 휴리스틱은 쓰면 안 된다.
+- **백업 삭제(사용자 승인):** `data/output/organic_lalasweet_band_deleted_20260805.json` 및 scratchpad 사본 **삭제 완료**. → **랄라스윗 16건은 이제 복원 불가.** `product_rename_backup_딸기요거트바_to_딸기생요거트바.json`은 지시 범위가 아니라 **남겨 뒀다.**
+- **검증:** 테스트 11개(제외어 공백 가드·영문 전용 밴드글·오탐 트레이드오프 포함), 전체 **172/172 통과**, `tsc --noEmit`·`npm run build` 통과, `-mu` 라이브 dpl 일치 확인.
+
 ## 2026-08-05 [➡️Codex 배포 요청·사용자 지시] organic UI 프로덕션(-mu) 재배포
 - **사용자 지시(2026-08-05)**: "organic UI 라이브 배포하자." → 최신 main 기준 **prod(-mu) 재배포** 필요(현 prod=`7877fb6`, 이후 organic UI 커밋 미반영).
 - **배포 준비 상태(Claude 실측)**: ✅ main 클린·HEAD=origin, organic UI 커밋됨(`561ce78` 언급제품 '미정' 필터 등), **CI Build Test success**(2분). 코드 배포 가능.
