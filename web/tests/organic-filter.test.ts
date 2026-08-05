@@ -55,3 +55,34 @@ test("텍스트가 없거나 이상한 타입이어도 죽지 않는다", () => 
 test("제외어 목록은 비어 있지 않다", () => {
   assert.ok(ORGANIC_EXCLUDE_KEYWORDS.includes("랄라스윗"));
 });
+
+// ── 밴드 곡명 제외어 (2026-08-05 사용자 지시로 추가) ─────────────────────────
+// '랄라스윗' 한글 표기 없이 영문 lalasweet만 쓴 밴드 게시물을 잡기 위한 것.
+
+test("제외어에 공백이 들어가면 절대 매칭되지 않는다", () => {
+  // 판정은 대상 텍스트의 공백을 지우고 비교한다. 제외어 자체에 공백이 있으면 영원히 안 걸린다.
+  for (const kw of ORGANIC_EXCLUDE_KEYWORDS) {
+    assert.equal(kw, kw.replace(/\s+/g, ""), `제외어에 공백 있음: "${kw}"`);
+  }
+});
+
+test("밴드 곡명이 있으면 제외된다 (공백 표기 무관)", () => {
+  assert.equal(organicExcludeHit({ caption: "오월 - lalasweet 커버" }), "오월");
+  assert.equal(organicExcludeHit({ title: "나의 낡은 오렌지나무 (lalasweet)" }), "나의낡은오렌지나무");
+  assert.equal(organicExcludeHit({ title: "나의낡은오렌지나무" }), "나의낡은오렌지나무");
+  assert.equal(organicExcludeHit({ caption: "'불꽃놀이' Official MV" }), "불꽃놀이");
+  assert.equal(organicExcludeHit({ caption: "파란달이 뜨는 날에" }), "파란달이뜨는날에");
+});
+
+test("한글 '랄라스윗' 없이 영문 lalasweet만 쓴 밴드 글도 곡명으로 잡힌다", () => {
+  // 실제 DB에 남아 있던 사례(TWICE 다현 생일 커버 모음, 조회수 5,741)의 구조.
+  assert.ok(organicExcludeHit({ caption: 'DAHYUN birthday covers 2020: vocal cover "오월" by lalasweet' }));
+});
+
+test("⚠️ 곡명이 일상어와 겹치면 정상 게시물도 제외된다(의도된 트레이드오프)", () => {
+  // 사용자가 곡명 추가를 지시했고, 실측(672행) 오탐은 0건이었다.
+  // 다만 원리상 이런 문장은 제외된다 — 이 동작이 문제가 되면 곡명을 조건부로 바꿔야 한다.
+  assert.equal(organicExcludeHit({ caption: "불꽃놀이 보면서 라라스윗 먹기" }), "불꽃놀이");
+  // 곡명이 없는 정상 게시물은 그대로 통과한다.
+  assert.equal(organicExcludeHit({ caption: "여름밤에 라라스윗 딸기듬뿍바" }), null);
+});
