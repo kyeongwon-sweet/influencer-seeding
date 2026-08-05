@@ -6,6 +6,13 @@
 
 # AI Shared Status
 
+## 2026-08-05 [✅사용자 승인 · Claude 완료] 무상노출 '랄라스윗'(밴드) 16건 삭제
+- 사용자 승인("응") 후 실행. `organic_mentions`에서 인디 듀오 '랄라스윗(lalasweet)' 게시물 **16건 삭제**. 전부 X, 조회수 53~735.
+- **결과 검증:** 남은 `랄라스윗` **0건** ✅ / 백업 id 잔존 **0건** ✅ / 총 행수 **688 → 672**(감소 16 = 기대치) ✅.
+- **복원용 백업(전 13컬럼):** `data/output/organic_lalasweet_band_deleted_20260805.json` (git-ignored, 세션 임시폴더가 아니라 프로젝트 경로에 보존). 같은 위치에 `product_rename_backup_딸기요거트바_to_딸기생요거트바.json`도 옮겨 뒀다.
+- **절차:** 판정 기준을 앱 `lib/organic-filter.ts`의 `organicExcludeHit`과 동일하게 맞춤(필드별 공백제거 후 포함) → 대상 건수가 예상(16)과 다르면 **중단**하는 가드 → 전 컬럼 백업 → 행별 `eq(id)` DELETE → 사후 3중 검증. 스크립트 `scratchpad/delete_lalla.mjs`(기본 dry-run).
+- **⛔ 아직 열린 항목(이전 기록 참조):** 한글 없이 영문 `lalasweet`만 쓴 밴드 게시물은 여전히 통과한다. 곡명 제외어 추가/플랫폼별 문맥 조건은 **사용자 승인 전 미적용**.
+
 ## 2026-08-05 [✅사용자 승인 → ➡️Codex 실행] 기획자(planner) 오적재도 정리 — creator와 동일 조건
 - **사용자 승인/지시(2026-08-05)**: "시트에 수동으로 값을 입력한 건 보존해." → planner 137건도 creator와 **동일 원칙**으로 정리: **auto 전파분만 클리어, 팀 수기 입력분(manual_fields 잠금)은 보존.**
 - **➡️ Codex 실행**: 이미 만든 invalid-creator 감사/repair를 **planner(기획자) 필드로 확장**(`fields=planner`). 소재명 비파일명/빈 + planner 채워짐 + **manual_fields 미잠금(=auto)** 만 대상. 시트(정본)에서 클리어→syncAll DB 반영, 백업(`_codex_..._backup`) 확보, 완료 후 재감사 planner_issue=0 확인.
