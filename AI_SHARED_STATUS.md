@@ -6,6 +6,14 @@
 
 # AI Shared Status
 
+## 2026-08-05 [Claude 완료] 무상노출 언급제품 '미정' 필터 칩 (`561ce78`, 배포 `dpl_8iBmy6Q7KXx366CyR4YzVqfxR1uh` Ready)
+- 언급제품이 비어 있는 게시물만 골라 보는 칩. 점선 테두리 + 건수 표기로 제품 칩과 구분. 다른 제품 칩과 **함께** 켤 수 있다(합집합).
+- 필터 상태 전용 특수값 `UNSET_PRODUCT = "__미정__"` — **DB에 저장되는 값이 아니다.** 빈 행이 0건이면 칩 자체를 숨긴다.
+- **⚠️ 숫자 어긋남을 잡았다:** 표는 `(광고)`/`#광고` 행을 감추는데(내돈내산 예외) 칩 카운트가 그걸 반영하지 않아 **칩 430 vs 표 427**로 어긋났다(실측). 광고 판정을 `isHiddenAd()`로 뽑아 **표 필터와 칩 카운트가 같은 함수를 쓰게** 하고 **427 = 427** 확인. 토큰 파싱도 `productTokens()`로 합쳐 필터·칩목록·카운트 세 곳의 기준을 하나로 뒀다.
+  - 카운트는 플랫폼·기간·계정명 필터는 반영하지 않는다(= '전체 데이터 중 미정 건수'). 서버 페이지네이션 때문에 첫 페인트엔 작게 나오다 전량 로드 후 확정된다(제품 칩 목록과 같은 성질).
+- **실측(2026-08-05):** 전체 688행 중 광고제외 679행, **미정 427행**(대부분 X). 검산 스크립트 `scratchpad/verify_unset.mjs`(미정↔제품 칩 배타성까지 확인).
+- 참고: 사용자 스크린샷에 `딸기요거트바` 칩이 아직 보였는데 **DB는 0건**이다(응답 캐시 `s-maxage=30`). 새로고침하면 사라진다.
+
 ## 2026-08-05 [Codex 완료] 제작자 오적재 소급 정리 + Claude 배포 인계 확인
 - **라이브 Apps Script 실행:** `clearInvalidCreatorsWithBackup()`를 Apps Script 편집기에서 직접 실행 완료. 결과 로그: `cleared=111`, 백업 탭 `_codex_invalid_creator_backup_20260805_093858`, `remaining_creator_issues=0`. 기획자 열은 건드리지 않고 제작자 열만 정리.
 - **DB 정리:** `invalid-creator-fields.yml`을 `fields=creator`로 dry-run 후 apply. dry-run `creator_issue_rows=116`, apply 결과 `[INVALID_CREATOR_FIELDS_REPAIR] {"updated":116,...}`. 백업 아티팩트 `invalid-creator-fields-backup-30964054004` 업로드 완료.
