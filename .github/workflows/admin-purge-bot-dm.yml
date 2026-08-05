@@ -1,0 +1,127 @@
+name: Admin — Purge 여믄봇 DM messages
+
+# 여믄봇이 **자기가 보낸** DM 메시지를 일괄 삭제. 수동 전용(스케줄 없음).
+#
+# 안전 설계
+#  - `chat.delete`는 봇 토큰으로 **봇 자신의 메시지만** 지울 수 있다 → 사람이 쓴 메시지는 원리적으로 못 지운다.
+#  - 기본은 dry_run=true(**세기만 하고 안 지움**). 실제 삭제는 dry_run=false **그리고** confirm에 정확히
+#    `DELETE`를 입력해야 진행한다.
+#  - before(선택)로 "그 날짜 이전만" 지울 수 있다. 최근 알림은 남기고 옛것만 치울 때 쓴다.
+#  - max로 한 번에 지울 최대 건수를 제한한다(사고 시 피해 범위 축소).
+#  - ⚠️ 슬랙 메시지 삭제는 **되돌릴 수 없다.** 되돌리기 기능이 없다.
+#    필요하면 dry_run으로 먼저 목록/건수를 확인하고, 로그를 남겨 두고 실행할 것.
+#
+# 필요 권한(SLACK_BOT_TOKEN 스코프): DM 읽기 `im:history`, 삭제 `chat:write`.
+#   `im:history`가 없으면 conversations.history가 `missing_scope`로 실패한다 → 그때는 슬랙 앱 설정에서
+#   스코프를 추가하고 재설치해야 한다.
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "DM 채널 ID (황경원 DM = D0B2U2J8QNS)"
+        required: true
+        default: "D0B2U2J8QNS"
+      before:
+        description: "이 날짜(KST, YYYY-MM-DD) '이전' 메시지만 대상. 비우면 전체"
+        required: false
+        default: ""
+      max:
+        description: "한 번에 삭제할 최대 건수(안전장치)"
+        required: true
+        default: "200"
+      dry_run:
+        description: "true면 세기만 하고 삭제하지 않음"
+        type: boolean
+        default: true
+      confirm:
+        description: "실제 삭제하려면 DELETE 를 정확히 입력 (dry_run=false일 때만 의미 있음)"
+        required: false
+        default: ""
+
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Purge bot DM messages
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          CHANNEL: ${{ github.event.inputs.channel }}
+          BEFORE: ${{ github.event.inputs.before }}
+          MAX: ${{ github.event.inputs.max }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+          CONFIRM: ${{ github.event.inputs.confirm }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${SLACK_BOT_TOKEN:-}" ]; then echo "SLACK_BOT_TOKEN 없음"; exit 1; fi
+          if [ "$DRY_RUN" != "true" ] && [ "$CONFIRM" != "DELETE" ]; then
+            echo "🛑 실제 삭제에는 confirm=DELETE 가 필요합니다. (지금 입력: '$CONFIRM')"
+            exit 1
+          fi
+
+          # before(KST 날짜) → epoch. 슬랙 ts는 UTC epoch라 KST 자정을 UTC로 환산한다.
+          LATEST=""
+          if [ -n "$BEFORE" ]; then
+            LATEST=$(date -u -d "$BEFORE 00:00:00 +0900" +%s)
+            echo "대상: $BEFORE(KST) 이전 → ts < $LATEST"
+          else
+            echo "대상: 전체 기간"
+          fi
+
+          # 1) 봇이 보낸 메시지 ts 수집(페이지네이션). 사람이 쓴 메시지는 애초에 제외한다.
+          : > /tmp/ts.txt
+          CURSOR=""
+          PAGES=0
+          while : ; do
+            PAGES=$((PAGES+1))
+            ARGS="channel=$CHANNEL&limit=200"
+            [ -n "$LATEST" ] && ARGS="$ARGS&latest=$LATEST"
+            [ -n "$CURSOR" ] && ARGS="$ARGS&cursor=$CURSOR"
+            RESP=$(curl -s -G "https://slack.com/api/conversations.history" \
+              -H "Authorization: Bearer $SLACK_BOT_TOKEN" --data-urlencode "$ARGS" || true)
+            OK=$(echo "$RESP" | jq -r '.ok')
+            if [ "$OK" != "true" ]; then
+              echo "conversations.history 실패: $(echo "$RESP" | jq -r '.error // "unknown"')"
+              exit 1
+            fi
+            # 봇 메시지 판별: bot_id가 있는 메시지(사람 메시지에는 없다)
+            echo "$RESP" | jq -r '.messages[] | select(.bot_id != null) | .ts' >> /tmp/ts.txt
+            CURSOR=$(echo "$RESP" | jq -r '.response_metadata.next_cursor // ""')
+            [ -z "$CURSOR" ] && break
+            sleep 1.2   # conversations.history 레이트리밋(Tier 3) 여유
+          done
+
+          TOTAL=$(wc -l < /tmp/ts.txt | tr -d ' ')
+          echo "----------------------------------------"
+          echo "페이지 $PAGES · 봇 메시지 $TOTAL건 발견"
+          echo "가장 오래된/최신 ts:"; sort -n /tmp/ts.txt | head -1; sort -n /tmp/ts.txt | tail -1
+          echo "----------------------------------------"
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "🔎 dry-run — 아무것도 지우지 않았습니다."
+            echo "실제로 지우려면 dry_run=false + confirm=DELETE 로 다시 실행하세요."
+            exit 0
+          fi
+
+          # 2) 삭제. 오래된 것부터, max까지만. chat.delete는 Tier 3(분당 약 50) → 1.3초 간격.
+          DONE=0; FAILED=0
+          for TS in $(sort -n /tmp/ts.txt); do
+            if [ "$DONE" -ge "$MAX" ]; then echo "max($MAX) 도달 — 중단"; break; fi
+            RESP=$(curl -s -X POST https://slack.com/api/chat.delete \
+              -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+              -H "Content-type: application/x-www-form-urlencoded" \
+              --data-urlencode "channel=$CHANNEL" --data-urlencode "ts=$TS")
+            if echo "$RESP" | jq -e '.ok' >/dev/null; then
+              DONE=$((DONE+1))
+            else
+              FAILED=$((FAILED+1))
+              echo "실패 ts=$TS: $(echo "$RESP" | jq -r '.error // "unknown"')"
+            fi
+            sleep 1.3
+          done
+
+          echo "----------------------------------------"
+          echo "삭제 $DONE건 / 실패 $FAILED건 / 발견 $TOTAL건"
+          [ "$TOTAL" -gt "$DONE" ] && echo "남은 $((TOTAL - DONE))건은 다시 실행하면 이어서 지웁니다."
+          exit 0
