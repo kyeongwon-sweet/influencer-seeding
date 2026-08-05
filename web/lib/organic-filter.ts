@@ -27,6 +27,19 @@ export const ORGANIC_EXCLUDE_KEYWORDS = [
   "나의낡은오렌지나무",      // 공백 제거 형태로 둔다(판정도 공백을 지우고 비교한다)
   "불꽃놀이",
   "파란달이뜨는날에",
+
+  // ── 이름만 비슷한 **다른 브랜드·무관 콘텐츠** (2026-08-05, 실측 7건 삭제 후 추가) ──
+  // 검색어 `la la`/`lalasweet`에 걸려 들어왔다. 특히 세서미스트리트 1건이 이 탭 전체
+  // 조회수의 **96.2%(14.9억)** 를 차지해 모든 합계·평균을 무의미하게 만들고 있었다.
+  // ⚠️ 판정은 **소문자 + 공백 제거** 후 비교하므로 아래도 그 형태로 적는다.
+  //    → "Sesame Street"·"sesame street"·"#sesamestreet" 모두 `sesamestreet`로 잡힌다.
+  "sesamestreet",   // Sesame Street "Baby Big Bird Sings La La La"
+  "sweetchili",     // "Lala Sweet Chili" 과자 ASMR (Kabotoy Orig·Lhiza Store)
+  "lalasweet_news", // 일본 잡지 LaLaSweet NEWS (계정명, 브랜드 무관)
+  // ⚠️ 아포스트로피 주의: "LaLa's Sweet Journey"는 공백만 지우면 `lala'ssweetjourney`가 되어
+  //    `lalasweetjourney`로는 안 잡힌다. 그래서 아포스트로피 뒤쪽만 키워드로 쓴다.
+  "sweetjourney",   // Joyful LaLa "LaLa's Sweet Journey"(강아지 캔디)
+  "sweetdilemma",   // Lala-Shorts "Lala's Sweet Dilemma"(원숭이 식사)
 ];
 
 /**
@@ -91,13 +104,14 @@ function textCandidates(post: Record<string, unknown>): string[] {
 /**
  * 게시물 텍스트/계정명에 제외어가 있으면 그 제외어를 돌려준다(없으면 null).
  *
- * 공백은 필드 단위로 지워 `랄라 스윗` 표기까지 잡는다.
+ * 공백은 필드 단위로 지워 `랄라 스윗` 표기까지 잡는다. **소문자로 낮춘 뒤** 비교하므로
+ * `Sesame Street`·`#sesamestreet` 같은 영문 대소문자 차이도 함께 잡힌다.
  * ⚠️ 필드를 이어붙인 뒤 공백을 지우면 앞 필드 끝 `…랄라` + 뒤 필드 앞 `스윗…`이 붙어 오탐이 난다.
  *    그래서 반드시 필드별로 검사한다.
  */
 export function organicExcludeHit(post: Record<string, unknown>): string | null {
   for (const raw of textCandidates(post)) {
-    const squashed = raw.replace(/\s+/g, "");
+    const squashed = raw.replace(/\s+/g, "").toLowerCase();
     for (const kw of ORGANIC_EXCLUDE_KEYWORDS) {
       if (squashed.includes(kw)) return kw;
     }

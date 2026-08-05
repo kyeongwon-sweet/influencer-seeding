@@ -129,3 +129,35 @@ test("아이돌 문맥 없는 일반 판매글은 이 필터가 건드리지 않
   // 반대로 아이돌 문맥만 있고 거래 신호가 없으면 통과
   assert.equal(organicTradePostHit({ caption: "엔하이픈 다크문 라라스윗 케이크 먹었다" }), null);
 });
+
+// ── 이름만 비슷한 다른 브랜드/무관 콘텐츠 (2026-08-05, 실측 7건 삭제 후 추가) ──────────
+// 세서미스트리트 1건이 이 탭 조회수의 96.2%(14.9억)를 차지해 합계를 무의미하게 만들고 있었다.
+
+test("무관 브랜드/콘텐츠는 제외된다 (실제 삭제된 캡션)", () => {
+  const 무관 = [
+    "Baby Big Bird Sings La La La 🎵 #sesamestreet",
+    "LaLa's Sweet Journey: Tears to Smiles on Candy Street 🐶🍭✨",
+    "Lala's Sweet Dilemma Sweet potato or potato for today's meal #monkey #monkeysr #ricedish",
+    "Lala sweet chili #food #satisfyingsounds #asmr #satisfyingvideo #short #viral",
+    "LALA SWEET CHILI FISH CRACKERS #asmr #satisfyingtastesound #delicious",
+  ];
+  for (const caption of 무관) {
+    assert.ok(organicExcludeHit({ caption }), `제외 실패: ${caption.slice(0, 45)}`);
+  }
+  // 일본 잡지 LaLaSweet NEWS는 계정명으로 잡는다.
+  assert.equal(organicExcludeHit({ username: "lalasweet_news" }), "lalasweet_news");
+});
+
+test("영문 대소문자가 달라도 제외된다(소문자 비교)", () => {
+  assert.equal(organicExcludeHit({ caption: "SESAME STREET" }), "sesamestreet");
+  assert.equal(organicExcludeHit({ caption: "Sesame Street" }), "sesamestreet");
+  assert.equal(organicExcludeHit({ caption: "#SesameStreet" }), "sesamestreet");
+});
+
+test("우리 브랜드 게시물은 새 제외어에 걸리지 않는다", () => {
+  assert.equal(organicExcludeHit({ caption: "라라스윗 딸기듬뿍바 존맛 #라라스윗" }), null);
+  assert.equal(organicExcludeHit({ caption: "lalasweet low sugar ice cream is so good" }), null);
+  assert.equal(organicExcludeHit({ caption: "Lalasweet x dark moon ice cream cake LO AMO" }), null);
+  // '스윗'이 들어가도 sweet chili/journey/dilemma 가 아니면 통과
+  assert.equal(organicExcludeHit({ caption: "sweet and low sugar lalasweet bar" }), null);
+});
