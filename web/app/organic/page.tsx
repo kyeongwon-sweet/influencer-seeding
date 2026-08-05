@@ -24,6 +24,25 @@ function normPlatform(p: string): string {
 }
 
 // 제품 상위 라인 — 변형(예: 멜론쫀득바) 선택 시 상위(쫀득바)도 함께 선택되게 한다.
+// 언급제품이 비어 있는 행을 골라내는 특수 칩 값. 실제 제품명과 절대 겹치지 않게 밑줄 표기를 쓴다
+// (제품명에 그대로 저장되는 값이 아니라 필터 상태에만 들어간다).
+const UNSET_PRODUCT = "__미정__";
+
+/** 언급제품 토큰(콤마 구분, 공백 제거). 빈 값·공백만·콤마만이면 빈 배열. */
+function productTokens(mentionedProduct: string | null | undefined): string[] {
+  return String(mentionedProduct ?? "").split(",").map(p => p.trim()).filter(Boolean);
+}
+
+/**
+ * 표에서 감추는 광고 게시물 판정. `(광고)`·`#광고`가 있으면 광고로 보되 `내돈내산`이 있으면 통과.
+ * ⚠️ '미정' 칩 건수와 표의 행 수가 어긋나지 않도록 **표 필터와 칩 카운트가 같은 함수를 쓴다.**
+ */
+function isHiddenAd(m: { content_summary: string | null }): boolean {
+  const cap = (m.content_summary ?? "").toLowerCase();
+  if (cap.includes("내돈내산")) return false;
+  return cap.includes("(광고)") || cap.includes("#광고");
+}
+
 const PRODUCT_PARENTS = ["쫀득바", "듬뿍바", "제로바", "요거트바", "모나카"];
 function parentProductOf(p: string): string | null {
   for (const parent of PRODUCT_PARENTS) if (p !== parent && p.endsWith(parent)) return parent;
@@ -766,16 +785,16 @@ export default function OrganicPage() {
   const deferredName = useDeferredValue(filters.name);
 
   const filtered = useMemo(() => mentions.filter(m => {
-    // (광고) 또는 #광고 패턴만 제외 (내돈내산 있으면 통과)
-    const cap = (m.content_summary ?? '').toLowerCase();
-    if (!cap.includes('내돈내산') && (cap.includes('(광고)') || cap.includes('#광고'))) return false;
+    if (isHiddenAd(m)) return false;
 
     if (deferredName && !(m.account_name ?? "").toLowerCase().includes(deferredName.toLowerCase())) return false;
     if (filters.platform !== "all" && normPlatform(m.platform) !== filters.platform) return false;
     if (filters.products.length > 0) {
       // 콤마로 구분된 복수 제품 지원: 선택된 제품 중 하나라도 포함되면 통과
-      const mentionProds = (m.mentioned_product ?? "").split(",").map(p => p.trim()).filter(Boolean);
-      if (!filters.products.some(fp => mentionProds.includes(fp))) return false;
+      const mentionProds = productTokens(m.mentioned_product);
+      // '미정' 칩은 언급제품이 비어 있는 행을 뜻한다(다른 제품 칩과 함께 켤 수 있다).
+      const wantsUnset = filters.products.includes(UNSET_PRODUCT) && mentionProds.length === 0;
+      if (!wantsUnset && !filters.products.some(fp => mentionProds.includes(fp))) return false;
     }
     if (filters.exposureType !== "all" && m.exposure_type !== filters.exposureType) return false;
     if (filters.dateFrom && (!m.uploaded_at || m.uploaded_at < filters.dateFrom)) return false;
@@ -786,15 +805,18 @@ export default function OrganicPage() {
   const hasFilter = filters.name !== "" || filters.platform !== "all" || filters.products.length > 0 || filters.exposureType !== "all" || filters.dateFrom !== "" || filters.dateTo !== "";
 
   // 언급 제품 옵션 — 콤마 구분 복수 값 파싱
-  const productOptions = useMemo(() => Array.from(
-    new Set(
-      mentions.flatMap(m =>
-        m.mentioned_product
-          ? m.mentioned_product.split(",").map(p => p.trim()).filter(Boolean)
-          : []
-      )
-    )
-  ).sort(), [mentions]);
+  const productOptions = useMemo(
+    () => Array.from(new Set(mentions.flatMap(m => productTokens(m.mentioned_product)))).sort(),
+    [mentions],
+  );
+
+  // 언급제품이 비어 있는 게시물 수 — '미정' 칩 표시 여부와 건수 표기에 쓴다.
+  // 표에서 감추는 광고 행은 빼야 칩 숫자와 실제 표시 행 수가 맞는다(실측: 안 빼면 430 vs 427).
+  // 다른 필터(플랫폼·기간·계정명)까지는 반영하지 않는다 — '전체 데이터 중 미정 건수'라는 뜻.
+  const unsetProductCount = useMemo(
+    () => mentions.filter(m => !isHiddenAd(m) && productTokens(m.mentioned_product).length === 0).length,
+    [mentions],
+  );
 
   // 최근 업데이트 시간
   const lastUpdatedAt = useMemo(() => mentions.length > 0
@@ -1039,7 +1061,7 @@ export default function OrganicPage() {
           </div>
         </div>
         {/* 언급 제품 필터 — 오른쪽 칸의 필터 바로 아래 */}
-        {productOptions.length > 0 && (
+        {(productOptions.length > 0 || unsetProductCount > 0) && (
           <div className="bg-white rounded-[14px] border border-a-hairline px-4 py-2.5 lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
             <div className="flex items-start gap-2.5">
               <div className="flex flex-wrap gap-1.5 flex-1">
@@ -1053,6 +1075,21 @@ export default function OrganicPage() {
                 >
                   전체
                 </button>
+                {/* 미정 — 언급제품이 비어 있는 행. 채워야 할 게 몇 건인지 바로 보이게 건수를 붙인다.
+                    비어 있는 행이 없으면 칩 자체를 숨긴다(누를 이유가 없다). */}
+                {unsetProductCount > 0 && (
+                  <button
+                    onClick={() => toggleProduct(UNSET_PRODUCT)}
+                    title="언급제품을 아직 입력하지 않은 게시물"
+                    className={`text-[11px] px-3 py-1 rounded-full border border-dashed whitespace-nowrap shrink-0 transition ${
+                      filters.products.includes(UNSET_PRODUCT)
+                        ? "border-a-blue bg-blue-50 text-a-blue font-medium"
+                        : "border-gray-300 text-a-ink-muted hover:border-gray-400 hover:text-a-ink"
+                    }`}
+                  >
+                    미정 {unsetProductCount}
+                  </button>
+                )}
                 {productOptions.map(p => {
                   const active = filters.products.includes(p);
                   return (
