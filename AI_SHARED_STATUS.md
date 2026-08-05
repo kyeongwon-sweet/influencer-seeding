@@ -6,6 +6,12 @@
 
 # AI Shared Status
 
+## 2026-08-05 [✅사용자 승인 → ➡️Codex 실행] 오하루TT 시트 누적(H) = 299,600 정정
+- **배경**: 수식 전수감사 manualKept 1건 = 오하루(틱톡/미러링) `https://www.tiktok.com/@o.haru__/video/7655695057189719304/`. 시트 누적(H)이 날짜 MAX와 다른 수동 pin(≈옛 250,000)이라 잡힘. **DB 최종값은 299,600**(07-28, 내가 정정한 값. 07-11=297,100·07-13=null·07-28=299,600 → MAX 299,600).
+- **사용자 승인**: 시트 누적을 **299,600으로 정정**.
+- **➡️ Codex 실행(시트 쓰기=단일작성자 lane)**: 라이브 시트에서 오하루 행 누적(H) 확인 후, **수동 pin을 제거해 V4 MAX(=299,600)를 따르게** 하는 게 깔끔(또는 수동값을 299,600으로 갱신). 실행 전 시트 07-28 날짜셀=299,600(exportStats 반영) 확인. 완료 후 formula-audit manualKept 이 건 해소 확인.
+- (Claude는 필터로 시트 H 실값 재확인 못 해 값은 추정, 정정 타깃 299,600은 DB 실측 확정.)
+
 ## 🔴 2026-08-05 [➡️Codex 확인 필요] main CI 빨간불 — `e9a0331`이 계약 테스트를 깨뜨림
 - `npm test` **171/172**. 실패: `manual-stat-preservation.test.ts:13` — `reach_rows = _preserve_same_date_manual_stats(db, reach_rows, "banner reach snapshot")` 문장을 요구하는데, **`e9a0331`(배너 도달수 단일경로화 — 자동채움·클로버 제거)이 그 경로를 의도적으로 삭제**했다.
 - **build-test 이력:** `f0e6c79` success → **`e9a0331` failure** → 이후 커밋 전부 실패 상속. 즉 원인은 `e9a0331` 하나다.
