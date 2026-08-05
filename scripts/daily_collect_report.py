@@ -244,13 +244,13 @@ def main():
 
     body = (
         "📊 자정 수집 %s 알림 (%s)\n\n"
-        "• %s  %s 수집\n"
-        "• 측정 대상(배너·피드·위성/온드·종료 제외): %d건 중 값 확보 %d건(%d%%) · 확인필요 %d건\n"
-        "• 종료(삭제/비공개) %d · 배너 %d · 피드/사진 %d · 위성/온드 %d · 수기관리 %d — 조회수 지표 없어 확보율 제외\n"
-        "• IG 접근불가(3일↑ not_found, 미종료): %d건\n"
-        "• 특이사항: %s"
-    ) % (status_word, today, status_icon, first, active_nb, val_nb, P, len(real_miss), len(ended_miss), b_tot, feed_cnt, internal_cnt, len(manual_only), len(nf_review), note)
-    body += "\n• " + watchdog["line"]
+        "• %s  %s 수집\n\n"
+        "• *측정 대상*: %d건 중 값 확보 %d건(%d%%) · 확인필요 %d건\n"
+        "• *측정 제외* (조회수 지표 없음): 위성/온드 %d · 배너 %d · 종료 %d · 피드 %d · 수기 %d\n"
+        "    ◦ IG 접근불가(3일↑ not_found·미종료): %d건\n"
+        "• *특이사항*: %s\n"
+        "    ◦ %s"
+    ) % (status_word, today, status_icon, first, active_nb, val_nb, P, len(real_miss), internal_cnt, b_tot, len(ended_miss), feed_cnt, len(manual_only), len(nf_review), note, watchdog["line"])
 
     thread = None
     sections = []
