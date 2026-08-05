@@ -340,31 +340,8 @@ def main():
         by_plat[p] = by_plat.get(p, 0) + 1
     plat_str = " · ".join(f"{k} {v}" for k, v in sorted(by_plat.items(), key=lambda x: -x[1])) or "-"
 
-    ok = (outcome == "success") and total > 0
-    if os.getenv("ONLY_ON_FAILURE") == "1" and ok:
-        # 정상 수집이면 발송 안 함(상태는 리포트 댓글로만). 실패일 때만 즉시 알림.
-        print("[status] 정상 수집 → ONLY_ON_FAILURE 모드라 발송 생략")
-        return
-    if ok:
-        text = (f"*✅ 협찬 데이터 정상 수집* ({target} KST)\n"
-                f"총 {total:,}건 적재 · 조회수 {with_play:,}건\n"
-                f"플랫폼: {plat_str}")
-    else:
-        reason = ""
-        logf = os.getenv("COLLECT_LOG")
-        if logf and os.path.exists(logf):
-            try:
-                tail = open(logf, encoding="utf-8", errors="replace").read().strip().splitlines()[-12:]
-                reason = "\n".join(tail)
-            except Exception:
-                pass
-        if not reason:
-            reason = f"수집 단계 결과={outcome or '알수없음'}, 오늘 적재 {total}건"
-        text = (f"*❌ 협찬 데이터 수집 실패/이상* ({target} KST)\n"
-                f"오늘 적재: {total:,}건 · 조회수 {with_play:,}건\n"
-                f"사유(수집 로그 끝부분):\n```{reason[:1500]}```")
-
     # 활성인데 오늘 미측정 게시물 점검 (수집 누락·잘못된 URL 조기 발견)
+    # ⚠️ 발송 판단(real_problem)에 쓰이므로 반드시 send/text 결정 전에 계산한다.
     today_ids = {r["post_id"] for r in rows}
     posts, off = [], 0
     while True:
@@ -422,6 +399,33 @@ def main():
                 image_skip += 1     # 이미지 게시물(조회수 없음) → 미측정 아님
             else:
                 check.append((nm, "미측정", url))
+
+    # 발송 판단은 '수집 스텝 exit code'가 아니라 '실측 데이터 갭'으로 한다 (2026-08-05 cry-wolf 방지).
+    #   재시도 빈 배치·보조플랫폼 일시오류로 수집 스텝이 failure여도, 실제 데이터가 정상이면 실패 DM을
+    #   보내지 않는다. 단, 진짜 갭(total 0 또는 활성 점검대상 미수집=check)은 반드시 알린다(blind spot 금지).
+    real_problem = (total == 0) or bool(check)
+    if os.getenv("ONLY_ON_FAILURE") == "1" and not real_problem:
+        print(f"[status] 실측 데이터 갭 없음(수집스텝={outcome or '?'}, total={total}, 점검=0) → ONLY_ON_FAILURE 발송 생략")
+        return
+    if not real_problem:
+        text = (f"*✅ 협찬 데이터 정상 수집* ({target} KST)\n"
+                f"총 {total:,}건 적재 · 조회수 {with_play:,}건\n"
+                f"플랫폼: {plat_str}")
+    else:
+        reason = ""
+        logf = os.getenv("COLLECT_LOG")
+        if logf and os.path.exists(logf):
+            try:
+                tail = open(logf, encoding="utf-8", errors="replace").read().strip().splitlines()[-12:]
+                reason = "\n".join(tail)
+            except Exception:
+                pass
+        if not reason:
+            reason = f"수집 단계 결과={outcome or '알수없음'}, 오늘 적재 {total}건"
+        head = "*❌ 협찬 데이터 수집 실패/이상*" if (total == 0 or outcome == "failure") else "*⚠️ 협찬 데이터 점검 필요*"
+        text = (f"{head} ({target} KST)\n"
+                f"오늘 적재: {total:,}건 · 조회수 {with_play:,}건\n"
+                f"사유(수집 로그 끝부분):\n```{reason[:1500]}```")
 
     unmeasured = waiting + uncollectable + len(check)
     if unmeasured:
