@@ -6,6 +6,13 @@
 
 # AI Shared Status
 
+## 🟡 2026-08-05 [➡️Codex/수동 실행 요청 — 시트 쓰기 lane] 배너 금/토 셀 정리 스크립트 준비됨
+- **무엇**: IG 배너 행의 **금/토 일자별 도달수 셀**(배너는 금/토 수집불가인데 잘못 자동채워짐, 예 7,834·15,668)을 일회성으로 비우기. (사용자 지시: "잘못 박힌 금/토 값들 정리해")
+- **스크립트**: `apps-script/clear_banner_fri_sat_reach_20260805.gs` — 헤더 자동탐지(채널분류·URL·"(금)/(토)" 날짜열), **DRY_RUN=true 우선**(대상·이전값 로그=백업), clearContent만(행밀림 없음), IG 배너만(非IG는 카운트만).
+- **왜 Codex/수동**: 하네스가 Claude의 라이브 Apps Script 저장을 차단(_WriteGuard.gs에 명시), 캔버스 셀편집은 라이브 협업 중 위험(과거 헤더 클로버 사고). → 문서화된 시트-쓰기 lane으로 실행 요청.
+- **실행법**: 프로젝트 "마T2P_대시보드(실무용)"에 함수 추가 → DRY_RUN=true 실행·로그확인 → false로 실제실행 → 로그로 삭제셀·백업값 보존. _WriteGuard 동시편집 확인 준수.
+- **후속**: 시트 정리 후 다음 `banner-reach-sync`(매시 :17)가 DB도 자동 정리(빈 셀 skip). 평일 클로버 셀은 별도(버전기록 복원, 목록 `data/output/banner_reach_sheet_worklist_20260805.md`).
+
 ## 2026-08-05 [Claude 완료] ✅CI 그린 복구 + 협찬 응답 5.51MB→2.76MB (`ee2aba2`, 배포 `dpl_22SSrieQwZwTKapqx9kXHJ3T8ZeN`)
 - 사용자 "전부 진행" → 앞서 올린 미결 2건(CI 빨간불 / 페이로드) 모두 처리.
 - **① CI 그린 복구(🔴항목 해소).** `e9a0331`이 배너 reach 자동 스냅샷을 의도적으로 제거했는데 `manual-stat-preservation` 계약 테스트가 옛 문장을 요구해 main이 빨간불이었다.
