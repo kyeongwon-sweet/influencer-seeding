@@ -36,6 +36,40 @@ const isPublicRoute = createRouteMatcher([
 // 회사 도메인 화이트리스트 — 이 도메인 이메일 계정만 대시보드/API 접근 허용.
 const ALLOWED_EMAIL_DOMAIN = "@lalasweet.kr";
 
+/**
+ * 사용자 이메일 캐시 — **모든 탭이 느린 원인 1번**이었다.
+ *
+ * 미들웨어는 공개 라우트가 아닌 **모든 요청**에 걸린다. 페이지 1회 이동에 API 호출이 여러 번
+ * 붙는데(홈은 7개), 매 요청마다 `clerkClient().users.getUser()`로 **Clerk에 네트워크 왕복**을
+ * 했다. 즉 홈 한 번 열 때 Clerk 왕복 8회가 모든 응답 앞에 직렬로 붙었다.
+ *
+ * 세션 검증(`auth.protect()`)은 JWT 로컬 검증이라 네트워크가 없다. 네트워크는 이 조회뿐이므로
+ * userId별로 짧게 캐시한다. 도메인 판정용이라 이메일이 바뀌는 일이 거의 없고, 바뀌어도
+ * 최대 TTL만큼만 늦게 반영된다.
+ */
+const EMAIL_TTL_MS = 10 * 60 * 1000;
+const EMAIL_CACHE_MAX = 500;                      // 무한 증식 방지(엣지 아이솔레이트 메모리)
+const emailCache = new Map<string, { email: string; at: number }>();
+
+function cachedEmail(userId: string): string | null {
+  const hit = emailCache.get(userId);
+  if (!hit) return null;
+  if (Date.now() - hit.at > EMAIL_TTL_MS) {
+    emailCache.delete(userId);
+    return null;
+  }
+  return hit.email;
+}
+
+function rememberEmail(userId: string, email: string) {
+  // 가장 오래된 항목부터 버린다(Map은 삽입 순서 보장).
+  if (emailCache.size >= EMAIL_CACHE_MAX) {
+    const oldest = emailCache.keys().next().value;
+    if (oldest !== undefined) emailCache.delete(oldest);
+  }
+  emailCache.set(userId, { email, at: Date.now() });
+}
+
 export default clerkMiddleware(async (auth, request) => {
   if (isPublicRoute(request)) return;
 
@@ -48,18 +82,21 @@ export default clerkMiddleware(async (auth, request) => {
   const { userId } = await auth();
   if (!userId) return; // protect 통과 후엔 항상 존재(방어적)
 
-  let email = "";
-  try {
-    const user = await (await clerkClient()).users.getUser(userId);
-    email = (
-      user.emailAddresses.find(e => e.id === user.primaryEmailAddressId)?.emailAddress ??
-      user.emailAddresses[0]?.emailAddress ??
-      ""
-    ).toLowerCase();
-  } catch (e) {
-    // Clerk 조회 일시 실패 시 잠그지 않고 통과(장애로 정상 사용자까지 락아웃 방지). 로그만 남김.
-    console.error("[middleware] 사용자 이메일 조회 실패 — 도메인 검사 생략:", e);
-    return;
+  let email = cachedEmail(userId) ?? "";
+  if (!email) {
+    try {
+      const user = await (await clerkClient()).users.getUser(userId);
+      email = (
+        user.emailAddresses.find(e => e.id === user.primaryEmailAddressId)?.emailAddress ??
+        user.emailAddresses[0]?.emailAddress ??
+        ""
+      ).toLowerCase();
+      if (email) rememberEmail(userId, email);
+    } catch (e) {
+      // Clerk 조회 일시 실패 시 잠그지 않고 통과(장애로 정상 사용자까지 락아웃 방지). 로그만 남김.
+      console.error("[middleware] 사용자 이메일 조회 실패 — 도메인 검사 생략:", e);
+      return;
+    }
   }
 
   if (!email.endsWith(ALLOWED_EMAIL_DOMAIN)) {

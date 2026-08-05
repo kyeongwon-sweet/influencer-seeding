@@ -1774,7 +1774,7 @@ export default function MonitoringPage() {
           );
         })()}
 
-          <PostsTable loading={loading} posts={posts} filteredPosts={filteredPosts} sortedPosts={sortedPosts} tableTotals={tableTotals} filters={filters} hasFilter={hasFilter} editCell={editCell} editPlayCount={editPlayCount} selected={selected} colWidths={colWidths} stickyColWidths={stickyColWidths} stickyLefts={stickyLefts} colSpan={colSpan} updatedPlayCounts={updatedPlayCounts} hoverUpdatedId={hoverUpdatedId} collectedAtLabel={collectedAtLabel} {...tableHandlers} />
+          <PostsTable loading={loading} posts={posts} filteredPosts={filteredPosts} sortedPosts={sortedPosts} sortCol={sortCol} sortDir={sortDir} tableTotals={tableTotals} filters={filters} hasFilter={hasFilter} editCell={editCell} editPlayCount={editPlayCount} selected={selected} colWidths={colWidths} stickyColWidths={stickyColWidths} stickyLefts={stickyLefts} colSpan={colSpan} updatedPlayCounts={updatedPlayCounts} hoverUpdatedId={hoverUpdatedId} collectedAtLabel={collectedAtLabel} {...tableHandlers} />
       </div>
 
       {showHelp && (

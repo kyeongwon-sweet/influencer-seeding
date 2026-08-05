@@ -1077,7 +1077,9 @@ export default function ListupPage() {
                         </td>
                         <td className="px-2 py-3" style={{ width: 60, minWidth: 60 }}>
                           {thumbUrl
-                            ? <img src={thumbUrl} alt="" width={48} height={36} className="rounded object-cover" style={{ width: 48, height: 36 }} />
+                            // loading=lazy: 썸네일이 행마다 있어 화면 밖 이미지까지 즉시 내려받으면
+                            // 첫 로드에 이미지 요청 수백 개가 몰려 표가 늦게 뜬다(무상노출 탭과 같은 처리).
+                            ? <img src={thumbUrl} alt="" width={48} height={36} loading="lazy" decoding="async" className="rounded object-cover" style={{ width: 48, height: 36 }} />
                             : <span className="text-[10px] text-a-ink-muted font-medium">{platformLabel(inf.platform)}</span>}
                         </td>
                         <td className="px-4 py-4 overflow-hidden" style={{ minWidth: colWidths[0], width: colWidths[0] }}>

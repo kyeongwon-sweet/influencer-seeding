@@ -7,6 +7,9 @@ import { MIN_ENTRY_DATE, maxDateKST } from "@/lib/dateRule";
 import { companyForAccount } from "@/lib/companyMap";
 import { productCodeOf } from "@/lib/productCode";
 
+/** 한 번에 그리는 행 수. 스크롤이 끝에 닿으면 이만큼 더 이어붙인다(무상노출 탭과 같은 값). */
+const ROWS_PER_PAGE = 100;
+
 function TH({ children, right, col, onSort, sorted, className: cls, w, leftPos, onResize, fixed }: {
   children?: React.ReactNode; right?: boolean; col?: string;
   onSort?: () => void; sorted?: "asc" | "desc" | null; className?: string;
@@ -122,6 +125,9 @@ type Props = {
   posts: Post[];
   filteredPosts: Post[];
   sortedPosts: Post[];
+  /** 정렬 상태 — 정렬이 바뀌면 "처음 100행부터" 다시 보여주기 위해 필요하다(값 자체는 표시에 안 씀). */
+  sortCol: string | null;
+  sortDir: "asc" | "desc";
   tableTotals: { delta: number; cost: number; views: number; reach: number; likes: number; comments: number; count: number; selectionMode: boolean };
   filters: Filters;
   hasFilter: boolean;
@@ -154,7 +160,7 @@ type Props = {
 };
 
 function PostsTable(props: Props) {
-  const { loading, posts, filteredPosts, sortedPosts, tableTotals, filters, hasFilter, setFilters, editCell, setEditCell, patchPost, patchStat, patchPlayCount, editPlayCount, setEditPlayCount, selected, toggleSelectAll, handleRowCheck, sp, startResize, colWidths, stickyColWidths, stickyLefts, colSpan, copyIncrementList, deletePost, endPost, toast, setTrendPost, updatedPlayCounts, hoverUpdatedId, setHoverUpdatedId, collectedAtLabel } = props;
+  const { loading, posts, filteredPosts, sortedPosts, sortCol, sortDir, tableTotals, filters, hasFilter, setFilters, editCell, setEditCell, patchPost, patchStat, patchPlayCount, editPlayCount, setEditPlayCount, selected, toggleSelectAll, handleRowCheck, sp, startResize, colWidths, stickyColWidths, stickyLefts, colSpan, copyIncrementList, deletePost, endPost, toast, setTrendPost, updatedPlayCounts, hoverUpdatedId, setHoverUpdatedId, collectedAtLabel } = props;
 
   // 가로 스크롤바를 표 맨 위(열제목 위)에도 둠 — 본문 스크롤과 양방향 동기화.
   const topScrollRef = useRef<HTMLDivElement>(null);
@@ -172,6 +178,30 @@ function PostsTable(props: Props) {
   }, [sortedPosts, colWidths, stickyColWidths, loading]);
   const syncFromTop = () => { if (bodyScrollRef.current && topScrollRef.current) bodyScrollRef.current.scrollLeft = topScrollRef.current.scrollLeft; };
   const syncFromBody = () => { if (bodyScrollRef.current && topScrollRef.current) topScrollRef.current.scrollLeft = bodyScrollRef.current.scrollLeft; };
+
+  // ── 화면에 그리는 행 수를 끊어서 늘린다(스크롤이 끝에 닿으면 다음 100행) ──────────────
+  // 실측 1,785행 × (셀 20여 개 + 미니그래프 SVG)를 한 번에 그려서 첫 렌더·셀 편집이 버벅였다.
+  // ⚠️ 합계 행은 `tableTotals`(필터 전체 기준)를 쓰므로 **그리는 행 수와 무관하게 그대로다.**
+  //    정렬·복사·CSV도 sortedPosts 전체를 쓰므로 영향 없다.
+  const [visibleCount, setVisibleCount] = useState(ROWS_PER_PAGE);
+  // 필터/정렬이 바뀌면 처음부터. (데이터만 갱신된 경우엔 유지 — 편집 직후 보던 행이 사라지지 않게)
+  const viewSignature = `${JSON.stringify(filters)}|${sortCol}|${sortDir}`;
+  useEffect(() => { setVisibleCount(ROWS_PER_PAGE); }, [viewSignature]);
+  const visiblePosts = useMemo(() => sortedPosts.slice(0, visibleCount), [sortedPosts, visibleCount]);
+  const hasMoreRows = visibleCount < sortedPosts.length;
+
+  const sentinelRef = useRef<HTMLTableRowElement>(null);
+  useEffect(() => {
+    const node = sentinelRef.current;
+    const root = bodyScrollRef.current;
+    if (!node || !root || !hasMoreRows) return;
+    const io = new IntersectionObserver(
+      entries => { if (entries.some(e => e.isIntersecting)) setVisibleCount(c => c + ROWS_PER_PAGE); },
+      { root, rootMargin: "400px 0px" },   // 바닥에 닿기 전에 미리 이어붙여 끊김을 줄인다
+    );
+    io.observe(node);
+    return () => io.disconnect();
+  }, [hasMoreRows, visibleCount]);
 
   return (
         <div className="bg-white rounded-[18px] border border-a-hairline overflow-hidden">
@@ -269,7 +299,7 @@ function PostsTable(props: Props) {
                     <td className="sticky top-10 z-20 bg-blue-50" />{/* 삭제 */}
                   </tr>
                 )}
-                {sortedPosts.map((post, rowIdx) => {
+                {visiblePosts.map((post, rowIdx) => {
                   // 🔒 필터 불변식: 값(현재/직전)은 lib.pickRangeStats 단일 구현으로 —
                   // 날짜 필터 시 범위 밖(latest_stats) 폴백 금지. 합계·정렬·복사·CSV와 반드시 동일 규칙.
                   const { s, prev } = pickRangeStats(post, filters.dateFrom, filters.dateTo);
@@ -591,6 +621,15 @@ function PostsTable(props: Props) {
                     </tr>
                   );
                 })}
+                {/* 스크롤이 여기 닿으면 다음 100행을 이어붙인다. 남은 행 수를 같이 보여줘
+                    "데이터가 잘린 게 아니라 더 있다"는 걸 알 수 있게 한다. */}
+                {hasMoreRows && (
+                  <tr ref={sentinelRef}>
+                    <td colSpan={colSpan} className="px-5 py-4 text-center text-xs text-a-ink-muted">
+                      {sortedPosts.length.toLocaleString()}건 중 {visiblePosts.length.toLocaleString()}건 표시 — 스크롤하면 계속 불러옵니다
+                    </td>
+                  </tr>
+                )}
                 {posts.length === 0 && (
                   <tr>
                     <td colSpan={colSpan} className="px-5 py-14 text-center">
