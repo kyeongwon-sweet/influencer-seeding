@@ -43,6 +43,14 @@ function isHiddenAd(m: { content_summary: string | null }): boolean {
   return cap.includes("(광고)") || cap.includes("#광고");
 }
 
+/**
+ * 제품 칩을 화면에 늘어놓는 **계열 순서**. 각 계열은 [대표 칩 → 그 계열 종류들] 로 붙어서 나온다.
+ * ⚠️ 접미사(endsWith)로 계열을 판정하므로 **더 긴 이름이 먼저 와야 한다.**
+ *    예) `요거트바`가 `쫀득바`보다 앞: 그래야 '딸기생요거트바'가 요거트바로 잡힌다.
+ *    (지금 목록엔 서로 접미사 관계인 계열이 없지만, 계열을 추가할 때 이 규칙을 지킬 것)
+ */
+const PRODUCT_FAMILY_ORDER = ["듬뿍바", "쫀득바", "초코바", "제로바", "요거트바", "파인트", "모나카"];
+
 const PRODUCT_PARENTS = ["쫀득바", "듬뿍바", "제로바", "요거트바", "모나카"];
 function parentProductOf(p: string): string | null {
   for (const parent of PRODUCT_PARENTS) if (p !== parent && p.endsWith(parent)) return parent;
@@ -87,8 +95,8 @@ type Mention = {
   created_at: string;
 };
 
-type Filters = { name: string; platform: string; products: string[]; exposureType: string; dateFrom: string; dateTo: string };
-const INIT_FILTERS: Filters = { name: "", platform: "all", products: [], exposureType: "all", dateFrom: "", dateTo: "" };
+type Filters = { name: string; caption: string; platform: string; products: string[]; exposureType: string; dateFrom: string; dateTo: string };
+const INIT_FILTERS: Filters = { name: "", caption: "", platform: "all", products: [], exposureType: "all", dateFrom: "", dateTo: "" };
 
 type CsvRow = {
   platform: string; url: string; account_name: string | null;
@@ -783,11 +791,14 @@ export default function OrganicPage() {
 
   // 검색어는 타자마다 전체 목록을 다시 거르면 입력이 버벅인다 → 지연값으로 걸러 입력 자체는 즉시 반응하게.
   const deferredName = useDeferredValue(filters.name);
+  // 캡션 검색도 타자마다 전체 재필터가 돌면 버벅이므로 계정명과 같이 지연값을 쓴다.
+  const deferredCaption = useDeferredValue(filters.caption);
 
   const filtered = useMemo(() => mentions.filter(m => {
     if (isHiddenAd(m)) return false;
 
     if (deferredName && !(m.account_name ?? "").toLowerCase().includes(deferredName.toLowerCase())) return false;
+    if (deferredCaption && !(m.content_summary ?? "").toLowerCase().includes(deferredCaption.toLowerCase())) return false;
     if (filters.platform !== "all" && normPlatform(m.platform) !== filters.platform) return false;
     if (filters.products.length > 0) {
       // 콤마로 구분된 복수 제품 지원: 선택된 제품 중 하나라도 포함되면 통과
@@ -800,15 +811,28 @@ export default function OrganicPage() {
     if (filters.dateFrom && (!m.uploaded_at || m.uploaded_at < filters.dateFrom)) return false;
     if (filters.dateTo && (!m.uploaded_at || m.uploaded_at > filters.dateTo)) return false;
     return true;
-  }), [mentions, deferredName, filters.platform, filters.products, filters.exposureType, filters.dateFrom, filters.dateTo]);
+  }), [mentions, deferredName, deferredCaption, filters.platform, filters.products, filters.exposureType, filters.dateFrom, filters.dateTo]);
 
-  const hasFilter = filters.name !== "" || filters.platform !== "all" || filters.products.length > 0 || filters.exposureType !== "all" || filters.dateFrom !== "" || filters.dateTo !== "";
+  const hasFilter = filters.name !== "" || filters.caption !== "" || filters.platform !== "all" || filters.products.length > 0 || filters.exposureType !== "all" || filters.dateFrom !== "" || filters.dateTo !== "";
 
-  // 언급 제품 옵션 — 콤마 구분 복수 값 파싱
-  const productOptions = useMemo(
-    () => Array.from(new Set(mentions.flatMap(m => productTokens(m.mentioned_product)))).sort(),
-    [mentions],
-  );
+  // 언급 제품 옵션 — 콤마 구분 복수 값 파싱 후 **계열별로 묶어서** 정렬한다.
+  // 가나다순으로 늘어놓으면 '딸기듬뿍바'와 '듬뿍바'가 멀리 떨어져 계열이 안 보인다(사용자 요청).
+  // 순서: [듬뿍바 → 듬뿍바 종류들] [파인트 → 파인트 종류들] ... 그 다음 계열 없는 것들.
+  const productOptions = useMemo(() => {
+    const all = Array.from(new Set(mentions.flatMap(m => productTokens(m.mentioned_product)))).sort();
+    const used = new Set<string>();
+    const ordered: string[] = [];
+    for (const family of PRODUCT_FAMILY_ORDER) {
+      // 계열 대표 칩이 데이터에 있으면 먼저(없어도 하위는 묶어서 보여준다)
+      if (all.includes(family)) { ordered.push(family); used.add(family); }
+      for (const p of all) {
+        if (!used.has(p) && p !== family && p.endsWith(family)) { ordered.push(p); used.add(p); }
+      }
+    }
+    // 계열에 안 붙는 것들(단팥바·딸기바·치즈케이크·라라스윗 등)은 뒤에 가나다순으로
+    for (const p of all) if (!used.has(p)) ordered.push(p);
+    return ordered;
+  }, [mentions]);
 
   // 언급제품이 비어 있는 게시물 수 — '미정' 칩을 **보일지 말지**에만 쓴다(건수 표기는 사용자 요청으로 제거).
   // 표에서 감추는 광고 행은 빼야 "칩이 있는데 눌러도 0건" 같은 상태가 안 생긴다.
@@ -845,7 +869,7 @@ export default function OrganicPage() {
   const guideBoxRef = useRef<HTMLDivElement | null>(null);
   const [guideHeight, setGuideHeight] = useState<number | null>(null);
   // 조건이 바뀌면 처음부터 다시 보여준다(스크롤 위치와 어긋나지 않게).
-  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [deferredName, filters.platform, filters.products, filters.exposureType, filters.dateFrom, filters.dateTo, sortCol, sortDir]);
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [deferredName, deferredCaption, filters.platform, filters.products, filters.exposureType, filters.dateFrom, filters.dateTo, sortCol, sortDir]);
   const visibleRows = useMemo(() => sorted.slice(0, visibleCount), [sorted, visibleCount]);
   const hasMore = visibleCount < sorted.length;
 
@@ -997,6 +1021,14 @@ export default function OrganicPage() {
               value={filters.name}
               onChange={e => setFilters(p => ({ ...p, name: e.target.value }))}
               className={`filter-input h-9 w-24 shrink-0 ${filters.name ? "border-a-blue" : ""}`}
+            />
+            {/* 캡션 검색 — 본문(content_summary) 부분일치. 계정명보다 긴 문구를 넣게 되므로 폭을 더 준다. */}
+            <input
+              type="text"
+              placeholder="캡션 검색"
+              value={filters.caption}
+              onChange={e => setFilters(p => ({ ...p, caption: e.target.value }))}
+              className={`filter-input h-9 w-32 shrink-0 ${filters.caption ? "border-a-blue" : ""}`}
             />
             <select
               value={filters.platform}
