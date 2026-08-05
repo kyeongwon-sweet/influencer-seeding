@@ -394,7 +394,8 @@ export default function OrganicPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [colWidths, setColWidths] = useState<number[]>(INIT_COL_WIDTHS);
   const [showAdd, setShowAdd] = useState(false);
-  const [addForm, setAddForm] = useState({ url: "", account_name: "", platform: "인스타그램", content_summary: "", mentioned_product: "", uploaded_at: "", view_count: "" });
+  // exposure_type: 표에서만 고칠 수 있어서 추가 직후 '미분류'로 남았다 → 추가 모달에서 바로 고르게 한다.
+  const [addForm, setAddForm] = useState({ url: "", account_name: "", platform: "인스타그램", exposure_type: "", content_summary: "", mentioned_product: "", uploaded_at: "", view_count: "" });
   const [adding, setAdding] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [csvRows, setCsvRows] = useState<CsvRow[]>([]);
@@ -553,6 +554,7 @@ export default function OrganicPage() {
         url: addForm.url,
         account_name: addForm.account_name || null,
         platform: addForm.platform,
+        exposure_type: addForm.exposure_type || null,
         content_summary: addForm.content_summary || null,
         mentioned_product: addForm.mentioned_product || null,
         uploaded_at: addForm.uploaded_at || null,
@@ -566,7 +568,7 @@ export default function OrganicPage() {
       toast(`추가 실패: ${(err as { error?: string }).error ?? "오류가 발생했습니다."}`, "error");
       return;
     }
-    setAddForm({ url: "", account_name: "", platform: "인스타그램", content_summary: "", mentioned_product: "", uploaded_at: "", view_count: "" });
+    setAddForm({ url: "", account_name: "", platform: "인스타그램", exposure_type: "", content_summary: "", mentioned_product: "", uploaded_at: "", view_count: "" });
     setShowAdd(false);
     await loadMentions();
     toast("게시물이 추가됐습니다.", "success");
@@ -979,10 +981,20 @@ export default function OrganicPage() {
           >
             연예인 노출 모음
           </a>
+          <a
+            href="https://app.notion.com/p/lalasweet/25e3b344ce7f8024b683d66d10518764?v=25e3b344ce7f80b588e2000c34aa4365"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[13px] text-a-blue underline underline-offset-2 hover:text-a-blue-hover"
+          >
+            성덕모먼트
+          </a>
         </div>
         {/* 왼쪽 칸은 제 글자폭(max-content)만 쓰고 나머지를 오른쪽에 넘긴다.
             '우리가 언급된 자컨/콘텐츠에 감사댓글'이 접히면 박스 세로가 늘어나기 때문. */}
-        <div className="grid grid-cols-[max-content_minmax(0,1fr)] gap-4">
+        {/* gap-4 → gap-7: '💬 댓글 작성' 열을 조금 더 오른쪽으로 밀었다(2026-08-05 사용자 요청).
+            왼쪽 열은 max-content(제 글자폭)이므로 간격만 늘리면 오른쪽 열이 그만큼 이동한다. */}
+        <div className="grid grid-cols-[max-content_minmax(0,1fr)] gap-7">
           <div>
             <p className="text-[12px] font-semibold text-a-ink mb-1.5">✓ 수집 대상:</p>
             <ul className="text-[12px] text-a-ink-muted space-y-0.5 list-none leading-normal">
@@ -1238,6 +1250,15 @@ export default function OrganicPage() {
                   onChange={e => setAddForm(p => ({ ...p, account_name: e.target.value }))}
                   className="flex-1 border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-sm placeholder:text-a-ink-muted focus:outline-none focus:border-a-blue transition" />
               </div>
+              {/* 유형 — 비워두면 '미분류'로 들어가고 표에서 나중에 고칠 수 있다(값을 임의로 정하지 않는다). */}
+              <select value={addForm.exposure_type}
+                onChange={e => setAddForm(p => ({ ...p, exposure_type: e.target.value }))}
+                className={`w-full border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-sm focus:outline-none focus:border-a-blue transition ${addForm.exposure_type ? "text-a-ink" : "text-a-ink-muted"}`}>
+                <option value="">유형 선택 (비우면 미분류)</option>
+                <option value="무가시딩">무가시딩</option>
+                <option value="오가닉">오가닉 노출</option>
+                <option value="연예인 언급">연예인 언급</option>
+              </select>
               <textarea placeholder="내용 요약" value={addForm.content_summary}
                 onChange={e => setAddForm(p => ({ ...p, content_summary: e.target.value }))}
                 rows={2}
@@ -1261,7 +1282,7 @@ export default function OrganicPage() {
               </div>
             </div>
             <div className="flex gap-2 mt-5 justify-end">
-              <button onClick={() => { setShowAdd(false); setAddForm({ url: "", account_name: "", platform: "인스타그램", content_summary: "", mentioned_product: "", uploaded_at: "", view_count: "" }); }}
+              <button onClick={() => { setShowAdd(false); setAddForm({ url: "", account_name: "", platform: "인스타그램", exposure_type: "", content_summary: "", mentioned_product: "", uploaded_at: "", view_count: "" }); }}
                 className="btn-ghost">취소</button>
               <button onClick={addMention} disabled={adding || !addForm.url} className="btn-primary px-5 py-2 text-sm">
                 {adding ? "추가 중..." : "추가"}
