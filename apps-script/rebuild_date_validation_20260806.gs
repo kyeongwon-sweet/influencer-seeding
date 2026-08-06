@@ -29,12 +29,18 @@ function rebuildDateColumnValidation() {
   var lastCol = sheet.getLastColumn();
   var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
 
-  // 날짜열 = 헤더(1행)가 날짜값인 열
+  // 날짜열 = 헤더(1행)가 날짜값인 열.
+  // ⚠️ 헤더 일부는 날짜 서식이 풀려 '숫자(날짜 serial)'로 저장돼 있다(예 46238=2026-08-04).
+  //    Date 객체만 찾으면 그 열들을 놓친다 → Date + 날짜-serial 숫자 둘 다 잡는다.
+  var nDate = 0, nSerial = 0;
   var dateCols = [];
   for (var c = 0; c < header.length; c++) {
-    if (Object.prototype.toString.call(header[c]) === '[object Date]') dateCols.push(c + 1); // 1-based
+    var h = header[c];
+    if (Object.prototype.toString.call(h) === '[object Date]') { dateCols.push(c + 1); nDate++; }
+    else if (typeof h === 'number' && h >= 44000 && h <= 48000) { dateCols.push(c + 1); nSerial++; } // 2020~2031 serial
   }
-  if (!dateCols.length) { Logger.log('날짜열을 못 찾음(헤더가 날짜값이 아님)'); return; }
+  if (!dateCols.length) { Logger.log('날짜열을 못 찾음(헤더가 날짜/serial 아님)'); return; }
+  Logger.log('날짜열 헤더 유형: Date ' + nDate + '개 · serial숫자 ' + nSerial + '개 (합 ' + dateCols.length + '개)');
 
   var firstCol = Math.min.apply(null, dateCols);
   var lastColD = Math.max.apply(null, dateCols);
