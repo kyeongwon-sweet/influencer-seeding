@@ -6,6 +6,13 @@
 
 # AI Shared Status
 
+## 🔴🔴 2026-08-06 [진행중·사고] 누적조회수(H) 수식 범위 손상 — 1,765행 H 빈칸
+- **증상**: formula-audit `h.ok 0 · emptyButData 1765`(어제 ok 1740). H가 대부분 빈칸.
+- **원인 확정**: 날짜 헤더 97개 중 **81개가 숫자(serial 46238)로 저장**됨. `refreshCumulativeViews`(dailyAuto)의 날짜열 탐지가 `instanceof Date || dateRe`뿐이라 **serial 헤더 81개를 놓침** → H 수식을 마지막 16열 `=MAX(CS:DH)`로 좁혀 재작성 → CR 이전 데이터 행 H가 빈칸. (H1771 수식 `=IF(COUNT(CS1771:DH1771)=0,...)` 실물 확인). **데이터 손실 없음 — 날짜칸 값 온전, H 수식 범위만 오축소.**
+- **촉발**: Claude의 대량 `setDataValidation`(rebuildDateColumnValidation, 10:37 KST) 직후 발생(09:46 정상→11:00 손상). refreshCumulativeViews 재실행을 촉발한 것으로 추정.
+- **조치**: ①근본버그 수정 = `refreshCumulativeViews` 날짜탐지에 serial(44000~48000) 추가(`Combined_Sheet_AppsScript.gs`, **⚠️라이브 반영 필요**). ②긴급복구·트리거제거 스크립트 `apps-script/restore_cumulative_20260806.gs`(`removeRebuildTrigger`+`rebuildCumulativeFormulas_fix`). ③Claude가 건 매일 rebuild 트리거는 제거 권고(재발 촉발 위험).
+- **⚠️ 미해결**: 라이브 refreshCumulativeViews 미수정 시 **내일 08:30 dailyAuto가 H 재손상**. 라이브 1줄 수정 필수. 헤더가 왜 serial로 저장됐는지 별도 조사 필요.
+
 ## 2026-08-06 [Claude 완료] 역행 감지 DB 워치독 신설 (단조검사 시트→DB 이관)
 - **배경**: 시트 유효성(날짜열 단조증가)이 파편화·#REF!로 불안정 → 역행 검사를 **DB 워치독으로 이관**(시트 편집과 무관, 안정적).
 - **신규**: `scripts/reverse_watchdog.py`(stdlib) + `.github/workflows/reverse-watchdog.yml`(매일 KST 02:30) + `scripts/test_reverse_watchdog.py`(8케이스 통과).

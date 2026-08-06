@@ -2147,7 +2147,10 @@ function refreshCumulativeViews() {
   const dateRe = /^\s*(?:\d{2,4}\s*[.]\s*)?\d{1,2}\s*[.]\s*\d{1,2}\s*[.]?\s*(\s|\(|$)/;
   for (let i = CONFIG.STATS_FIRST_COL - 1; i < headers.length; i++) {
     const header = headers[i];
-    if (header instanceof Date || dateRe.test(String(header))) dateCols.push(i + 1);
+    // ⚠️ 날짜 헤더가 '날짜 서식'이 풀려 숫자(serial 46238≈2026-08)로 저장된 열도 인식해야 한다.
+    //    (2026-08-06 사고: serial 헤더 81개를 놓쳐 H 수식이 마지막 16열만 참조→1,765행 H 빈칸)
+    const isSerialDate = typeof header === "number" && header >= 44000 && header <= 48000;
+    if (header instanceof Date || isSerialDate || dateRe.test(String(header))) dateCols.push(i + 1);
   }
   if (!dateCols.length) return true;
 
