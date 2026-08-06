@@ -202,6 +202,31 @@ def _metric_value(row: dict | None):
     return None
 
 
+def _drop_pre_post_rows(rows, posts):
+    """게시일 이전(measured_at < posted_at) 측정행을 저장 대상에서 제외한다.
+
+    수집은 measured_at을 KST 어제(TODAY)로 기록하는데(:188), 게시 당일 새벽 수집분이 걸리면
+    measured_at=게시일-1 인 'pre-post' 행이 생긴다. 대시보드 API는 measured_at>=posted_at만
+    노출하므로(web/app/api/sponsored-posts/route.ts) 표시엔 안 보이나, raw post_daily_stats에
+    잠복해 정합성 알림(notify_status)을 울린다. 값 자체는 실측이지만 날짜 라벨이 하루 이르며,
+    다음 수집이 게시일 당일 행을 정상 생성하므로 이 행은 저장하지 않는다
+    (web collect-now의 prePostedSkipped와 동일 정책, 2026-08-06 추가).
+    ⚠️ posted_at은 절대 자동수정하지 않는다 — 게시일 오기는 posted_at_mismatch 알림으로 사람이 정정.
+
+    Returns (kept_rows, dropped_rows).
+    """
+    posted_by = {p["id"]: str(p.get("posted_at") or "")[:10] for p in posts if p.get("posted_at")}
+    kept, dropped = [], []
+    for r in rows:
+        pa = posted_by.get(r.get("post_id"))
+        ma = str(r.get("measured_at") or "")[:10]
+        if pa and ma and ma < pa:
+            dropped.append(r)
+        else:
+            kept.append(r)
+    return kept, dropped
+
+
 def _record_missing_view_event(post: dict, platform: str, reason: str, *, stat=None, existing=None, extra=None):
     event = {
         "measured_at": TODAY,
@@ -1377,6 +1402,11 @@ def run():
             rows = [r for r in rows if r["post_id"] in valid]
             if len(rows) < before:
                 print(f"[WARN] 수집 중 삭제된 게시물 행 {before - len(rows)}건 제외(FK 보호)")
+        # 🛡️ 재발방지(2026-08-06): 게시일 이전 measured_at 행 차단(pre-post 가드). 상세는 _drop_pre_post_rows.
+        rows, _pre_post = _drop_pre_post_rows(rows, posts)
+        if _pre_post:
+            _samp = ", ".join(sorted({f"{str(r.get('post_id'))[:8]}@{str(r.get('measured_at'))[:10]}" for r in _pre_post}))
+            print(f"[WARN] 게시일 이전 measured_at 행 {len(_pre_post)}건 저장 제외(pre-post 가드): {_samp[:300]}")
         # 🛡️ 재발방지(전 수집경로 공통 초크포인트): play_count 0/음수는 '수집 실패'다(실측 0회가 아님).
         #    직전 실측이 있으면 그 값으로 clamp, 없으면 None(측정 안 됨) — 0을 baseline으로 절대 남기지 않는다.
         #    (플랫폼별 _store/IG 개별 가드에 더해, 저장 직전 단일 지점에서 모든 경로를 전수 차단.)
