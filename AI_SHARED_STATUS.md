@@ -6,6 +6,16 @@
 
 # AI Shared Status
 
+## 2026-08-06 [Codex 완료·검증] CPV(J열) 유효성 #REF!·파편화 재정비
+- **DRY-RUN:** CPV 열 `J`(col 10), 대상 `J2:J2278` 2,277행 확인 후 실행. 값은 건드리지 않고 유효성 규칙만 교체했다.
+- **재발방지 V2:** `J2` 직접참조는 행 삭제 시 다시 `#REF!`가 될 수 있어 `INDEX(J:J,ROW())` 동적 자기셀 규칙으로 변경했다. 허용값은 빈칸·`?`·숫자, `setAllowInvalid(true)` 경고모드 유지.
+- **숨김행 함정 해결:** 기본 필터 숨김행 16칸은 대량 적용에서 건너뛰는 것을 실측했다. 필터 범위 `A1:DI1757`와 기준 1개를 보존→잠시 해제→J열만 적용→즉시 복원했다.
+- **백업:** 숨김 시트 `_codex_cpv_validation_backup_20260806_213821`에 변경 전 2,277행 규칙을 전수 저장했다.
+- **CPV 독립 전수감사:** `rows=2277`, `missing=0`, `wrong_type=0`, `ref_errors=0`, `formula_variants=1`.
+- **H/I 무영향 최종감사:** URL 1,864행, H/I blank-no-formula 0/0, H/I #REF 0/0. 게시 7일 초과 백로그 예외 8건만 정상 빈 결과.
+- **동시 신규행 자가치유:** 작업 중 새로 들어온 `ig:DbnLmD4EUSJ` 한 행은 URL 재매칭 후 빈 I수식만 복구(`I1796=114,403`), 다른 셀은 미변경.
+- **자동화:** 트리거 추가 없음. repo `apps-script/rebuild_cpv_validation_20260806.gs`도 V2·필터 보존·백업·사후검증 기준으로 갱신하고 계약 테스트를 추가했다.
+
 ## ⭐ 2026-08-06 [사용자 요청 → Codex 실행] 연동시트 상품명 '-' 허용 (제품 없음 표기)
 **사용자가 상품명 칸에 `-`(제품 없음 명시 표기)를 넣고 싶어 함.** 현재 유효성이 "빈칸 OR (대문자영문+한글)"만 허용해 `-`를 거부함. 라이브 Apps Script 유효성이라(단일작성자=Codex, 게다가 현재 `Combined_Sheet_AppsScript.gs`를 다른 세션이 편집 중) Claude가 직접 라이브에 안 쓰고 스펙만 인계.
 - **⑴ `isValidLinkedProductValue_` (`Combined_Sheet_AppsScript.gs:1889`) 완화:** blank 체크 다음 줄에 `if (String(value).trim() === "-") return true;` 추가.

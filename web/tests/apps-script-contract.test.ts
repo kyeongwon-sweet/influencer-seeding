@@ -10,6 +10,10 @@ const writeGuard = readFileSync(
   new URL("../../_WriteGuard.gs", import.meta.url),
   "utf8",
 );
+const cpvValidationRepair = readFileSync(
+  new URL("../../apps-script/rebuild_cpv_validation_20260806.gs", import.meta.url),
+  "utf8",
+);
 
 test("Apps Script mirror keeps live metadata and URL guards", () => {
   assert.match(appsScript, /"DB → 시트 조회수·누적·증분 반영",\s*"exportStats"/);
@@ -733,4 +737,15 @@ test("B-column URL cleanup is rerunnable and fails closed on key drift", () => {
   assert.match(cleanupScript, /_codex_url_param_backup_/);
   assert.match(cleanupScript, /remainingQuestionMarks/);
   assert.doesNotMatch(cleanupScript, /EXPECTED_TOTAL|EXPECTED_COUNTS/);
+});
+
+test("CPV validation survives row changes and includes filtered rows", () => {
+  assert.match(cpvValidationRepair, /INDEX\(' \+ letter \+ ':\' \+ letter \+ ',ROW\(\)\)/);
+  assert.doesNotMatch(cpvValidationRepair, /var tl = colLetter_\(cpvCol\)/);
+  assert.match(cpvValidationRepair, /range\.getDataValidations\(\)/);
+  assert.match(cpvValidationRepair, /backup\.hideSheet\(\)/);
+  assert.match(cpvValidationRepair, /filter\.remove\(\)/);
+  assert.match(cpvValidationRepair, /setColumnFilterCriteria\(item\.col, item\.criterion\)/);
+  assert.match(cpvValidationRepair, /setAllowInvalid\(true\)/);
+  assert.match(cpvValidationRepair, /ref_errors: refErrors/);
 });
