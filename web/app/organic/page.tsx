@@ -268,6 +268,9 @@ const MentionRow = memo(function MentionRow({
                                 if (e.key === "Escape") onCancelEdit();
                               }}
                               placeholder="쉼표로 구분해 복수 입력"
+                              // 추가 모달과 **같은 자동완성 목록**을 쓴다. 여기가 자유 입력으로 남아 있어서
+                              // 폐기한 옛 이름(딸기요거트바)이 표 편집으로 다시 들어온 적이 있다(2026-08-06).
+                              list="organic-product-names"
                               className="flex-1 text-xs bg-transparent border-b border-a-blue outline-none py-0.5 min-w-0"
                             />
                             <button onClick={() => onPatchProduct(m.id, edit!.value)}
@@ -1292,6 +1295,13 @@ export default function OrganicPage() {
         </div>
       </div>
 
+      {/* 언급 제품 자동완성 후보 — 추가 모달과 표 셀 편집기가 **둘 다** 이걸 참조한다.
+          ⚠️ 모달 안에 두면 모달이 닫힐 때 DOM에서 사라져 표 편집에선 조용히 동작하지 않는다.
+          그래서 항상 렌더되는 위치에 둔다. 표기 난립(크림롤/생크림롤·딸기요거트바 재발) 방지용. */}
+      <datalist id="organic-product-names">
+        {productOptions.map(p => <option key={p} value={p} />)}
+      </datalist>
+
       {/* 게시물 추가 모달 */}
       {showAdd && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50">
@@ -1338,9 +1348,6 @@ export default function OrganicPage() {
                 value={addForm.mentioned_product}
                 onChange={e => setAddForm(p => ({ ...p, mentioned_product: e.target.value }))}
                 className="w-full border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-sm placeholder:text-a-ink-muted focus:outline-none focus:border-a-blue transition" />
-              <datalist id="organic-product-names">
-                {productOptions.map(p => <option key={p} value={p} />)}
-              </datalist>
               <div className="flex gap-2">
                 <div className="flex-1">
                   <label className="text-[11px] text-a-ink-muted mb-1 block">업로드일</label>
