@@ -1,0 +1,38 @@
+name: Repair Pre-Post Empty Stats
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Delete eligible empty automatic pre-post rows"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Repair pre-post empty stats
+        run: |
+          set -euo pipefail
+          args=()
+          if [ "${{ inputs.apply }}" = "true" ]; then
+            args+=(--apply)
+          fi
+          python scripts/repair_pre_post_empty_stats.py "${args[@]}"
+      - name: Upload backup
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pre-post-empty-stats-backup
+          path: scratchpad/pre_post_empty_stats_backup_*.json
+          if-no-files-found: warn
