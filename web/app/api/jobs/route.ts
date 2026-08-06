@@ -220,14 +220,25 @@ export async function POST(req: NextRequest) {
 
       } else if (type === 'organic_refresh') {
         // 기존 인스타그램 무상노출 게시글 조회수 갱신
-        const { data: mentions } = await supabase.from('organic_mentions').select('url, platform');
-        const igUrls = ((mentions || []) as { url: string; platform: string }[])
-          .filter(m => m.platform === 'instagram' || m.url.includes('instagram.com'))
-          .map(m => cleanInstagramUrl(m.url))
-          .filter((u): u is string => u !== null);
+        //
+        // 🔴 2026-08-06 버그 수정: 여기서 **프로필 전용** `cleanInstagramUrl`을 쓰고 있었다.
+        //    그 함수는 게시물 URL(`/p/`·`/reel/`)에 null을 돌려주므로 igUrls가 **항상 비어**
+        //    `updated: 0`으로 조용히 성공 처리됐다 — IG 무상노출 조회수 갱신이 사실상 무동작.
+        //    monitoring 경로가 같은 사고(2026-06-26) 후 만든 공용 헬퍼 `activeIgPostUrls`로 통일한다.
+        //    (organic_mentions엔 ended_at이 없어 종료 개념이 없다 → null로 넘긴다)
+        const { data: mentions } = await supabase.from('organic_mentions').select('url');
+        const mentionRows = ((mentions || []) as { url: string | null }[]).map(m => ({ url: m.url, ended_at: null }));
+        const igUrls = activeIgPostUrls(mentionRows);
 
         if (igUrls.length === 0) {
-          await supabase.from('jobs').update({ status: 'done', payload: { updated: 0 } }).eq('id', job.id);
+          // 게시물이 많은데 0건이면 필터가 또 깨진 것이다 → 조용한 success 금지.
+          const igCount = mentionRows.filter(m => (m.url || '').includes('instagram.com')).length;
+          if (igCount >= 20) {
+            logger.warn('organic_refresh', `IG 게시물 ${igCount}건인데 추출 URL 0건 — 필터 점검 필요`);
+            await supabase.from('jobs').update({ status: 'failed', error: `IG 무상노출 ${igCount}건인데 갱신 대상 URL이 0건 — URL 필터 점검 필요` }).eq('id', job.id);
+          } else {
+            await supabase.from('jobs').update({ status: 'done', payload: { updated: 0 } }).eq('id', job.id);
+          }
         } else {
           await supabase.from('jobs').update({ status: 'running' }).eq('id', job.id);
           await startActorRun(

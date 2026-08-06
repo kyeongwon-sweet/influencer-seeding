@@ -84,7 +84,8 @@ const PRODUCT_GROUPS: Record<string, string[]> = {
   // 옛 이름은 목록에서도 뺀다 — 남겨두면 잘못된 이름을 다시 쓰게 만든다.
   // '복숭아요거트바'도 2026-08-06 사용자 지시로 DB 8건을 '복숭아생요거트바'로 고쳤다(정식 이름).
   // '애플망고요거트바'는 사용자가 '생' 없이 지정한 이름이라 그대로 둔다(제품별로 다르다).
-  "요거트바": ["딸기생요거트바", "블루베리생요거트바", "복숭아생요거트바", "애플망고요거트바"],
+  // 2026-08-06 사용자 지시로 요거트바 계열은 '생'을 붙인 정식명으로 통일했다(애플망고 포함).
+  "요거트바": ["딸기생요거트바", "블루베리생요거트바", "복숭아생요거트바", "애플망고생요거트바"],
   // 빵샌드는 상위 항목, 생우유빵샌드가 그 하위(2026-08-06 사용자 확인).
   "빵샌드": ["생우유빵샌드"],
 };
@@ -414,6 +415,8 @@ export default function OrganicPage() {
   const [addForm, setAddForm] = useState({ url: "", account_name: "", platform: "", exposure_type: "", content_summary: "", mentioned_product: "", uploaded_at: "", view_count: "" });
   // 사용자가 채널 유형을 직접 고른 뒤에는 URL 자동판정이 그 선택을 덮지 않게 한다.
   const [platformPicked, setPlatformPicked] = useState(false);
+  // 추가 직후 자동 보강(게시일·조회수 등)이 도는 중인지 — 표 상단에 진행 표시를 띄운다.
+  const [enriching, setEnriching] = useState(false);
   const [adding, setAdding] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [csvRows, setCsvRows] = useState<CsvRow[]>([]);
@@ -586,10 +589,36 @@ export default function OrganicPage() {
       toast(`추가 실패: ${(err as { error?: string }).error ?? "오류가 발생했습니다."}`, "error");
       return;
     }
+    const created = (await res.json().catch(() => null)) as { id?: string } | null;
     setAddForm({ url: "", account_name: "", platform: "", exposure_type: "", content_summary: "", mentioned_product: "", uploaded_at: "", view_count: "" }); setPlatformPicked(false);
     setShowAdd(false);
     await loadMentions();
     toast("게시물이 추가됐습니다.", "success");
+
+    // 자동 보강(게시일·채널유형·언급제품·조회수). 수집이 최대 100초라 **추가를 막지 않고** 뒤에서 돌린다.
+    // 빈 칸만 채우므로 위에서 사람이 입력한 값은 그대로 남는다.
+    if (created?.id) {
+      setEnriching(true);
+      fetch("/api/organic-mentions/enrich", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: created.id }),
+      })
+        .then(r => r.json())
+        .then(async (out: { enriched?: boolean; patch?: Record<string, unknown>; reason?: string }) => {
+          if (out?.enriched) {
+            const ko: Record<string, string> = { uploaded_at: "게시일", view_count: "조회수", platform: "채널 유형", mentioned_product: "언급 제품" };
+            const filled = Object.keys(out.patch ?? {}).map(k => ko[k] ?? k).join("·");
+            await loadMentions();
+            toast(`자동 보강 완료: ${filled}`, "success");
+          } else if (out?.reason) {
+            // 실패해도 게시물은 이미 등록됐다 → 조용히 넘기지 않고 사유를 알린다.
+            toast(`자동 보강 못 함: ${out.reason}`, "error");
+          }
+        })
+        .catch(() => toast("자동 보강 요청이 실패했습니다. 값은 직접 입력해 주세요.", "error"))
+        .finally(() => setEnriching(false));
+    }
   }
 
   async function deleteMention(id: string) {
@@ -1030,6 +1059,12 @@ export default function OrganicPage() {
           <div className="flex items-center gap-1.5 shrink-0">
             <button onClick={() => setShowUpload(true)} className="btn-secondary h-9 shrink-0">CSV 업로드</button>
             <button onClick={() => setShowAdd(true)} className="btn-secondary h-9 shrink-0">+ 게시물 추가</button>
+            {/* 추가 직후 자동 보강이 최대 100초 걸릴 수 있어 진행 중임을 보여준다(조용히 도는 게 제일 나쁘다). */}
+            {enriching && (
+              <span className="text-[11px] text-a-ink-muted whitespace-nowrap self-center">
+                게시일·조회수 자동 확인 중…
+              </span>
+            )}
             <button onClick={downloadCSV} disabled={filtered.length === 0} className="btn-secondary h-9 whitespace-nowrap shrink-0">
               엑셀 다운로드
             </button>
