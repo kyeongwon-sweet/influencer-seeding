@@ -26,6 +26,25 @@ test("만료 호스트와 안전 호스트가 같이 오면 안전한 쪽을 고
   );
 });
 
+test("🔴 X 액터는 media를 '문자열 배열'로 준다(실측) — 이걸 놓쳐 275건이 빈 채로 남았다", () => {
+  // apidojo/twitter-scraper-lite 실제 응답(2026-08-06 탐침):
+  //   media: ["https://pbs.twimg.com/media/HIxnql8aYAABGo5.jpg", ...]
+  assert.equal(
+    pickThumbnail({ media: ["https://pbs.twimg.com/media/HIxnql8aYAABGo5.jpg", "https://pbs.twimg.com/media/HIxnqrUakAA7GHa.jpg"] }),
+    "https://pbs.twimg.com/media/HIxnql8aYAABGo5.jpg",
+  );
+  // extendedEntities 경로도 같은 값을 준다(보조)
+  assert.equal(
+    pickThumbnail({ extendedEntities: { media: [{ media_url_https: "https://pbs.twimg.com/media/AAA.jpg" }] } }),
+    "https://pbs.twimg.com/media/AAA.jpg",
+  );
+});
+
+test("🔴 프로필 사진을 게시물 이미지로 쓰지 않는다", () => {
+  // author.profilePicture도 pbs.twimg 도메인이라 잘못 잡으면 모든 행이 프로필 사진이 된다.
+  assert.equal(pickThumbnail({ author: { profilePicture: "https://pbs.twimg.com/profile_images/1/x_normal.jpg" } }), null);
+});
+
 test("이미지가 없거나 URL이 아니면 null", () => {
   assert.equal(pickThumbnail({}), null);
   assert.equal(pickThumbnail({ thumbnailUrl: "" }), null);

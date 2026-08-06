@@ -106,9 +106,19 @@ export function pickThumbnail(item: Record<string, unknown>): string | null {
     if (typeof t === "string") cands.push(t);
     else if (t && typeof t === "object") cands.push((t as { url?: unknown }).url);
   }
+  // ⚠️ X(apidojo/twitter-scraper-lite)는 `media`를 **문자열 배열**로 준다(실측 2026-08-06):
+  //      media[0] = "https://pbs.twimg.com/media/....jpg"
+  //    객체만 처리했더니 트위터 275건의 이미지를 전부 놓쳤다. 문자열도 받는다.
+  //    `extendedEntities.media[].media_url_https`도 같은 값이라 보조로 본다.
+  //    ⚠️ `author.profilePicture`도 pbs.twimg 도메인이지만 **프로필 사진**이므로 절대 쓰지 않는다.
   const media = item.media;
   if (Array.isArray(media)) for (const m of media) {
-    if (m && typeof m === "object") cands.push((m as { media_url_https?: unknown; url?: unknown }).media_url_https ?? (m as { url?: unknown }).url);
+    if (typeof m === "string") cands.push(m);
+    else if (m && typeof m === "object") cands.push((m as { media_url_https?: unknown; url?: unknown }).media_url_https ?? (m as { url?: unknown }).url);
+  }
+  const ext = item.extendedEntities as { media?: unknown } | undefined;
+  if (ext && Array.isArray(ext.media)) for (const m of ext.media) {
+    if (m && typeof m === "object") cands.push((m as { media_url_https?: unknown }).media_url_https);
   }
   const vm = item.videoMeta as Record<string, unknown> | undefined;
   if (vm) cands.push(vm.coverUrl, vm.originalCoverUrl);
