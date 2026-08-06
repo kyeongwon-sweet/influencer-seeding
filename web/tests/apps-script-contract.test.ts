@@ -337,7 +337,19 @@ test("linked sheet H/I audit is available from Apps Script and GitHub Actions", 
     new URL("../../scripts/audit_linked_sheet_formulas.py", import.meta.url),
     "utf8",
   );
-  assert.match(canonicalWorkflow, /cron: "10 1 \* \* \*"/);
+  // ⚠️ 시각을 하드코딩하지 않는다(2026-08-06 아침 배치를 1시간 앞당길 때 이 테스트가 깨졌다).
+  //    지켜야 할 것은 시각 자체가 아니라 **순서**다: 수식감사는 시트 동기화(dailyAuto, 08:30 KST)
+  //    **이후**에 돌아야 한다. 앞서 돌면 동기화 전 시트를 감사해 오진한다.
+  const cronMatch = canonicalWorkflow.match(/cron: "(\d+) (\d+) \* \* \*"/);
+  assert.ok(cronMatch, "formula-audit.yml 에 일 1회 cron 이 있어야 한다");
+  const [, minStr, hourStr] = cronMatch!;
+  const kstMinutes = (((Number(hourStr) + 9) % 24) * 60) + Number(minStr);
+  const DAILY_AUTO_KST = 8 * 60 + 30;   // dailyAuto = 08:30 KST (Apps Script 시간 트리거)
+  const FALLBACK_KST = 11 * 60;          // 자가치유 폴백 = 11:00 KST — 그 전에 돌아야 의미가 있다
+  assert.ok(
+    kstMinutes > DAILY_AUTO_KST && kstMinutes < FALLBACK_KST,
+    `수식감사는 dailyAuto(08:30) 이후 · 폴백(11:00) 이전이어야 한다. 현재 KST ${Math.floor(kstMinutes / 60)}:${String(kstMinutes % 60).padStart(2, "0")}`,
+  );
   assert.match(canonicalWorkflow, /\/api\/sponsored-posts\/formula-audit/);
   assert.match(csvWorkflow, /workflow_dispatch:/);
   assert.doesNotMatch(csvWorkflow, /\n\s*schedule:/);

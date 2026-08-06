@@ -2,7 +2,8 @@ name: Invalid Creator Fields Audit
 
 on:
   schedule:
-    - cron: "25 1 * * *" # 10:25 KST, dailyAuto/formula-audit afterglow
+    - cron: "25 0 * * *" # 09:25 KST, dailyAuto(08:30)/formula-audit(09:10) afterglow
+    #                     2026-08-06 아침 배치 1시간 앞당김(10:25 → 09:25)
   workflow_dispatch:
     inputs:
       apply:
