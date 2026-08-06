@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { recordFalsePositiveReview } from "@/lib/injibot-review";
+import { recordFalsePositiveReview, recordReviewDecision } from "@/lib/injibot-review";
 import { hideMetaAdCommentForSlackMessage } from "@/lib/meta-instagram-comments";
 
 // injibot(부정 댓글 알림) 버튼 클릭 처리(Slack Interactivity).
@@ -132,6 +132,21 @@ export async function POST(req: NextRequest) {
     } catch (e) {
       console.error("[injibot-action] Meta 댓글 숨김 실패", e);
       return NextResponse.json({ ok: true, hidden: false });
+    }
+  }
+
+  // 처리 결과를 DB에 기록(요약이 처리분을 '미처리'로 오표시하지 않게). ignore는 위에서 false_positive로 기록됨.
+  if (actionId !== "ignore" && channelId && messageTs) {
+    try {
+      const result = await recordReviewDecision(getServerSupabase(), {
+        channelId,
+        messageTs,
+        decision: actionId,
+        userId,
+      });
+      if (!result.ok) console.error("[injibot-action] 처리 결과 기록 실패", result.error);
+    } catch (e) {
+      console.error("[injibot-action] 처리 결과 기록 실패", e);
     }
   }
 

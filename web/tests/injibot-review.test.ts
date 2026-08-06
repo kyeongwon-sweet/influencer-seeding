@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { recordFalsePositiveReview } from "../lib/injibot-review.ts";
+import { recordFalsePositiveReview, recordReviewDecision } from "../lib/injibot-review.ts";
 
 function mockSupabase(result: unknown, calls: unknown[]) {
   return {
@@ -56,6 +56,35 @@ test("recordFalsePositiveReview updates by Slack channel and ts only", async () 
     ["eq", "slack_ts", "1720000000.000100"],
     ["select", "id"],
   ]);
+});
+
+test("recordReviewDecision writes the given decision by channel and ts", async () => {
+  const calls: unknown[] = [];
+  const result = await recordReviewDecision(mockSupabase({ data: [{ id: "alert-2" }], error: null }, calls), {
+    channelId: "C123",
+    messageTs: "1720000000.000200",
+    decision: "complete",
+    userId: "U789",
+    reviewedAt: "2026-08-06T01:00:00.000Z",
+  });
+
+  assert.deepEqual(result, { ok: true, matchedRows: 1 });
+  assert.deepEqual(calls[1], [
+    "update",
+    { review_decision: "complete", reviewed_by: "U789", reviewed_at: "2026-08-06T01:00:00.000Z" },
+  ]);
+});
+
+test("recordReviewDecision requires channel/ts/decision", async () => {
+  const calls: unknown[] = [];
+  const result = await recordReviewDecision(mockSupabase({ data: [], error: null }, calls), {
+    channelId: "C123",
+    messageTs: "1720000000.000200",
+    decision: "",
+    userId: "U789",
+  });
+  assert.equal(result.ok, false);
+  assert.equal(calls.length, 0);
 });
 
 test("recordFalsePositiveReview reports no matching alert row", async () => {

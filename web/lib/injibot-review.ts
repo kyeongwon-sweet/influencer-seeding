@@ -27,18 +27,27 @@ export type FalsePositiveReviewResult = {
   error?: string;
 };
 
-export async function recordFalsePositiveReview(
+export type ReviewDecisionInput = {
+  channelId: string;
+  messageTs: string;
+  decision: string;
+  userId: string;
+  reviewedAt?: string;
+};
+
+// 처리 결과(review_decision)를 slack_channel_id + slack_ts로 기록. decision 예: complete/hide/approve/hold/unhide/false_positive.
+export async function recordReviewDecision(
   supabase: SupabaseClientLike,
-  { channelId, messageTs, userId, reviewedAt = new Date().toISOString() }: FalsePositiveReviewInput
+  { channelId, messageTs, decision, userId, reviewedAt = new Date().toISOString() }: ReviewDecisionInput
 ): Promise<FalsePositiveReviewResult> {
-  if (!channelId || !messageTs) {
-    return { ok: false, matchedRows: 0, error: "missing Slack channel id or message ts" };
+  if (!channelId || !messageTs || !decision) {
+    return { ok: false, matchedRows: 0, error: "missing channel/ts/decision" };
   }
 
   const { data, error } = await supabase
     .from("negative_comment_alerts")
     .update({
-      review_decision: "false_positive",
+      review_decision: decision,
       reviewed_by: userId,
       reviewed_at: reviewedAt,
     })
@@ -56,4 +65,12 @@ export async function recordFalsePositiveReview(
   }
 
   return { ok: true, matchedRows };
+}
+
+// 오탐(false_positive) 기록 — recordReviewDecision의 특수형(분류기 피드백에 사용).
+export async function recordFalsePositiveReview(
+  supabase: SupabaseClientLike,
+  { channelId, messageTs, userId, reviewedAt }: FalsePositiveReviewInput
+): Promise<FalsePositiveReviewResult> {
+  return recordReviewDecision(supabase, { channelId, messageTs, decision: "false_positive", userId, reviewedAt });
 }
