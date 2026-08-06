@@ -6,8 +6,12 @@
 
 # AI Shared Status
 
-## 🔴🔴 2026-08-06 [진행중·사고] 누적조회수(H) 수식 범위 손상 — 1,765행 H 빈칸
-- **증상**: formula-audit `h.ok 0 · emptyButData 1765`(어제 ok 1740). H가 대부분 빈칸.
+## ✅ 2026-08-06 [해결] 누적조회수(H) 수식 범위 손상 → 복구 완료
+- **✅ 복구 검증(formula-audit)**: `healthy:true · h.ok 1765 · emptyButData 0 · errorCells 0`(직전 ok 0·빈칸 1765). H 1,765행 전부 DB 정합 복귀. I(증분) 정상 유지.
+- **✅ 근본버그 라이브 반영 완료(사용자)**: 라이브 `refreshCumulativeViews`를 serial 헤더 인식판으로 교체·실행 → H 재작성(전체 날짜열 P:DH). 내일 08:30 dailyAuto도 고쳐진 함수 사용 → 재발 없음.
+- **➡️ 남은 권고**: Claude가 건 매일 rebuild 트리거 `removeRebuildTrigger`로 제거(사용자 실행 예정). refreshCumulativeViews 고쳐져 위험은 해소됐으나 미검증 자동작업이라 제거 권장.
+- **후속 조사(낮은 우선순위)**: 날짜 헤더 81개가 왜 Date→숫자(serial)로 저장됐는지 근원 미규명(현재는 refreshCumulativeViews가 serial도 인식해 무해).
+- **증상(해결됨)**: formula-audit `h.ok 0 · emptyButData 1765`(어제 ok 1740). H가 대부분 빈칸.
 - **원인 확정**: 날짜 헤더 97개 중 **81개가 숫자(serial 46238)로 저장**됨. `refreshCumulativeViews`(dailyAuto)의 날짜열 탐지가 `instanceof Date || dateRe`뿐이라 **serial 헤더 81개를 놓침** → H 수식을 마지막 16열 `=MAX(CS:DH)`로 좁혀 재작성 → CR 이전 데이터 행 H가 빈칸. (H1771 수식 `=IF(COUNT(CS1771:DH1771)=0,...)` 실물 확인). **데이터 손실 없음 — 날짜칸 값 온전, H 수식 범위만 오축소.**
 - **촉발**: Claude의 대량 `setDataValidation`(rebuildDateColumnValidation, 10:37 KST) 직후 발생(09:46 정상→11:00 손상). refreshCumulativeViews 재실행을 촉발한 것으로 추정.
 - **조치**: ①근본버그 수정 = `refreshCumulativeViews` 날짜탐지에 serial(44000~48000) 추가(`Combined_Sheet_AppsScript.gs`, **⚠️라이브 반영 필요**). ②긴급복구·트리거제거 스크립트 `apps-script/restore_cumulative_20260806.gs`(`removeRebuildTrigger`+`rebuildCumulativeFormulas_fix`). ③Claude가 건 매일 rebuild 트리거는 제거 권고(재발 촉발 위험).
