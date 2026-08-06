@@ -6,6 +6,13 @@
 
 # AI Shared Status
 
+## ⭐ 2026-08-06 [사용자 요청 → Codex 실행] 연동시트 상품명 '-' 허용 (제품 없음 표기)
+**사용자가 상품명 칸에 `-`(제품 없음 명시 표기)를 넣고 싶어 함.** 현재 유효성이 "빈칸 OR (대문자영문+한글)"만 허용해 `-`를 거부함. 라이브 Apps Script 유효성이라(단일작성자=Codex, 게다가 현재 `Combined_Sheet_AppsScript.gs`를 다른 세션이 편집 중) Claude가 직접 라이브에 안 쓰고 스펙만 인계.
+- **⑴ `isValidLinkedProductValue_` (`Combined_Sheet_AppsScript.gs:1889`) 완화:** blank 체크 다음 줄에 `if (String(value).trim() === "-") return true;` 추가.
+- **⑵ 라이브 `setDataValidation` 수식(`:2023`, 6번=상품명) 완화:** `=OR(F2="", F2="-", AND(REGEXMATCH(TO_TEXT(F2),"[A-Z]"), REGEXMATCH(TO_TEXT(F2),"[가-힣]")))` 로 `F2="-"` 추가. 안내문도 "빈칸·`-`·대문자영문+한글 상품명만"으로. **상품명 열에 규칙 재적용 함수 재실행 필요.**
+- **대시보드 무변경 (Claude 검증):** `web/app/monitoring/page.tsx` 필터목록(:105)·매칭(:83)·표시(`PostsTable.tsx:427` `?? "-"`)가 `-`를 이미 정상 처리 — `-`는 "-"로 표시되고 "제품 없음" 필터 그룹으로 선택 가능. 코드 변경 불필요.
+- ⚠️ 다른 세션의 `.gs` WIP와 겹칠 수 있으니 fresh 서버본 기준 **함수단위 graft**로 반영(전체 repo push 금지).
+
 ## ⭐ 2026-08-06 [사용자 승인 → Codex 실행 요청] ① 최신 main prod 배포 ② pre-post 15행 삭제
 **사용자가 두 건 모두 Codex 실행으로 넘김(2026-08-06). Claude는 로컬에 Vercel 인증·Supabase creds가 없어 직접 실행 불가.**
 
