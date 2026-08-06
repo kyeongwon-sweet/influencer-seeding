@@ -1826,6 +1826,7 @@ function isValidLinkedUrlValue_(value) {
 function isValidLinkedProductValue_(value) {
   if (isBlankLinkedInput_(value)) return true;
   const text = String(value).trim();
+  if (text === "-") return true;
   return /[A-Z]/.test(text) && /[가-힣]/.test(text);
 }
 
@@ -1890,7 +1891,7 @@ function validateLinkedSheetInputOnEdit_(e, sheet) {
         } else if (c === 2 && !isValidLinkedUrlValue_(value)) {
           addIssue(r, c, "http(s) URL만 가능합니다.");
         } else if (c === 6 && !isValidLinkedProductValue_(value)) {
-          addIssue(r, c, "상품명은 대문자 영문과 한글을 모두 포함해야 합니다.");
+          addIssue(r, c, "상품명은 '-' 또는 대문자 영문과 한글을 모두 포함해야 합니다.");
         } else if (c === 7 && !isBlankLinkedInput_(value) && !(typeof value === "number" && isFinite(value))) {
           addIssue(r, c, "비용은 숫자만 가능합니다.");
         } else if (personCols[c] && !isValidLinkedPersonName_(value)) {
@@ -1957,7 +1958,7 @@ function applyLinkedSheetInputValidation_() {
   const rules = [
     [1, '=OR(A2="",AND(ISNUMBER(A2),A2>0))', "업로드일은 실제 날짜만 입력하세요."],
     [2, '=OR(B2="",REGEXMATCH(TO_TEXT(B2),"^https?://[^[:space:]]+$"))', "http(s) URL만 입력하세요."],
-    [6, '=OR(F2="",AND(REGEXMATCH(TO_TEXT(F2),"[A-Z]"),REGEXMATCH(TO_TEXT(F2),"[가-힣]")))', "대문자 영문과 한글을 모두 포함한 상품명만 입력하세요."],
+    [6, '=OR(F2="",F2="-",AND(REGEXMATCH(TO_TEXT(F2),"[A-Z]"),REGEXMATCH(TO_TEXT(F2),"[가-힣]")))', "상품명은 '-' 또는 대문자 영문과 한글을 모두 포함한 값만 입력하세요."],
     [7, '=OR(G2="",ISNUMBER(G2))', "비용은 숫자만 입력하세요."],
   ];
   if (cpvCol) {

@@ -207,7 +207,7 @@ test("linked-sheet data validation rejects invalid input without including regis
   const body = appsScript.slice(start, end);
   assert.match(body, /\[1, '=OR\(A2="",AND\(ISNUMBER\(A2\),A2>0\)\)'/);
   assert.match(body, /\[2, '=OR\(B2="",REGEXMATCH/);
-  assert.match(body, /\[6, '=OR\(F2="",AND\(REGEXMATCH/);
+  assert.match(body, /\[6, '=OR\(F2="",F2="-",AND\(REGEXMATCH/);
   assert.match(body, /\[7, '=OR\(G2="",ISNUMBER\(G2\)\)'/);
   assert.match(body, /const fieldCols = buildFieldCols_\(sheet\)/);
   assert.match(body, /const cpvCol = findHeaderCol_\(sheet, \["CPV", "cpv"\]\)/);
