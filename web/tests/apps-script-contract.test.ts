@@ -115,6 +115,29 @@ test("increment V2: row-range formulas replace cell-address lists (column-op & s
   assert.match(body, /incFormulas\.push\(\['=""'\]\)/);
 });
 
+test("new DB-appended rows immediately receive H/I formulas and numeric date headers are supported", () => {
+  const pullStart = appsScript.indexOf("function pullFromDB()");
+  const pullEnd = appsScript.indexOf("function dailyAuto()", pullStart);
+  const pullBody = appsScript.slice(pullStart, pullEnd);
+  assert.match(
+    pullBody,
+    /if \(added > 0\) ensureNewRowsMetricFormulas_\(sheet, lastRow \+ 1, sheet\.getLastRow\(\)\)/,
+  );
+
+  const helperStart = appsScript.indexOf("function ensureNewRowsMetricFormulas_(");
+  const helperEnd = appsScript.indexOf("function pullFromDB()", helperStart);
+  const helperBody = appsScript.slice(helperStart, helperEnd);
+  assert.match(helperBody, /!cell\.getFormula\(\).*trim\(\) === ""/s);
+  assert.match(helperBody, /=IF\(COUNT\(/);
+  assert.match(helperBody, /IFERROR\(MAX\(0,lastV-MAX\(prev\)\),lastV\)/);
+
+  const parserStart = appsScript.indexOf("function parseMonthDay_(label)");
+  const parserEnd = appsScript.indexOf("function onEdit", parserStart);
+  const parserBody = appsScript.slice(parserStart, parserEnd);
+  assert.match(parserBody, /typeof label === "number" && label >= 44000 && label <= 48000/);
+  assert.match(parserBody, /Date\.UTC\(1899, 11, 30\)/);
+});
+
 test("exportStats preserves final DB metric in blank cumulative cells for ended posts", () => {
   const start = appsScript.indexOf("function exportStats()");
   const end = appsScript.indexOf("// ═══════════════════════════════════════════════════════════════\n// 일자별 조회수 입력", start);

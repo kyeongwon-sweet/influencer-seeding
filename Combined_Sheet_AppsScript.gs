@@ -599,6 +599,64 @@ function writeColumnRuns_(sheet, col, edits, expectedLastRow) {
   return written + values.length;
 }
 
+function metricDateColumns_(sheet) {
+  const headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const cols = [];
+  let year = CONFIG.STATS_START_YEAR;
+  let prevMonth = null;
+  for (let col = CONFIG.STATS_FIRST_COL; col <= headers.length; col++) {
+    const md = parseMonthDay_(headers[col - 1]);
+    if (!md) continue;
+    if (prevMonth !== null && md.mo < prevMonth) year++;
+    prevMonth = md.mo;
+    const date = year + "-" + ("0" + md.mo).slice(-2) + "-" + ("0" + md.da).slice(-2);
+    cols.push({ col: col, date: date, day: new Date(date + "T00:00:00+09:00").getDay() });
+  }
+  return cols;
+}
+
+function ensureNewRowsMetricFormulas_(sheet, startRow, endRow) {
+  if (!sheet || startRow > endRow) return { cumulative: 0, increment: 0 };
+  const dateCols = metricDateColumns_(sheet);
+  if (!dateCols.length) return { cumulative: 0, increment: 0 };
+  const firstCol = Math.min.apply(null, dateCols.map(x => x.col));
+  const lastCol = Math.max.apply(null, dateCols.map(x => x.col));
+  const firstLetter = colLetter_(firstCol);
+  const lastLetter = colLetter_(lastCol);
+  const cumulativeCol = findHeaderCol_(sheet, ["누적 조회수", "누적조회수"]);
+  const incrementCol = getIncrementCol_(sheet);
+  let cumulative = 0, increment = 0;
+  for (let row = startRow; row <= endRow; row++) {
+    if (cumulativeCol) {
+      const cell = sheet.getRange(row, cumulativeCol);
+      if (!cell.getFormula() && String(cell.getValue() == null ? "" : cell.getValue()).trim() === "") {
+        cell.setFormula("=IF(COUNT(" + firstLetter + row + ":" + lastLetter + row + ")=0,\"\",MAX(" + firstLetter + row + ":" + lastLetter + row + "))");
+        cumulative++;
+      }
+    }
+    if (incrementCol) {
+      const cell = sheet.getRange(row, incrementCol);
+      if (!cell.getFormula() && String(cell.getValue() == null ? "" : cell.getValue()).trim() === "") {
+        const rangeRef = "$" + firstLetter + row + ":$" + lastLetter + row;
+        const firstRef = "$" + firstLetter + row;
+        cell.setFormula(
+          "=IFERROR(LET(rng," + rangeRef +
+          ",cols,SEQUENCE(1,COLUMNS(rng),COLUMN(" + firstRef + "),1)" +
+          ",lastC,MAX(FILTER(cols,rng>0))" +
+          ",lastV,INDEX(rng,1,lastC-COLUMN(" + firstRef + ")+1)" +
+          ",prev,FILTER(rng,cols<lastC,rng>0)" +
+          ",IFERROR(MAX(0,lastV-MAX(prev)),lastV)),\"\")"
+        );
+        increment++;
+      }
+    }
+  }
+  SpreadsheetApp.flush();
+  const result = { start_row: startRow, end_row: endRow, cumulative: cumulative, increment: increment };
+  Logger.log("new_row_metric_formulas " + JSON.stringify(result));
+  return result;
+}
+
 function pullFromDB() {
   try {
     const sheet = getSheet_();
@@ -660,6 +718,8 @@ function pullFromDB() {
         added++;
       }
     });
+
+    if (added > 0) ensureNewRowsMetricFormulas_(sheet, lastRow + 1, sheet.getLastRow());
 
     safeAlert_(`⬇️ DB→시트 반영 완료\n• 신규 행 추가: ${added}건\n• 기존 행 빈칸 채움: ${filled}건`);
     return true;
@@ -1481,6 +1541,9 @@ function parseMonthDay_(label) {
   let mo, da;
   if (label instanceof Date && !isNaN(label.getTime())) {
     mo = label.getMonth() + 1; da = label.getDate();
+  } else if (typeof label === "number" && label >= 44000 && label <= 48000) {
+    const serialDate = new Date(Date.UTC(1899, 11, 30) + Math.floor(label) * 86400000);
+    mo = serialDate.getUTCMonth() + 1; da = serialDate.getUTCDate();
   } else {
     const m = String(label == null ? "" : label).match(/(\d{1,2})\D+(\d{1,2})/);
     if (!m) return null;

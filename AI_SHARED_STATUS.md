@@ -22,6 +22,24 @@
   - ⛔ **보류(삭제 금지)**: 값이 있는 pre-post 행 / `lm_not_sweet_` 2행(`manual=true` 수기) — posted_at 오기 여부 **사람 확인 후**(자동수정 금지).
   - 실행 전 **15행 백업 파일** · `(post_id, measured_at)` **최소범위 DELETE** · **삭제/보류 건수 회신**.
 - **(Claude 확인분)** 트리거 8:30 UI 실측 재확인 완료 · apify-webhook pre-post "잔여 구멍"은 오탐(eligiblePosts 상류 필터가 차단, `55f721a`) · creator 정리(live 111·DB 116)·planner 137 미수정은 정합 확인.
+## 2026-08-06 [Codex 완료·검증] 라이브 dailyAuto·증분·배너/오하루 정리
+- **dailyAuto 08:30 확정:** 라이브 `CONFIG.TRIGGER_HOUR=8`, `TRIGGER_MINUTE=30`. 트리거 UI에서 `dailyAuto` 오전 8~9시, `syncNew` 자정~오전 1시를 재확인했다.
+- **증분 첫 측정 통일:** 게시 후 7일 이내 첫 유효 측정은 그날 전체값을 표시한다. 게시 7일을 넘긴 백로그 첫 측정은 스파이크 방지상 빈칸인 기존 `safeIncrement`·수식감사 정책을 유지한다.
+- **신규 행 H/I 자동 수식:** `pullFromDB`가 신규 행을 append한 직후 `ensureNewRowsMetricFormulas_`로 빈 H/I에만 누적·증분 수식을 설치한다. 기존 값·수식은 덮지 않는다. 날짜 헤더는 Date·텍스트뿐 아니라 serial 44000~48000도 인식한다.
+- **배너 금·토 정리:** 후보 66칸을 숨김 백업 `_codex_banner_fri_sat_backup_20260806_192601` 후 비웠다. 독립 재감사 `candidates=0`.
+- **오하루 수동 pin 제거:** URL `7655695057189719304`를 쓰기 직전 재매칭했다. 기본 필터로 숨겨진 행이라 필터 기준 1개를 보존→잠시 해제→H576 수식 입력→즉시 복원. 백업 `_codex_oharu_pin_backup_20260806_195334`; 독립 검증 `H576=299,600`, 수식 `=IF(COUNT(P576:DH576)=0,"",MAX(P576:DH576))`, 07-28 원값 299,600.
+- **전체 수식감사:** 최종 라이브 재감사 URL 1,848행, H/I blank-no-formula 0/0, H/I #REF 0/0. `H 값 + I 표시 빈칸` 8건은 게시 7일 초과 백로그의 의도된 빈 결과 수식이다(수식 자체는 존재).
+- **exportStats 안전가드 확인:** 최종 재실행은 사용자의 행 정렬을 감지해 쓰기 직전에 안전 취소됐다. 잘못된 행 쓰기는 없었고, 이후 독립 수식감사로 현재 H/I 전수 정합을 확인했다.
+- **배포 안전성:** 라이브 14파일을 fresh `clasp pull`한 복제본에 메인 파일 한 개만 수정. push 직전 다른 13파일 해시 무변경, push 직후 재-pull 14파일 해시 전부 일치. repo 전체를 라이브에 덮어쓴 것이 아니라 **fresh live → 단일 파일 패치 → live** 순서로 적용했다.
+- **백업/재현 코드:** `apps-script/metric_sheet_repairs_20260806.gs`. 라이브 임시 파일은 메인과 중복되는 persistent helper 정의를 제거하고 one-time repair만 남겼다.
+
+## 2026-08-06 [Claude 완료·검증] Meta 인지광고 부정댓글 웹훅 GO-LIVE
+- **파이프라인 전체 검증 완료:** ①앱-레벨 웹훅 `instagram/comments` → 콜백 `.../api/meta/instagram-comments` **active:true**(Codex) ②Vercel prod env `META_APP_SECRET`·`META_WEBHOOK_VERIFY_TOKEN` **설정됨(2d전, Codex)** ③라이브 라우트 GET(wrong token)=403·POST(no sig)=401 정상 ④Supabase `meta_tokens` ig_ads 유효(만료 2026-10-04, 자동갱신 08-05 작동)·`meta_ad_comment_events` 큐 테이블 OK ⑤봇 소비 `src/meta-ads-run.js` 로컬 dry-run `pendingEvents:0` 무오류(monitor.yml 매 웨이크 `always()` 실행) ⑥bot test 181/181.
+- **누락 원인·조치(핵심):** 6개 페이지 `subscribed_apps` 전부 **(none)**이라 이벤트 0건이었음 → 황경원 USER 토큰(앱 "테스트" 965303019541316)의 페이지토큰으로 **6개 페이지 전부 `POST /{page-id}/subscribed_apps?subscribed_fields=feed`** 완료(lalasweet_icecream·happyhumor_bear·joy_smile77·humorworld567·new_mukkebi·hye._.diet). 앱이 각 페이지에 연결됨 = IG 이벤트 전달 경로 확보. **되돌리기=DELETE subscribed_apps 한 줄.**
+- **✅ 실전달 확인(2026-08-06 19:28 KST):** 페이지 구독 직후 **Meta 웹훅이 진짜 광고 댓글을 실제 전달**함 → `meta_ad_comment_events`에 comment_id `18090768683426856`(new_mukkebi, ad_id `120248081455110252`, @jjiwoo20 "ㅜ") 적재. dev모드여도 전달 정상 = App Review/Live 전환 불필요. (IG-user 노드 직접 구독의 `(#3)` 에러는 페이지-레벨 구독으로 우회됨 — 무관.) 이 실이벤트는 benign이라 알림 안 뜸(다음 monitor 웨이크가 분류→미알림→processed 마킹, 실데이터라 삭제 안 함).
+- **리플레이 검증(A):** 기존 실댓글을 정식 서명 웹훅으로 라이브 엔드포인트에 POST → 잘못된 서명=401, 정식=200 `{accepted:1}`, 큐 적재·소비(DRY_RUN) 정상. 합성행은 삭제. = 웹훅 전달경로 프로덕션 재현 완료.
+- **테스트 절차:** 라이브 인지광고에 댓글 1건 → ~1분 후 `meta_ad_comment_events`에 행 생기면 수신 확인 → 다음 monitor 웨이크가 `[쫀득바] 인지 광고` 스레드로 황경원+영상담당자 알림 → `[숨김]` 클릭 시 실제 Meta 숨김.
+- **비침범 보증:** 추출기가 `media.ad_id` 있는 **광고 댓글만** 큐잉(오가닉·협찬은 스킵) → 동료 시스템/기존 협찬 모니터와 겹치지 않음. 앱은 `page` object 미구독이라 페이지 피드 이벤트는 콜백에 안 옴.
 
 ## 2026-08-06 [Codex 완료] Apps Script dailyAuto 08:30 전환
 - **라이브 CONFIG 수정:** Apps Script 편집기 서버본에서 AI 트래킹 대시보드 연동.gs의 CONFIG.TRIGGER_HOUR를 9에서 8로 변경 후 저장. 새로고침 재검증 결과 TRIGGER_HOUR: 8만 존재하고 TRIGGER_HOUR: 9 없음.
