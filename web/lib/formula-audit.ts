@@ -46,7 +46,7 @@ export type SheetAuditRow = {
 export type AuditResult = {
   totalRows: number;
   h: { ok: number; manualKept: number; emptyOk: number; valueOnly: number; errorCells: number; emptyButData: number };
-  inc: { ok: number; emptyOk: number; errorCells: number; mismatch: number };
+  inc: { ok: number; emptyOk: number; errorCells: number; mismatch: number; blankExpected: number };
   anomalies: string[];     // 사람이 읽을 요약 라인 (상한 있음)
   /**
    * 값 정체 — 수식은 멀쩡한데 **새 값이 안 들어오는** 행.
@@ -137,7 +137,7 @@ export function auditRows(
   const res: AuditResult = {
     totalRows: rows.length,
     h: { ok: 0, manualKept: 0, emptyOk: 0, valueOnly: 0, errorCells: 0, emptyButData: 0 },
-    inc: { ok: 0, emptyOk: 0, errorCells: 0, mismatch: 0 },
+    inc: { ok: 0, emptyOk: 0, errorCells: 0, mismatch: 0, blankExpected: 0 },
     anomalies: [],
     stale: 0,
     staleNotes: [],
@@ -195,6 +195,7 @@ export function auditRows(
     const expSheet = lastMinusPrevMax(positives);
 
     let expDb: number | null | undefined = undefined; // undefined = DB 정보 없음(판정에서 제외)
+    let firstMeasure = false;                         // 유효 실측이 딱 하나 = 게시물 첫 측정일
     const p = posts.get(row.key);
     if (p) {
       const refs = row.dates.filter((d) =>
@@ -202,6 +203,7 @@ export function auditRows(
         (p.measured.get(d.date) ?? 0) > 0 &&
         (!p.posted || d.date >= p.posted) &&
         (!p.ended || d.date <= p.ended));
+      firstMeasure = refs.length === 1;
       if (refs.length === 0) expDb = null;
       else if (refs.length === 1 && p.posted &&
         (Date.parse(refs[0].date) - Date.parse(p.posted)) / 86400000 > 7) expDb = null; // 백로그
@@ -214,8 +216,11 @@ export function auditRows(
     if (got == null) {
       // 빈칸이 정상인 경우: DB 규칙상 빈칸(백로그/유효 refs 없음) 또는 시트에도 계산할 값이 없음
       if (expDb === null || expSheet == null) { res.inc.emptyOk += 1; continue; }
-      res.inc.mismatch += 1;
-      note(`I빈칸(기대값有) ${row.label}: 기대(시트)=${expSheet} 기대(DB)=${expDb === undefined ? "?" : expDb}`);
+      // 값이 있어야 하는데 증분 셀이 빈칸 — 대표 사례: 신규 게시물 첫 측정일에
+      //  라이브 시트 증분 수식이 '첫 유효측정=그날 전체'를 자동표시 못 해 사람이 수기로 채우는 갭.
+      //  전용 카운트로 분리해 매일 아침 감사에 노출한다(조용한 누락 방지, 2026-08-06).
+      res.inc.blankExpected += 1;
+      note(`증분빈칸(값있어야함${firstMeasure ? "·신규첫측정" : ""}) ${row.label}: 기대=${expDb ?? expSheet}`);
       continue;
     }
     if (matches(expSheet) || matches(expDb)) { res.inc.ok += 1; continue; }
@@ -226,7 +231,7 @@ export function auditRows(
 }
 
 export function formatAuditMessage(r: AuditResult): { text: string; healthy: boolean } {
-  const problems = r.h.errorCells + r.h.emptyButData + r.inc.errorCells + r.inc.mismatch;
+  const problems = r.h.errorCells + r.h.emptyButData + r.inc.errorCells + r.inc.mismatch + r.inc.blankExpected;
   const staleTail = r.stale > 0
     ? `\n🟠 값 정체 ${r.stale}건 — 수식은 정상인데 새 값이 ${STALE_DAYS}일 넘게 안 들어옵니다(삭제·수집실패 의심)\n`
       + r.staleNotes.slice(0, 8).map((s) => "• " + s).join("\n")
@@ -236,7 +241,7 @@ export function formatAuditMessage(r: AuditResult): { text: string; healthy: boo
   //    (그렇지 않으면 74건이 멈춰 있어도 "이상 없음"으로 읽힌다 — 2026-08-03 실제 사고).
   const head = problems === 0
     ? `✅ [수식 전수감사] 수식 이상 없음 — 행 ${r.totalRows} · 누적 정합 ${r.h.ok}(수동보존 ${r.h.manualKept}·보존값 ${r.h.valueOnly}·빈칸정상 ${r.h.emptyOk}) · 증분 정합 ${r.inc.ok}(빈칸정상 ${r.inc.emptyOk})`
-    : `🔴 [수식 전수감사] 이상 ${problems}건 — H 오류셀 ${r.h.errorCells}·데이터有빈칸 ${r.h.emptyButData} / I 오류셀 ${r.inc.errorCells}·불일치 ${r.inc.mismatch} (행 ${r.totalRows}, 정합 H ${r.h.ok}·I ${r.inc.ok})`;
+    : `🔴 [수식 전수감사] 이상 ${problems}건 — H 오류셀 ${r.h.errorCells}·데이터有빈칸 ${r.h.emptyButData} / I 오류셀 ${r.inc.errorCells}·불일치 ${r.inc.mismatch}·증분빈칸(값있어야함) ${r.inc.blankExpected} (행 ${r.totalRows}, 정합 H ${r.h.ok}·I ${r.inc.ok})`;
   const body = problems === 0 ? "" : "\n" + r.anomalies.map((a) => "• " + a).join("\n");
   return { text: head + body + staleTail, healthy: problems === 0 && r.stale === 0 };
 }

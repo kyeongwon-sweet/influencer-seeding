@@ -87,6 +87,24 @@ test("당일 수기값 포함(V2 시트 기대값) 또는 DB 규칙 중 하나�
   assert.equal(r.inc.ok, 1); // 시트 기대값(400-300=100)과 일치
 });
 
+test("신규 첫측정: 누적값 있는데 증분 빈칸 = blankExpected로 분리·집계(조용한 누락 방지)", () => {
+  // 실제 사고(2026-08-06 바이럴영상 4건): 어제 추가·오늘 첫 수집됐는데
+  // 라이브 시트 증분 수식이 '첫 유효측정=그날 전체'를 자동표시 못 해 사람이 수기로 채움.
+  const rows = [row({
+    key: "ig:new", h: 57000, inc: null,
+    dates: [{ date: "2026-07-29", value: 57000 }],
+  })];
+  const posts = new Map([["ig:new", post({ "2026-07-29": 57000 }, "2026-07-29")]]);
+  const r = auditRows(rows, posts, TODAY);
+  assert.equal(r.inc.blankExpected, 1);
+  assert.equal(r.inc.emptyOk, 0);
+  assert.equal(r.inc.mismatch, 0); // 불일치가 아니라 전용 카운트로
+  const m = formatAuditMessage(r);
+  assert.ok(!m.healthy);
+  assert.match(m.text, /증분빈칸\(값있어야함\) 1/);
+  assert.match(r.anomalies.join("\n"), /신규첫측정/);
+});
+
 test("두 기대값 어느 쪽과도 다르면 불일치로 보고", () => {
   const rows = [row({
     key: "ig:bad", inc: 7777,
