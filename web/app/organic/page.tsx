@@ -1321,15 +1321,19 @@ export default function OrganicPage() {
                 {/* 채널 유형(플랫폼) — **비워둘 수 있다.** 링크로 플랫폼이 판정되는 건 골라 넣고,
                     커뮤니티·오프라인처럼 판정이 어려운 건 아예 선택하지 않는다(2026-08-05 사용자 규칙).
                     ⚠️ DB 컬럼이 NOT NULL이라 null은 못 넣는다 → 미선택은 빈 문자열로 저장한다(실측 확인). */}
+                {/* ⚠️ min-w-0 필수. flex 자식은 기본 min-width:auto라서 **옵션 텍스트보다 좁아지지 못한다**.
+                    긴 안내문("채널 유형 선택 (판정 어려우면 비움)" = 247px)이 select의 최소폭을 밀어올려
+                    옆 계정명 칸이 카드 밖으로 54px 튀어나왔다(실측). 안내문도 짧게 줄이고 title로 옮긴다. */}
                 <select value={addForm.platform}
+                  title="게시물 링크로 플랫폼이 판정되면 자동 선택됩니다. 판정이 어려우면 비워두세요."
                   onChange={e => { setPlatformPicked(true); setAddForm(p => ({ ...p, platform: e.target.value })); }}
-                  className={`flex-1 border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-sm focus:outline-none focus:border-a-blue transition ${addForm.platform ? "text-a-ink" : "text-a-ink-muted"}`}>
-                  <option value="">채널 유형 선택 (판정 어려우면 비움)</option>
+                  className={`flex-1 min-w-0 border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-sm focus:outline-none focus:border-a-blue transition ${addForm.platform ? "text-a-ink" : "text-a-ink-muted"}`}>
+                  <option value="">채널 유형 (비우면 미분류)</option>
                   {PLATFORMS.map(pl => <option key={pl} value={pl}>{pl}</option>)}
                 </select>
                 <input placeholder="계정명" value={addForm.account_name}
                   onChange={e => setAddForm(p => ({ ...p, account_name: e.target.value }))}
-                  className="flex-1 border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-sm placeholder:text-a-ink-muted focus:outline-none focus:border-a-blue transition" />
+                  className="flex-1 min-w-0 border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-sm placeholder:text-a-ink-muted focus:outline-none focus:border-a-blue transition" />
               </div>
               {/* 유형 — 비워두면 '미분류'로 들어가고 표에서 나중에 고칠 수 있다(값을 임의로 정하지 않는다). */}
               <select value={addForm.exposure_type}
