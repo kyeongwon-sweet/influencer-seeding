@@ -1,0 +1,38 @@
+name: Reverse Watchdog (역행 감지)
+
+# 2026-08-06: 시트 유효성(날짜열 단조증가)이 행 삽입/삭제로 파편화·#REF! 되어 오탐/미탐 반복.
+# 단조(역행) 검사를 시트 수식 → DB 워치독으로 이관. 매일 누적 지표(배너=도달수, 그 외=조회수)가
+# '전날보다' 떨어진 게시물을 검출해 Slack DM으로 보고. 평소엔 0건이라 조용함(cry-wolf 방지).
+# 읽기 전용(Supabase 조회 + Slack), 의존성 없음(stdlib).
+on:
+  schedule:
+    - cron: "30 17 * * *"   # UTC 17:30 = KST 02:30 (일일 수집·시트동기화 이후)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Slack 발송 없이 콘솔 출력만"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Detect reverses
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          STATUS_USER: U0B2Y0ZC8QZ
+          REVERSE_THRESHOLD: "0.05"
+          REVERSE_RECENT_DAYS: "2"
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true && '1' || '0' }}
+        run: python scripts/reverse_watchdog.py

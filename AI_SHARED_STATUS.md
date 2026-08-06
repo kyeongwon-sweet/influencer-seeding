@@ -6,6 +6,13 @@
 
 # AI Shared Status
 
+## 2026-08-06 [Claude 완료] 역행 감지 DB 워치독 신설 (단조검사 시트→DB 이관)
+- **배경**: 시트 유효성(날짜열 단조증가)이 파편화·#REF!로 불안정 → 역행 검사를 **DB 워치독으로 이관**(시트 편집과 무관, 안정적).
+- **신규**: `scripts/reverse_watchdog.py`(stdlib) + `.github/workflows/reverse-watchdog.yml`(매일 KST 02:30) + `scripts/test_reverse_watchdog.py`(8케이스 통과).
+- **로직**: 게시물별 누적(배너=reach_count·그 외=play_count)이 **전날보다** THRESHOLD(5%)+ 하락하면 역행. 0/null(삭제)·미세감소 제외. **알림은 최근 2일분만**(평소 0건=조용, cry-wolf 방지). Slack DM=`SLACK_BOT_TOKEN`+`STATUS_USER`(cron_watchdog와 동일).
+- **로컬 실측(2026-08-06 dry-run)**: 최근 2일 3건 / 전체 77건(대부분 평일 배너 도달수 — 금/토 정리 범위 밖. 일부는 스파이크 peak 모호 케이스라 자동정정 안 하고 알림만=절대규칙 준수).
+- **재발방지 트리거**: `rebuild_date_validation_20260806.gs`에 `installDailyRebuildTrigger()` 추가(매일 03시 self-healing). ⚠️먼저 rebuild의 DRY_RUN=false 저장 필요.
+
 ## 🟡 2026-08-06 [➡️Codex/수동 실행 요청 — 시트 쓰기 lane] 날짜열 유효성 #REF!·파편화 재정비
 - **증상**: 날짜열 셀(예 CR1771=2,617, 정상값)이 "유효성 검사 규칙 위반"으로 오탐. DB는 깨끗(8/5 자동수집 단일값).
 - **원인 확정(데이터>데이터확인으로 실물 확인)**: 날짜열 규칙 `=OR(셀="",AND(ISNUMBER(셀),셀열$1<=TODAY()...))`이 **경계고정 범위(P2:CX409 등) + 행 삽입/삭제**로 수백 조각으로 파편화 + 다수 `#REF!`(P723·CJ738 등). 깨진 파편에 걸린 셀은 값과 무관하게 오탐.

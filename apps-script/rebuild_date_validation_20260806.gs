@@ -67,3 +67,18 @@ function columnToLetter_(col) {
   while (col > 0) { var m = (col - 1) % 26; s = String.fromCharCode(65 + m) + s; col = Math.floor((col - m) / 26); }
   return s;
 }
+
+/**
+ * 재발방지: 매일 새벽 rebuildDateColumnValidation 을 자동 실행하는 트리거를 설치한다(한 번만 실행).
+ * ⚠️ 먼저 rebuildDateColumnValidation 의 DRY_RUN 을 false 로 바꿔 저장할 것 —
+ *    안 그러면 트리거가 매일 dry-run(아무것도 안 함)만 돈다.
+ * 동일 트리거는 중복 설치되지 않게 먼저 지운다.
+ */
+function installDailyRebuildTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'rebuildDateColumnValidation') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('rebuildDateColumnValidation').timeBased().everyDays(1).atHour(3).create();
+  Logger.log('설치 완료: 매일 03시(스크립트 시간대=KST) rebuildDateColumnValidation 자동 실행. '
+    + '※ DRY_RUN=false 로 저장돼 있어야 실제 재정비됨.');
+}
