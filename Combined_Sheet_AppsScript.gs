@@ -20,7 +20,7 @@
  * [최초 1회 설정]  ※ 시크릿/키 설정 필요 없음
  * 1) 확장 프로그램 → Apps Script 에 이 파일 내용을 붙여넣기 → 💾 저장
  * 2) 시트 새로고침 → 상단 "🚀 광고 모니터링" 메뉴
- * 3) (자동화) 메뉴 → "⏰ 매일 9:30 자동 추가 켜기" 1회 클릭 → 권한 승인
+ * 3) (자동화) 메뉴 → "⏰ 매일 8:30 자동 추가 켜기" 1회 클릭 → 권한 승인
  * ───────────────────────────────────────────────────────────────
  */
 
@@ -41,7 +41,7 @@ const CONFIG = {
   HEADER_ROW: 1,
   DATA_START_ROW: 2,
   STATUS_HEADER: "등록상태",
-  TRIGGER_HOUR: 9,
+  TRIGGER_HOUR: 8,
   TRIGGER_MINUTE: 30,
   STATS_FIRST_COL: 9,        // 일자별 조회수 시작 열 (I열). 끝 열은 자동(데이터가 AE 넘어 늘어나도 OK).
   STATS_START_YEAR: 2026,    // 가장 왼쪽 날짜 열의 연도. 월이 줄면(예: 12→1) 자동으로 +1년 처리.
@@ -1080,7 +1080,7 @@ function dailyAuto() {
 // ═══════════════════════════════════════════════════════════════
 // 수집 조회수 → 시트 I열~ 역채움 (대시보드 자동수집분을 시트로 내림)
 // importStats(시트→DB)의 반대. 새 날짜는 우측에 열 자동 추가 후, 수집값 있는 날짜 칸만 갱신
-// (없으면 기존값 유지=수동 입력 보존). dailyAuto(매일 9:30)에 연결돼 자동 확장·갱신.
+// (없으면 기존값 유지=수동 입력 보존). dailyAuto(매일 8:30)에 연결돼 자동 확장·갱신.
 // ═══════════════════════════════════════════════════════════════
 function fetchCollectedStats_() {
   const res = UrlFetchApp.fetch(CONFIG.STATS_EXPORT_API_URL, {
@@ -1736,7 +1736,7 @@ function checkDuplicates() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 자동 트리거 (매일 9:30, dailyAuto 실행: syncAll → pullFromDB → importStats → exportStats)
+// 자동 트리거 (매일 8:30, dailyAuto 실행: syncAll → pullFromDB → importStats → exportStats)
 // ═══════════════════════════════════════════════════════════════
 function findHeaderCol_(sheet, names) {
   const lastCol = sheet.getLastColumn();
@@ -2416,6 +2416,68 @@ function clearInvalidCreatorsWithBackup() {
     Logger.log("clear_invalid_creators_result " + JSON.stringify(result));
     SpreadsheetApp.getActive().toast(
       "제작자 오적재 " + cleared + "칸 정리 · 백업 " + backupName + " · 잔여 " + remaining + "건",
+      "완료",
+      8
+    );
+    return result;
+  });
+}
+
+function clearInvalidPlannersWithBackup() {
+  return withAutoWriteGuard_(function() {
+    const sheet = getSheet_();
+    const lastRow = sheet.getLastRow();
+    if (lastRow < CONFIG.DATA_START_ROW) return { cleared: 0, remaining_planner_issues: 0 };
+    const fieldCols = buildFieldCols_(sheet);
+    const sourceCol = findHeaderCol_(sheet, ["소재명"]);
+    const plannerCol = findHeaderCol_(sheet, ["기획자"]);
+    if (!fieldCols.url || !sourceCol || !plannerCol) throw new Error("URL/소재명/기획자 열을 찾지 못했습니다.");
+
+    const n = lastRow - CONFIG.DATA_START_ROW + 1;
+    const lastCol = sheet.getLastColumn();
+    const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, n, lastCol).getValues();
+    const edits = [];
+    const backupRows = [["row", "url", "asset_name", "planner_before"]];
+    for (let i = 0; i < n; i++) {
+      const row = CONFIG.DATA_START_ROW + i;
+      const asset = String(values[i][sourceCol - 1] || "").trim();
+      const planner = String(values[i][plannerCol - 1] || "").trim();
+      if (!planner) continue;
+      if (isCreatorParseSource_(asset)) continue;
+      const url = String(values[i][fieldCols.url - 1] || "").trim();
+      backupRows.push([row, url, asset, planner]);
+      edits.push({ row: row, value: "" });
+    }
+
+    if (!edits.length) {
+      const result = { cleared: 0, remaining_planner_issues: 0 };
+      Logger.log("clear_invalid_planners_result " + JSON.stringify(result));
+      SpreadsheetApp.getActive().toast("정리할 기획자 오적재가 없습니다.", "완료", 4);
+      return result;
+    }
+
+    const stamp = Utilities.formatDate(new Date(), "Asia/Seoul", "yyyyMMdd_HHmmss");
+    const backupName = "_codex_invalid_planner_backup_" + stamp;
+    const ss = SpreadsheetApp.getActive();
+    const backup = ss.insertSheet(backupName);
+    backup.getRange(1, 1, backupRows.length, backupRows[0].length).setValues(backupRows);
+    backup.hideSheet();
+
+    const expectedLastRow = sheet.getLastRow();
+    const cleared = writeColumnRuns_(sheet, plannerCol, edits, expectedLastRow);
+    SpreadsheetApp.flush();
+
+    const after = sheet.getRange(CONFIG.DATA_START_ROW, 1, n, lastCol).getValues();
+    let remaining = 0;
+    for (let i = 0; i < n; i++) {
+      const asset = String(after[i][sourceCol - 1] || "").trim();
+      const planner = String(after[i][plannerCol - 1] || "").trim();
+      if (planner && !isCreatorParseSource_(asset)) remaining++;
+    }
+    const result = { cleared: cleared, backup_sheet: backupName, remaining_planner_issues: remaining };
+    Logger.log("clear_invalid_planners_result " + JSON.stringify(result));
+    SpreadsheetApp.getActive().toast(
+      "기획자 오적재 " + cleared + "칸 정리 · 백업 " + backupName + " · 잔여 " + remaining + "건",
       "완료",
       8
     );

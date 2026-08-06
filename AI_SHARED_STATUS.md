@@ -6,6 +6,20 @@
 
 # AI Shared Status
 
+## 2026-08-06 [Codex 완료] Apps Script dailyAuto 08:30 전환
+- **라이브 CONFIG 수정:** Apps Script 편집기 서버본에서 AI 트래킹 대시보드 연동.gs의 CONFIG.TRIGGER_HOUR를 9에서 8로 변경 후 저장. 새로고침 재검증 결과 TRIGGER_HOUR: 8만 존재하고 TRIGGER_HOUR: 9 없음.
+- **트리거 재설치:** installDailyTrigger를 직접 실행. 실행 로그: 자정 syncNew(00:00~01:00) + 오전 8:30 (±15분) dailyAuto로 재등록 완료.
+- **트리거 UI 실측:** dailyAuto 편집 화면에서 오전 8시~오전 9시 사이 선택 확인, syncNew 편집 화면에서 자정~오전 1시 사이 선택 확인. 다른 사용자 비활성 syncNew는 건드리지 않음.
+- **repo 정합:** Combined_Sheet_AppsScript.gs와 dist/apps-script/AI 트래킹 대시보드 연동.js도 08:30 기준으로 맞춤. 09:30 하드코딩 주석은 확인된 3곳을 08:30으로 정리.
+
+## ✅ 2026-08-06 [Codex 완료] 기획자(planner) 자동 전파 오적재 정리
+- **승인 조건 재검증:** DB 후보 137건, `manual_fields`의 `planner` 잠금 후보 **0건**. 팀이 수동 입력해 잠긴 기획자 값은 정리 대상에서 제외·보존.
+- **시트 정본 선처리:** 라이브 `clearInvalidPlannersWithBackup()`를 함수 단위로 반영·실행. 자동 전파 의심 **133칸**을 숨김 백업 탭 `_codex_invalid_planner_backup_20260806_185501`에 보관 후 비움. 실행 직후 `remaining_planner_issues=0`.
+- **시트→DB 동기화:** 라이브 `syncAll` 정상 완료(1,829행 비교, 신규 2건, 변경 30건). 빈칸은 DB 삭제를 뜻하지 않는 정책이므로 아래 승인 전용 repair로 마무리.
+- **DB 정리:** `audit_invalid_creator_fields.py --fields planner --apply --limit 0`로 **137건** 정리. 백업 `scratchpad/invalid_creator_fields_backup_20260806T100008Z.json`.
+- **최종 전수감사:** `creator_issue_rows=0`, `planner_issue_rows=0`, 수동 잠금 문제 0. Apps Script 계약 포함 web 전체 테스트 **215/215 통과**.
+- **코드:** repo 미러에 `clearInvalidPlannersWithBackup()`와 회귀 계약 테스트 추가. 라이브에는 함수 단위로만 graft했으며 repo 전체를 라이브에 덮어쓰지 않음.
+
 ## ⭐ 2026-08-06 [Claude (A)완료 / (B)→Codex 요청] 게시일 이전 조회수 이력 13건 — pre-post 행
 - **알림(notify_status "게시일 이전 조회수 이력 13건")은 진짜지만 대시보드엔 영향 없음.** 알림은 raw `post_daily_stats`의 `min(measured_at)`을 `posted_at`과 직접 비교(`notify_status.py:142-156`). 반면 대시보드 API는 `measured_at >= posted_at`만 노출(`web/app/api/sponsored-posts/route.ts:177`) → 누적·증분은 이미 pre-post 제외 계산. 즉 표시값 안전, raw DB에만 잠복.
 - **원인 2갈래:** ①**1일 전**(Ufo__green·dolkki_daily·moduhappy: 08-04게시·08-03이력) = 수집이 measured_at을 어제(KST-1)로 기록(`run_monitoring.py:188`)하는데 **게시 당일 새벽 수집분**이 게시일-1 행을 남긴 아티팩트(값은 실측, 날짜만 하루 이름). ②**여러 날 전**(lm_not_sweet_ 06-13게시·06-10이력, 3일) = yesterday로 설명 안 됨 → **posted_at 오기** 또는 옛 백필/미러 어긋남.

@@ -450,7 +450,7 @@ test("syncCreators fills planner/creator only from the same row asset name", () 
 
 test("invalid creator repair backs up rows and clears creator only", () => {
   const start = appsScript.indexOf("function clearInvalidCreatorsWithBackup()");
-  const end = appsScript.indexOf("function syncCreators()", start);
+  const end = appsScript.indexOf("function clearInvalidPlannersWithBackup()", start);
   const body = appsScript.slice(start, end);
   assert.notEqual(start, -1);
   assert.match(body, /_codex_invalid_creator_backup_/);
@@ -461,6 +461,21 @@ test("invalid creator repair backs up rows and clears creator only", () => {
   assert.match(body, /remaining_creator_issues/);
   assert.doesNotMatch(body, /plannerCol/);
   assert.doesNotMatch(body, /writeColumnRuns_\(sheet, planner/);
+});
+
+test("invalid planner repair backs up rows and clears planner only", () => {
+  const start = appsScript.indexOf("function clearInvalidPlannersWithBackup()");
+  const end = appsScript.indexOf("function syncCreators()", start);
+  const body = appsScript.slice(start, end);
+  assert.notEqual(start, -1);
+  assert.match(body, /_codex_invalid_planner_backup_/);
+  assert.match(body, /backupRows = \[\["row", "url", "asset_name", "planner_before"\]\]/);
+  assert.match(body, /if \(isCreatorParseSource_\(asset\)\) continue/);
+  assert.match(body, /edits\.push\(\{ row: row, value: "" \}\)/);
+  assert.match(body, /writeColumnRuns_\(sheet, plannerCol, edits, expectedLastRow\)/);
+  assert.match(body, /remaining_planner_issues/);
+  assert.doesNotMatch(body, /makerCol/);
+  assert.doesNotMatch(body, /writeColumnRuns_\(sheet, maker/);
 });
 
 test("URL-key writers re-read current URLs and write only changed row runs", () => {
