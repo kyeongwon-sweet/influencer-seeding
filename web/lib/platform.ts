@@ -18,3 +18,30 @@ export function platformLabel(p?: string | null): string {
   const k = String(p).trim();
   return PLATFORM_LABEL[k.toLowerCase()] ?? PLATFORM_LABEL[k] ?? k;
 }
+
+/**
+ * 게시물 URL → 저장용 플랫폼 값(한글 정식 표기). 판정 불가면 null.
+ *
+ * 링크가 곧 플랫폼이므로 이건 값을 지어내는 게 아니다 — x.com/…/status/… 는 실제로 트위터 글이다.
+ * 판정 불가(커뮤니티·오프라인·PR 등)일 때 억지로 채우지 않고 null을 돌려주는 것이 핵심
+ * (사용자 규칙 2026-08-05: "분류가 어려운 건 채널 유형을 아예 선택하지 않기").
+ */
+export function platformFromUrl(url?: string | null): string | null {
+  const raw = String(url ?? "").trim();
+  if (!raw) return null;
+  let host: string;
+  try {
+    host = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+  if (/(^|\.)x\.com$/.test(host) || /(^|\.)twitter\.com$/.test(host)) return "트위터";
+  if (/(^|\.)youtube\.com$/.test(host) || /(^|\.)youtu\.be$/.test(host)) return "유튜브";
+  if (/(^|\.)instagram\.com$/.test(host)) return "인스타그램";
+  if (/(^|\.)tiktok\.com$/.test(host)) return "틱톡";
+  if (/(^|\.)threads\.(net|com)$/.test(host)) return "스레드";
+  if (/(^|\.)facebook\.com$/.test(host) || /(^|\.)fb\.watch$/.test(host)) return "페이스북";
+  if (/(^|\.)blog\.naver\.com$/.test(host) || /(^|\.)naver\.me$/.test(host)
+    || /(^|\.)tistory\.com$/.test(host) || /(^|\.)brunch\.co\.kr$/.test(host)) return "블로그";
+  return null;
+}

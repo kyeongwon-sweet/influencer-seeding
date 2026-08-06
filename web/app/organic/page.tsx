@@ -3,7 +3,7 @@ import { memo, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSP
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
-import { platformLabel } from "@/lib/platform";
+import { platformFromUrl, platformLabel } from "@/lib/platform";
 import { parseNumInput } from "@/lib/num";
 import { maxDateKST, isValidEntryDate } from "@/lib/dateRule";
 
@@ -404,7 +404,11 @@ export default function OrganicPage() {
   const [colWidths, setColWidths] = useState<number[]>(INIT_COL_WIDTHS);
   const [showAdd, setShowAdd] = useState(false);
   // exposure_type: 표에서만 고칠 수 있어서 추가 직후 '미분류'로 남았다 → 추가 모달에서 바로 고르게 한다.
-  const [addForm, setAddForm] = useState({ url: "", account_name: "", platform: "인스타그램", exposure_type: "", content_summary: "", mentioned_product: "", uploaded_at: "", view_count: "" });
+  // platform 기본값은 **빈 값**이다. 예전엔 "인스타그램"이 미리 박혀 있어서 유튜브·X 링크를 붙여도
+  // 그대로 인스타그램으로 저장됐다(조용한 오분류). 지금은 URL로 자동 판정하고, 판정 불가면 비워둔다.
+  const [addForm, setAddForm] = useState({ url: "", account_name: "", platform: "", exposure_type: "", content_summary: "", mentioned_product: "", uploaded_at: "", view_count: "" });
+  // 사용자가 채널 유형을 직접 고른 뒤에는 URL 자동판정이 그 선택을 덮지 않게 한다.
+  const [platformPicked, setPlatformPicked] = useState(false);
   const [adding, setAdding] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [csvRows, setCsvRows] = useState<CsvRow[]>([]);
@@ -577,7 +581,7 @@ export default function OrganicPage() {
       toast(`추가 실패: ${(err as { error?: string }).error ?? "오류가 발생했습니다."}`, "error");
       return;
     }
-    setAddForm({ url: "", account_name: "", platform: "인스타그램", exposure_type: "", content_summary: "", mentioned_product: "", uploaded_at: "", view_count: "" });
+    setAddForm({ url: "", account_name: "", platform: "", exposure_type: "", content_summary: "", mentioned_product: "", uploaded_at: "", view_count: "" }); setPlatformPicked(false);
     setShowAdd(false);
     await loadMentions();
     toast("게시물이 추가됐습니다.", "success");
@@ -1295,14 +1299,18 @@ export default function OrganicPage() {
             <h2 className="font-semibold tracking-tight mb-4">게시물 추가</h2>
             <div className="space-y-3">
               <input placeholder="게시물 URL (필수)" value={addForm.url}
-                onChange={e => setAddForm(p => ({ ...p, url: e.target.value }))}
+                onChange={e => {
+                  const url = e.target.value;
+                  // 링크를 붙이는 순간 채널 유형을 자동 판정한다(직접 고른 뒤에는 덮지 않는다).
+                  setAddForm(p => ({ ...p, url, platform: platformPicked ? p.platform : (platformFromUrl(url) ?? "") }));
+                }}
                 className="w-full border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-sm placeholder:text-a-ink-muted focus:outline-none focus:border-a-blue transition" />
               <div className="flex gap-2">
                 {/* 채널 유형(플랫폼) — **비워둘 수 있다.** 링크로 플랫폼이 판정되는 건 골라 넣고,
                     커뮤니티·오프라인처럼 판정이 어려운 건 아예 선택하지 않는다(2026-08-05 사용자 규칙).
                     ⚠️ DB 컬럼이 NOT NULL이라 null은 못 넣는다 → 미선택은 빈 문자열로 저장한다(실측 확인). */}
                 <select value={addForm.platform}
-                  onChange={e => setAddForm(p => ({ ...p, platform: e.target.value }))}
+                  onChange={e => { setPlatformPicked(true); setAddForm(p => ({ ...p, platform: e.target.value })); }}
                   className={`flex-1 border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-sm focus:outline-none focus:border-a-blue transition ${addForm.platform ? "text-a-ink" : "text-a-ink-muted"}`}>
                   <option value="">채널 유형 선택 (판정 어려우면 비움)</option>
                   {PLATFORMS.map(pl => <option key={pl} value={pl}>{pl}</option>)}
@@ -1324,9 +1332,15 @@ export default function OrganicPage() {
                 onChange={e => setAddForm(p => ({ ...p, content_summary: e.target.value }))}
                 rows={2}
                 className="w-full border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-sm placeholder:text-a-ink-muted focus:outline-none focus:border-a-blue transition resize-none" />
-              <input placeholder="언급 제품" value={addForm.mentioned_product}
+              {/* 언급 제품 — 기존에 쓰인 이름을 자동완성으로 띄운다. 자유 입력이라 표기가 난립하면
+                  칩이 둘로 쪼개진다(크림롤/생크림롤·'저당' 사고). 새 제품은 그대로 타이핑 가능. */}
+              <input placeholder="언급 제품 (쉼표로 여러 개, 기존 이름 자동완성)" list="organic-product-names"
+                value={addForm.mentioned_product}
                 onChange={e => setAddForm(p => ({ ...p, mentioned_product: e.target.value }))}
                 className="w-full border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-sm placeholder:text-a-ink-muted focus:outline-none focus:border-a-blue transition" />
+              <datalist id="organic-product-names">
+                {productOptions.map(p => <option key={p} value={p} />)}
+              </datalist>
               <div className="flex gap-2">
                 <div className="flex-1">
                   <label className="text-[11px] text-a-ink-muted mb-1 block">업로드일</label>
@@ -1336,14 +1350,15 @@ export default function OrganicPage() {
                 </div>
                 <div className="flex-1">
                   <label className="text-[11px] text-a-ink-muted mb-1 block">조회수</label>
-                  <input type="number" placeholder="0" value={addForm.view_count}
+                  {/* 실측이 없으면 비워둔다(0을 넣으면 '측정했더니 0'과 구분이 안 된다 — 절대 규칙). */}
+                  <input type="number" placeholder="비우면 미측정" value={addForm.view_count}
                     onChange={e => setAddForm(p => ({ ...p, view_count: e.target.value }))}
                     className="w-full border border-a-hairline rounded-[10px] px-3 py-2 text-sm placeholder:text-a-ink-muted focus:outline-none focus:border-a-blue transition" />
                 </div>
               </div>
             </div>
             <div className="flex gap-2 mt-5 justify-end">
-              <button onClick={() => { setShowAdd(false); setAddForm({ url: "", account_name: "", platform: "인스타그램", exposure_type: "", content_summary: "", mentioned_product: "", uploaded_at: "", view_count: "" }); }}
+              <button onClick={() => { setShowAdd(false); setAddForm({ url: "", account_name: "", platform: "", exposure_type: "", content_summary: "", mentioned_product: "", uploaded_at: "", view_count: "" }); setPlatformPicked(false); }}
                 className="btn-ghost">취소</button>
               <button onClick={addMention} disabled={adding || !addForm.url} className="btn-primary px-5 py-2 text-sm">
                 {adding ? "추가 중..." : "추가"}
