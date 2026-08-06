@@ -213,6 +213,8 @@ const MentionRow = memo(function MentionRow({
                             onBlur={() => onCancelEdit()}
                             onKeyDown={e => { if (e.key === "Escape") onCancelEdit(); }}
                             className="text-xs bg-transparent border-b border-a-blue outline-none py-0.5">
+                            {/* 표에서도 비워둘 수 있게 — 잘못 넣은 플랫폼을 되돌릴 방법이 필요하다 */}
+                            <option value="">(선택 안 함)</option>
                             {!PLATFORMS.includes(normPlatform(m.platform)) && m.platform && (
                               <option value={m.platform}>{platformLabel(m.platform)}</option>
                             )}
@@ -1279,9 +1281,13 @@ export default function OrganicPage() {
                 onChange={e => setAddForm(p => ({ ...p, url: e.target.value }))}
                 className="w-full border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-sm placeholder:text-a-ink-muted focus:outline-none focus:border-a-blue transition" />
               <div className="flex gap-2">
+                {/* 채널 유형(플랫폼) — **비워둘 수 있다.** 링크로 플랫폼이 판정되는 건 골라 넣고,
+                    커뮤니티·오프라인처럼 판정이 어려운 건 아예 선택하지 않는다(2026-08-05 사용자 규칙).
+                    ⚠️ DB 컬럼이 NOT NULL이라 null은 못 넣는다 → 미선택은 빈 문자열로 저장한다(실측 확인). */}
                 <select value={addForm.platform}
                   onChange={e => setAddForm(p => ({ ...p, platform: e.target.value }))}
-                  className="flex-1 border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-sm text-a-ink focus:outline-none focus:border-a-blue transition">
+                  className={`flex-1 border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-sm focus:outline-none focus:border-a-blue transition ${addForm.platform ? "text-a-ink" : "text-a-ink-muted"}`}>
+                  <option value="">채널 유형 선택 (판정 어려우면 비움)</option>
                   {PLATFORMS.map(pl => <option key={pl} value={pl}>{pl}</option>)}
                 </select>
                 <input placeholder="계정명" value={addForm.account_name}
