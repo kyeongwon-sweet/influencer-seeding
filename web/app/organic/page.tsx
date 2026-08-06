@@ -1119,13 +1119,13 @@ export default function OrganicPage() {
           </button>
         </div>
         {/* 참고 자료 — 제목 바로 아래. 새 탭으로 열고, 외부 링크라 noopener 지정 */}
-        <div className="mb-2.5 pb-2 border-b border-gray-100 flex flex-wrap items-center gap-x-4 gap-y-1">
-          <span className="text-[13px] font-semibold text-a-ink">🔗 참고 자료:</span>
+        <div className="mb-2.5 pb-2 border-b border-gray-100 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+          <span className="text-[11px] font-semibold text-a-ink whitespace-nowrap">🔗 참고 자료:</span>
           <a
             href="https://app.notion.com/p/lalasweet/c933b344ce7f820992c58103f960faa2?v=de13b344ce7f829888a488a6780ccb99"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[13px] text-a-blue underline underline-offset-2 hover:text-a-blue-hover"
+            className="text-[11px] text-a-blue underline underline-offset-2 hover:text-a-blue-hover whitespace-nowrap"
           >
             소스DB
           </a>
@@ -1133,7 +1133,7 @@ export default function OrganicPage() {
             href="https://docs.google.com/spreadsheets/d/1wiMJI3c28sLyEULN1DzV3r1ewsqim25EHJr6IDCBfYk/edit?gid=0#gid=0"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[13px] text-a-blue underline underline-offset-2 hover:text-a-blue-hover"
+            className="text-[11px] text-a-blue underline underline-offset-2 hover:text-a-blue-hover whitespace-nowrap"
           >
             연예인 노출 모음
           </a>
@@ -1141,7 +1141,7 @@ export default function OrganicPage() {
             href="https://app.notion.com/p/lalasweet/25e3b344ce7f8024b683d66d10518764?v=25e3b344ce7f80b588e2000c34aa4365"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[13px] text-a-blue underline underline-offset-2 hover:text-a-blue-hover"
+            className="text-[11px] text-a-blue underline underline-offset-2 hover:text-a-blue-hover whitespace-nowrap"
           >
             성덕모먼트
           </a>
@@ -1152,9 +1152,19 @@ export default function OrganicPage() {
             href="https://app.notion.com/p/lalasweet/5234a6a53b354a729935799603214434"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[13px] text-a-blue underline underline-offset-2 hover:text-a-blue-hover"
+            className="text-[11px] text-a-blue underline underline-offset-2 hover:text-a-blue-hover whitespace-nowrap"
           >
             무상노출 트래킹
+          </a>
+          {/* 아카이브 '자연 노출 컨텐츠 리스트' — 2026-08-06 이 DB에서 181건을 적재했다(프로필 URL 35건 제외).
+              뷰 파라미터(?v=)는 '전체' 뷰라 그대로 둔다(필터 걸린 뷰로 보내면 일부만 보인다). */}
+          <a
+            href="https://app.notion.com/p/lalasweet/297ec681a805446d9f9f378516835f62?v=97662de3fa0543559e28f5b224c0d2b7"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] text-a-blue underline underline-offset-2 hover:text-a-blue-hover whitespace-nowrap"
+          >
+            자연 노출 컨텐츠
           </a>
         </div>
         {/* 왼쪽 칸은 제 글자폭(max-content)만 쓰고 나머지를 오른쪽에 넘긴다.
@@ -1363,7 +1373,7 @@ export default function OrganicPage() {
                   title="게시물 링크로 플랫폼이 판정되면 자동 선택됩니다. 판정이 어려우면 비워두세요."
                   onChange={e => { setPlatformPicked(true); setAddForm(p => ({ ...p, platform: e.target.value })); }}
                   className={`flex-1 min-w-0 border border-a-hairline rounded-[10px] px-3.5 py-2.5 text-sm focus:outline-none focus:border-a-blue transition ${addForm.platform ? "text-a-ink" : "text-a-ink-muted"}`}>
-                  <option value="">채널 유형 (비우면 미분류)</option>
+                  <option value="">채널 유형 선택</option>
                   {PLATFORMS.map(pl => <option key={pl} value={pl}>{pl}</option>)}
                 </select>
                 <input placeholder="계정명" value={addForm.account_name}
