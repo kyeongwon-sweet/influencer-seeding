@@ -6,6 +6,15 @@
 
 # AI Shared Status
 
+## ⭐ 2026-08-06 [Claude (A)완료 / (B)→Codex 요청] 게시일 이전 조회수 이력 13건 — pre-post 행
+- **알림(notify_status "게시일 이전 조회수 이력 13건")은 진짜지만 대시보드엔 영향 없음.** 알림은 raw `post_daily_stats`의 `min(measured_at)`을 `posted_at`과 직접 비교(`notify_status.py:142-156`). 반면 대시보드 API는 `measured_at >= posted_at`만 노출(`web/app/api/sponsored-posts/route.ts:177`) → 누적·증분은 이미 pre-post 제외 계산. 즉 표시값 안전, raw DB에만 잠복.
+- **원인 2갈래:** ①**1일 전**(Ufo__green·dolkki_daily·moduhappy: 08-04게시·08-03이력) = 수집이 measured_at을 어제(KST-1)로 기록(`run_monitoring.py:188`)하는데 **게시 당일 새벽 수집분**이 게시일-1 행을 남긴 아티팩트(값은 실측, 날짜만 하루 이름). ②**여러 날 전**(lm_not_sweet_ 06-13게시·06-10이력, 3일) = yesterday로 설명 안 됨 → **posted_at 오기** 또는 옛 백필/미러 어긋남.
+- **🟢 (A) Claude 완료(`43154fe`, main):** `run_monitoring`에 pre-post 가드(`_drop_pre_post_rows`) 추가 — upsert 직전 단일 초크포인트에서 `measured_at < posted_at` 행 저장 제외(web collect-now와 동일 정책). 테스트 5건. → **앞으로 ①번 재발 안 함.** (GHA에서 다음 수집부터 적용, 별도 배포 불필요.)
+- **🟡 (B) Codex 요청 — 기존 13행 정리(DB 접근 필요, Claude는 로컬 creds 없음):**
+  - **열거 쿼리:** `SELECT s.post_id, p.account_name, p.url, p.posted_at, s.measured_at, s.play_count, s.reach_count, s.created_at, s.manual FROM post_daily_stats s JOIN sponsored_posts p ON p.id=s.post_id WHERE s.measured_at < p.posted_at ORDER BY p.posted_at, s.measured_at;`
+  - **분류·조치:** ①1일-전 아티팩트 = 해당 pre-post 행 **삭제**(다음날 게시일 당일 행이 이미 있음, 값 손실 아님). ②여러 날-전 = **posted_at 오기인지 사람이 실제 게시일 확인** → 시트에서 정정(**posted_at 절대 자동수정 금지**); posted_at이 맞고 이력이 틀린 거면 그 pre-post 행 삭제.
+  - **⚠️ 삭제 전 3원칙:** (a)오귀속 금지·created_at/manual로 auto/수기 구분 (b)play·reach 둘 다 확인 (c)백업 먼저(비가역). 최소 범위 DELETE(WHERE post_id+measured_at), 전량 금지.
+
 ## ✅ 2026-08-06 [해결] 누적조회수(H) 수식 범위 손상 → 복구 완료
 - **✅ 복구 검증(formula-audit)**: `healthy:true · h.ok 1765 · emptyButData 0 · errorCells 0`(직전 ok 0·빈칸 1765). H 1,765행 전부 DB 정합 복귀. I(증분) 정상 유지.
 - **✅ 근본버그 라이브 반영 완료(사용자)**: 라이브 `refreshCumulativeViews`를 serial 헤더 인식판으로 교체·실행 → H 재작성(전체 날짜열 P:DH). 내일 08:30 dailyAuto도 고쳐진 함수 사용 → 재발 없음.
