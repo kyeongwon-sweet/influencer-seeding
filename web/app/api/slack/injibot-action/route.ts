@@ -49,7 +49,7 @@ type SlackMessage = {
 
 type SlackActionPayload = {
   type?: string;
-  actions?: Array<{ action_id?: string }>;
+  actions?: Array<{ action_id?: string; value?: string }>;
   user?: { id?: string };
   channel?: { id?: string };
   message?: SlackMessage;
@@ -83,6 +83,13 @@ export async function POST(req: NextRequest) {
   const channelId: string = payload.channel?.id || "";
   const messageTs: string = payload.message?.ts || "";
   const when = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 16).replace("T", " ");
+
+  // Meta 광고 카드는 [숨김] 후에도 스레드에 남긴다(삭제 대신 '숨김 처리됨' 표시로 이력 보존).
+  // 그 외(완료/일반 숨김)는 기존대로 답글 삭제. source는 버튼 value에서 읽는다.
+  let actionSource = "";
+  try { actionSource = String(JSON.parse(action.value || "{}").source || ""); } catch { actionSource = ""; }
+  const keepMetaAdCard = actionSource === "meta_ads" && actionId === "hide";
+  const willDelete = DELETE_ON_RESOLVE.has(actionId) && !keepMetaAdCard;
 
   // [무시] = 오탐 → 분류기 피드백용으로 기록. 사람 판정은 classifier hash와 무관하게 최우선 적용된다.
   // 식별은 slack_channel_id + slack_ts(댓글 원문 미사용). best-effort — 실패해도 버튼 UX는 계속.
@@ -158,9 +165,9 @@ export async function POST(req: NextRequest) {
 
   try {
     if (payload.response_url) {
-      const body = DELETE_ON_RESOLVE.has(actionId)
-        ? { delete_original: true } // 완료·숨김 → 답글 삭제
-        : { replace_original: true, blocks: keptBlocks };
+      const body = willDelete
+        ? { delete_original: true } // 완료·(비메타)숨김 → 답글 삭제
+        : { replace_original: true, blocks: keptBlocks }; // 메타 광고 숨김 → 카드 유지('숨김 처리됨')
       await fetch(payload.response_url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -173,7 +180,7 @@ export async function POST(req: NextRequest) {
 
   // 완료·숨김으로 답글을 지운 뒤, 그 스레드에 남은 (미처리) 답글이 0개면 부모에 :완료느낌표: 반응을 단다.
   // = 담당자가 그 날짜×분류의 부정댓글을 전부 처리했다는 표시. reactions:write 권한 필요(없으면 조용히 무시).
-  if (DELETE_ON_RESOLVE.has(actionId)) {
+  if (willDelete) {
     try {
       const parentTs: string = payload.message?.thread_ts || "";
       const channelId: string = payload.channel?.id || "";
