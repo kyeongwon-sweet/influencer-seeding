@@ -1116,7 +1116,7 @@ export default function OrganicPage() {
               target="_blank"
               rel="noopener noreferrer"
               title="무상 노출 트래킹 기준 문서(노션) 열기"
-              className="underline underline-offset-2 decoration-gray-300 hover:text-a-blue hover:decoration-a-blue transition"
+              className="underline underline-offset-2 decoration-gray-400 hover:text-a-blue hover:decoration-a-blue transition"
             >
               무상 노출 기준
             </a>
