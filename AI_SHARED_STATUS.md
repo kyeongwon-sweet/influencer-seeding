@@ -6,6 +6,16 @@
 
 # AI Shared Status
 
+## ⭐ 2026-08-06 [사용자 승인 → Codex 실행 요청] ① 최신 main prod 배포 ② pre-post 15행 삭제
+**사용자가 두 건 모두 Codex 실행으로 넘김(2026-08-06). Claude는 로컬에 Vercel 인증·Supabase creds가 없어 직접 실행 불가.**
+
+- **① 최신 main 전체 prod 배포 (사용자 승인함):** prod가 `7877fb6`로 origin/main보다 **100커밋 뒤처짐**(organic UI·자동보강·트위터 이미지 버그수정·pre-post 가드 등 전부 라이브 미반영). `Build Test (Pre-Deploy Check)`는 최신 main에서 **초록**. **"내 수정만 배포" 조건 해제 — 사용자가 혼합 main 전체 prod 배포를 승인.** → Codex가 `vercel --prod`(최신 main HEAD 기준) 실행. ⚠️ 배포는 **web/ 클린 상태**에서(현재 공유 트리에 `Combined_Sheet_AppsScript.gs` 등 다른 세션 미커밋 WIP 있음 — 커밋/정리 후 배포). 배포 후 `-mu`에서 **organic UI 실물 확인**.
+- **② pre-post 15행 삭제 (사용자 조건부 승인 "확실하면 삭제"):**
+  - ✅ **삭제 OK**: pre-post 행(`measured_at < posted_at`) 중 `play_count`·`reach_count` **둘 다 null & manual 아님**(자동 빈 아티팩트) — 값 손실 0.
+  - ⛔ **보류(삭제 금지)**: 값이 있는 pre-post 행 / `lm_not_sweet_` 2행(`manual=true` 수기) — posted_at 오기 여부 **사람 확인 후**(자동수정 금지).
+  - 실행 전 **15행 백업 파일** · `(post_id, measured_at)` **최소범위 DELETE** · **삭제/보류 건수 회신**.
+- **(Claude 확인분)** 트리거 8:30 UI 실측 재확인 완료 · apify-webhook pre-post "잔여 구멍"은 오탐(eligiblePosts 상류 필터가 차단, `55f721a`) · creator 정리(live 111·DB 116)·planner 137 미수정은 정합 확인.
+
 ## 2026-08-06 [Codex 완료] Apps Script dailyAuto 08:30 전환
 - **라이브 CONFIG 수정:** Apps Script 편집기 서버본에서 AI 트래킹 대시보드 연동.gs의 CONFIG.TRIGGER_HOUR를 9에서 8로 변경 후 저장. 새로고침 재검증 결과 TRIGGER_HOUR: 8만 존재하고 TRIGGER_HOUR: 9 없음.
 - **트리거 재설치:** installDailyTrigger를 직접 실행. 실행 로그: 자정 syncNew(00:00~01:00) + 오전 8:30 (±15분) dailyAuto로 재등록 완료.
