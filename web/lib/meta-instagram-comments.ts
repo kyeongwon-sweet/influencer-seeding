@@ -42,13 +42,16 @@ export function extractMetaAdCommentEvents(payload: unknown): MetaAdCommentEvent
       const adId = String(media.ad_id || "");
       const text = String(value.text || "").trim();
       if (!commentId || !adId || !text || !igUserId) continue;
+      const adTitle = media.ad_title ? String(media.ad_title) : null;
+      // 전환(conversion) 광고는 큐에 담지 않는다(김유진 별도관리, 분류 토큰 절약). 소재명 토큰에 '전환'.
+      if (adTitle && adTitle.split("_").map((s) => s.trim()).includes("전환")) continue;
       events.push({
         comment_id: commentId,
         ig_user_id: igUserId,
         media_id: media.id ? String(media.id) : null,
         original_media_id: media.original_media_id ? String(media.original_media_id) : null,
         ad_id: adId,
-        ad_title: media.ad_title ? String(media.ad_title) : null,
+        ad_title: adTitle,
         username: from.username ? String(from.username) : null,
         comment_text: text,
         parent_comment_id: value.parent_id ? String(value.parent_id) : null,
