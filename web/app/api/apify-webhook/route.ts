@@ -6,7 +6,7 @@ import { notifyBot, notifyJob } from "@/lib/slack";
 import { todayKST } from "@/lib/dateRule";
 import { isBannerChannelType } from "@/lib/banner-metric";
 import { looksLikeEngagementCountAsViews } from "@/lib/ig-metric-guard";
-import { organicExcludeHit, organicTradePostHit } from "@/lib/organic-filter";
+import { organicExcludeHit, organicOwnedMediaHit, organicTradePostHit } from "@/lib/organic-filter";
 
 // ── 지표 계산 (metrics.py 포팅) ─────────────────────────────────────
 
@@ -834,6 +834,15 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
     if (excludeHit) {
       excludedCount++;
       console.log(`[LOG] ${platform} 제외어 '${excludeHit}' → 건너뜀: ${String(item.url ?? item.webVideoUrl ?? '')}`);
+      continue;
+    }
+
+    // 공통 필터: 온드미디어(우리 계정이 쓴 글) — 무상노출은 '남이 우리를 언급한 것'이다.
+    // ⚠️ 작성자 필드만 본다. 캡션까지 보면 팬이 @lalasweet_twt를 태그한 진짜 언급글이 사라진다.
+    const ownedHit = organicOwnedMediaHit(item);
+    if (ownedHit) {
+      excludedCount++;
+      console.log(`[LOG] ${platform} 온드미디어 '${ownedHit}' → 건너뜀: ${String(item.url ?? item.webVideoUrl ?? '')}`);
       continue;
     }
 

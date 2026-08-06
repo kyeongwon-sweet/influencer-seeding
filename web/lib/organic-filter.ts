@@ -43,6 +43,59 @@ export const ORGANIC_EXCLUDE_KEYWORDS = [
 ];
 
 /**
+ * 온드미디어(우리 브랜드 자체 계정) 제외 — 2026-08-06 사용자 지시 "온드미디어는 제외해".
+ *
+ * 무상노출 = **남이** 우리를 언급한 것. 우리가 우리 계정에 올린 글은 무상 노출이 아니다.
+ * 실측 1건(`x.com/lalasweet_twt`의 고객 문의 답글, 조회수 78)이 자동수집으로 들어와 삭제했고,
+ * 삭제만 하면 다음 수집에서 또 들어오므로 수집 단계에서 막는다.
+ *
+ * ⚠️ **ORGANIC_EXCLUDE_KEYWORDS에 핸들을 넣으면 안 된다.** 그 목록은 캡션·본문까지 검사하므로
+ *    팬이 `@lalasweet_twt`를 태그한 **진짜 언급글까지 사라진다**(이 탭의 존재 이유가 사라짐).
+ *    그래서 여기서는 **작성자 필드만** 본다.
+ */
+export const OWNED_MEDIA_HANDLES = [
+  "lalasweet_twt",
+  "lalasweet.official",
+  "lalasweet_official",
+  "lalasweetofficial",
+];
+
+/** 작성자 후보만 뽑는다(캡션·본문은 절대 보지 않는다 — 태그된 언급글을 지우지 않기 위해). */
+function authorCandidates(post: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  const push = (v: unknown) => {
+    if (typeof v === "string") out.push(v);
+    else if (v && typeof v === "object") {
+      const o = v as Record<string, unknown>;
+      for (const key of ["name", "userName", "username", "nickName", "handle"]) {
+        if (typeof o[key] === "string") out.push(o[key] as string);
+      }
+    }
+  };
+  for (const key of ["author", "authorMeta", "username", "ownerUsername", "channelName", "channelTitle", "blogName", "twitterUrl", "url"]) {
+    push(post[key]);
+  }
+  return out;
+}
+
+/**
+ * 우리 계정이 쓴 글인가. 맞으면 해당 핸들, 아니면 null.
+ * URL도 본다 — Apify 응답에 작성자 필드가 없고 URL만 있는 경우가 있다(`x.com/<핸들>/status/...`).
+ */
+export function organicOwnedMediaHit(post: Record<string, unknown>): string | null {
+  for (const raw of authorCandidates(post)) {
+    const s = raw.toLowerCase();
+    for (const h of OWNED_MEDIA_HANDLES) {
+      // URL이면 경로 세그먼트로, 계정명이면 정확히 일치할 때만 잡는다
+      // (부분일치로 하면 `lalasweet_twt_fan` 같은 팬 계정을 우리 계정으로 오판한다).
+      if (s === h) return h;
+      if (new RegExp(`(?:^|/|@)${h.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:$|/|\\?|#)`).test(s)) return h;
+    }
+  }
+  return null;
+}
+
+/**
  * 아이돌 특전 포카 **양도·판매글** 제외 (2026-08-05 사용자 지시).
  *
  * 배경: `다크문 x 라라스윗 아이스크림 케이크`(엔하이픈 콜라보)에 포토카드 특전이 붙어서,
