@@ -1145,7 +1145,20 @@ export default function OrganicPage() {
         <div className="flex flex-col gap-1.5 lg:h-[var(--guide-h)]">
         {/* 언급 제품 필터 */}
         {(productOptions.length > 0 || unsetProductCount > 0) && (
-          <div className="bg-white rounded-[14px] border border-a-hairline px-4 py-2.5 lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
+          <div
+            className="bg-white rounded-[14px] border border-a-hairline px-4 py-2.5 lg:flex-1 lg:min-h-0 lg:overflow-y-auto"
+            onClick={e => {
+              // 칩이 아닌 빈 공간(카드 여백·칩 사이 간격·아래 남는 영역)을 누르면 제품 선택을 초기화한다.
+              // closest("button")로 판정하므로 칩 안쪽을 눌렀을 때만 통과시킨다(칩 토글과 충돌 없음).
+              if ((e.target as HTMLElement).closest("button")) return;
+              // 칩이 많아 이 카드는 세로 스크롤된다 → 스크롤바를 누른 클릭은 초기화로 보지 않는다.
+              // clientWidth는 스크롤바를 뺀 너비라, 그보다 오른쪽이면 스크롤바 위다.
+              const box = e.currentTarget;
+              if (e.clientX - box.getBoundingClientRect().left > box.clientWidth) return;
+              // 이미 비어 있으면 같은 객체를 돌려 불필요한 재렌더를 막는다.
+              setFilters(prev => (prev.products.length === 0 ? prev : { ...prev, products: [] }));
+            }}
+          >
             <div className="flex items-start gap-2.5">
               <div className="flex flex-wrap gap-1.5 flex-1">
                 <button
