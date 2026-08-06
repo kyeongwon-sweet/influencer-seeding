@@ -10,7 +10,9 @@
 - **알림(notify_status "게시일 이전 조회수 이력 13건")은 진짜지만 대시보드엔 영향 없음.** 알림은 raw `post_daily_stats`의 `min(measured_at)`을 `posted_at`과 직접 비교(`notify_status.py:142-156`). 반면 대시보드 API는 `measured_at >= posted_at`만 노출(`web/app/api/sponsored-posts/route.ts:177`) → 누적·증분은 이미 pre-post 제외 계산. 즉 표시값 안전, raw DB에만 잠복.
 - **원인 2갈래:** ①**1일 전**(Ufo__green·dolkki_daily·moduhappy: 08-04게시·08-03이력) = 수집이 measured_at을 어제(KST-1)로 기록(`run_monitoring.py:188`)하는데 **게시 당일 새벽 수집분**이 게시일-1 행을 남긴 아티팩트(값은 실측, 날짜만 하루 이름). ②**여러 날 전**(lm_not_sweet_ 06-13게시·06-10이력, 3일) = yesterday로 설명 안 됨 → **posted_at 오기** 또는 옛 백필/미러 어긋남.
 - **🟢 (A) Claude 완료(`43154fe`, main):** `run_monitoring`에 pre-post 가드(`_drop_pre_post_rows`) 추가 — upsert 직전 단일 초크포인트에서 `measured_at < posted_at` 행 저장 제외(web collect-now와 동일 정책). 테스트 5건. → **앞으로 ①번 재발 안 함.** (GHA에서 다음 수집부터 적용, 별도 배포 불필요.)
-- **🟡 (B) Codex 요청 — 기존 13행 정리(DB 접근 필요, Claude는 로컬 creds 없음):**
+- **✅ (B) Codex 요청 취소 — Claude가 할 수 있다(2026-08-06 재확인).** `SUPABASE_SERVICE_ROLE_KEY`로 REST 조회·삭제 모두 가능하다("로컬 creds 없음"은 그 시점 오판). **현재 실측 15행**(13→15, 8/4~8/5 신규 2건). 분류: **1일-전 아티팩트 13행**(대부분 `play`·`reach` 둘 다 null = 빈 행, 값 손실 없음) · **여러날-전 2행**(`lm_not_sweet_` 게시 06-13 vs 측정 06-10·06-11, **전부 `manual=true` 수기**) → **posted_at 오기 여부는 사람 확인 필요**(posted_at 자동수정 금지). ⛔ 삭제는 사용자 승인 대기.
+- **🔴 잔여 구멍(내 lane, 미조치):** pre-post 가드가 `run_monitoring.py`(1406)와 `collect-now`(81)에는 있지만 **`apify-webhook`의 `post_daily_stats` upsert에는 없다**(448~454는 `sameDateManual`만 필터). 이 경로로는 여전히 pre-post 행이 생길 수 있다. ※ 위 15행은 **8/4~8/5 생성**이고 가드는 **8/6 추가**라 "가드 실패"가 아니다(내가 처음에 그렇게 판단했다가 생성일 확인 후 정정).
+- **(옛 기록) Codex 요청문:**
   - **열거 쿼리:** `SELECT s.post_id, p.account_name, p.url, p.posted_at, s.measured_at, s.play_count, s.reach_count, s.created_at, s.manual FROM post_daily_stats s JOIN sponsored_posts p ON p.id=s.post_id WHERE s.measured_at < p.posted_at ORDER BY p.posted_at, s.measured_at;`
   - **분류·조치:** ①1일-전 아티팩트 = 해당 pre-post 행 **삭제**(다음날 게시일 당일 행이 이미 있음, 값 손실 아님). ②여러 날-전 = **posted_at 오기인지 사람이 실제 게시일 확인** → 시트에서 정정(**posted_at 절대 자동수정 금지**); posted_at이 맞고 이력이 틀린 거면 그 pre-post 행 삭제.
   - **⚠️ 삭제 전 3원칙:** (a)오귀속 금지·created_at/manual로 auto/수기 구분 (b)play·reach 둘 다 확인 (c)백업 먼저(비가역). 최소 범위 DELETE(WHERE post_id+measured_at), 전량 금지.
@@ -67,6 +69,11 @@
 - **🟡 (a) Codex 요청 — 라이브 Apps Script 증분(I) 수식 통일(단일작성자=Codex):** 첫 유효측정일에 **그날 전체값**을 자동 표시하도록(대시보드·감사와 일치). 겸사겸사 **신규로 append된 행에도 H/I 수식이 자동으로 깔리는지** 확인(per-row 수식이라 안 깔리면 같은 빈칸 재발). 반영 후 `exportStats`/`syncNew` 1회 성공 검증.
 - **🟢 (b) Claude 완료(`03f1792`, main):** `formula-audit`에 **`inc.blankExpected` 전용 카운트** 추가 — "증분 빈칸인데 값 있어야 함(신규 첫측정 대표)"을 mismatch에 묻지 않고 분리, 매일 아침 수식감사 메시지에 `증분빈칸(값있어야함) N`으로 노출(조용한 누락→시끄러운 알림). `firstMeasure` 태깅, 테스트 9/9. **⚠️ 이 라우트는 `-mu`에서 도므로 효과 나려면 `-mu` 재배포 필요(Codex 소유).**
 - **참고:** DB값이 딱 라운드(92,000 등)+`manual:false`인데, 이는 IG가 큰 수를 '9.2만'식 반올림 표시→Apify가 그대로 긁었을 가능성(추정, 단정 아님). importStats가 수기값을 manual 플래그 없이 넣는지는 미확인 — (a) 작업 시 함께 점검 권장.
+
+## 2026-08-06 [정리] 코덱스 미결 항목 재확인 — **해소 3건 지움 / 남은 건 라이브 Apps Script·시트 lane 뿐**
+- **✅ 해소 확인(코덱스 목록에서 제거):** ①`main CI 빨간불(e9a0331)` → **초록불**(`gh run list`: Build Test success ×4, 08-06) ②`organic UI -mu 재배포` ③`formula-audit -mu 재배포` → 오늘 여러 번 배포됨(최신 `jeq9zu0qw`).
+- **➡️ 코덱스만 할 수 있는 것(하네스가 Claude의 라이브 Apps Script 쓰기를 차단):** ①**`CONFIG.TRIGGER_HOUR: 9→8` + `installDailyTrigger` 실행**(가장 급함 — 지금 수식감사 09:10이 시트 동기화 09:30보다 먼저 도는 역순) ②라이브 증분(I) 수식 **첫측정=그날 전체** 통일 + 신규 append 행 H/I 수식 자동 적용 확인 ③배너 금/토 셀 정리 ④오하루 행 수동 pin 제거.
+- **제이콥 t.co 중복 해소(사용자 정리 + Claude 후속):** 사용자가 중복 행을 정리해 1행 남았고, 남은 URL이 `t.co/IvsbogBWeC`(단축)여서 **자동수집이 원본 `x.com` 주소로 다시 넣으면 중복이 재발**하는 상태였다. 리다이렉트를 실제로 따라가 같은 트윗(`craveTimbit/status/1860342098295427357`)임을 확인하고 **원본 URL로 정규화**했다(조회수 15,000·제품·게시일 보존 검증 ✅). **교훈: 단축링크(t.co·vt.tiktok)는 저장 전 원본으로 펼칠 것.**
 
 ## ⭐ 2026-08-06 [Claude 완료] 무상노출 빈 칸 백필 **최종 결과** + 버그 2건 + 프록시 비용 산정
 - **최종(852행): 업로드일 없음 22 → 0 ✅ · 조회수 없음 119 → 40 · `thumbnail_url` 526건 저장.** 액터 실행 총 13회(행별이면 658회).
