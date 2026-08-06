@@ -13,9 +13,9 @@
 - **로컬 실측(2026-08-06 dry-run)**: 최근 2일 3건 / 전체 77건(대부분 평일 배너 도달수 — 금/토 정리 범위 밖. 일부는 스파이크 peak 모호 케이스라 자동정정 안 하고 알림만=절대규칙 준수).
 - **재발방지 트리거**: `rebuild_date_validation_20260806.gs`에 `installDailyRebuildTrigger()` 추가(매일 03시 self-healing). ⚠️먼저 rebuild의 DRY_RUN=false 저장 필요.
 
-## 2026-08-06 [✅사용자 실행 완료 — 트리거 1건만 남음] 날짜열 유효성 #REF!·파편화 재정비
-- **✅ 재적용 완료(사용자 실행)**: `rebuildDateColumnValidation` 실행 → 로그 `날짜열 97열(P~DH) × 2,276행 단일 규칙 재적용 완료. #REF!·파편 제거`. 헤더유형 Date 16 + serial 81 = 97열(서식 풀린 serial 헤더 탐지 포함). CR1771 등 오탐 해소.
-- **➡️ 남은 1건**: `installDailyRebuildTrigger` 1회 실행(매일 03시 self-healing) — 사용자 실행 예정.
+## 2026-08-06 [✅완료] 날짜열 유효성 #REF!·파편화 재정비 + self-healing
+- **✅ 재적용 완료(사용자 실행)**: `rebuildDateColumnValidation` → `날짜열 97열(P~DH) × 2,276행 단일 규칙 재적용 완료. #REF!·파편 제거`. 헤더유형 Date 16 + serial 81 = 97열(서식 풀린 serial 헤더 탐지 포함). CR1771 등 오탐 해소.
+- **✅ self-healing 트리거 설치 완료(사용자 실행)**: `installDailyRebuildTrigger` → 매일 03시 `rebuildDateColumnValidation` 자동 실행. 앞으로 편집으로 파편화돼도 매일 자동 재정비 → 재발방지 완결.
 - **증상(해결됨)**: 날짜열 셀(예 CR1771=2,617, 정상값)이 "유효성 검사 규칙 위반"으로 오탐. DB는 깨끗(8/5 자동수집 단일값).
 - **원인 확정(데이터>데이터확인으로 실물 확인)**: 날짜열 규칙 `=OR(셀="",AND(ISNUMBER(셀),셀열$1<=TODAY()...))`이 **경계고정 범위(P2:CX409 등) + 행 삽입/삭제**로 수백 조각으로 파편화 + 다수 `#REF!`(P723·CJ738 등). 깨진 파편에 걸린 셀은 값과 무관하게 오탐.
 - **재정비 스크립트**: `apps-script/rebuild_date_validation_20260806.gs` — 날짜열 블록 전체 유효성 싹 지우고(clearDataValidations) **상대참조만 쓰는 깨끗한 단일 규칙** 재적용(setAllowInvalid=true, 경고모드). 메타데이터 열(A~K) 규칙은 안 건드림. DRY_RUN=true 우선.
