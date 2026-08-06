@@ -59,12 +59,25 @@ export function extractMetaAdCommentEvents(payload: unknown): MetaAdCommentEvent
   return events;
 }
 
-type SupabaseLike = { from(table: string): any };
+type SupabaseErrorLike = { message?: string } | null;
+type SupabaseFilterQuery<T> = {
+  eq(column: string, value: string): SupabaseFilterQuery<T>;
+  maybeSingle(): Promise<{ data: T | null; error: SupabaseErrorLike }>;
+};
+type SupabaseUpsertQuery = {
+  upsert(values: MetaAdCommentEvent[], options: { onConflict: string; ignoreDuplicates: boolean }): PromiseLike<{ error: SupabaseErrorLike }>;
+};
+type SupabaseSelectQuery<T> = {
+  select(columns: string): SupabaseFilterQuery<T>;
+};
+type NegativeCommentAlertRow = { source?: string | null; comment_id?: string | null };
+type MetaTokenRow = { token?: string | null; expires_at?: string | null };
+type SupabaseLike = { from(table: string): unknown };
 
 export async function storeMetaAdCommentEvents(supabase: SupabaseLike, events: MetaAdCommentEvent[]) {
   if (!events.length) return { ok: true, stored: 0 };
-  const { error } = await supabase
-    .from("meta_ad_comment_events")
+  const query = supabase.from("meta_ad_comment_events") as SupabaseUpsertQuery;
+  const { error } = await query
     .upsert(events, { onConflict: "comment_id", ignoreDuplicates: true });
   if (error) return { ok: false, stored: 0, error: error.message || "Supabase upsert failed" };
   return { ok: true, stored: events.length };
@@ -78,8 +91,8 @@ export async function hideMetaAdCommentForSlackMessage(
   { channelId, messageTs, graphBase = "https://graph.facebook.com/v26.0" }: HideMetaCommentInput,
   fetchImpl: typeof fetch = fetch,
 ) {
-  const { data: alert, error: alertError } = await supabase
-    .from("negative_comment_alerts")
+  const alertQuery = supabase.from("negative_comment_alerts") as SupabaseSelectQuery<NegativeCommentAlertRow>;
+  const { data: alert, error: alertError } = await alertQuery
     .select("source,comment_id")
     .eq("slack_channel_id", channelId)
     .eq("slack_ts", messageTs)
@@ -89,8 +102,8 @@ export async function hideMetaAdCommentForSlackMessage(
   if (!alert || alert.source !== "meta_ads") return { handled: false, ok: true };
   if (!alert.comment_id) return { handled: true, ok: false, error: "Meta comment id missing" };
 
-  const { data: tokenRow, error: tokenError } = await supabase
-    .from("meta_tokens")
+  const tokenQuery = supabase.from("meta_tokens") as SupabaseSelectQuery<MetaTokenRow>;
+  const { data: tokenRow, error: tokenError } = await tokenQuery
     .select("token,expires_at")
     .eq("kind", "ig_ads")
     .maybeSingle();
