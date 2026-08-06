@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { logger } from "@/lib/logger";
 import { platformFromUrl } from "@/lib/platform";
-import { enrichSupported, runActorSync, pickViewCount, pickUploadedAt, pickCaption, productsFromCaption } from "@/lib/organic-enrich";
+import { enrichSupported, runActorSync, pickViewCount, pickUploadedAt, pickCaption, pickThumbnail, productsFromCaption } from "@/lib/organic-enrich";
 
 // Apify 동기 실행이 최대 100초라 넉넉히 잡는다(다른 수집 라우트도 60~300을 쓴다).
 export const maxDuration = 120;
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
   const supabase = getServerSupabase();
   const { data: row, error } = await supabase
     .from("organic_mentions")
-    .select("id,url,platform,uploaded_at,view_count,mentioned_product")
+    .select("id,url,platform,uploaded_at,view_count,mentioned_product,thumbnail_url")
     .eq("id", id)
     .single();
   if (error || !row) return NextResponse.json({ error: "게시물을 찾을 수 없습니다." }, { status: 404 });
@@ -58,6 +58,11 @@ export async function POST(req: NextRequest) {
   if (!row.uploaded_at) {
     const d = pickUploadedAt(item, todayISO);
     if (d) patch.uploaded_at = d;
+  }
+  if (!row.thumbnail_url) {
+    // 만료되는 호스트(인스타 CDN 등)는 pickThumbnail이 걸러낸다 → 깨질 이미지는 저장하지 않는다.
+    const thumb = pickThumbnail(item);
+    if (thumb) patch.thumbnail_url = thumb;
   }
   const views = pickViewCount(item);
   // 역행 금지: 기존값이 있으면 더 큰 값일 때만 갱신한다.

@@ -87,6 +87,44 @@ export function pickUploadedAt(item: Record<string, unknown>, todayISO: string):
   return null;
 }
 
+/**
+ * 썸네일 URL. **만료되지 않는 호스트만** 저장한다.
+ *
+ * 실측(2026-08-06): 저장돼 있던 인스타 썸네일 6건이 **전부 403**이었다(적재 후 6주 만에 만료).
+ * `scontent*.cdninstagram.com`은 서명(signature) 붙은 임시 URL이라 저장해도 곧 깨진 이미지가 된다.
+ * 반면 `pbs.twimg.com`(X)·`i.ytimg.com`(유튜브)은 서명이 없어 계속 살아있다(HEAD 200 확인).
+ * → 만료되는 호스트는 **아예 저장하지 않는다**(깨진 이미지를 DB에 남기지 않는다).
+ */
+const EXPIRING_IMAGE_HOST = /cdninstagram\.com$|fbcdn\.net$|tiktokcdn|byteoversea/i;
+
+export function pickThumbnail(item: Record<string, unknown>): string | null {
+  const cands: unknown[] = [];
+  for (const k of ["thumbnailUrl", "displayUrl", "thumbnail", "coverUrl", "imageUrl", "previewImage", "image"]) cands.push(item[k]);
+  // 배열/중첩 후보
+  const thumbs = item.thumbnails;
+  if (Array.isArray(thumbs)) for (const t of thumbs) {
+    if (typeof t === "string") cands.push(t);
+    else if (t && typeof t === "object") cands.push((t as { url?: unknown }).url);
+  }
+  const media = item.media;
+  if (Array.isArray(media)) for (const m of media) {
+    if (m && typeof m === "object") cands.push((m as { media_url_https?: unknown; url?: unknown }).media_url_https ?? (m as { url?: unknown }).url);
+  }
+  const vm = item.videoMeta as Record<string, unknown> | undefined;
+  if (vm) cands.push(vm.coverUrl, vm.originalCoverUrl);
+  const images = item.images;
+  if (Array.isArray(images) && typeof images[0] === "string") cands.push(images[0]);
+
+  for (const c of cands) {
+    if (typeof c !== "string" || !/^https?:\/\//i.test(c)) continue;
+    let host: string;
+    try { host = new URL(c).hostname; } catch { continue; }
+    if (EXPIRING_IMAGE_HOST.test(host)) continue;   // 만료되는 호스트는 버린다
+    return c;
+  }
+  return null;
+}
+
 export function pickCaption(item: Record<string, unknown>): string {
   const parts: string[] = [];
   for (const k of ["text", "fullText", "caption", "title", "description", "desc"]) {
