@@ -6,6 +6,12 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-07 [Codex] monitoring-validate 인프라 취소 복구·백업 스케줄
+- **원인 재확인:** schedule run `31123807951`은 검증 오류가 아니라 GitHub-hosted runner가 job을 받기 전 취소(`steps=[]`, job conclusion `cancelled`)된 인프라 히컵.
+- **즉시 복구:** `workflow_dispatch` run `31158671279` 성공. 실측 로그: 어제(2026-08-06) **654건 ✅**, 오늘(08-07) 0건, `✅ 데이터 검증 완료`. 데이터 누락 알림은 오탐으로 해소.
+- **재발방지:** `.github/workflows/monitoring-validate.yml`의 기존 01:00 KST 검증을 유지하고 **03:30 KST 백업 cron**(`30 18 * * *`) 추가. 두 실행 모두 동일 read-only 검증·동일 실패 조건을 사용하며 `continue-on-error`는 추가하지 않음.
+- **검증:** actionlint/YAML 검증 및 `git diff --check` 통과. 다음 실제 schedule 발화 후 워치독의 `최근 스케줄 성공` 갱신 여부를 확인한다.
+
 ## ✅ 2026-08-07 [Codex 완료] dry_run이 DEDUP에 막혀 '이미 게시된 날짜' 프리뷰 불가
 - **문제:** `notify_increments.py`에서 `DEDUP=1` 조기 종료(`[notify] {date} 리포트 이미 게시됨 → 생략` 후 `return`)가 **`DRY_RUN` 출력보다 먼저** 실행됨. 그래서 **이미 게시된 날짜(예: 8/6)는 `dry_run=true`로 돌려도 숫자 본문이 안 나오고 조기 종료**함. 실측: dry_run run `31157937621` 로그에 리포트 본문 없이 DEDUP 스킵만 찍힘.
 - **영향:** '리포트 수정 권한 운영 규약'의 **"dry_run으로 숫자 확인 후 update_ts로 수정"** 절차가 **기존 메시지 수정 케이스에선 무력화**(프리뷰가 DEDUP에 막힘). 신규 미게시 날짜엔 정상.
