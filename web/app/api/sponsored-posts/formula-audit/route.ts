@@ -5,6 +5,7 @@ import { normalizeSheetHeader, toSheetNumber } from "@/lib/sheet-banner-reach";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl, postIdentityKey } from "@/lib/url-utils";
 import { todayKST } from "@/lib/dateRule";
+import { FORMULA_AUDIT_SERVICE, shouldSkipFormulaAuditReport } from "@/lib/formula-audit-dedupe";
 import { notifyBot } from "@/lib/slack";
 import { auditRows, formatAuditMessage, parseHeaderDate, type AuditPost, type SheetAuditRow } from "@/lib/formula-audit";
 
@@ -25,6 +26,37 @@ const SHEET_GID = 1937186871;
 const SHEET_RANGE = "A1:ZZ5000";
 const STATS_START_YEAR = 2026;
 
+async function hasTodayReport(supabase: ReturnType<typeof getServerSupabase>, kdate: string): Promise<boolean | null> {
+  const { data, error } = await supabase
+    .from("ops_daily_runs")
+    .select("id")
+    .eq("service", FORMULA_AUDIT_SERVICE)
+    .eq("run_date", kdate)
+    .eq("status", "done")
+    .limit(1);
+  if (error) {
+    console.error("[formula-audit] dedupe lookup failed", error.message);
+    return null;
+  }
+  return (data?.length ?? 0) > 0;
+}
+
+async function markTodayReport(
+  supabase: ReturnType<typeof getServerSupabase>,
+  kdate: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const { error } = await supabase
+    .from("ops_daily_runs")
+    .upsert({
+      service: FORMULA_AUDIT_SERVICE,
+      run_date: kdate,
+      status: "done",
+      payload,
+    }, { onConflict: "service,run_date" });
+  if (error) console.error("[formula-audit] dedupe mark failed", error.message);
+}
+
 function linkKeyOf(url: string): string {
   const normalized = normalizeUrl(url) ?? url;
   return postIdentityKey(normalized) ?? normalized;
@@ -33,6 +65,13 @@ function linkKeyOf(url: string): string {
 async function handler(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const kdate = todayKST();
+  const force = req.nextUrl.searchParams.get("force") === "1";
+  const supabase = getServerSupabase();
+  const alreadyReported = await hasTodayReport(supabase, kdate);
+  if (alreadyReported != null && shouldSkipFormulaAuditReport({ alreadyReported, force })) {
+    return NextResponse.json({ ok: true, skipped: true, reason: "already_reported", kdate });
   }
 
   let values: (string | number | boolean | null)[][];
@@ -97,7 +136,6 @@ async function handler(req: NextRequest) {
   }
 
   // DB: 게시물 + 일별 실측(배너=reach 우선) — id 2차 정렬 페이지네이션
-  const supabase = getServerSupabase();
   const auditDates = rows.flatMap((row) => row.dates.map((d) => d.date));
   const minAuditDate = auditDates.length > 0 ? auditDates.reduce((a, b) => a < b ? a : b) : null;
   const maxAuditDate = auditDates.length > 0 ? auditDates.reduce((a, b) => a > b ? a : b) : null;
@@ -148,9 +186,25 @@ async function handler(req: NextRequest) {
 
   const result = auditRows(rows, posts, todayKST());
   const { text, healthy } = formatAuditMessage(result);
-  await notifyBot(text).catch(() => {});
+  let slackSent = true;
+  await notifyBot(text).catch((e) => {
+    slackSent = false;
+    console.error("[formula-audit] Slack notify failed", e);
+  });
+  if (slackSent) {
+    await markTodayReport(supabase, kdate, {
+      healthy,
+      rows: result.totalRows,
+      hError: result.h.errorCells,
+      hEmptyButData: result.h.emptyButData,
+      incError: result.inc.errorCells,
+      incMismatch: result.inc.mismatch,
+      incBlankExpected: result.inc.blankExpected,
+      stale: result.stale,
+    });
+  }
 
-  return NextResponse.json({ ok: true, healthy, ...result });
+  return NextResponse.json({ ok: true, healthy, slackSent, dedupeLookupOk: alreadyReported != null, ...result });
 }
 
 export async function POST(req: NextRequest) { return handler(req); }
