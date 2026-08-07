@@ -1,0 +1,30 @@
+name: 런치랩 메시지 삭제
+
+on:
+  workflow_dispatch:
+
+jobs:
+  delete:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 메시지 삭제
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_LUNCHLAB_BOT_TOKEN }}
+        run: |
+          python3 - <<'EOF'
+          import urllib.request, json, os, sys
+
+          TOKEN = os.environ['SLACK_BOT_TOKEN']
+          payload = json.dumps({
+              'channel': 'C0BFPQAPHEK',
+              'ts': '1786080551.517539'
+          }).encode('utf-8')
+          req = urllib.request.Request(
+              'https://slack.com/api/chat.delete', data=payload,
+              headers={'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json'}
+          )
+          r = json.load(urllib.request.urlopen(req, timeout=15))
+          print('ok:', r.get('ok'), 'error:', r.get('error', ''))
+          if not r.get('ok'):
+              sys.exit(1)
+          EOF
