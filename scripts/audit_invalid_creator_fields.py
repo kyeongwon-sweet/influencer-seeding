@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import unicodedata
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
@@ -14,13 +15,42 @@ from supabase import create_client
 
 SOURCE_PREFIX_MARKERS = "⠿●■◆◇★☆⭐ \t\r\n"
 
+# 소재명 앞에 붙는 장식/드래그핸들 문자를 **폭넓게** 벗긴다.
+# 위 목록은 그동안 발견된 글자를 하나씩 추가해 온 방식이라, 새 장식 문자가 등장하면
+# 정상 소재명을 "파싱 불가"로 오판하고 담당자 값을 이상값으로 잡는다.
+# → 유니코드 카테고리로 일반화: S*(기호)·P*(구두점)·Z*(공백)·C*(제어/포맷)를 앞에서 제거.
+#   단 '['는 소재명 규칙의 시작 문자이므로 절대 벗기지 않는다.
+def _strip_decorative_prefix(text: str) -> str:
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if ch == "[":
+            break
+        if ch in SOURCE_PREFIX_MARKERS or unicodedata.category(ch)[0] in ("S", "P", "Z", "C"):
+            i += 1
+            continue
+        break
+    return text[i:]
+
 
 def creator_source_text(value: Any) -> str:
-    return str(value or "").strip().lstrip(SOURCE_PREFIX_MARKERS)
+    return _strip_decorative_prefix(str(value or "").strip())
 
 
 def is_creator_parse_source(value: Any) -> bool:
     return creator_source_text(value).startswith("[")
+
+
+# 비광고성 미러링 콘텐츠는 **소재명에 담당자를 적지 않는 규칙**이다(광고 소재 파일명 규칙과 다름).
+# 예: "비광고성_외부영상_미러링_이나연_슈퍼카" — 기획자가 있어도 소재명에서 유도할 수 없다.
+# 그래서 이 유형은 애초에 판정 대상이 아니다(2026-08-07 실측 50건, 전부 위성채널·비용 0).
+# ⚠️ 'channel_type=위성채널 AND cost=0'을 기준으로 쓰면 안 된다 — 그 조건은 345건이라
+#    `[26.07]…` 같은 **정상 광고 소재까지 통째로 제외**된다(실측).
+NON_AD_SOURCE_PREFIXES = ("비광고성",)
+
+
+def is_non_ad_source(value: Any) -> bool:
+    return creator_source_text(value).startswith(NON_AD_SOURCE_PREFIXES)
 
 
 def nonblank(value: Any) -> bool:
@@ -31,6 +61,55 @@ def asset_source(row: dict[str, Any]) -> str:
     # asset_name is the current canonical sheet field; project_name is kept as
     # a legacy fallback so old rows with a valid file name are not over-cleared.
     return str(row.get("asset_name") or row.get("project_name") or "").strip()
+
+
+def build_issue(row: dict[str, Any]) -> dict[str, Any] | None:
+    """이상값 후보 1행 판정(네트워크 없음 = 테스트 가능).
+
+    반환 None = 이상 아님. 제외 조건:
+      · 소재명이 파일명 규칙(`[...]`)을 따름 → 담당자를 유도할 수 있으므로 정상
+      · 비광고성 미러링 → 애초에 소재명에 담당자를 안 적는 규칙
+      · 기획자·제작자가 둘 다 비어 있음 → 지울 게 없음
+    """
+    source = asset_source(row)
+    if is_creator_parse_source(source):
+        return None
+    if is_non_ad_source(source):
+        return None
+    has_planner = nonblank(row.get("planner"))
+    has_creator = nonblank(row.get("creator"))
+    if not has_planner and not has_creator:
+        return None
+    manual_fields = row.get("manual_fields") if isinstance(row.get("manual_fields"), list) else []
+    manual_creator = "creator" in manual_fields
+    manual_planner = "planner" in manual_fields
+    return {
+        "id": row.get("id"),
+        "url": row.get("url"),
+        "account_name": row.get("account_name"),
+        "channel_type": row.get("channel_type"),
+        "asset_name": row.get("asset_name"),
+        "project_name": row.get("project_name"),
+        "planner": row.get("planner"),
+        "creator": row.get("creator"),
+        "manual_fields": manual_fields,
+        "manual_creator": manual_creator,
+        "manual_planner": manual_planner,
+        # 🚨 수동 입력분은 절대 자동으로 지우지 않는다(2026-08-07 사용자 지시
+        #    "제작자, 기획자 수동 입력건은 유지해"). 보고에는 남기되 --apply 대상에서 뺀다.
+        "clear_creator": has_creator and not manual_creator,
+        "clear_planner": has_planner and not manual_planner,
+    }
+
+
+def select_for_update(issues: list[dict[str, Any]], fields: str) -> list[dict[str, Any]]:
+    """--apply 로 실제 비울 행. `clear_*`가 이미 수동 입력분을 제외한 값이다."""
+    return [
+        row
+        for row in issues
+        if (fields in ("creator", "both") and row["clear_creator"])
+        or (fields in ("planner", "both") and row["clear_planner"])
+    ]
 
 
 def load_all_posts(client: Any) -> list[dict[str, Any]]:
@@ -130,42 +209,16 @@ def main() -> None:
 
     issues: list[dict[str, Any]] = []
     for row in rows:
-        source = asset_source(row)
-        if is_creator_parse_source(source):
-            continue
-        has_planner = nonblank(row.get("planner"))
-        has_creator = nonblank(row.get("creator"))
-        if not has_planner and not has_creator:
-            continue
-        manual_fields = row.get("manual_fields") if isinstance(row.get("manual_fields"), list) else []
-        issues.append(
-            {
-                "id": row.get("id"),
-                "url": row.get("url"),
-                "account_name": row.get("account_name"),
-                "channel_type": row.get("channel_type"),
-                "asset_name": row.get("asset_name"),
-                "project_name": row.get("project_name"),
-                "planner": row.get("planner"),
-                "creator": row.get("creator"),
-                "manual_fields": manual_fields,
-                "manual_creator": "creator" in manual_fields,
-                "manual_planner": "planner" in manual_fields,
-                "clear_creator": has_creator,
-                "clear_planner": has_planner,
-            }
-        )
+        issue = build_issue(row)
+        if issue is not None:
+            issues.append(issue)
 
-    creator_count = sum(1 for row in issues if row["clear_creator"])
-    planner_count = sum(1 for row in issues if row["clear_planner"])
-    manual_creator_count = sum(1 for row in issues if row["clear_creator"] and row["manual_creator"])
-    manual_planner_count = sum(1 for row in issues if row["clear_planner"] and row["manual_planner"])
-    selected = [
-        row
-        for row in issues
-        if (args.fields in ("creator", "both") and row["clear_creator"])
-        or (args.fields in ("planner", "both") and row["clear_planner"])
-    ]
+    # 보고 수치는 '이상값이 있는 행' 기준(수동 입력 포함), 실제 삭제는 clear_* 기준(수동 제외).
+    creator_count = sum(1 for row in issues if nonblank(row["creator"]))
+    planner_count = sum(1 for row in issues if nonblank(row["planner"]))
+    manual_creator_count = sum(1 for row in issues if nonblank(row["creator"]) and row["manual_creator"])
+    manual_planner_count = sum(1 for row in issues if nonblank(row["planner"]) and row["manual_planner"])
+    selected = select_for_update(issues, args.fields)
     if args.limit > 0:
         selected = selected[: args.limit]
 
