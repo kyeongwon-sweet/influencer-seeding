@@ -6,6 +6,16 @@
 
 # AI Shared Status
 
+## 2026-08-07 [Codex 완료] morning automation verification + dailyAuto live fix
+- **dailyAuto 08:30 first-run 확인:** Apps Script `checkSetup()` 실측 기준 dailyAuto는 2026-08-07 08:28:43 KST에 시작했고 08:40:07 KST에 종료했으나 `syncStatus` 단계에서 실패했다.
+- **원인:** `_WriteGuard.gs`의 `writeColumnByKey_()`가 `writeColumnRuns_(..., expectedLastRow omitted)` 형태로 호출하는데, live/Combined 쪽에 같은 이름의 오래된 `writeColumnRuns_`가 있어 `expectedLastRow=undefined`를 row-count guard에 넘겼다. 결과: `writeColumnRuns: 실행 중 행 수가 undefined → 2279로 변경되어 중단`.
+- **수정/배포:** `faf70f5 fix(apps-script): allow keyed writer without row-count argument` 커밋 및 live Apps Script `clasp push --force` 완료. live 재-pull로 `stableLastRow = expectedLastRow == null ? sheet.getLastRow() : expectedLastRow` 반영 확인.
+- **기능 실측:** live Apps Script에서 실패 단계였던 `syncStatus`를 수동 실행했고 2026-08-07 12:01~12:02 KST 정상 완료. 동일 false-fail 재발 없음.
+- **검증:** local `npm.cmd test` 224/224 pass, `npm.cmd run lint` error 0(기존 warning 15), GitHub Build Test `31143133389` success. 이후 동시세션 최신 `19c8156` Build Test `31143309034`도 success.
+- **감사 스케줄 상태:** `formula-audit.yml`/`invalid-creator-fields.yml` schedule은 2026-08-05 이후 미발화가 맞다. `ensure-daily-audits` route는 호출 가능하나 invalid-creator workflow dispatch가 403(`Resource not accessible by personal access token`)으로 막힌다. 원인은 route가 아니라 Vercel/GitHub dispatch token 권한.
+- **수동 커버:** invalid creator audit을 수동 dispatch로 1회 실행(`31143273988`)했고 success. `fields=creator`, `apply=false`, creator issue 0, planner issue 44.
+- **남은 결정:** (A) Vercel에 `GH_DISPATCH_TOKEN`(repo Actions write/workflow dispatch 가능 PAT) 등록 후 재배포, 또는 (B) invalid creator audit도 Next HTTP route로 옮겨 Apps Script가 직접 호출하게 하여 GitHub dispatch 의존 제거.
+
 ## ⭐ 2026-08-07 [Codex 완료] 위성/온드 유튜브 재시도 큐 누락
 - **증상:** 8/6 위성 유튜브 일별 조회수 129건이 비었고, 위성 틱톡은 정상 수집됐다.
 - **실행기록 확인:** `cron-daily-collect` run `31135913890`은 8/7 09:48~10:08 KST에 성공 완료했지만 측정일은 8/6이었다. 큐가 `internal_channel=151`을 제외해 유튜브는 비위성 6개만 요청했고 로그도 `실값 6건 / 6개 요청`이었다. 취소·미완주가 아니라 대상 선정 버그다.
