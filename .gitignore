@@ -38,3 +38,6 @@ build/
 *.log
 logs/
 .vercel
+
+# Local investigation / rollback backups. May contain URLs, account names, or owners.
+scratchpad/
