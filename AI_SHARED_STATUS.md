@@ -6,6 +6,11 @@
 
 # AI Shared Status
 
+## ⏳ 2026-08-07 [남은 추적 · 사용자/Codex 합의]
+- **다음 08:30 KST `dailyAuto` 전체 성공 확인:** 2026-08-08 첫 08:30 자동 동기화가 `dailyAutoStageDefs_()` 전체 단계(`syncPricing → importStats` 순서 포함)를 실패 없이 완료하는지 확인한다. 실패 시 Apps Script 실행 로그의 실패 단계·처리건수·소요시간을 기준으로 원인 분리.
+- **다음 담당자감사 `planner_issue=0` 확인:** invalid creator/planner 감사 다음 실행에서 `planner_issue`가 0인지 확인한다. 0이 아니면 새 오적재인지, 기존 수기잠금/정당 예외인지 분류해 상태판에 수치로 남긴다.
+- **닫는 기준:** 두 항목 모두 실제 실행 로그/감사 결과로 확인한 뒤 이 항목을 완료 처리한다. 추측이나 CSV 캐시만으로 닫지 않는다.
+
 ## ✅ 2026-08-07 [Codex 완료] 8/6 리포트 **in-place 편집(chat.update)** — 재발송/삭제 없음
 - **사용자 지시**: "수정하지 말고 내용을 편집해" = 기존 메시지를 **chat.update로 내용만 편집**(REPLACE=삭제후재게시 **금지**, ts 유지).
 - **⚠️ Claude 불가**: 로컬 토큰은 injibot(`U0BHFHSNEDQ`)뿐. 대상 메시지는 여믄봇(`U0B83F2TN3D`)이 `SLACK_BOT_TOKEN`으로 발송 → **여믄봇 토큰 가진 Codex만 chat.update 가능**(Slack은 발송한 봇 토큰으로만 편집 허용, MCP엔 메시지 편집 기능 없음).
