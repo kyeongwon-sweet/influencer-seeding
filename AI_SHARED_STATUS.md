@@ -6,6 +6,15 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-07 [Codex 완료] 제작자감사 자동 실행 복구 + 09:40 통합 폴백
+- **GitHub 권한:** 저장소 `kyeongwon-sweet/influencer-seeding`만 선택한 fine-grained PAT를 발급했다. 권한은 `Actions: Read and write`, `Contents: Read and write`, 만료는 2026-09-06이다. 앞서 노출 가능성이 있던 임시 토큰 2개는 즉시 폐기했고, 최종 토큰 값은 로그·상태판에 남기지 않았다.
+- **Vercel:** `GH_DISPATCH_TOKEN`을 **Production 전용** 암호화 환경변수로 등록하고 최신 프로덕션을 재배포했다. `OPS_GITHUB_TOKEN`은 기존 읽기 전용 용도로 유지한다.
+- **서버 실측:** `ensure-daily-audits-smoke.yml`을 `dry_run=false`로 실행한 run `31144510010`이 성공(HTTP 200). 2026-08-07에는 formula-audit 3회·invalid-creator-fields 2회가 이미 성공해 둘 다 `already_done`으로 건너뛰었다. 중복 실행 방지 정상.
+- **라이브 Apps Script:** fresh `clasp pull` 2회 대조 후 함수 단위 변경만 반영했다. 기존 `auditFallback` 11시 트리거를 제거하고 `ensureDailyAudits`를 **매일 09:40 KST 전후**에 실행하도록 설치했다. `auditFallback()`은 전환기 호환 alias로 새 통합 경로를 호출한다.
+- **라이브 기능 실측:** `ensureDailyAudits()` 수동 실행 → HTTP 200, 두 감사 모두 `already_done`, 실행 완료. 트리거 목록에는 `ensureDailyAudits` 1개·옛 `auditFallback` 0개를 확인했다.
+- **커버 범위:** 수식감사와 제작자감사는 오늘 성공 기록이 없을 때만 `workflow_dispatch`된다. 같은 `GH_DISPATCH_TOKEN`의 `Contents: write` 권한으로 신규 게시물 `caption-backfill`의 `repository_dispatch`도 동작 가능해졌다(실제 신규 게시물 발생 시 최초 운영 실측 예정).
+- **코드/검증:** `dd46e35` main 반영, Apps Script 계약 포함 전체 테스트 228/228 통과. 아래의 `GH_DISPATCH_TOKEN 미설정/403` 기록은 과거 이력이며 이 항목으로 해소됐다.
+
 ## 🚨 2026-08-07 [사용자 명시 예외 승인 → Claude 실행] 8/6 위성 유튜브 소급 백필 (아래 "빈칸 보존" 결정 오버라이드)
 **아래 `2026-08-07 [Codex 완료] 위성/온드 유튜브 재시도 큐 누락` 섹션은 "8/6은 실측 복구 불가라 빈칸 보존"으로 결정했으나, 사용자가 트레이드오프를 이해한 뒤 예외로 채우라고 두 번 명시 지시하여 백필함.** 절대규칙(실측 없으면 비움)에 대한 **사용자 승인 예외**임을 분명히 기록한다.
 - **무엇:** 위성/온드 YouTube **134건**의 `post_daily_stats`에 `measured_at=2026-08-06` 행을 신규 생성. 값 = 2026-08-07 시점 재수집 누적값(=8/6 진짜 실측 아님, 소급 대체값).
