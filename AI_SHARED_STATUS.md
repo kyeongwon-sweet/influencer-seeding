@@ -6,6 +6,14 @@
 
 # AI Shared Status
 
+## ⭐ 2026-08-07 [Codex 완료] 위성/온드 유튜브 재시도 큐 누락
+- **증상:** 8/6 위성 유튜브 일별 조회수 129건이 비었고, 위성 틱톡은 정상 수집됐다.
+- **실행기록 확인:** `cron-daily-collect` run `31135913890`은 8/7 09:48~10:08 KST에 성공 완료했지만 측정일은 8/6이었다. 큐가 `internal_channel=151`을 제외해 유튜브는 비위성 6개만 요청했고 로그도 `실값 6건 / 6개 요청`이었다. 취소·미완주가 아니라 대상 선정 버그다.
+- **근본 원인:** `build_view_missing_queue.py`가 위성/온드 중 TikTok `/video|photo/`만 예외로 두고 YouTube·Instagram·X를 모두 `internal_channel`로 제외했다. 메인 수집 빈 응답 시 해당 플랫폼은 재시도 기회가 없었다.
+- **수정:** 위성/온드도 기존 `is_view_capable()` 판정(Instagram·YouTube·TikTok·X)이면 재시도 큐에 포함한다. Threads·Facebook·Naver·Kakao와 비-TikTok 배너 reach-only, 무상시딩 피드/이미지 제외는 유지한다.
+- **비소급 가드:** 정확한 8/6 실측은 지금 재구성할 수 없으므로 8/6 위성 YouTube/IG/X는 계속 제외해 빈칸을 보존한다. 확대 정책은 측정일 8/7부터만 적용한다. 따라서 오늘 14시 재시도가 현재 누적값을 8/6에 오기입하지 않는다.
+- **검증:** Python 정책 테스트 7/7, py_compile 통과. web 전체 테스트 224/224 통과.
+
 ## ⭐ 2026-08-07 [Claude 완료] 자정수집 알림 2건 처리 — 자동종료 누락 + IG 무상시딩 영상 미수집
 **08-07 injibot 리포트: 🚨 자동종료 누락 2건 + ⚠️ 미수집 19건(전부 IG 무상시딩 영상). 둘 다 해소.**
 - **자동종료 누락 2건 (two_pyeong 배너 8일·lim.__.ssuuuu 영상 29일):** 원인 = 오늘 `auto-end-reconcile`가 GitHub 인프라 일시실패("job was not acquired by Runner")로 안 돎(08-04·05는 성공). 코드/데이터 문제 아님. → **apply 재실행으로 2건 종료 완료**(`to_end:2`, manual_ended_at 503 정상 스킵).

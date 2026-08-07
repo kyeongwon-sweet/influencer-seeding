@@ -15,6 +15,7 @@ from db import get_client
 
 
 PAGE = 1000
+INTERNAL_VIEW_RETRY_FROM = "2026-08-07"
 
 
 def fetch_pages(table: str, select: str, query=None) -> list[dict[str, Any]]:
@@ -66,13 +67,20 @@ def is_tiktok_view_post(url: str | None) -> bool:
     )
 
 
-def exclusion_reason(post: dict[str, Any]) -> str | None:
+def exclusion_reason(post: dict[str, Any], target_date: str | None = None) -> str | None:
     channel_type = str(post.get("channel_type") or "")
     url = (post.get("url") or "").lower()
     if "수동추적 제외" in str(post.get("notes") or ""):
         return "manual_note"
-    if ("위성채널" in channel_type or "온드미디어" in channel_type) and not is_tiktok_view_post(url):
-        return "internal_channel"
+    # 위성/온드도 조회수형 플랫폼이면 재시도해야 한다. 틱톡만 예외로 두면
+    # 메인 수집이 빈 응답을 낸 날 유튜브·인스타그램 누락이 영구 결측으로 남는다.
+    if "위성채널" in channel_type or "온드미디어" in channel_type:
+        if not is_view_capable(post):
+            return "internal_channel"
+        # 8/6 누락은 다음날 누적값으로 소급 복원할 수 없다. 기존에 허용했던
+        # 틱톡은 유지하고, 유튜브·인스타·X 확대는 정확히 측정 가능한 8/7부터 적용한다.
+        if target_date and target_date < INTERNAL_VIEW_RETRY_FROM and not is_tiktok_view_post(url):
+            return "internal_channel"
     # 무상시딩 (영상)은 조회수가 있어 자동 재수집 대상이다 — (피드/이미지)만 수기 관리로 제외.
     # (2026-08-07: '무상시딩' 통째 제외라 IG 영상 미수집이 재시도 큐에서 빠져 자동 복구가 안 되던 버그 수정)
     if "무상시딩" in channel_type and "영상" not in channel_type:
@@ -118,7 +126,7 @@ def main() -> None:
         and (not post.get("posted_at") or str(post.get("posted_at"))[:10] <= target)
         and is_view_capable(post)
     ]
-    eligible = [post for post in raw_eligible if not exclusion_reason(post)]
+    eligible = [post for post in raw_eligible if not exclusion_reason(post, target)]
     eligible_ids = [post["id"] for post in eligible if post.get("id")]
 
     same_day_rows: dict[str, list[dict[str, Any]]] = {}
@@ -170,7 +178,7 @@ def main() -> None:
         "non_tiktok_banner_reach_only": 0,
     }
     for post in raw_eligible:
-        reason = exclusion_reason(post)
+        reason = exclusion_reason(post, target)
         if not reason:
             continue
         excluded[reason] += 1
