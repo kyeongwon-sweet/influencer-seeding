@@ -393,7 +393,12 @@ def main():
         # 배너는 views 자리에 도달수(reach 누적)가 들어옴 → CPV = 비용/도달수 = '도달당비용'(사용자 지시).
         # 그 외는 비용/누적조회수 = 조회당비용. 라벨은 공통 'CPV'.
         if not cost:
-            return "무상"                # 무상시딩·비용 0
+            # 바이럴 배너는 유상 채널 → cost 없으면 '무상'이 아니라 '가격미매핑'
+            #   (시트엔 가격 있으나 DB cost 미동기화 의심). 위성채널 배너·무상시딩·온드는 진짜 무상.
+            _c = ct or ""
+            if "배너" in _c and "위성채널" not in _c:
+                return "가격미매핑"
+            return "무상"                # 무상시딩·온드·위성·비용 0
         if not views:
             return "CPV -"
         return f"CPV {cost / views:,.1f}원"
@@ -439,6 +444,14 @@ def main():
     if unclassified_inc > 0:
         lines.append("")
         lines.append(f"⚠️ *미분류 {unclassified_cnt}건 (+{f(unclassified_inc)})* — 시트 채널분류가 DB에 아직 반영 안 됨(시트→DB 동기화 지연). 시트에서 `♻️ 전체 다시 추가`(syncAll) 실행 후 재발송하면 각 채널로 분류됩니다.")
+    # ⚠️ 바이럴 배너 가격 미매핑 경고 — 배너는 유상인데 DB cost가 비어 CPV가 '무상'으로 둔갑하는 것 방지.
+    #    시트엔 가격이 있어도 DB cost 동기화가 지연되면 여기 잡힘(신규 배너에서 흔함).
+    banner_unmapped = [it for it in items
+                       if "배너" in (it["channel_type"] or "") and "위성채널" not in (it["channel_type"] or "")
+                       and not it.get("cost")]
+    if banner_unmapped:
+        lines.append("")
+        lines.append(f"⚠️ *바이럴 배너 가격 미매핑 {len(banner_unmapped)}건* — 시트엔 가격이 있으나 DB cost에 아직 반영 안 됨(cost 동기화 지연). `♻️ 전체 다시 추가`(syncAll) 실행 후 재발송하면 CPV가 정상 계산됩니다.")
     lines += ["", DIV, "", "◾ *급상승 TOP 10* 🔥  `CPV는 누적 기준`", ""]
     # 배너는 도달수를 '조회수'로 취급해 TOP에도 섞어 노출(사용자 지시). 배너 CPV = 비용/도달수(도달당비용).
     # 리포트는 이미 쫀득바만 필터돼 있어 줄마다 [JD멜] 상품태그는 중복 → 표시에서 제거(사용자 지시).
