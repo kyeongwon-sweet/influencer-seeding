@@ -371,11 +371,15 @@ test("linked sheet H/I audit is available from Apps Script and GitHub Actions", 
   assert.ok(cronMatch, "formula-audit.yml 에 일 1회 cron 이 있어야 한다");
   const [, minStr, hourStr] = cronMatch!;
   const kstMinutes = (((Number(hourStr) + 9) % 24) * 60) + Number(minStr);
-  const DAILY_AUTO_KST = 8 * 60 + 30;   // dailyAuto = 08:30 KST (Apps Script 시간 트리거)
-  const FALLBACK_KST = 11 * 60;          // 자가치유 폴백 = 11:00 KST — 그 전에 돌아야 의미가 있다
+  const DAILY_AUTO_KST = 8 * 60 + 30;    // dailyAuto = 08:30 KST (Apps Script 시간 트리거)
+  // 자가치유 폴백(auditFallback). 2026-08-07 기준 11:00 → **09:40 이전(移)** 진행 중:
+  // GitHub cron이 상시 3시간 지연 + 이틀 완전 누락한 실측 때문에 폴백을 아침으로 당긴다.
+  // 이 상수는 "수식감사 cron이 폴백보다 앞서야 한다"는 순서만 지킨다 —
+  // 폴백을 09:40으로 옮겨도 09:10 < 09:40 이라 그대로 성립한다.
+  const FALLBACK_KST = 9 * 60 + 40;
   assert.ok(
     kstMinutes > DAILY_AUTO_KST && kstMinutes < FALLBACK_KST,
-    `수식감사는 dailyAuto(08:30) 이후 · 폴백(11:00) 이전이어야 한다. 현재 KST ${Math.floor(kstMinutes / 60)}:${String(kstMinutes % 60).padStart(2, "0")}`,
+    `수식감사는 dailyAuto(08:30) 이후 · 자가치유 폴백(09:40) 이전이어야 한다. 현재 KST ${Math.floor(kstMinutes / 60)}:${String(kstMinutes % 60).padStart(2, "0")}`,
   );
   assert.match(canonicalWorkflow, /\/api\/sponsored-posts\/formula-audit/);
   assert.match(csvWorkflow, /workflow_dispatch:/);
