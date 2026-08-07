@@ -579,8 +579,8 @@ function countColumnRuns_(edits) {
 
 function writeColumnRuns_(sheet, col, edits, expectedLastRow) {
   if (!edits || edits.length === 0) return 0;
-  assertRowCountStable_(sheet, expectedLastRow, "writeColumnRuns");
   const sorted = edits.slice().sort((a, b) => a.row - b.row);
+  const stableLastRow = expectedLastRow == null ? sheet.getLastRow() : expectedLastRow;
   let written = 0;
   let startRow = sorted[0].row;
   let values = [[sorted[0].value]];
@@ -590,11 +590,13 @@ function writeColumnRuns_(sheet, col, edits, expectedLastRow) {
       values.push([edit.value]);
       continue;
     }
+    assertRowCountStable_(sheet, stableLastRow, "writeColumnRuns");
     sheet.getRange(startRow, col, values.length, 1).setValues(values);
     written += values.length;
     startRow = edit.row;
     values = [[edit.value]];
   }
+  assertRowCountStable_(sheet, stableLastRow, "writeColumnRuns");
   sheet.getRange(startRow, col, values.length, 1).setValues(values);
   return written + values.length;
 }

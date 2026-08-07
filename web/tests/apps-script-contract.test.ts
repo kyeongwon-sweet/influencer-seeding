@@ -514,6 +514,11 @@ test("URL-key writers re-read current URLs and write only changed row runs", () 
   );
   assert.match(writeGuard, /function writeColumnRuns_\(/);
   assert.match(writeGuard, /sorted\[end\]\.row === sorted\[end - 1\]\.row \+ 1/);
+  const mainWriterStart = appsScript.indexOf("function writeColumnRuns_");
+  const mainWriterEnd = appsScript.indexOf("function metricDateColumns_", mainWriterStart);
+  const mainWriterBody = appsScript.slice(mainWriterStart, mainWriterEnd);
+  assert.match(mainWriterBody, /expectedLastRow == null \? sheet\.getLastRow\(\) : expectedLastRow/);
+  assert.doesNotMatch(mainWriterBody, /assertRowCountStable_\(sheet, expectedLastRow, "writeColumnRuns"\)/);
   assert.match(writeGuard, /if \(shouldWrite && !shouldWrite/);
   const statusStart = appsScript.indexOf("function syncStatus()");
   const statusEnd = appsScript.indexOf("function refreshCumulativeViews()", statusStart);
