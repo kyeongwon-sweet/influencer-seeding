@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { todayKST } from "@/lib/dateRule";
 import { resolveGitHubActionsToken } from "@/lib/github-actions-auth";
+import { formatGitHubTokenExpiryMessage, getGitHubTokenExpiryFindings } from "@/lib/github-token-expiry";
 import { notifyBot } from "@/lib/slack";
 import { countTodaySuccess } from "@/lib/audit-fallback";
 import { decideEnsure, formatEnsureSummary, needsNotify, type EnsureAction } from "@/lib/ensure-daily-audits";
@@ -93,9 +94,19 @@ async function handler(req: NextRequest) {
   }
 
   const text = formatEnsureSummary(actions, kdate, dryRun);
-  if (needsNotify(actions)) await notifyBot(text).catch(() => {});
+  const tokenExpiryFindings = getGitHubTokenExpiryFindings();
+  const tokenExpiryText = formatGitHubTokenExpiryMessage(tokenExpiryFindings);
+  const message = tokenExpiryText ? `${text}\n${tokenExpiryText}` : text;
+  if (needsNotify(actions) || tokenExpiryFindings.length > 0) await notifyBot(message).catch(() => {});
   const allOk = actions.every((a) => !a.act || dryRun || a.dispatched);
-  return NextResponse.json({ ok: allOk, kdate, dryRun, actions, message: text }, { status: allOk ? 200 : 500 });
+  return NextResponse.json({
+    ok: allOk,
+    kdate,
+    dryRun,
+    actions,
+    tokenExpiryFindings,
+    message,
+  }, { status: allOk ? 200 : 500 });
 }
 
 export async function POST(req: NextRequest) { return handler(req); }
