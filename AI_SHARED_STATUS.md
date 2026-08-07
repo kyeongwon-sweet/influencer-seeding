@@ -153,6 +153,17 @@
 - **➡️ 코덱스만 할 수 있는 것(하네스가 Claude의 라이브 Apps Script 쓰기를 차단):** ①**`CONFIG.TRIGGER_HOUR: 9→8` + `installDailyTrigger` 실행**(가장 급함 — 지금 수식감사 09:10이 시트 동기화 09:30보다 먼저 도는 역순) ②라이브 증분(I) 수식 **첫측정=그날 전체** 통일 + 신규 append 행 H/I 수식 자동 적용 확인 ③배너 금/토 셀 정리 ④오하루 행 수동 pin 제거.
 - **제이콥 t.co 중복 해소(사용자 정리 + Claude 후속):** 사용자가 중복 행을 정리해 1행 남았고, 남은 URL이 `t.co/IvsbogBWeC`(단축)여서 **자동수집이 원본 `x.com` 주소로 다시 넣으면 중복이 재발**하는 상태였다. 리다이렉트를 실제로 따라가 같은 트윗(`craveTimbit/status/1860342098295427357`)임을 확인하고 **원본 URL로 정규화**했다(조회수 15,000·제품·게시일 보존 검증 ✅). **교훈: 단축링크(t.co·vt.tiktok)는 저장 전 원본으로 펼칠 것.**
 
+## ⭐ 2026-08-07 [Claude 완료·⛔토큰 대기] 아침 감사 자동화 재설계 — Apps Script가 시각 보장, GitHub이 실행
+- **문제(실측):** `formula-audit` 스케줄 실행이 08-02~08-05엔 **매일 13:2x**(설정 10:10 → 상시 3시간 지연), **08-06·08-07은 완전 누락**. `invalid-creator-fields`는 **08-05 13:33이 마지막**. GitHub cron은 시각을 보장하지 않는다. 반면 Apps Script 트리거는 같은 기간 정상 발화(오늘 `auditFallback` 11:00이 수식감사를 살림).
+- **설계:** **Apps Script = 시각 보장자 / GitHub Actions = 실행 환경.** 제작자감사는 Python+시크릿 워크플로라 HTTP 포팅 대신 `workflow_dispatch`로 깨운다.
+- **🟢 완료(내 lane):** `POST /api/ops/ensure-daily-audits`(`74e1d70`) — 워크플로별 오늘 성공 여부 확인 → 안 돈 것만 dispatch. 오늘 성공 있으면 skip(중복 방지), **조회 실패는 실행 쪽으로 기움**(audit-fallback과 동일 규약), 전부 skip이면 슬랙 무음. 순수 판정부 `lib/ensure-daily-audits.ts`로 분리·테스트 7종(224/224). 수동 점검 워크플로 `ensure-daily-audits-smoke.yml`(스케줄 없음) 추가.
+- **🔴 배포 후 실측으로 잡은 것 2건:**
+  1. **HTTP 307** — Clerk 미들웨어 public 목록 누락(과거 `kpi/fetch`와 같은 함정) → `middleware.ts`에 추가 후 200.
+  2. **HTTP 403 `Resource not accessible by personal access token`** — dispatch에는 **`actions: write`** 가 필요한데 현재 토큰은 읽기 전용.
+- **⛔ 차단 원인(사용자/코덱스 조치 필요):** Vercel 프로덕션 env에 **`GH_DISPATCH_TOKEN`이 아예 없다**(있는 건 `OPS_GITHUB_TOKEN`·`GITHUB_TOKEN`·`CRON_SECRET`). 그래서 읽기전용 토큰으로 폴백돼 403. ⚠️ 부수 발견: **`caption-backfill.yml`의 이벤트 트리거도 같은 이유로 한 번도 발사된 적이 없다**(워크플로 주석에 명시) → 토큰 하나 넣으면 그것도 같이 살아난다.
+- **✅ 지금 당장 되는 무비용 대안(권장, 코덱스 1줄):** `auditFallback` 트리거를 **11:00 → 09:40**으로 옮기면 수식감사는 토큰 없이도 매일 보장된다(이미 GitHub 실행 여부를 보고 중복을 피하는 로직 내장). 제작자감사만 토큰 확보 후 `ensure-daily-audits`가 커버.
+- **dry-run 실측(정상):** `{"formula-audit.yml": "오늘 성공 2회 — 건너뜀", "invalid-creator-fields.yml": "오늘 성공 실행 없음 → dispatch"}` — 판정 로직은 정확히 동작.
+
 ## ⭐ 2026-08-06 [Claude 완료] 무상노출 빈 칸 백필 **최종 결과** + 버그 2건 + 프록시 비용 산정
 - **최종(852행): 업로드일 없음 22 → 0 ✅ · 조회수 없음 119 → 40 · `thumbnail_url` 526건 저장.** 액터 실행 총 13회(행별이면 658회).
 - **🔴 버그① IG 62건 전체가 400 거부** — `directUrls` 배열에 패턴 불일치 URL이 **1개** 있으면 **배열 전체가 거부**된다(`Field input.directUrls.32 must match pattern`). 검증 통과 60건만 재실행 → 조회수 11·업로드일 1 채움. **교훈: 일괄 입력은 전송 전 개별 검증**.
