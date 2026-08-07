@@ -3,6 +3,7 @@ name: Auto End Reconcile
 on:
   schedule:
     - cron: "17 15 * * *"  # 매일 00:17 KST — 00:41 자정수집 전에 오래된 글 종료
+    - cron: "17 19 * * *"  # 백업 04:17 KST — 1차(00:17) 런너 미확보 등 일시 실패 대비. injibot 리포트(06:38) 전에 자동종료 재시도(2026-08-07 재발방지: single-run infra 실패로 자동종료 누락)
   workflow_dispatch:
     inputs:
       target_date:
