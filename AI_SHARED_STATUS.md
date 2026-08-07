@@ -6,13 +6,16 @@
 
 # AI Shared Status
 
-## 2026-08-07 [사용자 승인 → ➡️Codex] 8/6 리포트 **in-place 편집(chat.update)** — 재발송/삭제 금지
+## ✅ 2026-08-07 [Codex 완료] 8/6 리포트 **in-place 편집(chat.update)** — 재발송/삭제 없음
 - **사용자 지시**: "수정하지 말고 내용을 편집해" = 기존 메시지를 **chat.update로 내용만 편집**(REPLACE=삭제후재게시 **금지**, ts 유지).
 - **⚠️ Claude 불가**: 로컬 토큰은 injibot(`U0BHFHSNEDQ`)뿐. 대상 메시지는 여믄봇(`U0B83F2TN3D`)이 `SLACK_BOT_TOKEN`으로 발송 → **여믄봇 토큰 가진 Codex만 chat.update 가능**(Slack은 발송한 봇 토큰으로만 편집 허용, MCP엔 메시지 편집 기능 없음).
-- **➡️ Codex 실행**: 채널 `C0B4F7GBX17` · 메시지 ts `1786079193.988599` 를 **`chat.update`**(같은 ts 유지)로 편집. 본문 = **8/6 리포트 재생성**(`notify_increments.py`, `MONITORING_DATE=2026-08-06`, 인지광고 위해 `APP_URL`+`CRON_SECRET`). cost 매핑·순서수정 이미 반영돼 CPV 정상 출력됨.
+- **✅ Codex 실행 완료:** 채널 `C0B4F7GBX17` · 메시지 ts `1786079193.988599` 를 **`chat.update`**(같은 ts 유지)로 편집했다. 본문 = **8/6 리포트 재생성**(`notify_increments.py`, `MONITORING_DATE=2026-08-06`, 인지광고 위해 `APP_URL`+`CRON_SECRET`). cost 매핑·순서수정 반영돼 CPV 정상 출력됨.
   - 기대 변화(원본→편집후): 바이럴 배너 CPV 1.5→**3.2원**, TOP10 배너 6건 무상/미매핑→정상 CPV, 총증분 1,347,470→**1,340,426**, 미매핑 경고 13→**1건**(힐링, 시트 빈칸).
-  - **REPLACE 모드(기존 삭제+재게시) 쓰지 말 것** — 사용자가 명시적으로 in-place 편집 요구. 새 ts 생기면 안 됨.
-  - 댓글(수집상태 ts `1786080142.175679`)은 배너와 무관 → 편집 불필요.
+  - 사전 dry-run `31153762812`: 총증분 `1,340,426`, 바이럴 배너 `CPV 3.2원`, 미매핑 경고 `1건` 확인.
+  - 실제 update run `31153810997`: Slack API 응답 `[notify] update ok=True ... ts=1786079193.988599 date=2026-08-06`.
+  - **REPLACE 모드(기존 삭제+재게시) 미사용** — 새 ts 생성 없음.
+  - 댓글(수집상태 ts `1786080142.175679`)은 건드리지 않았다. workflow에서 `TS_OUT`을 남기지 않아 댓글 재발송 단계도 skip됨.
+- **구현:** `45614af`에서 `daily-increment-report.yml`에 `update_ts`/`dry_run` 입력과 `notify_increments.py` `chat.update` 경로 추가. `78bde74`에서 잔여 미매핑 경고 문구를 “시트 비용 입력 또는 DB cost 동기화 확인 필요”로 정정(힐링처럼 시트 빈칸인 경우도 정확히 설명).
 
 ## ✅ 2026-08-07 [Codex 완료] 바이럴 배너 cost 누락 재발방지 — dailyAuto 순서 수정
 - **근본원인:** `dailyAutoStageDefs_()`에서 `syncPricing`이 `importStats("daily_auto")`보다 뒤에 있었다. 신규 배너 행은 `syncPricing` 단계에서 시트 비용이 채워지는데, DB 반영(`importStats`)이 이미 끝난 뒤라 그날 DB `sponsored_posts.cost`가 null/0으로 남을 수 있었다.
