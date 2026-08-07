@@ -6,6 +6,16 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-07 [Codex 완료] 8/6 위성/온드 YouTube 134건 연동 시트 반영
+- **사전 안전 확인:** fresh live pull에서 `refreshCumulativeViews()`가 `Date` 객체와 숫자 serial 날짜헤더(44000~48000)를 모두 인식하고, `exportStats()`가 완료 후 누적·증분을 재계산하는 현재 버전임을 확인했다.
+- **정상 동기화 실행:** live `exportStats`를 2026-08-07 12:42~12:44 KST에 실행했다. 실행 자체는 정상 완료했으나, 일반 정책상 비어 있지 않은 셀을 보존하여 URL-key 날짜 쓰기는 18칸이었다.
+- **전수 진단:** 8/6 DB 대상은 정확히 134건, 시트 URL 누락 0건·빈칸 0건. 83건은 이미 DB와 같았고, 나머지 51건은 모두 DB 8/5 값과 정확히 같은 **공백 이어받기 잔재**였다(임의 수기값·기타 불일치 0건).
+- **조건부 보정:** 현재 시트값이 해당 게시물의 DB 8/5 값과 정확히 같고 DB 8/6 값이 존재하는 경우만 대상으로 삼았다. 대상 수가 51이 아니면 쓰기를 중단하는 하드 가드 아래 51칸만 8/6 DB 백필값으로 교정했다. 변경 전 값은 Script Properties `BACKFILL86_SHEET_BACKUP_20260807`에 URL-key·행·old/new와 함께 백업했다.
+- **최종 전수검증:** `db_targets=134`, `equal=134`, `blank=0`, `mismatch=0`, `missing_url=0`. DB·대시보드·연동 시트의 8/6 위성/온드 YouTube 백필분이 전수 일치한다.
+- **H/I 무손상 검증:** Formula Audit run `31146130425` 성공(HTTP 200, `healthy=true`). 총 1,874행 기준 누적 H 오류 0·데이터 있는데 빈칸 0, 증분 I 오류 0·불일치 0, 값 정체 0.
+- **정리:** 검증/보정용 임시 Apps Script 파일은 기능 실측 후 라이브에서 삭제했고 fresh pull 17파일 목록으로 삭제를 재확인했다. 기존 live 파일은 건드리지 않았다.
+- **알려진 예외 유지:** 시트에 반영된 8/6 값은 사용자 승인에 따라 8/7 재수집 누적값을 소급한 대체값이다. 따라서 8/6 증분 과대·8/7 증분 과소라는 아래 백필 트레이드오프는 그대로다.
+
 ## ✅ 2026-08-07 [Codex 완료] 제작자감사 자동 실행 복구 + 09:40 통합 폴백
 - **GitHub 권한:** 저장소 `kyeongwon-sweet/influencer-seeding`만 선택한 fine-grained PAT를 발급했다. 권한은 `Actions: Read and write`, `Contents: Read and write`, 만료는 2026-09-06이다. 앞서 노출 가능성이 있던 임시 토큰 2개는 즉시 폐기했고, 최종 토큰 값은 로그·상태판에 남기지 않았다.
 - **Vercel:** `GH_DISPATCH_TOKEN`을 **Production 전용** 암호화 환경변수로 등록하고 최신 프로덕션을 재배포했다. `OPS_GITHUB_TOKEN`은 기존 읽기 전용 용도로 유지한다.
