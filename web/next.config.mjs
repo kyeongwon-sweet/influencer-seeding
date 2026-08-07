@@ -21,11 +21,6 @@ const nextConfig = {
     // 통과시킴. 푸시 전 `npx tsc --noEmit`로도 확인 가능.
     ignoreBuildErrors: false,
   },
-  eslint: {
-    // 빌드 시 ESLint 에러로 배포가 막히지 않도록 (Next 15는 기본으로 빌드 중 lint 실행)
-    // 런타임 동작에는 영향 없음
-    ignoreDuringBuilds: true,
-  },
 };
 
 export default nextConfig;

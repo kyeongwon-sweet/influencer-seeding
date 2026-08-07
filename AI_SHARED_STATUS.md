@@ -12,6 +12,13 @@
 - **⛔ 건드리면 안 되는 것:** 8/6 위성 **틱톡** 정상수집 170건, IG 무상시딩 재수집 18건(`ba8d9ce` 큐수정 후 정상 재시도분), 그 외 08-06 데이터. **오직 backfill86_ids.txt 134건만.**
 - **부수:** 백필 때 갱신됐던 **8/6 일별 집계 스냅샷**도 삭제 후 재계산/갱신 필요(그 값 556,054 포함돼 있었음).
 - **검증·회신:** 삭제 건수(=134 예상) · 8/6 위성유튜브 빈칸 복귀 · 다른 08-06 행 무변동 · 8/6 집계 재계산 반영. 백업(원 134행)은 삭제 전 확보.
+## 2026-08-07 [Codex 완료] 코드 리뷰 보안·품질 게이트 정리
+- **Admin API 보강:** `web/app/api/admin/delete-date-stats/route.ts`와 `web/app/api/admin/normalize-urls/route.ts`를 Clerk 로그인만 보던 구조에서 `getAdminEmail()` allowlist 확인으로 강화했다. `delete-date-stats`는 `YYYY-MM-DD` 형식만 받는다.
+- **URL 정규화 안전화:** `normalize-urls`의 `GET`은 dry-run 전용으로 바꾸고, 실제 DB 갱신은 `POST`에서 `apply:true` 또는 `dry_run:false`일 때만 실행되게 했다. URL이 비어 있는 행도 터지지 않고 건너뛴다.
+- **품질 게이트:** Next/ESLint 의존성을 보안 패치 버전으로 올리고 ESLint flat config로 전환했다. React 19 compiler 진단 중 기존 코드 전체 리팩터가 필요한 4개 규칙은 일단 비활성화하고 Next/core lint는 유지한다.
+- **정리:** 일회성 Slack workflow `.github/workflows/lunchlab-once-send.yml`는 삭제했고, 로컬 Vercel 메타데이터 `.vercel/repo.json`은 git 추적에서 제거했다.
+- **회귀 방지:** `web/tests/admin-routes-contract.test.ts`를 추가해 admin allowlist, 날짜 형식 검증, normalize GET dry-run 동작을 계약 테스트로 고정했다.
+- **검증:** `npm run lint` error 0(기존 warning 15), `npm test` 247/247 pass, `npx tsc --noEmit` pass, `npm audit --omit=dev` 0 vulnerabilities, `npm run build` pass. Next 16의 `middleware` → `proxy` 명칭 변경 경고는 별도 마이그레이션으로 남겼다.
 
 ## ✅ 2026-08-07 [Codex 완료] lm_not_sweet_ 게시일 이전 빈 통계행 3건 정리
 - **대상:** `sponsored_posts.id=5fc818a7-0c7a-4c08-9d74-3ed795d4d020`, Instagram `DZhEhrEIJpb`, `posted_at=2026-06-13`.

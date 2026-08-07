@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { auth } from "@clerk/nextjs/server";
+import { getAdminEmail } from "@/lib/admin-server";
 
 export async function DELETE(req: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await getAdminEmail())) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { date } = await req.json();
   if (!date) return NextResponse.json({ error: "Date required" }, { status: 400 });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date))) {
+    return NextResponse.json({ error: "Date must be YYYY-MM-DD" }, { status: 400 });
+  }
 
   const supabase = getServerSupabase();
 
