@@ -6,7 +6,15 @@
 
 # AI Shared Status
 
-## 2026-08-07 [Claude 완료(리포트 가드) → ➡️Codex(cost 동기화)] 바이럴 배너 '무상' 오표시 = DB cost 미동기화
+## 2026-08-07 [Claude 완료] 바이럴 배너 cost 매핑 16건 DB 반영 (사용자 지시)
+- **사용자 지시**: "가격을 맵핑해. 가격이 연동시트에 들어와있어." → 시트 정본값으로 DB cost 채움.
+- **시트 읽기 방법 규명**: gviz는 공유필터로 대상행이 안 보였으나 **`/export?format=csv&gid=` 는 필터 무관 전체 1,875행 반환** → 18건 시트 cost 전부 확인(앞으로 전수 시트읽기는 이 경로 사용 권장).
+- **DB 반영(백업 `scratchpad/banner_cost_backup.json`)**: 시트 가격 있는 **16건 cost UPDATE 완료** — zzalqueen 70k·Ufo_purple 30k·Ufo_RED 40k·upup 100k·text_pyeong 60k·tteokbokki 350k·luna.humor(`DbsjBuwn7ki`) 250k·Ufo_sky 60k·Ufo_blue 100k·some2lve 150k·Ufo_NIGHT 100k·hana.tving 100k·mango__paper 100k·smile_papa 80k·smile_ggobuk 90k·Pangpang 130k. `manual_fields` 잠금 안 검(시트=정본, 다음 syncAll이 동일값 재확인).
+- **미매핑 잔여 2건(시트에도 가격 없음 → 매핑 대상 아님)**: `flower_words03`(시트 ₩0=원래 무상) · `힐링하고가세요`(시트 빈칸=가격 미입력, 팀이 시트에 입력해야).
+- **검증**: 8/6 리포트 재실행 → 바이럴 배너 CPV 1.5→**3.2원**, TOP10 배너 6건 가격미매핑→정상 CPV, 경고 13건→**1건**(힐링). 미매핑 잔여 쿼리 2건 확인.
+- **➡️ Codex 잔여(근본원인)**: 현재 16건은 수동 반영으로 해결됐으나, **왜 신규 배너 cost가 syncAll로 안 들어왔는지**(신규행 매칭·URL키·타이밍) 규명·수정은 남음 — 안 고치면 다음 신규 배너에서 재발(리포트 가드가 감지는 함). 리포트 표시 가드는 `95180d3`로 배포됨.
+
+## 2026-08-07 [Claude 완료(리포트 가드)] 바이럴 배너 '무상' 오표시 = DB cost 미동기화
 - **사용자 신고**: 8/6 증분 리포트(채널 `C0B4F7GBX17`, ts `1786079193.988599`)에서 바이럴 배너가 무상으로 나갔다. **배너는 유상인데 가격이 안 잡힘.** "실제 가격은 연동시트에 정상 입력돼 있다"(사용자 확인).
 - **진단(Claude, DB 실측)**: 바이럴(배너) 활성 93개 중 **cost 0·null 18건**(대부분 8/6 신규 추가분). TOP10에 뜬 tteokbokki__zip·Ufo__blue·Ufo__NIGHT·Ufo__skyblue·some2lve·luna.humor(`DbsjBuwn7ki`) 등이 전부 `cost=None` → 무상 표시 + 집계 CPV 1.5원으로 저평가. **시트엔 가격 있음 → 시트→DB cost 동기화 누락**(입력 문제 아님). ⚠️ gviz는 필터로 이 행들이 안 보여(이 세션 1380→578→79행 요동) Claude가 시트 cost 직접 확인 불가 — Codex 인증 경로 필요.
 - **✅ Claude 완료 — 리포트 재발방지 가드(`95180d3`, main)**: `notify_increments.py` `_cpv`가 배너(위성 제외)인데 cost 없으면 **'무상' 아닌 '가격미매핑'** 반환 + 채널분류 하단에 **⚠️ 바이럴 배너 가격 미매핑 N건** 경고 라인. 위성/온드/무상시딩은 무상 유지. DRY_RUN 8/6 검증: TOP10 배너 6건 '가격미매핑'·경고 "13건" 표시, cost 있는 Ufo__ORANGE는 CPV 정상. pytest 88 통과. 다음 리포트부터 무상 둔갑 없이 미매핑이 바로 보임.
