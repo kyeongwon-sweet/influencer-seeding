@@ -6,6 +6,12 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-07 [Codex 완료] 8/6 증분 리포트 최신 수정본으로 기존 Slack 메시지 재편집
+- **대상:** Slack 채널 `C0B4F7GBX17`, 기존 메시지 ts `1786079193.988599` (`/p1786079193988599`).
+- **사전 검증:** `daily-increment-report.yml` dry-run `31157177489` 성공. 재생성 리포트 기준 총 증분 `+1,406,887`, 바이럴 배너 `+717,082`/CPV `3.3원`, 협찬 인플루언서 `+247,220`, 바이럴 영상 `+82,470`, 위성채널 `+137,040`, 온드미디어 `+146`, 가격 미매핑 경고 `1건`.
+- **실행:** workflow_dispatch actual run `31157275278` 성공. Slack API 응답 `[notify] update ok=True ... channel=C0B4F7GBX17 ts=1786079193.988599 date=2026-08-06` 확인.
+- **주의:** `chat.update` in-place 편집만 수행했다. `replace`/삭제/재게시 없음, 기존 댓글 ts `1786080142.175679`는 건드리지 않음.
+
 ## ✅ 2026-08-07 [Codex] 1877 고아 조회수 행 재발방지
 - **사고 실측:** 1877행은 URL·메타 없이 H=1,923과 날짜값만 남은 고아 행. 원본은 잘못 붙은 TikTok `/photo/76672043078207603388/`(uint64 범위를 넘는 20자리 ID)였고, 2026-08-07 수동 `dailyAuto`의 DB→시트 추가 과정에서 생성됐다. 정상 글 ID는 `7667204307820760338`.
 - **입구 차단:** 웹 단건·bulk·stats-import와 Apps Script 시트→DB·DB→시트 모두에서 TikTok video/photo ID를 uint64 snowflake 범위로 검증한다. 잘못된 ID는 생성·조회수 입력·시트 추가를 차단하고 stats-import는 Slack 경고를 남긴다.
