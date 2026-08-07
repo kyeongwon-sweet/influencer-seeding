@@ -73,7 +73,9 @@ def exclusion_reason(post: dict[str, Any]) -> str | None:
         return "manual_note"
     if ("위성채널" in channel_type or "온드미디어" in channel_type) and not is_tiktok_view_post(url):
         return "internal_channel"
-    if "무상시딩" in channel_type:
+    # 무상시딩 (영상)은 조회수가 있어 자동 재수집 대상이다 — (피드/이미지)만 수기 관리로 제외.
+    # (2026-08-07: '무상시딩' 통째 제외라 IG 영상 미수집이 재시도 큐에서 빠져 자동 복구가 안 되던 버그 수정)
+    if "무상시딩" in channel_type and "영상" not in channel_type:
         return "free_seed_manual"
     if "배너" in channel_type and "tiktok.com" not in url:
         return "non_tiktok_banner_reach_only"

@@ -26,6 +26,19 @@ class TikTokInternalRetryPolicyTest(unittest.TestCase):
             }
             self.assertEqual(exclusion_reason(post), "internal_channel")
 
+    def test_free_seed_video_is_retryable_but_feed_is_manual(self):
+        # 무상시딩 (영상) = 조회수 있음 → 재수집 대상(제외 아님)
+        video = {
+            "channel_type": "무상시딩 (영상)",
+            "url": "https://www.instagram.com/p/Dakqv22uexw/",
+            "notes": "",
+        }
+        self.assertIsNone(exclusion_reason(video))
+        # 무상시딩 (피드/이미지) = 수기 관리 → 제외 유지
+        for ct in ("무상시딩 (피드)", "무상시딩 (이미지)"):
+            feed = {"channel_type": ct, "url": "https://www.instagram.com/p/DailNIKpxcd/", "notes": ""}
+            self.assertEqual(exclusion_reason(feed), "free_seed_manual")
+
     def test_manual_exclusion_still_wins_for_tiktok(self):
         post = {
             "channel_type": "\uc704\uc131\ucc44\ub110",
