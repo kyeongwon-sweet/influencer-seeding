@@ -56,14 +56,37 @@ export async function GET() {
     if (!data || data.length < 1000) break;
   }
 
+  // 중복 링크 판정은 **Apps Script `linkKey_`와 같은 규칙**이어야 한다.
+  // (normalizeUrl만 쓰면 `/p/` ↔ `/reel/`, `youtu.be` ↔ `watch?v=` 가 다른 키가 되어 중복을 놓친다 —
+  //  2026-07-03 IG /reel/↔/p/ 275건 중복 사고와 같은 유형)
+  const linkKey = (u: string): string => {
+    const s = String(u || "").trim();
+    const canon = s.match(/^(ig|yt|tt):(.+)$/i);
+    if (canon) return canon[1].toLowerCase() + ":" + canon[2];
+    const ig = s.match(/instagram\.com\/(?:[^/?#]+\/)*(?:p|reels|reel|tv)\/([A-Za-z0-9_-]+)/i);
+    if (ig) return "ig:" + ig[1];
+    const yt = s.match(/youtube\.com\/shorts\/([A-Za-z0-9_-]{6,})/)
+      || s.match(/youtu\.be\/([A-Za-z0-9_-]{6,})/)
+      || s.match(/youtube\.com\/(?:embed|live|v)\/([A-Za-z0-9_-]{6,})/)
+      || (/youtube\.com\/watch/.test(s) ? s.match(/[?&]v=([A-Za-z0-9_-]{6,})/) : null);
+    if (yt) return "yt:" + yt[1];
+    const tt = s.match(/tiktok\.com\/(?:.*\/)?(?:video|photo)\/(\d+)/i) || s.match(/\/(?:video|photo)\/(\d+)/i);
+    if (tt) return "tt:" + tt[1];
+    return normalizeUrl(s) || s.replace(/\/+$/, "").toLowerCase();
+  };
+  const rowsByKey = new Map<string, { row: number; url: string }[]>();
+  const unmatchedRows: { row: number; url: string }[] = [];
+
   let matched = 0, unmatched = 0, prePostedCells = 0;
   const affected: { row: number; urlTail: string; posted: string; dates: string[] }[] = [];
   for (let i = 1; i < values.length; i++) {
     const row = values[i];
     const rawUrl = String(row?.[urlCol] ?? "").trim();
     if (!rawUrl) continue;
+    const k = linkKey(rawUrl);
+    if (k) { const arr = rowsByKey.get(k); if (arr) arr.push({ row: i + 1, url: rawUrl }); else rowsByKey.set(k, [{ row: i + 1, url: rawUrl }]); }
     const posted = postedByUrl.get(normalizeUrl(rawUrl) || rawUrl);
-    if (!posted) { unmatched++; continue; }
+    if (!posted) { unmatched++; if (unmatchedRows.length < 20) unmatchedRows.push({ row: i + 1, url: rawUrl }); continue; }
     matched++;
     const dates: string[] = [];
     for (const dc of dateCols) {
@@ -74,6 +97,11 @@ export async function GET() {
     if (dates.length > 0 && affected.length < 20) affected.push({ row: i + 1, urlTail: rawUrl.slice(-24), posted, dates });
   }
 
+  // 같은 게시물이 시트에 여러 행으로 있는 경우(행 번호까지 알려줘야 사람이 정리할 수 있다)
+  const duplicateGroups = [...rowsByKey.entries()]
+    .filter(([, v]) => v.length > 1)
+    .map(([key, v]) => ({ key, count: v.length, rows: v }));
+
   return NextResponse.json({
     ok: true,
     sheetRows: values.length - 1,
@@ -82,5 +110,10 @@ export async function GET() {
     prePostedCells,
     affectedRows: affected.length >= 20 ? `${affected.length}+ (표본 20)` : affected.length,
     samples: affected,
+    // 중복 진단(읽기 전용) — 정리는 시트 쪽 `removeDuplicateLinks`(시트 쓰기 lane)로 한다.
+    duplicateGroups: duplicateGroups.length,
+    duplicateExtraRows: duplicateGroups.reduce((a, g) => a + g.count - 1, 0),
+    duplicates: duplicateGroups.slice(0, 20),
+    unmatchedSamples: unmatchedRows,
   }, { headers: { "Cache-Control": "no-store" } });
 }
