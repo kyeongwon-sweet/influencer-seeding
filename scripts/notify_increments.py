@@ -14,6 +14,7 @@ from db import get_client
 
 CHANNEL = os.getenv("SLACK_CHANNEL") or "C0B4F7GBX17"  # 기본 #빙과_마케팅_리포트 (빈값이면 폴백). DM 미리보기 시 user id 주입
 SLACK_API = "https://slack.com/api/chat.postMessage"
+SLACK_UPDATE_API = "https://slack.com/api/chat.update"
 
 # 온드미디어·위성채널 = 무상 채널: 광고비·업체명이 없어야 함(사용자 지시).
 #   입력돼 있어도 리포트 CPV엔 무시(0 취급)하고, 있으면 리포트에 ⚠️ 오류로 경고한다.
@@ -169,6 +170,7 @@ def _latest_date(db):
 
 def main():
     token = os.environ["SLACK_BOT_TOKEN"]
+    update_ts = os.getenv("UPDATE_TS", "").strip()
     db = get_client()
 
     # 대상 날짜: 수집 워크플로가 넘긴 MONITORING_DATE(KST).
@@ -235,7 +237,7 @@ def main():
                 _delete_msg(token, CHANNEL, rts)
             _delete_msg(token, CHANNEL, ts)
     # 중복 방지: 채널 발송 + DEDUP=1인데 오늘 리포트가 이미 있으면 생략(백업 창 대비). REPLACE면 위에서 지웠으니 통과.
-    elif os.getenv("DEDUP") == "1" and CHANNEL[:1] in ("C", "G") and _already_posted(token, CHANNEL, target):
+    elif not update_ts and os.getenv("DEDUP") == "1" and CHANNEL[:1] in ("C", "G") and _already_posted(token, CHANNEL, target):
         print(f"[notify] {target} 리포트 이미 게시됨 → 중복 방지 생략")
         return
 
@@ -464,6 +466,21 @@ def main():
     if os.getenv("DRY_RUN"):   # 발송 없이 내용만 출력(검증용, Slack 토큰 불필요)
         print("=== DRY_RUN (발송 안 함) ===")
         print(text)
+        return
+
+    if update_ts:
+        data = urllib.parse.urlencode({
+            "channel": CHANNEL,
+            "ts": update_ts,
+            "text": text,
+            "unfurl_links": "false",
+        }).encode()
+        req = urllib.request.Request(SLACK_UPDATE_API, data=data,
+                                     headers={"Authorization": "Bearer " + token,
+                                              "Content-Type": "application/x-www-form-urlencoded; charset=utf-8"})
+        r = json.load(urllib.request.urlopen(req, timeout=30))
+        print("[notify] update ok=", r.get("ok"), "error=", r.get("error"), "channel=", CHANNEL, "ts=", update_ts, "date=", target)
+        assert r.get("ok"), r
         return
 
     data = urllib.parse.urlencode({"channel": CHANNEL, "text": text, "unfurl_links": "false"}).encode()

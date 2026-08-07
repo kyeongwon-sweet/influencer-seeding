@@ -30,6 +30,14 @@ on:
         description: "특정 ts 삭제(쉼표구분) — 고아 댓글·재발송본 등 임의 봇 메시지 정리(발송 안 함)"
         type: string
         default: ""
+      update_ts:
+        description: "기존 리포트 ts를 in-place 편집(chat.update). 댓글은 건드리지 않음"
+        type: string
+        default: ""
+      dry_run:
+        description: "Slack 발송/편집 없이 리포트 본문만 출력"
+        type: boolean
+        default: false
       date:
         description: "발송 대상 날짜(YYYY-MM-DD, 비우면 어제 KST). 특정일 정정 재발송용"
         type: string
@@ -68,6 +76,9 @@ jobs:
           DELETE_ONLY: ${{ github.event.inputs.delete_only == 'true' && '1' || '' }}
           # 특정 ts 삭제(고아 댓글·재발송본 등). 값 있으면 그 ts들만 지우고 종료.
           DELETE_TS: ${{ github.event.inputs.delete_ts }}
+          # 기존 리포트 메시지 본문만 수정. TS_OUT을 남기지 않아 상태 댓글은 재발송하지 않는다.
+          UPDATE_TS: ${{ github.event.inputs.update_ts }}
+          DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && '1' || '' }}
           TS_OUT: ${{ runner.temp }}/report_ts.txt
           PYTHONUNBUFFERED: "1"
         run: |
