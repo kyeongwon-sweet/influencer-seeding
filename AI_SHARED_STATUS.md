@@ -6,6 +6,14 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-07 [Codex 완료] lm_not_sweet_ 게시일 이전 빈 통계행 3건 정리
+- **대상:** `sponsored_posts.id=5fc818a7-0c7a-4c08-9d74-3ed795d4d020`, Instagram `DZhEhrEIJpb`, `posted_at=2026-06-13`.
+- **사전 하드 가드:** 전체 이력 39행, 게시일 이전 날짜가 정확히 `2026-06-10·06-11·06-12` 3행이고 `play_count·reach_count·likes_count·comments_count`가 모두 `NULL`인 것을 재조회했다. 하나라도 다르면 삭제하지 않도록 했다.
+- **실행:** 위 3행만 ID·post_id·날짜·4개 지표 NULL 조건으로 삭제했다. `posted_at`과 6/13 이후 이력은 수정하지 않았다.
+- **백업:** `scratchpad/specific_pre_post_empty_backup_20260807T053358Z.json`에 게시물 정보와 삭제 전 전체 39행을 저장했다.
+- **검증:** 이력 `39→36`, 남은 게시일 이전 행 0, 생존 36행의 모든 선택 필드 무변경. 전체 DB dry-run 재감사도 `total_pre_post_before=0`, 후보·보류 모두 0으로 injibot 플래그 해소를 확인했다.
+- **재발방지 도구:** `scripts/repair_specific_pre_post_empty_stats.py`를 추가했다. 특정 게시물·게시일·전체 행수·정확한 날짜 목록·4개 지표 NULL을 모두 검증한 뒤에만 삭제하며, 백업과 생존 이력 무변경 검증을 강제한다.
+
 ## 2026-08-07 [Codex 완료] Apps Script clasp 배포 경로 정본화
 - **목표:** 브라우저 수동 graft/stale 저장 사고를 막기 위해 production Apps Script 배포를 repo 기반 `clasp` 경로로 고정했다. 긴급 롤백 외에는 브라우저 전체 붙여넣기를 쓰지 않는다.
 - **대상:** `.clasp.json`은 script `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn`, root `dist/apps-script`를 가리킨다.
@@ -211,6 +219,13 @@
 - **✅ 해소 확인(코덱스 목록에서 제거):** ①`main CI 빨간불(e9a0331)` → **초록불**(`gh run list`: Build Test success ×4, 08-06) ②`organic UI -mu 재배포` ③`formula-audit -mu 재배포` → 오늘 여러 번 배포됨(최신 `jeq9zu0qw`).
 - **➡️ 코덱스만 할 수 있는 것(하네스가 Claude의 라이브 Apps Script 쓰기를 차단):** ①**`CONFIG.TRIGGER_HOUR: 9→8` + `installDailyTrigger` 실행**(가장 급함 — 지금 수식감사 09:10이 시트 동기화 09:30보다 먼저 도는 역순) ②라이브 증분(I) 수식 **첫측정=그날 전체** 통일 + 신규 append 행 H/I 수식 자동 적용 확인 ③배너 금/토 셀 정리 ④오하루 행 수동 pin 제거.
 - **제이콥 t.co 중복 해소(사용자 정리 + Claude 후속):** 사용자가 중복 행을 정리해 1행 남았고, 남은 URL이 `t.co/IvsbogBWeC`(단축)여서 **자동수집이 원본 `x.com` 주소로 다시 넣으면 중복이 재발**하는 상태였다. 리다이렉트를 실제로 따라가 같은 트윗(`craveTimbit/status/1860342098295427357`)임을 확인하고 **원본 URL로 정규화**했다(조회수 15,000·제품·게시일 보존 검증 ✅). **교훈: 단축링크(t.co·vt.tiktok)는 저장 전 원본으로 펼칠 것.**
+
+## 🔒 2026-08-07 [사용자·Codex·Claude 합의] 담당자 자동수리 **잠금** + 내일 확인 순서
+- **합의:** `--apply`는 `planner`·`creator` **모두 잠정 중단**, 다음 감사까지 `apply=false` 읽기 전용만. **DB 단독 복구 금지**(planner/asset_name은 `SHEET_WINS` = 시트 정본이라 DB만 되돌리면 다음 syncAll에 또 어긋난다). 18건 자동복구분은 미접촉, 오늘 규칙에서 제외되는 22건도 재삭제 안 함.
+- **🟢 합의를 코드로 강제(`e248f99`):** 워크플로 UI에서 `apply=true`를 누르면 합의와 무관하게 실행되므로 **스크립트에서 차단**했다. 해제는 `ALLOW_INVALID_FIELD_REPAIR=1` 하나. 감사(읽기)는 그대로 동작한다. 테스트 2종(잠금 동작·감사는 안 막힘) 포함 파이썬 **88 통과**.
+- **08-06 삭제 137건 사후 검증(백업 대조):** ① **수동 입력 삭제 0건** ✅ — 사용자 지시("수동 입력건 유지")는 소급으로도 지켜졌다 ② **오늘 규칙이면 제외됐을 행 22건** = 어제 판정의 오탐(장식 접두·비광고성) ③ 현재 119건 비어 있음 · **18건은 이미 자동 복구**(시트 정본이라 syncAll이 되돌림) ④ 지워진 값: 김바다 98 · 이세진 29 · 황경원 6 · 김유진 2 · 이재원 2.
+- **➡️ 내일(08-08) 확인 순서:** ①08:30 `dailyAuto` 완료 ②담당자감사 `apply=false` 실행 ③`planner_issue=0` 확인 ④**시트·DB 모두 빈 행만** 선별 ⑤원 담당자를 근거로 확정 가능한 행만 백업 후 복구.
+  - ⚠️ **②는 자동으로 안 돌 수 있다.** GitHub 스케줄이 08-06·08-07 연속 미발화였고 `GH_DISPATCH_TOKEN`도 아직 없다 → **수동 dispatch로 돌려야 한다**(`invalid-creator-fields.yml` workflow_dispatch, apply=false).
 
 ## ⭐ 2026-08-07 [Claude 완료·⛔토큰 대기] 아침 감사 자동화 재설계 — Apps Script가 시각 보장, GitHub이 실행
 - **문제(실측):** `formula-audit` 스케줄 실행이 08-02~08-05엔 **매일 13:2x**(설정 10:10 → 상시 3시간 지연), **08-06·08-07은 완전 누락**. `invalid-creator-fields`는 **08-05 13:33이 마지막**. GitHub cron은 시각을 보장하지 않는다. 반면 Apps Script 트리거는 같은 기간 정상 발화(오늘 `auditFallback` 11:00이 수식감사를 살림).
