@@ -1,0 +1,36 @@
+name: 런치랩 1회성 메시지 발송
+
+on:
+  workflow_dispatch:
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 메시지 발송
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_LUNCHLAB_BOT_TOKEN }}
+        run: |
+          python3 - <<'EOF'
+          import urllib.request, json, os, sys
+
+          TOKEN = os.environ['SLACK_BOT_TOKEN']
+          CHANNEL = 'C0BFPQAPHEK'
+
+          text = (
+              '<https://lalasweethq.slack.com/archives/C0BFPQAPHEK/p1783572274599619|잔반 처리하는 법>\n'
+              '\n'
+              '일반 가정식 시키신 분은 항상 밥+반찬+국(가끔..) 3가지를 챙기셔야해요!\n'
+              '반찬을 누락하시는 분들이 있어요!!!!!!!!!!! :밥숟가락을든채정지:'
+          )
+
+          payload = json.dumps({'channel': CHANNEL, 'text': text}, ensure_ascii=False).encode('utf-8')
+          req = urllib.request.Request(
+              'https://slack.com/api/chat.postMessage', data=payload,
+              headers={'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json; charset=utf-8'}
+          )
+          r = json.load(urllib.request.urlopen(req, timeout=15))
+          print('ok:', r.get('ok'), 'error:', r.get('error', ''))
+          if not r.get('ok'):
+              sys.exit(1)
+          EOF
