@@ -29,3 +29,10 @@ test("postIdentityKey: TikTok and YouTube URL variants map to one post key", () 
   assert.equal(postIdentityKey("https://www.youtube.com/watch?v=14NN3A0vRDE"), "yt:14NN3A0vRDE");
   assert.equal(postIdentityKey("https://www.youtube.com/shorts/14NN3A0vRDE"), "yt:14NN3A0vRDE");
 });
+
+test("postIdentityKey: uint64 범위를 벗어난 TikTok ID는 게시물 키를 만들지 않음", () => {
+  assert.equal(
+    postIdentityKey("https://www.tiktok.com/@issuebox_/photo/76672043078207603388/"),
+    null,
+  );
+});

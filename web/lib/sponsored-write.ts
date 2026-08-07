@@ -1,5 +1,5 @@
 import type { getServerSupabase } from "@/lib/supabase-server";
-import { normalizeUrl, postIdentityKey, ALLOWED_POST_URL_RE, isInstagramNonPostUrl } from "@/lib/url-utils";
+import { normalizeUrl, postIdentityKey, ALLOWED_POST_URL_RE, isInstagramNonPostUrl, isInvalidTikTokPostUrl } from "@/lib/url-utils";
 import { normalizeChannelType, isFreeChannel } from "@/app/monitoring/lib";
 import { triggerCaptionBackfill, needsCaption } from "@/lib/github-dispatch";
 import { todayKST } from "@/lib/dateRule";
@@ -18,6 +18,7 @@ export type UpsertSummary = {
   created: number;
   meta_filled: number;
   ended_marked: number;
+  rejected_invalid_url?: number;
   /** 잠금(manual_fields) 때문에 시트값이 무시된 건수 — 0이 아니면 시트와 DB가 조용히 어긋나 있다는 뜻. */
   locked_drift?: number;
   /** 위 드리프트 샘플(최대 8건). 사람이 어느 행을 볼지 알 수 있게. */
@@ -63,6 +64,7 @@ export async function upsertSponsoredRows(
   const resolved: Array<Record<string, unknown>> = await Promise.all(
     list.map(async r => ({ ...r, url: r.url ? await resolveTikTokShortUrl(String(r.url)) : r.url }))
   );
+  let rejectedInvalidUrl = 0;
   const rows = resolved
     .map(r => {
       const url = r.url ? (normalizeUrl(String(r.url)) || String(r.url)) : "";
@@ -85,8 +87,10 @@ export async function upsertSponsoredRows(
       };
     })
     .filter(r => {
-      if (!r.url || !ALLOWED_POST_URL_RE.test(r.url)) return false;
-      if (isInstagramNonPostUrl(r.url)) return false;
+      if (!r.url || !ALLOWED_POST_URL_RE.test(r.url) || isInstagramNonPostUrl(r.url) || isInvalidTikTokPostUrl(r.url)) {
+        rejectedInvalidUrl += 1;
+        return false;
+      }
       const key = r.normalized_key ?? r.url;
       if (seen.has(key)) return false;
       seen.add(key);
@@ -94,7 +98,7 @@ export async function upsertSponsoredRows(
     });
 
   if (rows.length === 0) {
-    return { summary: { upserted: 0, created: 0, meta_filled: 0, ended_marked: 0 } };
+    return { summary: { upserted: 0, created: 0, meta_filled: 0, ended_marked: 0, rejected_invalid_url: rejectedInvalidUrl } };
   }
 
   const META = ["posted_at", "account_name", "company_name", "content_summary", "channel_type", "project_name", "product_name", "asset_name", "planner", "creator", "cost"];
@@ -306,6 +310,7 @@ export async function upsertSponsoredRows(
       created,
       meta_filled: metaFilled,
       ended_marked: endedMarked,
+      rejected_invalid_url: rejectedInvalidUrl,
       locked_drift: lockedDrift.length,
       locked_drift_sample: lockedDrift.slice(0, 8),
     },

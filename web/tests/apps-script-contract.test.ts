@@ -113,7 +113,8 @@ test("Apps Script linkKey_ maps TikTok video and photo URLs to the same tt ident
   const body = appsScript.slice(start, end);
   assert.notEqual(start, -1);
   assert.match(body, /\(\?:video\|photo\)/);
-  assert.match(body, /return "tt:" \+ tt\[1\]/);
+  assert.match(body, /isValidTikTokSnowflake_\(tt\[1\]\) \? "tt:" \+ tt\[1\] : ""/);
+  assert.match(appsScript, /const MAX_TIKTOK_SNOWFLAKE_ = "18446744073709551615"/);
 });
 
 test("increment V2: row-range formulas replace cell-address lists (column-op & sort safe)", () => {
@@ -136,10 +137,11 @@ test("new DB-appended rows immediately receive H/I formulas and numeric date hea
   const pullStart = appsScript.indexOf("function pullFromDB()");
   const pullEnd = appsScript.indexOf("function dailyAuto()", pullStart);
   const pullBody = appsScript.slice(pullStart, pullEnd);
-  assert.match(
-    pullBody,
-    /if \(added > 0\) ensureNewRowsMetricFormulas_\(sheet, lastRow \+ 1, sheet\.getLastRow\(\)\)/,
-  );
+  assert.match(pullBody, /appendRange\.setValues\(pendingRows\.map\(x => x\.values\)\)/);
+  assert.match(pullBody, /assertRowCountStable_\(sheet, lastRow, "pullFromDB append"\)/);
+  assert.match(pullBody, /writtenUrls/);
+  assert.match(pullBody, /appendRange\.clearContent\(\)/);
+  assert.match(pullBody, /ensureNewRowsMetricFormulas_\(sheet, startRow, startRow \+ added - 1\)/);
 
   const helperStart = appsScript.indexOf("function ensureNewRowsMetricFormulas_(");
   const helperEnd = appsScript.indexOf("function pullFromDB()", helperStart);

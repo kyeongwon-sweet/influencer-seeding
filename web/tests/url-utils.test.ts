@@ -4,6 +4,8 @@ import {
   normalizeUrl,
   ALLOWED_POST_URL_RE,
   isInstagramNonPostUrl,
+  isInvalidTikTokPostUrl,
+  isValidTikTokSnowflake,
   normalizeInstagramUrl,
   normalizeYouTubeUrl,
 } from "../lib/url-utils.ts";
@@ -35,6 +37,20 @@ test("isInstagramNonPostUrl: 프로필·목록은 차단하고 게시물 shortco
   ]) {
     assert.equal(isInstagramNonPostUrl(u), false, `허용해야 함: ${u}`);
   }
+});
+
+test("TikTok snowflake: uint64 범위만 허용하고 잘못 붙인 20자리 ID를 차단", () => {
+  assert.equal(isValidTikTokSnowflake("7667204307820760338"), true);
+  assert.equal(isValidTikTokSnowflake("18446744073709551615"), true);
+  assert.equal(isValidTikTokSnowflake("18446744073709551616"), false);
+  assert.equal(
+    isInvalidTikTokPostUrl("https://www.tiktok.com/@issuebox_/photo/76672043078207603388/"),
+    true,
+  );
+  assert.equal(
+    isInvalidTikTokPostUrl("https://www.tiktok.com/@issuebox_/photo/7667204307820760338/"),
+    false,
+  );
 });
 
 test("normalizeUrl: 같은 게시물의 다른 표기는 동일 URL로 정규화(중복 제거 기반)", () => {

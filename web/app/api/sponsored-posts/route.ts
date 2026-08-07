@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { normalizeUrl } from "@/lib/url-utils";
+import { normalizeUrl, ALLOWED_POST_URL_RE, isInstagramNonPostUrl, isInvalidTikTokPostUrl } from "@/lib/url-utils";
 import { logger } from "@/lib/logger";
 import { normalizeChannelType } from "@/app/monitoring/lib";
 import { triggerCaptionBackfill, needsCaption } from "@/lib/github-dispatch";
@@ -249,6 +249,10 @@ export async function POST(req: NextRequest) {
   }
 
   const cleaned = { ...body, url: body.url ? (normalizeUrl(body.url) || body.url) : body.url };
+  if (!cleaned.url || !ALLOWED_POST_URL_RE.test(String(cleaned.url)) ||
+      isInstagramNonPostUrl(String(cleaned.url)) || isInvalidTikTokPostUrl(String(cleaned.url))) {
+    return NextResponse.json({ error: "올바른 게시물 URL이 아닙니다." }, { status: 400 });
+  }
   if (cleaned.channel_type) cleaned.channel_type = normalizeChannelType(String(cleaned.channel_type));
   // 추가자(이메일) — created_by 컬럼이 없을 수도 있어 insert 대상에서 분리 후 삽입 성공 시 best-effort로 기록.
   const addedBy = typeof cleaned.added_by === "string" ? cleaned.added_by : null;

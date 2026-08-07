@@ -45,6 +45,8 @@ export type SheetAuditRow = {
 
 export type AuditResult = {
   totalRows: number;
+  orphanRows: number;
+  orphanNotes: string[];
   h: { ok: number; manualKept: number; emptyOk: number; valueOnly: number; errorCells: number; emptyButData: number };
   inc: { ok: number; emptyOk: number; errorCells: number; mismatch: number; blankExpected: number };
   anomalies: string[];     // 사람이 읽을 요약 라인 (상한 있음)
@@ -133,9 +135,12 @@ export function auditRows(
   rows: SheetAuditRow[],
   posts: Map<string, AuditPost>,
   todayKst: string,
+  orphanNotes: string[] = [],
 ): AuditResult {
   const res: AuditResult = {
     totalRows: rows.length,
+    orphanRows: orphanNotes.length,
+    orphanNotes: orphanNotes.slice(0, ANOMALY_CAP),
     h: { ok: 0, manualKept: 0, emptyOk: 0, valueOnly: 0, errorCells: 0, emptyButData: 0 },
     inc: { ok: 0, emptyOk: 0, errorCells: 0, mismatch: 0, blankExpected: 0 },
     anomalies: [],
@@ -231,7 +236,7 @@ export function auditRows(
 }
 
 export function formatAuditMessage(r: AuditResult): { text: string; healthy: boolean } {
-  const problems = r.h.errorCells + r.h.emptyButData + r.inc.errorCells + r.inc.mismatch + r.inc.blankExpected;
+  const problems = r.h.errorCells + r.h.emptyButData + r.inc.errorCells + r.inc.mismatch + r.inc.blankExpected + r.orphanRows;
   const staleTail = r.stale > 0
     ? `\n🟠 값 정체 ${r.stale}건 — 수식은 정상인데 새 값이 ${STALE_DAYS}일 넘게 안 들어옵니다(삭제·수집실패 의심)\n`
       + r.staleNotes.slice(0, 8).map((s) => "• " + s).join("\n")
@@ -241,7 +246,8 @@ export function formatAuditMessage(r: AuditResult): { text: string; healthy: boo
   //    (그렇지 않으면 74건이 멈춰 있어도 "이상 없음"으로 읽힌다 — 2026-08-03 실제 사고).
   const head = problems === 0
     ? `✅ [수식 전수감사] 수식 이상 없음 — 행 ${r.totalRows} · 누적 정합 ${r.h.ok}(수동보존 ${r.h.manualKept}·보존값 ${r.h.valueOnly}·빈칸정상 ${r.h.emptyOk}) · 증분 정합 ${r.inc.ok}(빈칸정상 ${r.inc.emptyOk})`
-    : `🔴 [수식 전수감사] 이상 ${problems}건 — H 오류셀 ${r.h.errorCells}·데이터有빈칸 ${r.h.emptyButData} / I 오류셀 ${r.inc.errorCells}·불일치 ${r.inc.mismatch}·증분빈칸(값있어야함) ${r.inc.blankExpected} (행 ${r.totalRows}, 정합 H ${r.h.ok}·I ${r.inc.ok})`;
-  const body = problems === 0 ? "" : "\n" + r.anomalies.map((a) => "• " + a).join("\n");
+    : `🔴 [수식 전수감사] 이상 ${problems}건 — 고아행 ${r.orphanRows} / H 오류셀 ${r.h.errorCells}·데이터有빈칸 ${r.h.emptyButData} / I 오류셀 ${r.inc.errorCells}·불일치 ${r.inc.mismatch}·증분빈칸(값있어야함) ${r.inc.blankExpected} (행 ${r.totalRows}, 정합 H ${r.h.ok}·I ${r.inc.ok})`;
+  const detail = [...r.orphanNotes, ...r.anomalies].slice(0, ANOMALY_CAP);
+  const body = problems === 0 ? "" : "\n" + detail.map((a) => "• " + a).join("\n");
   return { text: head + body + staleTail, healthy: problems === 0 && r.stale === 0 };
 }

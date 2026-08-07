@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { normalizeUrl, postIdentityKey, ALLOWED_POST_URL_RE } from "@/lib/url-utils";
+import { normalizeUrl, postIdentityKey, ALLOWED_POST_URL_RE, isInvalidTikTokPostUrl } from "@/lib/url-utils";
 import { filterMonotonicStats, type GuardInput } from "@/lib/stats-guard";
 import { normalizeChannelType, isFreeChannel } from "@/app/monitoring/lib";
 import { resolveTikTokShortUrl, tagCreatedBy } from "@/lib/sponsored-write";
@@ -72,9 +72,11 @@ export async function POST(req: NextRequest) {
 
   // 조회수: 정규화 + (url, measured_at) 중복 제거 (마지막 값 우선)
   const byKey = new Map<string, { url: string; key: string; measured_at: string; play_count: number }>();
+  let rejectedInvalidUrl = 0;
   for (const r of statsIn as Array<Record<string, unknown>>) {
     if (!r || !r.url || !r.measured_at) continue;
     const url = normalizeUrl(resolveU(String(r.url))) || String(r.url);
+    if (isInvalidTikTokPostUrl(url)) { rejectedInvalidUrl += 1; continue; }
     if (r.play_count === null || r.play_count === undefined || r.play_count === "") continue;
     const play_count = Number(r.play_count);
     if (!Number.isFinite(play_count)) continue;
@@ -96,7 +98,7 @@ export async function POST(req: NextRequest) {
   for (const p of postsIn) {
     if (!p || !p.url) continue;
     const url = normalizeUrl(resolveU(String(p.url))) || String(p.url);
-    if (!ALLOWED_POST_URL_RE.test(url)) continue; // 허용 플랫폼만 신규 생성
+    if (!ALLOWED_POST_URL_RE.test(url) || isInvalidTikTokPostUrl(url)) { rejectedInvalidUrl += 1; continue; } // 허용 플랫폼·유효 게시물만 신규 생성
     const postKey = postIdentityKey(url) ?? url;
     if (postByUrl.has(postKey)) continue;
     const clean: Record<string, unknown> = { url, normalized_key: postKey };
@@ -112,7 +114,7 @@ export async function POST(req: NextRequest) {
   const supabase = getServerSupabase();
 
   const allUrls = [...new Set([...items.map(i => i.url), ...[...postByUrl.values()].map(p => String(p.url))])];
-  if (allUrls.length === 0) return NextResponse.json({ ok: true, inserted: 0, created_posts: 0, matched_urls: 0, missing_urls: 0 });
+  if (allUrls.length === 0) return NextResponse.json({ ok: true, inserted: 0, created_posts: 0, matched_urls: 0, missing_urls: 0, rejected_invalid_url: rejectedInvalidUrl });
 
   // 1) 기존 URL → id + 현재 메타 조회 (한 번만) — '빈 값만 채우기' 비교용으로 메타도 함께 조회
   // ⚠️ URL이 많으면 .in() 쿼리 URL 길이 한도 초과로 400(Bad Request) → 80개씩 청크로 조회.
@@ -579,6 +581,10 @@ export async function POST(req: NextRequest) {
     const s = dupConflict.slice(0, 6).map(c => `${c.date.slice(5, 10)} [${c.values.map(v => v.toLocaleString()).join("/")}]`).join(", ");
     await notifyBot(`🚨 [시트 조회수 입력] 중복 날짜열 의심 ${dupConflict.length}건 스킵 — 한 게시물·날짜에 값이 2개(중복 열). 시트 날짜 열 정규화 필요: ${s}`);
   }
+
+  if (rejectedInvalidUrl > 0) {
+    await notifyBot(`🚨 [시트 조회수 입력] 잘못된 TikTok 게시물 ID ${rejectedInvalidUrl}건 차단 — URL 끝 숫자를 원본 링크와 확인하세요.`).catch(() => {});
+  }
   // 급변 감지분 → 알림(자동 실측의 3배 이상 = 과대 오입력 의심). 사람이 입력한 시트값은 보존한다.
   if (spikeSuspected.length > 0) {
     const s = spikeSuspected.slice(0, 6).map(c => `${c.target} ${c.date.slice(5, 10)} ${c.value.toLocaleString()}(자동실측 ${c.auto_max.toLocaleString()})`).join(", ");
@@ -631,5 +637,6 @@ export async function POST(req: NextRequest) {
     matched_urls: [...new Set(items.map(i => i.url))].length - missing.size,
     missing_urls: missing.size,
     missing_sample: [...missing].slice(0, 5),
+    rejected_invalid_url: rejectedInvalidUrl,
   });
 }

@@ -134,10 +134,10 @@ async function handler(req: NextRequest) {
 
   // 시트 행 파싱 (raw 셀은 UNFORMATTED라 오류셀은 "#REF!" 같은 문자열로 온다)
   const rows: SheetAuditRow[] = [];
+  const orphanNotes: string[] = [];
   for (let i = 1; i < values.length; i += 1) {
     const row = values[i] ?? [];
     const url = String(row[urlCol] ?? "").trim();
-    if (!url) continue;
     const dates: Array<{ date: string; value: number }> = [];
     for (const dc of dateCols) {
       const n = toSheetNumber(row[dc.idx] as string | number | null);
@@ -149,11 +149,20 @@ async function handler(req: NextRequest) {
       const n = toSheetNumber(v as string);
       return n != null ? n : String(v);
     };
+    const h = rawCell(row[cumCol]);
+    const inc = rawCell(row[incCol]);
+    if (!url) {
+      if (dates.length > 0 || h != null || inc != null) {
+        const latest = dates.length ? dates[dates.length - 1] : null;
+        orphanNotes.push(`고아행 ${i + 1}: URL 없음 · H=${h ?? "빈칸"} · 최근=${latest ? `${latest.date} ${latest.value}` : "날짜값 없음"}`);
+      }
+      continue;
+    }
     rows.push({
       key: linkKeyOf(url),
       label: String(row[acctCol >= 0 ? acctCol : urlCol] ?? "").trim().slice(0, 20) || url.slice(-16),
-      h: rawCell(row[cumCol]),
-      inc: rawCell(row[incCol]),
+      h,
+      inc,
       dates,
     });
   }
@@ -207,7 +216,7 @@ async function handler(req: NextRequest) {
     }
   }
 
-  const result = auditRows(rows, posts, kdate);
+  const result = auditRows(rows, posts, kdate, orphanNotes);
   const { text, healthy } = formatAuditMessage(result);
   const alreadyReported = await hasTodayReport(supabase, kdate);
   if (alreadyReported != null && shouldSkipFormulaAuditReport({ alreadyReported, force })) {
@@ -238,6 +247,7 @@ async function handler(req: NextRequest) {
       incMismatch: result.inc.mismatch,
       incBlankExpected: result.inc.blankExpected,
       stale: result.stale,
+      orphanRows: result.orphanRows,
     });
   }
 

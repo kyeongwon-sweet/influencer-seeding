@@ -55,6 +55,15 @@ test("오류셀(#REF!)은 즉시 이상으로 집계·보고", () => {
   assert.match(m.text, /H 오류셀 1/);
 });
 
+test("URL 없이 조회수만 남은 고아 행은 행번호와 함께 즉시 이상", () => {
+  const r = auditRows([], new Map(), TODAY, ["고아행 1877: URL 없음 · H=1923 · 최근=2026-08-07 1923"]);
+  assert.equal(r.orphanRows, 1);
+  const m = formatAuditMessage(r);
+  assert.equal(m.healthy, false);
+  assert.match(m.text, /고아행 1/);
+  assert.match(m.text, /1877/);
+});
+
 test("데이터 있는데 H 빈칸 = 이상 / 수동 보존(값≠MAX)은 허용 집계", () => {
   const rows = [
     row({ key: "ig:empty", h: null, dates: [{ date: "2026-07-29", value: 50 }] }),

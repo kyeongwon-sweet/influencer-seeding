@@ -81,7 +81,7 @@ export function postIdentityKey(url: string): string | null {
 
     if (host.includes("tiktok.com")) {
       const m = u.pathname.match(/\/(?:video|photo)\/(\d+)/);
-      if (m) return `tt:${m[1]}`;
+      if (m) return isValidTikTokSnowflake(m[1]) ? `tt:${m[1]}` : null;
     }
 
     if (host === "youtu.be" || host.endsWith("youtube.com")) {
@@ -107,6 +107,25 @@ export function postIdentityKey(url: string): string | null {
  * 서브도메인은 `*`(0개 이상) — 네이버 클립이 m.blog.naver.com처럼 2단계라 필요. 도메인 뒤 `/` 앵커로 evil-naver.com 등은 차단됨.
  */
 export const ALLOWED_POST_URL_RE = /^https:\/\/([a-z0-9-]+\.)*(instagram\.com|youtube\.com|youtu\.be|tiktok\.com|facebook\.com|threads\.com|threads\.net|x\.com|twitter\.com|t\.co|kakao\.com|naver\.com)\//i;
+
+// TikTok 게시물 ID는 unsigned 64-bit snowflake다. 자릿수만 19로 고정하면 미래의
+// 정상 20자리 ID까지 막으므로 uint64 최댓값과 문자열로 비교한다(BigInt 없는 GAS와 동일 규칙).
+const MAX_TIKTOK_SNOWFLAKE = "18446744073709551615";
+
+export function isValidTikTokSnowflake(id: string): boolean {
+  if (!/^\d+$/.test(id)) return false;
+  const normalized = id.replace(/^0+/, "") || "0";
+  return normalized.length < MAX_TIKTOK_SNOWFLAKE.length ||
+    (normalized.length === MAX_TIKTOK_SNOWFLAKE.length && normalized <= MAX_TIKTOK_SNOWFLAKE);
+}
+
+/** TikTok video/photo URL인데 게시물 ID가 uint64 범위를 벗어나면 잘못 붙인 URL로 판정한다. */
+export function isInvalidTikTokPostUrl(url: string): boolean {
+  const raw = String(url || "");
+  if (!/tiktok\.com/i.test(raw) && !/^tt:/i.test(raw)) return false;
+  const match = raw.match(/\/(?:video|photo)\/(\d+)/i) ?? raw.match(/^tt:(\d+)$/i);
+  return Boolean(match && !isValidTikTokSnowflake(match[1]));
+}
 
 /**
  * Instagram URL이지만 특정 게시물 shortcode가 없는 프로필·목록 URL인지 판정한다.

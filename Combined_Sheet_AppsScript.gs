@@ -74,6 +74,23 @@ const FIELD_BY_HEADER = {
 // 사이트가 허용하는 URL (인스타 / 유튜브 / 틱톡 / 페이스북 / 스레드 / X(트위터) / 카카오 숏폼 / 네이버 클립, 다단계 서브도메인 포함). 서버 필터와 동일.
 const ALLOWED_URL_RE = /^https:\/\/([a-z0-9-]+\.)*(instagram\.com|youtube\.com|youtu\.be|tiktok\.com|facebook\.com|threads\.com|threads\.net|x\.com|twitter\.com|t\.co|kakao\.com|naver\.com)\//i;
 
+// TikTok video/photo ID는 uint64 snowflake. 잘못 붙은 20자리 숫자가 별도 게시물로 등록돼
+// DB→시트에서 조회수만 남은 고아 행을 만든 사고(2026-08-07)를 모든 시트 경로에서 차단한다.
+const MAX_TIKTOK_SNOWFLAKE_ = "18446744073709551615";
+function isValidTikTokSnowflake_(id) {
+  var s = String(id || "");
+  if (!/^\d+$/.test(s)) return false;
+  s = s.replace(/^0+/, "") || "0";
+  return s.length < MAX_TIKTOK_SNOWFLAKE_.length ||
+    (s.length === MAX_TIKTOK_SNOWFLAKE_.length && s <= MAX_TIKTOK_SNOWFLAKE_);
+}
+function isInvalidTikTokPostUrl_(url) {
+  var raw = String(url || "");
+  if (!/tiktok\.com/i.test(raw) && !/^tt:/i.test(raw)) return false;
+  var m = raw.match(/\/(?:video|photo)\/(\d+)/i) || raw.match(/^tt:(\d+)$/i);
+  return !!(m && !isValidTikTokSnowflake_(m[1]));
+}
+
 // 필드 → 표시용 컬럼명 (빈칸 검사 보고용)
 const FIELD_LABEL = {
   posted_at: "업로드일", url: "게시물URL", account_name: "채널명", content_summary: "캡션",
@@ -310,6 +327,7 @@ function collectRows_(onlyNew) {
 
     if (!ALLOWED_URL_RE.test(rawUrl)) { skipped++; return; } // 지원 안 되는 URL
     if (/instagram\.com/i.test(rawUrl) && !/\/(p|reels|reel|tv)\/[A-Za-z0-9_-]+/i.test(rawUrl)) { skipped++; return; }
+    if (isInvalidTikTokPostUrl_(rawUrl)) { skipped++; return; }
 
     const postedAt = fieldCols.posted_at ? toDateStr_(row[fieldCols.posted_at - 1]) : null;
     if (postedAt && postedAt > today) { future++; return; } // 업로드일이 오늘 이후 → 아직 게시 전, 제외
@@ -358,7 +376,10 @@ function linkKey_(u) {
   // stats-for-sheet may already return canonical keys like ig:<shortcode>, yt:<videoId>, tt:<videoId>.
   // Preserve ID case; IG/YouTube IDs are case-sensitive, and lowercasing breaks sheet row matching.
   var canonical = u.match(/^(ig|yt|tt):(.+)$/i);
-  if (canonical) return canonical[1].toLowerCase() + ":" + canonical[2];
+  if (canonical) {
+    if (canonical[1].toLowerCase() === "tt" && !isValidTikTokSnowflake_(canonical[2])) return "";
+    return canonical[1].toLowerCase() + ":" + canonical[2];
+  }
   // /p/·/reel/ 앞에 계정명이 낀 형태(instagram.com/<user>/p/<code>/)도 인식 — 서버 normalizeUrl과 동일.
   // (계정명 무시하고 경로 어디에 있든 /p|reel|reels|tv/<code>를 shortcode로. 2026-07-08 anavocado 중복 사례)
   var ig = u.match(/instagram\.com\/(?:[^/?#]+\/)*(?:p|reels|reel|tv)\/([A-Za-z0-9_-]+)/i);
@@ -371,7 +392,7 @@ function linkKey_(u) {
   if (yt) return "yt:" + yt[1];
   var tt = u.match(/tiktok\.com\/(?:.*\/)?(?:video|photo)\/(\d+)/i)
         || u.match(/\/(?:video|photo)\/(\d+)/i);
-  if (tt) return "tt:" + tt[1];
+  if (tt) return isValidTikTokSnowflake_(tt[1]) ? "tt:" + tt[1] : "";
   return urlKey_(u);
 }
 
@@ -681,7 +702,8 @@ function pullFromDB() {
       const urls = sheet.getRange(CONFIG.DATA_START_ROW, urlCol, lastRow - CONFIG.DATA_START_ROW + 1, 1).getValues();
       urls.forEach((r, i) => {
         const u = String(r[0] || "").trim();
-        if (u) rowByKey[linkKey_(u)] = CONFIG.DATA_START_ROW + i;   // shortcode/영상ID 기준 — /p/·/reel/ 등 경로만 달라도 같은 글로 인식
+        const key = u ? linkKey_(u) : "";
+        if (key) rowByKey[key] = CONFIG.DATA_START_ROW + i;   // shortcode/영상ID 기준 — /p/·/reel/ 등 경로만 달라도 같은 글로 인식
       });
     }
 
@@ -693,10 +715,15 @@ function pullFromDB() {
     const _pfN = (lastRow >= CONFIG.DATA_START_ROW) ? (lastRow - CONFIG.DATA_START_ROW + 1) : 0;
     const _pfBlock = _pfN > 0 ? sheet.getRange(CONFIG.DATA_START_ROW, 1, _pfN, sheet.getLastColumn()).getValues() : [];
 
-    let added = 0, filled = 0;
+    let added = 0, filled = 0, rejectedInvalid = 0;
+    const pendingRows = [];
+    const pendingKeys = {};
+    const lastCol = sheet.getLastColumn();
     posts.forEach(p => {
-      const key = linkKey_(String(p.url || ""));   // 시트 인덱스와 동일 기준 — DB /p/ ↔ 시트 /reel/ 매칭되어 재추가 안 됨
-      if (!key) return;
+      const rawUrl = String(p.url || "").trim();
+      if (isInvalidTikTokPostUrl_(rawUrl)) { rejectedInvalid++; return; }
+      const key = linkKey_(rawUrl);   // 시트 인덱스와 동일 기준 — DB /p/ ↔ 시트 /reel/ 매칭되어 재추가 안 됨
+      if (!key || pendingKeys[key]) return;
       if (rowByKey[key]) {
         // 기존 행 — 빈 칸만 DB값으로 채움(수동 편집 보존)
         const rowNum = rowByKey[key];
@@ -709,22 +736,44 @@ function pullFromDB() {
           if (String(_pfCur == null ? "" : _pfCur).trim() === "") { cell.setValue(val); if (_pfBi >= 0 && _pfBi < _pfBlock.length) _pfBlock[_pfBi][_pfCi] = val; filled++; }
         });
       } else {
-        // 신규 — 새 행에 메타 셀만 기록(조회수·등록상태 열은 그대로 비워둠 → 다른 열 안 건드림)
-        const targetRow = sheet.getLastRow() + 1;
-        sheet.getRange(targetRow, urlCol).setValue(p.url);
+        // 신규 글은 URL→메타를 셀별로 쓰지 않고 한 행 전체를 원자적으로 기록한다.
+        // 중간 실패/동시 정렬로 URL만 사라지고 날짜값만 남는 고아 행을 만들지 않는다.
+        const newRow = Array(lastCol).fill("");
+        newRow[urlCol - 1] = rawUrl;
         fillFields.forEach(f => {
           if (!fieldCols[f]) return;
           const val = fmtVal_(f, p[f]);
-          if (val !== "") sheet.getRange(targetRow, fieldCols[f]).setValue(val);
+          if (val !== "") newRow[fieldCols[f] - 1] = val;
         });
-        rowByKey[key] = targetRow;
-        added++;
+        pendingRows.push({ key: key, url: rawUrl, values: newRow });
+        pendingKeys[key] = true;
       }
     });
 
-    if (added > 0) ensureNewRowsMetricFormulas_(sheet, lastRow + 1, sheet.getLastRow());
+    if (pendingRows.length > 0) {
+      assertRowCountStable_(sheet, lastRow, "pullFromDB append");
+      const startRow = lastRow + 1;
+      const appendRange = sheet.getRange(startRow, 1, pendingRows.length, lastCol);
+      appendRange.setValues(pendingRows.map(x => x.values));
+      SpreadsheetApp.flush();
 
-    safeAlert_(`⬇️ DB→시트 반영 완료\n• 신규 행 추가: ${added}건\n• 기존 행 빈칸 채움: ${filled}건`);
+      // 쓰기 직후 URL-key를 다시 확인한다. 하나라도 어긋나면 방금 쓴 범위를 지우고 실패 처리해
+      // 메타와 조회수의 행 분리를 차단한다(문서락 안에서 실행돼 다른 쓰기와 섞이지 않음).
+      const writtenUrls = sheet.getRange(startRow, urlCol, pendingRows.length, 1).getValues();
+      const mismatches = [];
+      for (let i = 0; i < pendingRows.length; i++) {
+        if (linkKey_(String(writtenUrls[i][0] || "")) !== pendingRows[i].key) mismatches.push(startRow + i);
+      }
+      if (mismatches.length > 0) {
+        appendRange.clearContent();
+        throw new Error("pullFromDB 신규 행 URL 검증 실패 — 롤백 행: " + mismatches.join(", "));
+      }
+      added = pendingRows.length;
+      ensureNewRowsMetricFormulas_(sheet, startRow, startRow + added - 1);
+    }
+
+    safeAlert_(`⬇️ DB→시트 반영 완료\n• 신규 행 추가: ${added}건\n• 기존 행 빈칸 채움: ${filled}건` +
+      (rejectedInvalid ? `\n• 잘못된 TikTok ID 차단: ${rejectedInvalid}건` : ""));
     return true;
   } catch (e) {
     safeAlert_("❌ DB→시트 반영 오류\n" + e.message);
@@ -2282,6 +2331,7 @@ function auditLinkedSheetFormulas_() {
       cumulative_ref_errors: 0,
       increment_ref_errors: 0,
       cumulative_value_increment_blank: 0,
+      orphan_metric_rows: 0,
     };
     Logger.log("linked_sheet_formula_audit " + JSON.stringify(emptyResult));
     return emptyResult;
@@ -2297,6 +2347,12 @@ function auditLinkedSheetFormulas_() {
   const cumulativeFormulas = sheet.getRange(CONFIG.DATA_START_ROW, cumulativeCol, n, 1).getFormulas();
   const incrementValues = sheet.getRange(CONFIG.DATA_START_ROW, incrementCol, n, 1).getDisplayValues();
   const incrementFormulas = sheet.getRange(CONFIG.DATA_START_ROW, incrementCol, n, 1).getFormulas();
+  const metricCols = metricDateColumns_(sheet);
+  const firstMetricCol = metricCols.length ? Math.min.apply(null, metricCols.map(x => x.col)) : null;
+  const lastMetricCol = metricCols.length ? Math.max.apply(null, metricCols.map(x => x.col)) : null;
+  const metricValues = firstMetricCol
+    ? sheet.getRange(CONFIG.DATA_START_ROW, firstMetricCol, n, lastMetricCol - firstMetricCol + 1).getValues()
+    : Array(n).fill([]);
 
   const samples = [];
   const result = {
@@ -2306,18 +2362,26 @@ function auditLinkedSheetFormulas_() {
     cumulative_ref_errors: 0,
     increment_ref_errors: 0,
     cumulative_value_increment_blank: 0,
+    orphan_metric_rows: 0,
     samples: samples,
   };
 
   for (let i = 0; i < n; i++) {
     const url = String(urls[i][0] || "").trim();
-    if (!url) continue;
-    result.url_rows++;
     const row = CONFIG.DATA_START_ROW + i;
     const h = String(cumulativeValues[i][0] || "").trim();
     const hFormula = String(cumulativeFormulas[i][0] || "");
     const inc = String(incrementValues[i][0] || "").trim();
     const incFormula = String(incrementFormulas[i][0] || "");
+    if (!url) {
+      const hasMetric = (metricValues[i] || []).some(v => typeof v === "number" && v > 0);
+      if (h || inc || hasMetric) {
+        result.orphan_metric_rows++;
+        if (samples.length < 8) samples.push("row " + row + " orphan: URL blank, H=" + (h || "blank") + ", I=" + (inc || "blank"));
+      }
+      continue;
+    }
+    result.url_rows++;
     if (!h && !hFormula) {
       result.cumulative_blank_no_formula++;
       if (samples.length < 8) samples.push("H" + row + " blank/no-formula " + url);
@@ -2351,6 +2415,7 @@ function auditLinkedSheetFormulas() {
     "H #REF: " + result.cumulative_ref_errors + "\n" +
     "I #REF: " + result.increment_ref_errors + "\n" +
     "H value + I blank: " + result.cumulative_value_increment_blank + "\n" +
+    "URL blank + metric orphan rows: " + result.orphan_metric_rows + "\n" +
     (result.samples && result.samples.length ? "\nSamples:\n" + result.samples.join("\n") : "")
   );
   return result;
