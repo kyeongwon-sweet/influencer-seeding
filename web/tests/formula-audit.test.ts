@@ -116,11 +116,12 @@ test("신규 첫측정: 누적값 있는데 증분 빈칸 = blankExpected로 분
 
 test("두 기대값 어느 쪽과도 다르면 불일치로 보고", () => {
   const rows = [row({
-    key: "ig:bad", inc: 7777,
+    key: "ig:bad", sourceRow: 432, h: 300, inc: 7777,
     dates: [{ date: "2026-07-28", value: 200 }, { date: "2026-07-29", value: 300 }],
   })];
   const posts = new Map([["ig:bad", post({ "2026-07-28": 200, "2026-07-29": 300 })]]);
   const r = auditRows(rows, posts, TODAY);
   assert.equal(r.inc.mismatch, 1);
   assert.match(formatAuditMessage(r).text, /I 오류셀 0·불일치 1/);
+  assert.match(r.anomalies[0], /ig:bad · 행 432/);
 });

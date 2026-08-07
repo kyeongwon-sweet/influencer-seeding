@@ -38,6 +38,7 @@ function shiftDate(day: string, delta: number): string {
 export type SheetAuditRow = {
   key: string;             // postIdentityKey
   label: string;           // 채널명 등 표시용
+  sourceRow?: number;      // 연동시트 실제 행 번호(수술적 정정용)
   h: number | string | null;
   inc: number | string | null;
   dates: Array<{ date: string; value: number }>; // 양수 날짜값(오름차순)
@@ -230,7 +231,8 @@ export function auditRows(
     }
     if (matches(expSheet) || matches(expDb)) { res.inc.ok += 1; continue; }
     res.inc.mismatch += 1;
-    note(`I불일치 ${row.label}: 값=${got ?? "빈칸"} 기대(시트)=${expSheet ?? "빈칸"} 기대(DB)=${expDb === undefined ? "?" : expDb ?? "빈칸"}`);
+    const where = row.sourceRow ? ` (${row.key} · 행 ${row.sourceRow})` : ` (${row.key})`;
+    note(`I불일치 ${row.label}${where}: 값=${got ?? "빈칸"} 기대(시트)=${expSheet ?? "빈칸"} 기대(DB)=${expDb === undefined ? "?" : expDb ?? "빈칸"}`);
   }
   return res;
 }

@@ -161,6 +161,7 @@ async function handler(req: NextRequest) {
     rows.push({
       key: linkKeyOf(url),
       label: String(row[acctCol >= 0 ? acctCol : urlCol] ?? "").trim().slice(0, 20) || url.slice(-16),
+      sourceRow: i + 1,
       h,
       inc,
       dates,
