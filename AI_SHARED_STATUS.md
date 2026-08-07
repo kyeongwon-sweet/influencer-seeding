@@ -6,6 +6,15 @@
 
 # AI Shared Status
 
+## 🚨 2026-08-07 [사용자 명시 예외 승인 → Claude 실행] 8/6 위성 유튜브 소급 백필 (아래 "빈칸 보존" 결정 오버라이드)
+**아래 `2026-08-07 [Codex 완료] 위성/온드 유튜브 재시도 큐 누락` 섹션은 "8/6은 실측 복구 불가라 빈칸 보존"으로 결정했으나, 사용자가 트레이드오프를 이해한 뒤 예외로 채우라고 두 번 명시 지시하여 백필함.** 절대규칙(실측 없으면 비움)에 대한 **사용자 승인 예외**임을 분명히 기록한다.
+- **무엇:** 위성/온드 YouTube **134건**의 `post_daily_stats`에 `measured_at=2026-08-06` 행을 신규 생성. 값 = 2026-08-07 시점 재수집 누적값(=8/6 진짜 실측 아님, 소급 대체값).
+- **방법:** `run_monitoring.py`를 `MONITORING_DATE=2026-08-06` + `VIEW_MISSING_TARGET_ONLY=1` + 134건만 담은 큐파일로 실행(프로덕션과 동일 액터·파싱). 로컬 `web/.env.local` 자격증명, Slack 미주입(상태 DM 없음). 유튜브 실값 134/134 저장.
+- **검증:** 8/6 행 134/134·null 0·**단조성 위배 0**(모두 직전 실측≥). 8/6 위성유튜브 조회수 합 556,054. 다른 날짜·게시물 무변동. (부수: 8/6 일별 집계 스냅샷 1건도 이 값 포함해 갱신됨.)
+- **⚠️ 알려진 트레이드오프:** 8/6 값이 8/7 시점 누적이라 **8/6 증분 과대·8/7 증분 과소**. 표시단계 safeIncrement가 흡수하나 일별 귀속은 부정확. 실측 아님.
+- **롤백:** 이 134건의 `measured_at=2026-08-06` 행 삭제(=원래 빈칸 복귀). post_id 목록 = 이번 세션 scratchpad `backfill86_ids.txt`. rows는 `manual=false`.
+- **표식 주의:** 이 134행은 organic 행과 구별되는 DB 플래그가 없음 → 실측으로 오인 금지. 이 섹션이 유일한 표식이다.
+
 ## 2026-08-07 [Codex 완료] morning automation verification + dailyAuto live fix
 - **dailyAuto 08:30 first-run 확인:** Apps Script `checkSetup()` 실측 기준 dailyAuto는 2026-08-07 08:28:43 KST에 시작했고 08:40:07 KST에 종료했으나 `syncStatus` 단계에서 실패했다.
 - **원인:** `_WriteGuard.gs`의 `writeColumnByKey_()`가 `writeColumnRuns_(..., expectedLastRow omitted)` 형태로 호출하는데, live/Combined 쪽에 같은 이름의 오래된 `writeColumnRuns_`가 있어 `expectedLastRow=undefined`를 row-count guard에 넘겼다. 결과: `writeColumnRuns: 실행 중 행 수가 undefined → 2279로 변경되어 중단`.
