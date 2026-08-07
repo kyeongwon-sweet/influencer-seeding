@@ -15,12 +15,17 @@
   2. **근본원인 규명**: 왜 신규 배너 cost가 syncAll로 안 들어왔나(신규행 매칭·URL키 /p/↔/reel/·타이밍). 재발 시 위 가드 경고로 감지되지만 데이터는 계속 비므로 동기화 경로를 고쳐야 함.
 - **잘못 나간 8/6 슬랙**: 영구 삭제는 Claude 불가(정책). cost 동기화 후 정정본 재발송 또는 그 스레드 정정 댓글(발송은 사용자 승인) 권장.
 
-## 🔴 2026-08-07 [사용자 지시 → Codex 실행 요청] 8/6 위성유튜브 소급백필 134건 **삭제**(빈칸 복구)
-**사용자가 "예외로 채운 데이터를 모두 삭제"라고 지시.** 위 `[사용자 명시 예외 승인] 8/6 위성 유튜브 소급 백필`(8/7 누적값을 8/6에 기입) 건을 **롤백**한다. 사용자가 8/6 위성채널 값이 이상하다고 확인 → 실측 아닌 소급값이므로 삭제해 원래 빈칸으로 되돌림(절대규칙 "실측 없으면 비움" 복귀). **Claude는 로컬 Supabase creds 없어 직접 삭제 불가 → Codex 실행.**
-- **삭제 대상(정확히):** `post_daily_stats` 에서 `measured_at='2026-08-06'` AND `post_id IN (backfill86_ids.txt 134건)` AND `manual=false` — 그 백필 항목이 문서화한 롤백 경로 그대로(위성/온드 YouTube 134건, 8/6 누적합 556,054).
-- **⛔ 건드리면 안 되는 것:** 8/6 위성 **틱톡** 정상수집 170건, IG 무상시딩 재수집 18건(`ba8d9ce` 큐수정 후 정상 재시도분), 그 외 08-06 데이터. **오직 backfill86_ids.txt 134건만.**
-- **부수:** 백필 때 갱신됐던 **8/6 일별 집계 스냅샷**도 삭제 후 재계산/갱신 필요(그 값 556,054 포함돼 있었음).
-- **검증·회신:** 삭제 건수(=134 예상) · 8/6 위성유튜브 빈칸 복귀 · 다른 08-06 행 무변동 · 8/6 집계 재계산 반영. 백업(원 134행)은 삭제 전 확보.
+## ✅ 2026-08-07 [Codex 완료] 8/6 위성·온드 YouTube 소급 백필 134건 롤백
+- **삭제 대상:** `measured_at=2026-08-06` + 문서화된 위성·온드 YouTube 134개 post_id + `manual=false`를 모두 만족한 `post_daily_stats` 134행만 삭제했다. 삭제 전 합계는 556,054였다.
+- **하드 가드:** 대상 수 134·합계 556,054·YouTube URL·위성/온드 분류·post_id 유일성을 다시 검증하고 하나라도 다르면 중단하도록 `scripts/rollback_backfill86.py`로 실행했다.
+- **DB 백업:** `scratchpad/backfill86_rollback_backup_20260807T054426Z.json`, 대상 ID 목록 `scratchpad/backfill86_ids_reconstructed_20260807T054426Z.txt`.
+- **DB 무변경 검증:** 8/6 전체 행은 `786→652`로 정확히 134행 감소했고, 남은 652행은 선택 필드가 전부 동일했다. 8/6 위성 TikTok 170행과 IG 무상시딩 28행(인계문에 명시된 재수집 18건 포함)도 전부 무변경이다.
+- **집계 스냅샷 재계산:** `daily_view_snapshot(2026-08-06)`을 `total_play 86,343,424→86,316,573`, `total_likes 609,871→609,678`, `total_comments 7,161→7,157`, `post_count 1,841→1,836`으로 재산출했다. 이는 일별 단순합이 아니라 운영 `_snapshot_totals`와 같은 게시물별 최신/최대 규칙의 결과다.
+- **연동 시트 복구:** 라이브 Apps Script 임시 수술 함수가 URL의 YouTube video id와 삭제 전 값을 모두 대조한 뒤 8/6 열(97번째 날짜열)의 정확한 134칸만 비웠다. 실행 로그는 `cleared=134`, `nonTargetChanges=0`, `remaining=0`; 숨김 백업 시트는 `_codex_backfill86_rollback_20260807`이다. 이어서 누적·증분을 재계산했고 실행은 정상 완료됐다.
+- **임시 코드 정리:** 실행용 `rollback_backfill86_sheet_temp.gs`는 라이브에서 삭제했다. 영구 기능으로 남기지 않았다.
+- **수식 감사:** 롤백 직후 `formula-audit.yml` 실행 `31152049335`가 HTTP 200·`healthy=true`로 성공했다. 1,873행 기준 누적 H `errorCells=0`, `emptyButData=0`; 증분 I `errorCells=0`, `mismatch=0`; 이상치 0·값 정체 0이다.
+- **배포 경로 재발방지:** 비대화형 `clasp push`가 실제 push를 건너뛰어도 검증이 통과할 수 있던 구멍을 발견했다. 배포 스크립트를 `clasp push --force`로 고정하고, push 후 검증 전 `dist/apps-script`를 완전히 지운 뒤 fresh pull하도록 수정했다. 임시 파일이 라이브에 없으면 검증도 반드시 실패한다.
+
 ## 2026-08-07 [Codex 완료] 코드 리뷰 보안·품질 게이트 정리
 - **Admin API 보강:** `web/app/api/admin/delete-date-stats/route.ts`와 `web/app/api/admin/normalize-urls/route.ts`를 Clerk 로그인만 보던 구조에서 `getAdminEmail()` allowlist 확인으로 강화했다. `delete-date-stats`는 `YYYY-MM-DD` 형식만 받는다.
 - **URL 정규화 안전화:** `normalize-urls`의 `GET`은 dry-run 전용으로 바꾸고, 실제 DB 갱신은 `POST`에서 `apply:true` 또는 `dry_run:false`일 때만 실행되게 했다. URL이 비어 있는 행도 터지지 않고 건너뛴다.

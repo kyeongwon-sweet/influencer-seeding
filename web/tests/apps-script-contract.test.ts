@@ -420,10 +420,13 @@ test("Apps Script clasp deploy path is staged and guarded", () => {
   assert.match(deploy, /SEQUENCE\(1,COLUMNS\(rng\),COLUMN\(/);
   assert.match(deploy, /Refusing clasp push/);
   assert.match(deploy, /runClasp\(\["pull"\]\)/);
+  assert.match(deploy, /runClasp\(\["push", "--force"\]\)/);
+  assert.match(deploy, /rmSync\(distDir, \{ recursive: true, force: true \}\);[\s\S]*?runClasp\(\["pull"\]\);[\s\S]*?verifyDistMatchesSource\("live pull"\)/);
   assert.match(deploy, /verifyDistMatchesSource\("live pull"\)/);
   assert.match(deploy, /AI [^"]+\.js/);
   assert.match(deploy, /_WriteGuard\.js/);
   assert.doesNotMatch(deploy, /"Code\.gs"/);
+  assert.doesNotMatch(deploy, /rollback_backfill86_sheet_temp/);
 });
 
 test("dailyAuto retries only pull/import/export once after seven minutes", () => {
