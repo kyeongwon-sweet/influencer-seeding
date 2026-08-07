@@ -198,6 +198,25 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=0, help="Optional max rows to update, for staged repairs.")
     args = parser.parse_args()
 
+    # 🔒 자동 수리 잠금 (2026-08-07 사용자·Codex 합의)
+    #
+    # 왜: 08-06 실행이 137건의 planner를 지웠는데, 오늘 기준으로 보면 그중 22건은
+    #     지우지 말았어야 할 값이었다(장식 접두·비광고성 오탐). 판정 기준이 방금 두 번 바뀌었으니
+    #     **새 규칙이 운영에서 실측될 때까지 삭제를 잠근다.** 감사(읽기)는 계속 돈다.
+    #
+    # 합의만으로는 안 지켜진다 — 워크플로 UI에서 apply=true를 누르면 그대로 실행되기 때문에
+    # 스크립트에서 막는다. 풀 때는 환경변수 하나만 주면 된다:
+    #     ALLOW_INVALID_FIELD_REPAIR=1
+    if args.apply and os.environ.get("ALLOW_INVALID_FIELD_REPAIR", "").strip() not in ("1", "true", "yes"):
+        raise SystemExit(
+            "[INVALID_CREATOR_FIELDS_LOCKED] --apply 는 현재 잠겨 있습니다.\n"
+            "  이유: 2026-08-06 실행에서 오탐 22건이 함께 삭제됨(장식 접두·비광고성). "
+            "판정 기준을 2026-08-07에 고쳤고, 운영 실측 전까지 자동 수리를 중단하기로 합의했습니다.\n"
+            "  지금 필요한 건: apply=false 로 감사만 돌려 planner_issue=0 을 확인하는 것입니다.\n"
+            "  정말 수리해야 한다면 ALLOW_INVALID_FIELD_REPAIR=1 을 설정하고, "
+            "실행 전 scratchpad 백업과 복구 계획을 먼저 확인하세요."
+        )
+
     url = os.environ.get("SUPABASE_URL") or os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
     key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if not url or not key:

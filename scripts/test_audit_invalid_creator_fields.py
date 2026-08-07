@@ -82,3 +82,38 @@ def test_empty_fields_are_not_issues():
 def test_project_name_is_used_when_asset_name_missing():
     # 구 데이터 호환: asset_name이 없으면 project_name을 소재명으로 본다.
     assert mod.build_issue(_row(project_name=AD_ASSET, planner="이재원")) is None
+
+
+def test_apply_is_locked_without_explicit_env(monkeypatch, capsys):
+    """🔒 자동 수리 잠금(2026-08-07 합의).
+
+    08-06 실행이 오탐 22건을 함께 지웠다. 판정 기준을 방금 고쳤으니
+    운영 실측 전까지 --apply 를 막는다. 합의만으로는 안 지켜지므로 코드로 잠근다.
+    """
+    import sys
+    monkeypatch.delenv("ALLOW_INVALID_FIELD_REPAIR", raising=False)
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "dummy")
+    monkeypatch.setattr(sys, "argv", ["audit_invalid_creator_fields.py", "--apply"])
+    try:
+        mod.main()
+    except SystemExit as e:
+        assert "LOCKED" in str(e), f"잠금 메시지가 나와야 한다: {e}"
+    else:
+        raise AssertionError("--apply 가 잠기지 않았다")
+
+
+def test_audit_only_run_is_not_blocked(monkeypatch):
+    """감사(읽기)는 계속 돌아야 한다 — 잠금이 감사까지 막으면 안 된다."""
+    import sys
+    monkeypatch.delenv("ALLOW_INVALID_FIELD_REPAIR", raising=False)
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "dummy")
+    monkeypatch.setattr(sys, "argv", ["audit_invalid_creator_fields.py"])
+    # 잠금 단계를 지나 DB 접속까지 가면 통과(네트워크 실패는 잠금과 무관).
+    try:
+        mod.main()
+    except SystemExit as e:
+        assert "LOCKED" not in str(e), "감사 전용 실행이 잠금에 걸리면 안 된다"
+    except Exception:
+        pass  # 가짜 DB 접속 실패는 정상
