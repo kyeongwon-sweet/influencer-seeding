@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "eslint app components lib middleware.ts tests --ext .js,.jsx,.ts,.tsx",
     "test": "node --test --experimental-strip-types \"tests/*.test.ts\"",
+    "apps-script:prepare": "node ../scripts/prepare_apps_script_deploy.mjs",
+    "apps-script:deploy": "node ../scripts/prepare_apps_script_deploy.mjs --push",
     "prepare": "cd .. && git config core.hooksPath .githooks || true"
   },
   "dependencies": {

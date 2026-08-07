@@ -1,10 +1,15 @@
 /**
  * 라라스윗 — 바이럴 배너 인사이트 문의 메시지 자동 생성
  *
- * 첨부 원본 `인사이트_문의_메시지_자동생성.gs`를 공유 Apps Script에 맞게 이식했다.
  * - 기존 프로젝트 전역 함수와 충돌하지 않도록 모든 이름을 insightInquiry*로 분리한다.
  * - 열 문자가 바뀌어도 동작하도록 헤더 이름으로 업로드일/URL/채널분류/업체명을 찾는다.
  * - onOpen()은 Combined_Sheet_AppsScript.gs 한 곳만 유지하고 addInsightInquiryMenu_()를 호출한다.
+ *
+ * 문의 규칙 (영업일 = 월~금에만 문의)
+ *   · 대상: 채널분류가 '바이럴(배너)'인 게시물만
+ *   · 기본: 업로드 다음날(D+1)부터 D+7까지, 그 중 평일에만 → 업로드 요일과 무관하게 5회
+ *   · 예외: 매일 문의가 어려운 업체는 CONFIG.VENDOR_RULES에 따로 규칙을 둔다
+ *   · 토·일 아침에는 메시지를 만들지 않는다
  */
 
 const INSIGHT_INQUIRY_CONFIG = Object.freeze({
@@ -16,7 +21,18 @@ const INSIGHT_INQUIRY_CONFIG = Object.freeze({
   WINDOW_DAYS: 7,
   TRIGGER_HOUR: 8,
   MESSAGE_INTRO: "안녕하세요! 오늘도 인사이트 요청드립니다 🙏\n"
-    + "아래 게시물 현재까지 누적 조회수 부탁드려요.",
+    + "아래 게시물 현재까지 누적 조회수/도달수 부탁드려요.",
+
+  /**
+   * 매일 문의가 어려운 업체의 예외 규칙. 여기 없는 업체는 기본 규칙(D+1~D+7 평일)을 따른다.
+   * 업체명은 시트의 업체명 값과 같아야 한다. (공백 차이는 무시하지만 글자는 같아야 함)
+   *   weekly  : 월~목 업로드 → 그 주 금요일 / 금·토·일 업로드 → 그 직후 월요일. 게시물당 1회.
+   *   offsets : 지정한 D+n에만 문의. 주말에 걸리면 다음 평일로 미루고, 같은 날로 겹치면 1회.
+   */
+  VENDOR_RULES: {
+    "루나앤코코": { type: "weekly" },
+    "굿띵투유": { type: "offsets", offsets: [1, 2, 7] },
+  },
 });
 
 function addInsightInquiryMenu_() {
@@ -118,10 +134,26 @@ function insightInquiryDiagnose() {
     if (groups === null) {
       report.push("  오늘은 주말이라 문의 대상을 계산하지 않습니다.");
     } else {
-      ["총행수", "날짜없음", "URL없음", "업체명없음", "채널분류_불일치", "날짜창_밖", "대상"]
+      insightInquiryTallyKeys_()
         .forEach(function (key) { report.push("  " + key + ": " + (stats[key] || 0)); });
       report.push("  → 업체 " + groups.length + "곳");
     }
+    report.push("");
+
+    // 업체명이 어긋나면 조용히 기본(매일) 규칙으로 처리되므로 여기서 반드시 드러나게 한다.
+    report.push("■ 업체별 예외 규칙");
+    const sheetVendors = insightInquiryListVendors_(source, columns);
+    Object.keys(INSIGHT_INQUIRY_CONFIG.VENDOR_RULES).forEach(function (name) {
+      const found = sheetVendors.some(function (vendor) {
+        return insightInquirySquash_(vendor) === insightInquirySquash_(name);
+      });
+      report.push("  " + (found ? "○" : "✗ 시트에 없는 이름!") + " 「" + name + "」 → "
+        + insightInquiryDescribeRule_(INSIGHT_INQUIRY_CONFIG.VENDOR_RULES[name]));
+    });
+    report.push("  (기본 규칙 적용 업체: " + sheetVendors.filter(function (vendor) {
+      return !insightInquiryGetVendorRule_(vendor);
+    }).join(", ") + ")");
+    report.push("  ※ ✗가 있으면 그 업체는 매일 문의로 처리됩니다. VENDOR_RULES의 업체명을 시트와 맞추세요.");
   }
 
   insightInquiryWriteReport_(ss, report);
@@ -190,8 +222,7 @@ function insightInquiryCollectGroups_(source, targetDate, stats, columns) {
   const targetDay = insightInquiryDayNumber_(targetDate);
   const byVendor = {};
   const tally = stats || {};
-  ["총행수", "날짜없음", "URL없음", "업체명없음", "채널분류_불일치", "날짜창_밖", "대상"]
-    .forEach(function (key) { tally[key] = tally[key] || 0; });
+  insightInquiryTallyKeys_().forEach(function (key) { tally[key] = tally[key] || 0; });
   tally["총행수"] = values.length;
 
   values.forEach(function (row) {
@@ -208,12 +239,13 @@ function insightInquiryCollectGroups_(source, targetDate, stats, columns) {
       return;
     }
 
-    const dayNumber = targetDay - insightInquiryDayNumber_(uploadDate);
-    if (dayNumber < 1 || dayNumber > INSIGHT_INQUIRY_CONFIG.WINDOW_DAYS) {
-      tally["날짜창_밖"]++;
+    // 오늘이 이 게시물의 문의일인지 (업체별 예외 규칙 우선, 없으면 기본 D+1~D+7)
+    if (!insightInquiryIsDueToday_(vendor, uploadDate, targetDate)) {
+      tally["오늘_문의일_아님"]++;
       return;
     }
     tally["대상"]++;
+    const dayNumber = targetDay - insightInquiryDayNumber_(uploadDate);
     if (!byVendor[vendor]) byVendor[vendor] = [];
     byVendor[vendor].push({ url: url, uploadDate: uploadDate, dayNumber: dayNumber });
   });
@@ -225,6 +257,74 @@ function insightInquiryCollectGroups_(source, targetDate, stats, columns) {
     };
   });
 }
+
+function insightInquiryTallyKeys_() {
+  return ["총행수", "날짜없음", "URL없음", "업체명없음", "채널분류_불일치", "오늘_문의일_아님", "대상"];
+}
+
+// ── 문의일 판정 ─────────────────────────────────────────────────────────────
+
+/** 업체명에 걸린 예외 규칙을 찾는다 (없으면 null) */
+function insightInquiryGetVendorRule_(vendor) {
+  const rules = INSIGHT_INQUIRY_CONFIG.VENDOR_RULES;
+  const key = insightInquirySquash_(vendor);
+  for (const name in rules) {
+    if (insightInquirySquash_(name) === key) return rules[name];
+  }
+  return null;
+}
+
+/** 오늘이 이 게시물을 문의할 날인가 (호출부에서 오늘이 평일임은 이미 확인됨) */
+function insightInquiryIsDueToday_(vendor, uploadDate, targetDate) {
+  const rule = insightInquiryGetVendorRule_(vendor);
+  const targetDay = insightInquiryDayNumber_(targetDate);
+
+  if (rule && rule.type === "weekly") {
+    return targetDay === insightInquiryDayNumber_(insightInquiryWeeklyTarget_(uploadDate));
+  }
+  if (rule && rule.type === "offsets") {
+    return rule.offsets.some(function (offset) {
+      const due = insightInquiryNextWeekday_(insightInquiryAddDays_(uploadDate, offset));
+      return targetDay === insightInquiryDayNumber_(due);
+    });
+  }
+  const dayNumber = targetDay - insightInquiryDayNumber_(uploadDate);
+  return dayNumber >= 1 && dayNumber <= INSIGHT_INQUIRY_CONFIG.WINDOW_DAYS;
+}
+
+/** weekly 규칙의 문의일: 월~목 업로드는 그 주 금요일, 금·토·일 업로드는 그 직후 월요일 */
+function insightInquiryWeeklyTarget_(uploadDate) {
+  const dayOfWeek = uploadDate.getDay();
+  const add = (dayOfWeek >= 1 && dayOfWeek <= 4) ? 5 - dayOfWeek
+    : (dayOfWeek === 5) ? 3
+      : (dayOfWeek === 6) ? 2
+        : 1;
+  return insightInquiryAddDays_(uploadDate, add);
+}
+
+/** 규칙 설명 문구 (진단 출력용) */
+function insightInquiryDescribeRule_(rule) {
+  if (rule.type === "weekly") return "월~목→그주 금요일 / 금·토·일→다음 월요일 (게시물당 1회)";
+  if (rule.type === "offsets") return "D+" + rule.offsets.join(" · D+") + " (주말은 다음 평일)";
+  return rule.type;
+}
+
+/** 시트에 실제로 있는 업체명 목록 (중복 제거) */
+function insightInquiryListVendors_(source, columns) {
+  const lastRow = source.getLastRow();
+  if (lastRow <= INSIGHT_INQUIRY_CONFIG.HEADER_ROW || !columns.vendor) return [];
+  const seen = {};
+  source.getRange(INSIGHT_INQUIRY_CONFIG.HEADER_ROW + 1, columns.vendor,
+    lastRow - INSIGHT_INQUIRY_CONFIG.HEADER_ROW, 1)
+    .getValues()
+    .forEach(function (row) {
+      const vendor = String(row[0] || "").trim();
+      if (vendor) seen[vendor] = true;
+    });
+  return Object.keys(seen).sort();
+}
+
+// ── 출력 ────────────────────────────────────────────────────────────────────
 
 function insightInquiryWriteOutput_(ss, targetDate, groups) {
   let output = ss.getSheetByName(INSIGHT_INQUIRY_CONFIG.OUTPUT_SHEET);
@@ -286,6 +386,8 @@ function insightInquiryWriteReport_(ss, lines) {
   ss.setActiveSheet(sheet);
 }
 
+// ── 트리거 ──────────────────────────────────────────────────────────────────
+
 function insightInquiryEnableDailyTrigger() {
   insightInquiryDisableDailyTrigger_(false);
   ScriptApp.newTrigger("insightInquiryBuildToday")
@@ -312,12 +414,26 @@ function insightInquiryDisableDailyTrigger_(showAlert) {
   if (showAlert) SpreadsheetApp.getUi().alert("인사이트 문의 자동생성 트리거 " + removed + "개를 제거했습니다.");
 }
 
+// ── 도우미 ──────────────────────────────────────────────────────────────────
+
 function insightInquiryNormalizeHeader_(value) {
   return String(value || "").replace(/\s+/g, "").toLowerCase();
 }
 
 function insightInquiryDayNumber_(dateValue) {
   return Math.floor(Date.UTC(dateValue.getFullYear(), dateValue.getMonth(), dateValue.getDate()) / 86400000);
+}
+
+function insightInquiryAddDays_(dateValue, days) {
+  return new Date(dateValue.getFullYear(), dateValue.getMonth(), dateValue.getDate() + days);
+}
+
+/** 주말이면 다음 평일(월요일)로 미룬 날짜 */
+function insightInquiryNextWeekday_(dateValue) {
+  const dayOfWeek = dateValue.getDay();
+  if (dayOfWeek === 6) return insightInquiryAddDays_(dateValue, 2);
+  if (dayOfWeek === 0) return insightInquiryAddDays_(dateValue, 1);
+  return dateValue;
 }
 
 function insightInquirySquash_(value) {

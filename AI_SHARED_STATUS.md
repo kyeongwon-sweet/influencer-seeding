@@ -6,6 +6,17 @@
 
 # AI Shared Status
 
+## 2026-08-07 [Codex 완료] Apps Script clasp 배포 경로 정본화
+- **목표:** 브라우저 수동 graft/stale 저장 사고를 막기 위해 production Apps Script 배포를 repo 기반 `clasp` 경로로 고정했다. 긴급 롤백 외에는 브라우저 전체 붙여넣기를 쓰지 않는다.
+- **대상:** `.clasp.json`은 script `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn`, root `dist/apps-script`를 가리킨다.
+- **라이브 구조 검증:** live Apps Script는 17파일 구조다. 배포 스크립트는 먼저 `clasp pull`로 라이브 전용 파일을 보존한 뒤 repo 소유 4파일만 덮고, push 후 다시 pull해서 live가 repo와 맞는지 검증한다.
+- **repo 소유 파일:** `Combined_Sheet_AppsScript.gs -> AI 트래킹 대시보드 연동.js`, `_WriteGuard.gs -> _WriteGuard.js`, `apps-script/인사이트_문의_메시지_자동생성.gs -> 인사이트_문의_메시지_자동생성.js`, `apps-script/appsscript.json -> appsscript.json`.
+- **소스 정합:** live의 최신 인사이트 문의 스크립트를 repo로 동기화했다. 업체별 문의 주기/마감일 로직이 다음 clasp 배포에서 유실되지 않는다.
+- **명령:** `npm run apps-script:prepare`는 dry-run staging, `npm run apps-script:deploy`는 `APPS_SCRIPT_ALLOW_PUSH=1` + `APPS_SCRIPT_EXPECTED_SCRIPT_ID` 확인 후 live push.
+- **실측:** live deploy가 `[APPS_SCRIPT_PUSH_VERIFIED] live Apps Script matches the staged repo source.`로 완료됐다.
+- **검증:** `npm run apps-script:prepare` pass, web tests `245/245` pass, `npx tsc --noEmit` pass.
+- **규칙:** production raw `clasp push` 금지, stale 브라우저 Apps Script 저장 금지, `dist/apps-script` 수동 편집 금지.
+
 ## 2026-08-07 [Codex 완료] GH_DISPATCH_TOKEN 장기 갱신 + 만료 워치독 배포
 - **토큰 교체:** GitHub fine-grained PAT `GH_DISPATCH_TOKEN_PROD_LONG_20260807` 발급 완료. 범위는 `kyeongwon-sweet/influencer-seeding` 1개 repo, 권한은 `Actions: Read and write` + `Metadata: Read-only`, 만료일은 **2027-08-07**.
 - **Vercel Production env:** `GH_DISPATCH_TOKEN`을 새 토큰으로 교체했고 `GH_DISPATCH_TOKEN_EXPIRES_AT=2027-08-07`, `OPS_GITHUB_TOKEN_EXPIRES_AT=never`, `GITHUB_TOKEN_EXPIRY_WARN_DAYS=30`을 추가했다.

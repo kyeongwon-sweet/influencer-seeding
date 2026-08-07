@@ -1464,7 +1464,7 @@ function exportStats() {
         // 백로그 첫 측정(게시 7일 초과)만 빈칸 — 스파이크 방지 규칙 유지(판정은 DB 측정일 기반).
         if (refs.length === 1 && postedAt) {
           const gapDays = (Date.parse(refs[0].date) - Date.parse(String(postedAt).slice(0, 10))) / 86400000;
-          if (gapDays > 7) { incFormulas.push(['=""']); continue; }  // 표시 빈칸이되 수식은 유지(복구 가능 칸 규약)
+          if (gapDays > 7) { incFormulas.push(['=""']); continue; }  // 표시 빈칸이되 수식 유지(복구 가능 칸 규약)
         }
         // V2(행-범위 수식, 2026-07-29): 기존 셀주소 목록(MAX({CE743,...}))은 참조한 날짜 '열'이
         // 삭제/삽입되면 #REF!로 전멸했다(7/27 저녁 실사고. 정렬 자체는 상대참조가 행을 따라감을
