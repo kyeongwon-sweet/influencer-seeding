@@ -21,6 +21,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/ops/schedule-heartbeat(.*)",         // 크로스 프로바이더 스케줄 하트비트(Apps Script/외부 핑, 자체 CRON_SECRET 검사)
   "/api/ops/collect-fallback(.*)",           // 자정수집 폴백(구글 트리거가 호출, 자체 CRON_SECRET 검사)
   "/api/ops/audit-fallback(.*)",             // 아침 수식감사 폴백(구글 트리거가 호출, 자체 CRON_SECRET 검사)
+  "/api/ops/ensure-daily-audits(.*)",        // 아침 감사 보장(구글 트리거가 호출, 자체 CRON_SECRET 검사)
   "/api/ops/linked-sheet-values(.*)",        // 비공개 연동시트 고정범위 읽기(자체 CRON_SECRET 검사)
   "/api/sponsored-posts/banner-reach-sync(.*)",
   // Vercel 크론 라우트 (각 라우트가 자체 CRON_SECRET 검사 → 미들웨어는 통과시킴)
