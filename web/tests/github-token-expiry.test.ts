@@ -29,6 +29,16 @@ test("long-lived token outside the warning window is quiet", () => {
   assert.deepEqual(findings, []);
 });
 
+test("no-expiration token marker is accepted for tokens that GitHub keeps open-ended", () => {
+  const findings = getGitHubTokenExpiryFindings({
+    GH_DISPATCH_TOKEN: "token",
+    GH_DISPATCH_TOKEN_EXPIRES_AT: "2027-08-07",
+    OPS_GITHUB_TOKEN: "ops-token",
+    OPS_GITHUB_TOKEN_EXPIRES_AT: "never",
+  }, NOW);
+  assert.deepEqual(findings, []);
+});
+
 test("expiring token is reported within the warning window", () => {
   const findings = getGitHubTokenExpiryFindings({
     GH_DISPATCH_TOKEN: "token",
@@ -66,4 +76,5 @@ test("expiry Slack message includes the env var operators must set", () => {
     GH_DISPATCH_TOKEN: "token",
   }, NOW));
   assert.match(msg, /GH_DISPATCH_TOKEN_EXPIRES_AT=YYYY-MM-DD/);
+  assert.match(msg, /or "never"/);
 });

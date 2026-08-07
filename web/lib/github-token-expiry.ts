@@ -39,6 +39,10 @@ function parseExpiry(value: string): Date | null {
   return Number.isFinite(d.getTime()) ? d : null;
 }
 
+function isNoExpirationMarker(value: string): boolean {
+  return ["never", "none", "no-expiration", "no_expiration"].includes(value.trim().toLowerCase());
+}
+
 function daysUntil(expiresAt: Date, now: Date): number {
   return Math.ceil((expiresAt.getTime() - now.getTime()) / 86_400_000);
 }
@@ -77,6 +81,10 @@ export function getGitHubTokenExpiryFindings(
         expiresAt: null,
         message: `${spec.token} has no ${spec.expiresAtEnv}; expiry cannot be monitored.`,
       });
+      continue;
+    }
+
+    if (isNoExpirationMarker(expiryValue)) {
       continue;
     }
 
@@ -123,7 +131,7 @@ export function formatGitHubTokenExpiryMessage(findings: TokenExpiryFinding[]): 
   const lines = findings.map((f) => {
     const when = f.expiresAt ? ` (${f.expiresAt.slice(0, 10)})` : "";
     const setup = f.severity === "missing_expiry"
-      ? ` Set ${f.expiresAtEnv}=YYYY-MM-DD after rotating the token.`
+      ? ` Set ${f.expiresAtEnv}=YYYY-MM-DD after rotating the token, or "never" for a no-expiration token.`
       : "";
     return `• ${f.token}: ${f.message}${when}${setup}`;
   });
