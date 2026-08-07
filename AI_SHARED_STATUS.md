@@ -6,6 +6,15 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-07 [Codex 완료] 바이럴 배너 cost 누락 재발방지 — dailyAuto 순서 수정
+- **근본원인:** `dailyAutoStageDefs_()`에서 `syncPricing`이 `importStats("daily_auto")`보다 뒤에 있었다. 신규 배너 행은 `syncPricing` 단계에서 시트 비용이 채워지는데, DB 반영(`importStats`)이 이미 끝난 뒤라 그날 DB `sponsored_posts.cost`가 null/0으로 남을 수 있었다.
+- **수정:** `Combined_Sheet_AppsScript.gs`에서 `syncPricing`을 `pullFromDB` 직후, `importStats` 직전으로 이동했다. 이제 매일 자동 실행은 `syncAll → pullFromDB → syncPricing → importStats → exportStats...` 순서라, 시트에 채워진 업체/비용이 같은 회차에 DB로 들어간다.
+- **회귀방지:** `web/tests/apps-script-contract.test.ts`에 `syncPricing < importStats < exportStats` 순서 계약 테스트를 추가했다.
+- **검증 도구:** `scripts/sync_banner_costs_from_sheet.py`와 수동 workflow `sync-banner-costs-from-sheet.yml`을 추가했다. 인증 경로로 연동시트와 DB를 읽고, 승인된 18개 배너의 남은 cost 쓰기 후보를 fail-close로 검증한다.
+- **실측:** workflow run `31153237666` dry-run(`apply=false`, `expected_count=0`) 성공. 18개 모두 시트/DB 매칭, 추가 후보 `0`. 16건은 이미 DB cost 존재, 잔여 2건은 시트 비용이 0/빈칸(`flower_words03`, `힐링하고 가세요`)이라 값을 지어넣지 않았다. 활성 바이럴 배너 cost blank/0 잔여 count도 이 2건으로 확인.
+- **라이브 반영:** `npm run apps-script:deploy`로 production Apps Script `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn`에 배포 완료. fresh pull 검증 `[APPS_SCRIPT_PUSH_VERIFIED] live Apps Script matches the staged repo source.`
+- **검증:** 로컬 `npm test` 247/247, `npx tsc --noEmit`, `npm run build`, `pytest scripts` 88/88, workflow lint 통과. GitHub Build Test run `31153227402` success.
+
 ## 2026-08-07 [Claude 완료] 바이럴 배너 cost 매핑 16건 DB 반영 (사용자 지시)
 - **사용자 지시**: "가격을 맵핑해. 가격이 연동시트에 들어와있어." → 시트 정본값으로 DB cost 채움.
 - **시트 읽기 방법 규명**: gviz는 공유필터로 대상행이 안 보였으나 **`/export?format=csv&gid=` 는 필터 무관 전체 1,875행 반환** → 18건 시트 cost 전부 확인(앞으로 전수 시트읽기는 이 경로 사용 권장).
