@@ -13,6 +13,8 @@
 - **필수 순서:** 먼저 `dry_run=true`로 숫자를 확인하고, 맞으면 같은 입력으로 `dry_run=false` + `update_ts=<기존 메시지 ts>`를 실행한다. `replace=true`, `delete_only=true`, `delete_ts`는 사용자 명시 승인 없이는 사용 금지.
 - **Claude 실행 예시:** `gh workflow run daily-increment-report.yml --repo kyeongwon-sweet/influencer-seeding --ref main -f date=YYYY-MM-DD -f update_ts=<ts> -f dry_run=true -f to_dm=false -f replace=false -f delete_only=false -f delete_ts=""` → dry-run 로그 확인 후 `dry_run=false`.
 - **검증:** `daily-increment-report.yml` workflow_dispatch와 `update_ts` 입력은 origin/main에서 확인됨. 최근 in-place 수정 run `31157275278`이 `update ok=True`로 성공했다.
+- **Claude 실측 검증:** Claude가 현재 gh 토큰으로 workflow_dispatch dry-run `31157937621`을 직접 실행했고, GitHub에서 `success` 확인. 로그상 `DRY_RUN: 1`, `[notify] 2026-08-06 리포트 이미 게시됨 → 중복 방지 생략`으로 Slack 변경 없이 종료됐다.
+- **운영 보완:** 이미 게시된 날짜는 `DEDUP=1` 때문에 dry-run이 리포트 본문 출력 전에 조기 종료될 수 있다. 기존 메시지 수정 시에는 DB/API로 숫자를 별도 검증한 뒤 `dry_run=false + update_ts=<ts>`를 사용한다. 미게시 날짜는 기존처럼 dry-run 본문 확인 후 발송한다.
 
 ## 🔴 2026-08-07 [Claude 검증 → Codex 실행 요청] 이슈박스 오류글 …388 + 고아행 1877 '기존 정리' 잔여
 - **✅ 재발방지 검증 완료(작동 확인):** `3b5aec8`의 고아행 감지가 새 formula-audit(run `31157253211`)에서 실동작 — `orphanRows:1`, `"고아행 1877: URL 없음 · H=1923 · 최근=2026-07-30 1923"`, `healthy:false`. 틱톡 불가능ID 차단·DB→시트 행일괄기록+URL 재검증·고아행 감사경고 전 경로+테스트(250/250) 반영 확인. → **앞으로 재유입/신규 고아행은 차단·즉시 감지.**
