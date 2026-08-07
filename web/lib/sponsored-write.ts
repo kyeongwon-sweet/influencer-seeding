@@ -7,6 +7,9 @@ import { startActorRun } from "@/lib/apify";
 import { accountNameForSponsoredWrite } from "@/lib/account-name-policy";
 import { notifyBot } from "@/lib/slack";
 import { lockedFieldDrift, formatLockedDrift, type LockedDrift } from "@/lib/locked-field-drift";
+import { tagCreatedBy } from "@/lib/created-by";
+
+export { tagCreatedBy };
 
 type Supabase = ReturnType<typeof getServerSupabase>;
 
@@ -151,6 +154,8 @@ export async function upsertSponsoredRows(
       .select("id");
     if (ie) return { error: `[신규생성] ${ie.message} | code=${ie.code ?? ""} | details=${ie.details ?? ""} | hint=${ie.hint ?? ""}` };
     created = (ins ?? []).length;
+    // 출처 라벨(sheet-bulk / csv-upload …) — 신규 행의 빈 칸만 채운다.
+    await tagCreatedBy(supabase, (ins ?? []).map((r: { id: string }) => r.id), source);
 
     // 🆕 등록 동기화 시 캡션·계정 메타데이터 즉시 수집 — 신규 IG '게시물' 중 캡션 없는 것만 Apify 1회 스크랩.
     // 등록 시점 조회수는 일자별 최종값이 아니므로 metadataOnly=1을 보내 post_daily_stats에 저장하지 않는다.

@@ -4,7 +4,7 @@ import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl, postIdentityKey, ALLOWED_POST_URL_RE } from "@/lib/url-utils";
 import { filterMonotonicStats, type GuardInput } from "@/lib/stats-guard";
 import { normalizeChannelType, isFreeChannel } from "@/app/monitoring/lib";
-import { resolveTikTokShortUrl } from "@/lib/sponsored-write";
+import { resolveTikTokShortUrl, tagCreatedBy } from "@/lib/sponsored-write";
 import { maxDateKST, todayKST } from "@/lib/dateRule";
 import { notifyBot } from "@/lib/slack";
 
@@ -188,6 +188,8 @@ export async function POST(req: NextRequest) {
       : supabase.from("sponsored_posts").upsert(createRows, { onConflict: "url", ignoreDuplicates: true });
     const { data: ins, error: ie } = await writeQuery.select("id, url");
     if (ie) return NextResponse.json({ error: ie.message }, { status: 500 });
+    // 출처 라벨 — 시트 조회수 임포트 중 DB에 없던 URL이라 여기서 생성된 행.
+    await tagCreatedBy(supabase, ((ins ?? []) as Array<{ id: string }>).map((r) => r.id), "sheet-stats-import");
     for (const row of (ins ?? []) as Array<{ id: string; url: string }>) {
       idByUrl.set(row.url, row.id);
       idByKey.set(postIdentityKey(row.url) ?? row.url, row.id);

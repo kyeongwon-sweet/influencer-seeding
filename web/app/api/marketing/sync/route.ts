@@ -4,6 +4,7 @@ import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl, isInstagramNonPostUrl } from "@/lib/url-utils";
 import { normalizeChannelType, isFreeChannel } from "@/app/monitoring/lib";
 import { isNonAdAsset, NON_AD_PRODUCT_NAME } from "@/lib/non-ad-asset";
+import { tagCreatedBy } from "@/lib/sponsored-write";
 
 /**
  * 마케팅 대시보드 → 협찬 모니터링 동기화 엔드포인트
@@ -95,15 +96,19 @@ export async function POST(req: NextRequest) {
     const supabase = getServerSupabase();
 
     // upsert: URL이 이미 있으면 업데이트, 없으면 삽입
-    const { error } = await supabase
+    const { data: upserted, error } = await supabase
       .from("sponsored_posts")
       .upsert(cleaned, { onConflict: "url", ignoreDuplicates: false })
-      .select();
+      .select("id");
 
     if (error) {
       console.error("[marketing/sync] Supabase upsert error:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    // 출처 라벨 — 연동 시트 맨 아래에 새로 붙는 행 대부분이 이 경로(마케팅T 시트)로 들어온다.
+    // 빈 칸만 채우므로 대시보드에서 사람이 추가한 행(이메일)은 덮이지 않는다.
+    await tagCreatedBy(supabase, ((upserted ?? []) as Array<{ id: string }>).map((r) => r.id), "marketing-sync");
 
     return NextResponse.json({
       ok: true,
