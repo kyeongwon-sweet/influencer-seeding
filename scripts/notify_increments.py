@@ -237,7 +237,7 @@ def main():
                 _delete_msg(token, CHANNEL, rts)
             _delete_msg(token, CHANNEL, ts)
     # 중복 방지: 채널 발송 + DEDUP=1인데 오늘 리포트가 이미 있으면 생략(백업 창 대비). REPLACE면 위에서 지웠으니 통과.
-    elif not update_ts and os.getenv("DEDUP") == "1" and CHANNEL[:1] in ("C", "G") and _already_posted(token, CHANNEL, target):
+    elif not update_ts and not os.getenv("DRY_RUN") and os.getenv("DEDUP") == "1" and CHANNEL[:1] in ("C", "G") and _already_posted(token, CHANNEL, target):
         print(f"[notify] {target} 리포트 이미 게시됨 → 중복 방지 생략")
         return
 
