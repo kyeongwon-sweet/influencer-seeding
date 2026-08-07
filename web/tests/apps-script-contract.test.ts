@@ -29,6 +29,19 @@ test("Apps Script mirror keeps live metadata and URL guards", () => {
   );
 });
 
+test("Apps Script morning audit fallback covers formula and creator audits at 09:40", () => {
+  assert.match(appsScript, /ENSURE_DAILY_AUDITS_URL:\s*"https:\/\/influencer-seeding-mu\.vercel\.app\/api\/ops\/ensure-daily-audits"/);
+  assert.match(appsScript, /function ensureDailyAudits\(\)/);
+  assert.match(
+    appsScript,
+    /newTrigger\("ensureDailyAudits"\)[\s\S]*?\.atHour\(9\)[\s\S]*?\.nearMinute\(40\)[\s\S]*?\.everyDays\(1\)/,
+  );
+  assert.match(
+    appsScript,
+    /\["auditFallback", "ensureDailyAudits"\][\s\S]*?ScriptApp\.deleteTrigger/,
+  );
+});
+
 test("syncPricing inserts blank-only XLOOKUP formulas and preserves existing cells", () => {
   const start = appsScript.indexOf("function syncPricing()");
   const end = appsScript.indexOf("function installDailyTrigger()", start);
