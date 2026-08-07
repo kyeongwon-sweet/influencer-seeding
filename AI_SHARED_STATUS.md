@@ -6,6 +6,15 @@
 
 # AI Shared Status
 
+## ⭐ 2026-08-07 [Claude 완료] 자정수집 알림 2건 처리 — 자동종료 누락 + IG 무상시딩 영상 미수집
+**08-07 injibot 리포트: 🚨 자동종료 누락 2건 + ⚠️ 미수집 19건(전부 IG 무상시딩 영상). 둘 다 해소.**
+- **자동종료 누락 2건 (two_pyeong 배너 8일·lim.__.ssuuuu 영상 29일):** 원인 = 오늘 `auto-end-reconcile`가 GitHub 인프라 일시실패("job was not acquired by Runner")로 안 돎(08-04·05는 성공). 코드/데이터 문제 아님. → **apply 재실행으로 2건 종료 완료**(`to_end:2`, manual_ended_at 503 정상 스킵).
+  - **재발방지(`518b9d3`):** `auto-end-reconcile.yml`에 **백업 스케줄 04:17 KST** 추가(1차 00:17 실패 시 injibot 리포트 06:38 전 자가복구, 스케줄은 --apply).
+- **미수집 19건 (IG 무상시딩 영상):** 원인 = `build_view_missing_queue.exclusion_reason`이 `무상시딩` 통째로 `free_seed_manual` 제외 → IG 영상 미수집이 재시도 큐에서 빠져 자동복구 안 됨(설계버그). **사용자 지적: 영상은 조회수 있어 재수집 대상, 피드/이미지만 수기.**
+  - **수정(`ba8d9ce`, 테스트 4/4):** `"무상시딩" in ct and "영상" not in ct`만 제외 → 무상시딩(영상)=retryable. free_seed_manual 28→0, 큐 instagram 18 포함.
+  - **회복:** 수정 큐로 타겟 재시도 → **IG 18건 전부 재수집·저장**(iosonojaei 6,775 등 실측). lim.__.ssuuuu 1건은 자동종료돼 제외 → 19건 전부 해소.
+- **⚠️ 남은 별개 이슈:** 재시도 큐의 **틱톡 위성채널 18건**(이슈뜨기·유머박스·썰뜨기·이슈박스)은 계속 0 수집(collector_error/미수집) — 위성 틱톡 미수집(삭제·민감·구영상 가능성) 선행 조사 대상. 오늘 19건과 무관.
+
 ## 2026-08-06 [Codex 완료·검증] CPV(J열) 유효성 #REF!·파편화 재정비
 - **DRY-RUN:** CPV 열 `J`(col 10), 대상 `J2:J2278` 2,277행 확인 후 실행. 값은 건드리지 않고 유효성 규칙만 교체했다.
 - **재발방지 V2:** `J2` 직접참조는 행 삭제 시 다시 `#REF!`가 될 수 있어 `INDEX(J:J,ROW())` 동적 자기셀 규칙으로 변경했다. 허용값은 빈칸·`?`·숫자, `setAllowInvalid(true)` 경고모드 유지.
