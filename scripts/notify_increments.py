@@ -453,7 +453,7 @@ def main():
                        and not it.get("cost")]
     if banner_unmapped:
         lines.append("")
-        lines.append(f"⚠️ *바이럴 배너 가격 미매핑 {len(banner_unmapped)}건* — 시트엔 가격이 있으나 DB cost에 아직 반영 안 됨(cost 동기화 지연). `♻️ 전체 다시 추가`(syncAll) 실행 후 재발송하면 CPV가 정상 계산됩니다.")
+        lines.append(f"⚠️ *바이럴 배너 가격 미매핑 {len(banner_unmapped)}건* — 시트 비용 입력 또는 DB cost 동기화 확인 필요. 비용이 채워진 뒤 재발송하면 CPV가 정상 계산됩니다.")
     lines += ["", DIV, "", "◾ *급상승 TOP 10* 🔥  `CPV는 누적 기준`", ""]
     # 배너는 도달수를 '조회수'로 취급해 TOP에도 섞어 노출(사용자 지시). 배너 CPV = 비용/도달수(도달당비용).
     # 리포트는 이미 쫀득바만 필터돼 있어 줄마다 [JD멜] 상품태그는 중복 → 표시에서 제거(사용자 지시).
