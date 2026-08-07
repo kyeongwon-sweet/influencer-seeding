@@ -6,11 +6,12 @@
 
 # AI Shared Status
 
-## 2026-08-07 [Claude 발견 → ➡️Codex] dry_run이 DEDUP에 막혀 '이미 게시된 날짜' 프리뷰 불가 — 수정 요청
+## ✅ 2026-08-07 [Codex 완료] dry_run이 DEDUP에 막혀 '이미 게시된 날짜' 프리뷰 불가
 - **문제:** `notify_increments.py`에서 `DEDUP=1` 조기 종료(`[notify] {date} 리포트 이미 게시됨 → 생략` 후 `return`)가 **`DRY_RUN` 출력보다 먼저** 실행됨. 그래서 **이미 게시된 날짜(예: 8/6)는 `dry_run=true`로 돌려도 숫자 본문이 안 나오고 조기 종료**함. 실측: dry_run run `31157937621` 로그에 리포트 본문 없이 DEDUP 스킵만 찍힘.
 - **영향:** '리포트 수정 권한 운영 규약'의 **"dry_run으로 숫자 확인 후 update_ts로 수정"** 절차가 **기존 메시지 수정 케이스에선 무력화**(프리뷰가 DEDUP에 막힘). 신규 미게시 날짜엔 정상.
-- **➡️ Codex 수정 요청:** `DRY_RUN`이 설정되면 DEDUP 조기 종료를 **건너뛰고** 리포트 본문을 생성·출력하도록. 제안: DEDUP 분기 조건에 `and not os.getenv("DRY_RUN")` 추가(발송은 여전히 dry_run이 막으므로 안전). `update_ts` 편집 경로도 DEDUP에 막히지 않는지 함께 확인. 검증: 8/6로 `dry_run=true` 재실행 시 본문(총증분·채널·TOP10)이 로그에 출력되면 OK.
-- **임시 운영(수정 전까지):** Claude는 이미 게시된 날짜 수정 시 dry_run 프리뷰 대신 **DB로 숫자 직접 대조 후 `update_ts` 실행**.
+- **수정:** DEDUP 분기 조건에 `not os.getenv("DRY_RUN")`을 추가했다. 발송/편집은 여전히 `DRY_RUN` 분기가 막으므로 안전하다. `update_ts` 편집 경로는 기존부터 `not update_ts` 조건 때문에 DEDUP에 막히지 않음을 재확인했다.
+- **회귀 방지:** `scripts/test_notify_increments_contract.py` 추가, `workflow-lint.yml`에 연결. 계약: `DRY_RUN`은 DEDUP 조기 종료를 우회하고, `update_ts`는 DEDUP에 막히지 않는다.
+- **검증:** 로컬 `test_notify_increments_contract.py`, workflow lint/env 계약 통과. origin/main `cd79e30` 기준 GitHub Actions dry-run `31158579882` 성공, 로그에 `=== DRY_RUN (발송 안 함) ===`와 본문 숫자(`오늘 총 증분 +1,406,887`, 바이럴 배너 `+717,082`, 협찬 인플루언서 `+247,220`, 바이럴 영상 `+82,470`, TOP10) 출력 확인. Slack 발송/편집 없음.
 
 ## ✅ 2026-08-07 [Codex] Claude용 리포트 수정 권한 운영 규약
 - **목표:** Claude도 8/6 증분 리포트처럼 기존 Slack 메시지를 `chat.update`로 수정할 수 있게 하되, Slack 토큰 원문은 공유하지 않는다.
@@ -20,7 +21,7 @@
 - **Claude 실행 예시:** `gh workflow run daily-increment-report.yml --repo kyeongwon-sweet/influencer-seeding --ref main -f date=YYYY-MM-DD -f update_ts=<ts> -f dry_run=true -f to_dm=false -f replace=false -f delete_only=false -f delete_ts=""` → dry-run 로그 확인 후 `dry_run=false`.
 - **검증:** `daily-increment-report.yml` workflow_dispatch와 `update_ts` 입력은 origin/main에서 확인됨. 최근 in-place 수정 run `31157275278`이 `update ok=True`로 성공했다.
 - **Claude 실측 검증:** Claude가 현재 gh 토큰으로 workflow_dispatch dry-run `31157937621`을 직접 실행했고, GitHub에서 `success` 확인. 로그상 `DRY_RUN: 1`, `[notify] 2026-08-06 리포트 이미 게시됨 → 중복 방지 생략`으로 Slack 변경 없이 종료됐다.
-- **운영 보완:** 이미 게시된 날짜는 `DEDUP=1` 때문에 dry-run이 리포트 본문 출력 전에 조기 종료될 수 있다. 기존 메시지 수정 시에는 DB/API로 숫자를 별도 검증한 뒤 `dry_run=false + update_ts=<ts>`를 사용한다. 미게시 날짜는 기존처럼 dry-run 본문 확인 후 발송한다.
+- **운영 보완:** `cd79e30` 이후 이미 게시된 날짜도 `dry_run=true`로 본문 프리뷰가 가능하다. 기존 메시지 수정 시에도 `dry_run=true`로 숫자 확인 → `dry_run=false + update_ts=<ts>` 순서를 유지한다.
 
 ## 🔴 2026-08-07 [Claude 검증 → Codex 실행 요청] 이슈박스 오류글 …388 + 고아행 1877 '기존 정리' 잔여
 - **✅ 재발방지 검증 완료(작동 확인):** `3b5aec8`의 고아행 감지가 새 formula-audit(run `31157253211`)에서 실동작 — `orphanRows:1`, `"고아행 1877: URL 없음 · H=1923 · 최근=2026-07-30 1923"`, `healthy:false`. 틱톡 불가능ID 차단·DB→시트 행일괄기록+URL 재검증·고아행 감사경고 전 경로+테스트(250/250) 반영 확인. → **앞으로 재유입/신규 고아행은 차단·즉시 감지.**
