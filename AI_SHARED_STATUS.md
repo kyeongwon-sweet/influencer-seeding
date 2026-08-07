@@ -6,6 +6,14 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-07 [Codex] Claude용 리포트 수정 권한 운영 규약
+- **목표:** Claude도 8/6 증분 리포트처럼 기존 Slack 메시지를 `chat.update`로 수정할 수 있게 하되, Slack 토큰 원문은 공유하지 않는다.
+- **권한 방식:** GitHub fine-grained PAT를 Claude 환경에만 등록한다. 대상 repo는 `kyeongwon-sweet/influencer-seeding` 1개, 권한은 `Actions: Read and write` + `Contents: Read-only`만 허용한다. `SLACK_BOT_TOKEN`/GitHub Secrets/Admin 권한은 절대 공유하지 않는다.
+- **실행 경로:** Claude는 `daily-increment-report.yml`의 `workflow_dispatch`만 실행한다. Slack 수정은 GitHub Actions 안의 기존 `SLACK_BOT_TOKEN` secret이 수행한다.
+- **필수 순서:** 먼저 `dry_run=true`로 숫자를 확인하고, 맞으면 같은 입력으로 `dry_run=false` + `update_ts=<기존 메시지 ts>`를 실행한다. `replace=true`, `delete_only=true`, `delete_ts`는 사용자 명시 승인 없이는 사용 금지.
+- **Claude 실행 예시:** `gh workflow run daily-increment-report.yml --repo kyeongwon-sweet/influencer-seeding --ref main -f date=YYYY-MM-DD -f update_ts=<ts> -f dry_run=true -f to_dm=false -f replace=false -f delete_only=false -f delete_ts=""` → dry-run 로그 확인 후 `dry_run=false`.
+- **검증:** `daily-increment-report.yml` workflow_dispatch와 `update_ts` 입력은 origin/main에서 확인됨. 최근 in-place 수정 run `31157275278`이 `update ok=True`로 성공했다.
+
 ## 🔴 2026-08-07 [Claude 검증 → Codex 실행 요청] 이슈박스 오류글 …388 + 고아행 1877 '기존 정리' 잔여
 - **✅ 재발방지 검증 완료(작동 확인):** `3b5aec8`의 고아행 감지가 새 formula-audit(run `31157253211`)에서 실동작 — `orphanRows:1`, `"고아행 1877: URL 없음 · H=1923 · 최근=2026-07-30 1923"`, `healthy:false`. 틱톡 불가능ID 차단·DB→시트 행일괄기록+URL 재검증·고아행 감사경고 전 경로+테스트(250/250) 반영 확인. → **앞으로 재유입/신규 고아행은 차단·즉시 감지.**
 - **⛔ 하지만 '기존 정리'는 아직 미실행:** 오류 게시물 `.../photo/76672043078207603388/`(20자리 기형ID, 이슈박스틱톡)이 **DB에 그대로**(`ended_at=null`, notes=`[비공개 종료 2026-07-29 사용자요청]`). 고아행 1877도 시트 잔존(감사가 잡음). → 원래 계획대로 **① 백업 → ② 오류글 정리(삭제 또는 notes대로 ended_at=2026-07-29 세팅) → ③ 시트 1877행 삭제** 실행 필요. **완료 전까지 매일 감사 `healthy:false`(orphanRows=1)로 알림됨.**
