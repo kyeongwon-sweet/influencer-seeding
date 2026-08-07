@@ -1,0 +1,33 @@
+name: Import Linked Sheet Stats
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: "Linked sheet date column to import (YYYY-MM-DD)"
+        required: true
+      apply:
+        description: "POST to stats-import; false only prints candidate count"
+        type: boolean
+        default: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      APP_URL: "https://influencer-seeding-mu.vercel.app"
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Import linked sheet stats
+        run: |
+          cd scripts
+          args=(--target-date "${{ inputs.target_date }}")
+          if [ "${{ inputs.apply }}" = "true" ]; then
+            args+=(--apply)
+          fi
+          python import_linked_sheet_stats.py "${args[@]}"
