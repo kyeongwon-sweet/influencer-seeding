@@ -34,11 +34,24 @@ async function hasTodayReport(supabase: ReturnType<typeof getServerSupabase>, kd
     .eq("run_date", kdate)
     .eq("status", "done")
     .limit(1);
-  if (error) {
-    console.error("[formula-audit] dedupe lookup failed", error.message);
+  if (!error) return (data?.length ?? 0) > 0;
+
+  console.error("[formula-audit] ops_daily_runs lookup failed; falling back to jobs", error.message);
+  const fallback = await supabase
+    .from("jobs")
+    .select("id, payload")
+    .eq("type", "monitoring")
+    .eq("status", "done")
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (fallback.error) {
+    console.error("[formula-audit] fallback dedupe lookup failed", fallback.error.message);
     return null;
   }
-  return (data?.length ?? 0) > 0;
+  return (fallback.data ?? []).some((row) => {
+    const payload = row.payload as { ops_marker?: unknown; run_date?: unknown } | null;
+    return payload?.ops_marker === FORMULA_AUDIT_SERVICE && payload?.run_date === kdate;
+  });
 }
 
 async function markTodayReport(
@@ -54,7 +67,21 @@ async function markTodayReport(
       status: "done",
       payload,
     }, { onConflict: "service,run_date" });
-  if (error) console.error("[formula-audit] dedupe mark failed", error.message);
+  if (!error) return;
+
+  console.error("[formula-audit] ops_daily_runs mark failed; falling back to jobs", error.message);
+  const fallback = await supabase
+    .from("jobs")
+    .insert({
+      type: "monitoring",
+      status: "done",
+      payload: {
+        ops_marker: FORMULA_AUDIT_SERVICE,
+        run_date: kdate,
+        ...payload,
+      },
+    });
+  if (fallback.error) console.error("[formula-audit] fallback dedupe mark failed", fallback.error.message);
 }
 
 function linkKeyOf(url: string): string {
