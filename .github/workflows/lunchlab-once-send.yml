@@ -18,7 +18,7 @@ jobs:
           CHANNEL = 'C0BFPQAPHEK'
 
           text = (
-              '<https://lalasweethq.slack.com/archives/C0BFPQAPHEK/p1783572274599619|잔반 처리하는 법>\n'
+              '*<https://lalasweethq.slack.com/archives/C0BFPQAPHEK/p1783572274599619|잔반 처리하는 법>*\n'
               '\n'
               '일반 가정식 시키신 분은 항상 밥+반찬+국(가끔..) 3가지를 챙기셔야해요!\n'
               '반찬을 누락하시는 분들이 있어요!!!!!!!!!!! :밥숟가락을든채정지:'
