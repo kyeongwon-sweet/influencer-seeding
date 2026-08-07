@@ -343,15 +343,18 @@ test("refreshSheetDerivedFields fills existing channel metadata before pricing",
   assert.match(refreshBody, /refreshSheetDerivedFields_step_end/);
 });
 
-test("dailyAuto records every stage and imports stats before exporting DB stats", () => {
+test("dailyAuto prices sheet rows before importing stats and then exports DB stats", () => {
   const defsStart = appsScript.indexOf("function dailyAutoStageDefs_()");
   const dailyStart = appsScript.indexOf("function dailyAuto()");
+  const pricingIdx = appsScript.indexOf('["syncPricing", syncPricing]', defsStart);
   const importIdx = appsScript.indexOf('["importStats", function() { return importStats("daily_auto"); }]', defsStart);
   const exportIdx = appsScript.indexOf('["exportStats", exportStats]', defsStart);
   assert.notEqual(defsStart, -1);
   assert.notEqual(dailyStart, -1);
+  assert.notEqual(pricingIdx, -1);
   assert.notEqual(importIdx, -1);
   assert.notEqual(exportIdx, -1);
+  assert.ok(pricingIdx < importIdx);
   assert.ok(importIdx < exportIdx);
   assert.match(appsScript, /duration_ms: finishedMs - startedMs/);
   assert.match(appsScript, /DAILY_AUTO_LAST_STAGES_JSON/);

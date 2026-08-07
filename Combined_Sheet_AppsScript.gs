@@ -976,13 +976,13 @@ function dailyAutoStageDefs_() {
     ["fillCaptionFromAsset", fillCaptionFromAsset_],
     ["syncAll", function() { return runSync_(false); }],
     ["pullFromDB", pullFromDB],
+    ["syncPricing", syncPricing],
     ["importStats", function() { return importStats("daily_auto"); }],
     ["exportStats", exportStats],
     ["syncStatus", syncStatus],
     ["refreshCumulativeViews", refreshCumulativeViews],
     ["syncCreators", syncCreators],
     ["overwriteViralHandles", function() { return overwriteViralHandles_(true); }],
-    ["syncPricing", syncPricing],
   ];
 }
 
@@ -1802,7 +1802,7 @@ function checkDuplicates() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 자동 트리거 (매일 8:30, dailyAuto 실행: syncAll → pullFromDB → importStats → exportStats)
+// 자동 트리거 (매일 8:30, dailyAuto 실행: syncAll → pullFromDB → syncPricing → importStats → exportStats)
 // ═══════════════════════════════════════════════════════════════
 function findHeaderCol_(sheet, names) {
   const lastCol = sheet.getLastColumn();
