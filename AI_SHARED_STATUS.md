@@ -6,6 +6,16 @@
 
 # AI Shared Status
 
+## 2026-08-07 [Codex 완료] GH_DISPATCH_TOKEN 장기 갱신 + 만료 워치독 배포
+- **토큰 교체:** GitHub fine-grained PAT `GH_DISPATCH_TOKEN_PROD_LONG_20260807` 발급 완료. 범위는 `kyeongwon-sweet/influencer-seeding` 1개 repo, 권한은 `Actions: Read and write` + `Metadata: Read-only`, 만료일은 **2027-08-07**.
+- **Vercel Production env:** `GH_DISPATCH_TOKEN`을 새 토큰으로 교체했고 `GH_DISPATCH_TOKEN_EXPIRES_AT=2027-08-07`, `OPS_GITHUB_TOKEN_EXPIRES_AT=never`, `GITHUB_TOKEN_EXPIRY_WARN_DAYS=30`을 추가했다.
+- **코드:** `33243d6`에서 토큰 만료 워치독을 추가했고, `2920bcf`에서 GitHub이 no-expiration으로 표시하는 ops 토큰을 `never`로 기록해도 오탐하지 않게 보강했다.
+- **검증:** web 전체 테스트 245/245, `tsc --noEmit`, `next build`, GitHub Build Test `31146160016` 모두 성공. Production route `/api/ops/ensure-daily-audits?dry_run=1`은 HTTP 200, `tokenExpiryFindings=[]`로 확인.
+- **실권한 확인:** 새 PAT로 GitHub REST `workflow_dispatch`를 직접 호출해 `ensure-daily-audits-smoke.yml` dry-run을 발화했고 run `31146352047` success. 응답은 formula-audit/invalid-creator 모두 `already_done`.
+- **배포:** Vercel production Ready, 현재 `https://influencer-seeding-mu.vercel.app`는 2026-08-07 13:05 KST 배포본(`dpl_2g7tAu9dRxd6kCQ2X16SdvxM5UDu`) 기준. `2920bcf`는 현재 main `44b3bb0`의 조상이라 포함됨.
+- **정리:** 기존 30일 토큰 `GH_DISPATCH_TOKEN_PROD_V3`는 GitHub 목록에서 삭제 확인. 토큰 값은 로그/상태판에 기록하지 않았고 로컬 REPL 변수도 삭제했다.
+- **주의:** GitHub PAT는 외부에서 비밀값을 자동 재발급하는 안전한 경로가 없으므로, "자동 갱신"은 실제 자동 생성이 아니라 **만료 30일 전 Slack 경고 + 수동 회전** 운영으로 둔다.
+
 ## ✅ 2026-08-07 [Codex 완료] 8/6 위성/온드 YouTube 134건 연동 시트 반영
 - **사전 안전 확인:** fresh live pull에서 `refreshCumulativeViews()`가 `Date` 객체와 숫자 serial 날짜헤더(44000~48000)를 모두 인식하고, `exportStats()`가 완료 후 누적·증분을 재계산하는 현재 버전임을 확인했다.
 - **정상 동기화 실행:** live `exportStats`를 2026-08-07 12:42~12:44 KST에 실행했다. 실행 자체는 정상 완료했으나, 일반 정책상 비어 있지 않은 셀을 보존하여 URL-key 날짜 쓰기는 18칸이었다.
