@@ -96,10 +96,6 @@ async function handler(req: NextRequest) {
   const kdate = todayKST();
   const force = req.nextUrl.searchParams.get("force") === "1";
   const supabase = getServerSupabase();
-  const alreadyReported = await hasTodayReport(supabase, kdate);
-  if (alreadyReported != null && shouldSkipFormulaAuditReport({ alreadyReported, force })) {
-    return NextResponse.json({ ok: true, skipped: true, reason: "already_reported", kdate });
-  }
 
   let values: (string | number | boolean | null)[][];
   try {
@@ -211,8 +207,22 @@ async function handler(req: NextRequest) {
     }
   }
 
-  const result = auditRows(rows, posts, todayKST());
+  const result = auditRows(rows, posts, kdate);
   const { text, healthy } = formatAuditMessage(result);
+  const alreadyReported = await hasTodayReport(supabase, kdate);
+  if (alreadyReported != null && shouldSkipFormulaAuditReport({ alreadyReported, force })) {
+    return NextResponse.json({
+      ok: true,
+      healthy,
+      slackSent: false,
+      skippedNotify: true,
+      reason: "already_reported",
+      kdate,
+      dedupeLookupOk: true,
+      ...result,
+    });
+  }
+
   let slackSent = true;
   await notifyBot(text).catch((e) => {
     slackSent = false;
@@ -231,7 +241,7 @@ async function handler(req: NextRequest) {
     });
   }
 
-  return NextResponse.json({ ok: true, healthy, slackSent, dedupeLookupOk: alreadyReported != null, ...result });
+  return NextResponse.json({ ok: true, healthy, slackSent, skippedNotify: false, dedupeLookupOk: alreadyReported != null, ...result });
 }
 
 export async function POST(req: NextRequest) { return handler(req); }
