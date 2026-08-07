@@ -6,15 +6,15 @@
 
 # AI Shared Status
 
-## 2026-08-07 [사용자 지시 → ➡️Codex] 8/6 조회수 추가분 importStats 반영 + 리포트 재편집(chat.update)
+## ✅ 2026-08-07 [Codex 완료] 8/6 조회수 추가분 importStats 반영 + 리포트 재편집(chat.update)
 - **사용자**: 연동시트에 8/6 조회수를 추가함 — **일반 게시물(협찬/바이럴 영상) 조회수 포함** + 배너 도달수. "지금 기준으로 DB-시트-대시보드 동기화하고 8/6 리포트 재편집."
 - **현재 상태(Claude 실측)**: 배너 도달수는 일부 DB 반영됨(650,621→663,021, 총 1,340,426→**1,352,826**). 그러나 **협찬(247,220)·바이럴 영상(82,470) 증분은 그대로 = 일반 게시물 추가 조회수가 아직 DB 미반영**(importStats 미실행). 인지광고(메타 197,474·틱톡 25,455) 합계는 불변(메타는 릴스→배너 재분배만).
-- **➡️ Codex 실행(한 세트)**:
-  1. **importStats(시트→DB 조회수 반영)** 실행 — 8/6 신규 추가 조회수(협찬/영상/배너)를 DB `post_daily_stats`에 반영. 메뉴 실행=`manual_sheet`(manual=true, 팀 입력값 보존). 반영 후 8/6 협찬/영상 증분이 커지는지 확인.
-  2. **8/6 리포트 재생성**(`notify_increments.py`, `MONITORING_DATE=2026-08-06`, `APP_URL`+`CRON_SECRET`) — importStats 후 최종 수치.
-  3. **`chat.update`** 로 기존 메시지 **in-place 편집**(채널 `C0B4F7GBX17`, ts `1786079193.988599` 유지, **REPLACE 금지**, 수집상태 댓글 `1786080142.175679` 무변경).
-  4. 최종 총증분·주요 채널값을 상태판에 기록.
-- **주의**: 데이터가 계속 추가되는 중이면 importStats·편집은 **추가 완료 후 1회**로. 값이 움직이는 동안 반복 편집 금지.
+- **✅ Codex 실행(한 세트 완료)**:
+  1. **시트→DB 8/6 반영:** `clasp run importStats`는 Apps Script API executable 미배포로 실행 불가(`Script function not found`). 대신 인증된 `/api/ops/linked-sheet-values`로 연동시트 8/6 열만 읽어 `/api/sponsored-posts/stats-import`에 `source=manual_sheet`로 전송하는 수동 workflow를 만들고 실행했다(`007dc5c`).
+     - dry-run `31155613667`: target_col 97, stats 282, skipped_blank 1070, skipped_carry 521.
+     - apply `31155644592`: `ok=true`, `manual=true`, `matched_urls=281`, `missing_urls=0`, `inserted=36`, `banner_reach_inserted=90`, `preserved_manual=0`, `overwrote_manual=0`, `dropped_decrease=0`, `post_ended_skipped=1`.
+  2. **8/6 리포트 재생성:** dry-run `31155747108` 기준 최종 총증분 **1,406,887**, 인지광고 메타 197,474, 바이럴 배너 **717,082 / CPV 3.3원**, 협찬(인플루언서) **247,220**, 위성채널 137,040, 바이럴(영상) **82,470**, 온드미디어 146, 미매핑 경고 1건. 관측상 협찬/영상 라인은 import 후에도 증가하지 않았다(리포트 JD·safeIncrement 기준).
+  3. **`chat.update` in-place 편집:** run `31155807203`이 Slack API `[notify] update ok=True ... channel=C0B4F7GBX17 ts=1786079193.988599 date=2026-08-06` 반환. **REPLACE 미사용**, ts 유지, 수집상태 댓글 `1786080142.175679` 무변경(댓글 단계 skip).
 - 참고: 직전 chat.update(총 1,340,426, 배너 CPV 3.2원)는 배너 cost 정정용으로 정상 완료됐으나(GHA run 31153810997), 그 뒤 조회수 추가로 값이 바뀌어 **재편집 필요**.
 
 ## ⏳ 2026-08-07 [남은 추적 · 사용자/Codex 합의]
