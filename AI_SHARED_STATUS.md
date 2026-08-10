@@ -6,6 +6,12 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-10 [Codex 실측] ufo__skyblue DbK93Wvhw4c 63K 구간 유지 — 오입력 진단 철회
+- **대상:** `af841750-3de7-43b0-a528-befab3b26b91`, `https://www.instagram.com/p/DbK93Wvhw4c/`, 바이럴(영상), 게시일 2026-07-24.
+- **인계 진단과 반대인 실측:** 정규 `apify/instagram-scraper` run `sBvXDNm0f34Ta7Bfn`이 정확한 shortcode·계정에 `videoPlayCount=65,250`을 반환했다. 독립 폴백 `data-slayer/instagram-post-details` run `pzYMZ74HdNMNQvuGS`도 `metrics.ig_play_count=65,250`·`fb_play_count=null`로 일치했다. 로그인된 Instagram 실물도 같은 계정·게시일·좋아요 222로 매칭됐으며 두 액터의 likes 222와 같다.
+- **판정:** 07-26의 63,119 급증부터 08-09의 65,249까지는 교차오염이 아니라 **실제 바이럴 성장**으로 본다. 07-24 2,709·07-25 2,479가 오히려 초기 수집 불안정값이지만, 과거 참값을 새로 만들 수 없으므로 그대로 보존한다.
+- **조치:** 시트·DB 값 삭제/변경, mono 기준선 리셋, exportStats를 **실행하지 않았다.** 사용자/인계문의 `실제 바이럴이면 63K 유지` 조건을 적용했다. 이 구간을 오입력으로 재정리하지 말 것.
+
 ## ✅ 2026-08-07 [Codex 완료] 기존 오류글·1877 오염·증분 불일치 정리
 - **인계문 상태 정정:** 전달 시점의 DB/시트 상태가 이미 일부 바뀌어 있어 재삭제하지 않고 실측 후 최소 범위로 정리했다.
 - **오류 TikTok DB 행:** 잘못된 20자리 ID 글 `39d13bec-162b-4408-92e0-2d9c45af2788`과 연결 이력은 재조회 시 이미 `0건`이었다. 정상 19자리 글 `4ea4c5c9-21e2-4e6a-88bf-211714a2712a`은 게시물 `1건`·이력 `11건` 그대로 보존했다. 기존 백업은 `scratchpad/bad_tiktok_duplicate_backup_2026-08-07T07-26-49-020Z.json`에 있다.
