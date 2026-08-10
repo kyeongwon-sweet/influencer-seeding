@@ -6,6 +6,15 @@
 
 # AI Shared Status
 
+## 🔴 2026-08-10 [Claude 시크릿 스캔 → Codex: 공개 플립 전 필수조치] 이력에 Meta 토큰 노출
+**배경:** repo가 08-01 PRIVATE 전환됨 → GHA가 유료 private minutes로 청구되다 결제 실패/한도로 **08-09(일) 자정수집 등 모든 자동화 중단**("job was not started … payments failed or spending limit"). 해결책=public 재전환(무제한 무료 Actions). **공개 플립은 Codex 진행 중** → 그 전에 Claude가 시크릿 스캔 수행.
+- **✅ 현재 HEAD/추적파일 깨끗**: 추적 민감파일=예시 템플릿 2개(`.env.example`·`web/.env.local.example`)뿐. `google-sheets.ts`의 `-----BEGIN PRIVATE KEY-----`는 env 값 감싸는 PEM 래퍼 코드(오탐).
+- **🔴 커밋 이력에 실제 Meta 액세스 토큰**: `web/app/api/meta-ads/route.ts`에 하드코딩(`EAATfjz…` 로 시작, 전체값 여기 미기재—곧 public), 커밋 `3d45462` 도입 → `37bee8d`에서 env로 제거. **HEAD엔 없고 이력에만.** repo가 07-16~08-01 이미 public이었어서 **이미 노출된 값**.
+  - **➡️ Codex/사용자 조치(공개 플립 전 필수): Meta Business에서 이 토큰 무효화 → 새 토큰 발급 → Vercel env `META_BUSINESS_ACCESS_TOKEN` 갱신.** (자격증명·계정 작업이라 Claude 불가.) 이미 노출됐던 값이라 로테이션은 공개 여부와 무관하게 필수.
+- **🟡 VERCEL_OIDC_TOKEN 3건**: `.env.production.local`(실수 커밋) + `AI_SHARED_STATUS.md`(과거 붙여넣기). **단명·이미 만료**(exp ~2026-06-19) → 위험 낮음. `.env.production.local` 현재 미추적(OK).
+- **이력 스크럽(filter-repo) 비권장**: 이미 public이었어서 스크럽해도 유출은 못 되돌림 → **로테이션이 진짜 해결**. 히스토리 재작성은 동시세션 클론·해시 다 깨뜨려 위험만 큼.
+- **결론:** 코드 자체는 공개 안전(시크릿 없음). **단 하나 실질 조치 = Meta 토큰 로테이션 후 공개 플립.**
+
 ## ✅ 2026-08-10 [Codex 실측] ufo__skyblue DbK93Wvhw4c 63K 구간 유지 — 오입력 진단 철회
 - **대상:** `af841750-3de7-43b0-a528-befab3b26b91`, `https://www.instagram.com/p/DbK93Wvhw4c/`, 바이럴(영상), 게시일 2026-07-24.
 - **인계 진단과 반대인 실측:** 정규 `apify/instagram-scraper` run `sBvXDNm0f34Ta7Bfn`이 정확한 shortcode·계정에 `videoPlayCount=65,250`을 반환했다. 독립 폴백 `data-slayer/instagram-post-details` run `pzYMZ74HdNMNQvuGS`도 `metrics.ig_play_count=65,250`·`fb_play_count=null`로 일치했다. 로그인된 Instagram 실물도 같은 계정·게시일·좋아요 222로 매칭됐으며 두 액터의 likes 222와 같다.
