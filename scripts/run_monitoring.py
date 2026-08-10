@@ -521,6 +521,11 @@ def _should_apply_same_day_cost_guard(*, recollect_all=False, final_snapshot=Fal
     return not recollect_all and not final_snapshot
 
 
+def _coalesce_metric(current, previous=None):
+    """Prefer a present collector value, including a legitimate numeric zero."""
+    return current if current is not None else previous
+
+
 def _store_aux_rows(db, rows, posts, stats, key_fn, label, *, views="clamp", caption_field=None, caption_limit=None):
     """보조 플랫폼(YT/틱톡/스레드/FB/X) 공통 저장 루프 — 5개 블록의 복붙을 단일 구현으로.
 
@@ -556,7 +561,10 @@ def _store_aux_rows(db, rows, posts, stats, key_fn, label, *, views="clamp", cap
         play = None if views == "none" else s.get("views")
         if views == "clamp" and (not play or play <= 0):
             _record_missing_view_event(post, label, "missing_or_zero_view", stat=s, existing=existing)
-            continue  # 🛡️ 0/미반환은 접근불가 → 저장 안 함(0으로 덮어쓰면 누적 붕괴)
+            # 조회수 실패가 독립적으로 수집된 댓글수까지 버리게 하지 않는다.
+            # 직전 양수 조회수는 유지하고, 없으면 NULL로 두되 참여지표는 저장한다.
+            previous_play = existing.get("play_count")
+            play = previous_play if previous_play is not None and previous_play > 0 else None
         if play is not None and existing.get("play_count") is not None and play < existing.get("play_count"):
             _record_overrecord_candidate(post, label, play, existing)
             # 미세 감소는 정상 지터 → NULL 대신 직전 최대값 유지(clamp)
@@ -568,8 +576,8 @@ def _store_aux_rows(db, rows, posts, stats, key_fn, label, *, views="clamp", cap
             "measured_at": TODAY,
             "play_count": play,
             # 액터가 필드 누락 시 None으로 덮어쓰지 않도록 직전값 폴백 (실제 0은 그대로 저장)
-            "likes_count": likes if likes is not None else existing.get("likes_count"),
-            "comments_count": comments if comments is not None else existing.get("comments_count"),
+            "likes_count": _coalesce_metric(likes, existing.get("likes_count")),
+            "comments_count": _coalesce_metric(comments, existing.get("comments_count")),
         })
 
 
@@ -1233,8 +1241,8 @@ def run():
                 rows.append({
                     "post_id": post["id"],
                     "measured_at": TODAY,
-                    "likes_count": s.get("likes_count") or existing.get("likes_count"),
-                    "comments_count": s.get("comments_count") or existing.get("comments_count"),
+                    "likes_count": _coalesce_metric(s.get("likes_count"), existing.get("likes_count")),
+                    "comments_count": _coalesce_metric(s.get("comments_count"), existing.get("comments_count")),
                 })
                 continue
 
@@ -1253,8 +1261,8 @@ def run():
                     play_count = existing.get("play_count")
                 else:
                     _record_missing_view_event(post, "Instagram", "zero_play_no_previous", stat=s, existing=existing)
-                    print(f"  ⚠️  IG 조회수 0(글리치)·직전값 없음 → 미적재 {post['url']}")
-                    continue
+                    print(f"  ⚠️  IG 조회수 0(글리치)·직전값 없음 → 조회수 NULL, 참여지표만 저장 {post['url']}")
+                    play_count = None
             elif _looks_like_engagement_count_as_views(
                 play_count,
                 s.get("likes_count"),
@@ -1266,7 +1274,8 @@ def run():
                     f"  [WARN] IG suspicious first play skipped: {post['url']} "
                     f"(play={play_count}, likes={s.get('likes_count')}, comments={s.get('comments_count')})"
                 )
-                continue
+                # 의심스러운 조회수만 버리고 댓글·좋아요 신호는 보존한다.
+                play_count = None
             elif existing.get("play_count") is not None and play_count < existing.get("play_count"):
                 _record_overrecord_candidate(post, "Instagram", play_count, existing)
                 # 누적값인데 줄어들었다 = 오류(글리치) 또는 IG 정상 미세감소(중복/봇 필터링 지터).
@@ -1279,8 +1288,8 @@ def run():
                 "post_id": post["id"],
                 "measured_at": TODAY,
                 "play_count": play_count,
-                "likes_count": s.get("likes_count") or existing.get("likes_count"),
-                "comments_count": s.get("comments_count") or existing.get("comments_count"),
+                "likes_count": _coalesce_metric(s.get("likes_count"), existing.get("likes_count")),
+                "comments_count": _coalesce_metric(s.get("comments_count"), existing.get("comments_count")),
             })
 
         # YouTube 수집 (인스타 액터로는 불가 → 전용 액터). IG 루프에서 매칭 실패로 건너뛴 유튜브 글을 채움
@@ -1634,8 +1643,8 @@ def _fetch_stats(urls: list) -> list:
             "url": url,
             "play_count": play_count,
             "play_count_source": play_count_source,
-            "likes_count": item.get("likesCount") or item.get("likes"),
-            "comments_count": item.get("commentsCount") or item.get("comments"),
+            "likes_count": _coalesce_metric(item.get("likesCount"), item.get("likes")),
+            "comments_count": _coalesce_metric(item.get("commentsCount"), item.get("comments")),
             "posted_at": posted_at,
             "account_name": account_name,
             "owner_username": owner_username,
