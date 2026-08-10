@@ -6,6 +6,12 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-10 [Codex 완료] 로컬 수집 복구 래퍼 추가 — secrets 직접 pull 불가 확인
+- **검증:** `vercel pull --environment=production`은 성공했지만, `APIFY_API_TOKEN`·`SUPABASE_SERVICE_ROLE_KEY`·`CRON_SECRET` 등 민감값은 `""`로 내려왔다. Vercel env 목록에는 `Encrypted`로 존재하므로, CLI가 민감값을 복호화해 로컬 파일로 주지 않는 보안 동작으로 본다. GitHub Secrets 역시 값 조회가 불가하다.
+- **결론:** Codex가 비밀값을 직접 읽어 `.env`를 자동 구성할 수는 없다. 로컬 직접 수집을 하려면 사용자가 별도 `.env.recovery.local` 또는 `.env`에 값을 넣어야 한다. 두 파일은 gitignore 대상이다.
+- **추가:** `scripts/recover_daily_collect.ps1` 추가. 기본 `-Mode dispatch`는 GitHub Actions `cron-daily-collect.yml`을 수동 실행하고 watch까지 한다(로컬 secrets 불필요). `-Mode check/local`은 로컬 env가 있을 때만 DB 큐 확인/직접 수집을 수행하며, 필수 env가 없으면 수집 전에 중단한다.
+- **운영 규칙:** 일반 복구는 `pwsh -File scripts/recover_daily_collect.ps1 -Mode dispatch`를 우선 사용한다. 특정 날짜를 로컬로 직접 복구해야 할 때만 `.env.recovery.local`을 준비한 뒤 `-Mode check` → `-Mode local` 순서로 실행한다.
+
 ## ✅ 2026-08-10 [Codex 완료] GitHub Actions 결제 차단 우회(public 전환) + 08-09 수집 복구
 - **원인 확정:** repo가 PRIVATE 상태라 GitHub Actions private minutes/budget 영향을 받았고, `Actions` budget이 `$0` + `Stop usage: Yes`라 모든 job이 runner 시작 전 실패했다. 수동 `workflow-lint` run `31343661486`도 `steps=[]`로 5초 실패, 브라우저 run 화면에 `recent account payments have failed or your spending limit needs to be increased` 확인.
 - **조치:** 사용자 지시로 `kyeongwon-sweet/influencer-seeding`을 `PUBLIC`으로 전환했다. `gh repo view` 기준 `visibility=PUBLIC`, `isPrivate=false` 확인. 스모크 run `31343942758` 성공으로 Actions runner 시작 차단 해소 확인.
