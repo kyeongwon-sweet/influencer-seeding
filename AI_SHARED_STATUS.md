@@ -6,6 +6,13 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-10 [Codex] 부정댓글 `comments_count` 상류 noSignal 저장 버그 수정
+- **실DB 재현:** 활성 게시물 중 `comments_count` 실측 이력이 한 번도 없는 행은 현재 152건. 현재 GAS `sponsoredTargets`와 게시물 키로 교차하면 143건(IG 113·TikTok 25·YouTube 5)이다. Claude의 137건 스냅샷과 차이는 오늘 새로 등록돼 다음 수집을 기다리는 TikTok 9·YouTube 5건 및 대상 시점 차이로 확인했다.
+- **확정 원인:** 2026-08-10 09:15 KST 수집 로그에서 IG `comments_count` 누락 122건 중 data-slayer가 28건을 보강했지만, 저장부의 `current or previous`가 정상값 `0`을 다시 `null`로 바꿨다. Instagram 원본 필드 선택에도 같은 truthiness 문제가 있었다.
+- **수정:** `run_monitoring.py`에 `_coalesce_metric`을 추가해 숫자 0을 보존. Instagram 배너·영상 및 액터 필드 매핑에 적용했다. TikTok/X처럼 조회수 0·미반환인 경우에도 조회수만 NULL/직전값으로 처리하고 독립적으로 얻은 댓글·좋아요는 저장한다. IG의 조회수 0/의심값도 참여지표는 버리지 않는다.
+- **보조 플랫폼 진단:** 오래된 TikTok 무신호는 URL 파싱 문제가 아니라 clockworks 액터의 `collector_error`·0-view 응답이다. YouTube 5건과 TikTok 9건은 모두 8/10 신규 등록분으로 다음 수집 대기 상태다. 수집 자체가 error인 댓글수는 하류 stale-first rescue가 계속 담당한다.
+- **검증:** 신규 `scripts/test_comment_count_signal.py` 포함 최신 main scripts 테스트 **90 passed, 1 skipped**. 댓글 0 보존과 조회수 0에서도 참여지표 행 저장을 회귀 테스트했다.
+
 ## ✅ 2026-08-10 [Codex 완료] 수동 자동동기화 4종 실행
 - **실행 시각:** 2026-08-10 09:53~09:54 KST, 공개 전환 후 Actions 정상 기동 상태에서 실행.
 - **① 연동시트 08-09 조회수 import:** `import-linked-sheet-stats.yml` run `31345621795` 성공. `target_date=2026-08-09`, `apply=true`. 결과: `matched_urls=270`, `missing_urls=0`, `inserted=29`, `banner_reach_inserted=90`, `preserved_manual=0`, `overwrote_manual=0`, `dropped_decrease=0`, `post_ended_skipped=1`, `repeated_carry_skipped=150`.
