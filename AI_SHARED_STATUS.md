@@ -6,6 +6,13 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-10 [Codex 완료] GitHub Actions 결제 차단 우회(public 전환) + 08-09 수집 복구
+- **원인 확정:** repo가 PRIVATE 상태라 GitHub Actions private minutes/budget 영향을 받았고, `Actions` budget이 `$0` + `Stop usage: Yes`라 모든 job이 runner 시작 전 실패했다. 수동 `workflow-lint` run `31343661486`도 `steps=[]`로 5초 실패, 브라우저 run 화면에 `recent account payments have failed or your spending limit needs to be increased` 확인.
+- **조치:** 사용자 지시로 `kyeongwon-sweet/influencer-seeding`을 `PUBLIC`으로 전환했다. `gh repo view` 기준 `visibility=PUBLIC`, `isPrivate=false` 확인. 스모크 run `31343942758` 성공으로 Actions runner 시작 차단 해소 확인.
+- **08-09 복구 수집:** `cron-daily-collect.yml` 수동 실행 run `31343974669` 성공(24m20s). `MONITORING_DATE=2026-08-09`, `view_queue eligible=804 queue=572 retryable=572`, `데이터 저장 완료: 665건`, `daily_view_snapshot(2026-08-09) total_play=89,827,294 / post_count=1954`, brand metrics/youtube trends/B2B 모두 HTTP 200.
+- **리포트 검증:** 08-09 리포트 dry-run `31345096726` 성공, Slack 발송 없음. 본문 기준 총증분 `+1,898,144`, 바이럴 영상 `+1,391,682`, 협찬 인플루언서 `+226,003`, 위성채널 `+34,954`, 바이럴 배너 `+717`, 온드미디어 `+279`, 배너 가격 미매핑 `1건`.
+- **남은 보안 조치:** Claude 스캔대로 과거 commit history에 Meta access token이 있었고, repo는 예전에도 public이었으므로 이미 노출된 값으로 간주한다. **Meta Business에서 해당 토큰 즉시 무효화 + 새 토큰 발급 + Vercel env `META_BUSINESS_ACCESS_TOKEN` 갱신 필요.**
+
 ## 🔴 2026-08-10 [Claude 시크릿 스캔 → Codex: 공개 플립 전 필수조치] 이력에 Meta 토큰 노출
 **배경:** repo가 08-01 PRIVATE 전환됨 → GHA가 유료 private minutes로 청구되다 결제 실패/한도로 **08-09(일) 자정수집 등 모든 자동화 중단**("job was not started … payments failed or spending limit"). 해결책=public 재전환(무제한 무료 Actions). **공개 플립은 Codex 진행 중** → 그 전에 Claude가 시크릿 스캔 수행.
 - **✅ 현재 HEAD/추적파일 깨끗**: 추적 민감파일=예시 템플릿 2개(`.env.example`·`web/.env.local.example`)뿐. `google-sheets.ts`의 `-----BEGIN PRIVATE KEY-----`는 env 값 감싸는 PEM 래퍼 코드(오탐).
