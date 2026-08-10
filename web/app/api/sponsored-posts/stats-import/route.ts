@@ -7,7 +7,7 @@ import { normalizeChannelType, isFreeChannel } from "@/app/monitoring/lib";
 import { resolveTikTokShortUrl, tagCreatedBy } from "@/lib/sponsored-write";
 import { maxDateKST, todayKST } from "@/lib/dateRule";
 import { notifyBot } from "@/lib/slack";
-import { formatRejectedInvalidUrlAlert } from "@/lib/stats-import-alerts";
+import { buildRejectedInvalidUrlAlert, rejectedUrlIdentifiers } from "@/lib/stats-import-alerts";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -119,11 +119,41 @@ export async function POST(req: NextRequest) {
 
   const supabase = getServerSupabase();
 
+  // 이미 종료된 게시물의 오래된 잘못된 URL은 계속 차단하되 운영 알림에서는 제외한다.
+  // 거부 URL은 아래 기존 게시물 조회 대상(allUrls)에서 빠지므로 URL/legacy normalized_key로 별도 조회한다.
+  const endedRejectedIdentifiers = new Set<string>();
+  const rejectedLookupIdentifiers = [...new Set(rejectedUrls.flatMap(rejectedUrlIdentifiers))];
+  const rejectedLookupUrls = rejectedLookupIdentifiers.filter(value => /^https?:\/\//i.test(value));
+  const rejectedLookupKeys = rejectedLookupIdentifiers.filter(value => !/^https?:\/\//i.test(value));
+  const collectEndedRejected = (rows: Array<Record<string, unknown>> | null) => {
+    for (const row of rows ?? []) {
+      if (!row.ended_at) continue;
+      if (row.url) {
+        const normalized = normalizeUrl(String(row.url)) || String(row.url);
+        for (const identifier of rejectedUrlIdentifiers(normalized)) endedRejectedIdentifiers.add(identifier);
+      }
+      if (row.normalized_key) endedRejectedIdentifiers.add(String(row.normalized_key));
+    }
+  };
+  for (let i = 0; i < rejectedLookupUrls.length; i += 80) {
+    const { data } = await supabase
+      .from("sponsored_posts")
+      .select("url, normalized_key, ended_at")
+      .in("url", rejectedLookupUrls.slice(i, i + 80));
+    collectEndedRejected(data as Array<Record<string, unknown>> | null);
+  }
+  for (let i = 0; i < rejectedLookupKeys.length; i += 80) {
+    const { data } = await supabase
+      .from("sponsored_posts")
+      .select("url, normalized_key, ended_at")
+      .in("normalized_key", rejectedLookupKeys.slice(i, i + 80));
+    collectEndedRejected(data as Array<Record<string, unknown>> | null);
+  }
+  const rejectedInvalidUrlAlert = buildRejectedInvalidUrlAlert(rejectedUrls, endedRejectedIdentifiers);
+
   const allUrls = [...new Set([...items.map(i => i.url), ...[...postByUrl.values()].map(p => String(p.url))])];
   if (allUrls.length === 0) {
-    if (rejectedInvalidUrl > 0) {
-      await notifyBot(formatRejectedInvalidUrlAlert(rejectedInvalidUrl, rejectedUrls)).catch(() => {});
-    }
+    if (rejectedInvalidUrlAlert) await notifyBot(rejectedInvalidUrlAlert).catch(() => {});
     return NextResponse.json({ ok: true, inserted: 0, created_posts: 0, matched_urls: 0, missing_urls: 0, rejected_invalid_url: rejectedInvalidUrl });
   }
 
@@ -593,9 +623,7 @@ export async function POST(req: NextRequest) {
     await notifyBot(`🚨 [시트 조회수 입력] 중복 날짜열 의심 ${dupConflict.length}건 스킵 — 한 게시물·날짜에 값이 2개(중복 열). 시트 날짜 열 정규화 필요: ${s}`);
   }
 
-  if (rejectedInvalidUrl > 0) {
-    await notifyBot(formatRejectedInvalidUrlAlert(rejectedInvalidUrl, rejectedUrls)).catch(() => {});
-  }
+  if (rejectedInvalidUrlAlert) await notifyBot(rejectedInvalidUrlAlert).catch(() => {});
   // 급변 감지분 → 알림(자동 실측의 3배 이상 = 과대 오입력 의심). 사람이 입력한 시트값은 보존한다.
   if (spikeSuspected.length > 0) {
     const s = spikeSuspected.slice(0, 6).map(c => `${c.target} ${c.date.slice(5, 10)} ${c.value.toLocaleString()}(자동실측 ${c.auto_max.toLocaleString()})`).join(", ");

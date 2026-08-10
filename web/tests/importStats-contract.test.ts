@@ -23,6 +23,12 @@ test("stats-import: suspicious sheet stat alerts identify the target account", (
   assert.match(route, /\$\{c\.target\} \$\{c\.date\.slice\(5, 10\)\}/);
 });
 
+test("stats-import: ended invalid TikTok URLs stay blocked without noisy alerts", () => {
+  assert.match(route, /select\("url, normalized_key, ended_at"\)/);
+  assert.match(route, /\.in\("normalized_key", rejectedLookupKeys\.slice/);
+  assert.match(route, /buildRejectedInvalidUrlAlert\(rejectedUrls, endedRejectedIdentifiers\)/);
+});
+
 test("stats-import: cross-post copies and spikes are preserved with warnings", () => {
   assert.match(route, /copy_suspected_skipped:\s*0/);
   assert.match(route, /copy_suspected_warned:\s*copySuspected\.length/);
