@@ -51,6 +51,10 @@ test("TikTok snowflake: uint64 범위만 허용하고 잘못 붙인 20자리 ID�
     isInvalidTikTokPostUrl("https://www.tiktok.com/@issuebox_/photo/7667204307820760338/"),
     false,
   );
+  assert.equal(
+    isInvalidTikTokPostUrl("https://www.tiktok.com/@ssulbox_1/video/76543907066471252699/"),
+    true,
+  );
 });
 
 test("normalizeUrl: 같은 게시물의 다른 표기는 동일 URL로 정규화(중복 제거 기반)", () => {
