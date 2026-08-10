@@ -6,6 +6,13 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-10 [Codex 완료] 수동 자동동기화 4종 실행
+- **실행 시각:** 2026-08-10 09:53~09:54 KST, 공개 전환 후 Actions 정상 기동 상태에서 실행.
+- **① 연동시트 08-09 조회수 import:** `import-linked-sheet-stats.yml` run `31345621795` 성공. `target_date=2026-08-09`, `apply=true`. 결과: `matched_urls=270`, `missing_urls=0`, `inserted=29`, `banner_reach_inserted=90`, `preserved_manual=0`, `overwrote_manual=0`, `dropped_decrease=0`, `post_ended_skipped=1`, `repeated_carry_skipped=150`.
+- **② 배너 도달수 시트→DB sync:** `banner-reach-sync.yml` run `31345621818` 성공. `dry_run=false`. 결과: `upserted=8753`, `sheet_rows=2003`, `banner_rows=667`, `date_columns=97`, `missing_urls=1`(`vt.tiktok.com/ZS4QSjFam/`), `post_ended_skipped=5`, `duplicate_conflict_skipped=0`.
+- **③ 수식 전수감사:** `formula-audit.yml` run `31345621825` 성공. `healthy=true`, `slackSent=false`, `skippedNotify=true(reason=already_reported)`, `totalRows=2002`, `orphanRows=0`, H `errorCells=0/emptyButData=0`, I `errorCells=0/mismatch=0/blankExpected=0`, `anomalies=[]`, `stale=0`.
+- **④ 제작자/기획자 오적재 감사:** `invalid-creator-fields.yml` run `31345621853` 성공. `fields=both`, `apply=false`, `issue_rows=0`, `creator_issue_rows=0`, `planner_issue_rows=0`, `selected_for_update=0`. 수정/삭제 없음.
+
 ## ✅ 2026-08-10 [Codex 완료] 로컬 수집 복구 래퍼 추가 — secrets 직접 pull 불가 확인
 - **검증:** `vercel pull --environment=production`은 성공했지만, `APIFY_API_TOKEN`·`SUPABASE_SERVICE_ROLE_KEY`·`CRON_SECRET` 등 민감값은 `""`로 내려왔다. Vercel env 목록에는 `Encrypted`로 존재하므로, CLI가 민감값을 복호화해 로컬 파일로 주지 않는 보안 동작으로 본다. GitHub Secrets 역시 값 조회가 불가하다.
 - **결론:** Codex가 비밀값을 직접 읽어 `.env`를 자동 구성할 수는 없다. 로컬 직접 수집을 하려면 사용자가 별도 `.env.recovery.local` 또는 `.env`에 값을 넣어야 한다. 두 파일은 gitignore 대상이다.
