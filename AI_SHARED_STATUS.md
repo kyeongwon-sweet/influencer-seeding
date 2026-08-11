@@ -6,6 +6,13 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-11 [Claude 완료] injibot 완료느낌표 = **'미처리 카드 없음'** 기준 (무시·메타숨김 포함, 실시간+주기)
+- **요청:** "모든 댓글이 완료·무시 처리되면 부모 스레드에 :완료느낌표:." 기존엔 **'남은 답글 0개'**(완료/숨김=답글 삭제)만 검사해, **무시·메타숨김처럼 카드가 남는 처리**가 마지막이면 이모지가 안 달렸다.
+- **수정(양쪽 동일 기준):** 스레드에 **미처리 카드(actions 버튼 남은 답글)가 하나도 없으면** 완료느낌표.
+  - web `web/app/api/slack/injibot-action/route.ts` — 버튼 클릭 직후 **실시간** 반응(`96fe7f3`, main, `-mu` 프로덕션 배포·401 서빙 확인). `reactions:write` 없으면 조용히 무시.
+  - 봇 `negative-comment-monitor` `src/threads.js markCompletedThreads` — **주기** 스윕(`873921f`, master, test 196). 답글 미조회(reply_count>조회수) 시 보수적 스킵.
+- **효과:** 완료·무시·숨김 어떤 조합이든 전부 처리되면 부모에 :완료느낌표: (클릭 즉시 + 주기 백업, 실시간·주기가 같은 판정).
+
 ## ✅ 2026-08-11 [Codex 완료] **부정댓글 봇 699/817 타겟 누락 원인 확정·재발 방지**
 - **원인:** GAS 응답 캐시가 아니었다. `sponsoredTargets`는 시트 전체 `total=817`을 정상 인식했지만 GitHub 변수 `TARGET_BATCH_SIZE=300`을 evergreen 상한으로 적용해 `최근 399 + evergreen 300 = 699`만 반환했다. 라이브 응답 헤더도 `no-cache, no-store`이고 GAS 코드에 `CacheService`는 없다.
 - **즉시 복구:** `negative-comment-monitor` GitHub 변수 `TARGET_BATCH_SIZE`를 **1000**으로 변경. 같은 웹앱을 `limit=1000`으로 호출해 **817건 전량 반환** 확인.
