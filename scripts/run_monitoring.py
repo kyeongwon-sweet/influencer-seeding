@@ -10,6 +10,7 @@ from functools import wraps
 from db import get_client
 from url_utils import normalize_url, tt_video_id as _tt_id, tt_canonical_form
 from account_name_policy import collected_account_name_update
+from caption_text import normalize_caption
 from auto_end_rules import classify_auto_end, row_metric
 from not_found_policy import (
     NOT_FOUND_REVIEW_THRESHOLD,
@@ -540,8 +541,10 @@ def _store_aux_rows(db, rows, posts, stats, key_fn, label, *, views="clamp", cap
         s = stats.get(key_fn(post))
         # 캡션 자동채움 — 조회수 유무와 무관, 비어 있을 때만
         if s and caption_field and not post.get("content_summary") and s.get(caption_field):
-            cap = s[caption_field][:caption_limit] if caption_limit else s[caption_field]
-            db.table("sponsored_posts").update({"content_summary": cap}).eq("id", post["id"]).execute()
+            # 줄바꿈은 띄어쓰기 한 칸으로 저장한다(시트 셀이 여러 줄로 벌어지는 것 방지).
+            cap = normalize_caption(s[caption_field], caption_limit)
+            if cap:
+                db.table("sponsored_posts").update({"content_summary": cap}).eq("id", post["id"]).execute()
         if not s:
             _record_missing_view_event(post, label, "no_collector_response")
             continue
@@ -1217,7 +1220,10 @@ def run():
                 updates["account_name"] = account_name_update
             # 시트에 캡션이 없으면 스크랩한 캡션으로 채움(비어 있을 때만 — 수동/시트 캡션 보존). webhook과 동일.
             if not post.get("content_summary") and s.get("content_summary"):
-                updates["content_summary"] = s["content_summary"]
+                # 줄바꿈 → 띄어쓰기 한 칸(연동 시트 캡션 셀 한 줄 유지)
+                cap = normalize_caption(s["content_summary"])
+                if cap:
+                    updates["content_summary"] = cap
 
             # influencer_id 자동 연결 (스크리닝 지표 표시용)
             if not post.get("influencer_id") and s.get("owner_username"):

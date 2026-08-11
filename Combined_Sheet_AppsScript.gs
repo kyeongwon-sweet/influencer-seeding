@@ -984,7 +984,10 @@ function fillCaptionFromAsset_() {
     if (currentCaption.trim() !== "") {
       // 라이브와 동일하게 기존 캡션도 파일명 버전 접미사만 자가치유한다.
       // 앞의 점(.)이 필수라 일반 문장 속 "디자인" 단어는 건드리지 않는다.
+      // 줄바꿈 → 띄어쓰기 한 칸(2026-08-11): 스크랩 원문 캡션이 들어온 행은 셀이 여러 줄로 벌어진다.
+      // 이 분기(캡션이 이미 차 있음)에 없으면 영원히 안 고쳐진다 — 아래 소재명 파생 분기는 빈 칸에만 돈다.
       const normalizedCaption = currentCaption
+        .replace(/[ \t]*(?:\r\n|\r|\n)+[ \t]*/g, " ")
         .replace(/\s*\.디자인\s*\d*\s*$/, "")
         .replace(/\.+\s*$/, "")
         .trim();

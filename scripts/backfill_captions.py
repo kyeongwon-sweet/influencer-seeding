@@ -7,6 +7,7 @@ import os
 import re
 import time
 from db import get_client
+from caption_text import normalize_caption
 
 
 def _sc(u: str):
@@ -63,6 +64,9 @@ def backfill():
     updated = 0
     for a in targets:
         t = cap.get(_sc(a["url"]))
+        if not t:
+            continue
+        t = normalize_caption(t)  # 줄바꿈 → 띄어쓰기 한 칸
         if not t:
             continue
         db.table("sponsored_posts").update({"content_summary": t}).eq("id", a["id"]).execute()
