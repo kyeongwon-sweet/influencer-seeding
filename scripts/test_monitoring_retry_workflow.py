@@ -25,7 +25,17 @@ def test_targeted_retry_zero_result_is_not_reported_as_success():
     assert "raise RuntimeError(retry_zero_alert)" in text
 
 
+def test_batch_wide_instagram_not_found_does_not_advance_post_streaks():
+    text = RUN_MONITORING.read_text(encoding="utf-8")
+
+    assert "is_platform_not_found_outage(" in text
+    assert "if not ig_not_found_outage:" in text
+    assert "_record_not_found_observation(db, post, True)" in text
+    assert "not_found streak 적립을 중단했습니다" in text
+
+
 if __name__ == "__main__":
     test_manual_monitoring_retry_defaults_to_target_queue()
     test_targeted_retry_zero_result_is_not_reported_as_success()
+    test_batch_wide_instagram_not_found_does_not_advance_post_streaks()
     print("monitoring retry workflow safety test passed")

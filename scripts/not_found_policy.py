@@ -5,6 +5,8 @@ from datetime import date, datetime, timedelta, timezone
 
 
 NOT_FOUND_REVIEW_THRESHOLD = 3
+NOT_FOUND_OUTAGE_MIN_COUNT = 20
+NOT_FOUND_OUTAGE_RATE_THRESHOLD = 0.30
 _INSTAGRAM_POST_RE = re.compile(
     r"instagram\.com/(?:[^/?#]+/)*(?:p|reels|reel|tv)/[A-Za-z0-9_-]+",
     re.IGNORECASE,
@@ -14,6 +16,26 @@ _INSTAGRAM_POST_RE = re.compile(
 def is_not_found_review_eligible(url: str) -> bool:
     """Only Instagram post URLs participate. TikTok not_found is never actionable."""
     return bool(_INSTAGRAM_POST_RE.search(str(url or "")))
+
+
+def is_platform_not_found_outage(
+    requested_count: int,
+    not_found_count: int,
+    *,
+    min_count: int = NOT_FOUND_OUTAGE_MIN_COUNT,
+    rate_threshold: float = NOT_FOUND_OUTAGE_RATE_THRESHOLD,
+) -> bool:
+    """Quarantine batch-wide Instagram failures from per-post deletion streaks.
+
+    A small batch can legitimately contain only deleted posts, so both a minimum
+    count and a rate threshold are required. This guard does not reset existing
+    streaks; it simply prevents a platform incident from advancing them.
+    """
+    requested = max(0, int(requested_count or 0))
+    not_found = max(0, int(not_found_count or 0))
+    if requested <= 0 or not_found < max(1, int(min_count)):
+        return False
+    return (not_found / requested) >= float(rate_threshold)
 
 
 def next_not_found_state(post: dict, detected: bool, observed_at: str) -> tuple[dict, bool]:

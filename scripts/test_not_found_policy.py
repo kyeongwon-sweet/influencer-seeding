@@ -1,4 +1,8 @@
-from not_found_policy import is_not_found_review_eligible, next_not_found_state
+from not_found_policy import (
+    is_not_found_review_eligible,
+    is_platform_not_found_outage,
+    next_not_found_state,
+)
 
 
 def test_only_instagram_post_urls_are_eligible():
@@ -7,6 +11,17 @@ def test_only_instagram_post_urls_are_eligible():
     assert not is_not_found_review_eligible("https://www.instagram.com/user/reels/")
     assert not is_not_found_review_eligible("https://www.tiktok.com/@user/video/1234567890")
     assert not is_not_found_review_eligible("https://youtube.com/shorts/ABC_123")
+
+
+def test_batch_wide_not_found_is_treated_as_platform_outage():
+    assert is_platform_not_found_outage(596, 205)
+    assert is_platform_not_found_outage(177, 177)
+
+
+def test_small_or_low_rate_not_found_stays_per_post_actionable():
+    assert not is_platform_not_found_outage(10, 10)
+    assert not is_platform_not_found_outage(596, 19)
+    assert not is_platform_not_found_outage(100, 29)
 
 
 def test_first_and_second_consecutive_days_do_not_alert():

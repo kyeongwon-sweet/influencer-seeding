@@ -16,6 +16,7 @@ from auto_end_rules import classify_auto_end, row_metric
 from not_found_policy import (
     NOT_FOUND_REVIEW_THRESHOLD,
     is_not_found_review_eligible,
+    is_platform_not_found_outage,
     next_not_found_state,
 )
 
@@ -1055,6 +1056,8 @@ def run():
         skip_apify = os.getenv("SKIP_APIFY", "0").lower() in ("1", "true", "yes")
 
         stats_by_key = {}
+        ig_not_found_outage = False
+        ig_outage_message = None
         if skip_apify:
             print(f"[LOG] ⏭️ Apify 데이터 수집 스킵 (SKIP_APIFY=1) - 기존 데이터만 사용")
         else:
@@ -1102,6 +1105,9 @@ def run():
                         cur["comments_count"] = m["comments_count"]
                     if m.get("content_summary") and not cur.get("content_summary"):
                         cur["content_summary"] = m["content_summary"]
+                    # A successful fallback proves that the post exists even if
+                    # the primary actor returned a batch-wide not_found error.
+                    cur["deleted"] = False
                     stats_by_key[key] = cur
                 print(f"[LOG] data-slayer 폴백 보강 완료: 조회수 {merged}건 채움")
             elif exp_missing:
@@ -1120,6 +1126,7 @@ def run():
                     for field in ("play_count", "likes_count", "comments_count", "content_summary"):
                         if m.get(field) is not None and (field != "content_summary" or not cur.get(field)):
                             cur[field] = m[field]
+                    cur["deleted"] = False
                     if m.get("play_count") is not None:
                         merged += 1
                     stats_by_key[key] = cur
@@ -1158,6 +1165,7 @@ def run():
                         continue
                     key = _stats_key(u)
                     cur = stats_by_key.get(key) or {"url": u}
+                    cur["deleted"] = False
                     cur["comments_count"] = m["comments_count"]
                     for fld in ("play_count", "likes_count"):
                         if cur.get(fld) is None and m.get(fld) is not None:
@@ -1167,6 +1175,21 @@ def run():
                     stats_by_key[key] = cur
                     filled += 1
                 print(f"[LOG] comments_count 보강 완료: {filled}건")
+
+            ig_not_found_count = sum(
+                1 for u in ig_urls
+                if (stats_by_key.get(_stats_key(u)) or {}).get("deleted")
+            )
+            ig_not_found_outage = is_platform_not_found_outage(
+                len(ig_urls), ig_not_found_count
+            )
+            if ig_not_found_outage:
+                ig_outage_message = (
+                    f"🚨 [협찬 모니터링] Instagram 플랫폼 장애 격리: "
+                    f"not_found {ig_not_found_count}/{len(ig_urls)}건. "
+                    "개별 게시물 삭제로 판정하지 않고 not_found streak 적립을 중단했습니다."
+                )
+                print(f"[WARN] {ig_outage_message}")
 
         rows = []
         # 직전(오늘 이전) 누적값 일괄 조회 — per-post 개별 쿼리(N+1) 제거.
@@ -1211,7 +1234,8 @@ def run():
             # TikTok not_found는 종료·제외·streak 판정에 절대 사용하지 않는다.
             if s.get("deleted") and is_not_found_review_eligible(post.get("url") or ""):
                 _record_missing_view_event(post, "Instagram", "not_found", stat=s)
-                _record_not_found_observation(db, post, True)
+                if not ig_not_found_outage:
+                    _record_not_found_observation(db, post, True)
                 continue
             _record_not_found_observation(db, post, False)
 
@@ -1454,6 +1478,10 @@ def run():
             print(f"[WARN] 저장할 데이터가 없습니다 (매칭 실패 또는 조회수 오류)")
 
         retry_zero_alert = zero_result_alert(target_only, retry_target_count, len(rows), TODAY)
+        # Avoid duplicate Slack messages when the target-only zero-result guard
+        # below already reports the same platform incident.
+        if ig_outage_message and not retry_zero_alert:
+            _send_status_alert(ig_outage_message)
         if retry_zero_alert:
             print(f"[ERROR] {retry_zero_alert}")
             _send_status_alert(retry_zero_alert)
