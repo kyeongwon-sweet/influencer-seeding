@@ -178,23 +178,25 @@ export async function POST(req: NextRequest) {
     console.error("[injibot-action] response_url 갱신 실패", e);
   }
 
-  // 완료·숨김으로 답글을 지운 뒤, 그 스레드에 남은 (미처리) 답글이 0개면 부모에 :완료느낌표: 반응을 단다.
-  // = 담당자가 그 날짜×분류의 부정댓글을 전부 처리했다는 표시. reactions:write 권한 필요(없으면 조용히 무시).
-  if (willDelete) {
+  // 스레드에 '미처리 카드'(버튼 남은 답글)가 하나도 없으면 = 담당자가 그 날짜×분류 부정댓글을 전부
+  // 처리(완료·무시·숨김)한 것 → 부모에 :완료느낌표: 반응. 완료/숨김(삭제)·무시·메타숨김(버튼 제거) 모두
+  // '처리'로 간주(과거엔 삭제 기준이라 무시·메타숨김이 남으면 안 달렸음). reactions:write 없으면 조용히 무시.
+  {
     try {
       const parentTs: string = payload.message?.thread_ts || "";
-      const channelId: string = payload.channel?.id || "";
-      const deletedTs: string = payload.message?.ts || "";
+      const currentTs: string = payload.message?.ts || ""; // 방금 처리한 카드(반영 지연 대비 제외)
       const token = (process.env.INJIBOT_SLACK_TOKEN || "").trim();
-      if (parentTs && parentTs !== deletedTs && channelId && token) {
+      if (parentTs && parentTs !== currentTs && channelId && token) {
         const rep = await fetch(
           `https://slack.com/api/conversations.replies?channel=${channelId}&ts=${parentTs}&limit=100`,
           { headers: { authorization: `Bearer ${token}` } },
         ).then((r) => r.json() as Promise<{ messages?: SlackMessage[] }>);
         const msgs: SlackMessage[] = rep.messages || [];
-        // 부모와 '방금 지운 답글'(response_url delete_original 반영 지연 대비)을 제외한 남은 답글.
-        const remaining = msgs.filter((m) => m.ts !== parentTs && m.ts !== deletedTs);
-        if (msgs.length > 0 && remaining.length === 0) {
+        // 미처리 카드 = actions(버튼) 블록이 남은 답글. 부모·방금 처리분 제외.
+        const unhandled = msgs.filter(
+          (m) => m.ts !== parentTs && m.ts !== currentTs && Array.isArray(m.blocks) && m.blocks.some((b) => b.type === "actions"),
+        );
+        if (msgs.length > 0 && unhandled.length === 0) {
           await fetch("https://slack.com/api/reactions.add", {
             method: "POST",
             headers: { authorization: `Bearer ${token}`, "Content-Type": "application/json" },
