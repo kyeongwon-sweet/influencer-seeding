@@ -1,6 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { formatDbSheetSyncAlert } from "../lib/db-sheet-sync-alert.ts";
+
+const middleware = readFileSync(new URL("../middleware.ts", import.meta.url), "utf8");
+
+test("DB→시트 실패 알림 라우트는 Clerk를 우회하되 자체 CRON_SECRET을 검사한다", () => {
+  const route = readFileSync(
+    new URL("../app/api/ops/db-sheet-sync-alert/route.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(middleware, /\/api\/ops\/db-sheet-sync-alert\(\.\*\)/);
+  assert.match(route, /checkCronAuth\(req\) !== "ok"/);
+});
 
 test("DB→시트 실패 알림에 상태·재시도·오류를 포함한다", () => {
   const message = formatDbSheetSyncAlert({
