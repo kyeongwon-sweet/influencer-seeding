@@ -11,6 +11,7 @@ from db import get_client
 from url_utils import normalize_url, tt_video_id as _tt_id, tt_canonical_form
 from account_name_policy import collected_account_name_update
 from caption_text import normalize_caption
+from monitoring_retry_guard import zero_result_alert
 from auto_end_rules import classify_auto_end, row_metric
 from not_found_policy import (
     NOT_FOUND_REVIEW_THRESHOLD,
@@ -1010,11 +1011,13 @@ def run():
         recollect_all = os.getenv("RECOLLECT_ALL", "0").lower() in ("1", "true", "yes")
         final_snapshot = os.getenv("FINAL_SNAPSHOT", "0").lower() in ("1", "true", "yes")
         target_only = os.getenv("VIEW_MISSING_TARGET_ONLY", "0").lower() in ("1", "true", "yes")
+        retry_target_count = 0
         if target_only and not recollect_all and not metadata_only:
             target_ids = _target_ids_from_missing_queue(os.getenv("VIEW_MISSING_QUEUE_FILE"))
             if target_ids is not None:
                 before = len(posts)
                 posts = [p for p in posts if p.get("id") in target_ids]
+                retry_target_count = len(posts)
                 print(
                     f"[LOG] VIEW_MISSING_TARGET_ONLY=1 - retryable queue targets: "
                     f"{len(posts)}/{before} posts"
@@ -1449,6 +1452,12 @@ def run():
             #  증분은 safeIncrement가 '첫 유효측정=그날 전체(업로드날 성과), 이후 델타'로 처리하므로 baseline=0 불필요.)
         else:
             print(f"[WARN] 저장할 데이터가 없습니다 (매칭 실패 또는 조회수 오류)")
+
+        retry_zero_alert = zero_result_alert(target_only, retry_target_count, len(rows), TODAY)
+        if retry_zero_alert:
+            print(f"[ERROR] {retry_zero_alert}")
+            _send_status_alert(retry_zero_alert)
+            raise RuntimeError(retry_zero_alert)
 
         print(f"[SUCCESS] 모니터링 완료: {len(rows)}건 저장")
         _flush_overrecord_warnings()

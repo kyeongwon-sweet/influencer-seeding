@@ -3,6 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "monitoring-retry.yml"
+RUN_MONITORING = ROOT / "scripts" / "run_monitoring.py"
 
 
 def test_manual_monitoring_retry_defaults_to_target_queue():
@@ -16,6 +17,15 @@ def test_manual_monitoring_retry_defaults_to_target_queue():
     assert "github.event.inputs.recollect_all == 'true' && '0'" in text
 
 
+def test_targeted_retry_zero_result_is_not_reported_as_success():
+    text = RUN_MONITORING.read_text(encoding="utf-8")
+
+    assert "retry_target_count = len(posts)" in text
+    assert "zero_result_alert(target_only, retry_target_count, len(rows), TODAY)" in text
+    assert "raise RuntimeError(retry_zero_alert)" in text
+
+
 if __name__ == "__main__":
     test_manual_monitoring_retry_defaults_to_target_queue()
+    test_targeted_retry_zero_result_is_not_reported_as_success()
     print("monitoring retry workflow safety test passed")
