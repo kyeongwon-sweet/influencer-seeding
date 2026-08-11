@@ -21,6 +21,13 @@ def test_dot_only_lines_are_preserved_as_text():
     assert normalize_caption("기묘하다\n.\n.\n#fyp") == "기묘하다 . . #fyp"
 
 
+def test_blank_lines_with_spaces_collapse_to_one_space():
+    """🚨 실측 결함(2026-08-11): 공백만 있는 빈 줄이 섞이면 줄바꿈 수만큼 공백이 남았다."""
+    assert normalize_caption("@lalasweet_icecream \n \n#라라스윗") == "@lalasweet_icecream #라라스윗"
+    assert normalize_caption("가\n\n\n나") == "가 나"
+    assert normalize_caption("가 \n\t \n \n 나") == "가 나"
+
+
 def test_crlf_and_tabs_around_newline():
     assert normalize_caption("가\r\n\t나") == "가 나"
     assert normalize_caption("가  \n  나") == "가 나"

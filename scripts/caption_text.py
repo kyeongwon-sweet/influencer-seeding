@@ -16,7 +16,10 @@ from __future__ import annotations
 import re
 
 # 줄바꿈(그리고 줄바꿈에 붙은 공백)만 한 칸으로. 문장 속 일반 공백은 건드리지 않는다.
-_NEWLINE_RUN = re.compile(r"[ \t]*(?:\r\n|\r|\n)+[ \t]*")
+# ⚠️ 빈 줄에 공백이 섞인 형태(" \n \n")를 한 덩어리로 잡아야 한다.
+# `[ \t]*\n+[ \t]*` 로 쓰면 공백만 있는 줄이 경계를 끊어 줄바꿈 개수만큼 공백이 남는다
+# (실측: "@lalasweet_icecream \n \n#라라스윗" → 공백 3칸). 요청은 "한 칸으로만"이다.
+_NEWLINE_RUN = re.compile(r"[ \t]*(?:(?:\r\n|\r|\n)[ \t]*)+")
 
 
 def normalize_caption(text, limit: int | None = None):

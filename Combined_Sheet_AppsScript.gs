@@ -987,7 +987,7 @@ function fillCaptionFromAsset_() {
       // 줄바꿈 → 띄어쓰기 한 칸(2026-08-11): 스크랩 원문 캡션이 들어온 행은 셀이 여러 줄로 벌어진다.
       // 이 분기(캡션이 이미 차 있음)에 없으면 영원히 안 고쳐진다 — 아래 소재명 파생 분기는 빈 칸에만 돈다.
       const normalizedCaption = currentCaption
-        .replace(/[ \t]*(?:\r\n|\r|\n)+[ \t]*/g, " ")
+        .replace(/[ \t]*(?:(?:\r\n|\r|\n)[ \t]*)+/g, " ")
         .replace(/\s*\.디자인\s*\d*\s*$/, "")
         .replace(/\.+\s*$/, "")
         .trim();
