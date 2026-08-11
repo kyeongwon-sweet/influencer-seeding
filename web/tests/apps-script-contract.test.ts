@@ -348,6 +348,7 @@ test("refreshSheetDerivedFields fills existing channel metadata before pricing",
 test("dailyAuto prices sheet rows before importing stats and then exports DB stats", () => {
   const defsStart = appsScript.indexOf("function dailyAutoStageDefs_()");
   const dailyStart = appsScript.indexOf("function dailyAuto()");
+  const defsBody = appsScript.slice(defsStart, dailyStart);
   const pricingIdx = appsScript.indexOf('["syncPricing", syncPricing]', defsStart);
   const importIdx = appsScript.indexOf('["importStats", function() { return importStats("daily_auto"); }]', defsStart);
   const exportIdx = appsScript.indexOf('["exportStats", exportStats]', defsStart);
@@ -358,6 +359,7 @@ test("dailyAuto prices sheet rows before importing stats and then exports DB sta
   assert.notEqual(exportIdx, -1);
   assert.ok(pricingIdx < importIdx);
   assert.ok(importIdx < exportIdx);
+  assert.doesNotMatch(defsBody, /\["pullFromDB"/);
   assert.match(appsScript, /duration_ms: finishedMs - startedMs/);
   assert.match(appsScript, /DAILY_AUTO_LAST_STAGES_JSON/);
   assert.match(appsScript, /dailyAuto_stage /);
@@ -434,13 +436,13 @@ test("Apps Script clasp deploy path is staged and guarded", () => {
   assert.doesNotMatch(deploy, /rollback_backfill86_sheet_temp/);
 });
 
-test("dailyAuto retries only pull/import/export once after seven minutes", () => {
+test("dailyAuto retries only import/export once after seven minutes", () => {
   const retryStart = appsScript.indexOf("function dailyAutoRetry_()");
   const dailyStart = appsScript.indexOf("function dailyAuto()", retryStart);
   assert.notEqual(retryStart, -1);
   assert.match(
     appsScript,
-    /DAILY_AUTO_RETRYABLE_STAGES_ = \["pullFromDB", "importStats", "exportStats"\]/,
+    /DAILY_AUTO_RETRYABLE_STAGES_ = \["importStats", "exportStats"\]/,
   );
   assert.match(appsScript, /DAILY_AUTO_RETRY_DELAY_MS_ = 7 \* 60 \* 1000/);
   assert.match(appsScript, /newTrigger\("dailyAutoRetry_"\)[\s\S]*?\.after\(DAILY_AUTO_RETRY_DELAY_MS_\)/);
@@ -453,6 +455,34 @@ test("dailyAuto retries only pull/import/export once after seven minutes", () =>
     ),
     /scheduleDailyAutoRetry_/,
   );
+});
+
+test("DB to sheet sync runs independently every three hours with retry, watchdog, and alerts", () => {
+  const start = appsScript.indexOf("const DB_PULL_SYNC_INTERVAL_HOURS_");
+  const end = appsScript.indexOf("function fetchCollectedStats_()", start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const body = appsScript.slice(start, end);
+
+  assert.match(body, /DB_PULL_SYNC_INTERVAL_HOURS_ = 3/);
+  assert.match(body, /DB_PULL_SYNC_RETRY_DELAY_MS_ = 7 \* 60 \* 1000/);
+  assert.match(body, /DB_PULL_SYNC_WATCHDOG_DELAY_MS_ = 20 \* 60 \* 1000/);
+  assert.match(body, /DB_PULL_SYNC_TIMEOUT_RETRY_DELAY_MS_ = 15 \* 60 \* 1000/);
+  assert.match(body, /function runDbPullSyncAttempt_\(source, attempt\)/);
+  assert.match(body, /return withAutoWriteGuard_\(function\(\) \{[\s\S]*?return withDocLock_\(function\(\)/);
+  assert.match(body, /newTrigger\("dbPullSyncWatchdog_"\)/);
+  assert.match(body, /DB_PULL_SYNC_LAST_STATUS/);
+  assert.match(body, /DB_PULL_SYNC_PENDING_JSON/);
+  assert.match(body, /notifyDbPullSyncFailure_/);
+  assert.match(body, /const willRetry = attempt < 1/);
+  assert.match(body, /function scheduledDbPullSync_\(\)/);
+  assert.match(
+    body,
+    /newTrigger\("scheduledDbPullSync_"\)[\s\S]*?\.everyHours\(DB_PULL_SYNC_INTERVAL_HOURS_\)/,
+  );
+  assert.match(body, /function dbPullSyncRetry_\(\)/);
+  assert.match(body, /function dbPullSyncWatchdog_\(\)/);
+  assert.match(appsScript, /DB_SHEET_SYNC_ALERT_URL/);
 });
 
 test("automatic sheet writes suppress edit-trigger fanout", () => {
@@ -665,16 +695,16 @@ test("writeColumnByKey_ follows the latest URL order and preserves nonblank manu
   assert.deepEqual(writes, [{ row: 3, col: 2, values: [["planner-1"]] }]);
 });
 
-test("daily trigger installs and removes the 00:00 syncNew trigger", () => {
+test("daily trigger installs and removes syncNew plus independent DB pull triggers", () => {
   assert.match(
     appsScript,
     /newTrigger\("syncNew"\)[\s\S]*?\.atHour\(0\)[\s\S]*?\.everyDays\(1\)/,
   );
   assert.match(
     appsScript,
-    /function removeDailyTrigger\(\)[\s\S]*?\["syncNew", "dailyAuto", "dailyAutoRetry_"\]/,
+    /function removeDailyTrigger\(\)[\s\S]*?\["syncNew", "dailyAuto", "dailyAutoRetry_", "scheduledDbPullSync_", "dbPullSyncRetry_", "dbPullSyncWatchdog_"\]/,
   );
-  assert.match(appsScript, /\["syncNew", "dailyAuto", "dailyAutoRetry_"\]/);
+  assert.match(appsScript, /function installDailyTrigger\(\)[\s\S]*?installDbPullSyncTrigger_\(\)/);
 });
 
 test("menu exposes two primary actions and four focused submenus", () => {

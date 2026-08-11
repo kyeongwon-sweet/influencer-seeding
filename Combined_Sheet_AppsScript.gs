@@ -39,6 +39,7 @@ const CONFIG = {
   COLLECT_FALLBACK_URL: "https://influencer-seeding-mu.vercel.app/api/ops/collect-fallback",      // 자정수집 누락 시 Apify 폴백 수집(비어 있을 때만 동작)
   AUDIT_FALLBACK_URL: "https://influencer-seeding-mu.vercel.app/api/ops/audit-fallback",          // 아침 수식감사 미발화 시 폴백 감사(오늘 감사 없을 때만 동작)
   ENSURE_DAILY_AUDITS_URL: "https://influencer-seeding-mu.vercel.app/api/ops/ensure-daily-audits", // 수식·제작자 감사를 함께 보장(오늘 성공한 워크플로는 건너뜀)
+  DB_SHEET_SYNC_ALERT_URL: "https://influencer-seeding-mu.vercel.app/api/ops/db-sheet-sync-alert", // DB→시트 독립 동기화 실패 Slack 경고
   HEADER_ROW: 1,
   DATA_START_ROW: 2,
   STATUS_HEADER: "등록상태",
@@ -139,6 +140,7 @@ function onOpen() {
 
   const automationMenu = ui.createMenu(automationMenuLabel_())
     .addItem("자동화 상태 · 최근 실행 보기", "checkSetup")
+    .addItem("DB→시트 지금 동기화", "runDbPullSyncNow")
     .addItem("자동 동기화 켜기 · 복구", "installDailyTrigger")
     .addItem("자동 동기화 끄기", "removeDailyTrigger");
 
@@ -1013,10 +1015,11 @@ function fillCaptionFromAsset_() {
 //
 // 운영 관측:
 // - 각 단계의 시작/종료/소요시간/오류를 Script Properties + 실행 로그에 남긴다.
-// - pullFromDB/importStats/exportStats만 실패 시 7분 뒤 실패 단계만 1회 재시도한다.
+// - importStats/exportStats만 실패 시 7분 뒤 실패 단계만 1회 재시도한다.
+// - pullFromDB는 3시간 독립 트리거로 분리해 일일 작업 시간초과와 신규글 동기화 지연을 격리한다.
 // - 재시도도 실패하면 더 예약하지 않고 오류를 남겨 무한 트리거 생성을 막는다.
 const DAILY_AUTO_RETRY_DELAY_MS_ = 7 * 60 * 1000;
-const DAILY_AUTO_RETRYABLE_STAGES_ = ["pullFromDB", "importStats", "exportStats"];
+const DAILY_AUTO_RETRYABLE_STAGES_ = ["importStats", "exportStats"];
 
 function dailyAutoErrorText_(e) {
   // Script Properties 단일 값 제한을 넘지 않도록 스택은 단계당 700자로 제한한다.
@@ -1027,7 +1030,6 @@ function dailyAutoStageDefs_() {
   return [
     ["fillCaptionFromAsset", fillCaptionFromAsset_],
     ["syncAll", function() { return runSync_(false); }],
-    ["pullFromDB", pullFromDB],
     ["syncPricing", syncPricing],
     ["importStats", function() { return importStats("daily_auto"); }],
     ["exportStats", exportStats],
@@ -1190,6 +1192,192 @@ function dailyAuto() {
     if (errors.length) throw new Error(status);
     return true;
   });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DB→시트 독립 동기화 — 3시간 주기 + 1회 재시도 + 시간초과 워치독
+// dailyAuto에 묶이면 전체 실행이 30분 제한을 넘을 때 신규글 반영까지 함께 멈춘다.
+// Apps Script 트리거 자체가 강제 종료되면 catch/finally가 실행되지 않으므로, 시작 전에 별도
+// watchdog을 예약하고 성공 시 제거한다. watchdog은 원 실행과 겹쳐 쓰지 않고 30분 이후에만 재시도한다.
+// ═══════════════════════════════════════════════════════════════
+const DB_PULL_SYNC_INTERVAL_HOURS_ = 3;
+const DB_PULL_SYNC_RETRY_DELAY_MS_ = 7 * 60 * 1000;
+const DB_PULL_SYNC_WATCHDOG_DELAY_MS_ = 20 * 60 * 1000;
+const DB_PULL_SYNC_TIMEOUT_RETRY_DELAY_MS_ = 15 * 60 * 1000;
+
+function removeDbPullSyncTriggersByHandler_(handlers) {
+  const wanted = handlers || [];
+  const triggers = ScriptApp.getProjectTriggers()
+    .filter(function(trigger) { return wanted.indexOf(trigger.getHandlerFunction()) >= 0; });
+  triggers.forEach(function(trigger) { ScriptApp.deleteTrigger(trigger); });
+  return triggers.length;
+}
+
+function dbPullSyncErrorText_(error) {
+  return String((error && (error.stack || error.message)) || error).slice(0, 700);
+}
+
+function notifyDbPullSyncFailure_(payload) {
+  try {
+    const res = UrlFetchApp.fetch(CONFIG.DB_SHEET_SYNC_ALERT_URL, {
+      method: "post",
+      headers: authHeaders_(),
+      contentType: "application/json",
+      payload: JSON.stringify(payload || {}),
+      muteHttpExceptions: true,
+    });
+    const code = res.getResponseCode();
+    if (code !== 200) Logger.log("dbPullSync alert HTTP " + code + ": " + res.getContentText().slice(0, 300));
+  } catch (error) {
+    Logger.log("dbPullSync alert error: " + dbPullSyncErrorText_(error));
+  }
+}
+
+function scheduleDbPullSyncRetry_(pending, delayMs) {
+  removeDbPullSyncTriggersByHandler_(["dbPullSyncRetry_"]);
+  PropertiesService.getScriptProperties().setProperty("DB_PULL_SYNC_PENDING_JSON", JSON.stringify(pending));
+  ScriptApp.newTrigger("dbPullSyncRetry_")
+    .timeBased()
+    .after(delayMs)
+    .create();
+}
+
+function runDbPullSyncAttempt_(source, attempt) {
+  return withAutoWriteGuard_(function() {
+    return withDocLock_(function() {
+      const props = PropertiesService.getScriptProperties();
+      const startedAt = new Date().toISOString();
+      const runId = startedAt + ":" + String(Math.floor(Math.random() * 1000000));
+      const pending = { run_id: runId, source: source, attempt: attempt, started_at: startedAt };
+
+      removeDbPullSyncTriggersByHandler_(["dbPullSyncWatchdog_"]);
+      props.setProperties({
+        DB_PULL_SYNC_LAST_STARTED_AT: startedAt,
+        DB_PULL_SYNC_LAST_FINISHED_AT: "",
+        DB_PULL_SYNC_LAST_STATUS: "RUNNING",
+        DB_PULL_SYNC_LAST_SOURCE: source,
+        DB_PULL_SYNC_PENDING_JSON: JSON.stringify(pending),
+      }, false);
+      ScriptApp.newTrigger("dbPullSyncWatchdog_")
+        .timeBased()
+        .after(DB_PULL_SYNC_WATCHDOG_DELAY_MS_)
+        .create();
+
+      try {
+        const ok = pullFromDB();
+        if (ok === false) throw new Error("pullFromDB returned false");
+        const finishedAt = new Date().toISOString();
+        removeDbPullSyncTriggersByHandler_(["dbPullSyncWatchdog_", "dbPullSyncRetry_"]);
+        props.deleteProperty("DB_PULL_SYNC_PENDING_JSON");
+        props.setProperties({
+          DB_PULL_SYNC_LAST_FINISHED_AT: finishedAt,
+          DB_PULL_SYNC_LAST_STATUS: "OK",
+          DB_PULL_SYNC_LAST_ERROR: "",
+        }, false);
+        Logger.log("dbPullSync_result " + JSON.stringify({ status: "OK", source: source, attempt: attempt, started_at: startedAt, finished_at: finishedAt }));
+        return true;
+      } catch (error) {
+        const finishedAt = new Date().toISOString();
+        const errorText = dbPullSyncErrorText_(error);
+        removeDbPullSyncTriggersByHandler_(["dbPullSyncWatchdog_"]);
+        props.setProperties({
+          DB_PULL_SYNC_LAST_FINISHED_AT: finishedAt,
+          DB_PULL_SYNC_LAST_STATUS: "ERROR",
+          DB_PULL_SYNC_LAST_ERROR: errorText,
+        }, false);
+        const willRetry = attempt < 1;
+        if (willRetry) {
+          scheduleDbPullSyncRetry_({
+            run_id: runId,
+            source: source,
+            attempt: 1,
+            started_at: startedAt,
+            reason: "caught_error",
+          }, DB_PULL_SYNC_RETRY_DELAY_MS_);
+        } else {
+          props.deleteProperty("DB_PULL_SYNC_PENDING_JSON");
+        }
+        notifyDbPullSyncFailure_({
+          status: "ERROR",
+          source: source,
+          attempt: attempt,
+          started_at: startedAt,
+          finished_at: finishedAt,
+          retry_scheduled: willRetry,
+          error: errorText,
+        });
+        Logger.log("dbPullSync_result " + JSON.stringify({ status: "ERROR", source: source, attempt: attempt, retry_scheduled: willRetry, error: errorText }));
+        throw error;
+      }
+    });
+  });
+}
+
+function scheduledDbPullSync_() {
+  return runDbPullSyncAttempt_("scheduled", 0);
+}
+
+function runDbPullSyncNow() {
+  return runDbPullSyncAttempt_("manual", 0);
+}
+
+function dbPullSyncRetry_() {
+  removeDbPullSyncTriggersByHandler_(["dbPullSyncRetry_"]);
+  const props = PropertiesService.getScriptProperties();
+  const raw = props.getProperty("DB_PULL_SYNC_PENDING_JSON");
+  if (!raw) {
+    Logger.log("dbPullSync_retry_skip: pending 없음");
+    return true;
+  }
+  let pending;
+  try { pending = JSON.parse(raw); } catch (error) { pending = {}; }
+  return runDbPullSyncAttempt_("retry", Number(pending.attempt || 1));
+}
+
+function dbPullSyncWatchdog_() {
+  removeDbPullSyncTriggersByHandler_(["dbPullSyncWatchdog_"]);
+  const props = PropertiesService.getScriptProperties();
+  const raw = props.getProperty("DB_PULL_SYNC_PENDING_JSON");
+  if (!raw) return true;
+  let pending;
+  try { pending = JSON.parse(raw); } catch (error) { pending = {}; }
+  const lastFinished = Date.parse(props.getProperty("DB_PULL_SYNC_LAST_FINISHED_AT") || "");
+  const pendingStarted = Date.parse(pending.started_at || "");
+  if (Number.isFinite(lastFinished) && Number.isFinite(pendingStarted) && lastFinished >= pendingStarted) {
+    props.deleteProperty("DB_PULL_SYNC_PENDING_JSON");
+    return true;
+  }
+
+  // 원 실행은 최대 30분까지 살아 있을 수 있다. watchdog 시점에는 경고만 하고,
+  // 15분 뒤(시작 후 약 35분)에 재시도해 동시 시트 쓰기를 피한다.
+  const message = "Apps Script 20분 경과 후에도 완료 기록 없음(시간초과 의심)";
+  scheduleDbPullSyncRetry_({
+    run_id: pending.run_id || "",
+    source: pending.source || "scheduled",
+    attempt: 1,
+    started_at: pending.started_at || "",
+    reason: "watchdog_timeout",
+  }, DB_PULL_SYNC_TIMEOUT_RETRY_DELAY_MS_);
+  props.setProperty("DB_PULL_SYNC_LAST_STATUS", "WATCHDOG_TIMEOUT");
+  props.setProperty("DB_PULL_SYNC_LAST_ERROR", message);
+  notifyDbPullSyncFailure_({
+    status: "WATCHDOG_TIMEOUT",
+    source: pending.source || "scheduled",
+    attempt: Number(pending.attempt || 0),
+    started_at: pending.started_at || "",
+    retry_scheduled: true,
+    error: message,
+  });
+  return true;
+}
+
+function installDbPullSyncTrigger_() {
+  removeDbPullSyncTriggersByHandler_(["scheduledDbPullSync_", "dbPullSyncRetry_", "dbPullSyncWatchdog_"]);
+  PropertiesService.getScriptProperties().deleteProperty("DB_PULL_SYNC_PENDING_JSON");
+  ScriptApp.newTrigger("scheduledDbPullSync_")
+    .timeBased()
+    .everyHours(DB_PULL_SYNC_INTERVAL_HOURS_)
+    .create();
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1795,13 +1983,17 @@ function checkSetup() {
     const sheet = getSheet_();
     const fieldCols = buildFieldCols_(sheet);
     const triggers = ScriptApp.getProjectTriggers()
-      .filter(t => t.getHandlerFunction() === "syncNew" || t.getHandlerFunction() === "dailyAuto");
+      .filter(t => ["syncNew", "dailyAuto", "scheduledDbPullSync_"].indexOf(t.getHandlerFunction()) >= 0);
     const dailyAutoCount = triggers.filter(t => t.getHandlerFunction() === "dailyAuto").length;
     const midnightSyncNewCount = triggers.filter(t => t.getHandlerFunction() === "syncNew").length;
+    const dbPullSyncCount = triggers.filter(t => t.getHandlerFunction() === "scheduledDbPullSync_").length;
     const props = PropertiesService.getScriptProperties();
     const lastStarted = props.getProperty("DAILY_AUTO_LAST_STARTED_AT") || "-";
     const lastFinished = props.getProperty("DAILY_AUTO_LAST_FINISHED_AT") || "-";
     const lastStatus = props.getProperty("DAILY_AUTO_LAST_STATUS") || "기록 없음";
+    const dbPullLastStarted = props.getProperty("DB_PULL_SYNC_LAST_STARTED_AT") || "-";
+    const dbPullLastFinished = props.getProperty("DB_PULL_SYNC_LAST_FINISHED_AT") || "-";
+    const dbPullLastStatus = props.getProperty("DB_PULL_SYNC_LAST_STATUS") || "기록 없음";
     const scriptTimezone = Session.getScriptTimeZone();
     const kstToday = todayStr_();
     safeAlert_(
@@ -1809,12 +2001,15 @@ function checkSetup() {
       `탭: ${sheet.getName()}\n` +
       `인식된 필드: ${Object.keys(fieldCols).join(", ")}\n\n` +
       `🕘 스크립트 시간대: ${scriptTimezone} / KST 오늘: ${kstToday}\n` +
-      `⏰ 자동 동기화 상태: ${dailyAutoCount === 1 && midnightSyncNewCount === 1 ? "✅ 켜짐" : "⚠️ 복구 필요"}\n` +
-      `트리거: dailyAuto ${dailyAutoCount}개, 자정 syncNew ${midnightSyncNewCount}개\n` +
-      `예정: 매일 ${CONFIG.TRIGGER_HOUR}:${CONFIG.TRIGGER_MINUTE} KST 전후(12:20 리포트 전)\n` +
+      `⏰ 자동 동기화 상태: ${dailyAutoCount === 1 && midnightSyncNewCount === 1 && dbPullSyncCount === 1 ? "✅ 켜짐" : "⚠️ 복구 필요"}\n` +
+      `트리거: dailyAuto ${dailyAutoCount}개, 자정 syncNew ${midnightSyncNewCount}개, DB→시트 3시간 ${dbPullSyncCount}개\n` +
+      `예정: DB→시트 3시간 간격 / 일일 작업 ${CONFIG.TRIGGER_HOUR}:${CONFIG.TRIGGER_MINUTE} KST 전후\n` +
       `마지막 dailyAuto 시작: ${lastStarted}\n` +
       `마지막 dailyAuto 종료: ${lastFinished}\n` +
-      `마지막 상태: ${lastStatus}`
+      `마지막 dailyAuto 상태: ${lastStatus}\n\n` +
+      `마지막 DB→시트 시작: ${dbPullLastStarted}\n` +
+      `마지막 DB→시트 종료: ${dbPullLastFinished}\n` +
+      `마지막 DB→시트 상태: ${dbPullLastStatus}`
     );
   } catch (e) {
     safeAlert_("❌ 설정 오류\n" + e.message);
@@ -1854,7 +2049,8 @@ function checkDuplicates() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 자동 트리거 (매일 8:30, dailyAuto 실행: syncAll → pullFromDB → syncPricing → importStats → exportStats)
+// 자동 트리거 (매일 8:30, dailyAuto 실행: syncAll → syncPricing → importStats → exportStats)
+// DB→시트 pullFromDB는 3시간 독립 트리거로 실행한다.
 // ═══════════════════════════════════════════════════════════════
 function findHeaderCol_(sheet, names) {
   const lastCol = sheet.getLastColumn();
@@ -3017,11 +3213,12 @@ function removeAuditFallbackTrigger() {
 }
 
 function installDailyTrigger() {
-  // 기존 트리거(구버전 syncNew·남은 1회 재시도 포함) 제거 후 양방향 dailyAuto로 재등록
+  // 기존 트리거(구버전 syncNew·남은 1회 재시도 포함) 제거 후 일일 작업과 DB→시트 독립 동기화를 재등록
   ScriptApp.getProjectTriggers()
-    .filter(t => ["syncNew", "dailyAuto", "dailyAutoRetry_"].indexOf(t.getHandlerFunction()) >= 0)
+    .filter(t => ["syncNew", "dailyAuto", "dailyAutoRetry_", "scheduledDbPullSync_", "dbPullSyncRetry_", "dbPullSyncWatchdog_"].indexOf(t.getHandlerFunction()) >= 0)
     .forEach(t => ScriptApp.deleteTrigger(t));
   PropertiesService.getScriptProperties().deleteProperty("DAILY_AUTO_RETRY_PENDING_JSON");
+  PropertiesService.getScriptProperties().deleteProperty("DB_PULL_SYNC_PENDING_JSON");
   PropertiesService.getScriptProperties().setProperty("AUTO_SYNC_ENABLED", "true");
   ensureDateHeaderChangeTrigger_();
   applyLinkedSheetInputValidation_();
@@ -3041,14 +3238,17 @@ function installDailyTrigger() {
     .everyDays(1)
     .create();
 
-  safeAlert_(`✅ 자동 동기화를 켰습니다.\n• 매일 자정(00:00~01:00): 신규 광고 syncNew(00:41 자정수집 직전)\n• 매일 오전 ${CONFIG.TRIGGER_HOUR}:${CONFIG.TRIGGER_MINUTE} (±15분): 전체 양방향 dailyAuto\n• 12:20 리포트 전에 분류 동기화`);
+  installDbPullSyncTrigger_();
+
+  safeAlert_(`✅ 자동 동기화를 켰습니다.\n• 3시간 간격: DB→시트 신규글 반영(실패 시 1회 재시도)\n• 매일 자정(00:00~01:00): 신규 광고 syncNew\n• 매일 오전 ${CONFIG.TRIGGER_HOUR}:${CONFIG.TRIGGER_MINUTE} (±15분): 나머지 일일 작업\n• 12:20 리포트 전에 분류 동기화`);
 }
 
 function removeDailyTrigger() {
   const triggers = ScriptApp.getProjectTriggers()
-    .filter(t => ["syncNew", "dailyAuto", "dailyAutoRetry_"].indexOf(t.getHandlerFunction()) >= 0);
+    .filter(t => ["syncNew", "dailyAuto", "dailyAutoRetry_", "scheduledDbPullSync_", "dbPullSyncRetry_", "dbPullSyncWatchdog_"].indexOf(t.getHandlerFunction()) >= 0);
   triggers.forEach(t => ScriptApp.deleteTrigger(t));
   PropertiesService.getScriptProperties().deleteProperty("DAILY_AUTO_RETRY_PENDING_JSON");
+  PropertiesService.getScriptProperties().deleteProperty("DB_PULL_SYNC_PENDING_JSON");
   PropertiesService.getScriptProperties().setProperty("AUTO_SYNC_ENABLED", "false");
   safeAlert_(`⏹ 자동 동기화를 껐습니다. (${triggers.length}개 트리거 제거)`);
 }

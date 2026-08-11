@@ -6,6 +6,14 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-11 [Codex 완료] **부정댓글 봇 699/817 타겟 누락 원인 확정·재발 방지**
+- **원인:** GAS 응답 캐시가 아니었다. `sponsoredTargets`는 시트 전체 `total=817`을 정상 인식했지만 GitHub 변수 `TARGET_BATCH_SIZE=300`을 evergreen 상한으로 적용해 `최근 399 + evergreen 300 = 699`만 반환했다. 라이브 응답 헤더도 `no-cache, no-store`이고 GAS 코드에 `CacheService`는 없다.
+- **즉시 복구:** `negative-comment-monitor` GitHub 변수 `TARGET_BATCH_SIZE`를 **1000**으로 변경. 같은 웹앱을 `limit=1000`으로 호출해 **817건 전량 반환** 확인.
+- **봇 방어:** bot `6fd8ae6` — 요청마다 cache-buster/no-store를 붙이고, GAS의 `total`보다 실제 `targets`가 적으면 조용히 감시하지 않고 명시적으로 실패한다. watchdog 기본 상한도 1000으로 통일. **196 tests 통과.**
+- **상류 예방:** `pullFromDB`를 30분짜리 `dailyAuto`에서 분리해 **3시간마다 독립 실행**, 포착 오류 7분 후 1회 재시도, 강제종료 watchdog, Slack 실패 알림을 추가했다. 일일 배치가 시간초과돼도 신규글 시트 반영이 함께 멈추지 않는다.
+- **웹 경보:** `/api/ops/db-sheet-sync-alert`를 추가했다(CRON_SECRET fail-closed). 웹 **258 tests + production build 통과**.
+- **Claude 주의:** 이 건을 "GAS 캐시"로 재진단하지 말 것. 재발 시 우선 `result.total`, `targets.length`, `meta.recentCount/evergreenCount/evergreenLimit`, GitHub `TARGET_BATCH_SIZE`를 비교한다.
+
 ## ✅ 2026-08-11 [Codex 완료] **IG 배치 `not_found` 장애 격리 — 203건 오탐 검토요청 차단**
 - **기록 단계 가드 적용:** IG 요청 배치에서 `not_found`가 **20건 이상이면서 30% 이상**이면 플랫폼 장애로 판정한다. 해당 응답은 누락으로 남기되 게시물별 `not_found_streak`은 올리지 않는다. 소표본의 실제 삭제는 기존 3일 연속 검토 정책을 그대로 적용한다.
 - **기존 상태 보존:** 08-10에 기록된 205건의 streak은 DB에서 임의 초기화하지 않았다. 다음 정상 IG 응답은 기존 정책대로 해당 게시물 streak을 0으로 자가치유한다. 장애가 이어져도 이번 가드가 추가 적립을 막으므로 203건 일괄 검토요청은 발생하지 않는다.
