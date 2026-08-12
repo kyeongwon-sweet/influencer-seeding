@@ -14,7 +14,9 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <ClerkProvider>
-      <html lang="ko">
+      {/* 아래 head 스크립트가 하이드레이션 전에 <html>의 --sidebar-w를 심어 SSR 결과와
+          달라진다(의도된 동작 = 사이드바 폭 깜빡임 방지). 그 속성 불일치만 억제한다. */}
+      <html lang="ko" suppressHydrationWarning>
         <head>
           {/* 사이드바 너비를 페인트 전에 복원해 본문이 깜빡이지 않게 함 */}
           <script
