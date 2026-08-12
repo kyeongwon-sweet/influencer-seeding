@@ -26,5 +26,8 @@ test("Google search trends collector and webhook bypass Clerk but keep their own
   assert.match(workflow, /KEYWORD_COUNT:\s*"11"/);
   assert.match(workflow, /\/api\/google-trends\/collect\?kw=\$i/);
   assert.match(workflow, /api\.apify\.com\/v2\/actor-runs\/\$run_id/);
-  assert.match(workflow, /SUCCEEDED\) terminal=success/);
+  assert.match(workflow, /api\.apify\.com\/v2\/datasets\/\$dataset_id/);
+  assert.match(workflow, /\.data\.itemCount \/\/ 0/);
+  assert.match(workflow, /status=EMPTY_DATASET/);
+  assert.match(workflow, /terminal=success/);
 });

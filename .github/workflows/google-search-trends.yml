@@ -45,7 +45,18 @@ jobs:
                   status=$(printf '%s' "$run_json" | jq -r '.data.status // "UNKNOWN"')
                   echo "kw=$i run=$run_id status=$status ($attempt/40)"
                   case "$status" in
-                    SUCCEEDED) terminal=success; break ;;
+                    SUCCEEDED)
+                      dataset_id=$(printf '%s' "$run_json" | jq -r '.data.defaultDatasetId // empty')
+                      dataset_json=$(curl -fsS "https://api.apify.com/v2/datasets/$dataset_id" \
+                        -H "Authorization: Bearer ${{ secrets.APIFY_API_TOKEN }}" || true)
+                      item_count=$(printf '%s' "$dataset_json" | jq -r '.data.itemCount // 0')
+                      if [ "$item_count" -gt 0 ]; then
+                        terminal=success
+                      else
+                        terminal=empty
+                        status=EMPTY_DATASET
+                      fi
+                      break ;;
                     FAILED|TIMED-OUT|ABORTED) terminal=failed; break ;;
                   esac
                   sleep 30
