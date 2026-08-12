@@ -457,9 +457,9 @@ def main():
 
     DIV = "──────────────────────────────"
     lines = [
-        f"📈 *쫀득바 인지 조회수 일일 증분* `({target})`",
+        f"📈 *쫀득바 조회수 일일 증분* `({target})`",
         f"오늘 총 증분 *+{f(total)}*",
-        f"🎯 *300만 목표* {total / 30000:.0f}% · {('달성 +' + f(total - 3000000)) if total >= 3000000 else ('미달 ' + f(total - 3000000))}",
+        f"🎯 *일 300만 목표* {total / 30000:.0f}% · {('달성 +' + f(total - 3000000)) if total >= 3000000 else ('미달 ' + f(total - 3000000))}",
         "", DIV, "",
         "◾ *채널분류별*",
         "",
@@ -512,14 +512,6 @@ def main():
     if banner_unmapped:
         lines.append("")
         lines.append(f"⚠️ *바이럴 배너 가격 미매핑 {len(banner_unmapped)}건* — 시트 비용 입력 또는 DB cost 동기화 확인 필요. 비용이 채워진 뒤 재발송하면 CPV가 정상 계산됩니다.")
-    # ⚠️ 채널 이상 감지 — 300만 미달/초과 원인 진단(평소7일·전주·동요일 대비 유독 다른 채널만)
-    if _anom:
-        lines.append("")
-        lines.append("⚠️ *채널 이상 감지* `(평소7일·전주·동요일 대비 ±50%↑)`")
-        for _ct, _tv, _cmp in _anom[:6]:
-            _parts = [f"{_l} +{f(round(_bv))} 대비 {'+' if _d >= 0 else ''}{_d * 100:.0f}%" for _l, _bv, _d in _cmp]
-            lines.append(f"• {_ital_paren(_ct)} 오늘 *+{f(_tv)}* — " + " · ".join(_parts))
-
     lines += ["", DIV, "", "◾ *급상승 TOP 10* 🔥  `CPV는 누적 기준`", ""]
     # 배너는 도달수를 '조회수'로 취급해 TOP에도 섞어 노출(사용자 지시). 배너 CPV = 비용/도달수(도달당비용).
     # 리포트는 이미 쫀득바만 필터돼 있어 줄마다 [JD멜] 상품태그는 중복 → 표시에서 제거(사용자 지시).
@@ -527,6 +519,17 @@ def main():
         label = f"<{it['url']}|{_esc(it['name'])}>" if it["url"] else _esc(it["name"])
         pdate = it["posted_at"] or "업로드일 미상"
         lines.append(f"{rank}. {label} _({it['platform']})_ *+{f(it['inc'])}*  {_cpv(it['cost'], it['cum'], it['channel_type'])}  `{pdate}`")
+
+    # ⚠️ 채널 이상 감지 (맨 아래) — 300만 미달/초과 원인 진단. 채널 오늘값 → 아래에 비교 상세 별줄.
+    if _anom:
+        lines += ["", DIV, "", "⚠️ *채널 이상 감지* `(평소7일·전주·동요일 대비 ±50%↑)`", ""]
+        for _ct, _tv, _cmp in _anom[:6]:
+            _parts = [f"{_l} +{f(round(_bv))} 대비 {'+' if _d >= 0 else ''}{_d * 100:.0f}%" for _l, _bv, _d in _cmp]
+            lines.append(f"• {_ital_paren(_ct)} 오늘 *+{f(_tv)}*")
+            lines.append("")
+            lines.append("* " + " · ".join(_parts))
+            lines.append("")
+
     text = "\n".join(lines)
 
     if os.getenv("DRY_RUN"):   # 발송 없이 내용만 출력(검증용, Slack 토큰 불필요)
