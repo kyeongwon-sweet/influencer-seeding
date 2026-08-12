@@ -168,6 +168,36 @@ def _latest_date(db):
     return res.data[0]["measured_at"] if res.data else None
 
 
+def _send_acct_comment(token, channel, parent_ts, comment):
+    """개별 계정 특이사항을 리포트(parent_ts)의 스레드 댓글로 발송. 재발송/편집 시 중복 방지로
+    기존 '특이 계정' 답글은 먼저 삭제(dedup) 후 새로 단다. comment 비면 아무것도 안 함."""
+    if not comment or not parent_ts:
+        return
+    try:  # dedup: 같은 스레드의 기존 '특이 계정' 봇 답글 삭제
+        rq = urllib.request.Request(
+            f"https://slack.com/api/conversations.replies?channel={channel}&ts={parent_ts}&limit=100",
+            headers={"Authorization": "Bearer " + token})
+        d = json.load(urllib.request.urlopen(rq, timeout=20))
+        for m in d.get("messages", []):
+            if m.get("ts") and m.get("ts") != parent_ts and "특이 계정" in (m.get("text") or ""):
+                dd = urllib.parse.urlencode({"channel": channel, "ts": m["ts"]}).encode()
+                urllib.request.urlopen(urllib.request.Request(
+                    "https://slack.com/api/chat.delete", data=dd,
+                    headers={"Authorization": "Bearer " + token}), timeout=20)
+    except Exception as e:
+        print("[notify] 특이계정 댓글 dedup 실패(무시):", e)
+    data = urllib.parse.urlencode({"channel": channel, "text": comment,
+                                   "thread_ts": parent_ts, "unfurl_links": "false"}).encode()
+    try:
+        r = json.load(urllib.request.urlopen(urllib.request.Request(
+            SLACK_API, data=data,
+            headers={"Authorization": "Bearer " + token,
+                     "Content-Type": "application/x-www-form-urlencoded; charset=utf-8"}), timeout=30))
+        print("[notify] 특이계정 댓글 ok=", r.get("ok"), "error=", r.get("error"))
+    except Exception as e:
+        print("[notify] 특이계정 댓글 발송 실패(무시):", e)
+
+
 def main():
     token = os.environ["SLACK_BOT_TOKEN"]
     update_ts = os.getenv("UPDATE_TS", "").strip()
@@ -401,6 +431,7 @@ def main():
                 o[_c] = o.get(_c, 0) + _iv
         return o
     _anom = []   # (ct, today_v, [(label, baseline, dev_ratio), ...])
+    _acct_anom = []   # 개별 게시물 특이(기존글, 자기 평소 대비 급증/급감) → 스레드 댓글용
     try:
         from datetime import timedelta as _timedelta
         _T0 = date.fromisoformat(target)
@@ -425,8 +456,48 @@ def main():
             if _cmp:
                 _anom.append((_ct, _tv, _cmp))
         _anom.sort(key=lambda x: -x[1])
+
+        # 개별 계정 특이: 기존 게시물(게시 8일+)이 자기 평소(직전7일 평균) 대비 급증(≥3배)/급감(≤0.3배)
+        def _pbase(_rows, _isb, _pa):
+            _vv = []
+            for _n in range(1, 8):
+                _iv2 = _safe_inc(_rows, _isb, _pa, _dd(_n))
+                if _iv2 is not None and _iv2 >= 0:
+                    _vv.append(_iv2)
+            return (sum(_vv) / len(_vv)) if len(_vv) >= 2 else None
+        for _pid in jd_pids:
+            _m2 = meta.get(_pid, {})
+            _e2 = _m2.get("ended_at")
+            if _e2 and str(_e2)[:10] < target:
+                continue
+            _pa2 = _m2.get("posted_at")
+            try:
+                if not _pa2 or (_T0 - date.fromisoformat(str(_pa2)[:10])).days < 8:
+                    continue   # 신규글(게시 8일 미만) 제외 — 첫날 급증 노이즈 방지
+            except Exception:
+                continue
+            _isb2 = "배너" in (_m2.get("channel_type") or "")
+            _rows2 = series.get(_pid, [])
+            _td2 = _safe_inc(_rows2, _isb2, _pa2, target)
+            if not _td2 or _td2 <= 0:
+                continue
+            _bl2 = _pbase(_rows2, _isb2, _pa2)
+            if not _bl2 or _bl2 <= 0:
+                continue
+            if max(_td2, _bl2) < 30000:   # 최소 절대량 가드(잡음 방지)
+                continue
+            _rt = _td2 / _bl2
+            if _rt >= 3 or _rt <= 0.3:
+                _acct_anom.append({
+                    "name": (_m2.get("account_name") or "").strip() or "?",
+                    "url": (_m2.get("url") or "").strip(),
+                    "platform": _platform(_m2.get("url") or ""),
+                    "today": _td2, "base": _bl2, "dv": (_td2 - _bl2) / _bl2,
+                    "dir": "📈" if _rt >= 3 else "📉",
+                })
+        _acct_anom.sort(key=lambda x: -abs(x["dv"]))
     except Exception as _e:
-        print("[notify] 채널 이상감지 계산 실패(무시):", _e)
+        print("[notify] 이상감지 계산 실패(무시):", _e)
 
     # CPV(누적 조회당 비용): 채널별 Σ비용 / Σ누적조회수 (증분 있는 게시물 기준)
     #   온드미디어·위성채널은 무상 채널 → 광고비가 있어도 0으로 무시(사용자 지시).
@@ -532,9 +603,22 @@ def main():
 
     text = "\n".join(lines)
 
+    # 개별 계정 특이사항 → 본문 아닌 스레드 댓글로 (사용자 지시)
+    acct_comment = ""
+    if _acct_anom:
+        _cl = ["⚠️ *특이 계정* `(기존 게시물, 자기 평소 대비 급증≥3배·급감≤0.3배)`"]
+        for _a in _acct_anom[:6]:
+            _lab2 = f"<{_a['url']}|{_esc(_a['name'])}>" if _a['url'] else _esc(_a['name'])
+            _pc = f"{'+' if _a['dv'] >= 0 else ''}{_a['dv'] * 100:.0f}%"
+            _cl.append(f"{_a['dir']} {_lab2} _({_a['platform']})_ 오늘 *+{f(_a['today'])}* · 평소 +{f(round(_a['base']))} 대비 {_pc}")
+        acct_comment = "\n".join(_cl)
+
     if os.getenv("DRY_RUN"):   # 발송 없이 내용만 출력(검증용, Slack 토큰 불필요)
         print("=== DRY_RUN (발송 안 함) ===")
         print(text)
+        if acct_comment:
+            print("\n=== [스레드 댓글: 특이 계정] ===")
+            print(acct_comment)
         return
 
     if update_ts:
@@ -550,6 +634,7 @@ def main():
         r = json.load(urllib.request.urlopen(req, timeout=30))
         print("[notify] update ok=", r.get("ok"), "error=", r.get("error"), "channel=", CHANNEL, "ts=", update_ts, "date=", target)
         assert r.get("ok"), r
+        _send_acct_comment(token, CHANNEL, update_ts, acct_comment)   # 특이 계정 댓글 갱신(dedup)
         return
 
     data = urllib.parse.urlencode({"channel": CHANNEL, "text": text, "unfurl_links": "false"}).encode()
@@ -564,6 +649,7 @@ def main():
             fh.write(ts)
     print("[notify] ok=", r.get("ok"), "error=", r.get("error"), "channel=", CHANNEL, "ts=", ts, "date=", target)
     assert r.get("ok"), r
+    _send_acct_comment(token, CHANNEL, ts, acct_comment)   # 특이 계정 스레드 댓글
 
 
 if __name__ == "__main__":
