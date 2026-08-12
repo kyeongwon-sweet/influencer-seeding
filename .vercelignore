@@ -1,0 +1,20 @@
+# Vercel 업로드 제외 목록.
+# ⚠️ 이 파일이 없으면 `vercel --prod`가 작업 디렉터리를 거의 그대로 올린다.
+#    그러면 web/.env.local(서비스 롤 키 등)이 빌드 소스에 섞이고,
+#    빌드 시 Vercel 프로젝트 환경변수를 덮어쓸 수도 있다.
+#    환경변수는 항상 Vercel 프로젝트 설정에서 주입한다 — 파일로 올리지 않는다.
+
+# 시크릿 (예시 파일만 허용)
+.env
+.env.*
+!.env.example
+!.env.local.example
+
+# 로컬 작업 산출물 — 빌드에 불필요하고 DB 백업·조사 데이터가 들어있다
+scratchpad/
+data/
+*.log
+
+# 파이썬 수집기·워크플로는 Vercel 빌드와 무관 (Root Directory = web)
+__pycache__/
+.pytest_cache/
