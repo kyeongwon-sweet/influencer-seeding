@@ -6,6 +6,13 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-12 [Codex 완료] **삭제 확정된 1일차 바이럴 영상 36건 종료**
+- **대상 재검증:** 활성 `바이럴 (영상)` 중 `review_requested_at`이 있고, `2026-08-10` 자동 실측행은 있으나 `2026-08-11` 행은 없는 게시물이 정확히 36건이었다. 전부 `not_found_streak=2`, `not_found_last_at=2026-08-11`, 검토 요청일 `2026-08-12`로 일치했다.
+- **적용:** 36건 모두 `ended_at=2026-08-11`로 변경하고 종료로 해소된 `review_requested_at`만 `NULL`로 정리했다. `posted_at`·조회수 이력·notes·manual_fields는 변경하지 않았다.
+- **백업:** `scratchpad/reviewed_archived_viral_36_backup_20260812T013623Z.json`에 대상 ID·기존 `ended_at=null`·검토 필드·게시일·08-10 실측행을 보존했다. 재공개 시 이 ID 목록으로 수술적 복구 가능하다.
+- **검증:** ended 36/36, review 해제 36/36, 누락 ID 0, `posted_at` 변경 0, 08-10 실측행 변경 0, 08-11 행 생성 0.
+- **수식감사:** run `31554177273`에서 `healthy=true`, H error/data-gap 0, I error/mismatch 0, orphan 0, stale **36→0** 확인. 종료글은 정체·미수집 대상에서 제외됐다.
+
 ## 2026-08-12 [Codex 완료] **재시도 큐 IG `not_found` 영구 실패 해소**
 - **기존 판단 정정:** `82e1e9a`의 배치 비율 가드는 재시도 큐에서 판정력이 없었다. 재시도 큐는 실패 건만 모으므로 `not_found` 비율이 구조적으로 높고, 실제 삭제 정탐까지 플랫폼 장애로 격리했다. 아래 2026-08-11 "IG 배치 장애 격리" 기록은 이 항목으로 대체한다.
 - **새 판정:** target-only 재시도 또는 대량 `not_found`에서는 게시물 응답만 믿지 않고 저장된 IG 핸들별 공개 프로필을 1건씩 조회한다. `게시물 not_found + 동일 계정 프로필 생존`일 때만 `review_requested_at`을 기록한다. streak는 실제 관측일 기준 1일만 증가하며 `ended_at`은 쓰지 않는다. 프로필 생존을 확인하지 못한 글은 계속 격리한다.
