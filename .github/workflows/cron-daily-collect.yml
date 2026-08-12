@@ -188,27 +188,9 @@ jobs:
           cat /tmp/o; echo "HTTP $code"
           [ "${code:0:1}" = "2" ] || { echo "::error::youtube-trends kw=1 실패 HTTP=$code — 배포/URL 확인($APP_URL)"; exit 1; }
 
-      # 구글 웹 검색 트렌드: 유튜브와 같은 Google Trends 소스라 반드시 유튜브 수집이 끝난 뒤
-      # 순차로 실행한다(동시 요청 시 Google이 차단). 키워드도 kw=0 → 대기 → kw=1 순차.
-      - name: 구글 트렌드 키워드1 (kw=0)
-        if: steps.decide.outputs.go == '1' && github.event.inputs.metadata_only != 'true'
-        continue-on-error: true
-        run: |
-          code=$(curl -sS -o /tmp/o -w "%{http_code}" "$APP_URL/api/google-trends/collect?kw=0" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
-          cat /tmp/o; echo "HTTP $code"
-          [ "${code:0:1}" = "2" ] || { echo "::error::google-trends kw=0 실패 HTTP=$code — 배포/URL 확인($APP_URL)"; exit 1; }
-      - name: 액터 완료 대기 (동시 실행 회피)
-        if: steps.decide.outputs.go == '1' && github.event.inputs.metadata_only != 'true'
-        run: sleep 840
-      - name: 구글 트렌드 키워드2 (kw=1)
-        if: steps.decide.outputs.go == '1' && github.event.inputs.metadata_only != 'true'
-        continue-on-error: true
-        run: |
-          code=$(curl -sS -o /tmp/o -w "%{http_code}" "$APP_URL/api/google-trends/collect?kw=1" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
-          cat /tmp/o; echo "HTTP $code"
-          [ "${code:0:1}" = "2" ] || { echo "::error::google-trends kw=1 실패 HTTP=$code — 배포/URL 확인($APP_URL)"; exit 1; }
+      # 구글 웹 검색 트렌드는 키워드가 11개(1개당 수 분)라 이 메인 수집에 넣으면 2시간+ 지연 →
+      # 별도 워크플로(google-search-trends.yml, 06:00 KST)로 분리. 유튜브 트렌드와 시간대가 겹치면
+      # Google이 차단하므로 메인 수집(00:41~05:x KST) 밖 시각에 돌린다.
 
       - name: B2B 발주량 (b2b-revenue/fetch)
         if: steps.decide.outputs.go == '1' && github.event.inputs.metadata_only != 'true'

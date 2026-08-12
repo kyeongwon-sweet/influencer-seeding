@@ -1,0 +1,37 @@
+name: Google Search Trends (구글 웹 검색량 수집)
+
+# 구글 웹 검색 트렌드 수집(전용) — 키워드 11개를 시간차 순차로 수집한다.
+# ⚠️ 액터가 키워드당 구글 트렌드 페이지를 직접 열어 1개당 수 분 걸리고, 동시 실행 시
+#    Google이 차단한다. 그래서 kw=0..N 을 sleep 으로 띄워 한 번에 하나씩만 돌린다.
+# ⚠️ 유튜브 트렌드(cron-daily-collect.yml, 00:41~05:x KST)와 같은 Google Trends 소스라
+#    시간대가 겹치면 차단된다 → 그 창을 피해 06:00 KST 에 실행한다.
+on:
+  schedule:
+    - cron: "0 21 * * *"   # 06:00 KST
+  workflow_dispatch:
+
+env:
+  APP_URL: "https://influencer-seeding-mu.vercel.app"
+  KEYWORD_COUNT: "11"     # lib/google-trend-groups.ts 의 GOOGLE_TREND_KEYWORDS 개수와 일치시킬 것
+  GAP_SECONDS: "480"      # 키워드 간 간격(액터 완료·동시요청 차단 회피). 차단 보이면 늘릴 것.
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 구글 트렌드 키워드 순차 수집 (kw=0..N)
+        run: |
+          set -u
+          n="${KEYWORD_COUNT}"
+          fail=0
+          for i in $(seq 0 $((n - 1))); do
+            code=$(curl -sS -o /tmp/o -w "%{http_code}" "$APP_URL/api/google-trends/collect?kw=$i" \
+              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+            echo "kw=$i → HTTP $code"; cat /tmp/o; echo
+            [ "${code:0:1}" = "2" ] || { echo "::warning::google-trends kw=$i HTTP=$code"; fail=$((fail + 1)); }
+            if [ "$i" -lt "$((n - 1))" ]; then sleep "${GAP_SECONDS}"; fi
+          done
+          # 개별 키워드가 일부 실패해도(빈 응답 등) 나머지는 수집됨 → 전체를 실패로 만들지 않되,
+          # 전부 실패면 배포/URL 문제이므로 hard fail 로 알린다.
+          if [ "$fail" -ge "$n" ]; then echo "::error::google-trends 전건 실패($fail/$n) — 배포/URL/시크릿 확인($APP_URL)"; exit 1; fi
+          echo "완료: 실패 $fail/$n"

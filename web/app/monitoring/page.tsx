@@ -9,6 +9,7 @@ import { companyForAccount } from "@/lib/companyMap";
 import { batchFetch } from "@/lib/batchFetch";
 import { matchesSearch } from "@/lib/search-filter";
 import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, decodeStatsV2, INIT_FILTERS, CHANNEL_TYPES, STICKY_COL_ORDER, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, getFilteredStats, pickRangeStats, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, viewIncrement, safeIncrement, pickMetric, pdOf, productLabel, effectiveReach, bannerDailyMetric, assetNameOf, weekKeyOf, pearson, alignedPairs, bestLag, alignMulti, multipleR2, parseCsvLine } from "./lib";
+import { GOOGLE_TREND_GROUPS } from "@/lib/google-trend-groups";
 import CorrelationPanel from "./components/CorrelationPanel";
 import DayOfWeekPanel, { type DowData } from "./components/DayOfWeekPanel";
 import CompanyPanel, { type CompanyData } from "./components/CompanyPanel";
@@ -570,15 +571,19 @@ export default function MonitoringPage() {
         data: ytTrends.filter(t => t.keyword === kw).map(t => ({ date: t.measured_at, value: t.value })),
       }],
     })),
-    // 구글 웹 검색 트렌드 — 키워드별 (Google Trends 웹 검색, 상대값 0~100)
-    ...Array.from(new Set(googleTrends.map(t => t.keyword))).map((kw, i) => ({
-      name: `구글 ${kw} 검색량`,
-      color: CHART.google[i % 2],
-      members: [{
-        label: kw,
-        data: googleTrends.filter(t => t.keyword === kw).map(t => ({ date: t.measured_at, value: t.value })),
-      }],
-    })),
+    // 구글 웹 검색 트렌드 — 그룹별 합산 라인 (Google Trends 웹 검색, 상대값 0~100).
+    // 그룹의 각 키워드를 member로 넘기면 LineChart가 날짜별로 합산해 한 라인으로 그린다(툴팁은 키워드별 표시).
+    // ⚠️ 상대지수 합산이라 '대략적 합성 추세'다(절대 검색량 아님). 데이터 있는 키워드가 하나도 없으면 그룹 라인 없음.
+    ...GOOGLE_TREND_GROUPS
+      .filter(g => googleTrends.some(t => g.keywords.includes(t.keyword)))
+      .map((g, i) => ({
+        name: g.label,
+        color: CHART.google[i % CHART.google.length],
+        members: g.keywords.map(kw => ({
+          label: kw,
+          data: googleTrends.filter(t => t.keyword === kw).map(t => ({ date: t.measured_at, value: t.value })),
+        })),
+      })),
     // B2B 발주량 (듬뿍바+쫀득바 CVS 발주량) — 미래 계획행 제외, 오늘까지만. 카테고리 필터 시 해당 항목만.
     ...(b2bDaily.some(d => d.total_order != null) ? [{
       name: "B2B 발주량",
@@ -1581,11 +1586,13 @@ export default function MonitoringPage() {
                                   <span className="text-xs text-a-ink-muted whitespace-nowrap">유튜브 {kw} 검색량</span>
                                 </button>
                               ))}
-                              {Array.from(new Set(googleTrends.map(t => t.keyword))).map((kw, i) => (
-                                <button type="button" key={`google-${kw}`} onClick={() => toggleSeries(`구글 ${kw} 검색량`)}
-                                  className={`flex items-center gap-1.5 w-full transition-opacity ${seriesHidden(`구글 ${kw} 검색량`) ? "opacity-30" : ""}`}>
-                                  <div className="w-2 h-0.5 flex-shrink-0" style={{ backgroundColor: CHART.google[i % 2] }} />
-                                  <span className="text-xs text-a-ink-muted whitespace-nowrap">구글 {kw} 검색량</span>
+                              {GOOGLE_TREND_GROUPS
+                                .filter(g => googleTrends.some(t => g.keywords.includes(t.keyword)))
+                                .map((g, i) => (
+                                <button type="button" key={`google-${g.key}`} onClick={() => toggleSeries(g.label)}
+                                  className={`flex items-center gap-1.5 w-full transition-opacity ${seriesHidden(g.label) ? "opacity-30" : ""}`}>
+                                  <div className="w-2 h-0.5 flex-shrink-0" style={{ backgroundColor: CHART.google[i % CHART.google.length] }} />
+                                  <span className="text-xs text-a-ink-muted whitespace-nowrap">{g.label}</span>
                                 </button>
                               ))}
                             </div>

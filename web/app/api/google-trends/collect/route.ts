@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { startActorRun } from "@/lib/apify";
+import { GOOGLE_TREND_KEYWORDS } from "@/lib/google-trend-groups";
 
-// 구글 웹 검색 트렌드를 볼 키워드 (Google Trends 웹 검색, gprop 미지정, 상대값 0~100)
-const KEYWORDS = ["라라스윗", "라라스윗아이스크림"];
+// 구글 웹 검색 트렌드를 볼 키워드 (Google Trends 웹 검색, gprop 미지정, 상대값 0~100).
+// 그룹 정의(합산·라벨)는 lib/google-trend-groups 한 곳에서 관리 — 여기선 평탄화된 수집 대상만 쓴다.
+// ⚠️ 액터는 키워드당 구글 트렌드 페이지를 직접 열어(1개당 수 분) 한 run에 1건만 안정적으로 산출한다.
+// 그래서 한 run=한 키워드(?kw=N)가 원칙이고, 전용 워크플로(google-search-trends.yml)가 kw=0..N을
+// 시간차로 순차 호출한다(동시 실행 시 Google 차단). geo 입력 enum이 KR에서 깨져 있어 startUrls로 geo=KR 지정.
+const KEYWORDS = GOOGLE_TREND_KEYWORDS;
 
 function getAppUrl() {
   if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
