@@ -1437,6 +1437,11 @@ export default function MonitoringPage() {
                   return prior === 0 ? null : (last - prior) / Math.abs(prior) * 100;
                 };
                 const playInc = dailyTotals.map((d, i) => ({ date: d.date, v: i > 0 ? d.play - dailyTotals[i - 1].play : 0 }));
+                // 조회수 기간 필터가 걸리면 '조회수 합계' 카드는 누적 스냅샷이 아니라 그 기간에 늘어난 양(기간 순증)을 보여준다.
+                // 값 = 일자별 증감표 '조회수 증분' 합계와 정확히 동일(deltaTableData.play = d.inc = safeIncrement 합, 그래프·리포트와 같은 기준).
+                // 필터가 없으면 기존처럼 현재 누적 합계(totalPlayCount)를 유지한다.
+                const hasDateFilter = !!(filters.dateFrom || filters.dateTo);
+                const periodPlayGain = deltaTableData.reduce((acc, d) => acc + d.play, 0);
                 // B2B 발주량 듬뿍바/쫀득바 분해 합 (호버 툴팁용) — 오늘까지 실데이터만
                 const pastB2b = b2bDaily.filter(d => d.date <= today);
                 const dumbukSum = pastB2b.reduce((a, d) => a + (d.dumbuk_order ?? 0), 0);
@@ -1448,8 +1453,12 @@ export default function MonitoringPage() {
                   </div>
                 );
                 return [
-                  { label: "조회수 합계", value: totalPlayCount, color: "text-a-ink", suffix: "", delta: wow(playInc), tooltip: (
-                    <div className="text-a-ink-muted leading-relaxed">바이럴(배너) 소재는 조회수 대신 <span className="font-semibold text-a-ink">도달수</span>가 합산됩니다.</div>
+                  { label: hasDateFilter ? "기간 조회수 증가분" : "조회수 합계", value: hasDateFilter ? periodPlayGain : totalPlayCount, color: "text-a-ink", suffix: "", delta: wow(playInc), tooltip: (
+                    hasDateFilter ? (
+                      <div className="text-a-ink-muted leading-relaxed max-w-[260px] whitespace-normal">선택한 <span className="font-semibold text-a-ink">조회수 기간</span> 동안 늘어난 조회수의 합입니다(전일 대비 증분의 합 = 기간 순증, 아래 일자별 증감표 합계와 동일). 이 기간 마지막 기준 누적 합계는 <span className="font-semibold text-a-ink">{totalPlayCount.toLocaleString()}</span>.</div>
+                    ) : (
+                      <div className="text-a-ink-muted leading-relaxed">바이럴(배너) 소재는 조회수 대신 <span className="font-semibold text-a-ink">도달수</span>가 합산됩니다.</div>
+                    )
                   ) as React.ReactNode },
                   { label: "라라스윗 검색량 총합", value: searchTotalSum, color: "text-gray-600", suffix: "", delta: wow((lsSearchData ?? []).map(d => ({ date: d.date, v: d.value ?? 0 }))), tooltip: null as React.ReactNode },
                   { label: "B2B 발주량", value: b2bTotal, color: "text-green-600", suffix: "", delta: wow(b2bDaily.map(d => ({ date: d.date, v: b2bOrderOf(d) ?? 0 }))), tooltip: b2bTooltip },
