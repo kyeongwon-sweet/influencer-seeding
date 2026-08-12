@@ -1629,6 +1629,36 @@ export default function MonitoringPage() {
                     const rows = [{ date: dailyTotals[0].date, play: 0, likes: 0, comments: 0 }, ...deltaTableData];
                     const reversed = [...rows].reverse();
                     const b2bMap = new Map(b2bDaily.map(d => [d.date, b2bOrderOf(d)]));
+                    // 선택 기간 합계 — ⚠️ 절대규칙: 결측(미수집)은 0으로 읽지 않고 합산에서 제외하고 제외 일수를 노출한다.
+                    // 조회수·검색량은 '전일 대비 증감'이라 증감의 합 = 기간 순증. 기준일 행(첫 행)은 증감이 아니므로 제외한다.
+                    // B2B 발주량은 일별 절대수량이라 표시된 모든 날(기준일 포함)을 더한다.
+                    const totals = (() => {
+                      let play = 0, search = 0, b2b = 0;
+                      let playMiss = 0, searchMiss = 0, b2bMiss = 0;
+                      for (const d of deltaTableData) {
+                        if (d.play == null) playMiss += 1; else play += d.play;
+                        if (d.search == null) searchMiss += 1; else search += d.search;
+                      }
+                      for (const d of rows) {
+                        const v = b2bMap.get(d.date);
+                        if (v == null) b2bMiss += 1; else b2b += v;
+                      }
+                      return { play, search, b2b, playMiss, searchMiss, b2bMiss, deltaDays: deltaTableData.length };
+                    })();
+                    // 합계 셀 — 값 없는 날을 뺐으면 '*'로 알린다(조용히 축소된 합계 방지).
+                    function totalCell(v: number, miss: number, cls: string, pad: string, unit: string) {
+                      return (
+                        <td className={`${pad} py-2 text-right tabular-nums text-sm font-bold ${cls}`}>
+                          {v > 0 ? "+" : ""}{v.toLocaleString()}
+                          {miss > 0 && (
+                            <span
+                              className="ml-0.5 text-[11px] font-medium text-amber-600 cursor-help"
+                              title={`${unit} 값이 없는 날 ${miss}일을 합계에서 제외했어요 (미수집을 0으로 세지 않습니다).`}
+                            >*</span>
+                          )}
+                        </td>
+                      );
+                    }
                     return (
                       <div className="overflow-y-auto" style={{ maxHeight: 380 }}>
                         <table className="mx-auto">
@@ -1638,6 +1668,19 @@ export default function MonitoringPage() {
                               <th className="px-3 py-2.5 text-right text-[13px] font-semibold text-a-ink-muted whitespace-nowrap"><span title={"조회수 증분 = 그날 하루에 늘어난 조회수 합계 (그날 누적 − 전날 누적).\n※ 게시물 표의 '증분량'(게시물별 최신 증분)과 기준이 달라, 총합이 다를 수 있어요 - 정상입니다."} className="cursor-help underline decoration-dotted decoration-a-ink-muted/50 underline-offset-2">조회수 증분</span></th>
                               <th className="px-3 py-2.5 text-right text-[13px] font-semibold text-a-ink-muted"><span title={"라라스윗 검색량의 전일 대비 증감이에요 (네이버 데이터랩). 줄거나 변화 없는 날은 음수·0으로 떠요."} className="cursor-help underline decoration-dotted decoration-a-ink-muted/50 underline-offset-2">검색량</span></th>
                               <th className="pl-3 pr-5 py-2.5 text-right text-[13px] font-semibold text-a-ink-muted whitespace-nowrap"><span title={"그날의 편의점(CVS) 발주 수량이에요 (마케팅T 시트, 미래 계획행 제외)."} className="cursor-help underline decoration-dotted decoration-a-ink-muted/50 underline-offset-2">B2B 발주량</span></th>
+                            </tr>
+                            {/* 선택 기간 합계 — thead 안에 두어 기존 sticky 헤더와 함께 고정된다(스크롤해도 보임). */}
+                            <tr className="bg-a-parchment/70 border-b-2 border-a-hairline">
+                              <td className="pl-5 pr-3 py-2 text-left whitespace-nowrap">
+                                <span
+                                  title={"현재 선택한 기간의 합계예요.\n· 조회수 증분·검색량 = 전일 대비 증감의 합(= 기간 순증)\n· B2B 발주량 = 일별 발주량의 합\n· 값이 없는 날(미수집)은 0으로 세지 않고 합계에서 빼요."}
+                                  className="text-[13px] font-bold text-a-ink cursor-help underline decoration-dotted decoration-a-ink-muted/50 underline-offset-2"
+                                >합계</span>
+                                <span className="ml-1.5 text-[11px] font-medium text-a-ink-muted">{totals.deltaDays}일</span>
+                              </td>
+                              {totalCell(totals.play, totals.playMiss, totals.play > 0 ? "text-red-600" : totals.play < 0 ? "text-blue-700" : "text-gray-400", "px-3", "조회수 증분")}
+                              {totalCell(totals.search, totals.searchMiss, totals.search > 0 ? "text-gray-700" : totals.search < 0 ? "text-gray-500" : "text-gray-400", "px-3", "검색량")}
+                              {totalCell(totals.b2b, totals.b2bMiss, totals.b2b < 0 ? "text-red-600" : totals.b2b > 0 ? "text-green-700" : "text-gray-400", "pl-3 pr-5", "B2B 발주량")}
                             </tr>
                           </thead>
                           <tbody>
