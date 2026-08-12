@@ -8,6 +8,7 @@ import urllib.parse
 import urllib.request
 from datetime import date
 from db import get_client
+from manual_entry_guards import copy_suspects, spike_suspects
 
 SLACK_API = "https://slack.com/api/chat.postMessage"
 # 발송 대상: SLACK_CHANNEL(채널/스레드 답글) 우선, 없으면 STATUS_USER(황경원 DM).
@@ -219,31 +220,33 @@ def _integrity_lines(db, posts):
     #    존재하면 복사 신호(상향·하향 복사 모두). ⚠️ 강제 차단은 안 함(종료 후 알고리즘 유입으로 실제 상승 가능) —
     #    여기서 드러내 사람이 소스(시트/정정)를 바로잡게 한다. carry 값·단일 우연은 제외해 오탐 최소화.
     ended = {p["id"]: str(p["ended_at"])[:10] for p in posts if p.get("ended_at")}
+    # ⚠️ series/vidx는 5번(종료-후 복사)과 5-b번(활성 수기 오기)이 함께 쓴다 —
+    #    `if ended:` 안에서 만들면 활성 게시물 검사가 종료 게시물 유무에 묶인다(2026-08-12 교훈).
+    series = {}
+    vidx = {}
+    off = 0
+    while True:
+        res = db.table("post_daily_stats").select("post_id, measured_at, play_count, reach_count, manual").range(off, off + 999).execute()
+        chunk = res.data or []
+        for r in chunk:
+            v = r.get("play_count") or r.get("reach_count") or 0
+            if v <= 0:
+                continue
+            d = r["measured_at"][:10]
+            series.setdefault(r["post_id"], []).append((d, v, bool(r.get("manual"))))
+            vidx.setdefault((d, v), set()).add(r["post_id"])
+        if len(chunk) < 1000:
+            break
+        off += 1000
     if ended:
-        series = {}
-        vidx = {}
-        off = 0
-        while True:
-            res = db.table("post_daily_stats").select("post_id, measured_at, play_count, reach_count").range(off, off + 999).execute()
-            chunk = res.data or []
-            for r in chunk:
-                v = r.get("play_count") or r.get("reach_count") or 0
-                if v <= 0:
-                    continue
-                d = r["measured_at"][:10]
-                series.setdefault(r["post_id"], []).append((d, v))
-                vidx.setdefault((d, v), set()).add(r["post_id"])
-            if len(chunk) < 1000:
-                break
-            off += 1000
         copied = []
         for pid, ed in ended.items():
             rows = series.get(pid, [])
-            pre = sorted((d, v) for d, v in rows if d <= ed)
+            pre = sorted((d, v) for d, v, _m in rows if d <= ed)
             carry = pre[-1][1] if pre else None   # 종료 전 마지막 실측 = 정상 carry-forward 값(제외 대상)
             # 종료-후 행이 '자기 carry 값'이 아닌데 (날짜,값)이 다른 게시물에도 있으면 복사 신호.
             # ⚠️ 상향(>carry)뿐 아니라 하향(<carry) 복사도 잡는다(2026-07-14 톡톡시아 릴스 54,400<212,917 누락 교훈).
-            hits = [(d, v) for d, v in rows if d > ed and v != carry and len(vidx.get((d, v), ())) > 1]
+            hits = [(d, v) for d, v, _m in rows if d > ed and v != carry and len(vidx.get((d, v), ())) > 1]
             if hits:
                 src = sorted({name_of.get(x, "?") for dv in hits for x in vidx.get(dv, ()) if x != pid})
                 copied.append((name_of.get(pid, "?"), ed, len(hits), src[:2]))
@@ -254,6 +257,41 @@ def _integrity_lines(db, posts):
             if len(copied) > 4:
                 line += f" … 외 {len(copied) - 4}건"
             lines.append(line)
+
+    # 5-b) 활성 게시물 '수기 입력' 오기 감지 — 5번이 종료 게시물만 봐서 놓친 구멍(2026-08-12 s_3.mag).
+    #      실제 사고: 활성 게시물에 14 → 199,379가 수기로 들어갔고 그 값은 같은 날 다른 게시물의
+    #      자동 수집값과 6자리 완전 일치했다. 20.7만 조회수가 2주 넘게 과대계상되도록 알림이 없었다.
+    #      복사 지문(거의 확실)과 급등(정황)을 분리해 알린다. 차단·자동 정정은 하지 않는다(절대규칙).
+    #      ⚠️ 미러링·내부채널(위성/온드)은 같은 콘텐츠를 여러 채널로 추적해 같은 값을 의도적으로
+    #         적는 경우가 있다 → 복사 알림에서 제외한다(실측 28개 중 10개가 이 유형).
+    def _shares_values_by_design(p):
+        name = str((p or {}).get("asset_name") or (p or {}).get("project_name") or "")
+        return "미러링" in name or _is_internal_channel(p or {})
+    skip_copy = {p["id"] for p in posts if _shares_values_by_design(p)}
+    copy_hits, spike_hits = [], []
+    for pid, rows in series.items():
+        if pid in ended:
+            continue                                    # 종료분은 5번이 담당
+        if pid not in skip_copy:
+            for d, v, others in copy_suspects(rows, vidx):
+                src = sorted({name_of.get(o, "?") for o in others if o != pid})
+                copy_hits.append((name_of.get(pid, "?"), d, v, src[:2]))
+        for d, v, prev, mult in spike_suspects(rows):
+            spike_hits.append((name_of.get(pid, "?"), d, v, prev, mult))
+    if copy_hits:
+        copy_hits.sort(key=lambda x: -x[2])
+        ex = ", ".join(f"{acc}({d[5:]} {v:,}←{'/'.join(s) or '?'})" for acc, d, v, s in copy_hits[:4])
+        line = f"🔴 수기 입력 복사 의심 {len(copy_hits)}건 — 타 게시물과 (날짜,값) 완전 일치, 오기 가능성 높음: {ex}"
+        if len(copy_hits) > 4:
+            line += f" … 외 {len(copy_hits) - 4}건"
+        lines.append(line)
+    if spike_hits:
+        spike_hits.sort(key=lambda x: -x[4])
+        ex = ", ".join(f"{acc}({d[5:]} {prev:,}→{v:,}, {mult:,.0f}배)" for acc, d, v, prev, mult in spike_hits[:3])
+        line = f"수기 입력 급등 확인요청 {len(spike_hits)}건 — 실제 바이럴일 수도 있으니 값 확인만: {ex}"
+        if len(spike_hits) > 3:
+            line += f" … 외 {len(spike_hits) - 3}건"
+        lines.append(line)
 
     # 6) 누적 조회수 하락 감지 — 조회수는 누적이라 감소 불가. 특히 수동 입력(manual)은 mono 가드를 우회(2722cf4,
     #    원래 하향 정정 허용 목적)해서 오타·잘못된 숫자가 그대로 통과 → 누적·증분 깨짐(2026-07 시으니네 틱톡
