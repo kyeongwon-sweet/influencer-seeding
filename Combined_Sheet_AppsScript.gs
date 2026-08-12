@@ -136,9 +136,7 @@ function onOpen() {
 
   const checkMenu = ui.createMenu("🔎 점검 · 정리")
     .addItem("빈칸 · 중복 URL 검사", "checkSheetIssues")
-    .addItem("중복 링크 삭제", "removeDuplicateLinks")
-    .addSeparator()
-    .addItem("시트 가독성 서식 적용", "applyLinkedSheetReadabilityTheme");
+    .addItem("중복 링크 삭제", "removeDuplicateLinks");
 
   const automationMenu = ui.createMenu(automationMenuLabel_())
     .addItem("자동화 상태 · 최근 실행 보기", "checkSetup")
