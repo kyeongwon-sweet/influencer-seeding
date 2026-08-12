@@ -13,6 +13,14 @@
 - **검증:** 139/139 readback 성공, 누락 ID 0, `posted_at` 변경 0, 동일 조건 활성 잔여 0. 08-10 행은 있고 08-11만 없는 **1일차 36건은 활성 상태로 보존**했다.
 - **수식감사 run `31550837839`:** H 오류/데이터공백 0, I 오류/불일치 0, orphan 0으로 수식은 정상. 전체 `healthy=false`는 보존한 36건이 `stale=36`으로 잡힌 것뿐이며 수식 손상이 아니다. 내일도 확인 불가면 다음 종료 후보로 재판정한다.
 
+## ✅ 2026-08-12 [Codex 완료] **sponsoredTargets `total !== targets.length` 불변식 복구 — 중복 URL 1행 규명**
+- **원인 확정:** 빈 URL·불량 URL·페이지네이션·시트 동시편집 문제가 아니었다. 필터 통과 원본은 `recent 389 + evergreen 434 = 823행`이었지만, 배열 병합 단계의 `urlKey_` 중복 제거가 TikTok 동일 게시물 1행을 제외했다. 기존 `total`은 **dedup 전 원본 행 수(823)**, `targets`는 **dedup 후 배열(822)**을 써 서로 다른 집합을 셌다.
+- **정확한 중복:** `콘텐츠 대시보드 연동` **2122행**이 **2112행**과 같은 canonical key `https://www.tiktok.com/@ssulbox_1/video/7672723626218507527`; 둘 다 evergreen 후보이며 2112행을 보존하고 2122행을 제외한다.
+- **라이브 수정:** 부정댓글 봇 GAS 웹앱을 **버전 83**으로 배포. `total = selected.length`로 실제 반환 배열과 동일 스냅샷·동일 dedup 결과를 사용한다. 원본 진단은 `meta.rawEligibleCount`, `duplicateCount`, `duplicateRows(row/duplicateOfRow/key/scope)`로 분리했다. 중복을 배열에 다시 넣어 이중 수집·비용을 만들지 않는다.
+- **연속 검증:** cache-buster를 달아 라이브 `/exec?action=sponsoredTargets&limit=1000`을 **5회 연속 호출**했고 매회 `returned=822 === total=822`, `rawEligibleCount=823`, `duplicateCount=1`, 동일 행(2122→2112)을 확인했다.
+- **봇 가드 유지:** `negative-comment-monitor`의 정밀화된 가드(상한형 `total > targets.length`는 fail-closed, 상한과 무관한 소량 불일치는 경고 후 watchdog 위임)를 되돌리지 않았다. 라이브 `fetchTargets`도 822건 정상 수신했고 관련 테스트 7건 통과.
+- **인지 광고 담당자 변경:** Claude의 `a7c1845`/`SLACK_ASSIGNEE_AWARENESS=U09RCJ1B9ML` 반영분은 확인용 참고로만 취급했고 수정하지 않았다. 메타 비용 경고의 `other=황경원`도 그대로다.
+
 ## ✅ 2026-08-11 [Claude 완료] injibot 완료느낌표 = **'미처리 카드 없음'** 기준 (무시·메타숨김 포함, 실시간+주기)
 - **요청:** "모든 댓글이 완료·무시 처리되면 부모 스레드에 :완료느낌표:." 기존엔 **'남은 답글 0개'**(완료/숨김=답글 삭제)만 검사해, **무시·메타숨김처럼 카드가 남는 처리**가 마지막이면 이모지가 안 달렸다.
 - **수정(양쪽 동일 기준):** 스레드에 **미처리 카드(actions 버튼 남은 답글)가 하나도 없으면** 완료느낌표.
