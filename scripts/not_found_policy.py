@@ -11,11 +11,20 @@ _INSTAGRAM_POST_RE = re.compile(
     r"instagram\.com/(?:[^/?#]+/)*(?:p|reels|reel|tv)/[A-Za-z0-9_-]+",
     re.IGNORECASE,
 )
+_INSTAGRAM_HANDLE_RE = re.compile(r"^[A-Za-z0-9._]+$")
 
 
 def is_not_found_review_eligible(url: str) -> bool:
     """Only Instagram post URLs participate. TikTok not_found is never actionable."""
     return bool(_INSTAGRAM_POST_RE.search(str(url or "")))
+
+
+def normalize_instagram_handle(value: str | None) -> str | None:
+    """Return a profile-safe Instagram handle from an account-name field."""
+    handle = str(value or "").strip().lstrip("@").strip()
+    if not handle or not _INSTAGRAM_HANDLE_RE.fullmatch(handle):
+        return None
+    return handle.lower()
 
 
 def is_platform_not_found_outage(
@@ -38,8 +47,20 @@ def is_platform_not_found_outage(
     return (not_found / requested) >= float(rate_threshold)
 
 
-def next_not_found_state(post: dict, detected: bool, observed_at: str) -> tuple[dict, bool]:
-    """Return DB-only review state and whether this observation needs a new alert."""
+def next_not_found_state(
+    post: dict,
+    detected: bool,
+    observed_at: str,
+    *,
+    confirmed: bool = False,
+) -> tuple[dict, bool]:
+    """Return DB-only review state and whether this observation needs a new alert.
+
+    A live owner profile plus an explicit post-level ``not_found`` is stronger
+    evidence than a bare scraper response. It can request human review on the
+    first observation, but the streak still advances by exactly one day and
+    this function never writes ``ended_at``.
+    """
     if not detected:
         dirty = (
             int(post.get("not_found_streak") or 0) != 0
@@ -67,7 +88,9 @@ def next_not_found_state(post: dict, detected: bool, observed_at: str) -> tuple[
         previous = 0
 
     streak = previous + 1
-    needs_alert = streak >= NOT_FOUND_REVIEW_THRESHOLD and not post.get("review_requested_at")
+    needs_alert = (
+        confirmed or streak >= NOT_FOUND_REVIEW_THRESHOLD
+    ) and not post.get("review_requested_at")
     updates = {
         "not_found_streak": streak,
         "not_found_last_at": observed_at,

@@ -102,6 +102,9 @@ jobs:
           METADATA_RECOLLECT_ONLY: ${{ github.event.inputs.metadata_only == 'true' && '1' || '0' }}
           VIEW_MISSING_QUEUE_FILE: ${{ runner.temp }}/view_missing_queue_${{ steps.check.outputs.kdate }}.json
           VIEW_MISSING_TARGET_ONLY: ${{ github.event_name == 'schedule' && github.event.schedule != '41 15 * * *' && '1' || '0' }}
+          # Backup windows are recovery attempts. Keep genuine zero-result alerts in
+          # Monitoring Backup & Retry, but do not mark the healthy daily collection red.
+          RETRY_ZERO_FATAL: ${{ github.event_name == 'schedule' && github.event.schedule != '41 15 * * *' && '0' || '1' }}
           # ⚠️ run_monitoring.py 자체가 보내는 알림용(IG 접근불가 3일 연속 검토요청·수동 과대기록 경고).
           # 2026-08-03 실측 사고: 이 두 키가 없어 `_send_status_alert`가 조용히 return —
           # 로그엔 `[ALERT] IG not_found 3일 연속` 이 찍혔는데 Slack엔 **한 번도** 안 갔다(74건 방치).

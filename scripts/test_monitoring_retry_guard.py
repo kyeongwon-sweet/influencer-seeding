@@ -15,3 +15,13 @@ def test_targeted_retry_with_any_stored_row_is_not_zero_result():
 
 def test_full_collection_does_not_use_the_targeted_retry_guard():
     assert zero_result_alert(False, 426, 0, "2026-08-10") is None
+
+
+def test_verified_missing_posts_count_as_retry_progress():
+    assert zero_result_alert(
+        True,
+        192,
+        0,
+        "2026-08-11",
+        verified_missing=177,
+    ) is None

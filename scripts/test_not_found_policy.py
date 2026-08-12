@@ -2,6 +2,7 @@ from not_found_policy import (
     is_not_found_review_eligible,
     is_platform_not_found_outage,
     next_not_found_state,
+    normalize_instagram_handle,
 )
 
 
@@ -22,6 +23,21 @@ def test_small_or_low_rate_not_found_stays_per_post_actionable():
     assert not is_platform_not_found_outage(10, 10)
     assert not is_platform_not_found_outage(596, 19)
     assert not is_platform_not_found_outage(100, 29)
+
+
+def test_only_profile_safe_instagram_handles_are_normalized():
+    assert normalize_instagram_handle("@Ufo__NIGHT") == "ufo__night"
+    assert normalize_instagram_handle("힐링하고 가세요") is None
+    assert normalize_instagram_handle("https://instagram.com/ufo__night") is None
+
+
+def test_live_owner_profile_can_request_review_without_forcing_streak():
+    first, alert = next_not_found_state({}, True, "2026-08-11", confirmed=True)
+    assert first["not_found_streak"] == 1
+    assert first["not_found_last_at"] == "2026-08-11"
+    assert first.get("review_requested_at")
+    assert "ended_at" not in first
+    assert alert
 
 
 def test_first_and_second_consecutive_days_do_not_alert():

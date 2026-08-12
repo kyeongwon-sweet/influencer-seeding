@@ -18,6 +18,7 @@ from not_found_policy import (
     is_not_found_review_eligible,
     is_platform_not_found_outage,
     next_not_found_state,
+    normalize_instagram_handle,
 )
 
 
@@ -190,6 +191,7 @@ APIFY_IG_ACTOR = os.getenv("APIFY_IG_ACTOR_ID", "apify/instagram-scraper")
 # 새벽 예약 수집은 직전일 최종 스냅샷이므로 기본 귀속일은 KST 어제다.
 TODAY = os.getenv("MONITORING_DATE") or ((datetime.now(timezone.utc) + timedelta(hours=9)).date() - timedelta(days=1)).isoformat()
 MISSING_VIEW_EVENTS = []
+NOT_FOUND_REVIEW_ALERTS = []
 
 
 def _metric_value(row: dict | None):
@@ -310,23 +312,39 @@ def _flush_posted_at_mismatch_alert():
     _send_status_alert("\n".join(lines))
 
 
-def _record_not_found_observation(db, post: dict, detected: bool):
+def _record_not_found_observation(db, post: dict, detected: bool, *, confirmed: bool = False):
     """Track Instagram-only not_found streaks without changing notes or ended_at."""
     if not is_not_found_review_eligible(post.get("url") or ""):
         return
-    updates, needs_alert = next_not_found_state(post, detected, TODAY)
+    updates, needs_alert = next_not_found_state(post, detected, TODAY, confirmed=confirmed)
     if not updates:
         return
     db.table("sponsored_posts").update(updates).eq("id", post["id"]).execute()
     post.update(updates)
     if needs_alert:
-        _send_status_alert(
-            "🚨 [협찬 모니터링] Instagram 게시물 접근 실패가 3일 연속 확인됐습니다.\n"
-            "자동 제외·종료하지 않았습니다. 확인 후 제외 여부를 결정해 주세요.\n"
-            f"- {post.get('account_name') or '-'}\n"
-            f"- {post.get('url') or '-'}"
-        )
-        print(f"  [ALERT] IG not_found {NOT_FOUND_REVIEW_THRESHOLD}일 연속, 검토 요청: {post.get('url')}")
+        NOT_FOUND_REVIEW_ALERTS.append({
+            "account_name": post.get("account_name"),
+            "url": post.get("url"),
+            "confirmed": confirmed,
+        })
+        evidence = "계정 생존 확인" if confirmed else f"{NOT_FOUND_REVIEW_THRESHOLD}일 연속"
+        print(f"  [ALERT] IG not_found {evidence}, 검토 요청: {post.get('url')}")
+
+
+def _flush_not_found_review_alerts():
+    if not NOT_FOUND_REVIEW_ALERTS:
+        return
+    confirmed = sum(1 for item in NOT_FOUND_REVIEW_ALERTS if item.get("confirmed"))
+    lines = [
+        f"🚨 [협찬 모니터링] Instagram 접근불가 검토 요청 {len(NOT_FOUND_REVIEW_ALERTS)}건",
+        f"- 계정 생존 + 게시물 not_found 확인: {confirmed}건",
+        "- 자동 종료하지 않았습니다. 게시물 삭제 여부를 확인해 종료 처리해 주세요.",
+    ]
+    for item in NOT_FOUND_REVIEW_ALERTS[:20]:
+        lines.append(f"- {item.get('account_name') or '-'} {item.get('url') or '-'}")
+    if len(NOT_FOUND_REVIEW_ALERTS) > 20:
+        lines.append(f"- ...외 {len(NOT_FOUND_REVIEW_ALERTS) - 20}건")
+    _send_status_alert("\n".join(lines))
 
 
 def _ig_shortcode(url: str) -> str | None:
@@ -1058,6 +1076,9 @@ def run():
         stats_by_key = {}
         ig_not_found_outage = False
         ig_outage_message = None
+        ig_not_found_quarantined_keys = set()
+        ig_profile_confirmed_keys = set()
+        verified_not_found_count = 0
         if skip_apify:
             print(f"[LOG] ⏭️ Apify 데이터 수집 스킵 (SKIP_APIFY=1) - 기존 데이터만 사용")
         else:
@@ -1176,18 +1197,51 @@ def run():
                     filled += 1
                 print(f"[LOG] comments_count 보강 완료: {filled}건")
 
-            ig_not_found_count = sum(
-                1 for u in ig_urls
-                if (stats_by_key.get(_stats_key(u)) or {}).get("deleted")
-            )
-            ig_not_found_outage = is_platform_not_found_outage(
+            deleted_posts = [
+                post for post in posts
+                if _is_instagram_collectable_url(post.get("url") or "")
+                and (stats_by_key.get(_stats_key(post.get("url") or "")) or {}).get("deleted")
+            ]
+            ig_not_found_count = len(deleted_posts)
+            batch_ratio_suspicious = is_platform_not_found_outage(
                 len(ig_urls), ig_not_found_count
             )
+            # A retry batch is intentionally composed of failures, so its not_found
+            # ratio has no outage-detection value. Verify the owner profiles instead.
+            should_verify_profiles = bool(deleted_posts) and (target_only or batch_ratio_suspicious)
+            if should_verify_profiles:
+                pending_posts = [post for post in deleted_posts if not post.get("review_requested_at")]
+                handles = [
+                    normalize_instagram_handle(post.get("account_name"))
+                    for post in pending_posts
+                ]
+                handles = [handle for handle in handles if handle]
+                try:
+                    live_handles = _fetch_alive_instagram_handles(handles)
+                    for post in pending_posts:
+                        key = _stats_key(post.get("url") or "")
+                        handle = normalize_instagram_handle(post.get("account_name"))
+                        if handle and handle in live_handles:
+                            ig_profile_confirmed_keys.add(key)
+                        else:
+                            ig_not_found_quarantined_keys.add(key)
+                    print(
+                        "[LOG] IG not_found 계정 생존 검증: "
+                        f"게시물={len(pending_posts)}, 계정={len(set(handles))}, "
+                        f"확정={len(ig_profile_confirmed_keys)}, "
+                        f"격리={len(ig_not_found_quarantined_keys)}"
+                    )
+                except Exception as exc:
+                    ig_not_found_quarantined_keys.update(
+                        _stats_key(post.get("url") or "") for post in pending_posts
+                    )
+                    print(f"[WARN] IG 계정 생존 검증 실패, not_found 전건 격리: {exc}")
+
+            ig_not_found_outage = bool(ig_not_found_quarantined_keys)
             if ig_not_found_outage:
                 ig_outage_message = (
-                    f"🚨 [협찬 모니터링] Instagram 플랫폼 장애 격리: "
-                    f"not_found {ig_not_found_count}/{len(ig_urls)}건. "
-                    "개별 게시물 삭제로 판정하지 않고 not_found streak 적립을 중단했습니다."
+                    f"🚨 [협찬 모니터링] Instagram not_found 격리 {len(ig_not_found_quarantined_keys)}건. "
+                    "계정 생존을 확인하지 못해 삭제 검토 상태로 넘기지 않았습니다."
                 )
                 print(f"[WARN] {ig_outage_message}")
 
@@ -1234,8 +1288,12 @@ def run():
             # TikTok not_found는 종료·제외·streak 판정에 절대 사용하지 않는다.
             if s.get("deleted") and is_not_found_review_eligible(post.get("url") or ""):
                 _record_missing_view_event(post, "Instagram", "not_found", stat=s)
-                if not ig_not_found_outage:
-                    _record_not_found_observation(db, post, True)
+                if key in ig_not_found_quarantined_keys:
+                    continue
+                confirmed = key in ig_profile_confirmed_keys
+                _record_not_found_observation(db, post, True, confirmed=confirmed)
+                if confirmed:
+                    verified_not_found_count += 1
                 continue
             _record_not_found_observation(db, post, False)
 
@@ -1477,15 +1535,25 @@ def run():
         else:
             print(f"[WARN] 저장할 데이터가 없습니다 (매칭 실패 또는 조회수 오류)")
 
-        retry_zero_alert = zero_result_alert(target_only, retry_target_count, len(rows), TODAY)
+        _flush_not_found_review_alerts()
+        retry_zero_alert = zero_result_alert(
+            target_only,
+            retry_target_count,
+            len(rows),
+            TODAY,
+            verified_missing=verified_not_found_count,
+        )
         # Avoid duplicate Slack messages when the target-only zero-result guard
         # below already reports the same platform incident.
         if ig_outage_message and not retry_zero_alert:
             _send_status_alert(ig_outage_message)
         if retry_zero_alert:
-            print(f"[ERROR] {retry_zero_alert}")
-            _send_status_alert(retry_zero_alert)
-            raise RuntimeError(retry_zero_alert)
+            retry_zero_fatal = os.getenv("RETRY_ZERO_FATAL", "1").lower() not in ("0", "false", "no")
+            if retry_zero_fatal:
+                print(f"[ERROR] {retry_zero_alert}")
+                _send_status_alert(retry_zero_alert)
+                raise RuntimeError(retry_zero_alert)
+            print(f"[WARN] {retry_zero_alert} cron 백업 실행은 실패 처리하지 않습니다.")
 
         print(f"[SUCCESS] 모니터링 완료: {len(rows)}건 저장")
         _flush_overrecord_warnings()
@@ -1543,6 +1611,38 @@ def run():
         if job_id:
             db.table("jobs").update({"status": "failed", "error": str(e)}).eq("id", job_id).execute()
         raise
+
+
+@retry_on_network_error(max_retries=3, delay=10)
+def _fetch_alive_instagram_handles(handles: list[str]) -> set[str]:
+    """Return requested Instagram handles whose public profile produced a post."""
+    from apify_client import ApifyClient
+
+    requested = sorted({handle for raw in handles if (handle := normalize_instagram_handle(raw))})
+    if not requested:
+        return set()
+    apify_token = os.getenv("APIFY_API_TOKEN")
+    if not apify_token:
+        raise RuntimeError("APIFY_API_TOKEN is not configured")
+
+    client = ApifyClient(apify_token)
+    profile_urls = [f"https://www.instagram.com/{handle}/" for handle in requested]
+    run = client.actor(APIFY_IG_ACTOR).call(run_input={
+        "directUrls": profile_urls,
+        "resultsType": "posts",
+        "resultsLimit": 1,
+        "addParentData": True,
+        "maxRequestRetries": 3,
+        "proxy": {"useApifyProxy": True, "apifyProxyGroups": ["RESIDENTIAL"]},
+    })
+    alive = set()
+    requested_set = set(requested)
+    for item in client.dataset(run["defaultDatasetId"]).iterate_items():
+        owner = item.get("owner") or {}
+        handle = normalize_instagram_handle(item.get("ownerUsername") or owner.get("username"))
+        if handle in requested_set:
+            alive.add(handle)
+    return alive
 
 
 def _fetch_ig_fallback(urls: list) -> dict:

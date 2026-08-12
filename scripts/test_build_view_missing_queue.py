@@ -81,6 +81,15 @@ class TikTokInternalRetryPolicyTest(unittest.TestCase):
         }
         self.assertEqual(exclusion_reason(post), "manual_note")
 
+    def test_not_found_review_pending_is_not_retried_forever(self):
+        post = {
+            "channel_type": "바이럴 (영상)",
+            "url": "https://www.instagram.com/p/DbMzF18PTQz/",
+            "notes": "",
+            "review_requested_at": "2026-08-11T00:00:00+00:00",
+        }
+        self.assertEqual(exclusion_reason(post), "not_found_review_pending")
+
 
 if __name__ == "__main__":
     unittest.main()

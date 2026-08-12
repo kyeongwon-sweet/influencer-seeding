@@ -21,21 +21,32 @@ def test_targeted_retry_zero_result_is_not_reported_as_success():
     text = RUN_MONITORING.read_text(encoding="utf-8")
 
     assert "retry_target_count = len(posts)" in text
-    assert "zero_result_alert(target_only, retry_target_count, len(rows), TODAY)" in text
+    assert "verified_missing=verified_not_found_count" in text
     assert "raise RuntimeError(retry_zero_alert)" in text
 
 
-def test_batch_wide_instagram_not_found_does_not_advance_post_streaks():
+def test_targeted_instagram_not_found_uses_profile_survival_not_batch_ratio():
     text = RUN_MONITORING.read_text(encoding="utf-8")
 
     assert "is_platform_not_found_outage(" in text
-    assert "if not ig_not_found_outage:" in text
-    assert "_record_not_found_observation(db, post, True)" in text
-    assert "not_found streak 적립을 중단했습니다" in text
+    assert "target_only or batch_ratio_suspicious" in text
+    assert "_fetch_alive_instagram_handles(handles)" in text
+    assert "confirmed=confirmed" in text
+    assert "ig_not_found_quarantined_keys" in text
+
+
+def test_cron_backup_zero_result_is_nonfatal_but_retry_workflow_remains_fatal():
+    cron_text = (ROOT / ".github" / "workflows" / "cron-daily-collect.yml").read_text(encoding="utf-8")
+    retry_text = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "RETRY_ZERO_FATAL:" in cron_text
+    assert "github.event.schedule != '41 15 * * *'" in cron_text
+    assert "RETRY_ZERO_FATAL:" not in retry_text
 
 
 if __name__ == "__main__":
     test_manual_monitoring_retry_defaults_to_target_queue()
     test_targeted_retry_zero_result_is_not_reported_as_success()
-    test_batch_wide_instagram_not_found_does_not_advance_post_streaks()
+    test_targeted_instagram_not_found_uses_profile_survival_not_batch_ratio()
+    test_cron_backup_zero_result_is_nonfatal_but_retry_workflow_remains_fatal()
     print("monitoring retry workflow safety test passed")

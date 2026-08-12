@@ -72,6 +72,8 @@ def exclusion_reason(post: dict[str, Any], target_date: str | None = None) -> st
     url = (post.get("url") or "").lower()
     if "수동추적 제외" in str(post.get("notes") or ""):
         return "manual_note"
+    if post.get("review_requested_at"):
+        return "not_found_review_pending"
     # 위성/온드도 조회수형 플랫폼이면 재시도해야 한다. 틱톡만 예외로 두면
     # 메인 수집이 빈 응답을 낸 날 유튜브·인스타그램 누락이 영구 결측으로 남는다.
     if "위성채널" in channel_type or "온드미디어" in channel_type:
@@ -118,7 +120,7 @@ def main() -> None:
 
     posts = fetch_pages(
         "sponsored_posts",
-        "id,url,account_name,created_at,posted_at,ended_at,channel_type,notes",
+        "id,url,account_name,created_at,posted_at,ended_at,channel_type,notes,not_found_streak,not_found_last_at,review_requested_at",
     )
     raw_eligible = [
         post for post in posts
@@ -173,6 +175,7 @@ def main() -> None:
         "likely_image_no_view": 0,
         "not_retryable": 0,
         "manual_note": 0,
+        "not_found_review_pending": 0,
         "internal_channel": 0,
         "free_seed_manual": 0,
         "non_tiktok_banner_reach_only": 0,
