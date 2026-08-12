@@ -525,8 +525,8 @@ def main():
     # 리포트는 이미 쫀득바만 필터돼 있어 줄마다 [JD멜] 상품태그는 중복 → 표시에서 제거(사용자 지시).
     for rank, it in enumerate(items[:10], 1):
         label = f"<{it['url']}|{_esc(it['name'])}>" if it["url"] else _esc(it["name"])
-        date = it["posted_at"] or "업로드일 미상"
-        lines.append(f"{rank}. {label} _({it['platform']})_ *+{f(it['inc'])}*  {_cpv(it['cost'], it['cum'], it['channel_type'])}  `{date}`")
+        pdate = it["posted_at"] or "업로드일 미상"
+        lines.append(f"{rank}. {label} _({it['platform']})_ *+{f(it['inc'])}*  {_cpv(it['cost'], it['cum'], it['channel_type'])}  `{pdate}`")
     text = "\n".join(lines)
 
     if os.getenv("DRY_RUN"):   # 발송 없이 내용만 출력(검증용, Slack 토큰 불필요)
