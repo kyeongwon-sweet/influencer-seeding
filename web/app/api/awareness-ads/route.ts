@@ -24,6 +24,7 @@ const SPREADSHEET_ID = "1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s";
 const GID = 1224959784; // 인지_쫀득바
 const COL = {
   date: 1,                                  // B
+  conversionView: 12,                       // M  전환 조회수(일별, 팀 수동입력; "0"=0, 빈칸=null)
   metaReelCost: 48, metaReelView: 49,       // AW, AX  Meta_인지_릴스 (석영)
   ttReelCost: 51, ttReelView: 52,           // AZ, BA  틱톡_인지_릴스 (석영)
   ytReelCost: 54, ytReelView: 55,           // BC, BD  유튜브_인지_릴스 (석영)
@@ -128,6 +129,8 @@ export async function GET(req: NextRequest) {
     views: sumViews(target, [COL.ytReelView], "유튜브", warns),
     cost: numOrNull(target[COL.ytReelCost]),
   };
+  // 전환 조회수(M열, 일별). "0"은 0으로, 빈칸은 null로 반환(빈칸≠0).
+  const conversionViews = numOrNull(target[COL.conversionView]);
 
   return NextResponse.json({
     date,
@@ -135,6 +138,7 @@ export async function GET(req: NextRequest) {
     meta,
     tiktok,
     youtube,
+    conversion: { views: conversionViews },
     ...(warns.length ? { warn: warns } : {}),
   });
 }

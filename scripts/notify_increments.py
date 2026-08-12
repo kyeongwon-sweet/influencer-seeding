@@ -359,6 +359,11 @@ def main():
             _v = (ads.get(_k) or {}).get("views")
             if isinstance(_v, (int, float)) and _v > 0:
                 total += _v
+        # 전환 조회수(M열): 라우트가 conversion을 주면 0도 그대로 총증분에 합산(사용자 지시).
+        #   라우트 미배포(구버전 응답)면 conversion 키 없음 → 합산·표시 모두 생략(하위호환).
+        _conv0 = ads.get("conversion")
+        if isinstance(_conv0, dict) and isinstance(_conv0.get("views"), (int, float)):
+            total += _conv0["views"]
 
     def _norm_ch(ct):
         c = (ct or "").strip()
@@ -422,9 +427,16 @@ def main():
             v, c = a.get("views"), a.get("cost")
             if isinstance(v, (int, float)) and v > 0:
                 ad_lines.append(f"    {_lab} *+{f(v)}*  {_ad_cpv(c or 0, v)}".rstrip())
-        if ad_lines:
+        # 전환 조회수(M열) — CPV 없이 조회수만, 0도 표시(사용자 지시). 총증분엔 위에서 합산됨.
+        #   라우트가 conversion을 주는 경우에만 줄 노출(구버전 응답이면 종전과 동일).
+        _conv = ads.get("conversion")
+        _cv = _conv.get("views") if isinstance(_conv, dict) else None
+        _cv = _cv if isinstance(_cv, (int, float)) else None
+        if ad_lines or (_cv is not None and _cv > 0):
             lines.append("• *인지 광고*  `CPV는 일일 기준`")   # 광고 CPV = 그날 광고비 ÷ 그날 조회수(일일)
             lines.extend(ad_lines)
+            if _cv is not None:
+                lines.append(f"    전환 조회수 *+{f(_cv)}*")   # CPV 미표시
             lines.append("")
     # 아래 DB 채널들의 CPV는 누적 기준(누적비용÷누적조회수) — 인지광고(일일)와 구분해 별도 표기.
     lines.append("`CPV는 누적 기준`")
