@@ -224,16 +224,27 @@ def _integrity_lines(db, posts):
     #    `if ended:` 안에서 만들면 활성 게시물 검사가 종료 게시물 유무에 묶인다(2026-08-12 교훈).
     series = {}
     vidx = {}
+    # 5-b 전용: **조회수(play_count)만** 담는다. 배너 도달수(reach_count)는 시트 수기 입력이라
+    # 값이 며칠씩 그대로 유지되는 게 정상이고, 같은 소재를 같은 조건으로 돌리면 서로 같은 값이
+    # 흔히 나온다 → 복사 판정에 섞으면 배너 오탐이 구조적으로 계속 발생한다
+    # (2026-08-12 실측: luna.humor·wikitrip.kr·ho1y_time 등 배너 6건이 전부 오탐이었다).
+    pseries = {}
+    pvidx = {}
     off = 0
     while True:
         res = db.table("post_daily_stats").select("post_id, measured_at, play_count, reach_count, manual").range(off, off + 999).execute()
         chunk = res.data or []
         for r in chunk:
-            v = r.get("play_count") or r.get("reach_count") or 0
+            d = r["measured_at"][:10]
+            man = bool(r.get("manual"))
+            pv = r.get("play_count") or 0
+            if pv > 0:
+                pseries.setdefault(r["post_id"], []).append((d, pv, man))
+                pvidx.setdefault((d, pv), set()).add(r["post_id"])
+            v = pv or r.get("reach_count") or 0
             if v <= 0:
                 continue
-            d = r["measured_at"][:10]
-            series.setdefault(r["post_id"], []).append((d, v, bool(r.get("manual"))))
+            series.setdefault(r["post_id"], []).append((d, v, man))
             vidx.setdefault((d, v), set()).add(r["post_id"])
         if len(chunk) < 1000:
             break
@@ -269,11 +280,11 @@ def _integrity_lines(db, posts):
         return "미러링" in name or _is_internal_channel(p or {})
     skip_copy = {p["id"] for p in posts if _shares_values_by_design(p)}
     copy_hits, spike_hits = [], []
-    for pid, rows in series.items():
+    for pid, rows in pseries.items():                    # 조회수만 — 배너 reach는 대상 아님
         if pid in ended:
             continue                                    # 종료분은 5번이 담당
         if pid not in skip_copy:
-            for d, v, others in copy_suspects(rows, vidx):
+            for d, v, others in copy_suspects(rows, pvidx):
                 src = sorted({name_of.get(o, "?") for o in others if o != pid})
                 copy_hits.append((name_of.get(pid, "?"), d, v, src[:2]))
         for d, v, prev, mult in spike_suspects(rows):

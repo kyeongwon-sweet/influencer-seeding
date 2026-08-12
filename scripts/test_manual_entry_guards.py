@@ -86,3 +86,17 @@ def test_blank_days_are_not_read_as_zero():
 def test_single_owner_is_not_a_copy():
     rows = [("2026-07-30", 207_000, True)]
     assert copy_suspects(rows, OWNERS) == []
+
+
+def test_helper_is_metric_agnostic_so_caller_must_exclude_reach():
+    """🚨 배너 도달수(reach)를 넣으면 오탐이 난다 — 제외는 호출부 책임임을 고정한다.
+
+    배너 reach는 시트 수기 입력이라 며칠 같은 값이 유지되는 게 정상이고,
+    같은 소재를 같은 조건으로 돌리면 서로 같은 값이 흔히 나온다.
+    2026-08-12 실측: luna.humor·wikitrip.kr·ho1y_time 등 배너 6건이 전부 오탐이었다.
+    notify_status는 play_count 전용 인덱스(pseries/pvidx)를 넘겨 이를 배제한다.
+    """
+    reach_rows = [("2026-08-09", 75_888, True)]
+    owners = {("2026-08-09", 75_888): {"banner_a", "banner_b"}}
+    # 헬퍼 자체는 지표를 구분하지 못한다 → 그대로 넣으면 잡힌다(그래서 호출부가 걸러야 한다)
+    assert len(copy_suspects(reach_rows, owners)) == 1
