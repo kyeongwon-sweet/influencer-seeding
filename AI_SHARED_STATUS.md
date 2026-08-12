@@ -6,7 +6,19 @@
 
 # AI Shared Status
 
-## 🚀 2026-08-12 [Claude 코드완료 · ➡️Codex 마이그레이션+배포] '그 외' 그래프에 **구글 웹 검색량** 라인 추가 (`a092a83`, main)
+## 🚀 2026-08-12 [Claude 코드완료 · ➡️Codex 마이그레이션+배포] 구글 웹 검색량 = **2개 그룹 합산 라인** + 전용 수집 워크플로 (`b31951d`, main) — 아래 a092a83 항목 갱신
+- **요청 확정:** '그 외'에 구글 검색량을 **2축(그룹)**. ①브랜드=`라라스윗`+`라라스윗아이스크림`, ②쫀득바=`멜론쫀득바·망고쫀득바·라라스윗쫀득바·GS멜론쫀득바·라라스윗멜론쫀득바·노을멜론바·라라스윗노을멜론바·라라스윗노을멜론·라라스윗망고쫀득바`(9개). 그룹 내 키워드는 **합산해 라인 1개**. 사용자가 "9개 전부(근사)" 선택.
+- **empirical 확인(프로브 2회):** 액터는 키워드당 구글 트렌드 페이지를 직접 열어 1개당 수 분 → **1런=1키워드**만 안정(2URL/1런은 280s 타임아웃·1건만 산출). `geo` 입력 enum이 KR에서 깨져 있어 **startUrls로 geo=KR** 지정(searchTerms 방식 불가). 값은 검색어별 상대지수(0~100)라 **합산=대략적 합성 추세**(절대 검색량 아님, 유튜브 합산과 동일 성격).
+- **구현(main `b31951d`):**
+  - 그룹 정의 `web/lib/google-trend-groups.ts`(collect·프론트 공유): `GOOGLE_TREND_GROUPS`(2그룹) + `GOOGLE_TREND_KEYWORDS`(11개 평탄화).
+  - 프론트 `page.tsx`: 그룹별 **합산 라인**(members=키워드 → LineChart가 날짜별 합산, 툴팁 키워드별). '그 외' 토글도 그룹 단위, 라벨=그룹 라벨. 데이터 있는 키워드 없으면 그룹 라인 미표시.
+  - collect 라우트: `GOOGLE_TREND_KEYWORDS`를 `?kw=N`(0..10) 인덱싱, 1런=1키워드.
+  - **수집 크론 분리:** 11키워드는 메인 일일수집에 넣으면 2시간+ 지연 → **전용 `.github/workflows/google-search-trends.yml`**(06:00 KST=UTC 21:00, kw=0..10 `sleep 480s` 순차). 메인 cron(00:41~05:x KST)·유튜브 트렌드와 **시간대 안 겹치게**(같은 Google 소스라 동시=차단). 메인 cron의 임시 구글 스텝은 제거함.
+- **검증:** `tsc` 통과 · `npm run build` 성공(3라우트·/monitoring) · 워크플로 YAML 2개 파싱 OK · pre-push tsc 통과.
+- **➡️ Codex 순서:** ①`google_search_trends` 테이블 선생성(`docs/migration-google-trends.sql`) → ②main `b31951d` 배포 → ③`google-search-trends.yml` 첫 실행(스케줄 06:00 KST 또는 수동 dispatch)이 11키워드 수집(~1.5~2h) → ④'그 외 ▼'에 그룹 2줄 표시. GHA 시크릿 `CRON_SECRET`은 기존 재사용(신규 없음). ⚠️키워드 개수 바뀌면 워크플로 `KEYWORD_COUNT`도 맞출 것.
+- **⚠️ 비용:** Apify google-trends-scraper 런이 **11/일**로 증가(소량이나 월 사용량에 반영). 차단 보이면 워크플로 `GAP_SECONDS` 상향.
+
+## 🚀 2026-08-12 [Claude 코드완료 · (구버전, b31951d로 대체됨)] '그 외' 그래프에 **구글 웹 검색량** 라인 추가 (`a092a83`, main)
 - **요청:** 조회수 트렌드 '그 외 ▼'에 구글 검색량 라인 추가. 확인 결과 **구글 웹 검색 데이터는 미수집**이라 유튜브 검색량(Google Trends `gprop=youtube`) 파이프라인을 **웹 검색(`gprop` 미지정)** 으로 그대로 복제. 사용자 승인(전체 구축, 키워드는 유튜브와 동일).
 - **구현(전부 main `a092a83`):**
   - DB: **`google_search_trends`** (docs/migration-google-trends.sql, `youtube_search_trends`와 동일 스키마: measured_at·keyword·value, PK(measured_at,keyword)).
