@@ -33,16 +33,26 @@ def parse_optional_bool(value: str) -> bool | None:
     raise argparse.ArgumentTypeError("manual must be KEEP, true, or false")
 
 
-def fetch_stat(stat_id: str) -> dict[str, Any]:
+def fetch_stat(stat_id: str, post_id: str, measured_at: str) -> dict[str, Any]:
     db = get_client()
-    row = (
-        db.table("post_daily_stats")
-        .select("id,post_id,measured_at,play_count,reach_count,manual,created_at")
-        .eq("id", stat_id)
-        .single()
-        .execute()
-        .data
+    query = db.table("post_daily_stats").select(
+        "id,post_id,measured_at,play_count,reach_count,manual,created_at"
     )
+    if str(stat_id).strip().upper() == "AUTO":
+        rows = (
+            query.eq("post_id", post_id)
+            .eq("measured_at", measured_at)
+            .limit(2)
+            .execute()
+            .data
+            or []
+        )
+        if len(rows) != 1:
+            raise SystemExit(
+                f"expected exactly one stat row for {post_id} on {measured_at}, found {len(rows)}"
+            )
+        return rows[0]
+    row = query.eq("id", stat_id).single().execute().data
     if not row:
         raise SystemExit(f"stat row not found: {stat_id}")
     return row
@@ -95,20 +105,24 @@ def main() -> None:
     parser.add_argument("--out", default="")
     args = parser.parse_args()
 
-    expected_play = parse_count(args.expected_play_count)
+    expected_play_any = str(args.expected_play_count or "").strip().upper() == "ANY"
+    if args.apply and expected_play_any:
+        raise SystemExit("[REPAIR_SPECIFIC_DAILY_STAT_ABORT] apply requires an exact expected-play-count")
+    expected_play = None if expected_play_any else parse_count(args.expected_play_count)
     new_play = parse_count(args.new_play_count)
     expected_manual = parse_optional_bool(args.expected_manual)
     new_manual = parse_optional_bool(args.new_manual)
     if (expected_manual is None) != (new_manual is None):
         raise SystemExit("[REPAIR_SPECIFIC_DAILY_STAT_ABORT] expected-manual and new-manual must both be KEEP or both be explicit")
 
-    before = fetch_stat(args.stat_id)
+    before = fetch_stat(args.stat_id, args.post_id, args.measured_at)
+    actual_stat_id = before["id"]
     errors = []
     if before.get("post_id") != args.post_id:
         errors.append({"field": "post_id", "expected": args.post_id, "actual": before.get("post_id")})
     if str(before.get("measured_at"))[:10] != args.measured_at:
         errors.append({"field": "measured_at", "expected": args.measured_at, "actual": before.get("measured_at")})
-    if before.get("play_count") != expected_play:
+    if not expected_play_any and before.get("play_count") != expected_play:
         errors.append({"field": "play_count", "expected": expected_play, "actual": before.get("play_count")})
     if expected_manual is not None and bool(before.get("manual")) != expected_manual:
         errors.append({"field": "manual", "expected": expected_manual, "actual": before.get("manual")})
@@ -128,7 +142,7 @@ def main() -> None:
         update_result = (
             db.table("post_daily_stats")
             .update(updates)
-            .eq("id", args.stat_id)
+            .eq("id", actual_stat_id)
             .eq("post_id", args.post_id)
             .eq("measured_at", args.measured_at)
             .execute()
@@ -143,14 +157,14 @@ def main() -> None:
                 "before": before,
             }, ensure_ascii=False, default=str))
 
-    after = fetch_stat(args.stat_id)
+    after = fetch_stat(actual_stat_id, args.post_id, args.measured_at)
     summary = {
         "ok": True,
         "apply": bool(args.apply),
-        "stat_id": args.stat_id,
+        "stat_id": actual_stat_id,
         "post_id": args.post_id,
         "measured_at": args.measured_at,
-        "expected_play_count": expected_play,
+        "expected_play_count": "ANY" if expected_play_any else expected_play,
         "new_play_count": new_play,
         "expected_manual": expected_manual,
         "new_manual": new_manual,

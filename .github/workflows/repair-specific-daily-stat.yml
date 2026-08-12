@@ -4,8 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       stat_id:
-        description: "post_daily_stats.id to repair"
-        required: true
+        description: "post_daily_stats.id, or AUTO to find the unique post/date row"
+        required: false
+        default: "AUTO"
       post_id:
         description: "Expected sponsored_posts.id"
         required: true
@@ -13,7 +14,7 @@ on:
         description: "Expected measured_at date, YYYY-MM-DD"
         required: true
       expected_play_count:
-        description: "Expected current play_count, or NULL"
+        description: "Expected current play_count, NULL, or ANY for dry-run inspection"
         required: true
       new_play_count:
         description: "New play_count, or NULL"
