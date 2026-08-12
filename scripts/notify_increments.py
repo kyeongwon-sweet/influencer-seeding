@@ -270,24 +270,26 @@ def main():
             return rc if rc is not None else r.get("play_count")
         return r.get("play_count")
 
-    def _safe_inc(rows, isb, posted_at=None):
-        """대시보드 safeIncrement와 동일: 오늘값 − 직전 '유효(>0)' 값. 첫 유효측정=그날 전체, 오늘0/None=None.
-        단 첫 유효측정은 '게시 후 7일 이내'만 전액 — 게시 한참 뒤 첫 측정(백로그)은 스파이크 방지로 제외."""
+    def _safe_inc(rows, isb, posted_at=None, tgt=None):
+        """대시보드 safeIncrement와 동일: 그날값 − 직전 '유효(>0)' 값. 첫 유효측정=그날 전체, 그날0/None=None.
+        단 첫 유효측정은 '게시 후 7일 이내'만 전액 — 게시 한참 뒤 첫 측정(백로그)은 스파이크 방지로 제외.
+        tgt를 주면 과거 임의 날짜의 증분도 같은 규칙으로 계산(이상감지 baseline용)."""
+        tgt = tgt or target
         cur, base, has = None, 0, False
         for r in rows:
             v = _metric(r, isb)
-            if r["measured_at"] == target:
+            if r["measured_at"] == tgt:
                 cur = v
-            elif r["measured_at"] < target and v is not None and v > 0:
+            elif r["measured_at"] < tgt and v is not None and v > 0:
                 has = True
                 if v > base:
                     base = v
         if cur is None or cur <= 0:
-            return None            # 오늘 측정 없음/실패
+            return None            # 그날 측정 없음/실패
         if not has:
             if posted_at:          # 백로그(게시 7일 초과 뒤 첫 측정)는 그날 전액 아님 → 제외
                 try:
-                    if (date.fromisoformat(target) - date.fromisoformat(str(posted_at)[:10])).days > 7:
+                    if (date.fromisoformat(tgt) - date.fromisoformat(str(posted_at)[:10])).days > 7:
                         return None
                 except Exception:
                     pass
@@ -383,6 +385,49 @@ def main():
     for ct in banner_cts:
         by_channel.setdefault(_norm_ch(ct), 0)
 
+    # ── 채널 이상감지: 오늘 채널증분 vs 평소(직전7일평균)·전주(-7)·동요일(최근4주 같은요일 평균) ──
+    #   과거 날짜도 series(전체이력)+_safe_inc(tgt)로 같은 규칙 계산. 기준 대비 ±50%↑ + 최소절대량이면 노티.
+    def _ch_incs(_tgt):
+        o = {}
+        for _pid in jd_pids:
+            _m = meta.get(_pid, {})
+            _e = _m.get("ended_at")
+            if _e and str(_e)[:10] < _tgt:
+                continue
+            _isb = "배너" in (_m.get("channel_type") or "")
+            _iv = _safe_inc(series.get(_pid, []), _isb, _m.get("posted_at"), _tgt)
+            if _iv and _iv > 0:
+                _c = _norm_ch(_m.get("channel_type"))
+                o[_c] = o.get(_c, 0) + _iv
+        return o
+    _anom = []   # (ct, today_v, [(label, baseline, dev_ratio), ...])
+    try:
+        from datetime import timedelta as _timedelta
+        _T0 = date.fromisoformat(target)
+        _dd = lambda n: (_T0 - _timedelta(days=n)).isoformat()
+        _usual_ds = [_dd(n) for n in range(1, 8)]
+        _wd_ds = [_dd(7), _dd(14), _dd(21), _dd(28)]
+        _incd = {d: _ch_incs(d) for d in sorted(set(_usual_ds + _wd_ds))}
+        _MINABS = 50000   # 잡음 방지: 오늘 또는 기준이 5만 이상일 때만 비교
+        for _ct, _tv in by_channel.items():
+            _cmp = []
+            _uv = [_incd[d].get(_ct, 0) for d in _usual_ds]
+            _um = sum(_uv) / len(_uv) if _uv else 0
+            _lw = _incd[_dd(7)].get(_ct, 0)
+            _wv = [_incd[d].get(_ct, 0) for d in _wd_ds]
+            _wm = sum(_wv) / len(_wv) if _wv else 0
+            for _lab, _bv in (("평소7일", _um), ("전주", _lw), ("동요일", _wm)):
+                if _bv <= 0 or max(_tv, _bv) < _MINABS:
+                    continue
+                _dv = (_tv - _bv) / _bv
+                if abs(_dv) >= 0.5:
+                    _cmp.append((_lab, _bv, _dv))
+            if _cmp:
+                _anom.append((_ct, _tv, _cmp))
+        _anom.sort(key=lambda x: -x[1])
+    except Exception as _e:
+        print("[notify] 채널 이상감지 계산 실패(무시):", _e)
+
     # CPV(누적 조회당 비용): 채널별 Σ비용 / Σ누적조회수 (증분 있는 게시물 기준)
     #   온드미디어·위성채널은 무상 채널 → 광고비가 있어도 0으로 무시(사용자 지시).
     cost_by_ch, cumviews_by_ch = {}, {}
@@ -414,6 +459,7 @@ def main():
     lines = [
         f"📈 *쫀득바 인지 조회수 일일 증분* `({target})`",
         f"오늘 총 증분 *+{f(total)}*",
+        f"🎯 *300만 목표* {total / 30000:.0f}% · {('달성 +' + f(total - 3000000)) if total >= 3000000 else ('미달 ' + f(total - 3000000))}",
         "", DIV, "",
         "◾ *채널분류별*",
         "",
@@ -466,6 +512,14 @@ def main():
     if banner_unmapped:
         lines.append("")
         lines.append(f"⚠️ *바이럴 배너 가격 미매핑 {len(banner_unmapped)}건* — 시트 비용 입력 또는 DB cost 동기화 확인 필요. 비용이 채워진 뒤 재발송하면 CPV가 정상 계산됩니다.")
+    # ⚠️ 채널 이상 감지 — 300만 미달/초과 원인 진단(평소7일·전주·동요일 대비 유독 다른 채널만)
+    if _anom:
+        lines.append("")
+        lines.append("⚠️ *채널 이상 감지* `(평소7일·전주·동요일 대비 ±50%↑)`")
+        for _ct, _tv, _cmp in _anom[:6]:
+            _parts = [f"{_l} +{f(round(_bv))} 대비 {'+' if _d >= 0 else ''}{_d * 100:.0f}%" for _l, _bv, _d in _cmp]
+            lines.append(f"• {_ital_paren(_ct)} 오늘 *+{f(_tv)}* — " + " · ".join(_parts))
+
     lines += ["", DIV, "", "◾ *급상승 TOP 10* 🔥  `CPV는 누적 기준`", ""]
     # 배너는 도달수를 '조회수'로 취급해 TOP에도 섞어 노출(사용자 지시). 배너 CPV = 비용/도달수(도달당비용).
     # 리포트는 이미 쫀득바만 필터돼 있어 줄마다 [JD멜] 상품태그는 중복 → 표시에서 제거(사용자 지시).
