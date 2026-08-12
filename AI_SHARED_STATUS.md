@@ -6,17 +6,18 @@
 
 # AI Shared Status
 
-## ✨ 2026-08-12 [Claude 완료 · main `03201a1`] 대시보드 검색창 '제외(-단어)' 기능
+## ✅ 2026-08-12 [Codex 프로덕션 배포·실측 완료] 대시보드 검색창 '제외(-단어)' 기능 (`03201a1`)
 - **요청:** AI 대시보드 검색에서 포함뿐 아니라 특정 키워드 **제외**도 가능하게.
 - **구현:** 공용 헬퍼 `web/lib/search-filter.ts`(`matchesSearch`) — 공백 구분 토큰 중 `-단어`=제외, 나머지=포함(AND). 예 `딸기 -광고`. 협찬 모니터링(인플루언서/소재명/캡션)·무상노출(계정명/캡션) 매칭부 교체 + 검색창 title 툴팁. 기존 단일어 포함 동작 호환.
 - **검증:** 단위테스트 7건 추가·전체 266/266 통과 · `tsc --noEmit` 0 · lint 0 errors · `npm run build` 성공 · **CI Build Test `03201a1` success**. 화면 확인은 로컬 dev Clerk 로그인 벽으로 못 함(로직 순수함수 테스트로 대체).
-- **배포:** main 반영. 프로덕션(-mu)은 Codex 수동배포 몫(위 e5102f7 배포경로 모순 이슈와 함께 확인 필요).
+- **배포:** 최신 `main=a16d194`가 `03201a1`을 포함함을 확인하고, 기존 Vercel 프로젝트 `influencer-seeding`(`prj_OgItoanMBEmXzNmbn2TCqBV77uJs`, Root Directory=`web`)에 최신 worktree를 비대화형 연결해 프로덕션 배포했다. deployment `dpl_Akw68yS4ZG9A7AXWGvSqvqgVodhf`, `-mu` alias 연결 완료. 오래된 refactor 작업폴더는 사용하지 않았다.
+- **라이브 실측:** 로그인된 `-mu`에서 툴팁 노출 확인. 협찬 캡션 검색은 `광고` **24/2,124건**, `-광고` **2,100/2,124건**으로 정확히 상보 분리되고 제외 결과 캡션 위반 0건. 무상노출도 `라라스윗`/`-라라스윗` 각각 표시 표본 100행 전수에서 포함·제외 위반 0건. 검증 후 두 검색창 모두 빈값으로 원복했다.
 
 ## 🚀 2026-08-12 [Claude 코드완료 · ➡️Codex 배포] '조회수 합계' 카드 = 조회수 기간 필터 시 **기간 순증(증가분)** 표시 (`e5102f7`, main)
 - **요청:** 사용자가 조회수 기간 필터를 걸어도 상단 '조회수 합계'가 비슷하게/역전돼 "필터가 안 걸린다"고 지적. 실측·코드로 **필터는 정상**이고 카드가 **누적 스냅샷**(pickRangeStats의 기간말 누적 합)이라 그렇게 보인 것임을 확정. 지난주(62M)>이번주(45M)는 보관 종료한 바이럴 영상 353건(348 ended, 누적 ~21.5M)이 지난주 창엔 있고 이번주 창엔 빠져서임(정상). 사용자가 "기간에 늘어난 양을 보여달라"로 확정.
 - **구현(`web/app/monitoring/page.tsx`):** `hasDateFilter`면 카드 값=`periodPlayGain`(=`deltaTableData.play` 합=일별 `d.inc`=safeIncrement 합)으로 전환. **일자별 증감표 '조회수 증분' 합계 행과 정확히 동일 값**(그래프·리포트와 같은 기준). 라벨도 '기간 조회수 증가분'으로 바뀌고, 기간말 누적 합계는 툴팁에 병기(정보 손실 없음). 필터 없으면 기존 누적(`totalPlayCount`) 그대로. `totalPlayCount` 다른 사용처 없음(1451만).
 - **검증:** `tsc --noEmit` 통과 · `npm run build` 성공(`/monitoring` 생성) · pre-push tsc 통과. 화면 확인은 40af4fc와 동일 사유로 못 함(로컬 dev가 Clerk `/sign-in` 리다이렉트, 로그인 세션 없음).
-- **➡️ Codex 배포:** **위 40af4fc 배포와 동일한 배포 경로 문제**(최신코드 `_yeomun_wt`는 미링크 / 링크된 `AI/.claude/…`는 refactor 브랜치로 852커밋 뒤). `main` HEAD=`e5102f7`(40af4fc 포함)로 프로덕션 배포 시 **두 건이 함께 라이브**됨. 별도 조치 불필요, 40af4fc 배포에 합류.
+- **✅ 프로덕션 포함:** 2026-08-12 deployment `dpl_Akw68yS4ZG9A7AXWGvSqvqgVodhf`가 `e5102f7`·`40af4fc`를 포함한 최신 main 기준으로 `-mu`에 배포됐다.
 - **배포 후 확인:** 조회수 기간 필터(예 이번주) 선택 시 카드 라벨이 '기간 조회수 증가분'으로 바뀌고 값이 그 아래 일자별 증감표 '조회수 증분' 합계와 일치하는지.
 
 ## ⭐ 2026-08-12 [Claude 해결] **Vercel 배포 경로 확정 — 이제 Claude가 직접 배포·검증 가능**
@@ -49,7 +50,7 @@
   | `AI/.claude/influencer-seeding` (루트 `.vercel` 있음) | 브랜치 `refactor/monitoring-decompose` `22bceb8`, **main보다 852커밋 뒤**, `40af4fc` 미포함, `apps-script/` untracked | ❌ 배포하면 두 달치 작업이 프로덕션에서 사라짐 |
 
   `vercel --prod`는 git이 아니라 **작업 디렉터리를 업로드**하므로 "어디서 쏘는가 = 무엇이 라이브가 되는가"다. **연결 정보가 있는 곳과 최신 코드가 있는 곳이 다르다.** [[vercel-manual-deploy-reality]] 경고와 동일 상황.
-- **➡️ Codex 요청:** 평소 배포 경로에서 `main=40af4fc` 기준으로 프로덕션 배포 + `-mu` 실물 확인. 아니면 `_yeomun_wt/web`을 프로덕션 프로젝트에 연결할 projectId를 알려주면 Claude가 진행한다.
+- **해소:** Vercel CLI에서 정본 프로젝트 ID·Root Directory를 직접 확인한 뒤 최신 main worktree를 그 프로젝트에 연결해 배포했다. 오래된 연결 폴더를 배포하지 않아 코드 손실 없음.
 - **배포 후 확인:** ①합계 행이 헤더 아래 고정 표시 ②`*`가 붙으면 실제 미수집일과 일치하는지(08-10 IG 결측 등).
 
 ## ✅ 2026-08-12 [Codex 완료] **삭제 확정된 1일차 바이럴 영상 36건 종료**
