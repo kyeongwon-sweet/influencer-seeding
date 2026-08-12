@@ -37,10 +37,10 @@ function TH({ children, right, col, onSort, sorted, className: cls, w, leftPos, 
       }
       style={isSticky ? { width: w, minWidth: w, left: leftPos } : fixed && w ? { width: w, minWidth: w, maxWidth: w } : w ? { minWidth: w } : undefined}
       className={[
-        "sticky top-0 relative px-3 py-3 text-xs font-medium whitespace-nowrap select-none",
+        "sticky top-0 relative px-3 py-3.5 text-[11px] font-semibold tracking-[0.02em] whitespace-nowrap select-none",
         right ? "text-right" : "text-left",
         sortable ? `cursor-pointer transition-colors ${sorted ? "text-a-ink" : "text-a-ink-muted hover:text-a-ink"}` : "text-a-ink-muted",
-        isSticky ? "z-40 bg-white" : "z-30 bg-white",
+        isSticky ? "z-40 bg-slate-50" : "z-30 bg-slate-50",
         // 헤더 하단선: sticky th에서 border-b는 안 칠해질 수 있어 inset box-shadow로 그림 (isLast는 좌측 그림자와 합성)
         isLast ? "shadow-[2px_0_5px_rgba(0,0,0,0.06),inset_0_-1.5px_0_#d1d5db]" : "shadow-[inset_0_-1.5px_0_#d1d5db]",
         cls ?? "",
@@ -71,10 +71,10 @@ function TD({ children, right, muted, col, highlighted, w, leftPos, fixed, group
     <td
       style={isSticky ? { width: w, minWidth: w, left: leftPos } : fixed && w ? { width: w, minWidth: w, maxWidth: w } : w ? { minWidth: w } : undefined}
       className={[
-        "px-3 py-4 text-xs tabular-nums whitespace-nowrap",
+        "px-3 py-3 text-xs tabular-nums whitespace-nowrap",
         right ? "text-right" : "text-left",
         muted ? "text-a-ink-muted" : "text-a-ink",
-        isSticky ? `sticky z-10 ${highlighted ? "bg-yellow-50 group-hover:bg-yellow-100/60" : "bg-white group-hover:bg-a-parchment"}` : "",
+        isSticky ? `sticky z-10 ${highlighted ? "bg-yellow-50 group-hover:bg-yellow-100/60" : "bg-inherit group-hover:bg-slate-50"}` : "",
         isLast ? "shadow-[2px_0_5px_rgba(0,0,0,0.06)]" : "",
         groupStart ? "border-l border-a-divider" : "",
       ].join(" ")}
@@ -204,7 +204,7 @@ function PostsTable(props: Props) {
   }, [hasMoreRows, visibleCount]);
 
   return (
-        <div className="bg-white rounded-[18px] border border-a-hairline overflow-hidden">
+        <div className="surface-card overflow-hidden">
           {/* 상단 가로 스크롤바 (열제목 위) — 본문과 동기화 */}
           <div ref={topScrollRef} onScroll={syncFromTop} className="overflow-x-auto overflow-y-hidden">
             <div style={{ width: scrollW || 1, height: 1 }} />
@@ -215,8 +215,8 @@ function PostsTable(props: Props) {
           ) : (
             <table ref={tableRef} className="w-full text-sm">
               <thead>
-                <tr className="border-b border-a-hairline">
-                  <th className="pl-3 pr-1 py-3 sticky top-0 z-40 bg-white shadow-[inset_0_-1.5px_0_#d1d5db]" style={{ left: 0, width: 36, minWidth: 36 }}>
+                <tr className="border-b border-slate-200 bg-slate-50">
+                  <th className="pl-3 pr-1 py-3 sticky top-0 z-40 bg-slate-50 shadow-[inset_0_-1.5px_0_#cbd5e1]" style={{ left: 0, width: 36, minWidth: 36 }}>
                     <input type="checkbox" className="w-3.5 h-3.5 accent-a-blue cursor-pointer"
                       checked={filteredPosts.length > 0 && filteredPosts.every(p => selected.has(p.id))}
                       onChange={toggleSelectAll} />
@@ -307,7 +307,7 @@ function PostsTable(props: Props) {
                   const displayName = post.account_name ?? post.influencers?.name ?? "-";
                   const hl = hasNotableChange(post);
                   return (
-                    <tr key={post.id} className={`group border-b border-a-divider last:border-0 transition-colors ${selected.has(post.id) ? "bg-blue-50/40" : hl ? "bg-yellow-50/60 hover:bg-yellow-100/50" : "hover:bg-a-parchment/60"}`}>
+                    <tr key={post.id} className={`group border-b border-slate-100 last:border-0 transition-colors ${selected.has(post.id) ? "bg-blue-50/70" : hl ? "bg-yellow-50/70 hover:bg-yellow-100/60" : rowIdx % 2 ? "bg-slate-50/35 hover:bg-blue-50/35" : "bg-white hover:bg-blue-50/35"}`}>
                       <td className="pl-3 pr-1 py-3 sticky z-10 bg-inherit" style={{ left: 0, width: 36, minWidth: 36 }}>
                         <input type="checkbox" className="w-3.5 h-3.5 accent-a-blue cursor-pointer"
                           checked={selected.has(post.id)} onChange={() => {}}

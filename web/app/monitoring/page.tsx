@@ -1351,17 +1351,17 @@ export default function MonitoringPage() {
           </div>
         );
       })()}
-      <header className="bg-white border-b border-gray-100 h-11 px-6 flex items-center justify-between sticky top-0 z-40">
+      <header className="bg-white/95 backdrop-blur border-b border-slate-200 h-14 px-6 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-3">
           <Link href="/home" className="text-gray-400 hover:text-a-ink transition text-sm">←</Link>
-          <span className="text-a-ink text-sm font-semibold tracking-tight">협찬 모니터링</span>
-          <span className="text-gray-400 text-xs">
+          <span className="text-a-ink text-[15px] font-bold tracking-tight">협찬 모니터링</span>
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-500 text-[11px] font-medium tabular-nums">
             {hasFilter ? `${filteredPosts.length} / ${posts.length}건` : `${posts.length}건`}
           </span>
         </div>
       </header>
 
-      <div className="sticky top-14 z-[35] bg-white border-b border-a-hairline px-6 h-11 flex items-center justify-between">
+      <div className="sticky top-14 z-[35] bg-white/95 backdrop-blur border-b border-slate-200 px-6 min-h-12 py-1.5 flex items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <button onClick={() => setShowHelp(true)}
             className="flex items-center gap-1.5 text-xs text-a-ink-muted hover:text-a-ink transition">
@@ -1373,7 +1373,7 @@ export default function MonitoringPage() {
             사용 안내
           </button>
           {(lastUpdate.at ?? lastMonitoredAt) && (
-            <span className="text-xs text-a-ink-muted whitespace-nowrap">
+              <span className="status-pill whitespace-nowrap">
               마지막 업데이트 <span className="font-medium text-a-ink">{formatTimestamp(lastUpdate.at ?? lastMonitoredAt!)}</span>
               <span className="ml-1.5">
                 {lastUpdate.byEmail
@@ -1426,15 +1426,15 @@ export default function MonitoringPage() {
         </div>
       </div>
 
-      <div className="p-6">
+      <div className="px-4 py-5 xl:px-6">
 
         {/* 필터 바 */}
         <FiltersBar filters={filters} setFilters={setFilters} pdOptions={pdOptions} productOptions={productOptions} companyOptions={companyOptions} hasFilter={hasFilter} />
 
         {filteredPosts.length > 0 && (
-          <div className="relative bg-white rounded-[20px] shadow-[0_2px_16px_rgba(100,120,180,0.08)] mb-4 overflow-hidden">
+          <div className="relative surface-card mb-4 overflow-hidden">
             {/* 요약 수치 */}
-            <div className="flex items-stretch border-b border-a-hairline">
+            <div className="grid grid-cols-1 sm:grid-cols-3 border-b border-slate-200">
               {(() => {
                 // 라라스윗 검색량 총합 = 조회 기간 동안의 일자별 절대검색량(사이트 보정값) 합계
                 // (차트 점선 '검색량'과 동일 기준. chartData는 조회수라 검색량과 무관 → lsSearchData 사용)
@@ -1483,9 +1483,10 @@ export default function MonitoringPage() {
                   { label: "B2B 발주량", value: b2bTotal, color: "text-green-600", suffix: "", delta: wow(b2bDaily.map(d => ({ date: d.date, v: b2bOrderOf(d) ?? 0 }))), tooltip: b2bTooltip },
                 ];
               })().map((item, i) => (
-                <div key={i} className={`flex-1 px-6 py-5 relative group/kpi ${i > 0 ? "border-l border-a-hairline" : ""} ${item.tooltip ? "cursor-help" : ""}`}>
-                  <p className="text-[11px] font-medium text-a-ink-muted uppercase tracking-widest mb-1.5">{item.label}</p>
-                  <p className={`text-[28px] font-bold tabular-nums tracking-tight leading-none ${item.color}`}>{item.value.toLocaleString()}{item.suffix}</p>
+                <div key={i} className={`px-6 py-5 relative group/kpi ${i > 0 ? "sm:border-l border-slate-200" : ""} ${i > 0 ? "border-t sm:border-t-0 border-slate-100" : ""} ${item.tooltip ? "cursor-help" : ""}`}>
+                  <div className={`absolute left-0 top-4 bottom-4 w-[3px] rounded-r-full ${i === 0 ? "bg-blue-500" : i === 1 ? "bg-slate-400" : "bg-emerald-500"}`} />
+                  <p className="text-[11px] font-semibold text-slate-500 tracking-[0.06em] mb-2">{item.label}</p>
+                  <p className={`text-[30px] font-bold tabular-nums tracking-[-0.025em] leading-none ${item.color}`}>{item.value.toLocaleString()}{item.suffix}</p>
                   {item.delta != null && (
                     <p className={`mt-1 text-[11px] font-medium tabular-nums ${item.delta > 0 ? "text-red-500" : item.delta < 0 ? "text-blue-600" : "text-gray-400"}`}>
                       {item.delta > 0 ? "▲" : item.delta < 0 ? "▼" : ""} {item.delta > 0 ? "+" : ""}{item.delta.toFixed(1)}% <span className="text-gray-400 font-normal">전주 대비</span>
@@ -1502,7 +1503,7 @@ export default function MonitoringPage() {
             {/* 차트 + 테이블 */}
             <div className={`flex divide-x divide-a-hairline ${chartCollapsed ? "hidden" : ""}`}>
               {/* 차트 */}
-              <div ref={chartColRef} className="flex-1 min-w-0 self-start px-5 pt-3 pb-4">
+              <div ref={chartColRef} className="flex-1 min-w-0 self-start px-6 pt-4 pb-5">
                 <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
                   <div className="flex items-center gap-2">
                     <p className="text-[13px] font-semibold text-a-ink tracking-tight">조회수 트렌드 ({smooth ? "주별 합계" : "일별 증분"})</p>
@@ -1631,7 +1632,7 @@ export default function MonitoringPage() {
               {/* 증감 테이블 — 내용폭에 맞춰 고정(여백 최소화), 그래프가 나머지 차지 */}
               <div ref={tableRef} className="flex-none w-max flex flex-col self-start">
                 <div className="px-5 py-4 border-b border-a-hairline">
-                  <p className="text-[11px] font-medium text-a-ink-muted">일자별 증감</p>
+                  <p className="section-kicker">일자별 증감</p>
                 </div>
                 {deltaTableData.some(d => d.play < 0) && (
                   <div className="mx-3 mt-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-[8px] text-[11px] text-amber-700 flex items-start gap-1.5">
@@ -1835,7 +1836,7 @@ export default function MonitoringPage() {
           const areaPath = `${path} L ${points[points.length - 1][0]},${H - PAD.b} L ${PAD.l},${H - PAD.b} Z`;
 
           return (
-            <div className="bg-white rounded-[20px] shadow-[0_2px_16px_rgba(100,120,180,0.08)] mb-4 overflow-hidden">
+            <div className="surface-card mb-4 overflow-hidden">
               <div className="px-6 pt-5 pb-1 flex items-center gap-3 flex-wrap">
                 <p className="text-[11px] font-semibold text-a-ink-muted uppercase tracking-widest">유튜브 검색 유입수</p>
               </div>

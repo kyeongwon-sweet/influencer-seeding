@@ -80,7 +80,7 @@ export default function SidebarMemo() {
 
   return (
     <>
-    <div className="flex-1 min-h-0 flex flex-col border-t border-gray-100 mt-1">
+    <div className="flex-1 min-h-0 flex flex-col border-t border-slate-200 mt-1 bg-slate-50/55">
       <div className="flex items-center justify-between px-3.5 pt-2.5 pb-1.5 shrink-0">
         <span className="text-[11px] font-semibold text-gray-500 tracking-wide">📝 메모 <span className="font-normal text-gray-300">· 팀 공유</span></span>
         <button onClick={load} title="새로고침" className="w-5 h-5 grid place-items-center rounded text-gray-300 hover:text-a-ink hover:bg-gray-100 text-xs">↻</button>
@@ -90,7 +90,7 @@ export default function SidebarMemo() {
         {err && <p className="text-[11px] text-rose-500 px-1">불러오기 실패 (테이블 생성 확인)</p>}
         {!err && memos.length === 0 && <p className="text-[11px] text-gray-300 px-1 py-2">메모가 없어요.</p>}
         {memos.map(m => (
-          <div key={m.id} className="group/m relative rounded-[8px] bg-amber-50 border border-amber-200/70 px-2.5 py-1.5">
+          <div key={m.id} className="group/m relative rounded-[9px] bg-white border border-slate-200 border-l-[3px] border-l-amber-300 px-2.5 py-2 shadow-sm">
             {editing?.id === m.id ? (
               <textarea autoFocus value={editing.text}
                 onChange={e => setEditing({ id: m.id, text: e.target.value })}
@@ -103,10 +103,10 @@ export default function SidebarMemo() {
             )}
             {m.image && (
               <img src={m.image} alt="첨부 이미지" onClick={() => setZoomImg(m.image!)}
-                className="mt-1 max-h-28 w-auto rounded border border-amber-200 object-contain cursor-zoom-in" />
+                className="mt-1 max-h-28 w-auto rounded border border-slate-200 object-contain cursor-zoom-in" />
             )}
             <div className="flex items-center justify-between mt-1 gap-1">
-              <span className="text-[10px] text-amber-700/55 truncate">{m.author || "익명"} · {fmtTime(m.created_at)}</span>
+              <span className="text-[10px] text-slate-400 truncate">{m.author || "익명"} · {fmtTime(m.created_at)}</span>
               <button onClick={() => del(m.id)} title="삭제"
                 className="opacity-0 group-hover/m:opacity-100 transition-opacity text-[10px] text-rose-400 hover:text-rose-600 shrink-0">삭제</button>
             </div>
@@ -125,9 +125,9 @@ export default function SidebarMemo() {
         <textarea value={draft} onChange={e => setDraft(e.target.value)} onPaste={onPaste}
           onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) add(); }}
           placeholder="메모… (이미지 붙여넣기 가능 · ⌘/Ctrl+Enter)"
-          className="w-full text-[12px] text-a-ink bg-white border border-gray-200 rounded-[7px] px-2 py-1.5 resize-none outline-none focus:border-amber-400 leading-snug" rows={2} />
+          className="w-full text-[12px] text-a-ink bg-white border border-slate-200 rounded-[8px] px-2.5 py-2 resize-none outline-none focus:border-a-blue leading-snug" rows={2} />
         <button onClick={add} disabled={!draft.trim()}
-          className="mt-1 w-full text-[11px] font-medium bg-amber-300 hover:bg-amber-400 disabled:opacity-40 text-amber-900 rounded-[6px] py-1 transition-colors">추가</button>
+          className="mt-1.5 w-full text-[11px] font-semibold bg-slate-900 hover:bg-slate-700 disabled:opacity-35 text-white rounded-[7px] py-1.5 transition-colors">추가</button>
       </div>
     </div>
     {zoomImg && (

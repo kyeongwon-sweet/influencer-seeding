@@ -22,7 +22,18 @@ export default function FiltersBar({ filters, setFilters, pdOptions, productOpti
   const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
   const [showPdDropdown, setShowPdDropdown] = useState(false);
   return (
-    <div className="bg-white rounded-[14px] border border-a-hairline px-4 py-2.5 mb-4 flex items-center gap-x-2.5 gap-y-1 flex-wrap">
+    <div className="surface-toolbar px-4 py-3 mb-4 flex items-center gap-x-2.5 gap-y-2 flex-wrap">
+      <div className="basis-full flex items-center justify-between gap-3 border-b border-slate-100 pb-2 mb-0.5">
+        <div className="flex items-center gap-2.5">
+          <span className="section-kicker">필터</span>
+          <span className="text-[11px] text-slate-400">검색 · 분류 · 담당자 · 기간을 조합해 보세요</span>
+        </div>
+        {hasFilter && (
+          <button onClick={() => setFilters(INIT_FILTERS)} className="text-[11px] font-medium text-a-blue hover:text-blue-700 transition">
+            모든 필터 초기화
+          </button>
+        )}
+      </div>
       <input
         type="text"
         placeholder="인플루언서 검색"
@@ -284,11 +295,6 @@ export default function FiltersBar({ filters, setFilters, pdOptions, productOpti
         )}
       </div>
       <div className="flex-1" />
-      {hasFilter && (
-        <button onClick={() => setFilters(INIT_FILTERS)} className="btn-ghost py-1">
-          초기화
-        </button>
-      )}
     </div>
   );
 }

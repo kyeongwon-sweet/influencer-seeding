@@ -137,7 +137,7 @@ export default function Sidebar() {
 
   return (
     <aside
-      className="sidebar-aside fixed left-0 top-0 h-screen bg-white flex flex-col z-50 shadow-[1px_0_0_0_#e4e8f0]"
+      className="sidebar-aside fixed left-0 top-0 h-screen bg-white/95 backdrop-blur flex flex-col z-50 border-r border-slate-200 shadow-[6px_0_24px_rgba(44,62,100,0.04)]"
     >
       {/* 접힌 상태에선 상단에 펼치기 토글만 노출(홈 오른쪽에 둘 공간이 없으므로). 펼친 상태의 토글은 아래 홈 행 오른쪽에 배치. */}
       {collapsed && (
@@ -164,7 +164,7 @@ export default function Sidebar() {
               title={collapsed ? item.label : undefined}
               className={`flex items-center gap-2.5 ${collapsed ? "justify-center px-0" : "px-3"} py-2 rounded-[8px] text-sm transition-colors ${
                 isActive
-                  ? `bg-blue-50 text-a-blue ${item.highlight ? "font-bold" : "font-medium"}`
+                  ? `bg-blue-50 text-a-blue shadow-[inset_3px_0_0_#2563eb] ${item.highlight ? "font-bold" : "font-semibold"}`
                   : item.highlight
                     ? "text-a-blue font-bold hover:bg-blue-50"
                     : "text-gray-400 hover:text-a-ink hover:bg-gray-50"
