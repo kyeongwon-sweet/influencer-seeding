@@ -5,11 +5,11 @@ import { ApifyClient } from "apify-client";
 const APIFY_BASE = 'https://api.apify.com/v2';
 
 /** Apify 액터를 비동기로 시작하고 완료 시 webhookUrl로 POST 요청을 보냄 */
-export async function startActorRun(
+export async function startActorRunWithId(
   actorId: string,
   input: Record<string, unknown>,
   webhookUrl: string
-): Promise<void> {
+): Promise<string> {
   const token = process.env.APIFY_API_TOKEN!;
   // payloadTemplate 미사용: Apify 기본 페이로드(resource.status, resource.defaultDatasetId)로 수신
   const webhooks = Buffer.from(JSON.stringify([{
@@ -33,6 +33,19 @@ export async function startActorRun(
     const text = await res.text();
     throw new Error(`Apify 실행 실패 [${actorId}]: ${res.status} ${text}`);
   }
+  const body = await res.json() as { data?: { id?: string } };
+  const runId = body.data?.id;
+  if (!runId) throw new Error(`Apify run id missing [${actorId}]`);
+  return runId;
+}
+
+/** 기존 호출자 호환용: 실행 ID가 필요하지 않은 비동기 시작. */
+export async function startActorRun(
+  actorId: string,
+  input: Record<string, unknown>,
+  webhookUrl: string
+): Promise<void> {
+  await startActorRunWithId(actorId, input, webhookUrl);
 }
 
 /** Apify 데이터셋에서 수집된 아이템 목록을 가져옴 */

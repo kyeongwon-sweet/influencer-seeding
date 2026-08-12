@@ -20,7 +20,11 @@ test("Google search trends collector and webhook bypass Clerk but keep their own
   assert.match(middleware, /"\/api\/google-trends\/collect\(\.\*\)"/);
   assert.match(middleware, /"\/api\/google-trends\/webhook\(\.\*\)"/);
   assert.match(collectRoute, /checkCronAuth\(req\) !== "ok"/);
+  assert.match(collectRoute, /const runId = await startActorRunWithId/);
+  assert.match(collectRoute, /started: true, runId, keywords/);
   assert.match(webhookRoute, /searchParams\.get\("token"\) !== process\.env\.WEBHOOK_SECRET/);
   assert.match(workflow, /KEYWORD_COUNT:\s*"11"/);
   assert.match(workflow, /\/api\/google-trends\/collect\?kw=\$i/);
+  assert.match(workflow, /api\.apify\.com\/v2\/actor-runs\/\$run_id/);
+  assert.match(workflow, /SUCCEEDED\) terminal=success/);
 });

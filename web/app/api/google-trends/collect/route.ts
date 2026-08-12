@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
-import { startActorRun } from "@/lib/apify";
+import { startActorRunWithId } from "@/lib/apify";
 import { GOOGLE_TREND_KEYWORDS } from "@/lib/google-trend-groups";
 
 // 구글 웹 검색 트렌드를 볼 키워드 (Google Trends 웹 검색, gprop 미지정, 상대값 0~100).
@@ -39,8 +39,8 @@ export async function POST(req: NextRequest) {
   const startUrls = keywords.map((kw) => ({
     url: `https://trends.google.com/trends/explore?date=today%203-m&geo=KR&q=${encodeURIComponent(kw)}`,
   }));
-  await startActorRun("apify/google-trends-scraper", { startUrls, maxItems: 50 }, webhookUrl);
-  return NextResponse.json({ ok: true, started: true, keywords });
+  const runId = await startActorRunWithId("apify/google-trends-scraper", { startUrls, maxItems: 50 }, webhookUrl);
+  return NextResponse.json({ ok: true, started: true, runId, keywords });
 }
 
 // Vercel 크론은 GET으로 호출 → POST와 동일 처리 (body 미사용)

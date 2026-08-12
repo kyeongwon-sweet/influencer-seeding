@@ -1,10 +1,8 @@
 name: Google Search Trends (구글 웹 검색량 수집)
 
-# 구글 웹 검색 트렌드 수집(전용) — 키워드 11개를 시간차 순차로 수집한다.
-# ⚠️ 액터가 키워드당 구글 트렌드 페이지를 직접 열어 1개당 수 분 걸리고, 동시 실행 시
-#    Google이 차단한다. 그래서 kw=0..N 을 sleep 으로 띄워 한 번에 하나씩만 돌린다.
-# ⚠️ 유튜브 트렌드(cron-daily-collect.yml, 00:41~05:x KST)와 같은 Google Trends 소스라
-#    시간대가 겹치면 차단된다 → 그 창을 피해 06:00 KST 에 실행한다.
+# 구글 웹 검색 트렌드 11개 키워드를 한 액터씩 순차 수집한다.
+# collect API는 액터를 비동기로 시작하므로 run id를 받아 종료까지 확인해야 한다.
+# 고정 시간만 기다리면 느린 런과 다음 런이 겹쳐 Google 차단을 유발할 수 있다.
 on:
   schedule:
     - cron: "0 21 * * *"   # 06:00 KST
@@ -12,8 +10,8 @@ on:
 
 env:
   APP_URL: "https://influencer-seeding-mu.vercel.app"
-  KEYWORD_COUNT: "11"     # lib/google-trend-groups.ts 의 GOOGLE_TREND_KEYWORDS 개수와 일치시킬 것
-  GAP_SECONDS: "480"      # 키워드 간 간격(액터 완료·동시요청 차단 회피). 차단 보이면 늘릴 것.
+  KEYWORD_COUNT: "11"
+  GAP_SECONDS: "60"       # 액터 완료 뒤 다음 키워드까지 추가 냉각 시간
 
 jobs:
   collect:
@@ -28,10 +26,43 @@ jobs:
             code=$(curl -sS -o /tmp/o -w "%{http_code}" "$APP_URL/api/google-trends/collect?kw=$i" \
               -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
             echo "kw=$i → HTTP $code"; cat /tmp/o; echo
-            [ "${code:0:1}" = "2" ] || { echo "::warning::google-trends kw=$i HTTP=$code"; fail=$((fail + 1)); }
+
+            if [ "${code:0:1}" != "2" ]; then
+              echo "::warning::google-trends kw=$i HTTP=$code"
+              fail=$((fail + 1))
+            else
+              run_id=$(jq -r '.runId // empty' /tmp/o)
+              if [ -z "$run_id" ]; then
+                echo "::warning::google-trends kw=$i runId missing"
+                fail=$((fail + 1))
+              else
+                terminal=""
+                status="UNKNOWN"
+                # 최대 20분 동안 현재 액터 완료를 기다린 뒤에만 다음 키워드로 간다.
+                for attempt in $(seq 1 40); do
+                  run_json=$(curl -fsS "https://api.apify.com/v2/actor-runs/$run_id" \
+                    -H "Authorization: Bearer ${{ secrets.APIFY_API_TOKEN }}" || true)
+                  status=$(printf '%s' "$run_json" | jq -r '.data.status // "UNKNOWN"')
+                  echo "kw=$i run=$run_id status=$status ($attempt/40)"
+                  case "$status" in
+                    SUCCEEDED) terminal=success; break ;;
+                    FAILED|TIMED-OUT|ABORTED) terminal=failed; break ;;
+                  esac
+                  sleep 30
+                done
+                if [ "$terminal" != "success" ]; then
+                  echo "::warning::google-trends kw=$i actor=$status"
+                  fail=$((fail + 1))
+                fi
+              fi
+            fi
+
             if [ "$i" -lt "$((n - 1))" ]; then sleep "${GAP_SECONDS}"; fi
           done
-          # 개별 키워드가 일부 실패해도(빈 응답 등) 나머지는 수집됨 → 전체를 실패로 만들지 않되,
-          # 전부 실패면 배포/URL 문제이므로 hard fail 로 알린다.
-          if [ "$fail" -ge "$n" ]; then echo "::error::google-trends 전건 실패($fail/$n) — 배포/URL/시크릿 확인($APP_URL)"; exit 1; fi
+
+          # 일부 키워드 실패는 나머지 수집을 보존한다. 전부 실패한 경우에만 hard fail.
+          if [ "$fail" -ge "$n" ]; then
+            echo "::error::google-trends 전건 실패($fail/$n) — 배포/API/Google 차단 확인($APP_URL)"
+            exit 1
+          fi
           echo "완료: 실패 $fail/$n"
