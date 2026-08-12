@@ -263,9 +263,7 @@ function PostsTable(props: Props) {
                   <TH w={colWidths["특이사항"]}>특이사항</TH>
                   <TH w={colWidths["삭제"]}></TH>
                 </tr>
-              </thead>
-              <tbody>
-                {/* 헤더 바로 아래 합계 행 — 체크박스로 선택한 행이 있으면 그 선택분 합계, 없으면 필터 적용 시 전체 합계 (조회당비용은 합계 안 함) */}
+                {/* 합계 행은 thead의 두 번째 행으로 둔다. tbody에 sticky 셀로 두면 내부 스크롤 중 데이터 행 사이에 끼어 보인다. */}
                 {(tableTotals.selectionMode || hasFilter) && tableTotals.count > 0 && (
                   <tr className="border-y-2 border-a-blue/30 bg-blue-50 text-xs font-semibold">
                     <td className="pl-3 pr-1 py-2.5 sticky top-10 z-30 bg-blue-50" style={{ left: 0, width: 36, minWidth: 36 }} />
@@ -299,6 +297,8 @@ function PostsTable(props: Props) {
                     <td className="sticky top-10 z-20 bg-blue-50" />{/* 삭제 */}
                   </tr>
                 )}
+              </thead>
+              <tbody>
                 {visiblePosts.map((post, rowIdx) => {
                   // 🔒 필터 불변식: 값(현재/직전)은 lib.pickRangeStats 단일 구현으로 —
                   // 날짜 필터 시 범위 밖(latest_stats) 폴백 금지. 합계·정렬·복사·CSV와 반드시 동일 규칙.
