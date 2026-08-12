@@ -363,7 +363,7 @@ def main():
         #   라우트 미배포(구버전 응답)면 conversion 키 없음 → 합산·표시 모두 생략(하위호환).
         _conv0 = ads.get("conversion")
         if isinstance(_conv0, dict) and isinstance(_conv0.get("views"), (int, float)):
-            total += _conv0["views"]
+            total += round(_conv0["views"])   # 시트 셀이 소수(수식)일 수 있어 정수 반올림
 
     def _norm_ch(ct):
         c = (ct or "").strip()
@@ -436,7 +436,7 @@ def main():
             lines.append("• *인지 광고*  `CPV는 일일 기준`")   # 광고 CPV = 그날 광고비 ÷ 그날 조회수(일일)
             lines.extend(ad_lines)
             if _cv is not None:
-                lines.append(f"    전환 조회수 *+{f(_cv)}*")   # CPV 미표시
+                lines.append(f"    전환 조회수 *+{f(round(_cv))}*")   # CPV 미표시, 정수 반올림
             lines.append("")
     # 아래 DB 채널들의 CPV는 누적 기준(누적비용÷누적조회수) — 인지광고(일일)와 구분해 별도 표기.
     lines.append("`CPV는 누적 기준`")
