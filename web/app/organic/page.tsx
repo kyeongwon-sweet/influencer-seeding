@@ -5,6 +5,7 @@ import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
 import { platformFromUrl, platformLabel } from "@/lib/platform";
 import { parseNumInput } from "@/lib/num";
+import { matchesSearch } from "@/lib/search-filter";
 import { maxDateKST, isValidEntryDate } from "@/lib/dateRule";
 
 const PLATFORMS = ["인스타그램", "유튜브", "블로그", "틱톡", "스레드", "트위터"];
@@ -846,8 +847,8 @@ export default function OrganicPage() {
   const filtered = useMemo(() => mentions.filter(m => {
     if (isHiddenAd(m)) return false;
 
-    if (deferredName && !(m.account_name ?? "").toLowerCase().includes(deferredName.toLowerCase())) return false;
-    if (deferredCaption && !(m.content_summary ?? "").toLowerCase().includes(deferredCaption.toLowerCase())) return false;
+    if (!matchesSearch(m.account_name, deferredName)) return false;
+    if (!matchesSearch(m.content_summary, deferredCaption)) return false;
     if (filters.platform !== "all" && normPlatform(m.platform) !== filters.platform) return false;
     if (filters.products.length > 0) {
       // 콤마로 구분된 복수 제품 지원: 선택된 제품 중 하나라도 포함되면 통과
@@ -1010,6 +1011,7 @@ export default function OrganicPage() {
           <input
             type="text"
             placeholder="계정명 검색"
+            title="여러 단어는 모두 포함(AND) · 제외는 -단어 (예: 딸기 -광고)"
             value={filters.name}
             onChange={e => setFilters(p => ({ ...p, name: e.target.value }))}
             className={`filter-input h-9 w-24 shrink-0 ${filters.name ? "border-a-blue" : ""}`}
@@ -1018,6 +1020,7 @@ export default function OrganicPage() {
           <input
             type="text"
             placeholder="캡션 검색"
+            title="여러 단어는 모두 포함(AND) · 제외는 -단어 (예: 딸기 -광고)"
             value={filters.caption}
             onChange={e => setFilters(p => ({ ...p, caption: e.target.value }))}
             className={`filter-input h-9 w-32 shrink-0 ${filters.caption ? "border-a-blue" : ""}`}

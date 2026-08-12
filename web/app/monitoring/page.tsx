@@ -7,6 +7,7 @@ import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
 import { isValidEntryDate } from "@/lib/dateRule";
 import { companyForAccount } from "@/lib/companyMap";
 import { batchFetch } from "@/lib/batchFetch";
+import { matchesSearch } from "@/lib/search-filter";
 import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, decodeStatsV2, INIT_FILTERS, CHANNEL_TYPES, STICKY_COL_ORDER, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, getFilteredStats, pickRangeStats, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, viewIncrement, safeIncrement, pickMetric, pdOf, productLabel, effectiveReach, bannerDailyMetric, assetNameOf, weekKeyOf, pearson, alignedPairs, bestLag, alignMulti, multipleR2, parseCsvLine } from "./lib";
 import CorrelationPanel from "./components/CorrelationPanel";
 import DayOfWeekPanel, { type DowData } from "./components/DayOfWeekPanel";
@@ -77,9 +78,10 @@ export default function MonitoringPage() {
     const displayName = (post.account_name ?? post.influencers?.name ?? "").toLowerCase();
 
     // 1️⃣ 모든 게시물에 적용되는 필터 (제로비도 포함)
-    if (filters.name && !displayName.includes(filters.name.toLowerCase())) return false;
-    if (filters.project && !assetNameOf(post).toLowerCase().includes(filters.project.toLowerCase())) return false;
-    if (filters.caption && !(post.content_summary ?? "").toLowerCase().includes(filters.caption.toLowerCase())) return false;
+    // 포함(AND) + 제외(-단어) 검색 — matchesSearch 참고
+    if (!matchesSearch(displayName, filters.name)) return false;
+    if (!matchesSearch(assetNameOf(post), filters.project)) return false;
+    if (!matchesSearch(post.content_summary, filters.caption)) return false;
     if (filters.products.length > 0 && !filters.products.includes(post.product_name ?? "")) return false;
     if (filters.channelTypes.length > 0 && !filters.channelTypes.some(ct => (post.channel_type ?? "").replace(/\s+/g, "") === ct.replace(/\s+/g, ""))) return false;
     if (filters.companies.length > 0 && !filters.companies.includes(post.company_name?.trim() || companyForAccount(post.account_name ?? post.influencers?.name, post.channel_type) || "")) return false;

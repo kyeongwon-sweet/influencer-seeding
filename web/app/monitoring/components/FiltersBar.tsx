@@ -5,6 +5,9 @@ import { useState } from "react";
 import { type Filters, INIT_FILTERS, CHANNEL_TYPES, fmtChannelType } from "../lib";
 import { productCodeOf } from "@/lib/productCode";
 
+// 검색창 사용법 툴팁 — 포함(AND) + 제외(-단어)
+const SEARCH_HINT = "여러 단어는 모두 포함(AND) · 제외는 -단어 (예: 딸기 -광고)";
+
 type Props = {
   filters: Filters;
   setFilters: React.Dispatch<React.SetStateAction<Filters>>;
@@ -23,6 +26,7 @@ export default function FiltersBar({ filters, setFilters, pdOptions, productOpti
       <input
         type="text"
         placeholder="인플루언서 검색"
+        title={SEARCH_HINT}
         value={filters.name}
         onChange={e => setFilters(p => ({ ...p, name: e.target.value }))}
         className={`filter-input w-32 ${filters.name ? "border-a-blue" : ""}`}
@@ -30,6 +34,7 @@ export default function FiltersBar({ filters, setFilters, pdOptions, productOpti
       <input
         type="text"
         placeholder="소재명"
+        title={SEARCH_HINT}
         value={filters.project}
         onChange={e => setFilters(p => ({ ...p, project: e.target.value }))}
         className={`filter-input w-28 ${filters.project ? "border-a-blue" : ""}`}
@@ -37,6 +42,7 @@ export default function FiltersBar({ filters, setFilters, pdOptions, productOpti
       <input
         type="text"
         placeholder="캡션 검색"
+        title={SEARCH_HINT}
         value={filters.caption}
         onChange={e => setFilters(p => ({ ...p, caption: e.target.value }))}
         className={`filter-input w-32 ${filters.caption ? "border-a-blue" : ""}`}
