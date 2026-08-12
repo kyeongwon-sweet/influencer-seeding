@@ -39,7 +39,18 @@ export async function POST(req: NextRequest) {
   const startUrls = keywords.map((kw) => ({
     url: `https://trends.google.com/trends/explore?date=today%203-m&geo=KR&q=${encodeURIComponent(kw)}`,
   }));
-  const runId = await startActorRunWithId("apify/google-trends-scraper", { startUrls, maxItems: 50 }, webhookUrl);
+  const runId = await startActorRunWithId(
+    "apify/google-trends-scraper",
+    {
+      startUrls,
+      maxItems: 50,
+      maxConcurrency: 1,
+      maxRequestRetries: 2,
+      pageLoadTimeoutSecs: 120,
+      skipDebugScreen: true,
+    },
+    webhookUrl,
+  );
   return NextResponse.json({ ok: true, started: true, runId, keywords });
 }
 
