@@ -596,9 +596,8 @@ def main():
         lines += ["", DIV, "", "⚠️ *채널 이상 감지* `(평소7일·전주·동요일 대비 ±50%↑)`", ""]
         for _ct, _tv, _cmp in _anom[:6]:
             _parts = [f"{_l} +{f(round(_bv))} 대비 {'+' if _d >= 0 else ''}{_d * 100:.0f}%" for _l, _bv, _d in _cmp]
-            lines.append(f"• {_ital_paren(_ct)} 오늘 *+{f(_tv)}*")
-            lines.append("")
-            lines.append("* " + " · ".join(_parts))
+            lines.append(f"*{_ct}* 오늘 +{f(_tv)}")
+            lines.append("• " + " · ".join(_parts))
             lines.append("")
 
     text = "\n".join(lines)
