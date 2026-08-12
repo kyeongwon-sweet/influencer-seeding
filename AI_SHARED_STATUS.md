@@ -6,6 +6,18 @@
 
 # AI Shared Status
 
+## 🚀 2026-08-12 [Claude 코드완료 · ➡️Codex 마이그레이션+배포] '그 외' 그래프에 **구글 웹 검색량** 라인 추가 (`a092a83`, main)
+- **요청:** 조회수 트렌드 '그 외 ▼'에 구글 검색량 라인 추가. 확인 결과 **구글 웹 검색 데이터는 미수집**이라 유튜브 검색량(Google Trends `gprop=youtube`) 파이프라인을 **웹 검색(`gprop` 미지정)** 으로 그대로 복제. 사용자 승인(전체 구축, 키워드는 유튜브와 동일).
+- **구현(전부 main `a092a83`):**
+  - DB: **`google_search_trends`** (docs/migration-google-trends.sql, `youtube_search_trends`와 동일 스키마: measured_at·keyword·value, PK(measured_at,keyword)).
+  - API: `/api/google-trends`(GET 조회) · `/api/google-trends/collect`(Apify `google-trends-scraper` 웹검색 비동기 시작, `?kw=N` 순차) · `/api/google-trends/webhook`(SUCCEEDED 결과 upsert).
+  - 크론(`cron-daily-collect.yml`): 유튜브 트렌드 수집 **뒤에 순차로** 구글 kw=0 → `sleep 840` → kw=1. ⚠️Google이 trends 동시요청 차단하므로 유튜브와 겹치면 안 됨 → 유튜브 다음에 배치함. 일일 크론 실행시간 ~15분 증가.
+  - 프론트(`page.tsx`,`lib.ts`): `googleTrends` state·fetch, chartExtraSeries에 `구글 {kw} 검색량`, '그 외' 드롭다운 토글, `CHART.google=["#94a3b8","#64748b"]`(유튜브 회색과 구분).
+  - 키워드 = 라라스윗·라라스윗아이스크림(유튜브와 동일). 값 = 상대지수 0~100. 시크릿(CRON/WEBHOOK/APIFY) **전부 기존 재사용, 신규 없음**.
+- **검증:** `tsc --noEmit` 통과 · `npm run build` 성공(3개 라우트 등록·/monitoring 컴파일) · cron YAML `yaml.safe_load` 파싱 OK · pre-push tsc 통과. 화면 확인은 로컬 Clerk 미로그인으로 못 함(라이브 배포 후 확인).
+- **➡️ Codex 순서(중요):** ①`google_search_trends` 테이블 **선생성**(마이그레이션) → ②main 배포(라우트 라이브) → ③다음 일일 크론이 첫 수집. **테이블 없이 배포되면 webhook upsert가 실패**하니 ①을 반드시 먼저. (배포 경로는 최신 main 기준으로 이미 정합됨.)
+- **배포+수집 후 확인:** '그 외 ▼'에 '구글 라라스윗 검색량'·'구글 라라스윗아이스크림 검색량' 토글 노출 + 라인 표시(첫 수집 완료 후). Apify 월비용에 구글 트렌드 2런/일 추가 반영.
+
 ## ✅ 2026-08-12 [Claude 완료] 여믄봇 리포트 대개편 — 300만 목표·채널이상감지·계정특이(댓글)
 - **목적 반영**: 리포트 = "매일 총 300만 조회수 달성 여부". 제목 `쫀득바 조회수 일일 증분`(인지 제거), 헤드라인 `🎯 일 300만 목표 N% · 달성/미달`. 총증분 = 인지 채널증분 + 인지광고 + **전환 조회수**(합산).
 - **① 채널 이상감지(본문 맨 아래)**: 채널분류별 오늘 증분 vs **평소7일평균·전주(-7)·동요일(4주평균)**. 기준 대비 **±50%↑** + 최소 5만 가드. 2줄 포맷(채널 오늘값 → 아래 `* 비교상세`). `series`(전체이력)+`_safe_inc(tgt)`로 과거날짜 동일규칙 계산.
