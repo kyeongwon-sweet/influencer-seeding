@@ -1657,10 +1657,12 @@ export default function MonitoringPage() {
                       return { play, search, b2b, playMiss, searchMiss, b2bMiss, deltaDays: deltaTableData.length };
                     })();
                     // 합계 셀 — 값 없는 날을 뺐으면 '*'로 알린다(조용히 축소된 합계 방지).
-                    function totalCell(v: number, miss: number, cls: string, pad: string, unit: string) {
+                    // signed: 증감 지표(조회수·검색량)만 '+'를 붙인다. B2B 발주량은 절대 수량이라
+                    //         개별 행처럼 부호 없이 표시한다(2026-08-12 라이브 확인 후 수정).
+                    function totalCell(v: number, miss: number, cls: string, pad: string, unit: string, signed = true) {
                       return (
                         <td className={`${pad} py-2 text-right tabular-nums text-sm font-bold ${cls}`}>
-                          {v > 0 ? "+" : ""}{v.toLocaleString()}
+                          {signed && v > 0 ? "+" : ""}{v.toLocaleString()}
                           {miss > 0 && (
                             <span
                               className="ml-0.5 text-[11px] font-medium text-amber-600 cursor-help"
@@ -1691,7 +1693,7 @@ export default function MonitoringPage() {
                               </td>
                               {totalCell(totals.play, totals.playMiss, totals.play > 0 ? "text-red-600" : totals.play < 0 ? "text-blue-700" : "text-gray-400", "px-3", "조회수 증분")}
                               {totalCell(totals.search, totals.searchMiss, totals.search > 0 ? "text-gray-700" : totals.search < 0 ? "text-gray-500" : "text-gray-400", "px-3", "검색량")}
-                              {totalCell(totals.b2b, totals.b2bMiss, totals.b2b < 0 ? "text-red-600" : totals.b2b > 0 ? "text-green-700" : "text-gray-400", "pl-3 pr-5", "B2B 발주량")}
+                              {totalCell(totals.b2b, totals.b2bMiss, totals.b2b < 0 ? "text-red-600" : totals.b2b > 0 ? "text-green-700" : "text-gray-400", "pl-3 pr-5", "B2B 발주량", false)}
                             </tr>
                           </thead>
                           <tbody>
