@@ -369,6 +369,7 @@ export const CHART = {
   grid: "#e5e7eb",                 // 격자선
   secondary: "#b3b3b3",            // 보조축(전체 전환 광고비)
   youtube: ["#d1d5db", "#cbd5e1"], // 유튜브 검색량 2색(아이스크림/라라스윗)
+  google: ["#94a3b8", "#64748b"],  // 구글 웹 검색량 2색(유튜브 회색과 구분되게 조금 진한 슬레이트)
 };
 // "쫀득바 쫀득바"처럼 동일 단어가 반복된 헤더는 한 번만 표시
 export function productLabel(name: string): string {

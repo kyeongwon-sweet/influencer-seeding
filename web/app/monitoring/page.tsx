@@ -40,6 +40,7 @@ export default function MonitoringPage() {
   const [lsSearchData, setLsSearchData] = useState<{ date: string; ratio: number; value: number | null }[]>([]);
   const [brandMetrics, setBrandMetrics] = useState<{ measured_at: string; yt_views: number | null; yt_unique_viewers: number | null; yt_search_views: number | null; ig_profile_views: number | null }[]>([]);
   const [ytTrends, setYtTrends] = useState<{ measured_at: string; keyword: string; value: number | null }[]>([]);
+  const [googleTrends, setGoogleTrends] = useState<{ measured_at: string; keyword: string; value: number | null }[]>([]);
   const [b2bDaily, setB2bDaily] = useState<B2bDaily[]>([]); // B2B 일자별 현황 (본부공헌이익)
   const [lastUpdate, setLastUpdate] = useState<{ at: string | null; byEmail: string | null }>({ at: null, byEmail: null }); // 진짜 마지막 적재 시각 + 출처
   // 기본은 조회수만 표시(차트 정돈) — 검색량·B2B·광고비는 범례 칩으로 켜서 봄. 그외(인스타·유튜브)는 아래 effect에서 추가 숨김.
@@ -489,6 +490,10 @@ export default function MonitoringPage() {
       .then(r => r.ok ? r.json() : [])
       .then(data => setYtTrends(Array.isArray(data) ? data : []))
       .catch(auxFail);
+    fetch("/api/google-trends")
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setGoogleTrends(Array.isArray(data) ? data : []))
+      .catch(auxFail);
     fetch("/api/b2b-revenue")
       .then(r => r.ok ? r.json() : { rows: [] })
       .then(d => setB2bDaily(Array.isArray(d?.rows) ? d.rows : []))
@@ -565,6 +570,15 @@ export default function MonitoringPage() {
         data: ytTrends.filter(t => t.keyword === kw).map(t => ({ date: t.measured_at, value: t.value })),
       }],
     })),
+    // 구글 웹 검색 트렌드 — 키워드별 (Google Trends 웹 검색, 상대값 0~100)
+    ...Array.from(new Set(googleTrends.map(t => t.keyword))).map((kw, i) => ({
+      name: `구글 ${kw} 검색량`,
+      color: CHART.google[i % 2],
+      members: [{
+        label: kw,
+        data: googleTrends.filter(t => t.keyword === kw).map(t => ({ date: t.measured_at, value: t.value })),
+      }],
+    })),
     // B2B 발주량 (듬뿍바+쫀득바 CVS 발주량) — 미래 계획행 제외, 오늘까지만. 카테고리 필터 시 해당 항목만.
     ...(b2bDaily.some(d => d.total_order != null) ? [{
       name: "B2B 발주량",
@@ -584,7 +598,7 @@ export default function MonitoringPage() {
         }] : []),
       ],
     }] : []),
-  ], [activeProductSeries, productTrends, brandMetrics, ytTrends, b2bDaily, b2bCategory]);
+  ], [activeProductSeries, productTrends, brandMetrics, ytTrends, googleTrends, b2bDaily, b2bCategory]);
 
   const chartSecondaryData = useMemo(
     () => mainAdCosts.length > 0 ? mainAdCosts.map(d => ({ date: d.date, value: d.total_cost })) : undefined,
@@ -1543,7 +1557,7 @@ export default function MonitoringPage() {
                       </button>
                     ))}
                     {/* 6. 그외 (클릭 시 인스타 프로필 방문 / 유튜브 검색량 토글) */}
-                    {(brandMetrics.some(d => d.ig_profile_views != null) || ytTrends.length > 0) && (
+                    {(brandMetrics.some(d => d.ig_profile_views != null) || ytTrends.length > 0 || googleTrends.length > 0) && (
                       <div className="relative">
                         <button type="button" onClick={() => setShowOtherSeries(v => !v)}
                           className="flex items-center gap-1 text-xs text-a-ink-muted hover:text-a-ink">
@@ -1565,6 +1579,13 @@ export default function MonitoringPage() {
                                   className={`flex items-center gap-1.5 w-full transition-opacity ${seriesHidden(`유튜브 ${kw} 검색량`) ? "opacity-30" : ""}`}>
                                   <div className="w-2 h-0.5 flex-shrink-0" style={{ backgroundColor: CHART.youtube[i % 2] }} />
                                   <span className="text-xs text-a-ink-muted whitespace-nowrap">유튜브 {kw} 검색량</span>
+                                </button>
+                              ))}
+                              {Array.from(new Set(googleTrends.map(t => t.keyword))).map((kw, i) => (
+                                <button type="button" key={`google-${kw}`} onClick={() => toggleSeries(`구글 ${kw} 검색량`)}
+                                  className={`flex items-center gap-1.5 w-full transition-opacity ${seriesHidden(`구글 ${kw} 검색량`) ? "opacity-30" : ""}`}>
+                                  <div className="w-2 h-0.5 flex-shrink-0" style={{ backgroundColor: CHART.google[i % 2] }} />
+                                  <span className="text-xs text-a-ink-muted whitespace-nowrap">구글 {kw} 검색량</span>
                                 </button>
                               ))}
                             </div>
