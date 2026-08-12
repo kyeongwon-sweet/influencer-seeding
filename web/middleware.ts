@@ -31,6 +31,8 @@ const isPublicRoute = createRouteMatcher([
   "/api/brand-metrics/collect(.*)",
   "/api/youtube-trends/collect(.*)",
   "/api/youtube-trends/webhook(.*)",
+  "/api/google-trends/collect(.*)",
+  "/api/google-trends/webhook(.*)",
   "/api/b2b-revenue/fetch(.*)",
   "/api/awareness-ads(.*)",
 ]);
