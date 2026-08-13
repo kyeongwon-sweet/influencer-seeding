@@ -1,5 +1,5 @@
-import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
+import { getAdminEmail } from "@/lib/admin-server";
 
 // 기준점: 2026-05-31 라라스윗+라라스윗아이스크림 실제 검색량 3748
 // FACTOR = 3748 / lsRatio_5_31 (해당 쿼리에서 실제 반환된 5/31 ratio로 역산)
@@ -10,8 +10,7 @@ const REF_LS_ACTUAL = 3748;
 const FALLBACK_BASE = 1326.173; // REF_DATE가 쿼리 범위 밖일 때 fallback
 
 export async function POST(req: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await getAdminEmail())) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const clientId = process.env.NAVER_CLIENT_ID;
   const clientSecret = process.env.NAVER_CLIENT_SECRET;

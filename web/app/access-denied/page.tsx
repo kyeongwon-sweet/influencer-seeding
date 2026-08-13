@@ -1,10 +1,14 @@
 "use client";
 import { SignOutButton, useUser } from "@clerk/nextjs";
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 
 // @lalasweet.kr 이외 계정으로 로그인한 사용자에게 노출되는 접근 차단 안내 페이지.
 // (미들웨어에서 도메인 불일치 시 이 경로로 리다이렉트 — 공개 라우트로 등록되어 재검사 루프 없음)
-export default function AccessDenied() {
+function AccessDeniedContent() {
   const { user } = useUser();
+  const searchParams = useSearchParams();
+  const adminOnly = searchParams.get("reason") === "admin";
   const email = user?.primaryEmailAddress?.emailAddress ?? user?.emailAddresses?.[0]?.emailAddress ?? "";
 
   return (
@@ -18,12 +22,18 @@ export default function AccessDenied() {
         </div>
         <h1 className="text-lg font-semibold text-gray-900">접근 권한이 없습니다</h1>
         <p className="mt-2 text-sm text-gray-500 leading-relaxed">
-          이 대시보드는 <span className="font-medium text-gray-700">@lalasweet.kr</span> 계정만 이용할 수 있습니다.
+          {adminOnly ? (
+            <>이 페이지는 지정된 관리자만 이용할 수 있습니다.</>
+          ) : (
+            <>이 대시보드는 <span className="font-medium text-gray-700">@lalasweet.kr</span> 계정만 이용할 수 있습니다.</>
+          )}
           {email && (
             <><br />현재 로그인: <span className="font-medium text-gray-700">{email}</span></>
           )}
         </p>
-        <p className="mt-1 text-xs text-gray-400">회사 계정으로 다시 로그인해 주세요.</p>
+        <p className="mt-1 text-xs text-gray-400">
+          {adminOnly ? "접근이 필요하면 관리자에게 권한 추가를 요청해 주세요." : "회사 계정으로 다시 로그인해 주세요."}
+        </p>
         <SignOutButton>
           <button className="mt-6 w-full py-2.5 rounded-lg bg-gray-900 hover:bg-gray-700 text-white text-sm font-medium transition-colors">
             로그아웃 후 다시 로그인
@@ -31,5 +41,13 @@ export default function AccessDenied() {
         </SignOutButton>
       </div>
     </div>
+  );
+}
+
+export default function AccessDenied() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50" />}>
+      <AccessDeniedContent />
+    </Suspense>
   );
 }

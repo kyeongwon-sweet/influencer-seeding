@@ -6,6 +6,13 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-13 [Codex 완료] 리스트업·스크리닝·컨택 관리자 전용 서버 가드
+- **관리자 범위:** 기존 `ADMIN_EMAILS` 2명(`hwangkw@lalasweet.kr`, `choeseoeun@lalasweet.kr`)만 유지했다. 홈·무상노출·협찬 모니터링은 일반 사내 사용자에게 계속 공개한다.
+- **직접 URL 차단:** 미들웨어가 `/listup`, `/screening`, `/contact` 및 하위 경로를 서버에서 검사한다. 비관리자가 주소를 직접 입력하면 `/access-denied?reason=admin`으로 이동하며 관리자 권한 안내가 표시된다.
+- **데이터/API 차단:** 컨택 템플릿·스크리닝 기준·키워드 영향·키워드·블랙리스트·네이버 트렌드와 인플루언서 수정/삭제 API를 `getAdminEmail()`로 403 게이트했다. 공용 홈이 쓰는 인플루언서/작업 **조회**는 유지하되, 인플루언서 추가와 `listup`·`screening` 작업 생성은 관리자만 가능하다.
+- **사이드바:** 선행 커밋 `6efd67a`의 `adminOnly` 노출 제어를 보존했다.
+- **검증:** 계약 테스트 287/287, TypeScript 0, ESLint error 0(기존 warning 15), production build 성공.
+
 ## ✅ 2026-08-13 [Codex 완료] Apify 수집 날짜 귀속 통일 + stats-import 급변 오탐 제거 (`225d203`, prod)
 - **날짜 규칙 단일화:** 예약 수집은 KST 어제, 수동 `collect-now`/대시보드 수집은 KST 오늘, 명시 `date`는 호출자가 정한 날짜를 쓴다. 날짜는 수집 kickoff에서 한 번 확정해 Apify webhook에 `measuredAt`으로 전달한다.
 - **무날짜 통계 webhook 차단:** 통계를 쓰는 monitoring webhook은 `measuredAt`이 없으면 job을 실패 처리하고 DB에 추정 날짜를 쓰지 않는다. 소재명 보강용 `metadataOnly=1`만 기존처럼 KST 오늘을 허용한다.

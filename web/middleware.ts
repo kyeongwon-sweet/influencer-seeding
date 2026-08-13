@@ -1,5 +1,6 @@
 import { clerkMiddleware, createRouteMatcher, clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { isAdminEmail } from "@/lib/admin";
 
 const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
@@ -35,6 +36,12 @@ const isPublicRoute = createRouteMatcher([
   "/api/google-trends/webhook(.*)",
   "/api/b2b-revenue/fetch(.*)",
   "/api/awareness-ads(.*)",
+]);
+
+const isAdminPage = createRouteMatcher([
+  "/listup(.*)",
+  "/screening(.*)",
+  "/contact(.*)",
 ]);
 
 // 회사 도메인 화이트리스트 — 이 도메인 이메일 계정만 대시보드/API 접근 허용.
@@ -114,6 +121,15 @@ export default clerkMiddleware(async (auth, request) => {
     const url = request.nextUrl.clone();
     url.pathname = "/access-denied";
     url.search = "";
+    return NextResponse.redirect(url);
+  }
+
+  // 관리자 작업 화면은 주소를 직접 입력해도 서버 경계에서 차단한다.
+  if (isAdminPage(request) && !isAdminEmail(email)) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/access-denied";
+    url.search = "";
+    url.searchParams.set("reason", "admin");
     return NextResponse.redirect(url);
   }
 });

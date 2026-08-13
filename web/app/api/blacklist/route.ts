@@ -1,6 +1,6 @@
-import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
+import { getAdminEmail } from "@/lib/admin-server";
 
 export type BlacklistEntry = {
   id: string;
@@ -10,8 +10,7 @@ export type BlacklistEntry = {
 };
 
 export async function GET() {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await getAdminEmail())) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const supabase = getServerSupabase();
   const { data, error } = await supabase

@@ -1,6 +1,6 @@
-import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
+import { getAdminEmail } from "@/lib/admin-server";
 
 const NAVER_API = "https://openapi.naver.com/v1/datalab/search";
 
@@ -25,8 +25,7 @@ function avg(arr: { ratio: number }[]) {
 }
 
 export async function POST(req: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await getAdminEmail())) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { metricsId, keywords, adDate } = await req.json();
 

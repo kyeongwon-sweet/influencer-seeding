@@ -6,6 +6,7 @@ import { normalizeYouTubeUrl, normalizeInstagramUrl, normalizeUrl } from "@/lib/
 import { logger } from "@/lib/logger";
 import { activeIgPostUrls, isSuspiciousUrlCount } from "@/lib/ig-post-urls";
 import { resolveMonitoringMeasuredAt } from "@/lib/dateRule";
+import { getAdminEmail } from "@/lib/admin-server";
 
 /** 공통 설정 */
 const CONFIG = {
@@ -92,6 +93,9 @@ export async function POST(req: NextRequest) {
   const VALID_JOB_TYPES = ['monitoring', 'listup', 'organic', 'organic_refresh', 'screening'] as const;
   if (!VALID_JOB_TYPES.includes(type as typeof VALID_JOB_TYPES[number])) {
     return NextResponse.json({ error: '허용되지 않는 작업 유형입니다.' }, { status: 400 });
+  }
+  if ((type === 'listup' || type === 'screening') && !(await getAdminEmail())) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const supabase = getServerSupabase();
   const appUrl = getAppUrl();

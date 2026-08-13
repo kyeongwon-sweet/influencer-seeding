@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl } from "@/lib/url-utils";
 import { logger } from "@/lib/logger";
+import { getAdminEmail } from "@/lib/admin-server";
 
 type InfluencerPayload = Record<string, unknown> & { url?: unknown };
 
@@ -28,8 +29,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await getAdminEmail())) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const body = await req.json();
   const supabase = getServerSupabase();
