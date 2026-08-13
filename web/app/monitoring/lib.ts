@@ -138,6 +138,35 @@ export function normalizeChannelType(value: string | null): string | null {
   return value.trim().replace(/\s+/g, " ").replace(/\s*\(/g, " (");
 }
 
+// 공백만 다른 중복(예: "무상 협찬"↔"무상협찬") 방지: 앞뒤 공백 제거 + 연속 공백 1칸으로.
+// ⚠️ 단일 내부 공백 유무(스튜디오엔터↔스튜디오 엔터)는 어느 쪽이 정본인지 코드가 알 수 없어 건드리지 않는다
+//    → 그건 아래 CANONICAL_ALIASES(팀이 확정한 표기)로만 교정한다.
+export function normalizeSpacing(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const s = String(value).replace(/\s+/g, " ").trim();
+  return s || null;
+}
+
+// 팀이 이미 통일한 표기의 '변형 → 정본' 매핑. 시트가 옛 변형이어도 쓰기 시점에 DB가 자가교정된다.
+// (일반 텍스트는 정답을 코드가 판단할 수 없으므로 '확정된 것만' 등록. 새 변형이 또 생기면 여기 한 줄 추가.)
+// 2026-08-13 사용자 확정분(업체명·계정·소재/프로젝트명). key는 normalizeSpacing 적용 후 문자열과 비교한다.
+export const CANONICAL_ALIASES: Record<string, string> = {
+  "스튜디오엔터": "스튜디오 엔터",
+  "모두의 행복": "모두의행복",
+  "오늘의메뉴": "오늘의 메뉴",
+  "리뷰하는푸올이": "리뷰하는 푸올이",
+  "오하루 (인스타)": "오하루(인스타)",
+  "듬뿍바 출시마케팅": "듬뿍바 출시 마케팅",
+  "무상 협찬": "무상협찬",
+};
+
+// 텍스트 필드 표준화: 공백 정리 → 별칭 정본 적용. 저장 직전 쓰기 경로(시트 동기화·수동 편집)에서 사용.
+export function canonicalText(value: string | null | undefined): string | null {
+  const s = normalizeSpacing(value);
+  if (s == null) return null;
+  return CANONICAL_ALIASES[s] ?? s;
+}
+
 // 무상 채널(위성채널·온드미디어)은 업체명·광고비가 없어야 한다(owned-satellite-no-cost-rule).
 // DB 쓰기 경로에서 이 판정으로 company_name=null·cost=0 강제 → 시트 자가치유가 못 닿는 DB 오입력 차단.
 export function isFreeChannel(channelType: unknown): boolean {

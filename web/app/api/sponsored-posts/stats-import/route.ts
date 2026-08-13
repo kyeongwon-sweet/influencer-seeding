@@ -3,7 +3,7 @@ import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl, postIdentityKey, ALLOWED_POST_URL_RE, isInvalidTikTokPostUrl } from "@/lib/url-utils";
 import { filterMonotonicStats, type GuardInput } from "@/lib/stats-guard";
-import { normalizeChannelType, isFreeChannel } from "@/app/monitoring/lib";
+import { normalizeChannelType, isFreeChannel, canonicalText } from "@/app/monitoring/lib";
 import { resolveTikTokShortUrl, tagCreatedBy } from "@/lib/sponsored-write";
 import { maxDateKST, todayKST } from "@/lib/dateRule";
 import { notifyBot } from "@/lib/slack";
@@ -97,6 +97,8 @@ export async function POST(req: NextRequest) {
 
   // 광고 메타: 정규화 + url 중복 제거 (첫 값 우선)
   const POST_FIELDS = ["posted_at", "account_name", "company_name", "content_summary", "asset_name", "channel_type", "project_name", "product_name", "cost"];
+  // 공백·별칭 표준화 대상(텍스트 이름류) — channel_type은 전용 정규화, posted_at/cost/캡션은 제외.
+  const TEXT_CANON = new Set(["account_name", "company_name", "asset_name", "project_name", "product_name"]);
   // 소재명·캡션·비용은 시트 정본이다. 시트 빈칸은 clean 생성 단계에서 제외되므로
   // DB의 기존 값을 지우지 않으며, 비어 있지 않은 시트값만 manual_fields보다 우선한다.
   const SHEET_WINS = new Set(["asset_name", "content_summary", "cost"]);
@@ -111,7 +113,7 @@ export async function POST(req: NextRequest) {
     // != null 로 null·undefined 모두 제외 — 시트(importStats)가 빈 캡션 셀을 content_summary:null로 보내는데,
     // 예전 가드(!== undefined && !== "")는 null을 통과시켜 '캡션은 시트값 우선' 정책과 결합, 스크랩해둔 캡션을
     // null로 반복 삭제했음(2026-07-06 실사고: 채움→importStats→삭제 2회 반복).
-    for (const f of POST_FIELDS) if (p[f] != null && p[f] !== "") clean[f] = f === "channel_type" ? normalizeChannelType(String(p[f])) : p[f];
+    for (const f of POST_FIELDS) if (p[f] != null && p[f] !== "") clean[f] = f === "channel_type" ? normalizeChannelType(String(p[f])) : TEXT_CANON.has(f) ? canonicalText(String(p[f])) : p[f];
     // 무상채널(위성/온드)은 업체명·광고비가 없어야 함 → 신규 생성 시 강제(owned-satellite-no-cost-rule)
     if (isFreeChannel(clean.channel_type)) { clean.company_name = null; clean.cost = 0; }
     postByUrl.set(postKey, clean);

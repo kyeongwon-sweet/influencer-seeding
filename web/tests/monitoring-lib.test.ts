@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   pearson, solveLinear, multipleR2, movingAvg, weekKeyOf, weekLabelOf,
   padDomain, effectiveReach, bannerDailyMetric, assetNameOf, alignedPairs, bestLag, parseCsvLine, pickRangeStats, viewIncrement, safeIncrement,
+  normalizeSpacing, canonicalText,
 } from "../app/monitoring/lib.ts";
 
 const close = (a: number, b: number, eps = 1e-9) => Math.abs(a - b) < eps;
@@ -12,6 +13,25 @@ test("pearson: 완전 양/음 상관, 무분산, 표본부족", () => {
   assert.ok(close(pearson([1, 2, 3], [3, 2, 1])!, -1));
   assert.equal(pearson([5, 5, 5], [1, 2, 3]), null); // x 분산 0
   assert.equal(pearson([1], [2]), null);             // n<2
+});
+
+test("normalizeSpacing: 앞뒤·중복 공백만 정리, 단일 내부 공백은 보존", () => {
+  assert.equal(normalizeSpacing("  무상  협찬 "), "무상 협찬"); // 중복→1칸, trim
+  assert.equal(normalizeSpacing("빙과_ 최재헌".replace(" ", "  ")), "빙과_ 최재헌"); // 2칸→1칸
+  assert.equal(normalizeSpacing("스튜디오 엔터"), "스튜디오 엔터"); // 단일 공백 유지
+  assert.equal(normalizeSpacing(""), null);
+  assert.equal(normalizeSpacing(null), null);
+});
+
+test("canonicalText: 확정 별칭을 정본으로 자가교정(공백 정리 후 매핑)", () => {
+  assert.equal(canonicalText("스튜디오엔터"), "스튜디오 엔터");
+  assert.equal(canonicalText("모두의 행복"), "모두의행복");
+  assert.equal(canonicalText(" 오늘의메뉴 "), "오늘의 메뉴"); // trim 후 매핑
+  assert.equal(canonicalText("무상 협찬"), "무상협찬");
+  assert.equal(canonicalText("오하루 (인스타)"), "오하루(인스타)");
+  assert.equal(canonicalText("스튜디오 엔터"), "스튜디오 엔터"); // 이미 정본이면 그대로
+  assert.equal(canonicalText("무디"), "무디"); // 매핑에 없으면 공백 정리만
+  assert.equal(canonicalText(null), null);
 });
 
 test("solveLinear: 대각 행렬 해 / 특이행렬 null", () => {

@@ -1,6 +1,6 @@
 import type { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl, postIdentityKey, ALLOWED_POST_URL_RE, isInstagramNonPostUrl, isInvalidTikTokPostUrl } from "@/lib/url-utils";
-import { normalizeChannelType, isFreeChannel } from "@/app/monitoring/lib";
+import { normalizeChannelType, isFreeChannel, canonicalText } from "@/app/monitoring/lib";
 import { triggerCaptionBackfill, needsCaption } from "@/lib/github-dispatch";
 import { todayKST } from "@/lib/dateRule";
 import { startActorRun } from "@/lib/apify";
@@ -74,15 +74,15 @@ export async function upsertSponsoredRows(
         url,
         normalized_key: postIdentityKey(url),
         posted_at:       r.posted_at || null,
-        account_name:    accountNameForSponsoredWrite(url, channel_type, cleanName(r.account_name)),
-        company_name:    free ? null : (r.company_name || null),
+        account_name:    accountNameForSponsoredWrite(url, channel_type, canonicalText(cleanName(r.account_name))),
+        company_name:    free ? null : canonicalText(r.company_name as string | null | undefined),
         content_summary: r.content_summary || null,
         channel_type,
-        project_name:    r.project_name || null,
-        product_name:    r.product_name || null,
-        asset_name:      r.asset_name || null,
-        planner:         r.planner || null,
-        creator:         r.creator || null,
+        project_name:    canonicalText(r.project_name as string | null | undefined),
+        product_name:    canonicalText(r.product_name as string | null | undefined),
+        asset_name:      canonicalText(r.asset_name as string | null | undefined),
+        planner:         canonicalText(r.planner as string | null | undefined),
+        creator:         canonicalText(r.creator as string | null | undefined),
         cost:            free ? 0 : (r.cost != null && r.cost !== "" ? Number(r.cost) : null),
       };
     })

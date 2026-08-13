@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { normalizeChannelType } from "@/app/monitoring/lib";
+import { normalizeChannelType, canonicalText } from "@/app/monitoring/lib";
 
 export async function PATCH(
   req: NextRequest,
@@ -20,6 +20,10 @@ export async function PATCH(
     if (key in body) updates[key] = body[key] || null;
   }
   if (typeof updates.channel_type === "string") updates.channel_type = normalizeChannelType(updates.channel_type);
+  // 이름류 텍스트는 공백·별칭 표준화(공백만 다른 중복 방지, CANONICAL_ALIASES 자가교정)
+  for (const key of ["account_name", "company_name", "asset_name", "project_name", "product_name"]) {
+    if (typeof updates[key] === "string") updates[key] = canonicalText(updates[key] as string);
+  }
   for (const key of allowedNumeric) {
     if (key in body) {
       const v = body[key];
