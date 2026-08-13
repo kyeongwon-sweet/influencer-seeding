@@ -139,21 +139,50 @@ def _integrity_lines(db, posts):
             line += f" … 외 {len(dups) - 4}그룹"
         lines.append(line)
 
-    # 2) 게시일 이전 조회수 이력 (게시일 오기 또는 시트 백필 열 어긋남 신호)
+    # ⚡ post_daily_stats 전수 순회는 **여기 한 번뿐**이다.
+    #    예전엔 2)·4)·5)가 각각 통째로 페이지네이션하며 같은 테이블을 3번 긁었다(약 3만 행 × 3).
+    #    셋의 '필터가 서로 달라' 결과를 재사용할 수 없었을 뿐, 원본 행은 같다 → 한 번 읽고 각자 조건으로 적재한다.
+    #      · first    : 모든 행 (값 없는 행 포함) — 게시일 이전 이력 판정용
+    #      · day_cnt  : 최근 7일 & play_count is not None (0도 실측으로 셈) — 부분수집 판정용
+    #      · series   : 값>0 (play 우선, 없으면 reach) — 종료-후 복사 오염 판정용
+    #      · pseries  : play_count>0 만 — 수기 오기·누적 하락 판정용(배너 reach 제외)
+    #    ⚠️ 조건을 하나라도 바꾸면 해당 알림의 의미가 달라진다. 합치면서 조건은 그대로 옮겼다.
+    from datetime import timedelta, datetime, timezone
     posted = {p["id"]: str(p["posted_at"])[:10] for p in posts if p.get("posted_at")}
-    first = {}
+    name_of = {p["id"]: (p.get("account_name") or "?") for p in posts}
+    kst_today = (datetime.now(timezone.utc) + timedelta(hours=9)).date()
+    cutoff = (kst_today - timedelta(days=7)).isoformat()
+    active_view_posts = [p for p in posts if _is_view_collection_target(p)]
+    active_view_ids = {p["id"] for p in active_view_posts}
+
+    first, day_cnt = {}, {}
+    series, vidx, pseries, pvidx = {}, {}, {}, {}
     off = 0
     while True:
-        res = db.table("post_daily_stats").select("post_id, measured_at").range(off, off + 999).execute()
+        res = db.table("post_daily_stats").select(
+            "post_id, measured_at, play_count, reach_count, manual").range(off, off + 999).execute()
         chunk = res.data or []
         for r in chunk:
-            m = r["measured_at"]
-            if r["post_id"] not in first or m < first[r["post_id"]]:
-                first[r["post_id"]] = m
+            pid, m = r["post_id"], r["measured_at"]
+            if pid not in first or m < first[pid]:
+                first[pid] = m
+            if m >= cutoff and pid in active_view_ids and r["play_count"] is not None:
+                day_cnt[m] = day_cnt.get(m, 0) + 1
+            d = m[:10]
+            man = bool(r.get("manual"))
+            pv = r.get("play_count") or 0
+            if pv > 0:
+                pseries.setdefault(pid, []).append((d, pv, man))
+                pvidx.setdefault((d, pv), set()).add(pid)
+            v = pv or r.get("reach_count") or 0
+            if v > 0:
+                series.setdefault(pid, []).append((d, v, man))
+                vidx.setdefault((d, v), set()).add(pid)
         if len(chunk) < 1000:
             break
         off += 1000
-    name_of = {p["id"]: (p.get("account_name") or "?") for p in posts}
+
+    # 2) 게시일 이전 조회수 이력 (게시일 오기 또는 시트 백필 열 어긋남 신호)
     early = sorted((pid for pid in posted if pid in first and first[pid] < posted[pid]),
                    key=lambda pid: first[pid])
     if early:
@@ -176,22 +205,7 @@ def _integrity_lines(db, posts):
     # 4) 부분수집 감지 — 특정일 실측(non-null play)수가 그날 활성 조회수대상 풀의 60% 미만이면
     #    그날 증분이 실제보다 과소. 예전에는 최근 중앙값을 기준선으로 썼지만, 자동종료로 활성 풀이
     #    정상 축소되면 정상 수집도 부분수집으로 오탐됐다(2026-07-16: active 347, measured 272).
-    from datetime import timedelta, datetime, timezone
-    kst_today = (datetime.now(timezone.utc) + timedelta(hours=9)).date()
-    cutoff = (kst_today - timedelta(days=7)).isoformat()
-    active_view_posts = [p for p in posts if _is_view_collection_target(p)]
-    active_view_ids = {p["id"] for p in active_view_posts}
-    day_cnt = {}
-    off = 0
-    while True:
-        res = db.table("post_daily_stats").select("post_id, measured_at, play_count").gte("measured_at", cutoff).range(off, off + 999).execute()
-        chunk = res.data or []
-        for r in chunk:
-            if r.get("post_id") in active_view_ids and r["play_count"] is not None:
-                day_cnt[r["measured_at"]] = day_cnt.get(r["measured_at"], 0) + 1
-        if len(chunk) < 1000:
-            break
-        off += 1000
+    # (kst_today·cutoff·active_view_* 와 day_cnt 는 위 통합 스캔에서 이미 채웠다)
     # 오늘(KST)은 수집 중이라 제외하고 완료된 날만 판정.
     done = {d: c for d, c in day_cnt.items() if d < kst_today.isoformat()}
     if len(done) >= 4:
@@ -220,35 +234,12 @@ def _integrity_lines(db, posts):
     #    존재하면 복사 신호(상향·하향 복사 모두). ⚠️ 강제 차단은 안 함(종료 후 알고리즘 유입으로 실제 상승 가능) —
     #    여기서 드러내 사람이 소스(시트/정정)를 바로잡게 한다. carry 값·단일 우연은 제외해 오탐 최소화.
     ended = {p["id"]: str(p["ended_at"])[:10] for p in posts if p.get("ended_at")}
-    # ⚠️ series/vidx는 5번(종료-후 복사)과 5-b번(활성 수기 오기)이 함께 쓴다 —
-    #    `if ended:` 안에서 만들면 활성 게시물 검사가 종료 게시물 유무에 묶인다(2026-08-12 교훈).
-    series = {}
-    vidx = {}
-    # 5-b 전용: **조회수(play_count)만** 담는다. 배너 도달수(reach_count)는 시트 수기 입력이라
-    # 값이 며칠씩 그대로 유지되는 게 정상이고, 같은 소재를 같은 조건으로 돌리면 서로 같은 값이
-    # 흔히 나온다 → 복사 판정에 섞으면 배너 오탐이 구조적으로 계속 발생한다
-    # (2026-08-12 실측: luna.humor·wikitrip.kr·ho1y_time 등 배너 6건이 전부 오탐이었다).
-    pseries = {}
-    pvidx = {}
-    off = 0
-    while True:
-        res = db.table("post_daily_stats").select("post_id, measured_at, play_count, reach_count, manual").range(off, off + 999).execute()
-        chunk = res.data or []
-        for r in chunk:
-            d = r["measured_at"][:10]
-            man = bool(r.get("manual"))
-            pv = r.get("play_count") or 0
-            if pv > 0:
-                pseries.setdefault(r["post_id"], []).append((d, pv, man))
-                pvidx.setdefault((d, pv), set()).add(r["post_id"])
-            v = pv or r.get("reach_count") or 0
-            if v <= 0:
-                continue
-            series.setdefault(r["post_id"], []).append((d, v, man))
-            vidx.setdefault((d, v), set()).add(r["post_id"])
-        if len(chunk) < 1000:
-            break
-        off += 1000
+    # ⚠️ series/vidx(값>0, play 우선 reach 대체)와 pseries/pvidx(play 전용)는 위 통합 스캔에서 채웠다.
+    #    · series/vidx : 5번(종료-후 복사)과 5-b번(활성 수기 오기)이 함께 쓴다 —
+    #      예전에 `if ended:` 안에서 만들어 활성 게시물 검사가 종료 게시물 유무에 묶였다(2026-08-12 교훈).
+    #    · pseries/pvidx: **조회수만** 담는다. 배너 도달수는 시트 수기 입력이라 값이 며칠씩 유지되는 게
+    #      정상이고 같은 소재끼리 같은 값이 흔해, 복사 판정에 섞으면 배너 오탐이 구조적으로 계속 난다
+    #      (2026-08-12 실측: luna.humor·wikitrip.kr·ho1y_time 등 배너 6건 전부 오탐).
     if ended:
         copied = []
         for pid, ed in ended.items():
