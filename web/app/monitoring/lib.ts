@@ -335,48 +335,6 @@ export function pickMetric(s: DailyStats): number | null {
   return s.play_count;
 }
 
-// 소재명 규칙(파일명 생성기) 문자열을 17개 차원으로 파싱.
-// 예: [26.06]F_V_DB혼_바이럴_상시_바이럴형_CU단독강조_var1.릴스_퀄리티근황.X_1P_황경원_260615_빙과_이수현
-export const PROJECT_PARSE_COLS = [
-  "제작월", "채널구분", "영상/이미지 구분", "제품코드", "광고종류", "스킴명", "대분류 포맷",
-  "소분류 연출", "배리에이션 여부", "지면 유형", "상세연출(소재구분)", "프로젝트",
-  "파트 구분", "마케터", "집행시작일", "본부 구분", "PD/디자이너",
-] as const;
-
-export function parseProjectName(name: string | null | undefined): Record<string, string> {
-  const r: Record<string, string> = {};
-  for (const c of PROJECT_PARSE_COLS) r[c] = "";
-  if (!name || !name.startsWith("[")) return r;
-  const parts = name.split("_");
-  if (parts.length < 3) return r;
-  const m = parts[0].match(/(\[.+?\])(.*)/);
-  if (m) { r["제작월"] = m[1]; r["채널구분"] = m[2]; }
-  if (parts.length > 1) r["영상/이미지 구분"] = parts[1];
-  if (parts.length > 2) r["제품코드"] = parts[2];
-  if (parts.length > 3) r["광고종류"] = parts[3];
-  if (parts.length > 4) r["스킴명"] = parts[4];
-  if (parts.length > 5) r["대분류 포맷"] = parts[5];
-  if (parts.length > 6) r["소분류 연출"] = parts[6];
-  if (parts.length > 7) { const kl = parts[7].split("."); r["배리에이션 여부"] = kl[0]; r["지면 유형"] = kl.slice(1).join("."); }
-  if (parts.length > 8) { const mn = parts[8].split("."); r["상세연출(소재구분)"] = mn[0]; r["프로젝트"] = mn.slice(1).join("."); }
-  if (parts.length > 9) r["파트 구분"] = parts[9];
-  if (parts.length > 10) r["마케터"] = parts[10];
-  if (parts.length > 11) r["집행시작일"] = parts[11];
-  if (parts.length > 12) r["본부 구분"] = parts[12];
-  if (parts.length > 13) {
-    // PD/디자이너: 소재명이 파일명으로 오염된 경우 정리 — 확장자·사본표시 제거 후 마지막 토큰(이름)만 추출.
-    // 예) "260616_빙과_김민우 (1).zip" → "김민우", "빙과_홍정민" → "홍정민", "홍정민.zip" → "홍정민"
-    const tail = parts.slice(13).join("_").trim().replace(/\.(mp4|mov|png|jpe?g|gif|webp|zip|pdf)$/i, "");
-    r["PD/디자이너"] = (tail.split("_").pop() ?? "").trim().replace(/\s*\(\d+\)\s*$/, "").trim();
-  }
-  return r;
-}
-
-// 게시물의 PD/디자이너 (파싱 불가 시 빈 문자열)
-export function pdOf(projectName: string | null | undefined): string {
-  return parseProjectName(projectName)["PD/디자이너"].trim();
-}
-
 export function smoothCurvePath(pts: [number, number][]): string {
   if (pts.length < 2) return "";
   if (pts.length === 2) return `M ${pts[0][0]},${pts[0][1]} L ${pts[1][0]},${pts[1][1]}`;
