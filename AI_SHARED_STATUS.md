@@ -6,12 +6,13 @@
 
 # AI Shared Status
 
-## ✅ 2026-08-13 [Codex 완료] 리스트업·스크리닝·컨택 관리자 전용 서버 가드
-- **관리자 범위:** 기존 `ADMIN_EMAILS` 2명(`hwangkw@lalasweet.kr`, `choeseoeun@lalasweet.kr`)만 유지했다. 홈·무상노출·협찬 모니터링은 일반 사내 사용자에게 계속 공개한다.
-- **직접 URL 차단:** 미들웨어가 `/listup`, `/screening`, `/contact` 및 하위 경로를 서버에서 검사한다. 비관리자가 주소를 직접 입력하면 `/access-denied?reason=admin`으로 이동하며 관리자 권한 안내가 표시된다.
-- **데이터/API 차단:** 컨택 템플릿·스크리닝 기준·키워드 영향·키워드·블랙리스트·네이버 트렌드와 인플루언서 수정/삭제 API를 `getAdminEmail()`로 403 게이트했다. 공용 홈이 쓰는 인플루언서/작업 **조회**는 유지하되, 인플루언서 추가와 `listup`·`screening` 작업 생성은 관리자만 가능하다.
-- **사이드바:** 선행 커밋 `6efd67a`의 `adminOnly` 노출 제어를 보존했다.
-- **검증:** 계약 테스트 287/287, TypeScript 0, ESLint error 0(기존 warning 15), production build 성공.
+## 🔐 2026-08-13 [Codex 완료] 관리자 전용 작업공간 페이지·API 가드 배포 (`4e9f20f`)
+- **관리자 범위:** 기존 `ADMIN_EMAILS` 2명(`hwangkw@lalasweet.kr`, `choeseoeun@lalasweet.kr`)만 유지했다. 홈·무상 노출·협찬 모니터링은 일반 사내 사용자에게 계속 공개한다.
+- **직접 URL 차단:** `/listup`, `/screening`, `/contact`와 하위 경로를 미들웨어에서 서버 판정한다. 비관리자는 `/access-denied?reason=admin`으로 이동한다.
+- **데이터 API 차단:** 컨택 템플릿·스크리닝 기준·키워드·블랙리스트·검색 트렌드·인플루언서 수정/삭제 API를 `getAdminEmail()`로 403 게이트했다. 홈과 공용 화면이 사용하는 인플루언서·작업 조회 GET은 유지하고, 관리자 쓰기만 제한했다.
+- **배포:** Vercel production `dpl_2uEUbJD6Qajm5KVgt2GCjneurXXK` Ready, `https://influencer-seeding-mu.vercel.app` 별칭 연결 확인.
+- **라이브 실측:** 관리자 계정으로 사이드바의 리스트업·스크리닝·인플루언서 컨택 노출, 세 직접 URL의 실제 화면 로드, 접근 거부 없음 확인. 코드 업데이트 표시는 `2026-08-13 11:26`.
+- **검증:** 계약 테스트 287/287, TypeScript 0, ESLint error 0(기존 warning 15), production build 성공. 비관리자 실계정 세션은 사용하지 않았으며, 차단 경로는 미들웨어·서버 API 계약 테스트로 검증했다.
 
 ## ✅ 2026-08-13 [Codex 완료] Apify 수집 날짜 귀속 통일 + stats-import 급변 오탐 제거 (`225d203`, prod)
 - **날짜 규칙 단일화:** 예약 수집은 KST 어제, 수동 `collect-now`/대시보드 수집은 KST 오늘, 명시 `date`는 호출자가 정한 날짜를 쓴다. 날짜는 수집 kickoff에서 한 번 확정해 Apify webhook에 `measuredAt`으로 전달한다.
