@@ -7,6 +7,12 @@ on:
   schedule:
     - cron: "0 21 * * *"   # 06:00 KST
   workflow_dispatch:
+    inputs:
+      count_only:
+        description: "키워드 개수 API만 확인하고 수집 없이 종료"
+        required: false
+        default: false
+        type: boolean
 
 env:
   APP_URL: "https://influencer-seeding-mu.vercel.app"
@@ -25,6 +31,10 @@ jobs:
           n=$(curl -fsS "$APP_URL/api/google-trends/collect?count=1" -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" | jq -r '.keywordCount // empty')
           case "$n" in ''|*[!0-9]*) n="${KEYWORD_COUNT}";; esac
           echo "키워드 개수 n=$n (KEYWORD_COUNT 폴백=${KEYWORD_COUNT})"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.count_only }}" = "true" ]; then
+            echo "count_only=true — Apify 수집 없이 검증 완료"
+            exit 0
+          fi
           fail=0
           for i in $(seq 0 $((n - 1))); do
             code=$(curl -sS -o /tmp/o -w "%{http_code}" "$APP_URL/api/google-trends/collect?kw=$i" \

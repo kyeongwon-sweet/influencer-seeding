@@ -25,8 +25,12 @@ test("Google search trends collector and webhook bypass Clerk but keep their own
   assert.match(collectRoute, /maxConcurrency: 1/);
   assert.match(collectRoute, /maxRequestRetries: 2/);
   assert.match(collectRoute, /pageLoadTimeoutSecs: 120/);
+  assert.match(collectRoute, /keywordCount: KEYWORDS\.length/);
+  assert.match(collectRoute, /skipped: "out_of_range"/);
   assert.match(webhookRoute, /searchParams\.get\("token"\) !== process\.env\.WEBHOOK_SECRET/);
   assert.match(workflow, /KEYWORD_COUNT:\s*"11"/);
+  assert.match(workflow, /\/api\/google-trends\/collect\?count=1/);
+  assert.match(workflow, /count_only=true — Apify 수집 없이 검증 완료/);
   assert.match(workflow, /\/api\/google-trends\/collect\?kw=\$i/);
   assert.match(workflow, /api\.apify\.com\/v2\/actor-runs\/\$run_id/);
   assert.match(workflow, /api\.apify\.com\/v2\/datasets\/\$dataset_id/);
