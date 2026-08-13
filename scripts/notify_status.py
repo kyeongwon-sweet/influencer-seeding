@@ -308,22 +308,13 @@ def _integrity_lines(db, posts):
     #    원래 하향 정정 허용 목적)해서 오타·잘못된 숫자가 그대로 통과 → 누적·증분 깨짐(2026-07 시으니네 틱톡
     #    249,508→58,300 등, 틱톡 민감영상은 자동수집 불가라 수동 트래킹 강제 = 오기 다발). 차단 아닌 알림으로
     #    사람이 오기인지 정당한 하향 정정인지 판단. 수동 하락은 전부, 자동 하락은 5% 초과만(IG 미세 재집계 노이즈 제외).
-    drows = {}
-    off = 0
-    while True:
-        res = db.table("post_daily_stats").select("post_id, measured_at, play_count, manual").range(off, off + 999).execute()
-        chunk = res.data or []
-        for r in chunk:
-            if (r.get("play_count") or 0) > 0:
-                drows.setdefault(r["post_id"], []).append((r["measured_at"][:10], r["play_count"], bool(r.get("manual"))))
-        if len(chunk) < 1000:
-            break
-        off += 1000
+    # ⚡ 위 `pseries`가 이미 동일 조건(play_count>0)의 (날짜, 값, 수기) 목록이라 전수 스캔을 재사용한다.
+    #    예전엔 같은 테이블을 한 번 더 페이지네이션하며 통째로 긁었다(약 3만 행 × 2회).
     drops = []
-    for pid, rows in drows.items():
+    for pid, rows in pseries.items():
         if len(rows) < 2:
             continue
-        rows.sort()
+        rows = sorted(rows)          # 공유 구조를 건드리지 않도록 사본 정렬
         last_d, last_v, last_m = rows[-1]
         prior_max = max(v for _, v, _ in rows[:-1])
         if last_v < prior_max and (last_m or (last_v < prior_max * 0.95)):   # 수동 하락 전부 / 자동은 5% 초과만
