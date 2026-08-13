@@ -21,7 +21,7 @@ const BUILD_TIME = (() => {
   });
 })();
 
-const NAV: { href: string; label: string; highlight?: boolean; icon: ReactNode }[] = [
+const NAV: { href: string; label: string; highlight?: boolean; adminOnly?: boolean; icon: ReactNode }[] = [
   {
     href: "/home",
     label: "홈",
@@ -45,6 +45,7 @@ const NAV: { href: string; label: string; highlight?: boolean; icon: ReactNode }
   {
     href: "/listup",
     label: "리스트업",
+    adminOnly: true,
     icon: (
       <svg width="15" height="15" viewBox="0 0 20 20" fill="none">
         <circle cx="8.5" cy="8.5" r="5" stroke="currentColor" strokeWidth="1.5"/>
@@ -55,6 +56,7 @@ const NAV: { href: string; label: string; highlight?: boolean; icon: ReactNode }
   {
     href: "/screening",
     label: "스크리닝",
+    adminOnly: true,
     icon: (
       <svg width="15" height="15" viewBox="0 0 20 20" fill="none">
         <rect x="2" y="4" width="16" height="2.5" rx="1.25" stroke="currentColor" strokeWidth="1.5"/>
@@ -66,6 +68,7 @@ const NAV: { href: string; label: string; highlight?: boolean; icon: ReactNode }
   {
     href: "/contact",
     label: "인플루언서 컨택",
+    adminOnly: true,
     icon: (
       <svg width="15" height="15" viewBox="0 0 20 20" fill="none">
         <circle cx="8" cy="7" r="3.5" stroke="currentColor" strokeWidth="1.5"/>
@@ -156,7 +159,7 @@ export default function Sidebar() {
       )}
 
       <nav className={`px-2.5 ${collapsed ? "pt-1" : "pt-3"} pb-3 space-y-0.5 overflow-x-hidden shrink-0`}>
-        {NAV.map(item => {
+        {NAV.filter(item => isAdmin || !item.adminOnly).map(item => {
           const isActive = item.href === "/home" ? pathname === "/home" : pathname.startsWith(item.href);
           const link = (
             <Link
