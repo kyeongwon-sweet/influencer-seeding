@@ -6,6 +6,12 @@
 
 # AI Shared Status
 
+## 🟡 2026-08-13 [보존 결정] `run_listup.py`·`run_screening_v2.py` 삭제 조건
+- **웹 대체 실측 완료:** 운영 경로 `/api/jobs`가 `listup`·`screening`을 정식 job 타입으로 받고, Apify 실행과 `/api/apify-webhook` 저장까지 담당한다. 관리자 인증도 적용된 현재 정식 경로다.
+- **레포 내부 사용 없음:** 두 Python 파일은 워크플로·다른 코드·문서에서 참조되지 않으며 5~6월 이후 기능 수정이 없다.
+- **즉시 삭제하지 않는 이유:** `db`·`instagram_fetcher`·`metrics` 등 의존 모듈이 살아 있어 저장소 밖에서 사람이 수동 실행할 가능성은 코드만으로 배제할 수 없다.
+- **삭제 조건:** 팀에서 “두 Python 파일을 직접 실행하지 않는다”고 확인하면 삭제 가능하다. 확인 전에는 보존하며 같은 조사를 반복하지 않는다.
+
 ## 🔐 2026-08-13 [Codex 완료] 관리자 전용 작업공간 페이지·API 가드 배포 (`4e9f20f`)
 - **관리자 범위:** 기존 `ADMIN_EMAILS` 2명(`hwangkw@lalasweet.kr`, `choeseoeun@lalasweet.kr`)만 유지했다. 홈·무상 노출·협찬 모니터링은 일반 사내 사용자에게 계속 공개한다.
 - **직접 URL 차단:** `/listup`, `/screening`, `/contact`와 하위 경로를 미들웨어에서 서버 판정한다. 비관리자는 `/access-denied?reason=admin`으로 이동한다.
