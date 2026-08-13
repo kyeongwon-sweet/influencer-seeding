@@ -6,6 +6,13 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-13 [Codex 완료] 코드리뷰 F1·F2·F3 프로덕션 반영·실측 (`2bd57ba`, `f34cf7b`)
+- **배포:** Claude 수정 `5b2ed85`·`2bd57ba`와 비용 없는 검증 모드 `f34cf7b`를 clean detached worktree에서 배포했다. Vercel production `dpl_9i8YqtUt4nUyW6Co3QuN6SMEPddU` Ready, `-mu` 별칭 및 `/monitoring` HTTP 200 확인.
+- **F1 실측:** Google Search Trends workflow run `31662655093`을 `count_only=true`로 수동 실행했다. 프로덕션 `?count=1` 응답으로 `키워드 개수 n=11`을 확인하고 `count_only=true — Apify 수집 없이 검증 완료`로 5초 만에 성공 종료했다. actor/키워드 수집은 시작하지 않았다.
+- **F2/F3 실측:** `https://www.instagram.com/p/DZ7Xh5ByxNx/`의 기존 소재명 `듬뿍바 출시 마케팅`을 대시보드 인라인 편집에서 `듬뿍바 출시마케팅.mp4`로 입력했다. 저장 직후 UI의 낙관적 원문 표시는 새로고침 뒤 서버 정본 `듬뿍바 출시 마케팅`으로 확인됐다. 즉 PATCH의 `stripAssetFileListing → canonicalText(field=asset_name)`가 라이브에서 작동하며 최종 데이터는 원값과 동일하다.
+- **검증:** web 테스트 **287/287**, TypeScript, production build, workflow YAML 통과. `count_only`와 동적 count/out-of-range 계약도 테스트에 고정했다.
+- **후속 판단:** F6 `pdOf()`는 repo 전수 검색상 정의 1개·호출 0개라 안전 삭제 후보지만 기능과 무관해 이번 배포에서 제외했다. F5 두 trend webhook은 테이블명 외 사실상 동일하나 40행 안팎의 단순 코드라, 지금 공용화하면 장애 반경만 합쳐진다. 세 번째 소비자가 생기거나 파서 수정 필요가 생길 때 헬퍼화하는 편이 낫다.
+
 ## 🟡 2026-08-13 [보존 결정] `run_listup.py`·`run_screening_v2.py` 삭제 조건
 - **웹 대체 실측 완료:** 운영 경로 `/api/jobs`가 `listup`·`screening`을 정식 job 타입으로 받고, Apify 실행과 `/api/apify-webhook` 저장까지 담당한다. 관리자 인증도 적용된 현재 정식 경로다.
 - **레포 내부 사용 없음:** 두 Python 파일은 워크플로·다른 코드·문서에서 참조되지 않으며 5~6월 이후 기능 수정이 없다.
