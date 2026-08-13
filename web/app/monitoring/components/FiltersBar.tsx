@@ -22,7 +22,7 @@ export default function FiltersBar({ filters, setFilters, pdOptions, productOpti
   const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
   const [showPdDropdown, setShowPdDropdown] = useState(false);
   return (
-    <div className="surface-toolbar relative z-30 px-4 py-3 mb-4 flex items-center gap-x-2.5 gap-y-2 flex-wrap">
+    <div className="surface-toolbar ![backdrop-filter:none] px-4 py-3 mb-4 flex items-center gap-x-2.5 gap-y-2 flex-wrap">
       <div className="basis-full flex items-center justify-between gap-3 border-b border-slate-100 pb-2 mb-0.5">
         <div className="flex items-center gap-2.5">
           <span className="section-kicker">필터</span>
