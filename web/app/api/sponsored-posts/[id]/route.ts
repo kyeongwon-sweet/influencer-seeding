@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeChannelType, canonicalText } from "@/app/monitoring/lib";
+import { stripAssetFileListing } from "@/lib/asset-name-policy";
 
 export async function PATCH(
   req: NextRequest,
@@ -24,6 +25,7 @@ export async function PATCH(
   for (const key of ["account_name", "company_name", "asset_name", "project_name", "product_name"]) {
     if (typeof updates[key] === "string") updates[key] = canonicalText(updates[key] as string);
   }
+  if (typeof updates.asset_name === "string") updates.asset_name = stripAssetFileListing(updates.asset_name);
   for (const key of allowedNumeric) {
     if (key in body) {
       const v = body[key];

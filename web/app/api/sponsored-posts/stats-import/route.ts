@@ -8,6 +8,7 @@ import { resolveTikTokShortUrl, tagCreatedBy } from "@/lib/sponsored-write";
 import { maxDateKST, todayKST } from "@/lib/dateRule";
 import { notifyBot } from "@/lib/slack";
 import { buildRejectedInvalidUrlAlert, rejectedUrlIdentifiers } from "@/lib/stats-import-alerts";
+import { stripAssetFileListing } from "@/lib/asset-name-policy";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -113,7 +114,16 @@ export async function POST(req: NextRequest) {
     // != null 로 null·undefined 모두 제외 — 시트(importStats)가 빈 캡션 셀을 content_summary:null로 보내는데,
     // 예전 가드(!== undefined && !== "")는 null을 통과시켜 '캡션은 시트값 우선' 정책과 결합, 스크랩해둔 캡션을
     // null로 반복 삭제했음(2026-07-06 실사고: 채움→importStats→삭제 2회 반복).
-    for (const f of POST_FIELDS) if (p[f] != null && p[f] !== "") clean[f] = f === "channel_type" ? normalizeChannelType(String(p[f])) : TEXT_CANON.has(f) ? canonicalText(String(p[f])) : p[f];
+    for (const f of POST_FIELDS) {
+      if (p[f] == null || p[f] === "") continue;
+      clean[f] = f === "channel_type"
+        ? normalizeChannelType(String(p[f]))
+        : f === "asset_name"
+          ? canonicalText(stripAssetFileListing(String(p[f])))
+          : TEXT_CANON.has(f)
+            ? canonicalText(String(p[f]))
+            : p[f];
+    }
     // 무상채널(위성/온드)은 업체명·광고비가 없어야 함 → 신규 생성 시 강제(owned-satellite-no-cost-rule)
     if (isFreeChannel(clean.channel_type)) { clean.company_name = null; clean.cost = 0; }
     postByUrl.set(postKey, clean);

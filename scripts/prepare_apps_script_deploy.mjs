@@ -13,6 +13,7 @@ const deployFiles = [
   ["Combined_Sheet_AppsScript.gs", "AI 트래킹 대시보드 연동.js"],
   ["_WriteGuard.gs", "_WriteGuard.js"],
   [join("apps-script", insightInquiryFile), insightInquiryFile.replace(/\.gs$/, ".js")],
+  [join("apps-script", "repair_asset_name_pollution_20260813.gs"), "repair_asset_name_pollution_20260813.js"],
   [join("apps-script", "appsscript.json"), "appsscript.json"],
 ];
 

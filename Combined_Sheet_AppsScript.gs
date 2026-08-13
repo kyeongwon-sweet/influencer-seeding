@@ -2098,6 +2098,7 @@ function onStatusEdit_(e) {
     const sheet = e.range.getSheet();
     if (sheet.getSheetId() !== CONFIG.SHEET_GID) return;
     const hasInputIssue = validateLinkedSheetInputOnEdit_(e, sheet);  // 잘못된 단일 입력·다중셀 붙여넣기 즉시 경고(기존 값 자동삭제 금지)
+    sanitizeAssetNameOnEdit_(e, sheet);  // 소재명 뒤 파일 목록(.mp4, 2. 속지 …) 재유입 즉시 제거
     healCumulativeOnEdit_(e, sheet);  // 누적(H) 열이 편집됐으면 즉시 자가치유 — 다중셀 붙여넣기도 잡아야 하므로 단일셀 제한보다 앞에서
     if (!hasInputIssue) warnDateColumnEdit_(e, sheet);  // 검증 오류가 없을 때만 오늘 날짜열 안내(오류 토스트 덮어쓰기 방지)
     if (e.range.getRow() < CONFIG.DATA_START_ROW || e.range.getNumRows() !== 1 || e.range.getNumColumns() !== 1) return;

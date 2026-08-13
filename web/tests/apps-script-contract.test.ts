@@ -14,6 +14,10 @@ const cpvValidationRepair = readFileSync(
   new URL("../../apps-script/rebuild_cpv_validation_20260806.gs", import.meta.url),
   "utf8",
 );
+const assetPollutionRepair = readFileSync(
+  new URL("../../apps-script/repair_asset_name_pollution_20260813.gs", import.meta.url),
+  "utf8",
+);
 
 test("Apps Script mirror keeps live metadata and URL guards", () => {
   assert.match(appsScript, /"DB → 시트 조회수·누적·증분 반영",\s*"exportStats"/);
@@ -27,6 +31,16 @@ test("Apps Script mirror keeps live metadata and URL guards", () => {
     appsScript,
     /setFormulas\(incFormulas\);\s*try \{ refreshCumulativeViews\(\);/s,
   );
+});
+
+test("asset-name repair is URL-keyed, backed up and guarded on edit", () => {
+  assert.match(appsScript, /sanitizeAssetNameOnEdit_\(e, sheet\)/);
+  assert.match(assetPollutionRepair, /ASSET_POLLUTION_RE_/);
+  assert.match(assetPollutionRepair, /buildUrlKeyIndex_\(urls, linkKey_\)/);
+  assert.match(assetPollutionRepair, /_codex_asset_pollution_backup_/);
+  assert.match(assetPollutionRepair, /currentAsset !== item\.asset_before/);
+  assert.match(assetPollutionRepair, /function repairAssetNamePollutionPilot\(\)/);
+  assert.match(assetPollutionRepair, /function repairAssetNamePollutionAll\(\)/);
 });
 
 test("Apps Script morning audit fallback covers formula and creator audits at 09:40", () => {

@@ -5,6 +5,7 @@ import { normalizeUrl, isInstagramNonPostUrl } from "@/lib/url-utils";
 import { normalizeChannelType, isFreeChannel } from "@/app/monitoring/lib";
 import { isNonAdAsset, NON_AD_PRODUCT_NAME } from "@/lib/non-ad-asset";
 import { tagCreatedBy } from "@/lib/sponsored-write";
+import { stripAssetFileListing } from "@/lib/asset-name-policy";
 
 /**
  * 마케팅 대시보드 → 협찬 모니터링 동기화 엔드포인트
@@ -72,9 +73,10 @@ export async function POST(req: NextRequest) {
     const channel_type = normalizeChannelType(r.channel ? String(r.channel) : null);
     const free = isFreeChannel(channel_type); // 무상채널(위성/온드) → 광고비 0 강제
 
-    const assetName = r.asset_name
+    const rawAssetName = r.asset_name
       ? String(r.asset_name).trim()
       : (r.project_name ? String(r.project_name).trim() : null);
+    const assetName = stripAssetFileListing(rawAssetName);
     // 비광고성 미러링(외부 영상 미러링 등)은 특정 상품을 홍보하는 게 아니다 →
     // 상품명을 "-"로 강제한다(2026-08-07 사용자 지시). 무상채널 광고비 0 강제와 같은 성격.
     const nonAd = isNonAdAsset(assetName);

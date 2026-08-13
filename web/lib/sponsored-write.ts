@@ -8,6 +8,7 @@ import { accountNameForSponsoredWrite } from "@/lib/account-name-policy";
 import { notifyBot } from "@/lib/slack";
 import { lockedFieldDrift, formatLockedDrift, type LockedDrift } from "@/lib/locked-field-drift";
 import { tagCreatedBy } from "@/lib/created-by";
+import { stripAssetFileListing } from "@/lib/asset-name-policy";
 
 export { tagCreatedBy };
 
@@ -80,7 +81,7 @@ export async function upsertSponsoredRows(
         channel_type,
         project_name:    canonicalText(r.project_name as string | null | undefined),
         product_name:    canonicalText(r.product_name as string | null | undefined),
-        asset_name:      canonicalText(r.asset_name as string | null | undefined),
+        asset_name:      canonicalText(stripAssetFileListing(r.asset_name as string | null | undefined)),
         planner:         canonicalText(r.planner as string | null | undefined),
         creator:         canonicalText(r.creator as string | null | undefined),
         cost:            free ? 0 : (r.cost != null && r.cost !== "" ? Number(r.cost) : null),
