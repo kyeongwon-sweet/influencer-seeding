@@ -54,7 +54,7 @@ async function handler(req: NextRequest) {
   if (decision.act && !dryRun) {
     try {
       const base = process.env.APP_URL || `https://${req.headers.get("host")}`;
-      const res = await fetch(`${base}/api/monitoring/apify-collect`, {
+      const res = await fetch(`${base}/api/monitoring/apify-collect?date=${encodeURIComponent(kdate)}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${process.env.CRON_SECRET ?? ""}` },
         cache: "no-store",

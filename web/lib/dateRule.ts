@@ -19,3 +19,30 @@ export function maxDateKST(): string {
 export function isValidEntryDate(s: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) && s >= MIN_ENTRY_DATE && s <= maxDateKST();
 }
+
+export type MonitoringCollectionContext = "scheduled" | "manual";
+
+/** Resolve the snapshot label at kickoff, never from webhook arrival time. */
+export function resolveMonitoringMeasuredAt(
+  requestedDate: string | null | undefined,
+  context: MonitoringCollectionContext,
+): string {
+  const measuredAt = requestedDate?.trim()
+    || (context === "scheduled" ? yesterdayKST() : todayKST());
+  if (!isValidEntryDate(measuredAt)) {
+    throw new Error(`invalid measured_at: ${measuredAt}`);
+  }
+  return measuredAt;
+}
+
+/** Monitoring webhooks that write stats must carry the kickoff date explicitly. */
+export function requireMonitoringWebhookDate(
+  requestedDate: string | null | undefined,
+  metadataOnly: boolean,
+): string {
+  if (!requestedDate?.trim()) {
+    if (metadataOnly) return todayKST();
+    throw new Error("monitoring webhook missing measuredAt");
+  }
+  return resolveMonitoringMeasuredAt(requestedDate, "manual");
+}

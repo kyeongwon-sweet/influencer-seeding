@@ -9,6 +9,11 @@ import { maxDateKST, todayKST } from "@/lib/dateRule";
 import { notifyBot } from "@/lib/slack";
 import { buildRejectedInvalidUrlAlert, rejectedUrlIdentifiers } from "@/lib/stats-import-alerts";
 import { stripAssetFileListing } from "@/lib/asset-name-policy";
+import {
+  buildAutomaticPlayHistory,
+  previousAutomaticPlay,
+  type AutomaticPlayMeasurement,
+} from "@/lib/stats-import-spike";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -316,9 +321,13 @@ export async function POST(req: NextRequest) {
   // 🎯 배너 판정: 배너는 조회수(play_count)가 없고 '도달수(reach_count)'로 표시·합산한다(합의된 설계).
   //    시트 '일자별 조회수 입력'은 값을 play_count로 보내지만, 배너면 reach_count로 저장해야
   //    도달수 열에 입력값 그대로(×0.8 추정 없이) 뜨고 조회수 합산도 정확해진다. (기존/시트 메타 채널분류로 판정)
-  const isBannerByUrl = new Map<string, boolean>();
-  for (const [u, ex] of existingByUrl) isBannerByUrl.set(u, String(ex.channel_type ?? "").includes("배너"));
-  for (const [u, m] of postByUrl) if (!isBannerByUrl.has(u)) isBannerByUrl.set(u, String(m.channel_type ?? "").includes("배너"));
+  const isBannerByKey = new Map<string, boolean>();
+  for (const [url, ex] of existingByUrl) {
+    isBannerByKey.set(postIdentityKey(url) ?? url, String(ex.channel_type ?? "").includes("배너"));
+  }
+  for (const [key, meta] of postByUrl) {
+    if (!isBannerByKey.has(key)) isBannerByKey.set(key, String(meta.channel_type ?? "").includes("배너"));
+  }
 
   // 3) 게시물 매칭 (미등록 URL은 건너뜀)
   const missing = new Set<string>();
@@ -349,7 +358,7 @@ export async function POST(req: NextRequest) {
     const endedAt = endedByKey.get(it.key) ?? endedByUrl.get(it.url);
     if (endedAt && measuredDate > endedAt) { postEnded.push({ url: it.url, date: it.measured_at, ended_at: endedAt }); continue; }
     // 배너: reach_count로 저장(입력값=도달수). 비배너: 기존대로 play_count(누적 mono가드 대상).
-    if (isBannerByUrl.get(it.key) ?? isBannerByUrl.get(it.url)) {
+    if (isBannerByKey.get(it.key)) {
       bannerRows.push({ post_id: pid, measured_at: it.measured_at, reach_count: it.play_count, manual: isManualImport });
     } else {
       incoming.push({ post_id: pid, measured_at: it.measured_at, play_count: it.play_count });
@@ -493,7 +502,7 @@ export async function POST(req: NextRequest) {
   // 4) 기존 post_daily_stats 조회 (누적 감소 판정 기준) — 페이지네이션으로 전량
   const existingStats: GuardInput[] = [];
   const manualSet = new Set<string>(); // 대시보드에서 수동수정된 (post_id|measured_at) → 동기화가 덮지 않고 보존
-  const maxAutoByPost = new Map<string, number>(); // post_id → 자동수집(manual=false) 실측 최댓값 (급변 판정 기준)
+  const automaticPlayRows: AutomaticPlayMeasurement[] = [];
   // ⚠️ .in("post_id", postIds)를 통째로 쓰면 시트가 대량 배치를 보낼 때 id 목록이 쿼리 URL 한도를 넘어
   //    0행/에러가 됨(sponsored-posts 500 버그와 동일 계열) → id를 청크로 나눠 조회.
   //    (mono가드 정합성 때문에 조회 에러 시엔 500으로 실패시켜 부분 쓰기 방지 — degrade 안 함)
@@ -507,12 +516,14 @@ export async function POST(req: NextRequest) {
           .from("post_daily_stats")
           .select("post_id, measured_at, play_count, manual")
           .in("post_id", batch)
+          .order("post_id", { ascending: true })
+          .order("measured_at", { ascending: true })
           .range(from, from + PAGE - 1);
         if (pe2) return NextResponse.json({ error: pe2.message }, { status: 500 });
         for (const s of (page ?? []) as Array<{ post_id: string; measured_at: string; play_count: number | null; manual: boolean | null }>) {
           existingStats.push({ post_id: s.post_id, measured_at: s.measured_at, play_count: Number(s.play_count ?? 0) });
           if (s.manual) manualSet.add(`${s.post_id}|${s.measured_at}`);
-          else { const v = Number(s.play_count ?? 0); if (v > 0) maxAutoByPost.set(s.post_id, Math.max(maxAutoByPost.get(s.post_id) ?? 0, v)); }
+          if (!s.manual) automaticPlayRows.push(s);
         }
         if (!page || page.length < PAGE) break;
       }
@@ -566,14 +577,29 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 4-c) 🛡️ 급변 감지 — 들어온 값이 그 게시물의 '자동수집 실측 최댓값'의 3배 이상이면 과대 오입력 의심.
-  //   저장은 보존하고 알림만 남기되, manual 여부는 importSource 정책을 따른다. 자동 실측이 있는 게시물만 대상.
-  const spikeSuspected: Array<{ target: string; url: string; date: string; value: number; auto_max: number }> = [];
+  // 4-c) 🛡️ 급변 감지 — 해당 날짜보다 앞선 '가장 가까운 자동 조회수 실측'의 3배 이상이면 확인 요청.
+  //   과거 오독 한 번이 영구 최댓값이 되어 이후 감지를 무력화하지 않으며, 배너 reach는 애초에 incoming에 없다.
+  const automaticPlayHistory = buildAutomaticPlayHistory(automaticPlayRows);
+  const spikeSuspected: Array<{
+    target: string;
+    url: string;
+    date: string;
+    value: number;
+    previous_auto: number;
+    previous_date: string;
+  }> = [];
   {
     for (const r of incomingForGuard) {
-      const autoMax = maxAutoByPost.get(r.post_id) ?? 0;
-      if (autoMax > 0 && (r.play_count as number) >= autoMax * 3) {
-        spikeSuspected.push({ target: describePost(r.post_id), url: urlById.get(r.post_id) ?? r.post_id, date: r.measured_at, value: r.play_count as number, auto_max: autoMax });
+      const previous = previousAutomaticPlay(automaticPlayHistory, r.post_id, r.measured_at);
+      if (previous && (r.play_count as number) >= previous.play_count * 3) {
+        spikeSuspected.push({
+          target: describePost(r.post_id),
+          url: urlById.get(r.post_id) ?? r.post_id,
+          date: r.measured_at,
+          value: r.play_count as number,
+          previous_auto: previous.play_count,
+          previous_date: previous.measured_at,
+        });
       }
     }
   }
@@ -645,9 +671,11 @@ export async function POST(req: NextRequest) {
   }
 
   if (rejectedInvalidUrlAlert) await notifyBot(rejectedInvalidUrlAlert).catch(() => {});
-  // 급변 감지분 → 알림(자동 실측의 3배 이상 = 과대 오입력 의심). 사람이 입력한 시트값은 보존한다.
+  // 급변 감지분 → 알림(직전 자동 조회수 실측의 3배 이상 = 과대 오입력 의심). 사람이 입력한 시트값은 보존한다.
   if (spikeSuspected.length > 0) {
-    const s = spikeSuspected.slice(0, 6).map(c => `${c.target} ${c.date.slice(5, 10)} ${c.value.toLocaleString()}(자동실측 ${c.auto_max.toLocaleString()})`).join(", ");
+    const s = spikeSuspected.slice(0, 6).map(c =>
+      `${c.target} ${c.date.slice(5, 10)} ${c.value.toLocaleString()}(직전 자동 ${c.previous_date.slice(5, 10)} ${c.previous_auto.toLocaleString()})`
+    ).join(", ");
     await notifyBot(`⚠️ [시트 조회수 입력/${importSource}] 급변 의심 ${spikeSuspected.length}행 경고 — DB에는 manual=${isManualImport}로 반영했습니다. 오입력이면 시트에서 정정 후 다시 반영하세요: ${s}`);
   }
 

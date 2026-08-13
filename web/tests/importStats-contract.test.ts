@@ -19,7 +19,8 @@ test("stats-import: 시트 수기 입력은 KST 당일까지 허용", () => {
 
 test("stats-import: suspicious sheet stat alerts identify the target account", () => {
   assert.match(route, /copySuspected: Array<\{[\s\S]*?target: string;/);
-  assert.match(route, /spikeSuspected: Array<\{ target: string;/);
+  assert.match(route, /const spikeSuspected: Array<\{/);
+  assert.match(route, /target: string;/);
   assert.match(route, /\$\{c\.target\} \$\{c\.date\.slice\(5, 10\)\}/);
 });
 
@@ -64,4 +65,15 @@ test("stats-import: 복사 판정에 최소값·반올림 임계가 있어 작�
   assert.match(route, /if \(r\.value % COPY_ROUNDING_EXCLUDE === 0\) continue;/);
   // 옛 기준(반올림만 보고 최소값 없음)으로 되돌아가지 않게 고정
   assert.doesNotMatch(route, /if \(r\.value % 1000 === 0\) continue;/);
+});
+
+test("stats-import: 배너는 identity key로 분리하고 급변은 직전 자동 조회수와 비교한다", () => {
+  assert.match(route, /const isBannerByKey = new Map<string, boolean>\(\)/);
+  assert.match(route, /isBannerByKey\.set\(postIdentityKey\(url\) \?\? url/);
+  assert.match(route, /if \(isBannerByKey\.get\(it\.key\)\)/);
+  assert.doesNotMatch(route, /const maxAutoByPost/);
+  assert.match(route, /const automaticPlayHistory = buildAutomaticPlayHistory\(automaticPlayRows\)/);
+  assert.match(route, /previousAutomaticPlay\(automaticPlayHistory, r\.post_id, r\.measured_at\)/);
+  assert.match(route, /previous_auto: previous\.play_count/);
+  assert.match(route, /\.order\("post_id", \{ ascending: true \}\)[\s\S]*?\.order\("measured_at", \{ ascending: true \}\)[\s\S]*?\.range\(/);
 });

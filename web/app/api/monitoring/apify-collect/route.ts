@@ -4,7 +4,7 @@ import { getServerSupabase } from "@/lib/supabase-server";
 import { startActorRun } from "@/lib/apify";
 import { notifyJob } from "@/lib/slack";
 import { activeIgPostUrls } from "@/lib/ig-post-urls";
-import { yesterdayKST } from "@/lib/dateRule";
+import { resolveMonitoringMeasuredAt } from "@/lib/dateRule";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -19,7 +19,7 @@ function getAppUrl() {
  * 협찬 게시물 조회수 수집 — 비동기 kickoff (타임아웃 방지).
  * Apify run만 시작하고 즉시 반환 → 완료 시 /api/apify-webhook(handleMonitoring)이 적재.
  * 적재 단계의 단조보정·종료감지 안전장치는 handleMonitoring 에 있음.
- * Vercel 크론(GET) + 수동(POST) 모두 동일 처리.
+ * 예약/폴백 비동기 경로다. 사람이 당일값을 즉시 수집할 때는 `/api/monitoring/collect-now`를 쓴다.
  */
 export async function POST(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") {
@@ -30,6 +30,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "APIFY_API_TOKEN not configured" }, { status: 500 });
   }
 
+  // 유효하지 않은 날짜면 job을 만들기 전에 차단해 running 상태 고아 job을 남기지 않는다.
+  let measuredAt: string;
+  try {
+    measuredAt = resolveMonitoringMeasuredAt(req.nextUrl.searchParams.get("date"), "scheduled");
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : String(error) },
+      { status: 400 },
+    );
+  }
   const supabase = getServerSupabase();
   try {
     const { data: job, error: jobErr } = await supabase
@@ -53,7 +63,8 @@ export async function POST(req: NextRequest) {
     }
 
     await supabase.from("jobs").update({ status: "running" }).eq("id", jobId);
-    const measuredAt = yesterdayKST();
+    // 날짜는 kickoff 시점에 확정해 webhook까지 전달한다. webhook 도착 시각으로 재추정하면
+    // 자정 전후 콜백이 다른 날짜에 적재돼 누적 조회수가 역행할 수 있다.
     const webhook = `${getAppUrl()}/api/apify-webhook?token=${encodeURIComponent(process.env.WEBHOOK_SECRET ?? "")}&jobId=${jobId}&jobType=monitoring&measuredAt=${encodeURIComponent(measuredAt)}`;
     await startActorRun(
       "apify/instagram-scraper",
@@ -67,7 +78,7 @@ export async function POST(req: NextRequest) {
       },
       webhook
     );
-    return NextResponse.json({ ok: true, started: true, jobId, urlCount: urls.length });
+    return NextResponse.json({ ok: true, started: true, jobId, urlCount: urls.length, measuredAt });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await notifyJob("협찬 모니터링", "fail", `수집 시작 실패: ${msg}`);

@@ -3,7 +3,7 @@ import { getServerSupabase } from "@/lib/supabase-server";
 import { fetchDatasetItems } from "@/lib/apify";
 import { normalizeYouTubeUrl, normalizeInstagramUrl } from "@/lib/url-utils";
 import { notifyBot, notifyJob } from "@/lib/slack";
-import { todayKST } from "@/lib/dateRule";
+import { requireMonitoringWebhookDate } from "@/lib/dateRule";
 import { isBannerChannelType } from "@/lib/banner-metric";
 import { looksLikeEngagementCountAsViews } from "@/lib/ig-metric-guard";
 import { organicExcludeHit, organicOwnedMediaHit, organicTradePostHit } from "@/lib/organic-filter";
@@ -244,7 +244,9 @@ async function handleMonitoring(
   measuredAt?: string,
   metadataOnly = false,
 ) {
-  const today = measuredAt || todayKST();
+  // 통계 적재 웹훅은 수집 kickoff에서 확정한 날짜가 필수다. 도착 시각의 KST 날짜를
+  // 폴백으로 쓰면 자정 콜백만 오늘 행에 섞여 날짜별 누적이 역행한다.
+  const today = requireMonitoringWebhookDate(measuredAt, metadataOnly);
   const { data: posts } = await supabase.from('sponsored_posts').select('id, url, posted_at, account_name, influencer_id, ended_at, asset_name, project_name, content_summary, channel_type');
   const eligiblePosts = (posts || []).filter((p) => {
     const postedAt = p.posted_at ? String(p.posted_at).slice(0, 10) : null;

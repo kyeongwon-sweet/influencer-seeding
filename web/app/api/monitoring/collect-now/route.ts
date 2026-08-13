@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createApifyClient } from "@/lib/apify";
 import { checkCronAuth } from "@/lib/cron-auth";
-import { todayKST } from "@/lib/dateRule";
+import { resolveMonitoringMeasuredAt } from "@/lib/dateRule";
 import { isBannerChannelType } from "@/lib/banner-metric";
 import { looksLikeEngagementCountAsViews, pickInstagramPlayMetric, toPositiveMetric } from "@/lib/ig-metric-guard";
 
@@ -33,6 +33,15 @@ export async function POST(req: NextRequest) {
 async function collect(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  let measuredAt: string;
+  try {
+    measuredAt = resolveMonitoringMeasuredAt(req.nextUrl.searchParams.get("date"), "manual");
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : String(error) },
+      { status: 400 },
+    );
   }
   try {
     const apiToken = process.env.APIFY_API_TOKEN;
@@ -69,10 +78,7 @@ async function collect(req: NextRequest) {
 
     console.log(`[LOG] ✅ 발견된 협찬 게시물: ${posts.length}개`);
 
-    // 2. 수집 날짜 결정
-    const dateParam = req.nextUrl.searchParams.get("date");
-    const measuredAt = dateParam || todayKST();
-
+    // 2. 수집 날짜는 외부 API·DB 쓰기 전에 확정한다.
     console.log(`[LOG] 📅 수집 날짜: ${measuredAt}`);
     const eligiblePosts = posts.filter((p) => {
       const postedAt = p.posted_at ? String(p.posted_at).slice(0, 10) : null;
