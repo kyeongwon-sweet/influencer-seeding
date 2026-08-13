@@ -6,6 +6,17 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-13 [Codex 완료] Apify 수집 날짜 귀속 통일 + stats-import 급변 오탐 제거 (`225d203`, prod)
+- **날짜 규칙 단일화:** 예약 수집은 KST 어제, 수동 `collect-now`/대시보드 수집은 KST 오늘, 명시 `date`는 호출자가 정한 날짜를 쓴다. 날짜는 수집 kickoff에서 한 번 확정해 Apify webhook에 `measuredAt`으로 전달한다.
+- **무날짜 통계 webhook 차단:** 통계를 쓰는 monitoring webhook은 `measuredAt`이 없으면 job을 실패 처리하고 DB에 추정 날짜를 쓰지 않는다. 소재명 보강용 `metadataOnly=1`만 기존처럼 KST 오늘을 허용한다.
+- **폴백 정합:** `collect-fallback`이 확인한 `kdate`를 `apify-collect?date=...`에 그대로 전달한다. 유효하지 않거나 미래인 명시 날짜는 DB job/Apify 실행 전에 HTTP 400으로 차단한다.
+- **배너 급변 오탐 제거:** stats-import의 배너 판정을 원문 URL이 아니라 `postIdentityKey`로 통일해 `/p/`↔`/reel/` 변형에서도 배너 도달수가 조회수 급변 검사에 섞이지 않는다.
+- **급변 기준 교정:** 게시물의 과거 자동 최댓값이 아니라 입력 날짜 직전의 양수 자동 `play_count`와 비교한다. manual·0·NULL·같은 날/미래 측정은 기준에서 제외한다. 대량 이력 페이지는 `(post_id, measured_at)` 고정 정렬로 읽어 페이지 경계 누락도 막았다.
+- **기존 데이터 경계:** Claude가 07-25 00시 웹훅 오귀속 14행의 `play_count`를 NULL로 정정하고 `scratchpad/webhook_date_misattr_backup_20260813.json`에 백업한 상태를 보존했다. Codex는 해당 DB 값을 다시 쓰지 않았다.
+- **라이브 시트 I404 복구:** `콘텐츠 대시보드 연동` I404(`nato.zzal`, `DZucpZkyc-F`)의 하드코딩 `1095`를 같은 행 범위를 참조하는 정식 증분 V2 수식으로 교체했다. 저장 직전 URL/기존값을 재확인했고, 저장 후 `B404`·`H404` 무변경, `I404` 수식 존재·표시값 `0`을 재조회했다.
+- **실측 감사:** 수동 Sheet Formula Audit run `31659829415` 성공 — URL 2,195행, H `#REF!` 0, I `#REF!` 0, H 값이 있는데 I 빈칸 8행(허용 임계 20 이하).
+- **검증/배포:** web 테스트 **283/283**, TypeScript, ESLint(error 0·기존 warning 15), production build 통과. `origin/main=225d203`; Vercel production `dpl_2sbq7vRjmFj7KrWeze11LRs7HZq9` Ready 및 `https://influencer-seeding-mu.vercel.app` 별칭/HTTP 200 확인.
+
 ## ✅ 2026-08-13 [Codex 완료] 이름 표기 정규화 프로덕션 반영 재확인
 - 쓰기 시점 이름 정규화 커밋 `67cdf81`이 최신 `origin/main`에 포함된 것을 ancestry로 확인했다.
 - `-mu` 프로덕션은 Vercel 배포 `dpl_Gk5LeTijTESXJYGseugzDg31YbdG`(`Ready`)이며, 배포 소스는 최신 main `60602aca8153dbe7ddd5406bb5675a1e374c3747`이다. 따라서 `canonicalText` 및 전체 시트/대시보드 쓰기 관문 정규화가 라이브에 반영되어 있다.
