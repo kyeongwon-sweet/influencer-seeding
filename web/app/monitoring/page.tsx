@@ -8,7 +8,7 @@ import { isValidEntryDate } from "@/lib/dateRule";
 import { companyForAccount } from "@/lib/companyMap";
 import { batchFetch } from "@/lib/batchFetch";
 import { matchesSearch } from "@/lib/search-filter";
-import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, decodeStatsV2, INIT_FILTERS, CHANNEL_TYPES, STICKY_COL_ORDER, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, getFilteredStats, pickRangeStats, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, viewIncrement, safeIncrement, pickMetric, pdOf, productLabel, effectiveReach, bannerDailyMetric, assetNameOf, weekKeyOf, pearson, alignedPairs, bestLag, alignMulti, multipleR2, parseCsvLine } from "./lib";
+import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, decodeStatsV2, INIT_FILTERS, CHANNEL_TYPES, STICKY_COL_ORDER, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, getFilteredStats, pickRangeStats, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, viewIncrement, safeIncrement, pickMetric, productLabel, effectiveReach, bannerDailyMetric, assetNameOf, weekKeyOf, pearson, alignedPairs, bestLag, alignMulti, multipleR2, parseCsvLine } from "./lib";
 import { GOOGLE_TREND_GROUPS } from "@/lib/google-trend-groups";
 import CorrelationPanel from "./components/CorrelationPanel";
 import DayOfWeekPanel, { type DowData } from "./components/DayOfWeekPanel";
@@ -87,7 +87,8 @@ export default function MonitoringPage() {
     if (filters.products.length > 0 && !filters.products.includes(post.product_name ?? "")) return false;
     if (filters.channelTypes.length > 0 && !filters.channelTypes.some(ct => (post.channel_type ?? "").replace(/\s+/g, "") === ct.replace(/\s+/g, ""))) return false;
     if (filters.companies.length > 0 && !filters.companies.includes(post.company_name?.trim() || companyForAccount(post.account_name ?? post.influencers?.name, post.channel_type) || "")) return false;
-    if (filters.pdNames.length > 0 && !filters.pdNames.includes(pdOf(assetNameOf(post)))) return false;
+    if (filters.creatorNames.length > 0 && !filters.creatorNames.includes((post.creator ?? "").trim())) return false;
+    if (filters.plannerNames.length > 0 && !filters.plannerNames.includes((post.planner ?? "").trim())) return false;
 
     // 게시일 필터 (posted_at 기준)
     if (filters.postedFrom && (!post.posted_at || post.posted_at < filters.postedFrom)) return false;
@@ -113,12 +114,16 @@ export default function MonitoringPage() {
     new Set(posts.map(p => p.company_name?.trim() || companyForAccount(p.account_name ?? p.influencers?.name, p.channel_type) || "").filter(Boolean))
   ).sort((a, b) => a.localeCompare(b, "ko")), [posts]);
 
-  // PD/디자이너 옵션 — asset_name 정본(legacy project_name 폴백)이 파싱되는 게시물만
-  const pdOptions = useMemo(() => Array.from(
-    new Set(posts.map(p => pdOf(assetNameOf(p))).filter((v): v is string => Boolean(v)))
+  // 제작자·기획자 옵션 — 시트 정본 열(creator/planner)에서 직접. (소재명 파싱은 파일명 오염에 취약해 폐기)
+  const creatorOptions = useMemo(() => Array.from(
+    new Set(posts.map(p => (p.creator ?? "").trim()).filter(Boolean))
   ).sort((a, b) => a.localeCompare(b, "ko")), [posts]);
 
-  const hasFilter = filters.name !== "" || filters.project !== "" || filters.caption !== "" || filters.products.length > 0 || filters.channelTypes.length > 0 || filters.companies.length > 0 || filters.pdNames.length > 0 || filters.dateFrom !== "" || filters.dateTo !== "" || filters.postedFrom !== "" || filters.postedTo !== "";
+  const plannerOptions = useMemo(() => Array.from(
+    new Set(posts.map(p => (p.planner ?? "").trim()).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b, "ko")), [posts]);
+
+  const hasFilter = filters.name !== "" || filters.project !== "" || filters.caption !== "" || filters.products.length > 0 || filters.channelTypes.length > 0 || filters.companies.length > 0 || filters.creatorNames.length > 0 || filters.plannerNames.length > 0 || filters.dateFrom !== "" || filters.dateTo !== "" || filters.postedFrom !== "" || filters.postedTo !== "";
   const colSpan = 17;
 
   // 마지막 수집 시각 = 최신 측정행의 적재 시각(created_at) 중 최대값 (게시물 추가 시각 아님)
@@ -1429,7 +1434,7 @@ export default function MonitoringPage() {
       <div className="px-4 py-5 xl:px-6">
 
         {/* 필터 바 */}
-        <FiltersBar filters={filters} setFilters={setFilters} pdOptions={pdOptions} productOptions={productOptions} companyOptions={companyOptions} hasFilter={hasFilter} />
+        <FiltersBar filters={filters} setFilters={setFilters} creatorOptions={creatorOptions} plannerOptions={plannerOptions} productOptions={productOptions} companyOptions={companyOptions} hasFilter={hasFilter} />
 
         {filteredPosts.length > 0 && (
           <div className="relative surface-card mb-4 overflow-hidden">

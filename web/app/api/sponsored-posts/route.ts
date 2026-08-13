@@ -37,6 +37,8 @@ const POST_COLS = [
   "product_name",
   "project_name",
   "asset_name",
+  "creator",
+  "planner",
   "account_name",
   "company_name",
   "channel_type",

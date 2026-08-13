@@ -19,6 +19,8 @@ export type Post = {
   product_name: string | null;
   project_name: string | null;
   asset_name: string | null;
+  creator: string | null;
+  planner: string | null;
   account_name: string | null;
   company_name: string | null;
   channel_type: string | null;
@@ -70,8 +72,8 @@ export type B2bDaily = {
   total_order: number | null; total_contribution: number | null;
 };
 
-export type Filters = { name: string; project: string; caption: string; products: string[]; channelTypes: string[]; companies: string[]; pdNames: string[]; dateFrom: string; dateTo: string; postedFrom: string; postedTo: string };
-export const INIT_FILTERS: Filters = { name: "", project: "", caption: "", products: [], channelTypes: [], companies: [], pdNames: [], dateFrom: "", dateTo: "", postedFrom: "", postedTo: "" };
+export type Filters = { name: string; project: string; caption: string; products: string[]; channelTypes: string[]; companies: string[]; creatorNames: string[]; plannerNames: string[]; dateFrom: string; dateTo: string; postedFrom: string; postedTo: string };
+export const INIT_FILTERS: Filters = { name: "", project: "", caption: "", products: [], channelTypes: [], companies: [], creatorNames: [], plannerNames: [], dateFrom: "", dateTo: "", postedFrom: "", postedTo: "" };
 export type EditCell = { postId: string; field: "asset_name" | "project_name" | "product_name" | "channel_type" | "cost" | "reach_count" | "account_name" | "company_name" | "posted_at" | "notes" | "content_summary" | "likes_count" | "comments_count"; value: string; measuredAt?: string };
 export const CHANNEL_TYPES = [
   "바이럴(배너)",

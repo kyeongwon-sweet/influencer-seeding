@@ -11,16 +11,18 @@ const SEARCH_HINT = "여러 단어는 모두 포함(AND) · 제외는 -단어 (�
 type Props = {
   filters: Filters;
   setFilters: React.Dispatch<React.SetStateAction<Filters>>;
-  pdOptions: string[];
+  creatorOptions: string[];
+  plannerOptions: string[];
   productOptions: string[];
   companyOptions: string[];
   hasFilter: boolean;
 };
 
-export default function FiltersBar({ filters, setFilters, pdOptions, productOptions, companyOptions, hasFilter }: Props) {
+export default function FiltersBar({ filters, setFilters, creatorOptions, plannerOptions, productOptions, companyOptions, hasFilter }: Props) {
   const [showChannelTypeDropdown, setShowChannelTypeDropdown] = useState(false);
   const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
-  const [showPdDropdown, setShowPdDropdown] = useState(false);
+  const [showCreatorDropdown, setShowCreatorDropdown] = useState(false);
+  const [showPlannerDropdown, setShowPlannerDropdown] = useState(false);
   return (
     <div className="surface-toolbar ![backdrop-filter:none] px-4 py-3 mb-4 flex items-center gap-x-2.5 gap-y-2 flex-wrap">
       <div className="basis-full flex items-center justify-between gap-3 border-b border-slate-100 pb-2 mb-0.5">
@@ -148,35 +150,75 @@ export default function FiltersBar({ filters, setFilters, pdOptions, productOpti
           )}
         </div>
       )}
-      {pdOptions.length > 0 && (
+      {creatorOptions.length > 0 && (
         <div className="relative">
           <button
-            onClick={() => setShowPdDropdown(!showPdDropdown)}
-            className={`filter-select ${filters.pdNames.length > 0 ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
+            onClick={() => setShowCreatorDropdown(!showCreatorDropdown)}
+            className={`filter-select ${filters.creatorNames.length > 0 ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
           >
-            {filters.pdNames.length === 0
-              ? "PD/디자이너"
-              : filters.pdNames.length === 1
-              ? filters.pdNames[0]
-              : `${filters.pdNames[0]} 외 ${filters.pdNames.length - 1}`}
+            {filters.creatorNames.length === 0
+              ? "제작자"
+              : filters.creatorNames.length === 1
+              ? filters.creatorNames[0]
+              : `${filters.creatorNames[0]} 외 ${filters.creatorNames.length - 1}`}
           </button>
-          {showPdDropdown && (
+          {showCreatorDropdown && (
             <>
-            <div className="fixed inset-0 z-40" onClick={() => setShowPdDropdown(false)} />
+            <div className="fixed inset-0 z-40" onClick={() => setShowCreatorDropdown(false)} />
             <div className="absolute top-full left-0 mt-1 bg-white border border-a-hairline rounded-[8px] shadow-lg z-50 w-48">
               <div className="p-3 space-y-2 max-h-64 overflow-y-auto">
                 <label className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1.5 rounded text-xs">
-                  <input type="checkbox" checked={filters.pdNames.length === 0}
-                    onChange={() => setFilters(p => ({ ...p, pdNames: [] }))}
+                  <input type="checkbox" checked={filters.creatorNames.length === 0}
+                    onChange={() => setFilters(p => ({ ...p, creatorNames: [] }))}
                     className="w-3.5 h-3.5 accent-a-blue cursor-pointer" />
                   전체
                 </label>
-                {pdOptions.map(name => (
+                {creatorOptions.map(name => (
                   <label key={name} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1.5 rounded text-xs">
-                    <input type="checkbox" checked={filters.pdNames.includes(name)}
+                    <input type="checkbox" checked={filters.creatorNames.includes(name)}
                       onChange={e => {
-                        if (e.target.checked) setFilters(p => ({ ...p, pdNames: [...p.pdNames, name] }));
-                        else setFilters(p => ({ ...p, pdNames: p.pdNames.filter(x => x !== name) }));
+                        if (e.target.checked) setFilters(p => ({ ...p, creatorNames: [...p.creatorNames, name] }));
+                        else setFilters(p => ({ ...p, creatorNames: p.creatorNames.filter(x => x !== name) }));
+                      }}
+                      className="w-3.5 h-3.5 accent-a-blue cursor-pointer" />
+                    {name}
+                  </label>
+                ))}
+              </div>
+            </div>
+            </>
+          )}
+        </div>
+      )}
+      {plannerOptions.length > 0 && (
+        <div className="relative">
+          <button
+            onClick={() => setShowPlannerDropdown(!showPlannerDropdown)}
+            className={`filter-select ${filters.plannerNames.length > 0 ? "border-a-blue text-a-blue bg-blue-50" : ""}`}
+          >
+            {filters.plannerNames.length === 0
+              ? "기획자"
+              : filters.plannerNames.length === 1
+              ? filters.plannerNames[0]
+              : `${filters.plannerNames[0]} 외 ${filters.plannerNames.length - 1}`}
+          </button>
+          {showPlannerDropdown && (
+            <>
+            <div className="fixed inset-0 z-40" onClick={() => setShowPlannerDropdown(false)} />
+            <div className="absolute top-full left-0 mt-1 bg-white border border-a-hairline rounded-[8px] shadow-lg z-50 w-48">
+              <div className="p-3 space-y-2 max-h-64 overflow-y-auto">
+                <label className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1.5 rounded text-xs">
+                  <input type="checkbox" checked={filters.plannerNames.length === 0}
+                    onChange={() => setFilters(p => ({ ...p, plannerNames: [] }))}
+                    className="w-3.5 h-3.5 accent-a-blue cursor-pointer" />
+                  전체
+                </label>
+                {plannerOptions.map(name => (
+                  <label key={name} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1.5 rounded text-xs">
+                    <input type="checkbox" checked={filters.plannerNames.includes(name)}
+                      onChange={e => {
+                        if (e.target.checked) setFilters(p => ({ ...p, plannerNames: [...p.plannerNames, name] }));
+                        else setFilters(p => ({ ...p, plannerNames: p.plannerNames.filter(x => x !== name) }));
                       }}
                       className="w-3.5 h-3.5 accent-a-blue cursor-pointer" />
                     {name}
