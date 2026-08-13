@@ -22,6 +22,14 @@
 - `-mu` 프로덕션은 Vercel 배포 `dpl_Gk5LeTijTESXJYGseugzDg31YbdG`(`Ready`)이며, 배포 소스는 최신 main `60602aca8153dbe7ddd5406bb5675a1e374c3747`이다. 따라서 `canonicalText` 및 전체 시트/대시보드 쓰기 관문 정규화가 라이브에 반영되어 있다.
 - 최신 main 기준 web 테스트 **276/276 통과**. `normalizeSpacing`과 확정 별칭 `canonicalText` 계약 테스트도 통과했다.
 - 연동시트 정합·`importStats`·대시보드 23/23 검증은 바로 아래 `띄어쓰기 중복 정본 시트-DB 재정합` 항목의 실측 결과가 정본이다. 중복 실행하지 말 것.
+## ✅ 2026-08-13 [Codex 완료] 연동 시트 무결성 잔여 정리
+- **중복 URL:** `@ssulbox_1/video/7672723626218507527` 중 DB 통계 2건이 연결된 정상 행을 보존하고, 잘못 복제된 시트 행 1개를 삭제했다. 정리 후 시트·DB 모두 URL 1행이다.
+- **미지원 URL:** 20자리 TikTok ID `@ssulbox_1/video/76543907066471252699`는 종료 상태·통계 0건을 재확인한 뒤 시트 행과 DB 게시물 1건을 함께 제외했다. 게시일·다른 통계는 변경하지 않았다.
+- **빈칸 26건 판정:** 라이브 A:O 전수 판독 결과 빈 플레이스홀더는 0행이었다. 25건은 캡션 비움 정책·종료글·DB 원본 없음에 따른 정상 빈값이라 삭제/추정 입력하지 않았다. 나머지 1건 `today_quest / Db5To_Bjwyk` 비용은 깨진 `#REF!` XLOOKUP을 매핑 정본(굿띵투유, 130,000원)으로 복구했고 `syncAll`이 DB 비용 130000을 반영했다.
+- **누적·증분 후속 감사:** 행 삭제 뒤 URL 3행의 증분(I) 수식 누락을 백업 후 표준 `SEQUENCE` 범위 수식으로 복구했다. 라이브 감사 결과 URL 2,195행, H/I 수식 누락 **0/0**, H/I `#REF!` **0/0**, URL 없는 조회수 고아행 **0**. H 값이 있으나 I 표시가 빈 8행은 수식이 존재하며 정책상 빈 결과를 반환하는 행이다.
+- **백업:** 숨김 시트 `_codex_integrity_backup_20260813_110028`, 로컬 `scratchpad/sheet_integrity_cleanup_backup_20260813_110028.json`, `scratchpad/increment_formula_repair_backup_20260813_1115.json`.
+- **실행 확인:** `syncAll` 2,194행 비교·신규 0·변경 1 성공. 중복 URL 0, 미지원 URL 0, 수식 구조 오류 0을 각각 실측했다.
+- **서버 감사:** Formula Audit run `31660405316` 성공(HTTP 200, `healthy=true`, totalRows 2,195, orphan 0, H error/emptyButData 0, I error/mismatch 0, anomalies 0, stale 0).
 
 ## ✅ 2026-08-13 [Codex 완료] 소재명 파일목록 오염 100건 정리 + 제작자 12건 복구
 - **실측:** 라이브 연동시트 전수 점검 결과 `asset_name` 파일목록 패턴 오염 **100건**, 그중 제작자 빈칸 **12건**, URL 중복·파싱 실패 안전차단 **0건**이었다.
