@@ -21,11 +21,12 @@ export async function PATCH(
     if (key in body) updates[key] = body[key] || null;
   }
   if (typeof updates.channel_type === "string") updates.channel_type = normalizeChannelType(updates.channel_type);
+  // asset_name은 파일리스트 제거를 먼저(시트 쓰기 경로와 동일 순서 strip→canonical) — 순서 뒤바뀌면 별칭 매칭이 경로마다 달라짐
+  if (typeof updates.asset_name === "string") updates.asset_name = stripAssetFileListing(updates.asset_name);
   // 이름류 텍스트는 공백·별칭 표준화(공백만 다른 중복 방지, CANONICAL_ALIASES 자가교정)
   for (const key of ["account_name", "company_name", "asset_name", "project_name", "product_name"]) {
     if (typeof updates[key] === "string") updates[key] = canonicalText(updates[key] as string);
   }
-  if (typeof updates.asset_name === "string") updates.asset_name = stripAssetFileListing(updates.asset_name);
   for (const key of allowedNumeric) {
     if (key in body) {
       const v = body[key];

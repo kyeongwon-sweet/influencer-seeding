@@ -257,11 +257,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "올바른 게시물 URL이 아닙니다." }, { status: 400 });
   }
   if (cleaned.channel_type) cleaned.channel_type = normalizeChannelType(String(cleaned.channel_type));
+  // asset_name은 파일리스트 제거를 먼저(시트 쓰기 경로와 동일 순서 strip→canonical).
+  // 순서가 뒤바뀌면 오염 소재명의 별칭 매칭이 경로마다 달라져 띄어쓰기 변형이 재생성됨.
+  if (typeof cleaned.asset_name === "string" && cleaned.asset_name) cleaned.asset_name = stripAssetFileListing(cleaned.asset_name);
   // 이름류 텍스트 공백·별칭 표준화(공백만 다른 중복 방지)
   for (const key of ["account_name", "company_name", "asset_name", "project_name", "product_name"]) {
     if (typeof cleaned[key] === "string" && cleaned[key]) cleaned[key] = canonicalText(String(cleaned[key]));
   }
-  if (typeof cleaned.asset_name === "string") cleaned.asset_name = stripAssetFileListing(cleaned.asset_name);
   // 추가자(이메일) — created_by 컬럼이 없을 수도 있어 insert 대상에서 분리 후 삽입 성공 시 best-effort로 기록.
   const addedBy = typeof cleaned.added_by === "string" ? cleaned.added_by : null;
   delete cleaned.added_by;
