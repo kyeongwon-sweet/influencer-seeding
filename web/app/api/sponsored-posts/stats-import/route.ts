@@ -124,9 +124,9 @@ export async function POST(req: NextRequest) {
       clean[f] = f === "channel_type"
         ? normalizeChannelType(String(p[f]))
         : f === "asset_name"
-          ? canonicalText(stripAssetFileListing(String(p[f])))
+          ? canonicalText(stripAssetFileListing(String(p[f])), f)
           : TEXT_CANON.has(f)
-            ? canonicalText(String(p[f]))
+            ? canonicalText(String(p[f]), f)
             : p[f];
     }
     // 무상채널(위성/온드)은 업체명·광고비가 없어야 함 → 신규 생성 시 강제(owned-satellite-no-cost-rule)

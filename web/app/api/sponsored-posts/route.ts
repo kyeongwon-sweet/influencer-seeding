@@ -262,7 +262,7 @@ export async function POST(req: NextRequest) {
   if (typeof cleaned.asset_name === "string" && cleaned.asset_name) cleaned.asset_name = stripAssetFileListing(cleaned.asset_name);
   // 이름류 텍스트 공백·별칭 표준화(공백만 다른 중복 방지)
   for (const key of ["account_name", "company_name", "asset_name", "project_name", "product_name"]) {
-    if (typeof cleaned[key] === "string" && cleaned[key]) cleaned[key] = canonicalText(String(cleaned[key]));
+    if (typeof cleaned[key] === "string" && cleaned[key]) cleaned[key] = canonicalText(String(cleaned[key]), key);
   }
   // 추가자(이메일) — created_by 컬럼이 없을 수도 있어 insert 대상에서 분리 후 삽입 성공 시 best-effort로 기록.
   const addedBy = typeof cleaned.added_by === "string" ? cleaned.added_by : null;

@@ -23,15 +23,18 @@ test("normalizeSpacing: 앞뒤·중복 공백만 정리, 단일 내부 공백은
   assert.equal(normalizeSpacing(null), null);
 });
 
-test("canonicalText: 확정 별칭을 정본으로 자가교정(공백 정리 후 매핑)", () => {
-  assert.equal(canonicalText("스튜디오엔터"), "스튜디오 엔터");
-  assert.equal(canonicalText("모두의 행복"), "모두의행복");
-  assert.equal(canonicalText(" 오늘의메뉴 "), "오늘의 메뉴"); // trim 후 매핑
-  assert.equal(canonicalText("무상 협찬"), "무상협찬");
-  assert.equal(canonicalText("오하루 (인스타)"), "오하루(인스타)");
-  assert.equal(canonicalText("스튜디오 엔터"), "스튜디오 엔터"); // 이미 정본이면 그대로
-  assert.equal(canonicalText("무디"), "무디"); // 매핑에 없으면 공백 정리만
-  assert.equal(canonicalText(null), null);
+test("canonicalText: 해당 필드 별칭만 정본으로 자가교정(공백 정리 후 필드별 매핑)", () => {
+  assert.equal(canonicalText("스튜디오엔터", "company_name"), "스튜디오 엔터");
+  assert.equal(canonicalText("모두의 행복", "company_name"), "모두의행복");
+  assert.equal(canonicalText(" 오늘의메뉴 ", "account_name"), "오늘의 메뉴"); // trim 후 매핑
+  assert.equal(canonicalText("무상 협찬", "asset_name"), "무상협찬");
+  assert.equal(canonicalText("오하루 (인스타)", "account_name"), "오하루(인스타)");
+  assert.equal(canonicalText("스튜디오 엔터", "company_name"), "스튜디오 엔터"); // 이미 정본이면 그대로
+  assert.equal(canonicalText("무디", "company_name"), "무디"); // 매핑에 없으면 공백 정리만
+  // 필드 스코프: 다른 필드에선 별칭이 적용되지 않는다(교차 오염 방지)
+  assert.equal(canonicalText("스튜디오엔터", "product_name"), "스튜디오엔터");
+  assert.equal(canonicalText("스튜디오엔터"), "스튜디오엔터"); // field 없으면 공백 정리만
+  assert.equal(canonicalText(null, "company_name"), null);
 });
 
 test("solveLinear: 대각 행렬 해 / 특이행렬 null", () => {

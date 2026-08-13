@@ -28,12 +28,24 @@ export async function POST(req: NextRequest) {
 
   const webhookUrl = `${getAppUrl()}/api/google-trends/webhook?token=${encodeURIComponent(process.env.WEBHOOK_SECRET ?? "")}`;
 
-  // ?kw=N → 해당 키워드 1개만 수집(키워드별 순차 실행용). 없으면 전체.
+  const params = new URL(req.url).searchParams;
+  // ?count → 실행 없이 키워드 개수만 반환. 워크플로가 소스(google-trend-groups)에서 직접 읽어
+  // KEYWORD_COUNT 하드코딩 드리프트(키워드 추가 시 미수집)를 없앤다.
+  if (params.get("count") !== null) {
+    return NextResponse.json({ ok: true, keywordCount: KEYWORDS.length });
+  }
+
+  // ?kw=N → 해당 키워드 1개만 수집(키워드별 순차 실행용).
   // 한 run에 여러 키워드를 넣으면 1개만 산출되고, 동시에 별도 run을 띄우면 Google이 차단함 →
   // GitHub Actions가 kw=0 → 대기 → kw=1 로 시간차 호출(순차)해 두 키워드 모두 안정 수집.
-  const kwParam = new URL(req.url).searchParams.get("kw");
+  const kwParam = params.get("kw");
   const idx = kwParam !== null ? Number(kwParam) : NaN;
-  const keywords = Number.isInteger(idx) && KEYWORDS[idx] ? [KEYWORDS[idx]] : KEYWORDS;
+  // ⚠️ kw가 범위를 벗어나면(개수 드리프트 등) '전체를 한 run에' 대신 안전 no-op으로 끝낸다.
+  //    (전체 한 run은 Google 차단·1건만 산출 → 위험. 워크플로는 done=true를 보고 루프를 종료한다.)
+  if (kwParam !== null && (!Number.isInteger(idx) || idx < 0 || idx >= KEYWORDS.length)) {
+    return NextResponse.json({ ok: true, done: true, skipped: "out_of_range", keywordCount: KEYWORDS.length });
+  }
+  const keywords = Number.isInteger(idx) && idx >= 0 && idx < KEYWORDS.length ? [KEYWORDS[idx]] : KEYWORDS;
 
   // gprop 미지정 = 웹 검색(유튜브 트렌드와의 유일한 차이). 나머지는 동일.
   const startUrls = keywords.map((kw) => ({

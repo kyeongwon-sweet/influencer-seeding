@@ -20,7 +20,11 @@ jobs:
       - name: 구글 트렌드 키워드 순차 수집 (kw=0..N)
         run: |
           set -u
-          n="${KEYWORD_COUNT}"
+          # 키워드 개수는 소스(lib/google-trend-groups)에서 API로 직접 읽어 하드코딩 드리프트를 없앤다.
+          # (키워드 추가 시 KEYWORD_COUNT 깜빡해도 자동 반영). 조회 실패/비정상이면 KEYWORD_COUNT 폴백.
+          n=$(curl -fsS "$APP_URL/api/google-trends/collect?count=1" -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" | jq -r '.keywordCount // empty')
+          case "$n" in ''|*[!0-9]*) n="${KEYWORD_COUNT}";; esac
+          echo "키워드 개수 n=$n (KEYWORD_COUNT 폴백=${KEYWORD_COUNT})"
           fail=0
           for i in $(seq 0 $((n - 1))); do
             code=$(curl -sS -o /tmp/o -w "%{http_code}" "$APP_URL/api/google-trends/collect?kw=$i" \

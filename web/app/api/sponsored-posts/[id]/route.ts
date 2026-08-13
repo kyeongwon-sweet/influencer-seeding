@@ -25,7 +25,7 @@ export async function PATCH(
   if (typeof updates.asset_name === "string") updates.asset_name = stripAssetFileListing(updates.asset_name);
   // 이름류 텍스트는 공백·별칭 표준화(공백만 다른 중복 방지, CANONICAL_ALIASES 자가교정)
   for (const key of ["account_name", "company_name", "asset_name", "project_name", "product_name"]) {
-    if (typeof updates[key] === "string") updates[key] = canonicalText(updates[key] as string);
+    if (typeof updates[key] === "string") updates[key] = canonicalText(updates[key] as string, key);
   }
   for (const key of allowedNumeric) {
     if (key in body) {
