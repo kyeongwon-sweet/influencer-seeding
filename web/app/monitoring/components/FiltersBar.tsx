@@ -240,7 +240,7 @@ export default function FiltersBar({ filters, setFilters, creatorOptions, planne
                   ...prev,
                   products: active ? prev.products.filter(x => x !== p) : [...prev.products, p],
                 }))}
-                title={p}
+                title={p === "-" ? "비광고성 소재입니다." : p}
                 className={`text-xs px-2.5 py-1 rounded-full border transition ${
                   active ? "border-a-blue bg-blue-50 text-a-blue font-medium" : "border-a-hairline text-a-ink-muted hover:border-gray-400"
                 }`}
