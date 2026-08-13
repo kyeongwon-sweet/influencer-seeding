@@ -15,7 +15,7 @@
 - **기존 데이터 경계:** Claude가 07-25 00시 웹훅 오귀속 14행의 `play_count`를 NULL로 정정하고 `scratchpad/webhook_date_misattr_backup_20260813.json`에 백업한 상태를 보존했다. Codex는 해당 DB 값을 다시 쓰지 않았다.
 - **라이브 시트 I404 복구:** `콘텐츠 대시보드 연동` I404(`nato.zzal`, `DZucpZkyc-F`)의 하드코딩 `1095`를 같은 행 범위를 참조하는 정식 증분 V2 수식으로 교체했다. 저장 직전 URL/기존값을 재확인했고, 저장 후 `B404`·`H404` 무변경, `I404` 수식 존재·표시값 `0`을 재조회했다.
 - **실측 감사:** 수동 Sheet Formula Audit run `31659829415` 성공 — URL 2,195행, H `#REF!` 0, I `#REF!` 0, H 값이 있는데 I 빈칸 8행(허용 임계 20 이하).
-- **검증/배포:** web 테스트 **283/283**, TypeScript, ESLint(error 0·기존 warning 15), production build 통과. 코드 커밋 `225d203`은 `origin/main`에 포함됨. Vercel production `dpl_2sbq7vRjmFj7KrWeze11LRs7HZq9` Ready 및 `https://influencer-seeding-mu.vercel.app` 별칭/HTTP 200 확인.
+- **검증/배포:** web 테스트 **283/283**, TypeScript, ESLint(error 0·기존 warning 15), production build 통과. 코드 커밋 `225d203`은 `origin/main`에 포함되고 Vercel production에 반영됨. 후속 문서 커밋의 자동 재배포까지 Ready였으며 `https://influencer-seeding-mu.vercel.app` HTTP 200 확인.
 
 ## ✅ 2026-08-13 [Codex 완료] 이름 표기 정규화 프로덕션 반영 재확인
 - 쓰기 시점 이름 정규화 커밋 `67cdf81`이 최신 `origin/main`에 포함된 것을 ancestry로 확인했다.
