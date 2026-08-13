@@ -411,10 +411,19 @@ export async function POST(req: NextRequest) {
 
     // 같은 타 게시물과 같은 비-라운드 값이 2일 이상 겹칠 때만 복사로 판정한다.
     // 미러 채널도 URL별 독립 측정이므로 예외를 두지 않고, 배너 reach에도 동일 기준을 적용한다.
+    //
+    // ⚠️ 2026-08-13 실측: 이 판정이 **493행**을 경고해 알림이 사실상 무의미해졌다.
+    //    내용이 `썰박스(틱톡) 06-15=1`, `06-28=14`, `06-30=15`, `06-24=18` 처럼 한 자리·두 자리였다.
+    //    조회수가 그 수준인 게시물끼리 같은 숫자를 갖는 건 우연이 아니라 당연하다.
+    //    기존 필터는 `% 1000`(반올림)만 있고 **최소값 기준이 없었다.**
+    //    scripts/manual_entry_guards.py 에서 같은 문제를 실측 튜닝한 기준(112→10건)을 여기에도 맞춘다.
+    const COPY_MIN_VALUE = 1000;      // 이하는 서로 다른 게시물이 같은 값을 지나가는 게 정상
+    const COPY_ROUNDING_EXCLUDE = 100; // 89,000·267,000 같은 반올림 수기값끼리의 우연 일치 배제
     const matchDates = new Map<string, Set<string>>(); // `${metric}|${pid}|${other}` → set(date)
     for (const r of copyCandidates) {
       const date = r.measured_at.slice(0, 10);
-      if (r.value % 1000 === 0) continue;
+      if (r.value < COPY_MIN_VALUE) continue;
+      if (r.value % COPY_ROUNDING_EXCLUDE === 0) continue;
       const owners = dvOwners.get(`${date}|${r.value}`);
       if (!owners) continue;
       for (const other of owners) {

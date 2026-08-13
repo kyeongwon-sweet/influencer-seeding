@@ -54,3 +54,14 @@ test("stats-import: dailyAuto values stay automatic and cannot overwrite human m
   assert.match(route, /const statsRows = keptRows\.map\(r => \(\{ \.\.\.r, manual: isManualImport \}\)\)/);
   assert.match(route, /preserved_manual: preservedManual\.length/);
 });
+
+test("stats-import: 복사 판정에 최소값·반올림 임계가 있어 작은 값 오탐을 막는다", () => {
+  // 🚨 2026-08-13 실측: 임계가 없어 493행이 경고됐고 내용이 1·14·15·18 같은 한 자리·두 자리였다.
+  //    그 수준의 조회수는 서로 다른 게시물이 같은 값을 갖는 게 정상이라 알림이 무의미해졌다.
+  assert.match(route, /const COPY_MIN_VALUE = 1000;/);
+  assert.match(route, /const COPY_ROUNDING_EXCLUDE = 100;/);
+  assert.match(route, /if \(r\.value < COPY_MIN_VALUE\) continue;/);
+  assert.match(route, /if \(r\.value % COPY_ROUNDING_EXCLUDE === 0\) continue;/);
+  // 옛 기준(반올림만 보고 최소값 없음)으로 되돌아가지 않게 고정
+  assert.doesNotMatch(route, /if \(r\.value % 1000 === 0\) continue;/);
+});
