@@ -6,13 +6,12 @@
 
 # AI Shared Status
 
-## ⏳ 2026-08-14 [Claude 완료·Codex 조치대기] injibot **틱톡 광고 댓글 [숨김]** 라우트 추가
-- **웹**(`e67dde1`, main, `-mu` 배포·401 서빙확인): `injibot-action`이 `[숨김]`을 source로 분기 — `tiktok_ads` → `lib/tiktok-ads-comments.ts` `hideTiktokAdCommentForSlackMessage`(TikTok Business API v1.3 `comment/status/update`, DB `slack_ts→comment_id` 매핑, `keepAdCard`로 숨김 후 카드 유지), 그 외 → 기존 Meta Graph hide.
-- **봇**(`1b09962`, master): `actionDefinitions`가 `tiktok_ads`도 `[숨김]/[무시]`(다음 틱톡 run부터 카드에 노출). test 210.
-- **⚠️ Codex/사용자 조치 필요(그 전엔 클릭 시 '숨김 실패' 그레이스풀)**:
-  1. **Vercel env** `TIKTOK_ADVERTISER_ID`, `TIKTOK_ACCESS_TOKEN` 설정(봇 GitHub 시크릿과 동일 값). 
-  2. **라이브 검증**: `operation`값(코드 기본 `HIDE`)·`ad_type`(`BIDDING`)이 실제 계정에서 맞는지 — 틀리면 코드 수정 없이 env `TIKTOK_HIDE_OPERATION`/`TIKTOK_HIDE_AD_TYPE`로 조정 가능.
-- Meta Graph 숨김 분기와 **혼동 금지**(source로만 분기). comment id는 버튼 value 아닌 **DB 정본** 사용(보안).
+## ✅ 2026-08-14 [Claude 웹라우트+봇버튼 · Codex 라이브검증·배포] injibot **틱톡 광고 댓글 [숨김]** 라이브
+- **웹**(`e67dde1`, main): `injibot-action`이 `[숨김]`을 source로 분기 — `tiktok_ads` → `lib/tiktok-ads-comments.ts` `hideTiktokAdCommentForSlackMessage`(TikTok Business API v1.3 `comment/status/update`, DB `slack_ts→comment_id` 매핑, `keepAdCard`로 숨김 후 카드 유지), 그 외 → 기존 Meta Graph hide.
+- **봇**(`1b09962`, master): `actionDefinitions`가 `tiktok_ads`도 `[숨김]/[무시]`. test 210.
+- **⚠️ operation 정확값 = `HIDDEN`**(HIDE는 실계정 40002 거절). Codex 라이브검증 후 코드 기본값 HIDDEN으로 수정(`929420c`/PR#10), ad_type=`BIDDING`. Vercel env(advertiser·token) 설정+배포 완료. HIDDEN+BIDDING 직접 API 숨김 성공 확인.
+- **남은 것**: 다음 명백한 악플 카드에서 `[숨김]` **버튼 클릭 종단검증 1회**(경계성 댓글은 임의 숨김 안 함).
+- Meta Graph 분기와 **혼동 금지**(source로만). comment id는 버튼 value 아닌 **DB 정본**(보안). 조회장애=fail-closed.
 
 
 ## ✅ 2026-08-14 [Claude 완료] 리포트 발송 전 DB↔시트 동기화 풀 검수 게이트(불일치 시 미발송)
