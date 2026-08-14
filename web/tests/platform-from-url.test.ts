@@ -32,6 +32,18 @@ test("판정 불가면 null — 억지로 채우지 않는다", () => {
   assert.equal(platformFromUrl("오프라인 행사"), null);
 });
 
+test("도메인(호스트)에 news가 들어가면 보도자료 — 단 명시 플랫폼이 우선", () => {
+  // 사용자 규칙(2026-08-14): 도메인에 news 포함 → 보도자료.
+  assert.equal(platformFromUrl("https://news.naver.com/main/read?oid=1"), "보도자료");
+  assert.equal(platformFromUrl("https://www.newsis.com/view/?id=NISX"), "보도자료");
+  assert.equal(platformFromUrl("https://news1.kr/articles/123"), "보도자료");
+  assert.equal(platformFromUrl("news.daum.net/foo"), "보도자료"); // 프로토콜 없어도
+  // 명시 플랫폼/블로그가 먼저다: 호스트에 news가 없으면 규칙 대상 아님.
+  assert.equal(platformFromUrl("https://blog.naver.com/foo/223"), "블로그");
+  assert.equal(platformFromUrl("https://www.youtube.com/watch?v=news"), "유튜브"); // path의 news는 무관
+  assert.equal(platformFromUrl("https://yna.co.kr/view/AKR"), null); // 도메인에 news 없음 → null 유지
+});
+
 test("호스트 접미사를 통째로 비교한다(유사 도메인 오판 방지)", () => {
   // notx.com·myyoutube.com 같은 걸 x/youtube로 오판하면 안 된다.
   assert.equal(platformFromUrl("https://notx.com/a"), null);

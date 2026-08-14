@@ -46,5 +46,9 @@ export function platformFromUrl(url?: string | null): string | null {
   if (/(^|\.)facebook\.com$/.test(host) || /(^|\.)fb\.watch$/.test(host)) return "페이스북";
   if (/(^|\.)blog\.naver\.com$/.test(host) || /(^|\.)naver\.me$/.test(host)
     || /(^|\.)tistory\.com$/.test(host) || /(^|\.)brunch\.co\.kr$/.test(host)) return "블로그";
+  // 도메인(호스트)에 'news'가 들어가면 보도자료로 분류(사용자 규칙 2026-08-14).
+  // 위 소셜/블로그 명시 판정이 먼저이므로, 거기 안 걸린 뉴스 도메인만 보도자료가 된다
+  // (예: news.naver.com·newsis.com·news1.kr → 보도자료 / blog.naver.com은 위에서 이미 블로그).
+  if (host.includes("news")) return "보도자료";
   return null;
 }
