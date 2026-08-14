@@ -6,13 +6,14 @@
 
 # AI Shared Status
 
-## ✅ 2026-08-14 [Codex 완료] 연동 시트 H·I 수식 8칸 복구 + 수식 형태 일일감사 (`f510a42`)
-- **시트 실물 확인 후 최소 복구:** `콘텐츠 대시보드 연동` H568·H620의 하드코딩 숫자를 행별 누적 `MAX(P:DH)` 수식으로, I2·I203·I584·I828·I881·I1092의 `=""` 스텁을 정식 `LET/SEQUENCE` 증분 수식으로 교체했다. URL·채널명·인접 정상 수식을 저장 직전에 대조했고 다른 셀/DB는 건드리지 않았다.
-- **복구 후 전수검사:** URL이 있는 **2,256행**의 H/I 수식 원문을 Google Sheets API로 전부 재조회했다. 행번호를 포함한 정식 수식과 대조한 결과 **H 형태 오류 0 / I 형태 오류 0**이다.
-- **재발방지:** 운영 Formula Audit이 기존 `UNFORMATTED_VALUE` 값 감사와 별도로 `valueRenderOption=FORMULA`로 H/I 원문을 직접 읽는다. 숫자 덮어쓰기, `=""` 스텁, 다른 행 참조를 표시값이 우연히 맞아도 즉시 이상으로 집계한다. xlsx 변환·`__xludf.DUMMYFUNCTION` 파싱은 사용하지 않는다.
-- **배포:** main `f510a42`, Vercel production `dpl_DqDt3qrBRB5rjsRES1rC9Bhny9gw` Ready 및 `-mu` 별칭 연결 확인.
-- **운영 실측:** Formula Audit run `31765216195` HTTP 200·`healthy=true` — totalRows 2,256, orphan 0, H `ok 2,179 / emptyOk 77 / error 0 / emptyButData 0`, I `ok 2,179 / emptyOk 77 / error 0 / mismatch 0 / blankExpected 0`, **formulaShape H 0 / I 0**, anomalies 0, stale 0.
-- **별건 보존:** 오늘 복사/급등 알림 정책과 `썰뜨기(틱톡)` 자동 92→12 하락은 이번 수식 복구와 섞지 않았다. 값·DB 이력은 수정하지 않았으며 별도 수집기 진단 대상이다.
+## ✅ 2026-08-14 [Codex 완료·정정] I 수식 6칸 복구 + H 수기 누적 보존 + 수식 형태 일일감사 (`f510a42`, `df27b76`)
+- **I 결함 복구:** `콘텐츠 대시보드 연동` I2·I203·I584·I828·I881·I1092의 `=""` 스텁을 정식 행별 `LET/SEQUENCE` 증분 수식으로 교체했다. 6칸 모두 행번호 참조와 계산 결과를 재확인했다.
+- **H 오진 정정:** H568 `썰뜨기(틱톡)` 43,201과 H620 `yul.days.one` 410은 날짜열 P:DH가 전부 빈 위성채널·무상시딩(피드)의 의도적 수기 누적값이다. Codex가 처음 수식으로 바꾼 것은 오진이었으며, **원래 숫자 43,201·410으로 복원**했다. DB·날짜별 이력은 건드리지 않았다.
+- **복구 후 전수검사:** URL이 있는 **2,256행**의 H/I 수식 원문을 Google Sheets API로 전부 재조회했다. H는 **정식 수식 2,254 + 허용 수기 2 + 오류 0**, I는 **정식 수식 2,256 + 오류 0**이다.
+- **재발방지:** 운영 Formula Audit이 `valueRenderOption=FORMULA`로 H/I 원문을 직접 읽는다. I의 스텁·다른 행 참조는 무조건 오류다. H는 날짜 이력이 전혀 없는 행의 숫자만 `H수기`로 허용하고, 날짜 이력이 있는데 숫자로 덮인 경우만 수식 파손으로 경고한다. xlsx 변환은 사용하지 않는다.
+- **배포:** main `df27b76`, Vercel production `dpl_GDT5NFLo9uX4omx5RfKC2Gsxkrzp` Ready 및 `-mu` 별칭 연결 확인.
+- **운영 실측:** Formula Audit run `31765829243` HTTP 200·`healthy=true` — totalRows 2,256, orphan 0, H `ok 2,179 / emptyOk 75 / valueOnly 2 / error 0 / emptyButData 0`, I `ok 2,179 / emptyOk 77 / error 0 / mismatch 0 / blankExpected 0`, **formulaShape H오류 0 / H수기 2 / I오류 0**, anomalies 0, stale 0.
+- **별건 보존:** `썰뜨기(틱톡)` 다른 게시물의 자동 08-10 92→08-12 12 하락은 H568과 무관하다. 이번 작업에서 그 값·DB 이력은 수정하지 않았고 별도 수집기 오독 정정 대상이다.
 
 ## ✅ 2026-08-14 [Claude 완료] 리포트 일일 목표를 캠페인 계획 기반 구간별로 (`94a6371`→구간확장)
 - **변경:** `notify_increments.py` headline 목표를 날짜 구간별 `_GOAL_TIERS`(내림차순, target>=시작일 첫 매칭)로 계산. 과거 리포트 재편집 시에도 그 구간 목표 유지. "일 {N}만 목표 {%}% · 달성/미달" 라벨·퍼센트·델타 모두 goal 기반.
