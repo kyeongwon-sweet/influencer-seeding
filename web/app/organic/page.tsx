@@ -1105,11 +1105,13 @@ export default function OrganicPage() {
           박스 세로는 어느 폭에서도 215px 유지(줄 접힘 없음).
           ⚠️ 하한은 350px — 그보다 좁히면 목록 줄이 접혀 세로가 215→233→251px로 **오히려 커진다.**
           남는 폭은 전부 오른쪽에 주고, 오른쪽 높이는 --guide-h(=왼쪽 박스 실제 높이)로 맞춘다. */}
-      {/* 상한 480 → 700 (2026-08-14): '수집 대상'이 문장형으로 바뀌어 480px에선 전 항목이 2줄로 접혔다.
-          라이브 실측 — 왼쪽 최장 항목 414px + 오른쪽 블록 188px + 박스 패딩 42px + 열 간격 24px = 668px 필요.
-          여유를 둬 700px. 더 줄이면 다시 2줄이 된다. */}
+      {/* 상한 480 → 580 (2026-08-14): '수집 대상'이 문장형으로 바뀌어 480px에선 전 항목이 2줄로 접혔다.
+          라이브 실측 — 왼쪽 최장 항목 310px + 오른쪽 블록 188px + 박스 패딩 42px + 열 간격 24px = 565px 필요.
+          ⚠️ 폭을 키울수록 오른쪽 제품칩 열이 좁아져 칩이 세로로 쌓인다 → 필요폭만 주고 나머지는 칩에 넘긴다.
+          실측 한계: 580 = 줄바꿈 0 / 560 = 1줄 접힘 시작. 여유 15px만 두고 580.
+          (앞서 700으로 잡았던 건 측정 오류다 — li만 클론해 ul의 font-size가 상속되지 않아 414px로 부풀려졌다) */}
       <div
-        className="mx-6 mt-2 mb-2 grid gap-3 items-start lg:grid-cols-[minmax(0,700px)_minmax(0,1fr)]"
+        className="mx-6 mt-2 mb-2 grid gap-3 items-start lg:grid-cols-[minmax(0,580px)_minmax(0,1fr)]"
         style={guideHeight ? ({ "--guide-h": `${guideHeight}px` } as CSSProperties) : undefined}
       >
       {/* 오른쪽(필터+칩) 높이에 맞춰 여백을 줄인 상태. 더 줄이려면 py/mb/leading을 한 단계씩 내리면 된다. */}
@@ -1246,11 +1248,14 @@ export default function OrganicPage() {
         {/* 오른쪽 칸 = 제품 칩만(필터 줄은 위에서 전체 폭으로 뺐다).
             높이를 왼쪽 기준 박스와 똑같이 고정하고, 넘치는 칩은 카드 안에서 스크롤한다.
             (--guide-h가 아직 없으면 h가 무효라 자동 높이 → 첫 페인트에도 깨지지 않는다) */}
-        <div className="flex flex-col gap-1.5 lg:h-[var(--guide-h)]">
+        {/* h → min-h (2026-08-14): 높이를 왼쪽 박스에 **고정**해 두면 제품칩이 많을 때
+            좁은 창에서 칩이 스크롤 안에 갇혀 대부분 안 보인다(실측: 폭 1000에서 콘텐츠 924px가 314px에 갇힘).
+            min-h로 바꾸면 두 박스 상단은 그대로 맞고, 칩이 많으면 아래로 늘어나 전부 보인다. */}
+        <div className="flex flex-col gap-1.5 lg:min-h-[var(--guide-h)]">
         {/* 언급 제품 필터 */}
         {(productOptions.length > 0 || unsetProductCount > 0) && (
           <div
-            className="bg-white rounded-[14px] border border-a-hairline px-4 py-2.5 lg:flex-1 lg:min-h-0 lg:overflow-y-auto"
+            className="bg-white rounded-[14px] border border-a-hairline px-4 py-2.5 lg:flex-1 lg:min-h-0"
             onClick={e => {
               // 칩이 아닌 빈 공간(카드 여백·칩 사이 간격·아래 남는 영역)을 누르면 제품 선택을 초기화한다.
               // closest("button")로 판정하므로 칩 안쪽을 눌렀을 때만 통과시킨다(칩 토글과 충돌 없음).
