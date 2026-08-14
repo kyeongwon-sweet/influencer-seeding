@@ -25,7 +25,7 @@ FRESHNESS_HOURS: dict[str, float] = {
     "cron-daily-collect.yml": 26,        # 매일 00:41 KST(+백업 2회)
     "injibot-daily-report.yml": 26,      # 매일 06:38 KST
     "formula-audit.yml": 26,             # 매일 09:10 KST(2026-08-06 앞당김). 26h 임계라 시각 변경 영향 없음
-    "monitoring-validate.yml": 26,       # 매일 01:00 KST
+    "monitoring-validate.yml": 26,       # 매일 05:00 KST(+07:00 백업)
     "cron-kpi.yml": 26,                  # 매일 10:05 KST
     "banner-reach-sync.yml": 3,          # 매시간 17분
 }

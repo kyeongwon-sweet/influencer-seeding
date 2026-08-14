@@ -6,6 +6,13 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-14 [Codex 완료] `monitoring-validate` 수집 경합 오탐 제거
+- **실측 원인:** 08-14 01:47:09 KST 검증이 08-13 데이터를 0건으로 읽고 실패했지만, 실제 최초 적재는 9초 뒤인 01:47:18부터 시작돼 최종 980건이 정상 저장됐다. 데이터 손실이 아니라 수집·검증 동시 실행 레이스였다.
+- **시각 이동:** 1차 검증을 01:00→05:00 KST(`0 20 * * *` UTC), 백업을 03:30→07:00 KST(`0 22 * * *` UTC)로 옮겼다. 평소 수집 완료 시각보다 약 3시간·5시간 뒤다.
+- **감지 강도 유지:** `어제 post_daily_stats=0`이면 `exit(1)`로 실패하고 GitHub issue를 만드는 기존 로직은 그대로다. `continue-on-error`도 쓰지 않았다.
+- **회귀 방지:** `scripts/test_monitoring_validate_workflow.py`가 새 스케줄, 옛 경합 스케줄 제거, 0건 실패·알림 계약을 검사하며 Workflow Lint에서 자동 실행된다.
+- **데이터 경계:** DB·시트·기존 수집 데이터는 수정하지 않았다. 03:30 백업이 이미 04:33 성공해 오늘 데이터 상태는 정상이다.
+
 ## ✅ 2026-08-13 [Codex 완료] 코드리뷰 F1·F2·F3 프로덕션 반영·실측 (`2bd57ba`, `f34cf7b`)
 - **배포:** Claude 수정 `5b2ed85`·`2bd57ba`와 비용 없는 검증 모드 `f34cf7b`를 clean detached worktree에서 배포했다. Vercel production `dpl_9i8YqtUt4nUyW6Co3QuN6SMEPddU` Ready, `-mu` 별칭 및 `/monitoring` HTTP 200 확인.
 - **F1 실측:** Google Search Trends workflow run `31662655093`을 `count_only=true`로 수동 실행했다. 프로덕션 `?count=1` 응답으로 `키워드 개수 n=11`을 확인하고 `count_only=true — Apify 수집 없이 검증 완료`로 5초 만에 성공 종료했다. actor/키워드 수집은 시작하지 않았다.

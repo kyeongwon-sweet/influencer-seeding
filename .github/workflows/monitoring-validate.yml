@@ -2,10 +2,12 @@ name: Monitoring Validation
 
 on:
   schedule:
-    - cron: "0 16 * * *"  # 매일 UTC 16:00 = KST 01:00 (오전 1시)
+    # 자정 수집이 GitHub 지연 시 01:47 KST까지 밀린 실측이 있어 01:00 검증과 레이스가 났다.
+    # 수집 완료 뒤 충분한 여유를 두고 검증하되, 어제 데이터 0건이면 실패하는 본문은 유지한다.
+    - cron: "0 20 * * *"  # 매일 UTC 20:00 = KST 05:00 (1차)
     # GitHub-hosted runner가 job을 잡기 전에 취소되면 steps=0으로 24시간 검증 공백이 생긴다.
     # 동일한 read-only 검증을 2차로 한 번 더 실행해 인프라 취소를 자가치유한다(2026-08-07 사고).
-    - cron: "30 18 * * *" # 매일 UTC 18:30 = KST 03:30 (백업)
+    - cron: "0 22 * * *"  # 매일 UTC 22:00 = KST 07:00 (백업)
   workflow_dispatch:
 
 # 데이터 누락 시 이슈 자동 생성에 필요 (없으면 "Resource not accessible by integration")
