@@ -100,3 +100,40 @@ def test_helper_is_metric_agnostic_so_caller_must_exclude_reach():
     owners = {("2026-08-09", 75_888): {"banner_a", "banner_b"}}
     # 헬퍼 자체는 지표를 구분하지 못한다 → 그대로 넣으면 잡힌다(그래서 호출부가 걸러야 한다)
     assert len(copy_suspects(reach_rows, owners)) == 1
+
+
+# ── 이후 자동 수집 확인(confirmed) 필터 — 2026-08-14 추가 ──────────────────
+# 이틀 연속 알림 22건이 전부 오탐이라(복사 18·급등 4) 판정 조건을 코드에 넣었다.
+# 기준: 의심값 뒤에 자동 수집이 이어지면 그 값은 실제였다는 뜻이다.
+
+def test_copy_hit_is_dropped_when_automatic_collection_follows():
+    """실측 오탐: ufo__night 07-31=4,504 뒤 08-01부터 84,355→89,012 자동 수집이 이어졌다."""
+    rows = [("2026-07-31", 4_504, True), ("2026-08-01", 84_355, False), ("2026-08-02", 85_652, False)]
+    owners = {("2026-07-31", 4_504): {"ufo_night", "humorbox_yt"}}
+    assert copy_suspects(rows, owners) == []
+    # 필터를 끄면 그대로 잡힌다(조건이 실제로 작동하는지 확인)
+    assert len(copy_suspects(rows, owners, skip_if_confirmed=False)) == 1
+
+
+def test_real_incident_still_caught_because_nothing_follows():
+    """🚨 s_3.mag: 199,379 뒤가 전부 NULL이라 이 필터에 걸리지 않는다 — 계속 잡혀야 한다."""
+    assert len(copy_suspects(S3MAG, OWNERS)) == 1
+
+
+def test_copy_hit_survives_when_only_manual_rows_follow():
+    """뒤따르는 게 수기뿐이면 확인된 게 아니다 — 오기가 연속 입력됐을 수 있다."""
+    rows = [("2026-07-29", 199_379, True), ("2026-07-30", 207_001, True)]
+    owners = {("2026-07-29", 199_379): {"a", "b"}}
+    assert len(copy_suspects(rows, owners)) == 1
+
+
+def test_spike_is_dropped_when_automatic_confirms_the_level():
+    """실측 오탐: some2lve 1,020→47,463 뒤 자동 52,689가 그 수준을 물려받았다."""
+    rows = [("2026-07-30", 1_020, True), ("2026-07-31", 47_463, True), ("2026-08-02", 52_689, False)]
+    assert spike_suspects(rows) == []
+
+
+def test_spike_survives_when_later_automatic_is_far_lower():
+    """이후 자동값이 훨씬 낮으면 확인된 게 아니다 — 수기값이 과대일 수 있다."""
+    rows = [("2026-07-30", 1_020, True), ("2026-07-31", 47_463, True), ("2026-08-02", 1_100, False)]
+    assert len(spike_suspects(rows)) == 1

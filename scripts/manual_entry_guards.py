@@ -44,8 +44,21 @@ MIN_SPIKE_VALUE = 10_000
 MIN_SPIKE_PREV = 1000
 
 
+def _has_later_automatic(rows, date: str, *, min_value: float = 0) -> bool:
+    """의심값 **이후에 자동 수집이 이어졌는가**.
+
+    이어졌다면 그 값은 실제였다는 뜻이다 — 자동 수집이 그 궤적을 물려받았다.
+    오기라면 이어질 곳이 없다(실제 사고 s_3.mag은 199,379 뒤가 전부 NULL이었다).
+    """
+    for d, v, manual in rows:
+        if d > date and not manual and v is not None and v >= min_value:
+            return True
+    return False
+
+
 def copy_suspects(rows, value_owners, *, min_value: int = MIN_COPY_VALUE,
-                  rounding_exclude: int = COPY_ROUNDING_EXCLUDE):
+                  rounding_exclude: int = COPY_ROUNDING_EXCLUDE,
+                  skip_if_confirmed: bool = True):
     """수기 입력값이 같은 (날짜,값)으로 다른 게시물에도 있으면 복사 의심.
 
     rows: [(date, value, manual)] — 한 게시물의 이력
@@ -60,12 +73,14 @@ def copy_suspects(rows, value_owners, *, min_value: int = MIN_COPY_VALUE,
             continue                      # 반올림 입력끼리의 우연 일치 배제
         owners = value_owners.get((date, value)) or ()
         if len(owners) > 1:
+            if skip_if_confirmed and _has_later_automatic(rows, date):
+                continue          # 이후 자동 수집이 궤적을 이어받음 = 실제 값
             out.append((date, value, sorted(owners)))
     return out
 
 
 def spike_suspects(rows, *, min_multiple: float = MIN_SPIKE_MULTIPLE, min_value: int = MIN_SPIKE_VALUE,
-                   min_prev: int = MIN_SPIKE_PREV):
+                   min_prev: int = MIN_SPIKE_PREV, skip_if_confirmed: bool = True):
     """수기 입력이 직전 실측 대비 과도한 배수로 뛰면 확인 요청.
 
     직전 '유효 실측'과 비교한다(빈 값은 건너뜀 — 공백을 0으로 읽지 않는다).
@@ -78,7 +93,10 @@ def spike_suspects(rows, *, min_multiple: float = MIN_SPIKE_MULTIPLE, min_value:
             continue                      # 미측정은 비교 기준이 아니다(공백≠0)
         if manual and prev is not None and prev >= min_prev and value >= min_value:
             mult = value / prev
-            if mult >= min_multiple:
+            # 이후 자동 수집이 그 값 수준(90% 이상)을 물려받았으면 실제 급등이다.
+            # 실측 오탐: some2lve 1,020→47,463 뒤 자동 52,689 / hana.humor 3,033→73,798 뒤 자동 75,942.
+            confirmed = skip_if_confirmed and _has_later_automatic(rows, date, min_value=value * 0.9)
+            if mult >= min_multiple and not confirmed:
                 out.append((date, value, prev, mult))
         prev = value
     return out
