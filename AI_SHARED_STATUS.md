@@ -13,7 +13,8 @@
 - **재발방지:** 운영 Formula Audit이 `valueRenderOption=FORMULA`로 H/I 원문을 직접 읽는다. I의 스텁·다른 행 참조는 무조건 오류다. H는 날짜 이력이 전혀 없는 행의 숫자만 `H수기`로 허용하고, 날짜 이력이 있는데 숫자로 덮인 경우만 수식 파손으로 경고한다. xlsx 변환은 사용하지 않는다.
 - **배포:** main `df27b76`, Vercel production `dpl_GDT5NFLo9uX4omx5RfKC2Gsxkrzp` Ready 및 `-mu` 별칭 연결 확인.
 - **운영 실측:** Formula Audit run `31765829243` HTTP 200·`healthy=true` — totalRows 2,256, orphan 0, H `ok 2,179 / emptyOk 75 / valueOnly 2 / error 0 / emptyButData 0`, I `ok 2,179 / emptyOk 77 / error 0 / mismatch 0 / blankExpected 0`, **formulaShape H오류 0 / H수기 2 / I오류 0**, anomalies 0, stale 0.
-- **별건 보존:** `썰뜨기(틱톡)` 다른 게시물의 자동 08-10 92→08-12 12 하락은 H568과 무관하다. 이번 작업에서 그 값·DB 이력은 수정하지 않았고 별도 수집기 오독 정정 대상이다.
+- **별건(✅ 2026-08-14 Claude 정정 완료):** `썰뜨기(틱톡)` `/video/7672350577258433800/`의 자동 `08-10 92 → 08-12 12` 하락은 H568과 **무관한 다른 게시물**이다. 수식 작업에서는 건드리지 않았고, **Claude가 별도로 `08-10 play_count`를 NULL 처리**했다(역행 0건, 백업 `scratchpad/ssultteugi_0810_backup_20260814.json`).
+  판정 근거 3가지: ① 같은 날 `썰박스(틱톡) /video/7672350216`도 정확히 **92** — 복사 지문 ② 그 행만 `likes`·`comments`가 비어 있음(나머지 3행은 `likes=0 cmt=2`로 일관) ③ 게시일이 08-10인데 당일 92 후 이틀 뒤 12는 누적상 불가능. → 08-12 `12`·08-13 `14`가 실제 궤적이고 `92`가 오독. **재작업 불필요.**
 
 ## ✅ 2026-08-14 [Claude 완료] 리포트 일일 목표를 캠페인 계획 기반 구간별로 (`94a6371`→구간확장)
 - **변경:** `notify_increments.py` headline 목표를 날짜 구간별 `_GOAL_TIERS`(내림차순, target>=시작일 첫 매칭)로 계산. 과거 리포트 재편집 시에도 그 구간 목표 유지. "일 {N}만 목표 {%}% · 달성/미달" 라벨·퍼센트·델타 모두 goal 기반.
