@@ -1190,14 +1190,20 @@ export default function OrganicPage() {
             오른쪽 블록은 오른쪽 끝에 정렬된다(실측: 시작 x 145 → 271px, 오른쪽 여백은 박스 패딩만).
             ⚠️ 간격(gap)을 키우는 방식은 못 쓴다 — 오른쪽 열이 minmax(0,1fr)이면 간격을 늘려도
                블록 내부 텍스트는 좌측에 붙어 있어 "붙었다"는 느낌이 안 나고, 열만 좁아진다. */}
-        <div className="grid grid-cols-[max-content_max-content] justify-between gap-4">
+        {/* ⚠️ 2026-08-14: 왼쪽 항목이 문장형으로 길어져 `max-content`(줄바꿈 없음)로 두면
+            박스를 가로로 밀어낸다. 왼쪽만 minmax(0,1fr)로 바꿔 남는 폭 안에서 접히게 하고,
+            오른쪽은 max-content 유지 → 위 주석의 '오른쪽 끝에 붙인다' 요건은 그대로 지켜진다. */}
+        <div className="grid grid-cols-[minmax(0,1fr)_max-content] justify-between gap-6">
           <div>
             <p className="text-[12px] font-semibold text-a-ink mb-1.5">✓ 수집 대상:</p>
+            {/* 2026-08-14 사용자 요청으로 교체 — 기존 '아이돌/연예인·50만+ 인플루언서·50만+ 뷰·시딩 건'(대상 속성)에서
+                '무엇을 얻으려 보는가'(수집 목적) 기준으로 바꿨다. 항목이 길어 왼쪽 열 폭이 늘어난다. */}
             <ul className="text-[12px] text-a-ink-muted space-y-0.5 list-none leading-normal">
-              <li>• 아이돌/연예인</li>
-              <li>• 50만+ 인플루언서</li>
-              <li>• 50만+ 뷰</li>
-              <li>• 시딩 건</li>
+              <li>• 내부에서 시도하는 마케팅 메세지가 고객 반응 이끌어내고 있는지</li>
+              <li>• 새로운 마케팅 키워드/메세지로 유효한 고객 의견 있는지</li>
+              <li>• 내부에서 알아야할 것 같은 긍부정 보이스</li>
+              <li>• 소재, 실체로 확보 가능한 유의미한 노출건</li>
+              <li>• 유의미한 50만+ 이상 조회, 참여수</li>
             </ul>
           </div>
           <div>
