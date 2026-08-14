@@ -573,28 +573,29 @@ def main():
     # 아래 DB 채널들의 CPV는 누적 기준(누적비용÷누적조회수) — 인지광고(일일)와 구분해 별도 표기.
     lines.append("`CPV는 누적 기준`")
     lines.append("")
-    # 채널분류별 BEST 소재(그 채널 오늘 최고 증분 게시물) — 각 줄 끝에 하이퍼링크로 첨부.
+    # 채널분류별 BEST 소재(그 채널 오늘 최고 증분 게시물) — 채널명 자체를 그 게시물로 하이퍼링크.
     #   items는 inc 내림차순이라 채널별 첫 등장 = 최고 증분. url 있고 inc>0인 것만. (인지광고 줄은 시트값이라 제외)
+    #   ⚠️ Slack <url|text>의 text 안에선 _기울임_이 렌더 안 됨 → 링크 있을 땐 괄호 기울임(_ital_paren) 생략.
     best_by_channel = {}
     for _it in items:
         if _it["inc"] <= 0 or not _it.get("url"):
             continue
         best_by_channel.setdefault(_norm_ch(_it["channel_type"]), _it)
 
-    def _best_suffix(ct):
+    def _ch_label(ct):
         b = best_by_channel.get(ct)
-        return f"  · BEST <{b['url']}|{_esc(b['name'])}> +{f(b['inc'])}" if b else ""
+        return f"<{b['url']}|{_esc(ct)}>" if b else _ital_paren(ct)
 
     for ct, s in sorted(by_channel.items(), key=lambda x: x[1], reverse=True):
         if "배너" in ct and "위성채널" not in ct:  # 위성채널(배너/영상)은 배너 특수라인 아닌 일반 합산 라인
             # 배너값은 '증분'만 쓴다(사용자 지시 — 누적 아님). 배너는 매일이 아니라 며칠 간격 수집이라
             #   그날 수집이 없으면 증분 0 → '당일 미수집'으로 표기(값이 0이 아니라 수집이 없던 날).
             if s > 0:
-                lines.append(f"• {_ital_paren(ct)} *+{f(s)}* (도달수)  {_cpv(cost_by_ch.get(ct, 0), cumviews_by_ch.get(ct, 0), ct)}{_best_suffix(ct)}")
+                lines.append(f"• {_ch_label(ct)} *+{f(s)}* (도달수)  {_cpv(cost_by_ch.get(ct, 0), cumviews_by_ch.get(ct, 0), ct)}")
             else:
                 lines.append(f"• {_ital_paren(ct)}  (당일 배너 미수집)")
         else:
-            lines.append(f"• {_ital_paren(ct)} *+{f(s)}*  {_cpv(cost_by_ch.get(ct, 0), cumviews_by_ch.get(ct, 0), ct)}{_best_suffix(ct)}")
+            lines.append(f"• {_ch_label(ct)} *+{f(s)}*  {_cpv(cost_by_ch.get(ct, 0), cumviews_by_ch.get(ct, 0), ct)}")
     # ⚠️ 미분류 경고 — 시트엔 분류돼 있어도 DB channel_type이 아직 동기화 안 되면 여기로 몰림.
     #    조용히 '미분류'로 넘어가지 않게 표면화(시트→DB 분류 동기화 지연 감지용).
     unclassified_cnt = sum(1 for it in items if _norm_ch(it["channel_type"]) == "미분류")
