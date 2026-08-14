@@ -1204,7 +1204,20 @@ export default function OrganicPage() {
             오른쪽은 max-content 유지 → 위 주석의 '오른쪽 끝에 붙인다' 요건은 그대로 지켜진다. */}
         <div className="grid grid-cols-[minmax(0,1fr)_max-content] justify-between gap-6">
           <div>
-            <p className="text-[12px] font-semibold text-a-ink mb-1.5">✓ 수집 대상:</p>
+            {/* 토글을 제목 줄 옆에 붙인다(2026-08-14 사용자 요청) — 목록 아래 따로 두면
+                박스 세로가 한 줄 늘고, 접힌 상태에선 뭘 여는 버튼인지 연결이 약하다. */}
+            <div className="mb-1.5 flex items-baseline gap-2">
+              <p className="text-[12px] font-semibold text-a-ink">✓ 수집 대상:</p>
+              <button
+                type="button"
+                onClick={() => setShowTargetAttrs(v => !v)}
+                aria-expanded={showTargetAttrs}
+                className="flex items-baseline gap-0.5 text-[11px] text-a-ink-muted hover:text-a-ink transition whitespace-nowrap"
+              >
+                <span className={`inline-block transition-transform ${showTargetAttrs ? "rotate-90" : ""}`}>▸</span>
+                대상 속성 기준
+              </button>
+            </div>
             {/* 2026-08-14 사용자 요청으로 교체 — 기존 '아이돌/연예인·50만+ 인플루언서·50만+ 뷰·시딩 건'(대상 속성)에서
                 '무엇을 얻으려 보는가'(수집 목적) 기준으로 바꿨다. 항목이 길어 왼쪽 열 폭이 늘어난다. */}
             <ul className="text-[12px] text-a-ink-muted space-y-0.5 list-none leading-normal">
@@ -1214,16 +1227,7 @@ export default function OrganicPage() {
               <li>• 소재, 실체로 확보 가능한 유의미한 노출건</li>
               <li>• 유의미한 50만+ 이상 조회, 참여수</li>
             </ul>
-            {/* 옛 속성 기준(누구를 보는가) — 목적 기준과 성격이 달라 접이식으로 분리. */}
-            <button
-              type="button"
-              onClick={() => setShowTargetAttrs(v => !v)}
-              aria-expanded={showTargetAttrs}
-              className="mt-1.5 flex items-center gap-1 text-[11px] text-a-ink-muted hover:text-a-ink transition"
-            >
-              <span className={`inline-block transition-transform ${showTargetAttrs ? "rotate-90" : ""}`}>▸</span>
-              대상 속성 기준
-            </button>
+            {/* 옛 속성 기준(누구를 보는가) — 목적 기준과 성격이 달라 접이식으로 분리. 토글 버튼은 제목 줄에 있다. */}
             {showTargetAttrs && (
               <ul className="mt-1 ml-3 text-[12px] text-a-ink-muted space-y-0.5 list-none leading-normal">
                 <li>• 아이돌/연예인</li>
