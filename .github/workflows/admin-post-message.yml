@@ -1,0 +1,37 @@
+name: Admin — Post Slack message
+
+# 여믄봇 명의로 임의 메시지를 채널/스레드에 발송. 수동 전용(공지·공유용).
+# ⚠️ 봇이 대상 채널 멤버여야 함(아니면 not_in_channel). 입력은 env로 받아 셸 인젝션 방지.
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "채널 ID (예: C0B4F7GBX17)"
+        required: true
+      text:
+        description: "메시지 본문(여러 줄 가능)"
+        required: true
+      thread_ts:
+        description: "(선택) 스레드 답글로 달 부모 ts"
+        required: false
+        default: ""
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: chat.postMessage
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          CHANNEL: ${{ github.event.inputs.channel }}
+          TEXT: ${{ github.event.inputs.text }}
+          THREAD_TS: ${{ github.event.inputs.thread_ts }}
+        run: |
+          args=(--data-urlencode "channel=$CHANNEL" --data-urlencode "text=$TEXT")
+          if [ -n "$THREAD_TS" ]; then args+=(--data-urlencode "thread_ts=$THREAD_TS"); fi
+          resp=$(curl -s -X POST https://slack.com/api/chat.postMessage \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            -H "Content-type: application/x-www-form-urlencoded" \
+            "${args[@]}")
+          echo "$resp"
+          echo "$resp" | grep -q '"ok":true' || { echo "발송 실패"; exit 1; }
