@@ -275,6 +275,7 @@ async function handler(req: NextRequest) {
       incMismatch: result.inc.mismatch,
       incBlankExpected: result.inc.blankExpected,
       hFormulaInvalid: result.formulaShape.hInvalid,
+      hFormulaManual: result.formulaShape.hManual,
       incFormulaInvalid: result.formulaShape.incInvalid,
       stale: result.stale,
       orphanRows: result.orphanRows,

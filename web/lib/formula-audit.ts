@@ -42,7 +42,7 @@ export type SheetAuditRow = {
   h: number | string | null;
   inc: number | string | null;
   // FORMULA 렌더로 읽은 원문. undefined면 형태 감사 미실행(순수로직 단위테스트/폴백 호환).
-  // null·숫자·`=""`는 값이 우연히 맞더라도 잘못된 수식 형태로 판정한다.
+  // null·`=""`는 잘못된 형태다. H 숫자는 날짜 이력이 없는 행의 수기 보존만 허용한다.
   hFormula?: string | number | boolean | null;
   incFormula?: string | number | boolean | null;
   dates: Array<{ date: string; value: number }>; // 양수 날짜값(오름차순)
@@ -54,7 +54,7 @@ export type AuditResult = {
   orphanNotes: string[];
   h: { ok: number; manualKept: number; emptyOk: number; valueOnly: number; errorCells: number; emptyButData: number };
   inc: { ok: number; emptyOk: number; errorCells: number; mismatch: number; blankExpected: number };
-  formulaShape: { hInvalid: number; incInvalid: number };
+  formulaShape: { hInvalid: number; hManual: number; incInvalid: number };
   anomalies: string[];     // 사람이 읽을 요약 라인 (상한 있음)
   /**
    * 값 정체 — 수식은 멀쩡한데 **새 값이 안 들어오는** 행.
@@ -163,7 +163,7 @@ export function auditRows(
     orphanNotes: orphanNotes.slice(0, ANOMALY_CAP),
     h: { ok: 0, manualKept: 0, emptyOk: 0, valueOnly: 0, errorCells: 0, emptyButData: 0 },
     inc: { ok: 0, emptyOk: 0, errorCells: 0, mismatch: 0, blankExpected: 0 },
-    formulaShape: { hInvalid: 0, incInvalid: 0 },
+    formulaShape: { hInvalid: 0, hManual: 0, incInvalid: 0 },
     anomalies: [],
     stale: 0,
     staleNotes: [],
@@ -177,11 +177,17 @@ export function auditRows(
     const positives = row.dates.map((d) => d.value);
     const rowMax = positives.length ? Math.max(...positives) : null;
 
-    // 값이 맞는지와 수식이 살아 있는지는 별개다. 숫자 덮어쓰기와 `=""` 스텁은
-    // 현재 표시값이 우연히 맞아도 다음 날짜 값부터 갱신이 멈추므로 즉시 경고한다.
+    // 값이 맞는지와 수식이 살아 있는지는 별개다. 날짜 이력이 있는 H 숫자 덮어쓰기와
+    // I의 `=""` 스텁은 다음 날짜 값부터 갱신이 멈추므로 즉시 경고한다.
     if (row.sourceRow && row.hFormula !== undefined && !sameFormula(row.hFormula, expectedCumulativeFormula(row.sourceRow))) {
-      res.formulaShape.hInvalid += 1;
-      note(`H수식형태 오류 ${row.label} (${row.key} · 행 ${row.sourceRow})`);
+      // 위성·피드처럼 날짜 이력이 원래 없는 행은 사람이 아는 누적값을 H에 직접 보존할 수 있다.
+      // 날짜값이 있는 행의 숫자 덮어쓰기만 수식 파손으로 본다.
+      if (typeof row.hFormula === "number" && row.dates.length === 0) {
+        res.formulaShape.hManual += 1;
+      } else {
+        res.formulaShape.hInvalid += 1;
+        note(`H수식형태 오류 ${row.label} (${row.key} · 행 ${row.sourceRow})`);
+      }
     }
     if (row.sourceRow && row.incFormula !== undefined && !sameFormula(row.incFormula, expectedIncrementFormula(row.sourceRow))) {
       res.formulaShape.incInvalid += 1;
@@ -279,8 +285,8 @@ export function formatAuditMessage(r: AuditResult): { text: string; healthy: boo
   // ⚠️ '이상 없음'은 **수식 정합**에 한한 말이다. 값이 안 들어오는 건 별도로 반드시 붙인다
   //    (그렇지 않으면 74건이 멈춰 있어도 "이상 없음"으로 읽힌다 — 2026-08-03 실제 사고).
   const head = problems === 0
-    ? `✅ [수식 전수감사] 수식 이상 없음 — 행 ${r.totalRows} · 수식형태 H ${r.formulaShape.hInvalid}/I ${r.formulaShape.incInvalid} · 누적 정합 ${r.h.ok}(수동보존 ${r.h.manualKept}·보존값 ${r.h.valueOnly}·빈칸정상 ${r.h.emptyOk}) · 증분 정합 ${r.inc.ok}(빈칸정상 ${r.inc.emptyOk})`
-    : `🔴 [수식 전수감사] 이상 ${problems}건 — 고아행 ${r.orphanRows} / 수식형태 H ${r.formulaShape.hInvalid}·I ${r.formulaShape.incInvalid} / H 오류셀 ${r.h.errorCells}·데이터有빈칸 ${r.h.emptyButData} / I 오류셀 ${r.inc.errorCells}·불일치 ${r.inc.mismatch}·증분빈칸(값있어야함) ${r.inc.blankExpected} (행 ${r.totalRows}, 정합 H ${r.h.ok}·I ${r.inc.ok})`;
+    ? `✅ [수식 전수감사] 수식 이상 없음 — 행 ${r.totalRows} · 수식형태 H오류 ${r.formulaShape.hInvalid}·H수기 ${r.formulaShape.hManual}/I오류 ${r.formulaShape.incInvalid} · 누적 정합 ${r.h.ok}(수동보존 ${r.h.manualKept}·보존값 ${r.h.valueOnly}·빈칸정상 ${r.h.emptyOk}) · 증분 정합 ${r.inc.ok}(빈칸정상 ${r.inc.emptyOk})`
+    : `🔴 [수식 전수감사] 이상 ${problems}건 — 고아행 ${r.orphanRows} / 수식형태 H오류 ${r.formulaShape.hInvalid}·H수기 ${r.formulaShape.hManual}·I오류 ${r.formulaShape.incInvalid} / H 오류셀 ${r.h.errorCells}·데이터有빈칸 ${r.h.emptyButData} / I 오류셀 ${r.inc.errorCells}·불일치 ${r.inc.mismatch}·증분빈칸(값있어야함) ${r.inc.blankExpected} (행 ${r.totalRows}, 정합 H ${r.h.ok}·I ${r.inc.ok})`;
   const detail = [...r.orphanNotes, ...r.anomalies].slice(0, ANOMALY_CAP);
   const body = problems === 0 ? "" : "\n" + detail.map((a) => "• " + a).join("\n");
   return { text: head + body + staleTail, healthy: problems === 0 && r.stale === 0 };

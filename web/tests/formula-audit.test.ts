@@ -160,10 +160,27 @@ test("수식 형태 감사: 정상 수식은 통과하고 숫자 덮어쓰기·�
 
   const r = auditRows([valid, broken], posts, TODAY);
   assert.equal(r.formulaShape.hInvalid, 1);
+  assert.equal(r.formulaShape.hManual, 0);
   assert.equal(r.formulaShape.incInvalid, 1);
   assert.equal(formatAuditMessage(r).healthy, false);
   assert.match(r.anomalies.join("\n"), /H수식형태 오류/);
   assert.match(r.anomalies.join("\n"), /I수식형태 오류/);
+});
+
+test("수식 형태 감사: 날짜 이력 없는 H의 수기 누적값은 보존·별도 집계", () => {
+  const r = auditRows([row({
+    key: "tt:satellite",
+    sourceRow: 568,
+    h: 43201,
+    hFormula: 43201,
+    incFormula: expectedIncrementFormula(568),
+    dates: [],
+  })], new Map(), TODAY);
+  assert.equal(r.formulaShape.hInvalid, 0);
+  assert.equal(r.formulaShape.hManual, 1);
+  assert.equal(r.formulaShape.incInvalid, 0);
+  assert.equal(r.h.valueOnly, 1);
+  assert.equal(formatAuditMessage(r).healthy, true);
 });
 
 test("수식 형태 감사: 다른 행을 참조하는 복사 오류도 검출", () => {
