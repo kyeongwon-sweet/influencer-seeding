@@ -6,6 +6,12 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-14 [Claude 완료] 리포트 발송 전 DB↔시트 동기화 풀 검수 게이트(불일치 시 미발송)
+- **동작:** `scripts/presend_sync_audit.py`가 발송 직전 4종 검수. BLOCK 있으면 리포트 대신 사유 알림만 보내고 워크플로 실패 종료(SystemExit 1) → 백업 크론(13/14/15:20 KST) 재검수. **수동편집(update_ts)·삭제·DRY_RUN은 게이트 제외**(DRY_RUN은 결과만 출력). DEDUP 조기반환이 게이트보다 앞이라 이미 발송된 날짜엔 안 걸림.
+- **검수 4종(모두 BLOCK, 단 오차단 방지 규칙 내장):** ①수집완료(target일 측정 0/최근중위<50%) ②DB↔시트 정합 ③채널분류 미반영 ④인지광고 열매핑(awareness warn=₩/열밀림).
+- **⚠️ 오차단 방지(실측 반영):** ②는 누적조회수 특성상 **DB≥시트=export 지연(리포트 최신)→통과, 시트>DB(DB 미반영)만 차단** + 허용치(절대1,000·상대3%). ③은 미분류 총증분<5만 통과. 허용치 상수=`MIN_ABS_DIFF/MIN_PCT_DIFF/MIN_UNCLASS_INC`(모듈 상단 1곳). DB=대시보드는 동일소스라 별도 대상 아님.
+- **재사용:** reconcile_sheet_stat_mismatches 헬퍼(link_key/parse_date/parse_number/metric_column)+linked_sheet_reader(APP_URL+CRON_SECRET로 `/api/ops/linked-sheet-values`). 새 시크릿 불필요.
+- **검증:** 순수판정부 테스트 `test_presend_sync_audit.py`(pytest 수집), 8/13 dry_run BLOCK 없음(export 지연 오차단 제거 확인). 커밋 게이트+모듈+허용치보정.
 ## ✅ 2026-08-14 [Claude 완료] 리포트 채널분류별 — 채널명 자체를 BEST 소재로 하이퍼링크
 - **최종 형식(사용자 지시):** 채널명 자체를 그날 최고 증분 게시물로 링크. 별도 `· BEST … +증분` 표기 없음. `_ch_label(ct)`=`<url|ct>`(best 있으면) / `_ital_paren(ct)`(없으면).
 - **구현:** `best_by_channel`=items(inc 내림차순) 채널별 첫 등장(url 有·inc>0). ⚠️ Slack `<url|text>` 안에선 `_기울임_` 미렌더 → 링크 있을 땐 괄호 기울임 생략(링크 색으로 구분).
