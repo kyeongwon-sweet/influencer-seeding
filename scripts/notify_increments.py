@@ -527,10 +527,14 @@ def main():
         return f"CPV {cost / views:,.1f}원"
 
     DIV = "──────────────────────────────"
+    # 일일 목표(조회수). 이번주(2026-08-11~) 280만, 그 이전 주는 300만.
+    # ⚠️ 목표가 바뀌면 여기 임계일+값 추가(과거 리포트 재편집 시 각 주 목표 유지).
+    goal = 2_800_000 if target >= "2026-08-11" else 3_000_000
+    goal_man = goal // 10000  # 만 단위 표기
     lines = [
         f"📈 *쫀득바 조회수 일일 증분* `({target})`",
         f"오늘 총 증분 *+{f(total)}*",
-        f"🎯 *일 300만 목표* {total / 30000:.0f}% · {('달성 +' + f(total - 3000000)) if total >= 3000000 else ('미달 ' + f(total - 3000000))}",
+        f"🎯 *일 {goal_man}만 목표* {total / (goal / 100):.0f}% · {('달성 +' + f(total - goal)) if total >= goal else ('미달 ' + f(total - goal))}",
         "", DIV, "",
         "◾ *채널분류별*",
         "",
@@ -591,7 +595,7 @@ def main():
         pdate = it["posted_at"] or "업로드일 미상"
         lines.append(f"{rank}. {label} _({it['platform']})_ *+{f(it['inc'])}*  {_cpv(it['cost'], it['cum'], it['channel_type'])}  `{pdate}`")
 
-    # ⚠️ 채널 이상 감지 (맨 아래) — 300만 미달/초과 원인 진단. 채널 오늘값 → 아래에 비교 상세 별줄.
+    # ⚠️ 채널 이상 감지 (맨 아래) — 일일 목표 미달/초과 원인 진단. 채널 오늘값 → 아래에 비교 상세 별줄.
     if _anom:
         lines += ["", DIV, "", "⚠️ *채널 이상 감지* `(평소7일·전주·동요일 대비 ±50%↑)`", ""]
         for _ct, _tv, _cmp in _anom[:6]:
