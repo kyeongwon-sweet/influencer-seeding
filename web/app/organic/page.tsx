@@ -8,7 +8,8 @@ import { parseNumInput } from "@/lib/num";
 import { matchesSearch } from "@/lib/search-filter";
 import { maxDateKST, isValidEntryDate } from "@/lib/dateRule";
 
-const PLATFORMS = ["인스타그램", "유튜브", "블로그", "틱톡", "스레드", "트위터"];
+// 보도자료는 URL로 자동판정되지 않는 수동 분류 플랫폼(추가/편집 시 직접 선택). 저장값=한글 그대로.
+const PLATFORMS = ["인스타그램", "유튜브", "블로그", "틱톡", "스레드", "트위터", "보도자료"];
 
 // DB에 영문으로 저장된 플랫폼값 → 한글 정규화
 const PLATFORM_KO: Record<string, string> = {
