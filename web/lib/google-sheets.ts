@@ -103,6 +103,24 @@ export async function fetchSheetTabValues(
   return json.values ?? [];
 }
 
+// 지정한 탭의 수식 텍스트를 가져온다. 수식이 아닌 셀은 원래 값이 반환된다.
+// 값 감사만으로는 `=\"\"` 스텁이나 숫자로 덮인 수식을 잡을 수 없으므로,
+// formula-audit에서 H/I 수식 형태를 별도로 검증할 때 사용한다.
+export async function fetchSheetTabFormulas(
+  spreadsheetId: string,
+  gid: number,
+  a1Range = "A1:AB200"
+): Promise<(string | number | boolean | null)[][]> {
+  const title = await getSheetTitleByGid(spreadsheetId, gid);
+  const token = await getAccessToken();
+  const range = encodeURIComponent(`${title}!${a1Range}`);
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueRenderOption=FORMULA&dateTimeRenderOption=FORMATTED_STRING`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+  if (!res.ok) throw new Error(`시트 수식 조회 실패 (${res.status}): ${await res.text()}`);
+  const json = (await res.json()) as { values?: (string | number | boolean | null)[][] };
+  return json.values ?? [];
+}
+
 // 스프레드시트의 모든 탭 제목 목록.
 export async function getSheetTitles(spreadsheetId: string): Promise<string[]> {
   const token = await getAccessToken();

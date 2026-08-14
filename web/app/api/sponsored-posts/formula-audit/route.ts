@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
-import { fetchSheetTabValues } from "@/lib/google-sheets";
+import { fetchSheetTabFormulas, fetchSheetTabValues } from "@/lib/google-sheets";
 import { normalizeSheetHeader, toSheetNumber } from "@/lib/sheet-banner-reach";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl, postIdentityKey } from "@/lib/url-utils";
@@ -89,6 +89,17 @@ function linkKeyOf(url: string): string {
   return postIdentityKey(normalized) ?? normalized;
 }
 
+function columnNumberToA1(columnNumber: number): string {
+  let n = columnNumber;
+  let out = "";
+  while (n > 0) {
+    n -= 1;
+    out = String.fromCharCode(65 + (n % 26)) + out;
+    n = Math.floor(n / 26);
+  }
+  return out;
+}
+
 async function handler(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -116,6 +127,20 @@ async function handler(req: NextRequest) {
   if (urlCol < 0 || cumCol < 0 || incCol < 0) {
     await notifyBot(`🔴 [수식 전수감사] 헤더 인식 실패 — url:${urlCol} 누적:${cumCol} 증분:${incCol}`).catch(() => {});
     return NextResponse.json({ error: "header not found" }, { status: 500 });
+  }
+
+  // 값 조회와 별도로 FORMULA 렌더를 읽는다. 숫자로 덮인 H나 `=""` 스텁 I는
+  // UNFORMATTED_VALUE만 보면 정상값/빈칸으로 보여 조용히 통과하기 때문이다.
+  const formulaFirstCol = Math.min(cumCol, incCol);
+  const formulaLastCol = Math.max(cumCol, incCol);
+  const formulaRange = `${columnNumberToA1(formulaFirstCol + 1)}2:${columnNumberToA1(formulaLastCol + 1)}${Math.max(2, values.length)}`;
+  let formulaValues: (string | number | boolean | null)[][];
+  try {
+    formulaValues = await fetchSheetTabFormulas(SHEET_ID, SHEET_GID, formulaRange);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    await notifyBot(`🔴 [수식 전수감사] 수식 원문 읽기 실패 — ${msg.slice(0, 200)}`).catch(() => {});
+    return NextResponse.json({ error: msg }, { status: 502 });
   }
 
   // 날짜 열: 월.일 / 2자리연도 접두(26.7.16) / 4자리연도 / 날짜셀 혼재를 모두 인식(parseHeaderDate).
@@ -164,6 +189,8 @@ async function handler(req: NextRequest) {
       sourceRow: i + 1,
       h,
       inc,
+      hFormula: formulaValues[i - 1]?.[cumCol - formulaFirstCol] ?? null,
+      incFormula: formulaValues[i - 1]?.[incCol - formulaFirstCol] ?? null,
       dates,
     });
   }
@@ -247,6 +274,8 @@ async function handler(req: NextRequest) {
       incError: result.inc.errorCells,
       incMismatch: result.inc.mismatch,
       incBlankExpected: result.inc.blankExpected,
+      hFormulaInvalid: result.formulaShape.hInvalid,
+      incFormulaInvalid: result.formulaShape.incInvalid,
       stale: result.stale,
       orphanRows: result.orphanRows,
     });

@@ -41,6 +41,10 @@ export type SheetAuditRow = {
   sourceRow?: number;      // 연동시트 실제 행 번호(수술적 정정용)
   h: number | string | null;
   inc: number | string | null;
+  // FORMULA 렌더로 읽은 원문. undefined면 형태 감사 미실행(순수로직 단위테스트/폴백 호환).
+  // null·숫자·`=""`는 값이 우연히 맞더라도 잘못된 수식 형태로 판정한다.
+  hFormula?: string | number | boolean | null;
+  incFormula?: string | number | boolean | null;
   dates: Array<{ date: string; value: number }>; // 양수 날짜값(오름차순)
 };
 
@@ -50,6 +54,7 @@ export type AuditResult = {
   orphanNotes: string[];
   h: { ok: number; manualKept: number; emptyOk: number; valueOnly: number; errorCells: number; emptyButData: number };
   inc: { ok: number; emptyOk: number; errorCells: number; mismatch: number; blankExpected: number };
+  formulaShape: { hInvalid: number; incInvalid: number };
   anomalies: string[];     // 사람이 읽을 요약 라인 (상한 있음)
   /**
    * 값 정체 — 수식은 멀쩡한데 **새 값이 안 들어오는** 행.
@@ -132,6 +137,20 @@ function lastMinusPrevMax(values: number[]): number | null {
   return Math.max(0, last - prevMax);
 }
 
+export function expectedCumulativeFormula(row: number): string {
+  return `=IF(COUNT(P${row}:DH${row})=0,"",MAX(P${row}:DH${row}))`;
+}
+
+export function expectedIncrementFormula(row: number): string {
+  return `=IFERROR(LET(rng,$P${row}:$DH${row},cols,SEQUENCE(1,COLUMNS(rng),COLUMN($P${row}),1),lastC,MAX(FILTER(cols,rng>0)),lastV,INDEX(rng,1,lastC-COLUMN($P${row})+1),prev,FILTER(rng,cols<lastC,rng>0),IFERROR(MAX(0,lastV-MAX(prev)),lastV)),"")`;
+}
+
+function sameFormula(actual: string | number | boolean | null, expected: string): boolean {
+  if (typeof actual !== "string" || !actual.startsWith("=")) return false;
+  const normalize = (value: string) => value.replace(/\s+/g, "").toUpperCase();
+  return normalize(actual) === normalize(expected);
+}
+
 export function auditRows(
   rows: SheetAuditRow[],
   posts: Map<string, AuditPost>,
@@ -144,6 +163,7 @@ export function auditRows(
     orphanNotes: orphanNotes.slice(0, ANOMALY_CAP),
     h: { ok: 0, manualKept: 0, emptyOk: 0, valueOnly: 0, errorCells: 0, emptyButData: 0 },
     inc: { ok: 0, emptyOk: 0, errorCells: 0, mismatch: 0, blankExpected: 0 },
+    formulaShape: { hInvalid: 0, incInvalid: 0 },
     anomalies: [],
     stale: 0,
     staleNotes: [],
@@ -156,6 +176,17 @@ export function auditRows(
   for (const row of rows) {
     const positives = row.dates.map((d) => d.value);
     const rowMax = positives.length ? Math.max(...positives) : null;
+
+    // 값이 맞는지와 수식이 살아 있는지는 별개다. 숫자 덮어쓰기와 `=""` 스텁은
+    // 현재 표시값이 우연히 맞아도 다음 날짜 값부터 갱신이 멈추므로 즉시 경고한다.
+    if (row.sourceRow && row.hFormula !== undefined && !sameFormula(row.hFormula, expectedCumulativeFormula(row.sourceRow))) {
+      res.formulaShape.hInvalid += 1;
+      note(`H수식형태 오류 ${row.label} (${row.key} · 행 ${row.sourceRow})`);
+    }
+    if (row.sourceRow && row.incFormula !== undefined && !sameFormula(row.incFormula, expectedIncrementFormula(row.sourceRow))) {
+      res.formulaShape.incInvalid += 1;
+      note(`I수식형태 오류 ${row.label} (${row.key} · 행 ${row.sourceRow})`);
+    }
 
     // ── 값 정체(수집 끊김) ── 수식과 무관하게, '새 값이 들어오는지'를 본다.
     {
@@ -238,7 +269,8 @@ export function auditRows(
 }
 
 export function formatAuditMessage(r: AuditResult): { text: string; healthy: boolean } {
-  const problems = r.h.errorCells + r.h.emptyButData + r.inc.errorCells + r.inc.mismatch + r.inc.blankExpected + r.orphanRows;
+  const problems = r.h.errorCells + r.h.emptyButData + r.inc.errorCells + r.inc.mismatch + r.inc.blankExpected
+    + r.formulaShape.hInvalid + r.formulaShape.incInvalid + r.orphanRows;
   const staleTail = r.stale > 0
     ? `\n🟠 값 정체 ${r.stale}건 — 수식은 정상인데 새 값이 ${STALE_DAYS}일 넘게 안 들어옵니다(삭제·수집실패 의심)\n`
       + r.staleNotes.slice(0, 8).map((s) => "• " + s).join("\n")
@@ -247,8 +279,8 @@ export function formatAuditMessage(r: AuditResult): { text: string; healthy: boo
   // ⚠️ '이상 없음'은 **수식 정합**에 한한 말이다. 값이 안 들어오는 건 별도로 반드시 붙인다
   //    (그렇지 않으면 74건이 멈춰 있어도 "이상 없음"으로 읽힌다 — 2026-08-03 실제 사고).
   const head = problems === 0
-    ? `✅ [수식 전수감사] 수식 이상 없음 — 행 ${r.totalRows} · 누적 정합 ${r.h.ok}(수동보존 ${r.h.manualKept}·보존값 ${r.h.valueOnly}·빈칸정상 ${r.h.emptyOk}) · 증분 정합 ${r.inc.ok}(빈칸정상 ${r.inc.emptyOk})`
-    : `🔴 [수식 전수감사] 이상 ${problems}건 — 고아행 ${r.orphanRows} / H 오류셀 ${r.h.errorCells}·데이터有빈칸 ${r.h.emptyButData} / I 오류셀 ${r.inc.errorCells}·불일치 ${r.inc.mismatch}·증분빈칸(값있어야함) ${r.inc.blankExpected} (행 ${r.totalRows}, 정합 H ${r.h.ok}·I ${r.inc.ok})`;
+    ? `✅ [수식 전수감사] 수식 이상 없음 — 행 ${r.totalRows} · 수식형태 H ${r.formulaShape.hInvalid}/I ${r.formulaShape.incInvalid} · 누적 정합 ${r.h.ok}(수동보존 ${r.h.manualKept}·보존값 ${r.h.valueOnly}·빈칸정상 ${r.h.emptyOk}) · 증분 정합 ${r.inc.ok}(빈칸정상 ${r.inc.emptyOk})`
+    : `🔴 [수식 전수감사] 이상 ${problems}건 — 고아행 ${r.orphanRows} / 수식형태 H ${r.formulaShape.hInvalid}·I ${r.formulaShape.incInvalid} / H 오류셀 ${r.h.errorCells}·데이터有빈칸 ${r.h.emptyButData} / I 오류셀 ${r.inc.errorCells}·불일치 ${r.inc.mismatch}·증분빈칸(값있어야함) ${r.inc.blankExpected} (행 ${r.totalRows}, 정합 H ${r.h.ok}·I ${r.inc.ok})`;
   const detail = [...r.orphanNotes, ...r.anomalies].slice(0, ANOMALY_CAP);
   const body = problems === 0 ? "" : "\n" + detail.map((a) => "• " + a).join("\n");
   return { text: head + body + staleTail, healthy: problems === 0 && r.stale === 0 };

@@ -1,6 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { auditRows, formatAuditMessage, parseHeaderDate, type AuditPost, type SheetAuditRow } from "../lib/formula-audit.ts";
+import {
+  auditRows,
+  expectedCumulativeFormula,
+  expectedIncrementFormula,
+  formatAuditMessage,
+  parseHeaderDate,
+  type AuditPost,
+  type SheetAuditRow,
+} from "../lib/formula-audit.ts";
 
 test("parseHeaderDate: 월.일 / 2자리연도 접두 / 4자리연도 / 날짜셀 혼재 인식", () => {
   const st = { year: 2026, prevMonth: null as number | null };
@@ -124,4 +132,47 @@ test("두 기대값 어느 쪽과도 다르면 불일치로 보고", () => {
   assert.equal(r.inc.mismatch, 1);
   assert.match(formatAuditMessage(r).text, /I 오류셀 0·불일치 1/);
   assert.match(r.anomalies[0], /ig:bad · 행 432/);
+});
+
+test("수식 형태 감사: 정상 수식은 통과하고 숫자 덮어쓰기·빈 스텁은 값과 무관하게 검출", () => {
+  const valid = row({
+    key: "ig:valid",
+    sourceRow: 10,
+    h: 300,
+    inc: 100,
+    hFormula: expectedCumulativeFormula(10),
+    incFormula: expectedIncrementFormula(10),
+    dates: [{ date: "2026-07-28", value: 200 }, { date: "2026-07-29", value: 300 }],
+  });
+  const broken = row({
+    key: "ig:broken",
+    sourceRow: 11,
+    h: 300,
+    inc: null,
+    hFormula: 300,
+    incFormula: '=""',
+    dates: [{ date: "2026-07-29", value: 300 }],
+  });
+  const posts = new Map([
+    ["ig:valid", post({ "2026-07-28": 200, "2026-07-29": 300 })],
+    ["ig:broken", post({}, "2026-06-01")],
+  ]);
+
+  const r = auditRows([valid, broken], posts, TODAY);
+  assert.equal(r.formulaShape.hInvalid, 1);
+  assert.equal(r.formulaShape.incInvalid, 1);
+  assert.equal(formatAuditMessage(r).healthy, false);
+  assert.match(r.anomalies.join("\n"), /H수식형태 오류/);
+  assert.match(r.anomalies.join("\n"), /I수식형태 오류/);
+});
+
+test("수식 형태 감사: 다른 행을 참조하는 복사 오류도 검출", () => {
+  const r = auditRows([row({
+    key: "ig:wrong-row",
+    sourceRow: 20,
+    hFormula: expectedCumulativeFormula(19),
+    incFormula: expectedIncrementFormula(19),
+  })], new Map(), TODAY);
+  assert.equal(r.formulaShape.hInvalid, 1);
+  assert.equal(r.formulaShape.incInvalid, 1);
 });
