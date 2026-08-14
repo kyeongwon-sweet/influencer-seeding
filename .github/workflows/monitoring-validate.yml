@@ -72,9 +72,10 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
-            const dateStr = yesterday.toISOString().split('T')[0];
+            // 검증 본문과 같은 KST 기준. UTC 날짜로 계산하면 01~08시 KST 실행에서 하루 더 전으로 표시된다.
+            const kstYesterday = new Date(Date.now() + 9 * 60 * 60 * 1000);
+            kstYesterday.setUTCDate(kstYesterday.getUTCDate() - 1);
+            const dateStr = kstYesterday.toISOString().split('T')[0];
 
             github.rest.issues.create({
               owner: context.repo.owner,

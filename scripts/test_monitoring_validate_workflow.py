@@ -28,12 +28,16 @@ def main() -> int:
         "exit(1)",
         "if: failure()",
         "Create issue on missing data",
+        "Date.now() + 9 * 60 * 60 * 1000",
+        "kstYesterday.setUTCDate(kstYesterday.getUTCDate() - 1)",
     )
     for token in required:
         if token not in src:
             failures.append(f"진짜 누락 실패/알림 계약 누락: {token}")
     if "continue-on-error" in src:
         failures.append("누락 실패를 숨기는 continue-on-error 사용 금지")
+    if "const yesterday = new Date();" in src:
+        failures.append("누락 이슈 날짜가 UTC 기준으로 되돌아감")
 
     if failures:
         print("[FAIL] monitoring-validate 계약 위반")
