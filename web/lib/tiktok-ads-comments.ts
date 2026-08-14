@@ -40,14 +40,15 @@ export async function hideTiktokAdCommentForSlackMessage(
   const apiBase = (process.env.TIKTOK_API_BASE || DEFAULT_TIKTOK_API_BASE).replace(/\/$/, "");
 
   // comment/status/update: 공개↔숨김. body = { advertiser_id, comment_ids[], operation, ad_type }.
-  //   operation=HIDE(숨김), ad_type=BIDDING(비-Spark 다크 광고 기본). ⚠️ operation 정확값은 라이브 계정 검증 필요.
+  // 라이브 광고계정 검증 결과 operation 허용값은 HIDDEN/PUBLIC이며 HIDE는 40002로 거절됐다.
+  // ad_type=BIDDING은 비-Spark 다크 광고 댓글에서 실제 숨김 성공을 확인했다.
   const response = await fetchImpl(`${apiBase}/comment/status/update/`, {
     method: "POST",
     headers: { "Access-Token": accessToken, "Content-Type": "application/json" },
     body: JSON.stringify({
       advertiser_id: advertiserId,
       comment_ids: [alert.comment_id],
-      operation: (process.env.TIKTOK_HIDE_OPERATION || "HIDE").trim(),
+      operation: (process.env.TIKTOK_HIDE_OPERATION || "HIDDEN").trim(),
       ad_type: (process.env.TIKTOK_HIDE_AD_TYPE || "BIDDING").trim(),
     }),
   });
