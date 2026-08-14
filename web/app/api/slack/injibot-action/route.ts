@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { recordFalsePositiveReview, recordReviewDecision } from "@/lib/injibot-review";
 import { hideMetaAdCommentForSlackMessage } from "@/lib/meta-instagram-comments";
+import { hideTiktokAdCommentForSlackMessage } from "@/lib/tiktok-ads-comments";
 
 // injibot(부정 댓글 알림) 버튼 클릭 처리(Slack Interactivity).
 // injibot Slack 앱 → Interactivity & Shortcuts → Request URL:
@@ -84,12 +85,13 @@ export async function POST(req: NextRequest) {
   const messageTs: string = payload.message?.ts || "";
   const when = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 16).replace("T", " ");
 
-  // Meta 광고 카드는 [숨김] 후에도 스레드에 남긴다(삭제 대신 '숨김 처리됨' 표시로 이력 보존).
+  // 광고(메타·틱톡) 카드는 [숨김] 후에도 스레드에 남긴다(삭제 대신 '숨김 처리됨' 표시로 이력 보존).
   // 그 외(완료/일반 숨김)는 기존대로 답글 삭제. source는 버튼 value에서 읽는다.
   let actionSource = "";
   try { actionSource = String(JSON.parse(action.value || "{}").source || ""); } catch { actionSource = ""; }
-  const keepMetaAdCard = actionSource === "meta_ads" && actionId === "hide";
-  const willDelete = DELETE_ON_RESOLVE.has(actionId) && !keepMetaAdCard;
+  const isAdComment = actionSource === "meta_ads" || actionSource === "tiktok_ads";
+  const keepAdCard = isAdComment && actionId === "hide";
+  const willDelete = DELETE_ON_RESOLVE.has(actionId) && !keepAdCard;
 
   // [무시] = 오탐 → 분류기 피드백용으로 기록. 사람 판정은 classifier hash와 무관하게 최우선 적용된다.
   // 식별은 slack_channel_id + slack_ts(댓글 원문 미사용). best-effort — 실패해도 버튼 UX는 계속.
@@ -113,14 +115,16 @@ export async function POST(req: NextRequest) {
   // 원 메시지의 버튼(actions) 블록을 제거하고 처리 결과 컨텍스트를 덧붙인다.
   const origBlocks: SlackBlock[] = payload.message?.blocks || [];
 
-  // Meta 광고 댓글의 [숨김]은 먼저 실제 Graph API가 성공해야 한다.
-  // Slack button value의 comment id는 신뢰하지 않고 DB의 channel+ts 매핑만 사용한다.
+  // 광고 댓글의 [숨김]은 먼저 실제 플랫폼 API가 성공해야 한다(메타=Graph hide, 틱톡=comment/status/update).
+  // Slack button value의 comment id는 신뢰하지 않고 DB의 channel+ts 매핑만 사용한다. source로 플랫폼 분기.
   if (actionId === "hide" && channelId && messageTs) {
     try {
-      const hidden = await hideMetaAdCommentForSlackMessage(
-        getServerSupabase(),
-        { channelId, messageTs, graphBase: process.env.META_GRAPH_BASE || "https://graph.facebook.com/v26.0" },
-      );
+      const hidden = actionSource === "tiktok_ads"
+        ? await hideTiktokAdCommentForSlackMessage(getServerSupabase(), { channelId, messageTs })
+        : await hideMetaAdCommentForSlackMessage(
+            getServerSupabase(),
+            { channelId, messageTs, graphBase: process.env.META_GRAPH_BASE || "https://graph.facebook.com/v26.0" },
+          );
       if (hidden.handled && !hidden.ok) {
         const failureBlocks = [
           ...origBlocks,
@@ -133,11 +137,11 @@ export async function POST(req: NextRequest) {
             body: JSON.stringify({ replace_original: true, blocks: failureBlocks }),
           });
         }
-        console.error("[injibot-action] Meta 댓글 숨김 실패", hidden.error);
+        console.error("[injibot-action] 광고 댓글 숨김 실패", hidden.error);
         return NextResponse.json({ ok: true, hidden: false });
       }
     } catch (e) {
-      console.error("[injibot-action] Meta 댓글 숨김 실패", e);
+      console.error("[injibot-action] 광고 댓글 숨김 실패", e);
       return NextResponse.json({ ok: true, hidden: false });
     }
   }
