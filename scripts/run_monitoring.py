@@ -577,6 +577,14 @@ def _store_aux_rows(db, rows, posts, stats, key_fn, label, *, views="clamp", cap
                 db.table("sponsored_posts").update({"notes": note}).eq("id", post["id"]).execute()
             _record_missing_view_event(post, label, "collector_error", stat=s, existing=existing)
             continue
+        # 자가치유: 예전에 '수집 불가 감지(자동)'로 태깅됐던 게시물이 이번에 실제 조회수를 다시 반환하면
+        # 그 자동 노트를 지운다 → 재시도 큐 제외(collector_uncollectable)·워치독에서 자동 해제.
+        # 수동 노트는 문구가 달라 매칭되지 않아 보존된다. views 없는 플랫폼(none)은 대상 아님.
+        if views != "none":
+            _fresh_view = s.get("views")
+            if isinstance(_fresh_view, (int, float)) and _fresh_view > 0 and "수집 불가 감지(자동" in (post.get("notes") or ""):
+                db.table("sponsored_posts").update({"notes": None}).eq("id", post["id"]).execute()
+                post["notes"] = None
         # 팀 수기값 보호는 '같은 post_id+measured_at' 행에만 적용한다.
         # 이전 날짜가 manual=True라는 이유로 이후 날짜 수집까지 영구 중단하면 TikTok photo 등
         # 보조 플랫폼의 일별 시계열이 끊긴다. 저장 직전 _preserve_same_date_manual_stats와

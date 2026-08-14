@@ -91,5 +91,31 @@ class TikTokInternalRetryPolicyTest(unittest.TestCase):
         self.assertEqual(exclusion_reason(post), "not_found_review_pending")
 
 
+    def test_collector_uncollectable_note_is_excluded(self):
+        # 수집기가 액터 에러(POST_SENSITIVE·not_found/private 등)로 '수집 불가' 자동 태깅한 건은
+        # 재시도해도 같은 에러라 재시도 큐에서 제외(워치독 오탐 방지).
+        for note in (
+            "틱톡 수집 불가 감지(자동 2026-08-09, POST_NOT_FOUND_OR_PRIVATE) — 조회수 최종값에서 정지, 확인 필요",
+            "틱톡 수집 불가 감지(자동 2026-08-06, POST_SENSITIVE) — 조회수 최종값에서 정지, 확인 필요",
+            "틱톡: 영상은 공개(oembed 확인)이나 Apify 틱톡 액터가 not_found/private 반환 → 자동 수집 불가(지역제한 추정). 수동 확인 필요",
+        ):
+            post = {
+                "channel_type": "위성채널",
+                "url": "https://www.tiktok.com/@channel/video/7664506171604143381",
+                "notes": note,
+            }
+            self.assertEqual(exclusion_reason(post), "collector_uncollectable")
+
+    def test_normal_note_is_not_excluded(self):
+        # '수집 불가'가 없는 일반/빈 노트는 정상 재시도 대상(오제외 방지)
+        for note in ("", "팀 메모: 바이럴 확산 중", None):
+            post = {
+                "channel_type": "위성채널",
+                "url": "https://www.tiktok.com/@channel/video/7664506171604143381",
+                "notes": note,
+            }
+            self.assertIsNone(exclusion_reason(post))
+
+
 if __name__ == "__main__":
     unittest.main()

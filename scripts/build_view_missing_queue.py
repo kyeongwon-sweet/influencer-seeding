@@ -70,8 +70,14 @@ def is_tiktok_view_post(url: str | None) -> bool:
 def exclusion_reason(post: dict[str, Any], target_date: str | None = None) -> str | None:
     channel_type = str(post.get("channel_type") or "")
     url = (post.get("url") or "").lower()
-    if "수동추적 제외" in str(post.get("notes") or ""):
+    notes = str(post.get("notes") or "")
+    if "수동추적 제외" in notes:
         return "manual_note"
+    # 수집기(run_monitoring)가 액터 에러(POST_SENSITIVE·not_found/private=지역제한 등)로 '수집 불가'를
+    # 자동 감지해 notes에 마킹한 건은 재시도해도 같은 에러가 나므로 재시도 큐에서 제외한다(워치독 오탐 방지).
+    # 게시물이 다시 수집되면 run_monitoring이 그 자동 노트를 지워(self-heal) 자동으로 재시도 대상으로 돌아온다.
+    if "수집 불가" in notes:
+        return "collector_uncollectable"
     if post.get("review_requested_at"):
         return "not_found_review_pending"
     # 위성/온드도 조회수형 플랫폼이면 재시도해야 한다. 틱톡만 예외로 두면
@@ -175,6 +181,7 @@ def main() -> None:
         "likely_image_no_view": 0,
         "not_retryable": 0,
         "manual_note": 0,
+        "collector_uncollectable": 0,
         "not_found_review_pending": 0,
         "internal_channel": 0,
         "free_seed_manual": 0,
