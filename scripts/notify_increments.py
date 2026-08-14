@@ -643,11 +643,46 @@ def main():
 
     if os.getenv("DRY_RUN"):   # 발송 없이 내용만 출력(검증용, Slack 토큰 불필요)
         print("=== DRY_RUN (발송 안 함) ===")
+        try:
+            from presend_sync_audit import run_presend_audit
+            _blk, _wrn = run_presend_audit(db, target, items=items, ads=ads, norm_ch=_norm_ch)
+            print("=== 발송 전 동기화 검수 ===")
+            print("BLOCK(차단):", _blk or "없음(통과)")
+            print("WARN(참고) :", _wrn or "없음")
+            print("========================")
+        except Exception as _e:
+            print("검수 실행 오류(무시, DRY_RUN):", _e)
         print(text)
         if acct_comment:
             print("\n=== [스레드 댓글: 특이 계정] ===")
             print(acct_comment)
         return
+
+    # ── 발송 전 동기화 검수(풀 검수) — BLOCK 있으면 발송 보류(사용자 지시 2026-08-14) ──
+    #   수동 편집(update_ts)·삭제는 게이트 제외(정정 작업까지 막지 않음). 신규 발송에만 적용.
+    #   BLOCK이면 리포트 대신 사유 알림만 발송하고 워크플로 실패로 종료 → 백업 크론(13/14/15:20)이 재검수.
+    if not update_ts:
+        try:
+            from presend_sync_audit import run_presend_audit
+            _blocks, _warns = run_presend_audit(db, target, items=items, ads=ads, norm_ch=_norm_ch)
+        except Exception as _e:
+            _blocks, _warns = [f"검수 실행 오류: {_e}"], []
+        if _blocks:
+            _alert = "🚫 *리포트 발송 보류 — DB↔시트 동기화 검수 실패* `(" + target + ")`\n" + "\n".join(f"• {b}" for b in _blocks)
+            if _warns:
+                _alert += "\n\n⚠️ 참고(비차단):\n" + "\n".join(f"• {w}" for w in _warns)
+            _alert += "\n\n_동기화 정정 후 자동 백업발송(13:20/14:20/15:20 KST)에 재검수됩니다._"
+            _ad = urllib.parse.urlencode({"channel": CHANNEL, "text": _alert, "unfurl_links": "false"}).encode()
+            try:
+                _r = json.load(urllib.request.urlopen(urllib.request.Request(SLACK_API, data=_ad,
+                    headers={"Authorization": "Bearer " + token, "Content-Type": "application/x-www-form-urlencoded; charset=utf-8"}), timeout=30))
+                print("[notify] 검수차단 알림 ok=", _r.get("ok"), "error=", _r.get("error"))
+            except Exception as _e:
+                print("[notify] 검수차단 알림 발송 실패:", _e)
+            print("[notify] 발송 보류(검수 BLOCK):", _blocks)
+            raise SystemExit(1)   # 워크플로 실패로 남겨 가시성 확보(백업 크론이 재시도)
+        if _warns:
+            print("[notify] 검수 경고(비차단):", _warns)
 
     if update_ts:
         data = urllib.parse.urlencode({
