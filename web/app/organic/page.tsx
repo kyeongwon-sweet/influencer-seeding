@@ -424,6 +424,9 @@ export default function OrganicPage() {
   const [uploading, setUploading] = useState(false);
   const [editCell, setEditCell] = useState<{ id: string; field: "mentioned_product" | "exposure_type" | "account_name" | "content_summary" | "uploaded_at" | "view_count" | "notes" | "platform"; value: string } | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  // '수집 대상'을 수집 목적 기준으로 바꾸면서(2026-08-14) 빠진 옛 속성 기준(대상이 누구인가)을
+  // 접이식으로 함께 둔다. 기본은 접힘 — 평소엔 목적 기준만 보이게.
+  const [showTargetAttrs, setShowTargetAttrs] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [showTimeoutError, setShowTimeoutError] = useState(false);
   const resizingRef = useRef<{ colIdx: number; startX: number; startW: number } | null>(null);
@@ -1102,8 +1105,11 @@ export default function OrganicPage() {
           박스 세로는 어느 폭에서도 215px 유지(줄 접힘 없음).
           ⚠️ 하한은 350px — 그보다 좁히면 목록 줄이 접혀 세로가 215→233→251px로 **오히려 커진다.**
           남는 폭은 전부 오른쪽에 주고, 오른쪽 높이는 --guide-h(=왼쪽 박스 실제 높이)로 맞춘다. */}
+      {/* 상한 480 → 700 (2026-08-14): '수집 대상'이 문장형으로 바뀌어 480px에선 전 항목이 2줄로 접혔다.
+          라이브 실측 — 왼쪽 최장 항목 414px + 오른쪽 블록 188px + 박스 패딩 42px + 열 간격 24px = 668px 필요.
+          여유를 둬 700px. 더 줄이면 다시 2줄이 된다. */}
       <div
-        className="mx-6 mt-2 mb-2 grid gap-3 items-start lg:grid-cols-[minmax(0,480px)_minmax(0,1fr)]"
+        className="mx-6 mt-2 mb-2 grid gap-3 items-start lg:grid-cols-[minmax(0,700px)_minmax(0,1fr)]"
         style={guideHeight ? ({ "--guide-h": `${guideHeight}px` } as CSSProperties) : undefined}
       >
       {/* 오른쪽(필터+칩) 높이에 맞춰 여백을 줄인 상태. 더 줄이려면 py/mb/leading을 한 단계씩 내리면 된다. */}
@@ -1205,6 +1211,24 @@ export default function OrganicPage() {
               <li>• 소재, 실체로 확보 가능한 유의미한 노출건</li>
               <li>• 유의미한 50만+ 이상 조회, 참여수</li>
             </ul>
+            {/* 옛 속성 기준(누구를 보는가) — 목적 기준과 성격이 달라 접이식으로 분리. */}
+            <button
+              type="button"
+              onClick={() => setShowTargetAttrs(v => !v)}
+              aria-expanded={showTargetAttrs}
+              className="mt-1.5 flex items-center gap-1 text-[11px] text-a-ink-muted hover:text-a-ink transition"
+            >
+              <span className={`inline-block transition-transform ${showTargetAttrs ? "rotate-90" : ""}`}>▸</span>
+              대상 속성 기준
+            </button>
+            {showTargetAttrs && (
+              <ul className="mt-1 ml-3 text-[12px] text-a-ink-muted space-y-0.5 list-none leading-normal">
+                <li>• 아이돌/연예인</li>
+                <li>• 50만+ 인플루언서</li>
+                <li>• 50만+ 뷰</li>
+                <li>• 시딩 건</li>
+              </ul>
+            )}
           </div>
           <div>
             <p className="text-[12px] font-semibold text-a-ink mb-1.5">💬 댓글 작성:</p>
