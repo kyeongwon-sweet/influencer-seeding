@@ -25,17 +25,26 @@ def main() -> int:
     eq("collection.small_hist", A.decide_collection(5, [4, 6, 5]), None)             # 중위<20이면 부분판정 안 함
     eq("collection.no_hist", A.decide_collection(3, [0, 0, 0]), None)                # 이력 없고 오늘>0 → 통과
 
-    # ② decide_stat_mismatches
+    # ②-a is_material_desync (비대칭: 시트>DB 실질차만 True)
+    eq("desync.db_ahead", A.is_material_desync(75890, 62322), False)   # DB>시트=export 지연 → 통과
+    eq("desync.equal", A.is_material_desync(1000, 1000), False)
+    eq("desync.sheet_noise_abs", A.is_material_desync(1870, 1880), False)  # 시트>DB지만 차이 10 → 무시
+    eq("desync.sheet_noise_pct", A.is_material_desync(1_000_000, 1_010_000), False)  # 1% → 무시
+    eq("desync.sheet_ahead_material", A.is_material_desync(62322, 75890), True)  # 시트 앞섬+실질차 → 차단
+
+    # ②-b decide_stat_mismatches
     eq("stat.empty", A.decide_stat_mismatches([]), None)
-    m = A.decide_stat_mismatches([("u1", 100, 200), ("u2", 5, 9)])
-    eq("stat.some", bool(m and "2건" in m), True)
-    m6 = A.decide_stat_mismatches([(f"u{i}", i, i + 1) for i in range(1, 8)])
+    m = A.decide_stat_mismatches([("u1", 100, 5000), ("u2", 5, 9000)])
+    eq("stat.some", bool(m and "2건" in m and "시트" in m), True)
+    m6 = A.decide_stat_mismatches([(f"u{i}", i, i + 9999) for i in range(1, 8)])
     eq("stat.more", bool(m6 and "외 2건" in m6), True)
 
     # ③ check_classification
     items_ok = [{"channel_type": "바이럴 (영상)", "inc": 100, "url": "x"}]
     eq("class.ok", A.check_classification(items_ok, _norm_ch), None)
-    items_bad = [{"channel_type": "", "inc": 500, "url": "https://x/p/1"}]
+    items_small = [{"channel_type": "", "inc": 500, "url": "https://x/p/1"}]  # 미분류지만 <5만 → 통과
+    eq("class.small_ok", A.check_classification(items_small, _norm_ch), None)
+    items_bad = [{"channel_type": "", "inc": 60_000, "url": "https://x/p/1"}]  # ≥5만 → 차단
     r = A.check_classification(items_bad, _norm_ch)
     eq("class.bad_block", bool(r and r[0] == "BLOCK"), True)
     items_zero = [{"channel_type": "", "inc": 0, "url": "x"}]  # 미분류지만 증분 0 → 통과

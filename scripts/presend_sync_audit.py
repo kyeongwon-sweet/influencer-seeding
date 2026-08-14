@@ -24,6 +24,21 @@ from linked_sheet_reader import fetch_linked_sheet_rows
 
 PAGE = 1000
 
+# 차단 허용치(노이즈·export 지연으로 정상 리포트가 막히지 않게). 조정 시 여기 한 곳.
+MIN_ABS_DIFF = 1000     # 절대차 이 미만은 무시(타이밍/반올림 노이즈)
+MIN_PCT_DIFF = 0.03     # 그리고 상대차 이 미만도 무시 — 둘 다 넘어야 실질 불일치
+MIN_UNCLASS_INC = 50_000  # 미분류 총증분 이 미만은 통과(신규글 분류지연 노이즈)
+
+
+def is_material_desync(db_v: int, sheet_v: int) -> bool:
+    """시트가 DB보다 '실질적으로 앞섬'(=DB 미반영, 리포트가 뒤처짐)일 때만 True.
+    조회수는 누적(증가)이라 DB≥시트는 시트 export 지연(리포트가 최신)일 뿐 → 차단 대상 아님.
+    시트>DB일 때만: 수기 정정 미반영/import 지연 등 리포트가 실제로 뒤처진 신호 → 절대·상대 허용치 초과 시 차단."""
+    if sheet_v <= db_v:
+        return False
+    diff = sheet_v - db_v
+    return diff >= MIN_ABS_DIFF and diff / sheet_v >= MIN_PCT_DIFF
+
 
 # ────────────────────────────── 순수 판정부(테스트 대상) ──────────────────────────────
 def decide_collection(today_n: int, hist_counts: list[int]) -> str | None:
@@ -39,20 +54,20 @@ def decide_collection(today_n: int, hist_counts: list[int]) -> str | None:
 
 
 def decide_stat_mismatches(mismatches: list[tuple[str, int, int]]) -> str | None:
-    """② DB↔시트 정합 판정. (url, db, sheet) 리스트가 비면 통과."""
+    """② DB↔시트 정합 판정. (url, db, sheet) 리스트(시트>DB 실질차만)가 비면 통과."""
     if not mismatches:
         return None
-    ex = "; ".join(f"{u} DB {a:,}≠시트 {b:,}" for u, a, b in mismatches[:5])
+    ex = "; ".join(f"{u} 시트 {b:,}>DB {a:,}" for u, a, b in mismatches[:5])
     more = f" 외 {len(mismatches) - 5}건" if len(mismatches) > 5 else ""
-    return f"DB↔시트 조회수 불일치 {len(mismatches)}건 — {ex}{more}"
+    return f"DB↔시트 조회수 불일치 {len(mismatches)}건(시트가 DB보다 앞섬=DB 미반영) — {ex}{more}"
 
 
 def check_classification(items: list[dict[str, Any]], norm_ch: Callable[[Any], str]) -> tuple[str, str] | None:
     """③ 채널분류 반영 — 미분류(시트→DB 분류 미반영) 게시물 중 증분>0이면 차단."""
     bad = [it for it in items if norm_ch(it.get("channel_type")) == "미분류" and (it.get("inc") or 0) > 0]
-    if not bad:
-        return None
     tot = sum(it.get("inc") or 0 for it in bad)
+    if not bad or tot < MIN_UNCLASS_INC:   # 신규글 분류지연 노이즈는 통과(리포트는 총합 정상 + ⚠️ 미분류 라인 표시)
+        return None
     return ("BLOCK", f"채널분류 미반영 {len(bad)}건(증분 +{tot:,}) — 시트→DB 분류 동기화 지연(syncAll 필요). 예: {bad[0].get('url')}")
 
 
@@ -151,7 +166,7 @@ def _stat_mismatches(db, target: str) -> list[tuple[str, int, int]]:
             continue
         if not isinstance(shv, (int, float)) or shv <= 0:  # 시트 빈칸(미반영)은 불일치 아님
             continue
-        if int(dbv) != int(shv):
+        if is_material_desync(int(dbv), int(shv)):   # 시트>DB 실질차만(DB≥시트=export 지연은 통과)
             mism.append((post.get("url"), int(dbv), int(shv)))
     return mism
 
