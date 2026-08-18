@@ -6,6 +6,10 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-14 [Claude 완료] 채널 이상 감지를 본문→스레드 댓글로 이동
+- **변경:** `notify_increments.py` 채널 이상 감지를 게시글 본문이 아닌 **스레드 댓글**로(사용자 지시). 특이 계정과 한 댓글로 묶어 `_send_acct_comment`로 발송. 본문은 총증분/채널분류별/TOP10만.
+- **dedup:** 재편집 시 중복 방지 마커를 `특이 계정` 또는 `채널 이상 감지`로 확장(둘 중 하나만 있어도 이전 댓글 삭제).
+- **적용:** 8/13 리포트 in-place 반영(본문서 제거·댓글로 이동, 중복 없음 확인). 이후 자동발송에도 적용.
 ## ✅ 2026-08-14 [Claude 웹라우트+봇버튼 · Codex 라이브검증·배포] injibot **틱톡 광고 댓글 [숨김]** 라이브
 - **웹**(`e67dde1`, main): `injibot-action`이 `[숨김]`을 source로 분기 — `tiktok_ads` → `lib/tiktok-ads-comments.ts` `hideTiktokAdCommentForSlackMessage`(TikTok Business API v1.3 `comment/status/update`, DB `slack_ts→comment_id` 매핑, `keepAdCard`로 숨김 후 카드 유지), 그 외 → 기존 Meta Graph hide.
 - **봇**(`1b09962`, master): `actionDefinitions`가 `tiktok_ads`도 `[숨김]/[무시]`. test 210.
