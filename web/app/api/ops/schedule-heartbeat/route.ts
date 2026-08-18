@@ -68,7 +68,7 @@ async function handler(req: NextRequest) {
   const last: Record<string, string | null> = {};
   const errors: string[] = [];
   const lookupFailed = new Set<string>();
-  for (const t of WATCH_TARGETS) {
+  await Promise.all(WATCH_TARGETS.map(async (t) => {
     try {
       last[t.workflow] = await lastScheduleSuccess(REPO, t.workflow);
     } catch (e) {
@@ -76,7 +76,7 @@ async function handler(req: NextRequest) {
       // 조회 실패는 '스케줄 기록 없음'이 아니다. 해당 workflow의 판정을 보류한다.
       lookupFailed.add(t.workflow);
     }
-  }
+  }));
 
   const findings = evaluateSchedules(
     last,

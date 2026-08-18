@@ -680,7 +680,7 @@ export default function ListupPage() {
     setSortCol(col);
   }
 
-  const sortedInfluencers = [...filteredInfluencers].sort((a, b) => {
+  const sortedInfluencers = useMemo(() => [...filteredInfluencers].sort((a, b) => {
     if (!sortCol) return 0;
     if (sortCol === "팔로워") {
       const av = a.screening_metrics?.[0]?.followers ?? -1;
@@ -706,7 +706,7 @@ export default function ListupPage() {
     }
     const cmp = av < bv ? -1 : av > bv ? 1 : 0;
     return sortDir === "asc" ? cmp : -cmp;
-  });
+  }), [filteredInfluencers, sortCol, sortDir]);
 
   // 정렬 + 드래그 리사이즈 th
   function rsTH(col: string, colIdx: number, sortable = true, tooltip?: React.ReactNode) {
