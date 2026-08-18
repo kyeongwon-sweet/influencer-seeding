@@ -218,6 +218,8 @@ export function splitDuplicateMentions<T extends Mentionish>(
     if (key) seen.add(key);
   }
 
+  // 이번 배치에서 unique로 채택된 canonical 키 — in_batch/existing 판정을 O(1)로(기존 out.unique 전체 재순회 O(n²) 제거).
+  const batchKeys = new Set<string>();
   const out: SplitResult<T> = { unique: [], duplicates: [], invalid: [] };
   for (const item of items) {
     const key = canonicalMentionUrl(item.url);
@@ -227,11 +229,12 @@ export function splitDuplicateMentions<T extends Mentionish>(
     }
     if (seen.has(key)) {
       // 이미 DB에 있던 것인지, 이번 요청 안에서 겹친 것인지 구분해 메시지를 정확히 낸다.
-      const reason = out.unique.some((u) => canonicalMentionUrl(u.url) === key) ? "in_batch" : "existing";
+      const reason = batchKeys.has(key) ? "in_batch" : "existing";
       out.duplicates.push({ item, url: key, reason });
       continue;
     }
     seen.add(key);
+    batchKeys.add(key);
     out.unique.push({ ...item, url: key } as T);
   }
   return out;
