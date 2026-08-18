@@ -390,6 +390,75 @@ def _prev_stats(db, post_ids):
     return last
 
 
+def _summarize_history_rows(rows, last, max_metric_by_post, manual_tracked_ids):
+    """정렬된 이력 한 페이지에서 auto-end와 mono 가드 입력을 동시에 계산한다.
+
+    last는 _prev_stats와 동일하게 TODAY 이전의 첫 행만 보존한다. 호출 쿼리가
+    measured_at/created_at/id 내림차순이므로 같은 날 중복행도 기존 기준과 같다.
+    """
+    for row in rows:
+        post_id = row.get("post_id")
+        if not post_id:
+            continue
+        metric = row_metric(row)
+        if metric > max_metric_by_post.get(post_id, 0):
+            max_metric_by_post[post_id] = metric
+        if row.get("manual"):
+            manual_tracked_ids.add(post_id)
+        measured_at = str(row.get("measured_at") or "")[:10]
+        if measured_at and measured_at < TODAY and post_id not in last:
+            last[post_id] = {
+                "post_id": post_id,
+                "play_count": row.get("play_count"),
+                "likes_count": row.get("likes_count"),
+                "comments_count": row.get("comments_count"),
+                "measured_at": row.get("measured_at"),
+                "manual": row.get("manual"),
+            }
+
+
+def _active_stats_summary(db, post_ids):
+    """활성 게시물 이력 1회 스캔으로 auto-end와 직전값 입력을 함께 반환한다."""
+    last = {}
+    max_metric_by_post = {}
+    manual_tracked_ids = set()
+    ids = [post_id for post_id in post_ids if post_id]
+    page_size = 1000
+    for start in range(0, len(ids), 100):
+        chunk = ids[start:start + 100]
+        offset = 0
+        while True:
+            response = (db.table("post_daily_stats")
+                        .select("id, post_id, play_count, reach_count, likes_count, comments_count, measured_at, manual, created_at")
+                        .in_("post_id", chunk)
+                        .order("measured_at", desc=True)
+                        .order("created_at", desc=True)
+                        .order("id", desc=True)
+                        .range(offset, offset + page_size - 1)
+                        .execute())
+            page = response.data or []
+            _summarize_history_rows(page, last, max_metric_by_post, manual_tracked_ids)
+            if len(page) < page_size:
+                break
+            offset += page_size
+    return last, max_metric_by_post, manual_tracked_ids
+
+
+def _influencer_ids_by_profile_url(db, profile_urls):
+    """Instagram 프로필 URL들의 influencer id를 100개 청크로 일괄 조회한다."""
+    urls = list(dict.fromkeys(url for url in profile_urls if url))
+    found = {}
+    for start in range(0, len(urls), 100):
+        response = (db.table("influencers")
+                    .select("id, url")
+                    .in_("url", urls[start:start + 100])
+                    .execute())
+        for row in (response.data or []):
+            if row.get("url") and row.get("id"):
+                found.setdefault(row["url"], row["id"])
+    return found
+
+
 def _row_key(row):
     return f"{row.get('post_id')}|{str(row.get('measured_at'))[:10]}"
 
@@ -547,7 +616,7 @@ def _coalesce_metric(current, previous=None):
     return current if current is not None else previous
 
 
-def _store_aux_rows(db, rows, posts, stats, key_fn, label, *, views="clamp", caption_field=None, caption_limit=None):
+def _store_aux_rows(db, rows, posts, stats, key_fn, label, *, views="clamp", caption_field=None, caption_limit=None, last_stat=None):
     """보조 플랫폼(YT/틱톡/스레드/FB/X) 공통 저장 루프 — 5개 블록의 복붙을 단일 구현으로.
 
     views:
@@ -556,7 +625,8 @@ def _store_aux_rows(db, rows, posts, stats, key_fn, label, *, views="clamp", cap
       - "none":     플랫폼이 조회수 미제공 → play_count는 항상 None. (스레드·FB)
     caption_field: 비어 있는 content_summary만 stats의 이 필드로 자동 채움(시트/수동 캡션 보존).
     """
-    last_stat = _prev_stats(db, [p["id"] for p in posts])
+    if last_stat is None:
+        last_stat = _prev_stats(db, [p["id"] for p in posts])
     for post in posts:
         s = stats.get(key_fn(post))
         # 캡션 자동채움 — 조회수 유무와 무관, 비어 있을 때만
@@ -977,26 +1047,10 @@ def run():
         # 🛑 자동 종료 정책 — ended_at 딱지 부여(삭제 아님, 데이터 보존).
         #   규칙: 배너·캐러셀(피드) 업로드일 제외 7일 이후(8일째 종료) / 그 외(영상) 14일 이후(15일째 종료) / 캡션(content_summary) '종료·보관·삭제'.
         #   예외: 위성채널·온드미디어만(무상시딩·50만 예외는 2026-07-14 사용자 지시로 제거 — 무상시딩(피드)도 7일 종료). 업로드일은 카운트에서 제외(age 0).
+        history_last_stat = None
         try:
             active_ids = [p["id"] for p in all_posts if not p.get("ended_at")]
-            max_metric_by_post = {}
-            manual_tracked_ids = set()  # 수동 입력(manual=true) stat이 하나라도 있는 post → 자동종료 예외(수동값 보존)
-            for _i in range(0, len(active_ids), 100):
-                _c = active_ids[_i:_i + 100]
-                _f = 0
-                while True:
-                    _r = (db.table("post_daily_stats").select("post_id, play_count, reach_count, manual")
-                          .in_("post_id", _c).range(_f, _f + 999).execute())
-                    _pg = _r.data or []
-                    for _x in _pg:
-                        _metric = row_metric(_x)
-                        if _metric > max_metric_by_post.get(_x["post_id"], 0):
-                            max_metric_by_post[_x["post_id"]] = _metric
-                        if _x.get("manual"):
-                            manual_tracked_ids.add(_x["post_id"])
-                    if len(_pg) < 1000:
-                        break
-                    _f += 1000
+            history_last_stat, max_metric_by_post, manual_tracked_ids = _active_stats_summary(db, active_ids)
             to_end = []
             for p in all_posts:
                 if p.get("ended_at"):
@@ -1077,6 +1131,12 @@ def run():
                 db.table("jobs").update({"status": "done"}).eq("id", job_id).execute()
             return
 
+        # auto-end가 이미 읽은 동일 이력의 TODAY 이전 최신행을 재사용한다.
+        # 통합 조회가 실패했을 때만 기존 전용 쿼리로 복구해 수집 자체는 계속한다.
+        last_stat = history_last_stat
+        if last_stat is None:
+            last_stat = _prev_stats(db, [p["id"] for p in posts])
+
         # Apify 호출 여부 제어 (SKIP_APIFY=1이면 스킵, 기본값: 호출)
         # SKIP_APIFY=1일 때는 기존 데이터만 사용 (Apify 호출 없이 진행)
         skip_apify = os.getenv("SKIP_APIFY", "0").lower() in ("1", "true", "yes")
@@ -1109,7 +1169,7 @@ def run():
             #    이제 '직전 측정에서 play가 있던 게시물'(=조회수가 나와야 정상인 영상들) 중 이번 수집에서
             #    빠진 비율로 판정한다. 사진 포스트(원래 play 없음)는 분모에서 자연 제외돼 오탐도 줄어든다.
             ig_url_set = set(ig_urls)
-            prev_ig = _prev_stats(db, [p["id"] for p in posts if (p.get("url") or "") in ig_url_set])
+            prev_ig = last_stat
             expected = [p["url"] for p in posts
                         if (p.get("url") or "") in ig_url_set and (prev_ig.get(p["id"]) or {}).get("play_count") is not None]
             exp_missing = [u for u in expected if not (stats_by_key.get(_stats_key(u)) or {}).get("play_count")]
@@ -1254,9 +1314,16 @@ def run():
                 print(f"[WARN] {ig_outage_message}")
 
         rows = []
-        # 직전(오늘 이전) 누적값 일괄 조회 — per-post 개별 쿼리(N+1) 제거.
-        # .lt(TODAY)라서 같은 날 재수집 시 '오늘 행'을 기준값으로 삼지 않음(멱등) — 글리치로 부푼 값이 clamp로 고착되는 것 방지.
-        last_stat = _prev_stats(db, [p["id"] for p in posts])
+        # influencer_id 없는 IG 게시물을 프로필 URL 기준으로 한 번에 조회한다.
+        # 기존 per-post SELECT와 동일한 exact URL 매칭만 사용한다.
+        influencer_profile_by_post = {}
+        for post in posts:
+            if post.get("influencer_id") or not _is_instagram_collectable_url(post.get("url") or ""):
+                continue
+            collected = stats_by_key.get(_stats_key(post.get("url") or "")) or {}
+            if collected.get("owner_username"):
+                influencer_profile_by_post[post["id"]] = f"https://www.instagram.com/{collected['owner_username']}/"
+        influencer_ids_by_url = _influencer_ids_by_profile_url(db, influencer_profile_by_post.values())
         for post in posts:
             post_url = post.get("url") or ""
             if not _is_instagram_collectable_url(post_url):
@@ -1319,11 +1386,9 @@ def run():
                     updates["content_summary"] = cap
 
             # influencer_id 자동 연결 (스크리닝 지표 표시용)
-            if not post.get("influencer_id") and s.get("owner_username"):
-                profile_url = f"https://www.instagram.com/{s['owner_username']}/"
-                inf_res = db.table("influencers").select("id").eq("url", profile_url).limit(1).execute()
-                if inf_res.data:
-                    updates["influencer_id"] = inf_res.data[0]["id"]
+            profile_url = influencer_profile_by_post.get(post["id"])
+            if profile_url and influencer_ids_by_url.get(profile_url):
+                updates["influencer_id"] = influencer_ids_by_url[profile_url]
 
             if updates:
                 db.table("sponsored_posts").update(updates).eq("id", post["id"]).execute()
@@ -1422,7 +1487,7 @@ def run():
                 # 비공개/삭제(error=VIDEO_UNAVAILABLE) 자동 특이사항 태깅은 _store_aux_rows가 공통 처리.
                 # 유튜브 캡션 = 영상 제목. 조회수 None이어도 행 저장(좋아요 유지) + 역행 clamp.
                 _store_aux_rows(db, rows, yt_posts, yt_stats, lambda p: _yt_id(p["url"]), "유튜브",
-                                views="optional", caption_field="title", caption_limit=300)
+                                views="optional", caption_field="title", caption_limit=300, last_stat=last_stat)
             except Exception as e:
                 # 무음 실패 방지: 에러를 명시하고 아래에서 작업을 실패로 표시(IG는 정상 저장됨)
                 print(f"[ERROR] 유튜브 수집 실패: {e}")
@@ -1455,7 +1520,7 @@ def run():
                     )
                     print(f"[LOG] 틱톡 photo 수집: 실값 {photo_got}건 / {len(tt_photo_posts)}개 요청")
                 _store_aux_rows(db, rows, tt_posts, tt_stats, lambda p: _tt_id(tt_canon[p["url"]]), "틱톡",
-                                views="clamp", caption_field="content_summary")
+                                views="clamp", caption_field="content_summary", last_stat=last_stat)
             except Exception as e:
                 print(f"[ERROR] 틱톡 수집 실패: {e}")
                 tt_failed = True
@@ -1467,7 +1532,7 @@ def run():
             try:
                 th_stats = _fetch_threads([p["url"] for p in th_posts])
                 print(f"[LOG] 스레드 수집: {len(th_stats)}건 / {len(th_posts)}개 요청")
-                _store_aux_rows(db, rows, th_posts, th_stats, lambda p: _th_code(p["url"]), "스레드", views="none")
+                _store_aux_rows(db, rows, th_posts, th_stats, lambda p: _th_code(p["url"]), "스레드", views="none", last_stat=last_stat)
             except Exception as e:
                 print(f"[ERROR] 스레드 수집 실패: {e}")
                 th_failed = True
@@ -1479,7 +1544,7 @@ def run():
             try:
                 fb_stats = _fetch_facebook([p["url"] for p in fb_posts])
                 print(f"[LOG] 페이스북 수집: {len(fb_stats)}건 / {len(fb_posts)}개 요청")
-                _store_aux_rows(db, rows, fb_posts, fb_stats, lambda p: _fb_key(p["url"]), "페이스북", views="none")
+                _store_aux_rows(db, rows, fb_posts, fb_stats, lambda p: _fb_key(p["url"]), "페이스북", views="none", last_stat=last_stat)
             except Exception as e:
                 print(f"[ERROR] 페이스북 수집 실패: {e}")
                 fb_failed = True
@@ -1493,7 +1558,7 @@ def run():
                 got = sum(1 for s in tw_stats.values() if (s.get("views") or 0) > 0)
                 print(f"[LOG] 트위터 수집: 실값 {got}건 / {len(tw_posts)}개 요청")
                 _store_aux_rows(db, rows, tw_posts, tw_stats, lambda p: _tw_id(p["url"]), "트위터",
-                                views="clamp", caption_field="content_summary")
+                                views="clamp", caption_field="content_summary", last_stat=last_stat)
             except Exception as e:
                 print(f"[ERROR] 트위터 수집 실패: {e}")
                 tw_failed = True
