@@ -4,7 +4,7 @@ import { fetchDatasetItems } from "@/lib/apify";
 import { normalizeYouTubeUrl, normalizeInstagramUrl } from "@/lib/url-utils";
 import { notifyBot, notifyJob } from "@/lib/slack";
 import { requireMonitoringWebhookDate } from "@/lib/dateRule";
-import { isBannerChannelType } from "@/lib/banner-metric";
+import { isBannerChannel } from "@/app/monitoring/lib";
 import { looksLikeEngagementCountAsViews } from "@/lib/ig-metric-guard";
 import { organicExcludeHit, organicOwnedMediaHit, organicTradePostHit } from "@/lib/organic-filter";
 
@@ -391,7 +391,7 @@ async function handleMonitoring(
     if (metadataOnly) continue;
 
     // 틱톡 배너(사진/슬라이드쇼)는 실제 playCount가 있어 조회수로 수집한다(run_monitoring과 동일). 그 외 배너는 reach 전용.
-    if (isBannerChannelType(post.channel_type) && !String(post.url || "").includes("tiktok.com")) {
+    if (isBannerChannel(post.channel_type, post.posted_at) && !String(post.url || "").includes("tiktok.com")) {
       rows.push({ post_id: post.id, measured_at: today, play_count: null, likes_count: s.likes_count, comments_count: s.comments_count });
       continue;
     }
