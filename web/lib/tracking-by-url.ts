@@ -17,6 +17,12 @@ export type TrackingUpdateGroup = {
   ids: string[];
 };
 
+export type TrackingUpdatedPostRow = {
+  id: string;
+  ended_at: string | null;
+  manual_fields?: string[] | null;
+};
+
 export function mergeTrackingManualFields(current: unknown, protectEndedAt: boolean): string[] {
   const fields = Array.isArray(current) ? current.map(String) : [];
   const set = new Set(fields.filter(Boolean));
@@ -77,4 +83,32 @@ export function buildTrackingUpdatePlan(rows: TrackingPlanRow[], posts: Tracking
   }
 
   return { groups: [...grouped.values()], missing };
+}
+
+function normalizedManualFields(value: unknown): string[] {
+  return Array.isArray(value) ? [...new Set(value.map(String).filter(Boolean))].sort() : [];
+}
+
+/** Bulk UPDATE가 계획한 모든 행과 필드를 실제로 반환했는지 검증한다. */
+export function trackingUpdateVerificationError(
+  group: TrackingUpdateGroup,
+  updatedRows: TrackingUpdatedPostRow[],
+): string | null {
+  const expectedIds = new Set(group.ids);
+  const returnedIds = new Set(updatedRows.map(row => row.id));
+  if (returnedIds.size !== expectedIds.size || [...expectedIds].some(id => !returnedIds.has(id))) {
+    return `updated ids mismatch expected=${expectedIds.size} actual=${returnedIds.size}`;
+  }
+
+  const expectedManualFields = normalizedManualFields(group.manual_fields);
+  for (const row of updatedRows) {
+    if (!expectedIds.has(row.id)) return `unexpected updated id=${row.id}`;
+    if (row.ended_at !== group.ended_at) {
+      return `ended_at mismatch id=${row.id} expected=${group.ended_at ?? "null"} actual=${row.ended_at ?? "null"}`;
+    }
+    if (JSON.stringify(normalizedManualFields(row.manual_fields)) !== JSON.stringify(expectedManualFields)) {
+      return `manual_fields mismatch id=${row.id}`;
+    }
+  }
+  return null;
 }

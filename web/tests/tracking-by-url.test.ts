@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildTrackingUpdatePlan, mergeTrackingManualFields } from "../lib/tracking-by-url.ts";
+import {
+  buildTrackingUpdatePlan,
+  mergeTrackingManualFields,
+  trackingUpdateVerificationError,
+} from "../lib/tracking-by-url.ts";
 
 test("수동 재개는 ended_at 잠금을 추가하고 종료는 그 잠금만 제거한다", () => {
   assert.deepEqual(mergeTrackingManualFields(["cost"], true), ["cost", "ended_at"]);
@@ -61,4 +65,36 @@ test("manual_fields가 다른 행은 같은 bulk UPDATE로 합치지 않고 미�
   assert.equal(plan.groups.length, 2);
   assert.deepEqual(plan.groups.map(group => group.manual_fields), [["cost"], ["creator"]]);
   assert.deepEqual(plan.missing, ["https://example.com/missing"]);
+});
+
+test("bulk UPDATE 반환값이 계획한 id·종료일·수기잠금과 같아야 한다", () => {
+  const group = {
+    ended_at: null,
+    manual_fields: ["cost", "ended_at"],
+    ids: ["one", "two"],
+  };
+  assert.equal(trackingUpdateVerificationError(group, [
+    { id: "one", ended_at: null, manual_fields: ["ended_at", "cost"] },
+    { id: "two", ended_at: null, manual_fields: ["cost", "ended_at"] },
+  ]), null);
+  assert.match(
+    trackingUpdateVerificationError(group, [
+      { id: "one", ended_at: null, manual_fields: ["cost", "ended_at"] },
+    ]) ?? "",
+    /updated ids mismatch/,
+  );
+  assert.match(
+    trackingUpdateVerificationError(group, [
+      { id: "one", ended_at: "2026-08-18", manual_fields: ["cost", "ended_at"] },
+      { id: "two", ended_at: null, manual_fields: ["cost", "ended_at"] },
+    ]) ?? "",
+    /ended_at mismatch id=one/,
+  );
+  assert.match(
+    trackingUpdateVerificationError(group, [
+      { id: "one", ended_at: null, manual_fields: ["cost"] },
+      { id: "two", ended_at: null, manual_fields: ["cost", "ended_at"] },
+    ]) ?? "",
+    /manual_fields mismatch id=one/,
+  );
 });

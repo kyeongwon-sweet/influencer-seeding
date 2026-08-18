@@ -6,6 +6,13 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-18 [Codex 검증·보강] 효율성 인계 3건 정합 확인 + tracking 벌크쓰기 사후검증
+- **인계 상태 정정:** LineChart hover 지오메트리 메모화(`486d3aa`), `tracking-by-url` 조회·쓰기 일괄화(`9cb47da`), `run_monitoring` 이력·인플루언서 조회 일괄화(`1497ef6`)는 모두 이미 `origin/main`에 반영돼 있었다. 중복 구현하지 않고 각 diff와 테스트를 다시 검토했다.
+- **추가 보강:** `tracking-by-url`의 벌크 UPDATE가 성공 응답만 믿지 않고, 반환된 `id / ended_at / manual_fields`를 계획값과 즉시 대조한다. 대상 누락·종료일 오적용·수기 재개 잠금 오적용이면 500으로 실패시켜 조용한 부분 반영을 감춘다.
+- **수집기 검토:** `_active_stats_summary`는 고유 정렬키(`measured_at desc, created_at desc, id desc`)를 유지한 단일 페이지네이션으로 최신 이전값·최댓값·수기 ID를 만들고, 같은 `last_stat`을 IG 및 5개 보조 플랫폼에 공유한다. influencer URL도 80개 청크로 일괄 조회한다. 의미 변경이나 추가 수정은 하지 않았다.
+- **라이브 차트 실측:** 프로덕션 `/monitoring`에서 조회수·검색량·B2B를 함께 표시한 뒤 서로 다른 날짜로 hover 이동을 확인했다. SVG는 비어 있지 않았고, 툴팁이 날짜·조회수·검색량·B2B 값을 함께 갱신했다. B2B 표시 상태는 확인 후 원복했다.
+- **검증:** web 테스트 **309/309**, Python scripts 테스트 **140/140**, 대상 Python 계약 테스트 **12/12**, TypeScript, ESLint(오류 0), Next production build(webpack) 통과. `run_monitoring` 실수집은 Apify 중복 비용을 만들지 않기 위해 재실행하지 않았으며, 다음 정규 수집 로그가 운영 실측이다.
+
 ## ✅ 2026-08-18 [Codex 완료] 업체명 오적재 313행 시트·DB 소급 정리 + 홈 무상노출 과다 조회 축소
 - **안전 복구:** 승인 백업 `scratchpad/company_pollution_fix_313.json`의 URL 키를 SHA-256 313개 허용목록으로 고정하고, 열 N·현재 `업체명=계정명`·분포까지 재검증한 뒤 실행했다. 라이브 dry-run은 `matched=313 / changes=313`, 실제 적용은 `written=313 / verified=313`이며 숨김 백업 시트 `_codex_company_backup_20260818`을 먼저 만들었다.
 - **정본 분포:** 공백 177 · 굿띵투유 47 · 유머패밀리 32 · 동후작가 25 · 아택 14 · 루나앤코코 11 · 업크루 6 · 후마니 1. 승인 목록 밖 후보 4행은 무접촉이다. `ig:DQdz86KkZf5` 중복 그룹은 승인 행 1개만 수정했고, 중복행 삭제는 별도 사용자 확인 전 수행하지 않았다.
