@@ -16,6 +16,7 @@ const COMPANY_ACCOUNTS: Record<string, string[]> = {
   "유머패밀리": [
     "Ufo__RED", "Ufo__PINK", "Ufo__ORANGE", "Ufo__NIGHT",
     "Ufo__blue", "Ufo__brown", "Ufo__navy", "Ufo__purple", "Ufo__skyblue",
+    "Ufo__gray", "Ufo__green", "Ufo__white", "Ufo__yellow", "Ufo__rainbow",
   ],
   "동후작가": [
     "bol4_pyeong", "ee_pyeong", "ennie_pyeong", "flower_pyeong", "happy__pyeong", "text_pyeong", "two_pyeong",
@@ -40,9 +41,14 @@ const COMPANY_ACCOUNTS: Record<string, string[]> = {
   ],
 };
 
+// 사소한 차이(대소문자·공백·밑줄·점·가운뎃점·하이픈)는 같은 채널로 취급한다(사용자 규칙 2026-08-18).
+// 한글 계정명은 보존하고 구분기호만 제거 → 예: "Ufo_RED"·"ufo__red"·"Ufo RED" 모두 같은 키.
+export function canonAccount(name?: string | null): string {
+  return String(name ?? "").toLowerCase().replace(/[\s._·-]/g, "");
+}
 const _BY_ACCOUNT: Record<string, string> = {};
 for (const [company, accounts] of Object.entries(COMPANY_ACCOUNTS)) {
-  for (const a of accounts) _BY_ACCOUNT[a.toLowerCase()] = company;
+  for (const a of accounts) _BY_ACCOUNT[canonAccount(a)] = company;
 }
 
 export function excludesCompanyFallback(channelType?: string | null): boolean {
@@ -50,9 +56,9 @@ export function excludesCompanyFallback(channelType?: string | null): boolean {
   return normalized.includes("온드미디어") || normalized.includes("위성채널");
 }
 
-/** 계정명 → 업체명(매핑에 있으면), 없으면 null. 대소문자 무관. */
+/** 계정명 → 업체명(매핑에 있으면), 없으면 null. 대소문자·구분기호 차이 무관(canonAccount). */
 export function companyForAccount(name?: string | null, channelType?: string | null): string | null {
   if (excludesCompanyFallback(channelType)) return null;
   if (!name) return null;
-  return _BY_ACCOUNT[name.trim().toLowerCase()] ?? null;
+  return _BY_ACCOUNT[canonAccount(name)] ?? null;
 }

@@ -1,6 +1,7 @@
 import type { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl, postIdentityKey, ALLOWED_POST_URL_RE, isInstagramNonPostUrl, isInvalidTikTokPostUrl } from "@/lib/url-utils";
 import { normalizeChannelType, isFreeChannel, canonicalText } from "@/app/monitoring/lib";
+import { companyForAccount } from "@/lib/companyMap";
 import { triggerCaptionBackfill, needsCaption } from "@/lib/github-dispatch";
 import { todayKST } from "@/lib/dateRule";
 import { startActorRun } from "@/lib/apify";
@@ -71,12 +72,19 @@ export async function upsertSponsoredRows(
       const url = r.url ? (normalizeUrl(String(r.url)) || String(r.url)) : "";
       const channel_type = normalizeChannelType(r.channel_type ? String(r.channel_type) : null);
       const free = isFreeChannel(channel_type);
+      const account_name = accountNameForSponsoredWrite(url, channel_type, canonicalText(cleanName(r.account_name), "account_name"));
+      // 업체명 자가교정(재발방지): 시트 업체명이 계정명과 같으면(오염) 규칙값으로 대체한다 —
+      //   우리 채널(companyMap 규칙)이면 그 업체명, 개인이면 null. 무상 채널은 항상 null.
+      let company_name = free ? null : canonicalText(r.company_name as string | null | undefined, "company_name");
+      if (!free && company_name && account_name && company_name === account_name) {
+        company_name = companyForAccount(account_name, channel_type);
+      }
       return {
         url,
         normalized_key: postIdentityKey(url),
         posted_at:       r.posted_at || null,
-        account_name:    accountNameForSponsoredWrite(url, channel_type, canonicalText(cleanName(r.account_name), "account_name")),
-        company_name:    free ? null : canonicalText(r.company_name as string | null | undefined, "company_name"),
+        account_name,
+        company_name,
         content_summary: r.content_summary || null,
         channel_type,
         project_name:    canonicalText(r.project_name as string | null | undefined, "project_name"),
