@@ -10,8 +10,9 @@
 - **근인:** 6행은 수식 파손이 아니라 `exportStats`가 의도적으로 쓰는 `=""` 스텁이었다. 게시 후 7일이 지나 처음 측정된 백로그 게시물은 직전값이 없어 증분을 만들지 않는 정책이다. 값 감사 로직은 이미 이를 정상으로 봤지만, 수식 형태 감사만 모든 `=""`를 오류로 판정해 `dailyAuto` 뒤 같은 6건이 반복됐다.
 - **수정:** `formula-audit`이 `=""`를 무조건 허용하지 않고, **게시일보다 첫 측정일이 7일 초과인 행**에서만 정상 스텁으로 인정한다. 일반 행의 `=""`·다른 행 참조·깨진 수식 감지는 그대로 유지한다. DB·시트 값은 수정하지 않았다.
 - **검증:** web 테스트 **296/296**, TypeScript, scoped ESLint, production build 통과. Vercel production `dpl_BrfGPJLh5ToYrSgzgUcH2g1Qg46X` Ready 및 `-mu` 연결. Formula Audit run `32086427142` 재실행 결과 `incInvalid=0`, `anomalies=[]`.
-- **현재 `healthy=false`의 유일한 이유:** `one_star_video`의 프로필형 URL `https://instagram.com/one_star_video/reels/` 1건이 게시 2026-08-14 이후 실측 없음(`stale=1`). 수식 문제와 무관하다.
-- **틱톡 미수집 읽기 검증:** 08-17 큐의 `유머박스(틱톡)` `/photo/7674629956256664840/`와 `이슈뜨기(틱톡)` `/video/7672720029372288263/`는 로그인 브라우저에서 게시물 생존을 확인했다. 공개 화면에는 좋아요 0·댓글 1만 보이고 조회수는 노출되지 않았으며, 수집/재시도 응답도 조회수 0건이다. 삭제로 종료하거나 값을 추정해 넣지 않는다. 별도 수집기 응답 진단 대상이다.
+- **현재 `healthy=false`의 유일한 이유:** `one_star_video`의 URL이 게시물이 아닌 계정 프로필형 `https://instagram.com/one_star_video/reels/`라서 `post_daily_stats`가 0행이다. 활성 게시물 전수 조사에서 같은 형태는 이 1건뿐이다. 실제 게시물 URL은 추정할 수 없으므로 사용자가 시트에서 정정해야 하며, 그전까지 `VIEW_MISSING_QUEUE missing_same_day_row`와 수식감사 `stale=1`의 상시 노이즈가 된다.
+- **틱톡 `/photo/` 오판 정정:** 사진글도 정상 수집 대상이다(103건 중 92건 수집·매일 갱신). `/photo/`를 큐에서 일괄 제외하지 않는다. 한 번도 값이 없는 11건은 삭제/비공개 2건, 게시 생존·실제 조회수 0인 3건, 기존 종료 4건, 프로필 그리드 오류로 미확인 2건이다. **0 조회수는 0-저장 전수차단 규칙에 따라 공백이 정상**이며 값을 생성하지 않는다. 미확인 2건은 `유머박스` `/photo/7674629956256664840/`, `/photo/7674146386136403218/`이고 재시도도 실패했다.
+- **조사 기준 고정:** 커버리지 정본은 수집 로그의 `[VIEW_MISSING_QUEUE] eligible/queue_count/excluded{}`다. `post_daily_stats.created_at`은 UTC이므로 KST 변환 없이 날짜를 판정하지 않는다. 배너 도달수는 `run_monitoring`이 아니라 매시간 `banner-reach-sync`(시트→DB)가 정본이다. 시트 브라우저 판독은 그리드 렌더 완료 후 재확인한다.
 
 ## ✅ 2026-08-14 [Claude 완료] 채널 이상 감지를 본문→스레드 댓글로 이동
 - **변경:** `notify_increments.py` 채널 이상 감지를 게시글 본문이 아닌 **스레드 댓글**로(사용자 지시). 특이 계정과 한 댓글로 묶어 `_send_acct_comment`로 발송. 본문은 총증분/채널분류별/TOP10만.
@@ -41,7 +42,7 @@
 - **I 결함 복구:** `콘텐츠 대시보드 연동` I2·I203·I584·I828·I881·I1092의 `=""` 스텁을 정식 행별 `LET/SEQUENCE` 증분 수식으로 교체했다. 6칸 모두 행번호 참조와 계산 결과를 재확인했다.
 - **H 오진 정정:** H568 `썰뜨기(틱톡)` 43,201과 H620 `yul.days.one` 410은 날짜열 P:DH가 전부 빈 위성채널·무상시딩(피드)의 의도적 수기 누적값이다. Codex가 처음 수식으로 바꾼 것은 오진이었으며, **원래 숫자 43,201·410으로 복원**했다. DB·날짜별 이력은 건드리지 않았다.
 - **복구 후 전수검사:** URL이 있는 **2,256행**의 H/I 수식 원문을 Google Sheets API로 전부 재조회했다. H는 **정식 수식 2,254 + 허용 수기 2 + 오류 0**, I는 **정식 수식 2,256 + 오류 0**이다.
-- **재발방지:** 운영 Formula Audit이 `valueRenderOption=FORMULA`로 H/I 원문을 직접 읽는다. I의 스텁·다른 행 참조는 무조건 오류다. H는 날짜 이력이 전혀 없는 행의 숫자만 `H수기`로 허용하고, 날짜 이력이 있는데 숫자로 덮인 경우만 수식 파손으로 경고한다. xlsx 변환은 사용하지 않는다.
+- **재발방지:** 운영 Formula Audit이 `valueRenderOption=FORMULA`로 H/I 원문을 직접 읽는다. 다른 행 참조는 오류이며, I의 `=""` 스텁은 2026-08-18 `c87844a` 이후 **게시일보다 첫 측정일이 7일 초과인 의도적 백로그 행만** 허용한다. H는 날짜 이력이 전혀 없는 행의 숫자만 `H수기`로 허용하고, 날짜 이력이 있는데 숫자로 덮인 경우만 수식 파손으로 경고한다. xlsx 변환은 사용하지 않는다.
 - **배포:** main `df27b76`, Vercel production `dpl_GDT5NFLo9uX4omx5RfKC2Gsxkrzp` Ready 및 `-mu` 별칭 연결 확인.
 - **운영 실측:** Formula Audit run `31765829243` HTTP 200·`healthy=true` — totalRows 2,256, orphan 0, H `ok 2,179 / emptyOk 75 / valueOnly 2 / error 0 / emptyButData 0`, I `ok 2,179 / emptyOk 77 / error 0 / mismatch 0 / blankExpected 0`, **formulaShape H오류 0 / H수기 2 / I오류 0**, anomalies 0, stale 0.
 - **별건(✅ 2026-08-14 Claude 정정 완료):** `썰뜨기(틱톡)` `/video/7672350577258433800/`의 자동 `08-10 92 → 08-12 12` 하락은 H568과 **무관한 다른 게시물**이다. 수식 작업에서는 건드리지 않았고, **Claude가 별도로 `08-10 play_count`를 NULL 처리**했다(역행 0건, 백업 `scratchpad/ssultteugi_0810_backup_20260814.json`).
