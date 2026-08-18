@@ -43,6 +43,22 @@ test("asset-name repair is URL-keyed, backed up and guarded on edit", () => {
   assert.match(assetPollutionRepair, /function repairAssetNamePollutionAll\(\)/);
 });
 
+test("company pollution repair is limited to 313 URL-keyed cells in company column N", () => {
+  const start = appsScript.indexOf("function repairCompanyPollution20260818(payload)");
+  const end = appsScript.indexOf("// DB → 시트 반영", start);
+  const body = appsScript.slice(start, end);
+  assert.notEqual(start, -1);
+  assert.match(body, /company-pollution-2026-08-18/);
+  assert.match(body, /EXPECTED_COUNT = 313/);
+  assert.match(body, /EXPECTED_COMPANY_COL = 14/);
+  assert.match(body, /linkKey_\(item\.url\)/);
+  assert.match(body, /matches\.length !== 1/);
+  assert.match(body, /_codex_company_backup_20260818/);
+  assert.match(body, /실행 중 행 순서가 바뀌어 중단했습니다/);
+  assert.match(body, /writeColumnRuns_\(sheet, EXPECTED_COMPANY_COL, edits, lastRow\)/);
+  assert.doesNotMatch(body, /deleteRow|deleteRows|insertRows|clearContent/);
+});
+
 test("Apps Script morning audit fallback covers formula and creator audits at 09:40", () => {
   assert.match(appsScript, /ENSURE_DAILY_AUDITS_URL:\s*"https:\/\/influencer-seeding-mu\.vercel\.app\/api\/ops\/ensure-daily-audits"/);
   assert.match(appsScript, /function ensureDailyAudits\(\)/);

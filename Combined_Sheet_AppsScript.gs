@@ -571,6 +571,145 @@ function runSync_(onlyNew) {
 function syncNew()  { runSync_(true); }
 function syncAll()  { runSync_(false); }
 
+// 2026-08-18 업체명=계정명 오적재 313행 일회성 복구.
+// Script Execution API에서만 호출하며, 대상 수·열·URL·현재값을 전부 확인한 뒤 N열만 수정한다.
+function repairCompanyPollution20260818(payload) {
+  const SIGNATURE = "company-pollution-2026-08-18";
+  const EXPECTED_COUNT = 313;
+  const EXPECTED_SHEET_ID = "10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak";
+  const EXPECTED_COMPANY_COL = 14; // N
+  const BACKUP_SHEET_NAME = "_codex_company_backup_20260818";
+  const normalizeText = value => String(value == null ? "" : value).trim();
+  const canonAccount = value => normalizeText(value).toLowerCase().replace(/[\s._·-]/g, "");
+  const sameNullable = (left, right) => normalizeText(left) === normalizeText(right);
+
+  if (!payload || payload.signature !== SIGNATURE) throw new Error("업체명 복구 서명이 올바르지 않습니다.");
+  if (!Array.isArray(payload.rows) || payload.rows.length !== EXPECTED_COUNT) {
+    throw new Error(`업체명 복구 대상은 정확히 ${EXPECTED_COUNT}행이어야 합니다.`);
+  }
+  if (payload.apply !== true && payload.apply !== false) throw new Error("apply는 true/false여야 합니다.");
+
+  const sourceKeys = {};
+  payload.rows.forEach((item, index) => {
+    const key = linkKey_(item && item.url);
+    if (!key) throw new Error(`복구 소스 URL이 올바르지 않습니다. index=${index}`);
+    if (sourceKeys[key]) throw new Error(`복구 소스 URL 키가 중복입니다. key=${key}`);
+    sourceKeys[key] = item;
+  });
+
+  const sheet = getSheet_();
+  if (sheet.getParent().getId() !== EXPECTED_SHEET_ID) throw new Error("복구 대상 스프레드시트가 아닙니다.");
+  const fieldCols = buildFieldCols_(sheet);
+  if (fieldCols.company_name !== EXPECTED_COMPANY_COL) {
+    throw new Error(`업체명 열이 N열이 아닙니다. actual=${fieldCols.company_name}`);
+  }
+  if (!fieldCols.account_name || !fieldCols.url) throw new Error("채널명/게시물URL 헤더가 없습니다.");
+
+  const lastRow = sheet.getLastRow();
+  const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, EXPECTED_COMPANY_COL).getValues();
+  const sheetRowsByKey = {};
+  values.forEach((row, index) => {
+    const key = linkKey_(row[fieldCols.url - 1]);
+    if (!key || !sourceKeys[key]) return;
+    if (!sheetRowsByKey[key]) sheetRowsByKey[key] = [];
+    sheetRowsByKey[key].push({
+      row: CONFIG.DATA_START_ROW + index,
+      url: normalizeText(row[fieldCols.url - 1]),
+      account_name: normalizeText(row[fieldCols.account_name - 1]),
+      company_name: normalizeText(row[EXPECTED_COMPANY_COL - 1]),
+    });
+  });
+
+  const matched = [];
+  const edits = [];
+  const distribution = {};
+  payload.rows.forEach(item => {
+    const key = linkKey_(item.url);
+    const matches = sheetRowsByKey[key] || [];
+    if (matches.length !== 1) throw new Error(`시트 URL 매칭은 1행이어야 합니다. key=${key}, count=${matches.length}`);
+    const current = matches[0];
+    if (canonAccount(current.account_name) !== canonAccount(item.account_name)) {
+      throw new Error(`시트 채널명이 소스와 다릅니다. row=${current.row}, key=${key}`);
+    }
+    if (!sameNullable(current.company_name, item.old_company) && !sameNullable(current.company_name, item.new_company)) {
+      throw new Error(`시트 업체명이 예상 범위를 벗어났습니다. row=${current.row}, key=${key}`);
+    }
+    const nextCompany = normalizeText(item.new_company);
+    matched.push({
+      key: key,
+      row: current.row,
+      url: current.url,
+      account_name: current.account_name,
+      old_company: current.company_name,
+      new_company: nextCompany,
+    });
+    if (!sameNullable(current.company_name, nextCompany)) edits.push({ row: current.row, value: nextCompany });
+    const label = nextCompany || "(빈칸)";
+    distribution[label] = (distribution[label] || 0) + 1;
+  });
+
+  if (matched.length !== EXPECTED_COUNT) throw new Error(`시트 매칭 수가 ${EXPECTED_COUNT}행이 아닙니다.`);
+  const result = {
+    ok: true,
+    mode: payload.apply ? "apply" : "dry-run",
+    matched: matched.length,
+    changes: edits.length,
+    distribution: distribution,
+    company_column: "N",
+  };
+  if (!payload.apply) return result;
+
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(30000);
+  try {
+    assertRowCountStable_(sheet, lastRow, "repairCompanyPollution20260818");
+    const lockedValues = sheet.getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, EXPECTED_COMPANY_COL).getValues();
+    matched.forEach(item => {
+      const lockedRow = lockedValues[item.row - CONFIG.DATA_START_ROW];
+      if (linkKey_(lockedRow[fieldCols.url - 1]) !== item.key) {
+        throw new Error(`실행 중 행 순서가 바뀌어 중단했습니다. row=${item.row}`);
+      }
+      if (canonAccount(lockedRow[fieldCols.account_name - 1]) !== canonAccount(item.account_name)) {
+        throw new Error(`실행 중 채널명이 바뀌어 중단했습니다. row=${item.row}`);
+      }
+      const lockedCompany = lockedRow[EXPECTED_COMPANY_COL - 1];
+      if (!sameNullable(lockedCompany, item.old_company) && !sameNullable(lockedCompany, item.new_company)) {
+        throw new Error(`실행 중 업체명이 바뀌어 중단했습니다. row=${item.row}`);
+      }
+    });
+    const ss = sheet.getParent();
+    let backup = ss.getSheetByName(BACKUP_SHEET_NAME);
+    const backupHeader = ["backup_marker", "sheet_row", "url", "account_name", "old_company", "new_company"];
+    if (!backup) {
+      backup = ss.insertSheet(BACKUP_SHEET_NAME);
+      const backupValues = [[SIGNATURE].concat(backupHeader.slice(1))]
+        .concat(matched.map(item => [SIGNATURE, item.row, item.url, item.account_name, item.old_company, item.new_company]));
+      backup.getRange(1, 1, backupValues.length, backupHeader.length).setValues(backupValues);
+      backup.hideSheet();
+    } else {
+      const marker = normalizeText(backup.getRange(1, 1).getValue());
+      if (marker !== SIGNATURE || backup.getLastRow() !== EXPECTED_COUNT + 1) {
+        throw new Error("기존 업체명 복구 백업 탭이 예상 형식과 다릅니다.");
+      }
+    }
+
+    result.written = writeColumnRuns_(sheet, EXPECTED_COMPANY_COL, edits, lastRow);
+    SpreadsheetApp.flush();
+    const verifyValues = sheet.getRange(CONFIG.DATA_START_ROW, EXPECTED_COMPANY_COL, lastRow - CONFIG.DATA_START_ROW + 1, 1).getValues();
+    let verified = 0;
+    matched.forEach(item => {
+      const actual = verifyValues[item.row - CONFIG.DATA_START_ROW][0];
+      if (!sameNullable(actual, item.new_company)) throw new Error(`업체명 쓰기 검증 실패 row=${item.row}`);
+      verified++;
+    });
+    result.verified = verified;
+    result.backup_sheet = BACKUP_SHEET_NAME;
+    return result;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════
 // DB → 시트 반영 (대시보드에서 추가한 게시물을 시트로 가져오기)
 // ═══════════════════════════════════════════════════════════════
