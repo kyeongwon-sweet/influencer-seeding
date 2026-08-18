@@ -7,6 +7,7 @@ from channel_kind import MAGAZINE_BANNER_FROM, is_banner_channel
 def test_name_contains_banner_is_always_banner():
     assert is_banner_channel("바이럴 (배너)")
     assert is_banner_channel("위성채널 (배너)", "2020-01-01")
+    assert is_banner_channel("Viral Banner", "2020-01-01")
 
 
 def test_magazine_before_cutoff_stays_view_metric():

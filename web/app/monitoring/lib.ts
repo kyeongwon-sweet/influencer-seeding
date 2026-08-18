@@ -208,7 +208,7 @@ export const MAGAZINE_BANNER_FROM = "2026-08-18";
  */
 export function isBannerChannel(channelType: unknown, postedAt?: unknown): boolean {
   const ct = String(channelType ?? "");
-  if (ct.includes("배너")) return true;
+  if (ct.includes("배너") || ct.toLowerCase().includes("banner")) return true;
   if (!ct.includes("매거진")) return false;
   const posted = String(postedAt ?? "").slice(0, 10);
   return posted.length === 10 && posted >= MAGAZINE_BANNER_FROM;

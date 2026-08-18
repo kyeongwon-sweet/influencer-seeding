@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createApifyClient } from "@/lib/apify";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { resolveMonitoringMeasuredAt } from "@/lib/dateRule";
-import { isBannerChannelType } from "@/lib/banner-metric";
+import { isBannerChannel } from "@/app/monitoring/lib";
 import { looksLikeEngagementCountAsViews, pickInstagramPlayMetric, toPositiveMetric } from "@/lib/ig-metric-guard";
 
 export const runtime = "nodejs";
@@ -258,7 +258,7 @@ async function collect(req: NextRequest) {
         }
 
         // 틱톡 배너(사진/슬라이드쇼)는 실제 playCount가 있어 조회수로 수집한다(run_monitoring과 동일). 그 외 배너는 reach 전용.
-        if (isBannerChannelType(post.channel_type) && !String(post.url || "").includes("tiktok.com")) {
+        if (isBannerChannel(post.channel_type, post.posted_at) && !String(post.url || "").includes("tiktok.com")) {
           statsToInsert.push({
             post_id: post.id,
             measured_at: measuredAt,

@@ -23,7 +23,7 @@ def is_banner_channel(channel_type: Any, posted_at: Any = None) -> bool:
     posted_at이 없으면 경계를 판정할 수 없으므로 매거진은 배너로 보지 않는다(기존 동작 유지).
     """
     text = str(channel_type or "")
-    if "배너" in text:
+    if "배너" in text or "banner" in text.lower():
         return True
     if "매거진" not in text:
         return False
