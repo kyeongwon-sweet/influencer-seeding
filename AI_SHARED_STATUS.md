@@ -6,6 +6,12 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-18 [Codex 완료] `ig:DQdz86KkZf5` 연동시트 중복 4행 → 1행 정리
+- **사전 dry-run:** 라이브 정본 `linkKey_`·DB URL을 쓰는 `auditLinkedSheetDuplicates20260811()`로 4행을 재검증했다. 2483~2486행 모두 날짜 지표 `metricCount=0`; DB canonical `/p/` URL인 **2484행**을 keeper로 확정했다.
+- **백업/삭제:** 원본 탭 전체를 `콘텐츠 대시보드 연동의 사본`으로 복제한 뒤 숨김 백업으로 보존했다. 승인된 원본 행 **2486 → 2485 → 2483** 순으로 아래에서 삭제해 행 밀림을 피했다. 결과적으로 canonical keeper가 현재 2483행에 남았다.
+- **종단 검증:** 시트 `DQdz86KkZf5` **1행**(`https://www.instagram.com/p/DQdz86KkZf5/`) 확인. DB도 `sponsored_posts` **1행**(id `938eceab-84f8-48c8-8178-c94b535a64c1`)·`post_daily_stats` **0행** 그대로다. H/I 수식 감사는 URL 2,816행, 수식 누락 **0/0**, `#REF!` **0/0**, 고아 지표행 **0**.
+- **승인 범위 외 무접촉:** dry-run이 추가 시트 중복 2그룹(`ig:DcI7korS2B-`, `ig:DcBZOaEpDyt`) 각 2행을 발견했지만 이번 요청 대상이 아니므로 변경하지 않았다. 사후 감사에서 이 2그룹/추가 2행만 그대로 남음을 확인했다.
+
 ## ✅ 2026-08-18 [Codex 완료] 2799행 `one_star_video` stale `오류` 해소
 - **변경 전:** `콘텐츠 대시보드 연동` 2799행 URL은 정상 게시물형 `https://www.instagram.com/reel/DcBZOaEpDyt/`인데 상태 O2799에 예전 프로필 URL 시절의 `오류`가 남아 있었다.
 - **시점 차이 정정:** Claude 읽기 전용 조사 때는 DB 0건이었으나, Codex 실행 시점의 DB 직접 조회에서 `ig:DcBZOaEpDyt` 행이 **2026-08-18 11:01:11 KST**에 이미 등록된 것을 확인했다. `바이럴 (영상)`·`ended_at=null`이므로 현재 정본 상태는 `트래킹 중`이다. 추가 `syncNew`는 실행하지 않았다.
