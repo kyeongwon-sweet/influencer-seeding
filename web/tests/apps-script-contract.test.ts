@@ -564,6 +564,9 @@ test("syncCreators fills planner/creator only from the same row asset name", () 
   assert.match(appsScript, /replace\(\/\^\[⠿●■◆◇★☆⭐\\s\]\+\//);
   assert.match(appsScript, /function isCreatorParseSource_\(/);
   assert.match(appsScript, /function auditCreatorAssetIntegrity_\(/);
+  assert.match(appsScript, /function auditCreatorAssetIntegrity\(\)/);
+  assert.match(appsScript, /missing_planner_count: missingPlanners\.length/);
+  assert.match(appsScript, /missing_creator_count: missingCreators\.length/);
   assert.match(body, /if \(!isCreatorParseSource_\(asset\)\)/);
   assert.match(body, /plannerEdits\.push\(\{ row: CONFIG\.DATA_START_ROW \+ i, value: parsed\.mk \}\)/);
   assert.match(body, /makerEdits\.push\(\{ row: CONFIG\.DATA_START_ROW \+ i, value: parsed\.pd \}\)/);
@@ -578,7 +581,35 @@ test("syncCreators fills planner/creator only from the same row asset name", () 
   assert.match(body, /invalid_planner_skipped: invalidPlannerSkipped/);
   assert.match(body, /invalid_maker_skipped: invalidMakerSkipped/);
   assert.match(body, /non_file_name_skipped: nonFileNameSkipped/);
+  assert.match(body, /SpreadsheetApp\.flush\(\)/);
+  assert.match(body, /audit: audit/);
   assert.doesNotMatch(body, /setValues\(planners\)|setValues\(makers\)/);
+});
+
+test("creator parser anchors planner to the unique YYMMDD token", () => {
+  const start = appsScript.indexOf("function creatorSourceText_(");
+  const end = appsScript.indexOf("function isCreatorParseSource_(", start);
+  const source = appsScript.slice(start, end);
+  const parseCreator = new Function(source + "; return parseCreator_;")() as (value: string) => { mk: string; pd: string };
+
+  const hong = "[26.08]F_I_JD멜_인지_상시__바이럴형_떵개연결.콘T기획_.릴스_공무도.캐릭터성.__홍정민_260814_빙과_홍정민";
+  assert.deepEqual(parseCreator(hong), { mk: "홍정민", pd: "홍정민" });
+
+  const splitRoles = "[26.08]F_I_JD멜_인지_상시__바이럴형_초딩유행템.마T기획_.배너_초딩다발.__김바다_260810_빙과_오형선.mp4";
+  assert.deepEqual(parseCreator(splitRoles), { mk: "김바다", pd: "오형선" });
+
+  const singleUnderscore = "[26.08]F_I_JD멜_인지_상시_바이럴형_테스트_.릴스_포맷_설명_김바다_260810_빙과_오형선";
+  assert.deepEqual(parseCreator(singleUnderscore), { mk: "김바다", pd: "오형선" });
+
+  const noDate = "[26.08]F_I_JD멜_인지_상시__바이럴형_테스트_.릴스_테스트__김바다_빙과_오형선";
+  assert.equal(parseCreator(noDate).mk, "");
+
+  const shortLegacy = "[24.04]F_V_C혼_바이럴_술자리해장템_추가검증(릴스형)_마케팅_240408_숏_조의진";
+  assert.equal(parseCreator(shortLegacy).mk, "");
+
+  const ambiguous = "[26.08]F_I_JD멜_인지_상시__바이럴형_260801_.릴스_테스트__김바다_260810_빙과_오형선";
+  assert.equal(parseCreator(ambiguous).mk, "");
+  assert.equal(parseCreator(ambiguous).pd, "오형선");
 });
 
 test("invalid creator repair backs up rows and clears creator only", () => {

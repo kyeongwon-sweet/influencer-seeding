@@ -2953,12 +2953,38 @@ function creatorSourceText_(value) {
   return String(value || "").trim().replace(/^[⠿●■◆◇★☆⭐\s]+/, "");
 }
 
+function isCreatorDateToken_(value) {
+  const match = /^(\d{2})(\d{2})(\d{2})$/.exec(String(value || "").trim());
+  if (!match) return false;
+  const year = 2000 + Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year
+    && date.getMonth() === month - 1
+    && date.getDate() === day;
+}
+
+function plannerBeforeDateToken_(parts) {
+  // 제작자까지 포함한 정식 파일명 레이아웃만 파싱한다. 짧은 레거시 이름은 추정하지 않는다.
+  if (parts.length <= 13) return "";
+  let dateIndex = -1;
+  let dateCount = 0;
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (!isCreatorDateToken_(parts[i])) continue;
+    dateIndex = i;
+    dateCount++;
+  }
+  if (dateCount !== 1 || dateIndex < 1) return "";
+  return String(parts[dateIndex - 1] || "").trim();
+}
+
 function parseCreator_(name) {
   const result = { mk: "", pd: "" };
   const source = creatorSourceText_(name);
   if (!source || source.charAt(0) !== "[") return result;
   const parts = source.split("_");
-  if (parts.length > 10) result.mk = String(parts[10] || "").trim();
+  result.mk = plannerBeforeDateToken_(parts);
   if (parts.length > 13) {
     const tail = parts.slice(13).join("_").trim().replace(/\.(mp4|mov|png|jpe?g|gif|webp|zip|pdf)$/i, "");
     result.pd = (tail.split("_").pop() || "").trim().replace(/\s*\(\d+\)\s*$/, "").trim();
@@ -2974,30 +3000,47 @@ function isCreatorParseSource_(value) {
 function auditCreatorAssetIntegrity_() {
   const sheet = getSheet_();
   const lastRow = sheet.getLastRow();
-  if (lastRow < CONFIG.DATA_START_ROW) return { issue_count: 0, samples: [] };
+  if (lastRow < CONFIG.DATA_START_ROW) {
+    return { issue_count: 0, missing_planner_count: 0, missing_creator_count: 0, samples: [] };
+  }
   const fieldCols = buildFieldCols_(sheet);
   const sourceCol = findHeaderCol_(sheet, ["소재명"]);
   const plannerCol = findHeaderCol_(sheet, ["기획자"]);
   const makerCol = findHeaderCol_(sheet, ["제작자", "PD", "디자이너"]);
-  if (!sourceCol || !plannerCol || !makerCol) return { issue_count: 0, samples: [] };
+  if (!sourceCol || !plannerCol || !makerCol) {
+    return { issue_count: 0, missing_planner_count: 0, missing_creator_count: 0, samples: [] };
+  }
 
   const n = lastRow - CONFIG.DATA_START_ROW + 1;
   const lastCol = sheet.getLastColumn();
   const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, n, lastCol).getValues();
   const issues = [];
+  const missingPlanners = [];
+  const missingCreators = [];
   for (let i = 0; i < n; i++) {
     const row = CONFIG.DATA_START_ROW + i;
     const asset = String(values[i][sourceCol - 1] || "").trim();
     const planner = String(values[i][plannerCol - 1] || "").trim();
     const maker = String(values[i][makerCol - 1] || "").trim();
-    if (!planner && !maker) continue;
-    if (isCreatorParseSource_(asset)) continue;
     const url = fieldCols.url ? String(values[i][fieldCols.url - 1] || "").trim() : "";
+    if (isCreatorParseSource_(asset)) {
+      const parsed = parseCreator_(asset);
+      if (!planner && parsed.mk && isValidLinkedPersonName_(parsed.mk)) {
+        missingPlanners.push({ row: row, expected: parsed.mk, asset: asset, url: url });
+      }
+      if (!maker && parsed.pd && isValidLinkedPersonName_(parsed.pd)) {
+        missingCreators.push({ row: row, expected: parsed.pd, asset: asset, url: url });
+      }
+      continue;
+    }
+    if (!planner && !maker) continue;
     issues.push({ row: row, planner: planner, maker: maker, asset: asset, url: url });
   }
 
   const result = {
     issue_count: issues.length,
+    missing_planner_count: missingPlanners.length,
+    missing_creator_count: missingCreators.length,
     samples: issues.slice(0, 20).map(function(item) {
       return {
         row: item.row,
@@ -3007,18 +3050,24 @@ function auditCreatorAssetIntegrity_() {
         url: item.url,
       };
     }),
+    missing_planner_samples: missingPlanners.slice(0, 20),
+    missing_creator_samples: missingCreators.slice(0, 20),
   };
-  if (issues.length) {
+  if (issues.length || missingPlanners.length || missingCreators.length) {
     Logger.log("creator_asset_integrity_issue " + JSON.stringify(result));
     SpreadsheetApp.getActive().toast(
-      "소재명 없이 기획자/제작자가 채워진 행 " + issues.length + "건 감지",
-      "⚠️ 제작자 오적재 의심",
+      "오적재 " + issues.length + " · 기획자 빈칸 " + missingPlanners.length + " · 제작자 빈칸 " + missingCreators.length,
+      "⚠️ 담당자 정합 점검",
       8
     );
   } else {
     Logger.log("creator_asset_integrity_ok " + JSON.stringify(result));
   }
   return result;
+}
+
+function auditCreatorAssetIntegrity() {
+  return auditCreatorAssetIntegrity_();
 }
 
 function clearInvalidCreatorsWithBackup() {
@@ -3194,20 +3243,23 @@ function syncCreators() {
   const expectedLastRow = sheet.getLastRow();
   const plannerFilled = writeColumnRuns_(sheet, plannerCol, plannerEdits, expectedLastRow);
   const makerFilled = writeColumnRuns_(sheet, makerCol, makerEdits, expectedLastRow);
-  auditCreatorAssetIntegrity_();
+  SpreadsheetApp.flush();
+  const audit = auditCreatorAssetIntegrity_();
   SpreadsheetApp.getActive().toast(
     "기획자/제작자 빈칸 채움: " + (plannerFilled + makerFilled) + "칸",
     "완료",
     4
   );
-  Logger.log("syncCreators_result " + JSON.stringify({
+  const result = {
     planner_filled: plannerFilled,
     maker_filled: makerFilled,
     invalid_planner_skipped: invalidPlannerSkipped,
     invalid_maker_skipped: invalidMakerSkipped,
     non_file_name_skipped: nonFileNameSkipped,
-  }));
-  return true;
+    audit: audit,
+  };
+  Logger.log("syncCreators_result " + JSON.stringify(result));
+  return result;
 }
 
 function getPricingSheet_() {
