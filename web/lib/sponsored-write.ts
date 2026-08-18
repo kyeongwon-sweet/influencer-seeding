@@ -1,7 +1,7 @@
 import type { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl, postIdentityKey, ALLOWED_POST_URL_RE, isInstagramNonPostUrl, isInvalidTikTokPostUrl } from "@/lib/url-utils";
 import { normalizeChannelType, isFreeChannel, canonicalText } from "@/app/monitoring/lib";
-import { companyForAccount } from "@/lib/companyMap";
+import { repairPollutedCompanyName } from "@/lib/companyMap";
 import { triggerCaptionBackfill, needsCaption } from "@/lib/github-dispatch";
 import { todayKST } from "@/lib/dateRule";
 import { startActorRun } from "@/lib/apify";
@@ -56,6 +56,8 @@ export async function upsertSponsoredRows(
   source: string
 ): Promise<{ summary?: UpsertSummary; error?: string }> {
   const seen = new Set<string>();
+  // 업체명=계정명 오적재는 null 교정도 기존값을 지워야 한다. 일반 빈 시트값 보존 정책과 구분하는 키 집합.
+  const pollutedCompanyKeys = new Set<string>();
   // 시트 채널명에 붙는 작업용 마커(●)는 DB 계정명에서 제거 — 시트에선 팀 표기용으로 유지되므로
   // 여기서 걸러야 매일 syncAll 때 재유입되지 않음(2026-07-06, 'chachaping_zzal ●' 6건 사례).
   const cleanName = (v: unknown) => {
@@ -75,10 +77,13 @@ export async function upsertSponsoredRows(
       const account_name = accountNameForSponsoredWrite(url, channel_type, canonicalText(cleanName(r.account_name), "account_name"));
       // 업체명 자가교정(재발방지): 시트 업체명이 계정명과 같으면(오염) 규칙값으로 대체한다 —
       //   우리 채널(companyMap 규칙)이면 그 업체명, 개인이면 null. 무상 채널은 항상 null.
-      let company_name = free ? null : canonicalText(r.company_name as string | null | undefined, "company_name");
-      if (!free && company_name && account_name && company_name === account_name) {
-        company_name = companyForAccount(account_name, channel_type);
-      }
+      const rawCompany = free ? null : canonicalText(r.company_name as string | null | undefined, "company_name");
+      const companyRepair = free
+        ? { companyName: null, polluted: false }
+        : repairPollutedCompanyName(rawCompany, account_name, channel_type);
+      const company_name = companyRepair.companyName;
+      const identityKey = postIdentityKey(url) ?? url;
+      if (companyRepair.polluted) pollutedCompanyKeys.add(identityKey);
       return {
         url,
         normalized_key: postIdentityKey(url),
@@ -208,11 +213,23 @@ export async function upsertSponsoredRows(
     const ex = existingByIdentity.get(r.normalized_key ?? r.url) ?? existingByUrl.get(r.url);
     if (!ex) continue;
     const manual = Array.isArray(ex.manual_fields) ? (ex.manual_fields as string[]) : [];
+    const forceCompanyRepair = pollutedCompanyKeys.has(r.normalized_key ?? r.url);
+    const manualAfterRepair = forceCompanyRepair
+      ? manual.filter(field => field !== "company_name")
+      : manual;
     const upd: Record<string, unknown> = {};
     for (const f of META) {
+      // 업체명=계정명은 확정 오적재다. 개인 계정의 null 교정도 적용하고 해당 수기 잠금을 제거한다.
+      if (f === "company_name" && forceCompanyRepair) {
+        const desired = r.company_name ?? null;
+        if (String(desired ?? "").trim() !== String(ex.company_name ?? "").trim()) {
+          upd.company_name = desired;
+        }
+        continue;
+      }
       // 수동 수정 필드(캡션 포함)는 보존 — 대시보드에서 마지막으로 고친 값을 시트가 덮지 않음.
       // (캡션도 이제 동일 정책. 시트 빈칸이면 아래 valPresent에서 skip → needsCaption 자동 불러오기가 채움)
-      if (!SHEET_WINS.has(f) && manual.includes(f)) {
+      if (!SHEET_WINS.has(f) && manualAfterRepair.includes(f)) {
         // ⚠️ 무시하되 조용히 넘기지 않는다 — 시트가 다른 값을 갖고 있으면 그건 '영구 드리프트'다.
         //    (이나 posted_at 사고: 시트를 고쳐도 DB에 안 닿아 게시일 가드가 매일 실측을 버렸다)
         if (lockedFieldDrift((r as Record<string, unknown>)[f], ex[f])) {
@@ -241,7 +258,7 @@ export async function upsertSponsoredRows(
         return SHEET_WINS.has(f) && val !== null && val !== undefined && val !== "";
       }),
     );
-    const manualWithoutSheetWins = manual.filter(f => !assertedSheetWins.has(f));
+    const manualWithoutSheetWins = manualAfterRepair.filter(f => !assertedSheetWins.has(f));
     if (manualWithoutSheetWins.length !== manual.length) upd.manual_fields = manualWithoutSheetWins;
     // 무상채널 자가치유: 위성/온드에 기존 업체명·광고비가 남아있으면 강제로 비운다(시트 정정이 DB에 안 닿는 갭 보정)
     if (isFreeChannel(r.channel_type)) {

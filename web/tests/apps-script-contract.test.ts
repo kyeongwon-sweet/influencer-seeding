@@ -640,7 +640,10 @@ test("sheet-owned metadata remains canonical across both sheet sync paths", () =
   assert.match(statsRoute, /SHEET_WINS = new Set\(\["asset_name", "content_summary", "cost"\]\)/);
   assert.match(sponsoredWrite, /SHEET_WINS = new Set\(\["asset_name", "content_summary", "cost", "planner", "creator"\]\)/);
   assert.match(statsRoute, /manual\.filter\(f => !assertedSheetWins\.has\(f\)\)/);
-  assert.match(sponsoredWrite, /manual\.filter\(f => !assertedSheetWins\.has\(f\)\)/);
+  assert.match(sponsoredWrite, /manualAfterRepair\.filter\(f => !assertedSheetWins\.has\(f\)\)/);
+  assert.match(sponsoredWrite, /repairPollutedCompanyName\(rawCompany, account_name, channel_type\)/);
+  assert.match(sponsoredWrite, /f === "company_name" && forceCompanyRepair/);
+  assert.match(sponsoredWrite, /upd\.company_name = desired/);
 });
 
 test("sponsored sheet bulk create path is duplicate-safe", () => {

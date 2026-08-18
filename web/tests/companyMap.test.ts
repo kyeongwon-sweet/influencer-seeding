@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { companyForAccount, excludesCompanyFallback } from "../lib/companyMap.ts";
+import { companyForAccount, excludesCompanyFallback, repairPollutedCompanyName } from "../lib/companyMap.ts";
 
 test("company fallback remains available for viral channels", () => {
   assert.equal(companyForAccount("365_real", "바이럴 (영상)"), "굿띵투유");
@@ -34,5 +34,20 @@ test("맵에 없는 개인 계정은 null(업체명 없음)", () => {
   for (const a of ["tree.zzal", "posilping_humor", "smile_nyang_s2", "luna.player", "humor__.cok", "김준서"]) {
     assert.equal(companyForAccount(a, "바이럴 (영상)"), null);
   }
+});
+
+test("업체명=계정명 오적재는 표기 차이까지 잡아 회사 맵 또는 null로 교정한다", () => {
+  assert.deepEqual(
+    repairPollutedCompanyName("Ufo_RED", "ufo__red", "바이럴 (영상)"),
+    { companyName: "유머패밀리", polluted: true },
+  );
+  assert.deepEqual(
+    repairPollutedCompanyName("Tree Zzal", "tree.zzal", "바이럴 (영상)"),
+    { companyName: null, polluted: true },
+  );
+  assert.deepEqual(
+    repairPollutedCompanyName("정상 업체", "tree.zzal", "바이럴 (영상)"),
+    { companyName: "정상 업체", polluted: false },
+  );
 });
 

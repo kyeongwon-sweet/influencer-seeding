@@ -62,3 +62,24 @@ export function companyForAccount(name?: string | null, channelType?: string | n
   if (!name) return null;
   return _BY_ACCOUNT[canonAccount(name)] ?? null;
 }
+
+export type CompanyPollutionRepair = {
+  companyName: string | null;
+  polluted: boolean;
+};
+
+/** 업체명이 계정명의 표기 변형이면 오적재로 보고 회사 맵 정본(없으면 null)으로 교정한다. */
+export function repairPollutedCompanyName(
+  companyName?: string | null,
+  accountName?: string | null,
+  channelType?: string | null,
+): CompanyPollutionRepair {
+  const company = String(companyName ?? "").trim() || null;
+  const companyKey = canonAccount(company);
+  const accountKey = canonAccount(accountName);
+  const polluted = Boolean(companyKey && accountKey && companyKey === accountKey);
+  return {
+    companyName: polluted ? companyForAccount(accountName, channelType) : company,
+    polluted,
+  };
+}
