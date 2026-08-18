@@ -179,7 +179,8 @@ def _send_acct_comment(token, channel, parent_ts, comment):
             headers={"Authorization": "Bearer " + token})
         d = json.load(urllib.request.urlopen(rq, timeout=20))
         for m in d.get("messages", []):
-            if m.get("ts") and m.get("ts") != parent_ts and "특이 계정" in (m.get("text") or ""):
+            _mt = m.get("text") or ""
+            if m.get("ts") and m.get("ts") != parent_ts and ("특이 계정" in _mt or "채널 이상 감지" in _mt):
                 dd = urllib.parse.urlencode({"channel": channel, "ts": m["ts"]}).encode()
                 urllib.request.urlopen(urllib.request.Request(
                     "https://slack.com/api/chat.delete", data=dd,
@@ -620,26 +621,26 @@ def main():
         pdate = it["posted_at"] or "업로드일 미상"
         lines.append(f"{rank}. {label} _({it['platform']})_ *+{f(it['inc'])}*  {_cpv(it['cost'], it['cum'], it['channel_type'])}  `{pdate}`")
 
-    # ⚠️ 채널 이상 감지 (맨 아래) — 일일 목표 미달/초과 원인 진단. 채널 오늘값 → 아래에 비교 상세 별줄.
-    if _anom:
-        lines += ["", DIV, "", "⚠️ *채널 이상 감지* `(평소7일·전주·동요일 대비 ±50%↑)`", ""]
-        for _ct, _tv, _cmp in _anom[:6]:
-            _parts = [f"{_l} +{f(round(_bv))} 대비 {'+' if _d >= 0 else ''}{_d * 100:.0f}%" for _l, _bv, _d in _cmp]
-            lines.append(f"*{_ct}* 오늘 +{f(_tv)}")
-            lines.append("• " + " · ".join(_parts))
-            lines.append("")
-
     text = "\n".join(lines)
 
-    # 개별 계정 특이사항 → 본문 아닌 스레드 댓글로 (사용자 지시)
-    acct_comment = ""
-    if _acct_anom:
-        _cl = ["⚠️ *특이 계정* `(기존 게시물, 자기 평소 대비 급증≥3배·급감≤0.3배)`"]
+    # ── 이상 감지(채널 이상 + 개별 계정) → 본문 아닌 스레드 댓글로 (사용자 지시) ──
+    #   채널 이상 감지도 게시글 본문이 아니라 댓글로 (특이 계정과 한 댓글로 묶음). 둘 다 없으면 댓글 없음.
+    _asecs = []
+    if _anom:  # 채널 이상 — 일일 목표 미달/초과 원인 진단. 채널 오늘값 + 비교 상세 별줄.
+        _cl = ["⚠️ *채널 이상 감지* `(평소7일·전주·동요일 대비 ±50%↑)`", ""]
+        for _ct, _tv, _cmp in _anom[:6]:
+            _parts = [f"{_l} +{f(round(_bv))} 대비 {'+' if _d >= 0 else ''}{_d * 100:.0f}%" for _l, _bv, _d in _cmp]
+            _cl.append(f"*{_ct}* 오늘 +{f(_tv)}")
+            _cl.append("• " + " · ".join(_parts))
+        _asecs.append("\n".join(_cl))
+    if _acct_anom:  # 개별 계정 특이사항
+        _al = ["⚠️ *특이 계정* `(기존 게시물, 자기 평소 대비 급증≥3배·급감≤0.3배)`"]
         for _a in _acct_anom[:6]:
             _lab2 = f"<{_a['url']}|{_esc(_a['name'])}>" if _a['url'] else _esc(_a['name'])
             _pc = f"{'+' if _a['dv'] >= 0 else ''}{_a['dv'] * 100:.0f}%"
-            _cl.append(f"{_a['dir']} {_lab2} _({_a['platform']})_ 오늘 *+{f(_a['today'])}* · 평소 +{f(round(_a['base']))} 대비 {_pc}")
-        acct_comment = "\n".join(_cl)
+            _al.append(f"{_a['dir']} {_lab2} _({_a['platform']})_ 오늘 *+{f(_a['today'])}* · 평소 +{f(round(_a['base']))} 대비 {_pc}")
+        _asecs.append("\n".join(_al))
+    acct_comment = "\n\n".join(_asecs)   # 채널 이상 + 특이 계정(있는 것만). 스레드 댓글로 발송.
 
     if os.getenv("DRY_RUN"):   # 발송 없이 내용만 출력(검증용, Slack 토큰 불필요)
         print("=== DRY_RUN (발송 안 함) ===")
@@ -654,7 +655,7 @@ def main():
             print("검수 실행 오류(무시, DRY_RUN):", _e)
         print(text)
         if acct_comment:
-            print("\n=== [스레드 댓글: 특이 계정] ===")
+            print("\n=== [스레드 댓글: 이상 감지(채널+계정)] ===")
             print(acct_comment)
         return
 
