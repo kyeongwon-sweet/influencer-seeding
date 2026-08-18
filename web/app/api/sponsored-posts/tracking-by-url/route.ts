@@ -2,17 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl, postIdentityKey } from "@/lib/url-utils";
+import { buildTrackingUpdatePlan, type TrackingPostRow } from "@/lib/tracking-by-url";
 
 type TrackingUpdate = { url?: unknown; ended_at?: unknown };
-type PostRow = { id: string; url: string | null; normalized_key?: string | null; manual_fields?: string[] | null };
-
-function mergeManualFields(current: unknown, protectEndedAt: boolean): string[] {
-  const fields = Array.isArray(current) ? current.map(String) : [];
-  const set = new Set(fields.filter(Boolean));
-  if (protectEndedAt) set.add("ended_at");
-  else set.delete("ended_at");
-  return [...set];
-}
+const DB_CHUNK_SIZE = 80;
 
 export async function POST(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") {
@@ -50,45 +43,44 @@ export async function POST(req: NextRequest) {
 
   const supabase = getServerSupabase();
   let updated = 0;
-  const missing: string[] = [];
+  const fetchPosts = async (column: "normalized_key" | "url", values: string[]) => {
+    const unique = [...new Set(values.filter(Boolean))];
+    const chunks = Array.from({ length: Math.ceil(unique.length / DB_CHUNK_SIZE) }, (_, i) =>
+      unique.slice(i * DB_CHUNK_SIZE, (i + 1) * DB_CHUNK_SIZE)
+    );
+    const results = await Promise.all(chunks.map(chunk => supabase
+      .from("sponsored_posts")
+      .select("id, url, normalized_key, manual_fields")
+      .in(column, chunk)));
+    const failed = results.find(result => result.error);
+    if (failed?.error) throw new Error(failed.error.message);
+    return results.flatMap(result => (result.data ?? []) as TrackingPostRow[]);
+  };
 
-  for (const row of normalized) {
-    let matches: PostRow[] = [];
-    if (row.key) {
-      const { data, error } = await supabase
-        .from("sponsored_posts")
-        .select("id, url, normalized_key, manual_fields")
-        .eq("normalized_key", row.key);
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      matches = (data ?? []) as PostRow[];
-    }
-    if (!matches.length) {
-      const { data, error } = await supabase
-        .from("sponsored_posts")
-        .select("id, url, normalized_key, manual_fields")
-        .eq("url", row.url);
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      matches = (data ?? []) as PostRow[];
-    }
-    if (!matches.length) {
-      missing.push(row.url);
-      continue;
+  try {
+    const keyMatches = await fetchPosts("normalized_key", normalized.flatMap(row => row.key ? [row.key] : []));
+    const matchedKeys = new Set(keyMatches.flatMap(post => post.normalized_key ? [post.normalized_key] : []));
+    const fallbackUrls = normalized
+      .filter(row => !row.key || !matchedKeys.has(row.key))
+      .map(row => row.url);
+    const urlMatches = await fetchPosts("url", fallbackUrls);
+    const { groups, missing } = buildTrackingUpdatePlan(normalized, [...keyMatches, ...urlMatches]);
+
+    for (const group of groups) {
+      for (let i = 0; i < group.ids.length; i += DB_CHUNK_SIZE) {
+        const ids = group.ids.slice(i, i + DB_CHUNK_SIZE);
+        const { data, error } = await supabase
+          .from("sponsored_posts")
+          .update({ ended_at: group.ended_at, manual_fields: group.manual_fields })
+          .in("id", ids)
+          .select("id");
+        if (error) throw new Error(error.message);
+        updated += data?.length ?? 0;
+      }
     }
 
-    const protectManualReopen = row.ended_at === null;
-    for (const post of matches) {
-      const { data, error } = await supabase
-        .from("sponsored_posts")
-        .update({
-          ended_at: row.ended_at,
-          manual_fields: mergeManualFields(post.manual_fields, protectManualReopen),
-        })
-        .eq("id", post.id)
-        .select("id");
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      updated += data?.length ?? 0;
-    }
+    return NextResponse.json({ ok: true, updated, missing });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
-
-  return NextResponse.json({ ok: true, updated, missing });
 }
