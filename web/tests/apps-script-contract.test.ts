@@ -50,6 +50,8 @@ test("company pollution repair is limited to 313 URL-keyed cells in company colu
   assert.notEqual(start, -1);
   assert.match(body, /company-pollution-2026-08-18/);
   assert.match(body, /216ccf8e249beb75c386730fa5b4666dbfd628c185b8e9dd52cf2904bec736ea/);
+  assert.match(body, /APPROVED_KEY_HASHES/);
+  assert.match(body, /ignored_candidates/);
   assert.match(body, /EXPECTED_COUNT = 313/);
   assert.match(body, /EXPECTED_COMPANY_COL = 14/);
   assert.match(body, /linkKey_\(item\.url\)/);
