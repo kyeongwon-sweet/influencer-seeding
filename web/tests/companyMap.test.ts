@@ -51,3 +51,19 @@ test("업체명=계정명 오적재는 표기 차이까지 잡아 회사 맵 또
   );
 });
 
+test("ascii 핸들꼴 업체명(계정 조각·외부 핸들)도 오적재로 잡는다", () => {
+  // '486' = 486__humor 조각(계정명과 canon 다름) → 개인이라 null. ①만으론 못 잡던 케이스.
+  assert.deepEqual(
+    repairPollutedCompanyName("486", "486__humor", "바이럴 (영상)"),
+    { companyName: null, polluted: true },
+  );
+  // ascii 핸들꼴이 우리채널 계정 위에 있으면 그 업체명으로 교정
+  assert.deepEqual(
+    repairPollutedCompanyName("ssul_snack", "ufo__red", "바이럴 (영상)"),
+    { companyName: "유머패밀리", polluted: true },
+  );
+  // 한글/공백 포함 정식 업체명은 오염 아님(보존)
+  assert.equal(repairPollutedCompanyName("톡톡컴퍼니", "486__humor", "바이럴 (영상)").polluted, false);
+  assert.equal(repairPollutedCompanyName("스튜디오 엔터", "some_acct", "바이럴 (영상)").polluted, false);
+});
+

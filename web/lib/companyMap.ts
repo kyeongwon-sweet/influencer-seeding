@@ -77,7 +77,12 @@ export function repairPollutedCompanyName(
   const company = String(companyName ?? "").trim() || null;
   const companyKey = canonAccount(company);
   const accountKey = canonAccount(accountName);
-  const polluted = Boolean(companyKey && accountKey && companyKey === accountKey);
+  // 오염 판정: ① canon 계정명과 동일(대소문자·구분기호 변형 포함) 또는
+  //   ② 순수 ascii 핸들꼴(^[a-z0-9._-]+$). 정식 업체명은 전부 한글/공백 포함(무디·톡톡컴퍼니·
+  //   스튜디오 엔터·모두의행복 등)이라 ascii 핸들꼴 업체명은 항상 계정 핸들 오적재로 본다.
+  //   (2026-08: '486'=486__humor 조각처럼 계정명과 canon이 달라 ①만으론 못 잡고 재유입되던 것을 ②로 차단)
+  const looksHandle = company != null && /^[a-z0-9._-]+$/.test(company);
+  const polluted = Boolean(company && ((companyKey && accountKey && companyKey === accountKey) || looksHandle));
   return {
     companyName: polluted ? companyForAccount(accountName, channelType) : company,
     polluted,
