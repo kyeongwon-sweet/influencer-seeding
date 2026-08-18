@@ -44,16 +44,19 @@ test("asset-name repair is URL-keyed, backed up and guarded on edit", () => {
 });
 
 test("company pollution repair is limited to 313 URL-keyed cells in company column N", () => {
-  const start = appsScript.indexOf("function repairCompanyPollution20260818(payload)");
+  const start = appsScript.indexOf("function companyPollutionSource20260818_()");
   const end = appsScript.indexOf("// DB → 시트 반영", start);
   const body = appsScript.slice(start, end);
   assert.notEqual(start, -1);
   assert.match(body, /company-pollution-2026-08-18/);
+  assert.match(body, /216ccf8e249beb75c386730fa5b4666dbfd628c185b8e9dd52cf2904bec736ea/);
   assert.match(body, /EXPECTED_COUNT = 313/);
   assert.match(body, /EXPECTED_COMPANY_COL = 14/);
   assert.match(body, /linkKey_\(item\.url\)/);
   assert.match(body, /matches\.length !== 1/);
   assert.match(body, /_codex_company_backup_20260818/);
+  assert.match(body, /function repairCompanyPollution20260818DryRun\(\)/);
+  assert.match(body, /function repairCompanyPollution20260818Apply\(\)/);
   assert.match(body, /실행 중 행 순서가 바뀌어 중단했습니다/);
   assert.match(body, /writeColumnRuns_\(sheet, EXPECTED_COMPANY_COL, edits, lastRow\)/);
   assert.doesNotMatch(body, /deleteRow|deleteRows|insertRows|clearContent/);

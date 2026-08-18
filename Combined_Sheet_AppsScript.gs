@@ -571,6 +571,91 @@ function runSync_(onlyNew) {
 function syncNew()  { runSync_(true); }
 function syncAll()  { runSync_(false); }
 
+function companyPollutionSource20260818_() {
+  const EXPECTED_COUNT = 313;
+  const EXPECTED_KEYS_SHA256 = "216ccf8e249beb75c386730fa5b4666dbfd628c185b8e9dd52cf2904bec736ea";
+  const EXPECTED_DISTRIBUTION = {
+    "(빈칸)": 177, "굿띵투유": 47, "유머패밀리": 32, "동후작가": 25,
+    "아택": 14, "루나앤코코": 11, "업크루": 6, "후마니": 1,
+  };
+  const companyByAccount = {
+    "365hot": "굿띵투유", "365real": "굿띵투유", "anavocado12345": "동후작가",
+    "chachapingzzal": "루나앤코코", "ddonutpingzzal": "루나앤코코", "eepyeong": "동후작가",
+    "happingbox": "루나앤코코", "happypyeong": "동후작가", "ho1ytime": "동후작가",
+    "humani3": "후마니", "humorphim": "업크루", "humorssul": "굿띵투유",
+    "humoryonggari": "굿띵투유", "kutbba101": "굿띵투유", "laugh34": "굿띵투유",
+    "lunahumor": "루나앤코코", "mamy014": "굿띵투유", "mukddoonge": "굿띵투유",
+    "natozzal": "루나앤코코", "pangpangone": "굿띵투유", "pinkhumor25": "업크루",
+    "sksk1sksk0": "굿띵투유", "smilehahas2": "아택", "smilekings2": "아택",
+    "some2lve": "아택", "textpyeong": "동후작가", "timeholy": "굿띵투유",
+    "todayquest": "굿띵투유", "treehumor": "루나앤코코", "tteokbokkizip": "루나앤코코",
+    "twopyeong": "동후작가", "ufobrown": "유머패밀리", "ufogray": "유머패밀리",
+    "ufogreen": "유머패밀리", "ufonavy": "유머패밀리", "ufonight": "유머패밀리",
+    "ufoorange": "유머패밀리", "ufopink": "유머패밀리", "ufopurple": "유머패밀리",
+    "uforainbow": "유머패밀리", "ufored": "유머패밀리", "ufoskyblue": "유머패밀리",
+    "ufowhite": "유머패밀리", "ufoyellow": "유머패밀리", "yesjam": "굿띵투유",
+    "zzalqueen": "업크루",
+  };
+  const normalize = value => String(value == null ? "" : value).trim();
+  const canon = value => normalize(value).toLowerCase().replace(/[\s._·-]/g, "");
+  const sheet = getSheet_();
+  const fieldCols = buildFieldCols_(sheet);
+  if (fieldCols.company_name !== 14 || !fieldCols.account_name || !fieldCols.url) {
+    throw new Error("업체명 복구 대상 열 구성이 달라졌습니다.");
+  }
+  const lastRow = sheet.getLastRow();
+  const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, 14).getValues();
+  const rows = [];
+  const keys = [];
+  const distribution = {};
+  values.forEach(row => {
+    const account = normalize(row[fieldCols.account_name - 1]);
+    const company = normalize(row[fieldCols.company_name - 1]);
+    const accountKey = canon(account);
+    if (!company || canon(company) !== accountKey) return;
+    const url = normalize(row[fieldCols.url - 1]);
+    const key = linkKey_(url);
+    if (!key) throw new Error(`업체명 오적재 후보의 URL이 올바르지 않습니다. url=${url}`);
+    const nextCompany = companyByAccount[accountKey] || null;
+    rows.push({ url: url, account_name: account, old_company: company, new_company: nextCompany });
+    keys.push(key);
+    const label = nextCompany || "(빈칸)";
+    distribution[label] = (distribution[label] || 0) + 1;
+  });
+  if (rows.length !== EXPECTED_COUNT) throw new Error(`업체명 오적재 후보가 ${EXPECTED_COUNT}행이 아닙니다. actual=${rows.length}`);
+  keys.sort();
+  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, keys.join("\n"), Utilities.Charset.UTF_8)
+    .map(value => (value + 256) % 256)
+    .map(value => ("0" + value.toString(16)).slice(-2))
+    .join("");
+  if (digest !== EXPECTED_KEYS_SHA256) throw new Error(`업체명 오적재 URL 집합이 승인본과 다릅니다. sha256=${digest}`);
+  const labels = Object.keys(EXPECTED_DISTRIBUTION);
+  if (Object.keys(distribution).length !== labels.length || labels.some(label => distribution[label] !== EXPECTED_DISTRIBUTION[label])) {
+    throw new Error(`업체명 복구 분포가 승인본과 다릅니다. ${JSON.stringify(distribution)}`);
+  }
+  return rows;
+}
+
+function repairCompanyPollution20260818DryRun() {
+  const result = repairCompanyPollution20260818({
+    signature: "company-pollution-2026-08-18",
+    apply: false,
+    rows: companyPollutionSource20260818_(),
+  });
+  Logger.log("COMPANY_REPAIR_DRY_RUN " + JSON.stringify(result));
+  return result;
+}
+
+function repairCompanyPollution20260818Apply() {
+  const result = repairCompanyPollution20260818({
+    signature: "company-pollution-2026-08-18",
+    apply: true,
+    rows: companyPollutionSource20260818_(),
+  });
+  Logger.log("COMPANY_REPAIR_APPLY " + JSON.stringify(result));
+  return result;
+}
+
 // 2026-08-18 업체명=계정명 오적재 313행 일회성 복구.
 // Script Execution API에서만 호출하며, 대상 수·열·URL·현재값을 전부 확인한 뒤 N열만 수정한다.
 function repairCompanyPollution20260818(payload) {
