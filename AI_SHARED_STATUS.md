@@ -6,6 +6,15 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-18 [Codex 완료] 연동시트 URL 중복 전수 정리 (`DcI7korS2B-` · `DcBZOaEpDyt`)
+- **사전 전수감사:** 라이브 정본 `linkKey_`와 DB canonical URL을 쓰는 `auditLinkedSheetDuplicates20260811()` 재실행 결과 중복은 승인된 두 그룹뿐이었다(`duplicateGroups=2 / duplicateExtraRows=2`, 시트 2,863행·날짜열 97개).
+- **keeper 판정:** `ig:DcI7korS2B-`는 두 행 모두 날짜 지표 0개라 상단 2638행을 유지했다. `ig:DcBZOaEpDyt`는 날짜 지표 1개가 있는 2688행을 유지하고 지표 0개인 2796행을 제거했다. 추정값을 만들지 않았다.
+- **백업/적용:** `applyLinkedSheetDuplicateCleanup20260811()`가 원본 탭 전체를 숨김 시트 `_codex_dup_backup_20260818_171502`로 복제한 뒤 승인된 추가행 2개만 아래에서 삭제했다. 두 keeper URL은 DB 정본 `/p/` 형태로 통일했다. 함수 내부 사후검증과 독립 재감사 모두 `duplicateGroups=0 / duplicateExtraRows=0`, 최종 시트 2,861행을 확인했다.
+- **동기화:** 라이브 `syncAll` 1회는 2,808행 비교·신규 0·수정 0으로 완료됐다. 이어 `exportStats` 1회가 URL-key 날짜 쓰기 10칸(실측 6·공백 이어받기 4)과 증분 수식 2,855행을 갱신했다. `DcI7korS2B-`의 DB 2026-08-17 조회수 **22,859**가 시트 DD2638에 복구됐고, `DcBZOaEpDyt`의 기존 시트 날짜값 **166,000**은 보존됐다.
+- **DB 무변동:** 두 정규키 모두 `sponsored_posts` 1행을 유지했다. `DcI7korS2B-`는 2026-08-17 `play_count=22,859`, `DcBZOaEpDyt`는 같은 날 `play_count/reach_count=null`인 기존 1행 그대로다.
+- **수식 무손상:** 라이브 감사 결과 URL 2,814행, H/I 수식 누락 **0/0**, H/I `#REF!` **0/0**, 고아 지표행 **0**. GitHub Formula Audit run `32116460590`도 `hInvalid=0 / incInvalid=0 / mismatch=0 / orphan=0`으로 성공했다.
+- **`healthy=false`는 별도 운영 경보:** 같은 run의 전체 `healthy`는 이번 중복·수식 문제가 아니라 8/14~8/16 신규 게시물 **11건의 DB 실측 없음(stale=11)** 때문에 false다(`DcBZOaEpDyt` 포함). 값을 추정해 채우거나 경보를 숨기지 않았으며, 다음 정규 수집/접근불가 판정에서 별도로 처리해야 한다.
+
 ## ✅ 2026-08-18 [Codex 완료] `ig:DQdz86KkZf5` 연동시트 중복 4행 → 1행 정리
 - **사전 dry-run:** 라이브 정본 `linkKey_`·DB URL을 쓰는 `auditLinkedSheetDuplicates20260811()`로 4행을 재검증했다. 2483~2486행 모두 날짜 지표 `metricCount=0`; DB canonical `/p/` URL인 **2484행**을 keeper로 확정했다.
 - **백업/삭제:** 원본 탭 전체를 `콘텐츠 대시보드 연동의 사본`으로 복제한 뒤 숨김 백업으로 보존했다. 승인된 원본 행 **2486 → 2485 → 2483** 순으로 아래에서 삭제해 행 밀림을 피했다. 결과적으로 canonical keeper가 현재 2483행에 남았다.
