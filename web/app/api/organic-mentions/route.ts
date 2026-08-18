@@ -16,15 +16,23 @@ export async function GET(req: NextRequest) {
   const offsetParam = Number(req.nextUrl.searchParams.get("offset"));
   const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 1000) : null;
   const offset = Number.isFinite(offsetParam) && offsetParam > 0 ? offsetParam : 0;
+  const createdSinceParam = req.nextUrl.searchParams.get("createdSince");
+  const createdSince = createdSinceParam && Number.isFinite(Date.parse(createdSinceParam))
+    ? new Date(createdSinceParam).toISOString()
+    : null;
 
   const supabase = getServerSupabase();
   // ⚠️ uploaded_at 은 중복·NULL이 많아 단독 정렬로 range()를 쓰면 경계 행이 누락/중복된다.
   //    id를 2차 정렬키로 두어 페이지 경계를 결정적으로 만든다.
-  const baseQuery = () => supabase
-    .from("organic_mentions")
-    .select("*")
-    .order("uploaded_at", { ascending: false, nullsFirst: false })
-    .order("id", { ascending: true });
+  const baseQuery = () => {
+    let query = supabase
+      .from("organic_mentions")
+      .select("*");
+    if (createdSince) query = query.gte("created_at", createdSince);
+    return query
+      .order("uploaded_at", { ascending: false, nullsFirst: false })
+      .order("id", { ascending: true });
+  };
 
   let data: unknown[] | null = null;
   let error: { message: string } | null = null;

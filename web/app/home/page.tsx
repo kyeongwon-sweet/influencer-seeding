@@ -115,7 +115,7 @@ export default function DashboardPage() {
             setInsightsError(false);
           })
           .catch(() => setInsightsError(true)),
-        fetch("/api/organic-mentions", { signal: t }).then(r => r.json()).then((data: OrganicMention[]) => {
+        fetch(`/api/organic-mentions?limit=3&createdSince=${encodeURIComponent(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())}`, { signal: t }).then(r => r.json()).then((data: OrganicMention[]) => {
           if (Array.isArray(data)) setOrganicMentions(data);
         }),
         fetch("/api/kpi", { signal: t }).then(r => r.json()).then((data: KpiSnapshot | null) => {
