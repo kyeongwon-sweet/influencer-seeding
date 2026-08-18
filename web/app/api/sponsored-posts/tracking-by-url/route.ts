@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl, postIdentityKey } from "@/lib/url-utils";
-import { buildTrackingUpdatePlan, type TrackingPostRow } from "@/lib/tracking-by-url";
+import {
+  buildTrackingUpdatePlan,
+  trackingUpdateVerificationError,
+  type TrackingPostRow,
+  type TrackingUpdatedPostRow,
+} from "@/lib/tracking-by-url";
 
 type TrackingUpdate = { url?: unknown; ended_at?: unknown };
 const DB_CHUNK_SIZE = 80;
@@ -73,9 +78,12 @@ export async function POST(req: NextRequest) {
           .from("sponsored_posts")
           .update({ ended_at: group.ended_at, manual_fields: group.manual_fields })
           .in("id", ids)
-          .select("id");
+          .select("id, ended_at, manual_fields");
         if (error) throw new Error(error.message);
-        updated += data?.length ?? 0;
+        const updatedRows = (data ?? []) as TrackingUpdatedPostRow[];
+        const verificationError = trackingUpdateVerificationError({ ...group, ids }, updatedRows);
+        if (verificationError) throw new Error(`tracking update verification failed: ${verificationError}`);
+        updated += updatedRows.length;
       }
     }
 
