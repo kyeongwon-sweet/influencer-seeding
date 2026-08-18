@@ -1,8 +1,8 @@
 "use client";
-import { memo, useRef, useState } from "react";
+import { memo, useMemo, useRef, useState } from "react";
 import { CHART, weeklySum, weekLabelOf, padDomain, smoothCurvePath, NAVER_DATALAB_URL, META_ADS_MANAGER_URL } from "../lib";
 
-function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData, secondaryData, secondaryColor = "#ea580c", extraSeries, hidePrimary, hiddenLines, smooth }: {
+function LineChart({ data: rawData, height = 160, gradId = "lcGrad", postsOnDate, lsData: rawLsData, secondaryData: rawSecondaryData, secondaryColor = "#ea580c", extraSeries: rawExtraSeries, hidePrimary, hiddenLines, smooth }: {
   data: { date: string; value: number }[];
   height?: number;
   gradId?: string;
@@ -23,22 +23,27 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
   const activeIdx = pinnedIdx ?? hoverIdx;
   // 주별 합계 — 모든 시리즈를 같은 주차 키로 묶어 합산(원본 prop만 교체, 이하 계산은 그대로).
   // date가 주차 키("YYYY-MM-W")로 바뀌므로 라벨/툴팁은 weekLabelOf로 표기, 시리즈 간 정렬은 그대로 키 일치.
-  if (smooth) {
-    data = weeklySum(data, ["value"]);
-    if (lsData) lsData = weeklySum(lsData, ["ratio", "value"]);
-    if (secondaryData) secondaryData = weeklySum(secondaryData, ["value"]);
-    if (extraSeries) extraSeries = extraSeries.map(s => ({ ...s, members: s.members.map(m => ({ ...m, data: weeklySum(m.data, ["value"]) })) }));
-  }
-  if (data.length < 2) return <div className="flex items-center justify-center py-8 text-xs text-a-ink-muted">데이터 없음</div>;
+  const { data, lsData, secondaryData, extraSeries } = useMemo(() => {
+    if (!smooth) return { data: rawData, lsData: rawLsData, secondaryData: rawSecondaryData, extraSeries: rawExtraSeries };
+    return {
+      data: weeklySum(rawData, ["value"]),
+      lsData: rawLsData ? weeklySum(rawLsData, ["ratio", "value"]) : undefined,
+      secondaryData: rawSecondaryData ? weeklySum(rawSecondaryData, ["value"]) : undefined,
+      extraSeries: rawExtraSeries?.map(s => ({
+        ...s,
+        members: s.members.map(m => ({ ...m, data: weeklySum(m.data, ["value"]) })),
+      })),
+    };
+  }, [rawData, rawExtraSeries, rawLsData, rawSecondaryData, smooth]);
   const pl = 38, pr = 18, pt = 4, pb = 30;
   const VW = 560, VH = height;
   const cw = VW - pl - pr, ch = VH - pt - pb;
   // 봉우리가 천장에 닿지 않게 상단 헤드룸 확보(12%). 하단(pb)은 x라벨 여유 위해 확대. (오버슛 클램프+overflow hidden 병행)
   const chTop = Math.round(ch * 0.12);
-  const vals = data.map(d => d.value);
+  const vals = data.length ? data.map(d => d.value) : [0];
   const [min, max] = padDomain(Math.min(...vals), Math.max(...vals));
   const range = max - min || 1;
-  const xS = (i: number) => (i / (data.length - 1)) * cw;
+  const xS = (i: number) => (i / Math.max(1, data.length - 1)) * cw;
   const yS = (v: number) => ch - ((v - min) / range) * (ch - chTop);
   const pts: [number, number][] = data.map((d, i) => [xS(i), yS(d.value)]);
   const linePath = smoothCurvePath(pts);
@@ -48,7 +53,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
   // 스텝 간격 라벨 + 마지막 날짜 항상 표시. 단 마지막이 직전 라벨과 너무 가까우면(겹침) 직전 것을 제거.
   const xLabelIdxs = data.map((_, i) => i).filter(i => i % step === 0);
   const lastIdx = data.length - 1;
-  if (xLabelIdxs[xLabelIdxs.length - 1] !== lastIdx) {
+  if (data.length && xLabelIdxs[xLabelIdxs.length - 1] !== lastIdx) {
     if (lastIdx - xLabelIdxs[xLabelIdxs.length - 1] < step * 0.6) xLabelIdxs.pop();
     xLabelIdxs.push(lastIdx);
   }
@@ -63,7 +68,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
   const hoveredPosts = hoveredDate && postsOnDate ? postsOnDate(hoveredDate) : [];
 
   // 라라스윗 검색량 점선 — 데이터 날짜를 주 차트에 맞춰 매핑 후 독립 정규화
-  const lsPath = (() => {
+  const lsPath = useMemo(() => {
     if (!lsData || lsData.length === 0) return null;
     const lsMap = new Map(lsData.map(d => [d.date, d.ratio]));
     const mapped = data.map((d, i) => ({ i, ratio: lsMap.get(d.date) ?? null })).filter(p => p.ratio !== null) as { i: number; ratio: number }[];
@@ -72,8 +77,8 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
     const lsMin = Math.min(...ratios), lsMax = Math.max(...ratios);
     const lsRange = lsMax - lsMin || 1;
     const lsY = (r: number) => ch - ((r - lsMin) / lsRange) * (ch - chTop);
-    return mapped.map((p, j) => `${j === 0 ? "M" : "L"}${xS(p.i).toFixed(1)},${lsY(p.ratio).toFixed(1)}`).join(" ");
-  })();
+    return mapped.map((p, j) => `${j === 0 ? "M" : "L"}${((p.i / Math.max(1, data.length - 1)) * cw).toFixed(1)},${lsY(p.ratio).toFixed(1)}`).join(" ");
+  }, [ch, chTop, cw, data, lsData]);
 
   const hoveredLsEntry = (() => {
     if (!lsData || activeIdx === null) return null;
@@ -82,7 +87,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
 
   // 상품별 검색량 등 — 같은 group(예: 검색량 계열)은 공통 세로축(공유 max)으로 정규화해
   // 절대값이 작은 시리즈(예: 골드키위 5)가 화면을 꽉 채우는 왜곡을 방지. group 없으면 시리즈별 독립 정규화.
-  const extraComputed = (() => {
+  const extraComputed = useMemo(() => {
     const series = extraSeries ?? [];
     // 1) 각 시리즈의 합산(summed) 값 먼저 계산
     const base = series.map(s => {
@@ -112,17 +117,17 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
         const [mn, mx] = shared ?? padDomain(rawMn, rawMx);
         const rg = mx - mn || 1;
         const y = (v: number) => allEqual ? ch / 2 : ch - ((v - mn) / rg) * (ch - chTop);
-        dots = mapped.map(p => [xS(p.i), y(p.v)] as [number, number]);
+        dots = mapped.map(p => [(p.i / Math.max(1, data.length - 1)) * cw, y(p.v)] as [number, number]);
         if (mapped.length >= 2) {
-          path = mapped.map((p, j) => `${j === 0 ? "M" : "L"}${xS(p.i).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ");
+          path = mapped.map((p, j) => `${j === 0 ? "M" : "L"}${((p.i / Math.max(1, data.length - 1)) * cw).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ");
         }
       }
       return { name: s.name, color: s.color, memberMaps, summed, path, dots };
     });
-  })();
+  }, [ch, chTop, cw, data, extraSeries]);
 
   // Secondary data (오른쪽 Y축)
-  const secondaryPath = (() => {
+  const secondaryPath = useMemo(() => {
     if (!secondaryData || secondaryData.length === 0) return null;
     // 날짜 정규화: YYYY-MM-DD 형식만 추출 (시간 부분 제거)
     const normalizeDate = (d: string): string => d.split('T')[0];
@@ -136,7 +141,7 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
     const secPts = data.map<[number, number] | null>((d, i) => {
       const v = secMap.get(normalizeDate(d.date));
       if (v == null) return null;
-      return [xS(i), secYS(v)];
+      return [(i / Math.max(1, data.length - 1)) * cw, secYS(v)];
     }).filter((p): p is [number, number] => p !== null);
     if (secPts.length === 0) return null;
     if (secPts.length === 1) {
@@ -145,9 +150,9 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
       return `M ${x} ${y - 2} A 2 2 0 0 1 ${x} ${y + 2} A 2 2 0 0 1 ${x} ${y - 2}`;
     }
     return smoothCurvePath(secPts);
-  })();
+  }, [ch, chTop, cw, data, secondaryData]);
 
-  const secondaryTicks = (() => {
+  const secondaryTicks = useMemo(() => {
     if (!secondaryData || secondaryData.length === 0) return null;
     // 날짜 정규화: YYYY-MM-DD 형식만 추출 (시간 부분 제거)
     const normalizeDate = (d: string): string => d.split('T')[0];
@@ -158,7 +163,9 @@ function LineChart({ data, height = 160, gradId = "lcGrad", postsOnDate, lsData,
     const secRange = secMax - secMin || 1;
     const secYS = (v: number) => ch - ((v - secMin) / secRange) * ch;
     return [0, 0.5, 1].map(t => ({ val: secMin + t * secRange, y: secYS(secMin + t * secRange) }));
-  })();
+  }, [ch, data, secondaryData]);
+
+  if (data.length < 2) return <div className="flex items-center justify-center py-8 text-xs text-a-ink-muted">데이터 없음</div>;
 
   const fmtYSecondary = (v: number) => {
     if (v >= 10000000) return `${(v / 10000000).toFixed(1)}천만`;
