@@ -571,9 +571,17 @@ function runSync_(onlyNew) {
 function syncNew()  { runSync_(true); }
 function syncAll()  { runSync_(false); }
 
+function companyPollutionRepairKey20260818_(url, accountName) {
+  const accountKey = String(accountName == null ? "" : accountName).trim().toLowerCase().replace(/[\s._·-]/g, "");
+  const cleanUrl = String(url == null ? "" : url).trim().split("?")[0];
+  if (accountKey === "timeholy" && /instagram\.com\/time_holy\/reels\/?$/i.test(cleanUrl)) {
+    return "url:https://instagram.com/time_holy/reels/";
+  }
+  return linkKey_(url);
+}
+
 function companyPollutionSource20260818_() {
   const EXPECTED_COUNT = 313;
-  const EXPECTED_KEYS_SHA256 = "216ccf8e249beb75c386730fa5b4666dbfd628c185b8e9dd52cf2904bec736ea";
   const APPROVED_KEY_HASHES = "00917c01d10f8c09,017922aa254ddf4d,02529e872fc54e93,0494224b0888a875,0631a43d0720ca56,069473fd2d28990c,06d67dbd797e6d82,079cd41b1b708ee8,07a3c472837d6ffa,07e4b07af3c6de8b,084db3c7d6ad3bc4,08666ee246afebf6,09d2cd554f5a5116,0a357b49b8913ea3,0b1fd2113dde428a,0c0dbe6169a250f1,0ce9a4842a94a8f4,111579f277d0e517,116e09567643f490,11cd35fd0bc6993e,133373bb240f426b,13b9ed5cd1d68648,1633255e3a798b60,16a75bdb6ef8e482,18634104a190c3f7,189ecd93f7cfee20,1b5e3037c35eae28,1b66fef25774d294,1b88ed3d2d26492e,1c44ea5a92c7e510,1d3cea91153056c9,1e8c925c30cb8da0,1f06f034a81f251c,1fa5888b42afb2b7,21aeb3ed93af74dd,21d0214bb7963f25,233869ec4b2629ff,235bc0d9240997ec,23695339acf66176,25bb32993ad09e14,26d5dab5af2ade7a,26fb582cec2ad00c,2709526c0c9c8698,28cb8c7b5e534b70,28e378b4c5dbc8f5,2916a9702144edef,2953019ad4c807b7,29745d69272ad142,29fc9699fa24a413,2ae5041446265061,2af7b07df298a060,2b723e31669a9a6f,2c5e9aded822f60c,2dbcc6f2d6b0eaf6,2df8b2754bd4f362,2e6a24cc4a405872,2eba7cf0b72eb48a,2eff6720bd56a5b5,2f081b777c2e74e5,2f3e4020acdbb4c7,3006fdba93eb03e5,31b256e49ff5d1b4,325fafad2a0e9218,329ac469b79f9f67,355ab5a28a802b20,362f7920b4616bca,3763436311746129,377ec8dc7fdb09fc,38ca54992106c3d9,38d54aefb9d382b2,38e63a455353856d,39bd438662575e8e,39dd5fbc8daee6dc,3a201c214c3be705,3b8bfa90c435a3a1,3c9b0d6345b46873,3ca699f3c50317b6,3d84f6ad244b2a43,3eb7bc1fefed64c1,3f4b8d31af2277c8,3fec8a4f79e2c3ee,41f1511eaf3d10ee,421fed02828f9000,447b04300f4df6f1,4498b479f117968e,470120c18408046a,470fbf5de6f50c96,475d23bb36c650ad,477ff602e1acdcb4,4892c64761f90fd4,4898a3ec978f6b11,48f5a5ad3c40d7dd,494da97acb98946e,49e89ee744d3e039,4a0d8c28702479e0,4a0e4a29ba9e7449,4a4752133a1ab8c7,4a9203adaa4af18f,4acb371a8c46f7af,4c5c4c43ca306653,4caed3f4789a7820,4df70570a2cd6e0f,507035f467d14440,50d5d95f0cc55b10,51006c959065567b,524b4d6f3308efcb,537c8eb74abdbc4b,53e37f01dee95722,545c8ec2cfdf0d9e,54b42bf1624edf71,55353d0809abb178,55ce79c846fdd6c2,56ad9d02a62596cd,5779aa6fecb7c276,5804e923aecc038e,58552ba90b6e7bb1,59805e5fcc686678,5a515c9935d75389,5b98a1bed9775a1d,5d5c036e29a0d0f2,5f4a11b1c73dbacc,5f9fe14fefb4d74d,61dc4596ecd055ee,620c5348978dd68b,621b0b54b75c630e,625146f0fac32189,64e2c6f16e976787,654bebd153c32ec7,65630369f40e2aec,65a28ef54373247e,65b531414e516c1c,65d7528222c0bf94,66fc31e3f816bc02,67cf5c73616ffc70,6803e865363ad5d7,691f58e18d6d5f28,6987f81bab93ac4a,6a2a2209e18bed2e,6a2a43ed910b96e0,6c6b697ce58f009e,6ca903e5c65b6dd3,6d0ded8e61d559e7,75b88344684ae839,75e34d485a9eb04f,764c2eb2b030e2cc,7771e90d71f4da51,77f5778c838fa7ef,78fe477d17946d5e,78fff5e2f117a1d4,7c786e335461e3df,7c9e39140c3630af,7caaa077fc0a5289,7da7f7cf82d78aba,808eb6ef43c5a768,828baf4be1157c36,82d894566019620d,83b6b1a053582557,848c39eef83004f7,8702c3fb73880430,876e150fc1d2fbed,8bc6d513bfd5fe88,8c42173cf3ed5bc8,8c49dda2001c1724,8c5b0a6a166a8d9e,8db762e9b06c3a87,8ea94c5fb9aa4364,90585e87e41952f7,9184b24cda048344,91e6a76410b6ca9d,925b7c1ac8d534c5,93df12b875d21ad8,94978b82dd31daa4,95af2d1d73a0d082,95e0ac0dab434cdf,97d9696ef74ef67c,980e1f01174aa63c,986b953f0c422ed6,991b034e799e922b,9940223c470bf415,99a1355b4578bde7,9ab9155cbb186ff1,9adefa1b1863093d,9b30617032866cfa,9b3c8a354eb63cba,9bc237b42ad01ed6,9d573c0f6d3ebf43,9e5cc69bb9a6f0cb,9e8c659d8cd4b3b6,9ef07b9980679a70,9f15463cd0e85987,9fbcd17c2525a6cd,a11c9c1cb04fb282,a2ea16ac90d11928,a367b445219f1d15,a47845bb78a36c28,a49f9f7b8a506f7b,a62e5e0306274926,a7600aba89eaa96c,a7d1d36d36b2d766,a85cef409fa0658f,aa4464b9074dd074,aaf14ab1eb76d6cd,aafa191b2b4ce564,ac11506aacdc18e4,acc2da971690bf84,ad00592bf9fe4999,ad46eb5b5ea57f4e,ae1e207750386fd2,ae22594373ea6cae,b17e52d7cee9bcd2,b18407cff5c67382,b1e03b28a0a82626,b1f61b02fcb7148c,b2d5ab4fc7a30417,b331b250eec7bf2d,b3872696acb3697f,b3f2f3473c38cd45,b68e82cefa1f90c4,b6b8be2738701ea8,b6c73fba281449d3,b98191878399ce49,bb833c5b195c1c2c,bbd109440dca7e8e,bbeaf86ffa1bfca6,bceccdd953d8ede1,bdb0dad196af112d,be5167ef2df67b9b,bedbddfd6fd5fe13,bf5430c77a77167e,bfd58a203d05ab3e,c01b99a85465e14c,c0a8042626c4213c,c20961c580a11690,c272dd8722e87ead,c50c71017d951c69,c74b09fe87a89a2c,c7b9473ffdfc87ae,c7f6d970bed6251c,c811fb008d7dd76b,c885d6bdd5345eea,c8f245a8fac0111a,c8f62ce65464ff00,c94c5e7a0aa8e372,c9883d10f4cea82d,ca40968249749e0d,cafe1e8d01309970,cb751dcd0b25968f,cbda8b5d9dbe388f,cc22877e8cf65f86,cc659589e65ae6ab,cd10a9c956c03ed2,cdc7d44b235f5d81,cdfc219d8b0d2ba2,ce65a44d45aa8d80,d09b4c10bc43f7b7,d4e1bbc1a191f7d7,d4fdaf98fe643e74,d5f5241485b6eb67,d727fda43ec9b8dc,dae607a30af51845,dc0cf40ad8d879ba,dc8223a9ae101a2e,dcaad5e22226ac38,dcbbe12519d132d7,dcbdfad52fab4164,dcd9da4423348f02,dd04ab1ead5cb191,de0e0a3fafc27aa5,de70c8c7c1a3073d,df31e22496bf41ac,e0007c81e9c6fba4,e006391f945acb08,e0845df97a915bc1,e2d69cffa9007589,e367a0693413d2ba,e47671aeecc7a44e,e5f95f64e6117e36,e67a7834bb5114da,e7329e64dd41fb3a,e8fc2b20e4c195c3,e98542907e5646d2,ea87ff7ddb347dd2,eaf5fa75316a72da,eb53f568588eca6b,ebfc20ecdccc6e58,ed423aefdd5979d5,edda02c39502f1e5,edfecf74493ba8c6,ee802491e7444adb,ef5e0f126686948a,ef7bebfb244bb656,f0e36e703be4bd98,f1e813f0a515f5c3,f243e8d12c3ad8f3,f2e37dc957196ec2,f41865fece3ceb47,f4edb2ee2c3a96f6,f6fa8801ee901645,f859afcd3b2b5067,f9813452bd29bb79,f98c3c535ee21290,fa0e0fa3edc95c9f,fa37f2a22823c44f,faaf488361c0db97,fb01ae26c456866f,fb63d0c3a3122512,fc10056db414aca1,fc9507f0850a843f,fce878272281c64a,fdb50d2d0582c5ad,fe65f5534bcd3454,ff2815925dd8c992,ffa9d9fc7fe604be".split(",").reduce((set, value) => {
     set[value] = true;
     return set;
@@ -614,36 +622,56 @@ function companyPollutionSource20260818_() {
   const lastRow = sheet.getLastRow();
   const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, 14).getValues();
   const rows = [];
-  const keys = [];
   const distribution = {};
-  let ignoredCandidates = 0;
-  values.forEach(row => {
+  const approvedCandidatesByKey = {};
+  const ignoredCandidates = [];
+  values.forEach((row, index) => {
+    const sheetRow = CONFIG.DATA_START_ROW + index;
     const account = normalize(row[fieldCols.account_name - 1]);
     const company = normalize(row[fieldCols.company_name - 1]);
     const accountKey = canon(account);
     if (!company || canon(company) !== accountKey) return;
     const url = normalize(row[fieldCols.url - 1]);
-    const key = linkKey_(url);
+    const key = companyPollutionRepairKey20260818_(url, account);
     if (!key) throw new Error(`업체명 오적재 후보의 URL이 올바르지 않습니다. url=${url}`);
     if (!APPROVED_KEY_HASHES[sha256Hex(key).slice(0, 16)]) {
-      ignoredCandidates++;
+      ignoredCandidates.push({ row: sheetRow, url: url, account_name: account, company_name: company, key: key });
       return;
     }
     const nextCompany = companyByAccount[accountKey] || null;
-    rows.push({ url: url, account_name: account, old_company: company, new_company: nextCompany });
-    keys.push(key);
+    const candidate = { row: sheetRow, repair_key: key, url: url, account_name: account, old_company: company, new_company: nextCompany };
+    if (!approvedCandidatesByKey[key]) approvedCandidatesByKey[key] = [];
+    approvedCandidatesByKey[key].push(candidate);
+    if (approvedCandidatesByKey[key].length > 1) return;
+    rows.push(candidate);
     const label = nextCompany || "(빈칸)";
     distribution[label] = (distribution[label] || 0) + 1;
   });
+  const duplicateApprovedKeys = Object.keys(approvedCandidatesByKey)
+    .filter(key => approvedCandidatesByKey[key].length > 1)
+    .map(key => ({ key: key, rows: approvedCandidatesByKey[key] }));
+  const matchedApprovedHashes = Object.keys(approvedCandidatesByKey).reduce((set, key) => {
+    set[sha256Hex(key).slice(0, 16)] = true;
+    return set;
+  }, {});
+  const approvedHashes = Object.keys(APPROVED_KEY_HASHES);
+  const missingApprovedHashes = approvedHashes.filter(hash => !matchedApprovedHashes[hash]);
+  Logger.log("COMPANY_REPAIR_DIAGNOSTIC " + JSON.stringify({
+    approved_rows: rows.length,
+    approved_unique_keys: Object.keys(approvedCandidatesByKey).length,
+    duplicate_approved_keys: duplicateApprovedKeys,
+    missing_approved_hashes: missingApprovedHashes,
+    ignored_candidates: ignoredCandidates,
+  }));
   if (rows.length !== EXPECTED_COUNT) throw new Error(`업체명 오적재 후보가 ${EXPECTED_COUNT}행이 아닙니다. actual=${rows.length}`);
-  keys.sort();
-  const digest = sha256Hex(keys.join("\n"));
-  if (digest !== EXPECTED_KEYS_SHA256) throw new Error(`업체명 오적재 URL 집합이 승인본과 다릅니다. sha256=${digest}`);
+  if (approvedHashes.length !== EXPECTED_COUNT || Object.keys(approvedCandidatesByKey).length !== EXPECTED_COUNT || missingApprovedHashes.length) {
+    throw new Error(`업체명 오적재 승인 키 집합이 다릅니다. approved=${approvedHashes.length}, matched=${Object.keys(approvedCandidatesByKey).length}, missing=${missingApprovedHashes.length}`);
+  }
   const labels = Object.keys(EXPECTED_DISTRIBUTION);
   if (Object.keys(distribution).length !== labels.length || labels.some(label => distribution[label] !== EXPECTED_DISTRIBUTION[label])) {
     throw new Error(`업체명 복구 분포가 승인본과 다릅니다. ${JSON.stringify(distribution)}`);
   }
-  Logger.log("COMPANY_REPAIR_APPROVED_SET " + JSON.stringify({ approved: rows.length, ignored_candidates: ignoredCandidates }));
+  Logger.log("COMPANY_REPAIR_APPROVED_SET " + JSON.stringify({ approved: rows.length, ignored_candidates: ignoredCandidates.length }));
   return rows;
 }
 
@@ -667,6 +695,69 @@ function repairCompanyPollution20260818Apply() {
   return result;
 }
 
+function companyPollutionBackupRows20260818_() {
+  const EXPECTED_COUNT = 313;
+  const SIGNATURE = "company-pollution-2026-08-18";
+  const backup = getSheet_().getParent().getSheetByName("_codex_company_backup_20260818");
+  if (!backup || backup.getLastRow() !== EXPECTED_COUNT + 1) {
+    throw new Error("업체명 복구 백업 탭이 없거나 행 수가 다릅니다.");
+  }
+  const values = backup.getRange(1, 1, EXPECTED_COUNT + 1, 6).getValues();
+  if (String(values[0][0] || "").trim() !== SIGNATURE) throw new Error("업체명 복구 백업 마커가 다릅니다.");
+  const rows = values.slice(1).map(row => ({
+    sheet_row: Number(row[1]),
+    url: String(row[2] || "").trim(),
+    account_name: String(row[3] || "").trim(),
+    old_company: String(row[4] || "").trim() || null,
+    new_company: String(row[5] || "").trim() || null,
+  }));
+  if (rows.some(row => !row.sheet_row || !row.url || !row.account_name || !row.old_company)) {
+    throw new Error("업체명 복구 백업에 필수값이 비어 있습니다.");
+  }
+  const keys = {};
+  rows.forEach(row => {
+    const key = companyPollutionRepairKey20260818_(row.url, row.account_name);
+    if (!key || keys[key]) throw new Error(`업체명 복구 백업 키가 없거나 중복입니다. key=${key}`);
+    keys[key] = true;
+  });
+  return rows;
+}
+
+function syncCompanyPollutionBackupToDb20260818() {
+  const rows = companyPollutionBackupRows20260818_();
+  const result = postRows_(rows.map(row => ({
+    url: row.url,
+    account_name: row.account_name,
+    company_name: row.new_company,
+  })));
+  Logger.log("COMPANY_REPAIR_DB_SYNC " + JSON.stringify({ requested: rows.length, result: result }));
+  return result;
+}
+
+function auditCompanyPollutionDb20260818() {
+  const expectedRows = companyPollutionBackupRows20260818_();
+  const res = UrlFetchApp.fetch(CONFIG.LIST_API_URL, {
+    method: "get",
+    headers: authHeaders_(),
+    muteHttpExceptions: true,
+  });
+  if (res.getResponseCode() !== 200) throw new Error(`API ${res.getResponseCode()}: ${res.getContentText()}`);
+  const posts = (JSON.parse(res.getContentText()).posts) || [];
+  const byKey = {};
+  posts.forEach(post => {
+    const key = companyPollutionRepairKey20260818_(post.url, post.account_name);
+    if (key) byKey[key] = post;
+  });
+  const mismatches = expectedRows.filter(row => {
+    const post = byKey[companyPollutionRepairKey20260818_(row.url, row.account_name)];
+    return !post || String(post.company_name || "").trim() !== String(row.new_company || "").trim();
+  });
+  const result = { ok: mismatches.length === 0, checked: expectedRows.length, mismatches: mismatches.slice(0, 20) };
+  Logger.log("COMPANY_REPAIR_DB_AUDIT " + JSON.stringify(result));
+  if (!result.ok) throw new Error(`업체명 DB 정합 불일치 ${mismatches.length}건`);
+  return result;
+}
+
 // 2026-08-18 업체명=계정명 오적재 313행 일회성 복구.
 // Script Execution API에서만 호출하며, 대상 수·열·URL·현재값을 전부 확인한 뒤 N열만 수정한다.
 function repairCompanyPollution20260818(payload) {
@@ -687,7 +778,7 @@ function repairCompanyPollution20260818(payload) {
 
   const sourceKeys = {};
   payload.rows.forEach((item, index) => {
-    const key = linkKey_(item && item.url);
+    const key = item && item.repair_key || companyPollutionRepairKey20260818_(item && item.url, item && item.account_name);
     if (!key) throw new Error(`복구 소스 URL이 올바르지 않습니다. index=${index}`);
     if (sourceKeys[key]) throw new Error(`복구 소스 URL 키가 중복입니다. key=${key}`);
     sourceKeys[key] = item;
@@ -705,7 +796,7 @@ function repairCompanyPollution20260818(payload) {
   const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, EXPECTED_COMPANY_COL).getValues();
   const sheetRowsByKey = {};
   values.forEach((row, index) => {
-    const key = linkKey_(row[fieldCols.url - 1]);
+    const key = companyPollutionRepairKey20260818_(row[fieldCols.url - 1], row[fieldCols.account_name - 1]);
     if (!key || !sourceKeys[key]) return;
     if (!sheetRowsByKey[key]) sheetRowsByKey[key] = [];
     sheetRowsByKey[key].push({
@@ -720,10 +811,12 @@ function repairCompanyPollution20260818(payload) {
   const edits = [];
   const distribution = {};
   payload.rows.forEach(item => {
-    const key = linkKey_(item.url);
+    const key = item.repair_key || companyPollutionRepairKey20260818_(item.url, item.account_name);
     const matches = sheetRowsByKey[key] || [];
-    if (matches.length !== 1) throw new Error(`시트 URL 매칭은 1행이어야 합니다. key=${key}, count=${matches.length}`);
-    const current = matches[0];
+    const current = Number.isInteger(item.row)
+      ? matches.find(match => match.row === item.row)
+      : (matches.length === 1 ? matches[0] : null);
+    if (!current) throw new Error(`시트 URL·행 매칭이 유일하지 않습니다. key=${key}, row=${item.row || "없음"}, count=${matches.length}`);
     if (canonAccount(current.account_name) !== canonAccount(item.account_name)) {
       throw new Error(`시트 채널명이 소스와 다릅니다. row=${current.row}, key=${key}`);
     }
@@ -762,7 +855,7 @@ function repairCompanyPollution20260818(payload) {
     const lockedValues = sheet.getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, EXPECTED_COMPANY_COL).getValues();
     matched.forEach(item => {
       const lockedRow = lockedValues[item.row - CONFIG.DATA_START_ROW];
-      if (linkKey_(lockedRow[fieldCols.url - 1]) !== item.key) {
+      if (companyPollutionRepairKey20260818_(lockedRow[fieldCols.url - 1], lockedRow[fieldCols.account_name - 1]) !== item.key) {
         throw new Error(`실행 중 행 순서가 바뀌어 중단했습니다. row=${item.row}`);
       }
       if (canonAccount(lockedRow[fieldCols.account_name - 1]) !== canonAccount(item.account_name)) {
