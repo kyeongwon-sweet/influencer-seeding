@@ -42,7 +42,8 @@ export type SheetAuditRow = {
   h: number | string | null;
   inc: number | string | null;
   // FORMULA 렌더로 읽은 원문. undefined면 형태 감사 미실행(순수로직 단위테스트/폴백 호환).
-  // null·`=""`는 잘못된 형태다. H 숫자는 날짜 이력이 없는 행의 수기 보존만 허용한다.
+  // null은 잘못된 형태다. I의 `=""`는 게시 7일 초과 첫 측정을 숨기는 백로그 정책일 때만 허용한다.
+  // H 숫자는 날짜 이력이 없는 행의 수기 보존만 허용한다.
   hFormula?: string | number | boolean | null;
   incFormula?: string | number | boolean | null;
   dates: Array<{ date: string; value: number }>; // 양수 날짜값(오름차순)
@@ -151,6 +152,26 @@ function sameFormula(actual: string | number | boolean | null, expected: string)
   return normalize(actual) === normalize(expected);
 }
 
+function measuredRefs(row: SheetAuditRow, post: AuditPost, todayKst: string) {
+  return row.dates.filter((d) =>
+    d.date < todayKst &&
+    (post.measured.get(d.date) ?? 0) > 0 &&
+    (!post.posted || d.date >= post.posted) &&
+    (!post.ended || d.date <= post.ended));
+}
+
+function isIntentionalBacklogStub(
+  actual: string | number | boolean | null,
+  row: SheetAuditRow,
+  post: AuditPost | undefined,
+  todayKst: string,
+): boolean {
+  if (typeof actual !== "string" || actual.replace(/\s+/g, "") !== '=""' || !post?.posted) return false;
+  const refs = measuredRefs(row, post, todayKst);
+  return refs.length === 1 &&
+    (Date.parse(refs[0].date) - Date.parse(post.posted)) / 86400000 > 7;
+}
+
 export function auditRows(
   rows: SheetAuditRow[],
   posts: Map<string, AuditPost>,
@@ -189,7 +210,12 @@ export function auditRows(
         note(`H수식형태 오류 ${row.label} (${row.key} · 행 ${row.sourceRow})`);
       }
     }
-    if (row.sourceRow && row.incFormula !== undefined && !sameFormula(row.incFormula, expectedIncrementFormula(row.sourceRow))) {
+    const post = posts.get(row.key);
+    const incrementFormulaValid = row.sourceRow && row.incFormula !== undefined && (
+      sameFormula(row.incFormula, expectedIncrementFormula(row.sourceRow)) ||
+      isIntentionalBacklogStub(row.incFormula, row, post, todayKst)
+    );
+    if (row.sourceRow && row.incFormula !== undefined && !incrementFormulaValid) {
       res.formulaShape.incInvalid += 1;
       note(`I수식형태 오류 ${row.label} (${row.key} · 행 ${row.sourceRow})`);
     }
@@ -239,13 +265,9 @@ export function auditRows(
 
     let expDb: number | null | undefined = undefined; // undefined = DB 정보 없음(판정에서 제외)
     let firstMeasure = false;                         // 유효 실측이 딱 하나 = 게시물 첫 측정일
-    const p = posts.get(row.key);
+    const p = post;
     if (p) {
-      const refs = row.dates.filter((d) =>
-        d.date < todayKst &&
-        (p.measured.get(d.date) ?? 0) > 0 &&
-        (!p.posted || d.date >= p.posted) &&
-        (!p.ended || d.date <= p.ended));
+      const refs = measuredRefs(row, p, todayKst);
       firstMeasure = refs.length === 1;
       if (refs.length === 0) expDb = null;
       else if (refs.length === 1 && p.posted &&

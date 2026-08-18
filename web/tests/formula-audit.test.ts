@@ -84,13 +84,15 @@ test("데이터 있는데 H 빈칸 = 이상 / 수동 보존(값≠MAX)은 허용
 
 test("백로그(게시 7일 초과 첫 측정)의 증분 빈칸은 정상", () => {
   const rows = [row({
-    key: "ig:backlog", inc: null,
+    key: "ig:backlog", sourceRow: 12, h: 5000, inc: null, incFormula: '=""',
     dates: [{ date: "2026-07-29", value: 5000 }],
   })];
   const posts = new Map([["ig:backlog", post({ "2026-07-29": 5000 }, "2026-06-01")]]);
   const r = auditRows(rows, posts, TODAY);
   assert.equal(r.inc.emptyOk, 1);
   assert.equal(r.inc.mismatch, 0);
+  assert.equal(r.formulaShape.incInvalid, 0);
+  assert.equal(formatAuditMessage(r).healthy, true);
 });
 
 test("당일 수기값 포함(V2 시트 기대값) 또는 DB 규칙 중 하나와 맞으면 정합", () => {
