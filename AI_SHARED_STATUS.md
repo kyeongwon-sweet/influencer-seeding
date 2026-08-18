@@ -6,6 +6,20 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-18 [Claude 완료·배포] 채널분류 `파워채널/먹스타` 개명 + 매거진 배너 전환(게시일 경계) (`83a0f62`)
+- **사용자 지시:** 시트 기준 `먹스타 → 파워채널/먹스타`로 개명. 더불어 **`파워채널/매거진 = 배너(이미지)` · `파워채널/먹스타 = 릴스`** 정의를 확정했다.
+- **개명(완료):** DB `협찬 (먹스타)` 2건 → `협찬 (파워채널/먹스타)`(68→70건, 잔존 0). 두 행 모두 `manual_fields`에 `channel_type`이 잠겨 있어 **시트 동기화로는 영영 안 바뀌는 상태**였다(그래서 DB 직접 수정이 맞다). 잠금은 보존했고 백업은 `scratchpad/backup_mukstar_rename_20260818.json`. ⚠️ 이 2건은 실제로는 X(트위터) 게시물(`포슬 (트위터)`, 6/28 게시·7/12 종료)이라 "릴스" 정의와 맞지 않는다 — 종료 건이라 수집 영향은 없으나 분류 재확인 권장.
+- **드롭다운:** `CHANNEL_TYPES`에 `협찬(파워채널/먹스타)` 추가·`협찬(먹스타)` 제거. **기존 목록에 `파워채널/먹스타`가 아예 없어** 그동안 드롭다운 선택이 불가능했다.
+- **🔑 매거진 배너 전환은 (b) 신규만 — 소급 금지:** 매거진 41건에는 **조회수 실측 621행이 쌓여 있고 도달수는 0행**이다. 소급 전환하면 그 실적이 화면·리포트에서 사라진다. 사용자 선택은 "앞으로 등록되는 매거진만 배너 처리".
+- **판정 단일화:** 배너 판정이 `channel_type.includes("배너")`로 **TS 20곳·Python 10곳에 흩어져** 있었다. 매거진은 이름에 "배너"가 없어 한 곳만 놓쳐도 규칙이 어긋난다. 정본을 두 개로 모았다 — `isBannerChannel`(`web/app/monitoring/lib.ts`) / `is_banner_channel`(`scripts/channel_kind.py`). **앞으로 `includes("배너")`를 호출부에 새로 쓰지 말 것.**
+- **경계:** `posted_at >= 2026-08-18`(`MAGAZINE_BANNER_FROM`). `created_at`은 소급 등록분이 8/14까지 섞여 기준이 못 된다. 매거진 최신 게시일이 **2026-06-30**이라 기존 건과 두 달 가까이 벌어져 안전하다. `postedAt`이 없으면 배너로 보지 않는다(기존 동작 유지).
+- **`sheet-banner-reach`는 주입식:** 이 파일은 순수 모듈이고 **단위 테스트가 상대경로로 임포트**해서 `@/` alias·확장자를 해석 못 한다(`node --test --experimental-strip-types`). 그래서 import를 넣지 않고 `options.isBanner`로 판정을 주입받는다. 기본값은 기존 규칙, 프로덕션 호출부(`banner-reach-sync`)가 `isBannerChannel`을 넘긴다. ⚠️ `monitoring/lib.ts`도 같은 이유로 **import 0개를 유지해야 한다.**
+- **교체 범위:** 수집 큐(`build_view_missing_queue`) · 시트↔DB(`banner-reach-sync`·`sheet-banner-reach`·`stats-import`·`stats-for-sheet`·`import_linked_sheet_stats`) · 수기입력(`[id]/stats`) · 대시보드(`monitoring/lib`·`page.tsx`·`PostsTable`) · 리포트/감시(`notify_increments`·`notify_status`·`daily_collect_report`·`reverse_watchdog`·`reconcile_sheet_stat_mismatches`·`inspect_monitoring_status`). `reverse_watchdog` 조회에 `posted_at` 추가.
+- **의도적 미변경 2곳:** ① `notify_increments` 슬랙 배너 라인 묶기 3곳(524·593·612) — **채널분류 문자열로 집계된 뒤** 실행돼 게시일을 알 수 없다. 지표 계산은 게시물 단위에서 이미 정확하고 여기는 라벨/그룹만 정한다(신규 매거진 배너는 별도 배너 라인이 아닌 일반 협찬 라인에 집계됨). ② `sync_banner_costs_from_sheet` — `"바이럴" AND "배너"` 조건이라 협찬 매거진과 무관하며, 고치면 오히려 매거진이 바이럴 배너 비용 동기화에 끌려 들어간다.
+- **검증:** 신·구 규칙을 **전체 2,789건에 대조해 분류가 바뀌는 기존 게시물 0건** 확인. `tsc` 0 · web **309/309** · Python **146/146**(매거진 경계 회귀 6종 신규 `test_channel_kind.py`). Vercel production `influencer-seeding-n7b36lf8z` Ready·`-mu` 별칭 재할당 확인.
+- **⚠️ 배포 직전에 잡은 누락:** `git diff --stat`에서 `notify_status.py`가 **+1줄(import만)**인 게 이상해 확인했더니 `_is_banner` 본문이 치환되지 않은 상태였다(치환 체인이 중간 실패했는데 넘어감). 이 함수는 아침 수집 리포트에서 "배너는 조회수 미측정이 정상"으로 거르는 곳이라, 놓쳤으면 **신규 매거진이 매일 미수집 오탐**으로 떴다. → **일괄 치환 후에는 diff 줄 수가 예상과 맞는지 반드시 확인할 것.**
+- **운영 전제:** 신규 매거진은 조회수를 수집하지 않는다. **시트 도달수 열에 사람이 입력**해야 매시간 `banner-reach-sync`로 DB에 들어온다.
+
 ## ✅ 2026-08-18 [Codex 검증·보강] 효율성 인계 3건 정합 확인 + tracking 벌크쓰기 사후검증
 - **인계 상태 정정:** LineChart hover 지오메트리 메모화(`486d3aa`), `tracking-by-url` 조회·쓰기 일괄화(`9cb47da`), `run_monitoring` 이력·인플루언서 조회 일괄화(`1497ef6`)는 모두 이미 `origin/main`에 반영돼 있었다. 중복 구현하지 않고 각 diff와 테스트를 다시 검토했다.
 - **추가 보강:** `tracking-by-url`의 벌크 UPDATE가 성공 응답만 믿지 않고, 반환된 `id / ended_at / manual_fields`를 계획값과 즉시 대조한다. 대상 누락·종료일 오적용·수기 재개 잠금 오적용이면 500으로 실패시켜 조용한 부분 반영을 감춘다.
