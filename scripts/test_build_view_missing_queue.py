@@ -1,6 +1,10 @@
 import unittest
 
-from build_view_missing_queue import exclusion_reason, is_tiktok_view_post
+from build_view_missing_queue import (
+    exclusion_reason,
+    is_tiktok_view_post,
+    looks_like_image_no_view,
+)
 
 
 class TikTokInternalRetryPolicyTest(unittest.TestCase):
@@ -119,3 +123,47 @@ class TikTokInternalRetryPolicyTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ImageAssumptionGuard(unittest.TestCase):
+    """🚨 2026-08-18: 액터가 videoPlayCount를 빼먹어 신규 릴스 11건이 영구 제외된 사고 고정.
+
+    `apify/instagram-scraper` 응답 필드 키에 videoUrl은 있고 재생수는 없었다
+    (reason=missing_play_count). 옛 규칙은 '좋아요만 있고 조회수 없음'을 곧바로 이미지로 단정해
+    retryable=False로 만들었고, 알림도 없어 조용히 결측으로 굳었다.
+    """
+
+    def test_actor_glitch_on_fresh_ig_post_stays_retryable(self):
+        """게시 3일차 IG /p/ 영상: 조회수 누락은 액터 글리치다 — 이미지로 단정하지 않는다."""
+        post = {"url": "https://www.instagram.com/p/DcGqErSBW0a/", "posted_at": "2026-08-16"}
+        self.assertFalse(looks_like_image_no_view(post, "2026-08-17"))
+
+    def test_old_ig_feed_post_is_finally_assumed_image(self):
+        """7일 넘게 조회수가 한 번도 없으면 사진 글로 본다 — 무한 재시도 방지."""
+        post = {"url": "https://www.instagram.com/p/DbAAAAAAAAA/", "posted_at": "2026-08-01"}
+        self.assertTrue(looks_like_image_no_view(post, "2026-08-17"))
+
+    def test_unambiguous_video_urls_are_never_assumed_image(self):
+        """🚨 틱톡 /video/·유튜브·IG 릴스는 나이와 무관하게 영상이다.
+        실측: 이슈뜨기 /video/7668233508338306324 (게시 8/03, 14일 경과)가 나이 규칙만으로는
+        이미지로 오분류됐다."""
+        for url in (
+            "https://www.tiktok.com/@issuetteugi/video/7668233508338306324/",
+            "https://www.tiktok.com/@humorbox_/photo/7674629956256664840/",
+            "https://www.youtube.com/shorts/L_4QWHt0hGo/",
+            "https://www.instagram.com/reel/DcBZOaEpDyt/",
+        ):
+            with self.subTest(url=url):
+                self.assertFalse(
+                    looks_like_image_no_view({"url": url, "posted_at": "2026-06-01"}, "2026-08-17")
+                )
+
+    def test_missing_posted_at_keeps_retrying(self):
+        """게시일을 모르면 경과일을 알 수 없다 — 이미지로 단정하지 않는다(공백≠판정근거)."""
+        post = {"url": "https://www.instagram.com/p/DbAAAAAAAAA/", "posted_at": None}
+        self.assertFalse(looks_like_image_no_view(post, "2026-08-17"))
+
+    def test_boundary_is_exactly_seven_days(self):
+        post = {"url": "https://www.instagram.com/p/DbAAAAAAAAA/"}
+        self.assertFalse(looks_like_image_no_view({**post, "posted_at": "2026-08-11"}, "2026-08-17"))
+        self.assertTrue(looks_like_image_no_view({**post, "posted_at": "2026-08-10"}, "2026-08-17"))

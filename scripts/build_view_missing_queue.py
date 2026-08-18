@@ -69,6 +69,52 @@ def is_tiktok_view_post(url: str | None) -> bool:
     )
 
 
+# 액터가 조회수 필드를 빼먹으면 '좋아요만 있고 조회수 없음'이 되어 이미지 글과 구분되지 않는다.
+# 그래서 이미지 단정은 **URL로 영상임이 확실하지 않고**, **게시 후 충분히 지났을 때만** 한다.
+IMAGE_ASSUMPTION_AFTER_DAYS = 7
+
+
+def is_unambiguous_view_post(url: str | None) -> bool:
+    """URL만으로 조회수가 존재한다고 확정할 수 있는가.
+
+    틱톡 /video/·/photo/, 유튜브, IG 릴스는 이미지 글일 수 없다. IG `/p/`는 사진·캐러셀·영상이
+    모두 같은 형태라 여기서 판정하지 않는다.
+    """
+    value = (url or "").lower()
+    if is_tiktok_view_post(value):
+        return True
+    if "youtube.com" in value or "youtu.be" in value:
+        return True
+    return bool(re.search(r"/(?:reel|reels|tv)/[A-Za-z0-9_-]+", value))
+
+
+def looks_like_image_no_view(post: dict[str, Any], target_date: str | None) -> bool:
+    """참여지표만 있고 조회수가 한 번도 없는 글을 '이미지'로 단정해도 되는가.
+
+    🚨 2026-08-18 실측 사고: `apify/instagram-scraper`가 videoUrl은 주면서 videoPlayCount를
+    빼먹어(응답 필드 키에 재생수 없음) 신규 릴스 11건이 '좋아요만 있고 조회수 없음' 상태가 됐다.
+    옛 규칙은 이를 곧바로 이미지로 단정해 **재시도 큐에서 영구 제외**했고(retryable=False),
+    알림도 없어 조용히 결측으로 굳었다. 당시 이 판정에 걸린 활성 24건이 전부 영상이었다.
+    (진짜 이미지 글은 free_seed_manual·non_tiktok_banner_reach_only에서 이미 앞단 제외된다.)
+
+    두 조건을 모두 만족할 때만 이미지로 본다:
+      · URL로 영상임이 확정되지 않는다(IG `/p/`처럼 사진·영상이 같은 형태)
+      · 게시 후 IMAGE_ASSUMPTION_AFTER_DAYS일 이상 지났는데 아직 조회수가 한 번도 없다
+        (액터 글리치는 하루 이틀에 회복되지만, 사진 글은 영원히 조회수가 없다)
+    게시일을 모르면 경과일을 알 수 없으므로 이미지로 단정하지 않는다(재시도 유지).
+    """
+    if is_unambiguous_view_post(post.get("url")):
+        return False
+    posted = str(post.get("posted_at") or "")[:10]
+    if len(posted) != 10 or not target_date:
+        return False
+    try:
+        gap = (date.fromisoformat(target_date) - date.fromisoformat(posted)).days
+    except ValueError:
+        return False
+    return gap >= IMAGE_ASSUMPTION_AFTER_DAYS
+
+
 def exclusion_reason(post: dict[str, Any], target_date: str | None = None) -> str | None:
     channel_type = str(post.get("channel_type") or "")
     url = (post.get("url") or "").lower()
@@ -225,7 +271,8 @@ def main() -> None:
         else:
             reason = "same_day_non_positive_metric"
 
-        if state.get("has_likes_or_comments") and not state.get("has_metric"):
+        if (state.get("has_likes_or_comments") and not state.get("has_metric")
+                and looks_like_image_no_view(post, target)):
             reason = "likely_image_no_view"
 
         pf = platform(post.get("url"))
