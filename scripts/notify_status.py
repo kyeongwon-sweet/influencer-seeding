@@ -8,6 +8,7 @@ import urllib.parse
 import urllib.request
 from datetime import date
 from db import get_client
+from channel_kind import is_banner_channel
 from manual_entry_guards import copy_suspects, spike_suspects
 
 SLACK_API = "https://slack.com/api/chat.postMessage"
@@ -90,7 +91,7 @@ def _channel_type(post) -> str:
 
 
 def _is_banner(post) -> bool:
-    return "배너" in _channel_type(post)
+    return is_banner_channel(_channel_type(post), post.get("posted_at"))
 
 
 def _is_internal_channel(post) -> bool:

@@ -8,7 +8,7 @@ import { isValidEntryDate } from "@/lib/dateRule";
 import { companyForAccount } from "@/lib/companyMap";
 import { batchFetch } from "@/lib/batchFetch";
 import { matchesSearch } from "@/lib/search-filter";
-import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, decodeStatsV2, INIT_FILTERS, CHANNEL_TYPES, STICKY_COL_ORDER, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, getFilteredStats, pickRangeStats, formatTimestamp, normalizeChannelType, fmtChannelType, updatePostLatestStats, viewIncrement, safeIncrement, pickMetric, productLabel, effectiveReach, bannerDailyMetric, assetNameOf, weekKeyOf, pearson, alignedPairs, bestLag, alignMulti, multipleR2, parseCsvLine } from "./lib";
+import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, decodeStatsV2, INIT_FILTERS, CHANNEL_TYPES, STICKY_COL_ORDER, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, getFilteredStats, pickRangeStats, formatTimestamp, isBannerChannel, normalizeChannelType, fmtChannelType, updatePostLatestStats, viewIncrement, safeIncrement, pickMetric, productLabel, effectiveReach, bannerDailyMetric, assetNameOf, weekKeyOf, pearson, alignedPairs, bestLag, alignMulti, multipleR2, parseCsvLine } from "./lib";
 import { GOOGLE_TREND_GROUPS } from "@/lib/google-trend-groups";
 import CorrelationPanel from "./components/CorrelationPanel";
 import DayOfWeekPanel, { type DowData } from "./components/DayOfWeekPanel";
@@ -156,7 +156,7 @@ export default function MonitoringPage() {
     for (const p of filteredPosts) {
       const { s } = pickRangeStats(p, filters.dateFrom, filters.dateTo);
       // 배너는 조회수(play)가 없어 도달수(reach)를 조회수처럼 합산(카드 툴팁·dailyTotals와 동일 규칙).
-      const isBanner = (p.channel_type ?? "").includes("배너");
+      const isBanner = isBannerChannel(p.channel_type, p.posted_at);
       play += (isBanner ? bannerDailyMetric(s) : s?.play_count) ?? 0;
     }
     return play;
@@ -172,7 +172,7 @@ export default function MonitoringPage() {
       const { s, prev } = pickRangeStats(post, filters.dateFrom, filters.dateTo);
       const inc = viewIncrement(post, s, prev); if (inc != null) delta += inc;
       cost += post.cost ?? 0;
-      const isBanner = (post.channel_type ?? "").includes("배너");
+      const isBanner = isBannerChannel(post.channel_type, post.posted_at);
       // 배너는 조회수(play) 없음 → 조회수 합계 제외(잔존 play가 섞이지 않게). 도달수는 일별 도달수(bannerDailyMetric).
       if (!isBanner && s?.play_count != null) views += s.play_count;
       const r = isBanner ? bannerDailyMetric(s) : effectiveReach(post.reach_count, s?.play_count);
@@ -215,7 +215,7 @@ export default function MonitoringPage() {
       const filteredStats = getFilteredStats(post.all_stats ?? [], filters.dateFrom, filters.dateTo);
       const statsMap = new Map(filteredStats.map(s => [s.measured_at, s]));
       // 배너는 조회수(play_count)가 없어 도달수(reach_count)를 조회수처럼 취급(사용자 지시) → play 누적에 합산.
-      const isBanner = (post.channel_type ?? "").includes("배너");
+      const isBanner = isBannerChannel(post.channel_type, post.posted_at);
 
       // Forward-fill: 필터 범위 내에서만 데이터 없는 날은 이전 마지막 값 유지
       // null은 데이터 없음(기여 0)
@@ -294,7 +294,7 @@ export default function MonitoringPage() {
       const company = (post.company_name?.trim() || companyForAccount(post.account_name ?? post.influencers?.name, post.channel_type) || "").trim();
       if (!company || company === "-") continue;
       const ct = post.channel_type ?? "";
-      const kind = ct.includes("배너") ? "banner" : ct.includes("(영상)") ? "video" : null;
+      const kind = isBannerChannel(ct, post.posted_at) ? "banner" : ct.includes("(영상)") ? "video" : null;
       if (!kind) continue;
       const { s } = pickRangeStats(post, filters.dateFrom, filters.dateTo);
       const play = s?.play_count ?? null;
@@ -983,7 +983,7 @@ export default function MonitoringPage() {
       // 🔒 필터 불변식: CSV도 화면과 동일한 값 규칙(pickRangeStats) — 필터 무시하고 latest를 내보내
       //   '화면≠내보내기'가 되던 버그(2026-07-06) 수정
       const { s, prev } = pickRangeStats(post, filters.dateFrom, filters.dateTo);
-      const isBanner = (post.channel_type ?? "").includes("배너");
+      const isBanner = isBannerChannel(post.channel_type, post.posted_at);
       const play = s?.play_count ?? null;
       // 배너=일별 도달수(bannerDailyMetric), 영상=reach_count(없으면 조회수×0.8) — 화면 도달수 열과 동일.
       const reach = isBanner ? bannerDailyMetric(s) : effectiveReach(post.reach_count, play);
@@ -1027,7 +1027,7 @@ export default function MonitoringPage() {
       // 🔒 필터 불변식: 행 렌더링과 동일한 단일 구현(pickRangeStats)
       const { s, prev } = pickRangeStats(post, filters.dateFrom, filters.dateTo);
       const play = s?.play_count ?? null;
-      const isBanner = (post.channel_type ?? "").includes("배너");
+      const isBanner = isBannerChannel(post.channel_type, post.posted_at);
       // 배너=행에 보이는 도달수(bannerDailyMetric)와 동일 값으로 복사 — 표·복사 일치.
       const value = isBanner ? bannerDailyMetric(s) : play;
       if (value == null) return null;
@@ -1187,7 +1187,8 @@ export default function MonitoringPage() {
   async function patchPlayCount(postId: string, value: string, measuredAt?: string | null) {
     const play_count = value === "" ? null : Number(value);
     // 배너는 입력값 자체가 도달수 — /stats 라우트가 이 값을 reach_count로 저장(초크포인트). ×0.8 추정·post레벨 reach 덮기 안 함.
-    const isBanner = (posts.find(p => p.id === postId)?.channel_type ?? "").includes("배너");
+    const bannerPost = posts.find(p => p.id === postId);
+    const isBanner = isBannerChannel(bannerPost?.channel_type, bannerPost?.posted_at);
 
     try {
       // 1️⃣ 조회수 저장 — 화면에 보이는 그 날짜 행(measuredAt)을 정확히 겨냥.

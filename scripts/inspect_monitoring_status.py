@@ -7,6 +7,8 @@ notify_status.py without sending a Slack message.
 
 from __future__ import annotations
 
+from channel_kind import is_banner_channel
+
 import argparse
 import json
 import re
@@ -41,7 +43,7 @@ def chunks(values: list[str], size: int = 100):
 
 
 def is_banner(post: dict[str, Any]) -> bool:
-    return "배너" in str(post.get("channel_type") or "")
+    return is_banner_channel(post.get("channel_type"), post.get("posted_at"))
 
 
 def is_internal(post: dict[str, Any]) -> bool:

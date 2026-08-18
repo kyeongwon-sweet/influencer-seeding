@@ -3,7 +3,7 @@ import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl, postIdentityKey, ALLOWED_POST_URL_RE, isInvalidTikTokPostUrl } from "@/lib/url-utils";
 import { filterMonotonicStats, type GuardInput } from "@/lib/stats-guard";
-import { normalizeChannelType, isFreeChannel, canonicalText } from "@/app/monitoring/lib";
+import { normalizeChannelType, isFreeChannel, canonicalText, isBannerChannel } from "@/app/monitoring/lib";
 import { resolveTikTokShortUrl, tagCreatedBy } from "@/lib/sponsored-write";
 import { maxDateKST, todayKST } from "@/lib/dateRule";
 import { notifyBot } from "@/lib/slack";
@@ -323,10 +323,10 @@ export async function POST(req: NextRequest) {
   //    도달수 열에 입력값 그대로(×0.8 추정 없이) 뜨고 조회수 합산도 정확해진다. (기존/시트 메타 채널분류로 판정)
   const isBannerByKey = new Map<string, boolean>();
   for (const [url, ex] of existingByUrl) {
-    isBannerByKey.set(postIdentityKey(url) ?? url, String(ex.channel_type ?? "").includes("배너"));
+    isBannerByKey.set(postIdentityKey(url) ?? url, isBannerChannel(ex.channel_type, ex.posted_at));
   }
   for (const [key, meta] of postByUrl) {
-    if (!isBannerByKey.has(key)) isBannerByKey.set(key, String(meta.channel_type ?? "").includes("배너"));
+    if (!isBannerByKey.has(key)) isBannerByKey.set(key, isBannerChannel(meta.channel_type, meta.posted_at));
   }
 
   // 3) 게시물 매칭 (미등록 URL은 건너뜀)

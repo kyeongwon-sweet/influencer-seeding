@@ -78,9 +78,9 @@ export type EditCell = { postId: string; field: "asset_name" | "project_name" | 
 export const CHANNEL_TYPES = [
   "바이럴(배너)",
   "바이럴(영상)",
-  "협찬(먹스타)",
   "협찬(인플루언서)",
   "협찬(파워채널/매거진)",
+  "협찬(파워채널/먹스타)",
   "무상시딩 (영상)",
   "무상시딩 (피드)",
   "온드미디어",
@@ -186,6 +186,32 @@ export function canonicalText(value: string | null | undefined, field?: string):
 export function isFreeChannel(channelType: unknown): boolean {
   const ct = String(channelType ?? "");
   return ct.includes("위성") || ct.includes("온드");
+}
+
+/**
+ * 매거진이 배너(도달수)로 취급되기 시작하는 게시일 경계.
+ *
+ * 사용자 결정(2026-08-18): "파워채널/매거진 = 배너(이미지)"이지만 **앞으로 등록되는 건만** 배너로 다룬다.
+ * 기존 매거진 41건에는 조회수 실측 621행이 쌓여 있고 도달수는 0행이라, 소급 전환하면 그 실적이
+ * 화면에서 사라진다. 경계일 이전 게시물은 지금까지처럼 조회수로 유지한다.
+ * 도입 시점 매거진 최신 게시일이 2026-06-30이라 기존 41건은 하나도 분류가 바뀌지 않는다.
+ */
+export const MAGAZINE_BANNER_FROM = "2026-08-18";
+
+/**
+ * 배너(도달수 지표) 게시물인가 — 배너 판정의 단일 진실.
+ *
+ * ⚠️ `channel_type.includes("배너")`를 호출부에 흩어 쓰지 말 것. 매거진처럼 이름에 "배너"가 없는데
+ * 배너인 분류가 생기면 호출부마다 규칙이 어긋난다(실측: TS 20곳·Python 10곳에 흩어져 있었다).
+ * postedAt이 없으면 경계를 판정할 수 없으므로 매거진은 배너로 보지 않는다(기존 동작 유지).
+ * ※ 이 파일은 의존성 없는 순수 모듈이라 단위 테스트가 상대경로로 임포트한다 — import를 추가하지 말 것.
+ */
+export function isBannerChannel(channelType: unknown, postedAt?: unknown): boolean {
+  const ct = String(channelType ?? "");
+  if (ct.includes("배너")) return true;
+  if (!ct.includes("매거진")) return false;
+  const posted = String(postedAt ?? "").slice(0, 10);
+  return posted.length === 10 && posted >= MAGAZINE_BANNER_FROM;
 }
 
 // 소재명 정본은 sponsored_posts.asset_name이다. project_name은 과거 레코드가
@@ -299,7 +325,7 @@ export function safeIncrement(allStats: DailyStats[], s: DailyStats | null | und
 // (prev 인자는 호출 시그니처 호환용 — 안전 규칙은 all_stats에서 직전 유효값을 직접 찾는다.)
 export function viewIncrement(post: Post, s: DailyStats | null | undefined, _prev?: DailyStats | null | undefined): number | null {
   void _prev;
-  return safeIncrement(post.all_stats ?? [], s, (post.channel_type ?? "").includes("배너"), post.posted_at);
+  return safeIncrement(post.all_stats ?? [], s, isBannerChannel(post.channel_type, post.posted_at), post.posted_at);
 }
 
 // 증분량 hover 설명(열 제목 아래 각 값): 이 증분이 어떤 측정값(최신-직전 유효)으로 나왔는지 + '일자별 증감표'와 다른 이유.
@@ -308,7 +334,7 @@ export const INCREMENT_HEADER_TOOLTIP =
   "※ 게시물마다 마지막 수집일이 달라, 오른쪽 '일자별 증감표'(특정 하루의 합)와 숫자가 다를 수 있어요 - 정상입니다.";
 
 export function incrementTooltip(post: Post, s: DailyStats | null | undefined): string {
-  const isBanner = (post.channel_type ?? "").includes("배너");
+  const isBanner = isBannerChannel(post.channel_type, post.posted_at);
   const label = isBanner ? "도달수" : "조회수";
   const note =
     "\n\n※ '게시물별 최신' 증분입니다. 게시물마다 마지막 수집일이 달라, 오른쪽 '일자별 증감표'(특정 하루의 합)와 총합이 다를 수 있어요(정상).";

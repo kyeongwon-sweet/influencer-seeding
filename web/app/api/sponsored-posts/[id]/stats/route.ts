@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
+import { isBannerChannel } from "@/app/monitoring/lib";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { todayKST } from "@/lib/dateRule";
@@ -55,11 +56,11 @@ export async function PATCH(
   if ("play_count" in updates) {
     const { data: post } = await supabase
       .from("sponsored_posts")
-      .select("channel_type, ended_at")
+      .select("channel_type, ended_at, posted_at")
       .eq("id", id)
       .single();
     postMeta = (post ?? null) as PostMeta | null;
-    if ((post?.channel_type ?? "").includes("배너")) {
+    if (isBannerChannel(post?.channel_type, (post as { posted_at?: string } | null)?.posted_at)) {
       updates.reach_count = updates.play_count;
       updates.play_count = null;
     }

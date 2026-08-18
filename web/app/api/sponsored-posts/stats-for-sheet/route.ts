@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isBannerChannel } from "@/app/monitoring/lib";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { postIdentityKey } from "@/lib/url-utils";
@@ -44,7 +45,7 @@ export async function GET(req: NextRequest) {
         }
       }
       if (p.posted_at) postedAtById.set(p.id as string, String(p.posted_at).slice(0, 10));
-      bannerById.set(p.id as string, String(p.channel_type ?? "").includes("배너"));
+      bannerById.set(p.id as string, isBannerChannel(p.channel_type, p.posted_at));
     }
     if (!data || data.length < PAGE) break;
   }

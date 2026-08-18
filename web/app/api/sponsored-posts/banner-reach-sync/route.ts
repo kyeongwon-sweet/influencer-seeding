@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
+import { isBannerChannel } from "@/app/monitoring/lib";
 import { maxDateKST } from "@/lib/dateRule";
 import { fetchSheetTabValues } from "@/lib/google-sheets";
 import { extractBannerReachRows } from "@/lib/sheet-banner-reach";
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest) {
 
   let extracted;
   try {
-    extracted = extractBannerReachRows(values, { today: maxDateKST() });
+    extracted = extractBannerReachRows(values, { today: maxDateKST(), isBanner: isBannerChannel });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : String(e) },
@@ -99,7 +100,7 @@ export async function POST(req: NextRequest) {
       missing.add(row.url);
       continue;
     }
-    if (!String(post.channel_type ?? row.channelType).includes("배너")) {
+    if (!isBannerChannel(post.channel_type ?? row.channelType, post.posted_at ?? row.postedAt)) {
       nonBannerDb.add(row.url);
       continue;
     }

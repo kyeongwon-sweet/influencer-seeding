@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from channel_kind import is_banner_channel
+
 import argparse
 import json
 import os
@@ -93,7 +95,7 @@ def exclusion_reason(post: dict[str, Any], target_date: str | None = None) -> st
     # (2026-08-07: '무상시딩' 통째 제외라 IG 영상 미수집이 재시도 큐에서 빠져 자동 복구가 안 되던 버그 수정)
     if "무상시딩" in channel_type and "영상" not in channel_type:
         return "free_seed_manual"
-    if "배너" in channel_type and "tiktok.com" not in url:
+    if is_banner_channel(channel_type, post.get("posted_at")) and "tiktok.com" not in url:
         return "non_tiktok_banner_reach_only"
     return None
 

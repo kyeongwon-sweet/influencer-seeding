@@ -2,7 +2,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 // 게시물 표 — monitoring/page.tsx 에서 추출. 모든 상태/핸들러는 부모(MonitoringPage) 소유(props).
 // 인라인 편집/정렬/선택/열 리사이즈는 전부 부모 함수를 props로 받아 그대로 호출 → 동작 동일.
-import { type Post, type EditCell, type DailyStats, type Filters, pickRangeStats, hasNotableChange, viewIncrement, incrementTooltip, INCREMENT_HEADER_TOOLTIP, fmt, fmtChannelType, effectiveReach, bannerDailyMetric, assetNameOf, pickMetric, CHANNEL_TYPES, INIT_FILTERS, CHART } from "../lib";
+import { type Post, type EditCell, type DailyStats, type Filters, pickRangeStats, hasNotableChange, viewIncrement, incrementTooltip, INCREMENT_HEADER_TOOLTIP, isBannerChannel, fmt, fmtChannelType, effectiveReach, bannerDailyMetric, assetNameOf, pickMetric, CHANNEL_TYPES, INIT_FILTERS, CHART } from "../lib";
 import { MIN_ENTRY_DATE, maxDateKST } from "@/lib/dateRule";
 import { companyForAccount } from "@/lib/companyMap";
 import { productCodeOf } from "@/lib/productCode";
@@ -467,10 +467,10 @@ function PostsTable(props: Props) {
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
                         ) : (
                           <div className="flex items-center justify-end gap-1.5 relative">
-                            <span onClick={() => !(post.channel_type ?? "").includes("배너") && setEditPlayCount({ postId: post.id, value: String(s?.play_count ?? "") })}
+                            <span onClick={() => !isBannerChannel(post.channel_type, post.posted_at) && setEditPlayCount({ postId: post.id, value: String(s?.play_count ?? "") })}
                               title="여기서 고치면 화면에 보이는 그 날짜 값으로 고정됩니다. 이후 자동수집은 계속되지만 이 값보다 낮아지지 않고, 더 높게 수집되면 그때 갱신됩니다. 시트에 더 나중에 입력한 값이 있으면 그 값이 우선합니다."
                               className="text-a-ink-muted hover:text-a-blue transition-colors cursor-text">
-                              {(post.channel_type ?? "").includes("배너") ? <span className="text-gray-300">—</span> : fmt(s?.play_count)}
+                              {isBannerChannel(post.channel_type, post.posted_at) ? <span className="text-gray-300">—</span> : fmt(s?.play_count)}
                             </span>
                             {updatedPlayCounts.has(post.id) && (
                               <div
@@ -490,7 +490,7 @@ function PostsTable(props: Props) {
                         )}
                       </td>
                       <TD right muted w={colWidths["조회당비용"]}>
-                        {!(post.channel_type ?? "").includes("배너") && post.cost != null && s?.play_count != null && s.play_count > 0
+                        {!isBannerChannel(post.channel_type, post.posted_at) && post.cost != null && s?.play_count != null && s.play_count > 0
                           ? (post.cost / s.play_count).toFixed(2)
                           : <span className="text-gray-300">—</span>}
                       </TD>
@@ -505,7 +505,7 @@ function PostsTable(props: Props) {
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
                         ) : (
                           (() => {
-                            const isBanner = (post.channel_type ?? "").includes("배너");
+                            const isBanner = isBannerChannel(post.channel_type, post.posted_at);
                             // 배너=일별 도달수(reach 우선, 없으면 입력값 1:1) — bannerDailyMetric 단일 규칙. 그 외=reach_count(없으면 조회수×0.8 추정).
                             const eff = isBanner ? bannerDailyMetric(s) : effectiveReach(post.reach_count, s?.play_count);
                             if (eff == null) return <span className="text-gray-300">—</span>;
@@ -521,7 +521,7 @@ function PostsTable(props: Props) {
                       </td>
                       <TD right muted w={colWidths["도달당비용"]}>
                         {(() => {
-                          const isBanner = (post.channel_type ?? "").includes("배너");
+                          const isBanner = isBannerChannel(post.channel_type, post.posted_at);
                           const eff = isBanner ? bannerDailyMetric(s) : effectiveReach(post.reach_count, s?.play_count);
                           return post.cost != null && eff != null && eff > 0
                             ? (post.cost / eff).toFixed(2)

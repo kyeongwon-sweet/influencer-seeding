@@ -12,6 +12,7 @@ SKILL.md 형식을 코드로 고정 — 예약 실행 Claude가 형식/숫자를
 값 있음 = play_count 또는 reach_count가 not null.
 """
 import sys, os, json, urllib.request, urllib.error, datetime
+from channel_kind import is_banner_channel
 
 CHANNEL = "C0B659HEYDV"
 ENV_PATHS = [
@@ -147,7 +148,7 @@ def main():
             ca_kst = ca.astimezone(datetime.timezone(datetime.timedelta(hours=9)))
             if ca_kst >= cutoff:
                 new_times.append(ca_kst)
-        if "배너" in ct:
+        if is_banner_channel(ct, p.get("posted_at")):
             b_tot += 1
             continue
         if any(k in ct for k in ("피드", "사진", "이미지")):
@@ -191,7 +192,7 @@ def main():
         if p["id"] in measured_ids:
             continue
         ct = p.get("channel_type") or ""
-        if "배너" in ct or any(k in ct for k in ("피드", "사진", "이미지", "위성채널", "온드미디어")):
+        if is_banner_channel(ct, p.get("posted_at")) or any(k in ct for k in ("피드", "사진", "이미지", "위성채널", "온드미디어")):
             continue                      # 위 루프와 동일한 제외 규칙(조회수 지표 없음)
         if is_ended(p):
             continue                      # 종료글은 값 없음이 정상

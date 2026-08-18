@@ -10,6 +10,8 @@ manual correction day.
 
 from __future__ import annotations
 
+from channel_kind import is_banner_channel
+
 import argparse
 import json
 import os
@@ -202,7 +204,7 @@ def collect_payload(target_date: str) -> dict[str, Any]:
             skipped_blank += 1
             continue
 
-        is_banner = "배너" in str(post.get("channel_type") or "")
+        is_banner = is_banner_channel(post.get("channel_type"), post.get("posted_at"))
         if not is_banner:
             prev_value = None
             for _, col in earlier_cols:

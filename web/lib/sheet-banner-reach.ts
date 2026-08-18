@@ -26,6 +26,13 @@ export type BannerReachExtractOptions = {
   today: string;
   statsFirstCol?: number;
   statsStartYear?: number;
+  /**
+   * 배너 판정 주입. 기본값은 이름에 "배너"가 든 분류만이다.
+   * 프로덕션 호출부(banner-reach-sync)는 `monitoring/lib`의 `isBannerChannel`을 넘겨
+   * 매거진 경계 규칙까지 적용한다. 이 파일은 순수 모듈로 유지해야 해서(단위 테스트가 상대경로로
+   * 임포트한다) 직접 import하지 않고 주입받는다.
+   */
+  isBanner?: (channelType: string, postedAt: string | null) => boolean;
 };
 
 const DEFAULT_STATS_FIRST_COL = 9; // Apps Script CONFIG.STATS_FIRST_COL: I
@@ -100,6 +107,7 @@ export function extractBannerReachRows(
   options: BannerReachExtractOptions,
 ): BannerReachExtraction {
   const statsFirstCol = options.statsFirstCol ?? DEFAULT_STATS_FIRST_COL;
+  const isBanner = options.isBanner ?? ((ct: string) => ct.includes("배너"));
   const statsStartYear = options.statsStartYear ?? DEFAULT_STATS_START_YEAR;
   const header = values[0] ?? [];
 
@@ -142,13 +150,14 @@ export function extractBannerReachRows(
     if (!rawUrl || !ALLOWED_SHEET_POST_URL_RE.test(rawUrl)) continue;
 
     const channelType = String(row[channelTypeCol] ?? "");
-    if (!channelType.includes("배너")) {
+    // 게시일을 배너 판정보다 먼저 읽는다 — 매거진은 게시일 경계로 배너 여부가 갈린다.
+    const postedAt = postedAtCol === -1 ? null : parseSheetDate(row[postedAtCol]);
+    if (!isBanner(channelType, postedAt)) {
       out.nonBannerRows += 1;
       continue;
     }
     out.bannerRows += 1;
 
-    const postedAt = postedAtCol === -1 ? null : parseSheetDate(row[postedAtCol]);
     if (postedAt && postedAt > options.today) {
       out.futurePostRowsSkipped += 1;
       continue;

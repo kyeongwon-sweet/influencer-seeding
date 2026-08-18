@@ -19,6 +19,8 @@ cry-wolf 방지(2026-08-05 교훈):
 
 from __future__ import annotations
 
+from channel_kind import is_banner_channel
+
 import json
 import os
 import sys
@@ -44,7 +46,7 @@ def detect_reverses(stats: list[dict], posts: dict[str, dict], threshold: float)
     out: list[dict] = []
     for pid, rows in by_post.items():
         p = posts.get(pid) or {}
-        is_banner = "배너" in (p.get("channel_type") or "")
+        is_banner = is_banner_channel(p.get("channel_type"), p.get("posted_at"))
         metric = "reach_count" if is_banner else "play_count"
         rows.sort(key=lambda r: str(r["measured_at"]))
         prev = None  # 직전(마지막 유효) 측정값. 규칙: 누적은 '전날보다' 크거나 같아야(day-over-day).
@@ -137,7 +139,7 @@ def main() -> int:
         print("[reverse-watchdog] SUPABASE_URL/SERVICE_ROLE_KEY 없음")
         return 1
 
-    posts_rows = _sb_get(url, key, "sponsored_posts?select=id,url,account_name,channel_type")
+    posts_rows = _sb_get(url, key, "sponsored_posts?select=id,url,account_name,channel_type,posted_at")
     posts = {p["id"]: p for p in posts_rows}
     stats = _sb_get(url, key, "post_daily_stats?select=post_id,measured_at,play_count,reach_count")
 

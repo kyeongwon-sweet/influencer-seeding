@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from channel_kind import is_banner_channel
+
 import argparse
 import json
 import re
@@ -85,7 +87,8 @@ def fetch_all(table: str, select: str) -> list[dict[str, Any]]:
 def metric_column(post: dict[str, Any]) -> str:
     channel_type = str(post.get("channel_type") or "")
     url = str(post.get("url") or "").lower()
-    return "reach_count" if "배너" in channel_type and "tiktok.com" not in url else "play_count"
+    is_banner = is_banner_channel(channel_type, post.get("posted_at"))
+    return "reach_count" if is_banner and "tiktok.com" not in url else "play_count"
 
 
 def main() -> None:

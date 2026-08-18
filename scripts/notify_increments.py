@@ -10,6 +10,7 @@ import json
 import urllib.parse
 import urllib.request
 from datetime import date
+from channel_kind import is_banner_channel
 from db import get_client
 
 CHANNEL = os.getenv("SLACK_CHANNEL") or "C0B4F7GBX17"  # 기본 #빙과_마케팅_리포트 (빈값이면 폴백). DM 미리보기 시 user id 주입
@@ -338,7 +339,7 @@ def main():
         if end and str(end)[:10] < target:
             continue
         ct = (m.get("channel_type") or "").strip()
-        isb = "배너" in ct
+        isb = is_banner_channel(ct, m.get("posted_at"))
         rows = series.get(pid, [])
         inc = _safe_inc(rows, isb, m.get("posted_at"))
         if not inc or inc <= 0:
@@ -425,7 +426,7 @@ def main():
             _e = _m.get("ended_at")
             if _e and str(_e)[:10] < _tgt:
                 continue
-            _isb = "배너" in (_m.get("channel_type") or "")
+            _isb = is_banner_channel(_m.get("channel_type"), _m.get("posted_at"))
             _iv = _safe_inc(series.get(_pid, []), _isb, _m.get("posted_at"), _tgt)
             if _iv and _iv > 0:
                 _c = _norm_ch(_m.get("channel_type"))
@@ -477,7 +478,7 @@ def main():
                     continue   # 신규글(게시 8일 미만) 제외 — 첫날 급증 노이즈 방지
             except Exception:
                 continue
-            _isb2 = "배너" in (_m2.get("channel_type") or "")
+            _isb2 = is_banner_channel(_m2.get("channel_type"), _pa2)
             _rows2 = series.get(_pid, [])
             _td2 = _safe_inc(_rows2, _isb2, _pa2, target)
             if not _td2 or _td2 <= 0:
