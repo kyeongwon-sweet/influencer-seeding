@@ -13,12 +13,14 @@ type NegativeCommentAlertRow = { source?: string | null; comment_id?: string | n
 type SupabaseLike = { from(table: string): unknown };
 
 export type HideTiktokCommentInput = { channelId: string; messageTs: string };
+export type TiktokCommentVisibility = "HIDDEN" | "PUBLIC";
 
 const DEFAULT_TIKTOK_API_BASE = "https://business-api.tiktok.com/open_api/v1.3";
 
-export async function hideTiktokAdCommentForSlackMessage(
+export async function setTiktokAdCommentVisibilityForSlackMessage(
   supabase: SupabaseLike,
   { channelId, messageTs }: HideTiktokCommentInput,
+  operation: TiktokCommentVisibility,
   fetchImpl: typeof fetch = fetch,
 ) {
   const alertQuery = supabase.from("negative_comment_alerts") as SupabaseSelectQuery<NegativeCommentAlertRow>;
@@ -48,7 +50,7 @@ export async function hideTiktokAdCommentForSlackMessage(
     body: JSON.stringify({
       advertiser_id: advertiserId,
       comment_ids: [alert.comment_id],
-      operation: (process.env.TIKTOK_HIDE_OPERATION || "HIDDEN").trim(),
+      operation,
       ad_type: (process.env.TIKTOK_HIDE_AD_TYPE || "BIDDING").trim(),
     }),
   });
@@ -58,4 +60,20 @@ export async function hideTiktokAdCommentForSlackMessage(
     return { handled: true, ok: false, error: String(payload.message || `TikTok HTTP ${response.status}`).slice(0, 200) };
   }
   return { handled: true, ok: true };
+}
+
+export async function hideTiktokAdCommentForSlackMessage(
+  supabase: SupabaseLike,
+  input: HideTiktokCommentInput,
+  fetchImpl: typeof fetch = fetch,
+) {
+  return setTiktokAdCommentVisibilityForSlackMessage(supabase, input, "HIDDEN", fetchImpl);
+}
+
+export async function unhideTiktokAdCommentForSlackMessage(
+  supabase: SupabaseLike,
+  input: HideTiktokCommentInput,
+  fetchImpl: typeof fetch = fetch,
+) {
+  return setTiktokAdCommentVisibilityForSlackMessage(supabase, input, "PUBLIC", fetchImpl);
 }

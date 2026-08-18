@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { hideTiktokAdCommentForSlackMessage } from "../lib/tiktok-ads-comments.ts";
+import { hideTiktokAdCommentForSlackMessage, unhideTiktokAdCommentForSlackMessage } from "../lib/tiktok-ads-comments.ts";
 
 function supabaseWithAlert(alert: unknown, error: { message?: string } | null = null) {
   const query = {
@@ -69,6 +69,38 @@ test("TikTok가 숨김을 거절하면 카드 삭제 대신 재시도 가능한 
       }),
     );
     assert.deepEqual(result, { handled: true, ok: false, error: "invalid operation" });
+  } finally {
+    if (oldAdvertiser === undefined) delete process.env.TIKTOK_ADVERTISER_ID;
+    else process.env.TIKTOK_ADVERTISER_ID = oldAdvertiser;
+    if (oldToken === undefined) delete process.env.TIKTOK_ACCESS_TOKEN;
+    else process.env.TIKTOK_ACCESS_TOKEN = oldToken;
+  }
+});
+
+test("TikTok 광고 댓글 숨김해제는 PUBLIC/BIDDING을 사용", async () => {
+  const oldAdvertiser = process.env.TIKTOK_ADVERTISER_ID;
+  const oldToken = process.env.TIKTOK_ACCESS_TOKEN;
+  process.env.TIKTOK_ADVERTISER_ID = "advertiser";
+  process.env.TIKTOK_ACCESS_TOKEN = "token";
+  let body: Record<string, unknown> = {};
+  try {
+    const result = await unhideTiktokAdCommentForSlackMessage(
+      supabaseWithAlert({ source: "tiktok_ads", comment_id: "comment-1" }),
+      { channelId: "C1", messageTs: "1.2" },
+      async (_input, init) => {
+        body = JSON.parse(String(init?.body));
+        return new Response(JSON.stringify({ code: 0, message: "OK" }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      },
+    );
+    assert.deepEqual(result, { handled: true, ok: true });
+    assert.deepEqual(body, {
+      advertiser_id: "advertiser",
+      comment_ids: ["comment-1"],
+      operation: "PUBLIC",
+      ad_type: "BIDDING",
+    });
   } finally {
     if (oldAdvertiser === undefined) delete process.env.TIKTOK_ADVERTISER_ID;
     else process.env.TIKTOK_ADVERTISER_ID = oldAdvertiser;

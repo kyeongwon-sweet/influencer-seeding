@@ -3,7 +3,7 @@ import crypto from "crypto";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { recordFalsePositiveReview, recordReviewDecision } from "@/lib/injibot-review";
 import { hideMetaAdCommentForSlackMessage } from "@/lib/meta-instagram-comments";
-import { hideTiktokAdCommentForSlackMessage } from "@/lib/tiktok-ads-comments";
+import { hideTiktokAdCommentForSlackMessage, unhideTiktokAdCommentForSlackMessage } from "@/lib/tiktok-ads-comments";
 import { dispatchYouTubeAdCommentHideForSlackMessage } from "@/lib/youtube-ads-comments";
 
 // injibot(부정 댓글 알림) 버튼 클릭 처리(Slack Interactivity).
@@ -161,6 +161,34 @@ export async function POST(req: NextRequest) {
     } catch (e) {
       console.error("[injibot-action] 광고 댓글 숨김 실패", e);
       return NextResponse.json({ ok: true, hidden: false });
+    }
+  }
+
+  // TikTok 광고 댓글은 HIDDEN↔PUBLIC 양방향 API가 검증됐다. [숨김해제]는
+  // 서버 DB의 channel+ts로 댓글을 찾고 PUBLIC/BIDDING 성공 뒤에만 사람 결정을 기록한다.
+  if (actionId === "unhide" && actionSource === "tiktok_ads" && channelId && messageTs) {
+    try {
+      const restored = await unhideTiktokAdCommentForSlackMessage(
+        getServerSupabase(), { channelId, messageTs },
+      );
+      if (!restored.handled || !restored.ok) {
+        const failureBlocks = [
+          ...origBlocks,
+          { type: "context", elements: [{ type: "mrkdwn", text: `*공개 복원 실패 — 다시 시도해주세요* · <@${userId}>` }] },
+        ];
+        if (payload.response_url) {
+          await fetch(payload.response_url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ replace_original: true, blocks: failureBlocks }),
+          });
+        }
+        console.error("[injibot-action] TikTok 댓글 공개 복원 실패", restored.error);
+        return NextResponse.json({ ok: true, restored: false });
+      }
+    } catch (e) {
+      console.error("[injibot-action] TikTok 댓글 공개 복원 실패", e);
+      return NextResponse.json({ ok: true, restored: false });
     }
   }
 
