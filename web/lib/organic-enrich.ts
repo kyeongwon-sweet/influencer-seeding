@@ -11,6 +11,19 @@
  *  4. 액터는 **협찬 모니터링이 쓰는 것과 동일**한 것을 재사용한다(검증된 것 + 비용 예측 가능).
  */
 
+/**
+ * ⚠️ `url-utils`의 `instagramRequestUrl`과 같은 규칙을 여기서 다시 쓴다.
+ *    이 파일은 단위 테스트(organic-enrich.test.ts·organic-thumbnail.test.ts)가 **상대경로로
+ *    임포트**해서 `@/` alias를 해석하지 못한다(node --test --experimental-strip-types).
+ *    규칙을 바꾸면 `web/lib/url-utils.ts`와 `scripts/url_utils.py` 세 곳을 함께 고쳐야 한다.
+ *
+ * 2026-08-19 실측: 액터는 `/p/` 요청에 videoPlayCount를 반환하지 않고 `/reel/` 요청에만 반환한다.
+ */
+function instagramRequestUrl(url: string): string {
+  const m = String(url ?? "").match(/\/(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)/);
+  return m ? `https://www.instagram.com/reel/${m[1]}/` : url;
+}
+
 /** 플랫폼별 Apify 액터와 단건 입력. 블로그·스레드는 조회수 개념이 없어 대상에서 뺀다. */
 const ACTOR: Record<string, { id: string; input: (url: string) => Record<string, unknown> }> = {
   "유튜브": {
@@ -24,7 +37,7 @@ const ACTOR: Record<string, { id: string; input: (url: string) => Record<string,
   },
   "인스타그램": {
     id: "apify/instagram-scraper",
-    input: (url) => ({ directUrls: [url], resultsLimit: 1, resultsType: "posts" }),
+    input: (url) => ({ directUrls: [instagramRequestUrl(url)], resultsLimit: 1, resultsType: "posts" }),
   },
   "틱톡": {
     id: "clockworks/tiktok-scraper",

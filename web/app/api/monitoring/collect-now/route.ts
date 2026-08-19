@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { instagramRequestUrl } from "@/lib/url-utils";
 import { createClient } from "@supabase/supabase-js";
 import { createApifyClient } from "@/lib/apify";
 import { checkCronAuth } from "@/lib/cron-auth";
@@ -126,7 +127,8 @@ async function collect(req: NextRequest) {
     try {
       // directUrls로 모든 게시물을 한 번에 수집 (실제 조회수만)
       const run = await client.actor("apify/instagram-scraper").call({
-        directUrls: igPosts.map((p) => p.url),
+        // 요청 URL만 `/reel/`로 통일 — 액터가 `/p/` 요청엔 videoPlayCount를 안 준다(2026-08-19 실측).
+        directUrls: igPosts.map((p) => instagramRequestUrl(p.url)),
         resultsType: "posts",
         resultsLimit: igPosts.length, // 전체 게시물 수집 (100 고정 시 100개 초과분 누락)
         addParentData: true,

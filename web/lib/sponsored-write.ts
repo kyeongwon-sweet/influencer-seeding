@@ -1,5 +1,5 @@
 import type { getServerSupabase } from "@/lib/supabase-server";
-import { normalizeUrl, postIdentityKey, ALLOWED_POST_URL_RE, isInstagramNonPostUrl, isInvalidTikTokPostUrl } from "@/lib/url-utils";
+import { normalizeUrl, postIdentityKey, ALLOWED_POST_URL_RE, isInstagramNonPostUrl, isInvalidTikTokPostUrl, instagramRequestUrl } from "@/lib/url-utils";
 import { normalizeChannelType, isFreeChannel, canonicalText } from "@/app/monitoring/lib";
 import { repairPollutedCompanyName } from "@/lib/companyMap";
 import { triggerCaptionBackfill, needsCaption } from "@/lib/github-dispatch";
@@ -194,7 +194,7 @@ export async function upsertSponsoredRows(
       if (job) {
         const runError = await startActorRun(
           "apify/instagram-scraper",
-          { directUrls: igNew, resultsType: "posts", resultsLimit: igNew.length, addParentData: true },
+          { directUrls: igNew.map(instagramRequestUrl), resultsType: "posts", resultsLimit: igNew.length, addParentData: true },
           `${appUrl}/api/apify-webhook?token=${encodeURIComponent(webhookSecret)}&jobId=${job.id}&jobType=monitoring&metadataOnly=1`
         ).then(() => null).catch((e: unknown) => e);
         if (runError) {

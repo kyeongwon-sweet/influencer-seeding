@@ -8,7 +8,7 @@ import urllib.request
 from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 from db import get_client
-from url_utils import normalize_url, tt_video_id as _tt_id, tt_canonical_form
+from url_utils import normalize_url, tt_video_id as _tt_id, tt_canonical_form, instagram_request_url
 from account_name_policy import collected_account_name_update
 from caption_text import normalize_caption
 from monitoring_retry_guard import zero_result_alert
@@ -1766,8 +1766,9 @@ def _fetch_stats(urls: list) -> list:
 
     try:
         client = ApifyClient(apify_token)
+        # 요청 URL만 `/reel/`로 통일 — 액터가 `/p/` 요청엔 videoPlayCount를 안 준다(2026-08-19 실측).
         run = client.actor(APIFY_IG_ACTOR).call(run_input={
-            "directUrls": urls,
+            "directUrls": [instagram_request_url(u) for u in urls],
             "resultsType": "posts",
             "resultsLimit": len(urls),
             "maxRequestRetries": 3,

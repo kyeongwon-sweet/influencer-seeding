@@ -1,4 +1,5 @@
 from __future__ import annotations
+from url_utils import instagram_request_url
 import json
 import os
 import re
@@ -92,7 +93,8 @@ def fetch_all(influencers: list[dict]) -> list[dict]:
 def _apify_run_instagram(urls: list[str]) -> list:
     client = ApifyClient(APIFY_API_TOKEN)
     run_input = {
-        "directUrls": urls,
+        # 요청 URL만 `/reel/`로 통일(2026-08-19 실측: `/p/` 요청엔 videoPlayCount 미반환).
+        "directUrls": [instagram_request_url(u) for u in urls],
         "resultsType": "posts",
         "resultsLimit": APIFY_RESULTS_LIMIT,
         "addParentData": True,

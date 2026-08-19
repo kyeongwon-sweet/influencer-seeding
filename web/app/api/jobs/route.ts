@@ -1,4 +1,5 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
+import { instagramRequestUrl } from "@/lib/url-utils";
 import { NextRequest, NextResponse, after } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { startActorRun } from "@/lib/apify";
@@ -137,7 +138,7 @@ export async function POST(req: NextRequest) {
           const measuredAt = resolveMonitoringMeasuredAt(null, "manual");
           await startActorRun(
             'apify/instagram-scraper',
-            { directUrls: urls, resultsType: 'posts', resultsLimit: urls.length },
+            { directUrls: urls.map(instagramRequestUrl), resultsType: 'posts', resultsLimit: urls.length },
             webhookUrl(appUrl, `jobId=${job.id}&jobType=monitoring&measuredAt=${encodeURIComponent(measuredAt)}`)
           );
         }
@@ -247,7 +248,7 @@ export async function POST(req: NextRequest) {
           await supabase.from('jobs').update({ status: 'running' }).eq('id', job.id);
           await startActorRun(
             'apify/instagram-scraper',
-            { directUrls: igUrls, resultsType: 'posts', resultsLimit: igUrls.length },
+            { directUrls: igUrls.map(instagramRequestUrl), resultsType: 'posts', resultsLimit: igUrls.length },
             webhookUrl(appUrl, `jobId=${job.id}&jobType=organic_refresh`)
           );
         }
@@ -287,7 +288,7 @@ export async function POST(req: NextRequest) {
             actorRuns.push(
               startActorRun(
                 'apify/instagram-scraper',
-                { directUrls: igUrls, resultsType: 'posts', resultsLimit: 60, addParentData: true },
+                { directUrls: igUrls.map(instagramRequestUrl), resultsType: 'posts', resultsLimit: 60, addParentData: true },
                 webhookUrl(appUrl, `jobId=${job.id}&jobType=screening&platform=instagram`)
               ).catch((e: unknown) => {
                 logger.error("jobs-api", "Instagram 스크리닝 실패", {

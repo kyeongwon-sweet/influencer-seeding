@@ -52,3 +52,26 @@ def tt_canonical_form(url: str) -> str:
     if m:
         return "https://www.tiktok.com" + m.group(1) + "/video/" + m.group(2)
     return url
+
+
+def instagram_request_url(url: str | None) -> str | None:
+    """Apify에 **요청할 때만** 쓰는 IG URL — 게시물은 `/reel/` 형태로 통일한다.
+
+    🚨 2026-08-19 실측: `apify/instagram-scraper`는 같은 게시물이라도 `/p/`로 요청하면
+    `videoPlayCount`를 아예 반환하지 않고, `/reel/`로 요청하면 반환한다.
+    (5건 전부 회수: 1,739 / 2,190 / 141 / 1,137 / 2,203. 브라우저 릴스 탭 실측값과 일치)
+    이 때문에 DB에 `/p/`로 저장된 릴스가 '좋아요만 있고 조회수 없음' 상태로 쌓였고,
+    큐가 이를 `no_public_view_metric`으로 분류해 재시도를 영구 중단할 뻔했다.
+
+    사진·캐러셀 글에 `/reel/`로 요청해도 **오류나 오값이 없다**(4건 실측: 조회수 필드만 비고
+    좋아요·게시물 데이터는 정상). 그래서 게시물 URL은 형태 구분 없이 통일해도 안전하다.
+
+    ⚠️ **DB·시트에 저장된 URL은 절대 바꾸지 않는다** — 요청 시점에만 변환한다(정본 불변).
+    ⚠️ 프로필 URL(`instagram.com/<handle>/`)에는 쓰지 말 것. shortcode가 없으면 원본을 그대로 돌려준다.
+    """
+    if not url:
+        return url
+    m = re.search(r"/(?:p|reel|reels|tv)/([A-Za-z0-9_-]+)", str(url))
+    if not m:
+        return url
+    return f"https://www.instagram.com/reel/{m.group(1)}/"

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { instagramRequestUrl } from "@/lib/url-utils";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { startActorRun } from "@/lib/apify";
@@ -69,7 +70,8 @@ export async function POST(req: NextRequest) {
     await startActorRun(
       "apify/instagram-scraper",
       {
-        directUrls: urls,
+        // 요청 URL만 `/reel/`로 통일(2026-08-19 실측: `/p/` 요청엔 videoPlayCount 미반환).
+        directUrls: urls.map(instagramRequestUrl),
         resultsType: "posts",
         resultsLimit: urls.length,
         addParentData: true,

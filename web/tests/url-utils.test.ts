@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  instagramRequestUrl,
   normalizeUrl,
   ALLOWED_POST_URL_RE,
   isInstagramNonPostUrl,
@@ -96,4 +97,28 @@ test("normalizeInstagramUrl: 프로필만 반환, 포스트/릴스는 null", () 
 test("normalizeYouTubeUrl: 채널 부가경로 제거", () => {
   assert.equal(normalizeYouTubeUrl("https://youtube.com/@chan/videos"), "https://www.youtube.com/@chan/");
   assert.equal(normalizeYouTubeUrl("https://instagram.com/x"), null);
+});
+
+// 🚨 2026-08-19: `/p/`로 요청하면 apify/instagram-scraper가 videoPlayCount를 반환하지 않아
+//   릴스 조회수가 통째로 결측됐다. 같은 게시물·같은 액터로 `/reel/` 요청 시 5건 전부 회수
+//   (1,739 / 2,190 / 141 / 1,137 / 2,203 — 브라우저 릴스 탭 값과 일치).
+//   사진·캐러셀에 `/reel/`로 요청해도 오류·오값 없음(4건 실측).
+test("instagramRequestUrl: /p/ → /reel/ (요청 시점에만 변환)", () => {
+  assert.equal(instagramRequestUrl("https://www.instagram.com/p/DcGchu3Sm3Z/"),
+    "https://www.instagram.com/reel/DcGchu3Sm3Z/");
+  for (const u of ["https://www.instagram.com/reel/ABC123/",
+                   "https://www.instagram.com/reels/ABC123/",
+                   "https://www.instagram.com/tv/ABC123/"]) {
+    assert.equal(instagramRequestUrl(u), "https://www.instagram.com/reel/ABC123/");
+  }
+});
+
+test("instagramRequestUrl: 프로필·타플랫폼 URL은 건드리지 않는다", () => {
+  // 🚨 프로필 URL을 변환하면 계정 게시물을 통째로 긁어 Apify 비용이 폭증한다.
+  for (const u of ["https://instagram.com/xeoj.ng/",
+                   "https://www.instagram.com/one_star_video/reels/",
+                   "https://www.tiktok.com/@a/video/123",
+                   "https://www.youtube.com/shorts/abc"]) {
+    assert.equal(instagramRequestUrl(u), u);
+  }
 });

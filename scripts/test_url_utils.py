@@ -1,4 +1,4 @@
-from url_utils import normalize_url, tt_video_id, tt_canonical_form
+from url_utils import normalize_url, tt_video_id, tt_canonical_form, instagram_request_url
 from run_monitoring import _has_positive_views, _is_instagram_collectable_url, _tt_canonical
 
 
@@ -52,3 +52,34 @@ def test_instagram_diagnostics_skip_non_instagram_posts():
     assert _is_instagram_collectable_url("https://www.tiktok.com/@issuebox_/photo/76672043078207603388") is False
     assert _is_instagram_collectable_url("https://www.youtube.com/shorts/vx9Ijz7QG0k") is False
     assert _is_instagram_collectable_url("https://www.instagram.com/some_account/reels/") is False
+
+
+
+# 🚨 2026-08-19: `/p/`로 요청하면 액터가 videoPlayCount를 안 줘 릴스 조회수가 통째로 결측됐다.
+#   실측(apify/instagram-scraper, 같은 게시물·같은 액터):
+#     /p/    요청 → videoPlayCount 없음 (5건 전부)
+#     /reel/ 요청 → 1,739 / 2,190 / 141 / 1,137 / 2,203 (브라우저 릴스 탭 값과 일치)
+#   사진·캐러셀에 /reel/로 요청해도 오류·오값 없음(4건 실측).
+
+def test_instagram_request_url_converts_p_to_reel():
+    assert instagram_request_url("https://www.instagram.com/p/DcGchu3Sm3Z/") ==         "https://www.instagram.com/reel/DcGchu3Sm3Z/"
+
+
+def test_instagram_request_url_is_stable_for_reel_forms():
+    for u in ("https://www.instagram.com/reel/ABC123/",
+              "https://www.instagram.com/reels/ABC123/",
+              "https://www.instagram.com/tv/ABC123/"):
+        assert instagram_request_url(u) == "https://www.instagram.com/reel/ABC123/"
+
+
+def test_instagram_request_url_leaves_profile_urls_alone():
+    """🚨 프로필 URL을 변환하면 계정 게시물을 통째로 긁어 Apify 비용이 폭증한다."""
+    for u in ("https://instagram.com/xeoj.ng/",
+              "https://www.instagram.com/one_star_video/reels/"):
+        assert instagram_request_url(u) == u
+
+
+def test_instagram_request_url_leaves_other_platforms_alone():
+    for u in ("https://www.tiktok.com/@a/video/123",
+              "https://www.youtube.com/shorts/abc", None, ""):
+        assert instagram_request_url(u) == u
