@@ -6,6 +6,15 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-19 [Codex 완료] `syncNew` 신규 행 H/I 수식 자동 보강 (`e7556c1`)
+- **근본원인:** DB→시트 신규행 경로 `pullFromDB`는 `ensureNewRowsMetricFormulas_`를 호출했지만, 시트→DB 신규등록 메뉴 `syncNew`는 DB upsert와 등록상태 기록만 했다. 그래서 게시물 추가 배치마다 신규 행 I열 수식이 빠지고 Formula Audit의 `incInvalid`가 반복됐다.
+- **수정:** `syncNew`가 처리할 행번호와 URL key를 수집하고, DB upsert 뒤 기존 검증된 H/I 생성기(`ensureNewRowsMetricFormulas_`)로 빈 H·I만 채운다. 행 수와 각 행 URL key를 전후 재검증하며, 수식 보강이 성공한 뒤에만 등록상태를 기록한다. 실패하면 상태를 찍지 않아 다음 실행에서 재시도된다. `syncNew` 자체도 문서락으로 직렬화했다. 기존 수식·수기 H/I 값·미러링/백로그 정책은 덮지 않는다.
+- **잔여 4행 복구:** 인계 당시 2874~2877행(`bikini_boys__`·`quan_d_`·`s_eo__fit`·`mxyewls`)은 라이브 `exportStats` 1회로 표준 V2 수식이 이미 복구됐다. 첫 감사 run `32203219433`의 `incInvalid=1`은 Google API 전파 지연이었고, 같은 셀 I2877의 수식 원문을 직접 확인한 뒤 run `32203493595`에서 `incInvalid=0`으로 수렴했다.
+- **라이브 배포:** guarded clasp가 라이브 21파일을 먼저 pull한 뒤 repo 소유 5파일만 staging/push하고 다시 pull했다. `APPS_SCRIPT_PUSH_VERIFIED`로 라이브 5파일이 repo 정본과 일치함을 확인했다(2026-08-19 10:13 KST). 다른 라이브 전용 파일은 보존했다.
+- **기능 실측:** 배포 직후 Formula Audit run `32204694272`는 `hInvalid=0 / incInvalid=0 / inc mismatch=0 / orphan=0 / anomalies=[]`이다. `healthy=false`는 수식이 아니라 신규 게시물 실측 없음 `stale=12` 때문이다. 현재 실제 미등록 신규 대상은 이미 다른 동기화가 처리해 `syncNew` 재실행 결과 `추가할 신규 광고가 없습니다`였으므로, 가짜 게시물 생성이나 정상 수식 삭제 시험은 하지 않았다. **다음 실제 신규 행이 첫 운영 종단 표본**이며, 그때 `syncNew` 완료 메시지의 `H/I 수식 보강` 수치와 Formula Audit `incInvalid=0`을 확인한다.
+- **`one_star_video` 정정:** 현재 DB 정본 URL은 `https://www.instagram.com/p/DcBZOaEpDyt/`, 활성(`ended_at=null`)이며 2026-08-17 `166,000`·08-18 `166,099` 자동 실측이 있다. 프로필 URL stale 이슈는 해소됐으므로 종료하거나 다시 등록하지 않는다.
+- **검증:** web 테스트 **314/314**, TypeScript 0, ESLint 오류 0(기존 경고 15), Next production build 성공, Apps Script deploy dry-run/push/fresh-pull 검증 통과. 작업 도중 나타난 동시 세션의 `web/lib/companyMap.ts`·`web/tests/companyMap.test.ts` 수정과 기존 `?? scripts/data/`는 무접촉.
+
 ## ✅ 2026-08-18 [Codex 완료] 연동시트 URL 중복 전수 정리 (`DcI7korS2B-` · `DcBZOaEpDyt`)
 - **사전 전수감사:** 라이브 정본 `linkKey_`와 DB canonical URL을 쓰는 `auditLinkedSheetDuplicates20260811()` 재실행 결과 중복은 승인된 두 그룹뿐이었다(`duplicateGroups=2 / duplicateExtraRows=2`, 시트 2,863행·날짜열 97개).
 - **keeper 판정:** `ig:DcI7korS2B-`는 두 행 모두 날짜 지표 0개라 상단 2638행을 유지했다. `ig:DcBZOaEpDyt`는 날짜 지표 1개가 있는 2688행을 유지하고 지표 0개인 2796행을 제거했다. 추정값을 만들지 않았다.
