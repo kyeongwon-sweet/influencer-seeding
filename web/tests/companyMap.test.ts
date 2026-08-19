@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { companyForAccount, excludesCompanyFallback, repairPollutedCompanyName } from "../lib/companyMap.ts";
+import { companyForAccount, excludesCompanyFallback, repairPollutedCompanyName, isKnownCompanyName } from "../lib/companyMap.ts";
 
 test("company fallback remains available for viral channels", () => {
   assert.equal(companyForAccount("365_real", "바이럴 (영상)"), "굿띵투유");
@@ -52,9 +52,11 @@ test("업체명=계정명 오적재는 표기 차이까지 잡아 회사 맵 또
 });
 
 test("ascii 핸들꼴 업체명(계정 조각·외부 핸들)도 오적재로 잡는다", () => {
-  // '486' = 486__humor 조각(계정명과 canon 다름) → 개인이라 null. ①만으론 못 잡던 케이스.
+  // ⚠️ 2026-08-19 정정: 원래 여기서 '486'을 486__humor의 조각으로 보고 오염 판정했으나,
+  //    사용자 확인 결과 **486이 정식 사명**이었다. 정식 사명은 COMPANY_ACCOUNTS로 보호되므로
+  //    이 케이스는 아래 '등록되지 않은 ascii 핸들'로 대체한다(규칙 자체는 그대로 유효).
   assert.deepEqual(
-    repairPollutedCompanyName("486", "486__humor", "바이럴 (영상)"),
+    repairPollutedCompanyName("zzal_maker", "zzal_maker_official", "바이럴 (영상)"),
     { companyName: null, polluted: true },
   );
   // ascii 핸들꼴이 우리채널 계정 위에 있으면 그 업체명으로 교정
@@ -67,3 +69,20 @@ test("ascii 핸들꼴 업체명(계정 조각·외부 핸들)도 오적재로 �
   assert.equal(repairPollutedCompanyName("스튜디오 엔터", "some_acct", "바이럴 (영상)").polluted, false);
 });
 
+
+test("🚨 숫자·영문 정식 사명을 계정 핸들로 오판해 지우지 않는다 (486 사건, 2026-08-19)", () => {
+  // ascii 핸들꼴 규칙이 '486'을 486__humor의 조각으로 오판해 시트 정상값을 지웠다(활성 5건 빈칸).
+  const r = repairPollutedCompanyName("486", "486__humor", "바이럴 (영상)");
+  assert.equal(r.polluted, false);
+  assert.equal(r.companyName, "486");
+  // 매핑도 등록돼 폴백으로도 같은 값이 나온다.
+  assert.equal(companyForAccount("486__humor", "바이럴 (영상)"), "486");
+  assert.equal(isKnownCompanyName("486"), true);
+});
+
+test("정식 사명이 아닌 ascii 핸들은 여전히 오염으로 잡는다", () => {
+  // 486 예외가 규칙 자체를 무력화하면 안 된다.
+  const r = repairPollutedCompanyName("some_random_handle", "some_random_handle", "바이럴 (영상)");
+  assert.equal(r.polluted, true);
+  assert.equal(isKnownCompanyName("some_random_handle"), false);
+});

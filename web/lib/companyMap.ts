@@ -39,6 +39,10 @@ const COMPANY_ACCOUNTS: Record<string, string[]> = {
   "후마니": [
     "humani_3",
   ],
+  // 업체명이 숫자로 된 사례. 계정 핸들 조각으로 오해하기 쉬우나 사용자 확인 결과 정식 사명이다(2026-08-19).
+  "486": [
+    "486__humor",
+  ],
 };
 
 // 사소한 차이(대소문자·공백·밑줄·점·가운뎃점·하이픈)는 같은 채널로 취급한다(사용자 규칙 2026-08-18).
@@ -49,6 +53,15 @@ export function canonAccount(name?: string | null): string {
 const _BY_ACCOUNT: Record<string, string> = {};
 for (const [company, accounts] of Object.entries(COMPANY_ACCOUNTS)) {
   for (const a of accounts) _BY_ACCOUNT[canonAccount(a)] = company;
+}
+
+/** 정식 업체명 집합(정규화 키). 오염 판정이 정상 사명을 지우지 않도록 방어한다. */
+const _COMPANY_KEYS = new Set(Object.keys(COMPANY_ACCOUNTS).map(canonAccount));
+
+/** 알려진 정식 업체명인가 — 숫자·영문 사명("486" 등)을 계정 핸들로 오판하지 않기 위함. */
+export function isKnownCompanyName(value?: string | null): boolean {
+  const key = canonAccount(value);
+  return key.length > 0 && _COMPANY_KEYS.has(key);
 }
 
 export function excludesCompanyFallback(channelType?: string | null): boolean {
@@ -81,8 +94,12 @@ export function repairPollutedCompanyName(
   //   ② 순수 ascii 핸들꼴(^[a-z0-9._-]+$). 정식 업체명은 전부 한글/공백 포함(무디·톡톡컴퍼니·
   //   스튜디오 엔터·모두의행복 등)이라 ascii 핸들꼴 업체명은 항상 계정 핸들 오적재로 본다.
   //   (2026-08: '486'=486__humor 조각처럼 계정명과 canon이 달라 ①만으론 못 잡고 재유입되던 것을 ②로 차단)
-  const looksHandle = company != null && /^[a-z0-9._-]+$/.test(company);
-  const polluted = Boolean(company && ((companyKey && accountKey && companyKey === accountKey) || looksHandle));
+  // 🚨 정식 사명이 숫자·영문일 수 있다("486" — 사용자 확인 2026-08-19). ascii 핸들꼴 규칙이
+  //    이를 계정 조각으로 오판해 시트의 정상 업체명을 지우고 수기 잠금까지 풀어버렸다(활성 5건 빈칸).
+  //    COMPANY_ACCOUNTS에 등록된 정식 업체명은 어떤 경우에도 오염으로 보지 않는다.
+  const looksHandle = company != null && /^[a-z0-9._-]+$/.test(company) && !isKnownCompanyName(company);
+  const polluted = Boolean(company && !isKnownCompanyName(company)
+    && ((companyKey && accountKey && companyKey === accountKey) || looksHandle));
   return {
     companyName: polluted ? companyForAccount(accountName, channelType) : company,
     polluted,
