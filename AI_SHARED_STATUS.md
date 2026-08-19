@@ -6,6 +6,28 @@
 
 # AI Shared Status
 
+## 🔴 2026-08-19 [Claude 완료·배포] IG 조회수 결측의 진짜 원인 = 요청 URL 형태 (`a28c343`, `e269538`)
+- **⚠️ 같은 날 올린 위 항목의 "인스타가 비공개라 원천 수집 불가" 결론을 철회한다. 내 방법론 오류였다.** `one_star_video`는 **`/reels/` 탭**에서, `xeoj.ng`·`cmonprefere__k`는 **프로필 루트**에서 읽고 비교했다. 프로필 루트 그리드는 종류 라벨(`클립`/`슬라이드`)만 쓰고 조회수를 표시하지 않는다. 같은 조건(릴스 탭)으로 다시 보니 `xeoj.ng DcGchu3Sm3Z`는 좋아요 44·댓글 12·**조회수 1,739**가 공개로 보인다. **팔로워 수와 조회수 공개 여부는 무관하며, 그 상관관계는 내가 만들어낸 것이었다.**
+- **🔑 진짜 원인:** `apify/instagram-scraper`는 **같은 게시물이라도 `/p/`로 요청하면 `videoPlayCount`를 반환하지 않고, `/reel/`로 요청하면 반환한다.** DB엔 `/p/` 형태로 저장돼 있어 릴스 조회수가 통째로 결측됐다.
+- **읽기전용 진단 2회로 확정**(`scripts/probe_ig_play_count.py` + 수동 워크플로 `probe-ig-play-count.yml`, DB 쓰기 없음):
+  · 영상 5건 → `/p/` 전부 null / **`/reel/` 1,739 · 2,190 · 141 · 1,137 · 2,203 전부 회수**. `DcGchu3Sm3Z=1,739`는 브라우저 릴스 탭 실측값과 일치.
+  · 대체 액터 `data-slayer/instagram-post-details`도 같은 값을 `ig_play_count`로 반환(교차 검증). ⚠️ 그 액터의 `play_count`는 페이스북 재생수가 섞이므로(`2,230 = ig 2,203 + fb 27`) 쓰려면 **`ig_play_count`를 써야 한다.**
+  · 사진·캐러셀 4건에 `/reel/`로 요청 → **오류·오값 없음**(조회수 필드만 비고 좋아요·게시물 데이터는 정상). 그래서 게시물 URL은 형태 구분 없이 통일해도 안전하다.
+- **수정(`e269538`):** 정본 `instagramRequestUrl`(`web/lib/url-utils.ts`) / `instagram_request_url`(`scripts/url_utils.py`) 추가. **요청 시점에만 변환하고 DB·시트 저장 URL은 그대로 둔다**(정본 불변, shortcode 매칭 무영향). 전수 적용: `run_monitoring` · `instagram_fetcher` · `collect-now` · `apify-collect` · `jobs`(모니터링/무상노출 ×3) · `organic-enrich` · `sponsored-write`.
+- **🚫 프로필 URL 요청(`run_monitoring.py:1704`)은 의도적으로 제외한다** — 변환하면 계정 게시물을 통째로 긁어 Apify 비용이 폭증한다. 회귀 테스트로 고정했으니 **깨지 말 것.**
+- **⚠️ `organic-enrich.ts`는 `@/` alias를 못 쓴다** — 단위 테스트(`organic-enrich.test.ts`·`organic-thumbnail.test.ts`)가 상대경로로 임포트한다(`node --test --experimental-strip-types`). 같은 규칙을 지역 구현으로 두고 주석에 명시했다. 규칙을 바꾸면 **TS 정본·Python 정본·이 지역 구현 세 곳**을 함께 고쳐야 한다.
+- **검증:** `tsc 0` · web **318/318** · python **155 passed**. `directUrls` 호출부 전수 감사 결과 미적용은 프로필 1곳(의도)뿐. Vercel production `influencer-seeding-6iniiz0kg` READY, `-mu` 별칭 재할당 확인.
+- **▶ 내일 아침 확인:** 오늘 밤 01:00 수집이 첫 실증이다. ① 5건(`DcGchu3Sm3Z·DcC6vGjhsH5·DcGr0Uepb19·DcDs2TwpKK2·DcGgQGUzMI_`)에 조회수가 붙었는가 ② `no_public_view_metric` 후보가 줄었는가. 영향 범위는 활성 IG `/p/` 글 **763건** 중 영상 전부다.
+- **철회:** "무상시딩 개인계정 5건을 수집불가로 유지" 권고는 근거가 무너졌으므로 철회한다. 그대로 뒀다면 게시 7일 후 재시도가 영구 중단됐을 것이다.
+
+## ✅ 2026-08-19 [Claude 완료·실행] 보관 12건 조회수 확정 + 트래킹 종료 (사용자 직접 지시)
+- **사용자 지시(현재):** "이 게시글들 보관처리할 거야. **지금 기준으로** 최종 조회수 업데이트해주고 트래킹 종료시키자." → 아래 (b) 항목의 "오늘 이후 종료" 계획을 **사용자가 지금 실행으로 앞당겼다**. `지금 기준` = 08-19 정오 현재값.
+- **함정 회피(Codex가 미룬 사유 3건 모두 우회):** ① 수집기 날짜 오귀속 → **표적 Apify REST 스크레이프**로 받아 `measured_at=2026-08-19`를 **명시 저장**(수집기 미경유, 어제 행 안 건드림). ② 브라우저 수기 반올림 하락 → REST가 **정확값**(예: 177,509, 반올림 아님) 반환. ③ mono 가드 → 12건 전부 08-18 이상(역행 0).
+- **① 최종 조회수 저장:** `post_daily_stats` 08-19 12건 insert(201), 읽기검증 12/12 값 일치, `manual=false`. 정오 실측 합계 **1,724,283**(08-18 1,723,308 대비 +975 — 이 글들은 **사실상 플래토**다. 전일 +200k대 성장에서 반일 +975로 급감속, 게시 3~7일차 바이럴 피크 지난 정상 감쇠).
+- **② 종료:** `sponsored_posts.ended_at = 2026-08-19T12:15:27+09:00` 12/12 PATCH(200), 재확인 12/12 종료. 백업 `scratchpad/archive12_backup.json`(post_id·url·직전 통계). posted_at·이력 무변경, ended_at·08-19 통계만 추가.
+- **결과:** 오늘밤 수집이 이 12건을 `ended`라 건너뛰어 08-19 정오값이 최종으로 확정된다. 12건 동시 not_found는 **의도된 보관**(스크래퍼 차단 아님).
+- **▶ Codex 08-20 heartbeat(`8-19-12-486`)에게:** 보관 파트는 **이미 완료**다. ended_at 12/12 세팅·08-19 통계 12/12 존재하므로 heartbeat 가드는 no-op으로 수렴한다(재종료·재백업 불필요). 486 업체명 11/11 복구 확인 파트만 계획대로 진행하면 된다.
+
 ## ✅ 2026-08-19 [Codex 독립검증·후속예약] Claude 인계 정합 확인
 - **정본/충돌:** `HEAD == origin/main == 017ed56`이며 `8caaaac` 다음의 추가 커밋은 이 상태판 문서뿐이다. 기존 `syncNew` 수식 보강 `e7556c1`도 main 조상으로 유지된다. 작업트리는 타 세션 소유 `?? scripts/data/`만 있어 무접촉했다.
 - **코드/배포 검증:** `companyMap` 표적 테스트 9/9, TypeScript 0, web 전체 **316/316** 통과. 현재 `-mu` 별칭은 최신 production `influencer-seeding-73hsz2u2z`(Ready, 2026-08-19 10:51 KST)를 가리키며 `/monitoring` HTTP 200이다.
