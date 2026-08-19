@@ -1,0 +1,33 @@
+name: Probe IG Play Count (진단·읽기전용)
+
+# IG 조회수 누락 진단. **DB에 아무것도 쓰지 않는다** — Apify 반환 필드만 로그로 출력한다.
+# 배경: 메인 액터가 videoPlayCount를 빼먹은 릴스가 인스타 웹에선 조회수가 공개로 보인다
+#       (2026-08-19 실측: xeoj.ng DcGchu3Sm3Z = 1,739회). 수집 경로 문제인지 확인용.
+# 수동 전용(schedule 없음) — 필요할 때만 최소 표본으로 호출해 Apify 비용을 아낀다.
+on:
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: "콤마로 구분한 IG 게시물 URL(최소 표본만 — Apify 비용)"
+        required: true
+        default: "https://www.instagram.com/p/DcGchu3Sm3Z/,https://www.instagram.com/p/DcC6vGjhsH5/"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Probe (read-only)
+        working-directory: scripts
+        env:
+          APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
+          PROBE_URLS: ${{ github.event.inputs.urls }}
+          PYTHONUTF8: "1"
+        run: python probe_ig_play_count.py
