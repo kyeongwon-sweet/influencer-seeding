@@ -157,7 +157,8 @@ def main() -> None:
         })
 
     candidates.sort(key=lambda item: (item["sheet_row"], item["measured_at"]))
-    if args.expected_count is not None and len(candidates) != args.expected_count:
+    # expected-count 가드는 --apply(실제 쓰기) 안전장치 → 읽기전용(전수 대조)에선 건너뜀(카운트 몰라도 리포트 산출).
+    if args.apply and args.expected_count is not None and len(candidates) != args.expected_count:
         raise SystemExit(f"candidate count changed: expected={args.expected_count}, actual={len(candidates)}")
 
     backup_dir = Path(args.backup_dir)
