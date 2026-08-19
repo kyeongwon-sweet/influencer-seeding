@@ -299,7 +299,7 @@ function todayStr_() {
 // ═══════════════════════════════════════════════════════════════
 /**
  * @param {boolean} onlyNew - true면 등록상태가 비어있는 행만
- * @returns {{rows, rowNums, statusCol, skipped:number}}
+ * @returns {{rows, rowNums, rowRefs, statusCol, skipped:number, dupCount:number, future:number, lastRow:number}}
  */
 function collectRows_(onlyNew) {
   const sheet = getSheet_();
@@ -310,7 +310,9 @@ function collectRows_(onlyNew) {
   const lastCol = sheet.getLastColumn();
   const today = todayStr_();
   let skipped = 0, dupCount = 0, future = 0;
-  if (lastRow < CONFIG.DATA_START_ROW) return { rows: [], rowNums: [], statusCol, skipped, dupCount, future };
+  if (lastRow < CONFIG.DATA_START_ROW) {
+    return { rows: [], rowNums: [], rowRefs: [], statusCol, skipped, dupCount, future, lastRow };
+  }
 
   const values = sheet
     .getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, lastCol)
@@ -318,6 +320,7 @@ function collectRows_(onlyNew) {
 
   const byKey = {}; // 정규화된 URL → 전송 객체 (첫 행 우선, 중복 제거)
   const rowNums = [];
+  const rowRefs = [];
 
   values.forEach((row, i) => {
     const rowNum = CONFIG.DATA_START_ROW + i;
@@ -348,13 +351,19 @@ function collectRows_(onlyNew) {
     if (fieldCols.cost)            obj.cost            = toNumber_(row[fieldCols.cost - 1]);
 
     const key = urlKey_(rawUrl);
-    if (byKey[key]) { dupCount++; rowNums.push(rowNum); return; } // 같은 URL 중복 → 전송 1번만, 행은 등록 처리
+    if (byKey[key]) {
+      dupCount++;
+      rowNums.push(rowNum);
+      rowRefs.push({ row: rowNum, key: key });
+      return;
+    } // 같은 URL 중복 → 전송 1번만, 행은 등록 처리
     byKey[key] = obj;
     rowNums.push(rowNum);
+    rowRefs.push({ row: rowNum, key: key });
   });
 
   const rows = Object.keys(byKey).map(k => byKey[k]);
-  return { rows, rowNums, statusCol, skipped, dupCount, future };
+  return { rows, rowNums, rowRefs, statusCol, skipped, dupCount, future, lastRow };
 }
 
 /** 중복 판정용 URL 키: 쿼리스트링·끝슬래시 제거 + 소문자 (서버 정규화와 동일 기준) */
@@ -540,21 +549,67 @@ function markRegistered_(sheet, statusCol, rowNums) {
   rowNums.forEach(r => sheet.getRange(r, statusCol).setValue("✅ " + stamp));
 }
 
+function assertSyncRowsStable_(sheet, rowRefs, expectedLastRow) {
+  assertRowCountStable_(sheet, expectedLastRow, "syncNew formula fill");
+  if (!rowRefs || rowRefs.length === 0) return;
+  const urlCol = buildFieldCols_(sheet).url;
+  rowRefs.forEach(ref => {
+    const currentKey = urlKey_(sheet.getRange(ref.row, urlCol).getValue());
+    if (!currentKey || currentKey !== ref.key) {
+      throw new Error("신규 등록 중 행 위치가 바뀌었습니다. 수식/상태 쓰기를 중단합니다. (" + ref.row + "행)");
+    }
+  });
+}
+
+function ensureMetricFormulasForRows_(sheet, rowRefs, expectedLastRow) {
+  if (!rowRefs || rowRefs.length === 0) return { rows: 0, cumulative: 0, increment: 0 };
+  assertSyncRowsStable_(sheet, rowRefs, expectedLastRow);
+  const rows = Array.from(new Set(rowRefs.map(ref => Number(ref.row))))
+    .filter(row => Number.isFinite(row) && row >= CONFIG.DATA_START_ROW)
+    .sort((a, b) => a - b);
+  if (rows.length === 0) return { rows: 0, cumulative: 0, increment: 0 };
+  let cumulative = 0, increment = 0;
+  let start = rows[0], end = rows[0];
+  const flushRun = () => {
+    assertRowCountStable_(sheet, expectedLastRow, "syncNew formula fill");
+    const result = ensureNewRowsMetricFormulas_(sheet, start, end);
+    cumulative += result.cumulative || 0;
+    increment += result.increment || 0;
+  };
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i] === end + 1) {
+      end = rows[i];
+      continue;
+    }
+    flushRun();
+    start = rows[i];
+    end = rows[i];
+  }
+  flushRun();
+  assertSyncRowsStable_(sheet, rowRefs, expectedLastRow);
+  return { rows: rows.length, cumulative: cumulative, increment: increment };
+}
+
 // ═══════════════════════════════════════════════════════════════
 // 메뉴 핸들러
 // ═══════════════════════════════════════════════════════════════
 function runSync_(onlyNew) {
   try {
-    const { rows, rowNums, statusCol, skipped, dupCount, future } = collectRows_(onlyNew);
+    const { rows, rowNums, rowRefs, statusCol, skipped, dupCount, future, lastRow } = collectRows_(onlyNew);
     if (rows.length === 0) {
       safeAlert_((onlyNew ? "추가할 신규 광고가 없습니다." : "반영할 시트 행이 없습니다.") + noteExtra_(skipped, dupCount, future));
       return true;
     }
     const { count, created, ended, filled } = postRows_(rows);
-    markRegistered_(getSheet_(), statusCol, rowNums);
+    const sheet = getSheet_();
+    const formulaResult = onlyNew
+      ? ensureMetricFormulasForRows_(sheet, rowRefs, lastRow)
+      : { rows: 0, cumulative: 0, increment: 0 };
+    markRegistered_(sheet, statusCol, rowNums);
     let okMsg;
     if (onlyNew) {
       okMsg = `✅ 신규 광고 확인 완료\n• 비교한 행: ${count}건\n• 새로 추가: ${created}건\n• 기존 행 변경: ${filled}건`;
+      okMsg += `\n• H/I 수식 보강: 누적 ${formulaResult.cumulative}칸 · 증분 ${formulaResult.increment}칸`;
     } else {
       okMsg = `✅ 시트 변경사항 DB 반영 완료\n• 비교한 행: ${count}건\n• 새로 추가: ${created}건\n• 값이 달라 수정: ${filled}건`;
     }
@@ -568,7 +623,7 @@ function runSync_(onlyNew) {
   }
 }
 
-function syncNew()  { runSync_(true); }
+function syncNew()  { return withDocLock_(function() { return runSync_(true); }); }
 function syncAll()  { runSync_(false); }
 
 function companyPollutionRepairKey20260818_(url, accountName) {

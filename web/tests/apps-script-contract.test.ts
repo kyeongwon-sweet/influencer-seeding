@@ -203,6 +203,32 @@ test("new DB-appended rows immediately receive H/I formulas and numeric date hea
   assert.match(parserBody, /Date\.UTC\(1899, 11, 30\)/);
 });
 
+test("syncNew fills missing H/I formulas before marking rows registered", () => {
+  const collectStart = appsScript.indexOf("function collectRows_(onlyNew)");
+  const collectEnd = appsScript.indexOf("function urlKey_(u)", collectStart);
+  const collectBody = appsScript.slice(collectStart, collectEnd);
+  assert.match(collectBody, /rowRefs\.push\(\{ row: rowNum, key: key \}\)/);
+  assert.match(collectBody, /return \{ rows, rowNums, rowRefs, statusCol, skipped, dupCount, future, lastRow \}/);
+
+  const helperStart = appsScript.indexOf("function assertSyncRowsStable_(sheet, rowRefs, expectedLastRow)");
+  const helperEnd = appsScript.indexOf("// ═", helperStart);
+  const helperBody = appsScript.slice(helperStart, helperEnd);
+  assert.match(helperBody, /assertRowCountStable_\(sheet, expectedLastRow, "syncNew formula fill"\)/);
+  assert.match(helperBody, /urlKey_\(sheet\.getRange\(ref\.row, urlCol\)\.getValue\(\)\)/);
+  assert.match(helperBody, /ensureNewRowsMetricFormulas_\(sheet, start, end\)/);
+
+  const runStart = appsScript.indexOf("function runSync_(onlyNew)");
+  const runEnd = appsScript.indexOf("function syncNew()", runStart);
+  const runBody = appsScript.slice(runStart, runEnd);
+  const fillAt = runBody.indexOf("ensureMetricFormulasForRows_(sheet, rowRefs, lastRow)");
+  const markAt = runBody.indexOf("markRegistered_(sheet, statusCol, rowNums)");
+  assert.ok(fillAt >= 0, "syncNew formula fill call missing");
+  assert.ok(markAt > fillAt, "registration status must be written only after formula fill succeeds");
+  assert.match(runBody, /H\/I 수식 보강/);
+
+  assert.match(appsScript, /function syncNew\(\)\s*\{ return withDocLock_\(function\(\) \{ return runSync_\(true\); \}\); \}/);
+});
+
 test("exportStats preserves final DB metric in blank cumulative cells for ended posts", () => {
   const start = appsScript.indexOf("function exportStats()");
   const end = appsScript.indexOf("// ═══════════════════════════════════════════════════════════════\n// 일자별 조회수 입력", start);
