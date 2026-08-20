@@ -6,6 +6,13 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-19 [Claude 완료] 인지광고 시트 +1 열삽입 → route 재매핑(광고값 누락 복구)
+- **증상:** 최근 리포트(8/17~8/19)에 인지광고(메타/틱톡/유튜브/전환) 섹션이 통째 누락("광고값 안 들어감").
+- **근인:** `인지_쫀득바` 시트 좌측에 열 1개 삽입돼 **전체 +1 우측 이동** + 일별 날짜가 **B(1)→C(2)** 이동(B는 주간 라벨 "26.08. W3"). route가 날짜(COL.date=1)를 못 찾아 `found:false`→섹션 누락. 조회수 칸에 ₩(광고비) 잡히던 것도 같은 원인.
+- **수정(route.ts):** date=2, conversionView=13, metaReel 46/47·ttReel 49/50·ytReel 52/53·metaBanner 55/56. row41 섹션헤더+row42 서브헤더(전환 조회수=col13, 값 175633/198081/45212가 리포트와 일치) 실측 검증. 8/18 dry_run 정상(메타 380·틱톡 10,920·유튜브 6,511). Vercel 자동배포 확인.
+- **⚠️ 파생:** 8/11~8/16 리포트를 8/19 새벽 '채널이상 댓글이동'으로 재편집할 때 시트가 이미 밀린 상태라 **그 재편집이 인지광고 섹션을 의도치 않게 제거**함. route 수정 후 재편집하면 복구됨(숫자도 현재 DB로 갱신되는 side effect 동반).
+- **감사 갭:** 발송 전 검수의 check_awareness는 ₩감지(warn)만 차단 → found:false(섹션 누락)는 차단 안 함. '있어야 할 광고섹션 누락' 감지는 미구현.
+
 ## ✅ 2026-08-20 [Claude 완료·**라이브 배포**] `importStats` 413 방지 — 배치 전송 (`Combined_Sheet_AppsScript.gs`, guarded clasp)
 - **증상:** 시트 메뉴 "조회수 → 시트→DB 반영"(`importStats`) 실행 시 **Vercel 413 `FUNCTION_PAYLOAD_TOO_LARGE`**. 원인: `importStats`가 전체 게시물(~2,900) + 전 날짜열 조회수(수만 건)를 `{posts,stats}` **하나로 `/stats-import`에 1회 POST**(구 line 2302) → 본문이 4.5MB 한도 초과. 시트가 커지며 최근 넘어섬. ⚠️ `importStats`는 dailyAuto로도 호출되므로 **매일 시트→DB 조회수 반영이 조용히 실패 중일 수 있음**(수기 입력분 미반영).
 - **패치(클라이언트 전용, 서버·계약 무변경):** `postStats_` 단일 호출을 **게시물 300개/배치 루프**로 교체. **게시물 단위로 묶어**(한 게시물 조회수 이력은 같은 배치) 서버 누적-역행 가드가 경계에서 오작동 안 하게 함. 결과 카운터(inserted·created·matched·banner_reach·meta_filled·ended·future·pre_posted·dropped·missing·preserved·overwrote)와 샘플(missing/dropped) 합산해 기존 완료 메시지 유지. `client_version`·payload 모양 동일 → **서버·Vercel 배포 불필요**. repo 반영 완료(`node --check` 구문통과).
