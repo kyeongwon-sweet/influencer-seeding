@@ -6,10 +6,10 @@
 
 # AI Shared Status
 
-## 🟡 2026-08-20 [Claude 패치 완료·**Codex 배포 대기**] `importStats` 413 방지 — 배치 전송 (`Combined_Sheet_AppsScript.gs`)
+## ✅ 2026-08-20 [Claude 완료·**라이브 배포**] `importStats` 413 방지 — 배치 전송 (`Combined_Sheet_AppsScript.gs`, guarded clasp)
 - **증상:** 시트 메뉴 "조회수 → 시트→DB 반영"(`importStats`) 실행 시 **Vercel 413 `FUNCTION_PAYLOAD_TOO_LARGE`**. 원인: `importStats`가 전체 게시물(~2,900) + 전 날짜열 조회수(수만 건)를 `{posts,stats}` **하나로 `/stats-import`에 1회 POST**(구 line 2302) → 본문이 4.5MB 한도 초과. 시트가 커지며 최근 넘어섬. ⚠️ `importStats`는 dailyAuto로도 호출되므로 **매일 시트→DB 조회수 반영이 조용히 실패 중일 수 있음**(수기 입력분 미반영).
 - **패치(클라이언트 전용, 서버·계약 무변경):** `postStats_` 단일 호출을 **게시물 300개/배치 루프**로 교체. **게시물 단위로 묶어**(한 게시물 조회수 이력은 같은 배치) 서버 누적-역행 가드가 경계에서 오작동 안 하게 함. 결과 카운터(inserted·created·matched·banner_reach·meta_filled·ended·future·pre_posted·dropped·missing·preserved·overwrote)와 샘플(missing/dropped) 합산해 기존 완료 메시지 유지. `client_version`·payload 모양 동일 → **서버·Vercel 배포 불필요**. repo 반영 완료(`node --check` 구문통과).
-- **⚠️ Codex 배포 요청(guarded clasp, 라이브 pull 먼저):** 이 변경은 라이브 Apps Script에만 반영하면 됨(Vercel 무관). **배포 전 라이브 `importStats`가 repo와 일치하는지 확인** 후 push. **검증:** 배포 후 "시트→DB 반영" 1회 실행 → 413 없이 성공 + 완료 메시지 수치가 배포 전 단일수집 기대치와 일치(inserted/matched). 실패 시 partial import 가능(재실행 idempotent). `POSTS_PER_BATCH=300`은 필요시 조정.
+- **✅ 배포 완료(Claude, guarded clasp):** 배포 전 `clasp pull`로 라이브 대조 → **라이브 vs repo 차이가 내 importStats 배치 변경 하나뿐(발산 없음)** 확인 후 `npm run apps-script:deploy`(pull→overlay→push --force→재pull) → `[APPS_SCRIPT_PUSH_VERIFIED]` 5파일 일치. Vercel 무관(클라이언트 전용). **기능 검증 남음:** "시트→DB 반영" 1회 실행 시 413 없이 성공해야 함 — 이건 팀이 초기화한 실제 sync(수기값 manual 표시)라 사용자가 눌러 완료·확인하는 게 맞음(내가 임의로 대량 manual 쓰기 트리거 안 함). partial 실패 시 재실행 idempotent. `POSTS_PER_BATCH=300`은 필요시 조정.
 
 ## ✅ 2026-08-20 [Claude 정정·원복] `/reel/` 롤백 철회 — 108건은 실제 삭제였음 (`scripts/url_utils.py` 원복, `db988f8`→원복)
 - **🔴 내 오판 정정:** 앞서 108건 not_found를 `/reel/` 변경(e269538) 회귀로 단정하고 `instagram_request_url`을 passthrough로 되돌려 커밋·푸시(`db988f8`)했다. **틀렸다.** 상관(배포 후 첫 수집)·숫자 감소만 보고 **실물을 안 봤다** — 내 메모리 `mass-notfound-intentional-archive`가 경고하던 바로 그 실수를 반복했다.
