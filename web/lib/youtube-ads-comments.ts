@@ -13,6 +13,7 @@ type SupabaseLike = { from(table: string): unknown };
 export type HideYouTubeCommentInput = {
   channelId: string;
   messageTs: string;
+  // 하위호환 이름. 위성뿐 아니라 owner OAuth가 있는 '소유 YouTube' 오가닉 카드도 true를 넘긴다.
   organicSatellite?: boolean;
 };
 

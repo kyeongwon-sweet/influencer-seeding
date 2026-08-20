@@ -101,11 +101,11 @@ export async function POST(req: NextRequest) {
     actionPlatform = "";
     actionChannelCategory = "";
   }
-  const isOrganicSatelliteYouTube = !actionSource
+  const isOrganicOwnerYouTube = !actionSource
     && actionPlatform === "youtube"
-    && actionChannelCategory.includes("위성채널");
+    && (actionChannelCategory.includes("위성채널") || actionChannelCategory.includes("소유 YouTube"));
   const isAdComment = ["meta_ads", "tiktok_ads", "youtube_ads"].includes(actionSource);
-  const keepAdCard = (isAdComment || isOrganicSatelliteYouTube) && actionId === "hide";
+  const keepAdCard = (isAdComment || isOrganicOwnerYouTube) && actionId === "hide";
   const willDelete = DELETE_ON_RESOLVE.has(actionId) && !keepAdCard;
 
   // [무시] = 오탐 → 분류기 피드백용으로 기록. 사람 판정은 classifier hash와 무관하게 최우선 적용된다.
@@ -135,11 +135,11 @@ export async function POST(req: NextRequest) {
   // Slack button value의 comment id는 신뢰하지 않고 DB의 channel+ts 매핑만 사용한다. source로 플랫폼 분기.
   if (actionId === "hide" && channelId && messageTs) {
     try {
-      const hidden = (actionSource === "youtube_ads" || isOrganicSatelliteYouTube)
+      const hidden = (actionSource === "youtube_ads" || isOrganicOwnerYouTube)
         ? await dispatchYouTubeAdCommentHideForSlackMessage(getServerSupabase(), {
           channelId,
           messageTs,
-          organicSatellite: isOrganicSatelliteYouTube,
+          organicSatellite: isOrganicOwnerYouTube,
         })
         : actionSource === "tiktok_ads"
           ? await hideTiktokAdCommentForSlackMessage(getServerSupabase(), { channelId, messageTs })
