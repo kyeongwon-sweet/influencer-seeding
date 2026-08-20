@@ -6,6 +6,19 @@
 
 # AI Shared Status
 
+## 🔴 2026-08-20 [Claude 완료·수정] `/reel/` 강제 요청 회귀 되돌림 — 오늘밤 수집 복구 (`scripts/url_utils.py`)
+- **회귀 확정(코덱스 진단 + Claude 독립 DB검증):** `e269538`(Apify 요청 URL을 `/p/`→`/reel/`로 강제)이 실제 대규모 수집에서 비릴스 게시물을 깨뜨렸다. 2026-08-19 첫 정규수집에서 **정상 수집되던 IG `/p/` 글 108건이 일제히 not_found(streak=1)**로 떨어짐 — DB 확인: `not_found_last_at>=08-19 & streak=1 = 108`, **전부 IG·전부 `/p/`**, 표본 전원 8/18까지 정상 성장. 채널: 영상 96·**배너 11**·무상시딩 1. 8/17·8/18엔 신규 not_found 0.
+- **원인:** `instagram_request_url`이 모든 `/p/`·`/reel/`를 `/reel/<code>`로 변환 → 피드영상·사진·배너는 `/reel/` URL이 없어 not_found. 소량 진단(5건·resultsLimit=1)에선 재현 안 됨(실행환경 불일치 함정).
+- **수정(Python 일일수집기 = GHA 주체):** `scripts/url_utils.py`의 `instagram_request_url`을 **저장 URL 그대로 반환(passthrough)**으로 되돌림. 검증: `/p/`·`/reel/`·프로필·None 전부 원본 반환, `py_compile` 통과. → 오늘밤 00:41 수집이 `/p/`로 요청해 108건 정상 복구(=8/18 수준). ⚠️ 이 함수 다시 `/reel/` 변환으로 되돌리지 말 것.
+- **트레이드오프:** 이전 문제(릴스 `videoPlayCount` 결측)가 다시 생김 — 108건 통째 결측+자동종료 리스크보다 가벼움. 릴스 조회수는 **릴스만 2차 `/reel/` 요청 / data-slayer 폴백** 등 재발 없는 설계로 별도 재접근.
+- **⚠️ Codex에게 — TS쪽도 같은 버그(미수정):** `web/lib/url-utils.ts`의 `instagramRequestUrl`도 동일하게 `/reel/` 강제한다. 사용처=`api/monitoring/collect-now`·`apify-collect`·`jobs`·`organic-enrich`·`sponsored-write`. 웹 수집경로(수동·웹훅)라 오늘밤 GHA엔 무관하지만 같은 회귀이므로 **Vercel 배포와 함께 passthrough로 되돌려 달라**(테스트 `web/tests/url-utils.test.ts`의 /reel/ 기대치도 함께 수정 필요). git revert는 불필요 — Python은 이미 고침, TS만 정리.
+
+## ✅ 2026-08-19 [Claude 완료·실행] `DcGij1ozhHo` 강제 0·종료·미노출 (사용자 직접 지시)
+- **지시:** dotori_channel `https://www.instagram.com/p/DcGij1ozhHo/`(JD멜, 루나앤코코, 바이럴(영상), cost 40만) — "조회수 강제 0 + 트래킹 종료 + DB 반영 + 대시보드 미노출".
+- **DB(post_id `8645954b-4a08-46e5-b916-fb7b955e0926`):** ① 조회수 0 = `post_daily_stats` 3행(08-16 20,968·08-17 21,347·08-18 185,367) 삭제(백업 `scratchpad/void_DcGij1ozhHo_backup.json`). ② `ended_at=2026-08-19`. ③ `product_name=null`(대시보드 API가 product_name null/빈값 행 제외 → 미노출, route.ts:110-111).
+- **⚠️ 미노출 durability = 시트 처리 필수:** 이 행은 `created_by=sheet-bulk`라 매일 08:30 `syncAll`이 시트 상품명("JD멜")으로 DB를 되돌려 재노출시킨다(sponsored-write valPresent 가드). 그래서 **연동시트([빙과] 인지 콘텐츠 RD, gid=1937186871) 행 2723의 F열(상품명) "JD멜"을 비웠다**(로그인 브라우저 편집). 검증: B2723=`/reel/DcGij1ozhHo/`(고유 매치)·E2723 소재명=`…JD멜…var6.렉카_다흰람쥐…`(DB 일치)로 행 확정 후 F만 삭제, 인접 셀(URL·소재명·비용·채널명·조회수) 무손상 재확인. 시트 F 검증규칙은 빈값 허용이라 오류 없음. 이제 syncAll이 빈 상품명을 skip→DB null 유지→durable 미노출.
+- **주의:** 이후 이 게시물의 대시보드 미노출·조회수 0은 정상(의도된 void). 되돌리려면 시트 F2723에 상품명 재입력 + DB product_name 복원(백업 참조).
+
 ## 🔴 2026-08-19 [Claude 완료·배포] IG 조회수 결측의 진짜 원인 = 요청 URL 형태 (`a28c343`, `e269538`)
 - **⚠️ 같은 날 올린 위 항목의 "인스타가 비공개라 원천 수집 불가" 결론을 철회한다. 내 방법론 오류였다.** `one_star_video`는 **`/reels/` 탭**에서, `xeoj.ng`·`cmonprefere__k`는 **프로필 루트**에서 읽고 비교했다. 프로필 루트 그리드는 종류 라벨(`클립`/`슬라이드`)만 쓰고 조회수를 표시하지 않는다. 같은 조건(릴스 탭)으로 다시 보니 `xeoj.ng DcGchu3Sm3Z`는 좋아요 44·댓글 12·**조회수 1,739**가 공개로 보인다. **팔로워 수와 조회수 공개 여부는 무관하며, 그 상관관계는 내가 만들어낸 것이었다.**
 - **🔑 진짜 원인:** `apify/instagram-scraper`는 **같은 게시물이라도 `/p/`로 요청하면 `videoPlayCount`를 반환하지 않고, `/reel/`로 요청하면 반환한다.** DB엔 `/p/` 형태로 저장돼 있어 릴스 조회수가 통째로 결측됐다.
