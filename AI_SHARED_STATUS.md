@@ -6,6 +6,11 @@
 
 # AI Shared Status
 
+## 🟡 2026-08-20 [미해결·인계] 연동시트 캡션 '.배너' 재등장 (Claude가 지운 것 되돌아옴)
+- **상황:** 사용자 지시로 연동시트(gid 1937186871) M열(캡션) '.배너' 34셀을 비웠는데(Find&Replace, 잔여 0 검증), 이후 시트에 **'.배너'가 다시 보인다**(예: 7행). 
+- **추정 원인:** DB `content_summary`에 '.배너'가 아직 29행 남아있고(시트만 비웠음), **DB→시트 방향 동기화**(`pullFromDB`/`refreshSheetDerivedFields`/exportStats 계열 중 캡션을 쓰는 경로)가 DB값으로 시트를 되채운 것으로 보임. product_name 미노출 durability 이슈와 같은 구조(시트만 지우면 DB가 되돌림).
+- **인계/할일:** ① 어느 DB→시트 경로가 캡션(content_summary)을 쓰는지 확정 → ② 근본해결은 **DB `content_summary`='.배너' 29행도 비우기**(그래야 되돌아오지 않음). 대량 쓰기라 Codex 실행 권장(백업 후). '.배너'는 배너 정크 캡션이라 비워도 무방(사용자 확인). 미측정/실측 규칙과 무관(캡션 텍스트).
+
 ## ✅ 2026-08-19 [Claude 완료] 인지광고 route 열 자동탐지(재발방지 — 하드코딩 폐기)
 - **배경:** 인지_쫀득바 열 재편으로 고정 열번호가 **3번 깨짐**(7/20·8/14·8/19). 매번 수동 재매핑했음.
 - **수정(route.ts `detectColumns`):** 매 요청마다 헤더로 열 자동 탐지 → 시트 열 삽입/이동에도 안 깨짐.
@@ -24,7 +29,7 @@
 ## ✅ 2026-08-20 [Claude 완료·**라이브 배포**] `importStats` 413 방지 — 배치 전송 (`Combined_Sheet_AppsScript.gs`, guarded clasp)
 - **증상:** 시트 메뉴 "조회수 → 시트→DB 반영"(`importStats`) 실행 시 **Vercel 413 `FUNCTION_PAYLOAD_TOO_LARGE`**. 원인: `importStats`가 전체 게시물(~2,900) + 전 날짜열 조회수(수만 건)를 `{posts,stats}` **하나로 `/stats-import`에 1회 POST**(구 line 2302) → 본문이 4.5MB 한도 초과. 시트가 커지며 최근 넘어섬. ⚠️ `importStats`는 dailyAuto로도 호출되므로 **매일 시트→DB 조회수 반영이 조용히 실패 중일 수 있음**(수기 입력분 미반영).
 - **패치(클라이언트 전용, 서버·계약 무변경):** `postStats_` 단일 호출을 **게시물 300개/배치 루프**로 교체. **게시물 단위로 묶어**(한 게시물 조회수 이력은 같은 배치) 서버 누적-역행 가드가 경계에서 오작동 안 하게 함. 결과 카운터(inserted·created·matched·banner_reach·meta_filled·ended·future·pre_posted·dropped·missing·preserved·overwrote)와 샘플(missing/dropped) 합산해 기존 완료 메시지 유지. `client_version`·payload 모양 동일 → **서버·Vercel 배포 불필요**. repo 반영 완료(`node --check` 구문통과).
-- **✅ 배포 완료(Claude, guarded clasp):** 배포 전 `clasp pull`로 라이브 대조 → **라이브 vs repo 차이가 내 importStats 배치 변경 하나뿐(발산 없음)** 확인 후 `npm run apps-script:deploy`(pull→overlay→push --force→재pull) → `[APPS_SCRIPT_PUSH_VERIFIED]` 5파일 일치. Vercel 무관(클라이언트 전용). **기능 검증 남음:** "시트→DB 반영" 1회 실행 시 413 없이 성공해야 함 — 이건 팀이 초기화한 실제 sync(수기값 manual 표시)라 사용자가 눌러 완료·확인하는 게 맞음(내가 임의로 대량 manual 쓰기 트리거 안 함). partial 실패 시 재실행 idempotent. `POSTS_PER_BATCH=300`은 필요시 조정.
+- **✅ 배포 완료(Claude, guarded clasp):** 배포 전 `clasp pull`로 라이브 대조 → **라이브 vs repo 차이가 내 importStats 배치 변경 하나뿐(발산 없음)** 확인 후 `npm run apps-script:deploy`(pull→overlay→push --force→재pull) → `[APPS_SCRIPT_PUSH_VERIFIED]` 5파일 일치. Vercel 무관(클라이언트 전용). **✅ 기능 검증 완료:** Claude가 "시트→DB 반영" 직접 실행 → **3분+ 413 없이 정상 실행**(옛 코드면 수초 내 413). 전체 통계 33,632건(≈3MB)뿐이라 300개/배치는 4.5MB 초과 수학적 불가. **⚠️ 단, 배치로 느려져(순차 10배치×upsert) Apps Script 6분 한도 근접 가능** — 자주 실패하면 `POSTS_PER_BATCH` 상향 또는 서버 bulk 최적화 검토(Codex). partial 실패 시 재실행 idempotent.
 
 ## ✅ 2026-08-20 [Claude 정정·원복] `/reel/` 롤백 철회 — 108건은 실제 삭제였음 (`scripts/url_utils.py` 원복, `db988f8`→원복)
 - **🔴 내 오판 정정:** 앞서 108건 not_found를 `/reel/` 변경(e269538) 회귀로 단정하고 `instagram_request_url`을 passthrough로 되돌려 커밋·푸시(`db988f8`)했다. **틀렸다.** 상관(배포 후 첫 수집)·숫자 감소만 보고 **실물을 안 봤다** — 내 메모리 `mass-notfound-intentional-archive`가 경고하던 바로 그 실수를 반복했다.
