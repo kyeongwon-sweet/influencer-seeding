@@ -7,37 +7,76 @@ export const maxDuration = 30;
 
 // 마케팅T 시트 [인지_쫀득바] 탭의 '일별 시계열' 영역에서 인지 광고(메타/틱톡/유튜브)의
 // 그날 조회수·광고비를 읽는다. 값은 DB에 없고 이 시트에만 있어(팀이 매일 수동 입력) 여기서 직접 읽는다.
-//   - 일별 값(누적 아님) → 그대로 사용.
-//   - 각 인지광고 채널은 [광고비, 조회수, 조회당비용] 3칸 세트. 열은 고정(0-based, A=0):
-//       Meta_인지_릴스 (재원):  광고비 AT(45) / 조회수 AU(46)
-//       틱톡_인지_릴스 (재원):  광고비 AW(48) / 조회수 AX(49)
-//       유튜브_인지_릴스 (재원): 광고비 AZ(51) / 조회수 BA(52)
-//       Meta_인지_배너 (재원):  광고비 BC(54) / 조회수(참여) BD(55)
-//     → 메타 = 릴스(AU) + 배너(BD) 합산(광고비도 AT+BC 합산). 틱톡/유튜브는 릴스 1칸.
-//   - ⚠️ 2026-07-20: 이전엔 AK/AN/AQ/AT(전환·바이럴 채널의 광고비 칸)를 조회수로 잘못 읽어
-//     메타/유튜브 값이 광고비(₩)로 오염됐음(시트 열 재편으로 고정 열번호가 밀림). 실제 인지광고
-//     플랫폼별 조회수는 위 세트에 있음(사용자 확인). 재발 방지: 조회수 칸에 ₩(=광고비)가
-//     잡히면 오정렬로 보고 해당 값 제외 + warn 반환(numOrNull은 ₩를 떼므로 raw로 별도 검사).
-//   - ⚠️ 2026-08-14: 담당자 표기가 (석영)→(재원)으로 바뀌며 광고 블록 전체가 3칸 왼쪽으로
-//     이동(라벨 위치: 45/48/51/54, 이전 48/51/54/57). 인덱스 -3 보정.
-//   - ⚠️ 2026-08-19: 시트 좌측에 열 1개 삽입돼 **전체가 +1 우측 이동**. 동시에 일별 날짜가
-//     B(1)→**C(2)**로 이동(B열은 이제 주간 라벨 "26.08. W3"). 이걸 못 잡으면 날짜 매칭 실패로
-//     found:false → 인지광고 섹션 통째 누락(사용자 "광고값 안 들어감"). 조회수 칸에 ₩(광고비)가
-//     잡히던 것도 같은 원인. row41 섹션헤더+row42 서브헤더(전환 조회수=col13)로 실측 재매핑.
-//   - 날짜는 C열의 "M. D (요일)" 라벨. 주간요약/일별 블록에 같은 날짜가 중복될 수 있어
-//     '마지막(=가장 아래=일별 블록)' 매칭 행을 채택한다.
+//   - 일별 값(누적 아님) → 그대로 사용. 메타 = 릴스+배너 합산, 틱톡/유튜브는 릴스 1칸.
+//   - 각 인지광고 채널은 [광고비, 조회수(Thruplay/참여), 조회당비용] 3칸 세트.
+//
+// ⚠️ 열번호 하드코딩 금지(재발방지). 시트가 재편될 때마다 고정 인덱스가 밀려 3번 깨졌다:
+//     2026-07-20(세트 재편) · 2026-08-14(석영→재원, -3) · 2026-08-19(+1 열삽입, 날짜 B→C).
+//   → 이제 **헤더 라벨로 열을 자동 탐지**한다(detectColumns). 시트에 열이 삽입/이동돼도 안 깨짐.
+//     · 섹션헤더 행 = "Meta_인지_릴스" 포함 행. 그 다음 행 = 서브헤더(광고비/Thruplay/조회당…).
+//     · 채널 광고비 열 = 섹션라벨 열의 서브헤더가 "광고비"면 그 열, 아니면 그 왼쪽(유튜브는 라벨이
+//       Thruplay 칸에 얹혀 있어 -1 보정 필요). 조회수 = 광고비+1.
+//     · 전환 조회수 = 서브헤더가 "전환 조회수"인 열. 날짜 = "M. D (요일)" 패턴이 가장 많은 좌측 열.
+//   → 탐지 실패 시 값 대신 warn을 반환(발송 전 검수가 warn을 차단하므로 사람이 즉시 인지).
 const SPREADSHEET_ID = "1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s";
 const GID = 1224959784; // 인지_쫀득바
-const COL = {
-  date: 2,                                  // C  일별 날짜 "M. D (요일)" (B는 주간 라벨로 이동)
-  conversionView: 13,                       // N  전환 조회수(일별, 팀 수동입력; "0"=0, 빈칸=null)
-  metaReelCost: 46, metaReelView: 47,       // Meta_인지_릴스 (재원)  광고비/Thruplay
-  ttReelCost: 49, ttReelView: 50,           // 틱톡_인지_릴스 (재원)
-  ytReelCost: 52, ytReelView: 53,           // 유튜브_인지_릴스 (재원)
-  metaBannerCost: 55, metaBannerView: 56,   // Meta_인지_배너 (재원)  광고비/참여
-};
 
 type Cell = string | number | null | undefined;
+type Pair = { cost: number; view: number };
+type ColMap = {
+  date: number;
+  conversionView: number; // -1이면 없음
+  metaReel: Pair;
+  ttReel: Pair;
+  ytReel: Pair;
+  metaBanner: Pair;
+};
+
+const norm = (v: Cell) => String(v ?? "").replace(/\s+/g, "");
+
+// "7. 13 (월)" → { m: 7, d: 13 } (없으면 null). 요일 괄호까지 있어야 일별 날짜로 인정.
+function parseMD(v: Cell): { m: number; d: number } | null {
+  const mm = String(v ?? "").match(/(\d{1,2})\s*\.\s*(\d{1,2})\s*\(/);
+  return mm ? { m: parseInt(mm[1], 10), d: parseInt(mm[2], 10) } : null;
+}
+
+// 헤더 라벨 기반 열 자동 탐지. 실패 시 null.
+function detectColumns(rows: Cell[][]): ColMap | null {
+  // 1) 섹션헤더 행 + 서브헤더 행
+  const secRow = rows.findIndex((r) => r.some((c) => norm(c).includes("Meta_인지_릴스")));
+  if (secRow < 0) return null;
+  const sec = rows[secRow];
+  const sub = rows[secRow + 1] || [];
+
+  // 2) 채널별 (광고비, 조회수) 열. 섹션라벨 열 기준으로 서브헤더 "광고비"를 찾아 정렬.
+  const findPair = (labelHas: string): Pair | null => {
+    const c = sec.findIndex((v) => norm(v).includes(labelHas));
+    if (c < 0) return null;
+    const cost = norm(sub[c]) === "광고비" ? c : norm(sub[c - 1]) === "광고비" ? c - 1 : -1;
+    if (cost < 0) return null;
+    return { cost, view: cost + 1 }; // 광고비 바로 오른쪽이 Thruplay/참여(조회수)
+  };
+  const metaReel = findPair("Meta_인지_릴스");
+  const ttReel = findPair("틱톡_인지_릴스");
+  const ytReel = findPair("유튜브_인지_릴스");
+  const metaBanner = findPair("Meta_인지_배너");
+  if (!metaReel || !ttReel || !ytReel || !metaBanner) return null;
+
+  // 3) 전환 조회수 열(서브헤더 라벨). 없으면 -1(전환 미표시).
+  const conversionView = sub.findIndex((v) => norm(v) === "전환조회수");
+
+  // 4) 날짜 열: "M. D (요일)" 매칭이 가장 많은 좌측 열(0~8 스캔).
+  let date = -1;
+  let best = 0;
+  for (let c = 0; c <= 8; c++) {
+    let cnt = 0;
+    for (const r of rows) if (parseMD(r[c])) cnt++;
+    if (cnt > best) { best = cnt; date = c; }
+  }
+  if (date < 0 || best < 3) return null;
+
+  return { date, conversionView, metaReel, ttReel, ytReel, metaBanner };
+}
 
 function numOrNull(v: Cell): number | null {
   if (v == null || v === "") return null;
@@ -50,14 +89,8 @@ function rawHasWon(v: Cell): boolean {
   return typeof v === "string" && v.includes("₩");
 }
 
-// "7. 13 (월)" → { m: 7, d: 13 } (없으면 null)
-function parseMD(v: Cell): { m: number; d: number } | null {
-  const mm = String(v ?? "").match(/(\d{1,2})\s*\.\s*(\d{1,2})/);
-  return mm ? { m: parseInt(mm[1], 10), d: parseInt(mm[2], 10) } : null;
-}
-
-// 조회수 합산(메타처럼 릴스+배너 2칸). 하나라도 값이 있으면 합, 둘 다 미입력(빈칸)이면 null(≠0).
-// 조회수 칸에 ₩(광고비)가 잡히면 오정렬로 보고 그 칸은 제외하고 warns에 기록.
+// 조회수 합산(메타처럼 릴스+배너 2칸). 하나라도 값 있으면 합, 둘 다 빈칸이면 null(≠0).
+// 조회수 칸에 ₩(광고비)가 잡히면 오정렬로 보고 그 칸 제외 + warns 기록.
 function sumViews(row: Cell[], idxs: number[], label: string, warns: string[]): number | null {
   let sum = 0;
   let any = false;
@@ -72,7 +105,6 @@ function sumViews(row: Cell[], idxs: number[], label: string, warns: string[]): 
   return any ? sum : null;
 }
 
-// 광고비(₩) 합산. 광고비는 ₩가 정상이라 그대로 numOrNull 합산.
 function sumOrNull(row: Cell[], idxs: number[]): number | null {
   let sum = 0;
   let any = false;
@@ -105,11 +137,21 @@ export async function GET(req: NextRequest) {
 
   let rows: Cell[][];
   try {
-    // BG(58)까지 필요 → BJ까지 여유 있게 읽는다.
-    rows = await fetchSheetTabValues(SPREADSHEET_ID, GID, "A1:BJ500");
+    // 헤더 자동탐지 + 미래 열삽입 대비해 넉넉히 읽는다.
+    rows = await fetchSheetTabValues(SPREADSHEET_ID, GID, "A1:CZ500");
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: `시트 조회 실패: ${msg}` }, { status: 502 });
+  }
+
+  const COL = detectColumns(rows);
+  if (!COL) {
+    // 탐지 실패 = 시트 헤더 변경 의심. 값 대신 warn(발송 전 검수가 차단 → 사람이 즉시 인지).
+    return NextResponse.json({
+      date,
+      found: false,
+      warn: ["인지광고 열 자동탐지 실패 — 시트 헤더(Meta_인지_릴스/틱톡/유튜브/배너·전환 조회수·날짜) 확인 필요"],
+    });
   }
 
   // 같은 날짜가 여러 번 나오면 마지막(일별 블록) 행 채택.
@@ -124,19 +166,19 @@ export async function GET(req: NextRequest) {
 
   const warns: string[] = [];
   const meta: Channel = {
-    views: sumViews(target, [COL.metaReelView, COL.metaBannerView], "메타", warns),
-    cost: sumOrNull(target, [COL.metaReelCost, COL.metaBannerCost]),
+    views: sumViews(target, [COL.metaReel.view, COL.metaBanner.view], "메타", warns),
+    cost: sumOrNull(target, [COL.metaReel.cost, COL.metaBanner.cost]),
   };
   const tiktok: Channel = {
-    views: sumViews(target, [COL.ttReelView], "틱톡", warns),
-    cost: numOrNull(target[COL.ttReelCost]),
+    views: sumViews(target, [COL.ttReel.view], "틱톡", warns),
+    cost: numOrNull(target[COL.ttReel.cost]),
   };
   const youtube: Channel = {
-    views: sumViews(target, [COL.ytReelView], "유튜브", warns),
-    cost: numOrNull(target[COL.ytReelCost]),
+    views: sumViews(target, [COL.ytReel.view], "유튜브", warns),
+    cost: numOrNull(target[COL.ytReel.cost]),
   };
-  // 전환 조회수(M열, 일별). "0"은 0으로, 빈칸은 null로 반환(빈칸≠0).
-  const conversionViews = numOrNull(target[COL.conversionView]);
+  // 전환 조회수(일별). "0"은 0으로, 빈칸은 null로. 헤더 없으면 null(미표시).
+  const conversionViews = COL.conversionView >= 0 ? numOrNull(target[COL.conversionView]) : null;
 
   return NextResponse.json({
     date,
