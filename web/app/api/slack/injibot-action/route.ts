@@ -89,9 +89,23 @@ export async function POST(req: NextRequest) {
   // 광고(메타·틱톡·유튜브) 카드는 [숨김] 후에도 스레드에 남긴다(삭제 대신 처리 상태 표시로 이력 보존).
   // 그 외(완료/일반 숨김)는 기존대로 답글 삭제. source는 버튼 value에서 읽는다.
   let actionSource = "";
-  try { actionSource = String(JSON.parse(action.value || "{}").source || ""); } catch { actionSource = ""; }
+  let actionPlatform = "";
+  let actionChannelCategory = "";
+  try {
+    const actionValue = JSON.parse(action.value || "{}");
+    actionSource = String(actionValue.source || "");
+    actionPlatform = String(actionValue.platform || "").toLowerCase();
+    actionChannelCategory = String(actionValue.channelCategory || "");
+  } catch {
+    actionSource = "";
+    actionPlatform = "";
+    actionChannelCategory = "";
+  }
+  const isOrganicSatelliteYouTube = !actionSource
+    && actionPlatform === "youtube"
+    && actionChannelCategory.includes("위성채널");
   const isAdComment = ["meta_ads", "tiktok_ads", "youtube_ads"].includes(actionSource);
-  const keepAdCard = isAdComment && actionId === "hide";
+  const keepAdCard = (isAdComment || isOrganicSatelliteYouTube) && actionId === "hide";
   const willDelete = DELETE_ON_RESOLVE.has(actionId) && !keepAdCard;
 
   // [무시] = 오탐 → 분류기 피드백용으로 기록. 사람 판정은 classifier hash와 무관하게 최우선 적용된다.
@@ -121,8 +135,12 @@ export async function POST(req: NextRequest) {
   // Slack button value의 comment id는 신뢰하지 않고 DB의 channel+ts 매핑만 사용한다. source로 플랫폼 분기.
   if (actionId === "hide" && channelId && messageTs) {
     try {
-      const hidden = actionSource === "youtube_ads"
-        ? await dispatchYouTubeAdCommentHideForSlackMessage(getServerSupabase(), { channelId, messageTs })
+      const hidden = (actionSource === "youtube_ads" || isOrganicSatelliteYouTube)
+        ? await dispatchYouTubeAdCommentHideForSlackMessage(getServerSupabase(), {
+          channelId,
+          messageTs,
+          organicSatellite: isOrganicSatelliteYouTube,
+        })
         : actionSource === "tiktok_ads"
           ? await hideTiktokAdCommentForSlackMessage(getServerSupabase(), { channelId, messageTs })
           : await hideMetaAdCommentForSlackMessage(

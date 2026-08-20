@@ -7,27 +7,35 @@ type SupabaseFilterQuery<T> = {
   maybeSingle(): Promise<{ data: T | null; error: SupabaseErrorLike }>;
 };
 type SupabaseSelectQuery<T> = { select(columns: string): SupabaseFilterQuery<T> };
-type NegativeCommentAlertRow = { source?: string | null; comment_id?: string | null };
+type NegativeCommentAlertRow = { source?: string | null; platform?: string | null; comment_id?: string | null };
 type SupabaseLike = { from(table: string): unknown };
 
-export type HideYouTubeCommentInput = { channelId: string; messageTs: string };
+export type HideYouTubeCommentInput = {
+  channelId: string;
+  messageTs: string;
+  organicSatellite?: boolean;
+};
 
 const DEFAULT_REPO = "kyeongwon-sweet/negative-comment-monitor";
 const WORKFLOW = "youtube-owner-comment-hide.yml";
 
 export async function dispatchYouTubeAdCommentHideForSlackMessage(
   supabase: SupabaseLike,
-  { channelId, messageTs }: HideYouTubeCommentInput,
+  { channelId, messageTs, organicSatellite = false }: HideYouTubeCommentInput,
   fetchImpl: typeof fetch = fetch,
 ) {
   const alertQuery = supabase.from("negative_comment_alerts") as SupabaseSelectQuery<NegativeCommentAlertRow>;
   const { data: alert, error: alertError } = await alertQuery
-    .select("source,comment_id")
+    .select("source,platform,comment_id")
     .eq("slack_channel_id", channelId)
     .eq("slack_ts", messageTs)
     .maybeSingle();
   if (alertError) return { handled: true, ok: false, error: alertError.message || "alert lookup failed" };
-  if (!alert || alert.source !== "youtube_ads") return { handled: false, ok: true };
+  const isYouTubeAd = alert?.source === "youtube_ads";
+  const isOrganicYouTube = organicSatellite
+    && alert?.source == null
+    && String(alert?.platform || "").toLowerCase() === "youtube";
+  if (!alert || (!isYouTubeAd && !isOrganicYouTube)) return { handled: false, ok: true };
   if (!alert.comment_id) return { handled: true, ok: false, error: "YouTube comment id missing" };
 
   const token = (process.env.GH_DISPATCH_TOKEN || "").trim();
@@ -46,7 +54,11 @@ export async function dispatchYouTubeAdCommentHideForSlackMessage(
       },
       body: JSON.stringify({
         ref: "master",
-        inputs: { slack_channel_id: channelId, slack_ts: messageTs },
+        inputs: {
+          slack_channel_id: channelId,
+          slack_ts: messageTs,
+          alert_scope: isOrganicYouTube ? "organic_satellite" : "youtube_ads",
+        },
       }),
     },
   );
