@@ -55,7 +55,7 @@ def tt_canonical_form(url: str) -> str:
 
 
 def instagram_request_url(url: str | None) -> str | None:
-    """Apify에 **요청할 때만** 쓰는 IG URL — 현재는 저장된 URL을 그대로 반환한다(변환 없음).
+    """Apify에 **요청할 때만** 쓰는 IG URL — 게시물은 `/reel/` 형태로 통일한다.
 
     🚨 2026-08-19 실측: `apify/instagram-scraper`는 같은 게시물이라도 `/p/`로 요청하면
     `videoPlayCount`를 아예 반환하지 않고, `/reel/`로 요청하면 반환한다.
@@ -69,12 +69,9 @@ def instagram_request_url(url: str | None) -> str | None:
     ⚠️ **DB·시트에 저장된 URL은 절대 바꾸지 않는다** — 요청 시점에만 변환한다(정본 불변).
     ⚠️ 프로필 URL(`instagram.com/<handle>/`)에는 쓰지 말 것. shortcode가 없으면 원본을 그대로 돌려준다.
     """
-    # ⚠️ 2026-08-20 회귀 되돌림: `/p/`→`/reel/` 강제 변환(e269538)이 실제 대규모 수집에서
-    #    비(非)릴스 게시물(피드영상·사진·배너)을 `/reel/`로 요청 → not_found를 유발했다.
-    #    2026-08-19 첫 정규수집에서 정상 수집되던 IG `/p/` 글 108건(영상 96·배너 11·무상 1)이
-    #    일제히 not_found(streak=1)로 떨어졌다(DB 확인). 소량 진단(5건, resultsLimit=1)에선
-    #    재현되지 않았으나 실제 규모(700건+, addParentData)에선 발생했다.
-    #    → 저장된 URL을 그대로 요청(이전 안전 동작 복귀). 릴스 videoPlayCount 결측 문제는
-    #      "릴스만 2차 /reel/ 요청" 또는 data-slayer 폴백 등 재발 없는 별도 설계로 다시 접근한다.
-    #    ⚠️ 이 함수를 다시 /reel/로 변환하도록 되돌리지 말 것(위 실측 참조).
-    return url
+    if not url:
+        return url
+    m = re.search(r"/(?:p|reel|reels|tv)/([A-Za-z0-9_-]+)", str(url))
+    if not m:
+        return url
+    return f"https://www.instagram.com/reel/{m.group(1)}/"

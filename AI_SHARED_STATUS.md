@@ -6,12 +6,11 @@
 
 # AI Shared Status
 
-## 🔴 2026-08-20 [Claude 완료·수정] `/reel/` 강제 요청 회귀 되돌림 — 오늘밤 수집 복구 (`scripts/url_utils.py`)
-- **회귀 확정(코덱스 진단 + Claude 독립 DB검증):** `e269538`(Apify 요청 URL을 `/p/`→`/reel/`로 강제)이 실제 대규모 수집에서 비릴스 게시물을 깨뜨렸다. 2026-08-19 첫 정규수집에서 **정상 수집되던 IG `/p/` 글 108건이 일제히 not_found(streak=1)**로 떨어짐 — DB 확인: `not_found_last_at>=08-19 & streak=1 = 108`, **전부 IG·전부 `/p/`**, 표본 전원 8/18까지 정상 성장. 채널: 영상 96·**배너 11**·무상시딩 1. 8/17·8/18엔 신규 not_found 0.
-- **원인:** `instagram_request_url`이 모든 `/p/`·`/reel/`를 `/reel/<code>`로 변환 → 피드영상·사진·배너는 `/reel/` URL이 없어 not_found. 소량 진단(5건·resultsLimit=1)에선 재현 안 됨(실행환경 불일치 함정).
-- **수정(Python 일일수집기 = GHA 주체):** `scripts/url_utils.py`의 `instagram_request_url`을 **저장 URL 그대로 반환(passthrough)**으로 되돌림. 검증: `/p/`·`/reel/`·프로필·None 전부 원본 반환, `py_compile` 통과. → 오늘밤 00:41 수집이 `/p/`로 요청해 108건 정상 복구(=8/18 수준). ⚠️ 이 함수 다시 `/reel/` 변환으로 되돌리지 말 것.
-- **트레이드오프:** 이전 문제(릴스 `videoPlayCount` 결측)가 다시 생김 — 108건 통째 결측+자동종료 리스크보다 가벼움. 릴스 조회수는 **릴스만 2차 `/reel/` 요청 / data-slayer 폴백** 등 재발 없는 설계로 별도 재접근.
-- **⚠️ Codex에게 — TS쪽도 같은 버그(미수정):** `web/lib/url-utils.ts`의 `instagramRequestUrl`도 동일하게 `/reel/` 강제한다. 사용처=`api/monitoring/collect-now`·`apify-collect`·`jobs`·`organic-enrich`·`sponsored-write`. 웹 수집경로(수동·웹훅)라 오늘밤 GHA엔 무관하지만 같은 회귀이므로 **Vercel 배포와 함께 passthrough로 되돌려 달라**(테스트 `web/tests/url-utils.test.ts`의 /reel/ 기대치도 함께 수정 필요). git revert는 불필요 — Python은 이미 고침, TS만 정리.
+## ✅ 2026-08-20 [Claude 정정·원복] `/reel/` 롤백 철회 — 108건은 실제 삭제였음 (`scripts/url_utils.py` 원복, `db988f8`→원복)
+- **🔴 내 오판 정정:** 앞서 108건 not_found를 `/reel/` 변경(e269538) 회귀로 단정하고 `instagram_request_url`을 passthrough로 되돌려 커밋·푸시(`db988f8`)했다. **틀렸다.** 상관(배포 후 첫 수집)·숫자 감소만 보고 **실물을 안 봤다** — 내 메모리 `mass-notfound-intentional-archive`가 경고하던 바로 그 실수를 반복했다.
+- **결정적 검증(내가 직접):** 108건 중 표본 6건(bibimbap__zip 4·blue_fun_diary·comedy.1989__)을 **저장된 `/p/` 형태 그대로 Apify 스크레이프 → 6/6 전부 `error=not_found`**(owner·likes·play 전부 없음). `/p/`로 요청해도 없음 = **`/reel/` 문제가 아니라 게시물이 인스타에서 실제 삭제됨.** 코덱스 교차: 8/20 01:02 본수집이 `/reel/`로 **750건 요청/750건 응답(누락 0)**·play 893건 정상 + 실물 3건 "페이지 삭제됨" 확인. → `/reel/`은 대규모에서 정상, 회귀 아님.
+- **조치:** `git checkout fba9e32 -- scripts/url_utils.py`로 `/reel/` 변환 로직 **원복**(py_compile OK). `db988f8`의 passthrough 변경은 무효화. **`/reel/` 유지가 맞다**(릴스 videoPlayCount 회수 이점 유지). 롤백/재-passthrough 하지 말 것.
+- **진짜 상황:** 108건이 2026-08-19에 인스타에서 **실제 삭제**됨(streak=1 전부 08-19 시작). 어제 보관 12건과 **별개**의 9배 큰 대량 삭제(유머패밀리 Ufo__*·루나앤코코 luna.*·아택 등, 거의 전부 바이럴 영상). 캠페인 의도적 정리로 보임. 처리는 기존 규칙대로(2일 지속+실물확인분만 `ended_at`, 대량쓰기는 Codex) — 지금 값 조작·대량 종료 안 함.
 
 ## ✅ 2026-08-19 [Claude 완료·실행] `DcGij1ozhHo` 강제 0·종료·미노출 (사용자 직접 지시)
 - **지시:** dotori_channel `https://www.instagram.com/p/DcGij1ozhHo/`(JD멜, 루나앤코코, 바이럴(영상), cost 40만) — "조회수 강제 0 + 트래킹 종료 + DB 반영 + 대시보드 미노출".
