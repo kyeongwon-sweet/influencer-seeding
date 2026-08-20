@@ -6,6 +6,18 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-20 [Codex 실측] `/reel/` 요청 정규화 첫 정규수집·배포 정합 확인
+- **GitHub/프로덕션:** 검증 시점 `HEAD == origin/main == c72d902`. Build Test run `32345251943` 성공. `influencer-seeding-mu.vercel.app`의 Ready 배포 `dpl_AJxjk2rQub9RjSwA2rG1UUAZ59YA` 메타데이터도 `githubCommitSha=c72d902`, `ref=main`으로 일치했다. 같은 소스의 중복 수동 배포는 하지 않았다.
+- **첫 정규수집:** Daily Collect run `32273600072`가 성공했고 `MONITORING_DATE=2026-08-19`로 저장했다. 대상 5건 모두 8/19 양수 `play_count` 행 1개, `manual=false`다. `post_daily_stats`에는 source 컬럼이 없으므로 source는 동일 run 안의 생성시각(2026-08-20 01:16 KST)과 `manual=false`를 근거로 **정규 자동수집**으로 판정했다.
+  - `ig:DcGchu3Sm3Z` xeoj.ng: **1,764**
+  - `ig:DcC6vGjhsH5` daong_yi: **2,205**
+  - `ig:DcGr0Uepb19` aekyeong11: **145**
+  - `ig:DcDs2TwpKK2` cmonprefere__k: **1,211**
+  - `ig:DcGgQGUzMI_` tteok_young_: **2,211**
+- **큐 변화:** 본수집 전 `eligible=1046 / queue=1046 / no_public_view_metric=0`, 본수집 후 재시도 run `32284651913`에서 `eligible=992 / measured=881 / queue=111 / no_public_view_metric=0`. 5개 키는 최종 큐에서 빠져 영구 제외 문제가 해소됐다. 직전일 최종 큐 50보다 61건 늘어난 것은 별도 IG 삭제·미수집군 98건과 TikTok 무지표 13건 때문이며, 위 5건 회귀는 아니다.
+- **TikTok 0 반환 관찰:** 8/19 정규수집에서 `returned_metric=0` 14건을 다시 관찰했다. DB의 `measured_at=2026-08-19 AND play_count=0`은 **0행**이라 0 저장 차단은 그대로 작동한다. 가드·값은 수정하지 않았다.
+- **무접촉 범위:** 전체 재수집·probe·통계 재작성 없음. 이미 종료된 12건과 `486` 복구 11건은 쓰지 않았다. 임시 Vercel env 파일은 읽기검증 직후 TEMP 경로 확인 후 삭제했다.
+
 ## 🟡 2026-08-20 [미해결·인계] 연동시트 캡션 '.배너' 재등장 (Claude가 지운 것 되돌아옴)
 - **상황:** 사용자 지시로 연동시트(gid 1937186871) M열(캡션) '.배너' 34셀을 비웠는데(Find&Replace, 잔여 0 검증), 이후 시트에 **'.배너'가 다시 보인다**(예: 7행). 
 - **추정 원인:** DB `content_summary`에 '.배너'가 아직 29행 남아있고(시트만 비웠음), **DB→시트 방향 동기화**(`pullFromDB`/`refreshSheetDerivedFields`/exportStats 계열 중 캡션을 쓰는 경로)가 DB값으로 시트를 되채운 것으로 보임. product_name 미노출 durability 이슈와 같은 구조(시트만 지우면 DB가 되돌림).
