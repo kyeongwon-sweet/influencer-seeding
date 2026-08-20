@@ -19,19 +19,22 @@ export const maxDuration = 30;
 //     플랫폼별 조회수는 위 세트에 있음(사용자 확인). 재발 방지: 조회수 칸에 ₩(=광고비)가
 //     잡히면 오정렬로 보고 해당 값 제외 + warn 반환(numOrNull은 ₩를 떼므로 raw로 별도 검사).
 //   - ⚠️ 2026-08-14: 담당자 표기가 (석영)→(재원)으로 바뀌며 광고 블록 전체가 3칸 왼쪽으로
-//     이동(라벨 위치: 45/48/51/54, 이전 48/51/54/57). 이전 인덱스로 읽으면 틱톡을 메타로,
-//     유튜브를 틱톡으로, 메타배너를 유튜브로 오독함. 인덱스를 -3 보정. row20 섹션헤더 기준 검증.
-//   - 날짜는 B열의 "M. D (요일)" 라벨. 주간요약/일별 블록에 같은 날짜가 중복될 수 있어
+//     이동(라벨 위치: 45/48/51/54, 이전 48/51/54/57). 인덱스 -3 보정.
+//   - ⚠️ 2026-08-19: 시트 좌측에 열 1개 삽입돼 **전체가 +1 우측 이동**. 동시에 일별 날짜가
+//     B(1)→**C(2)**로 이동(B열은 이제 주간 라벨 "26.08. W3"). 이걸 못 잡으면 날짜 매칭 실패로
+//     found:false → 인지광고 섹션 통째 누락(사용자 "광고값 안 들어감"). 조회수 칸에 ₩(광고비)가
+//     잡히던 것도 같은 원인. row41 섹션헤더+row42 서브헤더(전환 조회수=col13)로 실측 재매핑.
+//   - 날짜는 C열의 "M. D (요일)" 라벨. 주간요약/일별 블록에 같은 날짜가 중복될 수 있어
 //     '마지막(=가장 아래=일별 블록)' 매칭 행을 채택한다.
 const SPREADSHEET_ID = "1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s";
 const GID = 1224959784; // 인지_쫀득바
 const COL = {
-  date: 1,                                  // B
-  conversionView: 12,                       // M  전환 조회수(일별, 팀 수동입력; "0"=0, 빈칸=null)
-  metaReelCost: 45, metaReelView: 46,       // AT, AU  Meta_인지_릴스 (재원)
-  ttReelCost: 48, ttReelView: 49,           // AW, AX  틱톡_인지_릴스 (재원)
-  ytReelCost: 51, ytReelView: 52,           // AZ, BA  유튜브_인지_릴스 (재원)
-  metaBannerCost: 54, metaBannerView: 55,   // BC, BD  Meta_인지_배너 (재원)
+  date: 2,                                  // C  일별 날짜 "M. D (요일)" (B는 주간 라벨로 이동)
+  conversionView: 13,                       // N  전환 조회수(일별, 팀 수동입력; "0"=0, 빈칸=null)
+  metaReelCost: 46, metaReelView: 47,       // Meta_인지_릴스 (재원)  광고비/Thruplay
+  ttReelCost: 49, ttReelView: 50,           // 틱톡_인지_릴스 (재원)
+  ytReelCost: 52, ytReelView: 53,           // 유튜브_인지_릴스 (재원)
+  metaBannerCost: 55, metaBannerView: 56,   // Meta_인지_배너 (재원)  광고비/참여
 };
 
 type Cell = string | number | null | undefined;
