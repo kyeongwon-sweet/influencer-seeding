@@ -2298,13 +2298,38 @@ function importStats(source) {
 
     if (stats.length === 0) { safeAlert_("입력할 조회수 데이터가 없습니다."); return; }
 
-    const posts = Object.keys(postByKey).map(k => postByKey[k]);
-    const res = postStats_({
-      posts: posts,
-      stats: stats,
-      client_version: IMPORTSTATS_CLIENT_VERSION,
-      source: importSource,
-    });
+    // ⚠️ Vercel 서버리스 함수 요청 본문 한도(~4.5MB). 시트가 커지면서 posts+stats 전체를 한 번에
+    //    POST하면 413(FUNCTION_PAYLOAD_TOO_LARGE)로 거부된다(2026-08-20 발생). → 게시물 단위로 배치 전송.
+    //    한 게시물의 조회수 이력은 반드시 같은 배치에 함께 보내야 서버의 누적-역행 가드(dropped_decrease)가
+    //    배치 경계에서 오작동하지 않는다. 데이터 계약·payload 모양은 동일 → 서버/Vercel 변경 불필요.
+    const statsByKey = {};
+    stats.forEach(function (s) { const k = urlKey_(s.url); (statsByKey[k] = statsByKey[k] || []).push(s); });
+
+    const POSTS_PER_BATCH = 300; // 300 게시물/배치 ≈ 본문 수백KB (4.5MB 대비 충분한 여유). 필요시 조정.
+    const keys = Object.keys(postByKey);
+    const res = { missing_sample: [], dropped_sample: [] };
+    const AGG = ["inserted", "created_posts", "matched_urls", "banner_reach_inserted",
+                 "meta_filled", "ended_marked", "future_date_skipped", "pre_posted_skipped",
+                 "dropped_decrease", "missing_urls", "preserved_manual", "overwrote_manual"];
+    AGG.forEach(function (f) { res[f] = 0; });
+    let _batches = 0;
+    for (let i = 0; i < keys.length; i += POSTS_PER_BATCH) {
+      const keyBatch = keys.slice(i, i + POSTS_PER_BATCH);
+      const postBatch = keyBatch.map(function (k) { return postByKey[k]; });
+      const statBatch = [];
+      keyBatch.forEach(function (k) { (statsByKey[k] || []).forEach(function (s) { statBatch.push(s); }); });
+      const r = postStats_({
+        posts: postBatch,
+        stats: statBatch,
+        client_version: IMPORTSTATS_CLIENT_VERSION,
+        source: importSource,
+      });
+      _batches++;
+      AGG.forEach(function (f) { res[f] += (r[f] || 0); });
+      if (Array.isArray(r.missing_sample)) r.missing_sample.forEach(function (x) { if (res.missing_sample.length < 20) res.missing_sample.push(x); });
+      if (Array.isArray(r.dropped_sample)) r.dropped_sample.forEach(function (x) { if (res.dropped_sample.length < 8) res.dropped_sample.push(x); });
+    }
+    Logger.log(JSON.stringify({ event: "importStats_batched", batches: _batches, posts: keys.length, stats: stats.length, posts_per_batch: POSTS_PER_BATCH }));
     Logger.log(JSON.stringify({
       event: "importStats_result",
       inserted: res.inserted || 0,
