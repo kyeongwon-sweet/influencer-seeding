@@ -61,8 +61,9 @@ jobs:
           r = api('chat.delete', {'channel': CHANNEL, 'ts': DELETE_TS})
           print('삭제:', r.get('ok'), r.get('error', ''))
 
-          # 3. 기존 메시지 편집
-          r = api('chat.update', {'channel': CHANNEL, 'ts': old_ts, 'text': NEW_TEXT})
+          # 3. 기존 메시지 편집 (blocks로 mrkdwn 강제 렌더링)
+          blocks = [{'type': 'section', 'text': {'type': 'mrkdwn', 'text': NEW_TEXT}}]
+          r = api('chat.update', {'channel': CHANNEL, 'ts': old_ts, 'text': NEW_TEXT, 'blocks': blocks})
           print('편집:', r.get('ok'), r.get('error', ''))
           if not r.get('ok'):
               sys.exit(1)
