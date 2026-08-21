@@ -7,7 +7,7 @@ jobs:
   send:
     runs-on: ubuntu-latest
     steps:
-      - name: 메시지 발송
+      - name: 삭제 및 기존 메시지 편집
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_LUNCHLAB_BOT_TOKEN }}
         run: |
@@ -16,8 +16,9 @@ jobs:
 
           TOKEN = os.environ['SLACK_BOT_TOKEN']
           CHANNEL = 'C0BFPQAPHEK'
+          DELETE_TS = '1787287387.993679'
 
-          text = (
+          NEW_TEXT = (
               '안녕하세요, 런치랩입니다.\n'
               '주문 관련 안내드립니다.\n'
               '\n'
@@ -30,13 +31,39 @@ jobs:
               '감사합니다.'
           )
 
-          payload = json.dumps({'channel': CHANNEL, 'text': text}, ensure_ascii=False).encode('utf-8')
-          req = urllib.request.Request(
-              'https://slack.com/api/chat.postMessage', data=payload,
-              headers={'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json; charset=utf-8'}
-          )
-          r = json.load(urllib.request.urlopen(req, timeout=15))
-          print('ok:', r.get('ok'), 'error:', r.get('error', ''))
+          def api(endpoint, payload):
+              data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
+              req = urllib.request.Request(
+                  f'https://slack.com/api/{endpoint}', data=data,
+                  headers={'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json; charset=utf-8'}
+              )
+              return json.load(urllib.request.urlopen(req, timeout=15))
+
+          # 1. 채널 히스토리에서 기존 메시지 ts 찾기 (삭제 대상 직전 메시지)
+          r = api('conversations.history', {
+              'channel': CHANNEL,
+              'latest': DELETE_TS,
+              'limit': 10
+          })
+          msgs = r.get('messages', [])
+          # 봇이 보낸 "최소주문수량 : 3" 포함 메시지 찾기 (블록쿼트 없는 버전)
+          old_ts = None
+          for m in msgs:
+              if '최소주문수량 : 3' in m.get('text', '') and '>최소주문수량' not in m.get('text', ''):
+                  old_ts = m['ts']
+                  print(f'기존 메시지 ts: {old_ts}')
+                  break
+          if not old_ts:
+              print('기존 메시지를 찾지 못했습니다.')
+              sys.exit(1)
+
+          # 2. 새로 보낸 메시지 삭제
+          r = api('chat.delete', {'channel': CHANNEL, 'ts': DELETE_TS})
+          print('삭제:', r.get('ok'), r.get('error', ''))
+
+          # 3. 기존 메시지 편집
+          r = api('chat.update', {'channel': CHANNEL, 'ts': old_ts, 'text': NEW_TEXT})
+          print('편집:', r.get('ok'), r.get('error', ''))
           if not r.get('ok'):
               sys.exit(1)
           EOF
