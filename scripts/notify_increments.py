@@ -687,6 +687,14 @@ def main():
             print("[notify] 검수 경고(비차단):", _warns)
 
     if update_ts:
+        # 수동 편집도 동기화 검수를 '실행해서 결과를 남긴다'(차단은 안 함 — 정정 작업을 막지 않기 위해).
+        #   신규 발송은 위에서 BLOCK 차단, 편집은 여기서 결과만 로그로 가시화(사용자 지시 2026-08-21).
+        try:
+            from presend_sync_audit import run_presend_audit
+            _eb, _ew = run_presend_audit(db, target, items=items, ads=ads, norm_ch=_norm_ch)
+            print(f"[notify] (편집) 동기화 검수 {target} — BLOCK: {_eb or '없음(통과)'} / WARN: {_ew or '없음'}")
+        except Exception as _e:
+            print("[notify] (편집) 검수 실행 오류(무시):", _e)
         data = urllib.parse.urlencode({
             "channel": CHANNEL,
             "ts": update_ts,
