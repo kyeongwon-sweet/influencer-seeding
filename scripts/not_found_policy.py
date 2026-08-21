@@ -76,6 +76,11 @@ def next_not_found_state(
     observed = date.fromisoformat(observed_at)
     last_raw = str(post.get("not_found_last_at") or "")[:10]
     if last_raw == observed_at:
+        # A later targeted retry can add stronger owner-profile evidence for the
+        # same observation day. Keep the daily streak idempotent, but do not
+        # discard that confirmation: promote the post to the review queue once.
+        if confirmed and not post.get("review_requested_at"):
+            return {"review_requested_at": datetime.now(timezone.utc).isoformat()}, True
         return {}, False
 
     previous = max(0, int(post.get("not_found_streak") or 0))

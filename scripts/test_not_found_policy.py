@@ -40,6 +40,35 @@ def test_live_owner_profile_can_request_review_without_forcing_streak():
     assert alert
 
 
+def test_same_day_profile_confirmation_promotes_review_without_incrementing_streak():
+    state = {
+        "not_found_streak": 2,
+        "not_found_last_at": "2026-08-20",
+        "review_requested_at": None,
+    }
+
+    promoted, alert = next_not_found_state(
+        state,
+        True,
+        "2026-08-20",
+        confirmed=True,
+    )
+
+    assert promoted.get("review_requested_at")
+    assert "not_found_streak" not in promoted
+    assert "not_found_last_at" not in promoted
+    assert alert
+
+    repeated, repeated_alert = next_not_found_state(
+        {**state, **promoted},
+        True,
+        "2026-08-20",
+        confirmed=True,
+    )
+    assert repeated == {}
+    assert not repeated_alert
+
+
 def test_first_and_second_consecutive_days_do_not_alert():
     first, first_alert = next_not_found_state({}, True, "2026-07-20")
     second, second_alert = next_not_found_state(first, True, "2026-07-21")
