@@ -62,8 +62,13 @@ function detectColumns(rows: Cell[][]): ColMap | null {
   const metaBanner = findPair("Meta_인지_배너");
   if (!metaReel || !ttReel || !ytReel || !metaBanner) return null;
 
-  // 3) 전환 조회수 열(서브헤더 라벨). 없으면 -1(전환 미표시).
-  const conversionView = sub.findIndex((v) => norm(v) === "전환조회수");
+  // 3) 전환 조회수 열: "전환 조회수" 라벨이 있는 열. ⚠️ 이 라벨은 ad 서브헤더와 '다른 행'에 있을 수
+  //    있어(시트 버전에 따라 secRow·secRow+1·별도 헤더행) 서브헤더 한 줄만 보면 놓침 → 전 행 스캔.
+  let conversionView = -1;
+  for (const r of rows) {
+    const c = r.findIndex((v) => norm(v) === "전환조회수");
+    if (c >= 0) { conversionView = c; break; }
+  }
 
   // 4) 날짜 열: "M. D (요일)" 매칭이 가장 많은 좌측 열(0~8 스캔).
   let date = -1;
