@@ -6,6 +6,12 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-20 [Claude 완료·push] 캡션 빈칸 자동채우기에서 '바이럴' 채널분류 제외 (사용자 규칙, `f978dc7`)
+- **규칙:** 연동시트 캡션(content_summary) 빈칸이면 자동으로 긁어오는 모든 경로에서 **channel_type '바이럴'(바이럴 (영상)·바이럴 (배너) 등 부분일치) 제외**, 나머지 분류만 실행.
+- **수정 3곳:** `scripts/backfill_captions.py`(IG 백필 워커, GHA=즉시) · `scripts/run_monitoring.py` `_store_aux_rows`(YT·틱톡·X 등 수집 중 캡션채움, GHA=즉시) · `web/lib/sponsored-write.ts` 등록시점 즉시 스크랩(**⚠️ TS=Vercel 배포 필요, Codex**).
+- **⚠️ Codex:** TS 변경(sponsored-write.ts)은 main에만 있고 **Vercel 배포해야 라이브 적용**(그 전까지는 신규 바이럴 등록시 즉시 캡션이 여전히 긁힘). Python 2곳은 다음 GHA 실행부터 적용. IG 캡션 쓰기 경로는 backfill_captions·등록시점뿐이라 함께 커버됨.
+- **참고:** 이미 DB에 들어온 바이럴 캡션은 그대로 유지(이 변경은 앞으로 자동채움만 차단). 기존 바이럴 캡션 일괄 정리는 별도 요청.
+
 ## ✅ 2026-08-21 [Codex 완료·운영검증] IG 삭제 54건 동일일 검토승격 복구 (`27f55ba`)
 - **인계 가설 정정:** 이번 IG 값정체군은 `no_collector_response` 빈 응답이 아니었다. 08-20 정규수집 run `32389856079`와 표적 재시도 runs `32400876456`·`32411632098`에서 모두 액터가 **명시적 `not_found`**를 반환했다. 표적 재시도 54건은 계정 32개 생존 확인까지 `확정=54 / 격리=0`이었다. 따라서 빈 응답을 삭제로 승격하는 새 판정은 이번 건에 적용하지 않았고, 배치 장애 가드도 유지했다.
 - **실제 버그:** 정규수집이 먼저 `not_found_streak=2`, `not_found_last_at=2026-08-20`을 쓴 뒤 같은 날짜 표적 재시도가 `confirmed=true`를 전달했지만, `next_not_found_state()`가 같은 날짜면 즉시 `{}`를 반환했다. streak 일일 멱등성은 맞지만 **더 강한 계정 생존 증거로 `review_requested_at`만 승격할 기회까지 버린 것**이다. 이 때문에 54건이 검토 큐에 못 들어가 당일 재시도마다 다시 Apify 대상이 됐다.
