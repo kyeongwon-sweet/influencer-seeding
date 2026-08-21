@@ -629,8 +629,10 @@ def _store_aux_rows(db, rows, posts, stats, key_fn, label, *, views="clamp", cap
         last_stat = _prev_stats(db, [p["id"] for p in posts])
     for post in posts:
         s = stats.get(key_fn(post))
-        # 캡션 자동채움 — 조회수 유무와 무관, 비어 있을 때만
-        if s and caption_field and not post.get("content_summary") and s.get(caption_field):
+        # 캡션 자동채움 — 조회수 유무와 무관, 비어 있을 때만.
+        # 사용자 규칙(2026-08-20): '바이럴' 채널분류는 캡션 자동채움 제외(나머지 분류만).
+        if (s and caption_field and not post.get("content_summary") and s.get(caption_field)
+                and "바이럴" not in (post.get("channel_type") or "")):
             # 줄바꿈은 띄어쓰기 한 칸으로 저장한다(시트 셀이 여러 줄로 벌어지는 것 방지).
             cap = normalize_caption(s[caption_field], caption_limit)
             if cap:

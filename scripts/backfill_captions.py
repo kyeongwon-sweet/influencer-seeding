@@ -19,16 +19,20 @@ def backfill():
     db = get_client()
     rows, start = [], 0
     while True:
-        r = db.table("sponsored_posts").select("id, url, content_summary, ended_at").range(start, start + 999).execute()
+        r = db.table("sponsored_posts").select("id, url, content_summary, ended_at, channel_type").range(start, start + 999).execute()
         chunk = r.data or []
         rows.extend(chunk)
         if len(chunk) < 1000:
             break
         start += 1000
+    # 사용자 규칙(2026-08-20): 캡션 빈칸 자동 긁어오기에서 '바이럴' 채널분류는 제외한다.
+    # "바이럴 (영상)"·"바이럴 (배너)" 등 표기 변형을 모두 잡도록 부분일치로 거른다.
+    # 나머지 채널분류(협찬·위성채널·온드미디어·무상시딩 등)만 캡션 보강 대상.
     targets = [a for a in rows
                if not a.get("ended_at")
                and "instagram" in (a.get("url") or "").lower()
                and not (a.get("content_summary") or "").strip()
+               and "바이럴" not in (a.get("channel_type") or "")
                and _sc(a.get("url"))]
     if not targets:
         print("[caption] 보강 대상 없음")

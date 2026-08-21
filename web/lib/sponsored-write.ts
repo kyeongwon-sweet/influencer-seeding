@@ -181,7 +181,8 @@ export async function upsertSponsoredRows(
     // 가드: shortcode 있는 게시물 URL만(프로필형 directUrls 과수집 방지), 배치당 100개 캡.
     const igNew = [...new Set(
       toCreate
-        .filter(r => needsCaption(r.url, r.content_summary) && /instagram\.com\/p\/[A-Za-z0-9_-]+/.test(r.url))
+        // 사용자 규칙(2026-08-20): 캡션 빈칸 자동 긁어오기에서 '바이럴' 채널분류는 제외("바이럴 (영상)"·"바이럴 (배너)" 등 부분일치).
+        .filter(r => needsCaption(r.url, r.content_summary) && /instagram\.com\/p\/[A-Za-z0-9_-]+/.test(r.url) && !String((r as { channel_type?: unknown }).channel_type ?? "").includes("바이럴"))
         .map(r => r.url)
     )].slice(0, 100);
     if (igNew.length > 0 && process.env.APIFY_API_TOKEN) {
