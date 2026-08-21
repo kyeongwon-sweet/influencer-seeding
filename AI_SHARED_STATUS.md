@@ -6,6 +6,15 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-21 [Codex 완료·운영검증] IG 삭제 54건 동일일 검토승격 복구 (`27f55ba`)
+- **인계 가설 정정:** 이번 IG 값정체군은 `no_collector_response` 빈 응답이 아니었다. 08-20 정규수집 run `32389856079`와 표적 재시도 runs `32400876456`·`32411632098`에서 모두 액터가 **명시적 `not_found`**를 반환했다. 표적 재시도 54건은 계정 32개 생존 확인까지 `확정=54 / 격리=0`이었다. 따라서 빈 응답을 삭제로 승격하는 새 판정은 이번 건에 적용하지 않았고, 배치 장애 가드도 유지했다.
+- **실제 버그:** 정규수집이 먼저 `not_found_streak=2`, `not_found_last_at=2026-08-20`을 쓴 뒤 같은 날짜 표적 재시도가 `confirmed=true`를 전달했지만, `next_not_found_state()`가 같은 날짜면 즉시 `{}`를 반환했다. streak 일일 멱등성은 맞지만 **더 강한 계정 생존 증거로 `review_requested_at`만 승격할 기회까지 버린 것**이다. 이 때문에 54건이 검토 큐에 못 들어가 당일 재시도마다 다시 Apify 대상이 됐다.
+- **수정:** 같은 날짜라도 `confirmed=true && review_requested_at 없음`이면 streak·last_at은 건드리지 않고 `review_requested_at`만 1회 생성한다. 반복 호출은 다시 no-op이다. 회귀 테스트에 `streak=2` 동일일 확인 승격·재호출 멱등을 추가했다. `test_not_found_policy`·`test_build_view_missing_queue`·`test_monitoring_retry_workflow`·`py_compile` 통과, pre-push `tsc --noEmit` 통과. main `27f55ba` 푸시 완료.
+- **운영 실측:** 전체수집 대신 기존 재시도 큐 **68건만** 대상으로 Monitoring Backup & Retry run [`32436205414`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/32436205414) 실행, 4분 15초에 성공. IG `not_found` 54건을 다시 계정 생존 확인해 **54/54 검토요청 승격**했다. 대표 `DaxTk5-SL_q`·`DbDcq8ZyE9V`·`Db0SFRdBsa7`·`DbDRh8PPYOZ` 모두 `streak=2` 유지 + review 시각 생성 + `ended_at=null` + notes 무변경이다.
+- **비용 가드 결과:** 재산출 큐는 `eligible 968→914`, `queue/retryable 68→14`, 제외 `not_found_review_pending 31→85`로 **정확히 54건 감소**했다. 남은 14건은 IG 5(프로필 URL 1 + 같은날 무조회 4)·TikTok 9이며 이번 삭제군이 아니다.
+- **formula-audit 현재값:** 08-21 09:33 run `32433091521`은 H/I 오류·불일치 0, `stale=60`이다(인계 당시 116보다 감소). 검토요청 게시물도 아직 활성이라 값정체 경고는 종료·복구 전까지 남는 것이 정상이다.
+- **정책 결정:** IG 자동 notes는 추가하지 않았다. notes는 사람 수기 메모와 섞이는 비구조 필드이고, 현재 `review_requested_at`이 큐 제외·리포트의 정본이다. 종료도 자동 처리하지 않았다. 현재 활성 IG 검토대상 85건(기존 31 + 신규 54)의 `ended_at`은 실물/운영 승인 후 별도 처리해야 한다. 조회수·posted_at·통계 이력은 전부 무접촉.
+
 ## ✅ 2026-08-20 [Codex 실측] `/reel/` 요청 정규화 첫 정규수집·배포 정합 확인
 - **GitHub/프로덕션:** 검증 시점 `HEAD == origin/main == c72d902`. Build Test run `32345251943` 성공. `influencer-seeding-mu.vercel.app`의 Ready 배포 `dpl_AJxjk2rQub9RjSwA2rG1UUAZ59YA` 메타데이터도 `githubCommitSha=c72d902`, `ref=main`으로 일치했다. 같은 소스의 중복 수동 배포는 하지 않았다.
 - **첫 정규수집:** Daily Collect run `32273600072`가 성공했고 `MONITORING_DATE=2026-08-19`로 저장했다. 대상 5건 모두 8/19 양수 `play_count` 행 1개, `manual=false`다. `post_daily_stats`에는 source 컬럼이 없으므로 source는 동일 run 안의 생성시각(2026-08-20 01:16 KST)과 `manual=false`를 근거로 **정규 자동수집**으로 판정했다.
