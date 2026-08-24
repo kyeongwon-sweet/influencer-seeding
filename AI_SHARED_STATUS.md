@@ -13,6 +13,7 @@
 - **DB 동기화:** `runSync_(false)`로 시트 정본을 DB에 즉시 반영한 뒤 55개 URL을 다시 조회해 **DB 불일치 0건** 확인. 조회수·게시일·종료상태·기타 열은 변경하지 않았다.
 - **재발방지:** 라이브 `fillCaptionFromAsset_`는 `바이럴 && (캡션 빈칸 || # 포함)`일 때만 소재명 파생값을 쓰도록 제한했다. 따라서 해시태그 없는 수기 캡션은 덮지 않는다. 소재명 파서는 마지막 6자리 날짜와 영상/배너 포맷 표식을 함께 확인하고, 바이럴 포맷을 확정할 수 없으면 추측하지 않는다. URL 재확인 `writeColumnRuns_`로 캡션 열만 쓴다.
 - **동시편집 처리:** 다른 세션의 더 엄격한 파서와 공개 수동 실행 진입점은 보존했다. 실행용 임시 비밀 웹 경로는 작업 직후 제거했고 임시 deployment도 undeploy했다. repo 미러와 계약 테스트를 현행 라이브 로직에 맞췄으며 `node --check` + web **322/322** 통과.
+- **clasp 배포 가드(Codex 후속):** clasp 3.x가 과거 `rootDir`을 원격 파일명에 다시 중첩해 `appsscript.json` 중복으로 push를 막는 현상을 실측했다. `prepare_apps_script_deploy.mjs`가 이제 clean pull root에서 실행하고, pull 결과를 basename 기준으로 평탄화하며 중복 basename이면 즉시 중단한다. 실제 push→재pull→repo 5파일 일치 검증으로 확인했다.
 
 ## ✅ 2026-08-24 [Codex 완료·라이브검증] 소재명 캡션 날짜 앵커 추출 Apps Script 반영 (`37f6611`)
 - **대상:** 라이브 Apps Script `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn`의 `AI 트래킹 대시보드 연동` 파일. repo 전체 덮어쓰기가 아니라 **라이브 최신 21파일을 fresh pull한 뒤 함수 단위 graft**했다.

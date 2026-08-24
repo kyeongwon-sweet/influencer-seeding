@@ -1,10 +1,11 @@
-import { copyFileSync, mkdirSync, readFileSync, rmSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { copyFileSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { basename, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const distDir = join(repoRoot, "dist", "apps-script");
+const flatWorkDir = join(repoRoot, "dist", "apps-script-flat");
 const scriptId = "1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn";
 const push = process.argv.includes("--push");
 const insightInquiryFile = "인사이트_문의_메시지_자동생성.gs";
@@ -21,8 +22,8 @@ function read(path) {
   return readFileSync(join(repoRoot, path), "utf8");
 }
 
-function readDist(path) {
-  return readFileSync(join(distDir, path), "utf8");
+function readDist(path, targetDir = distDir) {
+  return readFileSync(join(targetDir, path), "utf8");
 }
 
 function normalize(text) {
@@ -33,10 +34,10 @@ function assertMarker(name, ok) {
   if (!ok) throw new Error(`Apps Script deploy check failed: ${name}`);
 }
 
-function stageFiles() {
-  mkdirSync(distDir, { recursive: true });
+function stageFiles(targetDir = distDir) {
+  mkdirSync(targetDir, { recursive: true });
   for (const [src, dest] of deployFiles) {
-    copyFileSync(join(repoRoot, src), join(distDir, dest));
+    copyFileSync(join(repoRoot, src), join(targetDir, dest));
   }
 }
 
@@ -45,10 +46,10 @@ function resetDistForDryRun() {
   stageFiles();
 }
 
-function verifyDistMatchesSource(stage) {
+function verifyDistMatchesSource(stage, targetDir = distDir) {
   for (const [src, dest] of deployFiles) {
     const expected = normalize(read(src));
-    const actual = normalize(readDist(dest));
+    const actual = normalize(readDist(dest, targetDir));
     if (actual !== expected) {
       throw new Error(`Apps Script ${stage} mismatch: ${dest} does not match ${src}`);
     }
@@ -56,13 +57,53 @@ function verifyDistMatchesSource(stage) {
   console.log(`[APPS_SCRIPT_VERIFIED] ${stage}: ${deployFiles.length} files match source`);
 }
 
-function runClasp(args) {
+function resetDistForLivePull() {
+  rmSync(distDir, { recursive: true, force: true });
+  mkdirSync(distDir, { recursive: true });
+  writeFileSync(join(distDir, ".clasp.json"), JSON.stringify({ scriptId }, null, 2) + "\n", "utf8");
+}
+
+function projectFiles(dir) {
+  const out = [];
+  for (const name of readdirSync(dir)) {
+    const path = join(dir, name);
+    if (statSync(path).isDirectory()) out.push(...projectFiles(path));
+    else if (name !== ".clasp.json") out.push(path);
+  }
+  return out;
+}
+
+function flattenPulledProject() {
+  const files = projectFiles(distDir);
+  const byName = new Map();
+  let nested = 0;
+  for (const path of files) {
+    const name = basename(path);
+    if (byName.has(name)) throw new Error(`Apps Script pull has duplicate basename: ${name}`);
+    byName.set(name, path);
+    if (resolve(path) !== resolve(join(distDir, name))) nested++;
+  }
+  if (!byName.has("appsscript.json")) {
+    throw new Error("Apps Script pull did not produce appsscript.json.");
+  }
+
+  rmSync(flatWorkDir, { recursive: true, force: true });
+  mkdirSync(flatWorkDir, { recursive: true });
+  for (const [name, path] of byName) copyFileSync(path, join(flatWorkDir, name));
+
+  resetDistForLivePull();
+  for (const name of readdirSync(flatWorkDir)) copyFileSync(join(flatWorkDir, name), join(distDir, name));
+  rmSync(flatWorkDir, { recursive: true, force: true });
+  console.log(`[APPS_SCRIPT_PULL_FLATTENED] files=${byName.size} nested=${nested}`);
+}
+
+function runClasp(args, cwd = repoRoot) {
   const command = process.platform === "win32" ? "cmd.exe" : "npx";
   const commandArgs = process.platform === "win32"
     ? ["/d", "/s", "/c", "npx.cmd", "-y", "@google/clasp", ...args]
     : ["-y", "@google/clasp", ...args];
   const res = spawnSync(command, commandArgs, {
-    cwd: repoRoot,
+    cwd,
     stdio: "inherit",
     shell: false,
   });
@@ -102,13 +143,15 @@ if (process.env.APPS_SCRIPT_EXPECTED_SCRIPT_ID !== scriptId) {
   throw new Error("Refusing clasp push: APPS_SCRIPT_EXPECTED_SCRIPT_ID does not match the production scriptId.");
 }
 
-runClasp(["pull"]);
+resetDistForLivePull();
+runClasp(["pull"], distDir);
+flattenPulledProject();
 stageFiles();
 verifyDistMatchesSource("staged after live pull");
-runClasp(["status"]);
-runClasp(["push", "--force"]);
-rmSync(distDir, { recursive: true, force: true });
-mkdirSync(distDir, { recursive: true });
-runClasp(["pull"]);
+runClasp(["status"], distDir);
+runClasp(["push", "--force"], distDir);
+resetDistForLivePull();
+runClasp(["pull"], distDir);
+flattenPulledProject();
 verifyDistMatchesSource("live pull");
 console.log("[APPS_SCRIPT_PUSH_VERIFIED] live Apps Script matches the staged repo source.");
