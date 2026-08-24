@@ -1352,6 +1352,32 @@ function overwriteViralHandles_(silent) {
 }
 function overwriteViralHandles() { return overwriteViralHandles_(false); }
 
+/**
+ * 소재명에서 캡션 세그먼트를 뽑는다.
+ *
+ * 🚨 2026-08-21 실측: 고정 인덱스 `split("_")[8]`은 **바이럴 (배너)에서 어긋난다.**
+ *   영상 ..._main.렉카_[8]캡션.디자인1.X_파인트P_이세진_260813_빙과_최재헌
+ *   배너 ..._마T기획_[8].배너_[9]캡션._(빈)_김바다_260810_빙과_오형선
+ * 배너는 `.배너` 세그먼트가 하나 끼어들어 [8]에서 무의미한 ".배너"가 잡혔다(활성 배너 240건).
+ *
+ * 소재명 끝은 항상 `..._담당자_YYMMDD_빙과_이름` 꼴이라 **6자리 날짜를 앵커**로 삼는다.
+ * 캡션 = (날짜 인덱스 - 3). 실측 2,029건 중 1,585건에서 앵커가 잡히고, 그중 1,345건은
+ * 기존 [8]과 같은 위치라 동작이 바뀌지 않는다(무회귀). 달라지는 240건은 전부 배너이며
+ * ".배너" → 실제 캡션으로 교정된다.
+ *
+ * 날짜 앵커가 없는 옛 소재명(442건)은 기존 [8] 동작으로 폴백해 회귀를 막는다.
+ */
+function captionFromAssetName_(assetName) {
+  const parts = String(assetName || "").split("_");
+  var idx = -1;
+  for (var i = 0; i < parts.length; i++) {
+    if (/^\d{6}$/.test(parts[i])) { idx = i; break; }
+  }
+  const raw = (idx >= 3 ? parts[idx - 3] : parts[8]) || "";
+  // 파일명 버전표기 .디자인N(예: .디자인1/.디자인2) 접미사 제거 후 .x/후행점 정리 (라이브와 통일, 2026-07-27)
+  return String(raw).replace(/\s*\.디자인\s*\d*\s*$/, "").replace(/\.(x|X)$/, "").replace(/\.$/, "").trim();
+}
+
 function fillCaptionFromAsset_() {
   const sheet = getSheet_();
   const lastRow = sheet.getLastRow();
@@ -1382,9 +1408,7 @@ function fillCaptionFromAsset_() {
       }
       continue;
     }
-    const part = String(assets[i][0] || "").split("_")[8] || "";
-    // 파일명 버전표기 .디자인N(예: .디자인1/.디자인2) 접미사 제거 후 .x/후행점 정리 (라이브와 통일, 2026-07-27)
-    const caption = String(part).replace(/\s*\.디자인\s*\d*\s*$/, "").replace(/\.(x|X)$/, "").replace(/\.$/, "").trim();
+    const caption = captionFromAssetName_(assets[i][0]);
     if (caption) { caps[i][0] = caption; filled++; }
   }
   if (filled) sheet.getRange(CONFIG.DATA_START_ROW, capCol, n, 1).setValues(caps);

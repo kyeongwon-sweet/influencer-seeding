@@ -579,7 +579,10 @@ test("fillCaptionFromAsset_ keeps the live existing-caption self-heal", () => {
   assert.match(body, /currentCaption\.trim\(\) !== ""/);
   assert.match(body, /normalizedCaption !== currentCaption/);
   assert.match(body, /\\s\*\\\.디자인\\s\*\\d\*\\s\*\$/);
-  assert.match(body, /split\("_"\)\[8\]/);
+  // ⚠️ 2026-08-21: 캐션 세그먼트 추출은 captionFromAssetName_로 분리됐다(배너 인덱스 어긋남 수정).
+  //    고정 인덱스 [8]은 그 헬퍼 안에 '날짜 앵커 실패 시 폴백'으로만 남아 있다.
+  assert.match(body, /captionFromAssetName_\(assets\[i\]\[0\]\)/);
+  assert.match(appsScript, /function captionFromAssetName_\(/);
 });
 
 test("syncCreators fills planner/creator only from the same row asset name", () => {
@@ -919,4 +922,29 @@ test("CPV validation survives row changes and includes filtered rows", () => {
   assert.match(cpvValidationRepair, /setColumnFilterCriteria\(item\.col, item\.criterion\)/);
   assert.match(cpvValidationRepair, /setAllowInvalid\(true\)/);
   assert.match(cpvValidationRepair, /ref_errors: refErrors/);
+});
+
+// 🚨 2026-08-21: 고정 인덱스 split("_")[8]이 바이럴 (배너)에서 어긋나 ".배너"가 캡션으로 잡혔다.
+//   영상 ..._main.렉카_[8]캡션.디자인1.X_파인트P_이세진_260813_빙과_최재헌
+//   배너 ..._마T기획_[8].배너_[9]캡션._(빈)_김바다_260810_빙과_오형선
+//   소재명 끝이 항상 `_담당자_YYMMDD_빙과_이름`이라 6자리 날짜를 앵커로 삼는다(캡션 = 날짜-3).
+//   실측 2,029건 중 1,585건 앵커 성공, 그중 1,345건은 기존 [8]과 같은 위치라 무회귀.
+//   달라지는 240건은 전부 배너이며 ".배너" → 실제 캡션으로 교정된다.
+test("captionFromAssetName_: 6자리 날짜 앵커로 캡션 위치를 잡고 옛 소재명은 [8]로 폴백", () => {
+  const src = appsScript.slice(
+    appsScript.indexOf("function captionFromAssetName_("),
+    appsScript.indexOf("function fillCaptionFromAsset_()"),
+  );
+  assert.notEqual(src, "", "captionFromAssetName_ 함수가 있어야 한다");
+  // 날짜 앵커 기반이어야 한다(고정 인덱스 단독 사용 금지)
+  assert.ok(src.includes("/^\\d{6}$/"), "6자리 날짜 앵커 정규식이 있어야 한다");
+  assert.match(src, /parts\[idx - 3\]/, "캡션은 날짜 인덱스 - 3 위치다");
+  // 앵커가 없는 옛 소재명은 기존 동작으로 폴백해 회귀를 막는다
+  assert.match(src, /parts\[8\]/, "날짜 앵커 실패 시 [8] 폴백이 남아 있어야 한다");
+  // 파일명 버전표기 정리는 유지
+  assert.match(src, /디자인/);
+  // fillCaptionFromAsset_는 이 헬퍼를 쓰고, 고정 인덱스를 직접 쓰지 않는다
+  const filler = appsScript.slice(appsScript.indexOf("function fillCaptionFromAsset_()"));
+  assert.match(filler, /captionFromAssetName_\(assets\[i\]\[0\]\)/);
+  assert.doesNotMatch(filler.slice(0, 2000), /split\("_"\)\[8\]/);
 });
