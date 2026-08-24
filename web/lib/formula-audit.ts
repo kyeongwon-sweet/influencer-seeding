@@ -46,8 +46,8 @@ export type SheetAuditRow = {
   // H 숫자는 날짜 이력이 없는 행의 수기 보존만 허용한다.
   hFormula?: string | number | boolean | null;
   incFormula?: string | number | boolean | null;
-  metricRange: { firstColumn: string; lastColumn: string };
-  dates: Array<{ date: string; value: number }>; // 양수 날짜값(오름차순)
+  metricRange: { firstColumn: string; lastColumn: string; columns?: string[] };
+  dates: Array<{ date: string; value: number; column?: string }>; // 양수 날짜값(오름차순)
 };
 
 export type AuditResult = {
@@ -159,6 +159,44 @@ function sameFormula(actual: string | number | boolean | null, expected: string)
   return normalize(actual) === normalize(expected);
 }
 
+function columnNumber(column: string): number {
+  return column.toUpperCase().split("").reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+}
+
+function validFormulaEndColumn(
+  actual: string | number | boolean | null,
+  row: SheetAuditRow,
+  kind: "cumulative" | "increment",
+): string | null {
+  if (typeof actual !== "string" || !actual.startsWith("=") || !row.sourceRow) return null;
+  const normalized = actual.replace(/\s+/g, "").toUpperCase();
+  const match = kind === "cumulative"
+    ? normalized.match(/^=IF\(COUNT\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)=0,"",MAX\(/)
+    : normalized.match(/^=IFERROR\(LET\(RNG,\$([A-Z]+)(\d+):\$([A-Z]+)(\d+),/);
+  if (!match || match[1] !== row.metricRange.firstColumn.toUpperCase()) return null;
+  if (Number(match[2]) !== row.sourceRow || Number(match[4]) !== row.sourceRow) return null;
+
+  const endColumn = match[3];
+  const expected = kind === "cumulative"
+    ? expectedCumulativeFormula(row.sourceRow, { ...row.metricRange, lastColumn: endColumn })
+    : expectedIncrementFormula(row.sourceRow, { ...row.metricRange, lastColumn: endColumn });
+  if (!sameFormula(actual, expected)) return null;
+
+  const allowedColumns = row.metricRange.columns;
+  if (allowedColumns?.length) {
+    if (!allowedColumns.some((column) => column.toUpperCase() === endColumn)) return null;
+  } else {
+    const end = columnNumber(endColumn);
+    if (end < columnNumber(row.metricRange.firstColumn) || end > columnNumber(row.metricRange.lastColumn)) return null;
+  }
+
+  const latestDataColumn = row.dates.reduce(
+    (latest, item) => item.column && columnNumber(item.column) > columnNumber(latest) ? item.column : latest,
+    row.metricRange.firstColumn,
+  );
+  return columnNumber(endColumn) >= columnNumber(latestDataColumn) ? endColumn : null;
+}
+
 function measuredRefs(row: SheetAuditRow, post: AuditPost, todayKst: string) {
   return row.dates.filter((d) =>
     d.date < todayKst &&
@@ -207,10 +245,7 @@ export function auditRows(
 
     // 값이 맞는지와 수식이 살아 있는지는 별개다. 날짜 이력이 있는 H 숫자 덮어쓰기와
     // I의 `=""` 스텁은 다음 날짜 값부터 갱신이 멈추므로 즉시 경고한다.
-    if (row.sourceRow && row.hFormula !== undefined && !sameFormula(
-      row.hFormula,
-      expectedCumulativeFormula(row.sourceRow, row.metricRange),
-    )) {
+    if (row.sourceRow && row.hFormula !== undefined && !validFormulaEndColumn(row.hFormula, row, "cumulative")) {
       // 위성·피드처럼 날짜 이력이 원래 없는 행은 사람이 아는 누적값을 H에 직접 보존할 수 있다.
       // 날짜값이 있는 행의 숫자 덮어쓰기만 수식 파손으로 본다.
       if (typeof row.hFormula === "number" && row.dates.length === 0) {
@@ -222,7 +257,7 @@ export function auditRows(
     }
     const post = posts.get(row.key);
     const incrementFormulaValid = row.sourceRow && row.incFormula !== undefined && (
-      sameFormula(row.incFormula, expectedIncrementFormula(row.sourceRow, row.metricRange)) ||
+      validFormulaEndColumn(row.incFormula, row, "increment") !== null ||
       isIntentionalBacklogStub(row.incFormula, row, post, todayKst)
     );
     if (row.sourceRow && row.incFormula !== undefined && !incrementFormulaValid) {

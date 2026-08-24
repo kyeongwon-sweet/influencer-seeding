@@ -31,7 +31,11 @@ test("parseHeaderDate: 연도 없는 헤더는 월 감소 시 +1년 롤오버", 
 });
 
 const TODAY = "2026-07-30";
-const METRIC_RANGE = { firstColumn: "P", lastColumn: "DJ" };
+const METRIC_RANGE = {
+  firstColumn: "P",
+  lastColumn: "DJ",
+  columns: ["P", "DH", "DI", "DJ"],
+};
 
 function post(measured: Record<string, number>, posted = "2026-07-20", ended: string | null = null): AuditPost {
   return { posted, ended, measured: new Map(Object.entries(measured)) };
@@ -48,6 +52,28 @@ test("기대 수식은 실제 날짜 헤더의 마지막 열을 사용", () => {
   );
   assert.match(expectedIncrementFormula(10, METRIC_RANGE), /rng,\$P10:\$DJ10/);
   assert.doesNotMatch(expectedIncrementFormula(10, METRIC_RANGE), /DH10/);
+});
+
+test("과거 끝열 수식은 그 뒤 날짜에 값이 없을 때만 정상", () => {
+  const historicalFormula = expectedCumulativeFormula(10, { ...METRIC_RANGE, lastColumn: "DH" });
+  const safe = row({
+    key: "ig:safe-old-range",
+    sourceRow: 10,
+    hFormula: historicalFormula,
+    incFormula: expectedIncrementFormula(10, { ...METRIC_RANGE, lastColumn: "DH" }),
+    dates: [{ date: "2026-08-21", value: 100, column: "DH" }],
+  });
+  const stale = row({
+    key: "ig:stale-old-range",
+    sourceRow: 10,
+    hFormula: historicalFormula,
+    incFormula: expectedIncrementFormula(10, { ...METRIC_RANGE, lastColumn: "DH" }),
+    dates: [{ date: "2026-08-23", value: 120, column: "DJ" }],
+  });
+
+  const r = auditRows([safe, stale], new Map(), TODAY);
+  assert.equal(r.formulaShape.hInvalid, 1);
+  assert.equal(r.formulaShape.incInvalid, 1);
 });
 
 test("정상 행: H=MAX, I=마지막-이전최대 → 이상 0", () => {

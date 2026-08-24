@@ -159,6 +159,11 @@ async function handler(req: NextRequest) {
   const metricRange = {
     firstColumn: columnNumberToA1(dateCols[0].idx + 1),
     lastColumn: columnNumberToA1(dateCols[dateCols.length - 1].idx + 1),
+    columns: dateCols.map((dc) => columnNumberToA1(dc.idx + 1)),
+  };
+  const metricRangeSummary = {
+    firstColumn: metricRange.firstColumn,
+    lastColumn: metricRange.lastColumn,
   };
 
   // 시트 행 파싱 (raw 셀은 UNFORMATTED라 오류셀은 "#REF!" 같은 문자열로 온다)
@@ -167,10 +172,14 @@ async function handler(req: NextRequest) {
   for (let i = 1; i < values.length; i += 1) {
     const row = values[i] ?? [];
     const url = String(row[urlCol] ?? "").trim();
-    const dates: Array<{ date: string; value: number }> = [];
+    const dates: Array<{ date: string; value: number; column: string }> = [];
     for (const dc of dateCols) {
       const n = toSheetNumber(row[dc.idx] as string | number | null);
-      if (n != null && n > 0) dates.push({ date: dc.date, value: n });
+      if (n != null && n > 0) dates.push({
+        date: dc.date,
+        value: n,
+        column: columnNumberToA1(dc.idx + 1),
+      });
     }
     const rawCell = (v: unknown): number | string | null => {
       if (v == null || v === "") return null;
@@ -262,7 +271,7 @@ async function handler(req: NextRequest) {
       kdate,
       dedupeLookupOk: true,
       dateColumnCount: dateCols.length,
-      metricRange,
+      metricRange: metricRangeSummary,
       ...result,
     });
   }
@@ -296,7 +305,7 @@ async function handler(req: NextRequest) {
     skippedNotify: false,
     dedupeLookupOk: alreadyReported != null,
     dateColumnCount: dateCols.length,
-    metricRange,
+    metricRange: metricRangeSummary,
     ...result,
   });
 }
