@@ -581,8 +581,26 @@ test("fillCaptionFromAsset_ keeps the live existing-caption self-heal", () => {
   assert.match(body, /\\s\*\\\.디자인\\s\*\\d\*\\s\*\$/);
   // ⚠️ 2026-08-21: 캐션 세그먼트 추출은 captionFromAssetName_로 분리됐다(배너 인덱스 어긋남 수정).
   //    고정 인덱스 [8]은 그 헬퍼 안에 '날짜 앵커 실패 시 폴백'으로만 남아 있다.
-  assert.match(body, /captionFromAssetName_\(assets\[i\]\[0\]\)/);
+  assert.match(body, /captionFromAssetName_\(assets\[i\]\[0\], channelType\)/);
   assert.match(appsScript, /function captionFromAssetName_\(/);
+});
+
+test("fillCaptionFromAsset_ replaces scraped hashtag captions only on viral rows", () => {
+  const start = appsScript.indexOf("function fillCaptionFromAsset_()");
+  const end = appsScript.indexOf("function dailyAuto()", start);
+  const body = appsScript.slice(start, end);
+  assert.match(body, /findHeaderCol_\(sheet, \["채널분류"\]\)/);
+  assert.match(body, /const types = sheet\.getRange\(CONFIG\.DATA_START_ROW, typeCol, n, 1\)\.getValues\(\)/);
+  assert.match(body, /const channelType = String\(types\[i\]\[0\] \|\| ""\)/);
+  assert.match(body, /const isViral = channelType\.indexOf\("바이럴"\) >= 0/);
+  assert.match(body, /const desiredCaption = captionFromAssetName_\(assets\[i\]\[0\], channelType\)/);
+  assert.match(body, /currentCaption\.indexOf\("#"\) >= 0/);
+  assert.match(body, /if \(mayDerive && desiredCaption && desiredCaption !== currentCaption\)/);
+  assert.match(body, /edits\.push\(\{ row: CONFIG\.DATA_START_ROW \+ i, value: desiredCaption \}\)/);
+  // 바이럴의 해시태그 없는 기존 캡션은 이 분기에서 그대로 보존된다.
+  assert.match(body, /if \(isViral\)[\s\S]*continue;/);
+  assert.match(body, /writeColumnRuns_\(sheet, capCol, edits, lastRow\)/);
+  assert.match(body, /const normalizedCaption = currentCaption/);
 });
 
 test("syncCreators fills planner/creator only from the same row asset name", () => {
@@ -930,21 +948,29 @@ test("CPV validation survives row changes and includes filtered rows", () => {
 //   소재명 끝이 항상 `_담당자_YYMMDD_빙과_이름`이라 6자리 날짜를 앵커로 삼는다(캡션 = 날짜-3).
 //   실측 2,029건 중 1,585건 앵커 성공, 그중 1,345건은 기존 [8]과 같은 위치라 무회귀.
 //   달라지는 240건은 전부 배너이며 ".배너" → 실제 캡션으로 교정된다.
-test("captionFromAssetName_: 6자리 날짜 앵커로 캡션 위치를 잡고 옛 소재명은 [8]로 폴백", () => {
+test("captionFromAssetName_: 포맷 표식과 마지막 6자리 날짜 앵커 사이를 안전하게 추출", () => {
   const src = appsScript.slice(
     appsScript.indexOf("function captionFromAssetName_("),
     appsScript.indexOf("function fillCaptionFromAsset_()"),
   );
   assert.notEqual(src, "", "captionFromAssetName_ 함수가 있어야 한다");
-  // 날짜 앵커 기반이어야 한다(고정 인덱스 단독 사용 금지)
+  // 마지막 날짜 앵커와 영상/배너 포맷 표식을 모두 확인해야 한다.
   assert.ok(src.includes("/^\\d{6}$/"), "6자리 날짜 앵커 정규식이 있어야 한다");
-  assert.match(src, /parts\[idx - 3\]/, "캡션은 날짜 인덱스 - 3 위치다");
-  // 앵커가 없는 옛 소재명은 기존 동작으로 폴백해 회귀를 막는다
-  assert.match(src, /parts\[8\]/, "날짜 앵커 실패 시 [8] 폴백이 남아 있어야 한다");
-  // 파일명 버전표기 정리는 유지
-  assert.match(src, /디자인/);
+  assert.match(src, /for \(var i = parts\.length - 1; i >= 0; i--\)/);
+  assert.match(src, /\(\?:렉카\|릴스\|숏츠\|쇼츠\|영상\)/);
+  assert.match(src, /배너/);
+  assert.match(src, /parts\.slice\(markerIdx \+ 1, endExclusive\)/);
+  // 바이럴은 포맷을 확정할 수 없으면 추측하지 않고, 비바이럴만 옛 [8] 호환을 유지한다.
+  assert.match(src, /if \(!isViral\) return cleanAssetCaption_\(parts\[8\] \|\| ""\)/);
+  assert.match(src, /if \(markerIdx < 0\) return ""/);
+  // 파일명 버전표기 정리는 공용 클리너로 유지
+  const cleaner = appsScript.slice(
+    appsScript.indexOf("function cleanAssetCaption_("),
+    appsScript.indexOf("function captionFromAssetName_("),
+  );
+  assert.match(cleaner, /디자인/);
   // fillCaptionFromAsset_는 이 헬퍼를 쓰고, 고정 인덱스를 직접 쓰지 않는다
   const filler = appsScript.slice(appsScript.indexOf("function fillCaptionFromAsset_()"));
-  assert.match(filler, /captionFromAssetName_\(assets\[i\]\[0\]\)/);
+  assert.match(filler, /captionFromAssetName_\(assets\[i\]\[0\], channelType\)/);
   assert.doesNotMatch(filler.slice(0, 2000), /split\("_"\)\[8\]/);
 });

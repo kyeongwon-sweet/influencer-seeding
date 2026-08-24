@@ -6,6 +6,14 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-24 [Codex 완료·시트+DB+라이브] 바이럴 해시태그 캡션 55건 전부 소재명 정본으로 교체
+- **사용자 확정:** 파생 캡션이 짧은 28건도 제외하지 않고, 기존 캡션에 `#`가 있는 바이럴 대상 **55건 전부** 교체. `#`가 없는 수기 캡션은 보존한다.
+- **실행·무결성:** 동시 세션이 먼저 교체 함수를 실행한 것을 감지해 DB의 교체 전 `content_summary`와 시트의 교체 후 캡션을 URL 키로 전수 대조했다. 승인 대상 **55건**, 범위 밖 변경 **0건**이었다. 시트 사후감사도 `checked=55 / mismatches=0 / residual=0`.
+- **백업:** 연동 시트 숨김 탭 `_codex_caption_backup_20260824`에 55건의 행·URL·키·계정·분류·소재명·교체 전·교체 후 값을 저장했다. 범위 밖 변경 감사용 `_codex_caption_unapproved_backup_20260824`도 생성했으며 대상은 0건이다. 로컬 진단 결과는 `scratchpad/hashtag_caption_drift_20260824.json`, 최종 동기화 검증은 `scratchpad/caption_sync_audit_20260824.json`.
+- **DB 동기화:** `runSync_(false)`로 시트 정본을 DB에 즉시 반영한 뒤 55개 URL을 다시 조회해 **DB 불일치 0건** 확인. 조회수·게시일·종료상태·기타 열은 변경하지 않았다.
+- **재발방지:** 라이브 `fillCaptionFromAsset_`는 `바이럴 && (캡션 빈칸 || # 포함)`일 때만 소재명 파생값을 쓰도록 제한했다. 따라서 해시태그 없는 수기 캡션은 덮지 않는다. 소재명 파서는 마지막 6자리 날짜와 영상/배너 포맷 표식을 함께 확인하고, 바이럴 포맷을 확정할 수 없으면 추측하지 않는다. URL 재확인 `writeColumnRuns_`로 캡션 열만 쓴다.
+- **동시편집 처리:** 다른 세션의 더 엄격한 파서와 공개 수동 실행 진입점은 보존했다. 실행용 임시 비밀 웹 경로는 작업 직후 제거했고 임시 deployment도 undeploy했다. repo 미러와 계약 테스트를 현행 라이브 로직에 맞췄으며 `node --check` + web **322/322** 통과.
+
 ## ✅ 2026-08-24 [Codex 완료·라이브검증] 소재명 캡션 날짜 앵커 추출 Apps Script 반영 (`37f6611`)
 - **대상:** 라이브 Apps Script `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn`의 `AI 트래킹 대시보드 연동` 파일. repo 전체 덮어쓰기가 아니라 **라이브 최신 21파일을 fresh pull한 뒤 함수 단위 graft**했다.
 - **반영:** `captionFromAssetName_` 1회 추가 + `fillCaptionFromAsset_`의 빈 캡션 추출을 해당 헬퍼 호출로 교체. 6자리 날짜 인덱스의 `-3`을 캡션으로 쓰고, 날짜 앵커가 없는 옛 소재명은 기존 `[8]`로 폴백한다. 기존 값이 있는 캡션은 계속 덮지 않는다.

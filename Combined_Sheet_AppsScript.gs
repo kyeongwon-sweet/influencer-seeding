@@ -1352,30 +1352,52 @@ function overwriteViralHandles_(silent) {
 }
 function overwriteViralHandles() { return overwriteViralHandles_(false); }
 
+function cleanAssetCaption_(raw) {
+  return String(raw || "")
+    .replace(/\s*\.디자인\s*\d*(?:\.[xX])?\s*$/, "")
+    .replace(/\.(x|X)$/, "")
+    .replace(/\.+\s*$/, "")
+    .trim();
+}
+
 /**
- * 소재명에서 캡션 세그먼트를 뽑는다.
- *
- * 🚨 2026-08-21 실측: 고정 인덱스 `split("_")[8]`은 **바이럴 (배너)에서 어긋난다.**
- *   영상 ..._main.렉카_[8]캡션.디자인1.X_파인트P_이세진_260813_빙과_최재헌
- *   배너 ..._마T기획_[8].배너_[9]캡션._(빈)_김바다_260810_빙과_오형선
- * 배너는 `.배너` 세그먼트가 하나 끼어들어 [8]에서 무의미한 ".배너"가 잡혔다(활성 배너 240건).
- *
- * 소재명 끝은 항상 `..._담당자_YYMMDD_빙과_이름` 꼴이라 **6자리 날짜를 앵커**로 삼는다.
- * 캡션 = (날짜 인덱스 - 3). 실측 2,029건 중 1,585건에서 앵커가 잡히고, 그중 1,345건은
- * 기존 [8]과 같은 위치라 동작이 바뀌지 않는다(무회귀). 달라지는 240건은 전부 배너이며
- * ".배너" → 실제 캡션으로 교정된다.
- *
- * 날짜 앵커가 없는 옛 소재명(442건)은 기존 [8] 동작으로 폴백해 회귀를 막는다.
+ * 바이럴 소재명은 포맷 표식과 꼬리의 YYMMDD를 함께 확인해야만 캡션으로 인정한다.
+ * 캡션 안에도 밑줄이 들어갈 수 있어 날짜에서 고정 칸 수를 빼는 방식은 쓰지 않는다.
+ * 포맷을 확정할 수 없는 옛 바이럴 소재명은 추측하지 않고 빈 값으로 반환한다.
  */
-function captionFromAssetName_(assetName) {
+function captionFromAssetName_(assetName, channelType) {
   const parts = String(assetName || "").split("_");
-  var idx = -1;
-  for (var i = 0; i < parts.length; i++) {
-    if (/^\d{6}$/.test(parts[i])) { idx = i; break; }
+  const type = String(channelType || "");
+  const isViral = type.indexOf("바이럴") >= 0;
+  if (!isViral) return cleanAssetCaption_(parts[8] || "");
+
+  var dateIdx = -1;
+  for (var i = parts.length - 1; i >= 0; i--) {
+    if (/^\d{6}$/.test(parts[i])) { dateIdx = i; break; }
   }
-  const raw = (idx >= 3 ? parts[idx - 3] : parts[8]) || "";
-  // 파일명 버전표기 .디자인N(예: .디자인1/.디자인2) 접미사 제거 후 .x/후행점 정리 (라이브와 통일, 2026-07-27)
-  return String(raw).replace(/\s*\.디자인\s*\d*\s*$/, "").replace(/\.(x|X)$/, "").replace(/\.$/, "").trim();
+  if (dateIdx < 0) return "";
+
+  const isBanner = type.indexOf("배너") >= 0;
+  const markerRe = isBanner
+    ? /(?:^|\.)배너(?:\.|$)/
+    : /(?:^|\.)(?:렉카|릴스|숏츠|쇼츠|영상)(?:\.|$)/;
+  var markerIdx = -1;
+  for (var j = 0; j < dateIdx; j++) {
+    if (markerRe.test(String(parts[j] || "").trim())) markerIdx = j;
+  }
+  if (markerIdx < 0) return "";
+
+  var endExclusive = dateIdx - 1;
+  if (!isBanner) {
+    const productToken = String(parts[dateIdx - 2] || "").trim();
+    if (!/^(?:\d+|파인트|스틱바)P$/.test(productToken)) return "";
+    endExclusive = dateIdx - 2;
+  }
+  if (endExclusive <= markerIdx + 1) return "";
+
+  const body = parts.slice(markerIdx + 1, endExclusive);
+  while (body.length && String(body[body.length - 1] || "").trim() === "") body.pop();
+  return cleanAssetCaption_(body.join("_"));
 }
 
 function fillCaptionFromAsset_() {
@@ -1384,14 +1406,30 @@ function fillCaptionFromAsset_() {
   if (lastRow < CONFIG.DATA_START_ROW) return true;
   const assetCol = findHeaderCol_(sheet, ["소재명"]);
   const capCol = findHeaderCol_(sheet, ["캡션"]);
-  if (!assetCol || !capCol) return true;
+  const typeCol = findHeaderCol_(sheet, ["채널분류"]);
+  if (!assetCol || !capCol || !typeCol) return true;
 
   const n = lastRow - CONFIG.DATA_START_ROW + 1;
   const assets = sheet.getRange(CONFIG.DATA_START_ROW, assetCol, n, 1).getValues();
   const caps = sheet.getRange(CONFIG.DATA_START_ROW, capCol, n, 1).getValues();
-  let filled = 0;
+  const types = sheet.getRange(CONFIG.DATA_START_ROW, typeCol, n, 1).getValues();
+  const edits = [];
   for (let i = 0; i < n; i++) {
     const currentCaption = String(caps[i][0] || "");
+    const channelType = String(types[i][0] || "");
+    const isViral = channelType.indexOf("바이럴") >= 0;
+
+    if (isViral) {
+      const desiredCaption = captionFromAssetName_(assets[i][0], channelType);
+      // 사용자 확정(2026-08-24): Instagram 원문 스크랩이 확실한 해시태그 캡션은
+      // 소재명 파생 캡션으로 전부 교체한다. 해시태그가 없는 기존 수기 캡션은 보존한다.
+      const mayDerive = currentCaption.trim() === "" || currentCaption.indexOf("#") >= 0;
+      if (mayDerive && desiredCaption && desiredCaption !== currentCaption) {
+        edits.push({ row: CONFIG.DATA_START_ROW + i, value: desiredCaption });
+      }
+      continue;
+    }
+
     if (currentCaption.trim() !== "") {
       // 라이브와 동일하게 기존 캡션도 파일명 버전 접미사만 자가치유한다.
       // 앞의 점(.)이 필수라 일반 문장 속 "디자인" 단어는 건드리지 않는다.
@@ -1403,16 +1441,21 @@ function fillCaptionFromAsset_() {
         .replace(/\.+\s*$/, "")
         .trim();
       if (normalizedCaption !== currentCaption) {
-        caps[i][0] = normalizedCaption;
-        filled++;
+        edits.push({ row: CONFIG.DATA_START_ROW + i, value: normalizedCaption });
       }
       continue;
     }
-    const caption = captionFromAssetName_(assets[i][0]);
-    if (caption) { caps[i][0] = caption; filled++; }
+    const caption = captionFromAssetName_(assets[i][0], channelType);
+    if (caption) edits.push({ row: CONFIG.DATA_START_ROW + i, value: caption });
   }
-  if (filled) sheet.getRange(CONFIG.DATA_START_ROW, capCol, n, 1).setValues(caps);
+  const written = writeColumnRuns_(sheet, capCol, edits, lastRow);
+  Logger.log("caption_from_asset " + JSON.stringify({ changed: written }));
   return true;
+}
+
+// 캡션 열만 수동 재적용할 때 사용하는 공개 실행 진입점.
+function backfillViralCaptionsFromAsset() {
+  return withDocLock_(function() { return fillCaptionFromAsset_(); });
 }
 
 // 매일 자동: 시트→DB(전체 syncAll) + 시트 날짜값→DB(importStats) + DB→시트(대시보드 추가분 가져오기)를 함께 수행.
