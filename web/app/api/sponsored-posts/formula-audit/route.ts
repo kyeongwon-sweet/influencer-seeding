@@ -156,6 +156,10 @@ async function handler(req: NextRequest) {
     await notifyBot(`🔴 [수식 전수감사] 날짜 열을 찾지 못했습니다 — 헤더 표본: ${sample}`).catch(() => {});
     return NextResponse.json({ error: "no date columns", headerSample: sample }, { status: 500 });
   }
+  const metricRange = {
+    firstColumn: columnNumberToA1(dateCols[0].idx + 1),
+    lastColumn: columnNumberToA1(dateCols[dateCols.length - 1].idx + 1),
+  };
 
   // 시트 행 파싱 (raw 셀은 UNFORMATTED라 오류셀은 "#REF!" 같은 문자열로 온다)
   const rows: SheetAuditRow[] = [];
@@ -191,6 +195,7 @@ async function handler(req: NextRequest) {
       inc,
       hFormula: formulaValues[i - 1]?.[cumCol - formulaFirstCol] ?? null,
       incFormula: formulaValues[i - 1]?.[incCol - formulaFirstCol] ?? null,
+      metricRange,
       dates,
     });
   }
@@ -256,6 +261,8 @@ async function handler(req: NextRequest) {
       reason: "already_reported",
       kdate,
       dedupeLookupOk: true,
+      dateColumnCount: dateCols.length,
+      metricRange,
       ...result,
     });
   }
@@ -282,7 +289,16 @@ async function handler(req: NextRequest) {
     });
   }
 
-  return NextResponse.json({ ok: true, healthy, slackSent, skippedNotify: false, dedupeLookupOk: alreadyReported != null, ...result });
+  return NextResponse.json({
+    ok: true,
+    healthy,
+    slackSent,
+    skippedNotify: false,
+    dedupeLookupOk: alreadyReported != null,
+    dateColumnCount: dateCols.length,
+    metricRange,
+    ...result,
+  });
 }
 
 export async function POST(req: NextRequest) { return handler(req); }

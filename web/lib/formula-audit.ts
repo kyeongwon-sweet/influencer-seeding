@@ -46,6 +46,7 @@ export type SheetAuditRow = {
   // H 숫자는 날짜 이력이 없는 행의 수기 보존만 허용한다.
   hFormula?: string | number | boolean | null;
   incFormula?: string | number | boolean | null;
+  metricRange: { firstColumn: string; lastColumn: string };
   dates: Array<{ date: string; value: number }>; // 양수 날짜값(오름차순)
 };
 
@@ -138,12 +139,18 @@ function lastMinusPrevMax(values: number[]): number | null {
   return Math.max(0, last - prevMax);
 }
 
-export function expectedCumulativeFormula(row: number): string {
-  return `=IF(COUNT(P${row}:DH${row})=0,"",MAX(P${row}:DH${row}))`;
+export function expectedCumulativeFormula(
+  row: number,
+  { firstColumn, lastColumn }: SheetAuditRow["metricRange"],
+): string {
+  return `=IF(COUNT(${firstColumn}${row}:${lastColumn}${row})=0,"",MAX(${firstColumn}${row}:${lastColumn}${row}))`;
 }
 
-export function expectedIncrementFormula(row: number): string {
-  return `=IFERROR(LET(rng,$P${row}:$DH${row},cols,SEQUENCE(1,COLUMNS(rng),COLUMN($P${row}),1),lastC,MAX(FILTER(cols,rng>0)),lastV,INDEX(rng,1,lastC-COLUMN($P${row})+1),prev,FILTER(rng,cols<lastC,rng>0),IFERROR(MAX(0,lastV-MAX(prev)),lastV)),"")`;
+export function expectedIncrementFormula(
+  row: number,
+  { firstColumn, lastColumn }: SheetAuditRow["metricRange"],
+): string {
+  return `=IFERROR(LET(rng,$${firstColumn}${row}:$${lastColumn}${row},cols,SEQUENCE(1,COLUMNS(rng),COLUMN($${firstColumn}${row}),1),lastC,MAX(FILTER(cols,rng>0)),lastV,INDEX(rng,1,lastC-COLUMN($${firstColumn}${row})+1),prev,FILTER(rng,cols<lastC,rng>0),IFERROR(MAX(0,lastV-MAX(prev)),lastV)),"")`;
 }
 
 function sameFormula(actual: string | number | boolean | null, expected: string): boolean {
@@ -200,7 +207,10 @@ export function auditRows(
 
     // 값이 맞는지와 수식이 살아 있는지는 별개다. 날짜 이력이 있는 H 숫자 덮어쓰기와
     // I의 `=""` 스텁은 다음 날짜 값부터 갱신이 멈추므로 즉시 경고한다.
-    if (row.sourceRow && row.hFormula !== undefined && !sameFormula(row.hFormula, expectedCumulativeFormula(row.sourceRow))) {
+    if (row.sourceRow && row.hFormula !== undefined && !sameFormula(
+      row.hFormula,
+      expectedCumulativeFormula(row.sourceRow, row.metricRange),
+    )) {
       // 위성·피드처럼 날짜 이력이 원래 없는 행은 사람이 아는 누적값을 H에 직접 보존할 수 있다.
       // 날짜값이 있는 행의 숫자 덮어쓰기만 수식 파손으로 본다.
       if (typeof row.hFormula === "number" && row.dates.length === 0) {
@@ -212,7 +222,7 @@ export function auditRows(
     }
     const post = posts.get(row.key);
     const incrementFormulaValid = row.sourceRow && row.incFormula !== undefined && (
-      sameFormula(row.incFormula, expectedIncrementFormula(row.sourceRow)) ||
+      sameFormula(row.incFormula, expectedIncrementFormula(row.sourceRow, row.metricRange)) ||
       isIntentionalBacklogStub(row.incFormula, row, post, todayKst)
     );
     if (row.sourceRow && row.incFormula !== undefined && !incrementFormulaValid) {

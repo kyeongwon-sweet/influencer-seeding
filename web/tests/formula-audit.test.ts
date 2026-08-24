@@ -31,14 +31,24 @@ test("parseHeaderDate: 연도 없는 헤더는 월 감소 시 +1년 롤오버", 
 });
 
 const TODAY = "2026-07-30";
+const METRIC_RANGE = { firstColumn: "P", lastColumn: "DJ" };
 
 function post(measured: Record<string, number>, posted = "2026-07-20", ended: string | null = null): AuditPost {
   return { posted, ended, measured: new Map(Object.entries(measured)) };
 }
 
 function row(partial: Partial<SheetAuditRow> & { key: string }): SheetAuditRow {
-  return { label: partial.key, h: null, inc: null, dates: [], ...partial };
+  return { label: partial.key, h: null, inc: null, metricRange: METRIC_RANGE, dates: [], ...partial };
 }
+
+test("기대 수식은 실제 날짜 헤더의 마지막 열을 사용", () => {
+  assert.equal(
+    expectedCumulativeFormula(10, METRIC_RANGE),
+    '=IF(COUNT(P10:DJ10)=0,"",MAX(P10:DJ10))',
+  );
+  assert.match(expectedIncrementFormula(10, METRIC_RANGE), /rng,\$P10:\$DJ10/);
+  assert.doesNotMatch(expectedIncrementFormula(10, METRIC_RANGE), /DH10/);
+});
 
 test("정상 행: H=MAX, I=마지막-이전최대 → 이상 0", () => {
   const rows = [row({
@@ -142,8 +152,8 @@ test("수식 형태 감사: 정상 수식은 통과하고 숫자 덮어쓰기·�
     sourceRow: 10,
     h: 300,
     inc: 100,
-    hFormula: expectedCumulativeFormula(10),
-    incFormula: expectedIncrementFormula(10),
+    hFormula: expectedCumulativeFormula(10, METRIC_RANGE),
+    incFormula: expectedIncrementFormula(10, METRIC_RANGE),
     dates: [{ date: "2026-07-28", value: 200 }, { date: "2026-07-29", value: 300 }],
   });
   const broken = row({
@@ -175,7 +185,7 @@ test("수식 형태 감사: 날짜 이력 없는 H의 수기 누적값은 보존
     sourceRow: 568,
     h: 43201,
     hFormula: 43201,
-    incFormula: expectedIncrementFormula(568),
+    incFormula: expectedIncrementFormula(568, METRIC_RANGE),
     dates: [],
   })], new Map(), TODAY);
   assert.equal(r.formulaShape.hInvalid, 0);
@@ -189,8 +199,8 @@ test("수식 형태 감사: 다른 행을 참조하는 복사 오류도 검출",
   const r = auditRows([row({
     key: "ig:wrong-row",
     sourceRow: 20,
-    hFormula: expectedCumulativeFormula(19),
-    incFormula: expectedIncrementFormula(19),
+    hFormula: expectedCumulativeFormula(19, METRIC_RANGE),
+    incFormula: expectedIncrementFormula(19, METRIC_RANGE),
   })], new Map(), TODAY);
   assert.equal(r.formulaShape.hInvalid, 1);
   assert.equal(r.formulaShape.incInvalid, 1);
