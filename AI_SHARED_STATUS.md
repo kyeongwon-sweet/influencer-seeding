@@ -6,6 +6,14 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-25 [Codex 완료·시트+DB+라이브] 배너 지표를 전부 도달수로 통일
+- **사용자 확정 정책:** 채널분류가 배너인 게시물은 예외 없이 **조회수가 아니라 도달수**다. 영상이 포함된 캐러셀도 배너이므로 같은 규칙을 적용한다.
+- **매거진 캐러셀 4건 정정:** 오늘의 메뉴 `DbutARtkWS8` **45,795** · millionego `Dbu3SZMEkue` **74,236** · 띵크서울 `DbxEAhCE2vR` **27,438** · 요매거진 `Db0ERW8Gqsr` **66,920**(합계 **214,389**). 연동 시트 채널분류를 `협찬 (파워채널/매거진 배너)`로 바꾸고, 2026-08-10 일자값은 보존했다.
+- **DB 정합:** 위 4개 `post_daily_stats`를 다시 읽어 2026-08-10 **`play_count=NULL` · `reach_count=각 실측값` 4/4**를 확인했다. Apps Script 응답에도 `banner_reach_verified=4`와 네 행의 날짜·play·reach를 포함하도록 검증 가드를 추가해, 쓰기 성공처럼 보이지만 DB가 틀린 상태를 완료 처리하지 못하게 했다.
+- **앞으로의 입력:** stats-import는 시트의 최신 채널분류를 같은 요청에서 우선 적용하고, 배너 입력을 항상 `{play_count:null, reach_count:value}`로 저장한다. 클라이언트 버전은 `2026-08-25-banner-reclass-v1`로 라이브와 서버가 일치한다.
+- **화면 표시 보강:** 배너 뒤에 `reach=NULL`인 미수집 행이 생겨도 0으로 오인하지 않고 **범위 안 마지막 유효 도달수**를 고른다. `play_collected=false`인 mono 이어받기 조회수는 도달수 폴백으로 쓰지 않는다. 프로덕션 `dpl_2n1k5LBSw4PzjWoREZNeESxpJJMA`에서 로그인 실화면 전수 확인: 네 행 모두 `조회수 —`, `도달수 45,795 / 74,236 / 27,438 / 66,920`.
+- **무결성·백업:** H(누적)·I(증분) 수식/표시, 날짜값, URL, 게시일, 캡션, 광고비는 전후 동일. 시트 숨김 백업 `_codex_magazine_banner_backup_20260825`, 로컬 `scratchpad/magazine_carousel_banner_backup_20260825.json`. 실행 후 dry-run은 `matched=4 / changes=0`, web 테스트 **328/328**, tsc·production build 통과. 임시 API 진단 로그는 확인 후 제거했다.
+
 ## ✅ 2026-08-25 [Codex 완료·GitHub·라이브] 날짜열 삽입 직후 H/I 끝열 드리프트 자동복구 (`5a68b1e`)
 - **진단 정정:** 기존 일일 복구 경로가 없었던 것은 아니다. `dailyAuto → exportStats`가 I 전행을 다시 쓰고 `refreshCumulativeViews`가 H를 갱신하며, 08:27 실행도 `exportStats` 314.8초·`refreshCumulativeViews` 59.9초를 포함해 성공했다. 실제 재발 창은 **dailyAuto 뒤 사람이 우측 날짜열을 삽입한 직후부터 다음 dailyAuto 전까지**였다. `fillInsertedDateHeadersOnChange_`는 새 날짜 헤더·유효성·서식만 만들고 기존 H/I의 명시적 끝열은 늘리지 않았다.
 - **수정:** `repairStaleMetricFormulaRanges_`를 추가해 표준 H(V4)·I(V2) 수식 중 끝열이 실제 최신 날짜열보다 뒤처진 셀만 run 단위로 재작성한다. 날짜열 삽입 onChange 직후와 dailyAuto의 `refreshCumulativeViews` 직후에 실행한다.
