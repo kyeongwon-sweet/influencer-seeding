@@ -6,6 +6,13 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-25 [Codex 완료·라이브검증] `syncStatus` 단수 `/reel/` 오판은 코드 회귀가 아니라 stale 상태값
+- **대상:** 연동시트 행 3192, `https://www.instagram.com/reel/DcBZOaEpDyt/`, one_star_video.
+- **라이브 실물 확인:** clasp fresh pull 후 `syncStatus`와 `linkKey_`를 `origin/main`과 함수 단위 SHA-256으로 비교해 **둘 다 exact match**를 확인했다. 라이브 정규식은 `/(p|reels|reel|tv)/`, `linkKey_`도 단수 `reel`을 `ig:DcBZOaEpDyt`로 정상 정규화한다.
+- **결론:** 과거 잘못된 URL 시절의 `오류`가 O열에 남아 있던 **stale 표시값**이었다. 코드 수정·URL 변환은 불필요했다.
+- **조치·실측:** 라이브 `syncStatus` 1회 실행(2026-08-25 10:57:49 KST, **169.295초, 완료됨**). 인증된 gviz 원응답으로 행 3192를 다시 읽어 URL은 단수 `/reel/` 그대로, 상태는 **`트래킹 중`**으로 복구된 것을 확인했다.
+- **무접촉:** 조회수·누적/증분·날짜열·posted_at·소재명·URL은 변경하지 않았다. GitHub/Apps Script 코드 배포도 하지 않았다.
+
 ## ✅ 2026-08-25 [Codex 완료·시트+DB+라이브] 배너 지표를 전부 도달수로 통일
 - **사용자 확정 정책:** 채널분류가 배너인 게시물은 예외 없이 **조회수가 아니라 도달수**다. 영상이 포함된 캐러셀도 배너이므로 같은 규칙을 적용한다.
 - **매거진 캐러셀 4건 정정:** 오늘의 메뉴 `DbutARtkWS8` **45,795** · millionego `Dbu3SZMEkue` **74,236** · 띵크서울 `DbxEAhCE2vR` **27,438** · 요매거진 `Db0ERW8Gqsr` **66,920**(합계 **214,389**). 연동 시트 채널분류를 `협찬 (파워채널/매거진 배너)`로 바꾸고, 2026-08-10 일자값은 보존했다.
