@@ -954,14 +954,22 @@ export default function MonitoringPage() {
       case "조회수": av = sa?.play_count ?? -1; bv = sb?.play_count ?? -1; break;
       case "좋아요": av = sa?.likes_count ?? -1; bv = sb?.likes_count ?? -1; break;
       case "댓글": av = sa?.comments_count ?? -1; bv = sb?.comments_count ?? -1; break;
-      case "도달수": av = effectiveReach(a.reach_count, sa?.play_count) ?? -1; bv = effectiveReach(b.reach_count, sb?.play_count) ?? -1; break;
+      case "도달수": {
+        // 🔒 표시값(PostsTable: 배너=bannerDailyMetric, 그 외=effectiveReach)과 정렬 키를 일치시킴.
+        //   배너는 post레벨 reach_count가 없어 effectiveReach가 null(-1)이라 검색으로 배너만 남으면 정렬이 죽던 버그.
+        const ra = isBannerChannel(a.channel_type, a.posted_at) ? bannerDailyMetric(sa) : effectiveReach(a.reach_count, sa?.play_count);
+        const rb = isBannerChannel(b.channel_type, b.posted_at) ? bannerDailyMetric(sb) : effectiveReach(b.reach_count, sb?.play_count);
+        av = ra ?? -1; bv = rb ?? -1; break;
+      }
       case "비용": av = a.cost ?? -1; bv = b.cost ?? -1; break;
       case "조회당비용":
         av = (a.cost != null && sa?.play_count != null && sa.play_count > 0) ? a.cost / sa.play_count : Infinity;
         bv = (b.cost != null && sb?.play_count != null && sb.play_count > 0) ? b.cost / sb.play_count : Infinity;
         break;
       case "도달당비용": {
-        const ra = effectiveReach(a.reach_count, sa?.play_count), rb = effectiveReach(b.reach_count, sb?.play_count);
+        // 도달수와 동일 규칙(배너=bannerDailyMetric)으로 도달당비용 정렬 = 표시값과 일치.
+        const ra = isBannerChannel(a.channel_type, a.posted_at) ? bannerDailyMetric(sa) : effectiveReach(a.reach_count, sa?.play_count);
+        const rb = isBannerChannel(b.channel_type, b.posted_at) ? bannerDailyMetric(sb) : effectiveReach(b.reach_count, sb?.play_count);
         av = (a.cost != null && ra != null && ra > 0) ? a.cost / ra : Infinity;
         bv = (b.cost != null && rb != null && rb > 0) ? b.cost / rb : Infinity;
         break;
