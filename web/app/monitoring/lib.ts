@@ -117,8 +117,18 @@ export function getFilteredStats(allStats: DailyStats[], dateFrom: string, dateT
 export function pickRangeStats(post: Post, dateFrom: string, dateTo: string): { s: DailyStats | null; prev: DailyStats | null } {
   const hasDate = !!(dateFrom || dateTo);
   const fs = hasDate ? getFilteredStats(post.all_stats ?? [], dateFrom, dateTo) : (post.all_stats ?? []);
-  const s = fs.length > 0 ? fs[fs.length - 1] : (hasDate ? null : post.latest_stats);
-  const prev = hasDate ? (fs.length > 1 ? fs[fs.length - 2] : null) : post.prev_stats;
+  // 배너는 조회수가 아니라 도달수가 정본이다. 모니터링이 만든 후속 빈 행(play_collected=false,
+  // reach=null)을 최신값으로 고르면 실제 도달수가 0으로 보이므로, 범위 안의 마지막 유효 도달수만 고른다.
+  // 날짜 필터 중에는 범위 밖 값을 폴백하지 않는 기존 불변식을 그대로 지킨다.
+  const isBanner = isBannerChannel(post.channel_type, post.posted_at);
+  const candidates = isBanner ? fs.filter(stat => {
+    const metric = bannerDailyMetric(stat);
+    return metric != null && metric > 0;
+  }) : fs;
+  const s = candidates.length > 0 ? candidates[candidates.length - 1] : (hasDate || isBanner ? null : post.latest_stats);
+  const prev = isBanner
+    ? (candidates.length > 1 ? candidates[candidates.length - 2] : null)
+    : (hasDate ? (fs.length > 1 ? fs[fs.length - 2] : null) : post.prev_stats);
   return { s, prev };
 }
 
@@ -294,7 +304,11 @@ export function getCategoryLabel(val: string | null | undefined): string {
 //   직접 참조가 저장 변경 후 도달수 열을 '—'로 만든 회귀 재발 방지).
 export function bannerDailyMetric(s: DailyStats | null | undefined): number | null {
   if (!s) return null;
-  return s.reach_count ?? s.play_count ?? null;
+  if (s.reach_count != null) return s.reach_count;
+  // 배너의 play_count가 mono 보정으로 이어받은 값이면 실측 도달수가 아니다. 레거시 실측(play_collected가
+  // true/미기록)만 도달수 폴백으로 인정하고, 명시적 미수집 행은 비운다.
+  if (s.play_collected === false) return null;
+  return s.play_count ?? null;
 }
 
 export function safeIncrement(allStats: DailyStats[], s: DailyStats | null | undefined, isBanner: boolean, postedAt?: string | null): number | null {

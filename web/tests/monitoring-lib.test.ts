@@ -85,9 +85,29 @@ test("bannerDailyMetric: reach 우선, 없으면 play 폴백, 둘 다 없으면 
   assert.equal(bannerDailyMetric({ measured_at: "d", play_count: 100, reach_count: 3795, likes_count: null, comments_count: null }), 3795); // 이관 완료 행
   assert.equal(bannerDailyMetric({ measured_at: "d", play_count: 31000, reach_count: null, likes_count: null, comments_count: null }), 31000); // 미이관 레거시 → play 폴백
   assert.equal(bannerDailyMetric({ measured_at: "d", play_count: null, reach_count: 73757, likes_count: null, comments_count: null }), 73757); // 백필 행(play=null)
+  assert.equal(bannerDailyMetric({ measured_at: "d", play_count: 73757, reach_count: null, likes_count: null, comments_count: null, play_collected: false }), null); // mono 이어받기는 도달수 아님
   assert.equal(bannerDailyMetric({ measured_at: "d", play_count: null, reach_count: null, likes_count: null, comments_count: null }), null);
   assert.equal(bannerDailyMetric(null), null);
   assert.equal(bannerDailyMetric(undefined), null);
+});
+
+test("pickRangeStats: 배너는 후속 미수집 행이 아니라 마지막 유효 도달수를 표시", () => {
+  const stats = [
+    { measured_at: "2026-08-10", play_count: null, reach_count: 74236, likes_count: null, comments_count: null, play_collected: false },
+    { measured_at: "2026-08-11", play_count: 0, reach_count: null, likes_count: null, comments_count: null, play_collected: false },
+    { measured_at: "2026-08-12", play_count: 0, reach_count: null, likes_count: null, comments_count: null, play_collected: false },
+  ];
+  const post = {
+    id: "banner", url: "https://www.instagram.com/p/X/", posted_at: "2026-08-10",
+    product_name: null, project_name: null, asset_name: null, creator: null, planner: null,
+    account_name: "millionego", company_name: null, channel_type: "협찬 (파워채널/매거진 배너)",
+    cost: null, reach_count: null, notes: null, content_summary: null, created_at: "2026-08-10", ended_at: null,
+    influencers: null, latest_stats: stats[2], prev_stats: stats[1], all_stats: stats,
+  };
+
+  assert.equal(pickRangeStats(post, "", "").s?.reach_count, 74236);
+  assert.equal(pickRangeStats(post, "2026-08-10", "2026-08-10").s?.reach_count, 74236);
+  assert.equal(pickRangeStats(post, "2026-08-11", "2026-08-12").s, null); // 범위 밖 8/10 폴백 금지
 });
 
 test("assetNameOf: asset_name이 정본이고 project_name은 legacy 폴백", () => {
