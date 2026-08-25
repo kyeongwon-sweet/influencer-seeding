@@ -75,6 +75,22 @@ test("company pollution repair is limited to 313 URL-keyed cells in company colu
   assert.doesNotMatch(body, /deleteRow|deleteRows|insertRows|clearContent/);
 });
 
+test("magazine carousel banner repair is four-post, URL-keyed, and preserves H/I", () => {
+  const start = appsScript.indexOf("function repairMagazineCarouselBanner20260825(payload)");
+  const body = appsScript.slice(start);
+  assert.notEqual(start, -1);
+  assert.match(body, /magazine-carousel-banner-2026-08-25/);
+  assert.match(body, /const TARGETS = \[/);
+  assert.match(body, /TARGETS\.length/);
+  assert.match(body, /linkKey_\(row\[fieldCols\.url - 1\]\)/);
+  assert.match(body, /_codex_magazine_banner_backup_20260825/);
+  assert.match(body, /banner_reach_inserted !== TARGETS\.length/);
+  assert.match(body, /h_formula:\s*found\.formulas\[hCol - 1\]/);
+  assert.match(body, /i_formula:\s*found\.formulas\[iCol - 1\]/);
+  assert.match(body, /조회수·누적·증분 셀이 바뀌어 중단했습니다/);
+  assert.doesNotMatch(body, /deleteRow|deleteRows|insertRows|clearContent/);
+});
+
 test("Apps Script morning audit fallback covers formula and creator audits at 09:40", () => {
   assert.match(appsScript, /ENSURE_DAILY_AUDITS_URL:\s*"https:\/\/influencer-seeding-mu\.vercel\.app\/api\/ops\/ensure-daily-audits"/);
   assert.match(appsScript, /function ensureDailyAudits\(\)/);

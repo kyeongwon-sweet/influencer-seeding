@@ -54,7 +54,7 @@ const CONFIG = {
 // 왜: 라이브 .gs는 git 밖(수동 붙여넣기 배포)이라 stale 베이스 붙여넣기로 패치가 조용히
 // 되돌아가도 흔적이 없다(2026-07-27 배너 스킵 잔존 사고 — "반영 완료" 기록과 라이브 실물 불일치).
 // 규약: importStats 관련 라이브 반영 때마다 이 값과 서버 기대값을 같은 커밋에서 함께 올린다(계약테스트로 짝 강제).
-const IMPORTSTATS_CLIENT_VERSION = "2026-08-03-import-source-v2";
+const IMPORTSTATS_CLIENT_VERSION = "2026-08-25-banner-reclass-v1";
 
 // 헤더명(공백 제거·소문자) → API 필드 매핑
 const FIELD_BY_HEADER = {
@@ -3911,4 +3911,177 @@ function showToast(msg) {
 `).setWidth(400).setHeight(580);
 
   SpreadsheetApp.getUi().showModalDialog(html, '배너 인사이트 요청');
+}
+
+// 2026-08-25 영상 포함 매거진 캐러셀 4건을 명시적 배너(도달수)로 전환한다.
+// Script Execution API 전용. URL·계정·게시일·8/10 값·행 수를 모두 확인하고 D열만 바꾼 뒤,
+// 같은 4건만 bulk + stats-import로 전송한다. 행번호를 소스로 쓰지 않아 정렬·행삽입에도 안전하다.
+function repairMagazineCarouselBanner20260825(payload) {
+  const SIGNATURE = "magazine-carousel-banner-2026-08-25";
+  const EXPECTED_SHEET_ID = "10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak";
+  const MEASURED_AT = "2026-08-10";
+  const OLD_TYPE = "협찬 (파워채널/매거진)";
+  const NEW_TYPE = "협찬 (파워채널/매거진 배너)";
+  const BACKUP_SHEET_NAME = "_codex_magazine_banner_backup_20260825";
+  const TARGETS = [
+    { key: "ig:DbutARtkWS8", account: "오늘의 메뉴", posted_at: "2026-08-07", value: 45795 },
+    { key: "ig:Dbu3SZMEkue", account: "millionego", posted_at: "2026-08-07", value: 74236 },
+    { key: "ig:DbxEAhCE2vR", account: "띵크서울", posted_at: "2026-08-08", value: 27438 },
+    { key: "ig:Db0ERW8Gqsr", account: "요매거진", posted_at: "2026-08-09", value: 66920 },
+  ];
+  const normalizeText = value => String(value == null ? "" : value).trim();
+  const normalizeType = value => normalizeText(value).replace(/\s+\(/g, "(");
+  const normalizeAccount = value => normalizeText(value).toLowerCase().replace(/[\s._·-]/g, "");
+
+  if (!payload || payload.signature !== SIGNATURE) throw new Error("매거진 배너 전환 서명이 올바르지 않습니다.");
+  if (payload.apply !== true && payload.apply !== false) throw new Error("apply는 true/false여야 합니다.");
+
+  const sheet = getSheet_();
+  const ss = sheet.getParent();
+  if (ss.getId() !== EXPECTED_SHEET_ID) throw new Error("매거진 배너 전환 대상 스프레드시트가 아닙니다.");
+  const fieldCols = buildFieldCols_(sheet);
+  if (!fieldCols.url || !fieldCols.channel_type || !fieldCols.account_name || !fieldCols.posted_at) {
+    throw new Error("업로드일/게시물URL/채널명/채널분류 헤더가 없습니다.");
+  }
+  const hCol = findHeaderCol_(sheet, ["누적 조회수", "누적조회수"]);
+  const iCol = findHeaderCol_(sheet, ["증분값", "증분"]);
+  if (!hCol || !iCol) throw new Error("누적 조회수/증분값 헤더가 없습니다.");
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+  const dateMatches = [];
+  for (let col = iCol + 1; col <= lastCol; col++) {
+    const date = dateFromHeaderValue_(headers[col - 1], CONFIG.STATS_START_YEAR);
+    if (date && Utilities.formatDate(date, CONFIG.KST_TIMEZONE, "yyyy-MM-dd") === MEASURED_AT) dateMatches.push(col);
+  }
+  if (dateMatches.length !== 1) throw new Error(`8/10 날짜 열이 유일하지 않습니다. count=${dateMatches.length}`);
+  const dateCol = dateMatches[0];
+
+  function readTargets_() {
+    const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, lastCol).getValues();
+    const formulas = sheet.getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, lastCol).getFormulas();
+    const byKey = {};
+    values.forEach((row, index) => {
+      const key = linkKey_(row[fieldCols.url - 1]);
+      if (!TARGETS.some(target => target.key === key)) return;
+      if (!byKey[key]) byKey[key] = [];
+      byKey[key].push({ row: CONFIG.DATA_START_ROW + index, values: row, formulas: formulas[index] });
+    });
+    return TARGETS.map(target => {
+      const matches = byKey[target.key] || [];
+      if (matches.length !== 1) throw new Error(`대상 URL 매칭이 유일하지 않습니다. key=${target.key}, count=${matches.length}`);
+      const found = matches[0];
+      const account = normalizeText(found.values[fieldCols.account_name - 1]);
+      const postedAt = toDateStr_(found.values[fieldCols.posted_at - 1]);
+      const currentType = normalizeText(found.values[fieldCols.channel_type - 1]);
+      const metric = toNumber_(found.values[dateCol - 1]);
+      if (normalizeAccount(account) !== normalizeAccount(target.account)) throw new Error(`채널명이 다릅니다. key=${target.key}`);
+      if (postedAt !== target.posted_at) throw new Error(`게시일이 다릅니다. key=${target.key}, actual=${postedAt}`);
+      if (normalizeType(currentType) !== normalizeType(OLD_TYPE) && normalizeType(currentType) !== normalizeType(NEW_TYPE)) {
+        throw new Error(`채널분류가 예상 범위를 벗어났습니다. key=${target.key}, actual=${currentType}`);
+      }
+      if (metric !== target.value) throw new Error(`8/10 값이 다릅니다. key=${target.key}, actual=${metric}`);
+      const post = { url: normalizeText(found.values[fieldCols.url - 1]), channel_type: NEW_TYPE };
+      if (fieldCols.posted_at) post.posted_at = postedAt;
+      if (fieldCols.account_name) post.account_name = account || null;
+      if (fieldCols.company_name) post.company_name = normalizeText(found.values[fieldCols.company_name - 1]) || null;
+      if (fieldCols.content_summary) post.content_summary = normalizeText(found.values[fieldCols.content_summary - 1]) || null;
+      if (fieldCols.asset_name) post.asset_name = normalizeText(found.values[fieldCols.asset_name - 1]) || null;
+      if (fieldCols.project_name) post.project_name = normalizeText(found.values[fieldCols.project_name - 1]) || null;
+      if (fieldCols.product_name) post.product_name = normalizeText(found.values[fieldCols.product_name - 1]) || null;
+      if (fieldCols.planner) post.planner = normalizeText(found.values[fieldCols.planner - 1]) || null;
+      if (fieldCols.creator) post.creator = normalizeText(found.values[fieldCols.creator - 1]) || null;
+      if (fieldCols.cost) post.cost = toNumber_(found.values[fieldCols.cost - 1]);
+      return {
+        key: target.key, row: found.row, url: post.url, account_name: account, posted_at: postedAt,
+        old_type: currentType, new_type: NEW_TYPE, measured_at: MEASURED_AT, value: metric,
+        h_value: found.values[hCol - 1], i_value: found.values[iCol - 1],
+        h_formula: found.formulas[hCol - 1], i_formula: found.formulas[iCol - 1], post: post,
+      };
+    });
+  }
+
+  const before = readTargets_();
+  const dryRun = {
+    ok: true, mode: payload.apply ? "apply-ready" : "dry-run", matched: before.length,
+    changes: before.filter(item => normalizeType(item.old_type) !== normalizeType(NEW_TYPE)).length,
+    channel_type_column: colLetter_(fieldCols.channel_type), metric_column: colLetter_(dateCol), measured_at: MEASURED_AT,
+    targets: before.map(item => ({
+      key: item.key, row: item.row, url: item.url, account_name: item.account_name, posted_at: item.posted_at,
+      old_type: item.old_type, new_type: item.new_type, value: item.value, h_value: item.h_value, i_value: item.i_value,
+      h_formula: item.h_formula, i_formula: item.i_formula,
+    })),
+  };
+  if (!payload.apply) return dryRun;
+
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(30000);
+  try {
+    assertRowCountStable_(sheet, lastRow, "repairMagazineCarouselBanner20260825");
+    const locked = readTargets_();
+    let backup = ss.getSheetByName(BACKUP_SHEET_NAME);
+    if (!backup) {
+      backup = ss.insertSheet(BACKUP_SHEET_NAME);
+      const backupValues = [["signature", "sheet_row", "url", "account_name", "posted_at", "old_type", "new_type", "measured_at", "value", "h_value", "i_value", "h_formula", "i_formula"]]
+        .concat(locked.map(item => [SIGNATURE, item.row, item.url, item.account_name, item.posted_at, item.old_type, item.new_type, item.measured_at, item.value, item.h_value, item.i_value, item.h_formula, item.i_formula]));
+      backup.getRange(1, 1, backupValues.length, backupValues[0].length).setValues(backupValues);
+      backup.hideSheet();
+    } else if (backup.getLastRow() !== TARGETS.length + 1 || normalizeText(backup.getRange(2, 1).getValue()) !== SIGNATURE) {
+      throw new Error("기존 매거진 배너 백업 탭이 예상과 다릅니다.");
+    }
+
+    locked.forEach(item => {
+      const cell = sheet.getRange(item.row, fieldCols.channel_type);
+      const rule = cell.getDataValidation();
+      if (rule && rule.getCriteriaType() === SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST) {
+        const args = rule.getCriteriaValues();
+        const choices = (args[0] || []).slice();
+        if (choices.indexOf(NEW_TYPE) === -1) choices.push(NEW_TYPE);
+        cell.setDataValidation(rule.copy().withCriteria(SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST, [choices, args[1]]).build());
+      }
+      cell.setValue(NEW_TYPE);
+    });
+    SpreadsheetApp.flush();
+    const afterSheet = readTargets_();
+    afterSheet.forEach((item, index) => {
+      if (normalizeType(item.old_type) !== normalizeType(NEW_TYPE)) throw new Error(`채널분류 저장 검증 실패: ${item.key}`);
+      if (item.value !== before[index].value || item.h_formula !== before[index].h_formula || item.i_formula !== before[index].i_formula) {
+        throw new Error(`조회수·누적·증분 셀이 바뀌어 중단했습니다: ${item.key}`);
+      }
+    });
+
+    const posts = afterSheet.map(item => item.post);
+    const bulkResponse = UrlFetchApp.fetch(CONFIG.API_URL, {
+      method: "post", contentType: "application/json", headers: authHeaders_(),
+      payload: JSON.stringify(posts), muteHttpExceptions: true,
+    });
+    const bulkBody = bulkResponse.getContentText();
+    if (bulkResponse.getResponseCode() !== 200) throw new Error(`bulk API ${bulkResponse.getResponseCode()}: ${bulkBody}`);
+    const bulk = JSON.parse(bulkBody);
+    if (!bulk.ok || bulk.upserted !== TARGETS.length || bulk.locked_drift) throw new Error(`bulk 정합 실패: ${bulkBody}`);
+
+    const statsResponse = UrlFetchApp.fetch(CONFIG.STATS_API_URL, {
+      method: "post", contentType: "application/json", headers: authHeaders_(),
+      payload: JSON.stringify({
+        client_version: IMPORTSTATS_CLIENT_VERSION, source: "manual_sheet", posts: posts,
+        stats: afterSheet.map(item => ({ url: item.url, measured_at: MEASURED_AT, play_count: item.value })),
+      }),
+      muteHttpExceptions: true,
+    });
+    const statsBody = statsResponse.getContentText();
+    if (statsResponse.getResponseCode() !== 200) throw new Error(`stats API ${statsResponse.getResponseCode()}: ${statsBody}`);
+    const stats = JSON.parse(statsBody);
+    if (!stats.ok || stats.matched_urls !== TARGETS.length || stats.missing_urls !== 0 || stats.banner_reach_inserted !== TARGETS.length || stats.inserted !== 0) {
+      throw new Error(`도달수 전환 정합 실패: ${statsBody}`);
+    }
+    return {
+      ok: true, mode: "apply", matched: TARGETS.length, written: dryRun.changes, verified: afterSheet.length,
+      backup_sheet: BACKUP_SHEET_NAME,
+      bulk: { upserted: bulk.upserted, meta_filled: bulk.meta_filled, locked_drift: bulk.locked_drift },
+      stats: { inserted: stats.inserted, banner_reach_inserted: stats.banner_reach_inserted, matched_urls: stats.matched_urls },
+      targets: afterSheet.map(item => ({ key: item.key, row: item.row, url: item.url, value: item.value })),
+    };
+  } finally {
+    lock.releaseLock();
+  }
 }

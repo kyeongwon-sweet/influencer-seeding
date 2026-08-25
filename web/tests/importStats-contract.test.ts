@@ -77,3 +77,9 @@ test("stats-import: 배너는 identity key로 분리하고 급변은 직전 자�
   assert.match(route, /previous_auto: previous\.play_count/);
   assert.match(route, /\.order\("post_id", \{ ascending: true \}\)[\s\S]*?\.order\("measured_at", \{ ascending: true \}\)[\s\S]*?\.range\(/);
 });
+
+test("stats-import: 시트의 배너 재분류가 즉시 우선되고 조회수 잔재를 남기지 않는다", () => {
+  assert.match(route, /for \(const \[key, meta\] of postByUrl\) \{\s*isBannerByKey\.set\(key,/);
+  assert.doesNotMatch(route, /if \(!isBannerByKey\.has\(key\)\)/);
+  assert.match(route, /play_count: null, reach_count: it\.play_count/);
+});

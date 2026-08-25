@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
   // stale 베이스 붙여넣기로 패치가 조용히 되돌아가도 흔적이 없다(2026-07-27 배너 스킵 잔존 사고).
   // importStats가 보고하는 client_version이 기대값과 다르면(구버전 잔존/사본 프로젝트 오저장/배포 누락)
   // 임포트 때마다 Slack 경고를 울려 드리프트를 그날 안에 드러낸다. 처리 자체는 막지 않는다(경고만).
-  const EXPECTED_IMPORTSTATS_CLIENT = "2026-08-03-import-source-v2";
+  const EXPECTED_IMPORTSTATS_CLIENT = "2026-08-25-banner-reclass-v1";
   const clientVersion = typeof body?.client_version === "string" ? body.client_version : null;
   const importSource = body?.source === "daily_auto" ? "daily_auto" : "manual_sheet";
   const isManualImport = importSource === "manual_sheet";
@@ -325,8 +325,10 @@ export async function POST(req: NextRequest) {
   for (const [url, ex] of existingByUrl) {
     isBannerByKey.set(postIdentityKey(url) ?? url, isBannerChannel(ex.channel_type, ex.posted_at));
   }
+  // 시트가 정본이다. 같은 요청에서 채널분류를 배너로 바로잡은 경우 DB의 이전 분류보다
+  // 시트 메타를 우선해야, 그 요청의 날짜값부터 reach_count로 들어간다.
   for (const [key, meta] of postByUrl) {
-    if (!isBannerByKey.has(key)) isBannerByKey.set(key, isBannerChannel(meta.channel_type, meta.posted_at));
+    isBannerByKey.set(key, isBannerChannel(meta.channel_type, meta.posted_at));
   }
 
   // 3) 게시물 매칭 (미등록 URL은 건너뜀)
@@ -339,7 +341,7 @@ export async function POST(req: NextRequest) {
   // 자정 자동수집·리포트의 T-1 정책은 별도 경로에서 유지하며, 미래 날짜만 차단한다.
   const maxStatsDate = maxDateKST();
   let incoming: GuardInput[] = [];
-  const bannerRows: Array<{ post_id: string; measured_at: string; reach_count: number; manual: boolean }> = [];
+  const bannerRows: Array<{ post_id: string; measured_at: string; play_count: null; reach_count: number; manual: boolean }> = [];
   const postIdSet = new Set<string>();
   for (const it of items) {
     const pid = idByKey.get(it.key) ?? idByUrl.get(it.url);
@@ -359,7 +361,7 @@ export async function POST(req: NextRequest) {
     if (endedAt && measuredDate > endedAt) { postEnded.push({ url: it.url, date: it.measured_at, ended_at: endedAt }); continue; }
     // 배너: reach_count로 저장(입력값=도달수). 비배너: 기존대로 play_count(누적 mono가드 대상).
     if (isBannerByKey.get(it.key)) {
-      bannerRows.push({ post_id: pid, measured_at: it.measured_at, reach_count: it.play_count, manual: isManualImport });
+      bannerRows.push({ post_id: pid, measured_at: it.measured_at, play_count: null, reach_count: it.play_count, manual: isManualImport });
     } else {
       incoming.push({ post_id: pid, measured_at: it.measured_at, play_count: it.play_count });
     }
@@ -646,7 +648,7 @@ export async function POST(req: NextRequest) {
     inserted = (data ?? []).length;
   }
 
-  // 배너 도달수 입력분 upsert (reach_count). play_count는 안 건드림(배너는 조회수 없음).
+  // 배너 도달수 입력분 upsert. 배너는 모두 도달수이므로 과거 오분류 play_count도 같은 행에서 비운다.
   let bannerInserted = 0;
   if (bannerRowsWritable.length > 0) {
     const { data, error } = await supabase

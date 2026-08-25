@@ -7,6 +7,8 @@ test("recognizes explicit banners and applies the magazine posted-date boundary"
   assert.equal(isBannerChannel("바이럴 (배너)"), true);
   assert.equal(isBannerChannel("Viral Banner"), true);
   assert.equal(isBannerChannel("바이럴 (영상)"), false);
+  // 게시일 경계 이전이라도 명시적으로 배너 분류한 영상 포함 캐러셀은 도달수다.
+  assert.equal(isBannerChannel("협찬 (파워채널/매거진 배너)", "2026-08-07"), true);
   assert.equal(isBannerChannel("협찬 (파워채널/매거진)", "2026-06-30"), false);
   assert.equal(isBannerChannel("협찬 (파워채널/매거진)", "2026-08-18"), true);
   assert.equal(isBannerChannel("협찬 (파워채널/매거진)"), false);
