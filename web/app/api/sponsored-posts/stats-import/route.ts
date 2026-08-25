@@ -650,13 +650,27 @@ export async function POST(req: NextRequest) {
 
   // 배너 도달수 입력분 upsert. 배너는 모두 도달수이므로 과거 오분류 play_count도 같은 행에서 비운다.
   let bannerInserted = 0;
+  const bannerVerified: Array<{
+    post_id: string;
+    measured_at: string;
+    play_count: number | null;
+    reach_count: number | null;
+  }> = [];
   if (bannerRowsWritable.length > 0) {
     const { data, error } = await supabase
       .from("post_daily_stats")
       .upsert(bannerRowsWritable, { onConflict: "post_id,measured_at" })
-      .select();
+      .select("post_id, measured_at, play_count, reach_count");
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     bannerInserted = (data ?? []).length;
+    for (const row of data ?? []) {
+      bannerVerified.push({
+        post_id: String(row.post_id),
+        measured_at: String(row.measured_at).slice(0, 10),
+        play_count: row.play_count == null ? null : Number(row.play_count),
+        reach_count: row.reach_count == null ? null : Number(row.reach_count),
+      });
+    }
   }
 
   // 복사 의심분 → 여믄봇 Slack 경고. 출처에 따라 수기/자동 플래그를 분리한다.
@@ -701,6 +715,10 @@ export async function POST(req: NextRequest) {
     spike_suspected_warned: spikeSuspected.length,
     spike_suspected_sample: spikeSuspected.slice(0, 10),
     banner_reach_inserted: bannerInserted,
+    // 완료 보고가 단순 영향 행 수에 그치지 않도록, DB가 실제로 반환한 저장 형태를 함께 남긴다.
+    // Apps Script 수술 함수가 play=null + reach=입력값을 독립 검증하는 근거로 사용한다.
+    banner_reach_verified: bannerVerified.length,
+    banner_reach_verified_sample: bannerVerified.slice(0, 10),
     source: importSource,
     manual: isManualImport,
     preserved_manual: preservedManual.length,

@@ -4188,14 +4188,26 @@ function repairMagazineCarouselBanner20260825(payload) {
     const statsBody = statsResponse.getContentText();
     if (statsResponse.getResponseCode() !== 200) throw new Error(`stats API ${statsResponse.getResponseCode()}: ${statsBody}`);
     const stats = JSON.parse(statsBody);
-    if (!stats.ok || stats.matched_urls !== TARGETS.length || stats.missing_urls !== 0 || stats.banner_reach_inserted !== TARGETS.length || stats.inserted !== 0) {
+    const verifiedRows = Array.isArray(stats.banner_reach_verified_sample) ? stats.banner_reach_verified_sample : [];
+    const expectedReach = TARGETS.map(target => target.value).sort((a, b) => a - b);
+    const actualReach = verifiedRows.map(row => Number(row.reach_count)).sort((a, b) => a - b);
+    const verifiedShape = verifiedRows.length === TARGETS.length && verifiedRows.every(row =>
+      row.play_count === null && row.measured_at === MEASURED_AT && Number(row.reach_count) > 0
+    ) && JSON.stringify(actualReach) === JSON.stringify(expectedReach);
+    if (!stats.ok || stats.matched_urls !== TARGETS.length || stats.missing_urls !== 0 || stats.banner_reach_inserted !== TARGETS.length || stats.banner_reach_verified !== TARGETS.length || !verifiedShape || stats.inserted !== 0) {
       throw new Error(`도달수 전환 정합 실패: ${statsBody}`);
     }
     return {
       ok: true, mode: "apply", matched: TARGETS.length, written: dryRun.changes, verified: afterSheet.length,
       backup_sheet: BACKUP_SHEET_NAME,
       bulk: { upserted: bulk.upserted, meta_filled: bulk.meta_filled, locked_drift: bulk.locked_drift },
-      stats: { inserted: stats.inserted, banner_reach_inserted: stats.banner_reach_inserted, matched_urls: stats.matched_urls },
+      stats: {
+        inserted: stats.inserted,
+        banner_reach_inserted: stats.banner_reach_inserted,
+        banner_reach_verified: stats.banner_reach_verified,
+        banner_reach_verified_sample: verifiedRows,
+        matched_urls: stats.matched_urls,
+      },
       targets: afterSheet.map(item => ({ key: item.key, row: item.row, url: item.url, value: item.value })),
     };
   } finally {

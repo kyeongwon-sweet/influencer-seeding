@@ -82,4 +82,6 @@ test("stats-import: 시트의 배너 재분류가 즉시 우선되고 조회수 
   assert.match(route, /for \(const \[key, meta\] of postByUrl\) \{\s*isBannerByKey\.set\(key,/);
   assert.doesNotMatch(route, /if \(!isBannerByKey\.has\(key\)\)/);
   assert.match(route, /play_count: null, reach_count: it\.play_count/);
+  assert.match(route, /select\("post_id, measured_at, play_count, reach_count"\)/);
+  assert.match(route, /banner_reach_verified_sample:\s*bannerVerified\.slice\(0, 10\)/);
 });

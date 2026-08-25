@@ -85,6 +85,8 @@ test("magazine carousel banner repair is four-post, URL-keyed, and preserves H/I
   assert.match(body, /linkKey_\(row\[fieldCols\.url - 1\]\)/);
   assert.match(body, /_codex_magazine_banner_backup_20260825/);
   assert.match(body, /banner_reach_inserted !== TARGETS\.length/);
+  assert.match(body, /banner_reach_verified !== TARGETS\.length/);
+  assert.match(body, /row\.play_count === null/);
   assert.match(body, /h_formula:\s*found\.formulas\[hCol - 1\]/);
   assert.match(body, /i_formula:\s*found\.formulas\[iCol - 1\]/);
   assert.match(body, /조회수·누적·증분 셀이 바뀌어 중단했습니다/);
