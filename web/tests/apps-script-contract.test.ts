@@ -366,6 +366,48 @@ test("new date columns receive real dates, display format, and input validation"
   assert.match(body, /new Date\(lastDate\.getTime\(\) \+ i \* 86400000\)/);
   assert.match(body, /setNumberFormat\(DATE_HEADER_FORMAT_\)/);
   assert.match(body, /applyDateInputValidation_\(sheet, lastDateCol \+ 1, insertedCount\)/);
+  assert.match(body, /repairStaleMetricFormulaRanges_\(sheet\)/);
+});
+
+test("stale metric formula ranges extend without overwriting manual or custom cells", () => {
+  const start = appsScript.indexOf("function repairStaleMetricFormulaRanges_(sheet)");
+  const end = appsScript.indexOf("function ensureNewRowsMetricFormulas_", start);
+  const body = appsScript.slice(start, end);
+  assert.notEqual(start, -1);
+  assert.match(body, /getFormulas\(\)/);
+  assert.match(body, /standardCumulativeFormulaEnd_\(formulas\[i\]\[0\], row, firstLetter\)/);
+  assert.match(body, /standardIncrementFormulaEnd_\(formulas\[i\]\[0\], row, firstLetter\)/);
+  assert.match(body, /metricColumnNumber_\(currentEnd\) < lastCol/);
+  assert.match(body, /writeColumnRuns_\(targetSheet, cumulativeCol, cumulativeEdits, lastRow\)/);
+  assert.match(body, /writeColumnRuns_\(targetSheet, incrementCol, incrementEdits, lastRow\)/);
+  assert.doesNotMatch(body, /clearContent\(/);
+  assert.doesNotMatch(body, /setValues\(out\)/);
+
+  const defsStart = appsScript.indexOf("function dailyAutoStageDefs_()");
+  const defsEnd = appsScript.indexOf("function runDailyAutoStage_", defsStart);
+  const defsBody = appsScript.slice(defsStart, defsEnd);
+  const refreshIdx = defsBody.indexOf('["refreshCumulativeViews", refreshCumulativeViews]');
+  const repairIdx = defsBody.indexOf('["repairMetricFormulaRanges"');
+  assert.notEqual(refreshIdx, -1);
+  assert.notEqual(repairIdx, -1);
+  assert.ok(refreshIdx < repairIdx, "H 수동값 보존 갱신 뒤 표준 H/I 끝열만 확장해야 함");
+
+  const helperStart = appsScript.indexOf("function metricCumulativeFormula_(");
+  const helperEnd = appsScript.indexOf("function repairStaleMetricFormulaRanges_", helperStart);
+  const helperSource = appsScript.slice(helperStart, helperEnd);
+  const helpers = Function(
+    helperSource
+      + "; return { metricCumulativeFormula_, metricIncrementFormula_, metricColumnNumber_,"
+      + " standardCumulativeFormulaEnd_, standardIncrementFormulaEnd_ };",
+  )();
+  const hDh = helpers.metricCumulativeFormula_(2764, "P", "DH");
+  const iDh = helpers.metricIncrementFormula_(2764, "P", "DH");
+  assert.equal(helpers.standardCumulativeFormulaEnd_(hDh, 2764, "P"), "DH");
+  assert.equal(helpers.standardIncrementFormulaEnd_(iDh, 2764, "P"), "DH");
+  assert.ok(helpers.metricColumnNumber_("DH") < helpers.metricColumnNumber_("DK"));
+  assert.equal(helpers.standardCumulativeFormulaEnd_("=MAX(P346:DH346)", 346, "P"), "");
+  assert.equal(helpers.standardIncrementFormulaEnd_('=""', 346, "P"), "");
+  assert.equal(helpers.standardIncrementFormulaEnd_("=IF($A346=\"x\",1,0)", 346, "P"), "");
 });
 
 test("overwriteViralHandles_ only touches viral account_name and self-heals daily via dailyAuto", () => {

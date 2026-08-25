@@ -1024,6 +1024,121 @@ function metricDateColumns_(sheet) {
   return cols;
 }
 
+function metricCumulativeFormula_(row, firstLetter, lastLetter) {
+  return "=IF(COUNT(" + firstLetter + row + ":" + lastLetter + row + ")=0,\"\",MAX(" + firstLetter + row + ":" + lastLetter + row + "))";
+}
+
+function metricIncrementFormula_(row, firstLetter, lastLetter) {
+  const rangeRef = "$" + firstLetter + row + ":$" + lastLetter + row;
+  const firstCellRef = "$" + firstLetter + row;
+  return "=IFERROR(LET(rng," + rangeRef
+    + ",cols,SEQUENCE(1,COLUMNS(rng),COLUMN(" + firstCellRef + "),1)"
+    + ",lastC,MAX(FILTER(cols,rng>0))"
+    + ",lastV,INDEX(rng,1,lastC-COLUMN(" + firstCellRef + ")+1)"
+    + ",prev,FILTER(rng,cols<lastC,rng>0)"
+    + ',IFERROR(MAX(0,lastV-MAX(prev)),lastV)),"")';
+}
+
+function metricFormulaText_(formula) {
+  return String(formula || "").replace(/\s+/g, "").toUpperCase();
+}
+
+function metricColumnNumber_(letter) {
+  const text = String(letter || "").toUpperCase();
+  let col = 0;
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code < 65 || code > 90) return 0;
+    col = col * 26 + code - 64;
+  }
+  return col;
+}
+
+function standardCumulativeFormulaEnd_(formula, row, firstLetter) {
+  const text = metricFormulaText_(formula);
+  const prefix = new RegExp(
+    "^=IF\\(COUNT\\(" + firstLetter + row + ":([A-Z]+)" + row + "\\)=0,"
+  );
+  const match = text.match(prefix);
+  if (!match) return "";
+  const endLetter = match[1];
+  return text === metricFormulaText_(metricCumulativeFormula_(row, firstLetter, endLetter))
+    ? endLetter
+    : "";
+}
+
+function standardIncrementFormulaEnd_(formula, row, firstLetter) {
+  const text = metricFormulaText_(formula);
+  const prefix = new RegExp(
+    "^=IFERROR\\(LET\\(RNG,\\$" + firstLetter + row + ":\\$([A-Z]+)" + row + ","
+  );
+  const match = text.match(prefix);
+  if (!match) return "";
+  const endLetter = match[1];
+  return text === metricFormulaText_(metricIncrementFormula_(row, firstLetter, endLetter))
+    ? endLetter
+    : "";
+}
+
+// 수동으로 우측 날짜열을 삽입하면 기존 행의 명시적 끝열은 자동 확장되지 않는다.
+// 표준 H/I 수식만 최신 날짜열로 늘리고, 수기값·종료 최종값·백로그(="")·미러링 수식은 보존한다.
+function repairStaleMetricFormulaRanges_(sheet) {
+  const targetSheet = sheet || getSheet_();
+  const dateCols = metricDateColumns_(targetSheet);
+  const lastRow = targetSheet.getLastRow();
+  const result = {
+    rows: Math.max(0, lastRow - CONFIG.DATA_START_ROW + 1),
+    first_col: null,
+    last_col: null,
+    cumulative: 0,
+    increment: 0,
+  };
+  if (!dateCols.length || result.rows === 0) return result;
+
+  const firstCol = Math.min.apply(null, dateCols.map(function(item) { return item.col; }));
+  const lastCol = Math.max.apply(null, dateCols.map(function(item) { return item.col; }));
+  const firstLetter = colLetter_(firstCol);
+  const lastLetter = colLetter_(lastCol);
+  const cumulativeCol = findHeaderCol_(targetSheet, ["누적 조회수", "누적조회수"]);
+  const incrementCol = getIncrementCol_(targetSheet);
+  result.first_col = firstLetter;
+  result.last_col = lastLetter;
+
+  const cumulativeEdits = [];
+  if (cumulativeCol) {
+    const formulas = targetSheet.getRange(CONFIG.DATA_START_ROW, cumulativeCol, result.rows, 1).getFormulas();
+    for (let i = 0; i < result.rows; i++) {
+      const row = CONFIG.DATA_START_ROW + i;
+      const currentEnd = standardCumulativeFormulaEnd_(formulas[i][0], row, firstLetter);
+      if (currentEnd && metricColumnNumber_(currentEnd) < lastCol) {
+        cumulativeEdits.push({ row: row, value: metricCumulativeFormula_(row, firstLetter, lastLetter) });
+      }
+    }
+  }
+
+  const incrementEdits = [];
+  if (incrementCol) {
+    const formulas = targetSheet.getRange(CONFIG.DATA_START_ROW, incrementCol, result.rows, 1).getFormulas();
+    for (let i = 0; i < result.rows; i++) {
+      const row = CONFIG.DATA_START_ROW + i;
+      const currentEnd = standardIncrementFormulaEnd_(formulas[i][0], row, firstLetter);
+      if (currentEnd && metricColumnNumber_(currentEnd) < lastCol) {
+        incrementEdits.push({ row: row, value: metricIncrementFormula_(row, firstLetter, lastLetter) });
+      }
+    }
+  }
+
+  result.cumulative = cumulativeCol
+    ? writeColumnRuns_(targetSheet, cumulativeCol, cumulativeEdits, lastRow)
+    : 0;
+  result.increment = incrementCol
+    ? writeColumnRuns_(targetSheet, incrementCol, incrementEdits, lastRow)
+    : 0;
+  if (result.cumulative || result.increment) SpreadsheetApp.flush();
+  Logger.log("metric_formula_range_repair " + JSON.stringify(result));
+  return result;
+}
+
 function ensureNewRowsMetricFormulas_(sheet, startRow, endRow) {
   if (!sheet || startRow > endRow) return { cumulative: 0, increment: 0 };
   const dateCols = metricDateColumns_(sheet);
@@ -1485,6 +1600,7 @@ function dailyAutoStageDefs_() {
     ["exportStats", exportStats],
     ["syncStatus", syncStatus],
     ["refreshCumulativeViews", refreshCumulativeViews],
+    ["repairMetricFormulaRanges", function() { return repairStaleMetricFormulaRanges_(getSheet_()); }],
     ["syncCreators", syncCreators],
     ["overwriteViralHandles", function() { return overwriteViralHandles_(true); }],
   ];
@@ -3602,6 +3718,7 @@ function fillInsertedDateHeadersOnChange_(e) {
   if (typeof styleLinkedSheetDateColumns_ === "function") {
     styleLinkedSheetDateColumns_(sheet, lastDateCol + 1, insertedCount);
   }
+  repairStaleMetricFormulaRanges_(sheet);
 }
 
 function fillInsertedDateHeadersOnChange(e) {
