@@ -14,12 +14,12 @@
 - **검증:** web 테스트 **327/327**, Apps Script syntax·prepare, lint 오류 0(기존 경고 15), webpack production build 통과. 배포 후 수식감사 [`32795830375`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/32795830375): `metricRange=P:DK`, H 오류셀 0·데이터有빈칸 0·형태오류 0, I 오류셀 0·불일치 0·형태오류 0. 따라서 신고 행 2764도 DH 뒤 DI/DJ 값을 포함하는 정상 범위로 복구됐다. 남은 stale 4건은 매거진 도달수 분류 건으로 별개다.
 - **↔ 내 195/225 진단과 동일 건:** 아래 "🟡 195(H)/225(I)" 블록이 이 수정으로 **해소**됨(형태오류 0). 나의 "오탐 상당수 의심"은 방향이 맞았고(값오류 0·특수수식 편중), Codex가 표준 생성식과 완전일치하는 짧은 끝열만 복구하고 미러/커스텀은 보존해 정리.
 
-## 🟢 2026-08-25 [Claude 완료·코드·**프로덕션 배포 대기**] 모니터링 도달수/도달당비용 정렬 버그 수정 (`web/app/monitoring/page.tsx`)
+## ✅ 2026-08-25 [Claude 코드·Codex 라이브검증 완료] 모니터링 도달수/도달당비용 정렬 버그 수정 (`dfe812a`)
 - **증상(사용자 보고):** 소재명에 특정 키워드 검색 시 도달수 정렬이 안 됨.
 - **근본원인:** 표시 셀(`PostsTable.tsx:510`)은 **배너=`bannerDailyMetric(s)`(일별 reach_count)**, 그 외=`effectiveReach`로 도달수를 보여주는데, **정렬 키(`page.tsx:957`)는 배너 분기 없이 `effectiveReach(post.reach_count, play)`만** 사용. 배너는 post레벨 `reach_count`가 없어 `effectiveReach=null→-1`이라 전 배너 정렬 키가 동일. 소재명 키워드로 배너 소재만 남으면 목록 전체가 -1 → 정렬이 죽음. `도달당비용`도 같은 결함.
 - **수정:** 정렬 키를 표시값과 동일 규칙으로 변경 — `isBannerChannel ? bannerDailyMetric(sa) : effectiveReach(a.reach_count, sa?.play_count)`. `sa`는 이미 표시와 같은 `pickRangeStats` 결과라 표시값과 정확히 일치. 도달수·도달당비용 두 case 모두 적용.
-- **검증:** `tsc --noEmit` 통과(exit 0). page.tsx만 변경(‧gs·apps-script-contract.test.ts 미커밋본은 타 세션 WIP라 무접촉).
-- **⚠️ 배포:** main 커밋만으론 `-mu` 라이브 반영 안 됨(수동 CLI 배포=Codex 소유, 게다가 `web/tests/…` dirty). **프로덕션 배포 필요** — Codex가 하거나 사용자 승인 후 진행.
+- **코드 검증:** `tsc --noEmit`·pre-push 타입체크 통과. `page.tsx` 정렬 키 외 데이터 쓰기·DB·시트 변경 없음.
+- **프로덕션 확인:** `-mu`가 2026-08-25 10:15 KST deployment `dpl_8gVRF9Qwji5oWpt1rs9B7LsZiEtb`로 이미 갱신되어 중복 재배포하지 않았다. 로그인 실화면에서 `바이럴 (배너)`만 필터링하고 8/10 데이터를 선택해 확인: 도달수 내림차순 **633,410 → 615,625 → 400,001 → 311,740…**, 도달당비용 오름차순 **0.00 → 0.16 → 0.31 → 0.38…**로 화면 표시값과 정렬 순서가 일치한다.
 
 ## ✅ 2026-08-24 [Claude 완료·DB] 값정체 실측 — 삭제 6건 종료 + Sidecar 5건 생존 유지
 - **배경:** Codex 감사가 남긴 "값 정체 11~13건"(수식과 무관, 수집끊김/플래토/삭제 의심)을 실측으로 삭제 vs 생존 구분.
