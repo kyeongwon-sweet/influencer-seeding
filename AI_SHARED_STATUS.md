@@ -12,6 +12,29 @@
 - **보존 가드:** 수식이 없는 H 수기값·종료 최종값(`valueOnly`), `=""` 백로그, 미러링/커스텀 수식은 **표준 생성식과 완전히 일치하지 않으면 건드리지 않는다.** 날짜값·posted_at·통계 이력·H/I 숫자 직접수정 없음. 이나 346행 같은 특수수식도 대상 밖으로 계약 테스트 고정.
 - **동시작업 안전:** 라이브 pull이 원격 동시작업 `ef93663`과 완전일치한 뒤 push해, 라이브에 추가된 차이는 이 수식 보강뿐이다. clasp fresh-pull → push → 재pull 결과 `[APPS_SCRIPT_PUSH_VERIFIED]` 통과(09:59 KST).
 - **검증:** web 테스트 **327/327**, Apps Script syntax·prepare, lint 오류 0(기존 경고 15), webpack production build 통과. 배포 후 수식감사 [`32795830375`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/32795830375): `metricRange=P:DK`, H 오류셀 0·데이터有빈칸 0·형태오류 0, I 오류셀 0·불일치 0·형태오류 0. 따라서 신고 행 2764도 DH 뒤 DI/DJ 값을 포함하는 정상 범위로 복구됐다. 남은 stale 4건은 매거진 도달수 분류 건으로 별개다.
+- **↔ 내 195/225 진단과 동일 건:** 아래 "🟡 195(H)/225(I)" 블록이 이 수정으로 **해소**됨(형태오류 0). 나의 "오탐 상당수 의심"은 방향이 맞았고(값오류 0·특수수식 편중), Codex가 표준 생성식과 완전일치하는 짧은 끝열만 복구하고 미러/커스텀은 보존해 정리.
+
+## 🟢 2026-08-25 [Claude 완료·코드·**프로덕션 배포 대기**] 모니터링 도달수/도달당비용 정렬 버그 수정 (`web/app/monitoring/page.tsx`)
+- **증상(사용자 보고):** 소재명에 특정 키워드 검색 시 도달수 정렬이 안 됨.
+- **근본원인:** 표시 셀(`PostsTable.tsx:510`)은 **배너=`bannerDailyMetric(s)`(일별 reach_count)**, 그 외=`effectiveReach`로 도달수를 보여주는데, **정렬 키(`page.tsx:957`)는 배너 분기 없이 `effectiveReach(post.reach_count, play)`만** 사용. 배너는 post레벨 `reach_count`가 없어 `effectiveReach=null→-1`이라 전 배너 정렬 키가 동일. 소재명 키워드로 배너 소재만 남으면 목록 전체가 -1 → 정렬이 죽음. `도달당비용`도 같은 결함.
+- **수정:** 정렬 키를 표시값과 동일 규칙으로 변경 — `isBannerChannel ? bannerDailyMetric(sa) : effectiveReach(a.reach_count, sa?.play_count)`. `sa`는 이미 표시와 같은 `pickRangeStats` 결과라 표시값과 정확히 일치. 도달수·도달당비용 두 case 모두 적용.
+- **검증:** `tsc --noEmit` 통과(exit 0). page.tsx만 변경(‧gs·apps-script-contract.test.ts 미커밋본은 타 세션 WIP라 무접촉).
+- **⚠️ 배포:** main 커밋만으론 `-mu` 라이브 반영 안 됨(수동 CLI 배포=Codex 소유, 게다가 `web/tests/…` dirty). **프로덕션 배포 필요** — Codex가 하거나 사용자 승인 후 진행.
+
+## ✅ 2026-08-24 [Claude 완료·DB] 값정체 실측 — 삭제 6건 종료 + Sidecar 5건 생존 유지
+- **배경:** Codex 감사가 남긴 "값 정체 11~13건"(수식과 무관, 수집끊김/플래토/삭제 의심)을 실측으로 삭제 vs 생존 구분.
+- **실측:** 활성 IG 비배너 정체 후보를 Apify 재스크레이프. `/p/` 저장형으로 개별 재조회.
+  - **삭제 6건**(`error=not_found "Post does not exist"`) → `ended_at=2026-08-21` 종료(6/6 검증): smile_ggobuk_s2·smile_king_s2·ssapsori__yongga·smile_papa_s2·ourdays_pick·humor_endorphin. 백업 `scratchpad/stale_deleted6_backup.json`(id·url·직전값).
+  - **생존 5건**(Sidecar/캐러셀, likes 반환·play=None이 정상) → **무변경 유지**: 띵크서울·요매거진·millionego·오늘의메뉴·yezi_m0ng. (캐러셀은 videoPlayCount 없음 = 정체 아님)
+- **무접촉:** 조회수·posted_at·이력·수식 무변경. 종료는 not_found 실측 6건만.
+
+## 🟡 2026-08-24 [Claude 진단·**미확정, 오탐 상당수 의심**] 수식 형태오류 잔여 195(H)/225(I)
+- **⚠️ 정정:** 앞서 "전부 진짜 이상"이라 했으나 **확인 결과 미확정**. 아래 근거로 **상당수가 오탐(양성 변형)일 가능성**이 있어 실제 파손과 섞여 있다.
+- **실측 근거(감사 최종 run `32686152280` JSON):** ① `errorCells` H·I 모두 **0** = 지금 값이 틀린 셀은 없음(형태 텍스트 불일치일 뿐). ② `incInvalid=225`가 **DB 활성 유튜브 225건과 정확히 일치**, `anomalies` 표본(상한 12) 전부 **이나(미러 346)·유튜브(1278·1415)·틱톡(1410·1479)** 행 → 플랫폼/행유형 편중. ③ 생성기(`.gs` 1042/2144/2165)는 플랫폼 구분 없이 **절대참조 `$`** 표준수식을 쓰므로 감사 정규식과 형식은 맞음 → 플래그 행은 "생성기 최신형태와 다른 수식을 실제로 가짐"을 의미하나, 그것이 (a)끝열이 짧아 미래 갱신이 멈추는 **실제 파손**인지 (b)이나 미러·특수행의 **양성 변형(감사가 못 읽는 정상 수식)**인지는 미구분.
+- **감사 형태검사 규칙(`formula-audit.ts`):** H는 `=IF(COUNT(P{r}:{end}{r})=0,"",MAX(...))` 정확형태+끝열≥마지막 실데이터열, I는 `=IFERROR(LET(RNG,$P{r}:$..{r},…),"")` 정확형태여야 통과. 미러(타행 참조)·비표준은 값이 맞아도 형태 불일치로 잡힘.
+- **로컬 한계:** 전체 195/225 목록은 (a) 감사 라우트 응답 `anomalies` = **Bearer `CRON_SECRET` 필요(실제 env에도 부재 → 401 확인)**, (b) GHA 로그의 `anomalies`도 **`ANOMALY_CAP=12`로 절단** → 로컬로는 12건만 확인 가능. 완전 열거는 **Codex(라우트 접근) 또는 ANOMALY_CAP 상향**이 필요.
+- **✅ 해소(2026-08-25):** Codex `5a68b1e`(`repairStaleMetricFormulaRanges_`)가 짧은 끝열만 표준식으로 복구(미러/커스텀 보존)해 배포 후 감사 형태오류 H·I **0**(run 32795830375). 이 진단 블록은 이력으로 보존.
+- **다음 단계 권고(Codex):** ① 라우트로 195/225 **전량** 뽑기 → ② 플랫폼/행유형(미러·YT·TikTok)별 분류 → ③ 각 유형 실제 시트 수식 1~2개 읽어 (a)짧은수식(실제 파손) vs (b)양성 변형 판별 → ④ (a)만 URL 키 기반 **해당 셀만** 정정. **대량 재생성 절대 금지**(8/6 H열 손상 재현), 이나 미러·수기숫자 보존행은 되돌리기 전 값 확인 필수. *(위 해소로 이 권고는 대체로 완료.)*
 
 ## ✅ 2026-08-24 [Codex 완료·배포·라이브검증] 수식감사 `P:DH` 하드코딩 제거 (`b3d3f3e`, `9f95957`)
 - **수정 범위:** 시트 H/I 수식·값·공유 필터는 전혀 쓰지 않고, `web/lib/formula-audit.ts`와 감사 라우트·테스트만 수정했다. 감사 값 조회는 원래부터 `A1:ZZ5000` 전체를 읽고 날짜 헤더를 동적 파싱하고 있었으므로, DI/DJ 값 누락 가설은 코드 실측상 사실이 아니었다.
