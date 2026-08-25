@@ -6,6 +6,13 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-25 [Codex 완료·GitHub·라이브] 날짜열 삽입 직후 H/I 끝열 드리프트 자동복구 (`5a68b1e`)
+- **진단 정정:** 기존 일일 복구 경로가 없었던 것은 아니다. `dailyAuto → exportStats`가 I 전행을 다시 쓰고 `refreshCumulativeViews`가 H를 갱신하며, 08:27 실행도 `exportStats` 314.8초·`refreshCumulativeViews` 59.9초를 포함해 성공했다. 실제 재발 창은 **dailyAuto 뒤 사람이 우측 날짜열을 삽입한 직후부터 다음 dailyAuto 전까지**였다. `fillInsertedDateHeadersOnChange_`는 새 날짜 헤더·유효성·서식만 만들고 기존 H/I의 명시적 끝열은 늘리지 않았다.
+- **수정:** `repairStaleMetricFormulaRanges_`를 추가해 표준 H(V4)·I(V2) 수식 중 끝열이 실제 최신 날짜열보다 뒤처진 셀만 run 단위로 재작성한다. 날짜열 삽입 onChange 직후와 dailyAuto의 `refreshCumulativeViews` 직후에 실행한다.
+- **보존 가드:** 수식이 없는 H 수기값·종료 최종값(`valueOnly`), `=""` 백로그, 미러링/커스텀 수식은 **표준 생성식과 완전히 일치하지 않으면 건드리지 않는다.** 날짜값·posted_at·통계 이력·H/I 숫자 직접수정 없음. 이나 346행 같은 특수수식도 대상 밖으로 계약 테스트 고정.
+- **동시작업 안전:** 라이브 pull이 원격 동시작업 `ef93663`과 완전일치한 뒤 push해, 라이브에 추가된 차이는 이 수식 보강뿐이다. clasp fresh-pull → push → 재pull 결과 `[APPS_SCRIPT_PUSH_VERIFIED]` 통과(09:59 KST).
+- **검증:** web 테스트 **327/327**, Apps Script syntax·prepare, lint 오류 0(기존 경고 15), webpack production build 통과. 배포 후 수식감사 [`32795830375`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/32795830375): `metricRange=P:DK`, H 오류셀 0·데이터有빈칸 0·형태오류 0, I 오류셀 0·불일치 0·형태오류 0. 따라서 신고 행 2764도 DH 뒤 DI/DJ 값을 포함하는 정상 범위로 복구됐다. 남은 stale 4건은 매거진 도달수 분류 건으로 별개다.
+
 ## ✅ 2026-08-24 [Codex 완료·배포·라이브검증] 수식감사 `P:DH` 하드코딩 제거 (`b3d3f3e`, `9f95957`)
 - **수정 범위:** 시트 H/I 수식·값·공유 필터는 전혀 쓰지 않고, `web/lib/formula-audit.ts`와 감사 라우트·테스트만 수정했다. 감사 값 조회는 원래부터 `A1:ZZ5000` 전체를 읽고 날짜 헤더를 동적 파싱하고 있었으므로, DI/DJ 값 누락 가설은 코드 실측상 사실이 아니었다.
 - **1차 원인 제거:** 기대 수식의 고정 `P:DH`를 실제 날짜 헤더의 첫·마지막 열로 바꾸고, 응답에 `dateColumnCount`·`metricRange`를 추가했다. 배포 직후 시트에 오늘 날짜 열이 추가돼 실측 범위가 **100열 `P:DK`**로 늘어난 것도 확인했다.
