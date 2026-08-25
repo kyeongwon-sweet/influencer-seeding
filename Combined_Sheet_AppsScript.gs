@@ -4202,3 +4202,15 @@ function repairMagazineCarouselBanner20260825(payload) {
     lock.releaseLock();
   }
 }
+
+function repairMagazineCarouselBanner20260825DryRun() {
+  const result = repairMagazineCarouselBanner20260825({ signature: "magazine-carousel-banner-2026-08-25", apply: false });
+  Logger.log(JSON.stringify(result));
+  return result;
+}
+
+function repairMagazineCarouselBanner20260825Apply() {
+  const result = repairMagazineCarouselBanner20260825({ signature: "magazine-carousel-banner-2026-08-25", apply: true });
+  Logger.log(JSON.stringify(result));
+  return result;
+}
