@@ -6,6 +6,12 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-26 [Codex 완료·배포·라이브검증] `무디` 업체 필터의 `ufo__navy / 유머패밀리` 잔상 제거 (`b83a44e`)
+- **재현:** 프로덕션에서 `업체명=무디` 단독 선택 시 합계는 178건·증분 `+1,410`으로 계산됐지만, 첫 데이터 행 DOM에 필터 대상이 아닌 `ufo__navy / 유머패밀리`(id `6e6e9f81-89f8-4331-b1b5-87b4d3baced1`)가 남아 있었다. DB의 `company_name=유머패밀리`는 정상이므로 데이터는 변경하지 않았다.
+- **원인:** 프로덕션 번들의 업체 필터와 표시식은 최신 main과 일치했고 top/고정행 우회도 없었다. `/api/sponsored-posts`가 `created_at`만으로 range pagination해 동일 timestamp 경계에서 같은 id를 중복 반환했고, 표의 `key={post.id}`가 충돌해 React 재조정 과정에서 필터 전 DOM 행이 잔류했다.
+- **수정:** 게시물 pagination에 고유 2차 정렬 `id ASC`를 추가했다. 서버 응답 생성 전과 클라이언트 decode 직후 `dedupeRowsById`를 적용해 중복 id가 집계·필터·React key로 들어가지 못하게 이중 방어하고, 중복이 발견되면 표본 id를 로그에 남긴다.
+- **검증:** web 테스트 **330/330**, `tsc --noEmit`, lint 오류 0(기존 경고 15), production build 통과. Vercel deployment `dpl_5eWWiHto7tNADPueD4fghva7UHxK` READY·`-mu` 별칭 반영. 로그인 실화면에서 `무디` 단독 재선택 후 합계 **178건 / +1,410**, 렌더된 데이터 100행 모두 `무디`, `ufo__navy` 0건·`유머패밀리` 0건을 확인했다. 합계가 수정 전과 같아 이번 누출은 집계 오염이 아니라 DOM 표시 잔상이었음도 확인했다.
+
 ## ✅ 2026-08-25 [Codex 완료·라이브검증] `syncStatus` 단수 `/reel/` 오판은 코드 회귀가 아니라 stale 상태값
 - **대상:** 연동시트 행 3192, `https://www.instagram.com/reel/DcBZOaEpDyt/`, one_star_video.
 - **라이브 실물 확인:** clasp fresh pull 후 `syncStatus`와 `linkKey_`를 `origin/main`과 함수 단위 SHA-256으로 비교해 **둘 다 exact match**를 확인했다. 라이브 정규식은 `/(p|reels|reel|tv)/`, `linkKey_`도 단수 `reel`을 `ig:DcBZOaEpDyt`로 정상 정규화한다.
