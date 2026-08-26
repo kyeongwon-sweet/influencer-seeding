@@ -12,12 +12,13 @@
 - **유튜브 서비스 건 해소:** `https://www.youtube.com/shorts/tkPtGTxqX9o/`는 `닥터후 (유튜브/서비스)`로 URL·라벨이 일치하며 최신 조회수 **49,255**가 생겼다. 앞선 `실측 없음` stale은 자연 해소된 상태다.
 - **무접촉:** 이번 확인은 로그인된 프로덕션 대시보드/API 로드 결과의 읽기 전용 대조다. DB·시트·조회수·posted_at은 수정하지 않았다. 팀 승인 후 연동시트 계정명 1셀을 `닥터후 (틱톡/서비스)`로 바꾸고 sync로 DB 정합하면 된다.
 
-## ✅ 2026-08-26 [Claude 코드·Codex 라이브배포 완료, 운영실측 예약] DB→시트 배치 쓰기 + 워치독 임계 정정 (`8a5fde5`)
+## ✅ 2026-08-26 [Claude 코드·Codex 라이브배포·운영실측 완료] DB→시트 배치 쓰기 + 워치독 임계 정정 (`8a5fde5`)
 - **원인:** `pullFromDB`가 3,216행×최대 11필드의 기존 빈칸을 셀별 `setValue()`로 써 Apps Script 실행 한도를 넘겼다. 워치독도 본 실행 한도 30분보다 이른 20분에 울어 정상 완료 가능 실행까지 실패로 알렸다.
 - **라이브 사전대조:** 2026-08-26 17:08 KST fresh clasp pull 기준, repo와 라이브 배포 5파일의 차이는 `pullFromDB` 배치 쓰기와 워치독/재시도 임계뿐이었다. 나머지 4파일 차이 0, 기존 빈칸 판정·수동값 보존·신규행 원자적 append·행수 안정성 가드 유지 확인.
 - **guarded clasp 배포:** 2026-08-26 17:08:30 KST push 후 fresh pull 5파일 일치. 메인 파일 정규화 SHA-256 repo=live `71FBDC31…57FCE4`. 라이브에 `fillEdits → writeColumnRuns_`, watchdog 32분, timeout retry 5분, 실제 문구 "32분 경과" 반영 확인.
 - **검증:** web 전체 **335/335**, `tsc --noEmit` 통과. DB·조회수·posted_at·공유필터 직접 쓰기 없음(코드 배포만).
-- **운영 실측 대기:** 15:04 기점 다음 3시간 scheduled 실행 후 `dbPullSync_result status=OK/source=scheduled`, 실제 소요시간, 빈칸 채움 건수, WATCHDOG_TIMEOUT 부재를 읽기 전용 확인하도록 **18:15 KST 후속 heartbeat** 등록. 수치 확인 전에는 성능 개선 완료로 과장하지 않는다.
+- **첫 scheduled 운영 실측:** 2026-08-26 **18:04:30 KST** 시간 기반 실행이 **51.037초·완료됨**. `dbPullSync_result={status:"OK",source:"scheduled",attempt:0}`이고 내부 시작 `18:04:31.839` → 종료 `18:05:20.052`(**48.213초**), 신규행 0·기존행 빈칸 채움 0이었다. 32분 watchdog 실행·`WATCHDOG_TIMEOUT` 알림은 없었다.
+- **빈칸 채움 안전 판정:** 이번 0건은 쓰기 누락 신호가 아니다. 배포 전 직전 정상 retry(16:16 실행)도 신규행 0·빈칸 채움 0으로 동일했고, 같은 0-fill workload의 실행시간이 **148.529초 → 51.037초(약 65.6% 감소)**했다. 판정 결과는 유지되고 왕복 오버헤드만 줄어 롤백 조건에 해당하지 않는다. 다만 실제 nonzero 대량 fill 성능은 다음 자연 발생 때만 추가 관찰하며, 검증을 위해 수동 빈칸이나 재실행을 만들지 않는다.
 
 ## ✅ 2026-08-26 [Codex 완료·배포·라이브검증] Supabase range 페이지네이션 유일키 3중 가드 (`27b72b9`)
 - **전수감사:** `web/app`의 `.range()` 18곳을 쿼리 문장 단위로 검사했다. 기존 `created_at`/`measured_at`/`post_id` 정렬은 그대로 두고, 비유일 경계가 남아 있던 influencers·insights·collect-now·apify-webhook·list/stats-for-sheet·stats-import·normalize-urls·sheet-integrity·banner-reach-sync에 마지막 정렬키 `id ASC`를 추가했다. `organic-mentions`의 `baseQuery().range()`는 이미 `uploaded_at + id`라 명시 예외로 보존했다.
