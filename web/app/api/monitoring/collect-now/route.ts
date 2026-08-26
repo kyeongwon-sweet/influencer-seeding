@@ -211,10 +211,11 @@ async function collect(req: NextRequest) {
           for (let from = 0; ; from += PAGE) {
             const { data: page } = await supabase
               .from("post_daily_stats")
-              .select("post_id, play_count, measured_at")
+              .select("id, post_id, play_count, measured_at")
               .in("post_id", idsChunk)
               .lt("measured_at", measuredAt)
               .order("measured_at", { ascending: false })
+              .order("id", { ascending: true })
               .range(from, from + PAGE - 1);
             for (const s of page ?? []) {
               if (!lastKnownPlay.has(s.post_id)) lastKnownPlay.set(s.post_id, s.play_count ?? 0);

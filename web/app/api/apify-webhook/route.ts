@@ -326,11 +326,12 @@ async function handleMonitoring(
       for (let from = 0; ; from += PAGE) {
         const { data: page, error: statReadError } = await supabase
           .from('post_daily_stats')
-          .select('post_id, play_count, measured_at, manual')
+          .select('id, post_id, play_count, measured_at, manual')
           .in('post_id', idsChunk)
           // 오늘(자정 GHA 수집분) 포함 — 낮 수집이 아침 실측보다 낮은 값으로 당일 행을 되덮는 것 방지
           .lte('measured_at', today)
           .order('measured_at', { ascending: false })
+          .order('id', { ascending: true })
           .range(from, from + PAGE - 1);
         if (statReadError) {
           throw new Error(`manual stat preservation preflight failed: ${statReadError.message}`);

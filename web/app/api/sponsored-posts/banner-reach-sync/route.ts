@@ -6,6 +6,8 @@ import { fetchSheetTabValues } from "@/lib/google-sheets";
 import { extractBannerReachRows } from "@/lib/sheet-banner-reach";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl, postIdentityKey } from "@/lib/url-utils";
+import { dedupeRowsById } from "@/lib/dedupe-rows";
+import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -69,18 +71,28 @@ export async function POST(req: NextRequest) {
   const supabase = getServerSupabase();
   const postByKey = new Map<string, SponsoredPostRow>();
   const postByUrl = new Map<string, SponsoredPostRow>();
+  const allPosts: SponsoredPostRow[] = [];
   for (let from = 0; ; from += 1000) {
     const { data, error } = await supabase
       .from("sponsored_posts")
       .select("id, url, normalized_key, channel_type, posted_at, ended_at, cost")
+      .order("id", { ascending: true })
       .range(from, from + 999);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    for (const post of (data ?? []) as SponsoredPostRow[]) {
-      postByUrl.set(post.url, post);
-      postByUrl.set(normalizeUrl(post.url) ?? post.url, post);
-      postByKey.set(String(post.normalized_key ?? identityKey(post.url)), post);
-    }
+    allPosts.push(...((data ?? []) as SponsoredPostRow[]));
     if (!data || data.length < 1000) break;
+  }
+  const { rows: uniquePosts, duplicateIds } = dedupeRowsById(allPosts);
+  if (duplicateIds.length > 0) {
+    logger.warn("banner-reach-sync", "페이지네이션 중복 게시물 제거", {
+      duplicateCount: duplicateIds.length,
+      sampleIds: duplicateIds.slice(0, 10),
+    });
+  }
+  for (const post of uniquePosts) {
+    postByUrl.set(post.url, post);
+    postByUrl.set(normalizeUrl(post.url) ?? post.url, post);
+    postByKey.set(String(post.normalized_key ?? identityKey(post.url)), post);
   }
 
   const missing = new Set<string>();

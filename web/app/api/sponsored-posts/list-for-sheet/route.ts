@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
+import { dedupeRowsById } from "@/lib/dedupe-rows";
+import { logger } from "@/lib/logger";
 import { getServerSupabase } from "@/lib/supabase-server";
+
+type SheetPostRow = Record<string, unknown> & { id: string };
 
 // 시트 Apps Script가 'DB→시트 주기 반영'(대시보드 추가분을 시트로 가져오기)을 위해 호출하는 경량 조회 라우트.
 // sponsored_posts 메타만 반환(일자별 통계 제외 → 가벼움). 인증: Authorization: Bearer <CRON_SECRET> (bulk/stats-import과 동일).
@@ -10,19 +14,32 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = getServerSupabase();
-  const posts: Record<string, unknown>[] = [];
+  const posts: SheetPostRow[] = [];
   const PAGE = 1000;
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await supabase
       .from("sponsored_posts")
       .select(
-        "url, posted_at, account_name, company_name, content_summary, asset_name, channel_type, project_name, product_name, cost, ended_at"
+        "id, url, posted_at, account_name, company_name, content_summary, asset_name, channel_type, project_name, product_name, cost, ended_at"
       )
+      .order("id", { ascending: true })
       .range(from, from + PAGE - 1);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    for (const p of data ?? []) posts.push(p);
+    posts.push(...((data ?? []) as SheetPostRow[]));
     if (!data || data.length < PAGE) break;
   }
 
-  return NextResponse.json({ posts }, { headers: { "Cache-Control": "no-store" } });
+  const { rows, duplicateIds } = dedupeRowsById(posts);
+  if (duplicateIds.length > 0) {
+    logger.warn("list-for-sheet", "페이지네이션 중복 게시물 제거", {
+      duplicateCount: duplicateIds.length,
+      sampleIds: duplicateIds.slice(0, 10),
+    });
+  }
+  const responsePosts = rows.map((post) => {
+    const responsePost: Record<string, unknown> = { ...post };
+    delete responsePost.id;
+    return responsePost;
+  });
+  return NextResponse.json({ posts: responsePosts }, { headers: { "Cache-Control": "no-store" } });
 }

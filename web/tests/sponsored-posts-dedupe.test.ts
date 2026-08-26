@@ -31,3 +31,18 @@ test("sponsored-post pagination and monitoring both enforce unique post ids", ()
   assert.match(route, /dedupeRowsById\(posts\)/);
   assert.match(page, /dedupeRowsById\(decodedPosts\)/);
 });
+
+test("other id-based list APIs also drop duplicate page-boundary rows", () => {
+  const root = process.cwd();
+  const guardedRoutes = [
+    "app/api/influencers/route.ts",
+    "app/api/insights/route.ts",
+    "app/api/sponsored-posts/list-for-sheet/route.ts",
+    "app/api/admin/normalize-urls/route.ts",
+    "app/api/sponsored-posts/banner-reach-sync/route.ts",
+  ];
+
+  for (const route of guardedRoutes) {
+    assert.match(readFileSync(join(root, route), "utf8"), /dedupeRowsById\(/, route);
+  }
+});

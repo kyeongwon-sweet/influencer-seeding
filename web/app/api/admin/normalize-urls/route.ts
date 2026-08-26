@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminEmail } from "@/lib/admin-server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl } from "@/lib/url-utils";
+import { dedupeRowsById } from "@/lib/dedupe-rows";
+import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -17,18 +19,27 @@ async function normalizeStoredUrls(apply: boolean) {
     const { data, error } = await supabase
       .from("sponsored_posts")
       .select("id, url")
+      .order("id", { ascending: true })
       .range(from, from + 999);
     if (error) throw new Error(error.message);
     posts.push(...((data ?? []) as PostUrlRow[]));
     if (!data || data.length < 1000) break;
   }
 
-  const existing = new Set(posts.map((p) => p.url).filter(Boolean));
+  const { rows: uniquePosts, duplicateIds } = dedupeRowsById(posts);
+  if (duplicateIds.length > 0) {
+    logger.warn("normalize-urls", "페이지네이션 중복 게시물 제거", {
+      duplicateCount: duplicateIds.length,
+      sampleIds: duplicateIds.slice(0, 10),
+    });
+  }
+
+  const existing = new Set(uniquePosts.map((p) => p.url).filter(Boolean));
   const planned: { id: string; before: string; after: string }[] = [];
   let alreadyNormalized = 0;
   let collision = 0;
 
-  for (const p of posts) {
+  for (const p of uniquePosts) {
     if (!p.url) {
       alreadyNormalized++;
       continue;
@@ -66,7 +77,7 @@ async function normalizeStoredUrls(apply: boolean) {
     dry_run: !apply,
     updated,
     planned: planned.length,
-    total: posts.length,
+    total: uniquePosts.length,
     already_normalized: alreadyNormalized,
     collision_skipped: collision,
     samples: planned.slice(0, 20),

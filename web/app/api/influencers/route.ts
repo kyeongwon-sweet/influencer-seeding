@@ -4,8 +4,10 @@ import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl } from "@/lib/url-utils";
 import { logger } from "@/lib/logger";
 import { getAdminEmail } from "@/lib/admin-server";
+import { dedupeRowsById } from "@/lib/dedupe-rows";
 
 type InfluencerPayload = Record<string, unknown> & { url?: unknown };
+type InfluencerRow = InfluencerPayload & { id: string };
 
 export async function GET() {
   const { userId } = await auth();
@@ -13,19 +15,27 @@ export async function GET() {
 
   const supabase = getServerSupabase();
   // 페이지네이션 — Supabase 기본 1000행 상한으로 인플루언서가 잘리는 것 방지(현재 201행이나 증가 대비).
-  const all: InfluencerPayload[] = [];
+  const all: InfluencerRow[] = [];
   const PAGE = 1000;
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await supabase
       .from("influencers")
       .select("*, screening_metrics(*)")
       .order("created_at", { ascending: false })
+      .order("id", { ascending: true })
       .range(from, from + PAGE - 1);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    all.push(...(data ?? []));
+    all.push(...((data ?? []) as InfluencerRow[]));
     if (!data || data.length < PAGE) break;
   }
-  return NextResponse.json(all);
+  const { rows, duplicateIds } = dedupeRowsById(all);
+  if (duplicateIds.length > 0) {
+    logger.warn("influencers-api", "페이지네이션 중복 인플루언서 제거", {
+      duplicateCount: duplicateIds.length,
+      sampleIds: duplicateIds.slice(0, 10),
+    });
+  }
+  return NextResponse.json(rows);
 }
 
 export async function POST(req: NextRequest) {

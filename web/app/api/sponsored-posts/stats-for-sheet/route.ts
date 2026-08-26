@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
     const { data, error } = await supabase
       .from("sponsored_posts")
       .select("id, url, posted_at, channel_type, ended_at")
+      .order("id", { ascending: true })
       .range(from, from + PAGE - 1);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     for (const p of data ?? []) {
@@ -56,9 +57,10 @@ export async function GET(req: NextRequest) {
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await supabase
       .from("post_daily_stats")
-      .select("post_id, measured_at, play_count, reach_count")
+      .select("id, post_id, measured_at, play_count, reach_count")
       .order("post_id", { ascending: true })
       .order("measured_at", { ascending: true })
+      .order("id", { ascending: true })
       .range(from, from + PAGE - 1);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     for (const s of data ?? []) {

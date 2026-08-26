@@ -50,7 +50,7 @@ export async function GET() {
   const postedByUrl = new Map<string, string>();
   for (let off = 0; ; off += 1000) {
     const { data, error } = await supabase.from("sponsored_posts")
-      .select("url, posted_at").range(off, off + 999);
+      .select("id, url, posted_at").order("id", { ascending: true }).range(off, off + 999);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     for (const r of data ?? []) if (r.posted_at) postedByUrl.set(r.url, String(r.posted_at).slice(0, 10));
     if (!data || data.length < 1000) break;

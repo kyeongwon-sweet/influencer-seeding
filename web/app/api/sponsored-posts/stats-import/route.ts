@@ -516,10 +516,11 @@ export async function POST(req: NextRequest) {
       for (let from = 0; ; from += PAGE) {
         const { data: page, error: pe2 } = await supabase
           .from("post_daily_stats")
-          .select("post_id, measured_at, play_count, manual")
+          .select("id, post_id, measured_at, play_count, manual")
           .in("post_id", batch)
           .order("post_id", { ascending: true })
           .order("measured_at", { ascending: true })
+          .order("id", { ascending: true })
           .range(from, from + PAGE - 1);
         if (pe2) return NextResponse.json({ error: pe2.message }, { status: 500 });
         for (const s of (page ?? []) as Array<{ post_id: string; measured_at: string; play_count: number | null; manual: boolean | null }>) {

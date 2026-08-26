@@ -1,6 +1,17 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { dedupeRowsById } from "@/lib/dedupe-rows";
+import { logger } from "@/lib/logger";
 import { getServerSupabase } from "@/lib/supabase-server";
+
+type InsightMetaRow = { id: string; url: string | null; account_name: string | null };
+type InsightStatRow = {
+  id: string;
+  post_id: string;
+  measured_at: string;
+  play_count: number | null;
+  comments_count: number | null;
+};
 
 // 홈 '오늘의 인사이트' 전용 경량 요약 — 조회수/댓글 급상승 top3만 서버에서 계산해 작은 JSON으로 반환.
 //
@@ -17,40 +28,60 @@ export async function GET() {
 
   // 게시물 메타(경량: id·url·account_name만) — 전량 페이지네이션
   const meta = new Map<string, { url: string | null; account_name: string | null }>();
+  const metaRows: InsightMetaRow[] = [];
   {
     const PAGE = 1000;
     for (let from = 0; ; from += PAGE) {
       const { data, error } = await supabase
         .from("sponsored_posts")
         .select("id, url, account_name")
+        .order("id", { ascending: true })
         .range(from, from + PAGE - 1);
       if (error) break; // graceful: 메타 일부 실패해도 있는 것으로 진행
-      for (const p of data ?? []) meta.set(p.id, { url: p.url, account_name: p.account_name });
+      metaRows.push(...((data ?? []) as InsightMetaRow[]));
       if (!data || data.length < PAGE) break;
     }
   }
+  const { rows: uniqueMetaRows, duplicateIds: duplicateMetaIds } = dedupeRowsById(metaRows);
+  if (duplicateMetaIds.length > 0) {
+    logger.warn("insights", "페이지네이션 중복 게시물 메타 제거", {
+      duplicateCount: duplicateMetaIds.length,
+      sampleIds: duplicateMetaIds.slice(0, 10),
+    });
+  }
+  for (const p of uniqueMetaRows) meta.set(p.id, { url: p.url, account_name: p.account_name });
 
   // 최근 통계만 (급상승 = 최신 2개 비교 → 창 하나면 충분). 전체 이력은 조회하지 않는다.
   const WINDOW_DAYS = 7;
   const since = new Date(Date.now() - WINDOW_DAYS * 86400000).toISOString().slice(0, 10);
   const byPost = new Map<string, { measured_at: string; play_count: number | null; comments_count: number | null }[]>();
+  const statRows: InsightStatRow[] = [];
   {
     const PAGE = 1000;
     for (let from = 0; ; from += PAGE) {
       const { data, error } = await supabase
         .from("post_daily_stats")
-        .select("post_id, measured_at, play_count, comments_count")
+        .select("id, post_id, measured_at, play_count, comments_count")
         .gte("measured_at", since)
         .order("measured_at", { ascending: false })
+        .order("id", { ascending: true })
         .range(from, from + PAGE - 1);
       if (error) break;
-      for (const s of data ?? []) {
-        const arr = byPost.get(s.post_id) ?? [];
-        arr.push(s);
-        byPost.set(s.post_id, arr);
-      }
+      statRows.push(...((data ?? []) as InsightStatRow[]));
       if (!data || data.length < PAGE) break;
     }
+  }
+  const { rows: uniqueStatRows, duplicateIds: duplicateStatIds } = dedupeRowsById(statRows);
+  if (duplicateStatIds.length > 0) {
+    logger.warn("insights", "페이지네이션 중복 통계 제거", {
+      duplicateCount: duplicateStatIds.length,
+      sampleIds: duplicateStatIds.slice(0, 10),
+    });
+  }
+  for (const s of uniqueStatRows) {
+    const arr = byPost.get(s.post_id) ?? [];
+    arr.push(s);
+    byPost.set(s.post_id, arr);
   }
 
   type Gain = { id: string; url: string | null; account_name: string | null; delta: number };
