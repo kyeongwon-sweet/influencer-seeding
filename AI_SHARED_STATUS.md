@@ -6,6 +6,14 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-26 [Codex 완료·배포·라이브검증] Supabase range 페이지네이션 유일키 3중 가드 (`27b72b9`)
+- **전수감사:** `web/app`의 `.range()` 18곳을 쿼리 문장 단위로 검사했다. 기존 `created_at`/`measured_at`/`post_id` 정렬은 그대로 두고, 비유일 경계가 남아 있던 influencers·insights·collect-now·apify-webhook·list/stats-for-sheet·stats-import·normalize-urls·sheet-integrity·banner-reach-sync에 마지막 정렬키 `id ASC`를 추가했다. `organic-mentions`의 `baseQuery().range()`는 이미 `uploaded_at + id`라 명시 예외로 보존했다.
+- **최후 방어:** `dedupeRowsById`를 influencers·insights·list-for-sheet·normalize-urls·banner-reach-sync까지 확대했다. 중복이 새어도 화면·집계·쓰기 후보에 들어가지 않으며, 발견 시 중복 id를 로그로 남긴다. `list-for-sheet` 응답에서는 내부 검사용 id를 다시 제거해 기존 API 계약을 유지했다.
+- **CI 재발차단:** 새 `pagination-order.test.ts`가 모든 `web/app/**/*.ts(x)`의 `.range()` 문장을 스캔하고 **마지막 `.order()`가 `id`가 아니면 실패**한다. 정당한 builder 예외는 allowlist와 별도 `uploaded_at → id` 순서 검증으로 고정했다. build-test의 기존 `npm test`에 자동 포함된다.
+- **검증:** web 테스트 **333/333**, `tsc --noEmit`, lint 오류 0(기존 경고 15), production build, `git diff --check` 통과. DB·시트·조회수·증분·posted_at 쓰기 0건.
+- **깨끗한 배포:** 동시 세션의 미커밋 `Combined_Sheet_AppsScript.gs`를 제외하기 위해 exact commit `27b72b9`의 clean detached worktree에서 재배포했다. Vercel `dpl_7ir2FncLnb3Ewr2i6Ju12UM59xH7` READY, `-mu` 별칭 반영.
+- **라이브 실측:** `/monitoring` 업체명 `무디` = **179건**, 렌더 100행 모두 `무디`, `ufo__navy` 0·`유머패밀리` 0. `/listup` 246명 목록과 기존 업로드일 정렬 정상, `/home` 조회수·댓글·무상노출 인사이트 실제값 로드 정상. 기존 Clerk 개발키 경고와 Meta 광고비 400은 이번 변경과 무관한 잔여 운영 이슈다.
+
 ## ✅ 2026-08-25 [Claude 완료·DB+시트] "행 3217/3218 게시글 자꾸 재생성" 루프 차단
 - **증상(사용자):** 연동 시트(gid 1937186871) 맨 아래 행의 게시글을 지워도 계속 다시 생김.
 - **범인:** DB에 `one_star_video` 활성 게시물이 **shortcode 없는 프로필 URL `https://instagram.com/one_star_video/reels/`**로 존재(id `a05b777a-040a-4bec-a244-7c8e32ddbe9b`, 측정 0건, 소재명 …초딩유행템_var4…김유진_260814, cost 400000). 같은 소재명의 **정상본 `/p/DcBZOaEpDyt/`가 별도로 존재** → 이건 URL 오등록 중복본.
