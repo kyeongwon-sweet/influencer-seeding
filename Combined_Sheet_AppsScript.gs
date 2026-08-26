@@ -1221,7 +1221,8 @@ function pullFromDB() {
     const lastCol = sheet.getLastColumn();
     posts.forEach(p => {
       const rawUrl = String(p.url || "").trim();
-      if (isInvalidTikTokPostUrl_(rawUrl)) { rejectedInvalid++; return; }
+      // shortcode 없는 IG 프로필 URL은 append 안 함 — 시트↔DB 재추가 루프 방지(2026-08-25 one_star_video 사고).
+      if (isInvalidTikTokPostUrl_(rawUrl) || (/instagram\.com/i.test(rawUrl) && !/\/(p|reels|reel|tv)\/[A-Za-z0-9_-]+/i.test(rawUrl))) { rejectedInvalid++; return; }
       const key = linkKey_(rawUrl);   // 시트 인덱스와 동일 기준 — DB /p/ ↔ 시트 /reel/ 매칭되어 재추가 안 됨
       if (!key || pendingKeys[key]) return;
       if (rowByKey[key]) {

@@ -14,6 +14,12 @@
 - **깨끗한 배포:** 동시 세션의 미커밋 `Combined_Sheet_AppsScript.gs`를 제외하기 위해 exact commit `27b72b9`의 clean detached worktree에서 재배포했다. Vercel `dpl_7ir2FncLnb3Ewr2i6Ju12UM59xH7` READY, `-mu` 별칭 반영.
 - **라이브 실측:** `/monitoring` 업체명 `무디` = **179건**, 렌더 100행 모두 `무디`, `ufo__navy` 0·`유머패밀리` 0. `/listup` 246명 목록과 기존 업로드일 정렬 정상, `/home` 조회수·댓글·무상노출 인사이트 실제값 로드 정상. 기존 Clerk 개발키 경고와 Meta 광고비 400은 이번 변경과 무관한 잔여 운영 이슈다.
 
+## 🛡️ 2026-08-25 [Claude 재발방지·**Apps Script 라이브 배포 대기(Codex)**] shortcode 없는 IG 프로필 URL 차단
+- **점검 결과: 생성 경로는 이미 대부분 가드됨.** 웹 3경로(POST 라우트·sponsored-write bulk·marketing/sync) 모두 `isInstagramNonPostUrl`로 프로필 URL 거부(웹 라이브 2026-07-24 `bc261c7`부터). Apps Script `collectRows_`(시트→DB 생성)도 인라인 가드 있음(계약테스트 28~29행이 고정).
+- **DB 잠복 스캔:** 활성 1,220건 중 추적불가(프로필/ID없음) URL **0건**. one_star_video `/reels/`가 유일했고 이미 제거.
+- **추가한 방어(defense-in-depth):** DB→시트 **append 경로**(`Combined_Sheet_AppsScript.gs`, `rejectedInvalid`)에 IG 프로필 URL 가드 인라인 추가 — 혹시 프로필 URL DB글이 생겨도 시트에 다시 안 쓰이게(사용자가 본 재생성 증상 경로). 검증: `node --check` OK, web `node --test` **333/333**.
+- **⚠️ Codex 확인·조치 요청:** ① `collectRows_` 프로필 가드가 **라이브 Apps Script에도 실제 배포돼 있는지 확인**(repo≠live 가능성; 08-14 유입이 라이브 미배포 때문일 수 있음). ② 이 append 가드를 **guarded clasp로 라이브 반영**(repo 5파일 오버레이 방식). Claude는 라이브 편집 안 함(오늘 브라우저 시트편집이 팝업으로 오선택 반복돼 위험). ③ (선택) 워치독: 매일 활성 게시물 중 추적불가 URL 카운트>0이면 Slack.
+
 ## ✅ 2026-08-25 [Claude 완료·DB+시트] "행 3217/3218 게시글 자꾸 재생성" 루프 차단
 - **증상(사용자):** 연동 시트(gid 1937186871) 맨 아래 행의 게시글을 지워도 계속 다시 생김.
 - **범인:** DB에 `one_star_video` 활성 게시물이 **shortcode 없는 프로필 URL `https://instagram.com/one_star_video/reels/`**로 존재(id `a05b777a-040a-4bec-a244-7c8e32ddbe9b`, 측정 0건, 소재명 …초딩유행템_var4…김유진_260814, cost 400000). 같은 소재명의 **정상본 `/p/DcBZOaEpDyt/`가 별도로 존재** → 이건 URL 오등록 중복본.
