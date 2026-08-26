@@ -6,6 +6,13 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-26 [Claude 코드·Codex 라이브배포 완료, 운영실측 예약] DB→시트 배치 쓰기 + 워치독 임계 정정 (`8a5fde5`)
+- **원인:** `pullFromDB`가 3,216행×최대 11필드의 기존 빈칸을 셀별 `setValue()`로 써 Apps Script 실행 한도를 넘겼다. 워치독도 본 실행 한도 30분보다 이른 20분에 울어 정상 완료 가능 실행까지 실패로 알렸다.
+- **라이브 사전대조:** 2026-08-26 17:08 KST fresh clasp pull 기준, repo와 라이브 배포 5파일의 차이는 `pullFromDB` 배치 쓰기와 워치독/재시도 임계뿐이었다. 나머지 4파일 차이 0, 기존 빈칸 판정·수동값 보존·신규행 원자적 append·행수 안정성 가드 유지 확인.
+- **guarded clasp 배포:** 2026-08-26 17:08:30 KST push 후 fresh pull 5파일 일치. 메인 파일 정규화 SHA-256 repo=live `71FBDC31…57FCE4`. 라이브에 `fillEdits → writeColumnRuns_`, watchdog 32분, timeout retry 5분, 실제 문구 "32분 경과" 반영 확인.
+- **검증:** web 전체 **335/335**, `tsc --noEmit` 통과. DB·조회수·posted_at·공유필터 직접 쓰기 없음(코드 배포만).
+- **운영 실측 대기:** 15:04 기점 다음 3시간 scheduled 실행 후 `dbPullSync_result status=OK/source=scheduled`, 실제 소요시간, 빈칸 채움 건수, WATCHDOG_TIMEOUT 부재를 읽기 전용 확인하도록 **18:15 KST 후속 heartbeat** 등록. 수치 확인 전에는 성능 개선 완료로 과장하지 않는다.
+
 ## ✅ 2026-08-26 [Codex 완료·배포·라이브검증] Supabase range 페이지네이션 유일키 3중 가드 (`27b72b9`)
 - **전수감사:** `web/app`의 `.range()` 18곳을 쿼리 문장 단위로 검사했다. 기존 `created_at`/`measured_at`/`post_id` 정렬은 그대로 두고, 비유일 경계가 남아 있던 influencers·insights·collect-now·apify-webhook·list/stats-for-sheet·stats-import·normalize-urls·sheet-integrity·banner-reach-sync에 마지막 정렬키 `id ASC`를 추가했다. `organic-mentions`의 `baseQuery().range()`는 이미 `uploaded_at + id`라 명시 예외로 보존했다.
 - **최후 방어:** `dedupeRowsById`를 influencers·insights·list-for-sheet·normalize-urls·banner-reach-sync까지 확대했다. 중복이 새어도 화면·집계·쓰기 후보에 들어가지 않으며, 발견 시 중복 id를 로그로 남긴다. `list-for-sheet` 응답에서는 내부 검사용 id를 다시 제거해 기존 API 계약을 유지했다.
