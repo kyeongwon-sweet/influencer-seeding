@@ -6,6 +6,13 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-25 [Claude 완료·DB+시트] "행 3217/3218 게시글 자꾸 재생성" 루프 차단
+- **증상(사용자):** 연동 시트(gid 1937186871) 맨 아래 행의 게시글을 지워도 계속 다시 생김.
+- **범인:** DB에 `one_star_video` 활성 게시물이 **shortcode 없는 프로필 URL `https://instagram.com/one_star_video/reels/`**로 존재(id `a05b777a-040a-4bec-a244-7c8e32ddbe9b`, 측정 0건, 소재명 …초딩유행템_var4…김유진_260814, cost 400000). 같은 소재명의 **정상본 `/p/DcBZOaEpDyt/`가 별도로 존재** → 이건 URL 오등록 중복본.
+- **재생성 메커니즘(양방향 루프):** `linkKey_`가 `/reels/` 뒤 코드가 없어 매칭 실패 → DB→시트가 매번 맨 아래에 새 행 append. 시트에서 지워도 DB 원본이 살아있어 재추가. 게다가 `runSync_`(syncAll, dailyAuto 08:30)는 **시트 행→DB 생성**(`collectRows_`→`postRows_`)이라, DB만 지워도 남은 시트 행이 다음날 DB를 재생성함.
+- **조치:** ① DB 중복본 삭제(백업 `scratchpad/deleted_one_star_reels_backup.json`, 측정 0·정상본 존재로 손실 없음). ② 시트 3218행은 **사용자가 직접 삭제**(브라우저 자동편집이 팝업·뷰스크롤로 엉뚱한 셀(N열·B1헤더)을 선택하는 위험이 반복돼 Claude는 시트 편집 중단·미수정). 검증: DB `/reels/` 0건·정상본 생존, 시트 gviz `/reels/` 0건(총행 3218→3217).
+- **재발방지 권고(Codex):** 등록/`postRows_`/register에 **shortcode 없는 IG 프로필형 URL(`/<user>/reels/`, `/<user>/` 등) 거부 가드** 추가(틱톡 `isInvalidTikTokPostUrl_`와 대칭). 그래야 프로필 URL 오등록이 애초에 안 들어옴.
+
 ## ✅ 2026-08-26 [Codex 완료·배포·라이브검증] `무디` 업체 필터의 `ufo__navy / 유머패밀리` 잔상 제거 (`b83a44e`)
 - **재현:** 프로덕션에서 `업체명=무디` 단독 선택 시 합계는 178건·증분 `+1,410`으로 계산됐지만, 첫 데이터 행 DOM에 필터 대상이 아닌 `ufo__navy / 유머패밀리`(id `6e6e9f81-89f8-4331-b1b5-87b4d3baced1`)가 남아 있었다. DB의 `company_name=유머패밀리`는 정상이므로 데이터는 변경하지 않았다.
 - **원인:** 프로덕션 번들의 업체 필터와 표시식은 최신 main과 일치했고 top/고정행 우회도 없었다. `/api/sponsored-posts`가 `created_at`만으로 range pagination해 동일 timestamp 경계에서 같은 id를 중복 반환했고, 표의 `key={post.id}`가 충돌해 React 재조정 과정에서 필터 전 DOM 행이 잔류했다.
