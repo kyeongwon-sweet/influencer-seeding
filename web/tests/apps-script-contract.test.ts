@@ -25,8 +25,18 @@ test("Apps Script mirror keeps live metadata and URL guards", () => {
   assert.match(appsScript, /"제작자":\s*"creator"/);
   assert.match(appsScript, /obj\.planner\s*=/);
   assert.match(appsScript, /obj\.creator\s*=/);
-  assert.ok(appsScript.includes("if (/instagram\\.com/i.test(rawUrl)"));
-  assert.ok(appsScript.includes("!/\\/(p|reels|reel|tv)\\/"));
+  const collectRowsBody = appsScript.slice(
+    appsScript.indexOf("function collectRows_(onlyNew)"),
+    appsScript.indexOf("function urlKey_(u)"),
+  );
+  const pullFromDbBody = appsScript.slice(
+    appsScript.indexOf("function pullFromDB()"),
+    appsScript.indexOf("function fetchPostsFromDB_()"),
+  );
+  for (const body of [collectRowsBody, pullFromDbBody]) {
+    assert.ok(body.includes("/instagram\\.com/i.test(rawUrl)"));
+    assert.ok(body.includes("!/\\/(p|reels|reel|tv)\\/[A-Za-z0-9_-]+/i.test(rawUrl)"));
+  }
   assert.match(
     appsScript,
     /setFormulas\(incFormulas\);\s*try \{ refreshCumulativeViews\(\);/s,
