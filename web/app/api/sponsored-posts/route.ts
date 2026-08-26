@@ -7,6 +7,7 @@ import { normalizeChannelType, canonicalText } from "@/app/monitoring/lib";
 import { triggerCaptionBackfill, needsCaption } from "@/lib/github-dispatch";
 import { upsertSponsoredRows } from "@/lib/sponsored-write";
 import { stripAssetFileListing } from "@/lib/asset-name-policy";
+import { dedupeRowsById } from "@/lib/dedupe-rows";
 
 type DailyStatRow = {
   post_id: string;
@@ -109,7 +110,9 @@ export async function GET(req: NextRequest) {
         // DB·시트 데이터는 보존 — 화면 조회에서만 제외. 수집(cron)·리포트·sync는 별도 service-key 라우트라 무영향.
         .not("product_name", "is", null)
         .neq("product_name", "")
+        // created_at is shared by sheet imports. A unique secondary key keeps range pagination deterministic.
         .order("created_at", { ascending: false })
+        .order("id", { ascending: true })
         .range(from, from + PAGE - 1);
       // graceful degrade: 한 페이지 조회가 실패해도 500으로 대시보드 전체를 죽이지 않고, 지금까지 모은 것으로 진행.
       if (postsError) { console.error("[sponsored-posts] posts 조회 실패:", postsError.message); break; }
@@ -118,9 +121,18 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Defensive guard for rows inserted while pagination is in progress or an unexpected API regression.
+  const { rows: uniquePosts, duplicateIds } = dedupeRowsById(posts);
+  if (duplicateIds.length > 0) {
+    logger.warn("sponsored-posts", "페이지네이션 중복 게시물 제거", {
+      duplicateCount: duplicateIds.length,
+      sampleIds: duplicateIds.slice(0, 10),
+    });
+  }
+
   // 모든 post_daily_stats를 페이지네이션으로 전부 조회 후 post별 그룹핑
   // (N+1 쿼리 방지 + Supabase 기본 1000행 상한으로 과거 데이터가 잘리는 문제 방지)
-  const ids = (posts ?? []).map((p) => p.id);
+  const ids = uniquePosts.map((p) => p.id);
   const statsByPost = new Map<string, DailyStatRow[]>();
   // ⚠️ .in("post_id", ids) 쓰지 말 것 — 게시물 수백 개면 id 목록이 쿼리 URL 한도를 넘어
   //    PostgREST가 0행을 반환(2026-07-01 확인). ids=전체 게시물이라 필터 불필요 → 전량 조회 후 post_id로 그룹핑.
@@ -167,7 +179,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const data = (posts ?? []).map((post) => ({
+  const data = uniquePosts.map((post) => ({
     ...post,
     post_daily_stats: statsByPost.get(post.id) ?? [],
   }));
