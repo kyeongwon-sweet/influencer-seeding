@@ -1218,6 +1218,8 @@ function pullFromDB() {
     let added = 0, filled = 0, rejectedInvalid = 0;
     const pendingRows = [];
     const pendingKeys = {};
+    // 기존 행 빈칸 채움을 모아 열 단위로 1회씩 쓴다(개별 setValue 왕복 제거).
+    const fillEdits = [];
     const lastCol = sheet.getLastColumn();
     posts.forEach(p => {
       const rawUrl = String(p.url || "").trim();
@@ -1232,9 +1234,16 @@ function pullFromDB() {
           if (!fieldCols[f]) return;
           const val = fmtVal_(f, p[f]);
           if (val === "") return;
-          const cell = sheet.getRange(rowNum, fieldCols[f]);
-          const _pfBi = rowNum - CONFIG.DATA_START_ROW, _pfCi = fieldCols[f] - 1, _pfCur = (_pfBi >= 0 && _pfBi < _pfBlock.length) ? _pfBlock[_pfBi][_pfCi] : "";
-          if (String(_pfCur == null ? "" : _pfCur).trim() === "") { cell.setValue(val); if (_pfBi >= 0 && _pfBi < _pfBlock.length) _pfBlock[_pfBi][_pfCi] = val; filled++; }
+          const _pfBi = rowNum - CONFIG.DATA_START_ROW, _pfCi = fieldCols[f] - 1;
+          if (_pfBi < 0 || _pfBi >= _pfBlock.length) return;
+          const _pfCur = _pfBlock[_pfBi][_pfCi];
+          if (String(_pfCur == null ? "" : _pfCur).trim() !== "") return;
+          // 🚨 2026-08-26 WATCHDOG_TIMEOUT 재발방지: 빈 칸마다 setValue()를 부르면
+          //    시트 성장에 따라 왕복이 선형 증가해 20~30분 한도를 넘긴다(3,216행 × 11필드).
+          //    여기서는 메모리 블록만 갱신하고, 실제 쓰기는 아래에서 **열 단위 1회**로 모은다.
+          _pfBlock[_pfBi][_pfCi] = val;
+          fillEdits.push({ col: fieldCols[f], row: rowNum, value: val });
+          filled++;
         });
       } else {
         // 신규 글은 URL→메타를 셀별로 쓰지 않고 한 행 전체를 원자적으로 기록한다.
@@ -1250,6 +1259,18 @@ function pullFromDB() {
         pendingKeys[key] = true;
       }
     });
+
+    // 모아둔 기존 행 빈칸 채움을 **열 단위로 1회씩** 쓴다.
+    // 개별 setValue()는 시트가 커질수록 왕복이 선형 증가해 Apps Script 실행 한도를 넘겼다
+    // (2026-08-26 WATCHDOG_TIMEOUT: 3,216행 × fillFields 11개 → 최악 3.5만 회 왕복).
+    // writeColumnRuns_는 연속 구간을 묶어 쓰고 행 수 안정성까지 검증한다(고아 행 방지).
+    if (fillEdits.length > 0) {
+      const byCol = {};
+      fillEdits.forEach(e => { (byCol[e.col] = byCol[e.col] || []).push(e); });
+      Object.keys(byCol).forEach(col => {
+        writeColumnRuns_(sheet, Number(col), byCol[col], lastRow);
+      });
+    }
 
     if (pendingRows.length > 0) {
       assertRowCountStable_(sheet, lastRow, "pullFromDB append");
@@ -1769,8 +1790,11 @@ function dailyAuto() {
 // ═══════════════════════════════════════════════════════════════
 const DB_PULL_SYNC_INTERVAL_HOURS_ = 3;
 const DB_PULL_SYNC_RETRY_DELAY_MS_ = 7 * 60 * 1000;
-const DB_PULL_SYNC_WATCHDOG_DELAY_MS_ = 20 * 60 * 1000;
-const DB_PULL_SYNC_TIMEOUT_RETRY_DELAY_MS_ = 15 * 60 * 1000;
+// 🚨 2026-08-26: 20분이던 워치독이 **본 실행보다 먼저 울려** 성공한 실행도 실패로 알렸다.
+//    Apps Script 실행 한도는 30분이므로, 워치독은 그 뒤에 울려야 "완료 기록 없음"이 실제 실패를 뜻한다.
+//    32분 = 30분 한도 + 마무리(프로퍼티 기록·flush) 여유 2분.
+const DB_PULL_SYNC_WATCHDOG_DELAY_MS_ = 32 * 60 * 1000;
+const DB_PULL_SYNC_TIMEOUT_RETRY_DELAY_MS_ = 5 * 60 * 1000;
 
 function removeDbPullSyncTriggersByHandler_(handlers) {
   const wanted = handlers || [];
@@ -1915,9 +1939,9 @@ function dbPullSyncWatchdog_() {
     return true;
   }
 
-  // 원 실행은 최대 30분까지 살아 있을 수 있다. watchdog 시점에는 경고만 하고,
-  // 15분 뒤(시작 후 약 35분)에 재시도해 동시 시트 쓰기를 피한다.
-  const message = "Apps Script 20분 경과 후에도 완료 기록 없음(시간초과 의심)";
+  // 워치독은 실행 한도(30분)를 넘긴 뒤에 울린다 → 이 시점의 "완료 기록 없음"은 실제 실패다.
+  // 재시도는 5분 뒤로 둔다(원 실행은 이미 종료돼 있어 동시 시트 쓰기 위험이 없다).
+  const message = "Apps Script 32분 경과 후에도 완료 기록 없음(실행 한도 초과)";
   scheduleDbPullSyncRetry_({
     run_id: pending.run_id || "",
     source: pending.source || "scheduled",

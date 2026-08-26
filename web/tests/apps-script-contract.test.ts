@@ -611,8 +611,10 @@ test("DB to sheet sync runs independently every three hours with retry, watchdog
 
   assert.match(body, /DB_PULL_SYNC_INTERVAL_HOURS_ = 3/);
   assert.match(body, /DB_PULL_SYNC_RETRY_DELAY_MS_ = 7 \* 60 \* 1000/);
-  assert.match(body, /DB_PULL_SYNC_WATCHDOG_DELAY_MS_ = 20 \* 60 \* 1000/);
-  assert.match(body, /DB_PULL_SYNC_TIMEOUT_RETRY_DELAY_MS_ = 15 \* 60 \* 1000/);
+  // ⚠️ 2026-08-26 정정: 20분 워치독은 실행 한도(30분)보다 짧아 성공한 생행도 생패로 알렸다.
+  //    한도 뒤(32분)에 울려야 "완료 기록 없음"이 생제 실패를 뜼한다.
+  assert.match(body, /DB_PULL_SYNC_WATCHDOG_DELAY_MS_ = 32 \* 60 \* 1000/);
+  assert.match(body, /DB_PULL_SYNC_TIMEOUT_RETRY_DELAY_MS_ = 5 \* 60 \* 1000/);
   assert.match(body, /function runDbPullSyncAttempt_\(source, attempt\)/);
   assert.match(body, /return withAutoWriteGuard_\(function\(\) \{[\s\S]*?return withDocLock_\(function\(\)/);
   assert.match(body, /newTrigger\("dbPullSyncWatchdog_"\)/);
@@ -1046,4 +1048,31 @@ test("captionFromAssetName_: 포맷 표식과 마지막 6자리 날짜 앵커 �
   const filler = appsScript.slice(appsScript.indexOf("function fillCaptionFromAsset_()"));
   assert.match(filler, /captionFromAssetName_\(assets\[i\]\[0\], channelType\)/);
   assert.doesNotMatch(filler.slice(0, 2000), /split\("_"\)\[8\]/);
+});
+
+// 🚨 2026-08-26 WATCHDOG_TIMEOUT 재발방지 — 두 원인을 함께 고정한다.
+//   ① pullFromDB가 기존 행 빈칸을 **셀마다 setValue()** 로 써서 시트 성장에 따라 왕복이
+//      선형 증가했다(3,216행 × fillFields 11개 → 최악 3.5만 회). 실행 한도를 넘겨 타임아웃.
+//   ② 워치독이 20분에 울렸는데 Apps Script 실행 한도는 30분 → **성공한 실행도 실패로 알렸다**
+//      (코드 주석 자체가 "원 실행은 최대 30분까지 살아 있을 수 있다"고 인정).
+test("pullFromDB: 기존 행 빈칸 채움을 열 단위 배치로 쓴다(개별 setValue 금지)", () => {
+  const start = appsScript.indexOf("function pullFromDB()");
+  const end = appsScript.indexOf("function ", start + 10);
+  const body = appsScript.slice(start, end);
+  assert.notEqual(start, -1);
+  // 편집을 모아서 열 단위로 1회씩 쓴다
+  assert.match(body, /const fillEdits = \[\]/);
+  assert.match(body, /fillEdits\.push\(\{ col: fieldCols\[f\], row: rowNum, value: val \}\)/);
+  assert.match(body, /writeColumnRuns_\(sheet, Number\(col\), byCol\[col\], lastRow\)/);
+  // 🚫 기존 행 채움에 개별 setValue를 되살리지 말 것 — 타임아웃 재발 경로다
+  assert.doesNotMatch(body, /cell\.setValue\(val\)/);
+});
+
+test("DB→시트 워치독은 실행 한도(30분) 뒤에 울린다", () => {
+  // 워치독이 본 실행보다 먼저 울면 성공을 실패로 보고한다(오탐).
+  assert.match(appsScript, /DB_PULL_SYNC_WATCHDOG_DELAY_MS_ = 32 \* 60 \* 1000/);
+  // 원 실행이 이미 끝난 뒤이므로 재시도를 오래 미룰 이유가 없다
+  assert.match(appsScript, /DB_PULL_SYNC_TIMEOUT_RETRY_DELAY_MS_ = 5 \* 60 \* 1000/);
+  // 알림 문구도 실제 임계와 일치해야 한다(운영자가 20분으로 오해하지 않도록)
+  assert.match(appsScript, /32분 경과 후에도 완료 기록 없음/);
 });
