@@ -6,6 +6,13 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-27 [Codex 완료·배포·실측] formula-audit 최신 날짜열 혼합 스냅샷 대량 오탐 차단 (`8cff00c`)
+- **시트/수식은 정상, 감사 읽기 순서가 원인:** Apps Script 실행 이력 실측상 `dailyAuto`는 08:27:54 시작 → `exportStats`가 **08:45:14에 새 날짜열 1개를 추가해 102열(P:DM)**로 확장 → 08:51경 전체 완료했다. 그런데 09:33 감사 run `33027216967`은 값/헤더 쪽은 **101열(P:DL)**, 뒤이어 읽은 H/I 수식은 **DM 끝열**인 서로 다른 스냅샷을 섞어 `hInvalid 2,924 · incInvalid 3,239 · mismatch 668`을 오탐했다. Claude의 gviz 전수대조(H 불일치 0)가 맞고, off-by-one 파서 버그나 시트 수식 손상이 아니었다.
+- **수정:** 감사 라우트가 대량 값 조회와 별도로 `A1:ZZ1` 헤더를 재조회한다. 날짜 구간이 시작된 뒤 `등록상태` 직전의 **빈 최신 헤더만** 전날+1일로 보수적으로 복구하며, 비어 있지 않은 미인식 헤더는 추정하지 않는다. H/I 표준 수식의 지배적 끝열이 헤더보다 앞서면 1초 뒤 전체 스냅샷을 1회 재조회하고, 그래도 어긋나면 수천 건 이상으로 보고하지 않고 `sheet_snapshot_not_ready`(HTTP 503)로 실패 닫아 다음 실행에서 재시도한다. 응답에 `inferredDateColumns`, `snapshotRetryCount`, `dominantFormulaEnd`를 추가해 재발 시 원인을 바로 구분한다.
+- **프로덕션:** clean detached worktree의 exact `8cff00c`를 배포. Vercel `dpl_H1a92EBRhb9aeTMpbr8cChWczkCJ` READY, `influencer-seeding-mu.vercel.app` 별칭 반영.
+- **라이브 재감사:** [`33049835448`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/33049835448) HTTP 200, `dateColumnCount=102`, `metricRange=P:DM`, `dominantFormulaEnd=DM (6,164/6,164)`, `inferredDateColumns=[]`, `snapshotRetryCount=0`. H 오류/빈칸/형태오류 0, I 오류/불일치/형태오류 0, 고아 0, stale 0, `healthy=true`. 오늘 Slack은 기존 보고 멱등 가드로 중복 발송하지 않았다.
+- **검증/무접촉:** formula-audit 19/19, web 339/339, `tsc --noEmit`, lint 오류 0(기존 경고 15), production build 통과. **시트 H/I·날짜값·조회수·posted_at·공유필터 쓰기 0건.**
+
 ## ✅ 2026-08-27 [Claude 전수조사] 연동시트 H(누적)/I(증분) 값 정확 — 감사 형태오탐은 "달력 한 칸 밀림"
 - **사용자 지시:** H/I 수식이 제대로 맞는 값인지 전수조사.
 - **독립 검증(gviz 3,245행 전량 → 날짜열로 직접 재계산·대조, 감사와 무관):** H(누적) **2,857행 불일치 0**(전부 날짜열 MAX 일치). I(증분) **2,857행 중 6건만 차이**, 그 6건은 시트가 스파이크방지(백로그 첫측정/증분0)로 의도적 빈칸 처리한 것 = 시트가 더 정확, 실질 오류 0. **결론: 화면 H/I 값 정확.**
