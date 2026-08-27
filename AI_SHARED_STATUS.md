@@ -6,6 +6,11 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-27 [Claude] 리포트 결과 워치독 추가 + 오늘 크론 누락 수동 복구
+- **사건:** 8/27 GitHub이 일일 증분 리포트 백업 크론 4개(12:20/13:20/14:20/15:20 KST)를 **전부 드롭** → 8/26 데이터 리포트 미발송. 워크플로 active·코드 정상, GitHub 쪽 간헐적 크론 누락. 16:40 KST 수동 dispatch로 발송 완료(ts 1787816431.020589, 검수 통과).
+- **재발방지(배포됨):** `web/app/api/ops/ensure-daily-report/route.ts` — 오늘 KST 리포트 워크플로 성공 실행 0건이면 자동 dispatch + Slack 알림, 성공 있으면 무동작. 조회 실패는 경고만(중복 방지). 미들웨어 공개목록 추가. ensure-daily-audits 패턴 재사용. Vercel 배포 확인(401).
+- **⚠️ 활성화 미완:** 구글 Apps Script 트리거 설치 필요 — `Combined_Sheet_AppsScript.gs`에 `ensureDailyReport()`·`installEnsureDailyReportTrigger()` 추가함(16:10 KST 매일). **라이브 Apps Script에 반영 + installEnsureDailyReportTrigger() 1회 실행해야 워치독 가동.** (GitHub 크론에 의존 안 하려고 구글 트리거 사용.)
+
 ## ✅ 2026-08-27 [Codex 완료·배포·실측] formula-audit 최신 날짜열 혼합 스냅샷 대량 오탐 차단 (`8cff00c`)
 - **시트/수식은 정상, 감사 읽기 순서가 원인:** Apps Script 실행 이력 실측상 `dailyAuto`는 08:27:54 시작 → `exportStats`가 **08:45:14에 새 날짜열 1개를 추가해 102열(P:DM)**로 확장 → 08:51경 전체 완료했다. 그런데 09:33 감사 run `33027216967`은 값/헤더 쪽은 **101열(P:DL)**, 뒤이어 읽은 H/I 수식은 **DM 끝열**인 서로 다른 스냅샷을 섞어 `hInvalid 2,924 · incInvalid 3,239 · mismatch 668`을 오탐했다. Claude의 gviz 전수대조(H 불일치 0)가 맞고, off-by-one 파서 버그나 시트 수식 손상이 아니었다.
 - **수정:** 감사 라우트가 대량 값 조회와 별도로 `A1:ZZ1` 헤더를 재조회한다. 날짜 구간이 시작된 뒤 `등록상태` 직전의 **빈 최신 헤더만** 전날+1일로 보수적으로 복구하며, 비어 있지 않은 미인식 헤더는 추정하지 않는다. H/I 표준 수식의 지배적 끝열이 헤더보다 앞서면 1초 뒤 전체 스냅샷을 1회 재조회하고, 그래도 어긋나면 수천 건 이상으로 보고하지 않고 `sheet_snapshot_not_ready`(HTTP 503)로 실패 닫아 다음 실행에서 재시도한다. 응답에 `inferredDateColumns`, `snapshotRetryCount`, `dominantFormulaEnd`를 추가해 재발 시 원인을 바로 구분한다.
