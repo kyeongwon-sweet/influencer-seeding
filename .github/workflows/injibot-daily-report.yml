@@ -1,15 +1,29 @@
 name: Injibot Daily Collect Report
 
-# 자정수집 요약(배너제외 확보율)+실패상세 스레드를 인지봇으로 Slack #빙과_마케팅_인지p(C0B659HEYDV)에 발송.
-# 로컬 예약작업(daily-collect-injibot-report)이 PC 수면/따라잡기 실행으로 발송 누락되는 문제 →
-# GitHub 서버 크론으로 이전(PC 상태 무관). report.py가 계산·서식·발송을 결정론적으로 처리.
+# 자정수집 요약(배너제외 확보율)+실패상세 스레드를 인지봇으로 Slack #빙과_마케팅_스틱바p(C0B659HEYDV)에 발송.
 #
-# ⚠️ 필요한 GitHub Secret: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY(기존) + INJIBOT_SLACK_TOKEN(신규 추가 필요).
-# ⚠️ GHA 검증 후 로컬 예약작업은 비활성화할 것(중복 발송 방지).
+# 재발방지(2026-08-27): 단일 GHA 크론(06:38) 하나에만 의존해 GitHub이 그 크론을 드롭하면
+#   요약이 하루 통째로 안 올라오던 문제 → 근본해결로 **독립 크론 3개(06:38·07:38·08:38 KST)**로 다중화.
+#   report.py는 같은 날 요약이 채널에 이미 있으면 스킵(idempotency)하므로 어느 하나만 떠도 정확히 1회 발송,
+#   3개가 모두 드롭될 확률은 매우 낮다. (별도 감지형 워치독 대신 '리포트가 확실히 발사되게' 하는 방식)
+# ⚠️ 필요한 GitHub Secret: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, INJIBOT_SLACK_TOKEN.
+#   idempotency는 conversations.history를 쓰므로 봇 토큰에 channels:history(또는 groups:history) 권장 —
+#   없으면 조회 실패 시 '누락<중복' 원칙으로 발송(최악은 중복, 미발송 아님).
 on:
   schedule:
     - cron: "38 21 * * *"   # 06:38 KST (자정수집 이후)
-  workflow_dispatch:        # 수동 테스트
+    - cron: "38 22 * * *"   # 07:38 KST (크론 드롭 대비 다중화)
+    - cron: "38 23 * * *"   # 08:38 KST (크론 드롭 대비 다중화)
+  workflow_dispatch:        # 수동 실행
+    inputs:
+      force:
+        description: "중복방지 무시하고 강제 발송(정정 재발송용)"
+        required: false
+        default: "false"
+
+concurrency:
+  group: injibot-daily-report
+  cancel-in-progress: false
 
 jobs:
   report:
@@ -43,4 +57,5 @@ jobs:
           TZ: "Asia/Seoul"
           AUTO_END_WATCHDOG_REPORT: data/output/auto-end-watchdog.json
           AUTO_END_WATCHDOG_OUTCOME: ${{ steps.auto_end_watchdog.outcome }}
-        run: python scripts/daily_collect_report.py --send
+          FORCE_FLAG: ${{ github.event.inputs.force == 'true' && '--force' || '' }}
+        run: python scripts/daily_collect_report.py --send $FORCE_FLAG

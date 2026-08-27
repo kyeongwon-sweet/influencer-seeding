@@ -87,6 +87,7 @@ def parse_iso(s):
 def main():
     args = sys.argv[1:]
     do_send = "--send" in args
+    force = "--force" in args   # 중복방지(idempotency) 무시하고 강제 발송(정정 재발송용)
     date_override = None
     if "--date" in args:
         date_override = args[args.index("--date") + 1]
@@ -309,6 +310,26 @@ def main():
             "https://slack.com/api/chat.postMessage", data=data,
             headers={"Authorization": "Bearer " + TOK, "Content-Type": "application/json; charset=utf-8"})
         return json.load(urllib.request.urlopen(req, timeout=20))
+
+    # 재발방지(2026-08-27): 리포트를 여러 시각(06:38·07:38·08:38 KST 크론)에 중복 트리거해도
+    #   하루 1회만 발송. 같은 날 제목("자정 수집 … 알림 (today)")이 채널에 이미 있으면 생략.
+    #   조회 실패(스코프/네트워크) 시엔 '누락 < 중복' 원칙으로 그대로 발송한다. --force면 무시.
+    if not force:
+        try:
+            hreq = urllib.request.Request(
+                "https://slack.com/api/conversations.history?channel=%s&limit=30" % CHANNEL,
+                headers={"Authorization": "Bearer " + TOK})
+            hist = json.load(urllib.request.urlopen(hreq, timeout=20))
+            if hist.get("ok"):
+                mark = "(%s)" % today
+                if any(("자정 수집" in (m.get("text") or "")) and (mark in (m.get("text") or ""))
+                       for m in hist.get("messages", [])):
+                    print("[idempotency] 오늘(%s) 리포트 이미 채널에 있음 → 발송 생략" % today)
+                    return 0
+            else:
+                print("[idempotency] history 조회 실패(%s) → 발송 진행(누락<중복)" % hist.get("error"))
+        except Exception as e:
+            print("[idempotency] 예외(%s) → 발송 진행" % e)
 
     r1 = post({"channel": CHANNEL, "text": body})
     print("\n본문 발송:", {k: r1.get(k) for k in ("ok", "error", "ts")})
