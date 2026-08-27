@@ -3890,18 +3890,18 @@ function ensureDailyReport() {
   return true;
 }
 
-// 매일 16:10 KST 전후(백업 크론 15:20 + 지연 여유 이후) 1회. 그 시각까지 리포트가 안 나갔으면 자동 발송.
+// 다중화 트리거 2개(GitHub 크론 불안정 대비 — 시각은 구글이 보장):
+//   ① 정시 12:35 KST — GHA 크론이 안 돌았으면 즉시 발송(정시 도달). 돌았으면 무동작.
+//   ② 백업 16:10 KST — 그때까지도 안 나갔으면 최후 발송. (둘 다 DEDUP으로 중복 방지)
 function installEnsureDailyReportTrigger() {
   ScriptApp.getProjectTriggers()
     .filter(t => t.getHandlerFunction() === "ensureDailyReport")
     .forEach(t => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger("ensureDailyReport")
-    .timeBased()
-    .atHour(16)
-    .nearMinute(10)
-    .everyDays(1)
-    .create();
-  safeAlert_("✅ 리포트 발송 보장 트리거(매일 16:10 KST 전후)를 설치했습니다.\n그 시각까지 오늘 리포트가 안 나갔으면 자동으로 발송합니다(이미 나간 날은 무동작).");
+    .timeBased().atHour(12).nearMinute(35).everyDays(1).create();  // 정시
+  ScriptApp.newTrigger("ensureDailyReport")
+    .timeBased().atHour(16).nearMinute(10).everyDays(1).create();  // 백업
+  safeAlert_("✅ 리포트 발송 보장 트리거 2개(매일 12:35·16:10 KST 전후)를 설치했습니다.\n그 시각까지 오늘 리포트가 안 나갔으면 자동 발송합니다(이미 나간 날은 무동작, DEDUP으로 중복 없음).");
 }
 
 function removeEnsureDailyReportTrigger() {
