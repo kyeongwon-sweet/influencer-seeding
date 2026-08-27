@@ -45,6 +45,7 @@ FRESHNESS_HOURS: dict[str, float] = {
 # 유예값은 최근 10회 실측 지연에서 산출(2026-08-27 측정):
 #   daily-collect 34~56분(백업 3슬롯, 마지막 ~05:00) / validate 20~43분(백업 07:00)
 #   injibot 14~18분(단, 3중 크론이라 마지막 슬롯 08:38 기준 = due 대비 140분)
+#   daily-report 마지막 슬롯은 15:20 예정→최대 16:32 완료(첫 12:20 대비 253분)
 #   formula-audit 77~107분 / invalid-creator 88~97분 / kpi 73~90분
 DAILY_DEADLINE_KST: dict[str, dict[str, object]] = {
     "cron-daily-collect.yml":      {"due": "00:41", "grace": 300},  # 백업 02:41·04:41 포함
@@ -57,6 +58,10 @@ DAILY_DEADLINE_KST: dict[str, dict[str, object]] = {
     "formula-audit.yml":           {"due": "09:10", "grace": 165},
     "invalid-creator-fields.yml":  {"due": "09:25", "grace": 165},
     "cron-kpi.yml":                {"due": "10:05", "grace": 150},
+    # 증분 리포트는 GitHub 4중 크론(12:20~15:20) + Apps Script 자가치유(12:35·16:10)
+    # 뒤에 검사한다. 워치독은 재발송하지 않고, 오늘 예약 성공이 끝내 없었다는 사실만 알린다.
+    # 실제 발송은 ensure-daily-report가 담당하고 DEDUP이 중복을 막는다.
+    "daily-increment-report.yml":  {"due": "12:20", "grace": 285, "since": "2026-08-27"},
 }
 
 # 마감을 넘겼지만 **같은 날 다른 경로로 복구된** 경우, 매시간 무한 반복하면 소음이 된다

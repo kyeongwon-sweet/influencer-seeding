@@ -172,6 +172,7 @@ def main() -> int:
         "formula-audit.yml": 107,
         "invalid-creator-fields.yml": 97,
         "cron-kpi.yml": 90,
+        "daily-increment-report.yml": 253, # 마지막 15:20 슬롯이 최대 16:32 완료(첫 12:20 대비)
     }
     if set(observed_max_delay_min) != set(DAILY_DEADLINE_KST):
         fails.append(
@@ -218,13 +219,35 @@ def main() -> int:
                                  deadlines=INJI)) != 1:
         fails.append("⑯복구가 없으면 창 제한 없이 계속 경고해야 함")
 
+    # ⑰ 증분 리포트: 4중 GitHub 크론과 16:10 Apps Script 자가치유가 끝나기 전엔 침묵하고,
+    #     이후에도 오늘 예약 성공이 없으면 스케줄 이상을 알린다. dispatch 성공은 복구 주석으로 남긴다.
+    REPORT = {"daily-increment-report.yml": DAILY_DEADLINE_KST["daily-increment-report.yml"]}
+    report_yesterday = {"daily-increment-report.yml": "2026-08-26T07:13:29Z"}  # KST 16:13
+    if check_daily_deadlines(report_yesterday, at_kst(8, 27, 17, 4), deadlines=REPORT):
+        fails.append("⑰증분 리포트 마감 전에는 경고하지 않아야 함")
+    report_late = check_daily_deadlines(report_yesterday, at_kst(8, 27, 17, 5), deadlines=REPORT)
+    if len(report_late) != 1 or "daily-increment-report.yml" not in report_late[0]:
+        fails.append(f"⑰증분 리포트 예약 미실행 마감 경고 누락: {report_late}")
+    report_recovered = {"daily-increment-report.yml": {
+        "updated_at": "2026-08-27T07:41:15Z",  # KST 16:41 수동/자가치유 성공
+        "event": "workflow_dispatch",
+    }}
+    report_late = check_daily_deadlines(
+        report_yesterday, at_kst(8, 27, 17, 5), report_recovered, deadlines=REPORT
+    )
+    if len(report_late) != 1 or "데이터는 복구됨" not in report_late[0]:
+        fails.append(f"⑰증분 리포트 복구 주석 누락: {report_late}")
+    report_schedule_ok = {"daily-increment-report.yml": "2026-08-27T07:32:52Z"}
+    if check_daily_deadlines(report_schedule_ok, at_kst(8, 27, 17, 5), deadlines=REPORT):
+        fails.append("⑰증분 리포트 오늘 예약 성공이 있으면 경고하지 않아야 함")
+
     if fails:
         print("[FAIL] test_cron_watchdog 실패")
         for x in fails:
             print("  - " + x)
         return 1
     print(
-        "[OK] test_cron_watchdog 통과: 나이기준 8종 + 마감기준 10종 "
+        "[OK] test_cron_watchdog 통과: 나이기준 8종 + 마감기준 11종 "
         "(사각지대재현/유예내침묵/오늘성공/since전후/수동복구주석/유예여유/중복억제/복구창)"
     )
     return 0
