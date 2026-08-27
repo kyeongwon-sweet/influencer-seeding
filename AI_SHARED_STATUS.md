@@ -11,7 +11,7 @@
 - **마감 편입:** `daily-increment-report.yml`을 `DAILY_DEADLINE_KST`에 추가했다. 첫 예약 12:20 KST 기준 유예 285분(**17:05 마감**). GitHub 4중 크론(12:20·13:20·14:20·15:20), 마지막 슬롯의 실측 최대 완료 16:32, Apps Script 최종 자가치유 16:10이 모두 끝난 뒤 검사하므로 정상 지연 중에는 울리지 않는다.
 - **중복·소음 방지:** 워치독은 리포트를 발송하지 않는다. 오늘 `workflow_dispatch` 성공이 있으면 “데이터는 복구됨” 주석만 붙이고, 같은 워크플로의 26h 나이 경고가 함께 생기면 기존 `suppress_redundant_freshness`가 더 정확한 마감 경고 하나만 남긴다. 리포트 자체의 DEDUP도 그대로다.
 - **표현 정정:** 8/27 사건은 확인된 범위에서 **지연·드롭 가능성 완화**로 표현한다. repo 전역 크론 드롭으로 단정하지 않는다.
-- **활성화 잔여:** 코드상 다중화는 완성됐지만 라이브 Apps Script의 `installEnsureDailyReportTrigger()` 1회 실행은 사용자 Google 권한이 필요한 별도 단계다. 설치 전에도 GitHub 4중 크론+17:05 마감 경보는 작동한다.
+- **라이브 활성화 완료(2026-08-27 21:02 KST):** 정본 Apps Script `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn`에 자가치유 전용 파일을 함수 단위로 추가하고 `installEnsureDailyReportTrigger()`를 실행했다. 트리거 화면에서 `ensureDailyReport` 시간 기반 트리거 **정확히 2개**를 확인했다(12:35·16:10 KST 전후). 수동 실측은 HTTP 200 `{"ok":true,"kdate":"2026-08-27","success":1,"acted":false}`로, 오늘 성공 리포트를 인식해 중복 발송 없이 무동작했다.
 - **검증:** `test_cron_watchdog` 나이기준 8종+마감기준 11종, py_compile 통과. main `af0b213` 반영 후 GHA dry-run [`33068253082`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/33068253082) success. 오늘은 16:41 수동 복구가 이미 성공했고 복구 알림 창도 지난 상태라 `신선도 경고 0·마감 경고 0`이 정상이다.
 
 ## ✅ 2026-08-27 [Claude] 리포트 결과 워치독 추가 + 오늘 크론 누락 수동 복구
