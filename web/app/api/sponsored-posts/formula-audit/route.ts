@@ -7,7 +7,14 @@ import { normalizeUrl, postIdentityKey } from "@/lib/url-utils";
 import { todayKST } from "@/lib/dateRule";
 import { FORMULA_AUDIT_SERVICE, shouldSkipFormulaAuditReport } from "@/lib/formula-audit-dedupe";
 import { notifyBot } from "@/lib/slack";
-import { auditRows, formatAuditMessage, parseHeaderDate, type AuditPost, type SheetAuditRow } from "@/lib/formula-audit";
+import {
+  auditRows,
+  dominantMetricFormulaEndColumn,
+  formatAuditMessage,
+  resolveMetricDateColumns,
+  type AuditPost,
+  type SheetAuditRow,
+} from "@/lib/formula-audit";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -100,6 +107,10 @@ function columnNumberToA1(columnNumber: number): string {
   return out;
 }
 
+function a1ColumnToNumber(column: string): number {
+  return column.toUpperCase().split("").reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+}
+
 async function handler(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -108,48 +119,102 @@ async function handler(req: NextRequest) {
   const force = req.nextUrl.searchParams.get("force") === "1";
   const supabase = getServerSupabase();
 
-  let values: (string | number | boolean | null)[][];
+  type SheetSnapshot = {
+    values: (string | number | boolean | null)[][];
+    header: (string | number | boolean | null)[];
+    urlCol: number;
+    cumCol: number;
+    incCol: number;
+    acctCol: number;
+    statusCol: number;
+    formulaFirstCol: number;
+    formulaValues: (string | number | boolean | null)[][];
+  };
+  const loadSnapshot = async (): Promise<SheetSnapshot> => {
+    const values = await fetchSheetTabValues(SHEET_ID, SHEET_GID, SHEET_RANGE);
+    // 대량 범위와 별도로 1행을 다시 읽는다. Apps Script 대량 쓰기 직후 큰 범위가 직전
+    // 헤더 스냅샷을 돌려주고 H/I 수식 조회만 최신인 혼합 응답(2026-08-27)을 막는다.
+    const latestHeader = (await fetchSheetTabValues(SHEET_ID, SHEET_GID, "A1:ZZ1"))[0];
+    const header = latestHeader?.length ? latestHeader : (values[0] ?? []);
+    values[0] = header;
+    const findCol = (names: string[]) =>
+      header.findIndex((h) => names.includes(normalizeSheetHeader(h as string | number | null)));
+    const urlCol = findCol(["게시물url"]);
+    const cumCol = findCol(["누적조회수", "누적 조회수"]);
+    const incCol = findCol(["증분값", "증분"]);
+    const acctCol = findCol(["채널명"]);
+    const statusCol = findCol(["등록상태"]);
+    const formulaFirstCol = Math.min(cumCol, incCol);
+    const formulaLastCol = Math.max(cumCol, incCol);
+    const formulaRange = `${columnNumberToA1(formulaFirstCol + 1)}2:${columnNumberToA1(formulaLastCol + 1)}${Math.max(2, values.length)}`;
+    const formulaValues = urlCol >= 0 && cumCol >= 0 && incCol >= 0
+      ? await fetchSheetTabFormulas(SHEET_ID, SHEET_GID, formulaRange)
+      : [];
+    return { values, header, urlCol, cumCol, incCol, acctCol, statusCol, formulaFirstCol, formulaValues };
+  };
+
+  let snapshot: SheetSnapshot;
   try {
-    values = await fetchSheetTabValues(SHEET_ID, SHEET_GID, SHEET_RANGE);
+    snapshot = await loadSnapshot();
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await notifyBot(`🔴 [수식 전수감사] 시트 읽기 실패 — ${msg.slice(0, 200)}`).catch(() => {});
     return NextResponse.json({ error: msg }, { status: 502 });
   }
-
-  const header = values[0] ?? [];
-  const findCol = (names: string[]) =>
-    header.findIndex((h) => names.includes(normalizeSheetHeader(h as string | number | null)));
-  const urlCol = findCol(["게시물url"]);
-  const cumCol = findCol(["누적조회수", "누적 조회수"]);
-  const incCol = findCol(["증분값", "증분"]);
-  const acctCol = findCol(["채널명"]);
-  if (urlCol < 0 || cumCol < 0 || incCol < 0) {
-    await notifyBot(`🔴 [수식 전수감사] 헤더 인식 실패 — url:${urlCol} 누적:${cumCol} 증분:${incCol}`).catch(() => {});
+  if (snapshot.urlCol < 0 || snapshot.cumCol < 0 || snapshot.incCol < 0) {
+    await notifyBot(`🔴 [수식 전수감사] 헤더 인식 실패 — url:${snapshot.urlCol} 누적:${snapshot.cumCol} 증분:${snapshot.incCol}`).catch(() => {});
     return NextResponse.json({ error: "header not found" }, { status: 500 });
   }
 
-  // 값 조회와 별도로 FORMULA 렌더를 읽는다. 숫자로 덮인 H나 `=""` 스텁 I는
-  // UNFORMATTED_VALUE만 보면 정상값/빈칸으로 보여 조용히 통과하기 때문이다.
-  const formulaFirstCol = Math.min(cumCol, incCol);
-  const formulaLastCol = Math.max(cumCol, incCol);
-  const formulaRange = `${columnNumberToA1(formulaFirstCol + 1)}2:${columnNumberToA1(formulaLastCol + 1)}${Math.max(2, values.length)}`;
-  let formulaValues: (string | number | boolean | null)[][];
-  try {
-    formulaValues = await fetchSheetTabFormulas(SHEET_ID, SHEET_GID, formulaRange);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    await notifyBot(`🔴 [수식 전수감사] 수식 원문 읽기 실패 — ${msg.slice(0, 200)}`).catch(() => {});
-    return NextResponse.json({ error: msg }, { status: 502 });
+  const detectDateCols = (current: SheetSnapshot) => resolveMetricDateColumns(
+    current.header,
+    current.incCol + 1,
+    current.statusCol > current.incCol ? current.statusCol : current.header.length,
+    STATS_START_YEAR,
+  );
+  const formulaEnd = (current: SheetSnapshot) => dominantMetricFormulaEndColumn(
+    current.formulaValues.flatMap((row) => [
+      row[current.cumCol - current.formulaFirstCol],
+      row[current.incCol - current.formulaFirstCol],
+    ]),
+  );
+  const snapshotAhead = (
+    currentDateCols: ReturnType<typeof detectDateCols>,
+    dominant: ReturnType<typeof formulaEnd>,
+  ) => dominant != null && currentDateCols.length > 0
+    && dominant.count >= 20
+    && dominant.count > dominant.total / 2
+    && a1ColumnToNumber(dominant.column) > currentDateCols[currentDateCols.length - 1].idx + 1;
+
+  let dateCols = detectDateCols(snapshot);
+  let dominantFormulaEnd = formulaEnd(snapshot);
+  let snapshotRetryCount = 0;
+  if (snapshotAhead(dateCols, dominantFormulaEnd)) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    try {
+      snapshot = await loadSnapshot();
+      dateCols = detectDateCols(snapshot);
+      dominantFormulaEnd = formulaEnd(snapshot);
+      snapshotRetryCount = 1;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return NextResponse.json({ error: msg, retryable: true }, { status: 502 });
+    }
+  }
+  if (snapshotAhead(dateCols, dominantFormulaEnd)) {
+    const lastColumn = dateCols.length ? columnNumberToA1(dateCols[dateCols.length - 1].idx + 1) : null;
+    const message = `⚠️ [수식 전수감사] 시트 스냅샷 불일치 — 날짜 헤더 ${lastColumn ?? "없음"}, H/I 수식 ${dominantFormulaEnd?.column ?? "없음"}. 대량 오탐을 막고 다음 실행에서 재시도합니다.`;
+    await notifyBot(message).catch(() => {});
+    return NextResponse.json({
+      error: "sheet_snapshot_not_ready",
+      retryable: true,
+      snapshotRetryCount,
+      headerLastColumn: lastColumn,
+      dominantFormulaEnd,
+    }, { status: 503 });
   }
 
-  // 날짜 열: 월.일 / 2자리연도 접두(26.7.16) / 4자리연도 / 날짜셀 혼재를 모두 인식(parseHeaderDate).
-  const dateCols: Array<{ idx: number; date: string }> = [];
-  const state = { year: STATS_START_YEAR, prevMonth: null as number | null };
-  for (let c = incCol + 1; c < header.length; c += 1) {
-    const ymd = parseHeaderDate(header[c] as string | number | null, state);
-    if (ymd) dateCols.push({ idx: c, date: ymd });
-  }
+  const { values, header, urlCol, cumCol, incCol, acctCol, formulaFirstCol, formulaValues } = snapshot;
   if (dateCols.length === 0) {
     // 실패 시 자기진단: 헤더 표본을 함께 알려 원인(형식 변경 등)을 즉시 알 수 있게 한다.
     const sample = header.slice(incCol + 1, incCol + 9).map((h) => String(h ?? "")).join(" | ");
@@ -165,6 +230,9 @@ async function handler(req: NextRequest) {
     firstColumn: metricRange.firstColumn,
     lastColumn: metricRange.lastColumn,
   };
+  const inferredDateColumns = dateCols
+    .filter((dc) => dc.inferred)
+    .map((dc) => ({ column: columnNumberToA1(dc.idx + 1), date: dc.date }));
 
   // 시트 행 파싱 (raw 셀은 UNFORMATTED라 오류셀은 "#REF!" 같은 문자열로 온다)
   const rows: SheetAuditRow[] = [];
@@ -272,6 +340,9 @@ async function handler(req: NextRequest) {
       dedupeLookupOk: true,
       dateColumnCount: dateCols.length,
       metricRange: metricRangeSummary,
+      inferredDateColumns,
+      snapshotRetryCount,
+      dominantFormulaEnd,
       ...result,
     });
   }
@@ -306,6 +377,9 @@ async function handler(req: NextRequest) {
     dedupeLookupOk: alreadyReported != null,
     dateColumnCount: dateCols.length,
     metricRange: metricRangeSummary,
+    inferredDateColumns,
+    snapshotRetryCount,
+    dominantFormulaEnd,
     ...result,
   });
 }

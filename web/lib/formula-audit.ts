@@ -121,6 +121,72 @@ export function parseHeaderDate(
   return null;
 }
 
+export type MetricDateColumn = { idx: number; date: string; inferred: boolean };
+
+/**
+ * 날짜열은 첫 날짜 헤더부터 등록상태 열 직전까지 하루씩 연속된다.
+ * 대량 Apps Script 쓰기 직후 Sheets API가 새 마지막 헤더만 빈 값으로 돌려주는 경우가 있어,
+ * 이미 시작된 날짜 구간 안의 빈 헤더만 이전 날짜 + 1일로 보수적으로 복구한다.
+ * 비어 있지 않은 미인식 헤더는 임의로 날짜화하지 않는다.
+ */
+export function resolveMetricDateColumns(
+  header: Array<string | number | boolean | null>,
+  startIndex: number,
+  endExclusive: number,
+  startYear: number,
+): MetricDateColumn[] {
+  const columns: MetricDateColumn[] = [];
+  const state = { year: startYear, prevMonth: null as number | null };
+  let lastDate: string | null = null;
+
+  for (let idx = startIndex; idx < Math.min(endExclusive, header.length); idx += 1) {
+    const value = header[idx];
+    const parsed = parseHeaderDate(value, state);
+    if (parsed) {
+      columns.push({ idx, date: parsed, inferred: false });
+      lastDate = parsed;
+      continue;
+    }
+    if (!lastDate || String(value ?? "").trim() !== "") continue;
+
+    const inferred = shiftDate(lastDate, 1);
+    const inferredDate = new Date(`${inferred}T00:00:00Z`);
+    state.year = inferredDate.getUTCFullYear();
+    state.prevMonth = inferredDate.getUTCMonth() + 1;
+    columns.push({ idx, date: inferred, inferred: true });
+    lastDate = inferred;
+  }
+  return columns;
+}
+
+export function metricFormulaEndColumn(value: unknown): string | null {
+  if (typeof value !== "string" || !value.startsWith("=")) return null;
+  const normalized = value.replace(/\s+/g, "").toUpperCase();
+  const cumulative = normalized.match(/^=IF\(COUNT\([A-Z]+\d+:([A-Z]+)\d+\)=0,"",MAX\(/);
+  if (cumulative) return cumulative[1];
+  const increment = normalized.match(/^=IFERROR\(LET\(RNG,\$[A-Z]+\d+:\$([A-Z]+)\d+,/);
+  return increment?.[1] ?? null;
+}
+
+/** 다수 H/I 수식이 가리키는 끝열. 단일 파손 수식은 스냅샷 전체를 흔들지 않게 mode를 쓴다. */
+export function dominantMetricFormulaEndColumn(
+  values: unknown[],
+): { column: string; count: number; total: number } | null {
+  const counts = new Map<string, number>();
+  let total = 0;
+  for (const value of values) {
+    const column = metricFormulaEndColumn(value);
+    if (!column) continue;
+    counts.set(column, (counts.get(column) ?? 0) + 1);
+    total += 1;
+  }
+  if (total === 0) return null;
+
+  const winner = [...counts.entries()].sort((a, b) =>
+    b[1] - a[1] || columnNumber(b[0]) - columnNumber(a[0]))[0];
+  return { column: winner[0], count: winner[1], total };
+}
+
 function isErrorCell(v: number | string | null): boolean {
   return typeof v === "string" && v.trim().startsWith("#");
 }

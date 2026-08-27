@@ -1,11 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   auditRows,
+  dominantMetricFormulaEndColumn,
   expectedCumulativeFormula,
   expectedIncrementFormula,
   formatAuditMessage,
+  metricFormulaEndColumn,
   parseHeaderDate,
+  resolveMetricDateColumns,
   type AuditPost,
   type SheetAuditRow,
 } from "../lib/formula-audit.ts";
@@ -52,6 +56,51 @@ test("기대 수식은 실제 날짜 헤더의 마지막 열을 사용", () => {
   );
   assert.match(expectedIncrementFormula(10, METRIC_RANGE), /rng,\$P10:\$DJ10/);
   assert.doesNotMatch(expectedIncrementFormula(10, METRIC_RANGE), /DH10/);
+});
+
+test("날짜열 최신 헤더가 일시적으로 빈 값이면 등록상태 직전까지 하루 단위로 복구", () => {
+  const header = Array<string | number | boolean | null>(20).fill(null);
+  header[15] = "2026. 8. 24"; // P
+  header[16] = "2026. 8. 25"; // Q
+  header[17] = "";            // R: 대량 쓰기 직후 최신 헤더만 빈 스냅샷
+  header[18] = "등록상태";     // S
+  const cols = resolveMetricDateColumns(header, 9, 18, 2026);
+  assert.deepEqual(cols, [
+    { idx: 15, date: "2026-08-24", inferred: false },
+    { idx: 16, date: "2026-08-25", inferred: false },
+    { idx: 17, date: "2026-08-26", inferred: true },
+  ]);
+});
+
+test("비어 있지 않은 미인식 헤더는 날짜로 지어내지 않음", () => {
+  const header = Array<string | number | boolean | null>(20).fill(null);
+  header[15] = "2026. 8. 24";
+  header[16] = "메모";
+  header[17] = "등록상태";
+  assert.deepEqual(resolveMetricDateColumns(header, 9, 17, 2026), [
+    { idx: 15, date: "2026-08-24", inferred: false },
+  ]);
+});
+
+test("H/I 수식의 지배적 끝열로 혼합 스냅샷을 감지", () => {
+  const hDm = '=IF(COUNT(P2:DM2)=0,"",MAX(P2:DM2))';
+  const iDm = '=IFERROR(LET(rng,$P2:$DM2,cols,SEQUENCE(1,COLUMNS(rng),COLUMN($P2),1),lastC,1),"")';
+  const hDl = '=IF(COUNT(P3:DL3)=0,"",MAX(P3:DL3))';
+  assert.equal(metricFormulaEndColumn(hDm), "DM");
+  assert.equal(metricFormulaEndColumn(iDm), "DM");
+  assert.deepEqual(dominantMetricFormulaEndColumn([hDm, iDm, hDm, hDl, 123, null]), {
+    column: "DM",
+    count: 3,
+    total: 4,
+  });
+});
+
+test("감사 라우트는 헤더를 별도 재조회하고 혼합 스냅샷을 실패 닫기", () => {
+  const source = readFileSync(new URL("../app/api/sponsored-posts/formula-audit/route.ts", import.meta.url), "utf8");
+  assert.match(source, /fetchSheetTabValues\(SHEET_ID, SHEET_GID, "A1:ZZ1"\)/);
+  assert.match(source, /snapshotAhead\(dateCols, dominantFormulaEnd\)/);
+  assert.match(source, /sheet_snapshot_not_ready/);
+  assert.match(source, /status:\s*503/);
 });
 
 test("과거 끝열 수식은 그 뒤 날짜에 값이 없을 때만 정상", () => {
