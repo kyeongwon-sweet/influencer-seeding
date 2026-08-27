@@ -29,6 +29,31 @@ FRESHNESS_HOURS: dict[str, float] = {
     "cron-kpi.yml": 26,                  # 매일 10:05 KST
     "banner-reach-sync.yml": 3,          # 매시간 17분
 }
+# 워크플로 파일명 → 하루 1회 '마감 기반' 검사 설정
+#   due   : 첫 크론 예정 시각(KST "HH:MM")
+#   grace : 유예(분). GitHub 스케줄 지연 실측 최대값 + 여유. 이 시각을 넘겨도
+#           '오늘(KST) 날짜의 예약 성공'이 없으면 경고한다.
+#   since : (선택) 이 KST 날짜부터 검사. 신규 워크플로의 첫 실행 전 오탐 방지.
+#
+# ⚠️ 왜 FRESHNESS_HOURS(나이 기준)만으로 부족한가 — 2026-08-27 사고:
+#   injibot-daily-report(06:38 KST)가 3시간 23분 지연됐는데 26h 임계가 계속 침묵했다.
+#   전날 06:55에 성공했으니 08:35 시점 나이는 25.7h로 임계 미달이었고, 임계를 넘는
+#   09:35 슬롯은 워치독 자신이 지연돼 발화하지 못했다. 결국 사람이 09:44에 먼저 발견.
+#   나이 기준은 '전날 늦게 성공하면 다음날 아침 미실행을 못 본다'는 구조적 사각지대가 있다.
+#   마감 기준은 '오늘 돌았어야 하는데 안 돌았다'를 직접 보므로 이 사각지대가 없다.
+# 유예값은 최근 10회 실측 지연에서 산출(2026-08-27 측정):
+#   daily-collect 34~56분(백업 3슬롯, 마지막 ~05:00) / validate 20~43분(백업 07:00)
+#   injibot 14~18분 / formula-audit 77~107분 / invalid-creator 88~97분 / kpi 73~90분
+DAILY_DEADLINE_KST: dict[str, dict[str, object]] = {
+    "cron-daily-collect.yml":      {"due": "00:41", "grace": 300},  # 백업 02:41·04:41 포함
+    "monitoring-validate.yml":     {"due": "05:00", "grace": 210},  # 백업 07:00 포함
+    "injibot-daily-report.yml":    {"due": "06:38", "grace": 60},
+    "injibot-report-watchdog.yml": {"due": "08:20", "grace": 90, "since": "2026-08-28"},
+    "formula-audit.yml":           {"due": "09:10", "grace": 165},
+    "invalid-creator-fields.yml":  {"due": "09:25", "grace": 165},
+    "cron-kpi.yml":                {"due": "10:05", "grace": 150},
+}
+
 FAILURE_CONCLUSIONS = {"failure", "timed_out", "cancelled", "startup_failure"}
 
 
@@ -137,6 +162,51 @@ def check_freshness(
     return stale
 
 
+def check_daily_deadlines(
+    last_schedule_success: dict[str, str | None],
+    now: datetime,
+    any_success: dict[str, SuccessRun | None] | None = None,
+    deadlines: dict[str, dict[str, object]] | None = None,
+) -> list[str]:
+    """'오늘(KST) 돌았어야 하는 예약 실행'이 유예를 넘겨도 없는지. 순수 함수 — 테스트 대상.
+
+    check_freshness(나이 기준)의 사각지대를 메운다. 배경은 DAILY_DEADLINE_KST 주석 참고.
+    ⚠️ last_schedule_success 는 반드시 event=schedule 로 좁힌 성공 시각이어야 한다.
+       수동 실행을 섞으면 스케줄러 정지를 못 잡는다(fetch_last_success 의 교훈과 동일).
+    """
+    cfg = DAILY_DEADLINE_KST if deadlines is None else deadlines
+    out: list[str] = []
+    now_kst = now.astimezone(timezone.utc) + timedelta(hours=9)
+    today = now_kst.date()
+    for wf, spec in cfg.items():
+        since = spec.get("since")
+        if since and today < datetime.strptime(str(since), "%Y-%m-%d").date():
+            continue
+        due = str(spec["due"])
+        grace = int(str(spec["grace"]))
+        hh, mm = (int(x) for x in due.split(":"))
+        deadline = now_kst.replace(hour=hh, minute=mm, second=0, microsecond=0) + timedelta(minutes=grace)
+        if now_kst < deadline:
+            continue
+        ts = last_schedule_success.get(wf)
+        if ts and (_parse_github_ts(ts) + timedelta(hours=9)).date() == today:
+            continue  # 오늘 예약 성공 있음 → 정상
+        seen = f"최근 예약 성공 {kst(ts)} KST" if ts else "예약 성공 기록 없음"
+        note = ""
+        alt = (any_success or {}).get(wf)
+        alt_ts = alt.get("updated_at") if alt else None
+        if alt_ts and (_parse_github_ts(alt_ts) + timedelta(hours=9)).date() == today:
+            note = (
+                f" / 단, 오늘 {alt.get('event') or 'unknown'} 성공"
+                f"({kst(alt_ts)} KST) 있어 데이터는 복구됨"
+            )
+        out.append(
+            f"⏰ {wf} — 오늘 {due} KST 예약 실행 없음"
+            f"(유예 {grace}분 초과, 현재 {now_kst.strftime('%m-%d %H:%M')} KST) / {seen}{note}"
+        )
+    return out
+
+
 def fetch_last_run(
     repo: str,
     wf: str,
@@ -221,19 +291,27 @@ def main() -> int:
     runs = data.get("workflow_runs", [])
     now = datetime.now(timezone.utc)
     failures = classify_failures(runs, now, window_min)
-    last_success = {wf: fetch_last_success(repo, wf, token) for wf in FRESHNESS_HOURS}
-    any_success = {wf: fetch_last_success_run(repo, wf, token) for wf in FRESHNESS_HOURS}
-    latest_schedule = {wf: fetch_last_run(repo, wf, token, event="schedule") for wf in FRESHNESS_HOURS}
+    watched = sorted(set(FRESHNESS_HOURS) | set(DAILY_DEADLINE_KST))
+    last_success = {wf: fetch_last_success(repo, wf, token) for wf in watched}
+    any_success = {wf: fetch_last_success_run(repo, wf, token) for wf in watched}
+    latest_schedule = {wf: fetch_last_run(repo, wf, token, event="schedule") for wf in watched}
     stale = check_freshness(last_success, now, any_success, latest_schedule)
+    late = check_daily_deadlines(last_success, now, any_success)
 
-    if not failures and not stale:
-        print(f"[watchdog] ✅ 이상 없음 — 조회 {len(runs)}건, 최근 {window_min}분 실패 0, 신선도 경고 0")
+    if not failures and not stale and not late:
+        print(
+            f"[watchdog] ✅ 이상 없음 — 조회 {len(runs)}건, 최근 {window_min}분 실패 0, "
+            "신선도 경고 0, 마감 경고 0"
+        )
         return 0
 
     lines = [f"🔴 [자동화 워치독] {repo}"]
     if failures:
         lines.append(f"*최근 {window_min}분 실패 {len(failures)}건*")
         lines += ["• " + f for f in failures[:8]]
+    if late:
+        lines.append(f"*오늘 예약 미실행 {len(late)}건*")
+        lines += ["• " + s for s in late[:8]]
     if stale:
         lines.append(f"*스케줄 이상 {len(stale)}건*")
         lines += ["• " + s for s in stale[:8]]

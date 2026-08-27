@@ -6,6 +6,10 @@ name: Cron Watchdog (자동화 감시)
 on:
   schedule:
     - cron: "35 * * * *"
+    # 2026-08-27 사고: :35 슬롯이 3회 연속 지연/미발화(06:02 KST 이후 3.9시간 공백)돼
+    # injibot 미실행을 사람이 먼저 발견했다. 슬롯을 2개로 늘려 감지 지연을 절반으로.
+    # 읽기 전용(GitHub API 조회 + Slack)이라 중복 실행 비용은 없다.
+    - cron: "5 * * * *"
   workflow_dispatch:
     inputs:
       dry_run:
