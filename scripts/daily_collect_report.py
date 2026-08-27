@@ -317,7 +317,7 @@ def main():
     if not force:
         try:
             hreq = urllib.request.Request(
-                "https://slack.com/api/conversations.history?channel=%s&limit=30" % CHANNEL,
+                "https://slack.com/api/conversations.history?channel=%s&limit=100" % CHANNEL,
                 headers={"Authorization": "Bearer " + TOK})
             hist = json.load(urllib.request.urlopen(hreq, timeout=20))
             if hist.get("ok"):
