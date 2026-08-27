@@ -132,7 +132,7 @@ def main() -> int:
     # ⑦ 사각지대 재현: 전날이 백업 슬롯으로 늦게(08-26 08:50 KST) 성공한 경우.
     #    08-27 09:44 시점 나이는 24.9h로 26h 미달 → 나이 기준 침묵. 마감(09:38)은 초과 → 경고.
     late_yesterday = {"injibot-daily-report.yml": "2026-08-25T23:50:00Z"}  # KST 08-26 08:50
-    now = at_kst(8, 27, 9, 44)
+    now = at_kst(8, 27, 10, 20)   # 마감 10:08 초과, 나이 25.5h(<26h)
     age_silent = check_freshness({**all_fresh(), **late_yesterday}, now)
     if any("injibot" in x for x in age_silent):
         fails.append(f"⑦나이 기준은 이 시점에 침묵해야 함(사각지대 재현): {age_silent}")
@@ -140,13 +140,13 @@ def main() -> int:
     if len(late) != 1 or "injibot-daily-report" not in late[0]:
         fails.append(f"⑦마감 기준이 오늘 미실행을 잡아야 함: {late}")
 
-    # ⑧ 마감 전(09:00 KST)에는 침묵 — 3중 크론(06:38·07:38·08:38)이 다 끝나기 전 오탐 방지
-    if check_daily_deadlines(late_yesterday, at_kst(8, 27, 9, 0), deadlines=INJI):
-        fails.append("⑧마감 전에는 경고하지 않아야 함(백업 슬롯 진행 중)")
+    # ⑧ 마감 전(10:00 KST)에는 침묵 — 3중 크론 + 09:40 외부 폴백이 다 끝나기 전 오탐 방지
+    if check_daily_deadlines(late_yesterday, at_kst(8, 27, 10, 0), deadlines=INJI):
+        fails.append("⑧마감 전에는 경고하지 않아야 함(백업 슬롯·외부 폴백 진행 중)")
 
     # ⑨ 오늘 예약 성공(백업 슬롯이라도)이 있으면 침묵
     today_ok = {"injibot-daily-report.yml": "2026-08-26T23:40:00Z"}  # KST 08-27 08:40
-    if check_daily_deadlines(today_ok, at_kst(8, 27, 9, 44), deadlines=INJI):
+    if check_daily_deadlines(today_ok, at_kst(8, 27, 10, 20), deadlines=INJI):
         fails.append("⑨오늘 예약 성공이 있으면 경고하지 않아야 함")
 
     # ⑩⑪ since: 신규 워크플로는 시행일 전엔 검사 안 함(첫 실행 전 오탐 방지)
@@ -159,7 +159,7 @@ def main() -> int:
     # ⑫ 수동 복구가 있으면 경고는 유지하되 '데이터 복구됨' 주석을 붙인다
     manual = {"injibot-daily-report.yml": {"updated_at": "2026-08-27T00:34:07Z",
                                           "event": "workflow_dispatch"}}
-    late = check_daily_deadlines(late_yesterday, at_kst(8, 27, 9, 44), manual, deadlines=INJI)
+    late = check_daily_deadlines(late_yesterday, at_kst(8, 27, 10, 20), manual, deadlines=INJI)
     if len(late) != 1 or "데이터는 복구됨" not in late[0]:
         fails.append(f"⑫수동 복구 주석이 붙어야 함: {late}")
 
@@ -184,16 +184,39 @@ def main() -> int:
             fails.append(f"⑬{wf} 유예 {grace}분이 실측 최대 지연 {observed}분 대비 여유 부족")
 
     # ⑭ 같은 워크플로가 마감·나이 임계를 동시에 넘겨도 Slack에는 더 정확한 마감 경고만 남긴다.
-    freshness = [
-        "⚠️ injibot-daily-report.yml — 최근 스케줄 성공 30시간 전",
-        "⚠️ banner-reach-sync.yml — 최근 스케줄 성공 4시간 전",
-    ]
-    deadlines = ["⏰ injibot-daily-report.yml — 오늘 06:38 KST 예약 실행 없음"]
-    deduped = suppress_redundant_freshness(freshness, deadlines)
-    if deduped != [freshness[1]]:
-        fails.append(f"⑭마감·나이 중복 억제 오류: {deduped}")
-    if suppress_redundant_freshness(freshness, []) != freshness:
+    #    ⚠️ 하드코딩 문자열로 검사하면 안 된다 — 억제 로직이 메시지 포맷(" — " 구분자,
+    #    ".yml" 접미)을 파싱하므로, 생성 함수의 포맷이 바뀌면 억제가 조용히 죽는데
+    #    하드코딩 테스트는 그대로 통과한다. 실제 생성 함수 출력으로 결합해 둔다.
+    dedup_now = at_kst(8, 27, 12, 30)
+    dedup_last = {wf: "2026-08-26T22:00:00Z" for wf in FRESHNESS_HOURS}
+    dedup_last["injibot-daily-report.yml"] = "2026-08-25T21:55:42Z"  # 나이 임계도 초과
+    real_stale = check_freshness(dedup_last, dedup_now)
+    real_late = check_daily_deadlines(dedup_last, dedup_now, deadlines=INJI)
+    if not any("injibot-daily-report" in x for x in real_stale):
+        fails.append("⑭전제 붕괴: 이 시점엔 나이 경고에 injibot이 있어야 함")
+    if not any("injibot-daily-report" in x for x in real_late):
+        fails.append("⑭전제 붕괴: 이 시점엔 마감 경고에 injibot이 있어야 함")
+    kept = suppress_redundant_freshness(real_stale, real_late)
+    if any("injibot-daily-report" in x for x in kept):
+        fails.append(f"⑭마감 경고가 있는데 나이 경고가 남음: {kept}")
+    if any("banner-reach-sync" in x for x in real_stale) and not any(
+        "banner-reach-sync" in x for x in kept
+    ):
+        fails.append("⑭마감 경고가 없는 워크플로의 나이 경고를 제거함")
+    if suppress_redundant_freshness(real_stale, []) != real_stale:
         fails.append("⑭마감 경고가 없는데 나이 경고를 제거함")
+
+    # ⑮ 복구된 날은 마감+120분 이후 침묵(소음 방지). 복구가 없으면 계속 경고.
+    recovered = {"injibot-daily-report.yml": {"updated_at": "2026-08-27T00:40:00Z",
+                                             "event": "workflow_dispatch"}}
+    if check_daily_deadlines(late_yesterday, at_kst(8, 27, 12, 30), recovered, deadlines=INJI):
+        fails.append("⑮복구된 날은 마감+120분 이후 침묵해야 함(매시간 소음 방지)")
+    if len(check_daily_deadlines(late_yesterday, at_kst(8, 27, 11, 0), recovered,
+                                 deadlines=INJI)) != 1:
+        fails.append("⑮복구돼도 마감 직후 창 안에서는 알려야 함(스케줄러 열화)")
+    if len(check_daily_deadlines(late_yesterday, at_kst(8, 27, 23, 0), None,
+                                 deadlines=INJI)) != 1:
+        fails.append("⑯복구가 없으면 창 제한 없이 계속 경고해야 함")
 
     if fails:
         print("[FAIL] test_cron_watchdog 실패")
@@ -201,8 +224,8 @@ def main() -> int:
             print("  - " + x)
         return 1
     print(
-        "[OK] test_cron_watchdog 통과: 나이기준 8종 + 마감기준 7종 "
-        "(사각지대재현/유예내침묵/오늘성공/since전후/수동복구주석/유예여유/중복억제)"
+        "[OK] test_cron_watchdog 통과: 나이기준 8종 + 마감기준 10종 "
+        "(사각지대재현/유예내침묵/오늘성공/since전후/수동복구주석/유예여유/중복억제/복구창)"
     )
     return 0
 

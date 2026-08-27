@@ -49,13 +49,21 @@ FRESHNESS_HOURS: dict[str, float] = {
 DAILY_DEADLINE_KST: dict[str, dict[str, object]] = {
     "cron-daily-collect.yml":      {"due": "00:41", "grace": 300},  # 백업 02:41·04:41 포함
     "monitoring-validate.yml":     {"due": "05:00", "grace": 210},  # 백업 07:00 포함
-    # injibot은 3중 크론(06:38·07:38·08:38 KST)+idempotency 구조(e916e85)라
-    # 마지막 슬롯이 실측 지연(~20분)까지 끝난 뒤를 마감으로 본다. 그 전에 울리면 오탐.
-    "injibot-daily-report.yml":    {"due": "06:38", "grace": 180},  # 마감 09:38 KST
+    # injibot은 3중 크론(06:38·07:38·08:38 KST)+idempotency(e916e85) + 외부 폴백
+    # (Apps Script 09:40 KST → /api/ops/ensure-daily-audits → workflow_dispatch, 46443b9)
+    # 구조다. 마감은 **폴백이 제 일을 할 기회를 준 뒤**로 둔다. 09:38로 두면 자동복구
+    # 2분 전에 울려 첫 알림이 '아무도 안 함'으로 오해된다(실측: 폴백 발화 08-25 09:39 KST).
+    "injibot-daily-report.yml":    {"due": "06:38", "grace": 210},  # 마감 10:08 KST
     "formula-audit.yml":           {"due": "09:10", "grace": 165},
     "invalid-creator-fields.yml":  {"due": "09:25", "grace": 165},
     "cron-kpi.yml":                {"due": "10:05", "grace": 150},
 }
+
+# 마감을 넘겼지만 **같은 날 다른 경로로 복구된** 경우, 매시간 무한 반복하면 소음이 된다
+# (폴백이 설계대로 동작한 날에도 자정까지 14회+ 발송). 스케줄러 열화 자체는 알려야 하니
+# 끄지는 않고, 마감 후 이 시간(분) 안에서만 보고한다. **복구가 아예 없으면 창 제한 없이
+# 계속 경고**한다(진짜 장애는 해결될 때까지 울려야 한다).
+RECOVERED_ALERT_WINDOW_MIN = 120
 
 FAILURE_CONCLUSIONS = {"failure", "timed_out", "cancelled", "startup_failure"}
 
@@ -199,6 +207,9 @@ def check_daily_deadlines(
         alt = (any_success or {}).get(wf)
         alt_ts = alt.get("updated_at") if alt else None
         if alt_ts and (_parse_github_ts(alt_ts) + timedelta(hours=9)).date() == today:
+            # 복구됨 → 스케줄러 열화는 알리되 마감 후 일정 시간만(소음 방지)
+            if now_kst >= deadline + timedelta(minutes=RECOVERED_ALERT_WINDOW_MIN):
+                continue
             note = (
                 f" / 단, 오늘 {alt.get('event') or 'unknown'} 성공"
                 f"({kst(alt_ts)} KST) 있어 데이터는 복구됨"
