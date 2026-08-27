@@ -6,6 +6,11 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-27 [Claude 전수조사] 연동시트 H(누적)/I(증분) 값 정확 — 감사 형태오탐은 "달력 한 칸 밀림"
+- **사용자 지시:** H/I 수식이 제대로 맞는 값인지 전수조사.
+- **독립 검증(gviz 3,245행 전량 → 날짜열로 직접 재계산·대조, 감사와 무관):** H(누적) **2,857행 불일치 0**(전부 날짜열 MAX 일치). I(증분) **2,857행 중 6건만 차이**, 그 6건은 시트가 스파이크방지(백로그 첫측정/증분0)로 의도적 빈칸 처리한 것 = 시트가 더 정확, 실질 오류 0. **결론: 화면 H/I 값 정확.**
+- **⚠️ formula-audit 대량 오탐(Codex 보정 요망):** 09:33 KST 감사가 `formulaShape hInvalid 2924·incInvalid 3239 + inc.mismatch 668`를 보고했으나 **errorCells H·I 모두 0**. 원인 = 감사의 `metricRange`가 **lastColumn=DL(2026-08-25)로 한 날짜열 짧게** 잡음. 실제 시트엔 **DM열=2026-08-26 (gviz 1,261개 값)**가 있고 시트 수식은 거기까지 정상 포함. 감사가 08-26 열을 놓쳐 정상 수식을 전부 형태오류로 오탐(+증분도 한 칸 짧게 기대해 668 불일치). **08-24 P:DH 사고와 동류의 달력-경계 재발.** dateColumnCount=101(실제 102). → 감사의 마지막 날짜열 탐지가 최신 열(08-26)을 포함하도록 보정 필요. **수식 재생성 아님(값 정상)**.
+
 ## ✅ 2026-08-27 [Codex 완료·배포·실측] Injibot 외부 시각보장 + 워치독 중복억제 + Python 페이지네이션 전수 가드
 - **Claude 인계 재검증:** 2026-08-27 Injibot 예약은 드롭이 아니라 **3시간 23분 지연**이 맞다. `aa6ca01`/`5524b09`의 KST 당일 마감 기반 워치독과 3중 크론+당일 idempotency 방향을 유지했다.
 - **외부 시각보장(`46443b9`):** 이미 라이브에 설치·실측된 **Apps Script 09:40 KST `ensureDailyAudits` 트리거**를 재사용했다. Vercel `/api/ops/ensure-daily-audits` 대상에 `injibot-daily-report.yml`을 추가해, GitHub 예약이 늦거나 빠져도 09:40에 오늘 성공 여부를 확인하고 없을 때만 `workflow_dispatch`한다. 기존 `formula-audit.yml`·`invalid-creator-fields.yml`도 같은 경로를 유지한다. 새 트리거·새 비밀값·Python 포팅은 없다.
