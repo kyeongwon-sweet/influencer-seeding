@@ -39,6 +39,7 @@ const CONFIG = {
   COLLECT_FALLBACK_URL: "https://influencer-seeding-mu.vercel.app/api/ops/collect-fallback",      // 자정수집 누락 시 Apify 폴백 수집(비어 있을 때만 동작)
   AUDIT_FALLBACK_URL: "https://influencer-seeding-mu.vercel.app/api/ops/audit-fallback",          // 아침 수식감사 미발화 시 폴백 감사(오늘 감사 없을 때만 동작)
   ENSURE_DAILY_AUDITS_URL: "https://influencer-seeding-mu.vercel.app/api/ops/ensure-daily-audits", // 수식·제작자 감사를 함께 보장(오늘 성공한 워크플로는 건너뜀)
+  ENSURE_DAILY_REPORT_URL: "https://influencer-seeding-mu.vercel.app/api/ops/ensure-daily-report", // 일일 증분 리포트 발송 보장(오늘 성공 실행 0건이면 자동 dispatch)
   DB_SHEET_SYNC_ALERT_URL: "https://influencer-seeding-mu.vercel.app/api/ops/db-sheet-sync-alert", // DB→시트 독립 동기화 실패 Slack 경고
   HEADER_ROW: 1,
   DATA_START_ROW: 2,
@@ -3872,6 +3873,42 @@ function installEnsureDailyAuditsTrigger() {
 
 function installAuditFallbackTrigger() {
   return installEnsureDailyAuditsTrigger();
+}
+
+// 리포트 결과 워치독 — GitHub cron이 일일 증분 리포트 발송을 누락하면 서버가 직접 dispatch한다.
+// 서버가 KST 오늘의 성공 실행을 먼저 확인하므로 정상 발송된 날은 무동작(중복 발송 없음).
+function ensureDailyReport() {
+  const res = UrlFetchApp.fetch(CONFIG.ENSURE_DAILY_REPORT_URL, {
+    method: "post",
+    headers: authHeaders_(),
+    muteHttpExceptions: true,
+  });
+  const code = res.getResponseCode();
+  const body = res.getContentText();
+  Logger.log("[ensureDailyReport] HTTP " + code + " " + body.slice(0, 500));
+  if (code !== 200) throw new Error("ensureDailyReport HTTP " + code + ": " + body.slice(0, 200));
+  return true;
+}
+
+// 매일 16:10 KST 전후(백업 크론 15:20 + 지연 여유 이후) 1회. 그 시각까지 리포트가 안 나갔으면 자동 발송.
+function installEnsureDailyReportTrigger() {
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === "ensureDailyReport")
+    .forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger("ensureDailyReport")
+    .timeBased()
+    .atHour(16)
+    .nearMinute(10)
+    .everyDays(1)
+    .create();
+  safeAlert_("✅ 리포트 발송 보장 트리거(매일 16:10 KST 전후)를 설치했습니다.\n그 시각까지 오늘 리포트가 안 나갔으면 자동으로 발송합니다(이미 나간 날은 무동작).");
+}
+
+function removeEnsureDailyReportTrigger() {
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === "ensureDailyReport")
+    .forEach(t => ScriptApp.deleteTrigger(t));
+  safeAlert_("리포트 발송 보장 트리거를 제거했습니다.");
 }
 
 function removeEnsureDailyAuditsTrigger() {
