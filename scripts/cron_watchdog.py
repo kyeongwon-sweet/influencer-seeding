@@ -40,15 +40,18 @@ FRESHNESS_HOURS: dict[str, float] = {
 #   전날 06:55에 성공했으니 08:35 시점 나이는 25.7h로 임계 미달이었고, 임계를 넘는
 #   09:35 슬롯은 워치독 자신이 지연돼 발화하지 못했다. 결국 사람이 09:44에 먼저 발견.
 #   나이 기준은 '전날 늦게 성공하면 다음날 아침 미실행을 못 본다'는 구조적 사각지대가 있다.
-#   마감 기준은 '오늘 돌았어야 하는데 안 돌았다'를 직접 보므로 이 사각지대가 없다.
+#   전날이 백업 슬롯으로 늦게 성공하면 사각지대가 더 벌어진다(다중화한 워크플로에서 흔함).
+#   마감 기준은 '오늘 돌았어야 하는데 안 돌았다'를 직접 보므로 전날 시각과 무관하다.
 # 유예값은 최근 10회 실측 지연에서 산출(2026-08-27 측정):
 #   daily-collect 34~56분(백업 3슬롯, 마지막 ~05:00) / validate 20~43분(백업 07:00)
-#   injibot 14~18분 / formula-audit 77~107분 / invalid-creator 88~97분 / kpi 73~90분
+#   injibot 14~18분(단, 3중 크론이라 마지막 슬롯 08:38 기준 = due 대비 140분)
+#   formula-audit 77~107분 / invalid-creator 88~97분 / kpi 73~90분
 DAILY_DEADLINE_KST: dict[str, dict[str, object]] = {
     "cron-daily-collect.yml":      {"due": "00:41", "grace": 300},  # 백업 02:41·04:41 포함
     "monitoring-validate.yml":     {"due": "05:00", "grace": 210},  # 백업 07:00 포함
-    "injibot-daily-report.yml":    {"due": "06:38", "grace": 60},
-    "injibot-report-watchdog.yml": {"due": "08:20", "grace": 90, "since": "2026-08-28"},
+    # injibot은 3중 크론(06:38·07:38·08:38 KST)+idempotency 구조(e916e85)라
+    # 마지막 슬롯이 실측 지연(~20분)까지 끝난 뒤를 마감으로 본다. 그 전에 울리면 오탐.
+    "injibot-daily-report.yml":    {"due": "06:38", "grace": 180},  # 마감 09:38 KST
     "formula-audit.yml":           {"due": "09:10", "grace": 165},
     "invalid-creator-fields.yml":  {"due": "09:25", "grace": 165},
     "cron-kpi.yml":                {"due": "10:05", "grace": 150},

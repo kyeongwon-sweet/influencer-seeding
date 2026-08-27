@@ -120,61 +120,65 @@ def main() -> int:
 
 
     # ───────── 마감 기반 검사(2026-08-27 사고 회귀) ─────────
-    # 사고: injibot(06:38 KST)이 3h23m 지연. 전날 06:55 성공 → 08:35 시점 나이 25.7h로
-    # 26h 임계 미달 → 나이 기준 워치독이 침묵했다. 마감 기준은 이걸 잡아야 한다.
+    # 사고: injibot(06:38 KST)이 3h23m 지연. 나이 기준 26h는 '전날 성공 시각'에 좌우되므로
+    # 전날이 늦게 성공하면 다음날 미실행을 못 본다. 다중화(백업 슬롯)한 워크플로에서 더 심하다.
+    # 마감 기준은 전날 시각과 무관하게 '오늘 마감까지 안 돌았다'를 직접 본다.
     INJI = {"injibot-daily-report.yml": DAILY_DEADLINE_KST["injibot-daily-report.yml"]}
-    yesterday_ok = {"injibot-daily-report.yml": "2026-08-25T21:55:42Z"}  # KST 08-26 06:55
 
     def at_kst(mon: int, day: int, hh: int, mm: int) -> datetime:
         return datetime(2026, mon, day, hh, mm, tzinfo=timezone.utc) - timedelta(hours=9)
 
-    # ⑦ 사고 재현: 08-27 08:35 KST — 나이 기준은 침묵, 마감 기준은 경고
-    now = at_kst(8, 27, 8, 35)
-    age_silent = check_freshness(
-        {**all_fresh(), "injibot-daily-report.yml": yesterday_ok["injibot-daily-report.yml"]},
-        now,
-    )
+    # ⑦ 사각지대 재현: 전날이 백업 슬롯으로 늦게(08-26 08:50 KST) 성공한 경우.
+    #    08-27 09:44 시점 나이는 24.9h로 26h 미달 → 나이 기준 침묵. 마감(09:38)은 초과 → 경고.
+    late_yesterday = {"injibot-daily-report.yml": "2026-08-25T23:50:00Z"}  # KST 08-26 08:50
+    now = at_kst(8, 27, 9, 44)
+    age_silent = check_freshness({**all_fresh(), **late_yesterday}, now)
     if any("injibot" in x for x in age_silent):
         fails.append(f"⑦나이 기준은 이 시점에 침묵해야 함(사각지대 재현): {age_silent}")
-    late = check_daily_deadlines(yesterday_ok, now, deadlines=INJI)
+    late = check_daily_deadlines(late_yesterday, now, deadlines=INJI)
     if len(late) != 1 or "injibot-daily-report" not in late[0]:
         fails.append(f"⑦마감 기준이 오늘 미실행을 잡아야 함: {late}")
 
-    # ⑧ 유예 내(07:00 KST, 마감 07:38)에는 침묵 — 평소 지연 14~18분 오탐 방지
-    if check_daily_deadlines(yesterday_ok, at_kst(8, 27, 7, 0), deadlines=INJI):
-        fails.append("⑧유예 내에는 경고하지 않아야 함")
+    # ⑧ 마감 전(09:00 KST)에는 침묵 — 3중 크론(06:38·07:38·08:38)이 다 끝나기 전 오탐 방지
+    if check_daily_deadlines(late_yesterday, at_kst(8, 27, 9, 0), deadlines=INJI):
+        fails.append("⑧마감 전에는 경고하지 않아야 함(백업 슬롯 진행 중)")
 
-    # ⑨ 오늘 예약 성공이 있으면 침묵
-    today_ok = {"injibot-daily-report.yml": "2026-08-26T21:55:00Z"}  # KST 08-27 06:55
-    if check_daily_deadlines(today_ok, at_kst(8, 27, 8, 35), deadlines=INJI):
+    # ⑨ 오늘 예약 성공(백업 슬롯이라도)이 있으면 침묵
+    today_ok = {"injibot-daily-report.yml": "2026-08-26T23:40:00Z"}  # KST 08-27 08:40
+    if check_daily_deadlines(today_ok, at_kst(8, 27, 9, 44), deadlines=INJI):
         fails.append("⑨오늘 예약 성공이 있으면 경고하지 않아야 함")
 
-    # ⑩ since: 신규 워크플로는 시행일 전엔 검사 안 함(첫 실행 전 오탐 방지)
-    WD = {"injibot-report-watchdog.yml": DAILY_DEADLINE_KST["injibot-report-watchdog.yml"]}
-    if check_daily_deadlines({}, at_kst(8, 27, 9, 50), deadlines=WD):
+    # ⑩⑪ since: 신규 워크플로는 시행일 전엔 검사 안 함(첫 실행 전 오탐 방지)
+    NEW = {"brand-new.yml": {"due": "08:20", "grace": 90, "since": "2026-08-28"}}
+    if check_daily_deadlines({}, at_kst(8, 27, 23, 0), deadlines=NEW):
         fails.append("⑩since 이전에는 경고하지 않아야 함")
-    if len(check_daily_deadlines({}, at_kst(8, 28, 9, 50), deadlines=WD)) != 1:
+    if len(check_daily_deadlines({}, at_kst(8, 28, 9, 50), deadlines=NEW)) != 1:
         fails.append("⑪since 이후에는 예약 기록 없음을 경고해야 함")
 
     # ⑫ 수동 복구가 있으면 경고는 유지하되 '데이터 복구됨' 주석을 붙인다
     manual = {"injibot-daily-report.yml": {"updated_at": "2026-08-27T00:34:07Z",
                                           "event": "workflow_dispatch"}}
-    late = check_daily_deadlines(yesterday_ok, at_kst(8, 27, 9, 50), manual, deadlines=INJI)
+    late = check_daily_deadlines(late_yesterday, at_kst(8, 27, 9, 44), manual, deadlines=INJI)
     if len(late) != 1 or "데이터는 복구됨" not in late[0]:
         fails.append(f"⑫수동 복구 주석이 붙어야 함: {late}")
 
-    # ⑬ 오탐 방지 회귀: 유예는 실측 최대 지연 + 30분 이상 여유가 있어야 한다
-    #    (2026-08-27 측정, 최근 10회 예약 실행의 due 대비 최대 지연 분)
+    # ⑬ 오탐 방지 회귀: 유예는 '마지막 크론 슬롯 + 실측 최대 지연'보다 30분 이상 커야 한다.
+    #    (2026-08-27 측정. 값은 due 시각 대비 분)
     observed_max_delay_min = {
         "cron-daily-collect.yml": 258,     # 백업 마지막 슬롯 ~04:59
         "monitoring-validate.yml": 163,    # 백업 슬롯 ~07:43
-        "injibot-daily-report.yml": 18,
+        "injibot-daily-report.yml": 140,   # 3중 크론 마지막 08:38 + 실측 지연 ~20분
         "formula-audit.yml": 107,
         "invalid-creator-fields.yml": 97,
         "cron-kpi.yml": 90,
     }
+    if set(observed_max_delay_min) != set(DAILY_DEADLINE_KST):
+        fails.append(
+            "⑬DAILY_DEADLINE_KST에 실측 기준이 없는 항목이 있음 "
+            f"(설정 {sorted(DAILY_DEADLINE_KST)} vs 실측 {sorted(observed_max_delay_min)})"
+        )
     for wf, observed in observed_max_delay_min.items():
-        grace = int(str(DAILY_DEADLINE_KST[wf]["grace"]))
+        grace = int(str(DAILY_DEADLINE_KST.get(wf, {}).get("grace", 0)))
         if grace < observed + 30:
             fails.append(f"⑬{wf} 유예 {grace}분이 실측 최대 지연 {observed}분 대비 여유 부족")
 
