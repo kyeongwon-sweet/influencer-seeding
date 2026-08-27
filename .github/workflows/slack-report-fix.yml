@@ -1,0 +1,40 @@
+name: Slack Report Fix (one-off)
+
+# 2026-08-27 일회성: 자정수집 리포트 9:35(56건 오탐) 메시지를 정정본(2건)으로 편집 +
+# 10:02·10:08 중복 메시지 삭제. inji-bot 토큰으로 chat.update/chat.delete. 실행 후 제거 예정.
+on:
+  workflow_dispatch:
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install supabase==2.15.1
+      - name: Check overdue auto-end backlog
+        id: auto_end_watchdog
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TZ: "Asia/Seoul"
+        run: |
+          target_date=$(TZ=Asia/Seoul date +%F)
+          python scripts/reconcile_auto_end.py \
+            --target-date "$target_date" \
+            --end-only \
+            --out data/output/auto-end-watchdog.json
+      - name: Fix / delete report messages
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          INJIBOT_SLACK_TOKEN: ${{ secrets.INJIBOT_SLACK_TOKEN }}
+          PYTHONUTF8: "1"
+          TZ: "Asia/Seoul"
+          AUTO_END_WATCHDOG_REPORT: data/output/auto-end-watchdog.json
+          AUTO_END_WATCHDOG_OUTCOME: ${{ steps.auto_end_watchdog.outcome }}
+        run: python scripts/slack_report_fix_20260827.py
