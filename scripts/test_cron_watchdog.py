@@ -15,6 +15,7 @@ from cron_watchdog import (  # noqa: E402
     check_daily_deadlines,
     check_freshness,
     classify_failures,
+    suppress_redundant_freshness,
 )
 
 NOW = datetime(2026, 7, 30, 0, 10, tzinfo=timezone.utc)  # KST 09:10
@@ -182,6 +183,18 @@ def main() -> int:
         if grace < observed + 30:
             fails.append(f"⑬{wf} 유예 {grace}분이 실측 최대 지연 {observed}분 대비 여유 부족")
 
+    # ⑭ 같은 워크플로가 마감·나이 임계를 동시에 넘겨도 Slack에는 더 정확한 마감 경고만 남긴다.
+    freshness = [
+        "⚠️ injibot-daily-report.yml — 최근 스케줄 성공 30시간 전",
+        "⚠️ banner-reach-sync.yml — 최근 스케줄 성공 4시간 전",
+    ]
+    deadlines = ["⏰ injibot-daily-report.yml — 오늘 06:38 KST 예약 실행 없음"]
+    deduped = suppress_redundant_freshness(freshness, deadlines)
+    if deduped != [freshness[1]]:
+        fails.append(f"⑭마감·나이 중복 억제 오류: {deduped}")
+    if suppress_redundant_freshness(freshness, []) != freshness:
+        fails.append("⑭마감 경고가 없는데 나이 경고를 제거함")
+
     if fails:
         print("[FAIL] test_cron_watchdog 실패")
         for x in fails:
@@ -189,7 +202,7 @@ def main() -> int:
         return 1
     print(
         "[OK] test_cron_watchdog 통과: 나이기준 8종 + 마감기준 7종 "
-        "(사각지대재현/유예내침묵/오늘성공/since전후/수동복구주석/유예여유)"
+        "(사각지대재현/유예내침묵/오늘성공/since전후/수동복구주석/유예여유/중복억제)"
     )
     return 0
 

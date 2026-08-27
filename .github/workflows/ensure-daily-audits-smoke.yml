@@ -1,4 +1,4 @@
-# 아침 감사 보장 라우트 수동 점검 — 스케줄 없음(workflow_dispatch 전용).
+# 아침 자동화 보장 라우트 수동 점검 — 스케줄 없음(workflow_dispatch 전용).
 #
 # 왜: `/api/ops/ensure-daily-audits`는 CRON_SECRET 인증이라 사람 브라우저·로컬에서 호출할 수 없다.
 #     이 워크플로가 시크릿을 들고 대신 호출해 준다(검증 + 비상 수동 트리거 겸용).
@@ -6,7 +6,7 @@
 # 평상시 실제 스케줄러는 **Apps Script 시간 트리거(09:40 KST)** 다.
 # GitHub cron이 이 저장소에서 상시 3시간 지연 + 이틀 완전 누락한 실측(2026-08-06~07) 때문에
 # 시각 보장을 구글 쪽에 맡기고, 여기는 점검용으로만 남긴다.
-name: Ensure Daily Audits (수동 점검)
+name: Ensure Daily Automations (수동 점검)
 
 on:
   workflow_dispatch:

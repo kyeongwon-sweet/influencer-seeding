@@ -1,10 +1,10 @@
 /**
- * 아침 감사 보장 — "오늘 안 돈 워크플로만 깨운다"의 순수 판정부.
+ * 아침 자동화 보장 — "오늘 안 돈 워크플로만 깨운다"의 순수 판정부.
  *
  * 왜 필요한가(실측 2026-08-07): GitHub cron이 이 저장소에서 **상시 3시간 지연**(설정 10:10 → 실제 13:2x)에
  * 이어 **이틀 연속 완전 누락**(08-06·08-07)했다. 반면 Apps Script 시간 트리거는 같은 기간 정상 발화했다.
  * → **Apps Script = 시각 보장자, GitHub Actions = 실행 환경**으로 역할을 나눈다.
- *   제작자감사는 Python+시크릿이 필요한 워크플로라 HTTP로 못 부른다 → 포팅 대신 `workflow_dispatch`로 깨운다.
+ *   Python+시크릿이 필요한 워크플로는 HTTP로 직접 못 부른다 → 포팅 대신 `workflow_dispatch`로 깨운다.
  *
  * 이 파일은 네트워크를 모른다(테스트 가능). 실제 조회·dispatch는 라우트가 한다.
  */
@@ -27,8 +27,8 @@ export type EnsureAction = {
 /**
  * 워크플로별 조치 판정.
  *
- * ⚠️ 조회 실패(-1)는 **실행 쪽으로 기운다.** 두 감사 모두 기본이 읽기 전용이라
- *    (제작자감사는 apply=false 기본) 중복 실행 피해보다 **미실행 피해가 훨씬 크다**.
+ * ⚠️ 조회 실패(-1)는 **실행 쪽으로 기운다.** 감사 작업은 기본이 읽기 전용이고,
+ *    Injibot은 당일 게시 여부를 다시 확인하므로 중복 실행 피해보다 **미실행 피해가 훨씬 크다**.
  *    audit-fallback이 이미 같은 규약을 쓰고 있어 정책을 일치시킨다.
  */
 export function decideEnsure(probe: WorkflowProbe): EnsureAction {
@@ -48,7 +48,7 @@ export function formatEnsureSummary(
   kdate: string,
   dryRun: boolean,
 ): string {
-  const head = `🕘 [아침 감사 보장] ${kdate}${dryRun ? " (dry-run)" : ""}`;
+  const head = `🕘 [아침 자동화 보장] ${kdate}${dryRun ? " (dry-run)" : ""}`;
   const lines = actions.map((a) => {
     if (!a.act) return `• ✅ ${a.workflow} — ${a.note}`;
     if (dryRun) return `• 🔎 ${a.workflow} — ${a.note} (dry-run이라 실행 안 함)`;

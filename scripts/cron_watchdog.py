@@ -210,6 +210,18 @@ def check_daily_deadlines(
     return out
 
 
+def suppress_redundant_freshness(freshness: list[str], deadlines: list[str]) -> list[str]:
+    """같은 워크플로의 마감 경고가 있으면 덜 정확한 나이 경고를 한 메시지에서 생략한다."""
+
+    def workflow_name(line: str) -> str | None:
+        prefix = line.split(" — ", 1)[0]
+        candidate = prefix.rsplit(" ", 1)[-1]
+        return candidate if candidate.endswith(".yml") else None
+
+    deadline_workflows = {wf for line in deadlines if (wf := workflow_name(line))}
+    return [line for line in freshness if workflow_name(line) not in deadline_workflows]
+
+
 def fetch_last_run(
     repo: str,
     wf: str,
@@ -300,6 +312,7 @@ def main() -> int:
     latest_schedule = {wf: fetch_last_run(repo, wf, token, event="schedule") for wf in watched}
     stale = check_freshness(last_success, now, any_success, latest_schedule)
     late = check_daily_deadlines(last_success, now, any_success)
+    stale = suppress_redundant_freshness(stale, late)
 
     if not failures and not stale and not late:
         print(

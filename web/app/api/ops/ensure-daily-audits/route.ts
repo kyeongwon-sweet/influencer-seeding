@@ -12,19 +12,23 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 /**
- * 아침 감사 보장 — 오늘 안 돈 감사 워크플로만 `workflow_dispatch`로 깨운다.
+ * 아침 자동화 보장 — 오늘 안 돈 중요 워크플로만 `workflow_dispatch`로 깨운다.
  *
  * 배경(실측 2026-08-07): GitHub cron이 상시 3시간 지연(설정 10:10 → 실제 13:2x)에 이어
  * **이틀 연속 완전 누락**했다. Apps Script 시간 트리거는 같은 기간 정상 발화했다.
  * → Apps Script(09:40 KST)가 이 라우트를 호출 = **시각은 구글이 보장, 실행은 GitHub이 담당**.
- *   제작자감사는 Python+시크릿 워크플로라 HTTP로 못 부른다 → 포팅 대신 dispatch로 깨운다.
+ *   Python+시크릿 작업은 HTTP로 직접 못 부른다 → 포팅 대신 dispatch로 깨운다.
  *
  * 중복 방지: 오늘 성공 실행이 있으면 skip(=GitHub cron이 제때 돌았으면 무동작).
  * 알림: 전부 skip이면 조용히, 하나라도 깨웠거나 실패했으면 Slack.
  * `?dry_run=1` 이면 판정만 한다.
  */
 const REPO = process.env.GITHUB_REPOSITORY || "kyeongwon-sweet/influencer-seeding";
-const WORKFLOWS = ["formula-audit.yml", "invalid-creator-fields.yml"] as const;
+const WORKFLOWS = [
+  "injibot-daily-report.yml",
+  "formula-audit.yml",
+  "invalid-creator-fields.yml",
+] as const;
 /** dispatch 시 기본 브랜치. 워크플로가 default branch에만 있으므로 고정. */
 const REF = "main";
 

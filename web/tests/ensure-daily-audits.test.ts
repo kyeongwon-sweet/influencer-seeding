@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { decideEnsure, formatEnsureSummary, needsNotify } from "../lib/ensure-daily-audits.ts";
 
 // 아침 감사 보장(2026-08-07). GitHub cron이 상시 3시간 지연 + 이틀 완전 누락한 실측에서 출발.
@@ -61,4 +62,15 @@ test("요약문이 상태별로 구분된다(성공/실패/dry-run)", () => {
 test("날짜가 요약문에 들어간다(언제치 감사인지 헷갈리지 않게)", () => {
   const s = formatEnsureSummary([decideEnsure({ workflow: "formula-audit.yml", todaySuccess: 1 })], "2026-08-07", false);
   assert.match(s, /2026-08-07/);
+});
+
+test("09:40 보장 라우트가 Injibot과 감사 2종을 함께 확인한다", () => {
+  const route = readFileSync(
+    new URL("../app/api/ops/ensure-daily-audits/route.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    route,
+    /const WORKFLOWS = \[\s*"injibot-daily-report\.yml",\s*"formula-audit\.yml",\s*"invalid-creator-fields\.yml",\s*\] as const;/,
+  );
 });
