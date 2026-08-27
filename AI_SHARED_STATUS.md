@@ -6,6 +6,14 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-27 [Codex 완료·배포·실측] Injibot 외부 시각보장 + 워치독 중복억제 + Python 페이지네이션 전수 가드
+- **Claude 인계 재검증:** 2026-08-27 Injibot 예약은 드롭이 아니라 **3시간 23분 지연**이 맞다. `aa6ca01`/`5524b09`의 KST 당일 마감 기반 워치독과 3중 크론+당일 idempotency 방향을 유지했다.
+- **외부 시각보장(`46443b9`):** 이미 라이브에 설치·실측된 **Apps Script 09:40 KST `ensureDailyAudits` 트리거**를 재사용했다. Vercel `/api/ops/ensure-daily-audits` 대상에 `injibot-daily-report.yml`을 추가해, GitHub 예약이 늦거나 빠져도 09:40에 오늘 성공 여부를 확인하고 없을 때만 `workflow_dispatch`한다. 기존 `formula-audit.yml`·`invalid-creator-fields.yml`도 같은 경로를 유지한다. 새 트리거·새 비밀값·Python 포팅은 없다.
+- **중복 방지 실측:** production `dpl_HMEwExw3f9KjDppGsm1qAYSc8VtE` READY·`-mu` 별칭 반영. dry-run smoke [`33031832298`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/33031832298) HTTP 200에서 Injibot **오늘 성공 4회**, 수식감사 1회, 담당자감사 1회를 모두 `already_done`으로 건너뛰었다. Injibot 자체 당일 게시 확인도 유지되어 지각 GitHub 크론과 외부 폴백이 겹쳐도 리포트 중복 발송을 막는다.
+- **워치독 Slack 중복 억제(`46443b9`):** 같은 워크플로가 `마감 미준수`와 `26h 나이 초과`에 동시에 걸리면 더 정확한 **마감 경고만** 남긴다. 다른 워크플로 경고는 보존한다. `banner-reach-sync.yml`은 매시간 작업이라 **기존 3h 신선도 감시만 유지**, 일일 마감 대상으로 추가하지 않았다.
+- **Python 페이지네이션 전수 보강(`8b3cf2e`):** 운영 `scripts/*.py`의 offset/`.range()` 누적 조회 **38곳**을 AST+REST 소스 검사했다. 비유일·무정렬 경로가 있던 **운영 스크립트 18개**에 기존 필터/정렬 의미를 바꾸지 않고 마지막 유일키 `id ASC`를 추가했다. `scripts/test_python_pagination_order.py`와 `workflow-lint.yml`로 이후 새 누락을 CI에서 차단한다.
+- **검증:** Python 워크플로 안전 테스트 전부·compileall 통과, web **336/336**, `tsc --noEmit`, lint 오류 0(기존 경고 15), production build 통과. GitHub push CI도 Build Test [`33031783106`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/33031783106)·Workflow Lint [`33031783136`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/33031783136) 모두 success. DB·시트·조회수·게시일 쓰기 없음.
+
 ## ✅ 2026-08-27 [Claude 완료·GHA즉시반영] 자정수집 리포트 "확인필요(미수집·원인미상) 56건" 대량 오탐 수정
 - **증상(사용자):** injibot 자정수집 리포트가 56건을 "미수집(원인 미상)"으로 올림. 실측 결과 **56건 전부 08-26 조회수 실제 존재**(진짜 미수집 0, 오탐 56).
 - **근본원인:** `scripts/daily_collect_report.py`가 대상일 `post_daily_stats`(하루 1134행>1000)와 `sponsored_posts`(3234행)를 **`ORDER BY` 없이 `limit=1000&offset`** 로 페이지네이션. PostgREST/PG가 offset 경계(1000)에서 순서를 보장 안 해 **114행 중복 + 114 post_id 누락** → `measured_ids`에서 빠진 활성 56건이 오탐 플래그. (디버그 실측: len(rows)=1134인데 유니크 post_id=1020.) 이 코드베이스 반복 버그(과거 sponsored-posts API도 동일, id 2차정렬로 픽스한 적 있음).
