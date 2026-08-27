@@ -28,7 +28,7 @@ def fetch_pages(table: str, select: str, query=None) -> list[dict[str, Any]]:
         q = db.table(table).select(select)
         if query:
             q = query(q)
-        page = q.range(offset, offset + PAGE - 1).execute().data or []
+        page = q.order("id").range(offset, offset + PAGE - 1).execute().data or []
         rows.extend(page)
         if len(page) < PAGE:
             break

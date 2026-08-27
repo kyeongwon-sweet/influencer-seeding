@@ -97,7 +97,7 @@ def fetch_all_posts() -> list[dict[str, Any]]:
     offset = 0
     select = "id,url,normalized_key,account_name,channel_type,cost,manual_fields,ended_at"
     while True:
-        page = db.table("sponsored_posts").select(select).range(offset, offset + PAGE - 1).execute().data or []
+        page = db.table("sponsored_posts").select(select).order("id").range(offset, offset + PAGE - 1).execute().data or []
         rows.extend(page)
         if len(page) < PAGE:
             return rows

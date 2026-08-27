@@ -77,7 +77,7 @@ def fetch_all(table: str, select: str) -> list[dict[str, Any]]:
     output: list[dict[str, Any]] = []
     offset = 0
     while True:
-        page = db.table(table).select(select).range(offset, offset + PAGE - 1).execute().data or []
+        page = db.table(table).select(select).order("id").range(offset, offset + PAGE - 1).execute().data or []
         output.extend(page)
         if len(page) < PAGE:
             return output

@@ -19,7 +19,9 @@ def backfill():
     db = get_client()
     rows, start = [], 0
     while True:
-        r = db.table("sponsored_posts").select("id, url, content_summary, ended_at, channel_type").range(start, start + 999).execute()
+        r = db.table("sponsored_posts").select(
+            "id, url, content_summary, ended_at, channel_type"
+        ).order("id").range(start, start + 999).execute()
         chunk = r.data or []
         rows.extend(chunk)
         if len(chunk) < 1000:

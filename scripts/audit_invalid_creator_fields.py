@@ -122,6 +122,7 @@ def load_all_posts(client: Any) -> list[dict[str, Any]]:
         res = (
             client.table("sponsored_posts")
             .select(fields)
+            .order("id")
             .range(start, end)
             .execute()
         )

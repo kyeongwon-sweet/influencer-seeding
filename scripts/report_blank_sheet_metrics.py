@@ -98,6 +98,7 @@ def fetch_stats(db, post_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
                 db.table("post_daily_stats")
                 .select("post_id,measured_at,play_count,reach_count")
                 .in_("post_id", chunk)
+                .order("id")
                 .range(start, start + PAGE - 1)
                 .execute()
             )

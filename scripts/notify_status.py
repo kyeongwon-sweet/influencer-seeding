@@ -161,7 +161,7 @@ def _integrity_lines(db, posts):
     off = 0
     while True:
         res = db.table("post_daily_stats").select(
-            "post_id, measured_at, play_count, reach_count, manual").range(off, off + 999).execute()
+            "post_id, measured_at, play_count, reach_count, manual").order("id").range(off, off + 999).execute()
         chunk = res.data or []
         for r in chunk:
             pid, m = r["post_id"], r["measured_at"]
@@ -350,7 +350,9 @@ def main():
     # 오늘 적재된 stats 집계
     rows, start = [], 0
     while True:
-        res = db.table("post_daily_stats").select("post_id, play_count").eq("measured_at", target).range(start, start + 999).execute()
+        res = db.table("post_daily_stats").select("post_id, play_count").eq(
+            "measured_at", target
+        ).order("id").range(start, start + 999).execute()
         chunk = res.data or []
         rows.extend(chunk)
         if len(chunk) < 1000:
@@ -377,7 +379,9 @@ def main():
     today_ids = {r["post_id"] for r in rows}
     posts, off = [], 0
     while True:
-        res = db.table("sponsored_posts").select("id, url, account_name, created_at, ended_at, content_summary, posted_at, channel_type, notes").range(off, off + 999).execute()
+        res = db.table("sponsored_posts").select(
+            "id, url, account_name, created_at, ended_at, content_summary, posted_at, channel_type, notes"
+        ).order("id").range(off, off + 999).execute()
         chunk = res.data or []
         posts.extend(chunk)
         if len(chunk) < 1000:

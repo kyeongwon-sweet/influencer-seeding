@@ -153,7 +153,9 @@ def _fetch_day(db, target):
     """target일의 {post_id: play_count} (null 제외)."""
     out, start = {}, 0
     while True:
-        res = db.table("post_daily_stats").select("post_id, play_count").eq("measured_at", target).range(start, start + 999).execute()
+        res = db.table("post_daily_stats").select("post_id, play_count").eq(
+            "measured_at", target
+        ).order("id").range(start, start + 999).execute()
         rows = res.data or []
         for r in rows:
             if r.get("play_count") is not None:
@@ -215,7 +217,7 @@ def main():
         out, st = {}, 0
         while True:
             res = (db.table("post_daily_stats").select("post_id, play_count, reach_count")
-                   .eq("measured_at", tgt).range(st, st + 999).execute())
+                   .eq("measured_at", tgt).order("id").range(st, st + 999).execute())
             rs = res.data or []
             for r in rs:
                 out[r["post_id"]] = r
@@ -365,7 +367,7 @@ def main():
         boff = 0
         while True:
             bres = (db.table("sponsored_posts").select("channel_type, ended_at, product_name")
-                    .ilike("channel_type", "%배너%").range(boff, boff + 999).execute())
+                    .ilike("channel_type", "%배너%").order("id").range(boff, boff + 999).execute())
             bchunk = bres.data or []
             for b in bchunk:
                 # 쫀득바(JD)만: 상품명에 JD 없는 배너 채널은 라인 노출 안 함(사용자 지시).

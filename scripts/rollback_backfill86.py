@@ -24,7 +24,7 @@ def fetch_all(query_factory) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     offset = 0
     while True:
-        page = query_factory().range(offset, offset + PAGE - 1).execute().data or []
+        page = query_factory().order("id").range(offset, offset + PAGE - 1).execute().data or []
         rows.extend(page)
         if len(page) < PAGE:
             return rows

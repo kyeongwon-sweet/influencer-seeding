@@ -87,7 +87,9 @@ def _measured_count(db, day: str) -> int:
     """day에 측정(play/reach 중 하나라도 값 있음)된 post_daily_stats 행 수."""
     n, start = 0, 0
     while True:
-        res = db.table("post_daily_stats").select("post_id, play_count, reach_count").eq("measured_at", day).range(start, start + PAGE - 1).execute()
+        res = db.table("post_daily_stats").select("post_id, play_count, reach_count").eq(
+            "measured_at", day
+        ).order("id").range(start, start + PAGE - 1).execute()
         rows = res.data or []
         n += sum(1 for r in rows if r.get("play_count") is not None or r.get("reach_count") is not None)
         if len(rows) < PAGE:
@@ -130,7 +132,9 @@ def _stat_mismatches(db, target: str) -> list[tuple[str, int, int]]:
     stats: list[dict[str, Any]] = []
     start = 0
     while True:
-        res = db.table("post_daily_stats").select("post_id, play_count, reach_count").eq("measured_at", target).range(start, start + PAGE - 1).execute()
+        res = db.table("post_daily_stats").select("post_id, play_count, reach_count").eq(
+            "measured_at", target
+        ).order("id").range(start, start + PAGE - 1).execute()
         page = res.data or []
         stats.extend(page)
         if len(page) < PAGE:
@@ -139,7 +143,9 @@ def _stat_mismatches(db, target: str) -> list[tuple[str, int, int]]:
 
     posts, poff = [], 0
     while True:
-        pr = db.table("sponsored_posts").select("id,url,channel_type,posted_at,ended_at").range(poff, poff + PAGE - 1).execute()
+        pr = db.table("sponsored_posts").select(
+            "id,url,channel_type,posted_at,ended_at"
+        ).order("id").range(poff, poff + PAGE - 1).execute()
         pg = pr.data or []
         posts.extend(pg)
         if len(pg) < PAGE:

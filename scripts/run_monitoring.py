@@ -582,6 +582,7 @@ def _same_day_measured_ids(db, posts, measured_at=TODAY):
                 .select("post_id, play_count, likes_count, comments_count, reach_count")
                 .eq("measured_at", measured_at)
                 .in_("post_id", chunk)
+                .order("id")
                 .range(frm, frm + 999)
                 .execute()
             )
@@ -1039,7 +1040,7 @@ def run():
         while True:
             _res = db.table("sponsored_posts").select(
                 "id, url, posted_at, account_name, influencer_id, ended_at, content_summary, notes, channel_type, asset_name, project_name, product_name, manual_fields, not_found_streak, not_found_last_at, review_requested_at"
-            ).range(_start, _start + _PAGE - 1).execute()
+            ).order("id").range(_start, _start + _PAGE - 1).execute()
             _chunk = _res.data or []
             all_posts.extend(_chunk)
             if len(_chunk) < _PAGE:

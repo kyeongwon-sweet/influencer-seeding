@@ -14,9 +14,11 @@ on:
       - "scripts/test_alert_env_contract.py"
       - "scripts/notify_increments.py"
       - "scripts/test_notify_increments_contract.py"
+      - "scripts/**/*.py"
   pull_request:
     paths:
       - ".github/workflows/**"
+      - "scripts/**/*.py"
   workflow_dispatch:
 
 permissions:
@@ -46,3 +48,5 @@ jobs:
         run: python scripts/test_alert_env_contract.py
       - name: Daily increment report contract
         run: python scripts/test_notify_increments_contract.py
+      - name: Python pagination unique-order contract
+        run: python scripts/test_python_pagination_order.py

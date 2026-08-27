@@ -38,7 +38,7 @@ def fetch_all(client, table: str, select: str) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     start = 0
     while True:
-        res = client.table(table).select(select).range(start, start + PAGE - 1).execute()
+        res = client.table(table).select(select).order("id").range(start, start + PAGE - 1).execute()
         rows = res.data or []
         out.extend(rows)
         if len(rows) < PAGE:
@@ -56,6 +56,7 @@ def fetch_stats_for_posts(client, post_ids: list[str]) -> list[dict[str, Any]]:
                 client.table("post_daily_stats")
                 .select(STAT_SELECT)
                 .in_("post_id", chunk)
+                .order("id")
                 .range(start, start + PAGE - 1)
                 .execute()
             )

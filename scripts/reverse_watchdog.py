@@ -98,7 +98,7 @@ def _sb_get(url: str, key: str, path: str) -> list[dict]:
     off = 0
     while True:
         req = urllib.request.Request(
-            f"{url}/rest/v1/{path}&limit=1000&offset={off}",
+            f"{url}/rest/v1/{path}&order=id.asc&limit=1000&offset={off}",
             headers={"apikey": key, "Authorization": f"Bearer {key}"},
         )
         with urllib.request.urlopen(req, timeout=60) as res:

@@ -30,7 +30,7 @@ def fetch_all(table, select: str, **filters):
                 query = query.is_(name[:-4], value)
             else:
                 raise ValueError(f"unsupported filter {name}")
-        page = query.range(offset, offset + PAGE - 1).execute().data or []
+        page = query.order("id").range(offset, offset + PAGE - 1).execute().data or []
         out.extend(page)
         if len(page) < PAGE:
             break
@@ -73,6 +73,7 @@ def main() -> None:
                 .eq("measured_at", args.date)
                 .eq("manual", False)
                 .in_("post_id", ids)
+                .order("id")
                 .range(offset, offset + PAGE - 1)
                 .execute()
                 .data
