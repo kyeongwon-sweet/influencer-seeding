@@ -6,6 +6,13 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-27 [Claude 완료·GHA즉시반영] 자정수집 리포트 "확인필요(미수집·원인미상) 56건" 대량 오탐 수정
+- **증상(사용자):** injibot 자정수집 리포트가 56건을 "미수집(원인 미상)"으로 올림. 실측 결과 **56건 전부 08-26 조회수 실제 존재**(진짜 미수집 0, 오탐 56).
+- **근본원인:** `scripts/daily_collect_report.py`가 대상일 `post_daily_stats`(하루 1134행>1000)와 `sponsored_posts`(3234행)를 **`ORDER BY` 없이 `limit=1000&offset`** 로 페이지네이션. PostgREST/PG가 offset 경계(1000)에서 순서를 보장 안 해 **114행 중복 + 114 post_id 누락** → `measured_ids`에서 빠진 활성 56건이 오탐 플래그. (디버그 실측: len(rows)=1134인데 유니크 post_id=1020.) 이 코드베이스 반복 버그(과거 sponsored-posts API도 동일, id 2차정렬로 픽스한 적 있음).
+- **수정:** 세 페이지네이션 쿼리(113·122·183행)에 **`&order=id.asc`**(post_daily_stats·sponsored_posts 모두 PK `id` 보유) 추가. 검증: dry-run 확인필요 **56→2**, 값확보 **100%**, 2회 동일. py_compile OK.
+- **반영:** main push → GHA(injibot-daily-report·워치독)가 repo에서 실행하므로 **배포 불필요·즉시 적용**. 남은 확인필요 2건은 실제 대상.
+- **⚠️ 후속 권고:** 같은 `order 없는 offset` 패턴이 다른 스크립트(예: `notify_status.py`)에도 있으면 동일 오탐 가능 → Codex 일괄 점검 권장.
+
 ## 🛡️ 2026-08-27 [Claude 완료·GHA] 자정수집 성공/실패 채널 알림 누락 → 수동복구 + 워치독 self-heal
 - **증상(사용자):** "왜 채널에 (자정수집) 성공 여부 안 보내?" 실측 결과, `injibot-daily-report`(06:38 KST, `daily_collect_report.py` → inji-bot → 채널 C0B659HEYDV #빙과_마케팅_스틱바p에 "📊 자정 수집 성공 알림 ✅성공…" 발송)가 **오늘(08-27) GHA 크론 드롭으로 미실행** → 채널에 오늘치 요약이 안 올라옴. 08-21~26은 매일 정상. **수집 자체는 성공**(08-26치 927건 적재). = 수집 실패 아님, 알림 리포트 잡 누락(스케줄 조용한 실패 패턴).
 - **즉시 복구:** `gh workflow run injibot-daily-report.yml` 수동 실행 → run `33027269794` **success**, 오늘치 채널 발송 완료.

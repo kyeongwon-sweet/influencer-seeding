@@ -110,7 +110,7 @@ def main():
     # 전체 게시물 메타
     posts = []; frm = 0
     while True:
-        pg = get("/rest/v1/sponsored_posts?select=id,account_name,channel_type,url,notes,ended_at,posted_at,created_at,not_found_streak,review_requested_at&limit=1000&offset=%d" % frm)
+        pg = get("/rest/v1/sponsored_posts?select=id,account_name,channel_type,url,notes,ended_at,posted_at,created_at,not_found_streak,review_requested_at&order=id.asc&limit=1000&offset=%d" % frm)
         posts += pg
         if len(pg) < 1000: break
         frm += 1000
@@ -119,7 +119,7 @@ def main():
     # 측정일 스탯
     rows = []; frm = 0
     while True:
-        pg = get("/rest/v1/post_daily_stats?select=post_id,play_count,reach_count,created_at&measured_at=eq.%s&limit=1000&offset=%d" % (yday, frm))
+        pg = get("/rest/v1/post_daily_stats?select=post_id,play_count,reach_count,created_at&measured_at=eq.%s&order=id.asc&limit=1000&offset=%d" % (yday, frm))
         rows += pg
         if len(pg) < 1000: break
         frm += 1000
@@ -180,7 +180,7 @@ def main():
     auto_ids, manual_ids = set(), set()
     frm = 0
     while True:
-        pg = get("/rest/v1/post_daily_stats?select=post_id,manual&measured_at=gte.%s&measured_at=lte.%s&limit=1000&offset=%d" % (week_ago, yday, frm))
+        pg = get("/rest/v1/post_daily_stats?select=post_id,manual&measured_at=gte.%s&measured_at=lte.%s&order=id.asc&limit=1000&offset=%d" % (week_ago, yday, frm))
         for r in pg:
             (manual_ids if r.get("manual") else auto_ids).add(r["post_id"])
         if len(pg) < 1000: break
