@@ -12,6 +12,7 @@
 - **중복·소음 방지:** 워치독은 리포트를 발송하지 않는다. 오늘 `workflow_dispatch` 성공이 있으면 “데이터는 복구됨” 주석만 붙이고, 같은 워크플로의 26h 나이 경고가 함께 생기면 기존 `suppress_redundant_freshness`가 더 정확한 마감 경고 하나만 남긴다. 리포트 자체의 DEDUP도 그대로다.
 - **표현 정정:** 8/27 사건은 확인된 범위에서 **지연·드롭 가능성 완화**로 표현한다. repo 전역 크론 드롭으로 단정하지 않는다.
 - **활성화 잔여:** 코드상 다중화는 완성됐지만 라이브 Apps Script의 `installEnsureDailyReportTrigger()` 1회 실행은 사용자 Google 권한이 필요한 별도 단계다. 설치 전에도 GitHub 4중 크론+17:05 마감 경보는 작동한다.
+- **검증:** `test_cron_watchdog` 나이기준 8종+마감기준 11종, py_compile 통과. main `af0b213` 반영 후 GHA dry-run [`33068253082`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/33068253082) success. 오늘은 16:41 수동 복구가 이미 성공했고 복구 알림 창도 지난 상태라 `신선도 경고 0·마감 경고 0`이 정상이다.
 
 ## ✅ 2026-08-27 [Claude] 리포트 결과 워치독 추가 + 오늘 크론 누락 수동 복구
 - **사건:** 8/27 GitHub이 일일 증분 리포트 백업 크론 4개(12:20/13:20/14:20/15:20 KST)를 **전부 드롭** → 8/26 데이터 리포트 미발송. 워크플로 active·코드 정상, GitHub 쪽 간헐적 크론 누락. 16:40 KST 수동 dispatch로 발송 완료(ts 1787816431.020589, 검수 통과).
