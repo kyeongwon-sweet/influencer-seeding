@@ -6,6 +6,15 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-28 [Codex 완료·라이브] 최신 날짜 carry-forward 차단 + importStats 수집완료 게이트 (`e5d9028`)
+- **근본수정:** `exportStats`가 가장 최신 과거 날짜열에는 직전 누적값을 이어받지 않는다. 수집값이 아직 안 온 상태와 실제 결측을 구분할 수 없는 최신 열은 빈칸으로 두고, carry는 뒤 날짜가 존재하는 내부 구간에만 허용한다.
+- **DB 역유입 차단:** `dailyAuto`의 `importStats`도 `/api/ops/collection-status` 완료 뒤에만 실행한다. 수집 미완료·상태조회 실패면 import를 생략하고 기존 export 15분 반복 게이트가 수집 완료를 확인한 뒤 **import → export** 순서로 복구한다. 같은 대상일 import 성공 상태는 Script Properties로 기록해 중복 upsert를 피하며, import 실패는 `IMPORT_ERROR`로 남긴다.
+- **정책판단:** carry 셀 노트/숨김시트 영구표시는 이번에 도입하지 않았다. 최신열 미적용+양방향 게이트로 사고 경로가 닫혔고, 별도 표시 계층은 과거 배너 수기값을 carry로 오인해 덮는 위험이 더 크다.
+- **검증:** web **353/353**, Apps Script 계약 49/49, JS 구문검사, lint 오류 0(기존 경고 15), webpack production build 통과. main `e5d9028` 반영.
+- **라이브 Apps Script:** 정본 project `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn` fresh pull(22파일) → repo 5파일 오버레이 → push → 재pull, **5/5 source exact match**. 라이브-only 17파일은 보존했다.
+- **읽기전용 복구 후보:** 인증된 연동시트 CSV와 로그인 대시보드의 2026-08-26~27 값을 URL-key로 대조해, `8/27 시트=8/26 시트 < 8/27 DB`이고 배너를 제외한 **490칸 상한**(누락 합계 **1,074,469**)을 산출했다. CSV에는 `manual/ended` 플래그가 없어 실제 쓰기 전 인증 재조회로 최종 제외가 필요하며, 후보 파일은 `scratchpad/carry_candidates_20260827_audit.json`(격리 worktree)에 있다.
+- **무접촉:** 시트 셀·DB 통계·posted_at·공유필터 쓰기 0건. 바로 아래 Claude가 확정한 **교차오염**(썰박스·486__humor·nato.funny)은 `target==previous` 지문이 아니라 490 후보에 포함되지 않을 수 있으므로, 복구 승인 후 별도 명시 셀과 함께 정리해야 한다.
+
 ## 🧹 2026-08-28 [Claude] 8/27 시트 오염 = carry-forward 뿐 아니라 **교차오염**(먹리니 값 누출) + DB 수술 정정 완료 + Codex 시트정리 조율
 - **사용자 제보:** 썰박스(틱톡) `/photo/7677553177486478599/` 누적 633,000으로 트래킹됐는데 **실제 816**. → 처음엔 틱톡 photo 수집기(`tt_canonical_form` /photo/→/video/) 과다트래킹을 의심했으나 **오진**. photo 수집기 정상(139건 중 138건 manual=False에 실제 좋아요·댓글 정상). 이 건은 `6eb35ab`(carry-forward 사고)의 연장선.
 - **실측 확정 — 먹리니 값이 3개 게시물로 누출:** 먹리니 `/p/DcfkdB4PdEq/`(IG 파워채널)가 진짜 바이럴(DB 8/26 466,637→8/27 **633,374**, 좋아요 9,440→14,908 일치). 이 값이 오염원.
