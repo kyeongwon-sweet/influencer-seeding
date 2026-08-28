@@ -15,6 +15,7 @@ const deployFiles = [
   ["_WriteGuard.gs", "_WriteGuard.js"],
   [join("apps-script", insightInquiryFile), insightInquiryFile.replace(/\.gs$/, ".js")],
   [join("apps-script", "repair_asset_name_pollution_20260813.gs"), "repair_asset_name_pollution_20260813.js"],
+  [join("apps-script", "repair_metric_contamination_20260828.gs"), "repair_metric_contamination_20260828.js"],
   [join("apps-script", "appsscript.json"), "appsscript.json"],
 ];
 
