@@ -495,7 +495,7 @@ test("dailyAuto prices sheet rows before importing stats and then exports DB sta
   const defsBody = appsScript.slice(defsStart, dailyStart);
   const pricingIdx = appsScript.indexOf('["syncPricing", syncPricing]', defsStart);
   const importIdx = appsScript.indexOf('["importStats", function() { return importStats("daily_auto"); }]', defsStart);
-  const exportIdx = appsScript.indexOf('["exportStats", exportStats]', defsStart);
+  const exportIdx = appsScript.indexOf('["exportStats", exportStatsDailyGate_]', defsStart);
   assert.notEqual(defsStart, -1);
   assert.notEqual(dailyStart, -1);
   assert.notEqual(pricingIdx, -1);
@@ -581,13 +581,13 @@ test("Apps Script clasp deploy path is staged and guarded", () => {
   assert.doesNotMatch(deploy, /rollback_backfill86_sheet_temp/);
 });
 
-test("dailyAuto retries only import/export once after seven minutes", () => {
+test("dailyAuto retries import once and defers export until collection completion", () => {
   const retryStart = appsScript.indexOf("function dailyAutoRetry_()");
   const dailyStart = appsScript.indexOf("function dailyAuto()", retryStart);
   assert.notEqual(retryStart, -1);
   assert.match(
     appsScript,
-    /DAILY_AUTO_RETRYABLE_STAGES_ = \["importStats", "exportStats"\]/,
+    /DAILY_AUTO_RETRYABLE_STAGES_ = \["importStats"\]/,
   );
   assert.match(appsScript, /DAILY_AUTO_RETRY_DELAY_MS_ = 7 \* 60 \* 1000/);
   assert.match(appsScript, /newTrigger\("dailyAutoRetry_"\)[\s\S]*?\.after\(DAILY_AUTO_RETRY_DELAY_MS_\)/);
@@ -600,6 +600,17 @@ test("dailyAuto retries only import/export once after seven minutes", () => {
     ),
     /scheduleDailyAutoRetry_/,
   );
+
+  assert.match(appsScript, /COLLECTION_STATUS_URL:[\s\S]*?\/api\/ops\/collection-status/);
+  assert.match(appsScript, /EXPORT_STATS_GATE_RETRY_DELAY_MS_ = 15 \* 60 \* 1000/);
+  assert.match(appsScript, /EXPORT_STATS_GATE_MAX_ATTEMPTS_ = 16/);
+  assert.match(appsScript, /function fetchCollectionStatus_\(targetDate, notify, reason\)/);
+  assert.match(appsScript, /function exportStatsDailyGate_\(\)/);
+  assert.match(appsScript, /function exportStatsAfterCollection_\(\)/);
+  assert.match(appsScript, /newTrigger\("exportStatsAfterCollection_"\)[\s\S]*?\.after\(EXPORT_STATS_GATE_RETRY_DELAY_MS_\)/);
+  assert.match(appsScript, /\["exportStats", exportStatsDailyGate_\]/);
+  assert.match(appsScript, /withDocLock_\(function\(\) \{[\s\S]*?const ok = exportStats\(\)/);
+  assert.match(appsScript, /EXPORT_STATS_COLLECTION_GATE_LAST_STATUS/);
 });
 
 test("DB to sheet sync runs independently every three hours with retry, watchdog, and alerts", () => {
@@ -904,7 +915,7 @@ test("daily trigger installs and removes syncNew plus independent DB pull trigge
   );
   assert.match(
     appsScript,
-    /function removeDailyTrigger\(\)[\s\S]*?\["syncNew", "dailyAuto", "dailyAutoRetry_", "scheduledDbPullSync_", "dbPullSyncRetry_", "dbPullSyncWatchdog_"\]/,
+    /function removeDailyTrigger\(\)[\s\S]*?\["syncNew", "dailyAuto", "dailyAutoRetry_", "exportStatsAfterCollection_", "scheduledDbPullSync_", "dbPullSyncRetry_", "dbPullSyncWatchdog_"\]/,
   );
   assert.match(appsScript, /function installDailyTrigger\(\)[\s\S]*?installDbPullSyncTrigger_\(\)/);
 });

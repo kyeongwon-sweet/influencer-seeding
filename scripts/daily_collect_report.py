@@ -53,6 +53,30 @@ def load_auto_end_watchdog(report_path, outcome="success"):
     return {"ok": True, "count": 0, "line": "자동종료 누락 0건", "items": []}
 
 COLLECT_WORKFLOW = "cron-daily-collect.yml"
+COLLECTION_COMPLETE_STEP = "Collection completion marker"
+COLLECTION_MARKER_REQUIRED_AFTER = datetime.datetime.fromisoformat("2026-08-28T03:00:00+00:00")
+
+
+def collection_completed_from_jobs(jobs, event, marker_required=False, run_conclusion="success"):
+    """실제 조회수 수집 완료인가. status/api_only 성공을 초록 완료로 오인하지 않는다."""
+    collect_job = next((job for job in (jobs or []) if job.get("name") == "collect"), None)
+    if not collect_job:
+        return False
+    steps = collect_job.get("steps") or []
+    marker = next((step for step in steps if step.get("name") == COLLECTION_COMPLETE_STEP), None)
+    if marker is not None:
+        return marker.get("conclusion") == "success"
+    if marker_required:
+        return False
+
+    # 마커 배포 전 이력 호환. 예약 실행은 api_only/metadata_only가 될 수 없다.
+    if run_conclusion == "success" and event == "schedule" and collect_job.get("conclusion") == "success":
+        return True
+    # 마커 전 수동 복구는 실제 수집 스텝이 성공한 경우만 인정한다. skipped는 api_only일 수 있다.
+    collector = next((step for step in steps
+                      if str(step.get("name") or "").startswith("협찬 전체 수집")), None)
+    return (run_conclusion == "success" and event == "workflow_dispatch"
+            and bool(collector) and collector.get("conclusion") == "success")
 
 
 def collection_ran_for_date(runs, target_date):
@@ -76,7 +100,7 @@ def collection_ran_for_date(runs, target_date):
         return False
     want = (target + datetime.timedelta(days=1)).isoformat()
     for r in runs or []:
-        if (r.get("conclusion") or "") != "success":
+        if r.get("collection_complete") is not True:
             continue
         ts = str(r.get("created_at") or "")
         try:
@@ -88,21 +112,46 @@ def collection_ran_for_date(runs, target_date):
     return False
 
 
-def fetch_collect_runs(repo, token, limit=30):
-    """수집 워크플로의 최근 실행 목록. 조회 실패는 None(=판정 불가)로 구분해 돌려준다."""
-    url = (f"https://api.github.com/repos/{repo}/actions/workflows/"
-           f"{COLLECT_WORKFLOW}/runs?per_page={limit}")
+def _fetch_json(url, token):
     req = urllib.request.Request(url, headers={
         "Authorization": "Bearer " + token,
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
         "User-Agent": "injibot-report",
     })
+    with urllib.request.urlopen(req, timeout=30) as res:
+        return json.loads(res.read().decode("utf-8"))
+
+
+def fetch_collect_runs(repo, token, target_date, limit=30):
+    """최근 실행과 완료 마커를 읽는다. 어느 조회든 실패하면 None(판정 불가)."""
+    url = (f"https://api.github.com/repos/{repo}/actions/workflows/"
+           f"{COLLECT_WORKFLOW}/runs?per_page={limit}")
     try:
-        with urllib.request.urlopen(req, timeout=30) as res:
-            return json.loads(res.read().decode("utf-8")).get("workflow_runs", [])
+        runs = _fetch_json(url, token).get("workflow_runs", [])
+        # 대상 KST 날짜 후보만 jobs를 읽어 API 호출을 1~3회로 제한한다.
+        try:
+            target = datetime.date.fromisoformat(str(target_date))
+        except ValueError:
+            return []
+        wanted = (target + datetime.timedelta(days=1)).isoformat()
+        for run in runs:
+            created_at = str(run.get("created_at") or "")
+            try:
+                created = datetime.datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if (created + datetime.timedelta(hours=9)).date().isoformat() != wanted:
+                continue
+            jobs_url = (f"https://api.github.com/repos/{repo}/actions/runs/"
+                        f"{run.get('id')}/jobs?per_page=100")
+            jobs = _fetch_json(jobs_url, token).get("jobs", [])
+            marker_required = created >= COLLECTION_MARKER_REQUIRED_AFTER
+            run["collection_complete"] = collection_completed_from_jobs(
+                jobs, run.get("event") or "", marker_required, run.get("conclusion"))
+        return runs
     except Exception as exc:
-        print(f"[collect-gate] 수집 실행 조회 실패({type(exc).__name__}) → 판정 불가")
+        print(f"[collect-gate] 수집 실행/완료마커 조회 실패({type(exc).__name__}) → 판정 불가")
         return None
 
 
@@ -373,7 +422,7 @@ def main():
     gh_token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     if do_send and not force and gh_token:
         repo = os.environ.get("GITHUB_REPOSITORY", "kyeongwon-sweet/influencer-seeding")
-        runs = fetch_collect_runs(repo, gh_token)
+        runs = fetch_collect_runs(repo, gh_token, yday)
         if runs is not None and not collection_ran_for_date(runs, yday):
             print(f"[collect-gate] {yday} 수집 성공 실행 없음 → 발송 보류"
                   " (수집 완료 후 cron-daily-collect가 다시 dispatch합니다)")

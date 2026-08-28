@@ -40,6 +40,7 @@ const CONFIG = {
   AUDIT_FALLBACK_URL: "https://influencer-seeding-mu.vercel.app/api/ops/audit-fallback",          // 아침 수식감사 미발화 시 폴백 감사(오늘 감사 없을 때만 동작)
   ENSURE_DAILY_AUDITS_URL: "https://influencer-seeding-mu.vercel.app/api/ops/ensure-daily-audits", // 수식·제작자 감사를 함께 보장(오늘 성공한 워크플로는 건너뜀)
   ENSURE_DAILY_REPORT_URL: "https://influencer-seeding-mu.vercel.app/api/ops/ensure-daily-report", // 일일 증분 리포트 발송 보장(오늘 성공 실행 0건이면 자동 dispatch)
+  COLLECTION_STATUS_URL: "https://influencer-seeding-mu.vercel.app/api/ops/collection-status", // exportStats 전 대상일 자정수집 완료 마커 확인
   DB_SHEET_SYNC_ALERT_URL: "https://influencer-seeding-mu.vercel.app/api/ops/db-sheet-sync-alert", // DB→시트 독립 동기화 실패 Slack 경고
   HEADER_ROW: 1,
   DATA_START_ROW: 2,
@@ -1607,7 +1608,201 @@ function backfillViralCaptionsFromAsset() {
 // - pullFromDB는 3시간 독립 트리거로 분리해 일일 작업 시간초과와 신규글 동기화 지연을 격리한다.
 // - 재시도도 실패하면 더 예약하지 않고 오류를 남겨 무한 트리거 생성을 막는다.
 const DAILY_AUTO_RETRY_DELAY_MS_ = 7 * 60 * 1000;
-const DAILY_AUTO_RETRYABLE_STAGES_ = ["importStats", "exportStats"];
+const DAILY_AUTO_RETRYABLE_STAGES_ = ["importStats"];
+const EXPORT_STATS_GATE_RETRY_DELAY_MS_ = 15 * 60 * 1000;
+const EXPORT_STATS_GATE_MAX_ATTEMPTS_ = 16; // 08:30 실행이 4시간가량 지연된 수집도 따라잡는다.
+const EXPORT_STATS_GATE_PENDING_PROP_ = "EXPORT_STATS_COLLECTION_GATE_PENDING_JSON";
+
+function shiftDateStr_(dateStr, days) {
+  const parts = String(dateStr || "").split("-").map(Number);
+  if (parts.length !== 3 || parts.some(function(v) { return !isFinite(v); })) return null;
+  const date = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2] + Number(days || 0)));
+  return Utilities.formatDate(date, "UTC", "yyyy-MM-dd");
+}
+
+function collectionTargetDate_() {
+  return shiftDateStr_(todayStr_(), -1);
+}
+
+function fetchCollectionStatus_(targetDate, notify, reason) {
+  const url = CONFIG.COLLECTION_STATUS_URL
+    + "?target_date=" + encodeURIComponent(targetDate)
+    + (reason ? "&reason=" + encodeURIComponent(reason) : "");
+  const res = UrlFetchApp.fetch(url, {
+    method: notify ? "post" : "get",
+    headers: authHeaders_(),
+    muteHttpExceptions: true,
+  });
+  const code = res.getResponseCode();
+  const text = res.getContentText();
+  if (code !== 200) throw new Error("collection-status API " + code + ": " + text.slice(0, 300));
+  const data = JSON.parse(text);
+  if (typeof data.completed !== "boolean") throw new Error("collection-status 응답에 completed가 없습니다.");
+  return data;
+}
+
+function removeExportStatsGateTriggers_() {
+  const triggers = ScriptApp.getProjectTriggers()
+    .filter(function(t) { return t.getHandlerFunction() === "exportStatsAfterCollection_"; });
+  triggers.forEach(function(t) { ScriptApp.deleteTrigger(t); });
+  return triggers.length;
+}
+
+function clearExportStatsGatePending_() {
+  removeExportStatsGateTriggers_();
+  PropertiesService.getScriptProperties().deleteProperty(EXPORT_STATS_GATE_PENDING_PROP_);
+}
+
+function scheduleExportStatsAfterCollection_(targetDate, attempt, sourceStartedAt, reason) {
+  const props = PropertiesService.getScriptProperties();
+  removeExportStatsGateTriggers_();
+  props.setProperty(EXPORT_STATS_GATE_PENDING_PROP_, JSON.stringify({
+    target_date: targetDate,
+    attempt: attempt,
+    source_started_at: sourceStartedAt || new Date().toISOString(),
+    scheduled_at: new Date().toISOString(),
+    reason: String(reason || "collection_not_complete").slice(0, 300),
+  }));
+  props.setProperties({
+    EXPORT_STATS_COLLECTION_GATE_LAST_STATUS: "DEFERRED",
+    EXPORT_STATS_COLLECTION_GATE_LAST_TARGET_DATE: targetDate,
+    EXPORT_STATS_COLLECTION_GATE_LAST_ATTEMPT: String(attempt),
+    EXPORT_STATS_COLLECTION_GATE_LAST_REASON: String(reason || "collection_not_complete").slice(0, 500),
+  }, false);
+  ScriptApp.newTrigger("exportStatsAfterCollection_")
+    .timeBased()
+    .after(EXPORT_STATS_GATE_RETRY_DELAY_MS_)
+    .create();
+  Logger.log("exportStats_collection_gate_deferred " + JSON.stringify({
+    target_date: targetDate,
+    attempt: attempt,
+    retry_after_ms: EXPORT_STATS_GATE_RETRY_DELAY_MS_,
+    reason: reason,
+  }));
+  return true;
+}
+
+function notifyExportStatsGateTimeout_(targetDate, reason) {
+  try {
+    fetchCollectionStatus_(targetDate, true, reason); // POST는 미완료/반복실패를 Slack에 알린다.
+  } catch (e) {
+    Logger.log("exportStats_collection_gate_alert_error " + dailyAutoErrorText_(e));
+  }
+}
+
+function runExportStatsCollectionGate_(source, pending) {
+  const props = PropertiesService.getScriptProperties();
+  const targetDate = (pending && pending.target_date) || collectionTargetDate_();
+  const attempt = Number((pending && pending.attempt) || 0);
+  const sourceStartedAt = (pending && pending.source_started_at) || new Date().toISOString();
+  let status;
+  try {
+    status = fetchCollectionStatus_(targetDate, false);
+  } catch (e) {
+    const reason = "lookup_failed: " + dailyAutoErrorText_(e);
+    if (attempt < EXPORT_STATS_GATE_MAX_ATTEMPTS_) {
+      return scheduleExportStatsAfterCollection_(targetDate, attempt + 1, sourceStartedAt, reason);
+    }
+    clearExportStatsGatePending_();
+    props.setProperties({
+      EXPORT_STATS_COLLECTION_GATE_LAST_STATUS: "LOOKUP_TIMEOUT",
+      EXPORT_STATS_COLLECTION_GATE_LAST_REASON: reason.slice(0, 500),
+    }, false);
+    notifyExportStatsGateTimeout_(targetDate, "gate_timeout");
+    Logger.log("exportStats_collection_gate_timeout " + JSON.stringify({ target_date: targetDate, attempt: attempt, reason: reason }));
+    return true; // 시트에 부분값을 쓰지 않고 사람 확인으로 넘긴다.
+  }
+
+  if (!status.completed) {
+    const reason = "collection_not_complete";
+    if (attempt < EXPORT_STATS_GATE_MAX_ATTEMPTS_) {
+      return scheduleExportStatsAfterCollection_(targetDate, attempt + 1, sourceStartedAt, reason);
+    }
+    clearExportStatsGatePending_();
+    props.setProperties({
+      EXPORT_STATS_COLLECTION_GATE_LAST_STATUS: "COLLECTION_TIMEOUT",
+      EXPORT_STATS_COLLECTION_GATE_LAST_REASON: reason,
+    }, false);
+    notifyExportStatsGateTimeout_(targetDate, "gate_timeout");
+    Logger.log("exportStats_collection_gate_timeout " + JSON.stringify({ target_date: targetDate, attempt: attempt, reason: reason }));
+    return true;
+  }
+
+  clearExportStatsGatePending_();
+  let exported = false;
+  try {
+    exported = withDocLock_(function() {
+      const ok = exportStats();
+      if (ok === false) return false;
+      repairStaleMetricFormulaRanges_(getSheet_());
+      return true;
+    });
+  } catch (e) {
+    const reason = "export_failed: " + dailyAutoErrorText_(e);
+    if (attempt < EXPORT_STATS_GATE_MAX_ATTEMPTS_) {
+      return scheduleExportStatsAfterCollection_(targetDate, attempt + 1, sourceStartedAt, reason);
+    }
+    props.setProperties({
+      EXPORT_STATS_COLLECTION_GATE_LAST_STATUS: "EXPORT_ERROR",
+      EXPORT_STATS_COLLECTION_GATE_LAST_REASON: reason.slice(0, 500),
+    }, false);
+    notifyExportStatsGateTimeout_(targetDate, "export_failed");
+    Logger.log("exportStats_collection_gate_export_error " + JSON.stringify({ target_date: targetDate, attempt: attempt, reason: reason }));
+    return true;
+  }
+  if (!exported) {
+    const reason = "exportStats returned false";
+    if (attempt < EXPORT_STATS_GATE_MAX_ATTEMPTS_) {
+      return scheduleExportStatsAfterCollection_(targetDate, attempt + 1, sourceStartedAt, reason);
+    }
+    props.setProperties({
+      EXPORT_STATS_COLLECTION_GATE_LAST_STATUS: "EXPORT_ERROR",
+      EXPORT_STATS_COLLECTION_GATE_LAST_REASON: reason,
+    }, false);
+    notifyExportStatsGateTimeout_(targetDate, "export_failed");
+    return true;
+  }
+
+  props.setProperties({
+    EXPORT_STATS_COLLECTION_GATE_LAST_STATUS: "OK",
+    EXPORT_STATS_COLLECTION_GATE_LAST_TARGET_DATE: targetDate,
+    EXPORT_STATS_COLLECTION_GATE_LAST_ATTEMPT: String(attempt),
+    EXPORT_STATS_COLLECTION_GATE_LAST_FINISHED_AT: new Date().toISOString(),
+    EXPORT_STATS_COLLECTION_GATE_LAST_REASON: "collection_complete",
+  }, false);
+  Logger.log("exportStats_collection_gate_result " + JSON.stringify({
+    status: "OK",
+    source: source,
+    target_date: targetDate,
+    attempt: attempt,
+    run: status.run || null,
+  }));
+  return true;
+}
+
+function exportStatsDailyGate_() {
+  return runExportStatsCollectionGate_("dailyAuto", null);
+}
+
+function exportStatsAfterCollection_() {
+  const props = PropertiesService.getScriptProperties();
+  const raw = props.getProperty(EXPORT_STATS_GATE_PENDING_PROP_);
+  removeExportStatsGateTriggers_();
+  if (!raw) {
+    Logger.log("exportStats_collection_gate_skip: pending 없음");
+    return true;
+  }
+  let pending;
+  try {
+    pending = JSON.parse(raw);
+  } catch (e) {
+    props.deleteProperty(EXPORT_STATS_GATE_PENDING_PROP_);
+    throw new Error("exportStats collection gate payload 파싱 실패: " + e.message);
+  }
+  return withAutoWriteGuard_(function() {
+    return runExportStatsCollectionGate_("collection_retry", pending);
+  });
+}
 
 function dailyAutoErrorText_(e) {
   // Script Properties 단일 값 제한을 넘지 않도록 스택은 단계당 700자로 제한한다.
@@ -1620,7 +1815,7 @@ function dailyAutoStageDefs_() {
     ["syncAll", function() { return runSync_(false); }],
     ["syncPricing", syncPricing],
     ["importStats", function() { return importStats("daily_auto"); }],
-    ["exportStats", exportStats],
+    ["exportStats", exportStatsDailyGate_],
     ["syncStatus", syncStatus],
     ["refreshCumulativeViews", refreshCumulativeViews],
     ["repairMetricFormulaRanges", function() { return repairStaleMetricFormulaRanges_(getSheet_()); }],
@@ -3925,9 +4120,10 @@ function removeAuditFallbackTrigger() {
 function installDailyTrigger() {
   // 기존 트리거(구버전 syncNew·남은 1회 재시도 포함) 제거 후 일일 작업과 DB→시트 독립 동기화를 재등록
   ScriptApp.getProjectTriggers()
-    .filter(t => ["syncNew", "dailyAuto", "dailyAutoRetry_", "scheduledDbPullSync_", "dbPullSyncRetry_", "dbPullSyncWatchdog_"].indexOf(t.getHandlerFunction()) >= 0)
+    .filter(t => ["syncNew", "dailyAuto", "dailyAutoRetry_", "exportStatsAfterCollection_", "scheduledDbPullSync_", "dbPullSyncRetry_", "dbPullSyncWatchdog_"].indexOf(t.getHandlerFunction()) >= 0)
     .forEach(t => ScriptApp.deleteTrigger(t));
   PropertiesService.getScriptProperties().deleteProperty("DAILY_AUTO_RETRY_PENDING_JSON");
+  PropertiesService.getScriptProperties().deleteProperty(EXPORT_STATS_GATE_PENDING_PROP_);
   PropertiesService.getScriptProperties().deleteProperty("DB_PULL_SYNC_PENDING_JSON");
   PropertiesService.getScriptProperties().setProperty("AUTO_SYNC_ENABLED", "true");
   ensureDateHeaderChangeTrigger_();
@@ -3955,9 +4151,10 @@ function installDailyTrigger() {
 
 function removeDailyTrigger() {
   const triggers = ScriptApp.getProjectTriggers()
-    .filter(t => ["syncNew", "dailyAuto", "dailyAutoRetry_", "scheduledDbPullSync_", "dbPullSyncRetry_", "dbPullSyncWatchdog_"].indexOf(t.getHandlerFunction()) >= 0);
+    .filter(t => ["syncNew", "dailyAuto", "dailyAutoRetry_", "exportStatsAfterCollection_", "scheduledDbPullSync_", "dbPullSyncRetry_", "dbPullSyncWatchdog_"].indexOf(t.getHandlerFunction()) >= 0);
   triggers.forEach(t => ScriptApp.deleteTrigger(t));
   PropertiesService.getScriptProperties().deleteProperty("DAILY_AUTO_RETRY_PENDING_JSON");
+  PropertiesService.getScriptProperties().deleteProperty(EXPORT_STATS_GATE_PENDING_PROP_);
   PropertiesService.getScriptProperties().deleteProperty("DB_PULL_SYNC_PENDING_JSON");
   PropertiesService.getScriptProperties().setProperty("AUTO_SYNC_ENABLED", "false");
   safeAlert_(`⏹ 자동 동기화를 껐습니다. (${triggers.length}개 트리거 제거)`);

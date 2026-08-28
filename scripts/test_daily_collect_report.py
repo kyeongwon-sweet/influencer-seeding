@@ -2,7 +2,12 @@ import json
 import tempfile
 from pathlib import Path
 
-from daily_collect_report import collection_ran_for_date, load_auto_end_watchdog
+from daily_collect_report import (
+    COLLECTION_COMPLETE_STEP,
+    collection_completed_from_jobs,
+    collection_ran_for_date,
+    load_auto_end_watchdog,
+)
 
 
 def test_zero_backlog_is_healthy():
@@ -38,8 +43,9 @@ def test_watchdog_failure_is_not_silent():
 # cron-daily-collect는 실행 시점 KST '어제'를 대상일로 쓰므로, 대상일 D의 수집은
 # KST 날짜 D+1에 생성된 성공 실행이다.
 
-def _run(created_at, conclusion="success"):
-    return {"created_at": created_at, "conclusion": conclusion}
+def _run(created_at, conclusion="success", complete=True):
+    return {"id": 1, "event": "schedule", "created_at": created_at,
+            "conclusion": conclusion, "collection_complete": complete}
 
 
 def test_gate_blocks_when_collection_has_not_run():
@@ -62,11 +68,56 @@ def test_gate_passes_for_late_arriving_collection():
 
 def test_gate_ignores_failed_and_other_dates():
     runs = [
-        _run("2026-08-28T00:35:00Z", "failure"),   # 대상일 맞지만 실패
+        _run("2026-08-28T00:35:00Z", "failure", complete=False),  # 대상일 맞지만 완료 마커 없음
         _run("2026-08-29T00:35:00Z"),              # 성공이지만 대상일 08-28
         _run("2026-08-27T00:35:00Z"),              # 성공이지만 대상일 08-26
     ]
     assert collection_ran_for_date(runs, "2026-08-27") is False
+
+
+def test_green_run_without_completion_marker_is_not_enough():
+    runs = [_run("2026-08-28T00:35:00Z", complete=False)]
+    assert collection_ran_for_date(runs, "2026-08-27") is False
+
+
+def test_completion_marker_rejects_api_only_and_status_test_runs():
+    api_only_jobs = [{"name": "collect", "conclusion": "success", "steps": [
+        {"name": "협찬 전체 수집 (IG+YT+틱톡+페북+스레드+트위터)", "conclusion": "skipped"},
+        {"name": COLLECTION_COMPLETE_STEP, "conclusion": "skipped"},
+    ]}]
+    assert collection_completed_from_jobs(api_only_jobs, "workflow_dispatch") is False
+    assert collection_completed_from_jobs(
+        [{"name": "status-test", "conclusion": "success", "steps": []}],
+        "workflow_dispatch",
+    ) is False
+    assert collection_completed_from_jobs(api_only_jobs, "workflow_dispatch", True) is False
+
+
+def test_completion_marker_accepts_real_or_nothing_missing_runs():
+    marked = [{"name": "collect", "conclusion": "success", "steps": [
+        {"name": COLLECTION_COMPLETE_STEP, "conclusion": "success"},
+    ]}]
+    assert collection_completed_from_jobs(marked, "workflow_dispatch") is True
+    assert collection_completed_from_jobs(marked, "workflow_dispatch", True) is True
+    assert collection_completed_from_jobs(marked, "workflow_dispatch", True, None) is True
+    # 마커 배포 전 예약 성공 이력 호환.
+    assert collection_completed_from_jobs(
+        [{"name": "collect", "conclusion": "success", "steps": []}], "schedule",
+    ) is True
+    assert collection_completed_from_jobs(
+        [{"name": "collect", "conclusion": "success", "steps": []}],
+        "schedule", False, None,
+    ) is False
+
+
+def test_workflow_emits_marker_and_dispatches_report_only_after_it():
+    workflow = (Path(__file__).resolve().parents[1] / ".github" / "workflows" /
+                "cron-daily-collect.yml").read_text(encoding="utf-8")
+    assert "name: Collection completion marker" in workflow
+    assert "id: collection_complete" in workflow
+    assert "github.event.inputs.api_only != 'true'" in workflow
+    assert "github.event.inputs.metadata_only != 'true'" in workflow
+    assert "steps.collection_complete.outcome == 'success'" in workflow
 
 
 def test_gate_is_robust_to_bad_input():
@@ -89,4 +140,4 @@ if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):
             fn()
-    print("daily_collect_report tests passed (watchdog 3 + 수집게이트 6)")
+    print("daily_collect_report tests passed (watchdog 3 + 수집게이트/마커 9)")

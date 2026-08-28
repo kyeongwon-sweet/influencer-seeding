@@ -6,6 +6,15 @@
 
 # AI Shared Status
 
+## ✅ 2026-08-28 [Codex 검증·보강] 수집 완료 마커 + exportStats 지연 게이트
+- **Claude 변경 검증:** `d972a38` 리포트 게이트와 `2fbe764` 계정 단위 수집 전멸 감시의 순수함수·워크플로 계약을 재실행해 통과했다. 라이브 GitHub 이력도 대상일 2026-08-27 완료 `true`(schedule run `33130228353`, `33133856156`)로 확인했다.
+- **리뷰에서 잡은 경계 2건:** 성공 workflow만 세면 `api_only`·`metadata_only`·`status_test`도 실제 조회수 수집 완료로 오인할 수 있었다. 반대로 늦은 수집이 자체 step에서 리포트를 dispatch하는 순간에는 부모 run이 아직 `in_progress`라 `conclusion=success` 필터에 안 보여, 보류 리포트가 다시 보류되고 끝날 수 있었다.
+- **공통 정본:** `cron-daily-collect.yml`에 **`Collection completion marker`**를 추가했다. 누락 0으로 의도적 skip 또는 실제 전체수집 step 성공일 때만 marker가 성공하며, API/메타데이터 전용 실행은 marker가 성공하지 않는다. 보고 재dispatch도 marker 성공 뒤에만 실행한다.
+- **리포트 보강:** `daily_collect_report.py`가 대상 KST 날짜의 후보 run jobs를 읽어 marker를 판정한다. marker 성공은 부모 workflow가 아직 실행 중이어도 완료로 인정하고, marker 배포 이후 marker 없는 초록 run은 인정하지 않는다. 배포 전 schedule/full-manual 이력만 제한적으로 호환한다.
+- **시트 게이트:** cron-authenticated `/api/ops/collection-status`를 추가하고 Apps Script `dailyAuto`의 `exportStats`를 이 상태 조회로 감쌌다. 미완료/조회실패면 시트에 부분값을 쓰지 않고 **15분 간격 최대 16회** 재확인한다. 완료되면 기존 `exportStats` 본문을 그대로 실행하고 누적·증분 수식범위만 보강한다. 반복 실패 시 Slack 경보를 보내며, 메뉴에서 사람이 직접 누르는 `exportStats`는 기존처럼 즉시 실행한다.
+- **무결성:** 조회수·DB·시트 셀·posted_at·공유필터 직접 쓰기 0건. 수기값 보존·URL-key 쓰기·행수/정렬 가드는 변경하지 않았다. `dailyAuto`의 일반 7분 재시도는 `importStats`만 담당하고, export는 전용 반복 트리거가 담당한다.
+- **검증:** web 전체 **347/347**, Apps Script/수집게이트 집중 55/55, Python 리포트·계정감시·workflow env·페이지네이션 계약, `tsc --noEmit`, lint 오류 0(기존 경고 15), production build, Apps Script JS 구문검사 통과. 배포 후 `/api/ops/collection-status?target_date=2026-08-27` 실측과 guarded clasp live pull 일치 확인 필요. 첫 신규 marker 운영 실측은 다음 자정수집에서 확인한다.
+
 ## 🛡️ 2026-08-28 [Claude 완료·푸시됨 `d972a38`] 수집 완료 전 하위작업 실행 차단 (리포트 게이트 + 지연일 재dispatch)
 - **사건:** GitHub 크론이 9시간 밀려 자정수집이 **09:35 시작·09:45 완료**했는데 injibot 리포트는 **09:33**에 이미 나갔다. "측정 대상 418건 중 값 확보 99건(24%)·확인필요 319건"이 전부 오탐(실제 **416건/100%·확인필요 2건**). idempotency가 "오늘 리포트 이미 있음"으로 이후 슬롯을 스킵해 **틀린 리포트가 그날 최종본으로 고정**됐다. 스레드에서 동료들이 "27일 이전 위성채널 전부 누락"으로 오해하는 2차 피해까지 발생(→ 실측 결과 위성/온드 501/536 정상, 미적재 91건 중 56건은 사용자 확인상 **유머박스(틱톡) 계정 비공개 처리**로 정상).
 - **슬랙 정정 완료(사용자 승인):** 원 메시지 `ts=1787877229.204019` 본문 + 봇 답글 8개를 `chat.update`로 정정(오탐 319건 목록 → 실제 2건, IG 접근불가 2→3건). 원본의 `자동종료 누락 0건`은 실제 GHA 값이라 보존. **사람 답글 4개(9~12)는 미변경, 메시지 삭제 0건.**
