@@ -3,41 +3,50 @@ import { checkCronAuth } from "@/lib/cron-auth";
 import { todayKST } from "@/lib/dateRule";
 import { resolveGitHubActionsToken } from "@/lib/github-actions-auth";
 import { notifyBot } from "@/lib/slack";
-import { countTodaySuccess } from "@/lib/audit-fallback";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 /**
- * 리포트 결과 워치독 — GitHub cron이 '일일 증분 리포트' 발송을 누락하면 직접 dispatch한다.
+ * 리포트 결과 워치독 — GitHub cron이 '일일 증분 리포트' 발송을 누락/지연하면 직접 dispatch한다.
  *
- * 배경(실측 2026-08-27): GitHub이 12:20/13:20/14:20/15:20 KST 백업 크론 4개를 **전부 드롭**해
- * 리포트가 통째로 미발송됐다(워크플로는 active, 코드/검수 정상). 백업 크론을 여러 개 둬도
- * GitHub이 전부 누락하면 소용없어, **GitHub 크론에 의존하지 않는 감시**가 필요하다.
- * → 시각은 구글 Apps Script(≈16:10 KST, 마지막 백업 크론 이후)가 보장, 실행 확인·재발동은 이 라우트가 담당.
+ * 배경(실측 2026-08-27~28): GitHub 예약이 워크플로별로 랜덤 지연(3h+)·간헐 미발화. 4중 백업 크론도
+ * 같은 구간에 다 밀릴 수 있어, **GitHub 크론에 의존하지 않는** Apps Script(12:35·16:10 KST) 트리거가 이 라우트를 부른다.
  *
- * 판정: 오늘(KST) 리포트 워크플로 **성공 실행이 1건이라도 있으면** 이미 나간 것 → 무동작(조용).
- *       0건이면 크론 누락으로 보고 워크플로 dispatch(입력 없음 → date=어제=오늘 리포트, 실발송) + Slack 알림.
- *       조회 실패(-1)는 '발송됨/안됨' 미확정이라 dispatch하지 않고 경고만(중복 발송 방지).
+ * ⚠️ 판정 신호 = "GitHub 실행 성공 수"가 아니라 **"어제 리포트가 실제로 채널에 게시됐나"**(2026-08-28 수정).
+ *   이유: 데이터 지연/DEDUP/strict로 **스킵한 실행도 exit 0(성공)** 이라, 성공 수로 세면 '안 나갔는데 나갔다'고
+ *   오판해 자가치유가 무동작한다(08-28 실측 사고 — 8/27 데이터 늦게 들어와 새벽 실행이 스킵→성공, 자가치유 속음).
+ * 동작: 어제 리포트 미게시 → dispatch(입력 없음 → date=어제, 실발송; 리포트 자체 DEDUP이 중복 최종 차단) + Slack 알림.
+ *       게시됨 → 무동작. 게시 여부 확인 불가 → 안전하게 dispatch(DEDUP이 중복 방지).
  */
 const REPO = process.env.GITHUB_REPOSITORY || "kyeongwon-sweet/influencer-seeding";
 const WORKFLOW = "daily-increment-report.yml";
 const REF = "main";
+const REPORT_CHANNEL = process.env.SLACK_CHANNEL || "C0B4F7GBX17"; // #빙과_마케팅_리포트
+const REPORT_TITLE = "쫀득바 조회수 일일 증분";
 
-async function todaySuccessCount(kdate: string): Promise<number> {
+// KST 어제(리포트 대상일) = 워크플로가 MONITORING_DATE로 쓰는 그 날짜.
+function kstYesterday(kToday: string): string {
+  const d = new Date(kToday + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+// 어제 리포트가 채널에 실제 게시됐는지. true=게시됨 / false=미게시 / null=확인불가.
+async function isReportPosted(reportDate: string): Promise<boolean | null> {
+  const token = process.env.SLACK_BOT_TOKEN;
+  if (!token) return null;
   try {
-    const url = `https://api.github.com/repos/${REPO}/actions/workflows/${WORKFLOW}/runs?per_page=30`;
-    const headers: Record<string, string> = { Accept: "application/vnd.github+json", "User-Agent": "ensure-daily-report" };
-    const token = resolveGitHubActionsToken();
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const res = await fetch(url, { headers, cache: "no-store" });
-    if (!res.ok) return -1;
-    const json = (await res.json()) as { workflow_runs?: Array<{ updated_at: string; conclusion: string | null }> };
-    const runs = (json.workflow_runs ?? []).map((r) => ({ updatedAt: r.updated_at, conclusion: r.conclusion }));
-    return countTodaySuccess(runs, kdate);
+    const res = await fetch(`https://slack.com/api/conversations.history?channel=${REPORT_CHANNEL}&limit=40`, {
+      headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
+    });
+    const j = (await res.json()) as { ok?: boolean; messages?: Array<{ text?: string }> };
+    if (!j.ok) return null;
+    const needle = `(${reportDate})`;
+    return (j.messages ?? []).some((m) => typeof m.text === "string" && m.text.includes(REPORT_TITLE) && m.text.includes(needle));
   } catch {
-    return -1;
+    return null;
   }
 }
 
@@ -71,17 +80,14 @@ async function handler(req: NextRequest) {
   }
   const dryRun = req.nextUrl.searchParams.get("dry_run") === "1";
   const kdate = todayKST();
-  const success = await todaySuccessCount(kdate);
+  const reportDate = kstYesterday(kdate);
+  const posted = await isReportPosted(reportDate); // true/false/null(확인불가)
 
-  if (success === -1) {
-    const msg = `⚠️ 리포트 워치독: GitHub 실행 이력 조회 실패 \`(${kdate})\` — 발송 여부 미확인, 채널 수동 확인 필요.`;
-    if (!dryRun) await notifyBot(msg).catch(() => {});
-    return NextResponse.json({ ok: false, kdate, success, acted: false, note: "lookup_failed" }, { status: 200 });
-  }
-  if (success >= 1) {
-    return NextResponse.json({ ok: true, kdate, success, acted: false }); // 이미 발송됨 → 조용히 통과
+  if (posted === true) {
+    return NextResponse.json({ ok: true, kdate, reportDate, posted: true, acted: false }); // 이미 게시됨 → 무동작
   }
 
+  // 미게시(false) 또는 확인불가(null) → 안전하게 dispatch(리포트 자체 DEDUP이 중복 최종 차단).
   let dispatched = false;
   let detail = "dry_run";
   if (!dryRun) {
@@ -90,10 +96,11 @@ async function handler(req: NextRequest) {
     detail = r.detail;
     if (!r.ok) console.error("[ensure-daily-report] dispatch 실패", detail);
   }
-  const msg = `⚠️ *리포트 크론 누락 감지* \`(${kdate})\`\n오늘 일일 증분 리포트 예약 실행이 확인되지 않아 **자동 발송 dispatch**${dryRun ? "(dry_run)" : dispatched ? " 완료 — 곧 채널에 게시됩니다." : ` 실패: ${detail}`}.`;
+  const why = posted === false ? "미게시 확인" : "게시 여부 확인 불가";
+  const msg = `⚠️ *리포트 발송 보장* \`(${reportDate})\`\n어제 증분 리포트 ${why} → **자동 발송 dispatch**${dryRun ? "(dry_run)" : dispatched ? " 완료(데이터 있으면 곧 게시, DEDUP로 중복 없음)." : ` 실패: ${detail}`}.`;
   await notifyBot(msg).catch(() => {});
   const ok = dryRun || dispatched;
-  return NextResponse.json({ ok, kdate, success, acted: true, dispatched, detail }, { status: ok ? 200 : 500 });
+  return NextResponse.json({ ok, kdate, reportDate, posted, acted: true, dispatched, detail }, { status: ok ? 200 : 500 });
 }
 
 export async function POST(req: NextRequest) { return handler(req); }
