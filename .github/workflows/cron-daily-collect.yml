@@ -169,6 +169,24 @@ jobs:
           PYTHONUNBUFFERED: "1"
         run: cd scripts && python notify_status.py
 
+      # 재발방지(2026-08-28 사고): 유머박스(틱톡) 활성 56건이 08-19부터 9일 연속 0건이었는데
+      #   알림이 한 번도 없었다. 삭제 감지가 not_found에만 걸려 있어 틱톡 삭제/비공개가
+      #   collector_error(null)로 떨어지면 not_found_streak=0으로 남아 전 경로를 비켜가고,
+      #   자정수집 리포트는 위성/온드를 '측정 제외'로 빼서 그 스코프로도 안 잡힌다.
+      #   → 사유 무관하게 '계정 전체가 며칠 연속 0건'을 결과로만 판정해 DM 알림.
+      #   임계 1일은 34일 전 계정 백테스트로 정했다(오탐 0건). 미해결 시 7일 간격 재알림.
+      #   하루 1회만 — 주 슬롯(00:41 KST = FINAL_SNAPSHOT 슬롯) 또는 수동 실행에서만 돈다.
+      - name: 계정 단위 수집 전멸 감시 (황경원 DM)
+        if: always() && github.event.inputs.status_test != 'true' && (github.event_name == 'workflow_dispatch' || github.event.schedule == '41 15 * * *')
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          STATUS_USER: U0B2Y0ZC8QZ   # 황경원 Slack user id (DM)
+          PYTHONUNBUFFERED: "1"
+        run: cd scripts && python account_collection_watchdog.py --send
+
       # 캡션 보강: 메인 IG 액터가 조회수만 주고 캡션을 누락한 게시물을 data-slayer로 채움(캡션 빈 활성 IG만).
       # ⚠️ go==1(이번 창이 실제 수집)에 묶지 않는다 — 수집이 다른 경로/이전 창에서 끝나 go=0이면 캡션이 영영 안 채워지던 문제(2026-07-02, 빈 캡션 77건 누적).
       #    멱등(빈 것만 채움·없으면 0건, Apify 비용도 0)이라 매 창 돌려 안전. api_only 실행만 제외.
