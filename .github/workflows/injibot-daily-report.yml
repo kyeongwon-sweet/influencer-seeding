@@ -25,6 +25,11 @@ concurrency:
   group: injibot-daily-report
   cancel-in-progress: false
 
+# 발송 게이트(대상일 수집 완료 확인)가 수집 워크플로 실행 이력을 조회한다.
+permissions:
+  actions: read
+  contents: read
+
 jobs:
   report:
     runs-on: ubuntu-latest
@@ -58,4 +63,7 @@ jobs:
           AUTO_END_WATCHDOG_REPORT: data/output/auto-end-watchdog.json
           AUTO_END_WATCHDOG_OUTCOME: ${{ steps.auto_end_watchdog.outcome }}
           FORCE_FLAG: ${{ github.event.inputs.force == 'true' && '--force' || '' }}
+          # 대상일 수집이 끝나기 전 발송을 막는 게이트용(없으면 게이트 비활성 = 기존 동작)
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: python scripts/daily_collect_report.py --send $FORCE_FLAG

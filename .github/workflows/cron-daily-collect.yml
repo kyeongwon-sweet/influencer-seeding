@@ -42,6 +42,11 @@ jobs:
   collect:
     if: ${{ github.event.inputs.status_test != 'true' }}
     runs-on: ubuntu-latest
+    # 수집 완료 후 리포트를 dispatch하므로 actions:write가 필요하다(gh workflow run).
+    # 그 외 스텝은 checkout + 시크릿 기반 python이라 contents:read로 충분하다.
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -116,6 +121,26 @@ jobs:
           cd scripts
           set -o pipefail
           python run_monitoring.py 2>&1 | tee "$RUNNER_TEMP/collect.log"
+
+      # 재발방지(2026-08-28 사고): GitHub 크론이 9시간 밀려 수집이 09:35~09:45에 도착했는데
+      #   리포트는 09:33에 이미 나갔다(값 확보 24%·확인필요 319건 = 전부 오탐). idempotency가
+      #   "오늘 리포트 이미 있음"으로 이후 슬롯을 스킵해 틀린 리포트가 최종본으로 고정됐다.
+      #   → 리포트 쪽에 '대상일 수집 완료' 게이트를 넣었고(보류), 보류된 리포트가 사라지지 않도록
+      #     수집이 끝난 뒤 여기서 다시 dispatch한다. 리포트의 idempotency가 중복을 막는다.
+      #   ⚠️ 리포트 첫 슬롯(06:38 KST) **이전**에 끝난 정상일에는 dispatch하지 않는다.
+      #     그래야 02:41·04:41 백업 보충분까지 반영된 06:38 리포트가 그대로 유지된다.
+      - name: 수집 완료 후 리포트 보장 (지연 도착일만)
+        if: always() && (steps.collect.outcome == 'success' || steps.collect.outcome == 'skipped')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          now=$((10#$(TZ=Asia/Seoul date +%H%M)))   # 10# = 앞자리 0을 8진수로 오해하지 않게
+          if [ "$now" -ge 638 ]; then
+            echo "수집 완료 시각 ${now} (HHMM, KST) — 리포트 첫 슬롯(06:38) 이후 → 리포트 dispatch"
+            gh workflow run injibot-daily-report.yml -R "${{ github.repository }}" || echo "dispatch 실패(무시) — 다음 리포트 크론이 처리"
+          else
+            echo "수집 완료 시각 ${now} (HHMM, KST) — 06:38 이전이므로 예약 리포트에 맡김(dispatch 안 함)"
+          fi
 
       - name: Upload missing view diagnostics
         if: always() && github.event.inputs.status_test != 'true'

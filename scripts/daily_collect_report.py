@@ -52,6 +52,60 @@ def load_auto_end_watchdog(report_path, outcome="success"):
         }
     return {"ok": True, "count": 0, "line": "자동종료 누락 0건", "items": []}
 
+COLLECT_WORKFLOW = "cron-daily-collect.yml"
+
+
+def collection_ran_for_date(runs, target_date):
+    """대상일 수집이 실제로 돌았는가. 순수 함수 — 테스트 대상.
+
+    재발방지(2026-08-28 사고): 리포트가 수집보다 **먼저** 나가 "값 확보 24%·확인필요 319건"이라는
+    오탐이 채널에 발송됐다(리포트 09:33 → 수집 09:35 시작·09:45 완료). GitHub 크론이 9시간 밀려
+    수집이 리포트 슬롯(06:38·07:38·08:38)을 모두 지나 도착한 날이었다. 게다가 idempotency가
+    "오늘 리포트 이미 있음"으로 이후 슬롯을 스킵해 **틀린 리포트가 그날의 최종본으로 고정**됐다.
+
+    판정은 곁가지 특징(확보율이 낮다)이 아니라 **실제 상태**(수집 워크플로가 대상일로 성공했는가)로 한다.
+    cron-daily-collect는 실행 시점 KST 날짜의 '어제'를 MONITORING_DATE로 쓰므로
+    (`date -d 'yesterday'`), 대상일 D의 수집 = **KST 날짜 D+1에 생성된 성공 실행**이다.
+    ⚠️ 'Decide collect'가 누락 0이라 수집을 건너뛴 성공 실행도 완료로 본다(채울 게 없던 것).
+
+    runs: GitHub Actions API의 workflow_runs 형식 [{created_at, conclusion}, ...]
+    """
+    try:
+        target = datetime.date.fromisoformat(str(target_date))
+    except ValueError:
+        return False
+    want = (target + datetime.timedelta(days=1)).isoformat()
+    for r in runs or []:
+        if (r.get("conclusion") or "") != "success":
+            continue
+        ts = str(r.get("created_at") or "")
+        try:
+            created = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if (created + datetime.timedelta(hours=9)).date().isoformat() == want:
+            return True
+    return False
+
+
+def fetch_collect_runs(repo, token, limit=30):
+    """수집 워크플로의 최근 실행 목록. 조회 실패는 None(=판정 불가)로 구분해 돌려준다."""
+    url = (f"https://api.github.com/repos/{repo}/actions/workflows/"
+           f"{COLLECT_WORKFLOW}/runs?per_page={limit}")
+    req = urllib.request.Request(url, headers={
+        "Authorization": "Bearer " + token,
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "injibot-report",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=30) as res:
+            return json.loads(res.read().decode("utf-8")).get("workflow_runs", [])
+    except Exception as exc:
+        print(f"[collect-gate] 수집 실행 조회 실패({type(exc).__name__}) → 판정 불가")
+        return None
+
+
 def load_env():
     # os.environ 우선(GHA 시크릿) → 없으면 로컬 .env 파일(예약작업)
     env = dict(os.environ)
@@ -310,6 +364,20 @@ def main():
             "https://slack.com/api/chat.postMessage", data=data,
             headers={"Authorization": "Bearer " + TOK, "Content-Type": "application/json; charset=utf-8"})
         return json.load(urllib.request.urlopen(req, timeout=20))
+
+    # 재발방지(2026-08-28): 대상일 수집이 끝나기 전에는 발송하지 않는다. 자세한 배경은
+    #   collection_ran_for_date() 주석 참고. 보류돼도 리포트가 사라지지 않도록
+    #   cron-daily-collect가 수집 완료 후(리포트 첫 슬롯 이후일 때만) 이 워크플로를 dispatch한다.
+    #   ⚠️ 조회 실패(판정 불가)는 **발송**한다 — '누락 < 중복' 원칙, idempotency와 동일 정책.
+    #   --force(정정 재발송)는 게이트도 건너뛴다.
+    gh_token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if do_send and not force and gh_token:
+        repo = os.environ.get("GITHUB_REPOSITORY", "kyeongwon-sweet/influencer-seeding")
+        runs = fetch_collect_runs(repo, gh_token)
+        if runs is not None and not collection_ran_for_date(runs, yday):
+            print(f"[collect-gate] {yday} 수집 성공 실행 없음 → 발송 보류"
+                  " (수집 완료 후 cron-daily-collect가 다시 dispatch합니다)")
+            return 0
 
     # 재발방지(2026-08-27): 리포트를 여러 시각(06:38·07:38·08:38 KST 크론)에 중복 트리거해도
     #   하루 1회만 발송. 같은 날 제목("자정 수집 … 알림 (today)")이 채널에 이미 있으면 생략.
