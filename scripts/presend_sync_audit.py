@@ -2,7 +2,9 @@
 
 검수 4종 (DB=대시보드는 동일소스라 별도 대상 아님 — 대시보드는 DB를 그대로 읽음):
   ① 수집 완료      : target일 post_daily_stats 측정 수가 최근 중위값 대비 정상(0/부분수집 차단)
-  ② DB↔시트 정합   : target일 조회수 DB vs 연동시트 불일치(시트 정본) 건수 >0 차단
+  ② DB↔시트 정합   : target일 조회수 DB vs 연동시트 **양방향** 비교
+                     · 시트>DB(DB 미반영) → BLOCK
+                     · DB>시트(시트 미반영·carry-forward 고정 의심) → WARN (2026-08-28 추가)
   ③ 채널분류 반영   : 미분류(시트→DB 분류 미반영) 게시물 중 증분>0 건수 >0 차단
   ④ 인지광고 열매핑 : awareness 라우트 warn(조회수 칸 ₩=열밀림) 있으면 차단
 
@@ -28,6 +30,25 @@ PAGE = 1000
 MIN_ABS_DIFF = 1000     # 절대차 이 미만은 무시(타이밍/반올림 노이즈)
 MIN_PCT_DIFF = 0.03     # 그리고 상대차 이 미만도 무시 — 둘 다 넘어야 실질 불일치
 MIN_UNCLASS_INC = 50_000  # 미분류 총증분 이 미만은 통과(신규글 분류지연 노이즈)
+
+
+def is_sheet_behind(db_v: int, sheet_v: int) -> bool:
+    """DB가 시트보다 '실질적으로 앞섬'(=시트에 실측이 안 들어감)일 때만 True.
+
+    ⚠️ 전제 정정(2026-08-28 사고): 원래 is_material_desync는 "DB≥시트는 시트 export 지연일
+    뿐이라 무해"라고 보고 이 방향을 아예 안 봤다. 그 전제가 깨졌다 —
+    역채움(exportStats)이 수집 도착 전에 돌면 최신 날짜 칸에 **전날 값을 carry-forward**로
+    써넣고, 값이 든 칸은 다시 덮지 않으므로 **지연이 자가치유되지 않고 영구 고정**된다.
+    게다가 다음 dailyAuto의 importStats가 그 낮은 값을 DB로 되밀어 실측을 덮었다.
+    실측 규모: 08-27 열에서 약 500행(시트 정체 1,078건 vs 평시 기준선 약 570건).
+
+    발송 차단은 하지 않는다(BLOCK 아님) — 리포트는 DB를 읽으므로 수치 자체는 맞다.
+    시트·CPV·누적조회수가 틀어진 사실을 알려야 하므로 WARN이다.
+    """
+    if db_v <= sheet_v:
+        return False
+    diff = db_v - sheet_v
+    return diff >= MIN_ABS_DIFF and diff / db_v >= MIN_PCT_DIFF
 
 
 def is_material_desync(db_v: int, sheet_v: int) -> bool:
@@ -60,6 +81,17 @@ def decide_stat_mismatches(mismatches: list[tuple[str, int, int]]) -> str | None
     ex = "; ".join(f"{u} 시트 {b:,}>DB {a:,}" for u, a, b in mismatches[:5])
     more = f" 외 {len(mismatches) - 5}건" if len(mismatches) > 5 else ""
     return f"DB↔시트 조회수 불일치 {len(mismatches)}건(시트가 DB보다 앞섬=DB 미반영) — {ex}{more}"
+
+
+def decide_sheet_behind(behind: list[tuple[str, int, int]]) -> str | None:
+    """역방향 판정. (url, db, sheet) 리스트(DB>시트 실질차)가 비면 통과."""
+    if not behind:
+        return None
+    ex = "; ".join(f"{u} DB {a:,}>시트 {b:,}" for u, a, b in behind[:5])
+    more = f" 외 {len(behind) - 5}건" if len(behind) > 5 else ""
+    return (f"시트 조회수 미반영 {len(behind)}건(DB가 시트보다 앞섬) — 역채움 carry-forward "
+            f"고정 의심. 시트 CPV·누적조회수가 낮게 나오고, importStats가 DB로 되밀 수 있다. "
+            f"{ex}{more}")
 
 
 def check_classification(items: list[dict[str, Any]], norm_ch: Callable[[Any], str]) -> tuple[str, str] | None:
@@ -157,6 +189,7 @@ def _stat_mismatches(db, target: str) -> list[tuple[str, int, int]]:
         posts_by_key.setdefault(link_key(p.get("url")), []).append(p)
 
     mism: list[tuple[str, int, int]] = []
+    behind: list[tuple[str, int, int]] = []
     for s in stats:
         post = post_by_id.get(s.get("post_id"))
         if not post:
@@ -172,28 +205,42 @@ def _stat_mismatches(db, target: str) -> list[tuple[str, int, int]]:
             continue
         if not isinstance(shv, (int, float)) or shv <= 0:  # 시트 빈칸(미반영)은 불일치 아님
             continue
-        if is_material_desync(int(dbv), int(shv)):   # 시트>DB 실질차만(DB≥시트=export 지연은 통과)
+        if is_material_desync(int(dbv), int(shv)):   # 시트>DB 실질차 → BLOCK 후보
             mism.append((post.get("url"), int(dbv), int(shv)))
-    return mism
+        elif is_sheet_behind(int(dbv), int(shv)):    # DB>시트 실질차 → WARN 후보(carry 고정 의심)
+            behind.append((post.get("url"), int(dbv), int(shv)))
+    return mism, behind
 
 
-def check_stat_sync(db, target: str) -> tuple[str, str] | None:
+def check_stat_sync(db, target: str) -> list[tuple[str, str]]:
+    """DB↔시트 조회수 정합을 **양방향**으로 본다.
+
+    시트>DB(=DB 미반영)는 리포트가 뒤처진 신호라 BLOCK,
+    DB>시트(=시트 미반영, carry-forward 고정 의심)는 리포트 수치는 맞으므로 WARN이다.
+    """
     try:
-        mism = _stat_mismatches(db, target)
+        mism, behind = _stat_mismatches(db, target)
     except Exception as e:  # 시트 조회 실패 = 확정 불일치 아님 → 비차단 경고(리포트 억제 방지)
-        return ("WARN", f"DB↔시트 정합 검수 불가(연동시트 조회 실패, 발송은 진행): {e}")
+        return [("WARN", f"DB↔시트 정합 검수 불가(연동시트 조회 실패, 발송은 진행): {e}")]
+    out: list[tuple[str, str]] = []
     msg = decide_stat_mismatches(mism)
-    return ("BLOCK", msg) if msg else None
+    if msg:
+        out.append(("BLOCK", msg))
+    warn = decide_sheet_behind(behind)
+    if warn:
+        out.append(("WARN", warn))
+    return out
 
 
 def run_presend_audit(db, target: str, *, items, ads, norm_ch) -> tuple[list[str], list[str]]:
     """4종 검수 실행 → (blocks, warns). blocks 비면 통과."""
-    results = [
+    raw = [
         check_collection(db, target),
-        check_stat_sync(db, target),
+        *check_stat_sync(db, target),   # 양방향이라 0~2건
         check_classification(items, norm_ch),
         check_awareness(ads),
     ]
+    results = [r for r in raw if r]
     blocks = [m for r in results if r and r[0] == "BLOCK" for m in [r[1]]]
     warns = [m for r in results if r and r[0] == "WARN" for m in [r[1]]]
     return blocks, warns

@@ -625,7 +625,10 @@ export async function POST(req: NextRequest) {
     : 0;
 
   // 5) 누적 감소 가드 (lib/stats-guard.ts — 테스트로 검증되는 순수 함수)
-  const { kept: keptRows, dropped } = filterMonotonicStats(incomingWritable, existingStats);
+  // 자동 동기화(daily_auto)는 같은 날짜 DB 실측을 낮추지 못한다 — 시트 carry-forward
+  // 오류가 DB로 되밀리는 것을 막는다(2026-08-28 사고). 사람이 올린 정정(manual_sheet)은 허용.
+  const { kept: keptRows, dropped } = filterMonotonicStats(
+    incomingWritable, existingStats, { sameDateFloor: !isManualImport });
   // 메뉴 직접 실행만 사람 수기값이다. dailyAuto 값은 자동 실측이 이후 교정할 수 있게 manual=false.
   const statsRows = keptRows.map(r => ({ ...r, manual: isManualImport }));
   const droppedDecrease = dropped.length;

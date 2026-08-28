@@ -50,6 +50,37 @@ def main() -> int:
     items_zero = [{"channel_type": "", "inc": 0, "url": "x"}]  # 미분류지만 증분 0 → 통과
     eq("class.zero_ok", A.check_classification(items_zero, _norm_ch), None)
 
+    # ②-c is_sheet_behind (역방향: DB>시트 실질차만 True) — 2026-08-28 사고 회귀
+    #   원래 "DB≥시트는 export 지연일 뿐 무해"로 보고 안 봤는데, carry-forward가 최신 칸에
+    #   전날 값을 써넣고 다시 안 덮으므로 지연이 영구 고정된다. 실측: 먹리니 08-27
+    #   DB 633,374 vs 시트 466,637.
+    eq("behind.real_case", A.is_sheet_behind(633_374, 466_637), True)
+    eq("behind.sheet_ahead", A.is_sheet_behind(62_322, 75_890), False)   # 반대 방향은 여기서 안 봄
+    eq("behind.equal", A.is_sheet_behind(1000, 1000), False)
+    eq("behind.noise_abs", A.is_sheet_behind(1880, 1870), False)          # 차이 10 → 무시
+    eq("behind.noise_pct", A.is_sheet_behind(1_010_000, 1_000_000), False)  # 1% → 무시
+
+    # ②-d decide_sheet_behind
+    eq("behind.empty", A.decide_sheet_behind([]), None)
+    wb = A.decide_sheet_behind([("u1", 633_374, 466_637)])
+    eq("behind.msg_has_count", bool(wb and "1건" in wb), True)
+    eq("behind.msg_names_cause", bool(wb and "carry-forward" in wb), True)
+
+    # ②-e check_stat_sync: 양방향이 동시에 걸리면 BLOCK+WARN 둘 다 (BLOCK이 발송을 막고,
+    #   WARN은 시트 미반영 사실을 함께 알린다)
+    orig_mm = A._stat_mismatches
+    A._stat_mismatches = lambda db, t: ([("a", 100, 9999)], [("b", 633_374, 466_637)])
+    try:
+        res = A.check_stat_sync(None, "2026-08-27")
+        eq("stat.both_severities", sorted(r[0] for r in res), ["BLOCK", "WARN"])
+        A._stat_mismatches = lambda db, t: ([], [])
+        eq("stat.clean", A.check_stat_sync(None, "2026-08-27"), [])
+        A._stat_mismatches = lambda db, t: ([], [("b", 633_374, 466_637)])
+        only = A.check_stat_sync(None, "2026-08-27")
+        eq("stat.behind_only_warns", [r[0] for r in only], ["WARN"])
+    finally:
+        A._stat_mismatches = orig_mm
+
     # ④ check_awareness
     eq("aware.none", A.check_awareness(None), None)
     eq("aware.clean", A.check_awareness({"meta": {"views": 1}}), None)
@@ -59,7 +90,7 @@ def main() -> int:
     # run_presend_audit 집계: check_* 몽키패치로 severity 분리 검증
     orig = (A.check_collection, A.check_stat_sync, A.check_classification, A.check_awareness)
     A.check_collection = lambda db, t: ("BLOCK", "수집")
-    A.check_stat_sync = lambda db, t: ("WARN", "시트조회실패")
+    A.check_stat_sync = lambda db, t: [("WARN", "시트조회실패")]  # 양방향이라 리스트
     A.check_classification = lambda items, n: None
     A.check_awareness = lambda ads: ("BLOCK", "열밀림")
     try:
