@@ -489,12 +489,12 @@ test("refreshSheetDerivedFields fills existing channel metadata before pricing",
   assert.match(refreshBody, /refreshSheetDerivedFields_step_end/);
 });
 
-test("dailyAuto prices sheet rows before importing stats and then exports DB stats", () => {
+test("dailyAuto prices sheet rows before gated import and export", () => {
   const defsStart = appsScript.indexOf("function dailyAutoStageDefs_()");
   const dailyStart = appsScript.indexOf("function dailyAuto()");
   const defsBody = appsScript.slice(defsStart, dailyStart);
   const pricingIdx = appsScript.indexOf('["syncPricing", syncPricing]', defsStart);
-  const importIdx = appsScript.indexOf('["importStats", function() { return importStats("daily_auto"); }]', defsStart);
+  const importIdx = appsScript.indexOf('["importStats", importStatsDailyGate_]', defsStart);
   const exportIdx = appsScript.indexOf('["exportStats", exportStatsDailyGate_]', defsStart);
   assert.notEqual(defsStart, -1);
   assert.notEqual(dailyStart, -1);
@@ -581,7 +581,7 @@ test("Apps Script clasp deploy path is staged and guarded", () => {
   assert.doesNotMatch(deploy, /rollback_backfill86_sheet_temp/);
 });
 
-test("dailyAuto retries import once and defers export until collection completion", () => {
+test("dailyAuto gates both import and export on collection completion", () => {
   const retryStart = appsScript.indexOf("function dailyAutoRetry_()");
   const dailyStart = appsScript.indexOf("function dailyAuto()", retryStart);
   assert.notEqual(retryStart, -1);
@@ -605,12 +605,40 @@ test("dailyAuto retries import once and defers export until collection completio
   assert.match(appsScript, /EXPORT_STATS_GATE_RETRY_DELAY_MS_ = 15 \* 60 \* 1000/);
   assert.match(appsScript, /EXPORT_STATS_GATE_MAX_ATTEMPTS_ = 16/);
   assert.match(appsScript, /function fetchCollectionStatus_\(targetDate, notify, reason\)/);
+  assert.match(appsScript, /function importStatsDailyGate_\(\)/);
+  assert.match(appsScript, /\["importStats", importStatsDailyGate_\]/);
+  assert.match(appsScript, /function ensureDailyImportBeforeExport_\(targetDate\)/);
+  assert.match(
+    appsScript,
+    /function ensureDailyImportBeforeExport_\(targetDate\)[\s\S]*?importStats\("daily_auto"\)/,
+  );
+  assert.match(
+    appsScript,
+    /clearExportStatsGatePending_\(\);[\s\S]*?ensureDailyImportBeforeExport_\(targetDate\);[\s\S]*?const ok = exportStats\(\)/,
+  );
   assert.match(appsScript, /function exportStatsDailyGate_\(\)/);
   assert.match(appsScript, /function exportStatsAfterCollection_\(\)/);
   assert.match(appsScript, /newTrigger\("exportStatsAfterCollection_"\)[\s\S]*?\.after\(EXPORT_STATS_GATE_RETRY_DELAY_MS_\)/);
   assert.match(appsScript, /\["exportStats", exportStatsDailyGate_\]/);
   assert.match(appsScript, /withDocLock_\(function\(\) \{[\s\S]*?const ok = exportStats\(\)/);
   assert.match(appsScript, /EXPORT_STATS_COLLECTION_GATE_LAST_STATUS/);
+});
+
+test("exportStats never carry-forwards into the latest historical date", () => {
+  const start = appsScript.indexOf("function shouldCarryForwardMetric_(");
+  const end = appsScript.indexOf("function exportStats()", start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const helper = new Function(
+    `${appsScript.slice(start, end)}\nreturn shouldCarryForwardMetric_;`,
+  )() as (date: string, latestHistoricalDate: string | null, lastVal: unknown, cell: unknown) => boolean;
+
+  assert.equal(helper("2026-08-26", "2026-08-27", 100, ""), true, "internal blank may carry");
+  assert.equal(helper("2026-08-27", "2026-08-27", 100, ""), false, "latest date must stay blank");
+  assert.equal(helper("2026-08-26", "2026-08-27", null, ""), false, "no baseline cannot carry");
+  assert.equal(helper("2026-08-26", "2026-08-27", 100, 0), false, "nonblank values are preserved");
+  assert.match(appsScript, /latestHistoricalDate = historicalDateCols\.length/);
+  assert.match(appsScript, /shouldCarryForwardMetric_\(date, latestHistoricalDate, lastVal, cell\)/);
 });
 
 test("DB to sheet sync runs independently every three hours with retry, watchdog, and alerts", () => {

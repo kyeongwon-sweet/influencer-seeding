@@ -1612,6 +1612,8 @@ const DAILY_AUTO_RETRYABLE_STAGES_ = ["importStats"];
 const EXPORT_STATS_GATE_RETRY_DELAY_MS_ = 15 * 60 * 1000;
 const EXPORT_STATS_GATE_MAX_ATTEMPTS_ = 16; // 08:30 실행이 4시간가량 지연된 수집도 따라잡는다.
 const EXPORT_STATS_GATE_PENDING_PROP_ = "EXPORT_STATS_COLLECTION_GATE_PENDING_JSON";
+const IMPORT_STATS_GATE_STATUS_PROP_ = "IMPORT_STATS_COLLECTION_GATE_LAST_STATUS";
+const IMPORT_STATS_GATE_TARGET_PROP_ = "IMPORT_STATS_COLLECTION_GATE_LAST_TARGET_DATE";
 
 function shiftDateStr_(dateStr, days) {
   const parts = String(dateStr || "").split("-").map(Number);
@@ -1639,6 +1641,57 @@ function fetchCollectionStatus_(targetDate, notify, reason) {
   const data = JSON.parse(text);
   if (typeof data.completed !== "boolean") throw new Error("collection-status 응답에 completed가 없습니다.");
   return data;
+}
+
+function markImportStatsGate_(status, targetDate, reason) {
+  PropertiesService.getScriptProperties().setProperties({
+    [IMPORT_STATS_GATE_STATUS_PROP_]: status,
+    [IMPORT_STATS_GATE_TARGET_PROP_]: targetDate,
+    IMPORT_STATS_COLLECTION_GATE_LAST_REASON: String(reason || "").slice(0, 500),
+    IMPORT_STATS_COLLECTION_GATE_LAST_CHECKED_AT: new Date().toISOString(),
+  }, false);
+}
+
+// dailyAuto의 시트→DB 업로드도 자정수집 완료 뒤에만 허용한다.
+// 조회 실패·미완료는 안전하게 업로드를 생략하고, 뒤의 exportStats 게이트가 같은 대상일을 재시도한다.
+function importStatsDailyGate_() {
+  const targetDate = collectionTargetDate_();
+  let status;
+  try {
+    status = fetchCollectionStatus_(targetDate, false);
+  } catch (e) {
+    const reason = "lookup_failed: " + dailyAutoErrorText_(e);
+    markImportStatsGate_("LOOKUP_FAILED", targetDate, reason);
+    Logger.log("importStats_collection_gate_skip " + JSON.stringify({ target_date: targetDate, reason: reason }));
+    return true;
+  }
+  if (!status.completed) {
+    markImportStatsGate_("DEFERRED", targetDate, "collection_not_complete");
+    Logger.log("importStats_collection_gate_skip " + JSON.stringify({ target_date: targetDate, reason: "collection_not_complete" }));
+    return true;
+  }
+  const ok = importStats("daily_auto");
+  if (ok === false) {
+    markImportStatsGate_("IMPORT_ERROR", targetDate, "importStats returned false");
+    throw new Error("importStats returned false");
+  }
+  markImportStatsGate_("OK", targetDate, "collection_complete");
+  return true;
+}
+
+// export 재시도 트리거가 수집 완료를 확인한 경우, 그 전에 import가 생략됐으면 먼저 수행한다.
+// 같은 대상일 import가 이미 성공했다면 다시 올리지 않아 불필요한 대량 upsert를 피한다.
+function ensureDailyImportBeforeExport_(targetDate) {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty(IMPORT_STATS_GATE_STATUS_PROP_) === "OK" &&
+      props.getProperty(IMPORT_STATS_GATE_TARGET_PROP_) === targetDate) return true;
+  const ok = importStats("daily_auto");
+  if (ok === false) {
+    markImportStatsGate_("IMPORT_ERROR", targetDate, "importStats returned false");
+    throw new Error("importStats returned false");
+  }
+  markImportStatsGate_("OK", targetDate, "collection_complete_retry");
+  return true;
 }
 
 function removeExportStatsGateTriggers_() {
@@ -1731,6 +1784,7 @@ function runExportStatsCollectionGate_(source, pending) {
   clearExportStatsGatePending_();
   let exported = false;
   try {
+    ensureDailyImportBeforeExport_(targetDate);
     exported = withDocLock_(function() {
       const ok = exportStats();
       if (ok === false) return false;
@@ -1814,7 +1868,7 @@ function dailyAutoStageDefs_() {
     ["fillCaptionFromAsset", fillCaptionFromAsset_],
     ["syncAll", function() { return runSync_(false); }],
     ["syncPricing", syncPricing],
-    ["importStats", function() { return importStats("daily_auto"); }],
+    ["importStats", importStatsDailyGate_],
     ["exportStats", exportStatsDailyGate_],
     ["syncStatus", syncStatus],
     ["refreshCumulativeViews", refreshCumulativeViews],
@@ -2183,6 +2237,14 @@ function fetchCollectedStats_() {
   return (JSON.parse(res.getContentText()).posts) || []; // [{url, key, ended_at, stats:[[date,metric],...]}] — 종료·통계없음 글은 stats:[]
 }
 
+function shouldCarryForwardMetric_(date, latestHistoricalDate, lastVal, cell) {
+  // 가장 최신 과거 날짜는 수집값이 '없음'인지 '아직 안 옴'인지 구분할 수 없다.
+  // 따라서 carry는 뒤 날짜가 이미 존재하는 내부 구간에만 허용한다.
+  return date !== latestHistoricalDate &&
+    lastVal != null &&
+    (cell === "" || cell === null);
+}
+
 function exportStats() {
   try {
     const sheet = getSheet_();
@@ -2293,8 +2355,14 @@ function exportStats() {
       else { rowMap[i] = null; if (ALLOWED_URL_RE.test(url)) missing++; }
     }
 
-    // 행별 좌→우 forward-fill: 실측(>0)은 반영하고 기준값(lastVal) 갱신, '측정 없음' 빈칸은 직전 누적값으로 이어받는다.
+    const historicalDateCols = dateCols.filter(function(dc) { return dc.date < today; });
+    const latestHistoricalDate = historicalDateCols.length
+      ? historicalDateCols[historicalDateCols.length - 1].date
+      : null;
+
+    // 행별 좌→우 forward-fill: 실측(>0)은 반영하고 기준값(lastVal) 갱신, 내부 구간의 '측정 없음' 빈칸만 직전 누적값으로 이어받는다.
     //   → 종료·수집누락·play_count null로 생기는 날짜 공백에도 누적조회수가 줄어(끊겨) 보이지 않게 하는 '표시 보정'.
+    //   🛡️ 가장 최신 과거 날짜는 수집 미도착과 진짜 결측을 구분할 수 없어 절대 carry하지 않는다.
     //   ⚠️ DB(post_daily_stats)엔 아무것도 안 씀(safeIncrement·증분 규칙 불변). 이어받기 값은 importStats가 재저장 안 함(아래 가드).
     //   배너 등 '양수 조회수가 한 번도 없는' 행은 lastVal이 안 생겨 자동 제외(빈칸 유지).
     //   기존 실측·수동값은 절대 안 덮고, 빈칸 또는 직전값 이어받기였던 칸만 새 실측으로 교체.
@@ -2349,7 +2417,7 @@ function exportStats() {
           }
         } else if (typeof cell === "number" && cell > 0) {     // 기존 실측/수동값 → 유지 + 기준 갱신
           lastVal = cell;
-        } else if (lastVal != null && (cell === "" || cell === null)) { // '완전 빈칸'만 이어받기
+        } else if (shouldCarryForwardMetric_(date, latestHistoricalDate, lastVal, cell)) { // 내부 구간의 '완전 빈칸'만 이어받기
           newBlock[i][bi] = lastVal; carried++;                // (0·텍스트 등 다른 내용이 든 셀은 절대 안 덮음)
           carriedCells[i + ":" + bi] = true;
         }
@@ -2545,7 +2613,7 @@ function exportStats() {
       if (cumChanged) cumRange.setValues(cumOut);
     }
 
-    let msg = `✅ 수집 조회수를 시트에 반영했습니다.\n새 날짜 열 ${addedCols}개 추가 · URL-key 날짜 쓰기 ${dateKeyWrites}칸 · 실측 갱신 ${filled}칸 · 공백 이어받기 ${carried}칸 · 업로드 전 값 삭제 ${prePostedCleared}칸 · 종료 이후 값 삭제 ${endedCleared}칸 · 증분 수식 ${incWritten}행 · 기존값 보존 ${preserved}칸 · 매칭 게시물 ${matched}개 · 날짜 열 ${dateCols.length}개`;
+    let msg = `✅ 수집 조회수를 시트에 반영했습니다.\n새 날짜 열 ${addedCols}개 추가 · URL-key 날짜 쓰기 ${dateKeyWrites}칸 · 실측 갱신 ${filled}칸 · 내부 공백 이어받기 ${carried}칸 · 최신 carry 제외 ${latestHistoricalDate || "-"} · 업로드 전 값 삭제 ${prePostedCleared}칸 · 종료 이후 값 삭제 ${endedCleared}칸 · 증분 수식 ${incWritten}행 · 기존값 보존 ${preserved}칸 · 매칭 게시물 ${matched}개 · 날짜 열 ${dateCols.length}개`;
     if (endedFinalFilled) msg += `\n🛑 트래킹 종료글 H열 빈칸 ${endedFinalFilled}행에 DB 최종 누적값을 보존했습니다.`;
     if (endedFinalNoMetric) msg += `\n⚠️ 트래킹 종료됐지만 DB 조회수/도달수 이력이 없는 행 ${endedFinalNoMetric}개는 최종값을 채울 수 없습니다.`;
     if (shortcodeFormatMatched) msg += `\n🔁 /reel·/tv 잔재 URL ${shortcodeFormatMatched}개는 shortcode 기준으로 정상 매칭했습니다.`;
@@ -2620,8 +2688,8 @@ function importStats(source) {
       prevMonth = md.mo;
       dateCols.push({ col: c, date: `${year}-${("0" + md.mo).slice(-2)}-${("0" + md.da).slice(-2)}` });
     }
-    if (dateCols.length === 0) { safeAlert_("날짜 컬럼(I열~)을 찾지 못했습니다. 헤더를 확인하세요."); return; }
-    if (lastRow < CONFIG.DATA_START_ROW) { safeAlert_("데이터 행이 없습니다."); return; }
+    if (dateCols.length === 0) { safeAlert_("날짜 컬럼(I열~)을 찾지 못했습니다. 헤더를 확인하세요."); return false; }
+    if (lastRow < CONFIG.DATA_START_ROW) { safeAlert_("데이터 행이 없습니다."); return true; }
 
     const values = sheet
       .getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, lastCol)
@@ -2700,7 +2768,7 @@ function importStats(source) {
       non_banner_carry_skipped: carrySkipped,
     }));
 
-    if (stats.length === 0) { safeAlert_("입력할 조회수 데이터가 없습니다."); return; }
+    if (stats.length === 0) { safeAlert_("입력할 조회수 데이터가 없습니다."); return true; }
 
     // ⚠️ Vercel 서버리스 함수 요청 본문 한도(~4.5MB). 시트가 커지면서 posts+stats 전체를 한 번에
     //    POST하면 413(FUNCTION_PAYLOAD_TOO_LARGE)로 거부된다(2026-08-20 발생). → 게시물 단위로 배치 전송.
@@ -2771,9 +2839,11 @@ function importStats(source) {
     }
     msg += `\n\n📌 여기서 입력한 조회수는 대시보드에 반영되며, 밤 자동수집은 이 값을 덮지 않습니다.\n   같은 칸을 대시보드에서 더 나중에 고치면 그 값이 최신으로 우선합니다.`;
     safeAlert_(msg + blankNote_());
+    return true;
   } catch (e) {
     safeAlert_("❌ 오류\n" + e.message);
     Logger.log(e.stack || e.message);
+    return false;
   }
 }
 
