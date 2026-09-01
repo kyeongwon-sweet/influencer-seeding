@@ -13,6 +13,7 @@ from account_name_policy import collected_account_name_update
 from caption_text import normalize_caption
 from monitoring_retry_guard import zero_result_alert
 from auto_end_rules import classify_auto_end, row_metric
+from channel_kind import is_banner_channel
 from not_found_policy import (
     NOT_FOUND_REVIEW_THRESHOLD,
     is_not_found_review_eligible,
@@ -25,6 +26,15 @@ from not_found_policy import (
 OVERRECORDED_WARNINGS = []
 OVERRECORDED_RATIO = 0.8
 OVERRECORDED_MIN_DIFF = 1000
+UPWARD_SPIKE_WARNINGS = []
+UPWARD_SPIKE_MIN_MULTIPLE = float(os.environ.get("UPWARD_SPIKE_MIN_MULTIPLE", "10"))
+UPWARD_SPIKE_MIN_INCREASE = int(os.environ.get("UPWARD_SPIKE_MIN_INCREASE", "20000"))
+UPWARD_SPIKE_CONFIRM_REL_TOLERANCE = float(
+    os.environ.get("UPWARD_SPIKE_CONFIRM_REL_TOLERANCE", "0.25")
+)
+UPWARD_SPIKE_CONFIRM_ABS_TOLERANCE = int(
+    os.environ.get("UPWARD_SPIKE_CONFIRM_ABS_TOLERANCE", "1000")
+)
 
 
 def _has_positive_views(stats: dict | None) -> bool:
@@ -155,6 +165,153 @@ def _flush_overrecord_warnings():
     if len(OVERRECORDED_WARNINGS) > len(sample):
         lines.append(f"- ...외 {len(OVERRECORDED_WARNINGS) - len(sample)}건")
     _send_status_alert("\n".join(lines))
+
+
+def _is_upward_spike_candidate(
+    previous,
+    observed,
+    *,
+    min_multiple=UPWARD_SPIKE_MIN_MULTIPLE,
+    min_increase=UPWARD_SPIKE_MIN_INCREASE,
+) -> bool:
+    """Return whether a cumulative view jump requires an independent re-scrape.
+
+    This is deliberately only a *verification trigger*. A large jump is not an
+    error by itself: real viral posts can grow by tens of times in one day.
+    """
+    prev = _positive_int(previous)
+    value = _positive_int(observed)
+    if prev is None or value is None or value <= prev:
+        return False
+    return value >= prev * min_multiple and value - prev >= min_increase
+
+
+def _upward_measurements_agree(
+    observed,
+    confirmed,
+    *,
+    relative_tolerance=UPWARD_SPIKE_CONFIRM_REL_TOLERANCE,
+    absolute_tolerance=UPWARD_SPIKE_CONFIRM_ABS_TOLERANCE,
+) -> bool:
+    """Conservatively compare two independent cumulative view measurements.
+
+    Fast-growing posts can move while the second actor runs, so exact equality
+    would quarantine genuine virality. Values within 25% (or 1,000 views for a
+    small post) are considered the same level; order-of-magnitude mismatches are
+    never accepted.
+    """
+    first = _positive_int(observed)
+    second = _positive_int(confirmed)
+    if first is None or second is None:
+        return False
+    return abs(first - second) <= max(
+        absolute_tolerance,
+        max(first, second) * relative_tolerance,
+    )
+
+
+def _flush_upward_spike_warnings():
+    if not UPWARD_SPIKE_WARNINGS:
+        return
+    sample = UPWARD_SPIKE_WARNINGS[:8]
+    lines = [
+        f"🚨 [협찬 모니터링] Instagram 상향 급증 재확인 불일치 {len(UPWARD_SPIKE_WARNINGS)}건",
+        "최초 수집값은 저장하지 않고 격리했습니다. 값을 추정·자동보정하지 않았으며, URL 실측 후 수동 판정해 주세요.",
+    ]
+    for warning in sample:
+        confirmed = warning.get("confirmed")
+        confirmed_text = f"{confirmed:,}" if confirmed is not None else "미반환"
+        lines.append(
+            f"- {warning.get('account_name') or '-'} "
+            f"직전 {warning['previous']:,} → 1차 {warning['observed']:,} / "
+            f"재확인 {confirmed_text} {warning.get('url') or '-'}"
+        )
+    if len(UPWARD_SPIKE_WARNINGS) > len(sample):
+        lines.append(f"- ...외 {len(UPWARD_SPIKE_WARNINGS) - len(sample)}건")
+    _send_status_alert("\n".join(lines))
+
+
+def _guard_instagram_upward_spikes(posts, stats_by_key, last_stat, *, fetcher=None):
+    """Re-scrape suspicious IG jumps and quarantine unconfirmed play counts.
+
+    The primary actor has returned a different post's view count before
+    (2026-08-30: 727 -> 65,500 while the independent value was about 745).
+    Only the suspect ``play_count`` is removed; likes/comments and the existing
+    historical value stay untouched. A matching second measurement lets a real
+    viral jump through unchanged.
+    """
+    candidates = []
+    for post in posts:
+        url = post.get("url") or ""
+        if not _is_instagram_collectable_url(url):
+            continue
+        if is_banner_channel(post.get("channel_type"), post.get("posted_at")):
+            continue
+        key = _stats_key(url)
+        stat = stats_by_key.get(key) or {}
+        previous = (last_stat.get(post.get("id")) or {}).get("play_count")
+        observed = stat.get("play_count")
+        if not stat.get("deleted") and _is_upward_spike_candidate(previous, observed):
+            candidates.append((post, key, int(previous), int(observed)))
+
+    if not candidates:
+        return {"candidates": 0, "verified": 0, "quarantined": 0}
+
+    confirm_by_shortcode = {}
+    try:
+        confirm_by_shortcode = (fetcher or _fetch_ig_fallback)(
+            [post.get("url") for post, _key, _previous, _observed in candidates]
+        ) or {}
+    except Exception as exc:
+        # A verification outage must not turn a suspicious value into accepted
+        # data. Quarantine only the suspect metric and keep the main run alive.
+        print(f"[WARN] IG 상향 급증 재확인 호출 실패: {exc}")
+
+    verified = 0
+    quarantined = 0
+    for post, key, previous, observed in candidates:
+        shortcode = _ig_shortcode(post.get("url") or "") or ""
+        confirmed = _positive_int((confirm_by_shortcode.get(shortcode) or {}).get("play_count"))
+        if _upward_measurements_agree(observed, confirmed):
+            verified += 1
+            print(
+                f"[LOG] IG 상향 급증 재확인 통과: {post.get('url')} "
+                f"({previous:,} → {observed:,}, 재확인={confirmed:,})"
+            )
+            continue
+
+        quarantined += 1
+        # Work on a copy so other collected metadata remains available while
+        # the untrusted play count cannot reach the final upsert choke point.
+        stat = dict(stats_by_key.get(key) or {})
+        stat["play_count"] = None
+        stat["upward_spike_quarantined"] = True
+        stats_by_key[key] = stat
+        UPWARD_SPIKE_WARNINGS.append({
+            "account_name": post.get("account_name"),
+            "url": post.get("url"),
+            "previous": previous,
+            "observed": observed,
+            "confirmed": confirmed,
+        })
+        _record_missing_view_event(
+            post,
+            "Instagram",
+            "upward_spike_unconfirmed",
+            stat={"play_count": observed},
+            existing=last_stat.get(post.get("id")),
+            extra={"confirmed_metric": confirmed},
+        )
+        print(
+            f"[WARN] IG 상향 급증 격리: {post.get('url')} "
+            f"({previous:,} → 1차 {observed:,}, 재확인={confirmed})"
+        )
+
+    return {
+        "candidates": len(candidates),
+        "verified": verified,
+        "quarantined": quarantined,
+    }
 
 
 def retry_on_network_error(max_retries=3, delay=5):
@@ -1315,6 +1472,14 @@ def run():
                     "계정 생존을 확인하지 못해 삭제 검토 상태로 넘기지 않았습니다."
                 )
                 print(f"[WARN] {ig_outage_message}")
+
+            # 🛡️ 상향 교차오염 가드(2026-09-01): 직전 누적값 대비 비현실적 급증은
+            # 독립 IG 액터로 1회 재확인한다. 같은 수준이면 진짜 바이럴로 저장하고,
+            # 불일치/미반환이면 최초 play_count만 격리(저장 금지) + Slack 알림.
+            spike_guard = _guard_instagram_upward_spikes(posts, stats_by_key, last_stat)
+            if spike_guard["candidates"]:
+                print(f"[LOG] IG 상향 급증 재확인 결과: {spike_guard}")
+            _flush_upward_spike_warnings()
 
         rows = []
         # influencer_id 없는 IG 게시물을 프로필 URL 기준으로 한 번에 조회한다.

@@ -48,7 +48,19 @@ def detect_reverses(stats: list[dict], posts: dict[str, dict], threshold: float)
         p = posts.get(pid) or {}
         is_banner = is_banner_channel(p.get("channel_type"), p.get("posted_at"))
         metric = "reach_count" if is_banner else "play_count"
-        rows.sort(key=lambda r: str(r["measured_at"]))
+        # Same-date rows are rare but possible in legacy data. Date-only sorting
+        # leaves their order dependent on pagination input, so a later correction
+        # can be compared in the wrong direction. Use the write order as a stable
+        # tie-breaker whenever the API returns it.
+        rows.sort(key=lambda r: (
+            str(r.get("measured_at") or ""),
+            str(r.get("created_at") or ""),
+            str(r.get("id") or ""),
+        ))
+        latest_by_date = {}
+        for row in rows:
+            latest_by_date[str(row.get("measured_at") or "")[:10]] = row
+        rows = [latest_by_date[day] for day in sorted(latest_by_date)]
         prev = None  # 직전(마지막 유효) 측정값. 규칙: 누적은 '전날보다' 크거나 같아야(day-over-day).
         for r in rows:
             v = r.get(metric)
@@ -67,6 +79,43 @@ def detect_reverses(stats: list[dict], posts: dict[str, dict], threshold: float)
                 })
             prev = v  # 하락 이벤트 후엔 그 값이 새 기준(스파이크가 영구 오탐을 내지 않게)
     return out
+
+
+def _stat_identity(row: dict) -> tuple:
+    """Stable identity used to compare full-history and recent-window scans."""
+    if row.get("id"):
+        return ("id", str(row["id"]))
+    return (
+        "legacy",
+        str(row.get("post_id") or ""),
+        str(row.get("measured_at") or ""),
+        row.get("play_count"),
+        row.get("reach_count"),
+    )
+
+
+def _reverse_identity(row: dict) -> tuple:
+    return (
+        row.get("post_id"),
+        row.get("date"),
+        row.get("metric"),
+        row.get("value"),
+        row.get("prev"),
+    )
+
+
+def merge_reverse_events(*groups: list[dict]) -> list[dict]:
+    """Union detector outputs without double-alerting the same transition."""
+    merged = {}
+    for group in groups:
+        for row in group:
+            merged.setdefault(_reverse_identity(row), row)
+    return list(merged.values())
+
+
+def recent_scan_start(recent_days: int, today: datetime) -> str:
+    """Include one comparison day before the alert window."""
+    return (today.date() - timedelta(days=recent_days + 1)).isoformat()
 
 
 def build_alert(reverses: list[dict], recent_days: int, today: datetime) -> str | None:
@@ -139,12 +188,47 @@ def main() -> int:
         print("[reverse-watchdog] SUPABASE_URL/SERVICE_ROLE_KEY 없음")
         return 1
 
+    now = datetime.now(timezone.utc) + timedelta(hours=9)  # KST
+    scan_start = recent_scan_start(RECENT_DAYS, now)
+
     posts_rows = _sb_get(url, key, "sponsored_posts?select=id,url,account_name,channel_type,posted_at")
     posts = {p["id"]: p for p in posts_rows}
-    stats = _sb_get(url, key, "post_daily_stats?select=post_id,measured_at,play_count,reach_count")
+    select = "id,post_id,measured_at,play_count,reach_count,created_at"
+    stats = _sb_get(url, key, f"post_daily_stats?select={select}")
 
-    reverses = detect_reverses(stats, posts, THRESHOLD)
-    now = datetime.now(timezone.utc) + timedelta(hours=9)  # KST
+    # The 2026-08-30 cross-contamination incident proved that a recent 65,500 ->
+    # 745 transition could be absent from the alert even though the collection
+    # had finished 40 minutes before this workflow. The pure detector catches
+    # that pair, so recent data coverage is now queried independently instead of
+    # trusting only the long offset-paginated history scan. The scans are compared
+    # and the direct recent scan is authoritative for the alert window.
+    recent_stats = _sb_get(
+        url,
+        key,
+        f"post_daily_stats?select={select}&measured_at=gte.{scan_start}",
+    )
+    full_recent_ids = {
+        _stat_identity(row)
+        for row in stats
+        if str(row.get("measured_at") or "")[:10] >= scan_start
+    }
+    direct_recent_ids = {_stat_identity(row) for row in recent_stats}
+    if full_recent_ids != direct_recent_ids:
+        print(
+            "[reverse-watchdog] [WARN] 전수/최근창 입력 범위 불일치 — "
+            f"전수내최근={len(full_recent_ids)}, 직접최근={len(direct_recent_ids)}, "
+            f"전수누락={len(direct_recent_ids - full_recent_ids)}, "
+            f"직접누락={len(full_recent_ids - direct_recent_ids)}"
+        )
+    else:
+        print(
+            "[reverse-watchdog] 입력 범위 확인 — "
+            f"전수={len(stats)}, 최근창({scan_start}~)={len(recent_stats)}, 불일치=0"
+        )
+
+    full_reverses = detect_reverses(stats, posts, THRESHOLD)
+    recent_reverses = detect_reverses(recent_stats, posts, THRESHOLD)
+    reverses = merge_reverse_events(full_reverses, recent_reverses)
     text = build_alert(reverses, RECENT_DAYS, now)
 
     if text is None:

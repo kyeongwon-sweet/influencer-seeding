@@ -57,3 +57,51 @@ def test_build_alert_fires_on_recent():
     recent = [{"date": "2026-08-05", "account_name": "a", "metric": "도달수", "value": 1, "prev": 2, "drop_ratio": 0.5, "url": "u"}]
     msg = w.build_alert(recent, 2, datetime(2026, 8, 6, tzinfo=timezone.utc))
     assert msg is not None and "역행 1건" in msg
+
+
+def test_twentyfifty_incident_is_detected_and_alerted_at_kst_boundary():
+    rows = [
+        _s("vid", "2026-08-29", 727),
+        _s("vid", "2026-08-30", 65_500),
+        _s("vid", "2026-08-31", 745),
+    ]
+    out = w.detect_reverses(rows, POSTS, 0.05)
+    assert len(out) == 1
+    assert out[0]["date"] == "2026-08-31"
+    assert out[0]["prev"] == 65_500
+    assert out[0]["value"] == 745
+
+    # Live run started 2026-08-31 21:58Z = 2026-09-01 06:58 KST.
+    kst_now = datetime(2026, 9, 1, 6, 58, tzinfo=timezone.utc)
+    msg = w.build_alert(out, 2, kst_now)
+    assert msg is not None
+    assert "65,500" in msg and "745" in msg
+
+
+def test_recent_scan_includes_one_baseline_day_and_merges_missing_full_event():
+    now = datetime(2026, 9, 1, 6, 58, tzinfo=timezone.utc)
+    assert w.recent_scan_start(2, now) == "2026-08-29"
+
+    event = {
+        "post_id": "vid",
+        "date": "2026-08-31",
+        "account_name": "acc_vid",
+        "metric": "조회수",
+        "value": 745,
+        "prev": 65_500,
+        "drop_ratio": 0.989,
+        "url": "https://x/vid",
+    }
+    merged = w.merge_reverse_events([], [event], [event.copy()])
+    assert merged == [event]
+
+
+def test_same_day_rows_use_created_at_then_id_order():
+    rows = [
+        {**_s("vid", "2026-08-30", 745), "created_at": "2026-08-30T02:00:00Z", "id": "b"},
+        {**_s("vid", "2026-08-30", 65_500), "created_at": "2026-08-30T01:00:00Z", "id": "a"},
+        {**_s("vid", "2026-08-31", 760), "created_at": "2026-08-31T01:00:00Z", "id": "c"},
+    ]
+    # The later same-day correction (745) becomes the baseline, so 08-31=760
+    # is monotonic. Input list order cannot fabricate a 65,500 -> 745 reverse.
+    assert w.detect_reverses(rows, POSTS, 0.05) == []
