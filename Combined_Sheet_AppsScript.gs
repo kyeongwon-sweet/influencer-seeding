@@ -1875,6 +1875,17 @@ function dailyAutoStageDefs_() {
     ["repairMetricFormulaRanges", function() { return repairStaleMetricFormulaRanges_(getSheet_()); }],
     ["syncCreators", syncCreators],
     ["overwriteViralHandles", function() { return overwriteViralHandles_(true); }],
+    // 신규 행 서식 통일(정렬·행높이·볼드·폰트). 값·수식은 안 건드리고 **늘어난 행만** 대상.
+    // 전체 재적용은 하지 않는다 — 2026-08-06 대량 서식 쓰기로 H열 1,765행이 손상된 적 있다.
+    // ⚠️ 정의는 별도 파일(apps-script/linked_sheet_row_format_daily.gs)에 있다.
+    //    그 파일이 아직 배포되지 않은 상태(부분 배포)에서도 dailyAuto가 깨지지 않게 존재 확인.
+    ["normalizeNewRowFormat", function() {
+      if (typeof normalizeNewLinkedRowsDaily !== "function") {
+        Logger.log("normalizeNewRowFormat skipped — linked_sheet_row_format_daily.gs 미배포");
+        return true;
+      }
+      return normalizeNewLinkedRowsDaily();
+    }],
   ];
 }
 

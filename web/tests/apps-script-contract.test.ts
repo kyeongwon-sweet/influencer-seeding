@@ -19,6 +19,76 @@ const assetPollutionRepair = readFileSync(
   "utf8",
 );
 
+const rowFormatDaily = readFileSync(
+  new URL("../../apps-script/linked_sheet_row_format_daily.gs", import.meta.url),
+  "utf8",
+);
+const readabilityTheme = readFileSync(
+  new URL("../../apps-script/linked_sheet_readability_theme_20260812.gs", import.meta.url),
+  "utf8",
+);
+
+test("daily row-format normalizer never writes values or formulas", () => {
+  // 2026-08-06 사고: "서식만 바꾸니 안전"이라 판단한 대량 쓰기가 H열 1,765행을 손상시켰다.
+  // 이 스크립트는 서식 전용이어야 한다 — 값·수식·유효성에 손대는 순간 계약 위반이다.
+  for (const forbidden of [
+    "setValue(", "setValues(", "setFormula(", "setFormulas(",
+    "setDataValidation", "clearContent", "deleteRow", "insertRows",
+  ]) {
+    assert.ok(!rowFormatDaily.includes(forbidden), `금지 호출 사용: ${forbidden}`);
+  }
+  assert.match(rowFormatDaily, /LockService\.getDocumentLock\(\)/);
+  assert.match(rowFormatDaily, /assertLinkedRowFormatTarget_/);
+});
+
+test("daily path only formats newly added rows, with a runaway cap", () => {
+  // 전체 재적용은 일상 경로에 두지 않는다(대량 쓰기 위험). 포인터 이후 행만 대상.
+  const daily = rowFormatDaily.slice(
+    rowFormatDaily.indexOf("function normalizeNewLinkedRowsDaily()"),
+    rowFormatDaily.indexOf("function normalizeAllLinkedRowsOnce()"),
+  );
+  assert.ok(daily.includes("LINKED_ROW_FORMAT_POINTER_PROP_"));
+  assert.ok(daily.includes("LINKED_ROW_FORMAT_MAX_DAILY_ROWS_"));
+  assert.ok(daily.includes("pointer + 1"));
+  assert.ok(!daily.includes("LINKED_ROW_FORMAT_DATA_START_ROW_, lastRow"),
+    "일상 경로가 전체 범위를 잡으면 안 된다");
+  assert.match(rowFormatDaily, /LINKED_ROW_FORMAT_MAX_DAILY_ROWS_ = 400/);
+});
+
+test("row-format standard matches the readability theme (drift guard)", () => {
+  // 두 곳이 어긋나면 매일 서식이 흔들린다. 정렬·표시형식·행높이·폰트를 대조한다.
+  assert.match(readabilityTheme, /setRowHeights\(2, lastRow - 1, 27\)/);
+  assert.match(rowFormatDaily, /LINKED_ROW_FORMAT_ROW_HEIGHT_ = 27/);
+  assert.match(readabilityTheme, /setFontFamily\("Noto Sans KR"\)\.setFontSize\(10\)/);
+  assert.match(rowFormatDaily, /LINKED_ROW_FORMAT_FONT_FAMILY_ = "Noto Sans KR"/);
+  assert.match(rowFormatDaily, /LINKED_ROW_FORMAT_FONT_SIZE_ = 10/);
+  for (const fmt of ["yyyy. m. d.", "₩#,##0", "#,##0", "₩#,##0.00"]) {
+    assert.ok(readabilityTheme.includes(fmt), `theme에 없음: ${fmt}`);
+    assert.ok(rowFormatDaily.includes(fmt), `daily에 없음: ${fmt}`);
+  }
+});
+
+test("data rows are unbolded while the header keeps its bold", () => {
+  // 사용자 결정(2026-09-01): 채널명 볼드 혼재를 데이터 행 전부 해제로 통일.
+  assert.match(rowFormatDaily, /setFontWeight\("normal"\)/);
+  // 헤더(1행)는 데이터 범위 밖이어야 한다 — 시작행이 2 이상으로 강제되는지 확인.
+  assert.match(rowFormatDaily, /LINKED_ROW_FORMAT_DATA_START_ROW_ = 2/);
+  assert.match(rowFormatDaily, /startRow < LINKED_ROW_FORMAT_DATA_START_ROW_\) return 0/);
+});
+
+test("dailyAuto runs the row-format normalizer last", () => {
+  const stages = appsScript.slice(
+    appsScript.indexOf("function dailyAutoStageDefs_()"),
+    appsScript.indexOf("function runDailyAutoStage_"),
+  );
+  assert.ok(stages.includes('"normalizeNewRowFormat"'));
+  assert.ok(stages.includes("normalizeNewLinkedRowsDaily()"));
+  // 부분 배포(새 파일 미배포)에서도 dailyAuto가 깨지지 않아야 한다.
+  assert.ok(stages.includes('typeof normalizeNewLinkedRowsDaily !== "function"'));
+  assert.ok(stages.indexOf("normalizeNewRowFormat") > stages.indexOf("overwriteViralHandles"),
+    "서식 정규화는 모든 데이터 쓰기 뒤에 와야 신규 행이 대상이 된다");
+});
+
 test("Apps Script mirror keeps live metadata and URL guards", () => {
   assert.match(appsScript, /"DB → 시트 조회수·누적·증분 반영",\s*"exportStats"/);
   assert.match(appsScript, /"기획자":\s*"planner"/);
