@@ -624,21 +624,25 @@ test("dailyAuto gates both import and export on collection completion", () => {
   assert.match(appsScript, /EXPORT_STATS_COLLECTION_GATE_LAST_STATUS/);
 });
 
-test("exportStats never carry-forwards into the latest historical date", () => {
-  const start = appsScript.indexOf("function shouldCarryForwardMetric_(");
+test("exportStats overwrites only automatic DB metrics and never carry-forwards", () => {
+  const start = appsScript.indexOf("function sheetMetricWriteDecision_(");
   const end = appsScript.indexOf("function exportStats()", start);
   assert.notEqual(start, -1);
   assert.notEqual(end, -1);
   const helper = new Function(
-    `${appsScript.slice(start, end)}\nreturn shouldCarryForwardMetric_;`,
-  )() as (date: string, latestHistoricalDate: string | null, lastVal: unknown, cell: unknown) => boolean;
+    `${appsScript.slice(start, end)}\nreturn sheetMetricWriteDecision_;`,
+  )() as (cell: unknown, collected: number, manual: boolean) => string;
 
-  assert.equal(helper("2026-08-26", "2026-08-27", 100, ""), true, "internal blank may carry");
-  assert.equal(helper("2026-08-27", "2026-08-27", 100, ""), false, "latest date must stay blank");
-  assert.equal(helper("2026-08-26", "2026-08-27", null, ""), false, "no baseline cannot carry");
-  assert.equal(helper("2026-08-26", "2026-08-27", 100, 0), false, "nonblank values are preserved");
-  assert.match(appsScript, /latestHistoricalDate = historicalDateCols\.length/);
-  assert.match(appsScript, /shouldCarryForwardMetric_\(date, latestHistoricalDate, lastVal, cell\)/);
+  assert.equal(helper("", 100, false), "fill", "automatic values fill blanks");
+  assert.equal(helper(90, 100, false), "overwrite_auto", "automatic DB values repair stale cells");
+  assert.equal(helper(90, 100, true), "preserve_manual", "manual DB rows never overwrite sheet manual values");
+  assert.equal(helper(100, 100, false), "same");
+  assert.doesNotMatch(appsScript, /shouldCarryForwardMetric_/);
+  assert.doesNotMatch(appsScript, /newBlock\[i\]\[bi\] = lastVal/);
+  assert.match(appsScript, /carry-forward[\s\S]*?완전히 금지/);
+  assert.match(appsScript, /manualDates\[measuredAt\] = pair\.length >= 3 \? pair\[2\] === true : true/);
+  assert.match(appsScript, /const skipFormulaRefresh = !!\(options && options\.skipFormulaRefresh === true\)/);
+  assert.match(appsScript, /if \(incrementCol && !skipFormulaRefresh\)/);
 });
 
 test("DB to sheet sync runs independently every three hours with retry, watchdog, and alerts", () => {

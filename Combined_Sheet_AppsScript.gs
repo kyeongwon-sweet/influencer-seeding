@@ -2234,18 +2234,22 @@ function fetchCollectedStats_() {
   });
   const code = res.getResponseCode();
   if (code !== 200) throw new Error(`API ${code}: ${res.getContentText()}`);
-  return (JSON.parse(res.getContentText()).posts) || []; // [{url, key, ended_at, stats:[[date,metric],...]}] — 종료·통계없음 글은 stats:[]
+  return (JSON.parse(res.getContentText()).posts) || []; // [{url, key, ended_at, stats:[[date,metric,manual],...]}] — 종료·통계없음 글은 stats:[]
 }
 
-function shouldCarryForwardMetric_(date, latestHistoricalDate, lastVal, cell) {
-  // 가장 최신 과거 날짜는 수집값이 '없음'인지 '아직 안 옴'인지 구분할 수 없다.
-  // 따라서 carry는 뒤 날짜가 이미 존재하는 내부 구간에만 허용한다.
-  return date !== latestHistoricalDate &&
-    lastVal != null &&
-    (cell === "" || cell === null);
+function sheetMetricWriteDecision_(cell, collected, manual) {
+  if (!(collected > 0)) return "preserve";
+  if (cell === "" || cell === null) return "fill";
+  if (manual === true) return "preserve_manual";
+  return Number(cell) === Number(collected) ? "same" : "overwrite_auto";
 }
 
 function exportStats() {
+  return exportStatsWithOptions_(null);
+}
+
+function exportStatsWithOptions_(options) {
+  const skipFormulaRefresh = !!(options && options.skipFormulaRefresh === true);
   try {
     const sheet = getSheet_();
     const fieldCols = buildFieldCols_(sheet);
@@ -2268,6 +2272,7 @@ function exportStats() {
     // 대시보드 수집 조회수 → linkKey(shortcode/영상ID) → {date: play} + 등장 날짜 수집
     const byKey = {};
     const endedByKey = {};
+    const manualByKey = {};
     const finalMetricByKey = {};
     const allDatesSet = {};
     const today = todayStr_();
@@ -2276,11 +2281,15 @@ function exportStats() {
       if (!k) return;
       if (p.ended_at) endedByKey[k] = String(p.ended_at).slice(0, 10);
       const m = byKey[k] || (byKey[k] = {});
+      const manualDates = manualByKey[k] || (manualByKey[k] = {});
       (p.stats || []).forEach(pair => {
         const metric = Number(pair[1]);
         const measuredAt = String(pair[0]).slice(0, 10);
         if (!(metric > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(measuredAt)) return; // 0·음수·비숫자 방어 — 시트에 0 찍힘/기존값 덮음/빈 열 추가 방지(엔드포인트도 >0만 반환)
-        m[measuredAt] = metric; allDatesSet[measuredAt] = true;
+        m[measuredAt] = metric;
+        // 구버전 서버가 provenance를 생략하면 보수적으로 수기 취급해 기존 셀을 덮지 않는다.
+        manualDates[measuredAt] = pair.length >= 3 ? pair[2] === true : true;
+        allDatesSet[measuredAt] = true;
         if (measuredAt < today && (!(finalMetricByKey[k] > 0) || metric > finalMetricByKey[k])) {
           finalMetricByKey[k] = metric;
         }
@@ -2355,19 +2364,12 @@ function exportStats() {
       else { rowMap[i] = null; if (ALLOWED_URL_RE.test(url)) missing++; }
     }
 
-    const historicalDateCols = dateCols.filter(function(dc) { return dc.date < today; });
-    const latestHistoricalDate = historicalDateCols.length
-      ? historicalDateCols[historicalDateCols.length - 1].date
-      : null;
-
-    // 행별 좌→우 forward-fill: 실측(>0)은 반영하고 기준값(lastVal) 갱신, 내부 구간의 '측정 없음' 빈칸만 직전 누적값으로 이어받는다.
-    //   → 종료·수집누락·play_count null로 생기는 날짜 공백에도 누적조회수가 줄어(끊겨) 보이지 않게 하는 '표시 보정'.
-    //   🛡️ 가장 최신 과거 날짜는 수집 미도착과 진짜 결측을 구분할 수 없어 절대 carry하지 않는다.
-    //   ⚠️ DB(post_daily_stats)엔 아무것도 안 씀(safeIncrement·증분 규칙 불변). 이어받기 값은 importStats가 재저장 안 함(아래 가드).
-    //   배너 등 '양수 조회수가 한 번도 없는' 행은 lastVal이 안 생겨 자동 제외(빈칸 유지).
-    //   기존 실측·수동값은 절대 안 덮고, 빈칸 또는 직전값 이어받기였던 칸만 새 실측으로 교체.
-    let filled = 0, carried = 0, prePostedCleared = 0, preserved = 0, orphanRows = 0, futureCleared = 0, endedCleared = 0;
-    const carriedCells = {};
+    // 행별 DB→시트 동기화:
+    //   · 자동 수집(manual=false): DB가 날짜셀 정본이므로 기존 오염값도 덮어쓴다.
+    //   · 사람 입력(manual=true): 빈칸만 보강하고 이미 있는 시트 수기값은 보존한다.
+    //   · DB 실측이 없는 날짜: 공백을 유지한다. 직전값 carry-forward는 실측을 지어내는 동작이고
+    //     importStats로 역유입된 사고가 반복됐으므로 2026-09-01부터 완전히 금지한다.
+    let filled = 0, autoOverwritten = 0, manualPreserved = 0, prePostedCleared = 0, preserved = 0, orphanRows = 0, futureCleared = 0, endedCleared = 0;
     const newBlock = block.map(r => r.slice());
     for (let i = 0; i < nRows; i++) {
       const m = rowMap[i];
@@ -2379,8 +2381,8 @@ function exportStats() {
         }
         continue;
       }
-      let lastVal = null;
       const endedAt = rowKeys[i] ? endedByKey[rowKeys[i]] : null;
+      const manualDates = rowKeys[i] ? (manualByKey[rowKeys[i]] || {}) : {};
       for (let j = 0; j < dateCols.length; j++) {
         const bi = dateCols[j].col - firstCol;
         const date = dateCols[j].date;
@@ -2388,38 +2390,29 @@ function exportStats() {
         const postedAt = postedAtByRow[i];
         if (isBeforePostedDate_(date, postedAt)) {
           if (cell !== "" && cell !== null) { newBlock[i][bi] = ""; prePostedCleared++; }
-          lastVal = null;
           continue;
         }
         if (endedAt && date > endedAt) {
           if (cell !== "" && cell !== null) { newBlock[i][bi] = ""; endedCleared++; }
-          lastVal = null;
           continue;
         }
         // 🛡️ 오늘·미래 날짜칸은 채우지 않고 비운다(수집일-1까지만; 대시보드 '오늘 제외'와 일치).
         if (date >= today) {
           if (cell !== "" && cell !== null) { newBlock[i][bi] = ""; futureCleared++; }
-          lastVal = null;
           continue;
         }
         const collected = m ? m[date] : undefined;
-        if (collected > 0) {                                   // 실측값 도착 → 빈 칸만 채움 + 기준 갱신
-          const isBlank = cell === "" || cell === null;
-          // 🛡️ 값이 이미 든 칸(수동 입력·기존 실측)은 절대 안 덮는다 — 빈 칸만 실측으로 채운다.
-          //    예전엔 isCarried(직전값과 같으면 덮기)도 덮었는데, '평평한 수동값'(배너 도달수는 며칠씩 동일)이
-          //    carry로 오인돼 역채움이 사용자 수동입력을 덮어버리는 버그가 있었음. 빈 칸만 채우도록 축소(수동값 보호).
-          if (isBlank) {
-            if (cell !== collected) { newBlock[i][bi] = collected; filled++; }
-            lastVal = collected;
-          } else if (typeof cell === "number" && cell > 0) {
-            lastVal = cell;
-            if (cell !== collected) preserved++;
+        if (collected > 0) {
+          const decision = sheetMetricWriteDecision_(cell, collected, manualDates[date] === true);
+          if (decision === "fill") {
+            newBlock[i][bi] = collected; filled++;
+          } else if (decision === "overwrite_auto") {
+            newBlock[i][bi] = collected; autoOverwritten++;
+          } else if (decision === "preserve_manual") {
+            if (Number(cell) !== Number(collected)) manualPreserved++;
+          } else if (decision === "preserve") {
+            preserved++;
           }
-        } else if (typeof cell === "number" && cell > 0) {     // 기존 실측/수동값 → 유지 + 기준 갱신
-          lastVal = cell;
-        } else if (shouldCarryForwardMetric_(date, latestHistoricalDate, lastVal, cell)) { // 내부 구간의 '완전 빈칸'만 이어받기
-          newBlock[i][bi] = lastVal; carried++;                // (0·텍스트 등 다른 내용이 든 셀은 절대 안 덮음)
-          carriedCells[i + ":" + bi] = true;
         }
       }
     }
@@ -2499,7 +2492,7 @@ function exportStats() {
 
     const incrementCol = getIncrementCol_(sheet);
     let incWritten = 0;
-    if (incrementCol) {
+    if (incrementCol && !skipFormulaRefresh) {
       // 증분 수식은 아직 행번호를 참조하는 3단계 대상이다. 날짜값은 이미 URL-key로
       // 안전하게 썼지만, 계산 중 정렬이 있었다면 수식은 쓰지 않고 다음 재시도로 넘긴다.
       const formulaLastRow = sheet.getLastRow();
@@ -2533,7 +2526,6 @@ function exportStats() {
             if (isBeforePostedDate_(dc.date, postedAt)) continue;
             if (endedAt && dc.date > endedAt) continue;
             if (dc.date >= today) continue;
-            if (carriedCells[i + ":" + bi]) continue;
             if (!(m[dc.date] > 0)) continue;
             const n = toNumber_(newBlock[i][bi]);
             if (n == null || n <= 0) continue;
@@ -2613,7 +2605,7 @@ function exportStats() {
       if (cumChanged) cumRange.setValues(cumOut);
     }
 
-    let msg = `✅ 수집 조회수를 시트에 반영했습니다.\n새 날짜 열 ${addedCols}개 추가 · URL-key 날짜 쓰기 ${dateKeyWrites}칸 · 실측 갱신 ${filled}칸 · 내부 공백 이어받기 ${carried}칸 · 최신 carry 제외 ${latestHistoricalDate || "-"} · 업로드 전 값 삭제 ${prePostedCleared}칸 · 종료 이후 값 삭제 ${endedCleared}칸 · 증분 수식 ${incWritten}행 · 기존값 보존 ${preserved}칸 · 매칭 게시물 ${matched}개 · 날짜 열 ${dateCols.length}개`;
+    let msg = `✅ 수집 조회수를 시트에 반영했습니다.\n새 날짜 열 ${addedCols}개 추가 · URL-key 날짜 쓰기 ${dateKeyWrites}칸 · 빈칸 실측 보강 ${filled}칸 · 자동 DB값 정정 ${autoOverwritten}칸 · 수기값 보존 ${manualPreserved}칸 · carry-forward 비활성 · 업로드 전 값 삭제 ${prePostedCleared}칸 · 종료 이후 값 삭제 ${endedCleared}칸 · 증분 수식 ${incWritten}행 · H/I 재생성 생략 ${skipFormulaRefresh ? "예" : "아니오"} · 기타 기존값 보존 ${preserved}칸 · 매칭 게시물 ${matched}개 · 날짜 열 ${dateCols.length}개`;
     if (endedFinalFilled) msg += `\n🛑 트래킹 종료글 H열 빈칸 ${endedFinalFilled}행에 DB 최종 누적값을 보존했습니다.`;
     if (endedFinalNoMetric) msg += `\n⚠️ 트래킹 종료됐지만 DB 조회수/도달수 이력이 없는 행 ${endedFinalNoMetric}개는 최종값을 채울 수 없습니다.`;
     if (shortcodeFormatMatched) msg += `\n🔁 /reel·/tv 잔재 URL ${shortcodeFormatMatched}개는 shortcode 기준으로 정상 매칭했습니다.`;

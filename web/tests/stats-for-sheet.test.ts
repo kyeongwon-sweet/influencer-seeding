@@ -14,3 +14,10 @@ test("stats-for-sheet includes ended posts with no stats for sheet diagnostics",
   assert.match(route, /stats: \[\]/);
   assert.match(route, /ended_without_stats: endedWithoutStats/);
 });
+
+test("stats-for-sheet exposes metric provenance and uses reach for banners", () => {
+  assert.match(route, /select\("id, post_id, measured_at, play_count, reach_count, manual"\)/);
+  assert.match(route, /bannerById\.get\(s\.post_id as string\) \? s\.reach_count : s\.play_count/);
+  assert.match(route, /manual: Boolean\(s\.manual\)/);
+  assert.match(route, /\[date, stat\.value, stat\.manual\]/);
+});

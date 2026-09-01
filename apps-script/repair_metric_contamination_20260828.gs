@@ -12,6 +12,7 @@
 const METRIC_REPAIR_20260828_PREV_DATE_ = "2026-08-26";
 const METRIC_REPAIR_20260828_TARGET_DATE_ = "2026-08-27";
 const METRIC_REPAIR_20260828_BACKUP_SHEET_ = "_codex_metric_0901_backup_20260901";
+const DAILY_METRIC_SYNC_BACKUP_PREFIX_ = "_codex_daily_sync_backup_20260901";
 const METRIC_REPAIR_20260828_DB_CONFIRM_ = "repair-2026-08-27-metric-contamination";
 const METRIC_REPAIR_20260901_DELETE_COUNT_ = 19;
 const METRIC_REPAIR_20260901_SHEET_CLEAR_COUNT_ = 7;
@@ -67,6 +68,27 @@ function shouldClear20260828Explicit_(key, date, value) {
   if (!byDate || !byDate[date]) return false;
   const number = metricRepairNumber_(value);
   return byDate[date].indexOf(number) >= 0;
+}
+
+function dailyMetricSyncDecision20260901_(sheetValue, expectedValue, expectedManual,
+    previousSheetValue, previousExpectedValue, previousExpectedManual) {
+  const current = metricRepairNumber_(sheetValue);
+  const expected = metricRepairNumber_(expectedValue);
+  if (expected > 0) {
+    if (current == null) return { action: "set_db", reason: "db_fill" };
+    if (current === expected) return { action: "none", reason: "same" };
+    if (expectedManual === true) return { action: "none", reason: "manual_preserved" };
+    return { action: "set_db", reason: "auto_mismatch" };
+  }
+
+  const previousSheet = metricRepairNumber_(previousSheetValue);
+  const previousExpected = metricRepairNumber_(previousExpectedValue);
+  if (current > 0 && previousSheet === current && previousExpected === current && previousExpectedManual === false) {
+    return { action: "clear", reason: "proven_carry" };
+  }
+  return current > 0
+    ? { action: "none", reason: "sheet_only_unproven" }
+    : { action: "none", reason: "blank" };
 }
 
 function isDeleteTarget20260901_(key, date) {
@@ -312,7 +334,7 @@ function runMetricRepair20260828_(apply) {
     edit.expected = byDate[edit.date] == null ? "" : byDate[edit.date];
   });
 
-  const exported = exportStats();
+  const exported = exportStatsWithOptions_({ skipFormulaRefresh: true });
   if (exported === false) throw new Error("exportStats returned false");
   SpreadsheetApp.flush();
 
@@ -359,4 +381,196 @@ function auditMetricRepair20260828() {
 
 function repairMetricContamination20260828() {
   return runMetricRepair20260828_(true);
+}
+
+function dailyMetricSyncExpected20260901_() {
+  const out = {};
+  fetchCollectedStats_().forEach(function(post) {
+    const key = String(post.key || linkKey_(post.url) || "");
+    if (!key) return;
+    const item = out[key] || (out[key] = {
+      ended_at: post.ended_at ? String(post.ended_at).slice(0, 10) : "",
+      dates: {},
+    });
+    (post.stats || []).forEach(function(stat) {
+      if (!stat || stat.length < 2) return;
+      const date = String(stat[0] || "").slice(0, 10);
+      const value = metricRepairNumber_(stat[1]);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !(value > 0)) return;
+      const manual = stat.length >= 3 ? stat[2] === true : true;
+      const previous = item.dates[date];
+      if (!previous || value > previous.value) {
+        item.dates[date] = { value: value, manual: manual || !!(previous && previous.manual) };
+      } else if (manual) {
+        previous.manual = true;
+      }
+    });
+  });
+  return out;
+}
+
+function dailyMetricSyncScan20260901_() {
+  const sheet = getSheet_();
+  const urlCol = findHeaderCol_(sheet, ["게시물URL", "게시물 URL", "URL"]);
+  const postedCol = findHeaderCol_(sheet, ["업로드일", "게시일"]);
+  if (!urlCol) throw new Error("게시물 URL 열을 찾지 못했습니다.");
+  const dates = metricDateColumns_(sheet).sort(function(a, b) { return a.date.localeCompare(b.date); });
+  const lastRow = sheet.getLastRow();
+  const rowCount = Math.max(0, lastRow - CONFIG.DATA_START_ROW + 1);
+  if (!rowCount || !dates.length) {
+    return { sheet: sheet, lastRow: lastRow, edits: [], manual: [], unproven: [], ambiguous: 0 };
+  }
+
+  const urls = sheet.getRange(CONFIG.DATA_START_ROW, urlCol, rowCount, 1).getValues();
+  const posted = postedCol
+    ? sheet.getRange(CONFIG.DATA_START_ROW, postedCol, rowCount, 1).getValues()
+    : Array(rowCount).fill([""]);
+  const firstCol = dates[0].col;
+  const lastCol = dates[dates.length - 1].col;
+  const block = sheet.getRange(CONFIG.DATA_START_ROW, firstCol, rowCount, lastCol - firstCol + 1).getValues();
+  const expected = dailyMetricSyncExpected20260901_();
+  const today = todayStr_();
+  const keyCounts = {};
+  const keys = urls.map(function(row) {
+    const key = String(linkKey_(String(row[0] || "").trim()) || "");
+    if (key) keyCounts[key] = (keyCounts[key] || 0) + 1;
+    return key;
+  });
+  const edits = [], manual = [], unproven = [];
+  let ambiguous = 0;
+
+  function record(target, row, item, date, key, url, oldValue, expectedItem, decision) {
+    target.push({
+      row: row,
+      col: item.col,
+      a1: sheet.getRange(row, item.col).getA1Notation(),
+      date: date,
+      key: key,
+      url: url,
+      old: oldValue,
+      expected: expectedItem ? expectedItem.value : "",
+      manual: expectedItem ? expectedItem.manual === true : null,
+      action: decision.action,
+      reason: decision.reason,
+    });
+  }
+
+  for (let i = 0; i < rowCount; i++) {
+    const key = keys[i];
+    if (!key) continue;
+    if (keyCounts[key] !== 1) { ambiguous++; continue; }
+    const post = expected[key] || { ended_at: "", dates: {} };
+    const postedAt = toDateStr_(posted[i][0]);
+    const url = String(urls[i][0] || "").trim();
+    for (let j = 0; j < dates.length; j++) {
+      const item = dates[j];
+      const date = item.date;
+      if (date >= today || isBeforePostedDate_(date, postedAt) || (post.ended_at && date > post.ended_at)) continue;
+      const bi = item.col - firstCol;
+      const current = block[i][bi];
+      const expectedItem = post.dates[date] || null;
+      const previousDate = j > 0 ? dates[j - 1].date : "";
+      const previousItem = previousDate ? (post.dates[previousDate] || null) : null;
+      const previousValue = j > 0 ? block[i][dates[j - 1].col - firstCol] : null;
+      const decision = dailyMetricSyncDecision20260901_(
+        current,
+        expectedItem && expectedItem.value,
+        expectedItem && expectedItem.manual,
+        previousValue,
+        previousItem && previousItem.value,
+        previousItem && previousItem.manual
+      );
+      const row = CONFIG.DATA_START_ROW + i;
+      if (decision.action !== "none") record(edits, row, item, date, key, url, current, expectedItem, decision);
+      else if (decision.reason === "manual_preserved") record(manual, row, item, date, key, url, current, expectedItem, decision);
+      else if (decision.reason === "sheet_only_unproven") record(unproven, row, item, date, key, url, current, expectedItem, decision);
+    }
+  }
+  return { sheet: sheet, lastRow: lastRow, edits: edits, manual: manual, unproven: unproven, ambiguous: ambiguous };
+}
+
+function dailyMetricSyncBackup20260901_(sheet, edits) {
+  const ss = sheet.getParent();
+  let name = DAILY_METRIC_SYNC_BACKUP_PREFIX_;
+  let suffix = 2;
+  while (ss.getSheetByName(name)) { name = DAILY_METRIC_SYNC_BACKUP_PREFIX_ + "_" + suffix; suffix++; }
+  const backup = ss.insertSheet(name);
+  const now = new Date().toISOString();
+  const rows = [["backed_up_at", "row", "a1", "date", "url", "key", "old", "new", "manual", "reason"]];
+  edits.forEach(function(edit) {
+    rows.push([now, edit.row, edit.a1, edit.date, edit.url, edit.key, edit.old,
+      edit.action === "clear" ? "" : edit.expected, edit.manual, edit.reason]);
+  });
+  backup.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
+  backup.hideSheet();
+  SpreadsheetApp.flush();
+  return backup.getName();
+}
+
+function runDailyMetricSync20260901_(apply) {
+  const lock = LockService.getDocumentLock();
+  if (apply) lock.waitLock(30000);
+  try {
+    const scan = dailyMetricSyncScan20260901_();
+    const counts = {};
+    scan.edits.forEach(function(edit) { counts[edit.reason] = (counts[edit.reason] || 0) + 1; });
+    const result = {
+      dry_run: !apply,
+      candidates: scan.edits.length,
+      reasons: counts,
+      manual_preserved: scan.manual.length,
+      sheet_only_unproven: scan.unproven.length,
+      duplicate_key_rows_skipped: scan.ambiguous,
+      sample: scan.edits.slice(0, 20),
+      manual_sample: scan.manual.slice(0, 10),
+      unproven_sample: scan.unproven.slice(0, 10),
+    };
+    Logger.log("daily_metric_sync_20260901_scan " + JSON.stringify(result));
+    if (!apply || !scan.edits.length) return result;
+
+    assertRowCountStable_(scan.sheet, scan.lastRow, "dailyMetricSync20260901");
+    const urlCol = findHeaderCol_(scan.sheet, ["게시물URL", "게시물 URL", "URL"]);
+    scan.edits.forEach(function(edit) {
+      const currentKey = String(linkKey_(String(scan.sheet.getRange(edit.row, urlCol).getValue() || "").trim()) || "");
+      const currentValue = scan.sheet.getRange(edit.a1).getValue();
+      if (currentKey !== edit.key || metricRepairNumber_(currentValue) !== metricRepairNumber_(edit.old)) {
+        throw new Error("쓰기 직전 셀 변경 감지: " + edit.a1);
+      }
+    });
+
+    result.backup_sheet = dailyMetricSyncBackup20260901_(scan.sheet, scan.edits);
+    const byCol = {};
+    scan.edits.forEach(function(edit) {
+      (byCol[edit.col] || (byCol[edit.col] = [])).push({
+        row: edit.row,
+        value: edit.action === "clear" ? "" : edit.expected,
+      });
+    });
+    let written = 0;
+    Object.keys(byCol).forEach(function(col) {
+      written += writeColumnRuns_(scan.sheet, Number(col), byCol[col], scan.lastRow);
+    });
+    SpreadsheetApp.flush();
+
+    const after = dailyMetricSyncScan20260901_();
+    if (after.edits.length) {
+      throw new Error("일별 동기화 사후검증 실패: " + after.edits.slice(0, 5).map(function(edit) { return edit.a1; }).join(","));
+    }
+    result.written = written;
+    result.after_candidates = after.edits.length;
+    result.after_manual_preserved = after.manual.length;
+    result.after_sheet_only_unproven = after.unproven.length;
+    Logger.log("daily_metric_sync_20260901_result " + JSON.stringify(result));
+    return result;
+  } finally {
+    if (apply) lock.releaseLock();
+  }
+}
+
+function auditDailyMetricSync20260901() {
+  return runDailyMetricSync20260901_(false);
+}
+
+function repairDailyMetricSync20260901() {
+  return runDailyMetricSync20260901_(true);
 }
