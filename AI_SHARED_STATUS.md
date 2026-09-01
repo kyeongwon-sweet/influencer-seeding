@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## ✅ 2026-09-01 [Codex 완료·라이브] 연동시트 전체 서식 통일 + 신규행 일상 자가정규화
+- **사용자 결정 반영:** 데이터 행은 전부 볼드 해제(헤더 볼드 유지), 전체 1회 정리 후 매일 `dailyAuto` 마지막 단계에서 **새로 늘어난 행만** 같은 서식으로 맞춘다. 기준은 행 높이 27, `Noto Sans KR` 10pt, 세로 가운데, A:O 줄바꿈 `CLIP`, 열별 좌/우 정렬·날짜/원화/천단위 표시형식이다.
+- **안전 설계:** 신규 `apps-script/linked_sheet_row_format_daily.gs`는 값·수식·유효성·조건부서식·필터 API를 호출하지 않는다. 일상 실행은 스크립트 속성 포인터 이후 신규행만, 하루 최대 400행으로 제한하며 `dailyAutoStageDefs_()`의 **최종 단계**에서 실행한다. 신규 파일이 guarded clasp 배포 목록에서 빠졌던 구멍도 `scripts/prepare_apps_script_deploy.mjs`와 계약 테스트로 차단했다.
+- **백업·전체 실행:** 전체 적용 직전에 원본 탭을 같은 문서 안의 숨김 사본 **`_codex_row_format_backup_20260901_153211`**로 복제한 뒤 `normalizeAllLinkedRowsOnce()`를 실행했다. 결과 `status=OK / rows=4,002 / lastRow=4,003`. 직후 `normalizeNewLinkedRowsDaily()` 재실행은 `NOOP / last_row=4,003`으로 포인터 초기화와 전체 재적용 방지를 확인했다.
+- **수식 무손상 전후감사:** Apps Script H/I 구조감사 결과가 전후 완전히 동일했다 — URL행 3,438, H 무수식 0, I 무수식 0, H `#REF!` 0, I `#REF!` 0, H값+I빈칸 326, 고아행 0. 오늘 마지막 정상 DB 대조감사(run `33472020578`)도 H/I 오류셀 0·`emptyButData=0`·증분 mismatch 0이었다. 현재 공식 감사 재실행은 작업 전후 모두 `headerLastColumn=DR / dominantFormulaEnd=DS`의 동일한 스냅샷 과도기로 503(`sheet_snapshot_not_ready`)이며, 이번 서식 작업이 만든 변화는 아니다.
+- **라이브·화면 검증:** 정본 Apps Script `1Xogw...`에 guarded pull→26파일 push→fresh pull을 수행해 **repo 소유 9파일 source exact match**와 `[APPS_SCRIPT_PUSH_VERIFIED]`를 확인했다. 실제 시트 표본 `A2:O20`은 `Noto Sans KR / 10pt / 볼드 꺼짐`, `A1:O1`은 볼드 켜짐을 Google Sheets 툴바로 확인했다.
+- **코드·검증:** `52879e33`(서식 기능) + `d319413e`(숨김 백업·guarded 배포 포함). web **380/380**, `tsc --noEmit`, Next production build, Apps Script staged/fresh-pull 검증 통과.
+
 ## ✅ 2026-09-01 [Codex 완료·라이브] 8282__humor 08-30 배너 도달수 31,186 시트→DB 정합
 - **재진단:** `ig:Dbx04ORkiHK`의 DB 08-09~30 reach가 다시 29,133(`manual=true`)이어서, 앞선 DB 단독 31,186 정정이 시트 수기값에 의해 되덮인 것을 확인했다. 배너 reach는 `importStats`가 아니라 `banner-reach-sync`가 **시트→DB**로 쓰며, `exportStats`는 기존 수기셀을 보존하므로 DB 선행 정정만으로는 유지되지 않는다.
 - **쓰기 전 감사:** URL-key 유일행은 현재 **212행**, 08-30 셀 `DQ212=29,133`, `H212=29,133`, H 수식 `=IF(COUNT(P212:DR212)=0,"",MAX(P212:DR212))`. 행 전체에 35,289 또는 31,186보다 큰 값은 0건이었다.
