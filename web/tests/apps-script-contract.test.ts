@@ -27,6 +27,10 @@ const readabilityTheme = readFileSync(
   new URL("../../apps-script/linked_sheet_readability_theme_20260812.gs", import.meta.url),
   "utf8",
 );
+const appsScriptDeploy = readFileSync(
+  new URL("../../scripts/prepare_apps_script_deploy.mjs", import.meta.url),
+  "utf8",
+);
 
 test("daily row-format normalizer never writes values or formulas", () => {
   // 2026-08-06 사고: "서식만 바꾸니 안전"이라 판단한 대량 쓰기가 H열 1,765행을 손상시켰다.
@@ -87,6 +91,25 @@ test("dailyAuto runs the row-format normalizer last", () => {
   assert.ok(stages.includes('typeof normalizeNewLinkedRowsDaily !== "function"'));
   assert.ok(stages.indexOf("normalizeNewRowFormat") > stages.indexOf("overwriteViralHandles"),
     "서식 정규화는 모든 데이터 쓰기 뒤에 와야 신규 행이 대상이 된다");
+});
+
+test("guarded clasp deploy includes the daily row-format file", () => {
+  assert.match(appsScriptDeploy, /linked_sheet_row_format_daily\.gs/);
+  assert.match(appsScriptDeploy, /linked_sheet_row_format_daily\.js/);
+});
+
+test("one-time full row-format creates a hidden sheet backup before formatting", () => {
+  const fullStart = rowFormatDaily.indexOf("function normalizeAllLinkedRowsOnce()");
+  const fullBody = rowFormatDaily.slice(fullStart);
+  assert.ok(fullStart >= 0);
+  assert.match(rowFormatDaily, /function backupLinkedRowsBeforeFullFormat_\(sheet\)/);
+  assert.match(rowFormatDaily, /sheet\.copyTo\(ss\)/);
+  assert.match(rowFormatDaily, /backup\.hideSheet\(\)/);
+  assert.ok(
+    fullBody.indexOf("backupLinkedRowsBeforeFullFormat_(sheet)") <
+      fullBody.indexOf("normalizeLinkedRowFormat_(sheet"),
+    "전체 서식은 백업 탭 생성이 성공한 뒤에만 시작해야 한다",
+  );
 });
 
 test("Apps Script mirror keeps live metadata and URL guards", () => {

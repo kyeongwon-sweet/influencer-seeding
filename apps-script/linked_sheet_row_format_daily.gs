@@ -28,6 +28,7 @@ var LINKED_ROW_FORMAT_FONT_FAMILY_ = "Noto Sans KR";
 var LINKED_ROW_FORMAT_FONT_SIZE_ = 10;
 var LINKED_ROW_FORMAT_POINTER_PROP_ = "LINKED_ROW_FORMAT_LAST_ROW";
 var LINKED_ROW_FORMAT_MAX_DAILY_ROWS_ = 400; // 일상 경로 폭주 가드(초과분은 다음 날)
+var LINKED_ROW_FORMAT_BACKUP_PREFIX_ = "_codex_row_format_backup_";
 
 /**
  * 열별 가로 정렬·숫자 표시형식. `applyLinkedSheetReadabilityTheme()`와 동일해야 한다.
@@ -150,6 +151,28 @@ function normalizeNewLinkedRowsDaily() {
 }
 
 /**
+ * 전체 1회 정리 직전 복구용 탭을 같은 스프레드시트 안에 만든다.
+ * 원본 탭의 값·수식·서식·유효성을 통째로 보존하며, 일상 경로에서는 호출하지 않는다.
+ */
+function backupLinkedRowsBeforeFullFormat_(sheet) {
+  var ss = sheet.getParent();
+  var timezone = Session.getScriptTimeZone() || "Asia/Seoul";
+  var baseName = LINKED_ROW_FORMAT_BACKUP_PREFIX_ +
+    Utilities.formatDate(new Date(), timezone, "yyyyMMdd_HHmmss");
+  var name = baseName;
+  var suffix = 2;
+  while (ss.getSheetByName(name)) {
+    name = baseName + "_" + suffix;
+    suffix++;
+  }
+  var backup = sheet.copyTo(ss);
+  backup.setName(name);
+  backup.hideSheet();
+  SpreadsheetApp.flush();
+  return name;
+}
+
+/**
  * 전체 1회 정리 — 사용자 승인(2026-09-01) 후 수동 실행 전용.
  *
  * ⚠️ 실행 전 체크리스트
@@ -169,11 +192,12 @@ function normalizeAllLinkedRowsOnce() {
     if (lastRow < LINKED_ROW_FORMAT_DATA_START_ROW_) {
       return { status: "EMPTY", rows: 0 };
     }
+    var backupSheet = backupLinkedRowsBeforeFullFormat_(sheet);
     var rows = normalizeLinkedRowFormat_(sheet, LINKED_ROW_FORMAT_DATA_START_ROW_, lastRow);
     SpreadsheetApp.flush();
     PropertiesService.getScriptProperties()
       .setProperty(LINKED_ROW_FORMAT_POINTER_PROP_, String(lastRow));
-    var result = { status: "OK", rows: rows, lastRow: lastRow };
+    var result = { status: "OK", rows: rows, lastRow: lastRow, backupSheet: backupSheet };
     Logger.log("linked_row_format_all " + JSON.stringify(result));
     SpreadsheetApp.getActiveSpreadsheet().toast(
       "값·수식은 그대로 두고 행 서식만 " + rows + "행 통일했습니다.",
