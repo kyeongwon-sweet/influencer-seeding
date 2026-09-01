@@ -107,7 +107,12 @@ test("repair applies backup-before-clear and rehydrates only through exportStats
   assert.match(source, /after\.edits\.length/);
   assert.doesNotMatch(
     source,
-    /post\.ended_at\s*&&\s*date\s*>\s*post\.ended_at/,
+    /if \([^)]*post\.ended_at[^)]*\)\s*continue/,
     "carry-forward chains after ended_at must remain visible to the conservative audit",
+  );
+  assert.match(
+    source,
+    /const expectedItem = afterTrackingEnd \? null : \(post\.dates\[date\] \|\| null\)/,
+    "DB rows after ended_at must not be re-filled into the sheet",
   );
 });

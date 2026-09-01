@@ -475,9 +475,16 @@ function dailyMetricSyncScan20260901_() {
       if (date >= today || isBeforePostedDate_(date, postedAt)) continue;
       const bi = item.col - firstCol;
       const current = block[i][bi];
-      const expectedItem = post.dates[date] || null;
+      const afterTrackingEnd = !!(post.ended_at && date > post.ended_at);
+      // Stats written after ended_at are not sheet truth: the normal exporter
+      // intentionally blanks that range. Ignore those DB rows here, while still
+      // scanning the sheet so a proven automatic carry chain can be removed.
+      const expectedItem = afterTrackingEnd ? null : (post.dates[date] || null);
       const previousDate = j > 0 ? dates[j - 1].date : "";
-      const previousItem = previousDate ? (post.dates[previousDate] || null) : null;
+      const previousAfterTrackingEnd = !!(post.ended_at && previousDate > post.ended_at);
+      const previousItem = previousDate && !previousAfterTrackingEnd
+        ? (post.dates[previousDate] || null)
+        : null;
       const previousValue = j > 0 ? block[i][dates[j - 1].col - firstCol] : null;
       const decision = dailyMetricSyncDecision20260901_(
         current,
