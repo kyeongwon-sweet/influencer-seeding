@@ -59,5 +59,6 @@ test("repair applies backup-before-clear and rehydrates only through exportStats
   assert.match(source, /method: apply \? "post" : "get"/);
   assert.match(source, /assertRowCountStable_\(scan\.sheet, scan\.lastRow\)/);
   assert.match(source, /Object\.keys\(explicitValues\)\.forEach/);
+  assert.match(source, /while \(ss\.getSheetByName\(backupName\)\)/);
   assert.doesNotMatch(source, /importStats\(/);
 });

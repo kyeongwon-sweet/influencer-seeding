@@ -160,10 +160,13 @@ function metricRepair20260828Candidates_() {
 
 function metricRepair20260828Backup_(sheet, edits) {
   const ss = sheet.getParent();
-  if (ss.getSheetByName(METRIC_REPAIR_20260828_BACKUP_SHEET_)) {
-    throw new Error("백업 시트가 이미 존재합니다: " + METRIC_REPAIR_20260828_BACKUP_SHEET_);
+  let backupName = METRIC_REPAIR_20260828_BACKUP_SHEET_;
+  let suffix = 2;
+  while (ss.getSheetByName(backupName)) {
+    backupName = METRIC_REPAIR_20260828_BACKUP_SHEET_ + "_" + suffix;
+    suffix++;
   }
-  const backup = ss.insertSheet(METRIC_REPAIR_20260828_BACKUP_SHEET_);
+  const backup = ss.insertSheet(backupName);
   const rows = [["backed_up_at", "row", "a1", "date", "url", "key", "old", "db_expected", "reason"]];
   const now = new Date().toISOString();
   edits.forEach(function(edit) {
