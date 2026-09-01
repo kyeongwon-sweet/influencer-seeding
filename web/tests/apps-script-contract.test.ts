@@ -189,6 +189,17 @@ test("one-time full row-format creates a hidden sheet backup before formatting",
   assert.doesNotMatch(rowFormatDaily, /DriveApp/);
   assert.doesNotMatch(rowFormatDaily, /ss\.insertSheet\(name\)/);
   assert.match(rowFormatDaily, /backup\.hideSheet\(\)/);
+  assert.match(rowFormatDaily, /function assertLinkedRowFormatBackup_\(source, backup\)/);
+  assert.match(rowFormatDaily, /function prunePreviousLinkedRowFormatBackups_\(ss, keepSheetName\)/);
+  assert.match(rowFormatDaily, /candidateName\.indexOf\(LINKED_ROW_FORMAT_BACKUP_PREFIX_\) === 0/);
+  assert.match(rowFormatDaily, /assertLinkedRowFormatBackup_\(sheet, backup\);\s*prunePreviousLinkedRowFormatBackups_\(ss, name\);/s);
+  assert.doesNotMatch(rowFormatDaily, /metric_backup|duplicate_backup|banner_backup/);
+  const fallbackStart = rowFormatDaily.indexOf("var backupSpreadsheet = ss.copy(name)");
+  const fallbackEnd = rowFormatDaily.indexOf('return "SpreadsheetFile:" + backupSpreadsheet.getId();', fallbackStart);
+  const fallbackBody = rowFormatDaily.slice(fallbackStart, fallbackEnd);
+  assert.match(fallbackBody, /assertLinkedRowFormatBackup_\(sheet, copiedSheet\)/);
+  assert.doesNotMatch(fallbackBody, /prunePreviousLinkedRowFormatBackups_/,
+    "외부 파일 우회 시 기존 정상 탭은 보존해야 한다");
   assert.ok(
     fullBody.indexOf("backupLinkedRowsBeforeFullFormat_(sheet)") <
       fullBody.indexOf("normalizeLinkedRowFormat_(sheet"),

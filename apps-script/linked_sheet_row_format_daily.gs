@@ -156,6 +156,67 @@ function normalizeNewLinkedRowsDaily() {
 }
 
 /**
+ * 서식 백업이 빈 껍데기가 아닌지 원본과 대조한다.
+ * 전체 셀을 읽어 실행 한도를 쓰지 않고, 그리드 크기와 앞/뒤 핵심 값·수식을 비교한다.
+ */
+function assertLinkedRowFormatBackup_(source, backup) {
+  var sourceLastRow = source.getLastRow();
+  var sourceLastColumn = source.getLastColumn();
+  if (backup.getLastRow() !== sourceLastRow ||
+      backup.getLastColumn() !== sourceLastColumn ||
+      backup.getMaxRows() !== source.getMaxRows() ||
+      backup.getMaxColumns() !== source.getMaxColumns()) {
+    throw new Error("서식 백업 검증 실패: 원본과 행·열 크기가 다릅니다.");
+  }
+
+  var sampleColumns = Math.min(LINKED_ROW_FORMAT_META_COLS_, sourceLastColumn);
+  var sampleRows = [1];
+  if (sourceLastRow >= LINKED_ROW_FORMAT_DATA_START_ROW_) {
+    sampleRows.push(LINKED_ROW_FORMAT_DATA_START_ROW_);
+  }
+  if (sourceLastRow > LINKED_ROW_FORMAT_DATA_START_ROW_) sampleRows.push(sourceLastRow);
+
+  for (var i = 0; i < sampleRows.length; i++) {
+    var row = sampleRows[i];
+    var sourceRange = source.getRange(row, 1, 1, sampleColumns);
+    var backupRange = backup.getRange(row, 1, 1, sampleColumns);
+    if (JSON.stringify(sourceRange.getDisplayValues()) !==
+        JSON.stringify(backupRange.getDisplayValues()) ||
+        JSON.stringify(sourceRange.getFormulasR1C1()) !==
+        JSON.stringify(backupRange.getFormulasR1C1())) {
+      throw new Error("서식 백업 검증 실패: " + row + "행 값·수식이 원본과 다릅니다.");
+    }
+  }
+}
+
+/**
+ * 검증이 끝난 새 서식 백업만 남기고 같은 접두사의 이전 탭을 정리한다.
+ * metric/duplicate/banner 등 데이터 복구용 백업은 이름이 달라 절대 대상이 아니다.
+ */
+function prunePreviousLinkedRowFormatBackups_(ss, keepSheetName) {
+  if (!keepSheetName || !ss.getSheetByName(keepSheetName)) {
+    throw new Error("서식 백업 정리 중단: 보존할 새 백업 탭을 찾지 못했습니다.");
+  }
+  var removed = [];
+  var sheets = ss.getSheets();
+  for (var i = 0; i < sheets.length; i++) {
+    var candidate = sheets[i];
+    var candidateName = candidate.getName();
+    if (candidateName !== keepSheetName &&
+        candidateName.indexOf(LINKED_ROW_FORMAT_BACKUP_PREFIX_) === 0) {
+      ss.deleteSheet(candidate);
+      removed.push(candidateName);
+    }
+  }
+  SpreadsheetApp.flush();
+  Logger.log("linked_row_format_backup_prune " + JSON.stringify({
+    kept: keepSheetName,
+    removed: removed
+  }));
+  return removed;
+}
+
+/**
  * 전체 1회 정리 직전 복구용 탭을 같은 스프레드시트 안에 만든다.
  * 원본 탭의 값·수식·서식·유효성을 통째로 보존하며, 일상 경로에서는 호출하지 않는다.
  */
@@ -173,16 +234,17 @@ function backupLinkedRowsBeforeFullFormat_(sheet) {
   var backup;
   try {
     backup = sheet.copyTo(ss);
-    backup.setName(name);
-    backup.hideSheet();
-    SpreadsheetApp.flush();
-    return name;
   } catch (copyError) {
     // 일부 시트 기능은 Sheet.copyTo를 거절하고, 누적된 백업 탭 때문에 같은 문서가
     // 1,000만 셀 한도에 닿을 수도 있다. 이 경우 추가 Drive 권한 없이 현재
     // Spreadsheet 권한으로 문서 전체를 별도 파일에 복제한다. 파일 복제가 성공하기
     // 전에는 서식 쓰기로 넘어가지 않는다.
     var backupSpreadsheet = ss.copy(name);
+    var copiedSheet = backupSpreadsheet.getSheetByName(sheet.getName());
+    if (!copiedSheet) {
+      throw new Error("외부 서식 백업 검증 실패: 원본 탭을 찾지 못했습니다.");
+    }
+    assertLinkedRowFormatBackup_(sheet, copiedSheet);
     Logger.log("linked_row_format_backup_fallback " + JSON.stringify({
       backupFile: name,
       backupFileId: backupSpreadsheet.getId(),
@@ -192,6 +254,12 @@ function backupLinkedRowsBeforeFullFormat_(sheet) {
     }));
     return "SpreadsheetFile:" + backupSpreadsheet.getId();
   }
+  backup.setName(name);
+  backup.hideSheet();
+  SpreadsheetApp.flush();
+  assertLinkedRowFormatBackup_(sheet, backup);
+  prunePreviousLinkedRowFormatBackups_(ss, name);
+  return name;
 }
 
 /**
