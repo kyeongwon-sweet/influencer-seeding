@@ -17,10 +17,21 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from audit_metric_contamination import (  # noqa: E402
+    audit_dates_with_baseline,
     detect_spike_freeze,
     detect_value_collisions,
     is_round_value,
 )
+
+
+def test_audit_window_includes_one_baseline_day():
+    query_days, audit_days = audit_dates_with_baseline(
+        __import__("datetime").date(2026, 9, 1), 14
+    )
+    assert query_days[0] == "2026-08-17"
+    assert audit_days[0] == "2026-08-18"
+    assert audit_days[-1] == "2026-08-31"
+    assert len(query_days) == len(audit_days) + 1
 
 
 def series(*pairs):
@@ -140,5 +151,5 @@ if __name__ == "__main__":
         if name.startswith("test_") and callable(fn):
             fn()
     print("[OK] test_audit_metric_contamination 통과 "
-          "(RuleA 7종: 사고재현/정상바이럴/완만증가/평탄/미세구간/동결길이/결측 + "
+          "(기간경계 1종 + RuleA 7종: 사고재현/정상바이럴/완만증가/평탄/미세구간/동결길이/결측 + "
           "RuleB 6종: 라운드/충돌/이력정합/단독/소값/한쪽만)")

@@ -33,6 +33,9 @@ import sys
 import urllib.parse
 import urllib.request
 
+if os.name == "nt" and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 NL = chr(10)
 
 ENV_PATHS = [
@@ -49,6 +52,21 @@ FREEZE_DAYS = int(os.environ.get("CONTAMINATION_FREEZE_DAYS", "3"))
 COLLISION_MIN_VALUE = int(os.environ.get("CONTAMINATION_MIN_VALUE", "10000"))
 COLLISION_JUMP_RATIO = int(os.environ.get("CONTAMINATION_JUMP_RATIO", "5"))
 ROUND_UNIT = 100
+
+
+def audit_dates_with_baseline(today: datetime.date, lookback_days: int):
+    """Return one baseline day plus the actual audit window.
+
+    Rule B needs the day immediately before the window. Without it, every post
+    observed on the first audit day looks like it has no history and ordinary
+    same-value crossings become false positives.
+    """
+    audit_days = [
+        (today - datetime.timedelta(days=i)).isoformat()
+        for i in range(lookback_days, 0, -1)
+    ]
+    baseline = (today - datetime.timedelta(days=lookback_days + 1)).isoformat()
+    return [baseline] + audit_days, audit_days
 
 
 def load_env() -> dict:
@@ -185,14 +203,13 @@ def main() -> int:
 
     now_kst = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=9)
     today = now_kst.date()
-    days = [(today - datetime.timedelta(days=i)).isoformat()
-            for i in range(LOOKBACK_DAYS, 0, -1)]
+    query_days, days = audit_dates_with_baseline(today, LOOKBACK_DAYS)
 
     posts = _fetch(url, key, "sponsored_posts", {
         "select": "id,account_name,channel_type,url,posted_at,ended_at", "order": "id.asc"})
     by_id = {p["id"]: p for p in posts}
     by_day: dict[str, dict] = {}
-    for day in days:
+    for day in query_days:
         by_day[day] = {r["post_id"]: r.get("play_count") for r in _fetch(
             url, key, "post_daily_stats",
             {"select": "post_id,play_count", "measured_at": "eq." + day, "order": "id.asc"})}
@@ -220,7 +237,11 @@ def main() -> int:
         }
 
     # Rule B — 값 충돌
-    prev_by_post: dict[str, int] = {}
+    baseline_day = query_days[0]
+    prev_by_post: dict[str, int] = {
+        pid: value for pid, value in by_day[baseline_day].items()
+        if isinstance(value, int)
+    }
     for day in days:
         collisions = detect_value_collisions(by_day[day], prev_by_post)
         for c in collisions:
