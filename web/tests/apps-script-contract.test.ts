@@ -31,6 +31,10 @@ const appsScriptDeploy = readFileSync(
   new URL("../../scripts/prepare_apps_script_deploy.mjs", import.meta.url),
   "utf8",
 );
+const missingDateHeaderRepair = readFileSync(
+  new URL("../../apps-script/repair_missing_date_header_20260901.gs", import.meta.url),
+  "utf8",
+);
 
 test("daily row-format normalizer never writes values or formulas", () => {
   // 2026-08-06 사고: "서식만 바꾸니 안전"이라 판단한 대량 쓰기가 H열 1,765행을 손상시켰다.
@@ -96,6 +100,20 @@ test("dailyAuto runs the row-format normalizer last", () => {
 test("guarded clasp deploy includes the daily row-format file", () => {
   assert.match(appsScriptDeploy, /linked_sheet_row_format_daily\.gs/);
   assert.match(appsScriptDeploy, /linked_sheet_row_format_daily\.js/);
+});
+
+test("DS1 date-header repair is one-cell, backed up, and formula-safe", () => {
+  assert.match(appsScriptDeploy, /repair_missing_date_header_20260901\.gs/);
+  assert.match(missingDateHeaderRepair, /DS_HEADER_REPAIR_PREV_A1_ = "DR1"/);
+  assert.match(missingDateHeaderRepair, /DS_HEADER_REPAIR_TARGET_A1_ = "DS1"/);
+  assert.match(missingDateHeaderRepair, /2026-08-31/);
+  assert.match(missingDateHeaderRepair, /2026-09-01/);
+  assert.match(missingDateHeaderRepair, /\^9\\\.1\\\.\?\$\/\.test\(targetDisplayCompact\)/);
+  assert.match(missingDateHeaderRepair, /dsHeaderRepairBackup_\(sheet, before\)/);
+  assert.match(missingDateHeaderRepair, /target\.setValue\(targetDate\)/);
+  assert.doesNotMatch(missingDateHeaderRepair, /getRange\("H3"\)\.set/);
+  assert.doesNotMatch(missingDateHeaderRepair, /getRange\("I3"\)\.set/);
+  assert.doesNotMatch(missingDateHeaderRepair, /refreshCumulativeViews|repairStaleMetricFormulaRanges_/);
 });
 
 test("one-time full row-format creates a hidden sheet backup before formatting", () => {
