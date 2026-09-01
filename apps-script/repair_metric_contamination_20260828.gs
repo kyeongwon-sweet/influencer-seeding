@@ -11,7 +11,7 @@
 
 const METRIC_REPAIR_20260828_PREV_DATE_ = "2026-08-26";
 const METRIC_REPAIR_20260828_TARGET_DATE_ = "2026-08-27";
-const METRIC_REPAIR_20260828_BACKUP_SHEET_ = "_codex_metric_0827_backup_20260828";
+const METRIC_REPAIR_20260828_BACKUP_SHEET_ = "_codex_metric_0828_30_backup_20260901";
 const METRIC_REPAIR_20260828_DB_CONFIRM_ = "repair-2026-08-27-metric-contamination";
 const METRIC_REPAIR_20260828_EXPLICIT_ = {
   "tt:7677553177486478599": {
@@ -25,6 +25,9 @@ const METRIC_REPAIR_20260828_EXPLICIT_ = {
   "ig:Db5fNo6k6bI": {
     "2026-08-26": [466637],
     "2026-08-27": [633000, 633374],
+    "2026-08-28": [633000, 633374],
+    "2026-08-29": [633000, 633374],
+    "2026-08-30": [633000, 633374],
   },
 };
 
@@ -91,6 +94,21 @@ function metricRepair20260828Candidates_() {
   const urls = sheet.getRange(CONFIG.DATA_START_ROW, urlCol, rowCount, 1).getValues();
   const previous = sheet.getRange(CONFIG.DATA_START_ROW, previousCol.col, rowCount, 1).getValues();
   const target = sheet.getRange(CONFIG.DATA_START_ROW, targetCol.col, rowCount, 1).getValues();
+  const dateByName = {};
+  dates.forEach(function(item) { dateByName[item.date] = item; });
+  const explicitDates = {};
+  Object.keys(METRIC_REPAIR_20260828_EXPLICIT_).forEach(function(key) {
+    Object.keys(METRIC_REPAIR_20260828_EXPLICIT_[key]).forEach(function(date) { explicitDates[date] = true; });
+  });
+  const explicitValues = {};
+  Object.keys(explicitDates).forEach(function(date) {
+    const item = dateByName[date];
+    if (!item) throw new Error(date + " 날짜 열을 찾지 못했습니다.");
+    explicitValues[date] = {
+      col: item.col,
+      values: sheet.getRange(CONFIG.DATA_START_ROW, item.col, rowCount, 1).getValues(),
+    };
+  });
   const expectedByKey = metricRepair20260828ExpectedByKey_();
   const editsByA1 = {};
 
@@ -122,14 +140,13 @@ function metricRepair20260828Candidates_() {
       add(row, targetCol.col, METRIC_REPAIR_20260828_TARGET_DATE_, key, url, targetValue,
         "carry_forward_differs_from_db", expected[METRIC_REPAIR_20260828_TARGET_DATE_]);
     }
-    if (shouldClear20260828Explicit_(key, METRIC_REPAIR_20260828_PREV_DATE_, previousValue)) {
-      add(row, previousCol.col, METRIC_REPAIR_20260828_PREV_DATE_, key, url, previousValue,
-        "known_cross_post_contamination", expected[METRIC_REPAIR_20260828_PREV_DATE_]);
-    }
-    if (shouldClear20260828Explicit_(key, METRIC_REPAIR_20260828_TARGET_DATE_, targetValue)) {
-      add(row, targetCol.col, METRIC_REPAIR_20260828_TARGET_DATE_, key, url, targetValue,
-        "known_cross_post_contamination", expected[METRIC_REPAIR_20260828_TARGET_DATE_]);
-    }
+    Object.keys(explicitValues).forEach(function(date) {
+      const item = explicitValues[date];
+      const value = item.values[i][0];
+      if (!shouldClear20260828Explicit_(key, date, value)) return;
+      add(row, item.col, date, key, url, value,
+        "known_cross_post_contamination", expected[date]);
+    });
   }
 
   return {

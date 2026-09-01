@@ -35,6 +35,9 @@ test("known cross-post contamination is scoped to exact keys, dates, and values"
   assert.equal(shouldExplicit("tt:7677553177486478599", "2026-08-27", "633,000"), true);
   assert.equal(shouldExplicit("ig:Db5iVQYhJT5", "2026-08-26", 466_637), true);
   assert.equal(shouldExplicit("ig:Db5fNo6k6bI", "2026-08-27", 633_374), true);
+  assert.equal(shouldExplicit("ig:Db5fNo6k6bI", "2026-08-28", 633_000), true);
+  assert.equal(shouldExplicit("ig:Db5fNo6k6bI", "2026-08-29", 633_000), true);
+  assert.equal(shouldExplicit("ig:Db5fNo6k6bI", "2026-08-30", 633_000), true);
   assert.equal(shouldExplicit("ig:DcfkdB4PdEq", "2026-08-27", 633_374), false, "real Meokrini metric is never cleared");
   assert.equal(shouldExplicit("ig:Db5fNo6k6bI", "2026-08-27", 816), false);
 });
@@ -55,5 +58,6 @@ test("repair applies backup-before-clear and rehydrates only through exportStats
   assert.match(source, /function auditMetricContaminationDb20260828\(\)/);
   assert.match(source, /method: apply \? "post" : "get"/);
   assert.match(source, /assertRowCountStable_\(scan\.sheet, scan\.lastRow\)/);
+  assert.match(source, /Object\.keys\(explicitValues\)\.forEach/);
   assert.doesNotMatch(source, /importStats\(/);
 });

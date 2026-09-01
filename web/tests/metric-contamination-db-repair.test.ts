@@ -12,6 +12,9 @@ test("metric contamination repair is exact-key, exact-date, and exact-value guar
   assert.match(source, /ig:Db5iVQYhJT5.*2026-08-26.*play_count.*466637/);
   assert.match(source, /ig:Db5fNo6k6bI.*2026-08-26.*reach_count.*466637/);
   assert.match(source, /ig:Db5fNo6k6bI.*2026-08-27.*reach_count.*633000, 633374/);
+  assert.match(source, /ig:Db5fNo6k6bI.*2026-08-28.*reach_count.*633000, 633374/);
+  assert.match(source, /ig:Db5fNo6k6bI.*2026-08-29.*reach_count.*633000, 633374/);
+  assert.match(source, /ig:Db5fNo6k6bI.*2026-08-30.*reach_count.*633000, 633374/);
   assert.match(source, /tt:7677553177486478599.*2026-08-27.*play_count.*633000, 633374/);
   assert.match(source, /\.eq\(row\.field, row\.value as number\)/);
 });

@@ -14,6 +14,9 @@ const TARGETS: Array<{
   { normalizedKey: "ig:Db5iVQYhJT5", measuredAt: "2026-08-26", field: "play_count", contaminatedValues: [466637] },
   { normalizedKey: "ig:Db5fNo6k6bI", measuredAt: "2026-08-26", field: "reach_count", contaminatedValues: [466637] },
   { normalizedKey: "ig:Db5fNo6k6bI", measuredAt: "2026-08-27", field: "reach_count", contaminatedValues: [633000, 633374] },
+  { normalizedKey: "ig:Db5fNo6k6bI", measuredAt: "2026-08-28", field: "reach_count", contaminatedValues: [633000, 633374] },
+  { normalizedKey: "ig:Db5fNo6k6bI", measuredAt: "2026-08-29", field: "reach_count", contaminatedValues: [633000, 633374] },
+  { normalizedKey: "ig:Db5fNo6k6bI", measuredAt: "2026-08-30", field: "reach_count", contaminatedValues: [633000, 633374] },
   { normalizedKey: "tt:7677553177486478599", measuredAt: "2026-08-26", field: "play_count", contaminatedValues: [466637] },
   { normalizedKey: "tt:7677553177486478599", measuredAt: "2026-08-27", field: "play_count", contaminatedValues: [633000, 633374] },
 ];
