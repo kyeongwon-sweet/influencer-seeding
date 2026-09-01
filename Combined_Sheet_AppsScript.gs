@@ -2922,6 +2922,13 @@ function checkDuplicates() {
   }
 }
 
+// 메뉴의 "빈칸 · 중복 URL 검사" 진입점.
+// 두 검사를 순서대로 실행해 기존 상세 결과창을 그대로 재사용한다.
+function checkSheetIssues() {
+  checkBlanks();
+  checkDuplicates();
+}
+
 // ═══════════════════════════════════════════════════════════════
 // 자동 트리거 (매일 8:30, dailyAuto 실행: syncAll → syncPricing → importStats → exportStats)
 // DB→시트 pullFromDB는 3시간 독립 트리거로 실행한다.

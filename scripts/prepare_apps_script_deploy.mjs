@@ -17,6 +17,7 @@ const deployFiles = [
   [join("apps-script", "repair_asset_name_pollution_20260813.gs"), "repair_asset_name_pollution_20260813.js"],
   [join("apps-script", "repair_metric_contamination_20260828.gs"), "repair_metric_contamination_20260828.js"],
   [join("apps-script", "repair_banner_reach_20260901.gs"), "repair_banner_reach_20260901.js"],
+  [join("apps-script", "repair_issue_tiktok_duplicate_20260901.gs"), "repair_issue_tiktok_duplicate_20260901.js"],
   [join("apps-script", "appsscript.json"), "appsscript.json"],
 ];
 

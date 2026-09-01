@@ -43,6 +43,14 @@ test("Apps Script mirror keeps live metadata and URL guards", () => {
   );
 });
 
+test("sheet issue menu target runs both blank and duplicate checks", () => {
+  assert.match(appsScript, /\.addItem\("빈칸 · 중복 URL 검사",\s*"checkSheetIssues"\)/);
+  assert.match(
+    appsScript,
+    /function checkSheetIssues\(\) \{\s*checkBlanks\(\);\s*checkDuplicates\(\);\s*\}/,
+  );
+});
+
 test("asset-name repair is URL-keyed, backed up and guarded on edit", () => {
   assert.match(appsScript, /sanitizeAssetNameOnEdit_\(e, sheet\)/);
   assert.match(assetPollutionRepair, /ASSET_POLLUTION_RE_/);
