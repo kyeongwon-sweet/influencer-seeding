@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## ✅ 2026-09-01 [Codex 완료·라이브] 8282__humor 08-30 배너 도달수 31,186 시트→DB 정합
+- **재진단:** `ig:Dbx04ORkiHK`의 DB 08-09~30 reach가 다시 29,133(`manual=true`)이어서, 앞선 DB 단독 31,186 정정이 시트 수기값에 의해 되덮인 것을 확인했다. 배너 reach는 `importStats`가 아니라 `banner-reach-sync`가 **시트→DB**로 쓰며, `exportStats`는 기존 수기셀을 보존하므로 DB 선행 정정만으로는 유지되지 않는다.
+- **쓰기 전 감사:** URL-key 유일행은 현재 **212행**, 08-30 셀 `DQ212=29,133`, `H212=29,133`, H 수식 `=IF(COUNT(P212:DR212)=0,"",MAX(P212:DR212))`. 행 전체에 35,289 또는 31,186보다 큰 값은 0건이었다.
+- **수리:** main `da83dfb`의 단일셀 수리 함수를 guarded clasp로 배포하고 fresh pull **7/7 source exact match** 확인. 숨김 백업 `_codex_banner_31186_backup_20260901`을 만든 뒤 **DQ212만 31,186**으로 변경했다. H셀은 쓰지 않았고 동일 수식으로 자동 재계산돼 **H212=31,186**이 됐다.
+- **배너 전용 동기화:** dry-run [33473486676](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/33473486676) 성공 후 실제 [33473523743](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/33473523743) 성공(`upserted=12,842`, HTTP 200). 인증 API에서 DB 08-30 `reach_count=31,186`, `manual=true`를 확인했다.
+- **사후감사:** 시트 `DQ212=31,186`, `H212=31,186`, H 수식 보존, `35,289`·31,186 초과값 0. 이전 날짜 08-09~29의 29,133 **21칸은 사용자 지시가 08-30 단일 날짜셀 정정이므로 보존**했고, 현재 누적/H 및 08-30에는 구값 29,133·35,289가 남지 않았다. 행2288 오홀 듬뿍바는 무접촉.
+- **검증:** Apps Script 구문·staged deploy·fresh pull 검증, web 계약 테스트 **367/367** 통과.
+
 ## ✅ 2026-09-01 [Codex 완료·라이브] 연동시트 일별값 출처기반 동기화 + 오염잔재 전수 정리
 - **근본정책:** `stats-for-sheet`가 일별 metric과 `manual` 출처를 함께 반환한다. `exportStats`는 `manual=false` 자동 DB값이면 기존 날짜셀도 정확한 DB값으로 교체하고, `manual=true`는 기존 시트값을 보존한다. 배너는 조회수가 아니라 `reach_count`, 그 외는 `play_count`를 쓴다. DB 근거가 없는 carry-forward 생성은 완전히 제거했다. 구버전 서버가 출처를 안 주면 `manual=true`로 간주하는 fail-safe다.
 - **전수감사·보수적 정리:** URL key가 유일한 행만 대상으로 날짜열 전체를 DB와 대조했다. ① 자동 DB값 불일치 `429칸` 교체 ② 빈 시트에 존재하는 자동 DB값 `24칸` 채움 ③ 직전 자동 DB값에서 시작해 같은 값으로 연속 복사된 것이 증명된 carry `2,184칸` 비움 = **총 2,637칸**. 종료일 뒤에도 같은 자동 복사 연쇄는 잡되, 종료 후 DB행을 시트에 다시 채우지는 않는다.
