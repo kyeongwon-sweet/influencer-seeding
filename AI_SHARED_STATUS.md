@@ -6,6 +6,15 @@
 
 # AI Shared Status
 
+## ✅ 2026-09-01 [Codex 완료·라이브] 8/27 carry-forward + 교차오염 전량 정리
+- **승인 범위:** 2026-08-27 최신열 carry-forward 정체칸과 먹리니 값이 유입된 `486__humor`·`nato.funny`·썰박스 교차오염만 정리. 값 생성·추정 없이 DB 원본으로 `exportStats` 재역채움.
+- **1차 실측:** 시트 후보 **799칸**(`carry_forward=796`, `explicit=3`)을 백업 `_codex_metric_0827_backup_20260828` 후 비웠다. DB 보호 라우트는 정확한 오염값 3필드만 `NULL`로 정정했고, 다른 유효값은 `preserved_valid`로 보존했다. Vercel `dpl_7S1H962iGyn7jB9jP5ZnnbQdPLM2`, 커밋 `517276e`.
+- **추가 전파 발견·정리:** 인증 API 재조회에서 `nato.funny`의 잘못된 도달수 **633,000**이 08-28·29·30에도 이어진 것을 확인. 정확한 3개 날짜/필드/값 가드만 추가(`c7339d9`), Vercel `dpl_4gN9wywtnybFvhMmNJs53br7vzhC`. 백업 `_codex_metric_0828_30_backup_20260901`, DB **3필드** 정정, 시트 `DO382/DP382/DQ382` 공백 확인.
+- **재역채움 재유입까지 마감:** 두 번째 `exportStats`가 앞서 비운 08-27 carry 309칸을 다시 만들었음을 사후감사로 즉시 탐지했다. 반복 실행 시 기존 백업을 덮지 않고 숫자 suffix로 새 백업을 만드는 보강 `6965db9`를 guarded clasp로 배포했다. `_codex_metric_0828_30_backup_20260901_2`에 **309칸**을 추가 백업하고, export 후 같은 309칸을 최종 공백으로 다시 고정했다. DB 재수정은 0건(이미 clean).
+- **최종 감사:** Apps Script 시트 dry-run `candidates=0 / carry_forward=0 / explicit=0`. DB 보호 감사도 모든 대상 `already_clean`(썰박스 보고 key는 DB에 없어 `missing_post`, 기존 정상 게시물 무접촉).
+- **최종 3곳 값:** 인증 API + 대시보드 전체 새로고침 기준 `nato.funny` **53,217**, `486__humor`(`ig:Db5iVQYhJT5`) **31,717**, 썰박스 대상 **816**. 최초 화면 캐시에 남은 633,000은 전체 새로고침 뒤 사라졌고 API 원본과 일치했다.
+- **검증:** web 전체 **360/360**, `tsc --noEmit`, production build, Apps Script 집중 테스트 3/3·구문검사, guarded clasp push→fresh pull source exact match. 임시 인증 파일 `scratchpad/.env.repair-read.local`은 확인 후 삭제했다.
+
 ## 🔕 2026-09-01 [Claude 완료] 리포트 발송보류 공지 도배 방지 + presend unpack 버그 수정
 - **사건(8/29 새벽 발생, 9/1 처리):** #빙과_마케팅_리포트에 "리포트 발송 보류 — DB↔시트 동기화 검수 실패 (2026-08-28)" 공지가 **4번 도배**(00:29·01:42·02:29·03:50). 수집 지연으로 이른 백업크론이 "측정 103<중위 50%"로 **정당 차단**했으나 매 재시도마다 팀 채널에 발송. **8/28 리포트는 12:35 정상 발송**(+876,353), 지금 1137건 정상 — 데이터 문제 아님.
 - **버그 확정:** 공지 속 "not enough values to unpack (expected 2, got 0) / 연동시트 조회 실패"는 **오표기**. 실제는 `presend_sync_audit._stat_mismatches`가 **시트에 target 날짜열이 아직 없을 때**(이른 실행=exportStats 전) `return []`(단일)로 반환 → 호출부 `mism, behind = ...` unpack 크래시 → except가 "시트 조회 실패"로 잘못 표기. 시트조회는 정상이었음. → **`return [], []`로 수정**.
