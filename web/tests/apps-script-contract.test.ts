@@ -39,6 +39,10 @@ const duplicateAudit = readFileSync(
   new URL("../../apps-script/linked_sheet_duplicate_audit_20260901.gs", import.meta.url),
   "utf8",
 );
+const duplicateRepair = readFileSync(
+  new URL("../../apps-script/repair_duplicate_rows_20260901.gs", import.meta.url),
+  "utf8",
+);
 
 test("daily row-format normalizer never writes values or formulas", () => {
   // 2026-08-06 사고: "서식만 바꾸니 안전"이라 판단한 대량 쓰기가 H열 1,765행을 손상시켰다.
@@ -102,6 +106,16 @@ test("duplicate audit is read-only and includes sheet plus DB evidence", () => {
   for (const forbidden of ["deleteRow(", "deleteRows(", "setValue(", "setValues(", "clearContent("]) {
     assert.ok(!duplicateAudit.includes(forbidden), `중복 감사가 쓰기를 포함함: ${forbidden}`);
   }
+});
+
+test("duplicate repair is target-specific, backed up, and deletes bottom-up", () => {
+  assert.match(appsScriptDeploy, /repair_duplicate_rows_20260901\.gs/);
+  assert.match(duplicateRepair, /auditDuplicateRepairPlan20260901/);
+  assert.match(duplicateRepair, /copyTo\(ss\)\.setName\(backupName\)/);
+  assert.match(duplicateRepair, /sort\(function \(a, b\) \{ return b - a; \}\)/);
+  assert.match(duplicateRepair, /plan\.sheet\.deleteRow\(row\)/);
+  assert.match(duplicateRepair, /remainingDuplicates: 0/);
+  assert.doesNotMatch(duplicateRepair, /deleteRows\(/);
 });
 
 test("data rows are unbolded while the header keeps its bold", () => {
@@ -419,6 +433,15 @@ test("exportStats preserves final DB metric in blank cumulative cells for ended 
   assert.match(body, /cumOut\[i\]\[0\] = finalMetric/);
   assert.match(body, /트래킹 종료글 H열 빈칸/);
   assert.match(body, /DB 조회수\/도달수 이력이 없는 행/);
+});
+
+test("exportStats creates new date headers as real dates with the canonical display format", () => {
+  const start = appsScript.indexOf("function exportStats()");
+  const end = appsScript.indexOf("// ═══════════════════════════════════════════════════════════════\n// 일자별 조회수 입력", start);
+  const body = appsScript.slice(start, end);
+  assert.match(body, /Utilities\.parseDate\(d, Session\.getScriptTimeZone\(\), "yyyy-MM-dd"\)/);
+  assert.match(body, /\.setValues\(\[headerRow\]\)\s*\.setNumberFormat\("yyyy\. m\. d\."\)/);
+  assert.doesNotMatch(body, /const headerRow = newDates\.map\(d => \{ const p = d\.split/);
 });
 
 test("importStats client_version handshake stays paired with server expectation", () => {

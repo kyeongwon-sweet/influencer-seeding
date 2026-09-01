@@ -41,6 +41,7 @@ function auditLinkedSheetDuplicates20260901() {
 
   var duplicateKeys = Object.keys(byKey).filter(function (key) { return byKey[key].length > 1; });
   var dbByKey = {};
+  var dbMetaByKey = {};
   if (duplicateKeys.length) {
     var wanted = {};
     duplicateKeys.forEach(function (key) { wanted[key] = true; });
@@ -55,12 +56,37 @@ function auditLinkedSheetDuplicates20260901() {
         last: stats.length ? stats[stats.length - 1] : null
       };
     });
+    var metaResponse = UrlFetchApp.fetch(CONFIG.LIST_API_URL, {
+      method: "get",
+      headers: authHeaders_(),
+      muteHttpExceptions: true
+    });
+    if (metaResponse.getResponseCode() !== 200) {
+      throw new Error("list-for-sheet API " + metaResponse.getResponseCode() + ": " + metaResponse.getContentText());
+    }
+    ((JSON.parse(metaResponse.getContentText()).posts) || []).forEach(function (post) {
+      var key = linkKey_(String(post.url || ""));
+      if (!wanted[key]) return;
+      dbMetaByKey[key] = {
+        url: post.url || "",
+        posted_at: post.posted_at || null,
+        account: post.account_name || "",
+        company: post.company_name || "",
+        caption: post.content_summary || "",
+        asset_name: post.asset_name || "",
+        channel_type: post.channel_type || "",
+        product: post.product_name || "",
+        cost: post.cost == null ? null : post.cost,
+        ended_at: post.ended_at || null
+      };
+    });
   }
 
   var groups = duplicateKeys.map(function (key) {
     return {
       key: key,
       db: dbByKey[key] || null,
+      dbMeta: dbMetaByKey[key] || null,
       rows: byKey[key].map(function (i) {
         var row = values[i];
         var display = displays[i];
@@ -107,6 +133,36 @@ function auditLinkedSheetDuplicates20260901() {
     duplicateExtraRows: groups.reduce(function (sum, group) { return sum + group.rows.length - 1; }, 0),
     groups: groups
   };
+  groups.forEach(function (group, index) {
+    Logger.log("linked_sheet_duplicate_group " + JSON.stringify({
+      index: index + 1,
+      total: groups.length,
+      key: group.key,
+      db: group.db,
+      dbMeta: group.dbMeta,
+      rows: group.rows.map(function (row) {
+        return {
+          row: row.row,
+          posted_at: row.posted_at,
+          url: row.url,
+          account: row.account,
+          channel_type: row.channel_type,
+          asset_name: row.asset_name,
+          product: row.product,
+          cost: row.cost,
+          planner: row.planner,
+          creator: row.creator,
+          caption: row.caption,
+          company: row.company,
+          status: row.status,
+          filledCells: row.filledCells,
+          metricCellCount: row.metricCellCount,
+          firstMetric: row.firstMetric,
+          lastMetric: row.lastMetric
+        };
+      })
+    }));
+  });
   Logger.log("linked_sheet_duplicate_audit " + JSON.stringify(result));
   return result;
 }

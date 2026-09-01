@@ -2320,8 +2320,14 @@ function exportStatsWithOptions_(options) {
     if (newDates.length) {
       const anchor = dateCols.length ? dateCols[dateCols.length - 1].col : sheet.getLastColumn();
       sheet.insertColumnsAfter(anchor, newDates.length);
-      const headerRow = newDates.map(d => { const p = d.split("-"); return `${+p[1]}.${+p[2]}`; }); // "2026-07-08" → "7.8"
-      sheet.getRange(CONFIG.HEADER_ROW, anchor + 1, 1, newDates.length).setValues([headerRow]);
+      // `M.D` 문자열은 Sheets가 9.1 같은 소수로 강제 변환할 수 있다. Apps Script 파서는
+      // 이를 읽어도 웹 수식감사는 숫자를 날짜 직렬값으로 판정해 최신 열을 놓쳤고,
+      // H/I 수식만 한 열 앞서 sheet_snapshot_not_ready(503)가 반복됐다(2026-09-01).
+      // 처음부터 실제 날짜값 + 통일 표시형식으로 써 두 경로가 같은 열을 보게 한다.
+      const headerRow = newDates.map(d => Utilities.parseDate(d, Session.getScriptTimeZone(), "yyyy-MM-dd"));
+      sheet.getRange(CONFIG.HEADER_ROW, anchor + 1, 1, newDates.length)
+        .setValues([headerRow])
+        .setNumberFormat("yyyy. m. d.");
       newDates.forEach((d, i) => dateCols.push({ col: anchor + 1 + i, date: d }));
       addedCols = newDates.length;
     }
