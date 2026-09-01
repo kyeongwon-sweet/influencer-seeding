@@ -6,6 +6,13 @@
 
 # AI Shared Status
 
+## ✅ 2026-09-01 [Claude 완료·DB] 무상시딩 twentyfifty_ena 조회수 오염 1행 삭제
+- **증상(사용자):** 무상시딩 게시물 `p/DcfLIInTFAV/`(twentyfifty_ena·무디·JD멜) 대시보드 조회수 65,500인데 실제 700대.
+- **진단:** post_daily_stats 이력 658→706→717→727→**65,500(08-30)**→**745(08-31)**. 누적이 65,500→745로 떨어짐=불가능 → 08-30 값 오염(수집기 이상치). mono(표시 최대)가 65,500 유지, 도달수 52,400=×0.8 파생.
+- **실측:** Apify 재스크레이프 videoPlayCount=**746** → DB 745와 일치, 65,500 오염 확정.
+- **조치:** 08-30 오염행만 삭제(post_id+measured_at+play_count=65500 3중 가드, 1행). 백업 `scratchpad/contaminated_DcfLIInTFAV_0830_backup.json`. 실측없는 08-30은 비워둠(값 조작 안 함). 이력·mono 745로 정상화.
+- **범위:** 08-30 전체 스캔 → 동일 스파이크-급락 오염 **다른 건 0** (단발성). 조회수·posted_at·수식 외 무변경.
+
 ## ✅ 2026-08-28 [Codex 완료·라이브] 최신 날짜 carry-forward 차단 + importStats 수집완료 게이트 (`e5d9028`)
 - **근본수정:** `exportStats`가 가장 최신 과거 날짜열에는 직전 누적값을 이어받지 않는다. 수집값이 아직 안 온 상태와 실제 결측을 구분할 수 없는 최신 열은 빈칸으로 두고, carry는 뒤 날짜가 존재하는 내부 구간에만 허용한다.
 - **DB 역유입 차단:** `dailyAuto`의 `importStats`도 `/api/ops/collection-status` 완료 뒤에만 실행한다. 수집 미완료·상태조회 실패면 import를 생략하고 기존 export 15분 반복 게이트가 수집 완료를 확인한 뒤 **import → export** 순서로 복구한다. 같은 대상일 import 성공 상태는 Script Properties로 기록해 중복 upsert를 피하며, import 실패는 `IMPORT_ERROR`로 남긴다.
