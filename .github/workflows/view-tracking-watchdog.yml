@@ -1,0 +1,46 @@
+name: View Tracking Watchdog
+
+# 수집 사각(silent blind spot) 결과 워치독.
+# 활성인데 게시 N일+ 지나도 post_daily_stats 0행(한 번도 수집 안 됨)인 조회수형 게시물을
+# 매일 잡아 Slack(#빙과_마케팅_스틱바p, C0B659HEYDV)으로 알린다.
+#
+# 배경(2026-09-01): 25.5_mag /reel/DclKlzuJof6/(조회수 104,120)가 늦게·틀린 날짜로 등록돼
+#   daily collect·retry 큐 양쪽에서 빠져 stats 0행으로 방치됐다. 개별 큐 버그를 좇는 대신
+#   '결과가 비어 있음'을 직접 감시한다(결과 워치독). 읽기 전용 — DB/시트 변경 없음.
+#
+# ⚠️ 필요한 GitHub Secret: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, INJIBOT_SLACK_TOKEN.
+on:
+  schedule:
+    - cron: "10 22 * * *"   # 07:10 KST (자정수집 + retry 이후)
+  workflow_dispatch:
+
+concurrency:
+  group: view-tracking-watchdog
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run view-tracking watchdog
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          INJIBOT_SLACK_TOKEN: ${{ secrets.INJIBOT_SLACK_TOKEN }}
+          PYTHONUTF8: "1"
+          TZ: "Asia/Seoul"
+        run: python scripts/view_tracking_watchdog.py --send --out "$RUNNER_TEMP/view_watchdog.json"
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: view-watchdog-result
+          path: ${{ runner.temp }}/view_watchdog.json
+          if-no-files-found: ignore
