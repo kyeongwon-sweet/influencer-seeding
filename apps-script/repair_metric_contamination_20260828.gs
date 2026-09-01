@@ -158,25 +158,42 @@ function metricRepair20260828Backup_(sheet, edits) {
   return backup.getName();
 }
 
-function repairMetricContaminationDb20260828_() {
+function metricContaminationDbRepairUrl20260828_() {
   const url = String(CONFIG.STATS_EXPORT_API_URL || "")
     .replace(/\/api\/sponsored-posts\/stats-for-sheet(?:\?.*)?$/, "/api/ops/repair-metric-contamination");
   if (!/\/api\/ops\/repair-metric-contamination$/.test(url)) {
     throw new Error("DB 오염 복구 API URL을 만들지 못했습니다.");
   }
-  const response = UrlFetchApp.fetch(url, {
-    method: "post",
+  return url;
+}
+
+function requestMetricContaminationDbRepair20260828_(apply) {
+  const options = {
+    method: apply ? "post" : "get",
     headers: authHeaders_(),
-    contentType: "application/json",
-    payload: JSON.stringify({ confirm: METRIC_REPAIR_20260828_DB_CONFIRM_ }),
     muteHttpExceptions: true,
-  });
+  };
+  if (apply) {
+    options.contentType = "application/json";
+    options.payload = JSON.stringify({ confirm: METRIC_REPAIR_20260828_DB_CONFIRM_ });
+  }
+  const response = UrlFetchApp.fetch(metricContaminationDbRepairUrl20260828_(), options);
   const code = response.getResponseCode();
   const body = JSON.parse(response.getContentText() || "{}");
-  if (code !== 200 || body.ok !== true) {
+  if (code !== 200 || (apply && body.ok !== true)) {
     throw new Error("DB 오염 복구 실패 API " + code + ": " + JSON.stringify(body));
   }
   return body;
+}
+
+function auditMetricContaminationDb20260828() {
+  const result = requestMetricContaminationDbRepair20260828_(false);
+  Logger.log("metric_contamination_db_audit " + JSON.stringify(result));
+  return result;
+}
+
+function repairMetricContaminationDb20260828_() {
+  return requestMetricContaminationDbRepair20260828_(true);
 }
 
 function runMetricRepair20260828_(apply) {

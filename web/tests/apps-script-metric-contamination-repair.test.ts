@@ -52,6 +52,8 @@ test("repair applies backup-before-clear and rehydrates only through exportStats
   assert.ok(preserveBlankIndex > exportIndex && verifyIndex > preserveBlankIndex);
   assert.match(source, /post_export_blank_preserved/);
   assert.match(source, /expectedValue == null\) return actualValue !== ""/);
+  assert.match(source, /function auditMetricContaminationDb20260828\(\)/);
+  assert.match(source, /method: apply \? "post" : "get"/);
   assert.match(source, /assertRowCountStable_\(scan\.sheet, scan\.lastRow\)/);
   assert.doesNotMatch(source, /importStats\(/);
 });
