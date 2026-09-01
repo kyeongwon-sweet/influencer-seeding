@@ -34,6 +34,7 @@ function loadDailySyncDecision() {
     previousSheet: unknown,
     previousExpected: unknown,
     previousManual: boolean | null,
+    previousWasProvenCarry?: boolean,
   ) => { action: string; reason: string };
 }
 
@@ -70,6 +71,7 @@ test("daily sheet sync repairs automatic DB truth but preserves manual and ambig
   assert.deepEqual(decide(999, 123, true, null, null, null), { action: "none", reason: "manual_preserved" });
   assert.deepEqual(decide(123, 123, false, null, null, null), { action: "none", reason: "same" });
   assert.deepEqual(decide(123, null, null, 123, 123, false), { action: "clear", reason: "proven_carry" });
+  assert.deepEqual(decide(123, null, null, 123, null, null, true), { action: "clear", reason: "proven_carry" });
   assert.deepEqual(decide(123, null, null, 123, 123, true), { action: "none", reason: "sheet_only_unproven" });
   assert.deepEqual(decide(123, null, null, 120, 120, false), { action: "none", reason: "sheet_only_unproven" });
 });

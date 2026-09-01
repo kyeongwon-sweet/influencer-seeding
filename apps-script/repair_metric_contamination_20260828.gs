@@ -71,7 +71,7 @@ function shouldClear20260828Explicit_(key, date, value) {
 }
 
 function dailyMetricSyncDecision20260901_(sheetValue, expectedValue, expectedManual,
-    previousSheetValue, previousExpectedValue, previousExpectedManual) {
+    previousSheetValue, previousExpectedValue, previousExpectedManual, previousWasProvenCarry) {
   const current = metricRepairNumber_(sheetValue);
   const expected = metricRepairNumber_(expectedValue);
   if (expected > 0) {
@@ -83,7 +83,8 @@ function dailyMetricSyncDecision20260901_(sheetValue, expectedValue, expectedMan
 
   const previousSheet = metricRepairNumber_(previousSheetValue);
   const previousExpected = metricRepairNumber_(previousExpectedValue);
-  if (current > 0 && previousSheet === current && previousExpected === current && previousExpectedManual === false) {
+  const continuesAutomaticChain = previousExpected === current && previousExpectedManual === false;
+  if (current > 0 && previousSheet === current && (continuesAutomaticChain || previousWasProvenCarry === true)) {
     return { action: "clear", reason: "proven_carry" };
   }
   return current > 0
@@ -462,6 +463,7 @@ function dailyMetricSyncScan20260901_() {
     const post = expected[key] || { ended_at: "", dates: {} };
     const postedAt = toDateStr_(posted[i][0]);
     const url = String(urls[i][0] || "").trim();
+    let previousWasProvenCarry = false;
     for (let j = 0; j < dates.length; j++) {
       const item = dates[j];
       const date = item.date;
@@ -478,12 +480,14 @@ function dailyMetricSyncScan20260901_() {
         expectedItem && expectedItem.manual,
         previousValue,
         previousItem && previousItem.value,
-        previousItem && previousItem.manual
+        previousItem && previousItem.manual,
+        previousWasProvenCarry
       );
       const row = CONFIG.DATA_START_ROW + i;
       if (decision.action !== "none") record(edits, row, item, date, key, url, current, expectedItem, decision);
       else if (decision.reason === "manual_preserved") record(manual, row, item, date, key, url, current, expectedItem, decision);
       else if (decision.reason === "sheet_only_unproven") record(unproven, row, item, date, key, url, current, expectedItem, decision);
+      previousWasProvenCarry = decision.reason === "proven_carry";
     }
   }
   return { sheet: sheet, lastRow: lastRow, edits: edits, manual: manual, unproven: unproven, ambiguous: ambiguous };
