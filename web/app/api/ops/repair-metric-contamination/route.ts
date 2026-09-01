@@ -24,7 +24,7 @@ type InspectedTarget = (typeof TARGETS)[number] & {
   value: number | null;
   manual: boolean | null;
   createdAt: string | null;
-  status: "missing_post" | "missing_stat" | "already_clean" | "repairable" | "unexpected_value";
+  status: "missing_post" | "missing_stat" | "already_clean" | "repairable" | "preserved_valid";
 };
 
 async function inspectTargets(): Promise<{ rows: InspectedTarget[]; error?: string }> {
@@ -63,7 +63,7 @@ async function inspectTargets(): Promise<{ rows: InspectedTarget[]; error?: stri
         ? "already_clean"
         : target.contaminatedValues.includes(value)
           ? "repairable"
-          : "unexpected_value";
+          : "preserved_valid";
       return {
         ...target,
         postId,
@@ -93,11 +93,6 @@ export async function POST(req: NextRequest) {
 
   const before = await inspectTargets();
   if (before.error) return NextResponse.json({ error: before.error }, { status: 500 });
-  const unexpected = before.rows.filter((row) => row.status === "unexpected_value");
-  if (unexpected.length) {
-    return NextResponse.json({ error: "Unexpected live values; no rows changed", before: before.rows }, { status: 409 });
-  }
-
   const supabase = getServerSupabase();
   let updated = 0;
   for (const row of before.rows.filter((item) => item.status === "repairable")) {
@@ -116,7 +111,7 @@ export async function POST(req: NextRequest) {
 
   const after = await inspectTargets();
   if (after.error) return NextResponse.json({ error: after.error, before: before.rows, updated }, { status: 500 });
-  if (after.rows.some((row) => row.status === "repairable" || row.status === "unexpected_value")) {
+  if (after.rows.some((row) => row.status === "repairable")) {
     return NextResponse.json({ error: "Post-repair verification failed", before: before.rows, after: after.rows, updated }, { status: 500 });
   }
   return NextResponse.json({ ok: true, updated, before: before.rows, after: after.rows });

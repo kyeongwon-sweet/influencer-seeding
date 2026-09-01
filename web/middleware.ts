@@ -27,6 +27,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/ops/collection-status(.*)",          // 시트 역채움 전 자정수집 완료 확인(자체 CRON_SECRET 검사)
   "/api/ops/linked-sheet-values(.*)",        // 비공개 연동시트 고정범위 읽기(자체 CRON_SECRET 검사)
   "/api/ops/db-sheet-sync-alert(.*)",         // DB→시트 독립 동기화 실패 알림(자체 CRON_SECRET 검사)
+  "/api/ops/repair-metric-contamination(.*)", // 승인된 8/27 오염 정리(정확키·날짜·값 가드 + CRON_SECRET)
   "/api/sponsored-posts/banner-reach-sync(.*)",
   // Vercel 크론 라우트 (각 라우트가 자체 CRON_SECRET 검사 → 미들웨어는 통과시킴)
   "/api/marketing/sync(.*)",
