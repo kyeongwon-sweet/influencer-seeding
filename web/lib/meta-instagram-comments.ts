@@ -13,6 +13,8 @@ export type MetaAdCommentEvent = {
   event_time: string | null;
 };
 
+type MetaCommentCandidate = MetaAdCommentEvent & { ad_id: string };
+
 export function verifyMetaWebhookSignature(rawBody: string, signature: string, appSecret: string): boolean {
   if (!rawBody || !signature || !appSecret || !signature.startsWith("sha256=")) return false;
   const expected = "sha256=" + crypto.createHmac("sha256", appSecret).update(rawBody).digest("hex");
@@ -78,10 +80,10 @@ export function summarizeMetaWebhookPayload(payload: unknown): MetaWebhookShapeS
   };
 }
 
-export function extractMetaAdCommentEvents(payload: unknown): MetaAdCommentEvent[] {
+function extractMetaCommentCandidates(payload: unknown): MetaCommentCandidate[] {
   const root = payload as { object?: string; entry?: Array<Record<string, unknown>> };
   if (root?.object !== "instagram" || !Array.isArray(root.entry)) return [];
-  const events: MetaAdCommentEvent[] = [];
+  const events: MetaCommentCandidate[] = [];
   for (const entry of root.entry) {
     const igUserId = String(entry.id || "");
     const eventTime = Number.isFinite(Number(entry.time))
@@ -96,7 +98,7 @@ export function extractMetaAdCommentEvents(payload: unknown): MetaAdCommentEvent
       const commentId = String(value.comment_id || value.id || "");
       const adId = String(media.ad_id || "");
       const text = String(value.text || "").trim();
-      if (!commentId || !adId || !text || !igUserId) continue;
+      if (!commentId || !text || !igUserId) continue;
       const adTitle = media.ad_title ? String(media.ad_title) : null;
       // 전환(conversion) 광고는 큐에 담지 않는다(김유진 별도관리, 분류 토큰 절약). 소재명 토큰에 '전환'.
       if (adTitle && adTitle.split("_").map((s) => s.trim()).includes("전환")) continue;
@@ -117,6 +119,10 @@ export function extractMetaAdCommentEvents(payload: unknown): MetaAdCommentEvent
   return events;
 }
 
+export function extractMetaAdCommentEvents(payload: unknown): MetaAdCommentEvent[] {
+  return extractMetaCommentCandidates(payload).filter((event) => Boolean(event.ad_id));
+}
+
 type SupabaseErrorLike = { message?: string } | null;
 type SupabaseFilterQuery<T> = {
   eq(column: string, value: string): SupabaseFilterQuery<T>;
@@ -131,6 +137,66 @@ type SupabaseSelectQuery<T> = {
 type NegativeCommentAlertRow = { source?: string | null; comment_id?: string | null };
 type MetaTokenRow = { token?: string | null; expires_at?: string | null };
 type SupabaseLike = { from(table: string): unknown };
+
+type MetaAdCreative = {
+  id?: string;
+  name?: string;
+  creative?: {
+    effective_instagram_media_id?: string;
+    source_instagram_media_id?: string;
+  };
+};
+
+// Instagram v26 comments payloads (특히 dynamic ads)는 media.ad_id를 생략할 수 있다.
+// 이 경우 광고계정의 creative media id와 대조해 실제 광고 댓글만 복원하고,
+// 매칭되지 않은 오가닉 댓글은 인지광고 큐에 넣지 않는다.
+export async function resolveMetaAdlessCommentEvents(
+  supabase: SupabaseLike,
+  payload: unknown,
+  { adAccountId, graphBase = "https://graph.facebook.com/v26.0" }: { adAccountId: string; graphBase?: string },
+  fetchImpl: typeof fetch = fetch,
+): Promise<MetaAdCommentEvent[]> {
+  const candidates = extractMetaCommentCandidates(payload).filter((event) => !event.ad_id && (event.media_id || event.original_media_id));
+  const account = String(adAccountId || "").trim();
+  if (!candidates.length || !account) return [];
+
+  const tokenQuery = supabase.from("meta_tokens") as SupabaseSelectQuery<MetaTokenRow>;
+  const { data: tokenRow, error: tokenError } = await tokenQuery
+    .select("token,expires_at")
+    .eq("kind", "ig_ads")
+    .maybeSingle();
+  if (tokenError || !tokenRow?.token) return [];
+  const expiresAt = Date.parse(tokenRow.expires_at || "");
+  if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) return [];
+
+  const mediaIds = new Set(candidates.flatMap((event) => [event.media_id, event.original_media_id]).filter(Boolean) as string[]);
+  const adByMedia = new Map<string, { id: string; title: string }>();
+  const fields = "id,name,creative{effective_instagram_media_id,source_instagram_media_id}";
+  const base = graphBase.replace(/\/$/, "");
+  let next = `${base}/${encodeURIComponent(account)}/ads?fields=${encodeURIComponent(fields)}&limit=500`;
+  for (let page = 0; next && page < 10 && adByMedia.size < mediaIds.size; page += 1) {
+    const response = await fetchImpl(next, { headers: { Authorization: `Bearer ${tokenRow.token}` } });
+    if (!response.ok) return [];
+    const body = await response.json().catch(() => ({})) as { data?: MetaAdCreative[]; paging?: { next?: string } };
+    for (const ad of body.data || []) {
+      const id = String(ad.id || "");
+      if (!id) continue;
+      const title = String(ad.name || "");
+      for (const mediaId of [ad.creative?.effective_instagram_media_id, ad.creative?.source_instagram_media_id]) {
+        const key = String(mediaId || "");
+        if (key && mediaIds.has(key)) adByMedia.set(key, { id, title });
+      }
+    }
+    next = String(body.paging?.next || "");
+  }
+
+  return candidates.flatMap((event) => {
+    const ad = adByMedia.get(String(event.media_id || ""))
+      || adByMedia.get(String(event.original_media_id || ""));
+    if (!ad || (ad.title && ad.title.split("_").map((part) => part.trim()).includes("전환"))) return [];
+    return [{ ...event, ad_id: ad.id, ad_title: ad.title || null }];
+  });
+}
 
 export async function storeMetaAdCommentEvents(supabase: SupabaseLike, events: MetaAdCommentEvent[]) {
   if (!events.length) return { ok: true, stored: 0 };

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import {
   extractMetaAdCommentEvents,
+  resolveMetaAdlessCommentEvents,
   storeMetaAdCommentEvents,
   summarizeMetaWebhookPayload,
   verifyMetaWebhookSignature,
@@ -32,12 +33,18 @@ export async function POST(req: NextRequest) {
   try { payload = JSON.parse(raw); }
   catch { return NextResponse.json({ error: "invalid json" }, { status: 400 }); }
 
-  const events = extractMetaAdCommentEvents(payload);
+  const directEvents = extractMetaAdCommentEvents(payload);
+  const supabase = getServerSupabase();
+  const resolvedEvents = await resolveMetaAdlessCommentEvents(supabase, payload, {
+    adAccountId: (process.env.META_AD_ACCOUNT_ID || "").trim(),
+    graphBase: (process.env.META_GRAPH_BASE || "https://graph.facebook.com/v26.0").trim(),
+  });
+  const events = [...new Map([...directEvents, ...resolvedEvents].map((event) => [event.comment_id, event])).values()];
   console.info("[meta-instagram-comments] delivery", {
     ...summarizeMetaWebhookPayload(payload),
     extractedEvents: events.length,
   });
-  const result = await storeMetaAdCommentEvents(getServerSupabase(), events);
+  const result = await storeMetaAdCommentEvents(supabase, events);
   if (!result.ok) {
     console.error("[meta-instagram-comments] queue insert failed", result.error);
     return NextResponse.json({ error: "queue insert failed" }, { status: 500 });
