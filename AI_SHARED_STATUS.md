@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## ✅ 2026-09-01 [Codex 완료·라이브] 연동시트 일별값 출처기반 동기화 + 오염잔재 전수 정리
+- **근본정책:** `stats-for-sheet`가 일별 metric과 `manual` 출처를 함께 반환한다. `exportStats`는 `manual=false` 자동 DB값이면 기존 날짜셀도 정확한 DB값으로 교체하고, `manual=true`는 기존 시트값을 보존한다. 배너는 조회수가 아니라 `reach_count`, 그 외는 `play_count`를 쓴다. DB 근거가 없는 carry-forward 생성은 완전히 제거했다. 구버전 서버가 출처를 안 주면 `manual=true`로 간주하는 fail-safe다.
+- **전수감사·보수적 정리:** URL key가 유일한 행만 대상으로 날짜열 전체를 DB와 대조했다. ① 자동 DB값 불일치 `429칸` 교체 ② 빈 시트에 존재하는 자동 DB값 `24칸` 채움 ③ 직전 자동 DB값에서 시작해 같은 값으로 연속 복사된 것이 증명된 carry `2,184칸` 비움 = **총 2,637칸**. 종료일 뒤에도 같은 자동 복사 연쇄는 잡되, 종료 후 DB행을 시트에 다시 채우지는 않는다.
+- **절대 보존:** DB 근거가 없고 자동 복사로 증명되지 않은 시트 단독값 **최종 1,970칸**은 수기 가능성이 있어 전부 유지했다. 중복 URL **14행**도 안전하게 제외했다. `posted_at`·H 누적수식·I 증분수식은 쓰기 대상에 포함하지 않았다.
+- **백업·실행:** 숨김 백업 `_codex_daily_sync_backup_20260901`(최초 2,637칸)과 `_codex_daily_sync_backup_20260901_2`(남은 1,862칸)를 생성했다. 최초 구간별 writer는 Apps Script 30분 한도에서 775칸 반영 후 종료됐고, 동일 현재값·URL 가드를 유지한 열 단위 batch writer(`f779c918`)로 남은 1,862칸을 완료했다. 최종 함수 내부 사후감사 **`after_candidates=0`**.
+- **라이브 코드:** `cefa20aa`(출처기반 덮어쓰기·carry 금지) → `372f2e1d`/`10163809`(전체 연쇄) → `8cff7c53`(종료 후 DB 재기입 금지) → `f779c918`(열 단위 안전 batch). Vercel `-mu`와 Apps Script 정본 `1Xogw...`에 반영했고 fresh pull **6/6 source exact match**. 함수 선택 UI 오류를 피하려고 쓴 임시 실행 진입점은 완료 즉시 제거해 라이브에 남기지 않았다.
+- **검증:** web 전체 **364/364**, 최종 Apps Script 집중 4/4, `tsc --noEmit`, production build, guarded deploy 검증 통과. 독립 formula-audit [run 33467221861](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/33467221861): `H error=0 / emptyButData=0`, `I error=0 / mismatch=0`, 고아행 0. 단 오늘 새 날짜열 `DR` 추가 직후 **H2 범위형태 1건**과 값정체 6건 때문에 전체 `healthy=false`; 이번 작업은 H/I를 전혀 쓰지 않았고 `incInvalid=0`이다. H2는 대량 재생성하지 말고 다음 dailyAuto 자가보강 여부를 관찰한다.
+
 ## 🟡 2026-09-01 [Codex 적용·관찰중] 8/26~31 교차오염 4글·19행 제거 + 출처기반 동기화 배포
 - **사용자 승인 범위:** `이슈뜨기(틱톡)` video `7677969398061141255` 6행(08-26~31, 116,853), photo `7669021425163881746` 6행(97,643), `이슈박스(유튜브)` `GBWxY0RlRqA` 6행(97,643/149,000), `썰박스(틱톡)` photo `7677553177486478599` 1행(08-26, 466,637). 실제값을 지어내지 않고 오염된 `post_daily_stats` 행만 삭제했다.
 - **백업·라이브 실행:** 숨김 백업시트 `_codex_metric_0901_backup_20260901` 생성 후 Apps Script `repairMetricContamination20260828`를 11:04:02~11:10:08 KST 실행. DB `deleted=19 / updated=0`(수기행 2개 포함), 시트 명시 오염셀 **7칸**을 비웠다. `exportStats`는 신규값 생성 없이 기존 정상 DB값만 재반영했다.
