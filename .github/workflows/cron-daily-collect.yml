@@ -199,6 +199,23 @@ jobs:
           PYTHONUNBUFFERED: "1"
         run: cd scripts && python account_collection_watchdog.py --send
 
+      # 재발방지(2026-08-26~09-01 사고): 시트 교차오염으로 먹리니·먹또먹·이짓매거진 값이
+      #   위성채널 행으로 흘러들어갔고 수집기가 매일 그 값을 다시 써서 6일간 고착됐다.
+      #   정리 후 사후감사가 '알려진 값·날짜'만 봐서 candidates=0으로 닫는 바람에 전파분
+      #   4건(19행)을 놓쳤다. 실물 대조: YouTube GBWxY0RlRqA 실제 1,558 vs DB 149,000.
+      #   → 값·날짜를 몰라도 패턴(급등 후 동결 / 비라운드 값 충돌)으로 찾는다.
+      #   임계는 2026-08-12~31 실측 보정 — 정상 바이럴 3건은 걸러지고 오염 4건만 잡힌다.
+      - name: 조회수 교차오염 감사 (황경원 DM)
+        if: always() && github.event.inputs.status_test != 'true' && (github.event_name == 'workflow_dispatch' || github.event.schedule == '41 15 * * *')
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          STATUS_USER: U0B2Y0ZC8QZ   # 황경원 Slack user id (DM)
+          PYTHONUNBUFFERED: "1"
+        run: cd scripts && python audit_metric_contamination.py --send
+
       # 캡션 보강: 메인 IG 액터가 조회수만 주고 캡션을 누락한 게시물을 data-slayer로 채움(캡션 빈 활성 IG만).
       # ⚠️ go==1(이번 창이 실제 수집)에 묶지 않는다 — 수집이 다른 경로/이전 창에서 끝나 go=0이면 캡션이 영영 안 채워지던 문제(2026-07-02, 빈 캡션 77건 누적).
       #    멱등(빈 것만 채움·없으면 0건, Apify 비용도 0)이라 매 창 돌려 안전. api_only 실행만 제외.
