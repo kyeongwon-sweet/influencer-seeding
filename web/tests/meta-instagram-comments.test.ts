@@ -6,6 +6,7 @@ import test from "node:test";
 import {
   extractMetaAdCommentEvents,
   hideMetaAdCommentForSlackMessage,
+  summarizeMetaWebhookPayload,
   verifyMetaWebhookSignature,
 } from "../lib/meta-instagram-comments.ts";
 
@@ -38,6 +39,36 @@ test("extractMetaAdCommentEvents keeps ad comments and ignores organic comments"
   assert.equal(events[0].comment_id, "c1");
   assert.equal(events[0].ad_id, "a1");
   assert.equal(events[0].ig_user_id, "ig-user-1");
+});
+
+test("summarizeMetaWebhookPayload reports shape without sensitive values", () => {
+  const summary = summarizeMetaWebhookPayload({
+    object: "instagram",
+    entry: [{
+      id: "sensitive-account-id",
+      changes: [{
+        field: "comments",
+        value: {
+          id: "sensitive-comment-id",
+          text: "sensitive comment text",
+          from: { username: "sensitive-user" },
+          media: { id: "sensitive-media-id", ad_id: "sensitive-ad-id" },
+        },
+      }],
+    }],
+  });
+
+  assert.deepEqual(summary, {
+    object: "instagram",
+    entryCount: 1,
+    changeCount: 1,
+    fields: ["comments"],
+    valueKeys: ["from", "id", "media", "text"],
+    mediaKeys: ["ad_id", "id"],
+    commentLikeChanges: 1,
+    adTaggedChanges: 1,
+  });
+  assert.equal(JSON.stringify(summary).includes("sensitive"), false);
 });
 
 function mockHideSupabase(alert: unknown, token: unknown) {

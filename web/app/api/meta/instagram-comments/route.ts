@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { extractMetaAdCommentEvents, storeMetaAdCommentEvents, verifyMetaWebhookSignature } from "@/lib/meta-instagram-comments";
+import {
+  extractMetaAdCommentEvents,
+  storeMetaAdCommentEvents,
+  summarizeMetaWebhookPayload,
+  verifyMetaWebhookSignature,
+} from "@/lib/meta-instagram-comments";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,6 +33,10 @@ export async function POST(req: NextRequest) {
   catch { return NextResponse.json({ error: "invalid json" }, { status: 400 }); }
 
   const events = extractMetaAdCommentEvents(payload);
+  console.info("[meta-instagram-comments] delivery", {
+    ...summarizeMetaWebhookPayload(payload),
+    extractedEvents: events.length,
+  });
   const result = await storeMetaAdCommentEvents(getServerSupabase(), events);
   if (!result.ok) {
     console.error("[meta-instagram-comments] queue insert failed", result.error);

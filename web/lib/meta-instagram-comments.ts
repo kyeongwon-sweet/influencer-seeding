@@ -23,6 +23,61 @@ export function verifyMetaWebhookSignature(rawBody: string, signature: string, a
   }
 }
 
+export type MetaWebhookShapeSummary = {
+  object: string;
+  entryCount: number;
+  changeCount: number;
+  fields: string[];
+  valueKeys: string[];
+  mediaKeys: string[];
+  commentLikeChanges: number;
+  adTaggedChanges: number;
+};
+
+// Webhook delivery diagnostics must never log comment text, account ids, media ids,
+// usernames, or signatures. Keep only the structural keys needed to distinguish
+// an Instagram comments delivery from an unrelated Page/feed delivery.
+export function summarizeMetaWebhookPayload(payload: unknown): MetaWebhookShapeSummary {
+  const root = payload as { object?: unknown; entry?: Array<Record<string, unknown>> };
+  const entries = Array.isArray(root?.entry) ? root.entry : [];
+  const fields = new Set<string>();
+  const valueKeys = new Set<string>();
+  const mediaKeys = new Set<string>();
+  let changeCount = 0;
+  let commentLikeChanges = 0;
+  let adTaggedChanges = 0;
+
+  for (const entry of entries) {
+    const changes = Array.isArray(entry.changes) ? entry.changes as Array<Record<string, unknown>> : [];
+    for (const change of changes) {
+      changeCount += 1;
+      const field = String(change.field || "");
+      if (field) fields.add(field);
+      const value = change.value && typeof change.value === "object"
+        ? change.value as Record<string, unknown>
+        : {};
+      for (const key of Object.keys(value)) valueKeys.add(key);
+      const media = value.media && typeof value.media === "object"
+        ? value.media as Record<string, unknown>
+        : {};
+      for (const key of Object.keys(media)) mediaKeys.add(key);
+      if (field === "comments" || value.comment_id || value.id) commentLikeChanges += 1;
+      if (media.ad_id || value.ad_id) adTaggedChanges += 1;
+    }
+  }
+
+  return {
+    object: String(root?.object || ""),
+    entryCount: entries.length,
+    changeCount,
+    fields: [...fields].sort(),
+    valueKeys: [...valueKeys].sort(),
+    mediaKeys: [...mediaKeys].sort(),
+    commentLikeChanges,
+    adTaggedChanges,
+  };
+}
+
 export function extractMetaAdCommentEvents(payload: unknown): MetaAdCommentEvent[] {
   const root = payload as { object?: string; entry?: Array<Record<string, unknown>> };
   if (root?.object !== "instagram" || !Array.isArray(root.entry)) return [];
