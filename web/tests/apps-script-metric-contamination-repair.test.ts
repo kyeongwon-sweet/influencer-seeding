@@ -104,6 +104,10 @@ test("repair applies backup-before-clear and rehydrates only through exportStats
   assert.match(source, /function auditDailyMetricSync20260901\(\)/);
   assert.match(source, /function repairDailyMetricSync20260901\(\)/);
   assert.match(source, /dailyMetricSyncBackup20260901_\(scan\.sheet, scan\.edits\)/);
+  assert.match(source, /dailyMetricSyncAssertStable20260901_\(scan\.sheet, scan\.edits, scan\.lastRow, urlCol\)/);
+  assert.match(source, /dailyMetricSyncWriteColumns20260901_\(scan\.sheet, scan\.edits, scan\.lastRow, urlCol\)/);
+  assert.match(source, /if \(!editedRows\[i\] && formulas\[i\]\[0\]\) values\[i\]\[0\] = formulas\[i\]\[0\]/);
+  assert.doesNotMatch(source, /getRange\(edit\.row, urlCol\)\.getValue\(\)/);
   assert.match(source, /after\.edits\.length/);
   assert.doesNotMatch(
     source,

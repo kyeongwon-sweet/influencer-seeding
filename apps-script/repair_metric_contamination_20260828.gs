@@ -523,6 +523,59 @@ function dailyMetricSyncBackup20260901_(sheet, edits) {
   return backup.getName();
 }
 
+function dailyMetricSyncAssertStable20260901_(sheet, edits, expectedLastRow, urlCol) {
+  assertRowCountStable_(sheet, expectedLastRow, "dailyMetricSync20260901");
+  if (!edits.length) return;
+  const rowCount = expectedLastRow - CONFIG.DATA_START_ROW + 1;
+  const firstCol = Math.min.apply(null, edits.map(function(edit) { return edit.col; }));
+  const lastCol = Math.max.apply(null, edits.map(function(edit) { return edit.col; }));
+  const urls = sheet.getRange(CONFIG.DATA_START_ROW, urlCol, rowCount, 1).getValues();
+  const block = sheet.getRange(CONFIG.DATA_START_ROW, firstCol, rowCount, lastCol - firstCol + 1).getValues();
+  edits.forEach(function(edit) {
+    const ri = edit.row - CONFIG.DATA_START_ROW;
+    const currentKey = String(linkKey_(String(urls[ri][0] || "").trim()) || "");
+    const currentValue = block[ri][edit.col - firstCol];
+    if (currentKey !== edit.key || metricRepairNumber_(currentValue) !== metricRepairNumber_(edit.old)) {
+      throw new Error("쓰기 직전 셀 변경 감지: " + edit.a1);
+    }
+  });
+}
+
+function dailyMetricSyncWriteColumns20260901_(sheet, edits, expectedLastRow, urlCol) {
+  if (!edits.length) return 0;
+  const rowCount = expectedLastRow - CONFIG.DATA_START_ROW + 1;
+  const byCol = {};
+  edits.forEach(function(edit) { (byCol[edit.col] || (byCol[edit.col] = [])).push(edit); });
+  let written = 0;
+  Object.keys(byCol).sort(function(a, b) { return Number(a) - Number(b); }).forEach(function(colText) {
+    const col = Number(colText);
+    const colEdits = byCol[col];
+    assertRowCountStable_(sheet, expectedLastRow, "dailyMetricSync20260901 column " + col);
+    const urls = sheet.getRange(CONFIG.DATA_START_ROW, urlCol, rowCount, 1).getValues();
+    const range = sheet.getRange(CONFIG.DATA_START_ROW, col, rowCount, 1);
+    const values = range.getValues();
+    const formulas = range.getFormulas();
+    const editedRows = {};
+    colEdits.forEach(function(edit) {
+      const ri = edit.row - CONFIG.DATA_START_ROW;
+      const currentKey = String(linkKey_(String(urls[ri][0] || "").trim()) || "");
+      if (currentKey !== edit.key || metricRepairNumber_(values[ri][0]) !== metricRepairNumber_(edit.old)) {
+        throw new Error("열 쓰기 직전 셀 변경 감지: " + edit.a1);
+      }
+      editedRows[ri] = true;
+      values[ri][0] = edit.action === "clear" ? "" : edit.expected;
+    });
+    // Rewriting one whole date column is bounded and fast. Preserve any
+    // unexpected formula outside the approved edit rows as a formula string.
+    for (let i = 0; i < rowCount; i++) {
+      if (!editedRows[i] && formulas[i][0]) values[i][0] = formulas[i][0];
+    }
+    range.setValues(values);
+    written += colEdits.length;
+  });
+  return written;
+}
+
 function runDailyMetricSync20260901_(apply) {
   const lock = LockService.getDocumentLock();
   if (apply) lock.waitLock(30000);
@@ -544,28 +597,11 @@ function runDailyMetricSync20260901_(apply) {
     Logger.log("daily_metric_sync_20260901_scan " + JSON.stringify(result));
     if (!apply || !scan.edits.length) return result;
 
-    assertRowCountStable_(scan.sheet, scan.lastRow, "dailyMetricSync20260901");
     const urlCol = findHeaderCol_(scan.sheet, ["게시물URL", "게시물 URL", "URL"]);
-    scan.edits.forEach(function(edit) {
-      const currentKey = String(linkKey_(String(scan.sheet.getRange(edit.row, urlCol).getValue() || "").trim()) || "");
-      const currentValue = scan.sheet.getRange(edit.a1).getValue();
-      if (currentKey !== edit.key || metricRepairNumber_(currentValue) !== metricRepairNumber_(edit.old)) {
-        throw new Error("쓰기 직전 셀 변경 감지: " + edit.a1);
-      }
-    });
+    dailyMetricSyncAssertStable20260901_(scan.sheet, scan.edits, scan.lastRow, urlCol);
 
     result.backup_sheet = dailyMetricSyncBackup20260901_(scan.sheet, scan.edits);
-    const byCol = {};
-    scan.edits.forEach(function(edit) {
-      (byCol[edit.col] || (byCol[edit.col] = [])).push({
-        row: edit.row,
-        value: edit.action === "clear" ? "" : edit.expected,
-      });
-    });
-    let written = 0;
-    Object.keys(byCol).forEach(function(col) {
-      written += writeColumnRuns_(scan.sheet, Number(col), byCol[col], scan.lastRow);
-    });
+    const written = dailyMetricSyncWriteColumns20260901_(scan.sheet, scan.edits, scan.lastRow, urlCol);
     SpreadsheetApp.flush();
 
     const after = dailyMetricSyncScan20260901_();
