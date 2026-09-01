@@ -42,8 +42,16 @@ test("known cross-post contamination is scoped to exact keys, dates, and values"
 test("repair applies backup-before-clear and rehydrates only through exportStats", () => {
   const backupIndex = source.indexOf("metricRepair20260828Backup_(scan.sheet, scan.edits)");
   const clearIndex = source.indexOf("writeColumnRuns_(scan.sheet");
+  const dbRepairIndex = source.indexOf("repairMetricContaminationDb20260828_()", clearIndex);
+  const refreshIndex = source.indexOf("const refreshedExpected = metricRepair20260828ExpectedByKey_()", dbRepairIndex);
   const exportIndex = source.indexOf("const exported = exportStats()");
-  assert.ok(backupIndex >= 0 && clearIndex > backupIndex && exportIndex > clearIndex);
+  const preserveBlankIndex = source.indexOf("const blankExpected = scan.edits.filter", exportIndex);
+  const verifyIndex = source.indexOf("const mismatches = scan.edits.filter", preserveBlankIndex);
+  assert.ok(backupIndex >= 0 && clearIndex > backupIndex && dbRepairIndex > clearIndex);
+  assert.ok(refreshIndex > dbRepairIndex && exportIndex > refreshIndex);
+  assert.ok(preserveBlankIndex > exportIndex && verifyIndex > preserveBlankIndex);
+  assert.match(source, /post_export_blank_preserved/);
+  assert.match(source, /expectedValue == null\) return actualValue !== ""/);
   assert.match(source, /assertRowCountStable_\(scan\.sheet, scan\.lastRow\)/);
   assert.doesNotMatch(source, /importStats\(/);
 });

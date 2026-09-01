@@ -12,6 +12,7 @@
 const METRIC_REPAIR_20260828_PREV_DATE_ = "2026-08-26";
 const METRIC_REPAIR_20260828_TARGET_DATE_ = "2026-08-27";
 const METRIC_REPAIR_20260828_BACKUP_SHEET_ = "_codex_metric_0827_backup_20260828";
+const METRIC_REPAIR_20260828_DB_CONFIRM_ = "repair-2026-08-27-metric-contamination";
 const METRIC_REPAIR_20260828_EXPLICIT_ = {
   "tt:7677553177486478599": {
     "2026-08-26": [466637],
@@ -157,6 +158,27 @@ function metricRepair20260828Backup_(sheet, edits) {
   return backup.getName();
 }
 
+function repairMetricContaminationDb20260828_() {
+  const url = String(CONFIG.STATS_EXPORT_API_URL || "")
+    .replace(/\/api\/sponsored-posts\/stats-for-sheet(?:\?.*)?$/, "/api/ops/repair-metric-contamination");
+  if (!/\/api\/ops\/repair-metric-contamination$/.test(url)) {
+    throw new Error("DB 오염 복구 API URL을 만들지 못했습니다.");
+  }
+  const response = UrlFetchApp.fetch(url, {
+    method: "post",
+    headers: authHeaders_(),
+    contentType: "application/json",
+    payload: JSON.stringify({ confirm: METRIC_REPAIR_20260828_DB_CONFIRM_ }),
+    muteHttpExceptions: true,
+  });
+  const code = response.getResponseCode();
+  const body = JSON.parse(response.getContentText() || "{}");
+  if (code !== 200 || body.ok !== true) {
+    throw new Error("DB 오염 복구 실패 API " + code + ": " + JSON.stringify(body));
+  }
+  return body;
+}
+
 function runMetricRepair20260828_(apply) {
   const scan = metricRepair20260828Candidates_();
   const explicit = scan.edits.filter(function(edit) { return edit.reason === "known_cross_post_contamination"; });
@@ -187,10 +209,47 @@ function runMetricRepair20260828_(apply) {
   });
   if (remaining.length) throw new Error("오염칸 비우기 검증 실패: " + remaining.slice(0, 5).map(function(x) { return x.a1; }).join(","));
 
+  result.db_repair = repairMetricContaminationDb20260828_();
+  const refreshedExpected = metricRepair20260828ExpectedByKey_();
+  scan.edits.forEach(function(edit) {
+    const byDate = refreshedExpected[edit.key] || {};
+    edit.expected = byDate[edit.date] == null ? "" : byDate[edit.date];
+  });
+
   const exported = exportStats();
   if (exported === false) throw new Error("exportStats returned false");
   SpreadsheetApp.flush();
+
+  // Once the repair date is historical, exportStats may legitimately carry a
+  // prior metric into a DB-empty gap. These repair targets must remain empty so
+  // a later sheet-to-DB sync cannot re-import the contaminated value.
+  const blankExpected = scan.edits.filter(function(edit) {
+    return metricRepairNumber_(edit.expected) == null;
+  });
+  if (blankExpected.length) {
+    const blankByCol = {};
+    blankExpected.forEach(function(edit) {
+      (blankByCol[edit.col] || (blankByCol[edit.col] = [])).push({ row: edit.row, value: "" });
+    });
+    Object.keys(blankByCol).forEach(function(col) {
+      writeColumnRuns_(scan.sheet, Number(col), blankByCol[col], scan.lastRow);
+    });
+    SpreadsheetApp.flush();
+  }
+
+  const mismatches = scan.edits.filter(function(edit) {
+    const actualValue = scan.sheet.getRange(edit.a1).getValue();
+    const expectedValue = metricRepairNumber_(edit.expected);
+    if (expectedValue == null) return actualValue !== "";
+    return metricRepairNumber_(actualValue) !== expectedValue;
+  });
+  if (mismatches.length) {
+    throw new Error("재역채움 검증 실패: " + mismatches.slice(0, 5).map(function(edit) {
+      return edit.a1 + " expected=" + edit.expected + " actual=" + scan.sheet.getRange(edit.a1).getValue();
+    }).join(","));
+  }
   result.exported = true;
+  result.post_export_blank_preserved = blankExpected.length;
   result.post_values = explicit.map(function(edit) {
     return { key: edit.key, date: edit.date, a1: edit.a1, value: scan.sheet.getRange(edit.a1).getValue() };
   });
