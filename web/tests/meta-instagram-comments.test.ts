@@ -88,21 +88,27 @@ test("ad-id 없는 dynamic ad 댓글은 creative media 매칭 때만 복원한�
     { data: null, error: null },
     { data: { token: "TOKEN", expires_at: "2099-01-01T00:00:00Z" }, error: null },
   );
+  let requestedUrl = "";
   const events = await resolveMetaAdlessCommentEvents(
     supabase,
     payload,
     { adAccountId: "act_1", graphBase: "https://graph.test/v26.0" },
-    async () => ({
+    async (url) => {
+      requestedUrl = String(url);
+      return ({
       ok: true,
       json: async () => ({
         data: [{ id: "ad-1", name: "인지_소재", creative: { effective_instagram_media_id: "m-ad" } }],
       }),
-    }) as Response,
+      }) as Response;
+    },
   );
   assert.equal(events.length, 1);
   assert.equal(events[0].comment_id, "c-dynamic");
   assert.equal(events[0].ad_id, "ad-1");
   assert.equal(events[0].ad_title, "인지_소재");
+  assert.match(requestedUrl, /limit=100/);
+  assert.doesNotMatch(requestedUrl, /limit=500/);
 });
 
 function mockHideSupabase(alert: unknown, token: unknown) {

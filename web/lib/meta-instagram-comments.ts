@@ -173,7 +173,9 @@ export async function resolveMetaAdlessCommentEvents(
   const adByMedia = new Map<string, { id: string; title: string }>();
   const fields = "id,name,creative{effective_instagram_media_id,source_instagram_media_id}";
   const base = graphBase.replace(/\/$/, "");
-  let next = `${base}/${encodeURIComponent(account)}/ads?fields=${encodeURIComponent(fields)}&limit=500`;
+  // Marketing API는 큰 page limit(예: 500)을 code=1로 거절할 수 있다.
+  // 작은 페이지를 순회해야 ad_id가 생략된 실제 dynamic-ad 이벤트를 조용히 드롭하지 않는다.
+  let next = `${base}/${encodeURIComponent(account)}/ads?fields=${encodeURIComponent(fields)}&limit=100&sort=updated_time_descending`;
   for (let page = 0; next && page < 10 && adByMedia.size < mediaIds.size; page += 1) {
     const response = await fetchImpl(next, { headers: { Authorization: `Bearer ${tokenRow.token}` } });
     if (!response.ok) return [];
