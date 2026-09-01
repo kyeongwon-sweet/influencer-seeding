@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## ✅ 2026-09-01 [Codex 완료·라이브] 소재명 오른쪽·캡션 왼쪽 정렬 + 백업 한도 자가우회
+- **사용자 지정 반영:** main `ba6825b`의 기준대로 데이터행 `E(소재명)=오른쪽`, `M(캡션)=왼쪽`으로 바꾸고, 헤더 1행은 기존 가운데·볼드를 유지했다. 나머지 열 정렬은 `fdcbe58` 기준 그대로다. `linked_sheet_row_format_daily.gs`와 `linked_sheet_readability_theme_20260812.gs`의 기준을 함께 바꿔 신규행 dailyAuto와 수동 전체 테마가 갈라지지 않는다.
+- **백업 경로 보강:** 같은 문서 내 `Sheet.copyTo`는 현재 시트 구조에서 `This operation is not supported`, 범위복제용 새 탭은 누적 백업으로 문서가 1,000만 셀 한도에 닿아 실패했다. 두 실행 모두 **백업 단계에서 중단돼 원본 쓰기 0**. 추가 Drive 권한은 승인하지 않고, 기존 Spreadsheet 권한만 쓰는 `Spreadsheet.copy(name)` 문서 전체 외부 사본 fallback으로 전환했다. 백업이 성공하기 전에는 정렬 쓰기로 넘어가지 않는다.
+- **실행 결과:** 외부 전체 백업 **`_codex_row_format_backup_20260901_180044`** (`15T0KKawLNviIBVmh9CILuIsZD5pBN-Wj5FnMoHCm-0k`)을 만든 뒤 `normalizeAllLinkedRowsOnce()` 성공 — `rows=3,996 / lastRow=3,997`. 화면 실물에서 `E2=오른쪽`, `M2=왼쪽`, `E1=가운데`를 각각 정렬 메뉴의 선택값으로 확인했다.
+- **수식 무손상:** 사전 감사 [run `33487943030`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/33487943030)과 사후 감사 [run `33490194596`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/33490194596)이 완전 동일했다 — HTTP 200, `P:DS 108열`, snapshot retry 0, 고아행 0, H/I 오류셀 0·I mismatch 0, `hInvalid=1 / hManual=320 / incInvalid=0`. 기존 H2 형태 1건·값정체 5건은 이번 정렬과 무관하다.
+- **검증:** web **384/384**, `tsc --noEmit`, guarded clasp push→fresh pull **12파일 source exact match** 통과. 새 Drive 권한은 부여하지 않았다.
+
 ## ✅ 2026-09-01 [Codex 완료·라이브] 신규 날짜열 실제 Date 저장 — 수식감사 503 재발 차단
 - **원인 확정:** `exportStats`가 새 날짜열 헤더를 `M.D` 문자열로 썼고, Google Sheets가 `9.1`을 작은 숫자로 강제 변환했다. Apps Script는 이를 월·일로 읽었지만 웹 감사 파서는 숫자를 날짜 직렬값으로 보므로 최신 열을 누락해, 헤더 끝은 `DQ/DR`인데 H/I 수식은 `DR/DS`까지 참조하는 혼합 스냅샷이 생겼다. 그래서 새 날짜열 생성 때마다 `sheet_snapshot_not_ready` 503이 반복됐다.
 - **근본수정:** `Combined_Sheet_AppsScript.gs`의 신규 헤더 생성을 `Utilities.parseDate(..., "yyyy-MM-dd")` 실제 날짜값으로 바꾸고, 생성 즉시 표시형식을 `yyyy. m. d.`로 통일했다. 웹 파서를 느슨하게 넓혀 숫자 `9.1`을 추정 복원하지 않아 9월 1일/9월 10일 같은 모호성을 만들지 않는다.

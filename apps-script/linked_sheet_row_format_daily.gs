@@ -170,11 +170,28 @@ function backupLinkedRowsBeforeFullFormat_(sheet) {
     name = baseName + "_" + suffix;
     suffix++;
   }
-  var backup = sheet.copyTo(ss);
-  backup.setName(name);
-  backup.hideSheet();
-  SpreadsheetApp.flush();
-  return name;
+  var backup;
+  try {
+    backup = sheet.copyTo(ss);
+    backup.setName(name);
+    backup.hideSheet();
+    SpreadsheetApp.flush();
+    return name;
+  } catch (copyError) {
+    // 일부 시트 기능은 Sheet.copyTo를 거절하고, 누적된 백업 탭 때문에 같은 문서가
+    // 1,000만 셀 한도에 닿을 수도 있다. 이 경우 추가 Drive 권한 없이 현재
+    // Spreadsheet 권한으로 문서 전체를 별도 파일에 복제한다. 파일 복제가 성공하기
+    // 전에는 서식 쓰기로 넘어가지 않는다.
+    var backupSpreadsheet = ss.copy(name);
+    Logger.log("linked_row_format_backup_fallback " + JSON.stringify({
+      backupFile: name,
+      backupFileId: backupSpreadsheet.getId(),
+      reason: String(copyError && copyError.message || copyError),
+      rows: sheet.getLastRow(),
+      columns: sheet.getLastColumn()
+    }));
+    return "SpreadsheetFile:" + backupSpreadsheet.getId();
+  }
 }
 
 /**

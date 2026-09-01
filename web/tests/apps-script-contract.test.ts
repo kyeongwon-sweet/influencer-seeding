@@ -46,12 +46,16 @@ const duplicateRepair = readFileSync(
 
 test("daily row-format normalizer never writes values or formulas", () => {
   // 2026-08-06 사고: "서식만 바꾸니 안전"이라 판단한 대량 쓰기가 H열 1,765행을 손상시켰다.
-  // 이 스크립트는 서식 전용이어야 한다 — 값·수식·유효성에 손대는 순간 계약 위반이다.
+  // 일상 실행 경로는 서식 전용이어야 한다 — 값·수식·유효성에 손대는 순간 계약 위반이다.
+  // 아래의 수동 전체실행 백업 helper는 별도 백업 탭의 행·열 확장만 허용한다.
+  const backupStart = rowFormatDaily.indexOf("function backupLinkedRowsBeforeFullFormat_(sheet)");
+  assert.ok(backupStart >= 0);
+  const dailyOnly = rowFormatDaily.slice(0, backupStart);
   for (const forbidden of [
     "setValue(", "setValues(", "setFormula(", "setFormulas(",
     "setDataValidation", "clearContent", "deleteRow", "insertRows",
   ]) {
-    assert.ok(!rowFormatDaily.includes(forbidden), `금지 호출 사용: ${forbidden}`);
+    assert.ok(!dailyOnly.includes(forbidden), `일상 경로 금지 호출 사용: ${forbidden}`);
   }
   assert.match(rowFormatDaily, /LockService\.getDocumentLock\(\)/);
   assert.match(rowFormatDaily, /assertLinkedRowFormatTarget_/);
@@ -180,6 +184,10 @@ test("one-time full row-format creates a hidden sheet backup before formatting",
   assert.ok(fullStart >= 0);
   assert.match(rowFormatDaily, /function backupLinkedRowsBeforeFullFormat_\(sheet\)/);
   assert.match(rowFormatDaily, /sheet\.copyTo\(ss\)/);
+  assert.match(rowFormatDaily, /catch \(copyError\)/);
+  assert.match(rowFormatDaily, /backupSpreadsheet = ss\.copy\(name\)/);
+  assert.doesNotMatch(rowFormatDaily, /DriveApp/);
+  assert.doesNotMatch(rowFormatDaily, /ss\.insertSheet\(name\)/);
   assert.match(rowFormatDaily, /backup\.hideSheet\(\)/);
   assert.ok(
     fullBody.indexOf("backupLinkedRowsBeforeFullFormat_(sheet)") <
