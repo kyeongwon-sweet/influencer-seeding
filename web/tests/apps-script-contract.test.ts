@@ -35,6 +35,10 @@ const missingDateHeaderRepair = readFileSync(
   new URL("../../apps-script/repair_missing_date_header_20260901.gs", import.meta.url),
   "utf8",
 );
+const duplicateAudit = readFileSync(
+  new URL("../../apps-script/linked_sheet_duplicate_audit_20260901.gs", import.meta.url),
+  "utf8",
+);
 
 test("daily row-format normalizer never writes values or formulas", () => {
   // 2026-08-06 사고: "서식만 바꾸니 안전"이라 판단한 대량 쓰기가 H열 1,765행을 손상시켰다.
@@ -73,6 +77,30 @@ test("row-format standard matches the readability theme (drift guard)", () => {
   for (const fmt of ["yyyy. m. d.", "₩#,##0", "#,##0", "₩#,##0.00"]) {
     assert.ok(readabilityTheme.includes(fmt), `theme에 없음: ${fmt}`);
     assert.ok(rowFormatDaily.includes(fmt), `daily에 없음: ${fmt}`);
+  }
+  // 사용자 지정 가운데 정렬: 채널명(C), 상품명(F), 비용~상태(G:O).
+  for (const spec of [
+    /\{ col: 3,\s+span: 1, align: "center" \}/,
+    /\{ col: 6,\s+span: 1, align: "center" \}/,
+    /\{ col: 7,\s+span: 1, align: "center"/,
+    /\{ col: 8,\s+span: 2, align: "center"/,
+    /\{ col: 10, span: 1, align: "center"/,
+    /\{ col: 11, span: 5, align: "center" \}/,
+  ]) assert.match(rowFormatDaily, spec);
+  for (const range of [
+    /getRange\(2, 3, lastRow - 1, 1\)\.setHorizontalAlignment\("center"\)/,
+    /getRange\(2, 6, lastRow - 1, 1\)\.setHorizontalAlignment\("center"\)/,
+    /getRange\(2, 11, lastRow - 1, 5\)\.setHorizontalAlignment\("center"\)/,
+  ]) assert.match(readabilityTheme, range);
+});
+
+test("duplicate audit is read-only and includes sheet plus DB evidence", () => {
+  assert.match(appsScriptDeploy, /linked_sheet_duplicate_audit_20260901\.gs/);
+  assert.match(duplicateAudit, /function auditLinkedSheetDuplicates20260901\(\)/);
+  assert.match(duplicateAudit, /fetchCollectedStats_\(\)/);
+  assert.match(duplicateAudit, /recentMetrics/);
+  for (const forbidden of ["deleteRow(", "deleteRows(", "setValue(", "setValues(", "clearContent("]) {
+    assert.ok(!duplicateAudit.includes(forbidden), `중복 감사가 쓰기를 포함함: ${forbidden}`);
   }
 });
 

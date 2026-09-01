@@ -20,6 +20,7 @@ const deployFiles = [
   [join("apps-script", "repair_issue_tiktok_duplicate_20260901.gs"), "repair_issue_tiktok_duplicate_20260901.js"],
   [join("apps-script", "linked_sheet_row_format_daily.gs"), "linked_sheet_row_format_daily.js"],
   [join("apps-script", "repair_missing_date_header_20260901.gs"), "repair_missing_date_header_20260901.js"],
+  [join("apps-script", "linked_sheet_duplicate_audit_20260901.gs"), "linked_sheet_duplicate_audit_20260901.js"],
   [join("apps-script", "appsscript.json"), "appsscript.json"],
 ];
 
