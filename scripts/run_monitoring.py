@@ -236,8 +236,9 @@ def _guard_instagram_upward_spikes(posts, stats_by_key, last_stat, *, fetcher=No
 
     The primary actor has returned a different post's view count before
     (2026-08-30: 727 -> 65,500 while the independent value was about 745).
-    Only the suspect ``play_count`` is removed; likes/comments and the existing
-    historical value stay untouched. A matching second measurement lets a real
+    The suspect daily-stat row is skipped later at the write boundary so an
+    existing same-day automatic value cannot be overwritten with NULL. Sponsored
+    post metadata may still self-heal. A matching second measurement lets a real
     viral jump through unchanged.
     """
     candidates = []
@@ -1563,6 +1564,14 @@ def run():
 
             # 기존 데이터 조회 (누적값 검증) — 위에서 _prev_stats로 일괄 조회한 '오늘 이전' 최신값
             existing = last_stat.get(post["id"], {})
+
+            # 상향 재확인 불일치 행은 일별 통계 전체를 쓰지 않는다. play_count=None으로
+            # upsert하면 같은 날 앞선 정상 자동값까지 NULL로 지울 수 있고, 좋아요/댓글만
+            # 남기는 것도 이 응답을 신뢰했다는 흔적이 된다. 게시물 메타데이터(updates)는
+            # 위에서 이미 별도 처리했으며 기존 daily stat과 과거 이력은 그대로 보존한다.
+            if s.get("upward_spike_quarantined"):
+                print(f"  [WARN] IG 상향 급증 격리 일별행 저장 보류: {post['url']}")
+                continue
 
             play_count = s.get("play_count")
 

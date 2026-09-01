@@ -72,7 +72,7 @@ def test_cross_contaminated_jump_is_quarantined_without_inventing_replacement():
     assert rm.MISSING_VIEW_EVENTS[0]["reason"] == "upward_spike_unconfirmed"
 
 
-def test_confirmation_failure_is_fail_closed_for_suspect_metric_only():
+def test_confirmation_failure_is_fail_closed():
     _clear_events()
     stats = {_key(): {"url": POST["url"], "play_count": 65_500, "likes_count": 23}}
     last = {POST["id"]: {"play_count": 727, "measured_at": "2026-08-29"}}
@@ -86,6 +86,14 @@ def test_confirmation_failure_is_fail_closed_for_suspect_metric_only():
     assert stats[_key()]["play_count"] is None
     assert stats[_key()]["likes_count"] == 23
     assert rm.UPWARD_SPIKE_WARNINGS[0]["confirmed"] is None
+
+
+def test_quarantined_marker_is_checked_before_daily_row_is_built():
+    source = open(rm.__file__, encoding="utf-8").read()
+    marker_check = 'if s.get("upward_spike_quarantined"):'
+    row_build = 'play_count = s.get("play_count")'
+    assert marker_check in source
+    assert source.index(marker_check) < source.index(row_build)
 
 
 def test_banner_and_first_measurement_are_not_rechecked():
