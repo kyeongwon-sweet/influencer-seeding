@@ -105,4 +105,9 @@ test("repair applies backup-before-clear and rehydrates only through exportStats
   assert.match(source, /function repairDailyMetricSync20260901\(\)/);
   assert.match(source, /dailyMetricSyncBackup20260901_\(scan\.sheet, scan\.edits\)/);
   assert.match(source, /after\.edits\.length/);
+  assert.doesNotMatch(
+    source,
+    /post\.ended_at\s*&&\s*date\s*>\s*post\.ended_at/,
+    "carry-forward chains after ended_at must remain visible to the conservative audit",
+  );
 });

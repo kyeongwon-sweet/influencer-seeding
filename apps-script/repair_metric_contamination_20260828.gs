@@ -467,7 +467,12 @@ function dailyMetricSyncScan20260901_() {
     for (let j = 0; j < dates.length; j++) {
       const item = dates[j];
       const date = item.date;
-      if (date >= today || isBeforePostedDate_(date, postedAt) || (post.ended_at && date > post.ended_at)) continue;
+      // Do not skip dates after ended_at. A historical export bug copied the
+      // last automatic value beyond the end date, and those cells must remain
+      // visible to the conservative proven-carry detector below. With no DB
+      // value they are still left untouched unless they exactly continue a
+      // chain that started from an automatic DB value.
+      if (date >= today || isBeforePostedDate_(date, postedAt)) continue;
       const bi = item.col - firstCol;
       const current = block[i][bi];
       const expectedItem = post.dates[date] || null;
