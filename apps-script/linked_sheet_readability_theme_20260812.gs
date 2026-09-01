@@ -139,12 +139,15 @@ function applyLinkedSheetReadabilityTheme() {
     sheet.getRange(2, 1, lastRow - 1, 1).setHorizontalAlignment("center").setNumberFormat("yyyy. m. d.");
     sheet.getRange(2, 2, lastRow - 1, 1).setHorizontalAlignment("left");
     sheet.getRange(2, 3, lastRow - 1, 1).setHorizontalAlignment("center");
-    sheet.getRange(2, 4, lastRow - 1, 2).setHorizontalAlignment("left");
+    sheet.getRange(2, 4, lastRow - 1, 1).setHorizontalAlignment("left");
+    sheet.getRange(2, 5, lastRow - 1, 1).setHorizontalAlignment("right");   // 소재명(헤더 제외)
     sheet.getRange(2, 6, lastRow - 1, 1).setHorizontalAlignment("center");
     sheet.getRange(2, 7, lastRow - 1, 1).setHorizontalAlignment("center").setNumberFormat("₩#,##0");
     sheet.getRange(2, 8, lastRow - 1, 2).setHorizontalAlignment("center").setNumberFormat("#,##0");
     sheet.getRange(2, 10, lastRow - 1, 1).setHorizontalAlignment("center").setNumberFormat("₩#,##0.00");
-    sheet.getRange(2, 11, lastRow - 1, 5).setHorizontalAlignment("center");
+    sheet.getRange(2, 11, lastRow - 1, 2).setHorizontalAlignment("center");
+    sheet.getRange(2, 13, lastRow - 1, 1).setHorizontalAlignment("left");   // 캡션
+    sheet.getRange(2, 14, lastRow - 1, 2).setHorizontalAlignment("center");
 
     styleLinkedSheetDateColumns_(
       sheet,

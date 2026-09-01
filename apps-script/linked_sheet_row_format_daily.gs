@@ -39,12 +39,15 @@ function linkedRowFormatColumnSpecs_() {
     { col: 1,  span: 1, align: "center", numberFormat: "yyyy. m. d." },
     { col: 2,  span: 1, align: "left" },
     { col: 3,  span: 1, align: "center" }, // 채널명
-    { col: 4,  span: 2, align: "left" },   // 채널분류·소재명
+    { col: 4,  span: 1, align: "left" },   // 채널분류
+    { col: 5,  span: 1, align: "right" },  // 소재명 (사용자 지정 2026-09-01, 헤더 제외)
     { col: 6,  span: 1, align: "center" }, // 상품명
     { col: 7,  span: 1, align: "center", numberFormat: "₩#,##0" },
     { col: 8,  span: 2, align: "center", numberFormat: "#,##0" },
     { col: 10, span: 1, align: "center", numberFormat: "₩#,##0.00" },
-    { col: 11, span: 5, align: "center" }  // 기획자·제작자·캡션·업체명·상태
+    { col: 11, span: 2, align: "center" }, // 기획자·제작자
+    { col: 13, span: 1, align: "left" },   // 캡션 (사용자 지정 2026-09-01)
+    { col: 14, span: 2, align: "center" }  // 업체명·상태
   ];
 }
 

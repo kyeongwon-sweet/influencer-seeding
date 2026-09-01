@@ -82,20 +82,36 @@ test("row-format standard matches the readability theme (drift guard)", () => {
     assert.ok(readabilityTheme.includes(fmt), `theme에 없음: ${fmt}`);
     assert.ok(rowFormatDaily.includes(fmt), `daily에 없음: ${fmt}`);
   }
-  // 사용자 지정 가운데 정렬: 채널명(C), 상품명(F), 비용~상태(G:O).
+  // 사용자 지정 정렬(2026-09-01): 채널명(C)·상품명(F)·비용~CPV(G:J)·기획자/제작자(K:L)
+  // ·업체명/상태(N:O)는 가운데, 채널분류(D)는 왼쪽, **소재명(E)은 오른쪽**, **캡션(M)은 왼쪽**.
   for (const spec of [
     /\{ col: 3,\s+span: 1, align: "center" \}/,
+    /\{ col: 4,\s+span: 1, align: "left" \}/,
+    /\{ col: 5,\s+span: 1, align: "right" \}/,   // 소재명
     /\{ col: 6,\s+span: 1, align: "center" \}/,
     /\{ col: 7,\s+span: 1, align: "center"/,
     /\{ col: 8,\s+span: 2, align: "center"/,
     /\{ col: 10, span: 1, align: "center"/,
-    /\{ col: 11, span: 5, align: "center" \}/,
+    /\{ col: 11, span: 2, align: "center" \}/,
+    /\{ col: 13, span: 1, align: "left" \}/,      // 캡션
+    /\{ col: 14, span: 2, align: "center" \}/,
   ]) assert.match(rowFormatDaily, spec);
   for (const range of [
     /getRange\(2, 3, lastRow - 1, 1\)\.setHorizontalAlignment\("center"\)/,
+    /getRange\(2, 4, lastRow - 1, 1\)\.setHorizontalAlignment\("left"\)/,
+    /getRange\(2, 5, lastRow - 1, 1\)\.setHorizontalAlignment\("right"\)/,
     /getRange\(2, 6, lastRow - 1, 1\)\.setHorizontalAlignment\("center"\)/,
-    /getRange\(2, 11, lastRow - 1, 5\)\.setHorizontalAlignment\("center"\)/,
+    /getRange\(2, 11, lastRow - 1, 2\)\.setHorizontalAlignment\("center"\)/,
+    /getRange\(2, 13, lastRow - 1, 1\)\.setHorizontalAlignment\("left"\)/,
+    /getRange\(2, 14, lastRow - 1, 2\)\.setHorizontalAlignment\("center"\)/,
   ]) assert.match(readabilityTheme, range);
+  // 소재명·캡션 지정은 **데이터 행만**이다 — 헤더(1행)는 별도로 볼드·가운데를 유지한다.
+  for (const src of [rowFormatDaily, readabilityTheme]) {
+    assert.ok(!/getRange\(1, 5,[^)]*\)\.setHorizontalAlignment\("right"\)/.test(src),
+      "헤더 행 정렬을 바꾸면 안 된다");
+    assert.ok(!/getRange\(1, 13,[^)]*\)\.setHorizontalAlignment\("left"\)/.test(src),
+      "헤더 행 정렬을 바꾸면 안 된다");
+  }
 });
 
 test("duplicate audit is read-only and includes sheet plus DB evidence", () => {
