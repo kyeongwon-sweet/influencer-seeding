@@ -67,6 +67,7 @@ test("repair applies backup-before-clear and rehydrates only through exportStats
   assert.match(source, /while \(ss\.getSheetByName\(backupName\)\)/);
   assert.match(source, /db_stat_snapshot/);
   assert.match(source, /METRIC_REPAIR_20260901_DELETE_COUNT_ = 19/);
+  assert.match(source, /METRIC_REPAIR_20260901_SHEET_CLEAR_COUNT_ = 7/);
   assert.match(source, /삭제 대상 시트 셀 수 불일치/);
   assert.match(source, /삭제 대상 DB 행 수 불일치/);
   assert.doesNotMatch(source, /importStats\(/);

@@ -8,6 +8,7 @@ type RepairAction = "clear_field" | "delete_row";
 const CONFIRMATION = "repair-2026-08-27-metric-contamination";
 const TARGETS: Array<{
   normalizedKey: string;
+  exactPostId?: string;
   measuredAt: string;
   field: MetricField;
   contaminatedValues: number[];
@@ -23,6 +24,7 @@ const TARGETS: Array<{
   { normalizedKey: "tt:7677553177486478599", measuredAt: "2026-08-27", field: "play_count", contaminatedValues: [633000, 633374] },
   ...["2026-08-26", "2026-08-27", "2026-08-28", "2026-08-29", "2026-08-30", "2026-08-31"].map((measuredAt) => ({
     normalizedKey: "tt:7677969398061141255",
+    exactPostId: "91a7aada-662d-48cf-8cb1-2a567e1e3d20",
     measuredAt,
     field: "play_count" as const,
     contaminatedValues: [116853],
@@ -30,20 +32,22 @@ const TARGETS: Array<{
   })),
   ...["2026-08-26", "2026-08-27", "2026-08-28", "2026-08-29", "2026-08-30", "2026-08-31"].map((measuredAt) => ({
     normalizedKey: "tt:7669021425163881746",
+    exactPostId: "b861fcbf-79f4-4e52-b5cb-fdae01a18f6e",
     measuredAt,
     field: "play_count" as const,
     contaminatedValues: [97643],
     action: "delete_row" as const,
   })),
-  { normalizedKey: "yt:GBWxY0RlRqA", measuredAt: "2026-08-26", field: "play_count", contaminatedValues: [97643], action: "delete_row" },
+  { normalizedKey: "yt:GBWxY0RlRqA", exactPostId: "38efdd62-2f3b-4ff9-98ef-0c50751f0a13", measuredAt: "2026-08-26", field: "play_count", contaminatedValues: [97643], action: "delete_row" },
   ...["2026-08-27", "2026-08-28", "2026-08-29", "2026-08-30", "2026-08-31"].map((measuredAt) => ({
     normalizedKey: "yt:GBWxY0RlRqA",
+    exactPostId: "38efdd62-2f3b-4ff9-98ef-0c50751f0a13",
     measuredAt,
     field: "play_count" as const,
     contaminatedValues: [149000],
     action: "delete_row" as const,
   })),
-  { normalizedKey: "tt:7677553177486478599", measuredAt: "2026-08-26", field: "play_count", contaminatedValues: [466637], action: "delete_row" },
+  { normalizedKey: "tt:7677553177486478599", exactPostId: "23b92e91-d2c6-4938-b8ab-ce5df428a14b", measuredAt: "2026-08-26", field: "play_count", contaminatedValues: [466637], action: "delete_row" },
 ];
 
 type InspectedTarget = (typeof TARGETS)[number] & {
@@ -66,8 +70,16 @@ async function inspectTargets(): Promise<{ rows: InspectedTarget[]; error?: stri
     .in("normalized_key", keys);
   if (postError) return { rows: [], error: postError.message };
 
-  const postIdByKey = new Map((posts ?? []).map((post) => [String(post.normalized_key), String(post.id)]));
-  const postIds = [...postIdByKey.values()];
+  const exactPostIds = [...new Set(TARGETS.map((target) => target.exactPostId).filter((id): id is string => Boolean(id)))];
+  const { data: exactPosts, error: exactPostError } = exactPostIds.length
+    ? await supabase.from("sponsored_posts").select("id, normalized_key").in("id", exactPostIds)
+    : { data: [], error: null };
+  if (exactPostError) return { rows: [], error: exactPostError.message };
+
+  const postIdByKey = new Map([...(posts ?? []), ...(exactPosts ?? [])]
+    .map((post) => [String(post.normalized_key), String(post.id)]));
+  const existingPostIds = new Set([...(posts ?? []), ...(exactPosts ?? [])].map((post) => String(post.id)));
+  const postIds = [...existingPostIds];
   const dates = [...new Set(TARGETS.map((target) => target.measuredAt))];
   const { data: stats, error: statsError } = postIds.length
     ? await supabase
@@ -88,7 +100,9 @@ async function inspectTargets(): Promise<{ rows: InspectedTarget[]; error?: stri
   return {
     rows: TARGETS.map((target): InspectedTarget => {
       const action = target.action ?? "clear_field";
-      const postId = postIdByKey.get(target.normalizedKey) ?? null;
+      const postId = target.exactPostId && existingPostIds.has(target.exactPostId)
+        ? target.exactPostId
+        : postIdByKey.get(target.normalizedKey) ?? null;
       const empty = { ...target, action, postId, statId: null, value: null, manual: null, createdAt: null, statSnapshot: null };
       if (!postId) return { ...empty, status: "missing_post" };
       const matchingStats = statsByPostDate.get(`${postId}|${target.measuredAt}`) ?? [];

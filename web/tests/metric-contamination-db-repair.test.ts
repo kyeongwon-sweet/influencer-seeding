@@ -19,6 +19,8 @@ test("metric contamination repair is exact-key, exact-date, and exact-value guar
   assert.match(source, /tt:7677969398061141255/);
   assert.match(source, /tt:7669021425163881746/);
   assert.match(source, /yt:GBWxY0RlRqA/);
+  assert.match(source, /23b92e91-d2c6-4938-b8ab-ce5df428a14b/);
+  assert.match(source, /target\.exactPostId && existingPostIds\.has\(target\.exactPostId\)/);
   assert.match(source, /\.eq\(row\.field, row\.value as number\)/);
 });
 

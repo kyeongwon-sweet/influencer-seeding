@@ -14,6 +14,7 @@ const METRIC_REPAIR_20260828_TARGET_DATE_ = "2026-08-27";
 const METRIC_REPAIR_20260828_BACKUP_SHEET_ = "_codex_metric_0901_backup_20260901";
 const METRIC_REPAIR_20260828_DB_CONFIRM_ = "repair-2026-08-27-metric-contamination";
 const METRIC_REPAIR_20260901_DELETE_COUNT_ = 19;
+const METRIC_REPAIR_20260901_SHEET_CLEAR_COUNT_ = 7;
 const METRIC_REPAIR_20260828_EXPLICIT_ = {
   "tt:7677553177486478599": {
     "2026-08-26": [466637],
@@ -239,7 +240,16 @@ function requestMetricContaminationDbRepair20260828_(apply) {
 
 function auditMetricContaminationDb20260828() {
   const result = requestMetricContaminationDbRepair20260828_(false);
-  Logger.log("metric_contamination_db_audit " + JSON.stringify(result));
+  const repairable = (result.rows || []).filter(function(row) { return row.status === "repairable"; });
+  Logger.log("metric_contamination_db_audit " + JSON.stringify({
+    total_targets: (result.rows || []).length,
+    repairable: repairable.length,
+    delete_rows: repairable.filter(function(row) { return row.action === "delete_row"; }).length,
+    manual_true: repairable.filter(function(row) { return row.manual === true; }).length,
+    rows: repairable.map(function(row) {
+      return { key: row.normalizedKey, date: row.measuredAt, value: row.value, manual: row.manual, action: row.action };
+    }),
+  }));
   return result;
 }
 
@@ -263,8 +273,8 @@ function runMetricRepair20260828_(apply) {
   Logger.log("metric_repair_20260828_scan " + JSON.stringify(result));
   if (!apply || !scan.edits.length) return result;
 
-  if (deleteEdits.length !== METRIC_REPAIR_20260901_DELETE_COUNT_) {
-    throw new Error("삭제 대상 시트 셀 수 불일치: expected=" + METRIC_REPAIR_20260901_DELETE_COUNT_
+  if (deleteEdits.length !== METRIC_REPAIR_20260901_SHEET_CLEAR_COUNT_) {
+    throw new Error("삭제 대상 시트 셀 수 불일치: expected=" + METRIC_REPAIR_20260901_SHEET_CLEAR_COUNT_
       + " actual=" + deleteEdits.length);
   }
 
