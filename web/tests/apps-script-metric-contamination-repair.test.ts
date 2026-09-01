@@ -38,19 +38,24 @@ test("known cross-post contamination is scoped to exact keys, dates, and values"
   assert.equal(shouldExplicit("ig:Db5fNo6k6bI", "2026-08-28", 633_000), true);
   assert.equal(shouldExplicit("ig:Db5fNo6k6bI", "2026-08-29", 633_000), true);
   assert.equal(shouldExplicit("ig:Db5fNo6k6bI", "2026-08-30", 633_000), true);
+  assert.equal(shouldExplicit("tt:7677969398061141255", "2026-08-31", 116_853), true);
+  assert.equal(shouldExplicit("tt:7669021425163881746", "2026-08-28", 97_643), true);
+  assert.equal(shouldExplicit("yt:GBWxY0RlRqA", "2026-08-26", 97_643), true);
+  assert.equal(shouldExplicit("yt:GBWxY0RlRqA", "2026-08-31", 149_000), true);
   assert.equal(shouldExplicit("ig:DcfkdB4PdEq", "2026-08-27", 633_374), false, "real Meokrini metric is never cleared");
   assert.equal(shouldExplicit("ig:Db5fNo6k6bI", "2026-08-27", 816), false);
 });
 
 test("repair applies backup-before-clear and rehydrates only through exportStats", () => {
-  const backupIndex = source.indexOf("metricRepair20260828Backup_(scan.sheet, scan.edits)");
+  const dbBeforeIndex = source.indexOf("const dbBefore = requestMetricContaminationDbRepair20260828_(false)");
+  const backupIndex = source.indexOf("metricRepair20260828Backup_(scan.sheet, scan.edits, dbBefore.rows || [])");
   const clearIndex = source.indexOf("writeColumnRuns_(scan.sheet");
   const dbRepairIndex = source.indexOf("repairMetricContaminationDb20260828_()", clearIndex);
   const refreshIndex = source.indexOf("const refreshedExpected = metricRepair20260828ExpectedByKey_()", dbRepairIndex);
   const exportIndex = source.indexOf("const exported = exportStats()");
   const preserveBlankIndex = source.indexOf("const blankExpected = scan.edits.filter", exportIndex);
   const verifyIndex = source.indexOf("const mismatches = scan.edits.filter", preserveBlankIndex);
-  assert.ok(backupIndex >= 0 && clearIndex > backupIndex && dbRepairIndex > clearIndex);
+  assert.ok(dbBeforeIndex >= 0 && backupIndex > dbBeforeIndex && clearIndex > backupIndex && dbRepairIndex > clearIndex);
   assert.ok(refreshIndex > dbRepairIndex && exportIndex > refreshIndex);
   assert.ok(preserveBlankIndex > exportIndex && verifyIndex > preserveBlankIndex);
   assert.match(source, /post_export_blank_preserved/);
@@ -60,5 +65,9 @@ test("repair applies backup-before-clear and rehydrates only through exportStats
   assert.match(source, /assertRowCountStable_\(scan\.sheet, scan\.lastRow\)/);
   assert.match(source, /Object\.keys\(explicitValues\)\.forEach/);
   assert.match(source, /while \(ss\.getSheetByName\(backupName\)\)/);
+  assert.match(source, /db_stat_snapshot/);
+  assert.match(source, /METRIC_REPAIR_20260901_DELETE_COUNT_ = 19/);
+  assert.match(source, /삭제 대상 시트 셀 수 불일치/);
+  assert.match(source, /삭제 대상 DB 행 수 불일치/);
   assert.doesNotMatch(source, /importStats\(/);
 });

@@ -10,6 +10,7 @@ from datetime import date
 from db import get_client
 from channel_kind import is_banner_channel
 from manual_entry_guards import copy_suspects, spike_suspects
+from metric_anomaly_guards import frozen_spike_suspects
 
 SLACK_API = "https://slack.com/api/chat.postMessage"
 # 발송 대상: SLACK_CHANNEL(채널/스레드 답글) 우선, 없으면 STATUS_USER(황경원 DM).
@@ -294,6 +295,28 @@ def _integrity_lines(db, posts):
         line = f"수기 입력 급등 확인요청 {len(spike_hits)}건 — 실제 바이럴일 수도 있으니 값 확인만: {ex}"
         if len(spike_hits) > 3:
             line += f" … 외 {len(spike_hits) - 3}건"
+        lines.append(line)
+
+    # 5-c) 자동·수기 공통 상향 교차오염 사후감사. 급등 자체는 실제 바이럴일 수 있으므로
+    #      차단하지 않고, 10배 이상 급등 뒤 3일 이상 값이 정확히 고정된 경우만 알린다.
+    #      배너 reach는 pseries에 없어서 대상이 아니며 종료글은 이미 고정이 정상이라 제외한다.
+    frozen_hits = []
+    for pid, rows in pseries.items():
+        if pid in ended:
+            continue
+        for spike_date, plateau_date, value, previous, days, reason in frozen_spike_suspects(
+            rows, pvidx, post_id=pid,
+        ):
+            frozen_hits.append((name_of.get(pid, "?"), spike_date, plateau_date, value, previous, days, reason))
+    if frozen_hits:
+        frozen_hits.sort(key=lambda item: (-item[5], -item[3]))
+        ex = ", ".join(
+            f"{account}({spike_date[5:]} {previous if previous is not None else '?'}→{value:,}, {days}일 고정)"
+            for account, spike_date, _plateau_date, value, previous, days, _reason in frozen_hits[:4]
+        )
+        line = f"🔴 조회수 급등 후 동결 {len(frozen_hits)}건 — 교차오염이 단조 가드에 고착됐을 수 있어 확인 필요: {ex}"
+        if len(frozen_hits) > 4:
+            line += f" … 외 {len(frozen_hits) - 4}건"
         lines.append(line)
 
     # 6) 누적 조회수 하락 감지 — 조회수는 누적이라 감소 불가. 특히 수동 입력(manual)은 mono 가드를 우회(2722cf4,

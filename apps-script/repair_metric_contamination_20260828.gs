@@ -11,12 +11,26 @@
 
 const METRIC_REPAIR_20260828_PREV_DATE_ = "2026-08-26";
 const METRIC_REPAIR_20260828_TARGET_DATE_ = "2026-08-27";
-const METRIC_REPAIR_20260828_BACKUP_SHEET_ = "_codex_metric_0828_30_backup_20260901";
+const METRIC_REPAIR_20260828_BACKUP_SHEET_ = "_codex_metric_0901_backup_20260901";
 const METRIC_REPAIR_20260828_DB_CONFIRM_ = "repair-2026-08-27-metric-contamination";
+const METRIC_REPAIR_20260901_DELETE_COUNT_ = 19;
 const METRIC_REPAIR_20260828_EXPLICIT_ = {
   "tt:7677553177486478599": {
     "2026-08-26": [466637],
     "2026-08-27": [633000, 633374],
+  },
+  "tt:7677969398061141255": {
+    "2026-08-26": [116853], "2026-08-27": [116853], "2026-08-28": [116853],
+    "2026-08-29": [116853], "2026-08-30": [116853], "2026-08-31": [116853],
+  },
+  "tt:7669021425163881746": {
+    "2026-08-26": [97643], "2026-08-27": [97643], "2026-08-28": [97643],
+    "2026-08-29": [97643], "2026-08-30": [97643], "2026-08-31": [97643],
+  },
+  "yt:GBWxY0RlRqA": {
+    "2026-08-26": [97643],
+    "2026-08-27": [149000], "2026-08-28": [149000], "2026-08-29": [149000],
+    "2026-08-30": [149000], "2026-08-31": [149000],
   },
   "ig:Db5iVQYhJT5": {
     "2026-08-26": [466637],
@@ -52,6 +66,15 @@ function shouldClear20260828Explicit_(key, date, value) {
   if (!byDate || !byDate[date]) return false;
   const number = metricRepairNumber_(value);
   return byDate[date].indexOf(number) >= 0;
+}
+
+function isDeleteTarget20260901_(key, date) {
+  if (key === "tt:7677553177486478599") return date === "2026-08-26";
+  if (key === "tt:7677969398061141255" || key === "tt:7669021425163881746") {
+    return date >= "2026-08-26" && date <= "2026-08-31";
+  }
+  if (key === "yt:GBWxY0RlRqA") return date >= "2026-08-26" && date <= "2026-08-31";
+  return false;
 }
 
 function metricRepair20260828ExpectedByKey_() {
@@ -158,7 +181,7 @@ function metricRepair20260828Candidates_() {
   };
 }
 
-function metricRepair20260828Backup_(sheet, edits) {
+function metricRepair20260828Backup_(sheet, edits, dbRows) {
   const ss = sheet.getParent();
   let backupName = METRIC_REPAIR_20260828_BACKUP_SHEET_;
   let suffix = 2;
@@ -167,10 +190,18 @@ function metricRepair20260828Backup_(sheet, edits) {
     suffix++;
   }
   const backup = ss.insertSheet(backupName);
-  const rows = [["backed_up_at", "row", "a1", "date", "url", "key", "old", "db_expected", "reason"]];
+  const dbByTarget = {};
+  (dbRows || []).forEach(function(item) {
+    dbByTarget[[item.normalizedKey, item.measuredAt, item.field].join("|")] = item.statSnapshot || null;
+  });
+  const rows = [["backed_up_at", "row", "a1", "date", "url", "key", "old", "db_expected", "reason", "db_stat_snapshot"]];
   const now = new Date().toISOString();
   edits.forEach(function(edit) {
-    rows.push([now, edit.row, edit.a1, edit.date, edit.url, edit.key, edit.old, edit.expected, edit.reason]);
+    const snapshot = dbByTarget[[edit.key, edit.date, "play_count"].join("|")]
+      || dbByTarget[[edit.key, edit.date, "reach_count"].join("|")]
+      || null;
+    rows.push([now, edit.row, edit.a1, edit.date, edit.url, edit.key, edit.old, edit.expected, edit.reason,
+      snapshot ? JSON.stringify(snapshot) : ""]);
   });
   backup.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
   backup.hideSheet();
@@ -219,19 +250,37 @@ function repairMetricContaminationDb20260828_() {
 function runMetricRepair20260828_(apply) {
   const scan = metricRepair20260828Candidates_();
   const explicit = scan.edits.filter(function(edit) { return edit.reason === "known_cross_post_contamination"; });
+  const deleteEdits = explicit.filter(function(edit) { return isDeleteTarget20260901_(edit.key, edit.date); });
   const result = {
     dry_run: !apply,
     candidates: scan.edits.length,
     carry_forward: scan.edits.length - explicit.length,
     explicit: explicit.length,
+    delete_rows: deleteEdits.length,
     explicit_keys: explicit.map(function(edit) { return edit.key + "@" + edit.date; }),
     sample: scan.edits.slice(0, 20),
   };
   Logger.log("metric_repair_20260828_scan " + JSON.stringify(result));
   if (!apply || !scan.edits.length) return result;
 
+  if (deleteEdits.length !== METRIC_REPAIR_20260901_DELETE_COUNT_) {
+    throw new Error("삭제 대상 시트 셀 수 불일치: expected=" + METRIC_REPAIR_20260901_DELETE_COUNT_
+      + " actual=" + deleteEdits.length);
+  }
+
   assertRowCountStable_(scan.sheet, scan.lastRow);
-  result.backup_sheet = metricRepair20260828Backup_(scan.sheet, scan.edits);
+  const dbBefore = requestMetricContaminationDbRepair20260828_(false);
+  result.db_before = {
+    repairable: (dbBefore.rows || []).filter(function(row) { return row.status === "repairable"; }).length,
+    delete_rows: (dbBefore.rows || []).filter(function(row) {
+      return row.status === "repairable" && row.action === "delete_row";
+    }).length,
+  };
+  if (result.db_before.delete_rows !== METRIC_REPAIR_20260901_DELETE_COUNT_) {
+    throw new Error("삭제 대상 DB 행 수 불일치: expected=" + METRIC_REPAIR_20260901_DELETE_COUNT_
+      + " actual=" + result.db_before.delete_rows);
+  }
+  result.backup_sheet = metricRepair20260828Backup_(scan.sheet, scan.edits, dbBefore.rows || []);
   const byCol = {};
   scan.edits.forEach(function(edit) {
     (byCol[edit.col] || (byCol[edit.col] = [])).push({ row: edit.row, value: "" });
