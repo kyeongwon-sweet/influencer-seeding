@@ -5,7 +5,7 @@
 - **근본수정:** `Combined_Sheet_AppsScript.gs`의 신규 헤더 생성을 `Utilities.parseDate(..., "yyyy-MM-dd")` 실제 날짜값으로 바꾸고, 생성 즉시 표시형식을 `yyyy. m. d.`로 통일했다. 웹 파서를 느슨하게 넓혀 숫자 `9.1`을 추정 복원하지 않아 9월 1일/9월 10일 같은 모호성을 만들지 않는다.
 - **라이브 배포:** 정본 Apps Script `1Xogw...`에 guarded pull→29파일 push→fresh pull을 수행했고 **repo 소유 12파일 source exact match** 및 `[APPS_SCRIPT_PUSH_VERIFIED]`를 확인했다. 다음 날짜열부터 생성 시점에 실제 Date로 들어가므로 별도 사후 정규화에 기대지 않는다.
 - **검증:** web **384/384**, `tsc --noEmit`, Next production build, 신규 계약 테스트 통과. 배포 직후 공식 감사 [run `33483448749`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/33483448749)도 HTTP 200 success, `snapshotRetryCount=0`, `dateColumnCount=108`, `metricRange=P:DS`, `dominantFormulaEnd=DS (7,677/7,677)`, H/I 오류셀 0·I mismatch 0이었다. 기존 `hInvalid=1`과 값정체 5건은 이번 헤더 수정과 무관하다.
-- **별도 대기:** 시트 중복 전수감사에서 확정된 제거 후보 6행은 백업·URL/소재 exact guard·아래→위 삭제·사후 중복 0 검증까지 dry-run을 통과했으나, 클라우드 행 삭제는 사용자 실행시점 승인 전이라 **아직 삭제하지 않았다**.
+- **중복 정리 완료(사용자 승인):** 숨김 전체 백업 **`_codex_duplicate_backup_20260901_20260901_164716`** 생성 후 URL-key·소재명 exact guard가 확정한 기존 행 `3347, 585, 325, 32, 10, 9`를 아래→위로 정확히 6행 삭제했다. 데이터 마지막 행은 `4003→3997`; 즉시 전수 재감사 결과 `duplicateGroups=0 / duplicateExtraRows=0`. 사후 공식 감사 [run `33484210960`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/33484210960)도 HTTP 200, `P:DS`, 고아행 0, H/I 오류셀 0·I mismatch 0, 수식형태 기준선 동일(`hInvalid=1 / hManual=320 / incInvalid=0`)로 행 삭제 무손상을 확인했다.
 
 ## ✅ 2026-09-01 [Codex 완료·라이브] 연동시트 전체 서식 통일 + 신규행 일상 자가정규화
 - **사용자 결정 반영:** 데이터 행은 전부 볼드 해제(헤더 볼드 유지), 전체 1회 정리 후 매일 `dailyAuto` 마지막 단계에서 **새로 늘어난 행만** 같은 서식으로 맞춘다. 기준은 행 높이 27, `Noto Sans KR` 10pt, 세로 가운데, A:O 줄바꿈 `CLIP`, 열별 좌/우 정렬·날짜/원화/천단위 표시형식이다.
