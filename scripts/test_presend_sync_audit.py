@@ -25,6 +25,14 @@ def main() -> int:
     eq("collection.small_hist", A.decide_collection(5, [4, 6, 5]), None)             # 중위<20이면 부분판정 안 함
     eq("collection.no_hist", A.decide_collection(3, [0, 0, 0]), None)                # 이력 없고 오늘>0 → 통과
 
+    # ①-b is_collection_hold — 수집 미완료/부분누락은 운영성(DM), 그 외는 사람조치(채널)
+    eq("hold.zero", A.is_collection_hold(A.decide_collection(0, [50, 60, 55])), True)
+    eq("hold.partial", A.is_collection_hold(A.decide_collection(20, [50, 60, 55, 58, 62, 59, 61])), True)
+    eq("hold.mismatch", A.is_collection_hold("DB↔시트 조회수 불일치 3건(시트가 DB보다 앞섬=DB 미반영) — ..."), False)
+    eq("hold.classification", A.is_collection_hold("채널분류 미반영 2건(증분 +99,999) — ..."), False)
+    eq("hold.audit_error", A.is_collection_hold("수집 검수 오류(DB 조회 실패): boom"), False)  # '수집 검수'≠'수집 미완료/부분누락'
+    eq("hold.run_error", A.is_collection_hold("검수 실행 오류: boom"), False)
+
     # ②-a is_material_desync (비대칭: 시트>DB 실질차만 True)
     eq("desync.db_ahead", A.is_material_desync(75890, 62322), False)   # DB>시트=export 지연 → 통과
     eq("desync.equal", A.is_material_desync(1000, 1000), False)

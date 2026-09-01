@@ -149,6 +149,42 @@ def _delete_msg(token: str, channel: str, ts: str) -> bool:
         return False
 
 
+def _open_dm(token: str, user_id: str) -> str | None:
+    """user_id(U...)와의 DM 채널 id(D...)를 연다(중복조회용). 실패 시 None."""
+    try:
+        data = urllib.parse.urlencode({"users": user_id}).encode()
+        req = urllib.request.Request("https://slack.com/api/conversations.open", data=data,
+            headers={"Authorization": "Bearer " + token,
+                     "Content-Type": "application/x-www-form-urlencoded; charset=utf-8"})
+        d = json.load(urllib.request.urlopen(req, timeout=20))
+        if d.get("ok"):
+            return (d.get("channel") or {}).get("id")
+        print("[notify] DM open 실패:", d.get("error"))
+    except Exception as e:
+        print("[notify] DM open 예외:", e)
+    return None
+
+
+def _hold_notice_exists(token: str, channel: str, target: str) -> bool:
+    """channel에 이미 (target) 발송보류 공지가 있으면 True(중복 도배 방지)."""
+    try:
+        req = urllib.request.Request(
+            f"https://slack.com/api/conversations.history?channel={channel}&limit=30",
+            headers={"Authorization": "Bearer " + token})
+        d = json.load(urllib.request.urlopen(req, timeout=20))
+    except Exception as e:
+        print("[notify] 보류공지 중복조회 실패(발송 진행):", e)
+        return False
+    if not d.get("ok"):
+        print("[notify] 보류공지 중복조회 ok=False(발송 진행):", d.get("error"))
+        return False
+    for m in d.get("messages", []):
+        t = m.get("text", "")
+        if "발송 보류" in t and f"({target})" in t:
+            return True
+    return False
+
+
 def _fetch_day(db, target):
     """target일의 {post_id: play_count} (null 제외)."""
     out, start = {}, 0
@@ -668,22 +704,37 @@ def main():
     #   BLOCK이면 리포트 대신 사유 알림만 발송하고 워크플로 실패로 종료 → 백업 크론(13/14/15:20)이 재검수.
     if not update_ts:
         try:
-            from presend_sync_audit import run_presend_audit
+            from presend_sync_audit import run_presend_audit, is_collection_hold
             _blocks, _warns = run_presend_audit(db, target, items=items, ads=ads, norm_ch=_norm_ch)
         except Exception as _e:
             _blocks, _warns = [f"검수 실행 오류: {_e}"], []
+            def is_collection_hold(_m):  # import 실패 시 안전측: 채널 노출
+                return False
         if _blocks:
-            _alert = "🚫 *리포트 발송 보류 — DB↔시트 동기화 검수 실패* `(" + target + ")`\n" + "\n".join(f"• {b}" for b in _blocks)
+            # 라우팅(2026-08-29): '수집 미완료/부분누락'만이면 운영성 보류(재시도로 자동해결)라 팀
+            # 리포트 채널에 도배하지 않고 운영자 DM으로만 조용히. 실질 불일치·분류 미반영·검수 오류가
+            # 하나라도 있으면 사람 조치가 필요하므로 팀 채널에 노출. 어느 경우든 같은 날짜 1회만(중복 억제).
+            _real = [b for b in _blocks if not is_collection_hold(b)]
+            _alert = "🚫 *리포트 발송 보류* `(" + target + ")`\n" + "\n".join(f"• {b}" for b in _blocks)
             if _warns:
                 _alert += "\n\n⚠️ 참고(비차단):\n" + "\n".join(f"• {w}" for w in _warns)
-            _alert += "\n\n_동기화 정정 후 자동 백업발송(13:20/14:20/15:20 KST)에 재검수됩니다._"
-            _ad = urllib.parse.urlencode({"channel": CHANNEL, "text": _alert, "unfurl_links": "false"}).encode()
-            try:
-                _r = json.load(urllib.request.urlopen(urllib.request.Request(SLACK_API, data=_ad,
-                    headers={"Authorization": "Bearer " + token, "Content-Type": "application/x-www-form-urlencoded; charset=utf-8"}), timeout=30))
-                print("[notify] 검수차단 알림 ok=", _r.get("ok"), "error=", _r.get("error"))
-            except Exception as _e:
-                print("[notify] 검수차단 알림 발송 실패:", _e)
+            _alert += "\n\n_동기화/수집 완료 후 자동 백업발송(13:20/14:20/15:20 KST)에 재검수됩니다._"
+            if _real:
+                _dest, _hist_ch = CHANNEL, CHANNEL          # 사람 조치 필요 → 팀 채널
+            else:
+                _uid = os.getenv("STATUS_USER") or "U0B2Y0ZC8QZ"  # 운영자(황경원) DM
+                _dest = _uid                                 # chat.postMessage는 U...로 바로 발송됨
+                _hist_ch = _open_dm(token, _uid)             # 중복조회용 D...(실패 시 조회 스킵)
+            if _hist_ch and _hold_notice_exists(token, _hist_ch, target):
+                print("[notify] 보류 공지 이미 있음 — 중복 억제:", _dest, target)
+            else:
+                _ad = urllib.parse.urlencode({"channel": _dest, "text": _alert, "unfurl_links": "false"}).encode()
+                try:
+                    _r = json.load(urllib.request.urlopen(urllib.request.Request(SLACK_API, data=_ad,
+                        headers={"Authorization": "Bearer " + token, "Content-Type": "application/x-www-form-urlencoded; charset=utf-8"}), timeout=30))
+                    print("[notify] 발송보류 알림 dest=", _dest, "ok=", _r.get("ok"), "error=", _r.get("error"))
+                except Exception as _e:
+                    print("[notify] 발송보류 알림 발송 실패:", _e)
             print("[notify] 발송 보류(검수 BLOCK):", _blocks)
             raise SystemExit(1)   # 워크플로 실패로 남겨 가시성 확보(백업 크론이 재시도)
         if _warns:

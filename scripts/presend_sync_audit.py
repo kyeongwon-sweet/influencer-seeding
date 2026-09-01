@@ -61,6 +61,17 @@ def is_material_desync(db_v: int, sheet_v: int) -> bool:
     return diff >= MIN_ABS_DIFF and diff / sheet_v >= MIN_PCT_DIFF
 
 
+# 수집 미완료 계열 보류 메시지의 접두어. 이 부류는 '아직 수집 전'이라 재시도가 스스로 해결하는
+# 운영성 보류이므로, 팀 리포트 채널에 도배하지 않고 운영자 DM으로만 조용히 알린다(2026-08-29).
+COLLECTION_HOLD_PREFIXES = ("수집 미완료", "수집 부분누락")
+
+
+def is_collection_hold(block_msg: str) -> bool:
+    """블록 사유가 '수집 미완료/부분누락'(운영성, 재시도로 자동해결)이면 True.
+    검수 오류·동기화 불일치·분류 미반영 등 '사람 조치 필요' 블록은 False(팀 채널 노출 대상)."""
+    return any(str(block_msg).startswith(p) for p in COLLECTION_HOLD_PREFIXES)
+
+
 # ────────────────────────────── 순수 판정부(테스트 대상) ──────────────────────────────
 def decide_collection(today_n: int, hist_counts: list[int]) -> str | None:
     """① 수집 완료 판정. 0건이면 미실행/실패, 최근 중위 대비 50% 미만이면 부분누락."""
@@ -149,7 +160,10 @@ def _stat_mismatches(db, target: str) -> list[tuple[str, int, int]]:
     tgt = date.fromisoformat(target)
     tcols = [i for i, d in date_columns.items() if d == tgt]
     if not tcols:
-        return []  # 시트에 target 날짜열 아직 없음 → 비교 대상 없음(불일치 아님)
+        # 시트에 target 날짜열 아직 없음(이른 실행=exportStats 전) → 비교 대상 없음(불일치 아님).
+        # ⚠️ 반드시 2-튜플로 반환 — [] 단일 반환 시 호출부 `mism, behind = ...`가 unpack 크래시
+        # ("not enough values to unpack")나 "연동시트 조회 실패"로 오표기됨(2026-08-29 실측 버그).
+        return [], []
     tcol = tcols[0]
 
     sheet_by_key: dict[str, list[Any]] = {}
