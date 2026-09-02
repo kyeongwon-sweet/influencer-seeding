@@ -283,7 +283,9 @@ function isIntentionalBacklogStub(
 ): boolean {
   if (typeof actual !== "string" || actual.replace(/\s+/g, "") !== '=""' || !post?.posted) return false;
   const refs = measuredRefs(row, post, targetDate);
-  return refs.length === 1 && refs[0].date === targetDate &&
+  // 백로그 첫 측정 스텁은 target이 다음 날로 넘어가도 두 번째 실측이 생기기 전까지 유효하다.
+  // target일 일치까지 요구하면 정상 스텁이 하루 뒤 다시 형태 오류로 떠 버린다.
+  return refs.length === 1 &&
     (Date.parse(refs[0].date) - Date.parse(post.posted)) / 86400000 > 7;
 }
 
