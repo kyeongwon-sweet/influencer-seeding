@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## ✅ 2026-09-02 [Codex 완료·라이브] 시트 I증분을 리포트 target일 규칙으로 통일
+- **규칙 통일:** `Combined_Sheet_AppsScript.gs`의 I열을 과거 마지막 양수값이 아니라 **최신 수집일 target 값 - 이전 최대값**으로 계산한다. target일 값이 공란/0이면 I도 공란이며, 첫 유효측정 7일 이내 전액·7일 초과 백로그 공란·종료글 공란 규칙은 유지했다. H·날짜셀·DB 통계는 쓰지 않았다.
+- **target 확정:** 2026-09-02 실행에서 날짜범위 `P:DS`, 최신 수집일 **2026-09-01(DS)** 을 선택했다. 오늘/미래에 미리 만들어진 빈 날짜열은 target으로 쓰지 않는다.
+- **필터 함정과 보강:** 최초 실행은 공유 기본필터의 표시행만 실제 반영돼 숨김행 3,240개가 옛 `lastC` 수식으로 남았다. `1193e54`에서 필터 범위·조건을 보존한 채 잠시 제거하고 전열 쓰기→전수 재읽기 검증→동일 필터 복원하도록 수정했다. 라이브 재실행 로그는 `written=3996 / verified=3996 / filter_removed=true / criteria_restored=1`, 화면 필터도 전후 동일한 **3,434행 중 188행 표시**였다.
+- **최종 감사:** [run `33612901273`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/33612901273)에서 전체 3,448행 기준 **I형태오류 0 / I불일치 0 / I #REF! 0 / 증분값 필요 빈칸 0**. 정상 증분 908행, target일 미측정 공란 2,540행으로 리포트 규칙과 전수 일치했다. 백로그 `=""` 1행은 실측일이 target보다 과거가 된 뒤에도 두 번째 실측 전까지 정상인 규칙으로 감사 예외를 바로잡았다(`637b1c7`). 기존 H2 형태오류 1건과 값정체 6건은 별도 이슈라 전체 `healthy=false`이며 이번 I 수정과 무관하다.
+- **배포:** 핵심 `a02be8b`, 감사 진단 `7123dca`, 필터 전수쓰기 `1193e54`, 백로그 감사 `637b1c7` 모두 `origin/main`. Apps Script guarded push→fresh pull source exact match 완료. 최종 Vercel prod `dpl_HKXRdjzwhS6saenj6sMHEJooHy6J` READY 및 `-mu` alias 적용.
+- **검증:** web 전체 **387/387**, formula-audit 집중 **22/22**, `tsc --noEmit`, lint 0 errors(기존 warnings 15), production build, Apps Script 구문·계약 테스트 통과.
+
 ## ✅ 2026-09-02 [Codex 읽기전용 검증] 8/26~31 조회수 교차오염 — 자정수집 후 재생성 0, 관찰 종료
 - **자정수집 정상:** `cron-daily-collect.yml`의 2026-09-01 대상 스케줄 3회가 모두 성공(run `33545982262`·`33553560757`·`33563937852`). 첫 전체수집은 **1,174건 저장**, 후속 target-only는 각 10건 저장. 최초 큐 `eligible=890 / queue=888`이 후속에서 `measured=879 / queue=11`로 수렴했다.
 - **정리 대상 4글 DB 실측:** `tt:7677969398061141255`는 08-31 자동 136 + 09-01 수기 136, `tt:7669021425163881746`(DB 레거시 normalized_key는 `url:.../photo/...`)는 **09-01 자동 2,021**, `yt:GBWxY0RlRqA`는 **09-01 자동 1,600**, `tt:7677553177486478599`(DB 레거시 normalized_key는 `url:.../photo/...`)는 09-01 신규행 없음. 삭제했던 오염값 **116,853 / 97,643 / 149,000 / 466,637 재생성 0건**.
