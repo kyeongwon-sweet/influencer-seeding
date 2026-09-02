@@ -8,8 +8,8 @@ import { auditRows, formatAuditMessage, isMetriclessChannel, type AuditPost, typ
 
 const TODAY = "2026-08-03";
 
-// ⚠️ 정체 판정은 **DB 실측(measured)** 기준이다. 시트 날짜칸은 '공백 이어받기'로 채워져
-//    끊김이 보이지 않기 때문(첫 구현이 시트 기준이라 실제 3건을 0건으로 놓쳤다).
+// ⚠️ 정체 판정은 **DB 실측(measured)** 기준이다. 시트 I는 target일 미측정이면 공란이지만,
+//    삭제·수집실패 원인 판정은 여전히 DB 실측 이력이 정본이다.
 function mkPost(measured: Array<[string, number]> = [], over: Partial<AuditPost> = {}): AuditPost {
   return {
     posted: "2026-07-01",
@@ -22,14 +22,15 @@ function mkPost(measured: Array<[string, number]> = [], over: Partial<AuditPost>
 
 function mkRow(label: string, dates: Array<[string, number]>, key = label): SheetAuditRow {
   const ds = dates.map(([date, value]) => ({ date, value }));
-  const last = ds.length ? ds[ds.length - 1].value : null;
   const max = ds.length ? Math.max(...ds.map(d => d.value)) : null;
-  const prevMax = ds.length > 1 ? Math.max(...ds.slice(0, -1).map(d => d.value)) : null;
+  const targetDate = "2026-08-02";
+  const target = ds.find((d) => d.date === targetDate)?.value ?? null;
+  const previous = ds.filter((d) => d.date < targetDate).map((d) => d.value);
   return {
     key,
     label,
     h: max,                                            // 누적 = 그 행 최대(정합)
-    inc: ds.length ? (prevMax === null ? last : Math.max(0, (last as number) - prevMax)) : null,
+    inc: target == null ? null : previous.length ? Math.max(0, target - Math.max(...previous)) : target,
     dates: ds,
   };
 }

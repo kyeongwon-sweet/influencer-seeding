@@ -1030,15 +1030,16 @@ function metricCumulativeFormula_(row, firstLetter, lastLetter) {
   return "=IF(COUNT(" + firstLetter + row + ":" + lastLetter + row + ")=0,\"\",MAX(" + firstLetter + row + ":" + lastLetter + row + "))";
 }
 
-function metricIncrementFormula_(row, firstLetter, lastLetter) {
+function metricIncrementFormula_(row, firstLetter, lastLetter, targetLetter) {
   const rangeRef = "$" + firstLetter + row + ":$" + lastLetter + row;
   const firstCellRef = "$" + firstLetter + row;
+  const targetCellRef = "$" + (targetLetter || lastLetter) + row;
   return "=IFERROR(LET(rng," + rangeRef
     + ",cols,SEQUENCE(1,COLUMNS(rng),COLUMN(" + firstCellRef + "),1)"
-    + ",lastC,MAX(FILTER(cols,rng>0))"
-    + ",lastV,INDEX(rng,1,lastC-COLUMN(" + firstCellRef + ")+1)"
-    + ",prev,FILTER(rng,cols<lastC,rng>0)"
-    + ',IFERROR(MAX(0,lastV-MAX(prev)),lastV)),"")';
+    + ",targetC,COLUMN(" + targetCellRef + ")"
+    + ",targetV,INDEX(rng,1,targetC-COLUMN(" + firstCellRef + ")+1)"
+    + ",prevMax,IFERROR(MAX(FILTER(rng,cols<targetC,rng>0)),0)"
+    + ',IF(targetV>0,IF(prevMax>0,MAX(0,targetV-prevMax),targetV),"")),"")';
 }
 
 function metricFormulaText_(formula) {
@@ -1069,17 +1070,25 @@ function standardCumulativeFormulaEnd_(formula, row, firstLetter) {
     : "";
 }
 
-function standardIncrementFormulaEnd_(formula, row, firstLetter) {
+function standardIncrementFormulaParts_(formula, row, firstLetter) {
   const text = metricFormulaText_(formula);
   const prefix = new RegExp(
     "^=IFERROR\\(LET\\(RNG,\\$" + firstLetter + row + ":\\$([A-Z]+)" + row + ","
   );
   const match = text.match(prefix);
-  if (!match) return "";
+  if (!match) return null;
   const endLetter = match[1];
-  return text === metricFormulaText_(metricIncrementFormula_(row, firstLetter, endLetter))
-    ? endLetter
-    : "";
+  const targetMatch = text.match(new RegExp(",TARGETC,COLUMN\\(\\$([A-Z]+)" + row + "\\),"));
+  if (!targetMatch) return null;
+  const targetLetter = targetMatch[1];
+  return text === metricFormulaText_(metricIncrementFormula_(row, firstLetter, endLetter, targetLetter))
+    ? { endLetter: endLetter, targetLetter: targetLetter }
+    : null;
+}
+
+function standardIncrementFormulaEnd_(formula, row, firstLetter) {
+  const parts = standardIncrementFormulaParts_(formula, row, firstLetter);
+  return parts ? parts.endLetter : "";
 }
 
 // 수동으로 우측 날짜열을 삽입하면 기존 행의 명시적 끝열은 자동 확장되지 않는다.
@@ -1123,9 +1132,12 @@ function repairStaleMetricFormulaRanges_(sheet) {
     const formulas = targetSheet.getRange(CONFIG.DATA_START_ROW, incrementCol, result.rows, 1).getFormulas();
     for (let i = 0; i < result.rows; i++) {
       const row = CONFIG.DATA_START_ROW + i;
-      const currentEnd = standardIncrementFormulaEnd_(formulas[i][0], row, firstLetter);
-      if (currentEnd && metricColumnNumber_(currentEnd) < lastCol) {
-        incrementEdits.push({ row: row, value: metricIncrementFormula_(row, firstLetter, lastLetter) });
+      const current = standardIncrementFormulaParts_(formulas[i][0], row, firstLetter);
+      if (current && metricColumnNumber_(current.endLetter) < lastCol) {
+        incrementEdits.push({
+          row: row,
+          value: metricIncrementFormula_(row, firstLetter, lastLetter, current.targetLetter),
+        });
       }
     }
   }
@@ -1149,6 +1161,12 @@ function ensureNewRowsMetricFormulas_(sheet, startRow, endRow) {
   const lastCol = Math.max.apply(null, dateCols.map(x => x.col));
   const firstLetter = colLetter_(firstCol);
   const lastLetter = colLetter_(lastCol);
+  const lastSuccessfulTarget = PropertiesService.getScriptProperties()
+    .getProperty("EXPORT_STATS_COLLECTION_GATE_LAST_TARGET_DATE");
+  const targetDateCol = dateCols.find(function(item) { return item.date === lastSuccessfulTarget; })
+    || dateCols.filter(function(item) { return item.date < todayStr_(); }).slice(-1)[0]
+    || dateCols[dateCols.length - 1];
+  const targetLetter = colLetter_(targetDateCol.col);
   const cumulativeCol = findHeaderCol_(sheet, ["누적 조회수", "누적조회수"]);
   const incrementCol = getIncrementCol_(sheet);
   let cumulative = 0, increment = 0;
@@ -1163,16 +1181,7 @@ function ensureNewRowsMetricFormulas_(sheet, startRow, endRow) {
     if (incrementCol) {
       const cell = sheet.getRange(row, incrementCol);
       if (!cell.getFormula() && String(cell.getValue() == null ? "" : cell.getValue()).trim() === "") {
-        const rangeRef = "$" + firstLetter + row + ":$" + lastLetter + row;
-        const firstRef = "$" + firstLetter + row;
-        cell.setFormula(
-          "=IFERROR(LET(rng," + rangeRef +
-          ",cols,SEQUENCE(1,COLUMNS(rng),COLUMN(" + firstRef + "),1)" +
-          ",lastC,MAX(FILTER(cols,rng>0))" +
-          ",lastV,INDEX(rng,1,lastC-COLUMN(" + firstRef + ")+1)" +
-          ",prev,FILTER(rng,cols<lastC,rng>0)" +
-          ",IFERROR(MAX(0,lastV-MAX(prev)),lastV)),\"\")"
-        );
+        cell.setFormula(metricIncrementFormula_(row, firstLetter, lastLetter, targetLetter));
         increment++;
       }
     }
@@ -1786,7 +1795,7 @@ function runExportStatsCollectionGate_(source, pending) {
   try {
     ensureDailyImportBeforeExport_(targetDate);
     exported = withDocLock_(function() {
-      const ok = exportStats();
+      const ok = exportStatsWithOptions_({ incrementTargetDate: targetDate });
       if (ok === false) return false;
       repairStaleMetricFormulaRanges_(getSheet_());
       return true;
@@ -2259,8 +2268,16 @@ function exportStats() {
   return exportStatsWithOptions_(null);
 }
 
+// 날짜 원천값과 H는 건드리지 않고 I열 공식만 최신 수집일 규칙으로 전수 갱신한다.
+// 운영 정정 시 exportStats 전체 쓰기 대신 이 함수를 사용한다.
+function refreshIncrementFormulasForLatestCollectedDate() {
+  return exportStatsWithOptions_({ formulaOnly: true });
+}
+
 function exportStatsWithOptions_(options) {
   const skipFormulaRefresh = !!(options && options.skipFormulaRefresh === true);
+  const formulaOnly = !!(options && options.formulaOnly === true);
+  const requestedIncrementTargetDate = String((options && options.incrementTargetDate) || "").slice(0, 10);
   try {
     const sheet = getSheet_();
     const fieldCols = buildFieldCols_(sheet);
@@ -2314,10 +2331,14 @@ function exportStatsWithOptions_(options) {
     dateCols.forEach(dc => existingSet[dc.date] = true);
     const maxExisting = dateCols.length ? dateCols[dateCols.length - 1].date : null;
     const newDates = Object.keys(allDatesSet)
-      .filter(d => !existingSet[d] && d <= today && (maxExisting === null || d > maxExisting))
+      .filter(d => !existingSet[d] && d < today && (maxExisting === null || d > maxExisting))
       .sort();
     let addedCols = 0;
     if (newDates.length) {
+      if (formulaOnly) {
+        safeAlert_(`증분 공식 전용 갱신 중 시트에 없는 수집일 ${newDates[0]}을 발견했습니다. 날짜열을 쓰지 않고 중단합니다.`);
+        return false;
+      }
       const anchor = dateCols.length ? dateCols[dateCols.length - 1].col : sheet.getLastColumn();
       sheet.insertColumnsAfter(anchor, newDates.length);
       // `M.D` 문자열은 Sheets가 9.1 같은 소수로 강제 변환할 수 있다. Apps Script 파서는
@@ -2332,6 +2353,20 @@ function exportStatsWithOptions_(options) {
       addedCols = newDates.length;
     }
     if (dateCols.length === 0) { safeAlert_("날짜 열도 없고 추가할 수집 날짜도 없습니다. (1행 날짜 헤더 또는 수집 데이터 확인)"); return; }
+
+    // 리포트와 동일하게 '최신 수집일'을 증분 target으로 고정한다. 오늘 열이 미리 생겨 있어도
+    // 그 빈 열을 target으로 삼지 않으며, 예약 실행은 collection gate가 넘긴 날짜를 우선한다.
+    const latestCollectedDate = Object.keys(allDatesSet)
+      .filter(function(date) { return date < today; })
+      .sort()
+      .slice(-1)[0] || "";
+    const incrementTargetDate = requestedIncrementTargetDate || latestCollectedDate;
+    const incrementTargetCol = dateCols.find(function(item) { return item.date === incrementTargetDate; });
+    if (!skipFormulaRefresh && !incrementTargetCol) {
+      safeAlert_(`증분 기준 수집일(${incrementTargetDate || "없음"})에 해당하는 날짜열을 찾지 못해 I열 쓰기를 중단했습니다.`);
+      return false;
+    }
+    const incrementTargetLetter = incrementTargetCol ? colLetter_(incrementTargetCol.col) : "";
 
     // 중복 날짜열 감지: 같은 날짜가 2개 이상이면 역채움/증분 기준이 흔들려 오염될 수 있으므로 중단.
     {
@@ -2492,20 +2527,22 @@ function exportStatsWithOptions_(options) {
       if (!prev || col !== prev.end + 1) dateColGroups.push({ start: col, end: col });
       else prev.end = col;
     }
-    dateColGroups.forEach(function(group) {
-      const startBi = group.start - firstCol;
-      const groupWidth = group.end - group.start + 1;
-      let changed = false;
-      for (let i = 0; i < nRows && !changed; i++) {
-        for (let j = 0; j < groupWidth; j++) {
-          if (finalDateBlock[i][startBi + j] !== latestDateBlock[i][startBi + j]) { changed = true; break; }
+    if (!formulaOnly) {
+      dateColGroups.forEach(function(group) {
+        const startBi = group.start - firstCol;
+        const groupWidth = group.end - group.start + 1;
+        let changed = false;
+        for (let i = 0; i < nRows && !changed; i++) {
+          for (let j = 0; j < groupWidth; j++) {
+            if (finalDateBlock[i][startBi + j] !== latestDateBlock[i][startBi + j]) { changed = true; break; }
+          }
         }
-      }
-      if (!changed) return;
-      assertRowCountStable_(sheet, latestLastRowForDates, "exportStats.dateBlock");
-      const values = finalDateBlock.map(function(row) { return row.slice(startBi, startBi + groupWidth); });
-      sheet.getRange(CONFIG.DATA_START_ROW, group.start, nRows, groupWidth).setValues(values);
-    });
+        if (!changed) return;
+        assertRowCountStable_(sheet, latestLastRowForDates, "exportStats.dateBlock");
+        const values = finalDateBlock.map(function(row) { return row.slice(startBi, startBi + groupWidth); });
+        sheet.getRange(CONFIG.DATA_START_ROW, group.start, nRows, groupWidth).setValues(values);
+      });
+    }
 
     const incrementCol = getIncrementCol_(sheet);
     let incWritten = 0;
@@ -2536,13 +2573,18 @@ function exportStatsWithOptions_(options) {
         const endedAt = rowKeys[i] ? endedByKey[rowKeys[i]] : null;
         const rowNum = CONFIG.DATA_START_ROW + i;
         const refs = [];
+        if (endedAt && endedAt < incrementTargetDate) {
+          incFormulas.push(['=""']);
+          incWritten++;
+          continue;
+        }
         if (url && m) {
           for (let j = 0; j < dateCols.length; j++) {
             const dc = dateCols[j];
             const bi = dc.col - firstCol;
             if (isBeforePostedDate_(dc.date, postedAt)) continue;
             if (endedAt && dc.date > endedAt) continue;
-            if (dc.date >= today) continue;
+            if (dc.date > incrementTargetDate) continue;
             if (!(m[dc.date] > 0)) continue;
             const n = toNumber_(newBlock[i][bi]);
             if (n == null || n <= 0) continue;
@@ -2551,45 +2593,38 @@ function exportStatsWithOptions_(options) {
         }
         if (refs.length === 0) {
           // DB 참조가 아직 없는 /photo/·미러링 행도 시트 날짜값으로 증분을 계산한다.
-          // 날짜값이 전혀 없으면 IFERROR가 빈 결과를 내므로 수식 복구 가능 상태도 유지된다.
-          const rngRef = "$" + colLetter_(firstCol) + rowNum + ":$" + colLetter_(firstCol + width - 1) + rowNum;
-          const firstCellRef = "$" + colLetter_(firstCol) + rowNum;
-          incFormulas.push([
-            "=IFERROR(LET(rng," + rngRef +
-            ",cols,SEQUENCE(1,COLUMNS(rng),COLUMN(" + firstCellRef + "),1)" +
-            ",lastC,MAX(FILTER(cols,rng>0))" +
-            ",lastV,INDEX(rng,1,lastC-COLUMN(" + firstCellRef + ")+1)" +
-            ",prev,FILTER(rng,cols<lastC,rng>0)" +
-            ',IFERROR(MAX(0,lastV-MAX(prev)),lastV)),"")'
-          ]);
+          // target일 값이 없으면 공란이며, 과거 마지막 실측을 오늘 증분처럼 재노출하지 않는다.
+          incFormulas.push([metricIncrementFormula_(
+            rowNum,
+            colLetter_(firstCol),
+            colLetter_(firstCol + width - 1),
+            incrementTargetLetter
+          )]);
           incWritten++;
           continue;
         }
         // 백로그 첫 측정(게시 7일 초과)만 빈칸 — 스파이크 방지 규칙 유지(판정은 DB 측정일 기반).
         if (refs.length === 1 && postedAt) {
           const gapDays = (Date.parse(refs[0].date) - Date.parse(String(postedAt).slice(0, 10))) / 86400000;
-          if (gapDays > 7) { incFormulas.push(['=""']); continue; }  // 표시 빈칸이되 수식 유지(복구 가능 칸 규약)
+          if (gapDays > 7) { incFormulas.push(['=""']); incWritten++; continue; }  // 표시 빈칸이되 수식 유지(복구 가능 칸 규약)
         }
-        // V2(행-범위 수식, 2026-07-29): 기존 셀주소 목록(MAX({CE743,...}))은 참조한 날짜 '열'이
+        // V3(target일 행-범위 수식): 기존 셀주소 목록(MAX({CE743,...}))은 참조한 날짜 '열'이
         // 삭제/삽입되면 #REF!로 전멸했다(7/27 저녁 실사고. 정렬 자체는 상대참조가 행을 따라감을
         // 운영 시트 실측으로 확인 — H열 V4가 팀 정렬 수차례 후에도 1,278행 정합 유지).
-        // 범위 참조는 열 증감에 자동 적응하고 행과 함께 이동한다. 의미는 기존과 동일:
-        // 마지막 유효값 − 그 이전 최대(음수는 0), 유효값 1개면 전액.
-        // (부수 개선: 오늘 열에 수기값이 들어오면 그 값이 최신으로 잡혀 증분이 즉시 반영됨)
-        const rngRef = "$" + colLetter_(firstCol) + rowNum + ":$" + colLetter_(firstCol + width - 1) + rowNum;
-        const firstCellRef = "$" + colLetter_(firstCol) + rowNum;
-        incFormulas.push([
-          "=IFERROR(LET(rng," + rngRef +
-          ",cols,SEQUENCE(1,COLUMNS(rng),COLUMN(" + firstCellRef + "),1)" +
-          ",lastC,MAX(FILTER(cols,rng>0))" +
-          ",lastV,INDEX(rng,1,lastC-COLUMN(" + firstCellRef + ")+1)" +
-          ",prev,FILTER(rng,cols<lastC,rng>0)" +
-          ',IFERROR(MAX(0,lastV-MAX(prev)),lastV)),"")'
-        ]);
+        // 범위 참조는 열 증감에 자동 적응하고 행과 함께 이동한다. 리포트와 동일하게:
+        // target일 값 − 그 이전 최대(음수는 0), 첫 측정이면 전액, target일 미측정이면 공란.
+        incFormulas.push([metricIncrementFormula_(
+          rowNum,
+          colLetter_(firstCol),
+          colLetter_(firstCol + width - 1),
+          incrementTargetLetter
+        )]);
         incWritten++;
       }
       sheet.getRange(CONFIG.DATA_START_ROW, incrementCol, nRows, 1).setFormulas(incFormulas);
-      try { refreshCumulativeViews(); } catch (e) { Logger.log(e); }
+      if (!formulaOnly) {
+        try { refreshCumulativeViews(); } catch (e) { Logger.log(e); }
+      }
     }
 
     // 종료글 최종값 보존: 날짜열에 표시 가능한 실측이 없어 H가 빈칸이더라도,
@@ -2597,7 +2632,7 @@ function exportStatsWithOptions_(options) {
     // 날짜별 히스토리 칸에 소급 기입하면 측정일을 왜곡하므로 H열 빈칸만 채운다.
     let endedFinalFilled = 0, endedFinalNoMetric = 0;
     const cumulativeCol = findHeaderCol_(sheet, ["누적 조회수", "누적조회수"]);
-    if (cumulativeCol) {
+    if (cumulativeCol && !formulaOnly) {
       const cumRange = sheet.getRange(CONFIG.DATA_START_ROW, cumulativeCol, nRows, 1);
       const cumVals = cumRange.getValues();
       const cumFormulas = cumRange.getFormulas();
@@ -2622,15 +2657,19 @@ function exportStatsWithOptions_(options) {
       if (cumChanged) cumRange.setValues(cumOut);
     }
 
-    let msg = `✅ 수집 조회수를 시트에 반영했습니다.\n새 날짜 열 ${addedCols}개 추가 · URL-key 날짜 쓰기 ${dateKeyWrites}칸 · 빈칸 실측 보강 ${filled}칸 · 자동 DB값 정정 ${autoOverwritten}칸 · 수기값 보존 ${manualPreserved}칸 · carry-forward 비활성 · 업로드 전 값 삭제 ${prePostedCleared}칸 · 종료 이후 값 삭제 ${endedCleared}칸 · 증분 수식 ${incWritten}행 · H/I 재생성 생략 ${skipFormulaRefresh ? "예" : "아니오"} · 기타 기존값 보존 ${preserved}칸 · 매칭 게시물 ${matched}개 · 날짜 열 ${dateCols.length}개`;
-    if (endedFinalFilled) msg += `\n🛑 트래킹 종료글 H열 빈칸 ${endedFinalFilled}행에 DB 최종 누적값을 보존했습니다.`;
-    if (endedFinalNoMetric) msg += `\n⚠️ 트래킹 종료됐지만 DB 조회수/도달수 이력이 없는 행 ${endedFinalNoMetric}개는 최종값을 채울 수 없습니다.`;
-    if (shortcodeFormatMatched) msg += `\n🔁 /reel·/tv 잔재 URL ${shortcodeFormatMatched}개는 shortcode 기준으로 정상 매칭했습니다.`;
-    if (missing) msg += `\n⚠️ 시트엔 있으나 대시보드에 수집기록이 없는 URL ${missing}개(아직 수집 전이거나 미등록).`;
-    if (futureCleared) msg += `\n🗓️ 오늘·미래(수집일-1 이후) 날짜칸 ${futureCleared}개를 비웠습니다.`;
-    if (dateKeyConflicts) msg += `\n⚠️ 중복 URL 키의 변경 ${dateKeyConflicts}칸은 어느 행이 정본인지 불명확해 쓰지 않았습니다.`;
-    if (concurrentCellSkips) msg += `\n🛡️ 계산 뒤 사람이 수정한 ${concurrentCellSkips}칸은 최신 수기값을 보존했습니다.`;
-    if (orphanRows) msg += `\n🧟 URL 없이 숫자만 있는 '고아 행' ${orphanRows}개 발견 — 행 삭제로 정리하세요(데이터는 DB에 있음).`;
+    let msg = formulaOnly
+      ? `✅ I열 증분 공식을 최신 수집일 ${incrementTargetDate} 기준으로 ${incWritten}행 갱신했습니다. 날짜값·H열은 변경하지 않았습니다.`
+      : `✅ 수집 조회수를 시트에 반영했습니다.\n새 날짜 열 ${addedCols}개 추가 · URL-key 날짜 쓰기 ${dateKeyWrites}칸 · 빈칸 실측 보강 ${filled}칸 · 자동 DB값 정정 ${autoOverwritten}칸 · 수기값 보존 ${manualPreserved}칸 · carry-forward 비활성 · 업로드 전 값 삭제 ${prePostedCleared}칸 · 종료 이후 값 삭제 ${endedCleared}칸 · 증분 수식 ${incWritten}행 · H/I 재생성 생략 ${skipFormulaRefresh ? "예" : "아니오"} · 기타 기존값 보존 ${preserved}칸 · 매칭 게시물 ${matched}개 · 날짜 열 ${dateCols.length}개`;
+    if (!formulaOnly) {
+      if (endedFinalFilled) msg += `\n🛑 트래킹 종료글 H열 빈칸 ${endedFinalFilled}행에 DB 최종 누적값을 보존했습니다.`;
+      if (endedFinalNoMetric) msg += `\n⚠️ 트래킹 종료됐지만 DB 조회수/도달수 이력이 없는 행 ${endedFinalNoMetric}개는 최종값을 채울 수 없습니다.`;
+      if (shortcodeFormatMatched) msg += `\n🔁 /reel·/tv 잔재 URL ${shortcodeFormatMatched}개는 shortcode 기준으로 정상 매칭했습니다.`;
+      if (missing) msg += `\n⚠️ 시트엔 있으나 대시보드에 수집기록이 없는 URL ${missing}개(아직 수집 전이거나 미등록).`;
+      if (futureCleared) msg += `\n🗓️ 오늘·미래(수집일-1 이후) 날짜칸 ${futureCleared}개를 비웠습니다.`;
+      if (dateKeyConflicts) msg += `\n⚠️ 중복 URL 키의 변경 ${dateKeyConflicts}칸은 어느 행이 정본인지 불명확해 쓰지 않았습니다.`;
+      if (concurrentCellSkips) msg += `\n🛡️ 계산 뒤 사람이 수정한 ${concurrentCellSkips}칸은 최신 수기값을 보존했습니다.`;
+      if (orphanRows) msg += `\n🧟 URL 없이 숫자만 있는 '고아 행' ${orphanRows}개 발견 — 행 삭제로 정리하세요(데이터는 DB에 있음).`;
+    }
     safeAlert_(msg);
     return true;
   } catch (e) {

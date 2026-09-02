@@ -38,6 +38,7 @@ const TODAY = "2026-07-30";
 const METRIC_RANGE = {
   firstColumn: "P",
   lastColumn: "DJ",
+  targetColumn: "DJ",
   columns: ["P", "DH", "DI", "DJ"],
 };
 
@@ -49,12 +50,13 @@ function row(partial: Partial<SheetAuditRow> & { key: string }): SheetAuditRow {
   return { label: partial.key, h: null, inc: null, metricRange: METRIC_RANGE, dates: [], ...partial };
 }
 
-test("기대 수식은 실제 날짜 헤더의 마지막 열을 사용", () => {
+test("기대 수식은 전체 날짜 범위와 최신 수집 target 열을 분리해 사용", () => {
   assert.equal(
     expectedCumulativeFormula(10, METRIC_RANGE),
     '=IF(COUNT(P10:DJ10)=0,"",MAX(P10:DJ10))',
   );
   assert.match(expectedIncrementFormula(10, METRIC_RANGE), /rng,\$P10:\$DJ10/);
+  assert.match(expectedIncrementFormula(10, METRIC_RANGE), /targetC,COLUMN\(\$DJ10\)/);
   assert.doesNotMatch(expectedIncrementFormula(10, METRIC_RANGE), /DH10/);
 });
 
@@ -101,6 +103,9 @@ test("감사 라우트는 헤더를 별도 재조회하고 혼합 스냅샷을 �
   assert.match(source, /snapshotAhead\(dateCols, dominantFormulaEnd\)/);
   assert.match(source, /sheet_snapshot_not_ready/);
   assert.match(source, /status:\s*503/);
+  assert.match(source, /const targetDateColumn = \[\.\.\.dateCols\]\.reverse\(\)\.find/);
+  assert.match(source, /dc\.date < kdate/);
+  assert.match(source, /targetColumn: columnNumberToA1\(targetDateColumn\.idx \+ 1\)/);
 });
 
 test("과거 끝열 수식은 그 뒤 날짜에 값이 없을 때만 정상", () => {
@@ -109,14 +114,14 @@ test("과거 끝열 수식은 그 뒤 날짜에 값이 없을 때만 정상", ()
     key: "ig:safe-old-range",
     sourceRow: 10,
     hFormula: historicalFormula,
-    incFormula: expectedIncrementFormula(10, { ...METRIC_RANGE, lastColumn: "DH" }),
+    incFormula: expectedIncrementFormula(10, METRIC_RANGE),
     dates: [{ date: "2026-08-21", value: 100, column: "DH" }],
   });
   const stale = row({
     key: "ig:stale-old-range",
     sourceRow: 10,
     hFormula: historicalFormula,
-    incFormula: expectedIncrementFormula(10, { ...METRIC_RANGE, lastColumn: "DH" }),
+    incFormula: expectedIncrementFormula(10, { ...METRIC_RANGE, lastColumn: "DH", targetColumn: "DH" }),
     dates: [{ date: "2026-08-23", value: 120, column: "DJ" }],
   });
 
@@ -135,6 +140,28 @@ test("정상 행: H=MAX, I=마지막-이전최대 → 이상 0", () => {
   assert.equal(r.h.ok, 1);
   assert.equal(r.inc.ok, 1);
   assert.ok(formatAuditMessage(r).healthy);
+});
+
+test("target일 미측정이면 과거 마지막 증분을 재노출하지 않고 I 공란이 정상", () => {
+  const rows = [row({
+    key: "ig:missing-target", h: 88418, inc: null,
+    dates: [{ date: "2026-07-28", value: 88418 }],
+  })];
+  const posts = new Map([["ig:missing-target", post({ "2026-07-28": 88418 })]]);
+  const r = auditRows(rows, posts, TODAY);
+  assert.equal(r.inc.emptyOk, 1);
+  assert.equal(r.inc.blankExpected, 0);
+  assert.equal(r.inc.mismatch, 0);
+});
+
+test("target일 미측정인데 과거 증분 숫자가 남으면 불일치", () => {
+  const rows = [row({
+    key: "ig:stale-inc", h: 88418, inc: 88418,
+    dates: [{ date: "2026-07-28", value: 88418 }],
+  })];
+  const posts = new Map([["ig:stale-inc", post({ "2026-07-28": 88418 })]]);
+  const r = auditRows(rows, posts, TODAY);
+  assert.equal(r.inc.mismatch, 1);
 });
 
 test("오류셀(#REF!)은 즉시 이상으로 집계·보고", () => {

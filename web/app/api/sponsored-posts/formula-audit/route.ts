@@ -221,14 +221,29 @@ async function handler(req: NextRequest) {
     await notifyBot(`🔴 [수식 전수감사] 날짜 열을 찾지 못했습니다 — 헤더 표본: ${sample}`).catch(() => {});
     return NextResponse.json({ error: "no date columns", headerSample: sample }, { status: 500 });
   }
+  // 리포트와 동일하게 최신 '수집된' 날짜를 target으로 삼는다. 오늘/미래 열이 미리 생겼거나
+  // 최신 헤더가 전부 공란이어도 과거 마지막 실측 증분을 오늘 값처럼 재노출하지 않는다.
+  const targetDateColumn = [...dateCols].reverse().find((dc) =>
+    dc.date < kdate && snapshot.values.slice(1).some((row) => {
+      const value = toSheetNumber(row?.[dc.idx] as string | number | null);
+      return value != null && value > 0;
+    }),
+  );
+  if (!targetDateColumn) {
+    await notifyBot("🔴 [수식 전수감사] 최신 수집 날짜열을 찾지 못했습니다.").catch(() => {});
+    return NextResponse.json({ error: "no collected metric date" }, { status: 500 });
+  }
   const metricRange = {
     firstColumn: columnNumberToA1(dateCols[0].idx + 1),
     lastColumn: columnNumberToA1(dateCols[dateCols.length - 1].idx + 1),
+    targetColumn: columnNumberToA1(targetDateColumn.idx + 1),
     columns: dateCols.map((dc) => columnNumberToA1(dc.idx + 1)),
   };
   const metricRangeSummary = {
     firstColumn: metricRange.firstColumn,
     lastColumn: metricRange.lastColumn,
+    targetColumn: metricRange.targetColumn,
+    targetDate: targetDateColumn.date,
   };
   const inferredDateColumns = dateCols
     .filter((dc) => dc.inferred)
@@ -326,7 +341,7 @@ async function handler(req: NextRequest) {
     }
   }
 
-  const result = auditRows(rows, posts, kdate, orphanNotes);
+  const result = auditRows(rows, posts, kdate, orphanNotes, targetDateColumn.date);
   const { text, healthy } = formatAuditMessage(result);
   const alreadyReported = await hasTodayReport(supabase, kdate);
   if (alreadyReported != null && shouldSkipFormulaAuditReport({ alreadyReported, force })) {

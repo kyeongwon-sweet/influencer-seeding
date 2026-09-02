@@ -227,7 +227,7 @@ test("Apps Script mirror keeps live metadata and URL guards", () => {
   }
   assert.match(
     appsScript,
-    /setFormulas\(incFormulas\);\s*try \{ refreshCumulativeViews\(\);/s,
+    /setFormulas\(incFormulas\);\s*if \(!formulaOnly\) \{\s*try \{ refreshCumulativeViews\(\);/s,
   );
 });
 
@@ -372,9 +372,8 @@ test("exportStats calculates increments from the sheet range when DB refs are ab
   const body = appsScript.slice(start, appsScript.indexOf("function refreshCumulativeViews()", start));
   assert.notEqual(start, -1);
   const noRefs = body.slice(body.indexOf("if (refs.length === 0)"), body.indexOf("// 백로그 첫 측정", body.indexOf("if (refs.length === 0)")));
-  assert.match(noRefs, /const rngRef = "\$" \+ colLetter_\(firstCol\) \+ rowNum/);
-  assert.match(noRefs, /cols,SEQUENCE\(1,COLUMNS\(rng\),COLUMN\(" \+ firstCellRef \+ "\),1\)/);
-  assert.match(noRefs, /IFERROR\(MAX\(0,lastV-MAX\(prev\)\),lastV\)/);
+  assert.match(noRefs, /metricIncrementFormula_\(/);
+  assert.match(noRefs, /incrementTargetLetter/);
   assert.doesNotMatch(noRefs, /IF\(COUNT\(/);
   assert.doesNotMatch(body, /incFormulas\.push\(\[""\]\)/);
 });
@@ -389,15 +388,18 @@ test("Apps Script linkKey_ maps TikTok video and photo URLs to the same tt ident
   assert.match(appsScript, /const MAX_TIKTOK_SNOWFLAKE_ = "18446744073709551615"/);
 });
 
-test("increment V2: row-range formulas replace cell-address lists (column-op & sort safe)", () => {
-  const start = appsScript.indexOf("function exportStats()");
-  const body = appsScript.slice(start, appsScript.indexOf("function refreshCumulativeViews()", start));
-  // 행-범위 수식: 마지막 유효값 − 이전 최대 (범위 참조라 열 삽입/삭제·정렬에 안전)
-  assert.match(body, /=IFERROR\(LET\(rng," \+ rngRef/);
-  assert.match(body, /cols,SEQUENCE\(1,COLUMNS\(rng\),COLUMN\(" \+ firstCellRef \+ "\),1\)/);
-  assert.match(body, /lastC,MAX\(FILTER\(cols,rng>0\)\)/);
-  assert.match(body, /IFERROR\(MAX\(0,lastV-MAX\(prev\)\),lastV\)/);
-  assert.doesNotMatch(body, /cols,COLUMN\(rng\)/);
+test("increment V3: target-day formula is range-safe and blanks when target is missing", () => {
+  const helperStart = appsScript.indexOf("function metricIncrementFormula_(");
+  const helperEnd = appsScript.indexOf("function metricFormulaText_", helperStart);
+  const helperBody = appsScript.slice(helperStart, helperEnd);
+  const exportStart = appsScript.indexOf("function exportStats()");
+  const body = appsScript.slice(exportStart, appsScript.indexOf("function refreshCumulativeViews()", exportStart));
+  assert.match(helperBody, /=IFERROR\(LET\(rng," \+ rangeRef/);
+  assert.match(helperBody, /targetC,COLUMN\(" \+ targetCellRef/);
+  assert.match(helperBody, /targetV,INDEX\(rng,1,targetC-COLUMN/);
+  assert.match(helperBody, /prevMax,IFERROR\(MAX\(FILTER\(rng,cols<targetC,rng>0\)\),0\)/);
+  assert.match(helperBody, /IF\(targetV>0/);
+  assert.doesNotMatch(helperBody, /lastC,MAX\(FILTER/);
   // 옛 셀주소 목록(MAX({CE743,...})) 생성 코드 금지 — 열 삭제 시 #REF! 전멸의 원인(2026-07-27 사고)
   assert.doesNotMatch(body, /MAX\(\{\$\{prevRefs/);
   assert.doesNotMatch(body, /prevRefs\.join/);
@@ -420,7 +422,7 @@ test("new DB-appended rows immediately receive H/I formulas and numeric date hea
   const helperBody = appsScript.slice(helperStart, helperEnd);
   assert.match(helperBody, /!cell\.getFormula\(\).*trim\(\) === ""/s);
   assert.match(helperBody, /=IF\(COUNT\(/);
-  assert.match(helperBody, /IFERROR\(MAX\(0,lastV-MAX\(prev\)\),lastV\)/);
+  assert.match(helperBody, /metricIncrementFormula_\(row, firstLetter, lastLetter, targetLetter\)/);
 
   const parserStart = appsScript.indexOf("function parseMonthDay_(label)");
   const parserEnd = appsScript.indexOf("function onEdit", parserStart);
@@ -595,8 +597,9 @@ test("stale metric formula ranges extend without overwriting manual or custom ce
   assert.notEqual(start, -1);
   assert.match(body, /getFormulas\(\)/);
   assert.match(body, /standardCumulativeFormulaEnd_\(formulas\[i\]\[0\], row, firstLetter\)/);
-  assert.match(body, /standardIncrementFormulaEnd_\(formulas\[i\]\[0\], row, firstLetter\)/);
-  assert.match(body, /metricColumnNumber_\(currentEnd\) < lastCol/);
+  assert.match(body, /standardIncrementFormulaParts_\(formulas\[i\]\[0\], row, firstLetter\)/);
+  assert.match(body, /metricColumnNumber_\(current\.endLetter\) < lastCol/);
+  assert.match(body, /current\.targetLetter/);
   assert.match(body, /writeColumnRuns_\(targetSheet, cumulativeCol, cumulativeEdits, lastRow\)/);
   assert.match(body, /writeColumnRuns_\(targetSheet, incrementCol, incrementEdits, lastRow\)/);
   assert.doesNotMatch(body, /clearContent\(/);
@@ -621,8 +624,10 @@ test("stale metric formula ranges extend without overwriting manual or custom ce
   )();
   const hDh = helpers.metricCumulativeFormula_(2764, "P", "DH");
   const iDh = helpers.metricIncrementFormula_(2764, "P", "DH");
+  const iTargetDg = helpers.metricIncrementFormula_(2764, "P", "DH", "DG");
   assert.equal(helpers.standardCumulativeFormulaEnd_(hDh, 2764, "P"), "DH");
   assert.equal(helpers.standardIncrementFormulaEnd_(iDh, 2764, "P"), "DH");
+  assert.equal(helpers.standardIncrementFormulaEnd_(iTargetDg, 2764, "P"), "DH");
   assert.ok(helpers.metricColumnNumber_("DH") < helpers.metricColumnNumber_("DK"));
   assert.equal(helpers.standardCumulativeFormulaEnd_("=MAX(P346:DH346)", 346, "P"), "");
   assert.equal(helpers.standardIncrementFormulaEnd_('=""', 346, "P"), "");
@@ -819,13 +824,13 @@ test("dailyAuto gates both import and export on collection completion", () => {
   );
   assert.match(
     appsScript,
-    /clearExportStatsGatePending_\(\);[\s\S]*?ensureDailyImportBeforeExport_\(targetDate\);[\s\S]*?const ok = exportStats\(\)/,
+    /clearExportStatsGatePending_\(\);[\s\S]*?ensureDailyImportBeforeExport_\(targetDate\);[\s\S]*?const ok = exportStatsWithOptions_\(\{ incrementTargetDate: targetDate \}\)/,
   );
   assert.match(appsScript, /function exportStatsDailyGate_\(\)/);
   assert.match(appsScript, /function exportStatsAfterCollection_\(\)/);
   assert.match(appsScript, /newTrigger\("exportStatsAfterCollection_"\)[\s\S]*?\.after\(EXPORT_STATS_GATE_RETRY_DELAY_MS_\)/);
   assert.match(appsScript, /\["exportStats", exportStatsDailyGate_\]/);
-  assert.match(appsScript, /withDocLock_\(function\(\) \{[\s\S]*?const ok = exportStats\(\)/);
+  assert.match(appsScript, /withDocLock_\(function\(\) \{[\s\S]*?const ok = exportStatsWithOptions_\(\{ incrementTargetDate: targetDate \}\)/);
   assert.match(appsScript, /EXPORT_STATS_COLLECTION_GATE_LAST_STATUS/);
 });
 
@@ -848,6 +853,18 @@ test("exportStats overwrites only automatic DB metrics and never carry-forwards"
   assert.match(appsScript, /manualDates\[measuredAt\] = pair\.length >= 3 \? pair\[2\] === true : true/);
   assert.match(appsScript, /const skipFormulaRefresh = !!\(options && options\.skipFormulaRefresh === true\)/);
   assert.match(appsScript, /if \(incrementCol && !skipFormulaRefresh\)/);
+});
+
+test("formula-only refresh rewrites I without touching date values or H", () => {
+  const start = appsScript.indexOf("function exportStats()");
+  const end = appsScript.indexOf("function parseMonthDay_", start);
+  const body = appsScript.slice(start, end);
+  assert.match(body, /function refreshIncrementFormulasForLatestCollectedDate\(\)/);
+  assert.match(body, /exportStatsWithOptions_\(\{ formulaOnly: true \}\)/);
+  assert.match(body, /if \(!formulaOnly\) \{[\s\S]*?dateColGroups\.forEach/);
+  assert.match(body, /if \(cumulativeCol && !formulaOnly\)/);
+  assert.match(body, /if \(!formulaOnly\) \{\s*try \{ refreshCumulativeViews\(\)/);
+  assert.match(body, /날짜값·H열은 변경하지 않았습니다/);
 });
 
 test("DB to sheet sync runs independently every three hours with retry, watchdog, and alerts", () => {

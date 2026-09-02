@@ -9,7 +9,7 @@
 //  - H(누적): 그 행 날짜열 양수 최대와 일치=정합 / 수식 아닌 수동값(≠MAX)=허용(V4 정책, 집계만)
 //    / 날짜값이 있는데 H 빈칸=이상.
 //  - I(증분): 두 기대값 중 하나와 일치하면 정합 —
-//    ① 시트 자족 기대값(V2 의미): 마지막 양수 − 이전 양수 최대(0 하한), 1개면 전액
+//    ① 시트 자족 기대값(V2 의미): target일 양수 − 이전 양수 최대(0 하한), 첫 측정이면 전액
 //    ② DB 규칙 기대값: DB 실측일 교집합 refs 기준 동일 계산, 백로그(게시 7일 초과 첫 측정)는 빈칸
 //    (V2 전환기·당일 수기값 등 정상 편차를 오탐하지 않기 위한 이중 기준)
 
@@ -46,7 +46,7 @@ export type SheetAuditRow = {
   // H 숫자는 날짜 이력이 없는 행의 수기 보존만 허용한다.
   hFormula?: string | number | boolean | null;
   incFormula?: string | number | boolean | null;
-  metricRange: { firstColumn: string; lastColumn: string; columns?: string[] };
+  metricRange: { firstColumn: string; lastColumn: string; targetColumn?: string; columns?: string[] };
   dates: Array<{ date: string; value: number; column?: string }>; // 양수 날짜값(오름차순)
 };
 
@@ -196,13 +196,15 @@ function asNumber(v: number | string | null): number | null {
   return null;
 }
 
-// 마지막 양수 − 이전 양수 최대(0 하한). 1개면 전액. 없으면 null.
-function lastMinusPrevMax(values: number[]): number | null {
-  if (values.length === 0) return null;
-  const last = values[values.length - 1];
-  if (values.length === 1) return last;
-  const prevMax = Math.max(...values.slice(0, -1));
-  return Math.max(0, last - prevMax);
+// target일 양수 − 그 이전 양수 최대(0 하한). target일이 비면 과거값을 재노출하지 않는다.
+function targetMinusPrevMax(
+  dates: Array<{ date: string; value: number }>,
+  targetDate: string,
+): number | null {
+  const current = dates.find((item) => item.date === targetDate)?.value;
+  if (current == null || current <= 0) return null;
+  const previous = dates.filter((item) => item.date < targetDate && item.value > 0).map((item) => item.value);
+  return previous.length === 0 ? current : Math.max(0, current - Math.max(...previous));
 }
 
 export function expectedCumulativeFormula(
@@ -214,9 +216,10 @@ export function expectedCumulativeFormula(
 
 export function expectedIncrementFormula(
   row: number,
-  { firstColumn, lastColumn }: SheetAuditRow["metricRange"],
+  { firstColumn, lastColumn, targetColumn }: SheetAuditRow["metricRange"],
 ): string {
-  return `=IFERROR(LET(rng,$${firstColumn}${row}:$${lastColumn}${row},cols,SEQUENCE(1,COLUMNS(rng),COLUMN($${firstColumn}${row}),1),lastC,MAX(FILTER(cols,rng>0)),lastV,INDEX(rng,1,lastC-COLUMN($${firstColumn}${row})+1),prev,FILTER(rng,cols<lastC,rng>0),IFERROR(MAX(0,lastV-MAX(prev)),lastV)),"")`;
+  const target = targetColumn ?? lastColumn;
+  return `=IFERROR(LET(rng,$${firstColumn}${row}:$${lastColumn}${row},cols,SEQUENCE(1,COLUMNS(rng),COLUMN($${firstColumn}${row}),1),targetC,COLUMN($${target}${row}),targetV,INDEX(rng,1,targetC-COLUMN($${firstColumn}${row})+1),prevMax,IFERROR(MAX(FILTER(rng,cols<targetC,rng>0)),0),IF(targetV>0,IF(prevMax>0,MAX(0,targetV-prevMax),targetV),"")),"")`;
 }
 
 function sameFormula(actual: string | number | boolean | null, expected: string): boolean {
@@ -263,9 +266,9 @@ function validFormulaEndColumn(
   return columnNumber(endColumn) >= columnNumber(latestDataColumn) ? endColumn : null;
 }
 
-function measuredRefs(row: SheetAuditRow, post: AuditPost, todayKst: string) {
+function measuredRefs(row: SheetAuditRow, post: AuditPost, targetDate: string) {
   return row.dates.filter((d) =>
-    d.date < todayKst &&
+    d.date <= targetDate &&
     (post.measured.get(d.date) ?? 0) > 0 &&
     (!post.posted || d.date >= post.posted) &&
     (!post.ended || d.date <= post.ended));
@@ -275,12 +278,21 @@ function isIntentionalBacklogStub(
   actual: string | number | boolean | null,
   row: SheetAuditRow,
   post: AuditPost | undefined,
-  todayKst: string,
+  targetDate: string,
 ): boolean {
   if (typeof actual !== "string" || actual.replace(/\s+/g, "") !== '=""' || !post?.posted) return false;
-  const refs = measuredRefs(row, post, todayKst);
-  return refs.length === 1 &&
+  const refs = measuredRefs(row, post, targetDate);
+  return refs.length === 1 && refs[0].date === targetDate &&
     (Date.parse(refs[0].date) - Date.parse(post.posted)) / 86400000 > 7;
+}
+
+function isIntentionalEndedStub(
+  actual: string | number | boolean | null,
+  post: AuditPost | undefined,
+  targetDate: string,
+): boolean {
+  return typeof actual === "string" && actual.replace(/\s+/g, "") === '=""'
+    && Boolean(post?.ended && post.ended < targetDate);
 }
 
 export function auditRows(
@@ -288,6 +300,7 @@ export function auditRows(
   posts: Map<string, AuditPost>,
   todayKst: string,
   orphanNotes: string[] = [],
+  targetDate: string = shiftDate(todayKst, -1),
 ): AuditResult {
   const res: AuditResult = {
     totalRows: rows.length,
@@ -324,7 +337,8 @@ export function auditRows(
     const post = posts.get(row.key);
     const incrementFormulaValid = row.sourceRow && row.incFormula !== undefined && (
       validFormulaEndColumn(row.incFormula, row, "increment") !== null ||
-      isIntentionalBacklogStub(row.incFormula, row, post, todayKst)
+      isIntentionalBacklogStub(row.incFormula, row, post, targetDate) ||
+      isIntentionalEndedStub(row.incFormula, post, targetDate)
     );
     if (row.sourceRow && row.incFormula !== undefined && !incrementFormulaValid) {
       res.formulaShape.incInvalid += 1;
@@ -372,18 +386,19 @@ export function auditRows(
       continue;
     }
     const got = asNumber(row.inc);
-    const expSheet = lastMinusPrevMax(positives);
+    const expSheet = targetMinusPrevMax(row.dates, targetDate);
 
     let expDb: number | null | undefined = undefined; // undefined = DB 정보 없음(판정에서 제외)
     let firstMeasure = false;                         // 유효 실측이 딱 하나 = 게시물 첫 측정일
     const p = post;
     if (p) {
-      const refs = measuredRefs(row, p, todayKst);
-      firstMeasure = refs.length === 1;
-      if (refs.length === 0) expDb = null;
+      const refs = measuredRefs(row, p, targetDate);
+      const targetRef = refs.find((item) => item.date === targetDate);
+      firstMeasure = Boolean(targetRef && refs.length === 1);
+      if (!targetRef || (p.ended && p.ended < targetDate)) expDb = null;
       else if (refs.length === 1 && p.posted &&
-        (Date.parse(refs[0].date) - Date.parse(p.posted)) / 86400000 > 7) expDb = null; // 백로그
-      else expDb = lastMinusPrevMax(refs.map((r) => r.value));
+        (Date.parse(targetRef.date) - Date.parse(p.posted)) / 86400000 > 7) expDb = null; // 백로그
+      else expDb = targetMinusPrevMax(refs, targetDate);
     }
 
     const matches = (exp: number | null | undefined) =>
