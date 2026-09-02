@@ -57,6 +57,7 @@ export type AuditResult = {
   h: { ok: number; manualKept: number; emptyOk: number; valueOnly: number; errorCells: number; emptyButData: number };
   inc: { ok: number; emptyOk: number; errorCells: number; mismatch: number; blankExpected: number };
   formulaShape: { hInvalid: number; hManual: number; incInvalid: number };
+  formulaDiagnostics: Array<{ row: number; actual: string; expected: string }>;
   anomalies: string[];     // 사람이 읽을 요약 라인 (상한 있음)
   /**
    * 값 정체 — 수식은 멀쩡한데 **새 값이 안 들어오는** 행.
@@ -309,6 +310,7 @@ export function auditRows(
     h: { ok: 0, manualKept: 0, emptyOk: 0, valueOnly: 0, errorCells: 0, emptyButData: 0 },
     inc: { ok: 0, emptyOk: 0, errorCells: 0, mismatch: 0, blankExpected: 0 },
     formulaShape: { hInvalid: 0, hManual: 0, incInvalid: 0 },
+    formulaDiagnostics: [],
     anomalies: [],
     stale: 0,
     staleNotes: [],
@@ -342,6 +344,13 @@ export function auditRows(
     );
     if (row.sourceRow && row.incFormula !== undefined && !incrementFormulaValid) {
       res.formulaShape.incInvalid += 1;
+      if (res.formulaDiagnostics.length < 2 && typeof row.incFormula === "string") {
+        res.formulaDiagnostics.push({
+          row: row.sourceRow,
+          actual: row.incFormula,
+          expected: expectedIncrementFormula(row.sourceRow, row.metricRange),
+        });
+      }
       note(`I수식형태 오류 ${row.label} (${row.key} · 행 ${row.sourceRow})`);
     }
 
