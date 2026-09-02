@@ -35,6 +35,20 @@ def test_targeted_instagram_not_found_uses_profile_survival_not_batch_ratio():
     assert "ig_not_found_quarantined_keys" in text
 
 
+def test_confirmed_delete_auto_end_keeps_raw_signal_behind_outage_quarantine():
+    text = RUN_MONITORING.read_text(encoding="utf-8")
+    run_body = text[text.index("def run():"):text.index("def _fetch_stats(")]
+
+    assert '"error_description": error_description' in text
+    assert 'error_description=s.get("error_description")' in run_body
+    assert 'last_valid_measured_at=last_valid_metric_date_by_post.get(post["id"])' in run_body
+    assert run_body.index("if key in ig_not_found_quarantined_keys:") < run_body.index(
+        "end_decision = classify_confirmed_deleted_end("
+    )
+    assert '.is_("ended_at", "null")' in run_body
+    assert '"review_requested_at": None' in run_body
+
+
 def test_cron_backup_zero_result_is_nonfatal_but_retry_workflow_remains_fatal():
     cron_text = (ROOT / ".github" / "workflows" / "cron-daily-collect.yml").read_text(encoding="utf-8")
     retry_text = WORKFLOW.read_text(encoding="utf-8")
@@ -48,5 +62,6 @@ if __name__ == "__main__":
     test_manual_monitoring_retry_defaults_to_target_queue()
     test_targeted_retry_zero_result_is_not_reported_as_success()
     test_targeted_instagram_not_found_uses_profile_survival_not_batch_ratio()
+    test_confirmed_delete_auto_end_keeps_raw_signal_behind_outage_quarantine()
     test_cron_backup_zero_result_is_nonfatal_but_retry_workflow_remains_fatal()
     print("monitoring retry workflow safety test passed")

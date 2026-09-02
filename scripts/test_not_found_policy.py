@@ -1,9 +1,78 @@
 from not_found_policy import (
+    CONFIRMED_DELETE_ERROR_DESCRIPTION,
+    classify_confirmed_deleted_end,
     is_not_found_review_eligible,
     is_platform_not_found_outage,
     next_not_found_state,
     normalize_instagram_handle,
 )
+
+
+def test_exact_confirmed_delete_ends_after_last_valid_metric_and_pins_field():
+    decision = classify_confirmed_deleted_end(
+        {
+            "posted_at": "2026-08-01",
+            "not_found_streak": 3,
+            "manual_fields": ["reach_count"],
+        },
+        error_description=CONFIRMED_DELETE_ERROR_DESCRIPTION,
+        last_valid_measured_at="2026-08-30",
+        observed_at="2026-09-02",
+    )
+    assert decision.should_end
+    assert decision.reason == "confirmed_deleted"
+    assert decision.ended_at == "2026-08-31"
+    assert decision.manual_fields == ("reach_count", "ended_at")
+
+
+def test_ambiguous_not_found_and_below_threshold_stay_review_only():
+    base = {
+        "posted_at": "2026-08-01",
+        "not_found_streak": 3,
+        "manual_fields": ["reach_count"],
+    }
+    for description in (None, "POST_NOT_FOUND_OR_PRIVATE", "post does not exist"):
+        decision = classify_confirmed_deleted_end(
+            base,
+            error_description=description,
+            last_valid_measured_at="2026-08-30",
+            observed_at="2026-09-02",
+        )
+        assert not decision.should_end
+        assert decision.reason == "not_exact_delete"
+
+    below = classify_confirmed_deleted_end(
+        {**base, "not_found_streak": 2},
+        error_description=CONFIRMED_DELETE_ERROR_DESCRIPTION,
+        last_valid_measured_at="2026-08-30",
+        observed_at="2026-09-02",
+    )
+    assert not below.should_end
+    assert below.reason == "below_threshold"
+
+
+def test_explicit_manual_reopen_and_missing_metric_are_never_auto_ended():
+    pinned = classify_confirmed_deleted_end(
+        {
+            "posted_at": "2026-08-01",
+            "not_found_streak": 4,
+            "manual_fields": ["ended_at"],
+        },
+        error_description=CONFIRMED_DELETE_ERROR_DESCRIPTION,
+        last_valid_measured_at="2026-08-30",
+        observed_at="2026-09-02",
+    )
+    assert not pinned.should_end
+    assert pinned.reason == "manual_ended_at"
+
+    no_metric = classify_confirmed_deleted_end(
+        {"posted_at": "2026-08-01", "not_found_streak": 4},
+        error_description=CONFIRMED_DELETE_ERROR_DESCRIPTION,
+        last_valid_measured_at=None,
+        observed_at="2026-09-02",
+    )
+    assert not no_metric.should_end
+    assert no_metric.reason == "missing_last_valid_metric"
 
 
 def test_only_instagram_post_urls_are_eligible():

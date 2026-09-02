@@ -1,4 +1,5 @@
 from auto_end_rules import classify_auto_end
+from not_found_policy import classify_confirmed_deleted_end
 
 
 def _post(**overrides):
@@ -92,6 +93,27 @@ def test_manual_stat_tracked_post_is_never_auto_ended():
     )
     assert decision.should_end is False
     assert decision.reason == "manual_stat_tracked"
+
+
+def test_confirmed_delete_override_ends_manual_tracked_post_without_weakening_age_rule():
+    age_decision = classify_auto_end(
+        _post(),
+        target_date="2026-09-02",
+        max_metric=100_000,
+        manual_tracked=True,
+    )
+    assert not age_decision.should_end
+    assert age_decision.reason == "manual_stat_tracked"
+
+    delete_decision = classify_confirmed_deleted_end(
+        {**_post(), "not_found_streak": 3, "manual_fields": ["reach_count"]},
+        error_description="Post does not exist",
+        last_valid_measured_at="2026-08-30",
+        observed_at="2026-09-02",
+    )
+    assert delete_decision.should_end
+    assert delete_decision.ended_at == "2026-08-31"
+    assert "ended_at" in delete_decision.manual_fields
 
 
 def _run_all():

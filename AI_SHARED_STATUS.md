@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## ✅ 2026-09-02 [Codex 완료·코드] IG `Post does not exist` 확정삭제 자동종료
+- **판단 검증:** 요청 방향은 맞지만 `auto_end_rules.classify_auto_end`의 수동추적 나이 예외를 약화시키면 매일 수동값이 필요한 글을 다시 잘못 종료할 수 있다. 따라서 기존 나이 기반 예외는 그대로 두고, **IG 스크랩 결과를 받은 뒤의 별도 확정삭제 경로**로만 구현했다.
+- **좁은 종료 조건:** Apify 원문 `errorDescription`이 대소문자까지 정확히 **`Post does not exist`**이고, 기존 `NOT_FOUND_REVIEW_THRESHOLD=3` 연속 관측에 도달했으며, 마지막 양수 `play_count/reach_count` 실측일이 있을 때만 종료한다. `ended_at`은 그 마지막 유효 실측일의 다음날이며 기존 `manual_fields`를 보존한 채 `ended_at`을 추가한다. 쓰기 후 DB를 재조회해 종료일과 수동 잠금을 모두 확인해야 성공으로 기록·알림한다.
+- **보수적 예외 보존:** 비공개·지역제한·rate-limit·일반 `not_found`·문자열 대소문자 변형은 기존 review-only다. IG 배치 장애 비율/계정 생존 검증에서 격리된 건은 확정삭제 판정보다 먼저 `continue`하므로 streak·종료를 올리지 않는다. 사람이 `ended_at`을 수동 재개/고정한 활성글과 유효 실측 이력이 없는 글도 자동종료하지 않는다.
+- **비용·이력:** 기존 전수 이력 1회 스캔에서 게시물별 마지막 유효 metric 날짜를 함께 산출해 추가 DB 풀스캔은 없다. 마지막 값·`posted_at`·과거 통계행은 쓰지 않으며 자동종료 성공 건은 별도 Slack 요약을 보낸다. 현재 백로그 0이라 이번 작업에서 라이브 DB 종료 쓰기는 없고, 다음 자정수집의 신규 확정삭제 글로 자연 관찰한다.
+- **검증:** 정책·나이예외·이력요약·retry/outage 연결부 집중 **37 passed**, 전체 Python **207 passed + 4 subtests**, web **388/388**, `tsc --noEmit`, production build, `py_compile`, `git diff --check` 통과. 연결 계약 테스트가 raw `error_description` 보존, 장애 격리 선행, null-only 종료 쓰기와 review 해제를 고정한다.
+
 ## ✅ 2026-09-02 [Codex 완료·라이브] 먹킷리스트 H2 숫자 덮임 복구
 - **인계 전제 정정:** `ig:Dcfd2MCkWGj`(먹킷리스트, 시트 2행)의 H는 `DS`보다 짧게 참조하는 낡은 수식이 아니었다. 라이브 수식 텍스트를 직접 읽으니 **수식이 사라지고 숫자 `489,130`이 하드코딩**돼 있었다. 날짜셀은 `DN:DQ`(08-27~08-30) 네 칸만 각 `89,000`, `DR:DS`는 공란이어서 표준 누적값은 `89,000`이다.
 - **수술적 복구:** URL과 기존 H값을 재검증하고 로컬 백업 `scratchpad/mukitlist_h2_backup_20260902.json`을 남긴 뒤 **H2 한 셀만** 표준 생성기와 같은 `=IF(COUNT(P2:DS2)=0,"",MAX(P2:DS2))`로 복원했다. 최종 화면은 `H2=89,000`·수식 있음. I2는 기존 target-date V2 수식 그대로이고 수동 reach 날짜셀은 쓰지 않았다.

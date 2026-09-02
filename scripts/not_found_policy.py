@@ -1,17 +1,73 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 
 
 NOT_FOUND_REVIEW_THRESHOLD = 3
 NOT_FOUND_OUTAGE_MIN_COUNT = 20
 NOT_FOUND_OUTAGE_RATE_THRESHOLD = 0.30
+CONFIRMED_DELETE_ERROR_DESCRIPTION = "Post does not exist"
 _INSTAGRAM_POST_RE = re.compile(
     r"instagram\.com/(?:[^/?#]+/)*(?:p|reels|reel|tv)/[A-Za-z0-9_-]+",
     re.IGNORECASE,
 )
 _INSTAGRAM_HANDLE_RE = re.compile(r"^[A-Za-z0-9._]+$")
+
+
+@dataclass(frozen=True)
+class ConfirmedDeleteEndDecision:
+    should_end: bool
+    reason: str
+    ended_at: str | None
+    manual_fields: tuple[str, ...]
+
+
+def classify_confirmed_deleted_end(
+    post: dict,
+    *,
+    error_description: str | None,
+    last_valid_measured_at: str | None,
+    observed_at: str,
+) -> ConfirmedDeleteEndDecision:
+    """Decide the narrow auto-end override for a confirmed deleted IG post.
+
+    This path deliberately does not reuse the age-based auto-end classifier:
+    manual daily metrics must stay exempt from age expiry, while the exact
+    Apify deletion signal can end the post only after the normal consecutive
+    not-found threshold.  Ambiguous ``not_found``/private/rate-limit responses
+    remain review-only.
+    """
+    manual = post.get("manual_fields") or []
+    manual_fields = tuple(manual) if isinstance(manual, (list, tuple)) else ()
+
+    if post.get("ended_at"):
+        return ConfirmedDeleteEndDecision(False, "already_ended", None, manual_fields)
+    # An explicit human reopen/pin remains stronger than this automation.
+    if "ended_at" in manual_fields:
+        return ConfirmedDeleteEndDecision(False, "manual_ended_at", None, manual_fields)
+    if error_description != CONFIRMED_DELETE_ERROR_DESCRIPTION:
+        return ConfirmedDeleteEndDecision(False, "not_exact_delete", None, manual_fields)
+    if int(post.get("not_found_streak") or 0) < NOT_FOUND_REVIEW_THRESHOLD:
+        return ConfirmedDeleteEndDecision(False, "below_threshold", None, manual_fields)
+    if not last_valid_measured_at:
+        return ConfirmedDeleteEndDecision(False, "missing_last_valid_metric", None, manual_fields)
+
+    try:
+        last_valid = date.fromisoformat(str(last_valid_measured_at)[:10])
+        observed = date.fromisoformat(str(observed_at)[:10])
+        posted_raw = str(post.get("posted_at") or "")[:10]
+        posted = date.fromisoformat(posted_raw) if posted_raw else None
+    except ValueError:
+        return ConfirmedDeleteEndDecision(False, "invalid_date", None, manual_fields)
+
+    ended = last_valid + timedelta(days=1)
+    if ended > observed or (posted is not None and ended < posted):
+        return ConfirmedDeleteEndDecision(False, "invalid_end_boundary", None, manual_fields)
+
+    pinned = manual_fields if "ended_at" in manual_fields else (*manual_fields, "ended_at")
+    return ConfirmedDeleteEndDecision(True, "confirmed_deleted", ended.isoformat(), pinned)
 
 
 def is_not_found_review_eligible(url: str) -> bool:

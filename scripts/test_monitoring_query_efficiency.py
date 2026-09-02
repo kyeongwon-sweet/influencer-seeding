@@ -18,9 +18,9 @@ def test_shared_history_summary_keeps_prev_stats_and_auto_end_meanings_separate(
         {"id": "older", "post_id": "p1", "measured_at": two_days_ago, "play_count": 80, "reach_count": None, "likes_count": 7, "comments_count": 1, "manual": True},
         {"id": "reach", "post_id": "p2", "measured_at": yesterday, "play_count": None, "reach_count": 500, "likes_count": 2, "comments_count": 0, "manual": False},
     ]
-    last, maximums, manual_ids = {}, {}, set()
+    last, maximums, manual_ids, last_valid_dates = {}, {}, set(), {}
 
-    rm._summarize_history_rows(rows, last, maximums, manual_ids)
+    rm._summarize_history_rows(rows, last, maximums, manual_ids, last_valid_dates)
 
     assert last["p1"] == {
         "post_id": "p1", "play_count": 120, "likes_count": 8,
@@ -29,6 +29,7 @@ def test_shared_history_summary_keeps_prev_stats_and_auto_end_meanings_separate(
     assert last["p2"]["play_count"] is None
     assert maximums == {"p1": 1001, "p2": 500}
     assert manual_ids == {"p1"}
+    assert last_valid_dates == {"p1": rm.TODAY, "p2": yesterday}
 
 
 def test_aux_store_uses_injected_last_stat_without_rescanning(monkeypatch):

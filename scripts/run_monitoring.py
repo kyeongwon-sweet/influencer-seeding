@@ -16,6 +16,7 @@ from auto_end_rules import classify_auto_end, row_metric
 from channel_kind import is_banner_channel
 from not_found_policy import (
     NOT_FOUND_REVIEW_THRESHOLD,
+    classify_confirmed_deleted_end,
     is_not_found_review_eligible,
     is_platform_not_found_outage,
     next_not_found_state,
@@ -350,6 +351,7 @@ APIFY_IG_ACTOR = os.getenv("APIFY_IG_ACTOR_ID", "apify/instagram-scraper")
 TODAY = os.getenv("MONITORING_DATE") or ((datetime.now(timezone.utc) + timedelta(hours=9)).date() - timedelta(days=1)).isoformat()
 MISSING_VIEW_EVENTS = []
 NOT_FOUND_REVIEW_ALERTS = []
+CONFIRMED_DELETE_AUTO_END_ALERTS = []
 
 
 def _metric_value(row: dict | None):
@@ -406,6 +408,7 @@ def _record_missing_view_event(post: dict, platform: str, reason: str, *, stat=N
     if stat:
         event["returned_posted_at"] = str(stat.get("posted_at") or "")[:10] or None
         event["deleted"] = bool(stat.get("deleted") or stat.get("error"))
+        event["error_description"] = stat.get("error_description")
     if extra:
         event.update(extra)
     MISSING_VIEW_EVENTS.append(event)
@@ -471,22 +474,25 @@ def _flush_posted_at_mismatch_alert():
 
 
 def _record_not_found_observation(db, post: dict, detected: bool, *, confirmed: bool = False):
-    """Track Instagram-only not_found streaks without changing notes or ended_at."""
+    """Track Instagram-only not_found streaks and return whether review is newly due."""
     if not is_not_found_review_eligible(post.get("url") or ""):
-        return
+        return False
     updates, needs_alert = next_not_found_state(post, detected, TODAY, confirmed=confirmed)
     if not updates:
-        return
+        return False
     db.table("sponsored_posts").update(updates).eq("id", post["id"]).execute()
     post.update(updates)
-    if needs_alert:
-        NOT_FOUND_REVIEW_ALERTS.append({
-            "account_name": post.get("account_name"),
-            "url": post.get("url"),
-            "confirmed": confirmed,
-        })
-        evidence = "계정 생존 확인" if confirmed else f"{NOT_FOUND_REVIEW_THRESHOLD}일 연속"
-        print(f"  [ALERT] IG not_found {evidence}, 검토 요청: {post.get('url')}")
+    return needs_alert
+
+
+def _queue_not_found_review_alert(post: dict, *, confirmed: bool = False):
+    NOT_FOUND_REVIEW_ALERTS.append({
+        "account_name": post.get("account_name"),
+        "url": post.get("url"),
+        "confirmed": confirmed,
+    })
+    evidence = "계정 생존 확인" if confirmed else f"{NOT_FOUND_REVIEW_THRESHOLD}일 연속"
+    print(f"  [ALERT] IG not_found {evidence}, 검토 요청: {post.get('url')}")
 
 
 def _flush_not_found_review_alerts():
@@ -502,6 +508,23 @@ def _flush_not_found_review_alerts():
         lines.append(f"- {item.get('account_name') or '-'} {item.get('url') or '-'}")
     if len(NOT_FOUND_REVIEW_ALERTS) > 20:
         lines.append(f"- ...외 {len(NOT_FOUND_REVIEW_ALERTS) - 20}건")
+    _send_status_alert("\n".join(lines))
+
+
+def _flush_confirmed_delete_auto_end_alerts():
+    if not CONFIRMED_DELETE_AUTO_END_ALERTS:
+        return
+    lines = [
+        f"🛑 [협찬 모니터링] Instagram 확정삭제 자동종료 {len(CONFIRMED_DELETE_AUTO_END_ALERTS)}건",
+        "Post does not exist가 연속 임계에 도달한 글만 종료했습니다. 마지막 유효 실측값은 보존됩니다.",
+    ]
+    for item in CONFIRMED_DELETE_AUTO_END_ALERTS[:20]:
+        lines.append(
+            f"- {item.get('account_name') or '-'} ended_at={item.get('ended_at')} "
+            f"(마지막 실측 {item.get('last_valid_measured_at')}) {item.get('url') or '-'}"
+        )
+    if len(CONFIRMED_DELETE_AUTO_END_ALERTS) > 20:
+        lines.append(f"- ...외 {len(CONFIRMED_DELETE_AUTO_END_ALERTS) - 20}건")
     _send_status_alert("\n".join(lines))
 
 
@@ -548,7 +571,13 @@ def _prev_stats(db, post_ids):
     return last
 
 
-def _summarize_history_rows(rows, last, max_metric_by_post, manual_tracked_ids):
+def _summarize_history_rows(
+    rows,
+    last,
+    max_metric_by_post,
+    manual_tracked_ids,
+    last_valid_metric_date_by_post=None,
+):
     """정렬된 이력 한 페이지에서 auto-end와 mono 가드 입력을 동시에 계산한다.
 
     last는 _prev_stats와 동일하게 TODAY 이전의 첫 행만 보존한다. 호출 쿼리가
@@ -564,6 +593,13 @@ def _summarize_history_rows(rows, last, max_metric_by_post, manual_tracked_ids):
         if row.get("manual"):
             manual_tracked_ids.add(post_id)
         measured_at = str(row.get("measured_at") or "")[:10]
+        if (
+            last_valid_metric_date_by_post is not None
+            and metric > 0
+            and measured_at
+            and post_id not in last_valid_metric_date_by_post
+        ):
+            last_valid_metric_date_by_post[post_id] = measured_at
         if measured_at and measured_at < TODAY and post_id not in last:
             last[post_id] = {
                 "post_id": post_id,
@@ -580,6 +616,7 @@ def _active_stats_summary(db, post_ids):
     last = {}
     max_metric_by_post = {}
     manual_tracked_ids = set()
+    last_valid_metric_date_by_post = {}
     ids = [post_id for post_id in post_ids if post_id]
     page_size = 1000
     for start in range(0, len(ids), 100):
@@ -595,11 +632,17 @@ def _active_stats_summary(db, post_ids):
                         .range(offset, offset + page_size - 1)
                         .execute())
             page = response.data or []
-            _summarize_history_rows(page, last, max_metric_by_post, manual_tracked_ids)
+            _summarize_history_rows(
+                page,
+                last,
+                max_metric_by_post,
+                manual_tracked_ids,
+                last_valid_metric_date_by_post,
+            )
             if len(page) < page_size:
                 break
             offset += page_size
-    return last, max_metric_by_post, manual_tracked_ids
+    return last, max_metric_by_post, manual_tracked_ids, last_valid_metric_date_by_post
 
 
 def _influencer_ids_by_profile_url(db, profile_urls):
@@ -1209,9 +1252,15 @@ def run():
         #   규칙: 배너·캐러셀(피드) 업로드일 제외 7일 이후(8일째 종료) / 그 외(영상) 14일 이후(15일째 종료) / 캡션(content_summary) '종료·보관·삭제'.
         #   예외: 위성채널·온드미디어만(무상시딩·50만 예외는 2026-07-14 사용자 지시로 제거 — 무상시딩(피드)도 7일 종료). 업로드일은 카운트에서 제외(age 0).
         history_last_stat = None
+        last_valid_metric_date_by_post = {}
         try:
             active_ids = [p["id"] for p in all_posts if not p.get("ended_at")]
-            history_last_stat, max_metric_by_post, manual_tracked_ids = _active_stats_summary(db, active_ids)
+            (
+                history_last_stat,
+                max_metric_by_post,
+                manual_tracked_ids,
+                last_valid_metric_date_by_post,
+            ) = _active_stats_summary(db, active_ids)
             to_end = []
             for p in all_posts:
                 if p.get("ended_at"):
@@ -1535,9 +1584,59 @@ def run():
                 if key in ig_not_found_quarantined_keys:
                     continue
                 confirmed = key in ig_profile_confirmed_keys
-                _record_not_found_observation(db, post, True, confirmed=confirmed)
+                needs_review = _record_not_found_observation(db, post, True, confirmed=confirmed)
                 if confirmed:
                     verified_not_found_count += 1
+                end_decision = classify_confirmed_deleted_end(
+                    post,
+                    error_description=s.get("error_description"),
+                    last_valid_measured_at=last_valid_metric_date_by_post.get(post["id"]),
+                    observed_at=TODAY,
+                )
+                if end_decision.should_end:
+                    updates = {
+                        "ended_at": end_decision.ended_at,
+                        "manual_fields": list(end_decision.manual_fields),
+                        "review_requested_at": None,
+                    }
+                    (
+                        db.table("sponsored_posts")
+                        .update(updates)
+                        .eq("id", post["id"])
+                        .is_("ended_at", "null")
+                        .execute()
+                    )
+                    readback = (
+                        db.table("sponsored_posts")
+                        .select("id,ended_at,manual_fields")
+                        .eq("id", post["id"])
+                        .limit(1)
+                        .execute()
+                    ).data or []
+                    current = readback[0] if readback else {}
+                    ended_verified = str(current.get("ended_at") or "")[:10] == end_decision.ended_at
+                    manual_verified = "ended_at" in (current.get("manual_fields") or [])
+                    if ended_verified and manual_verified:
+                        post.update(updates)
+                        CONFIRMED_DELETE_AUTO_END_ALERTS.append({
+                            "account_name": post.get("account_name"),
+                            "url": post.get("url"),
+                            "ended_at": end_decision.ended_at,
+                            "last_valid_measured_at": last_valid_metric_date_by_post.get(post["id"]),
+                        })
+                        print(
+                            "  [AUTO-END] IG confirmed deleted: "
+                            f"ended_at={end_decision.ended_at} {post.get('url')}"
+                        )
+                    else:
+                        print(
+                            "  [WARN] IG confirmed-delete auto-end readback failed: "
+                            f"ended={ended_verified} manual={manual_verified} {post.get('url')}"
+                        )
+                        if needs_review:
+                            _queue_not_found_review_alert(post, confirmed=confirmed)
+                elif needs_review:
+                    _queue_not_found_review_alert(post, confirmed=confirmed)
                 continue
             _record_not_found_observation(db, post, False)
 
@@ -1786,6 +1885,7 @@ def run():
             print(f"[WARN] 저장할 데이터가 없습니다 (매칭 실패 또는 조회수 오류)")
 
         _flush_not_found_review_alerts()
+        _flush_confirmed_delete_auto_end_alerts()
         retry_zero_alert = zero_result_alert(
             target_only,
             retry_target_count,
@@ -2031,7 +2131,8 @@ def _fetch_stats(urls: list) -> list:
                 print(f"        모든 필드 키: {list(item.keys())}\n")
 
         # 삭제/비공개 감지 — Apify가 not_found(게시물 없음)로 응답한 경우. (자동 특이사항 태깅용)
-        deleted = (item.get("error") == "not_found") or ("does not exist" in str(item.get("errorDescription") or "").lower())
+        error_description = str(item.get("errorDescription") or "") or None
+        deleted = (item.get("error") == "not_found") or ("does not exist" in str(error_description or "").lower())
 
         result.append({
             "url": url,
@@ -2044,6 +2145,7 @@ def _fetch_stats(urls: list) -> list:
             "owner_username": owner_username,
             "content_summary": (item.get("caption") or "")[:300] or None,
             "deleted": deleted,
+            "error_description": error_description,
         })
 
     return result
