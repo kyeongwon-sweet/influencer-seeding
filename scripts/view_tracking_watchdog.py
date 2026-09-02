@@ -33,6 +33,10 @@ import urllib.request
 from datetime import date, datetime, timedelta, timezone
 
 GRACE_DAYS = int(os.getenv("VIEW_WATCHDOG_GRACE_DAYS", "2"))
+# 삭제 검토요청(review_requested_at)이 뜬 지 이 일수 이상 지났는데 아직 활성이면
+# '확정삭제 방치'로 별도 경고. not_found는 자동종료를 안 하고 사람 손만 기다리므로
+# 사람이 놓치면 삭제글이 무한 활성으로 남는 사각 방지.
+REVIEW_STALE_DAYS = int(os.getenv("VIEW_WATCHDOG_REVIEW_STALE_DAYS", "3"))
 KST = timezone(timedelta(hours=9))
 
 
@@ -125,12 +129,27 @@ def fetch_active_posts() -> list[dict]:
 def build(today: date) -> dict:
     posted_cutoff = (today - timedelta(days=GRACE_DAYS)).isoformat()
     created_cutoff = (today - timedelta(days=1)).isoformat()
+    review_cutoff = (today - timedelta(days=REVIEW_STALE_DAYS)).isoformat()
     posts = fetch_active_posts()
 
     flagged: list[dict] = []
     bad_url: list[dict] = []
+    review_stale: list[dict] = []
     skipped_known = 0
     for p in posts:
+        # 확정삭제 방치: 삭제 검토요청(review_requested_at)이 뜬 지 오래인데 아직 활성.
+        # not_found 처리는 자동종료를 안 하므로(run_monitoring), 사람이 놓치면 삭제글이 무한 활성.
+        rr = (p.get("review_requested_at") or "")[:10]
+        if rr and rr <= review_cutoff:
+            review_stale.append({
+                "post_id": p["id"],
+                "account_name": p.get("account_name"),
+                "channel_type": p.get("channel_type"),
+                "posted_at": (p.get("posted_at") or "")[:10],
+                "review_requested_at": rr,
+                "not_found_streak": p.get("not_found_streak") or 0,
+                "url": p.get("url") or "",
+            })
         url = p.get("url") or ""
         if not is_view_capable(url):
             continue
@@ -168,11 +187,14 @@ def build(today: date) -> dict:
     return {
         "date": today.isoformat(),
         "grace_days": GRACE_DAYS,
+        "review_stale_days": REVIEW_STALE_DAYS,
         "flagged_count": len(flagged),
         "bad_url_count": len(bad_url),
+        "review_stale_count": len(review_stale),
         "skipped_known_uncollectable": skipped_known,
         "flagged": sorted(flagged, key=lambda r: r["posted_at"]),
         "bad_url": sorted(bad_url, key=lambda r: r["posted_at"]),
+        "review_stale": sorted(review_stale, key=lambda r: r["review_requested_at"]),
     }
 
 
@@ -192,6 +214,16 @@ def slack_lines(result: dict) -> str:
         )
         for r in result["bad_url"][:10]:
             parts.append(f"• {r['posted_at']} {r['account_name']} — {r['url']}")
+    if result.get("review_stale_count"):
+        parts.append(
+            f"\n🛑 삭제 검토요청 {result['review_stale_days']}일+ 지났는데 활성 방치 "
+            f"{result['review_stale_count']}건 — 삭제 확인 후 종료 처리 필요:"
+        )
+        for r in result["review_stale"][:15]:
+            parts.append(
+                f"• 검토요청 {r['review_requested_at']} · nf{r['not_found_streak']} "
+                f"`{r['channel_type']}` {r['account_name']} — {r['url']}"
+            )
     return "\n".join(parts)
 
 
@@ -225,7 +257,7 @@ def main() -> int:
     if args.out:
         with open(args.out, "w", encoding="utf-8") as f:
             json.dump(result, f, ensure_ascii=False, indent=2)
-    if result["flagged_count"] or result["bad_url_count"]:
+    if result["flagged_count"] or result["bad_url_count"] or result["review_stale_count"]:
         text = slack_lines(result)
         print(text)
         if args.send:
