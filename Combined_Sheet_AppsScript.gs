@@ -1010,6 +1010,56 @@ function writeColumnRuns_(sheet, col, edits, expectedLastRow) {
   return written + values.length;
 }
 
+// 기본 필터가 켜진 시트에서 Range.setFormulas()는 표시된 행에만 적용된 사례가 있었다
+// (2026-09-02: 3,996행 갱신 로그 뒤 숨김 3,240행은 구식 수식 유지). 필터 범위와
+// 조건을 보존해 잠깐 해제한 뒤 전 행을 쓰고, 필터 복원 후 실제 수식을 다시 읽어 검증한다.
+function setColumnFormulasWithFilterRestore_(sheet, startRow, col, formulas, expectedLastRow) {
+  const filter = sheet.getFilter();
+  let filterState = null;
+  if (filter) {
+    const filterRange = filter.getRange();
+    const criteria = [];
+    for (let filterCol = filterRange.getColumn(); filterCol <= filterRange.getLastColumn(); filterCol++) {
+      const criterion = filter.getColumnFilterCriteria(filterCol);
+      if (criterion) criteria.push({ col: filterCol, criterion: criterion });
+    }
+    filterState = { rangeA1: filterRange.getA1Notation(), criteria: criteria };
+    filter.remove();
+    SpreadsheetApp.flush();
+  }
+
+  try {
+    assertRowCountStable_(sheet, expectedLastRow, "setColumnFormulasWithFilterRestore");
+    sheet.getRange(startRow, col, formulas.length, 1).setFormulas(formulas);
+    SpreadsheetApp.flush();
+  } finally {
+    if (filterState) {
+      const unexpectedFilter = sheet.getFilter();
+      if (unexpectedFilter) unexpectedFilter.remove();
+      const restoredFilter = sheet.getRange(filterState.rangeA1).createFilter();
+      filterState.criteria.forEach(function(item) {
+        restoredFilter.setColumnFilterCriteria(item.col, item.criterion);
+      });
+      SpreadsheetApp.flush();
+    }
+  }
+
+  const actual = sheet.getRange(startRow, col, formulas.length, 1).getFormulas();
+  let mismatched = 0;
+  for (let i = 0; i < formulas.length; i++) {
+    if (metricFormulaText_(actual[i][0]) !== metricFormulaText_(formulas[i][0])) mismatched++;
+  }
+  if (mismatched > 0) {
+    throw new Error("I열 수식 전수 쓰기 검증 실패: " + mismatched + "행 불일치");
+  }
+  return {
+    written: formulas.length,
+    verified: formulas.length,
+    filter_removed: !!filterState,
+    criteria_restored: filterState ? filterState.criteria.length : 0,
+  };
+}
+
 function metricDateColumns_(sheet) {
   const headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, sheet.getLastColumn()).getValues()[0];
   const cols = [];
@@ -2621,7 +2671,14 @@ function exportStatsWithOptions_(options) {
         )]);
         incWritten++;
       }
-      sheet.getRange(CONFIG.DATA_START_ROW, incrementCol, nRows, 1).setFormulas(incFormulas);
+      const formulaWrite = setColumnFormulasWithFilterRestore_(
+        sheet,
+        CONFIG.DATA_START_ROW,
+        incrementCol,
+        incFormulas,
+        lastRow
+      );
+      Logger.log("increment_formula_write " + JSON.stringify(formulaWrite));
       if (!formulaOnly) {
         try { refreshCumulativeViews(); } catch (e) { Logger.log(e); }
       }

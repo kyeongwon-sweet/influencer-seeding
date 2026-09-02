@@ -227,7 +227,7 @@ test("Apps Script mirror keeps live metadata and URL guards", () => {
   }
   assert.match(
     appsScript,
-    /setFormulas\(incFormulas\);\s*if \(!formulaOnly\) \{\s*try \{ refreshCumulativeViews\(\);/s,
+    /setColumnFormulasWithFilterRestore_\([\s\S]*?incFormulas[\s\S]*?if \(!formulaOnly\) \{\s*try \{ refreshCumulativeViews\(\);/s,
   );
 });
 
@@ -864,6 +864,11 @@ test("formula-only refresh rewrites I without touching date values or H", () => 
   assert.match(body, /if \(!formulaOnly\) \{[\s\S]*?dateColGroups\.forEach/);
   assert.match(body, /if \(cumulativeCol && !formulaOnly\)/);
   assert.match(body, /if \(!formulaOnly\) \{\s*try \{ refreshCumulativeViews\(\)/);
+  assert.match(appsScript, /function setColumnFormulasWithFilterRestore_\(/);
+  assert.match(body, /setColumnFormulasWithFilterRestore_\([\s\S]*?incFormulas/);
+  assert.match(appsScript, /filter\.remove\(\)[\s\S]*?createFilter\(\)[\s\S]*?setColumnFilterCriteria/);
+  assert.match(appsScript, /I열 수식 전수 쓰기 검증 실패/);
+  assert.doesNotMatch(body, /getRange\(CONFIG\.DATA_START_ROW, incrementCol, nRows, 1\)\.setFormulas\(incFormulas\)/);
   assert.match(body, /날짜값·H열은 변경하지 않았습니다/);
 });
 
