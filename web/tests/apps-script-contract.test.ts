@@ -43,6 +43,10 @@ const duplicateRepair = readFileSync(
   new URL("../../apps-script/repair_duplicate_rows_20260901.gs", import.meta.url),
   "utf8",
 );
+const issueboxYoutubeDuplicateRepair = readFileSync(
+  new URL("../../apps-script/repair_issuebox_youtube_duplicate_20260903.gs", import.meta.url),
+  "utf8",
+);
 
 test("daily row-format normalizer never writes values or formulas", () => {
   // 2026-08-06 사고: "서식만 바꾸니 안전"이라 판단한 대량 쓰기가 H열 1,765행을 손상시켰다.
@@ -136,6 +140,23 @@ test("duplicate repair is target-specific, backed up, and deletes bottom-up", ()
   assert.match(duplicateRepair, /plan\.sheet\.deleteRow\(row\)/);
   assert.match(duplicateRepair, /remainingDuplicates: 0/);
   assert.doesNotMatch(duplicateRepair, /deleteRows\(/);
+});
+
+test("issuebox YouTube duplicate repair keeps the data-rich canonical row and never writes DB", () => {
+  assert.match(appsScriptDeploy, /repair_issuebox_youtube_duplicate_20260903\.gs/);
+  assert.match(issueboxYoutubeDuplicateRepair, /videoKey: "yt:6ronnq9uRbE"/);
+  assert.match(issueboxYoutubeDuplicateRepair, /youtube\\\.com\\\/@issuebox_x\\\/shorts/);
+  assert.match(issueboxYoutubeDuplicateRepair, /videoRows\.length !== 2 \|\| profileRows\.length !== 1/);
+  assert.match(issueboxYoutubeDuplicateRepair, /b\.metricCount - a\.metricCount \|\| a\.row - b\.row/);
+  assert.match(issueboxYoutubeDuplicateRepair, /insertSheet\(name\)/);
+  assert.match(issueboxYoutubeDuplicateRepair, /backup\.hideSheet\(\)/);
+  assert.match(issueboxYoutubeDuplicateRepair, /sort\(function\(a, b\) \{ return b - a; \}\)/);
+  assert.match(issueboxYoutubeDuplicateRepair, /before\.sheet\.deleteRow\(rowNumber\)/);
+  assert.match(issueboxYoutubeDuplicateRepair, /metricValuesPreserved: true/);
+  assert.match(issueboxYoutubeDuplicateRepair, /function verifyIssueboxYoutubeDuplicate20260903\(\)/);
+  assert.match(issueboxYoutubeDuplicateRepair, /keeper\.metricCount < 2/);
+  assert.match(issueboxYoutubeDuplicateRepair, /dbWrites: 0/);
+  assert.doesNotMatch(issueboxYoutubeDuplicateRepair, /UrlFetchApp|fetchCollectedStats_|SUPABASE|stats-import/);
 });
 
 test("data rows are unbolded while the header keeps its bold", () => {
