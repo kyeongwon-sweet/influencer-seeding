@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeChannelType, canonicalText } from "@/app/monitoring/lib";
 import { stripAssetFileListing } from "@/lib/asset-name-policy";
+import { endedAtPolicyError } from "@/lib/ended-at-policy";
 
 export async function PATCH(
   req: NextRequest,
@@ -48,6 +49,19 @@ export async function PATCH(
     const manual = new Set<string>(((cur as { manual_fields?: string[] } | null)?.manual_fields) ?? []);
     for (const k of Object.keys(updates)) if (manual.has(k)) delete updates[k];
     if (Object.keys(updates).length === 0) return NextResponse.json({ ok: true, skipped: "manual_fields" });
+  }
+
+  // 종료일 정책: 게시 전 종료(ended_at < posted_at)는 구조적으로 불가 — 저장 차단.
+  // 이 상태가 되면 banner-reach-sync가 게시 이후 모든 날짜를 '종료 이후'로 버려 지표가
+  // 영구 공백이 된다(2026-09-03 실측 9건). 두 필드 중 하나만 수정해도 결합 결과로 판정한다.
+  if ("ended_at" in updates || "posted_at" in updates) {
+    const { data: cur } = await supabase
+      .from("sponsored_posts").select("posted_at, ended_at").eq("id", id).single();
+    const row = (cur ?? {}) as { posted_at?: string | null; ended_at?: string | null };
+    const posted = "posted_at" in updates ? updates.posted_at : row.posted_at;
+    const ended = "ended_at" in updates ? updates.ended_at : row.ended_at;
+    const policyError = endedAtPolicyError(posted, ended);
+    if (policyError) return NextResponse.json({ error: policyError }, { status: 400 });
   }
 
   const { error } = await supabase.from("sponsored_posts").update(updates).eq("id", id);
