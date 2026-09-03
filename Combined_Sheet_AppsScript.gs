@@ -1107,32 +1107,36 @@ function metricColumnNumber_(letter) {
   return col;
 }
 
-function standardCumulativeFormulaEnd_(formula, row, firstLetter) {
+function standardCumulativeFormulaParts_(formula, row) {
   const text = metricFormulaText_(formula);
-  const prefix = new RegExp(
-    "^=IF\\(COUNT\\(" + firstLetter + row + ":([A-Z]+)" + row + "\\)=0,"
-  );
+  const prefix = new RegExp("^=IF\\(COUNT\\(([A-Z]+)" + row + ":([A-Z]+)" + row + "\\)=0,");
   const match = text.match(prefix);
-  if (!match) return "";
-  const endLetter = match[1];
+  if (!match) return null;
+  const firstLetter = match[1];
+  const endLetter = match[2];
   return text === metricFormulaText_(metricCumulativeFormula_(row, firstLetter, endLetter))
-    ? endLetter
-    : "";
+    ? { firstLetter: firstLetter, endLetter: endLetter }
+    : null;
+}
+
+function standardCumulativeFormulaEnd_(formula, row, firstLetter) {
+  const parts = standardCumulativeFormulaParts_(formula, row);
+  return parts && parts.firstLetter === firstLetter ? parts.endLetter : "";
 }
 
 function standardIncrementFormulaParts_(formula, row, firstLetter) {
   const text = metricFormulaText_(formula);
-  const prefix = new RegExp(
-    "^=IFERROR\\(LET\\(RNG,\\$" + firstLetter + row + ":\\$([A-Z]+)" + row + ","
-  );
+  const prefix = new RegExp("^=IFERROR\\(LET\\(RNG,\\$([A-Z]+)" + row + ":\\$([A-Z]+)" + row + ",");
   const match = text.match(prefix);
   if (!match) return null;
-  const endLetter = match[1];
+  const actualFirstLetter = match[1];
+  const endLetter = match[2];
+  if (firstLetter && actualFirstLetter !== firstLetter) return null;
   const targetMatch = text.match(new RegExp(",TARGETC,COLUMN\\(\\$([A-Z]+)" + row + "\\),"));
   if (!targetMatch) return null;
   const targetLetter = targetMatch[1];
-  return text === metricFormulaText_(metricIncrementFormula_(row, firstLetter, endLetter, targetLetter))
-    ? { endLetter: endLetter, targetLetter: targetLetter }
+  return text === metricFormulaText_(metricIncrementFormula_(row, actualFirstLetter, endLetter, targetLetter))
+    ? { firstLetter: actualFirstLetter, endLetter: endLetter, targetLetter: targetLetter }
     : null;
 }
 
@@ -1141,8 +1145,8 @@ function standardIncrementFormulaEnd_(formula, row, firstLetter) {
   return parts ? parts.endLetter : "";
 }
 
-// 수동으로 우측 날짜열을 삽입하면 기존 행의 명시적 끝열은 자동 확장되지 않는다.
-// 표준 H/I 수식만 최신 날짜열로 늘리고, 수기값·종료 최종값·백로그(="")·미러링 수식은 보존한다.
+// 날짜 헤더가 일시 누락되거나 우측 날짜열이 삽입되면 표준 H/I 수식 범위가 좁아질 수 있다.
+// 인식 가능한 날짜열 안의 표준 수식만 전체 범위로 복구하고, 수기값·종료 최종값·백로그(="")·미러링 수식은 보존한다.
 function repairStaleMetricFormulaRanges_(sheet) {
   const targetSheet = sheet || getSheet_();
   const dateCols = metricDateColumns_(targetSheet);
@@ -1162,6 +1166,8 @@ function repairStaleMetricFormulaRanges_(sheet) {
   const lastLetter = colLetter_(lastCol);
   const cumulativeCol = findHeaderCol_(targetSheet, ["누적 조회수", "누적조회수"]);
   const incrementCol = getIncrementCol_(targetSheet);
+  const dateColumnNumbers = {};
+  dateCols.forEach(function(item) { dateColumnNumbers[item.col] = true; });
   result.first_col = firstLetter;
   result.last_col = lastLetter;
 
@@ -1170,8 +1176,15 @@ function repairStaleMetricFormulaRanges_(sheet) {
     const formulas = targetSheet.getRange(CONFIG.DATA_START_ROW, cumulativeCol, result.rows, 1).getFormulas();
     for (let i = 0; i < result.rows; i++) {
       const row = CONFIG.DATA_START_ROW + i;
-      const currentEnd = standardCumulativeFormulaEnd_(formulas[i][0], row, firstLetter);
-      if (currentEnd && metricColumnNumber_(currentEnd) < lastCol) {
+      const current = standardCumulativeFormulaParts_(formulas[i][0], row);
+      const currentFirstCol = current ? metricColumnNumber_(current.firstLetter) : 0;
+      const currentEndCol = current ? metricColumnNumber_(current.endLetter) : 0;
+      const isRecognizedRange = current
+        && dateColumnNumbers[currentFirstCol]
+        && dateColumnNumbers[currentEndCol]
+        && currentFirstCol >= firstCol
+        && currentEndCol <= lastCol;
+      if (isRecognizedRange && (currentFirstCol > firstCol || currentEndCol < lastCol)) {
         cumulativeEdits.push({ row: row, value: metricCumulativeFormula_(row, firstLetter, lastLetter) });
       }
     }
@@ -1182,8 +1195,15 @@ function repairStaleMetricFormulaRanges_(sheet) {
     const formulas = targetSheet.getRange(CONFIG.DATA_START_ROW, incrementCol, result.rows, 1).getFormulas();
     for (let i = 0; i < result.rows; i++) {
       const row = CONFIG.DATA_START_ROW + i;
-      const current = standardIncrementFormulaParts_(formulas[i][0], row, firstLetter);
-      if (current && metricColumnNumber_(current.endLetter) < lastCol) {
+      const current = standardIncrementFormulaParts_(formulas[i][0], row);
+      const currentFirstCol = current ? metricColumnNumber_(current.firstLetter) : 0;
+      const currentEndCol = current ? metricColumnNumber_(current.endLetter) : 0;
+      const isRecognizedRange = current
+        && dateColumnNumbers[currentFirstCol]
+        && dateColumnNumbers[currentEndCol]
+        && currentFirstCol >= firstCol
+        && currentEndCol <= lastCol;
+      if (isRecognizedRange && (currentFirstCol > firstCol || currentEndCol < lastCol)) {
         incrementEdits.push({
           row: row,
           value: metricIncrementFormula_(row, firstLetter, lastLetter, current.targetLetter),
@@ -1201,6 +1221,12 @@ function repairStaleMetricFormulaRanges_(sheet) {
   if (result.cumulative || result.increment) SpreadsheetApp.flush();
   Logger.log("metric_formula_range_repair " + JSON.stringify(result));
   return result;
+}
+
+function repairStaleMetricFormulaRanges() {
+  return withDocLock_(function() {
+    return repairStaleMetricFormulaRanges_(getSheet_());
+  });
 }
 
 function ensureNewRowsMetricFormulas_(sheet, startRow, endRow) {

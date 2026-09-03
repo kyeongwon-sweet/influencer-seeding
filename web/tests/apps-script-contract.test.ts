@@ -617,9 +617,11 @@ test("stale metric formula ranges extend without overwriting manual or custom ce
   const body = appsScript.slice(start, end);
   assert.notEqual(start, -1);
   assert.match(body, /getFormulas\(\)/);
-  assert.match(body, /standardCumulativeFormulaEnd_\(formulas\[i\]\[0\], row, firstLetter\)/);
-  assert.match(body, /standardIncrementFormulaParts_\(formulas\[i\]\[0\], row, firstLetter\)/);
-  assert.match(body, /metricColumnNumber_\(current\.endLetter\) < lastCol/);
+  assert.match(body, /standardCumulativeFormulaParts_\(formulas\[i\]\[0\], row\)/);
+  assert.match(body, /standardIncrementFormulaParts_\(formulas\[i\]\[0\], row\)/);
+  assert.match(body, /currentFirstCol > firstCol \|\| currentEndCol < lastCol/);
+  assert.match(body, /dateColumnNumbers\[currentFirstCol\]/);
+  assert.match(body, /dateColumnNumbers\[currentEndCol\]/);
   assert.match(body, /current\.targetLetter/);
   assert.match(body, /writeColumnRuns_\(targetSheet, cumulativeCol, cumulativeEdits, lastRow\)/);
   assert.match(body, /writeColumnRuns_\(targetSheet, incrementCol, incrementEdits, lastRow\)/);
@@ -641,7 +643,7 @@ test("stale metric formula ranges extend without overwriting manual or custom ce
   const helpers = Function(
     helperSource
       + "; return { metricCumulativeFormula_, metricIncrementFormula_, metricColumnNumber_,"
-      + " standardCumulativeFormulaEnd_, standardIncrementFormulaEnd_ };",
+      + " standardCumulativeFormulaParts_, standardCumulativeFormulaEnd_, standardIncrementFormulaParts_, standardIncrementFormulaEnd_ };",
   )();
   const hDh = helpers.metricCumulativeFormula_(2764, "P", "DH");
   const iDh = helpers.metricIncrementFormula_(2764, "P", "DH");
@@ -649,6 +651,14 @@ test("stale metric formula ranges extend without overwriting manual or custom ce
   assert.equal(helpers.standardCumulativeFormulaEnd_(hDh, 2764, "P"), "DH");
   assert.equal(helpers.standardIncrementFormulaEnd_(iDh, 2764, "P"), "DH");
   assert.equal(helpers.standardIncrementFormulaEnd_(iTargetDg, 2764, "P"), "DH");
+  assert.deepEqual(
+    helpers.standardCumulativeFormulaParts_(helpers.metricCumulativeFormula_(2764, "Q", "DU"), 2764),
+    { firstLetter: "Q", endLetter: "DU" },
+  );
+  assert.deepEqual(
+    helpers.standardIncrementFormulaParts_(helpers.metricIncrementFormula_(2764, "Q", "DU", "DT"), 2764),
+    { firstLetter: "Q", endLetter: "DU", targetLetter: "DT" },
+  );
   assert.ok(helpers.metricColumnNumber_("DH") < helpers.metricColumnNumber_("DK"));
   assert.equal(helpers.standardCumulativeFormulaEnd_("=MAX(P346:DH346)", 346, "P"), "");
   assert.equal(helpers.standardIncrementFormulaEnd_('=""', 346, "P"), "");
