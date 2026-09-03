@@ -1,5 +1,10 @@
 # AI Shared Status
 
+## ✅ 2026-09-03 [Codex 완료·라이브] 요일별·업체별 성과 상위 소재 호버 메모
+- **배포:** `6b85e1d`의 요일별·업체별 호버 메모와 후속 `a7d40062`의 "실측 없음≠0" 표시를 함께 포함한 main `178de7e1`을 Vercel production에 배포했다. deployment `dpl_5TYeCnSeZ4J8kpQAcjHxhAx12nS8` READY, `https://influencer-seeding-mu.vercel.app` alias 적용. 이후 main `86f41691`은 Python/GHA 전용 종료일 감사라 Vercel 재배포 대상이 아니다.
+- **라이브 실물:** 관리자 로그인 상태의 `/monitoring`에서 `요일별/업체별`을 열고 두 행을 각각 hover했다. 월요일 행은 조회수 상위 5개·최저 CPV 메모가 `display:block`으로 열렸고, 루나앤코코 행은 영상·배너 상위 목록 메모가 열렸다. 메모 박스는 각각 카드 내부 좌/우 방향으로 배치됐고 viewport 하단을 넘거나 잘리지 않았다.
+- **검증:** 최신 배포 코드 기준 web **389/389**, `tsc --noEmit`, local·Vercel production build 통과. 라이브 데이터 3,473건 로딩과 두 분석 패널의 실제 수치·계정 목록 렌더를 확인했다.
+
 ## ✅ 2026-09-03 [Codex 완료·라이브] 이슈박스 YouTube 카리나 시트 중복 3행 → 1행
 - **대상 확정:** URL-key `yt:6ronnq9uRbE` 2행과 잘못된 프로필 URL `youtube.com/@issuebox_x/shorts/` 1행을 URL·게시일(2026-08-30)·계정·소재명 exact 지문으로 재확인했다. 날짜 실측 2칸인 기존 3381행을 정본으로, 실측 1칸인 3433행과 값 없는 프로필 URL 3997행을 삭제 대상으로 확정했다.
 - **백업·삭제:** 사용자 실행 승인 후 숨김 백업 `_codex_issuebox_yt_dup_backup_20260903_20260903_111009`을 만들고 아래쪽부터 3997·3433행만 삭제했다. 데이터 마지막 행은 `3997→3995`; DB 쓰기는 0건이다. 실행 코드는 `b7bd935`이며 guarded clasp live pull→overlay→push로 배포했다.
