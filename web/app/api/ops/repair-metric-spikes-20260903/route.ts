@@ -125,7 +125,7 @@ async function inspectFinalVerification(postId: string | null) {
     postId
       ? supabase
           .from("post_daily_stats")
-          .select("id, post_id, measured_at, play_count, reach_count, manual, source, created_at")
+          .select("id, post_id, measured_at, play_count, reach_count, manual, created_at")
           .eq("post_id", postId)
           .eq("measured_at", VERIFIED_DATE)
           .order("id", { ascending: true })
