@@ -127,6 +127,7 @@ async function handler(req: NextRequest) {
     cumCol: number;
     incCol: number;
     acctCol: number;
+    metricStatusCol: number;
     statusCol: number;
     formulaFirstCol: number;
     formulaValues: (string | number | boolean | null)[][];
@@ -144,6 +145,7 @@ async function handler(req: NextRequest) {
     const cumCol = findCol(["누적조회수", "누적 조회수"]);
     const incCol = findCol(["증분값", "증분"]);
     const acctCol = findCol(["채널명"]);
+    const metricStatusCol = findCol(["상태"]);
     const statusCol = findCol(["등록상태"]);
     const formulaFirstCol = Math.min(cumCol, incCol);
     const formulaLastCol = Math.max(cumCol, incCol);
@@ -151,7 +153,7 @@ async function handler(req: NextRequest) {
     const formulaValues = urlCol >= 0 && cumCol >= 0 && incCol >= 0
       ? await fetchSheetTabFormulas(SHEET_ID, SHEET_GID, formulaRange)
       : [];
-    return { values, header, urlCol, cumCol, incCol, acctCol, statusCol, formulaFirstCol, formulaValues };
+    return { values, header, urlCol, cumCol, incCol, acctCol, metricStatusCol, statusCol, formulaFirstCol, formulaValues };
   };
 
   let snapshot: SheetSnapshot;
@@ -162,14 +164,17 @@ async function handler(req: NextRequest) {
     await notifyBot(`🔴 [수식 전수감사] 시트 읽기 실패 — ${msg.slice(0, 200)}`).catch(() => {});
     return NextResponse.json({ error: msg }, { status: 502 });
   }
-  if (snapshot.urlCol < 0 || snapshot.cumCol < 0 || snapshot.incCol < 0) {
-    await notifyBot(`🔴 [수식 전수감사] 헤더 인식 실패 — url:${snapshot.urlCol} 누적:${snapshot.cumCol} 증분:${snapshot.incCol}`).catch(() => {});
+  if (snapshot.urlCol < 0 || snapshot.cumCol < 0 || snapshot.incCol < 0
+    || snapshot.metricStatusCol < 0 || snapshot.statusCol < 0) {
+    await notifyBot(`🔴 [수식 전수감사] 헤더 인식 실패 — url:${snapshot.urlCol} 누적:${snapshot.cumCol} 증분:${snapshot.incCol} 상태:${snapshot.metricStatusCol} 등록상태:${snapshot.statusCol}`).catch(() => {});
     return NextResponse.json({ error: "header not found" }, { status: 500 });
   }
 
+  const metricDateStart = (current: SheetSnapshot) =>
+    current.metricStatusCol > current.incCol ? current.metricStatusCol + 1 : current.incCol + 1;
   const detectDateCols = (current: SheetSnapshot) => resolveMetricDateColumns(
     current.header,
-    current.incCol + 1,
+    metricDateStart(current),
     current.statusCol > current.incCol ? current.statusCol : current.header.length,
     STATS_START_YEAR,
   );
@@ -221,7 +226,7 @@ async function handler(req: NextRequest) {
   // 끝열 어긋남은 이미 snapshotAhead가 한 줄로 알리므로, 그 짝을 구간 내부에도 둔다.
   const unparsableDateHeaders = findUnparsableDateHeaders(
     snapshot.header,
-    snapshot.incCol + 1,
+    metricDateStart(snapshot),
     snapshot.statusCol > snapshot.incCol ? snapshot.statusCol : snapshot.header.length,
     STATS_START_YEAR,
   ).map(({ idx, label }) => ({

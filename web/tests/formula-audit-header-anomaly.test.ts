@@ -40,6 +40,14 @@ test("구간 밖(등록상태 등)은 애초에 대상이 아니다 — 호출�
   assert.equal(findUnparsableDateHeaders(h, 0, h.length, YEAR).length, 2);
 });
 
+test("감사 라우트는 I 다음 메타데이터가 아니라 상태 다음 날짜열부터 검사한다", () => {
+  const src = fs.readFileSync("app/api/sponsored-posts/formula-audit/route.ts", "utf8");
+  assert.match(src, /metricStatusCol\s*=\s*findCol\(\["상태"\]\)/);
+  assert.match(src, /metricDateStart\(current\)/);
+  assert.match(src, /current\.metricStatusCol\s*>\s*current\.incCol\s*\?\s*current\.metricStatusCol\s*\+\s*1/);
+  assert.doesNotMatch(src, /findUnparsableDateHeaders\(\s*snapshot\.header,\s*snapshot\.incCol\s*\+\s*1/);
+});
+
 test("날짜로 인식된 칸과 미인식 칸은 겹치지 않는다(판정 파리티)", () => {
   const h = ["2026. 5. 17", BROKEN_P1, "26.5.19", "", "쓰레기", "2026. 5. 21"];
   const dates = new Set(resolveMetricDateColumns(h, 0, h.length, YEAR).map((c) => c.idx));
