@@ -12,10 +12,13 @@ test("metric spike repair is exact-key, exact-date, and exact-value guarded", ()
     'ig:DcVKpb3BInV", date: "2026-09-01", dirty: 198660',
     'ig:Db5dILHxraF", date: "2026-08-26", dirty: 469130',
     'tt:7670156284628307207", date: "2026-08-26", dirty: 469130',
+    'ig:Dcf5OKEiZvJ", date: "2026-08-26", dirty: 116853',
+    'ig:Dcf5OKEiZvJ", date: "2026-08-27", dirty: 116853',
+    'ig:Dcf5OKEiZvJ", date: "2026-08-28", dirty: 116853',
+    'ig:Dcf5OKEiZvJ", date: "2026-08-29", dirty: 116853',
+    'ig:Dcf5OKEiZvJ", date: "2026-08-30", dirty: 116853',
+    'ig:Dcf5OKEiZvJ", date: "2026-09-02", dirty: 198660',
   ]) assert.match(repair, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  assert.match(repair, /key: "ig:Dcf5OKEiZvJ"/);
-  assert.match(repair, /dirty_counts: Object\.freeze\(\{ "116853": 5, "198660": 1 \}\)/);
-  assert.match(repair, /if \(carryTargets\.length !== 6\)/);
   assert.match(repair, /target\.state === "pending" && metricSpikeRepairNumber20260903_\(current\) !== target\.dirty/);
   assert.match(repair, /db_conflicts: snapshot\.targets\.filter/);
   assert.match(repair, /apply === true && dbConflicts\.length/);
