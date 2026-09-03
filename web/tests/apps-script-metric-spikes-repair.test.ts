@@ -17,7 +17,9 @@ test("metric spike repair is exact-key, exact-date, and exact-value guarded", ()
   assert.match(repair, /dirty_counts: Object\.freeze\(\{ "116853": 5, "198660": 1 \}\)/);
   assert.match(repair, /if \(carryTargets\.length !== 6\)/);
   assert.match(repair, /target\.state === "pending" && metricSpikeRepairNumber20260903_\(current\) !== target\.dirty/);
-  assert.match(repair, /DB에 대상 날짜값이 남아 있어 중단/);
+  assert.match(repair, /db_conflicts: snapshot\.targets\.filter/);
+  assert.match(repair, /apply === true && dbConflicts\.length/);
+  assert.match(repair, /DB에 대상 날짜값이 남아 있어 적용 중단/);
   assert.match(repair, /buildUrlKeyIndex_\(currentUrls, linkKey_\)/);
 });
 

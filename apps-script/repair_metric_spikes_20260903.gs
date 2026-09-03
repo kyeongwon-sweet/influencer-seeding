@@ -126,12 +126,10 @@ function metricSpikeRepairSnapshot20260903_() {
     const raw = range.getValue();
     const current = metricSpikeRepairNumber20260903_(raw);
     const dbValue = dbValues[target.key + "|" + target.date];
-    if (dbValue != null) {
-      throw new Error("DB에 대상 날짜값이 남아 있어 중단: " + target.key + "@" + target.date + "=" + dbValue);
-    }
-    const state = raw === "" || raw == null
+    const sheetState = raw === "" || raw == null
       ? "blank"
       : current === target.dirty ? "pending" : "drift";
+    const state = dbValue != null ? "db-conflict" : sheetState;
     return {
       key: target.key,
       date: target.date,
@@ -141,11 +139,12 @@ function metricSpikeRepairSnapshot20260903_() {
       a1: range.getA1Notation(),
       current: raw,
       state: state,
-      db_value: null,
+      db_value: dbValue == null ? null : dbValue,
+      sheet_state: sheetState,
       url: rowState.url,
     };
   });
-  const drift = targets.filter(function(target) { return target.state === "drift"; });
+  const drift = targets.filter(function(target) { return target.sheet_state === "drift"; });
   if (drift.length) {
     throw new Error("대상 셀 값 드리프트: " + drift.map(function(target) {
       return target.a1 + "=" + target.current;
@@ -168,6 +167,7 @@ function metricSpikeRepairPublicResult20260903_(snapshot, changed) {
     target_count: snapshot.targets.length,
     pending: snapshot.targets.filter(function(target) { return target.state === "pending"; }).length,
     blank: snapshot.targets.filter(function(target) { return target.state === "blank"; }).length,
+    db_conflicts: snapshot.targets.filter(function(target) { return target.state === "db-conflict"; }).length,
     changed: changed || 0,
     targets: snapshot.targets.map(function(target) {
       const rowState = snapshot.rowStateByKey[target.key];
@@ -179,6 +179,7 @@ function metricSpikeRepairPublicResult20260903_(snapshot, changed) {
         a1: target.a1,
         current: target.current,
         state: target.state,
+        sheet_state: target.sheet_state,
         db_value: target.db_value,
         url: target.url,
         h_a1: rowState.h_a1,
@@ -200,6 +201,12 @@ function repairMetricSpikes20260903(signature, apply) {
   lock.waitLock(30000);
   try {
     const before = metricSpikeRepairSnapshot20260903_();
+    const dbConflicts = before.targets.filter(function(target) { return target.state === "db-conflict"; });
+    if (apply === true && dbConflicts.length) {
+      throw new Error("DB에 대상 날짜값이 남아 있어 적용 중단: " + dbConflicts.map(function(target) {
+        return target.key + "@" + target.date + "=" + target.db_value;
+      }).join(", "));
+    }
     if (apply !== true || !before.targets.some(function(target) { return target.state === "pending"; })) {
       const dryResult = metricSpikeRepairPublicResult20260903_(before, 0);
       Logger.log("metric_spike_repair_20260903_dry " + JSON.stringify(dryResult));
