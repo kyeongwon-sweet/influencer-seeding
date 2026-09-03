@@ -2,7 +2,10 @@
 // 게시 요일(posted_at)별 '게시 후 7일 시점' 조회수 median 비교. (영상)만·배너 제외.
 // 일별 증분과 달리 수집 누락·백로그에 안 흔들려 "언제 올릴까" 판단용으로 신뢰 가능.
 
-export type DowData = { label: string; count: number; median: number; cpv: number | null }[];
+import TopPostsMemo, { type TopMemo } from "./TopPostsMemo";
+
+// top: 그 요일 게시물의 성과 상위 목록(호버 메모박스용). median 만으로는 "어느 계정 덕인지"를 알 수 없어 함께 내려받는다.
+export type DowData = { label: string; count: number; median: number; cpv: number | null; top: TopMemo }[];
 
 export default function DayOfWeekPanel({ data }: { data: DowData }) {
   const max = Math.max(1, ...data.map((d) => d.median));
@@ -33,12 +36,15 @@ export default function DayOfWeekPanel({ data }: { data: DowData }) {
             <span className="w-12 text-right">게시물</span>
           </div>
           <div className="divide-y divide-a-divider">
-            {data.map((d) => {
+            {data.map((d, i) => {
               const pct = d.count > 0 ? Math.max(3, Math.round((d.median / max) * 100)) : 0;
               const isBestViews = d.count > 0 && d.median === best && best > 0;
               const isBestCpv = d.cpv != null && d.cpv === bestCpv;
               return (
-                <div key={d.label} className="flex items-center gap-3 px-1 py-1.5">
+                <div key={d.label} className="relative group flex items-center gap-3 px-1 py-1.5 hover:bg-a-parchment/40">
+                  {/* 아래쪽 요일은 위로 열어 카드(overflow-hidden) 밖으로 안 나가게 함 */}
+                  <TopPostsMemo heading={`${d.label}요일 게시 · 게시 후 7일 성과 상위`} openUp={i >= 3}
+                    sections={[{ label: "", unit: "회", costLabel: "CPV", memo: d.top }]} />
                   <span className={`w-6 text-sm font-bold ${isBestViews ? "text-a-blue" : "text-a-ink"}`}>{d.label}</span>
                   {/* 막대 + 조회수 값을 막대 트랙 끝에 얹어 눈 이동 최소화 */}
                   <div className="flex-1 h-6 bg-a-parchment/50 rounded relative overflow-hidden">
@@ -59,7 +65,7 @@ export default function DayOfWeekPanel({ data }: { data: DowData }) {
           </div>
           <p className="text-[11px] text-a-ink-muted mt-2 px-1">
             <span className="inline-block w-2 h-2 rounded-sm bg-a-blue align-middle mr-0.5" /> 최다 조회수 요일 ·
-            <span className="text-green-600 font-semibold"> 녹색 CPV</span> = 최저(가장 효율적, 비용÷조회수)
+            <span className="text-green-600 font-semibold"> 녹색 CPV</span> = 최저(가장 효율적, 비용÷조회수) · 행에 커서를 올리면 상위 계정
           </p>
         </div>
       )}

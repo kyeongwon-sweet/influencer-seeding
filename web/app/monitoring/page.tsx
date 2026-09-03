@@ -14,6 +14,7 @@ import { GOOGLE_TREND_GROUPS } from "@/lib/google-trend-groups";
 import CorrelationPanel from "./components/CorrelationPanel";
 import DayOfWeekPanel, { type DowData } from "./components/DayOfWeekPanel";
 import CompanyPanel, { type CompanyData } from "./components/CompanyPanel";
+import { buildTopMemo, type TopPost } from "./components/TopPostsMemo";
 import FiltersBar from "./components/FiltersBar";
 import LineChart from "./components/LineChart";
 import PostsTable from "./components/PostsTable";
@@ -252,8 +253,8 @@ export default function MonitoringPage() {
   //   일별 증분과 달리 각 게시물의 절대 성과를 연령보정(7일)해 비교 → 수집 누락·백로그에 안 흔들림.
   const dowAnalysis = useMemo<DowData>(() => {
     const WD = ["월", "화", "수", "목", "금", "토", "일"];
-    const views: number[][] = [[], [], [], [], [], [], []];
-    const cpvs: number[][] = [[], [], [], [], [], [], []]; // 게시물별 CPV = 비용/게시후7일 조회수
+    // 요일별 게시물 목록(호버 메모박스용). median·CPV도 이 목록에서 파생해 표와 메모가 어긋날 수 없게 한다.
+    const rows: TopPost[][] = [[], [], [], [], [], [], []];
     for (const post of filteredPosts) {
       if (!(post.channel_type ?? "").includes("(영상)")) continue; // 배너 등 제외, 영상만
       const pa = post.posted_at;
@@ -267,8 +268,12 @@ export default function MonitoringPage() {
       }
       if (!best) continue;
       const dow = (new Date(pa).getUTCDay() + 6) % 7; // date-only → 월=0…일=6
-      views[dow].push(best.v);
-      if (post.cost != null && best.v > 0) cpvs[dow].push(post.cost / best.v); // CPV=조회당비용(게시후7일 기준)
+      rows[dow].push({
+        account: post.account_name?.trim() || post.influencers?.name?.trim() || "(계정 미기재)",
+        asset: assetNameOf(post),
+        value: best.v,
+        unitCost: post.cost != null && best.v > 0 ? post.cost / best.v : null, // CPV=조회당비용(게시후7일 기준)
+      });
     }
     const median = (arr: number[]): number => {
       if (!arr.length) return 0;
@@ -282,14 +287,25 @@ export default function MonitoringPage() {
       const m = Math.floor(s.length / 2);
       return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
     };
-    return WD.map((label, i) => ({ label, count: views[i].length, median: median(views[i]), cpv: medianF(cpvs[i]) }));
+    return WD.map((label, i) => ({
+      label,
+      count: rows[i].length,
+      median: median(rows[i].map(r => r.value)),
+      cpv: medianF(rows[i].map(r => r.unitCost).filter((v): v is number => v != null)),
+      top: buildTopMemo(rows[i]),
+    }));
   }, [filteredPosts]);
 
   // 업체별 성과: 업체(company_name/companyForAccount)별 '누적 총합' — 영상=Σ누적 조회수, 배너=Σ도달수(effectiveReach).
   //   CPV/CPR = Σ비용 ÷ Σ누적 (대시보드 조회당비용·리포트와 동일 기준). 업체명 있는 바이럴 소재만.
   //   🔒 필터 불변식: 값은 pickRangeStats — 조회수 기간 필터 시 범위 내 마지막 값 기준.
   const companyAnalysis = useMemo<CompanyData>(() => {
-    type Acc = { video: { n: number; sum: number; cost: number }; banner: { n: number; sum: number; cost: number } };
+    type Acc = {
+      video: { n: number; sum: number; cost: number };
+      banner: { n: number; sum: number; cost: number };
+      videoRows: TopPost[];   // 호버 메모박스용 소재 목록
+      bannerRows: TopPost[];
+    };
     const by = new Map<string, Acc>();
     for (const post of filteredPosts) {
       const company = (post.company_name?.trim() || companyForAccount(post.account_name ?? post.influencers?.name, post.channel_type) || "").trim();
@@ -301,11 +317,20 @@ export default function MonitoringPage() {
       const play = s?.play_count ?? null;
       // 배너=일별 도달수 우선(bannerDailyMetric), 없으면 post레벨 reach 폴백. 영상=조회수.
       const val = kind === "video" ? play : (bannerDailyMetric(s) ?? effectiveReach(post.reach_count, play));
-      const acc = by.get(company) ?? { video: { n: 0, sum: 0, cost: 0 }, banner: { n: 0, sum: 0, cost: 0 } };
+      const acc = by.get(company) ?? { video: { n: 0, sum: 0, cost: 0 }, banner: { n: 0, sum: 0, cost: 0 }, videoRows: [], bannerRows: [] };
       const slot = acc[kind];
       slot.n += 1;                       // 게시물 수는 값 유무와 무관하게 집계(업체 물량 파악)
       if (val != null) slot.sum += val;  // 누적 합산은 값 있는 것만
       slot.cost += post.cost ?? 0;
+      // 값 없는 소재(미수집·공백)는 성과 순위를 매길 수 없어 메모박스에서만 빠진다(개수·합계 규칙은 그대로).
+      if (val != null && val > 0) {
+        (kind === "video" ? acc.videoRows : acc.bannerRows).push({
+          account: post.account_name?.trim() || post.influencers?.name?.trim() || "(계정 미기재)",
+          asset: assetNameOf(post),
+          value: val,
+          unitCost: post.cost != null && post.cost > 0 ? post.cost / val : null,
+        });
+      }
       by.set(company, acc);
     }
     const cpx = (cost: number, sum: number): number | null => (cost > 0 && sum > 0 ? cost / sum : null);
@@ -314,6 +339,8 @@ export default function MonitoringPage() {
         company,
         video: { count: a.video.n, total: a.video.sum, cpv: cpx(a.video.cost, a.video.sum) },
         banner: { count: a.banner.n, total: a.banner.sum, cpr: cpx(a.banner.cost, a.banner.sum) },
+        videoTop: buildTopMemo(a.videoRows),
+        bannerTop: buildTopMemo(a.bannerRows),
       }))
       .sort((x, y) => (y.video.total + y.banner.total) - (x.video.total + x.banner.total));
   }, [filteredPosts, filters.dateFrom, filters.dateTo]);
