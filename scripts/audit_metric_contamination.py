@@ -10,13 +10,14 @@ DB는 149,000 (96배).
 그래서 값·날짜를 미리 알지 못해도 **패턴**으로 찾는다. 두 규칙 모두 실측으로 보정했다
 (감으로 임계를 정하면 매일 오탐이 된다 — 2026-08-12~31 20일 전수 대조).
 
-  Rule A  급등 후 동결 : 하루 만에 SPIKE_RATIO배 이상 뛴 뒤 FREEZE_DAYS일 이상 완전 동결.
+  Rule A  급등 후 동결 : 하루 만에 SPIKE_RATIO배·SPIKE_MIN_INCREASE 이상 뛴 뒤
+          FREEZE_DAYS일 이상 완전 동결.
           실측 6건 중 오염 3건을 잡고 정상 바이럴 3건(Ufo__ORANGE·smile_miso_s2·
           moduhappy — 급등 후에도 계속 증가)은 걸러냈다. 오탐 0.
           ⚠️ '급등' 자체는 오염 신호가 아니다. 급등 **후 완전 동결**이 신호다.
 
   Rule B  값 충돌 : 같은 날 서로 다른 게시물이 **정확히 같은 값**을 갖고, 그 값이 자기
-          이력 대비 이상(직전 없음 또는 5배 이상 점프)일 때.
+          이력 대비 이상(직전 없음 또는 3배 이상 점프)일 때.
           ⚠️ 값 충돌 단독은 못 쓴다 — 임계 50,000에서도 20일간 12건이 나온다(실측).
              라운드 값(100의 배수)은 사람이 반올림 입력해 우연히 겹치는 경우가 많아
              제외한다. 이 조건을 붙이면 11건 → 3종으로 줄고, 놓쳤던 썰박스 466,637을 잡는다.
@@ -45,12 +46,13 @@ ENV_PATHS = [
 
 LOOKBACK_DAYS = int(os.environ.get("CONTAMINATION_LOOKBACK_DAYS", "14"))
 # Rule A
-SPIKE_RATIO = int(os.environ.get("CONTAMINATION_SPIKE_RATIO", "10"))
+SPIKE_RATIO = int(os.environ.get("CONTAMINATION_SPIKE_RATIO", "3"))
 SPIKE_MIN_PREV = int(os.environ.get("CONTAMINATION_MIN_PREV", "50"))
+SPIKE_MIN_INCREASE = int(os.environ.get("CONTAMINATION_MIN_INCREASE", "20000"))
 FREEZE_DAYS = int(os.environ.get("CONTAMINATION_FREEZE_DAYS", "3"))
 # Rule B
 COLLISION_MIN_VALUE = int(os.environ.get("CONTAMINATION_MIN_VALUE", "10000"))
-COLLISION_JUMP_RATIO = int(os.environ.get("CONTAMINATION_JUMP_RATIO", "5"))
+COLLISION_JUMP_RATIO = int(os.environ.get("CONTAMINATION_JUMP_RATIO", "3"))
 ROUND_UNIT = 100
 
 
@@ -88,7 +90,13 @@ def is_round_value(value: int, unit: int = ROUND_UNIT) -> bool:
     return unit > 0 and value % unit == 0
 
 
-def detect_spike_freeze(series, spike_ratio=None, min_prev=None, freeze_days=None):
+def detect_spike_freeze(
+    series,
+    spike_ratio=None,
+    min_prev=None,
+    min_increase=None,
+    freeze_days=None,
+):
     """Rule A — 급등 후 동결. 순수 함수 — 테스트 대상.
 
     series: [(date, value)] 날짜 오름차순. value가 None인 날은 측정 없음.
@@ -97,12 +105,14 @@ def detect_spike_freeze(series, spike_ratio=None, min_prev=None, freeze_days=Non
     """
     spike_ratio = SPIKE_RATIO if spike_ratio is None else spike_ratio
     min_prev = SPIKE_MIN_PREV if min_prev is None else min_prev
+    min_increase = SPIKE_MIN_INCREASE if min_increase is None else min_increase
     freeze_days = FREEZE_DAYS if freeze_days is None else freeze_days
     points = [(d, v) for d, v in series if isinstance(v, int)]
     for i in range(1, len(points)):
         prev_d, prev_v = points[i - 1]
         cur_d, cur_v = points[i]
-        if prev_v < min_prev or cur_v < prev_v * spike_ratio:
+        if (prev_v < min_prev or cur_v < prev_v * spike_ratio
+                or cur_v - prev_v < min_increase):
             continue
         tail = [v for _, v in points[i:]]
         if len(tail) >= freeze_days and len(set(tail)) == 1:

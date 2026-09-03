@@ -62,6 +62,7 @@ def detect_reverses(stats: list[dict], posts: dict[str, dict], threshold: float)
             latest_by_date[str(row.get("measured_at") or "")[:10]] = row
         rows = [latest_by_date[day] for day in sorted(latest_by_date)]
         prev = None  # 직전(마지막 유효) 측정값. 규칙: 누적은 '전날보다' 크거나 같아야(day-over-day).
+        prev_date = None
         for r in rows:
             v = r.get(metric)
             if v is None or v <= 0:  # 삭제/미측정 제외(0·null은 역행 아님, prev도 갱신 안 함)
@@ -75,9 +76,13 @@ def detect_reverses(stats: list[dict], posts: dict[str, dict], threshold: float)
                     "metric": "도달수" if is_banner else "조회수",
                     "value": v,
                     "prev": prev,
+                    "prev_date": prev_date,
+                    "suspect_value": prev,
+                    "suspect_date": prev_date,
                     "drop_ratio": round((prev - v) / prev, 3),
                 })
             prev = v  # 하락 이벤트 후엔 그 값이 새 기준(스파이크가 영구 오탐을 내지 않게)
+            prev_date = str(r["measured_at"])[:10]
     return out
 
 
@@ -126,14 +131,15 @@ def build_alert(reverses: list[dict], recent_days: int, today: datetime) -> str 
         return None
     recent.sort(key=lambda r: r["drop_ratio"], reverse=True)
     lines = [
-        f"🔴 [역행 감지 워치독] 최근 {recent_days}일 내 누적 지표 역행 {len(recent)}건 "
+        f"🚨 [누적 감소·직전 고값 오독 감사] 최근 {recent_days}일 내 {len(recent)}건 "
         f"(전체 이력 {len(reverses)}건)",
-        "누적(조회수/도달수)이 전날보다 떨어진 게시물 — 수집 글리치·복붙·오배정 의심.",
+        "누적 지표가 하락해 직전 고값과 현재값이 서로 모순됩니다. 값을 자동 수정하지 않았으니 실물 확인 후 시트+DB를 함께 정정하세요.",
     ]
     for r in recent[:15]:
         lines.append(
-            f"• {r['date']} {r['account_name'][:16]} {r['metric']} "
-            f"{r['value']:,} (전날 {r['prev']:,}, -{int(r['drop_ratio']*100)}%) {r['url']}"
+            f"• {r['account_name'][:16]} {r['metric']} "
+            f"{r.get('prev_date') or '?'} {r['prev']:,} → {r['date']} {r['value']:,} "
+            f"(-{int(r['drop_ratio']*100)}%) {r['url']}"
         )
     if len(recent) > 15:
         lines.append(f"…외 {len(recent) - 15}건")

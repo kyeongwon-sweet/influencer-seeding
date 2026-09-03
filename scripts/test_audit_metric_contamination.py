@@ -51,6 +51,17 @@ def test_real_contamination_is_detected():
     assert hit["frozen_days"] == 6
 
 
+def test_mid_multiple_frozen_spike_is_detected_with_minimum_increase():
+    s = series((25, 35_000), (26, 116_853), (27, 116_853), (28, 116_853))
+    hit = detect_spike_freeze(s)
+    assert hit is not None and hit["to_value"] == 116_853
+
+
+def test_small_threefold_frozen_spike_is_ignored():
+    s = series((25, 1_000), (26, 3_000), (27, 3_000), (28, 3_000))
+    assert detect_spike_freeze(s) is None
+
+
 def test_real_viral_spike_is_not_flagged():
     """Ufo__ORANGE·smile_miso_s2·moduhappy — 급등했지만 계속 증가하는 정상 바이럴(실측).
 
@@ -144,6 +155,13 @@ def test_only_the_anomalous_side_is_reported_when_history_differs():
     out = detect_value_collisions(day, prev)
     assert [x["post_id"] for x in out] == ["victim"]
     assert out[0]["others"] == ["source"]
+
+
+def test_mid_multiple_value_collision_is_detected_by_default():
+    day = {"victim": 116_853, "source": 116_853}
+    prev = {"victim": 35_000, "source": 115_000}
+    out = detect_value_collisions(day, prev)
+    assert [x["post_id"] for x in out] == ["victim"]
 
 
 if __name__ == "__main__":

@@ -19,11 +19,16 @@ def _key():
 def _clear_events():
     rm.UPWARD_SPIKE_WARNINGS.clear()
     rm.MISSING_VIEW_EVENTS.clear()
+    rm.AUTO_CUMULATIVE_DECREASE_WARNINGS.clear()
 
 
 def test_candidate_matches_twentyfifty_incident_but_not_normal_growth():
+    assert rm.UPWARD_SPIKE_MIN_MULTIPLE == 3
     assert rm._is_upward_spike_candidate(727, 65_500)
+    assert rm._is_upward_spike_candidate(35_000, 116_853)
+    assert rm._is_upward_spike_candidate(36_000, 198_660)
     assert not rm._is_upward_spike_candidate(727, 6_500)
+    assert not rm._is_upward_spike_candidate(10_000, 29_999)
     assert not rm._is_upward_spike_candidate(None, 65_500)
 
 
@@ -118,3 +123,30 @@ def test_banner_and_first_measurement_are_not_rechecked():
     )
     assert result["candidates"] == 0
     assert calls == []
+
+
+def test_raw_auto_decrease_is_alerted_before_monotonic_clamp():
+    _clear_events()
+    existing = {"play_count": 116_853, "measured_at": "2026-09-01", "manual": False}
+    rm._record_auto_cumulative_decrease_candidate(POST, "Instagram", 35_000, existing)
+
+    assert len(rm.AUTO_CUMULATIVE_DECREASE_WARNINGS) == 1
+    warning = rm.AUTO_CUMULATIVE_DECREASE_WARNINGS[0]
+    assert warning["stored"] == 116_853
+    assert warning["observed"] == 35_000
+    alert = rm._build_auto_cumulative_decrease_alert([warning])
+    assert POST["url"] in alert
+    assert "116,853" in alert and "35,000" in alert
+
+
+def test_raw_decrease_ignores_small_jitter_and_manual_baseline():
+    _clear_events()
+    rm._record_auto_cumulative_decrease_candidate(
+        POST, "YouTube", 5_890,
+        {"play_count": 5_899, "measured_at": "2026-09-01", "manual": False},
+    )
+    rm._record_auto_cumulative_decrease_candidate(
+        POST, "Instagram", 35_000,
+        {"play_count": 116_853, "measured_at": "2026-09-01", "manual": True},
+    )
+    assert rm.AUTO_CUMULATIVE_DECREASE_WARNINGS == []

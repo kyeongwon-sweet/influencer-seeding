@@ -27,8 +27,15 @@ from not_found_policy import (
 OVERRECORDED_WARNINGS = []
 OVERRECORDED_RATIO = 0.8
 OVERRECORDED_MIN_DIFF = 1000
+AUTO_CUMULATIVE_DECREASE_WARNINGS = []
+AUTO_CUMULATIVE_DECREASE_MIN_RATIO = float(
+    os.environ.get("AUTO_CUMULATIVE_DECREASE_MIN_RATIO", "0.05")
+)
+AUTO_CUMULATIVE_DECREASE_MIN_DIFF = int(
+    os.environ.get("AUTO_CUMULATIVE_DECREASE_MIN_DIFF", "1000")
+)
 UPWARD_SPIKE_WARNINGS = []
-UPWARD_SPIKE_MIN_MULTIPLE = float(os.environ.get("UPWARD_SPIKE_MIN_MULTIPLE", "10"))
+UPWARD_SPIKE_MIN_MULTIPLE = float(os.environ.get("UPWARD_SPIKE_MIN_MULTIPLE", "3"))
 UPWARD_SPIKE_MIN_INCREASE = int(os.environ.get("UPWARD_SPIKE_MIN_INCREASE", "20000"))
 UPWARD_SPIKE_CONFIRM_REL_TOLERANCE = float(
     os.environ.get("UPWARD_SPIKE_CONFIRM_REL_TOLERANCE", "0.25")
@@ -166,6 +173,82 @@ def _flush_overrecord_warnings():
     if len(OVERRECORDED_WARNINGS) > len(sample):
         lines.append(f"- ...외 {len(OVERRECORDED_WARNINGS) - len(sample)}건")
     _send_status_alert("\n".join(lines))
+
+
+def _is_auto_cumulative_decrease_candidate(
+    previous,
+    observed,
+    *,
+    min_ratio=AUTO_CUMULATIVE_DECREASE_MIN_RATIO,
+    min_diff=AUTO_CUMULATIVE_DECREASE_MIN_DIFF,
+) -> bool:
+    """Return whether a raw automatic measurement meaningfully fell.
+
+    The collector clamps decreases before writing, so a DB-only watchdog cannot
+    observe this transition. Tiny scraper jitter stays quiet; material drops are
+    review signals only and never mutate the stored value.
+    """
+    prev = _positive_int(previous)
+    value = _positive_int(observed)
+    if prev is None or value is None or value >= prev:
+        return False
+    return prev - value >= min_diff and (prev - value) / prev >= min_ratio
+
+
+def _record_auto_cumulative_decrease_candidate(
+    post: dict,
+    label: str,
+    observed: int | float | None,
+    existing: dict,
+):
+    """Record a raw decrease after an automatic high value, before clamping."""
+    if existing.get("manual") or not _is_auto_cumulative_decrease_candidate(
+        existing.get("play_count"), observed
+    ):
+        return
+    warning = {
+        "label": label,
+        "url": post.get("url"),
+        "account_name": post.get("account_name"),
+        "observed": int(observed),
+        "stored": int(existing["play_count"]),
+        "stored_date": str(existing.get("measured_at") or "")[:10],
+        "observed_date": TODAY,
+    }
+    warning["drop_ratio"] = (warning["stored"] - warning["observed"]) / warning["stored"]
+    AUTO_CUMULATIVE_DECREASE_WARNINGS.append(warning)
+    print(
+        "[WARN] auto cumulative decrease candidate "
+        f"{label} {warning['account_name'] or ''} {warning['url']} "
+        f"({warning['stored_date']}={warning['stored']:,} -> "
+        f"{warning['observed_date']} raw={warning['observed']:,})"
+    )
+
+
+def _build_auto_cumulative_decrease_alert(warnings: list[dict]) -> str | None:
+    if not warnings:
+        return None
+    sample = warnings[:8]
+    lines = [
+        f"🚨 [누적 감소·직전 자동 고값 오독 의심] {len(warnings)}건",
+        "누적 조회수가 원시 수집에서 유의미하게 하락했습니다. 낮은 값은 저장하지 않고 기존값도 자동 수정하지 않았습니다. 실물 확인 후 시트+DB를 함께 정정하세요.",
+    ]
+    for warning in sample:
+        lines.append(
+            f"- {warning.get('label')} {warning.get('account_name') or '-'} "
+            f"{warning.get('stored_date') or '?'} {warning['stored']:,} → "
+            f"{warning.get('observed_date') or '?'} {warning['observed']:,} "
+            f"(-{warning['drop_ratio']:.0%}) {warning.get('url') or '-'}"
+        )
+    if len(warnings) > len(sample):
+        lines.append(f"- ...외 {len(warnings) - len(sample)}건")
+    return "\n".join(lines)
+
+
+def _flush_auto_cumulative_decrease_warnings():
+    text = _build_auto_cumulative_decrease_alert(AUTO_CUMULATIVE_DECREASE_WARNINGS)
+    if text:
+        _send_status_alert(text)
 
 
 def _is_upward_spike_candidate(
@@ -871,6 +954,7 @@ def _store_aux_rows(db, rows, posts, stats, key_fn, label, *, views="clamp", cap
             previous_play = existing.get("play_count")
             play = previous_play if previous_play is not None and previous_play > 0 else None
         if play is not None and existing.get("play_count") is not None and play < existing.get("play_count"):
+            _record_auto_cumulative_decrease_candidate(post, label, play, existing)
             _record_overrecord_candidate(post, label, play, existing)
             # 미세 감소는 정상 지터 → NULL 대신 직전 최대값 유지(clamp)
             print(f"  ⚠️  {label} 조회수 역행 clamp {post['url']} ({play} → {existing.get('play_count')} 유지)")
@@ -1717,6 +1801,7 @@ def run():
                 # 의심스러운 조회수만 버리고 댓글·좋아요 신호는 보존한다.
                 play_count = None
             elif existing.get("play_count") is not None and play_count < existing.get("play_count"):
+                _record_auto_cumulative_decrease_candidate(post, "Instagram", play_count, existing)
                 _record_overrecord_candidate(post, "Instagram", play_count, existing)
                 # 누적값인데 줄어들었다 = 오류(글리치) 또는 IG 정상 미세감소(중복/봇 필터링 지터).
                 # NULL로 버리면 성숙 게시물에 톱니형 결측이 생기고 유효값이 사라지므로,
@@ -1906,6 +1991,7 @@ def run():
             print(f"[WARN] {retry_zero_alert} cron 백업 실행은 실패 처리하지 않습니다.")
 
         print(f"[SUCCESS] 모니터링 완료: {len(rows)}건 저장")
+        _flush_auto_cumulative_decrease_warnings()
         _flush_overrecord_warnings()
 
         # 📸 배너 도달수(reach) 일별 스냅샷 — 배너는 조회수(play_count)가 없어 '도달수'로 증분 계산한다.

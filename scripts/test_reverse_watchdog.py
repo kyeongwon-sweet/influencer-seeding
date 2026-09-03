@@ -56,7 +56,9 @@ def test_build_alert_none_when_no_recent():
 def test_build_alert_fires_on_recent():
     recent = [{"date": "2026-08-05", "account_name": "a", "metric": "도달수", "value": 1, "prev": 2, "drop_ratio": 0.5, "url": "u"}]
     msg = w.build_alert(recent, 2, datetime(2026, 8, 6, tzinfo=timezone.utc))
-    assert msg is not None and "역행 1건" in msg
+    assert msg is not None
+    assert "누적 감소·직전 고값 오독 감사" in msg
+    assert "최근 2일 내 1건" in msg
 
 
 def test_twentyfifty_incident_is_detected_and_alerted_at_kst_boundary():
@@ -69,6 +71,8 @@ def test_twentyfifty_incident_is_detected_and_alerted_at_kst_boundary():
     assert len(out) == 1
     assert out[0]["date"] == "2026-08-31"
     assert out[0]["prev"] == 65_500
+    assert out[0]["prev_date"] == "2026-08-30"
+    assert out[0]["suspect_value"] == 65_500
     assert out[0]["value"] == 745
 
     # Live run started 2026-08-31 21:58Z = 2026-09-01 06:58 KST.
@@ -76,6 +80,29 @@ def test_twentyfifty_incident_is_detected_and_alerted_at_kst_boundary():
     msg = w.build_alert(out, 2, kst_now)
     assert msg is not None
     assert "65,500" in msg and "745" in msg
+    assert "누적 감소·직전 고값 오독 감사" in msg
+    assert "https://x/vid" in msg
+
+
+def test_mid_multiple_bad_high_is_identified_by_next_lower_value():
+    rows = [
+        _s("vid", "2026-09-01", 35_000),
+        _s("vid", "2026-09-02", 116_853),
+        _s("vid", "2026-09-03", 36_000),
+    ]
+    out = w.detect_reverses(rows, POSTS, 0.05)
+    assert len(out) == 1
+    assert out[0]["suspect_date"] == "2026-09-02"
+    assert out[0]["suspect_value"] == 116_853
+
+
+def test_confirmed_real_viral_growth_has_no_reverse():
+    rows = [
+        _s("vid", "2026-09-01", 2_479),
+        _s("vid", "2026-09-02", 63_119),
+        _s("vid", "2026-09-03", 67_000),
+    ]
+    assert w.detect_reverses(rows, POSTS, 0.05) == []
 
 
 def test_recent_scan_includes_one_baseline_day_and_merges_missing_full_event():
