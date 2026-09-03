@@ -46,6 +46,34 @@ function metricSpikeRepairDbValues20260903_() {
   return out;
 }
 
+function metricSpikeDbRepairUrl20260903_() {
+  const url = String(CONFIG.STATS_EXPORT_API_URL || "")
+    .replace(/\/api\/sponsored-posts\/stats-for-sheet(?:\?.*)?$/, "/api/ops/repair-metric-spikes-20260903");
+  if (!/\/api\/ops\/repair-metric-spikes-20260903$/.test(url)) {
+    throw new Error("DB 스파이크 복구 API URL을 만들지 못했습니다.");
+  }
+  return url;
+}
+
+function requestMetricSpikeDbRepair20260903_(apply) {
+  const options = {
+    method: apply ? "post" : "get",
+    headers: authHeaders_(),
+    muteHttpExceptions: true,
+  };
+  if (apply) {
+    options.contentType = "application/json";
+    options.payload = JSON.stringify({ confirm: "repair-2026-09-03-metric-spikes" });
+  }
+  const response = UrlFetchApp.fetch(metricSpikeDbRepairUrl20260903_(), options);
+  const code = response.getResponseCode();
+  const body = JSON.parse(response.getContentText() || "{}");
+  if (code !== 200 || (apply && body.ok !== true)) {
+    throw new Error("DB 스파이크 복구 실패 API " + code + ": " + JSON.stringify(body));
+  }
+  return body;
+}
+
 function metricSpikeRepairSnapshot20260903_() {
   const sheet = getSheet_();
   const urlCol = findHeaderCol_(sheet, ["게시물URL", "게시물 URL", "URL"]);
@@ -278,5 +306,20 @@ function auditMetricSpikes20260903() {
 }
 
 function applyMetricSpikes20260903() {
-  return repairMetricSpikes20260903(METRIC_SPIKE_REPAIR_20260903_SIGNATURE_, true);
+  const before = requestMetricSpikeDbRepair20260903_(false);
+  const allowed = { repairable: true, already_clean: true };
+  if (!before.rows || before.rows.length !== 5 || before.rows.some(function(row) {
+    return !allowed[row.status] || row.manual !== true;
+  })) {
+    throw new Error("DB 스파이크 적용 전 상태 불일치: " + JSON.stringify(before));
+  }
+  const db = requestMetricSpikeDbRepair20260903_(true);
+  const sheet = repairMetricSpikes20260903(METRIC_SPIKE_REPAIR_20260903_SIGNATURE_, true);
+  return { ok: true, db: db, sheet: sheet };
+}
+
+function auditMetricSpikeDb20260903() {
+  const result = requestMetricSpikeDbRepair20260903_(false);
+  Logger.log("metric_spike_db_20260903_dry " + JSON.stringify(result));
+  return result;
 }
