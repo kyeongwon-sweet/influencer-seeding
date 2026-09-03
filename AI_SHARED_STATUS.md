@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## ✅ 2026-09-03 [Codex 완료·라이브] 호버 메모 가독성·클리핑 수정 배포
+- **배포:** main `09067c00`의 공통 소재명 접두사 정리·소재명 둘째 줄 표시·메모 상단 열기·업체별 섹션당 2개 제한을 Vercel production에 배포했다. deployment **`dpl_2TgjbEZZzZAHg7FzcJCLWZbt1yUi`** READY, `https://influencer-seeding-mu.vercel.app` alias 적용. 후속 `b04473de`는 Python 주석·표기 정정만 변경해 웹 배포 대상이 아니다.
+- **1900×1000 실물:** 월요일 메모는 `display:block`, 330×255.75px로 카드 클립 범위 안에 전부 들어갔다. 공통 `[26.08]F_V_JD멜...바이럴형_` 접두사가 제거돼 상위 5개가 `초딩유행템_var12`, `초등생유행_var6` 등 구별 가능한 부분부터 표시됐다. 업체 `루나앤코코`는 영상 2개+배너 2개, 330×312.75px로 열려 클립 0이다.
+- **1280×660 실물:** 요일별 메모는 viewport·카드 모두 내부(`top=245.25 / bottom=501`), 업체별 메모도 모두 내부(`top=120.75 / bottom=433.5`)였다. 두 섹션의 순위 행은 각각 정확히 2개였고 하단·좌우 잘림 0이다. 임시 viewport는 검증 후 원래 크기로 복구했다.
+- **검증:** web **397/397**, `tsc --noEmit`, 로컬·Vercel production build 통과. 별도 Claude worktree의 `AI_SHARED_STATUS.md` WIP/stash를 건드리지 않고 깨끗한 Codex worktree에서 배포했다.
+
 ## ✅ 2026-09-03 [Codex 읽기전용 전수검증] 종료일 이상 40건 연동시트 수기 도달수 여부
 - **대상 재산출:** 라이브 대시보드 API의 게시물 **3,473건**에 `86f4169` 판정을 그대로 적용해 `ended_at < posted_at` **11건**, 이 그룹을 제외한 `created_at(KST) > ended_at` **29건**을 재현했다. 40건 모두 라이브 연동시트(3,995행)에서 URL key로 **1:1 매칭**, 미매칭·중복 0건이다.
 - **도달수 결론:** 현행 `is_banner_channel` 정책상 고유 배너는 **11건**(게시 전 종료 그룹 9 + 등록 시 이미 종료 그룹 2)이다. 11건 모두 시트 날짜셀 **양수·명시적 0이 전부 0건**, H 공백, `sponsored_posts.reach_count=NULL`, DB `post_daily_stats.reach_count` 이력 0건이다. 따라서 **수기 도달수가 있었는데 `measured > ended_at` 가드에 버려진 사례는 0건**이고, 현재는 11건 전부 팀 입력 대기다.
