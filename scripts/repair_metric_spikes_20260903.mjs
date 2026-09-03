@@ -7,7 +7,7 @@ import process from "node:process";
 const SCRIPT_ID = "1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn";
 const SCRIPT_FUNCTION = "repairMetricSpikes20260903";
 const SIGNATURE = "metric-spikes-2026-09-03";
-const EXPECTED = 4;
+const EXPECTED = 10;
 
 function claspTokenRecord(credentials) {
   const record = credentials?.tokens?.default ?? credentials?.tokens;

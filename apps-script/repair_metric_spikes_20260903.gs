@@ -13,6 +13,10 @@ const METRIC_SPIKE_REPAIR_20260903_TARGETS_ = Object.freeze([
   { key: "ig:Db5dILHxraF", date: "2026-08-26", dirty: 469130 },
   { key: "tt:7670156284628307207", date: "2026-08-26", dirty: 469130 },
 ]);
+const METRIC_SPIKE_REPAIR_20260903_CARRY_ = Object.freeze({
+  key: "ig:Dcf5OKEiZvJ",
+  dirty_counts: Object.freeze({ "116853": 5, "198660": 1 }),
+});
 
 function metricSpikeRepairNumber20260903_(value) {
   if (typeof value === "number" && isFinite(value)) return value;
@@ -27,6 +31,7 @@ function metricSpikeRepairDbValues20260903_() {
   METRIC_SPIKE_REPAIR_20260903_TARGETS_.forEach(function(target) {
     targetKeys[target.key] = true;
   });
+  targetKeys[METRIC_SPIKE_REPAIR_20260903_CARRY_.key] = true;
   const out = {};
   fetchCollectedStats_().forEach(function(post) {
     const key = String(post.key || linkKey_(post.url) || "");
@@ -56,8 +61,29 @@ function metricSpikeRepairSnapshot20260903_() {
     : [];
   const urlIndex = buildUrlKeyIndex_(urls, linkKey_);
   const dbValues = metricSpikeRepairDbValues20260903_();
+  const carry = METRIC_SPIKE_REPAIR_20260903_CARRY_;
+  if ((urlIndex.countsByKey[carry.key] || 0) !== 1) {
+    throw new Error("carry 대상 URL-key 행 수 불일치 " + carry.key + ": " + (urlIndex.countsByKey[carry.key] || 0));
+  }
+  const carryRow = CONFIG.DATA_START_ROW + urlIndex.firstIndexByKey[carry.key];
+  const carryCounts = {};
+  const carryTargets = [];
+  dateColumns.forEach(function(item) {
+    const value = metricSpikeRepairNumber20260903_(sheet.getRange(carryRow, item.col).getValue());
+    if (!(String(value) in carry.dirty_counts)) return;
+    carryCounts[String(value)] = (carryCounts[String(value)] || 0) + 1;
+    carryTargets.push({ key: carry.key, date: item.date, dirty: value });
+  });
+  Object.keys(carry.dirty_counts).forEach(function(value) {
+    if ((carryCounts[value] || 0) !== carry.dirty_counts[value]) {
+      throw new Error("carry 오염값 개수 불일치 " + value + ": expected="
+        + carry.dirty_counts[value] + " actual=" + (carryCounts[value] || 0));
+    }
+  });
+  if (carryTargets.length !== 6) throw new Error("carry 대상 셀 수 불일치: " + carryTargets.length);
+  const resolvedTargets = METRIC_SPIKE_REPAIR_20260903_TARGETS_.concat(carryTargets);
   const targetDatesByKey = {};
-  METRIC_SPIKE_REPAIR_20260903_TARGETS_.forEach(function(target) {
+  resolvedTargets.forEach(function(target) {
     (targetDatesByKey[target.key] || (targetDatesByKey[target.key] = {}))[target.date] = true;
   });
 
@@ -92,7 +118,7 @@ function metricSpikeRepairSnapshot20260903_() {
     };
   });
 
-  const targets = METRIC_SPIKE_REPAIR_20260903_TARGETS_.map(function(target) {
+  const targets = resolvedTargets.map(function(target) {
     const col = dateByName[target.date];
     if (!col) throw new Error("대상 날짜열을 찾지 못했습니다: " + target.date);
     const rowState = rowStateByKey[target.key];

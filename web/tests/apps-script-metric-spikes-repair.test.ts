@@ -13,6 +13,9 @@ test("metric spike repair is exact-key, exact-date, and exact-value guarded", ()
     'ig:Db5dILHxraF", date: "2026-08-26", dirty: 469130',
     'tt:7670156284628307207", date: "2026-08-26", dirty: 469130',
   ]) assert.match(repair, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(repair, /key: "ig:Dcf5OKEiZvJ"/);
+  assert.match(repair, /dirty_counts: Object\.freeze\(\{ "116853": 5, "198660": 1 \}\)/);
+  assert.match(repair, /if \(carryTargets\.length !== 6\)/);
   assert.match(repair, /target\.state === "pending" && metricSpikeRepairNumber20260903_\(current\) !== target\.dirty/);
   assert.match(repair, /DB에 대상 날짜값이 남아 있어 중단/);
   assert.match(repair, /buildUrlKeyIndex_\(currentUrls, linkKey_\)/);
@@ -31,6 +34,7 @@ test("runner backs up the dry-run before apply and guarded deploy includes the r
   const applyAt = runner.indexOf("const applied = await execute(token, true)");
   assert.ok(backupAt >= 0 && applyAt > backupAt);
   assert.match(runner, /parameters: \[SIGNATURE, apply\]/);
+  assert.match(runner, /const EXPECTED = 10/);
   assert.match(runner, /result\.target_count !== EXPECTED/);
   assert.match(deploy, /repair_metric_spikes_20260903\.gs/);
   assert.match(repair, /function auditMetricSpikes20260903\(\)/);
