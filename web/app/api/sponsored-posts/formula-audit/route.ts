@@ -14,6 +14,7 @@ import {
   resolveMetricDateColumns,
   type AuditPost,
   type SheetAuditRow,
+  findUnparsableDateHeaders,
 } from "@/lib/formula-audit";
 
 export const dynamic = "force-dynamic";
@@ -215,6 +216,19 @@ async function handler(req: NextRequest) {
   }
 
   const { values, header, urlCol, cumCol, incCol, acctCol, formulaFirstCol, formulaValues } = snapshot;
+  // 날짜 구간 안의 '비어 있지 않은데 날짜로 못 읽히는' 헤더 — 조용히 건너뛰면 첫 날짜열이 밀려
+  // 정상 수식이 전부 형태오류로 계산된다(2026-05-17 P1 사고: 원인 한 칸이 1,977건에 묻혀 몇 주 방치).
+  // 끝열 어긋남은 이미 snapshotAhead가 한 줄로 알리므로, 그 짝을 구간 내부에도 둔다.
+  const unparsableDateHeaders = findUnparsableDateHeaders(
+    snapshot.header,
+    snapshot.incCol + 1,
+    snapshot.statusCol > snapshot.incCol ? snapshot.statusCol : snapshot.header.length,
+    STATS_START_YEAR,
+  ).map(({ idx, label }) => ({
+    column: columnNumberToA1(idx + 1),
+    label: label.replace(/\s+/g, " ").slice(0, 60),
+  }));
+
   if (dateCols.length === 0) {
     // 실패 시 자기진단: 헤더 표본을 함께 알려 원인(형식 변경 등)을 즉시 알 수 있게 한다.
     const sample = header.slice(incCol + 1, incCol + 9).map((h) => String(h ?? "")).join(" | ");
@@ -342,7 +356,18 @@ async function handler(req: NextRequest) {
   }
 
   const result = auditRows(rows, posts, kdate, orphanNotes, targetDateColumn.date);
-  const { text, healthy } = formatAuditMessage(result);
+  const { text, healthy: shapeHealthy } = formatAuditMessage(result);
+  // 원인 한 칸을 수천 건 집계 뒤에 숨기지 않는다 — 맨 앞에 따로 세운다.
+  const headerAlert = unparsableDateHeaders.length > 0
+    ? `🔴 [수식 전수감사] 날짜 구간에 날짜로 못 읽는 헤더 ${unparsableDateHeaders.length}칸 — `
+      + `첫 날짜열이 밀려 정상 수식이 형태오류로 집계됩니다(아래 수치 신뢰 불가). `
+      + unparsableDateHeaders.map((h) => `${h.column}1="${h.label}"`).join(" / ")
+      + ` → 해당 셀을 실제 날짜로 복구 후 재감사 필요.`
+    : null;
+  const healthy = shapeHealthy && unparsableDateHeaders.length === 0;
+  const notifyText = headerAlert ? `${headerAlert}
+
+${text}` : text;
   const alreadyReported = await hasTodayReport(supabase, kdate);
   if (alreadyReported != null && shouldSkipFormulaAuditReport({ alreadyReported, force })) {
     return NextResponse.json({
@@ -356,6 +381,7 @@ async function handler(req: NextRequest) {
       dateColumnCount: dateCols.length,
       metricRange: metricRangeSummary,
       inferredDateColumns,
+      unparsableDateHeaders,
       snapshotRetryCount,
       dominantFormulaEnd,
       ...result,
@@ -363,7 +389,7 @@ async function handler(req: NextRequest) {
   }
 
   let slackSent = true;
-  await notifyBot(text).catch((e) => {
+  await notifyBot(notifyText).catch((e) => {
     slackSent = false;
     console.error("[formula-audit] Slack notify failed", e);
   });
@@ -393,6 +419,7 @@ async function handler(req: NextRequest) {
     dateColumnCount: dateCols.length,
     metricRange: metricRangeSummary,
     inferredDateColumns,
+    unparsableDateHeaders,
     snapshotRetryCount,
     dominantFormulaEnd,
     ...result,

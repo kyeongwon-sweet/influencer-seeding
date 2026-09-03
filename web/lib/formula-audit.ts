@@ -160,6 +160,40 @@ export function resolveMetricDateColumns(
   return columns;
 }
 
+/**
+ * 날짜 구간 안에서 '비어 있지 않은데 날짜로 못 읽히는' 헤더를 찾는다.
+ *
+ * `resolveMetricDateColumns`는 이런 헤더를 **조용히 건너뛴다**(빈 헤더만 +1일로 추정).
+ * 그 결과 구간의 첫 날짜열이 한 칸 밀리고, 기대 수식이 밀린 시작열로 만들어져
+ * **정상 수식이 전부 형태오류로 계산된다.**
+ *
+ * 실제 사고(2026-05-17): P1에 H열 수식 `=IF(COUNT(P2:DS2)=0,"",MAX(P2:DS2))`가
+ * 텍스트로 덮여 5-17이 날짜 구간에서 빠졌다. 감사는 첫 날짜열을 Q로 보고,
+ * P로 시작하는 실제 수식을 'I수식 시작열 P↔Q 형태 차이 1,977건'으로 보고해왔다.
+ * 원인 한 칸이 수천 건 집계에 묻혀 몇 주간 방치됐다 — 그래서 별도로 짚어 알린다.
+ *
+ * 구간은 호출부가 `[incCol+1, statusCol)`로 주므로 `등록상태` 같은 정상 비날짜 헤더는
+ * 애초에 대상이 아니다. 빈 헤더도 대상이 아니다(추정으로 이미 복구된다).
+ */
+export function findUnparsableDateHeaders(
+  header: Array<string | number | boolean | null>,
+  startIndex: number,
+  endExclusive: number,
+  startYear: number,
+): Array<{ idx: number; label: string }> {
+  const found: Array<{ idx: number; label: string }> = [];
+  // resolveMetricDateColumns 와 같은 state 진행을 재현해야 판정이 어긋나지 않는다(연도 롤오버).
+  const state = { year: startYear, prevMonth: null as number | null };
+  for (let idx = startIndex; idx < Math.min(endExclusive, header.length); idx += 1) {
+    const value = header[idx];
+    if (parseHeaderDate(value, state)) continue;
+    const label = String(value ?? "").trim();
+    if (label === "") continue;                       // 빈칸은 +1일 추정 대상
+    found.push({ idx, label });
+  }
+  return found;
+}
+
 export function metricFormulaEndColumn(value: unknown): string | null {
   if (typeof value !== "string" || !value.startsWith("=")) return null;
   const normalized = value.replace(/\s+/g, "").toUpperCase();
