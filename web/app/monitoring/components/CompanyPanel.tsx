@@ -7,16 +7,17 @@ import TopPostsMemo, { type TopMemo } from "./TopPostsMemo";
 // videoTop/bannerTop: 그 업체 소재의 성과 상위 목록(호버 메모박스용). 합계만으로는 "어느 계정 덕인지"를 알 수 없어 함께 내려받는다.
 export type CompanyRow = {
   company: string;
-  video: { count: number; total: number; cpv: number | null };
-  banner: { count: number; total: number; cpr: number | null };
+  // measured = 실측값이 있는 소재 수. count(물량)와 분리해 '측정 없음'을 0으로 표시하지 않는다(공백≠0).
+  video: { count: number; measured: number; total: number; cpv: number | null };
+  banner: { count: number; measured: number; total: number; cpr: number | null };
   videoTop: TopMemo;
   bannerTop: TopMemo;
 };
 export type CompanyData = CompanyRow[];
 
 // 요일별 패널과 동일한 막대+값 패턴: 트랙 위 비례 막대, 값은 트랙 오른쪽 끝(눈 이동 최소화)
-function BarCell({ v, max, strong, color }: { v: { count: number; total: number }; max: number; strong: boolean; color: "blue" | "amber" }) {
-  const pct = v.count > 0 && max > 0 ? Math.max(3, Math.round((v.total / max) * 100)) : 0;
+function BarCell({ v, max, strong, color }: { v: { count: number; measured: number; total: number }; max: number; strong: boolean; color: "blue" | "amber" }) {
+  const pct = v.measured > 0 && max > 0 ? Math.max(3, Math.round((v.total / max) * 100)) : 0;
   const fill = color === "blue"
     ? (strong ? "bg-a-blue" : "bg-a-blue/35")
     : (strong ? "bg-amber-400" : "bg-amber-400/40");
@@ -24,9 +25,10 @@ function BarCell({ v, max, strong, color }: { v: { count: number; total: number 
   const onDark = strong && color === "blue";
   return (
     <div className="flex-1 h-6 bg-a-parchment/50 rounded relative overflow-hidden">
-      {v.count > 0 && <div className={`h-full rounded ${fill}`} style={{ width: `${pct}%` }} />}
+      {v.measured > 0 && <div className={`h-full rounded ${fill}`} style={{ width: `${pct}%` }} />}
+      {/* 소재는 있는데 실측이 하나도 없으면 합계 0이 아니라 '—'. 0으로 쓰면 미수집·미입력이 실제 0으로 읽힌다. */}
       <span className={`absolute inset-y-0 right-2 flex items-center text-[12.5px] tabular-nums ${onDark ? "text-white font-bold" : "text-a-ink font-semibold"}`}>
-        {v.count > 0 ? v.total.toLocaleString() : "—"}
+        {v.measured > 0 ? v.total.toLocaleString() : "—"}
       </span>
     </div>
   );
@@ -50,10 +52,10 @@ function MetaCell({ count, cost, unit, bestCost }: { count: number; cost: number
 
 export default function CompanyPanel({ data }: { data: CompanyData }) {
   const totalN = data.reduce((s, d) => s + d.video.count + d.banner.count, 0);
-  const maxVideo = Math.max(0, ...data.filter(d => d.video.count > 0).map(d => d.video.total));
-  const maxBanner = Math.max(0, ...data.filter(d => d.banner.count > 0).map(d => d.banner.total));
-  const cpvVals = data.filter(d => d.video.count > 0 && d.video.cpv != null).map(d => d.video.cpv as number);
-  const cprVals = data.filter(d => d.banner.count > 0 && d.banner.cpr != null).map(d => d.banner.cpr as number);
+  const maxVideo = Math.max(0, ...data.filter(d => d.video.measured > 0).map(d => d.video.total));
+  const maxBanner = Math.max(0, ...data.filter(d => d.banner.measured > 0).map(d => d.banner.total));
+  const cpvVals = data.filter(d => d.video.measured > 0 && d.video.cpv != null).map(d => d.video.cpv as number);
+  const cprVals = data.filter(d => d.banner.measured > 0 && d.banner.cpr != null).map(d => d.banner.cpr as number);
   const bestCpv = cpvVals.length ? Math.min(...cpvVals) : null;
   const bestCpr = cprVals.length ? Math.min(...cprVals) : null;
   return (
@@ -80,8 +82,8 @@ export default function CompanyPanel({ data }: { data: CompanyData }) {
           </div>
           <div className="divide-y divide-a-divider">
             {data.map((d, i) => {
-              const isBestVideo = d.video.count > 0 && d.video.total === maxVideo && maxVideo > 0;
-              const isBestBanner = d.banner.count > 0 && d.banner.total === maxBanner && maxBanner > 0;
+              const isBestVideo = d.video.measured > 0 && d.video.total === maxVideo && maxVideo > 0;
+              const isBestBanner = d.banner.measured > 0 && d.banner.total === maxBanner && maxBanner > 0;
               return (
                 <div key={d.company} className="relative group flex items-center gap-3 px-1 py-1.5 hover:bg-a-parchment/40">
                   {/* 오른쪽 패널이라 right-0, 아래쪽 행은 위로 열어 카드(overflow-hidden) 밖으로 안 나가게 함 */}
@@ -93,9 +95,9 @@ export default function CompanyPanel({ data }: { data: CompanyData }) {
                     ]} />
                   <span className={`w-20 text-[13px] font-bold truncate ${isBestVideo || isBestBanner ? "text-a-blue" : "text-a-ink"}`} title={d.company}>{d.company}</span>
                   <BarCell v={d.video} max={maxVideo} strong={isBestVideo} color="blue" />
-                  <MetaCell count={d.video.count} cost={d.video.cpv} unit="회" bestCost={d.video.count > 0 && d.video.cpv != null && d.video.cpv === bestCpv} />
+                  <MetaCell count={d.video.count} cost={d.video.cpv} unit="회" bestCost={d.video.measured > 0 && d.video.cpv != null && d.video.cpv === bestCpv} />
                   <BarCell v={d.banner} max={maxBanner} strong={isBestBanner} color="amber" />
-                  <MetaCell count={d.banner.count} cost={d.banner.cpr} unit="도달" bestCost={d.banner.count > 0 && d.banner.cpr != null && d.banner.cpr === bestCpr} />
+                  <MetaCell count={d.banner.count} cost={d.banner.cpr} unit="도달" bestCost={d.banner.measured > 0 && d.banner.cpr != null && d.banner.cpr === bestCpr} />
                 </div>
               );
             })}
@@ -103,7 +105,7 @@ export default function CompanyPanel({ data }: { data: CompanyData }) {
           <p className="text-[11px] text-a-ink-muted mt-2 px-1">
             <span className="inline-block w-2 h-2 rounded-sm bg-a-blue align-middle mr-0.5" /> 영상 ·
             <span className="inline-block w-2 h-2 rounded-sm bg-amber-400 align-middle mx-0.5" /> 배너 (진한 막대 = 유형별 최대 누적) ·
-            <span className="text-green-600 font-semibold"> 녹색</span> = 최저 CPV/CPR(가장 효율적) · 배너 도달수 = 입력값 우선, 없으면 조회수×0.8 · 행에 커서를 올리면 상위 계정
+            <span className="text-green-600 font-semibold"> 녹색</span> = 최저 CPV/CPR(가장 효율적) · 배너 도달수 = 입력값 우선, 없으면 조회수×0.8 · <b className="text-a-ink">—</b> = 실측 없음(0 아님) · 행에 커서를 올리면 상위 계정
           </p>
         </div>
       )}

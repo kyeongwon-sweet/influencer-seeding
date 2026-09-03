@@ -301,8 +301,9 @@ export default function MonitoringPage() {
   //   🔒 필터 불변식: 값은 pickRangeStats — 조회수 기간 필터 시 범위 내 마지막 값 기준.
   const companyAnalysis = useMemo<CompanyData>(() => {
     type Acc = {
-      video: { n: number; sum: number; cost: number };
-      banner: { n: number; sum: number; cost: number };
+      // m = 실측값이 있는 소재 수. n(물량)과 분리해야 "측정 없음"을 0으로 읽지 않는다(공백≠0).
+      video: { n: number; m: number; sum: number; cost: number };
+      banner: { n: number; m: number; sum: number; cost: number };
       videoRows: TopPost[];   // 호버 메모박스용 소재 목록
       bannerRows: TopPost[];
     };
@@ -317,10 +318,10 @@ export default function MonitoringPage() {
       const play = s?.play_count ?? null;
       // 배너=일별 도달수 우선(bannerDailyMetric), 없으면 post레벨 reach 폴백. 영상=조회수.
       const val = kind === "video" ? play : (bannerDailyMetric(s) ?? effectiveReach(post.reach_count, play));
-      const acc = by.get(company) ?? { video: { n: 0, sum: 0, cost: 0 }, banner: { n: 0, sum: 0, cost: 0 }, videoRows: [], bannerRows: [] };
+      const acc = by.get(company) ?? { video: { n: 0, m: 0, sum: 0, cost: 0 }, banner: { n: 0, m: 0, sum: 0, cost: 0 }, videoRows: [], bannerRows: [] };
       const slot = acc[kind];
       slot.n += 1;                       // 게시물 수는 값 유무와 무관하게 집계(업체 물량 파악)
-      if (val != null) slot.sum += val;  // 누적 합산은 값 있는 것만
+      if (val != null) { slot.sum += val; slot.m += 1; }  // 누적 합산·실측 카운트는 값 있는 것만
       slot.cost += post.cost ?? 0;
       // 값 없는 소재(미수집·공백)는 성과 순위를 매길 수 없어 메모박스에서만 빠진다(개수·합계 규칙은 그대로).
       if (val != null && val > 0) {
@@ -337,8 +338,8 @@ export default function MonitoringPage() {
     return [...by.entries()]
       .map(([company, a]) => ({
         company,
-        video: { count: a.video.n, total: a.video.sum, cpv: cpx(a.video.cost, a.video.sum) },
-        banner: { count: a.banner.n, total: a.banner.sum, cpr: cpx(a.banner.cost, a.banner.sum) },
+        video: { count: a.video.n, measured: a.video.m, total: a.video.sum, cpv: cpx(a.video.cost, a.video.sum) },
+        banner: { count: a.banner.n, measured: a.banner.m, total: a.banner.sum, cpr: cpx(a.banner.cost, a.banner.sum) },
         videoTop: buildTopMemo(a.videoRows),
         bannerTop: buildTopMemo(a.bannerRows),
       }))
