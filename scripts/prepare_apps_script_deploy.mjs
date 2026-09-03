@@ -23,6 +23,7 @@ const deployFiles = [
   [join("apps-script", "linked_sheet_duplicate_audit_20260901.gs"), "linked_sheet_duplicate_audit_20260901.js"],
   [join("apps-script", "repair_duplicate_rows_20260901.gs"), "repair_duplicate_rows_20260901.js"],
   [join("apps-script", "repair_issuebox_youtube_duplicate_20260903.gs"), "repair_issuebox_youtube_duplicate_20260903.js"],
+  [join("apps-script", "repair_metric_spikes_20260903.gs"), "repair_metric_spikes_20260903.js"],
   [join("apps-script", "appsscript.json"), "appsscript.json"],
 ];
 
