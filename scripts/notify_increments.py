@@ -655,11 +655,14 @@ def main():
         lines.append(f"⚠️ *바이럴 배너 가격 미매핑 {len(banner_unmapped)}건* — 시트 비용 입력 또는 DB cost 동기화 확인 필요. 비용이 채워진 뒤 재발송하면 CPV가 정상 계산됩니다.")
     lines += ["", DIV, "", "◾ *급상승 TOP 10* 🔥  `CPV는 누적 기준`", ""]
     # 배너는 도달수를 '조회수'로 취급해 TOP에도 섞어 노출(사용자 지시). 배너 CPV = 비용/도달수(도달당비용).
-    # 리포트는 이미 쫀득바만 필터돼 있어 줄마다 [JD멜] 상품태그는 중복 → 표시에서 제거(사용자 지시).
+    # 줄마다 제품코드 `[JD멜]`을 노출한다(2026-09-02 사용자 재지시) — JD멜/JD복 등 제품 구분용.
+    #   (과거 '쫀득바 단일제품이라 중복'으로 제거했으나, 실제로는 여러 제품이 섞여 구분이 필요.)
     for rank, it in enumerate(items[:10], 1):
         label = f"<{it['url']}|{_esc(it['name'])}>" if it["url"] else _esc(it["name"])
+        prod = (it.get("product") or "").strip()
+        tag = f"[{_esc(prod)}] " if prod else ""
         pdate = it["posted_at"] or "업로드일 미상"
-        lines.append(f"{rank}. {label} _({it['platform']})_ *+{f(it['inc'])}*  {_cpv(it['cost'], it['cum'], it['channel_type'])}  `{pdate}`")
+        lines.append(f"{rank}. {tag}{label} _({it['platform']})_ *+{f(it['inc'])}*  {_cpv(it['cost'], it['cum'], it['channel_type'])}  `{pdate}`")
 
     text = "\n".join(lines)
 
