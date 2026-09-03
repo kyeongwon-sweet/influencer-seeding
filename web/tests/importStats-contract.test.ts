@@ -30,18 +30,24 @@ test("stats-import: ended invalid TikTok URLs stay blocked without noisy alerts"
   assert.match(route, /buildRejectedInvalidUrlAlert\(rejectedUrls, endedRejectedIdentifiers\)/);
 });
 
-test("stats-import: cross-post copies and spikes are preserved with warnings", () => {
-  assert.match(route, /copy_suspected_skipped:\s*0/);
+test("stats-import: dailyAuto quarantines cross-post copies and spikes while manual input is preserved", () => {
+  assert.match(route, /copy_suspected_skipped:\s*copySuspectedSkipped/);
   assert.match(route, /copy_suspected_warned:\s*copySuspected\.length/);
-  assert.doesNotMatch(route, /incoming = incoming\.filter\(r => !copyKeys\.has\(`play_count\|/);
-  assert.doesNotMatch(route, /bannerRows = bannerRows\.filter\(r => !copyKeys\.has\(`reach_count\|/);
+  assert.match(route, /quarantineAutomaticSuspects\(incoming, copyKeys, "play_count", isManualImport\)/);
+  assert.match(route, /quarantineAutomaticSuspects\(bannerRows, copyKeys, "reach_count", isManualImport\)/);
   assert.match(route, /for \(const metric of \["play_count", "reach_count"\] as const\)/);
   assert.match(route, /const key = `\$\{String\(row\.measured_at\).*\|\$\{value\}`/s);
   assert.match(route, /dvOwners\.get\(`\$\{date\}\|\$\{r\.value\}`\)/);
   assert.doesNotMatch(route, /owners\.has\(r\.post_id\)\) continue/);
-  assert.match(route, /spike_suspected_skipped:\s*0/);
+  assert.match(route, /spike_suspected_skipped:\s*spikePartition\.quarantined\.length/);
   assert.match(route, /spike_suspected_warned:\s*spikeSuspected\.length/);
-  assert.doesNotMatch(route, /incomingForGuard\.push\(\.\.\.kept\)/);
+  assert.match(route, /const incomingAfterSpikeGuard = spikePartition\.kept/);
+  assert.match(route, /isManualImport\s*\? "수기 입력은 이 사유로 제외하지 않고 보존했습니다\."/);
+});
+
+test("stats-import: explicit non-video play is rejected but banner reach routing wins", () => {
+  assert.match(route, /if \(isBannerByKey\.get\(it\.key\)\)[\s\S]*?bannerRows\.push[\s\S]*?else if \(explicitlyNonVideoKeys\.has\(it\.key\)\)/);
+  assert.match(route, /non_video_play_rejected:\s*nonVideoPlayRejected\.length/);
 });
 
 test("stats-import: dailyAuto values stay automatic and cannot overwrite human manual rows", () => {
@@ -50,7 +56,7 @@ test("stats-import: dailyAuto values stay automatic and cannot overwrite human m
   assert.match(appsScript, /source: importSource/);
   assert.match(route, /const importSource = body\?\.source === "daily_auto" \? "daily_auto" : "manual_sheet"/);
   assert.match(route, /const isManualImport = importSource === "manual_sheet"/);
-  assert.match(route, /const incomingWritable = incomingForGuard\.filter/);
+  assert.match(route, /const incomingWritable = incomingAfterSpikeGuard\.filter/);
   assert.match(route, /!manualSet\.has\(`\$\{i\.post_id\}\|\$\{i\.measured_at\}`\)/);
   assert.match(route, /const statsRows = keptRows\.map\(r => \(\{ \.\.\.r, manual: isManualImport \}\)\)/);
   assert.match(route, /preserved_manual: preservedManual\.length/);

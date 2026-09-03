@@ -10,6 +10,44 @@ export type PreviousAutomaticPlay = {
   play_count: number;
 };
 
+type ImportMetricRow = {
+  post_id: string;
+  measured_at: string;
+};
+
+export type ExplicitMediaMetadata = {
+  type?: unknown;
+  mediaType?: unknown;
+  media_type?: unknown;
+};
+
+export function isExplicitNonVideoMedia(row: ExplicitMediaMetadata): boolean {
+  const mediaType = String(row.mediaType ?? row.media_type ?? row.type ?? "").trim().toLowerCase();
+  // GraphSidecar is intentionally excluded: the collector treats slide reels as playable media.
+  return mediaType === "image"
+    || mediaType === "graphimage"
+    || mediaType === "sidecar"
+    || mediaType === "carousel_album";
+}
+
+export function quarantineAutomaticSuspects<T extends ImportMetricRow>(
+  rows: T[],
+  suspectKeys: ReadonlySet<string>,
+  metric: "play_count" | "reach_count",
+  isManualImport: boolean,
+): { kept: T[]; quarantined: T[] } {
+  if (isManualImport || suspectKeys.size === 0) return { kept: rows, quarantined: [] };
+
+  const kept: T[] = [];
+  const quarantined: T[] = [];
+  for (const row of rows) {
+    const date = String(row.measured_at).slice(0, 10);
+    const key = `${metric}|${row.post_id}|${date}`;
+    (suspectKeys.has(key) ? quarantined : kept).push(row);
+  }
+  return { kept, quarantined };
+}
+
 export function buildAutomaticPlayHistory(rows: AutomaticPlayMeasurement[]) {
   const history = new Map<string, PreviousAutomaticPlay[]>();
   for (const row of rows) {

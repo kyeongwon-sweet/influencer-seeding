@@ -11,7 +11,9 @@ import { buildRejectedInvalidUrlAlert, rejectedUrlIdentifiers } from "@/lib/stat
 import { stripAssetFileListing } from "@/lib/asset-name-policy";
 import {
   buildAutomaticPlayHistory,
+  isExplicitNonVideoMedia,
   previousAutomaticPlay,
+  quarantineAutomaticSuspects,
   type AutomaticPlayMeasurement,
 } from "@/lib/stats-import-spike";
 
@@ -25,8 +27,8 @@ export const runtime = "nodejs";
  *   조회수는 누계라 한 번 외부에서 오염되면 그래프가 영구히 깨지므로 반드시 보호.
  *
  * 입력: {
- *   posts?: [{ url, posted_at?, account_name?, company_name?, content_summary?, channel_type?, project_name?, product_name?, cost? }],
- *   stats:  [{ url, measured_at: "YYYY-MM-DD", play_count: number }]
+ *   posts?: [{ url, posted_at?, account_name?, company_name?, content_summary?, channel_type?, project_name?, product_name?, cost?, type?, mediaType? }],
+ *   stats:  [{ url, measured_at: "YYYY-MM-DD", play_count: number, type?, mediaType? }]
  * }   (구버전 호환: stats 배열만 단독으로 보내도 됨)
  *
  * 처리:
@@ -76,6 +78,15 @@ export async function POST(req: NextRequest) {
   const shortMap = new Map<string, string>();
   for (const u of shortSet) shortMap.set(u, await resolveTikTokShortUrl(u));
   const resolveU = (u: string) => shortMap.get(u) ?? u;
+
+  // 미디어 종류를 URL(/p/)로 추정하면 표준화된 릴까지 이미지로 오판한다. 호출자가 명시적으로
+  // Image/Sidecar라고 보고한 경우만 조회수 유입을 거부하고, 배너는 아래에서 도달수로 우선 라우팅한다.
+  const explicitlyNonVideoKeys = new Set<string>();
+  for (const row of [...(statsIn as Array<Record<string, unknown>>), ...postsIn]) {
+    if (!row?.url || !isExplicitNonVideoMedia(row)) continue;
+    const url = normalizeUrl(resolveU(String(row.url))) || String(row.url);
+    explicitlyNonVideoKeys.add(postIdentityKey(url) ?? url);
+  }
 
   // 조회수: 정규화 + (url, measured_at) 중복 제거 (마지막 값 우선)
   const byKey = new Map<string, { url: string; key: string; measured_at: string; play_count: number }>();
@@ -337,11 +348,12 @@ export async function POST(req: NextRequest) {
   const prePosted: Array<{ url: string; date: string }> = [];
   const postEnded: Array<{ url: string; date: string; ended_at: string }> = [];
   const futureDated: Array<{ url: string; date: string; max_date: string }> = [];
+  const nonVideoPlayRejected: Array<{ url: string; date: string; value: number }> = [];
   // 수동 메뉴와 dailyAuto가 함께 쓰는 시트 import 경로다. 출처와 무관하게 KST 당일값까지 허용한다.
   // 자정 자동수집·리포트의 T-1 정책은 별도 경로에서 유지하며, 미래 날짜만 차단한다.
   const maxStatsDate = maxDateKST();
   let incoming: GuardInput[] = [];
-  const bannerRows: Array<{ post_id: string; measured_at: string; play_count: null; reach_count: number; manual: boolean }> = [];
+  let bannerRows: Array<{ post_id: string; measured_at: string; play_count: null; reach_count: number; manual: boolean }> = [];
   const postIdSet = new Set<string>();
   for (const it of items) {
     const pid = idByKey.get(it.key) ?? idByUrl.get(it.url);
@@ -362,6 +374,9 @@ export async function POST(req: NextRequest) {
     // 배너: reach_count로 저장(입력값=도달수). 비배너: 기존대로 play_count(누적 mono가드 대상).
     if (isBannerByKey.get(it.key)) {
       bannerRows.push({ post_id: pid, measured_at: it.measured_at, play_count: null, reach_count: it.play_count, manual: isManualImport });
+    } else if (explicitlyNonVideoKeys.has(it.key)) {
+      nonVideoPlayRejected.push({ url: it.url, date: it.measured_at, value: it.play_count });
+      continue;
     } else {
       incoming.push({ post_id: pid, measured_at: it.measured_at, play_count: it.play_count });
     }
@@ -480,6 +495,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // 사람의 수기 입력은 경고만 하고 보존한다. dailyAuto는 시트 carry/copy 오염을 DB로
+  // 되미는 자동 경로이므로, 같은 판정값을 조회수와 배너 도달수 모두 저장 전에 격리한다.
+  const copyPlayPartition = quarantineAutomaticSuspects(incoming, copyKeys, "play_count", isManualImport);
+  const copyReachPartition = quarantineAutomaticSuspects(bannerRows, copyKeys, "reach_count", isManualImport);
+  incoming = copyPlayPartition.kept;
+  bannerRows = copyReachPartition.kept;
+  const copySuspectedSkipped = copyPlayPartition.quarantined.length + copyReachPartition.quarantined.length;
+
   // 3-c) 🛡️ 중복 날짜열 감지 — 시트에 같은 날짜 열이 중복되면 한 (게시물,날짜)에 서로 다른 값이 2개 들어온다.
   //   어느 게 진짜인지 알 수 없으므로 그 (게시물,날짜)는 저장하지 않고 건너뛰고 알림(추측 금지).
   const urlById = urlByPidForImport;
@@ -591,10 +614,12 @@ export async function POST(req: NextRequest) {
     previous_auto: number;
     previous_date: string;
   }> = [];
+  const spikeKeys = new Set<string>();
   {
     for (const r of incomingForGuard) {
       const previous = previousAutomaticPlay(automaticPlayHistory, r.post_id, r.measured_at);
       if (previous && (r.play_count as number) >= previous.play_count * 3) {
+        spikeKeys.add(`play_count|${r.post_id}|${r.measured_at.slice(0, 10)}`);
         spikeSuspected.push({
           target: describePost(r.post_id),
           url: urlById.get(r.post_id) ?? r.post_id,
@@ -607,10 +632,18 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  const spikePartition = quarantineAutomaticSuspects(
+    incomingForGuard,
+    spikeKeys,
+    "play_count",
+    isManualImport,
+  );
+  const incomingAfterSpikeGuard = spikePartition.kept;
+
   // dailyAuto는 시트 값을 동기화하되 사람이 확정한 같은 날짜의 수기값은 절대 덮지 않는다.
   // 메뉴에서 직접 실행한 manual_sheet만 기존 수기값을 새 시트값으로 갱신할 수 있다.
   const preservedManual: GuardInput[] = [];
-  const incomingWritable = incomingForGuard.filter((i) => {
+  const incomingWritable = incomingAfterSpikeGuard.filter((i) => {
     if (isManualImport || !manualSet.has(`${i.post_id}|${i.measured_at}`)) return true;
     preservedManual.push(i);
     return false;
@@ -621,7 +654,7 @@ export async function POST(req: NextRequest) {
     return false;
   });
   const overwroteManual = isManualImport
-    ? incomingForGuard.filter(i => manualSet.has(`${i.post_id}|${i.measured_at}`)).length
+    ? incomingAfterSpikeGuard.filter(i => manualSet.has(`${i.post_id}|${i.measured_at}`)).length
     : 0;
 
   // 5) 누적 감소 가드 (lib/stats-guard.ts — 테스트로 검증되는 순수 함수)
@@ -681,7 +714,10 @@ export async function POST(req: NextRequest) {
   if (copySuspected.length > 0) {
     const s = copySuspected.slice(0, 6)
       .map(c => `${c.target} ${c.date.slice(5, 10)} ${Number(c.value).toLocaleString()}←${c.source}(${c.metric === "reach_count" ? "도달" : "조회"})`).join(", ");
-    await notifyBot(`⚠️ [시트 조회수 입력/${importSource}] 복사 의심 ${copySuspected.length}행 경고 — DB에는 manual=${isManualImport}로 반영했습니다. 오입력이면 각 URL 실측값으로 시트를 정정 후 다시 반영하세요: ${s}`);
+    const action = isManualImport
+      ? "수기 입력은 이 사유로 제외하지 않고 보존했습니다."
+      : `${copySuspectedSkipped}행은 자동 재유입 방지를 위해 DB 저장에서 제외했습니다.`;
+    await notifyBot(`⚠️ [시트 조회수 입력/${importSource}] 복사 의심 ${copySuspected.length}행 — ${action} 오입력이면 각 URL 실측값으로 시트를 정정 후 다시 반영하세요: ${s}`);
   }
 
   // 중복 날짜열 감지분 → 알림(같은 날짜에 값 2개 = 시트 중복 열 오염, 어느 게 진짜인지 몰라 스킵).
@@ -691,12 +727,22 @@ export async function POST(req: NextRequest) {
   }
 
   if (rejectedInvalidUrlAlert) await notifyBot(rejectedInvalidUrlAlert).catch(() => {});
-  // 급변 감지분 → 알림(직전 자동 조회수 실측의 3배 이상 = 과대 오입력 의심). 사람이 입력한 시트값은 보존한다.
+  // 급변 감지분: 수기 입력은 보존하고, dailyAuto 자동 재유입은 격리한다.
   if (spikeSuspected.length > 0) {
     const s = spikeSuspected.slice(0, 6).map(c =>
       `${c.target} ${c.date.slice(5, 10)} ${c.value.toLocaleString()}(직전 자동 ${c.previous_date.slice(5, 10)} ${c.previous_auto.toLocaleString()})`
     ).join(", ");
-    await notifyBot(`⚠️ [시트 조회수 입력/${importSource}] 급변 의심 ${spikeSuspected.length}행 경고 — DB에는 manual=${isManualImport}로 반영했습니다. 오입력이면 시트에서 정정 후 다시 반영하세요: ${s}`);
+    const action = isManualImport
+      ? "수기 입력은 이 사유로 제외하지 않고 보존했습니다."
+      : `${spikePartition.quarantined.length}행은 자동 재유입 방지를 위해 DB 저장에서 제외했습니다.`;
+    await notifyBot(`⚠️ [시트 조회수 입력/${importSource}] 급변 의심 ${spikeSuspected.length}행 — ${action} 오입력이면 시트에서 정정 후 다시 반영하세요: ${s}`);
+  }
+
+  if (nonVideoPlayRejected.length > 0) {
+    const s = nonVideoPlayRejected.slice(0, 6)
+      .map((r) => `${r.url} ${r.date.slice(5, 10)} ${r.value.toLocaleString()}`)
+      .join(", ");
+    await notifyBot(`⚠️ [시트 조회수 입력/${importSource}] 비영상 게시물 조회수 ${nonVideoPlayRejected.length}행 거부 — Image/Sidecar에는 play_count를 저장하지 않습니다: ${s}`);
   }
 
   console.info("stats_import_result", {
@@ -705,17 +751,20 @@ export async function POST(req: NextRequest) {
     inserted,
     bannerInserted,
     preservedManual: preservedManual.length,
+    copySuspectedSkipped,
+    spikeSuspectedSkipped: spikePartition.quarantined.length,
+    nonVideoPlayRejected: nonVideoPlayRejected.length,
   });
 
   return NextResponse.json({
     ok: true,
     inserted,
-    copy_suspected_skipped: 0,
+    copy_suspected_skipped: copySuspectedSkipped,
     copy_suspected_warned: copySuspected.length,
     copy_suspected_sample: copySuspected.slice(0, 10),
     dup_column_skipped: dupConflict.length,
     dup_column_sample: dupConflict.slice(0, 10),
-    spike_suspected_skipped: 0,
+    spike_suspected_skipped: spikePartition.quarantined.length,
     spike_suspected_warned: spikeSuspected.length,
     spike_suspected_sample: spikeSuspected.slice(0, 10),
     banner_reach_inserted: bannerInserted,
@@ -740,6 +789,8 @@ export async function POST(req: NextRequest) {
     post_ended_sample: postEnded.slice(0, 10),
     future_date_skipped: futureDated.length,
     future_date_sample: futureDated.slice(0, 10),
+    non_video_play_rejected: nonVideoPlayRejected.length,
+    non_video_play_rejected_sample: nonVideoPlayRejected.slice(0, 10),
     repeated_carry_skipped: repeatedCarry.length,
     repeated_carry_sample: repeatedCarry.slice(0, 10).map(r => ({
       url: urlByPid.get(r.post_id) ?? r.post_id,
