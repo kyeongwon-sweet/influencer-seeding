@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## 🔴 2026-09-03 [Claude 오류·Codex 수정] 내 헤더 가드(39a24b9)가 J:O 메타를 날짜 헤더로 오탐 — ed4c1e1로 교정
+- **내 결함:** `findUnparsableDateHeaders` 호출부의 구간 시작을 `snapshot.incCol + 1`(= **J**)로 뒀다. `detectDateCols`가 쓰던 값을 그대로 복사한 것인데, `resolveMetricDateColumns`는 미인식 헤더를 **조용히 건너뛰므로 무해**했지만 내 검사는 **보고**하는 함수다. 그래서 `J=CPV·K=기획자·L=제작자·M=캡션·N=업체명·O=상태` **6칸이 매 실행마다 '날짜로 못 읽는 헤더'로 오탐**되고, 내가 `healthy = shapeHealthy && unparsableDateHeaders.length === 0`으로 묶어놨기 때문에 **매일 `healthy:false` + 알림 맨 앞에 거짓 '헤더 6칸 파손'**이 떴을 것이다. 알림 피로를 없애려고 만든 가드가 정확히 그 실패를 만들 뻔했다.
+- **왜 내 검증이 못 잡았나(핵심):** ① 단위테스트를 **합성 헤더 배열(구간이 index 0부터 시작)**로만 돌려 라우트가 실제로 넘기는 구간 경계를 한 번도 태우지 않았다. ② 내가 쓴 라우트 계약 테스트는 '함수를 호출하는지·알림이 앞에 오는지'만 봤고 **인자는 안 봤다**. ③ 라이브 검증을 **내가 손으로 다시 구현한 스캔(`i < 15` 하드코딩 = P부터)**으로 했다 — 즉 *가설*은 옳게 검증했지만 *구현*은 검증하지 않았다. 재구현으로 검증하면 실제 코드의 결함은 그대로 남는다([[proxy-signal-vs-real-state]]와 같은 부류).
+- **Codex 수정(`ed4c1e1`, 패치보다 나음):** `metricStatusCol = findCol(["상태"])`를 스냅샷에 추가하고 `metricDateStart = metricStatusCol + 1`을 **`resolveMetricDateColumns`와 내 검사 양쪽에** 적용. 두 상태 컬럼이 없으면 헤더 인식 실패로 닫는 가드도 추가. 그리고 계약 테스트에 `assert.doesNotMatch(src, /findUnparsableDateHeaders\(\s*snapshot\.header,\s*snapshot\.incCol\s*\+\s*1/)`를 넣어 **내 실수 형태를 코드 레벨에서 금지**했다.
+- **배포·재감사 결과(Codex):** 프로덕션 `dpl_3r9xBWcya2jhxoUyALBd5GVmZzWp`. 재감사 [run 33729281778](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/33729281778) — 날짜 범위 `P:DU` 110열, **잘못된 날짜 헤더 0건**, H/I 형태오류·값 불일치·`#REF!`·고아행 모두 0. `healthy:false`는 독립적인 값정체 5건 사유. 로컬 재확인 web **413/413**·tsc 통과.
+- **`c1f1578` 배포 확정:** 13:31 배포(`dpl_6BZS9uX8zXU3NYUnbwT1Rj7Ntkxs`, 소스 HEAD `478aa686` 13:30:52)의 조상. 종료일 가드는 라이브다. 프로덕션 DB에 일부러 잘못된 값을 보내는 검증은 실패 시 실제 오염이 되므로 하지 않기로 합의(정책 테스트 6/6로 대체).
 ## ✅ 2026-09-03 [Claude 검증·완료] 05-17 열 복구 독립 검증 + 감사 기준선 파손 알림 신설(39a24b9)
 - **Codex 복구 검증(읽기전용, 라이브 gviz):** `P1="2026. 5. 17"` 복원 확인. `count(P)=13`(헤더+값 12), 날짜 구간 **P~DU 110칸이 전부 날짜로 파싱·빈칸 0·미인식 0**. 내 신규 검사(`findUnparsableDateHeaders`)를 라이브 헤더에 적용해도 0건 → 다른 헤더 손상 없음이 재확인됐다.
 - **⚠️ 합계 불일치는 오해였다:** `sum(P)=606,159`로 나와 Codex 보고 560,000과 46,159 차이가 났는데, `headers=0` 조회라 **헤더 셀의 날짜가 Google 직렬값 46,159로 합산**된 것이었다(2026-05-17 = 46,159). 값만 더하면 **560,000 = DB 12행 합계와 정확히 일치**(66,000+29,000+68,000+43,000+37,000+62,000+38,000+31,000+40,000+45,000+71,000+30,000). Q도 동일 구조(`sum=692,297` − 헤더 46,160).
