@@ -60,6 +60,15 @@ def _ad_cpv(cost, views) -> str:
     return f"CPV {cost / views:,.1f}원"
 
 
+def _kf(n) -> str:
+    """축약 숫자(2.1M·340K) — 제품별 요약 한 줄용(한눈에). 본문 총액은 정확값 그대로."""
+    n = int(n or 0)
+    if n >= 1_000_000: return f"{n / 1_000_000:.1f}M"
+    if n >= 100_000:   return f"{n / 1_000:.0f}K"
+    if n >= 10_000:    return f"{n / 1_000:.1f}K"
+    return f"{n:,}"
+
+
 def _fetch_awareness_ads(target: str):
     """마케팅T [인지_쫀득바] 시트의 그날 인지광고(메타/틱톡/유튜브) '일별' 조회수·광고비.
     값이 DB에 없고 시트에만 있어(팀 수동입력) 웹 라우트(/api/awareness-ads, Vercel 서비스계정)로 읽는다.
@@ -446,13 +455,13 @@ def main():
         return c or "미분류"
 
     by_channel = {}
-    prod_by_ch = {}   # ct -> {제품: 증분합} (B안: 제품이 갈리는 채널만 상위 제품 인라인)
+    by_product = {}   # 제품 -> 증분합 (제품별 요약 한 줄용). items가 JD상품만이라 미입력은 애초 제외.
     for it in items:
         ct = _norm_ch(it["channel_type"])
         by_channel[ct] = by_channel.get(ct, 0) + it["inc"]
-        _pr = (it.get("product") or "").strip() or "미입력"
-        prod_by_ch.setdefault(ct, {})
-        prod_by_ch[ct][_pr] = prod_by_ch[ct].get(_pr, 0) + (it["inc"] or 0)
+        _pr = (it.get("product") or "").strip()
+        if _pr:
+            by_product[_pr] = by_product.get(_pr, 0) + (it["inc"] or 0)
 
     # 배너 라인은 도달수 없어도 항상 노출(미집계 표기용). 도달수 자체는 위에서 items로 편입돼
     # by_channel·total·TOP에 이미 반영됨(여기선 중복 합산하지 않는다).
@@ -587,14 +596,28 @@ def main():
     ]
     goal = next(v for start, v in _GOAL_TIERS if target >= start)
     goal_man = goal // 10000  # 만 단위 표기
+    # 제품별 요약 한 줄(사용자 지시 2026-09-02) — 의미 있는 제품만(총합 1%+ 또는 1만+, 최대 5개),
+    #   나머지는 그외(그외도 유의미할 때만). items가 JD상품만이라 미입력·비JD는 애초 제외.
+    _pt = sorted(((p, v) for p, v in by_product.items() if v > 0), key=lambda x: -x[1])
+    _prod_line = ""
+    if _pt:
+        _ptot = sum(v for _, v in _pt)
+        _thr = max(10_000, _ptot * 0.01)
+        _major = [(p, v) for p, v in _pt if v >= _thr][:5]
+        _rest = _ptot - sum(v for _, v in _major)
+        _parts = [f"{_esc(p)} +{_kf(v)}" for p, v in _major]
+        if _rest >= _thr:
+            _parts.append(f"그외 +{_kf(_rest)}")
+        if _parts:
+            _prod_line = "◾ *제품별*  " + " · ".join(_parts)
     lines = [
         f"📈 *쫀득바 조회수 일일 증분* `({target})`",
         f"오늘 총 증분 *+{f(total)}*",
         f"🎯 *일 {goal_man}만 목표* {total / (goal / 100):.0f}% · {('달성 +' + f(total - goal)) if total >= goal else ('미달 ' + f(total - goal))}",
-        "", DIV, "",
-        "◾ *채널분류별*",
-        "",
     ]
+    if _prod_line:
+        lines.append(_prod_line)
+    lines += ["", DIV, "", "◾ *채널분류별*", ""]
     # 인지 광고(시트값) — 채널분류 맨 위. 조회수는 위에서 total에 이미 합산됨.
     #   조회수 0·미입력(빈칸) 채널 줄은 숨김(사용자 지시). 셋 다 없으면 섹션 자체 생략.
     if ads:
@@ -632,36 +655,16 @@ def main():
         b = best_by_channel.get(ct)
         return f"<{b['url']}|{_esc(ct)}>" if b else _ital_paren(ct)
 
-    # B안(2026-09-02): 제품이 실제로 갈리는 채널만 상위 2개 제품을 인라인 표기. 단일제품(JD멜 등)
-    #   지배 채널은 생략해 줄 길이 유지. 2위 제품이 채널총합의 15%+ 또는 절대 5만+일 때만 노출.
-    def _kf(n):  # 인라인 축약 숫자(1.2M·340K) — 본문 총액은 정확값, 인라인은 한눈용
-        n = int(n or 0)
-        if n >= 1_000_000: return f"{n / 1_000_000:.1f}M"
-        if n >= 100_000:   return f"{n / 1_000:.0f}K"
-        if n >= 10_000:    return f"{n / 1_000:.1f}K"
-        return f"{n:,}"
-
-    def _prod_inline(ct):
-        pm = prod_by_ch.get(ct) or {}
-        tops = sorted(((p, v) for p, v in pm.items() if v > 0), key=lambda x: -x[1])
-        if len(tops) < 2:
-            return ""                       # 단일제품 → 생략(태그 중복 방지)
-        tot = sum(v for _, v in tops)
-        second = tops[1][1]
-        if second < 50_000 and (tot <= 0 or second / tot < 0.15):
-            return ""                       # 2위가 미미 → 사실상 단일제품, 생략
-        return "  〔" + " · ".join(f"{_esc(p)} +{_kf(v)}" for p, v in tops[:2]) + "〕"
-
     for ct, s in sorted(by_channel.items(), key=lambda x: x[1], reverse=True):
         if "배너" in ct and "위성채널" not in ct:  # 위성채널(배너/영상)은 배너 특수라인 아닌 일반 합산 라인
             # 배너값은 '증분'만 쓴다(사용자 지시 — 누적 아님). 배너는 매일이 아니라 며칠 간격 수집이라
             #   그날 수집이 없으면 증분 0 → '당일 미수집'으로 표기(값이 0이 아니라 수집이 없던 날).
             if s > 0:
-                lines.append(f"• {_ch_label(ct)} *+{f(s)}* (도달수){_prod_inline(ct)}  {_cpv(cost_by_ch.get(ct, 0), cumviews_by_ch.get(ct, 0), ct)}")
+                lines.append(f"• {_ch_label(ct)} *+{f(s)}* (도달수)  {_cpv(cost_by_ch.get(ct, 0), cumviews_by_ch.get(ct, 0), ct)}")
             else:
                 lines.append(f"• {_ital_paren(ct)}  (당일 배너 미수집)")
         else:
-            lines.append(f"• {_ch_label(ct)} *+{f(s)}*{_prod_inline(ct)}  {_cpv(cost_by_ch.get(ct, 0), cumviews_by_ch.get(ct, 0), ct)}")
+            lines.append(f"• {_ch_label(ct)} *+{f(s)}*  {_cpv(cost_by_ch.get(ct, 0), cumviews_by_ch.get(ct, 0), ct)}")
     # ⚠️ 미분류 경고 — 시트엔 분류돼 있어도 DB channel_type이 아직 동기화 안 되면 여기로 몰림.
     #    조용히 '미분류'로 넘어가지 않게 표면화(시트→DB 분류 동기화 지연 감지용).
     unclassified_cnt = sum(1 for it in items if _norm_ch(it["channel_type"]) == "미분류")
