@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## ✅ 2026-09-03 [Codex 읽기전용 전수검증] 종료일 이상 40건 연동시트 수기 도달수 여부
+- **대상 재산출:** 라이브 대시보드 API의 게시물 **3,473건**에 `86f4169` 판정을 그대로 적용해 `ended_at < posted_at` **11건**, 이 그룹을 제외한 `created_at(KST) > ended_at` **29건**을 재현했다. 40건 모두 라이브 연동시트(3,995행)에서 URL key로 **1:1 매칭**, 미매칭·중복 0건이다.
+- **도달수 결론:** 현행 `is_banner_channel` 정책상 고유 배너는 **11건**(게시 전 종료 그룹 9 + 등록 시 이미 종료 그룹 2)이다. 11건 모두 시트 날짜셀 **양수·명시적 0이 전부 0건**, H 공백, `sponsored_posts.reach_count=NULL`, DB `post_daily_stats.reach_count` 이력 0건이다. 따라서 **수기 도달수가 있었는데 `measured > ended_at` 가드에 버려진 사례는 0건**이고, 현재는 11건 전부 팀 입력 대기다.
+- **표본·표기 정정:** 무디 `glinda_yoon /p/DcL9yZ3EpaS/`(시트 3452행)과 `happing_box /p/Da2ozakEX8s/`(시트 2222행)도 날짜셀·H·DB reach가 모두 공백이다. 인계의 "등록 시 이미 종료 29건 중 배너 11건"은 그룹별 표기가 엇갈린 것으로, 정확한 분포는 **첫 그룹 9 + 둘째 그룹 2 = 전체 11**이다.
+- **별도 관찰:** 배너가 아닌 29건 중 3건에는 시트 조회수가 있다. 그중 `에르메키` 1건은 종료일 이후에도 30이 반복 표시된 별도 carry-forward 형태로, 배너 reach 판정에는 포함하지 않았고 값을 수정하지 않았다.
+- **배포 상태:** `6b85e1d` + `a7d40062`는 이미 Vercel production(`dpl_5TYeCnSeZ4J8kpQAcjHxhAx12nS8`, `-mu` alias)에 반영·실물 확인됐다. `86f41691`은 Python/GHA 감사만 변경해 Vercel 재배포 대상이 아니다. 이 검증은 읽기전용으로 DB·시트 쓰기 0건이다.
+
 ## ✅ 2026-09-03 [Codex 완료·라이브] 요일별·업체별 성과 상위 소재 호버 메모
 - **배포:** `6b85e1d`의 요일별·업체별 호버 메모와 후속 `a7d40062`의 "실측 없음≠0" 표시를 함께 포함한 main `178de7e1`을 Vercel production에 배포했다. deployment `dpl_5TYeCnSeZ4J8kpQAcjHxhAx12nS8` READY, `https://influencer-seeding-mu.vercel.app` alias 적용. 이후 main `86f41691`은 Python/GHA 전용 종료일 감사라 Vercel 재배포 대상이 아니다.
 - **라이브 실물:** 관리자 로그인 상태의 `/monitoring`에서 `요일별/업체별`을 열고 두 행을 각각 hover했다. 월요일 행은 조회수 상위 5개·최저 CPV 메모가 `display:block`으로 열렸고, 루나앤코코 행은 영상·배너 상위 목록 메모가 열렸다. 메모 박스는 각각 카드 내부 좌/우 방향으로 배치됐고 viewport 하단을 넘거나 잘리지 않았다.
