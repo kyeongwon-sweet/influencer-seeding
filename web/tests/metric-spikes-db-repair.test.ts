@@ -29,6 +29,17 @@ test("DB repair preserves the manual lock and fails closed on drift", () => {
   assert.match(route, /Cache-Control.*no-store/);
 });
 
+test("DB repair GET exposes read-only final verification without widening POST targets", () => {
+  assert.match(route, /const SECOND_DIRTY_VALUE = 198660/);
+  assert.match(route, /const VERIFIED_DATE = "2026-09-02"/);
+  assert.match(route, /globalReachCounts/);
+  assert.match(route, /verifiedDateRows/);
+  assert.match(route, /\.eq\("reach_count", DIRTY_VALUE\)/);
+  assert.match(route, /\.eq\("reach_count", SECOND_DIRTY_VALUE\)/);
+  assert.match(route, /\.eq\("measured_at", VERIFIED_DATE\)/);
+  assert.equal((route.match(/\.update\(\{ reach_count: null, play_count: null \}\)/g) ?? []).length, 1);
+});
+
 test("Apps Script coordinates DB cleanup before the ten-cell sheet repair", () => {
   assert.match(middleware, /\/api\/ops\/repair-metric-spikes-20260903/);
   assert.match(route, /checkCronAuth\(req\)/);

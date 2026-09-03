@@ -5,6 +5,8 @@ import { getServerSupabase } from "@/lib/supabase-server";
 const CONFIRMATION = "repair-2026-09-03-metric-spikes";
 const NORMALIZED_KEY = "ig:Dcf5OKEiZvJ";
 const DIRTY_VALUE = 116853;
+const SECOND_DIRTY_VALUE = 198660;
+const VERIFIED_DATE = "2026-09-02";
 const DATES = [
   "2026-08-26",
   "2026-08-27",
@@ -109,11 +111,49 @@ async function inspectTargets(): Promise<{ rows: Inspection[]; error?: string }>
   };
 }
 
+async function inspectFinalVerification(postId: string | null) {
+  const supabase = getServerSupabase();
+  const [dirty116853, dirty198660, verifiedDate] = await Promise.all([
+    supabase
+      .from("post_daily_stats")
+      .select("id", { count: "exact", head: true })
+      .eq("reach_count", DIRTY_VALUE),
+    supabase
+      .from("post_daily_stats")
+      .select("id", { count: "exact", head: true })
+      .eq("reach_count", SECOND_DIRTY_VALUE),
+    postId
+      ? supabase
+          .from("post_daily_stats")
+          .select("id, post_id, measured_at, play_count, reach_count, manual, source, created_at")
+          .eq("post_id", postId)
+          .eq("measured_at", VERIFIED_DATE)
+          .order("id", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  const error = dirty116853.error ?? dirty198660.error ?? verifiedDate.error;
+  if (error) return { error: error.message };
+  return {
+    globalReachCounts: {
+      [DIRTY_VALUE]: dirty116853.count ?? 0,
+      [SECOND_DIRTY_VALUE]: dirty198660.count ?? 0,
+    },
+    verifiedDate: VERIFIED_DATE,
+    verifiedDateRows: verifiedDate.data ?? [],
+  };
+}
+
 export async function GET(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const inspected = await inspectTargets();
   if (inspected.error) return NextResponse.json({ error: inspected.error }, { status: 500 });
-  return NextResponse.json({ dry_run: true, rows: inspected.rows }, { headers: { "Cache-Control": "no-store" } });
+  const verification = await inspectFinalVerification(inspected.rows[0]?.postId ?? null);
+  if (verification.error) return NextResponse.json({ error: verification.error }, { status: 500 });
+  return NextResponse.json(
+    { dry_run: true, rows: inspected.rows, verification },
+    { headers: { "Cache-Control": "no-store" } },
+  );
 }
 
 export async function POST(req: NextRequest) {
