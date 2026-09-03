@@ -48,6 +48,9 @@ test("runner backs up the dry-run before apply and guarded deploy includes the r
   assert.match(runner, /parameters: \[SIGNATURE, apply\]/);
   assert.match(runner, /const EXPECTED = 10/);
   assert.match(runner, /result\.target_count !== EXPECTED/);
+  assert.match(runner, /result\.pending \+ result\.blank \+ result\.drift !== EXPECTED/);
+  assert.match(runner, /applied\.drift !== dryRun\.drift/);
+  assert.match(runner, /verify\.drift !== applied\.drift/);
   assert.match(deploy, /repair_metric_spikes_20260903\.gs/);
   assert.match(repair, /function auditMetricSpikes20260903\(\)/);
   assert.match(repair, /function applyMetricSpikes20260903\(\)/);

@@ -49,7 +49,8 @@ async function execute(token, apply) {
     throw new Error(`Apps Script execution failed (${response.status}): ${JSON.stringify(payload.error ?? payload)}`);
   }
   const result = payload.response?.result;
-  if (!result?.ok || result.target_count !== EXPECTED || result.pending + result.blank !== EXPECTED) {
+  if (!result?.ok || result.target_count !== EXPECTED ||
+      result.pending + result.blank + result.drift !== EXPECTED) {
     throw new Error(`Unsafe Apps Script result: ${JSON.stringify(result)}`);
   }
   return result;
@@ -68,17 +69,20 @@ async function main() {
   const backupPath = path.join(backupDir, `metric_spikes_sheet_backup_20260903_${stamp}.json`);
   fs.writeFileSync(backupPath, JSON.stringify({
     created_at: new Date().toISOString(),
-    policy: "clear only four exact sheet cells after DB null verification",
+    policy: "clear only exact approved dirty values; preserve blank and drifted cells after DB null verification",
     rollback: "restore each target.current value to target.a1 only if its URL key and date still match",
     before: dryRun,
   }, null, 2));
 
   const applied = await execute(token, true);
-  if (applied.changed !== dryRun.pending || applied.pending !== 0 || applied.blank !== EXPECTED) {
+  if (applied.changed !== dryRun.pending || applied.pending !== 0 ||
+      applied.blank !== dryRun.blank + dryRun.pending || applied.drift !== dryRun.drift ||
+      applied.db_conflicts !== 0) {
     throw new Error(`Apply verification failed: ${JSON.stringify(applied)}`);
   }
   const verify = await execute(token, false);
-  if (verify.pending !== 0 || verify.blank !== EXPECTED) {
+  if (verify.pending !== 0 || verify.blank !== applied.blank || verify.drift !== applied.drift ||
+      verify.db_conflicts !== 0) {
     throw new Error(`Post-apply verification failed: ${JSON.stringify(verify)}`);
   }
   console.log(JSON.stringify({ applied: true, backup: backupPath, result: applied, verify }, null, 2));
