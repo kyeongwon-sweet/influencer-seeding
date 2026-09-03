@@ -87,19 +87,23 @@ async function inspectTargets(): Promise<{ rows: Inspection[]; error?: string }>
       if (matches.length !== 1) return { ...empty, status: "ambiguous_stat" };
       const stat = matches[0];
       const reachCount = stat.reach_count == null ? null : Number(stat.reach_count);
+      const playCount = stat.play_count == null ? null : Number(stat.play_count);
+      const metricValues = [reachCount, playCount];
+      const alreadyClean = metricValues.every((value) => value == null);
+      const onlyApprovedDirtyValue = metricValues.every((value) => value == null || value === DIRTY_VALUE);
       return {
         normalizedKey: NORMALIZED_KEY,
         measuredAt,
         postId,
         statId: String(stat.id),
         reachCount,
-        playCount: stat.play_count == null ? null : Number(stat.play_count),
+        playCount,
         manual: stat.manual == null ? null : Boolean(stat.manual),
         createdAt: stat.created_at == null ? null : String(stat.created_at),
         statSnapshot: stat,
-        status: reachCount == null
+        status: alreadyClean
           ? "already_clean"
-          : reachCount === DIRTY_VALUE ? "repairable" : "preserved_valid",
+          : onlyApprovedDirtyValue ? "repairable" : "preserved_valid",
       };
     }),
   };
@@ -129,13 +133,18 @@ export async function POST(req: NextRequest) {
   const supabase = getServerSupabase();
   let updated = 0;
   for (const row of before.rows.filter((item) => item.status === "repairable")) {
-    const { data, error } = await supabase
+    let updateQuery = supabase
       .from("post_daily_stats")
-      .update({ reach_count: null })
+      .update({ reach_count: null, play_count: null })
       .eq("id", row.statId as string)
-      .eq("reach_count", DIRTY_VALUE)
-      .eq("manual", true)
-      .select("*");
+      .eq("manual", true);
+    updateQuery = row.reachCount == null
+      ? updateQuery.is("reach_count", null)
+      : updateQuery.eq("reach_count", DIRTY_VALUE);
+    updateQuery = row.playCount == null
+      ? updateQuery.is("play_count", null)
+      : updateQuery.eq("play_count", DIRTY_VALUE);
+    const { data, error } = await updateQuery.select("*");
     if (error) return NextResponse.json({ error: error.message, before: before.rows, updated }, { status: 500 });
     if ((data ?? []).length !== 1) {
       return NextResponse.json({ error: "Concurrent change detected", before: before.rows, updated }, { status: 409 });
@@ -145,7 +154,8 @@ export async function POST(req: NextRequest) {
 
   const after = await inspectTargets();
   if (after.error) return NextResponse.json({ error: after.error, before: before.rows, updated }, { status: 500 });
-  if (after.rows.some((row) => row.status !== "already_clean" || row.reachCount !== null || row.manual !== true)) {
+  if (after.rows.some((row) => row.status !== "already_clean" || row.reachCount !== null ||
+      row.playCount !== null || row.manual !== true)) {
     return NextResponse.json({ error: "Post-repair verification failed", before: before.rows, after: after.rows, updated }, { status: 500 });
   }
   return NextResponse.json({ ok: true, updated, before: before.rows, after: after.rows });
