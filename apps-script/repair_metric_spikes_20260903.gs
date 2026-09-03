@@ -239,3 +239,11 @@ function repairMetricSpikes20260903(signature, apply) {
     lock.releaseLock();
   }
 }
+
+function auditMetricSpikes20260903() {
+  return repairMetricSpikes20260903(METRIC_SPIKE_REPAIR_20260903_SIGNATURE_, false);
+}
+
+function applyMetricSpikes20260903() {
+  return repairMetricSpikes20260903(METRIC_SPIKE_REPAIR_20260903_SIGNATURE_, true);
+}
