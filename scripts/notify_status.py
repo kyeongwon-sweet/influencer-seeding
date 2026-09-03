@@ -9,6 +9,7 @@ import urllib.request
 from datetime import date
 from db import get_client
 from channel_kind import is_banner_channel
+from ended_at_anomalies import ended_at_anomaly_lines
 from manual_entry_guards import copy_suspects, spike_suspects
 from metric_anomaly_guards import frozen_spike_suspects
 
@@ -342,6 +343,14 @@ def _integrity_lines(db, posts):
             line += f" … 외 {len(drops) - 4}건"
         lines.append(line)
 
+    # 7) 종료일 이상 감지 — 종료일<게시일 / 등록 시점에 이미 종료.
+    #    후자는 자동수집 창을 놓쳐 지표가 영구 공백으로 남는다(2026-09-03 무디 배너: 종료 9/1,
+    #    등록 9/2 → 도달수 0행. 같은 조건 배너 11건 전부 도달수 0행). 자동 보정은 하지 않고 알림만.
+    try:
+        lines.extend(ended_at_anomaly_lines(posts, kst_today.isoformat()))
+    except Exception as e:
+        print("[status] 종료일 이상 검사 실패(무시):", e)
+
     # 6) 온드/위성 무상채널에 광고비·업체명 오입력 감시 — 리포트 CPV엔 무시하지만 시트·DB 정정 필요(사용자 지시로 댓글에만 표기).
     try:
         vr = (db.table("sponsored_posts")
@@ -403,7 +412,7 @@ def main():
     posts, off = [], 0
     while True:
         res = db.table("sponsored_posts").select(
-            "id, url, account_name, created_at, ended_at, content_summary, posted_at, channel_type, notes"
+            "id, url, account_name, created_at, ended_at, content_summary, posted_at, channel_type, notes, cost, company_name"
         ).order("id").range(off, off + 999).execute()
         chunk = res.data or []
         posts.extend(chunk)
