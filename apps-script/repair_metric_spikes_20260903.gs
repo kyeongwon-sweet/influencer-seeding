@@ -153,13 +153,6 @@ function metricSpikeRepairSnapshot20260903_() {
       url: rowState.url,
     };
   });
-  const drift = targets.filter(function(target) { return target.sheet_state === "drift"; });
-  if (drift.length) {
-    throw new Error("대상 셀 값 드리프트: " + drift.map(function(target) {
-      return target.a1 + "=" + target.current;
-    }).join(", "));
-  }
-
   return {
     sheet: sheet,
     lastRow: lastRow,
@@ -176,6 +169,7 @@ function metricSpikeRepairPublicResult20260903_(snapshot, changed) {
     target_count: snapshot.targets.length,
     pending: snapshot.targets.filter(function(target) { return target.state === "pending"; }).length,
     blank: snapshot.targets.filter(function(target) { return target.state === "blank"; }).length,
+    drift: snapshot.targets.filter(function(target) { return target.sheet_state === "drift"; }).length,
     db_conflicts: snapshot.targets.filter(function(target) { return target.state === "db-conflict"; }).length,
     changed: changed || 0,
     targets: snapshot.targets.map(function(target) {
@@ -233,8 +227,12 @@ function repairMetricSpikes20260903(signature, apply) {
         throw new Error("쓰기 직전 URL-key 행 변경 감지: " + target.key);
       }
       const current = before.sheet.getRange(target.a1).getValue();
-      if (target.state === "pending" && metricSpikeRepairNumber20260903_(current) !== target.dirty) {
-        throw new Error("쓰기 직전 대상값 변경 감지: " + target.a1);
+      if (target.state === "pending") {
+        if (metricSpikeRepairNumber20260903_(current) !== target.dirty) {
+          throw new Error("쓰기 직전 대상값 변경 감지: " + target.a1);
+        }
+      } else if (String(current == null ? "" : current) !== String(target.current == null ? "" : target.current)) {
+        throw new Error("쓰기 직전 보존값 변경 감지: " + target.a1);
       }
       const rowState = before.rowStateByKey[target.key];
       if (before.sheet.getRange(rowState.h_a1).getFormula() !== rowState.h_formula ||
@@ -254,8 +252,25 @@ function repairMetricSpikes20260903(signature, apply) {
     SpreadsheetApp.flush();
 
     const after = metricSpikeRepairSnapshot20260903_();
-    if (after.targets.some(function(target) { return target.state !== "blank"; })) {
-      throw new Error("대상 셀 비우기 사후검증 실패");
+    const afterByKeyDate = {};
+    after.targets.forEach(function(target) { afterByKeyDate[target.key + "|" + target.date] = target; });
+    before.targets.forEach(function(target) {
+      const next = afterByKeyDate[target.key + "|" + target.date];
+      if (!next) throw new Error("대상 셀 사후검증 누락: " + target.key + "@" + target.date);
+      if (target.state === "pending" && next.sheet_state !== "blank") {
+        throw new Error("대상 셀 비우기 사후검증 실패: " + target.a1);
+      }
+      if (target.state === "blank" && next.sheet_state !== "blank") {
+        throw new Error("기존 공백 셀이 변경됐습니다: " + target.a1);
+      }
+      if (target.sheet_state === "drift" &&
+          String(next.current == null ? "" : next.current) !== String(target.current == null ? "" : target.current)) {
+        throw new Error("드리프트 셀이 변경됐습니다: " + target.a1);
+      }
+    });
+    const expectedChanged = before.targets.filter(function(target) { return target.state === "pending"; }).length;
+    if (changed !== expectedChanged) {
+      throw new Error("변경 셀 수 불일치: expected=" + expectedChanged + ", actual=" + changed);
     }
     Object.keys(before.rowStateByKey).forEach(function(key) {
       const oldState = before.rowStateByKey[key];

@@ -19,11 +19,15 @@ test("metric spike repair is exact-key, exact-date, and exact-value guarded", ()
     'ig:Dcf5OKEiZvJ", date: "2026-08-30", dirty: 116853',
     'ig:Dcf5OKEiZvJ", date: "2026-09-02", dirty: 198660',
   ]) assert.match(repair, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  assert.match(repair, /target\.state === "pending" && metricSpikeRepairNumber20260903_\(current\) !== target\.dirty/);
+  assert.match(repair, /target\.state === "pending"/);
+  assert.match(repair, /metricSpikeRepairNumber20260903_\(current\) !== target\.dirty/);
+  assert.match(repair, /쓰기 직전 보존값 변경 감지/);
   assert.match(repair, /db_conflicts: snapshot\.targets\.filter/);
+  assert.match(repair, /drift: snapshot\.targets\.filter/);
   assert.match(repair, /apply === true && dbConflicts\.length/);
   assert.match(repair, /DB에 대상 날짜값이 남아 있어 적용 중단/);
   assert.match(repair, /buildUrlKeyIndex_\(currentUrls, linkKey_\)/);
+  assert.doesNotMatch(repair, /대상 셀 값 드리프트/);
 });
 
 test("metric spike repair writes only target date cells and preserves H/I formulas", () => {
@@ -32,6 +36,9 @@ test("metric spike repair writes only target date cells and preserves H/I formul
   assert.doesNotMatch(repair, /getRange\([^\n]*,\s*9\)\.set/);
   assert.match(repair, /oldState\.h_formula !== newState\.h_formula \|\| oldState\.i_formula !== newState\.i_formula/);
   assert.match(repair, /oldState\.untouched_metrics !== newState\.untouched_metrics/);
+  assert.match(repair, /target\.sheet_state === "drift"/);
+  assert.match(repair, /드리프트 셀이 변경됐습니다/);
+  assert.match(repair, /changed !== expectedChanged/);
 });
 
 test("runner backs up the dry-run before apply and guarded deploy includes the repair", () => {
