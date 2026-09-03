@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## ✅ 2026-09-03 [Codex 완료·라이브] 이슈박스 YouTube 카리나 시트 중복 3행 → 1행
+- **대상 확정:** URL-key `yt:6ronnq9uRbE` 2행과 잘못된 프로필 URL `youtube.com/@issuebox_x/shorts/` 1행을 URL·게시일(2026-08-30)·계정·소재명 exact 지문으로 재확인했다. 날짜 실측 2칸인 기존 3381행을 정본으로, 실측 1칸인 3433행과 값 없는 프로필 URL 3997행을 삭제 대상으로 확정했다.
+- **백업·삭제:** 사용자 실행 승인 후 숨김 백업 `_codex_issuebox_yt_dup_backup_20260903_20260903_111009`을 만들고 아래쪽부터 3997·3433행만 삭제했다. 데이터 마지막 행은 `3997→3995`; DB 쓰기는 0건이다. 실행 코드는 `b7bd935`이며 guarded clasp live pull→overlay→push로 배포했다.
+- **정본 무손상:** 독립 사후검증에서 정본은 현재 3381행, canonical URL 1행, 프로필 URL 0행, `H=3`, H/I 수식 존재, 양수 날짜 실측 2칸으로 확인됐다. 실행 전후 정본 날짜값 배열도 동일했다.
+- **전체 중복 감사:** 대상 YouTube 중복은 목록에서 사라졌다. 전체 시트에는 별개의 `ig:DcyKVbkGWlF` 1그룹(2행)이 남아 있다. 두 행은 `jolly__humor`와 `tving_box`로 계정·소재·캡션·비용이 서로 달라 이번 작업에서 임의 삭제하지 않았다.
+- **수식 감사:** [run `33706799450`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/33706799450) 성공. 삭제 무결성 지표는 H/I 오류셀 0, I mismatch 0, orphan 0이다. 전체 `healthy=false`는 기존 I수식 시작열 `P↔Q` 형태 차이 1,977건과 stale 6건 때문이며 이번 두 행 삭제와는 별도다.
+
 ## ✅ 2026-09-02 [Codex 완료·코드] IG `Post does not exist` 확정삭제 자동종료
 - **판단 검증:** 요청 방향은 맞지만 `auto_end_rules.classify_auto_end`의 수동추적 나이 예외를 약화시키면 매일 수동값이 필요한 글을 다시 잘못 종료할 수 있다. 따라서 기존 나이 기반 예외는 그대로 두고, **IG 스크랩 결과를 받은 뒤의 별도 확정삭제 경로**로만 구현했다.
 - **좁은 종료 조건:** Apify 원문 `errorDescription`이 대소문자까지 정확히 **`Post does not exist`**이고, 기존 `NOT_FOUND_REVIEW_THRESHOLD=3` 연속 관측에 도달했으며, 마지막 양수 `play_count/reach_count` 실측일이 있을 때만 종료한다. `ended_at`은 그 마지막 유효 실측일의 다음날이며 기존 `manual_fields`를 보존한 채 `ended_at`을 추가한다. 쓰기 후 DB를 재조회해 종료일과 수동 잠금을 모두 확인해야 성공으로 기록·알림한다.
