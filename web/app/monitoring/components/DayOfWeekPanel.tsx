@@ -36,14 +36,15 @@ export default function DayOfWeekPanel({ data }: { data: DowData }) {
             <span className="w-12 text-right">게시물</span>
           </div>
           <div className="divide-y divide-a-divider">
-            {data.map((d, i) => {
+            {data.map((d) => {
               const pct = d.count > 0 ? Math.max(3, Math.round((d.median / max) * 100)) : 0;
               const isBestViews = d.count > 0 && d.median === best && best > 0;
               const isBestCpv = d.cpv != null && d.cpv === bestCpv;
               return (
                 <div key={d.label} className="relative group flex items-center gap-3 px-1 py-1.5 hover:bg-a-parchment/40">
-                  {/* 아래쪽 요일은 위로 열어 카드(overflow-hidden) 밖으로 안 나가게 함 */}
-                  <TopPostsMemo heading={`${d.label}요일 게시 · 게시 후 7일 성과 상위`} openUp={i >= 3}
+                  {/* 항상 위로 연다 — 아래로 열면 카드(overflow-hidden) 밖으로 잘린다(실측: 수요일 24px).
+                      패널 위에는 항상 차트가 있어(차트를 접으면 이 패널도 함께 숨음) 위쪽 공간은 확보돼 있다. */}
+                  <TopPostsMemo heading={`${d.label}요일 게시 · 게시 후 7일 성과 상위`} openUp
                     sections={[{ label: "", unit: "회", costLabel: "CPV", memo: d.top }]} />
                   <span className={`w-6 text-sm font-bold ${isBestViews ? "text-a-blue" : "text-a-ink"}`}>{d.label}</span>
                   {/* 막대 + 조회수 값을 막대 트랙 끝에 얹어 눈 이동 최소화 */}

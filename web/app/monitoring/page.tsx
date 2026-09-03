@@ -14,7 +14,7 @@ import { GOOGLE_TREND_GROUPS } from "@/lib/google-trend-groups";
 import CorrelationPanel from "./components/CorrelationPanel";
 import DayOfWeekPanel, { type DowData } from "./components/DayOfWeekPanel";
 import CompanyPanel, { type CompanyData } from "./components/CompanyPanel";
-import { buildTopMemo, type TopPost } from "./components/TopPostsMemo";
+import { buildTopMemo, type TopPost } from "./top-memo";
 import FiltersBar from "./components/FiltersBar";
 import LineChart from "./components/LineChart";
 import PostsTable from "./components/PostsTable";
@@ -340,8 +340,10 @@ export default function MonitoringPage() {
         company,
         video: { count: a.video.n, measured: a.video.m, total: a.video.sum, cpv: cpx(a.video.cost, a.video.sum) },
         banner: { count: a.banner.n, measured: a.banner.m, total: a.banner.sum, cpr: cpx(a.banner.cost, a.banner.sum) },
-        videoTop: buildTopMemo(a.videoRows),
-        bannerTop: buildTopMemo(a.bannerRows),
+        // 업체별은 영상·배너 두 섹션이 한 메모박스에 들어간다. 섹션당 2개로 낮춰 박스 높이를
+        // 요일별(실측 238px)보다 낮게 유지 — 3개면 365px가 되어 카드(overflow-hidden) 밖으로 잘렸다.
+        videoTop: buildTopMemo(a.videoRows, 2),
+        bannerTop: buildTopMemo(a.bannerRows, 2),
       }))
       .sort((x, y) => (y.video.total + y.banner.total) - (x.video.total + x.banner.total));
   }, [filteredPosts, filters.dateFrom, filters.dateTo]);

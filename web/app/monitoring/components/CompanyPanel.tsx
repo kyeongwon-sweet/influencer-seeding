@@ -81,14 +81,15 @@ export default function CompanyPanel({ data }: { data: CompanyData }) {
             <span className="w-[92px] text-right">개수 · CPR</span>
           </div>
           <div className="divide-y divide-a-divider">
-            {data.map((d, i) => {
+            {data.map((d) => {
               const isBestVideo = d.video.measured > 0 && d.video.total === maxVideo && maxVideo > 0;
               const isBestBanner = d.banner.measured > 0 && d.banner.total === maxBanner && maxBanner > 0;
               return (
                 <div key={d.company} className="relative group flex items-center gap-3 px-1 py-1.5 hover:bg-a-parchment/40">
-                  {/* 오른쪽 패널이라 right-0, 아래쪽 행은 위로 열어 카드(overflow-hidden) 밖으로 안 나가게 함 */}
-                  <TopPostsMemo heading={`${d.company} · 성과 상위`} align="right"
-                    openUp={data.length <= 2 || i >= Math.ceil(data.length / 2)}
+                  {/* 오른쪽 패널이라 right-0. 이 메모는 영상·배너 두 섹션이라 요일별(238px)보다 훨씬 높아
+                      (실측 365px) 아래로 열면 카드(overflow-hidden) 밖으로 잘린다 — 항상 위로 연다.
+                      패널 위에는 항상 차트가 있어(차트를 접으면 패널도 함께 숨음) 위쪽 공간은 확보돼 있다. */}
+                  <TopPostsMemo heading={`${d.company} · 성과 상위`} align="right" openUp
                     sections={[
                       { label: "영상 · 누적 조회수", unit: "회", costLabel: "CPV", memo: d.videoTop },
                       { label: "배너 · 누적 도달수", unit: "", costLabel: "CPR", memo: d.bannerTop },
