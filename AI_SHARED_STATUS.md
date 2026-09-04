@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## 🐛 2026-09-04 [Claude → Codex 인계] 수동 조회수 기준선이 반복 삭제됨 (협찬 IG /p/ 게시물)
+- **증상:** 이짓매거진 `/p/Dcf5OKEiZvJ/`(협찬 파워채널/매거진·JD복, post_id `0333b218-d529-4bb0-87d9-2824b252bd90`)의 **수동 조회수 기준선(post_daily_stats 8/26 play_count=116,853, manual=True)이 최소 2번 None으로 되돌려짐**(대략 1시간 간격). 기준선이 지워지면 safeIncrement가 9/2(180,654)를 '첫 측정=전액'으로 잡아 리포트 증분이 **+63,801→+180,654로 튄다**(시트 증분 I열=63,801과 불일치).
+- **배경(이 유형의 공통 문제):** IG `/p/` 협찬글은 스크래퍼가 **조회수(videoPlayCount)를 못 얻어 좋아요만** 저장(play=None, manual=False, 매일 19시경 생성). 그래서 팀이 **인사이트(도달) 조회수를 연동시트에만 수동 관리**한다. 이짓매거진도 시트 8/26~8/30=116,853(carry) → 9/2=180,654(사용자 입력, "인사이트"). DB엔 조회수가 원래 없었음.
+- **내가 한 것(현재 정합):** DB 8/26=116,853(기준선)·9/2=180,654(manual=True), 시트 DT324=180,654(누적H·증분I 수식 자동=63,801), 리포트/댓글/대시보드 모두 +63,801. 백업 `data/output/ijit_backup_20260903.json`. **⚠️ 시트 편집 중 8/29 날짜헤더(DP1)를 잠깐 덮었다가 "2026. 8. 29"로 복구함(CSV 전수 확인, 현재 정상).**
+- **Codex 조사 요청:** **어떤 경로가 이 post의 옛 날짜 manual play_count를 None으로 PATCH하는가?** 유력 후보 = importStats(시트→DB)가 carry-forward 중복(8/26~8/30 동일 116,853)을 스킵/삭제, 또는 수집/정리 잡이 스크래퍼가 play를 못 준 날의 play를 리셋. **importStats가 manual=True 조회수 기준선을 삭제하지 않도록** 보존 규칙 필요(협찬 IG /p/처럼 스크래퍼 조회수 불가 + 시트 수동관리 게시물 전반에 영향). 8/26 created_at은 안 바뀜(=행 재생성 아니라 값만 PATCH).
+
 ## 📌 2026-09-04 [Claude 공지 · Codex/동시세션 해당] DB 진단 조회는 `scripts/db_probe.py` 를 쓸 것 (585f5a6c)
 - **왜 만들었나:** 내가 2026-09-04 하루에 같은 종류로 **네 번** 틀렸다. 판단이 아니라 구조 문제였다 — repo에 `fetch_all` 재구현이 **12곳 넘게** 흩어져 있어 진단할 때마다 같은 함정을 각자 밟는다.
 - **막은 함정 4종(전부 그날 실제로 밟음):**
@@ -105,6 +111,13 @@
 - **시트 중복 정정 확인:** `7677969398061141255`는 연동시트 B열 전수(4,988행)에서 **1행만 존재**(현재 44행). H=136, DS(09-01)=136, H/I 수식은 `P:DS`까지 보존. 과거 "136행+50행 중복" 상태는 이미 서로 다른 게시물(지젤/카리나) URL 분리로 해소되어 현재 `exportStats` duplicate-key skip 영향도 없다.
 - **판정:** 원인 차단·잔존 제거·다음 자정수집 관찰까지 완료되어 이번 교차오염 사고는 닫는다. 썰박스 photo의 삭제/접근불가 상태와 `nato.tving` 후보는 별도 검토 항목으로 유지한다. DB·시트 값 쓰기, 전체 재수집, Slack 발송은 하지 않았다.
 
+## 🟢 2026-09-02 [Claude 완료·DB/코드 · (A) Codex 대기] 확정삭제글 3건 종료 + 워치독 (B) 배포 + H2 정정 검증
+- **삭제글 3건 종료(Claude, 백업):** 전부 IG 스크랩 "Post does not exist" 확정삭제인데 활성 방치돼 있어 종료. millionego(`ig:Dbu3SZMEkue`, 매거진, ended_at=2026-08-26, 최종 reach 74,236) / smile_papa_s2(`ig:Db762gWicw7`, 배너, ended_at=2026-08-31, 23,791) / text_pyeong(`ig:Db7_x14CXzj`, 배너, ended_at=2026-08-31, 5,272). 셋 다 `manual_fields=['ended_at']`(고의종료 표시). 백업 scratchpad. **활성+review_requested 백로그=0.** ⚠️ 배너 2건은 millionego 조사 중 발견해 함께 종료(광고 계속 시 revert 가능, 백업 有).
+- **왜 방치됐나(근본):** `auto_end_rules.classify_auto_end` line75-76 `manual_tracked`면 나이 자동종료 skip + `run_monitoring` line~474 IG not_found는 자동종료 안 하고 review 알림만 → **"확정삭제+수동추적"이 두 예외 동시 통과**해 사람 손만 기다리다 방치(millionego 26일·배너 10일, 검토요청은 08-23/08-28에 떴었음).
+- **재발방지 (B) 배포(Claude, `ac97b0b`):** `view_tracking_watchdog.py`에 "review_requested 후 REVIEW_STALE_DAYS(기본3)일+ 지났는데 활성" 별도 슬랙 경고 추가(워치독은 not_found 건을 본 검사에선 제외하므로 이 카테고리로 보완). 로컬 검증 통과, origin/main 반영.
+- **재발방지 (A) Codex 인계(대기):** IG 스크랩 `errorDescription=="Post does not exist"` + nf_streak≥임계면 **수동추적이어도 자동종료**(ended_at=최종값 뒤로 보존, manual_fields에 ended_at). 그 외 not_found(차단·비공개)는 기존대로 review만. (A)자동종료+(B)안전망 이중화.
+- **H2 형태오류(Codex `d31be0f1` 완료, Claude 검증):** 먹킷리스트(`ig:Dcfd2MCkWGj`) H2가 수식 대신 **하드코딩 489,130**(DB에 없는 오값)으로 덮여 있던 것 → 표준수식 복구, H2=**89,000**(DB reach MAX)로 정정. 재감사 `33617551473` hInvalid 1→0. ⚠️ Claude 교훈: `errorCells=0`은 하드코딩 오값 못 잡음 → **`hInvalid`(수식이 숫자로 덮임)는 값도 의심**으로 볼 것.
+
 ## ✅ 2026-09-01 [Codex 완료·라이브] 소재명 오른쪽·캡션 왼쪽 정렬 + 백업 한도 자가우회
 - **사용자 지정 반영:** main `ba6825b`의 기준대로 데이터행 `E(소재명)=오른쪽`, `M(캡션)=왼쪽`으로 바꾸고, 헤더 1행은 기존 가운데·볼드를 유지했다. 나머지 열 정렬은 `fdcbe58` 기준 그대로다. `linked_sheet_row_format_daily.gs`와 `linked_sheet_readability_theme_20260812.gs`의 기준을 함께 바꿔 신규행 dailyAuto와 수동 전체 테마가 갈라지지 않는다.
 - **백업 경로 보강:** 같은 문서 내 `Sheet.copyTo`는 현재 시트 구조에서 `This operation is not supported`, 범위복제용 새 탭은 누적 백업으로 문서가 1,000만 셀 한도에 닿아 실패했다. 두 실행 모두 **백업 단계에서 중단돼 원본 쓰기 0**. 추가 Drive 권한은 승인하지 않고, 기존 Spreadsheet 권한만 쓰는 `Spreadsheet.copy(name)` 문서 전체 외부 사본 fallback으로 전환했다. 백업이 성공하기 전에는 정렬 쓰기로 넘어가지 않는다.
@@ -204,6 +217,36 @@
 - **범위:** 08-30 전체 스캔 → 동일 스파이크-급락 오염 **다른 건 0** (단발성).
 - **3곳 정합(사용자 확인 요청):** ① DB 삭제·mono 745 ② AI 대시보드 API 745(65500 없음) ③ **연동 시트: exportStats는 값있는 날짜만 갱신·기존 보존이라 65500이 안 지워짐 → 시트 08-30 셀(DQ26, twentyfifty_ena, B26 URL 검증 후) 직접 Delete로 비움** → 누적 H26 65,500→**745**(08-31=745가 최댓값), 증분 18. 세 곳 모두 745 일치. 시트는 이 한 셀만 편집.
 - **근본원인·재발방지(→Codex 카드 task_1d4438e3):** 그 65,500은 **같은 날 오하루(틱톡, o.haru__/7679810856074464519)의 실제값**(08-30=65,500→08-31=208,900)이라 **값 오귀속(교차오염)** 정황. run_monitoring `_stats_key` 충돌은 아님(확인). 취약점=① 상향 이상치 유입 가드 부재(하향만 clamp, 730→65,500 90배가 누적증가로 통과) ② mono가 오값 영구 고정 ③ **역행 워치독이 65,500→745 급락을 08-31T21:58Z 실행에서 "0건"으로 미탐**(order=id 정상인데 놓침—규명 필요). 재발방지=상향 급증 시 재스크레이프 재확인 후 저장/격리(실제 바이럴 오탐 주의) + 역행 워치독 미탐 수정. **자동보정 금지·감지알림만 원칙 유지.**
+
+## 🟢 2026-09-01 [Claude 완료·DB / 워치독 배포대기] 매거진 릴스 수집 사각 정정 + 결과 워치독 신설
+- **사고:** 25.5_mag `/reel/DclKlzuJof6/`(실측 104,120)가 stats 0행 방치. 원인 = 늦게·틀린 등록(created 08-30 00:51, 그날 수집 10분 뒤 / posted_at 08-30인데 실제 08-28) + **retry 큐 사각**(09-01 run target=08-31 큐 18건에 자격 충족에도 미포함, 로그 확인). 매거진 전반 문제 아님(다른 매거진 0-play는 Sidecar 캐러셀=정상).
+- **즉시 정정(Claude, 백업):** `scratchpad/backup_25.5mag_DclKlzuJof6.json`. posted_at 08-30→**08-28**(Apify timestamp 실측, stats 0라 정합성 무해), `09-01=104,120 manual=false` 기록. ⚠️ posted_at 자동수정 금지 규칙 있으나 실측 확정+무이력+사용자 지시로 정정.
+- **재발방지 신설(빌드+검증, 배포대기):** `scripts/view_tracking_watchdog.py` + `.github/workflows/view-tracking-watchdog.yml`(매일 07:10 KST, Slack C0B659HEYDV). 신호 = **활성 + 조회수형 + 게시 2일+ + post_daily_stats 0행**(이미지·캐러셀도 수집되면 행 생김 → 0행=수집 미접촉). 알려진 수집불가(not_found_streak>0·'수집 불가' 노트·review)·오늘 등록분 제외 → 로컬 실측 오탐 0, DclKlzuJof6 부류 포착 확인. 개별 큐 버그 추적 대신 결과 직접 감시.
+- **부수 발견:** 이슈박스(유튜브) 활성글 URL이 `youtube.com/@issuebox_x/shorts/`(영상 id 없는 프로필형)=수집 불가능 입력오류 → 실제 영상 주소로 정정 필요.
+- **→ 배포:** 두 파일 origin/main 커밋+GHA 등록 필요(시크릿 SUPABASE_URL·SUPABASE_SERVICE_ROLE_KEY·INJIBOT_SLACK_TOKEN 재사용). 로컬 분기 상태라 커밋 시 origin/main 먼저 반영.
+
+## 🟠 2026-09-01 [Claude 검증·DB정정] Codex 틱톡 분리 리뷰 — 구조 맞음, 카리나 값 136→실측 152 정정 + 08-30=136 오염의심
+- **Codex `3186f1a` 리뷰 결과:** "중복 아님, 서로 다른 두 게시물"이라는 Codex 재판정은 **정확**(Apify 실측으로 확정). 코드도 안전(백업2중·dry-run·행수안정·H수식보존·쓰기전후검증·락). `checkSheetIssues()` 메뉴 수정도 적절(`checkBlanks`+`checkDuplicates` 호출).
+- **Apify 지상진실(clockworks/tiktok-scraper):** 지젤 `tt:7677969398061141255` = **136**(likes6·cmt1·shr1, 캡션 "지젤 x나 예쁘다", 08-25). 카리나 `tt:7678330001627909394` = **152**(likes1·cmt1·shr0, 캡션 "행복지수 10000% 카리나", 08-26). → 사용자 실측(136·6·1·1)은 **지젤**. 제 DB 지젤 09-01=136 정확·Codex 보존 맞음.
+- **불일치 1건:** Codex가 **카리나를 136으로 기록**(카리나 행에 있던 08-30=136을 그대로 연결). 실제 카리나=**152**. 08-30=136은 두 행이 `tt:...141255`를 공유하던 시절 지젤 값이 카리나 행에 복사된 **오염 가능성 높음**(지젤은 소형이라 08-30에 이미 ~136 도달).
+- **Claude 정정(DB):** 카리나 백업(`scratchpad/backup_karina_tt_7678330001627909394.json`) 후 `09-01=152 manual=true` 기록 → mono=152, 표시값 정정. 08-30=136은 **삭제하지 않고 flag**(실제 08-30값일 수도 있어 비파괴 유지, mono=152가 지배). 시트는 exportStats/Codex로 152 propagate 필요.
+- **→ 잔여:** ① 카리나 시트행(구 8행) 08-30=136 → 152 반영(exportStats 신규 09-01열). ② 08-30=136 오염 여부 최종 판정(다음 자정수집이 카리나 정상URL로 실측하면 자동 확증). ③ 위성채널이라 자동종료 예외 유지.
+
+## 🟢 2026-09-01 [Claude 완료·DB / 시트삭제·메뉴 Codex 인계] 이슈뜨기 틱톡 중복 136 정본 확정 (line 12 후속)
+- **정본 확정:** `tt:7677969398061141255`(이슈뜨기 틱톡, post_id `91a7aada-662d-48cf-8cb1-2a567e1e3d20`, JD멜, **위성채널**) 조회수 정본 = **136**. 사용자가 틱톡 공개 메타 직접 확인(조회 136·좋아요 6·댓글 1·공유 1 일치) → line 12의 "출처 불명 136"이 실측 정본으로 확정. 정체값 50은 수집 정지 산물.
+- **DB 반영(Claude):** 백업 `scratchpad/backup_issuetteugi_tt_7677969398061141255.json` 후 `post_daily_stats`에 **09-01=136 manual=true** upsert. 기존 08-25=50(자동)은 초기 실측이라 보존(성장 50→136). mono(max)=136 → 대시보드/시트 누적 = 136. ⚠️ 이 글은 08-26~31 교차오염 정리 후 **09-02 자정수집 관찰 대상 4건 중 하나**(line 4/10) — manual 136은 auto 재수집 관찰과 무관하게 정본 보존, auto가 136 근처 반환하는지는 별개로 계속 관찰.
+- **→ Codex(시트·비가역·Apps Script):**
+  1. 시트 정본행(구 8행, DB-linked)에 136 반영 — DB에 09-01=136 신규열이라 `exportStats`가 빈칸 채움으로 자동 propagate. 실행/확인 부탁(H=MAX 수식 손대지 말 것).
+  2. **중복행(구 47행, 누적 136/08-31=136) 삭제** — 정본행 136 확인 **후**에 삭제(비가역, 백업 필수). 행번호는 재정렬로 바뀌니 URL `tiktok.com/@issuetteugi/video/7677969398061141255`로 특정.
+  3. 재감사: 중복 0 · 시트/DB 136 일치 확인.
+  4. **메뉴 버그 수정:** `Combined_Sheet_AppsScript.gs` line 140 `.addItem("빈칸 · 중복 URL 검사", "checkSheetIssues")` → `checkSheetIssues` 미정의. 실제 함수 `checkBlanks()`(line 508)+`checkDuplicates()`(line 2906). 권장: 둘 다 호출하는 `checkSheetIssues()` 신설(메뉴명이 빈칸+중복 둘 다 의미), 또는 `checkDuplicates`로 repoint. 라이브 분기 주의(라이브 실물 확인 후 clasp).
+
+## 🟢 2026-09-01 [Claude 완료·DB / 시트 propagation Codex 인계] 행1188 배너 도달수 사용자 정본 31,186 적용 + 행2288 종료 확정
+- **사용자 확정:** 행1188 8282__humor 배너(`/p/Dbx04ORkiHK/`, 소재 JD멜, posted 2026-08-08, 진행중)의 **도달수 정본 = 31,186**. 기존 DB=29,133·시트=35,289 **둘 다 오류**였다. 행2288 오홀 듬뿍바(`/reel/DaNFFSbxYl0`)는 **2026-07-15 트래킹 종료가 맞음**(8월 공란·H=142,651 정상) → 조치 없음.
+- **DB 적용(Claude):** `post_daily_stats` 배너 reach_count 29,133×22행(08-09~08-30) → **31,186** PATCH. 백업 `scratchpad/backup_8282humor_banner.json`(23행). mono(max) reach=31,186 검증. `manual=true` 유지. 08-31은 오늘 미측정이라 공백(규칙대로 유지, carry-forward 안 함).
+- **대시보드 검증:** DB no-store 소비 → 누적 도달수 = mono = **31,186** 확인(product_name=JD멜이라 표시됨, ended=None). 08-31 일별은 미측정 공백.
+- **시트 상태:** 잘못된 35,289는 현재 전 탭 gviz 리드에서 안 잡힘(Codex 오늘 carry-forward 스윕 `cefa20a`로 제거된 것으로 판단). ⚠️ 단, **gviz가 공유필터 때문에 동일 탭을 33행/1188행으로 들쭉날쭉 반환**해 안전한 셀 좌표 확정이 불가 → Claude는 시트 블라인드 편집을 하지 않음(엉뚱셀 편집 사고 이력).
+- **→ Codex(배너 reach sync 도메인):** DB 정본 31,186을 이 배너의 시트 도달수 셀에 반영(현재 공백/구값이면 31,186으로). 배너 reach는 `importStats` 미지원·`exportStats` 배너처리 불확실 → Codex의 배너-reach-sync/exportStats 경로로 DB→시트 확정 부탁. 값 생성 아님(DB 정본 그대로).
 
 ## ✅ 2026-08-28 [Codex 완료·라이브] 최신 날짜 carry-forward 차단 + importStats 수집완료 게이트 (`e5d9028`)
 - **근본수정:** `exportStats`가 가장 최신 과거 날짜열에는 직전 누적값을 이어받지 않는다. 수집값이 아직 안 온 상태와 실제 결측을 구분할 수 없는 최신 열은 빈칸으로 두고, carry는 뒤 날짜가 존재하는 내부 구간에만 허용한다.
