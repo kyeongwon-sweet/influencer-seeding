@@ -5,7 +5,6 @@ import { getServerSupabase } from "@/lib/supabase-server";
 type MetricField = "play_count" | "reach_count";
 type RepairAction = "clear_field" | "delete_row";
 
-const CONFIRMATION = "repair-2026-08-27-metric-contamination";
 const TARGETS: Array<{
   normalizedKey: string;
   exactPostId?: string;
@@ -140,42 +139,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const body = await req.json().catch(() => null);
-  if (body?.confirm !== CONFIRMATION) {
-    return NextResponse.json({ error: "Invalid confirmation" }, { status: 400 });
-  }
-
-  const before = await inspectTargets();
-  if (before.error) return NextResponse.json({ error: before.error }, { status: 500 });
-  if (before.rows.some((row) => row.status === "ambiguous_stat")) {
-    return NextResponse.json({ error: "Ambiguous daily-stat rows", before: before.rows }, { status: 409 });
-  }
-  const supabase = getServerSupabase();
-  let updated = 0;
-  let deleted = 0;
-  const deletedRows: Array<Record<string, unknown>> = [];
-  for (const row of before.rows.filter((item) => item.status === "repairable")) {
-    const query = supabase
-      .from("post_daily_stats");
-    const { data, error } = row.action === "delete_row"
-      ? await query.delete().eq("id", row.statId as string).eq(row.field, row.value as number).select("*")
-      : await query.update({ [row.field]: null }).eq("id", row.statId as string).eq(row.field, row.value as number).select("*");
-    if (error) return NextResponse.json({ error: error.message, before: before.rows, updated, deleted }, { status: 500 });
-    if ((data ?? []).length !== 1) {
-      return NextResponse.json({ error: "Concurrent change detected", before: before.rows, updated, deleted }, { status: 409 });
-    }
-    if (row.action === "delete_row") {
-      deleted++;
-      deletedRows.push((data ?? [])[0] as Record<string, unknown>);
-    } else {
-      updated++;
-    }
-  }
-
-  const after = await inspectTargets();
-  if (after.error) return NextResponse.json({ error: after.error, before: before.rows, updated, deleted }, { status: 500 });
-  if (after.rows.some((row) => row.status === "repairable")) {
-    return NextResponse.json({ error: "Post-repair verification failed", before: before.rows, after: after.rows, updated, deleted }, { status: 500 });
-  }
-  return NextResponse.json({ ok: true, updated, deleted, deletedRows, before: before.rows, after: after.rows });
+  return NextResponse.json(
+    { error: "This one-time repair is permanently disabled; all historical targets are already resolved." },
+    { status: 410, headers: { "Cache-Control": "no-store" } },
+  );
 }
