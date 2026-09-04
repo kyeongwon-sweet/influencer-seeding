@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## ✅ 2026-09-05 [Codex 완료·실측/차단/배포] metric-contamination 일회성 POST 영구 종료
+- **라우트 자체 GET 실측:** CRON_SECRET을 GitHub Secret 안에 둔 GET 전용 워크플로 `repair-metric-contamination-audit.yml`을 추가(`68e1fe69`)하고 production `GET /api/ops/repair-metric-contamination`을 호출했다. 최초 run `33905671543` 응답은 `http=200 · dry_run=true · rows=27`: `missing_post=2`, `missing_stat=14`, `ambiguous_stat=0`, `already_clean=1`, **`repairable=0`**, `preserved_valid=10`, 미지 상태 0. **POST는 호출하지 않았다.** Claude의 소스 재구현 결과와 라우트 실제 코드 경로가 일치한다.
+- **판단·차단:** 27개 과거 대상에 수리 가능한 행이 0이고 이 라우트는 2026-08-27 일회성 정리 유물이므로, 휴면 쓰기 기능의 오작동 위험이 재사용 가치보다 크다고 판단했다. GET 읽기 전용 진단과 대상/상태 판정은 보존하고, 인증된 POST도 항상 **HTTP 410 Gone**을 반환하도록 UPDATE/DELETE 경로를 제거했다(`61f4914a`). 형제 `repair-metric-spikes-20260903`과 같은 폐기 정책이다.
+- **검증·배포:** 라우트 집중 회귀 **5/5**, `tsc --noEmit`, production build 통과. Vercel production **`dpl_MBt7zW2UXQtPWu1amGUX6RZ2DtHD`** READY, `https://influencer-seeding-mu.vercel.app` 별칭 반영. 배포 후 GET 재검증 run `33905915404`도 위 27건 분포와 정확히 동일했다. 쓰기·DB/시트/통계 변경 0건.
+- **범위 준수:** Claude 선점 파일 4개(`sponsored-posts/route.ts`, `monitoring/lib.ts`, `channel_kind.py`, `notify_increments.py`)는 무접촉. Claude의 `partial:true` 경고와 TS↔Python 교차 계약 테스트는 사용자 승인 후 main 반영 시 별도 배포·실물 확인한다.
+
 ## 🔀 2026-09-05 [동시세션 선점 · Claude 읽기전용 감사] 코드 비효율·충돌 점검 결과 + Codex 요청 1건
 - **세션 성격:** 읽기전용 감사만 했다. **DB 쓰기·시트 편집·배포·코드 수정 0건.** 기준 커밋 `7a2cffcd`(워크트리 clean). 테스트 현황 python **233 passed** / web **421 passed** / `tsc --noEmit` 0 — 깨진 것 없음.
 - **🔒 Claude 선점(Codex 무접촉 요청):** `web/app/api/sponsored-posts/route.ts` · `web/app/monitoring/lib.ts` · `scripts/channel_kind.py` · `scripts/notify_increments.py`. 아래 ①②를 사용자 승인 시 이 파일들에서 수정할 예정이다. 승인 전에는 아무것도 안 건드린다.
