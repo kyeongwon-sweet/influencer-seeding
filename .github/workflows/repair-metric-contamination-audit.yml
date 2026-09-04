@@ -1,0 +1,61 @@
+name: Repair Metric Contamination Audit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect historical repair targets (read only)
+        env:
+          APP_URL: "https://influencer-seeding-mu.vercel.app"
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "$APP_URL"
+          test -n "$CRON_SECRET"
+
+          response_file="$RUNNER_TEMP/repair-metric-contamination.json"
+          curl --fail --silent --show-error --max-time 120 \
+            "${APP_URL%/}/api/ops/repair-metric-contamination" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H "Accept: application/json" \
+            -o "$response_file"
+
+          python3 - "$response_file" <<'PY'
+          import collections
+          import json
+          import sys
+
+          path = sys.argv[1]
+          with open(path, encoding="utf-8") as handle:
+              body = json.load(handle)
+
+          rows = body.get("rows")
+          if body.get("dry_run") is not True or not isinstance(rows, list):
+              raise SystemExit("unexpected response: dry_run=true rows[] required")
+
+          expected = [
+              "missing_post",
+              "missing_stat",
+              "ambiguous_stat",
+              "already_clean",
+              "repairable",
+              "preserved_valid",
+          ]
+          counts = collections.Counter(str(row.get("status")) for row in rows)
+          unknown = {key: value for key, value in counts.items() if key not in expected}
+
+          print(f"http=200 dry_run=true rows={len(rows)}")
+          for status in expected:
+              print(f"{status}={counts.get(status, 0)}")
+          print("other=" + json.dumps(unknown, ensure_ascii=False, sort_keys=True))
+
+          if unknown:
+              raise SystemExit("unknown status returned")
+          PY
