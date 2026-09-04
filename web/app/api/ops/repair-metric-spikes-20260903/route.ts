@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
 
-const CONFIRMATION = "repair-2026-09-03-metric-spikes";
 const NORMALIZED_KEY = "ig:Dcf5OKEiZvJ";
 const DIRTY_VALUE = 116853;
 const SECOND_DIRTY_VALUE = 198660;
@@ -158,45 +157,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const body = await req.json().catch(() => null);
-  if (body?.confirm !== CONFIRMATION) {
-    return NextResponse.json({ error: "Invalid confirmation" }, { status: 400 });
-  }
-
-  const before = await inspectTargets();
-  if (before.error) return NextResponse.json({ error: before.error }, { status: 500 });
-  const allowed = new Set(["repairable", "already_clean"]);
-  if (before.rows.length !== DATES.length || before.rows.some((row) => !allowed.has(row.status) || row.manual !== true)) {
-    return NextResponse.json({ error: "Unexpected live rows or missing manual lock", before: before.rows }, { status: 409 });
-  }
-
-  const supabase = getServerSupabase();
-  let updated = 0;
-  for (const row of before.rows.filter((item) => item.status === "repairable")) {
-    let updateQuery = supabase
-      .from("post_daily_stats")
-      .update({ reach_count: null, play_count: null })
-      .eq("id", row.statId as string)
-      .eq("manual", true);
-    updateQuery = row.reachCount == null
-      ? updateQuery.is("reach_count", null)
-      : updateQuery.eq("reach_count", DIRTY_VALUE);
-    updateQuery = row.playCount == null
-      ? updateQuery.is("play_count", null)
-      : updateQuery.eq("play_count", DIRTY_VALUE);
-    const { data, error } = await updateQuery.select("*");
-    if (error) return NextResponse.json({ error: error.message, before: before.rows, updated }, { status: 500 });
-    if ((data ?? []).length !== 1) {
-      return NextResponse.json({ error: "Concurrent change detected", before: before.rows, updated }, { status: 409 });
-    }
-    updated++;
-  }
-
-  const after = await inspectTargets();
-  if (after.error) return NextResponse.json({ error: after.error, before: before.rows, updated }, { status: 500 });
-  if (after.rows.some((row) => row.status !== "already_clean" || row.reachCount !== null ||
-      row.playCount !== null || row.manual !== true)) {
-    return NextResponse.json({ error: "Post-repair verification failed", before: before.rows, after: after.rows, updated }, { status: 500 });
-  }
-  return NextResponse.json({ ok: true, updated, before: before.rows, after: after.rows });
+  return NextResponse.json(
+    { error: "This one-time repair is permanently disabled; its original contamination verdict was reversed." },
+    { status: 410, headers: { "Cache-Control": "no-store" } },
+  );
 }
