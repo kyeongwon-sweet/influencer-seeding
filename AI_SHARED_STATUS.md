@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## ✅ 2026-09-07 [Codex 완료·라이브] Meta 헬스체크 사각 2건 보완 + 알림 도착지 확정
+- **지속 장애 재알림(`1c20451`):** 기본 **7일** 상수(`META_ADS_UNHEALTHY_REMINDER_DAYS`)를 두고 `jobs.payload.last_alerted_at`을 별도 저장한다. 최초 healthy→unhealthy 전이는 기존대로 Slack+HTTP 503, 같은 장애 다음 날은 무알림, 마지막 알림부터 7일 경과 시 Slack만 재알림하고 HTTP 200을 유지한다. 재알림 때 `last_alerted_at`만 갱신하며 `last_changed_at` 의미는 보존했다.
+- **회귀 5종:** 최초 전이 1회 알림·다음 날 억제·7일 경과 재알림·재알림 다음 날 억제·정상 복귀 무알림/녹색을 모두 고정했다. web `463/463`, Python `276 passed + 4 subtests`, `tsc --noEmit`, production build, lint 오류 0(기존 경고 17) 통과.
+- **수동 테스트 알림:** `workflow_dispatch.test_alert`는 schedule 분기에서 절대 선택되지 않고, 라우트도 상태 조회·저장 전에 반환한다. run `34116814397` = `test_alert_sent / statePersisted:false / HTTP 200`. 테스트 문구는 **2026-09-07 20:28:45 KST, Slack 황경원 DM**(`D0B2U2J8QNS`, 알림 표기 `황경원 (빙과_마케팅T_스틱바P)`)에 실제 도착했다. 상태 마커는 무변경이다.
+- **배포:** production `dpl_47WBGY6kfUYgrp4PHQuUDPfSkefP` Ready, `influencer-seeding-mu.vercel.app` 별칭 반영 확인. 일일 `11:45 KST` schedule은 계속 활성 상태다.
+- **정본 env 사실 확인:** `C:\Users\hwangkw\AI\.claude\influencer-seeding\web\.env.local`에 Codex가 실제로 변경한 키는 **`META_BUSINESS_ACCESS_TOKEN` 한 줄뿐**이다. Vercel pull은 임시 파일로 받았고 정본에는 해당 키만 regex 치환했으며, 후속 복구도 같은 한 줄만 썼다. 나머지 7개 빈 키는 이번 작업에서 변경하지 않았다. 토큰·웹훅 값은 출력·커밋하지 않았다.
+
 ## ✅ 2026-09-07 [Codex 사후 완료] 로컬 정본 Meta 토큰 복구 — Vercel·로컬 2곳 모두 정상
 - **앞선 `67a71715`의 “로컬 `META_BUSINESS_ACCESS_TOKEN` 공백” 스냅샷을 해소했다.** Codex 인앱 브라우저의 로컬 방문 기록에서 Meta 디버거 URL 후보 3개를 메모리로만 추출하고, 광고계정 `insights`가 HTTP 200인 현재 토큰 하나만 선택해 `C:\Users\hwangkw\AI\.claude\influencer-seeding\web\.env.local`의 해당 키 한 줄에 기록했다. 후보·토큰 원문은 화면·명령 인자·로그·커밋에 출력하지 않았다.
 - **독립 재검증:** 로컬 정본 파일을 다시 읽어 같은 광고계정 `insights`를 호출한 결과 `local_key_nonempty=true / HTTP 200`. Vercel production도 앞선 GHA 실측에서 `healthy / HTTP 200 / itemCount=1`이므로 **Vercel production + 로컬 정본 두 위치 모두 복구 완료**다.
