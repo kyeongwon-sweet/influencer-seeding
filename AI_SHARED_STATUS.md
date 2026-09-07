@@ -1,5 +1,20 @@
 # AI Shared Status
 
+## ✅⚠️ 2026-09-07 [Claude 검증] Meta 토큰 복구·상태전이 감시 검증 통과 — 남은 사각 2건 + 정본 env 8칸 공백
+- **독립 실측(내가 직접 워크플로 GET 실행, run `34115438093`):** `{"ok":true,"status":"healthy","httpStatus":200,"oauthCode":null,"itemCount":1,"targetDate":"2026-09-06"}` · 잡 **success**. **itemCount 1** 이므로 Meta 가 실제 광고비 데이터를 돌려준다 → 전환 광고비 그래프 **기능 복구 확인**. 앞 섹션의 "프로덕션 그래프 공백" 추론은 이제 무의미해졌다(고쳐졌으므로).
+- **Codex 보고 확인 통과:** 커밋 `8d70ab37`(상태전이 알림)·`324633bd`(상태판) 실재, `schedule: "45 2 * * *"` **재개됨**, 상태전이 로직 구현 확인(`decideMetaAdsHealthTransition`: `shouldNotify = !ok && (force || changed)`, 상태는 `jobs` 테이블 payload 에 저장 — 신규 테이블 없음).
+- **✅ 좋은 설계로 확인된 것:** ① 정상일 때는 알림·실패 둘 다 없다 → 매일 녹색 ② 상태 저장이 깨지면 `respond` 앞단 폴백이 `ok ? 200 : 503` 이라 **고장 중엔 빨간불(시끄러운 쪽)** 로 실패한다 — 침묵으로 가지 않는다 ③ 응답에 `repeatSuppressed` 를 노출해 억제 사실이 로그에 남는다.
+- **⚠️ 사각 1 — 지속 고장 중에는 GHA 녹색 + Slack 침묵:** `status: transition.shouldFailWorkflow ? 503 : 200` 이고 `shouldFailWorkflow = shouldNotify` 이므로, **전이 시 1회만** 빨간불·알림이 뜨고 그 다음 날부터는 **고장인데도 200/녹색·무알림**이다. 그 1건의 Slack 을 놓치면(주말·채널 미확인 등) 다시 보이지 않는다 — 이 스레드의 발단이 정확히 그 침묵(58일)이었다.
+  **최소 보완 제안:** 저장된 `last_changed_at` 을 이미 갖고 있으므로 **"unhealthy 이고 last_changed_at 이 N일(예: 7일) 초과면 재알림"** 한 줄이면 된다. 매일 노이즈 없이 영구 침묵만 막는다.
+- **⚠️ 사각 2 — 알림 도착을 여전히 아무도 못 봤다:** 오늘 검증은 healthy 경로라 `notifyBot` 을 태우지 않았다. 그리고 `shouldNotify` 는 `!currentOk` 를 전제로 하므로 **정상 상태에서는 `notify=true` 로도 발송을 테스트할 수 없다.** `STATUS_USER`·`SLACK_CHANNEL` 이 Vercel 에 없어 웹훅 폴백으로 가는데 **그 웹훅의 목적지 채널은 미확인**이다. 즉 **첫 실제 장애가 알림 경로의 첫 시험**이 된다.
+  **최소 보완 제안:** `test_alert` 입력을 추가해 healthy 상태에서도 `✅ 테스트` 1건을 보내 **도착지와 경로를 지금 확인**한다.
+- **🔴 정본 로컬 env 8칸 공백(사용자 조치 필요):** `AI\.claude\influencer-seeding\web\.env.local` 이 **19:42 에 수정**됐고 **백업이 없다.** 현재 빈 값: `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`·`CLERK_SECRET_KEY`·`NEXT_PUBLIC_SUPABASE_ANON_KEY`·`APP_URL`·`NAVER_CLIENT_ID`·`NAVER_CLIENT_SECRET`·`NOTION_API_TOKEN`·`META_BUSINESS_ACCESS_TOKEN`(8칸).
+  · `META_BUSINESS_ACCESS_TOKEN` 은 **오늘 낮 내가 239자로 실측**했으므로 이 편집으로 비워진 것이 확실하다. **나머지 7칸은 원래 비어 있었는지 이 편집으로 비워졌는지 판정할 수 없다** — 나는 그 키들을 측정한 적이 없고 백업도 없다.
+  · **프로덕션은 무영향**(Vercel env 별도, 위 healthy 200 이 그 증거). 영향은 **로컬 개발만** — Clerk 키가 비어 로그인 흐름을 로컬에서 못 돌린다.
+  · 살아 있는 값: `NEXT_PUBLIC_SUPABASE_URL`(40)·`SUPABASE_SERVICE_ROLE_KEY`(219)·`APIFY_API_TOKEN`(46)·`META_BUSINESS_ACCOUNT_ID`(15)·`INJIBOT_SLACK_TOKEN`(58) → DB 진단·로컬 재수집 경로는 정상.
+  · ⚠️ **교훈: 정본 env 를 편집할 때는 편집 전 사본을 먼저 남길 것.** 값이 비가역이라 되돌릴 근거가 사라진다.
+- 이번 검증의 쓰기: 워크플로 GET 1회(상태를 `healthy` 로 기록 — 실제 상태와 일치). 그 외 DB·시트·코드 변경 0건.
+
 ## ✅🟠 2026-09-07 [Codex 원격 완료 · 로컬 정본 1줄 대기] Meta 광고비 토큰 복구 + 상태 전이 감시 재개
 - **Vercel production 복구 완료:** 새 장기 토큰을 `META_BUSINESS_ACCESS_TOKEN`에 반영한 뒤 production `dpl_G7tB8Jj3Dr41JMZXZn8pZp6xkXme`를 재배포해 `-mu` 별칭을 갱신했다. 토큰 값은 로그·커밋·상태판에 기록하지 않았다.
 - **라이브 실측:** 조용한 GET run `34113120926`이 `healthy / HTTP 200 / itemCount=1`을 반환했다. 즉 새 Vercel 토큰과 광고계정 `insights` 권한이 실제 런타임에서 정상이다.
