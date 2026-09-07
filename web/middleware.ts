@@ -28,6 +28,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/ops/automation-heartbeat(.*)",       // Apps Script 단계 완료 마커(자체 CRON_SECRET 검사)
   "/api/ops/linked-sheet-values(.*)",        // 비공개 연동시트 고정범위 읽기(자체 CRON_SECRET 검사)
   "/api/ops/db-sheet-sync-alert(.*)",         // DB→시트 독립 동기화 실패 알림(자체 CRON_SECRET 검사)
+  "/api/ops/meta-ads-health(.*)",             // Meta 광고비 토큰·권한 헬스체크(자체 CRON_SECRET 검사)
   "/api/ops/repair-metric-contamination(.*)", // 승인된 8/27 오염 정리(정확키·날짜·값 가드 + CRON_SECRET)
   "/api/ops/repair-metric-spikes-20260903(.*)", // 승인된 9/3 배너 reach 오독 정리(정확키·날짜·값 + manual 잠금)
   "/api/sponsored-posts/banner-reach-sync(.*)",

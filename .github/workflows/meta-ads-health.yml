@@ -1,0 +1,51 @@
+name: Meta Ads Health
+
+# Meta 시스템 사용자 토큰과 광고계정 insights 권한을 실제 Vercel 런타임에서 확인한다.
+# 토큰은 Vercel에만 두고 GitHub에는 복사하지 않는다. 200 + 빈 data[]도 정상이다.
+on:
+  schedule:
+    - cron: "45 2 * * *" # 11:45 KST, 전환 광고비 그래프 일일 점검
+  workflow_dispatch:
+    inputs:
+      notify:
+        description: "이상일 때 Slack 알림 보내기"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: meta-ads-health
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      APP_URL: "https://influencer-seeding-mu.vercel.app"
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+    steps:
+      - name: Check Meta ads token and account permission
+        shell: bash
+        run: |
+          set -euo pipefail
+          method=GET
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ inputs.notify }}" = "true" ]; then
+            method=POST
+          fi
+
+          output="$RUNNER_TEMP/meta-ads-health.json"
+          code=$(curl --silent --show-error --max-time 120 \
+            -X "$method" \
+            -o "$output" \
+            -w "%{http_code}" \
+            "${APP_URL%/}/api/ops/meta-ads-health" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H "Accept: application/json")
+          cat "$output"
+          echo ""
+          echo "HTTP $code"
+          [ "${code:0:1}" = "2" ] || exit 1
+

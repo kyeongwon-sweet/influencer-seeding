@@ -83,6 +83,7 @@ test("감시 대상에 4종 아침 점검이 모두 포함", () => {
     "banner-reach-sync.yml",       // ① 동기화(배너)
     "formula-audit.yml",           // ③ 수식 전수감사
     "injibot-daily-report.yml",    // ④ 오류 게시글 리포트
+    "meta-ads-health.yml",         // Meta 광고비 토큰·권한
   ]) {
     assert.ok(wfs.includes(need), `${need} 누락`);
   }
