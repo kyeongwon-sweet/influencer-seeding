@@ -25,6 +25,7 @@ const deployFiles = [
   [join("apps-script", "repair_issuebox_youtube_duplicate_20260903.gs"), "repair_issuebox_youtube_duplicate_20260903.js"],
   [join("apps-script", "repair_metric_spikes_20260903.gs"), "repair_metric_spikes_20260903.js"],
   [join("apps-script", "repair_posted_at_20260907.gs"), "repair_posted_at_20260907.js"],
+  [join("apps-script", "repair_sidecar_manual_reach_20260907.gs"), "repair_sidecar_manual_reach_20260907.js"],
   [join("apps-script", "appsscript.json"), "appsscript.json"],
 ];
 

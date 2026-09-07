@@ -1964,6 +1964,12 @@ function dailyAutoStageDefs_() {
     ["fillCaptionFromAsset", fillCaptionFromAsset_],
     ["syncAll", function() { return runSync_(false); }],
     ["syncPricing", syncPricing],
+    // 2026-09-07 골목대장 수기 도달수 고아행 1건을 URL/날짜/값 exact guard로 복구한다.
+    // 자체 문서 잠금을 쓰므로 exportStats의 잠금 안이 아닌 독립 단계에서 실행한다.
+    ["repairSidecarManualReach20260907", function() {
+      if (typeof runSidecarManualReachRepair20260907IfNeeded_ !== "function") return true;
+      return runSidecarManualReachRepair20260907IfNeeded_();
+    }],
     ["importStats", importStatsDailyGate_],
     ["exportStats", exportStatsDailyGate_],
     ["syncStatus", syncStatus],
@@ -2496,6 +2502,11 @@ function runDbPullSyncAttempt_(source, attempt) {
 }
 
 function scheduledDbPullSync_() {
+  // 2026-09-07 골목대장 수기 도달수가 URL 없는 고아행에 들어간 1회성 잔재를
+  // 가장 가까운 3시간 동기화에서 URL 기준으로 복구한다. 완료 마커 이후 no-op.
+  if (typeof runSidecarManualReachRepair20260907IfNeeded_ === "function") {
+    runSidecarManualReachRepair20260907IfNeeded_();
+  }
   return runDbPullSyncAttempt_("scheduled", 0);
 }
 
