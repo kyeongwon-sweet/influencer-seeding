@@ -1,10 +1,114 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
-import { evaluateMetaAdsHealth } from "@/lib/meta-ads-health";
+import {
+  decideMetaAdsHealthTransition,
+  evaluateMetaAdsHealth,
+  type MetaAdsHealthState,
+} from "@/lib/meta-ads-health";
 import { notifyBot } from "@/lib/slack";
+import { getServerSupabase } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+const STATE_JOB_TYPE = "monitoring";
+const STATE_MARKER = "meta_ads_health_state";
+
+type HealthResult = {
+  ok: boolean;
+  status: string;
+  httpStatus: number;
+  oauthCode: number | null;
+  itemCount: number | null;
+  targetDate?: string;
+};
+
+async function readStoredState() {
+  const { data, error } = await getServerSupabase()
+    .from("jobs")
+    .select("id, payload")
+    .eq("type", STATE_JOB_TYPE)
+    .eq("status", "done")
+    .contains("payload", { ops_marker: STATE_MARKER })
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error("state lookup failed");
+  const payload = data?.payload as Record<string, unknown> | null | undefined;
+  const state = payload?.health_state;
+  const normalizedState: MetaAdsHealthState | null = state === "healthy" || state === "unhealthy"
+    ? state
+    : null;
+  return {
+    id: data?.id as string | undefined,
+    state: normalizedState,
+    lastChangedAt: typeof payload?.last_changed_at === "string" ? payload.last_changed_at : null,
+  };
+}
+
+async function persistState(
+  id: string | undefined,
+  result: HealthResult,
+  state: MetaAdsHealthState,
+  changed: boolean,
+  previousChangedAt: string | null,
+) {
+  const checkedAt = new Date().toISOString();
+  const payload = {
+    ops_marker: STATE_MARKER,
+    health_state: state,
+    detail_status: result.status,
+    http_status: result.httpStatus,
+    oauth_code: result.oauthCode,
+    item_count: result.itemCount,
+    target_date: result.targetDate ?? null,
+    last_checked_at: checkedAt,
+    last_changed_at: changed || !previousChangedAt ? checkedAt : previousChangedAt,
+  };
+  const mutation = id
+    ? getServerSupabase().from("jobs").update({ payload, error: null }).eq("id", id)
+    : getServerSupabase().from("jobs").insert({
+      type: STATE_JOB_TYPE,
+      status: "done",
+      payload,
+    });
+  const { error } = await mutation;
+  if (error) throw new Error("state write failed");
+}
+
+async function respond(req: NextRequest, result: HealthResult, alertText: string) {
+  if (req.method === "GET") {
+    return NextResponse.json(result, { status: result.ok ? 200 : 503 });
+  }
+
+  try {
+    const previous = await readStoredState();
+    const transition = decideMetaAdsHealthTransition(
+      previous.state,
+      result.ok,
+      req.nextUrl.searchParams.get("force") === "1",
+    );
+    if (transition.shouldNotify) await notifyBot(alertText);
+    await persistState(
+      previous.id,
+      result,
+      transition.state,
+      transition.changed,
+      previous.lastChangedAt,
+    );
+    return NextResponse.json({
+      ...result,
+      alerted: transition.shouldNotify,
+      stateChanged: transition.changed,
+      repeatSuppressed: !result.ok && !transition.shouldFailWorkflow,
+    }, { status: transition.shouldFailWorkflow ? 503 : 200 });
+  } catch {
+    return NextResponse.json({
+      ...result,
+      statePersistenceError: true,
+    }, { status: 503 });
+  }
+}
 
 function yesterdayKST(): string {
   const kstToday = new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10);
@@ -28,10 +132,9 @@ async function handler(req: NextRequest, notify: boolean) {
       oauthCode: null,
       itemCount: null,
     };
-    if (notify) {
-      await notifyBot("🔴 [Meta 광고비 헬스체크] Vercel production 환경변수가 없습니다.").catch(() => {});
-    }
-    return NextResponse.json(result, { status: 503 });
+    return notify
+      ? respond(req, result, "🔴 [Meta 광고비 헬스체크] Vercel production 환경변수가 없습니다.")
+      : NextResponse.json(result, { status: 503 });
   }
 
   const accountId = rawAccountId.replace(/^act_/, "");
@@ -48,29 +151,29 @@ async function handler(req: NextRequest, notify: boolean) {
       cache: "no-store",
     });
     const payload = await response.json().catch(() => ({}));
-    const result = evaluateMetaAdsHealth(response.status, payload);
-    if (!result.ok && notify) {
-      await notifyBot(
-        `🔴 [Meta 광고비 헬스체크] ${result.status} · HTTP ${result.httpStatus}`
-        + (result.oauthCode == null ? "" : ` · Meta code ${result.oauthCode}`)
-        + "\n전환 광고비 그래프의 시스템 사용자 토큰·광고계정 권한을 확인해 주세요.",
-      ).catch(() => {});
-    }
-    return NextResponse.json({ ...result, targetDate }, { status: result.ok ? 200 : 503 });
+    const result = { ...evaluateMetaAdsHealth(response.status, payload), targetDate };
+    const alertText = `🔴 [Meta 광고비 헬스체크] ${result.status} · HTTP ${result.httpStatus}`
+      + (result.oauthCode == null ? "" : ` · Meta code ${result.oauthCode}`)
+      + "\n전환 광고비 그래프의 시스템 사용자 토큰·광고계정 권한을 확인해 주세요.";
+    return notify
+      ? respond(req, result, alertText)
+      : NextResponse.json(result, { status: result.ok ? 200 : 503 });
   } catch {
-    if (notify) {
-      await notifyBot(
-        "🔴 [Meta 광고비 헬스체크] Meta Graph API 연결 실패\n전환 광고비 그래프의 네트워크 상태를 확인해 주세요.",
-      ).catch(() => {});
-    }
-    return NextResponse.json({
+    const result = {
       ok: false,
       status: "network_error",
       httpStatus: 0,
       oauthCode: null,
       itemCount: null,
       targetDate,
-    }, { status: 503 });
+    };
+    return notify
+      ? respond(
+        req,
+        result,
+        "🔴 [Meta 광고비 헬스체크] Meta Graph API 연결 실패\n전환 광고비 그래프의 네트워크 상태를 확인해 주세요.",
+      )
+      : NextResponse.json(result, { status: 503 });
   }
 }
 

@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { evaluateMetaAdsHealth } from "../lib/meta-ads-health.ts";
+import {
+  decideMetaAdsHealthTransition,
+  evaluateMetaAdsHealth,
+} from "../lib/meta-ads-health.ts";
 
 const route = readFileSync(
   new URL("../app/api/ops/meta-ads-health/route.ts", import.meta.url),
@@ -30,6 +33,23 @@ test("Meta OAuth expiry and permission failures are classified without raw detai
   assert.equal(evaluateMetaAdsHealth(200, {}).status, "invalid_response");
 });
 
+test("Meta health alerts only on the first unhealthy transition", () => {
+  assert.deepEqual(decideMetaAdsHealthTransition("healthy", false), {
+    state: "unhealthy",
+    changed: true,
+    shouldNotify: true,
+    shouldFailWorkflow: true,
+  });
+  assert.deepEqual(decideMetaAdsHealthTransition("unhealthy", false), {
+    state: "unhealthy",
+    changed: false,
+    shouldNotify: false,
+    shouldFailWorkflow: false,
+  });
+  assert.equal(decideMetaAdsHealthTransition("unhealthy", false, true).shouldNotify, true);
+  assert.equal(decideMetaAdsHealthTransition("unhealthy", true).state, "healthy");
+});
+
 test("health route is cron-authenticated and never puts the Meta token in the URL", () => {
   assert.match(middleware, /\/api\/ops\/meta-ads-health\(\.\*\)/);
   assert.match(route, /checkCronAuth\(req\) !== "ok"/);
@@ -38,10 +58,14 @@ test("health route is cron-authenticated and never puts the Meta token in the UR
   assert.doesNotMatch(route, /details:\s*payload\.error/);
 });
 
-test("pending-token workflow is manual-only and supports quiet or notified checks", () => {
-  assert.doesNotMatch(workflow, /schedule:/);
+test("recovered-token workflow schedules stateful checks and supports quiet manual checks", () => {
+  assert.match(workflow, /schedule:/);
+  assert.match(workflow, /45 2 \* \* \*/);
   assert.match(workflow, /method=POST/);
   assert.match(workflow, /method=GET/);
+  assert.match(workflow, /\?force=1/);
   assert.match(workflow, /secrets\.CRON_SECRET/);
-  assert.doesNotMatch(heartbeat, /meta-ads-health\.yml/);
+  assert.match(heartbeat, /meta-ads-health\.yml/);
+  assert.match(route, /meta_ads_health_state/);
+  assert.match(route, /repeatSuppressed/);
 });

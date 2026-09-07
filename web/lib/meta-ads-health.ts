@@ -13,6 +13,15 @@ export type MetaAdsHealth = {
   itemCount: number | null;
 };
 
+export type MetaAdsHealthState = "healthy" | "unhealthy";
+
+export type MetaAdsHealthTransition = {
+  state: MetaAdsHealthState;
+  changed: boolean;
+  shouldNotify: boolean;
+  shouldFailWorkflow: boolean;
+};
+
 type MetaPayload = {
   data?: unknown;
   error?: {
@@ -54,3 +63,18 @@ export function evaluateMetaAdsHealth(httpStatus: number, payload: MetaPayload):
   };
 }
 
+export function decideMetaAdsHealthTransition(
+  previousState: MetaAdsHealthState | null,
+  currentOk: boolean,
+  forceNotify = false,
+): MetaAdsHealthTransition {
+  const state: MetaAdsHealthState = currentOk ? "healthy" : "unhealthy";
+  const changed = previousState !== state;
+  const shouldNotify = !currentOk && (forceNotify || changed);
+  return {
+    state,
+    changed,
+    shouldNotify,
+    shouldFailWorkflow: shouldNotify,
+  };
+}

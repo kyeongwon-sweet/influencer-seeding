@@ -76,6 +76,17 @@ test("일일 크론은 26시간 기준 — 25시간은 정상(스케줄 지연 �
   assert.equal(evaluateSchedules(allFresh({ "injibot-daily-report.yml": iso(27) }), NOW).length, 1);
 });
 
+test("새 감시 대상은 첫 예정 실행 뒤 주기 한도까지 미실행 오탐을 내지 않는다", () => {
+  const target = [{
+    workflow: "new.yml",
+    label: "신규",
+    maxAgeHours: 26,
+    firstExpectedAt: "2026-09-08T02:45:00Z",
+  }];
+  assert.equal(evaluateSchedules({ "new.yml": null }, new Date("2026-09-09T04:44:59Z"), target).length, 0);
+  assert.equal(evaluateSchedules({ "new.yml": null }, new Date("2026-09-09T04:45:01Z"), target).length, 1);
+});
+
 test("감시 대상에 4종 아침 점검이 모두 포함", () => {
   const wfs = WATCH_TARGETS.map((t) => t.workflow);
   for (const need of [
