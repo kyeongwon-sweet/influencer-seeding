@@ -14,6 +14,10 @@ const appsScript = readFileSync(
   new URL("../../Combined_Sheet_AppsScript.gs", import.meta.url),
   "utf8",
 );
+const middleware = readFileSync(
+  new URL("../middleware.ts", import.meta.url),
+  "utf8",
+);
 
 test("exportStats heartbeat accepts a measured completion summary", () => {
   const parsed = parseExportStatsHeartbeatInput({
@@ -59,6 +63,7 @@ test("heartbeat API is authenticated and uses the existing daily marker table", 
   assert.match(route, /EXPORT_STATS_HEARTBEAT_SERVICE/);
   assert.match(route, /export async function GET/);
   assert.match(route, /export async function POST/);
+  assert.match(middleware, /\/api\/ops\/automation-heartbeat\(\.\*\)/);
 });
 
 test("exportStats records heartbeat only after the write summary is complete", () => {
