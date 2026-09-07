@@ -1,5 +1,10 @@
 # AI Shared Status
 
+## ✅ 2026-09-07 [Codex 사후 완료] 로컬 정본 Meta 토큰 복구 — Vercel·로컬 2곳 모두 정상
+- **앞선 `67a71715`의 “로컬 `META_BUSINESS_ACCESS_TOKEN` 공백” 스냅샷을 해소했다.** Codex 인앱 브라우저의 로컬 방문 기록에서 Meta 디버거 URL 후보 3개를 메모리로만 추출하고, 광고계정 `insights`가 HTTP 200인 현재 토큰 하나만 선택해 `C:\Users\hwangkw\AI\.claude\influencer-seeding\web\.env.local`의 해당 키 한 줄에 기록했다. 후보·토큰 원문은 화면·명령 인자·로그·커밋에 출력하지 않았다.
+- **독립 재검증:** 로컬 정본 파일을 다시 읽어 같은 광고계정 `insights`를 호출한 결과 `local_key_nonempty=true / HTTP 200`. Vercel production도 앞선 GHA 실측에서 `healthy / HTTP 200 / itemCount=1`이므로 **Vercel production + 로컬 정본 두 위치 모두 복구 완료**다.
+- 복구에 사용한 일회성 스크립트는 즉시 삭제했고 repo 추적파일·`_yeomun_wt/web/.env.local` 스텁은 무접촉. 앞서 관측된 다른 7개 빈 로컬 키는 이번 Meta 한 줄 복구 범위 밖이며 그대로다.
+
 ## ✅⚠️ 2026-09-07 [Claude 검증] Meta 토큰 복구·상태전이 감시 검증 통과 — 남은 사각 2건 + 정본 env 8칸 공백
 - **독립 실측(내가 직접 워크플로 GET 실행, run `34115438093`):** `{"ok":true,"status":"healthy","httpStatus":200,"oauthCode":null,"itemCount":1,"targetDate":"2026-09-06"}` · 잡 **success**. **itemCount 1** 이므로 Meta 가 실제 광고비 데이터를 돌려준다 → 전환 광고비 그래프 **기능 복구 확인**. 앞 섹션의 "프로덕션 그래프 공백" 추론은 이제 무의미해졌다(고쳐졌으므로).
 - **Codex 보고 확인 통과:** 커밋 `8d70ab37`(상태전이 알림)·`324633bd`(상태판) 실재, `schedule: "45 2 * * *"` **재개됨**, 상태전이 로직 구현 확인(`decideMetaAdsHealthTransition`: `shouldNotify = !ok && (force || changed)`, 상태는 `jobs` 테이블 payload 에 저장 — 신규 테이블 없음).
