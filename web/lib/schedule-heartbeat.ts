@@ -12,7 +12,6 @@ export type WatchTarget = {
   workflow: string;
   label: string;
   maxAgeHours: number;
-  firstExpectedAt?: string;
 };
 
 // 4종 아침 점검 + 시간당 sync. cron_watchdog.py의 FRESHNESS_HOURS와 의미를 맞춘다.
@@ -21,12 +20,6 @@ export const WATCH_TARGETS: WatchTarget[] = [
   { workflow: "formula-audit.yml", label: "수식감사", maxAgeHours: 26 },
   { workflow: "injibot-daily-report.yml", label: "오류게시글 리포트", maxAgeHours: 26 },
   { workflow: "monitoring-validate.yml", label: "데이터검증", maxAgeHours: 26 },
-  {
-    workflow: "meta-ads-health.yml",
-    label: "Meta 광고비 헬스체크",
-    maxAgeHours: 26,
-    firstExpectedAt: "2026-09-08T02:45:00Z",
-  },
   { workflow: "banner-reach-sync.yml", label: "배너 sync", maxAgeHours: 3 },
 ];
 
@@ -47,10 +40,6 @@ export function evaluateSchedules(
   for (const t of targets) {
     const ts = lastScheduleSuccess[t.workflow] ?? null;
     if (!ts) {
-      if (t.firstExpectedAt) {
-        const missingDeadline = Date.parse(t.firstExpectedAt) + t.maxAgeHours * 3_600_000;
-        if (now.getTime() <= missingDeadline) continue;
-      }
       findings.push({ workflow: t.workflow, label: t.label, ageHours: null, lastAt: null });
       continue;
     }

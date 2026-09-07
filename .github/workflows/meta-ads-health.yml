@@ -2,9 +2,9 @@ name: Meta Ads Health
 
 # Meta 시스템 사용자 토큰과 광고계정 insights 권한을 실제 Vercel 런타임에서 확인한다.
 # 토큰은 Vercel에만 두고 GitHub에는 복사하지 않는다. 200 + 빈 data[]도 정상이다.
+# ⚠️ 새 토큰 반영 전에는 알려진 만료 상태가 매일 실패·Slack을 중복 발생시키므로 수동 전용이다.
+#    토큰 복구 뒤 상태 전이 알림을 붙이고 schedule을 재개한다.
 on:
-  schedule:
-    - cron: "45 2 * * *" # 11:45 KST, 전환 광고비 그래프 일일 점검
   workflow_dispatch:
     inputs:
       notify:
@@ -32,7 +32,7 @@ jobs:
         run: |
           set -euo pipefail
           method=GET
-          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ inputs.notify }}" = "true" ]; then
+          if [ "${{ inputs.notify }}" = "true" ]; then
             method=POST
           fi
 
@@ -48,4 +48,3 @@ jobs:
           echo ""
           echo "HTTP $code"
           [ "${code:0:1}" = "2" ] || exit 1
-

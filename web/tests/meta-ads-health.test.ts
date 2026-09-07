@@ -38,11 +38,10 @@ test("health route is cron-authenticated and never puts the Meta token in the UR
   assert.doesNotMatch(route, /details:\s*payload\.error/);
 });
 
-test("scheduled workflow notifies on failure and cross-provider heartbeat watches it", () => {
-  assert.match(workflow, /schedule:/);
+test("pending-token workflow is manual-only and supports quiet or notified checks", () => {
+  assert.doesNotMatch(workflow, /schedule:/);
   assert.match(workflow, /method=POST/);
   assert.match(workflow, /method=GET/);
   assert.match(workflow, /secrets\.CRON_SECRET/);
-  assert.match(heartbeat, /meta-ads-health\.yml/);
+  assert.doesNotMatch(heartbeat, /meta-ads-health\.yml/);
 });
-
