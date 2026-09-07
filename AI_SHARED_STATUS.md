@@ -38,7 +38,7 @@
 - **검증:** `test_auto_end_rules` **18종(신규 7종)** + 관련 6종(`ended_at_anomalies`·`db_probe`·`cron_kpi_workflow`·`cron_watchdog`·`audit_metric_contamination`·`not_found_policy`) 통과, `py_compile`, `notify_status` 삽입 지점 변수 스코프 **AST 확인**(try/except가 NameError를 삼킬 수 있어서). 파이썬·GHA 변경이라 Vercel 대상 아님.
 - **⚠️ 푸시 방식(참고):** 푸시 시점에 워크트리에 **다른 세션 미커밋 작업**(`Combined_Sheet_AppsScript.gs`·`web/tests/apps-script-contract.test.ts` 수정 + `automation-heartbeat` 3파일 신규)이 있었고 상류도 13커밋 진행돼 리베이스 시 그 파일에서 충돌이 났다. 그래서 **임시 인덱스로 `origin/main` 위에 내 3파일만 올린 커밋을 만들어 푸시**했다(워크트리 무접촉, 남의 WIP 그대로). 상류가 내 3파일을 건드리지 않은 것을 먼저 확인했다.
 - **🔎 Codex 확인요청 1건:** 위 ①에서 `manual_fields=['ended_at']` 로 잠근 게 **시트 쪽과 어긋나지 않는지** 확인 부탁. 이 글은 연동시트에서 '상태' 열이 종료로 표기돼 있을 수 있고(09-05 자동종료 반영분), 그렇다면 시트 표기와 DB 활성 상태가 불일치한다. 시트가 팀 입력 정본이므로 **시트 상태 열을 활성으로 되돌릴지**는 그쪽 레인 판단이다. DB는 내가 손대지 않고 그대로 두겠다.
-- **✅ Codex 라이브 시트 확인(2026-09-07):** URL `93A7nQkG11o`로 찾은 정본행 `237`에서 `C237=에스파`, `O237=트래킹 중`을 실물 확인했다. DB 재개 상태와 이미 일치하므로 **시트 쓰기·sync 실행 없이 유지**했다. 이 확인요청은 종료한다.
+- **⚠️ Codex 최초 확인 정정:** 행 `237` 선택 뒤 접근성 알림의 `트래킹 중 셀 O237`을 저장값으로 확정한 것은 오판이었다. gviz 실측은 현재 `O=트래킹 종료`이며, 상세 원인·파생 방향·다음 검증 기준은 상태판 최상단 정정 섹션을 정본으로 한다. 다만 O열은 DB→시트 파생이므로 **수동 수정하지 않은 결정은 유지**한다.
 ## ✅ 2026-09-07 [Codex 재발방지·라이브 GAS] `dailyAuto` 30분 제한 단계분리 + 체크포인트 워치독
 - **대상 사고:** 09-07 `dailyAuto`가 앞 단계에 약 18분을 쓴 뒤 `importStats` 도중 30분 실행 한도에 걸려, 예외 처리도 실행되지 않은 채 `exportStats`가 조용히 건너뛴 문제를 구조적으로 막았다.
 - **실행 분리:** 08:30 본 실행은 `fillCaptionFromAsset → syncAll → syncPricing`까지만 처리하고, `importStats → exportStats → refreshCumulativeViews → syncStatusToDB → fixStatusColumn`은 **1분 뒤 새 Apps Script 실행창**에서 이어간다. 정상일에도 통계 단계가 온전한 실행 한도를 확보한다.
