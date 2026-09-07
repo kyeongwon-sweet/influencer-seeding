@@ -17,6 +17,10 @@ test("Sidecar 수기 도달수 복구는 URL·날짜·값·고아행을 exact gu
   assert.match(repair, /targetRows\.length !== 1/);
   assert.match(repair, /Number\(orphanMetric\) !== cfg\.value/);
   assert.match(repair, /unexpectedOrphan\.length/);
+  assert.match(repair, /const urlCol = fieldCols\.url/);
+  assert.match(repair, /findHeaderCol_\(sheet, \["누적 조회수", "누적조회수"\]\)/);
+  assert.match(repair, /const incrementCol = getIncrementCol_\(sheet\)/);
+  assert.doesNotMatch(repair, /CONFIG\.(?:URL|CUMULATIVE|INCREMENT)_COL/);
 });
 
 test("Sidecar 복구는 쓰기 전에 compact 백업을 남기고 목표 셀·고아행만 쓴다", () => {

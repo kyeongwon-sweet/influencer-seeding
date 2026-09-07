@@ -70,7 +70,15 @@ function repairSidecarManualReachOrphanUnlocked20260907_() {
   const lastCol = sheet.getLastColumn();
   if (lastRow < cfg.orphanRow) throw new Error(`09-07 Sidecar 복구: 고아행 ${cfg.orphanRow}이 lastRow ${lastRow} 밖입니다.`);
 
-  const urls = sheet.getRange(CONFIG.DATA_START_ROW, CONFIG.URL_COL, lastRow - CONFIG.DATA_START_ROW + 1, 1)
+  const fieldCols = buildFieldCols_(sheet);
+  const urlCol = fieldCols.url;
+  const cumulativeCol = findHeaderCol_(sheet, ["누적 조회수", "누적조회수"]);
+  const incrementCol = getIncrementCol_(sheet);
+  if (!urlCol || !cumulativeCol || !incrementCol) {
+    throw new Error("09-07 Sidecar 복구: URL/H/I 헤더를 찾지 못했습니다.");
+  }
+
+  const urls = sheet.getRange(CONFIG.DATA_START_ROW, urlCol, lastRow - CONFIG.DATA_START_ROW + 1, 1)
     .getDisplayValues();
   const targetRows = [];
   for (let i = 0; i < urls.length; i++) {
@@ -82,7 +90,7 @@ function repairSidecarManualReachOrphanUnlocked20260907_() {
   if (targetRow === cfg.orphanRow) throw new Error("09-07 Sidecar 복구: 대상행과 고아행이 같습니다.");
   const dateCol = dateColumnByIso20260907_(sheet, cfg.targetDate);
   const targetMetric = sheet.getRange(targetRow, dateCol).getValue();
-  const orphanUrl = String(sheet.getRange(cfg.orphanRow, CONFIG.URL_COL).getDisplayValue() || "").trim();
+  const orphanUrl = String(sheet.getRange(cfg.orphanRow, urlCol).getDisplayValue() || "").trim();
   const orphanMetric = sheet.getRange(cfg.orphanRow, dateCol).getValue();
 
   const orphanRange = sheet.getRange(cfg.orphanRow, 1, 1, lastCol);
@@ -90,8 +98,8 @@ function repairSidecarManualReachOrphanUnlocked20260907_() {
   const orphanFormulas = orphanRange.getFormulas()[0];
   const orphanNonempty = compactNonemptyCells20260907_(orphanValues, orphanFormulas);
   const allowedOrphanColumns = {};
-  allowedOrphanColumns[CONFIG.CUMULATIVE_COL] = true;
-  allowedOrphanColumns[CONFIG.INCREMENT_COL] = true;
+  allowedOrphanColumns[cumulativeCol] = true;
+  allowedOrphanColumns[incrementCol] = true;
   allowedOrphanColumns[dateCol] = true;
   const unexpectedOrphan = orphanNonempty.filter(function(cell) { return !allowedOrphanColumns[cell.column]; });
 
