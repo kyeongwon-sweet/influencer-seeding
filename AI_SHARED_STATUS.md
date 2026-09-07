@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## ✅ 2026-09-07 [Codex 완료] 수기 전용 매거진 Sidecar 도달수 입력·보존 경로 정비 + 골목대장 고아행 복구
+- **근본수정(`d4a65bad`):** 협찬 모니터링의 배너/매거진 `도달수` 편집을 게시물 aggregate 수정이 아니라 **날짜가 있는 `post_daily_stats.reach_count` 수기 입력**으로 연결했다. 날짜는 단일 날짜 필터가 있으면 그 날짜, 기존 이력이 있으면 해당 측정일, 없으면 KST T-1을 기본으로 쓰며 `manual=true`를 고정한다. stats API는 명시한 날짜 행이 없으면 그 날짜로 정확히 생성하고, 더 이상 최신행/오늘로 조용히 폴백하지 않는다.
+- **시트 왕복 보존:** `exportStats`는 오늘·미래의 자동/출처불명 값은 기존처럼 지우되, DB가 `manual=true`로 확인한 양수 배너 도달수는 해당 날짜셀에 채우고 보존한다. `stats-import`의 기존 `manual_sheet` 경로는 배너 숫자를 `reach_count`, `manual=true`로 저장하는 것이 확인돼 별도 변경하지 않았다.
+- **라이브 배포:** main push 자동배포로 `https://influencer-seeding-mu.vercel.app` production Ready(`dpl_6xY1i9BtEbcBgXutTGMwDfpwdqdR`, 17:30:56 KST). Apps Script 정본 ID `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn`도 guarded clasp push 후 fresh pull **16파일 일치** 확인.
+- **골목대장 수술적 복구(`3e2e908f`, `3c8ba6eb`):** DB 정본 `ig:Dcz8HU6kRe7 / 2026-09-06 / reach=114,525 / manual=true`를 exact guard로 시트 **행 3481 · 열 128(DX)** 에 옮기고, 같은 값이 잘못 있던 **URL 없는 고아행 3990**의 내용만 비웠다. URL 1행·날짜열 1개·값 114,525·고아행 허용셀(H/I/DX) 전부 확인 후 적용했고 Script Properties에 두 행의 compact 백업과 완료 마커를 남겼다. 첫 임시 실행은 미정의 고정 열 상수를 참조해 쓰기 전 실패했으며, 헤더 기반 `buildFieldCols_`/`findHeaderCol_`/`getIncrementCol_`로 수정 후 재실행했다. 임시 웹앱 배포 2개는 즉시 undeploy했고 임시 doGet 분기도 live pull SHA 대조로 완전 제거했다.
+- **사후검증:** GitHub formula-audit run `34101307238` HTTP 200/success — `orphanRows=0`, H/I `errorCells=0`, `emptyButData=0`, `mismatch=0`, `hInvalid=0`, `incInvalid=0`, 범위 `P:DX`, snapshot retry 0. `healthy=false`는 기존 값정체 9건 때문이며 이번 수식/고아행과 무관하다. DB도 09-06 `reach_count=114525`, `manual=true`, `play_count=NULL` 유지 확인.
+- **게이트:** 웹 전체 테스트 **453/453**, 신규 복구 계약 4/4, `tsc --noEmit`, production build, lint 오류 0(기존 경고 17), Apps Script prepare/live-pull 일치 통과. `posted_at`, 다른 날짜값, H/I 수식, 통계 이력은 변경하지 않았다.
+
 ## 🟠 2026-09-07 [Codex 완료·감지 / 기능복구는 새 토큰 입력 대기] Meta 광고비 라이브 만료 확정 + 무음 실패 차단
 - **프로덕션 실측 확정:** 새 읽기 전용 `/api/ops/meta-ads-health` 를 `-mu`에서 실행한 GitHub run `34099386696`이 `targetDate=2026-09-06`, **HTTP 401 / Meta code 190 / `oauth_error`** 를 반환했다. `notify=false` GET이라 Slack 변경은 없었고 토큰 값·Meta 원문 오류는 로그/응답에 남기지 않았다. 앞선 "프로덕션은 추론" 구멍은 이 실측으로 닫힘 — 현재 전환 광고비 그래프는 실제로 만료 토큰을 사용 중이다.
 - **감지 계층 배포:** `0490f30b`에 CRON_SECRET 보호 헬스체크 + `.github/workflows/meta-ads-health.yml`(매일 11:45 KST, 이상일 때만 Slack)을 추가했고, 기존 Google/외부 스케줄 하트비트도 이 워크플로를 26시간 기준으로 감시한다. `16c7181d`는 신규 워크플로가 첫 schedule 이력 생성 전 즉시 미실행 오탐을 내지 않도록 첫 예정 실행 후 26시간 유예를 추가했다. **200 + 빈 `data[]`는 광고비 0원일 수 있어 정상**, OAuth/권한/응답구조/연결 오류만 실패다.
