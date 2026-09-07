@@ -10,6 +10,7 @@ from datetime import date
 from db import get_client
 from channel_kind import is_banner_channel
 from ended_at_anomalies import ended_at_anomaly_lines
+from auto_end_rules import stale_high_cost_actives, stale_high_cost_line
 from manual_entry_guards import copy_suspects, spike_suspects
 from metric_anomaly_guards import frozen_spike_suspects
 
@@ -342,6 +343,20 @@ def _integrity_lines(db, posts):
         if len(drops) > 4:
             line += f" … 외 {len(drops) - 4}건"
         lines.append(line)
+
+    # 8) 고액 협찬 정체 감지 — HIGH_COST_THRESHOLD(1,000만원) 예외로 나이 자동종료가 면제된 글은
+    #    캠페인이 끝나도 스스로 닫히지 않는다(영구 활성 = 수집 비용). 조회수가 멈췄으면 사람이
+    #    종료하도록 알린다. 자동 종료·값 변경은 하지 않는다.
+    #    series는 위 통합 스캔이 이미 채운 (날짜, 값>0, 수기) 목록이라 추가 조회가 없다.
+    try:
+        _hc_series = {pid: [(d, v) for d, v, _m in rows] for pid, rows in series.items()}
+        _hc_line = stale_high_cost_line(
+            stale_high_cost_actives(posts, _hc_series, kst_today.isoformat())
+        )
+        if _hc_line:
+            lines.append(_hc_line)
+    except Exception as e:
+        print("[status] 고액 협찬 정체 검사 실패(무시):", e)
 
     # 7) 종료일 이상 감지 — 종료일<게시일 / 등록 시점에 이미 종료.
     #    후자는 자동수집 창을 놓쳐 지표가 영구 공백으로 남는다(2026-09-03 무디 배너: 종료 9/1,
