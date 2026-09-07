@@ -40,6 +40,22 @@ const notifyIncrementsPy = readFileSync(
   "utf8",
 );
 
+// 패턴이 **정확히 1건**일 때만 값을 돌려준다.
+// ⚠️ `.match()`는 첫 매치를 쓴다. 같은 모양이 앞쪽에 하나 더 생기면 계약 테스트가 엉뚱한 줄을
+// 조용히 고정한다 — 드리프트를 막으려는 테스트가 스스로 조용히 실패하는 꼴이다.
+// 0건=이름/형태 변경, 2건 이상=어느 줄을 고정할지 사람이 정해야 함. 둘 다 실패시킨다.
+function soleMatch(re: RegExp, src: string, what: string, path: string): string {
+  const hits = [...src.matchAll(re)].map((m) => m[1]);
+  assert.equal(
+    hits.length,
+    1,
+    `${path} 에서 '${what}' 패턴이 ${hits.length}건 매치됐다(1건이어야 함). ` +
+      "0건=이름/형태가 바뀜, 2건 이상=첫 매치가 의도한 줄이 아닐 수 있음. " +
+      "패턴을 좁히거나 이 계약 테스트를 함께 갱신할 것.",
+  );
+  return hits[0];
+}
+
 const row = (measured_at: string, play: number | null, reach: number | null = null): DailyStats => ({
   measured_at,
   play_count: play,
@@ -53,10 +69,14 @@ test("TS 상수가 계약과 같다", () => {
 });
 
 test("Python 상수가 계약과 같다 (교차언어)", () => {
-  const m = channelKindPy.match(/MAGAZINE_BANNER_FROM\s*=\s*"([^"]+)"/);
-  assert.ok(m, "scripts/channel_kind.py 에서 MAGAZINE_BANNER_FROM 선언을 못 찾았다");
+  const got = soleMatch(
+    /MAGAZINE_BANNER_FROM\s*=\s*"([^"]+)"/g,
+    channelKindPy,
+    "MAGAZINE_BANNER_FROM 선언",
+    "scripts/channel_kind.py",
+  );
   assert.equal(
-    m![1],
+    got,
     contract.magazine_banner_from,
     "Python 상수만 바뀌면 리포트와 대시보드가 같은 매거진 글을 다르게 분류한다",
   );
@@ -74,9 +94,13 @@ test("isBannerChannel 이 계약 벡터를 그대로 재현한다", () => {
 
 test("백로그 창이 양쪽에서 같다 (교차언어)", () => {
   const want = contract.backlog_first_measurement_max_gap_days;
-  const mPy = notifyIncrementsPy.match(/\.days\s*>\s*(\d+)/);
-  assert.ok(mPy, "scripts/notify_increments.py 의 _safe_inc 에서 백로그 창(.days > N)을 못 찾았다");
-  assert.equal(Number(mPy![1]), want, "Python 리포트의 '첫 측정=전액' 창이 계약과 다르다");
+  const py = soleMatch(
+    /\.days\s*>\s*(\d+)/g,
+    notifyIncrementsPy,
+    "백로그 창(.days > N)",
+    "scripts/notify_increments.py",
+  );
+  assert.equal(Number(py), want, "Python 리포트의 '첫 측정=전액' 창이 계약과 다르다");
 });
 
 test("safeIncrement: baseline 은 '직전값'이 아니라 '이전 유효값의 최댓값'이다", () => {

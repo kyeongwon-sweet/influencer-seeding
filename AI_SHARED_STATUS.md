@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 🔧 2026-09-07 [Claude 보강] 교차언어 계약 테스트의 '유일 매치' 가드 — 계약 테스트 자신의 조용한 사각 제거
+- **문제:** 어제 넣은 계약 테스트가 소스에서 상수·백로그 창을 뽑을 때 `re.search`/`.match()`를 써서 **첫 매치**만 봤다. 나중에 같은 모양(`\.days > N`, `gapDays > N`)이 앞쪽에 하나 더 생기면 **엉뚱한 줄을 고정**한다. 특히 미끼 값이 우연히 계약값과 같으면 **테스트는 통과하면서 진짜 드리프트를 놓친다** — 드리프트를 막으려는 테스트 안에 조용한 실패 모드가 있었다.
+- **수정:** 양쪽에 `_sole_match`/`soleMatch` 도입 — 패턴이 **정확히 1건**일 때만 값을 쓰고, 0건(이름 변경)·2건 이상(모호)은 명시적으로 실패시킨다. `scripts/test_metric_contract.py`, `web/tests/metric-contract.test.ts`.
+- **변형 검증:** `notify_increments.py` 앞쪽에 `.days > 3` 미끼 1줄을 심으니 양쪽 스위트가 **`'백로그 창(.days > N)' 패턴이 2건 매치됐다(1건이어야 함)`**로 실패 → 원복 확인. 어제 확인한 드리프트 변형 4종도 실패 테스트 **이름까지** 재확인했다(`Python 상수가 계약과 같다(교차언어)` actual `2026-08-20`≠`2026-08-18` / `baseline은 '직전값'이 아니라 '최댓값'` actual 40≠20).
+- **게이트:** pytest **238** · web **435** · `tsc --noEmit` 0 · production build 성공. 프로덕션 코드 변경 0건(테스트 파일 2개만).
+- **⚠️ 동시세션 메모:** 이 작업 중 워크트리 HEAD가 `1c1cb307` → `8bf02c9f`로 **내 pull 없이 이동**했다(Codex `5ae8196c`·`8bf02c9f` = Apps Script posted_at 정정, 신규 테스트 5개). 내 계약 파일 3개는 무접촉이라 충돌 없었고 위 게이트는 새 베이스에서 돌린 값이다. **워크트리를 공유하므로 커밋 직전 `git rev-parse HEAD` 재확인 권장.**
+
 ## ✅ 2026-09-05 [Claude 완료·코드] 배너·증분 규칙 교차언어 계약 테스트 신설 (열린항목 ② 종료)
 - **문제:** `MAGAZINE_BANNER_FROM`과 증분 규칙이 TS(`web/app/monitoring/lib.ts`)와 Python(`scripts/channel_kind.py`·`scripts/notify_increments.py`)에 **각각 하드코딩**돼 있고, 양쪽 테스트가 **자기 모듈만** 봤다(주석에 "규칙이 같아야 한다"만 있고 검사 없음). 한쪽만 바뀌면 리포트(Python)와 대시보드(TS)가 같은 게시물을 다르게 분류한다 — 09-03~04 play/reach 혼재와 같은 증상.
 - **추가한 것(신규 파일 3개, 기존 코드 무수정):** 계약 정본 `scripts/metric_contract.json`(경계일·백로그 창 7일·배너 판정 벡터 17개) + 양쪽 스위트가 **각자 자기 구현을 그 벡터로 실제 실행**하고 **상대 언어 소스의 상수·창까지 읽어 대조**한다 — `scripts/test_metric_contract.py`(5) · `web/tests/metric-contract.test.ts`(8).

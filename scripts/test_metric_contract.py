@@ -37,6 +37,21 @@ def _read(path: Path) -> str:
     return io.open(path, encoding="utf-8").read()
 
 
+def _sole_match(pattern: str, src: str, what: str, path: Path) -> str:
+    """패턴이 **정확히 1건**일 때만 그 값을 돌려준다.
+
+    ⚠️ `re.search`는 첫 매치를 쓴다. 나중에 같은 모양이 앞쪽에 하나 더 생기면 계약 테스트가
+    **엉뚱한 줄을 조용히 고정**한다 — 드리프트를 막으려는 테스트가 스스로 조용히 실패하는 꼴이다.
+    0건이면 이름이 바뀐 것이고, 2건 이상이면 어느 쪽을 고정할지 사람이 정해야 한다. 둘 다 실패시킨다.
+    """
+    hits = re.findall(pattern, src)
+    assert len(hits) == 1, (
+        f"{path} 에서 '{what}' 패턴이 {len(hits)}건 매치됐다(1건이어야 함). "
+        "0건=이름/형태가 바뀜, 2건 이상=첫 매치가 의도한 줄이 아닐 수 있음. "
+        "패턴을 좁히거나 이 계약 테스트를 함께 갱신할 것."
+    )
+    return hits[0]
+
 def test_python_constant_matches_contract():
     assert MAGAZINE_BANNER_FROM == CONTRACT["magazine_banner_from"], (
         f"channel_kind.MAGAZINE_BANNER_FROM={MAGAZINE_BANNER_FROM!r} 인데 "
@@ -57,11 +72,10 @@ def test_python_behavior_matches_contract_vectors():
 
 def test_ts_constant_matches_contract():
     """TS 정본의 상수를 읽어 대조 — 여기가 실제 '교차언어' 지점이다."""
-    src = _read(LIB_TS)
-    m = re.search(r'export\s+const\s+MAGAZINE_BANNER_FROM\s*=\s*"([^"]+)"', src)
-    assert m, f"{LIB_TS} 에서 MAGAZINE_BANNER_FROM 선언을 못 찾았다 — 이름이 바뀌었으면 계약 테스트도 함께 갱신할 것"
-    assert m.group(1) == CONTRACT["magazine_banner_from"], (
-        f"TS lib.ts 의 MAGAZINE_BANNER_FROM={m.group(1)!r} ≠ 계약 {CONTRACT['magazine_banner_from']!r}. "
+    got = _sole_match(r'export\s+const\s+MAGAZINE_BANNER_FROM\s*=\s*"([^"]+)"', _read(LIB_TS),
+                      "MAGAZINE_BANNER_FROM 선언", LIB_TS)
+    assert got == CONTRACT["magazine_banner_from"], (
+        f"TS lib.ts 의 MAGAZINE_BANNER_FROM={got!r} ≠ 계약 {CONTRACT['magazine_banner_from']!r}. "
         "TS만 바뀌었다면 리포트(Python)와 대시보드(TS)가 같은 매거진 글을 다르게 분류한다."
     )
 
@@ -70,18 +84,12 @@ def test_backlog_window_matches_on_both_sides():
     """'첫 유효측정 = 전액'을 허용하는 게시 후 최대 일수(현재 7)를 양쪽에서 고정."""
     want = CONTRACT["backlog_first_measurement_max_gap_days"]
 
-    ts = _read(LIB_TS)
-    m_ts = re.search(r"gapDays\s*>\s*(\d+)", ts)
-    assert m_ts, f"{LIB_TS} 의 safeIncrement 에서 백로그 창(gapDays > N)을 못 찾았다"
-    assert int(m_ts.group(1)) == want, (
-        f"TS safeIncrement 백로그 창={m_ts.group(1)} ≠ 계약 {want}"
-    )
+    ts_days = _sole_match(r"gapDays\s*>\s*(\d+)", _read(LIB_TS), "백로그 창(gapDays > N)", LIB_TS)
+    assert int(ts_days) == want, f"TS safeIncrement 백로그 창={ts_days} ≠ 계약 {want}"
 
-    py = _read(NOTIFY_PY)
-    m_py = re.search(r"\.days\s*>\s*(\d+)", py)
-    assert m_py, f"{NOTIFY_PY} 의 _safe_inc 에서 백로그 창(.days > N)을 못 찾았다"
-    assert int(m_py.group(1)) == want, (
-        f"Python _safe_inc 백로그 창={m_py.group(1)} ≠ 계약 {want} — "
+    py_days = _sole_match(r"\.days\s*>\s*(\d+)", _read(NOTIFY_PY), "백로그 창(.days > N)", NOTIFY_PY)
+    assert int(py_days) == want, (
+        f"Python _safe_inc 백로그 창={py_days} ≠ 계약 {want} — "
         "리포트와 대시보드의 '첫 측정=전액' 판정이 어긋난다"
     )
 
