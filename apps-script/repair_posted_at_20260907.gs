@@ -153,3 +153,22 @@ function verifyPostedAt20260907() {
     db_matches: 1,
   };
 }
+
+function auditPostedAt20260907() {
+  var result = repairPostedAt20260907(POSTED_AT_REPAIR_20260907_.signature, false);
+  Logger.log("audit_posted_at_20260907 " + JSON.stringify(result));
+  return result;
+}
+
+function applyPostedAt20260907() {
+  var result = repairPostedAt20260907(POSTED_AT_REPAIR_20260907_.signature, true);
+  Logger.log("apply_posted_at_20260907 " + JSON.stringify(result));
+  return result;
+}
+
+function syncAndVerifyPostedAt20260907() {
+  if (syncAll() !== true) throw new Error("syncAll 실패");
+  var result = verifyPostedAt20260907();
+  Logger.log("sync_verify_posted_at_20260907 " + JSON.stringify(result));
+  return result;
+}

@@ -39,6 +39,14 @@ test("runner backs up before apply, executes syncAll, and verifies sheet plus DB
   assert.match(repair, /db_posted_at: dbPostedAt/);
 });
 
+test("editor-safe zero-argument wrappers preserve audit, apply, and sync verification stages", () => {
+  assert.match(repair, /function auditPostedAt20260907\(\)/);
+  assert.match(repair, /function applyPostedAt20260907\(\)/);
+  assert.match(repair, /function syncAndVerifyPostedAt20260907\(\)/);
+  assert.match(repair, /if \(syncAll\(\) !== true\) throw new Error\("syncAll 실패"\)/);
+  assert.match(repair, /Logger\.log\("sync_verify_posted_at_20260907 "/);
+});
+
 test("guarded clasp deploy includes the one-off repair source", () => {
   assert.match(deploy, /repair_posted_at_20260907\.gs/);
 });
