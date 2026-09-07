@@ -1,5 +1,14 @@
 # AI Shared Status
 
+## ✅ 2026-09-05 [Claude 완료·코드] 배너·증분 규칙 교차언어 계약 테스트 신설 (열린항목 ② 종료)
+- **문제:** `MAGAZINE_BANNER_FROM`과 증분 규칙이 TS(`web/app/monitoring/lib.ts`)와 Python(`scripts/channel_kind.py`·`scripts/notify_increments.py`)에 **각각 하드코딩**돼 있고, 양쪽 테스트가 **자기 모듈만** 봤다(주석에 "규칙이 같아야 한다"만 있고 검사 없음). 한쪽만 바뀌면 리포트(Python)와 대시보드(TS)가 같은 게시물을 다르게 분류한다 — 09-03~04 play/reach 혼재와 같은 증상.
+- **추가한 것(신규 파일 3개, 기존 코드 무수정):** 계약 정본 `scripts/metric_contract.json`(경계일·백로그 창 7일·배너 판정 벡터 17개) + 양쪽 스위트가 **각자 자기 구현을 그 벡터로 실제 실행**하고 **상대 언어 소스의 상수·창까지 읽어 대조**한다 — `scripts/test_metric_contract.py`(5) · `web/tests/metric-contract.test.ts`(8).
+- **행동 계약도 포함:** `safeIncrement`의 `baseline = 직전값이 아니라 '이전 유효값의 최댓값'`, 첫 유효측정 전액 허용 경계(게시 후 7일=전액 / 8일=null), 그날 0·NULL은 증분 아님(공백≠0), 배너는 reach 기준 — 전부 실제 호출로 고정했다.
+- **⚠️ 변형(mutation) 검증까지 함:** 통과만으로는 계약이 무의미하므로 일부러 드리프트를 넣어 **4종 전부 실패하는 것을 확인**하고 `git checkout`으로 원복했다 — ① TS 상수 변경→Python 테스트 실패 ② Python 백로그 창 7→14→Python 실패 ③ Python 상수 변경→TS 실패 ④ TS baseline 최댓값→직전값→TS 실패.
+- **한계(명시):** `notify_increments.py`의 `_metric`/`_safe_inc`는 `main()` **내부 중첩 함수**라 임포트가 안 된다. 그래서 Python 증분 규칙은 **행동이 아니라 소스(`.days > N`)로** 고정했다. 모듈로 추출하면 행동 계약으로 승격 가능하나, 리포트 실행 경로라 이번 범위에서는 건드리지 않았다. (`_pbase`는 `_safe_inc` 소비자이지 별도 구현이 아님 — 확인함)
+- **게이트 통과:** pytest **238**(233+5) · web **430**(422+8) · `tsc --noEmit` 0 · production build 성공. `push == 즉시 프로덕션`이므로 커밋 전에 전부 돌렸다. 프로덕션 코드 변경은 0건(테스트·픽스처만).
+- **남은 열린항목 ①:** `sponsored-posts/route.ts` 통계 페이지 조용한 부분 실패 → `partial:true` + 화면 경고. 사용자 승인 대기.
+
 ## ⚠️ 2026-09-05 [Claude 실측·정정 · Codex/전세션 필독] `main push == 즉시 프로덕션` — 상태판·인계문의 "수동배포" 서술은 틀렸다
 - **실측:** main 커밋 5개가 전부 **11~15초 안에** production 배포를 만들었다. `.github/workflows/*`에 `vercel` 배포 명령은 **없음**(반증 확인) → 원인은 **Vercel Git 연동**이다. 빌드는 캐시로 **20~38초**.
   `02:31:11 7a2cffcd(docs만)→02:31:10 bknd9h4m0` / `03:16:23 9acf6377→03:16:36 3oad0v2fp` / `03:23:39 68e1fe69→03:23:51 kipizpk1r` / `03:25:31 61f4914a(410)→03:25:43 qr1ua0rsh` / `03:28:00 4979052a→03:28:11 iklbhbjvg` — 전부 `git-main` 별칭 보유. Codex 수동 `vercel --prod` 산출물 `fcsuxxhdn`(dpl_MBt7…)만 `git-main` 별칭이 **없다**(= 수동배포 구분자).

@@ -1,0 +1,31 @@
+{
+  "_readme": [
+    "배너 판정·증분 규칙의 교차언어 계약. TS(web/app/monitoring/lib.ts)와 Python(scripts/channel_kind.py,",
+    "scripts/notify_increments.py)에 같은 규칙이 각각 구현돼 있어 한쪽만 바뀌면 리포트(Python)와",
+    "대시보드(TS)가 같은 게시물을 다르게 분류한다(2026-09-03~04 play/reach 혼재와 같은 증상).",
+    "이 파일이 그 계약의 정본이며, scripts/test_metric_contract.py 와 web/tests/metric-contract.test.ts 가",
+    "양쪽에서 자기 구현을 이 벡터로 실행하고 상대 언어의 소스 상수까지 대조한다.",
+    "규칙을 바꾸려면 이 파일 + 양쪽 구현을 함께 고쳐야 한다(한쪽만 고치면 테스트가 막는다)."
+  ],
+  "magazine_banner_from": "2026-08-18",
+  "backlog_first_measurement_max_gap_days": 7,
+  "banner_vectors": [
+    { "channel_type": "바이럴 (배너)",              "posted_at": null,         "expected": true,  "why": "이름에 '배너' — posted_at 없어도 배너" },
+    { "channel_type": "위성채널 (배너)",            "posted_at": "2020-01-01", "expected": true,  "why": "이름에 '배너'" },
+    { "channel_type": "협찬 (파워채널/매거진 배너)", "posted_at": "2026-08-07", "expected": true,  "why": "이름에 '배너'면 경계일 이전도 배너" },
+    { "channel_type": "Viral Banner",              "posted_at": "2020-01-01", "expected": true,  "why": "영문 banner(대소문자 무관)" },
+    { "channel_type": "BANNER",                    "posted_at": null,         "expected": true,  "why": "영문 대문자" },
+    { "channel_type": "협찬 (파워채널/매거진)",      "posted_at": "2026-08-17", "expected": false, "why": "경계일 하루 전 — 비배너(조회수)" },
+    { "channel_type": "협찬 (파워채널/매거진)",      "posted_at": "2026-08-18", "expected": true,  "why": "경계일 당일 — 배너(도달수). 이 줄이 경계를 고정한다" },
+    { "channel_type": "협찬 (파워채널/매거진)",      "posted_at": "2026-09-01", "expected": true,  "why": "경계일 이후" },
+    { "channel_type": "협찬 (파워채널/매거진)",      "posted_at": "2026-08-18T09:00:00+09:00", "expected": true, "why": "타임스탬프도 앞 10자만 본다" },
+    { "channel_type": "협찬 (파워채널/매거진)",      "posted_at": "2026-06-30", "expected": false, "why": "도입 시점 기존 매거진 41건은 분류 불변" },
+    { "channel_type": "협찬 (파워채널/매거진)",      "posted_at": null,         "expected": false, "why": "posted_at 없으면 경계 판정 불가 → 비배너 유지" },
+    { "channel_type": "협찬 (파워채널/매거진)",      "posted_at": "",           "expected": false, "why": "빈 문자열도 판정 불가" },
+    { "channel_type": "협찬 (파워채널/매거진)",      "posted_at": "2026-08",    "expected": false, "why": "길이 10 아님 → 판정 불가" },
+    { "channel_type": "협찬 (파워채널/먹스타)",      "posted_at": "2026-09-01", "expected": false, "why": "매거진 아님" },
+    { "channel_type": "협찬 (인플루언서)",          "posted_at": "2026-09-01", "expected": false, "why": "일반 협찬" },
+    { "channel_type": "위성채널 (영상)",            "posted_at": "2026-09-01", "expected": false, "why": "영상은 조회수" },
+    { "channel_type": null,                        "posted_at": "2026-09-01", "expected": false, "why": "채널분류 없음" }
+  ]
+}
