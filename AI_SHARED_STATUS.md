@@ -1,5 +1,15 @@
 # AI Shared Status
 
+## ✅🟠 2026-09-07 [Codex 원격 완료 · 로컬 정본 1줄 대기] Meta 광고비 토큰 복구 + 상태 전이 감시 재개
+- **Vercel production 복구 완료:** 새 장기 토큰을 `META_BUSINESS_ACCESS_TOKEN`에 반영한 뒤 production `dpl_G7tB8Jj3Dr41JMZXZn8pZp6xkXme`를 재배포해 `-mu` 별칭을 갱신했다. 토큰 값은 로그·커밋·상태판에 기록하지 않았다.
+- **라이브 실측:** 조용한 GET run `34113120926`이 `healthy / HTTP 200 / itemCount=1`을 반환했다. 즉 새 Vercel 토큰과 광고계정 `insights` 권한이 실제 런타임에서 정상이다.
+- **상태 전이 감시(`8d70ab3`):** `jobs`의 `meta_ads_health_state` 마커에 마지막 상태를 저장한다. 정상→이상 최초 전환만 Slack+workflow failure를 남기고, 같은 이상이 이어지면 `repeatSuppressed=true`와 HTTP 200으로 억제해 `cron_watchdog` 중복 경보까지 막는다. 수동 `notify=true`는 `force=1`로 명시 재알림할 수 있다.
+- **스케줄 복구:** 매일 `11:45 KST` schedule과 교차 제공자 하트비트를 다시 켰다. 첫 예정 실행 전에는 26시간 유예해 신규 스케줄 미실행 오탐을 막는다. GitHub workflow 상태 `active` 확인.
+- **상태 시드·멱등 실측:** POST run `34114027197` = `healthy / stateChanged=true / alerted=false`; 즉시 재실행 `34114135875` = `healthy / stateChanged=false / alerted=false`. production 자동배포 `dpl_VRGjGgWVpugFd7R3ZPXNbLpKihmH` Ready·`-mu` 별칭 확인.
+- **게이트:** web 전체 `459/459`, `tsc --noEmit`, production build, pre-push 타입체크 통과.
+- **🟠 로컬 정본만 대기:** Vercel의 민감 변수는 `vercel env pull`에서 의도적으로 빈 문자열로 마스킹돼 `C:\Users\hwangkw\AI\.claude\influencer-seeding\web\.env.local`의 해당 값은 현재 비어 있다. 인앱 브라우저와 Windows 클립보드도 격리돼 자동 전달할 수 없었다. 사용자가 새 토큰을 이 파일의 `META_BUSINESS_ACCESS_TOKEN=` 뒤에 직접 붙여 저장하면 끝난다. `_yeomun_wt/web/.env.local` 스텁은 무접촉.
+- **남은 운영 제약:** 토큰 자체 만료는 없지만 Meta 데이터 접근 승인은 약 2개월 단위다. 자동 재발급은 사용자 재인증 없이 불가능하므로, 현재 헬스체크는 실패 전환 즉시 알림하는 안전망이다.
+
 ## ✅ 2026-09-07 [Claude 완료·라이브] 과거 리포트 **소급 편집 완료** — 오탐 구간 3건 전부 정리(사용자 승인)
 - **편집한 메시지 3건(#빙과_마케팅_리포트, 전부 `chat.update` 제자리 편집 · ts 불변 · 채널 재알림 없음):**
 
