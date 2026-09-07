@@ -854,20 +854,14 @@ test("dailyAuto gates both import and export on collection completion", () => {
   assert.match(appsScript, /function fetchCollectionStatus_\(targetDate, notify, reason\)/);
   assert.match(appsScript, /function importStatsDailyGate_\(\)/);
   assert.match(appsScript, /\["importStats", importStatsDailyGate_\]/);
-  assert.match(appsScript, /function ensureDailyImportBeforeExport_\(targetDate\)/);
-  assert.match(
-    appsScript,
-    /function ensureDailyImportBeforeExport_\(targetDate\)[\s\S]*?importStats\("daily_auto"\)/,
-  );
-  assert.match(
-    appsScript,
-    /clearExportStatsGatePending_\(\);[\s\S]*?ensureDailyImportBeforeExport_\(targetDate\);[\s\S]*?const ok = exportStatsWithOptions_\(\{ incrementTargetDate: targetDate \}\)/,
-  );
+  assert.match(appsScript, /markImportStatsGate_\("RUNNING", targetDate, "collection_complete"\)/);
+  assert.doesNotMatch(appsScript, /function ensureDailyImportBeforeExport_/);
   assert.match(appsScript, /function exportStatsDailyGate_\(\)/);
   assert.match(appsScript, /function exportStatsAfterCollection_\(\)/);
   assert.match(appsScript, /newTrigger\("exportStatsAfterCollection_"\)[\s\S]*?\.after\(EXPORT_STATS_GATE_RETRY_DELAY_MS_\)/);
   assert.match(appsScript, /\["exportStats", exportStatsDailyGate_\]/);
-  assert.match(appsScript, /withDocLock_\(function\(\) \{[\s\S]*?const ok = exportStatsWithOptions_\(\{ incrementTargetDate: targetDate \}\)/);
+  assert.match(appsScript, /preserveExistingMetrics: !importReady/);
+  assert.match(appsScript, /write_mode: importReady \? "full" : "fill_blanks_only"/);
   assert.match(appsScript, /EXPORT_STATS_COLLECTION_GATE_LAST_STATUS/);
 
   assert.match(appsScript, /DAILY_AUTO_CONTINUATION_DELAY_MS_ = 60 \* 1000/);
@@ -890,10 +884,15 @@ test("dailyAuto gates both import and export on collection completion", () => {
   assert.match(continuationBody, /pending\.next_index = i \+ 1;/);
   assert.match(continuationBody, /pending\.completed_stages = stages;/);
   assert.match(continuationBody, /saveDailyAutoContinuation_\(pending\)/);
+  assert.match(continuationBody, /name === "importStats"[\s\S]*?enqueueDailyAutoContinuation_\(pending, DAILY_AUTO_CONTINUATION_DELAY_MS_\)/);
+  assert.match(continuationBody, /EXPORT_CONTINUATION_SCHEDULED/);
   assert.match(continuationBody, /DAILY_AUTO_LAST_FINISHED_AT/);
   assert.match(continuationBody, /removeDailyAutoContinuationTriggers_\(\["dailyAutoContinuationWatchdog_"\]\)/);
   const watchdogBody = appsScript.slice(watchdogStart, appsScript.indexOf("function scheduleDailyAutoRetry_", watchdogStart));
   assert.match(watchdogBody, /pending\.attempt >= DAILY_AUTO_CONTINUATION_MAX_ATTEMPTS_/);
+  assert.match(watchdogBody, /timedOutStage === "importStats"/);
+  assert.match(watchdogBody, /pending\.next_index \+= 1/);
+  assert.match(watchdogBody, /IMPORT_TIMEOUT_EXPORT_SCHEDULED/);
   assert.match(watchdogBody, /notifyExportStatsGateTimeout_\(collectionTargetDate_\(\), reason\)/);
   assert.match(watchdogBody, /throw new Error\(reason\)/);
   assert.match(watchdogBody, /pending\.attempt \+= 1/);
@@ -918,6 +917,7 @@ test("exportStats overwrites only automatic DB metrics and never carry-forwards"
   assert.match(appsScript, /manualDates\[measuredAt\] = pair\.length >= 3 \? pair\[2\] === true : true/);
   assert.match(appsScript, /const skipFormulaRefresh = !!\(options && options\.skipFormulaRefresh === true\)/);
   assert.match(appsScript, /if \(incrementCol && !skipFormulaRefresh\)/);
+  assert.match(appsScript, /preserveExistingMetrics && cell !== "" && cell !== null/);
 });
 
 test("formula-only refresh rewrites I without touching date values or H", () => {

@@ -41,6 +41,7 @@ const CONFIG = {
   ENSURE_DAILY_AUDITS_URL: "https://influencer-seeding-mu.vercel.app/api/ops/ensure-daily-audits", // 수식·제작자 감사를 함께 보장(오늘 성공한 워크플로는 건너뜀)
   ENSURE_DAILY_REPORT_URL: "https://influencer-seeding-mu.vercel.app/api/ops/ensure-daily-report", // 일일 증분 리포트 발송 보장(오늘 성공 실행 0건이면 자동 dispatch)
   COLLECTION_STATUS_URL: "https://influencer-seeding-mu.vercel.app/api/ops/collection-status", // exportStats 전 대상일 자정수집 완료 마커 확인
+  EXPORT_STATS_HEARTBEAT_URL: "https://influencer-seeding-mu.vercel.app/api/ops/automation-heartbeat", // exportStats 완료 마커(DB ops_daily_runs)
   DB_SHEET_SYNC_ALERT_URL: "https://influencer-seeding-mu.vercel.app/api/ops/db-sheet-sync-alert", // DB→시트 독립 동기화 실패 Slack 경고
   HEADER_ROW: 1,
   DATA_START_ROW: 2,
@@ -1699,6 +1700,7 @@ const DAILY_AUTO_CONTINUATION_DELAY_MS_ = 60 * 1000;
 const DAILY_AUTO_CONTINUATION_WATCHDOG_DELAY_MS_ = 32 * 60 * 1000;
 const DAILY_AUTO_CONTINUATION_MAX_ATTEMPTS_ = 1;
 const DAILY_AUTO_CONTINUATION_PROP_ = "DAILY_AUTO_CONTINUATION_PENDING_JSON";
+const DAILY_AUTO_IMPORT_RETRY_AFTER_EXPORT_PROP_ = "DAILY_AUTO_IMPORT_RETRY_AFTER_EXPORT_DATE";
 const EXPORT_STATS_GATE_RETRY_DELAY_MS_ = 15 * 60 * 1000;
 const EXPORT_STATS_GATE_MAX_ATTEMPTS_ = 16; // 08:30 실행이 4시간가량 지연된 수집도 따라잡는다.
 const EXPORT_STATS_GATE_PENDING_PROP_ = "EXPORT_STATS_COLLECTION_GATE_PENDING_JSON";
@@ -1760,27 +1762,13 @@ function importStatsDailyGate_() {
     Logger.log("importStats_collection_gate_skip " + JSON.stringify({ target_date: targetDate, reason: "collection_not_complete" }));
     return true;
   }
+  markImportStatsGate_("RUNNING", targetDate, "collection_complete");
   const ok = importStats("daily_auto");
   if (ok === false) {
     markImportStatsGate_("IMPORT_ERROR", targetDate, "importStats returned false");
     throw new Error("importStats returned false");
   }
   markImportStatsGate_("OK", targetDate, "collection_complete");
-  return true;
-}
-
-// export 재시도 트리거가 수집 완료를 확인한 경우, 그 전에 import가 생략됐으면 먼저 수행한다.
-// 같은 대상일 import가 이미 성공했다면 다시 올리지 않아 불필요한 대량 upsert를 피한다.
-function ensureDailyImportBeforeExport_(targetDate) {
-  const props = PropertiesService.getScriptProperties();
-  if (props.getProperty(IMPORT_STATS_GATE_STATUS_PROP_) === "OK" &&
-      props.getProperty(IMPORT_STATS_GATE_TARGET_PROP_) === targetDate) return true;
-  const ok = importStats("daily_auto");
-  if (ok === false) {
-    markImportStatsGate_("IMPORT_ERROR", targetDate, "importStats returned false");
-    throw new Error("importStats returned false");
-  }
-  markImportStatsGate_("OK", targetDate, "collection_complete_retry");
   return true;
 }
 
@@ -1873,10 +1861,17 @@ function runExportStatsCollectionGate_(source, pending) {
 
   clearExportStatsGatePending_();
   let exported = false;
+  const importStatus = props.getProperty(IMPORT_STATS_GATE_STATUS_PROP_) || "UNKNOWN";
+  const importTarget = props.getProperty(IMPORT_STATS_GATE_TARGET_PROP_) || "";
+  const importReady = importStatus === "OK" && importTarget === targetDate;
   try {
-    ensureDailyImportBeforeExport_(targetDate);
     exported = withDocLock_(function() {
-      const ok = exportStatsWithOptions_({ incrementTargetDate: targetDate });
+      const ok = exportStatsWithOptions_({
+        incrementTargetDate: targetDate,
+        heartbeatSource: source,
+        preserveExistingMetrics: !importReady,
+        importGateStatus: importReady ? "OK" : importStatus,
+      });
       if (ok === false) return false;
       repairStaleMetricFormulaRanges_(getSheet_());
       return true;
@@ -1914,11 +1909,22 @@ function runExportStatsCollectionGate_(source, pending) {
     EXPORT_STATS_COLLECTION_GATE_LAST_FINISHED_AT: new Date().toISOString(),
     EXPORT_STATS_COLLECTION_GATE_LAST_REASON: "collection_complete",
   }, false);
+  if (!importReady) {
+    // import가 시간초과/지연돼도 export는 빈칸만 채우는 안전 모드로 끝낸다.
+    // 시트 수기값을 DB 자동값으로 덮지 않은 뒤, import만 별도 실행창에서 재시도한다.
+    props.setProperty(DAILY_AUTO_IMPORT_RETRY_AFTER_EXPORT_PROP_, targetDate);
+    if (source !== "dailyAuto") {
+      scheduleDailyAutoRetry_(["importStats"], sourceStartedAt);
+      props.deleteProperty(DAILY_AUTO_IMPORT_RETRY_AFTER_EXPORT_PROP_);
+    }
+  }
   Logger.log("exportStats_collection_gate_result " + JSON.stringify({
     status: "OK",
     source: source,
     target_date: targetDate,
     attempt: attempt,
+    import_status: importStatus,
+    write_mode: importReady ? "full" : "fill_blanks_only",
     run: status.run || null,
   }));
   return true;
@@ -2042,13 +2048,19 @@ function scheduleDailyAutoContinuation_(sourceStartedAt, stageNames, delayMs, at
     attempt: Number(attempt || 0),
     scheduled_at: new Date().toISOString(),
   };
+  enqueueDailyAutoContinuation_(pending, delayMs || DAILY_AUTO_CONTINUATION_DELAY_MS_);
+  Logger.log("dailyAuto_continuation_scheduled " + JSON.stringify(pending));
+  return names;
+}
+
+function enqueueDailyAutoContinuation_(pending, delayMs) {
+  removeDailyAutoContinuationTriggers_();
   saveDailyAutoContinuation_(pending);
   ScriptApp.newTrigger("dailyAutoContinuation_")
     .timeBased()
     .after(delayMs || DAILY_AUTO_CONTINUATION_DELAY_MS_)
     .create();
-  Logger.log("dailyAuto_continuation_scheduled " + JSON.stringify(pending));
-  return names;
+  return true;
 }
 
 function scheduleDailyAutoContinuationWatchdog_() {
@@ -2069,6 +2081,13 @@ function parseDailyAutoContinuation_(raw) {
   pending.completed_stages = Array.isArray(pending.completed_stages) ? pending.completed_stages : [];
   pending.attempt = Math.max(0, Number(pending.attempt || 0));
   return pending;
+}
+
+function mergeDailyAutoStages_(priorStages, continuationStages) {
+  const names = {};
+  (continuationStages || []).forEach(function(stage) { names[stage.name] = true; });
+  return (priorStages || []).filter(function(stage) { return !names[stage.name]; })
+    .concat(continuationStages || []);
 }
 
 function dailyAutoContinuation_() {
@@ -2100,20 +2119,50 @@ function dailyAutoContinuation_() {
       const name = pending.stages[i];
       if (typeof defs[name] !== "function") throw new Error("알 수 없는 dailyAuto 단계: " + name);
       pending.next_index = i; // 강제종료되면 이 단계부터 멱등 재실행한다.
+      pending.active_stage = name;
+      pending.stage_started_at = new Date().toISOString();
       saveDailyAutoContinuation_(pending);
       const stage = runDailyAutoStage_(name, defs[name]);
       stages.push(stage);
       pending.next_index = i + 1;
       pending.completed_stages = stages;
+      pending.active_stage = "";
+      pending.stage_started_at = "";
+      pending.attempt = 0;
       saveDailyAutoContinuation_(pending);
+
+      // importStats와 exportStats는 반드시 서로 다른 Apps Script 실행창을 쓴다.
+      // import가 정상 반환한 경우 여기서 새 트리거를 열고, 강제종료는 아래 watchdog이
+      // 같은 방식으로 export부터 재개한다.
+      if (name === "importStats" && pending.next_index < pending.stages.length) {
+        removeDailyAutoContinuationTriggers_(["dailyAutoContinuationWatchdog_"]);
+        enqueueDailyAutoContinuation_(pending, DAILY_AUTO_CONTINUATION_DELAY_MS_);
+        const phaseStages = mergeDailyAutoStages_(priorStages, stages);
+        props.setProperties({
+          DAILY_AUTO_LAST_STATUS: "EXPORT_CONTINUATION_SCHEDULED",
+          DAILY_AUTO_LAST_STAGES_JSON: JSON.stringify(phaseStages),
+          DAILY_AUTO_LAST_CONTINUATION_PHASE_FINISHED_AT: new Date().toISOString(),
+        }, false);
+        Logger.log("dailyAuto_import_phase_result " + JSON.stringify({
+          status: stage.status,
+          next_stage: pending.stages[pending.next_index],
+          stage: stage,
+        }));
+        return true;
+      }
     }
 
     removeDailyAutoContinuationTriggers_(["dailyAutoContinuationWatchdog_"]);
     props.deleteProperty(DAILY_AUTO_CONTINUATION_PROP_);
-    const allStages = priorStages.concat(stages);
+    const allStages = mergeDailyAutoStages_(priorStages, stages);
     const errors = allStages.filter(function(stage) { return stage.status !== "OK"; });
     const failedNames = stages.filter(function(stage) { return stage.status !== "OK"; })
       .map(function(stage) { return stage.name; });
+    const importRetryTarget = props.getProperty(DAILY_AUTO_IMPORT_RETRY_AFTER_EXPORT_PROP_) || "";
+    if (importRetryTarget === collectionTargetDate_() && failedNames.indexOf("importStats") < 0) {
+      failedNames.push("importStats");
+    }
+    props.deleteProperty(DAILY_AUTO_IMPORT_RETRY_AFTER_EXPORT_PROP_);
     let retryScheduled = [];
     try {
       retryScheduled = scheduleDailyAutoRetry_(failedNames, pending.source_started_at || startedAt);
@@ -2151,6 +2200,31 @@ function dailyAutoContinuationWatchdog_() {
   const pending = parseDailyAutoContinuation_(props.getProperty(DAILY_AUTO_CONTINUATION_PROP_));
   if (!pending) {
     Logger.log("dailyAuto_continuation_watchdog_skip: pending 없음");
+    return true;
+  }
+  const timedOutStage = pending.active_stage || pending.stages[pending.next_index] || "unknown";
+  if (timedOutStage === "importStats" && pending.next_index + 1 < pending.stages.length) {
+    const finishedAt = new Date().toISOString();
+    pending.completed_stages.push({
+      name: "importStats",
+      status: "ERROR",
+      started_at: pending.stage_started_at || pending.scheduled_at || "",
+      finished_at: finishedAt,
+      duration_ms: DAILY_AUTO_CONTINUATION_WATCHDOG_DELAY_MS_,
+      error: "Apps Script 실행 한도 초과 — exportStats를 독립 실행으로 계속합니다.",
+    });
+    pending.next_index += 1;
+    pending.active_stage = "";
+    pending.stage_started_at = "";
+    pending.attempt = 0;
+    enqueueDailyAutoContinuation_(pending, DAILY_AUTO_CONTINUATION_DELAY_MS_);
+    markImportStatsGate_("TIMEOUT", collectionTargetDate_(), "continuation_watchdog_timeout");
+    props.setProperties({
+      DAILY_AUTO_LAST_STATUS: "IMPORT_TIMEOUT_EXPORT_SCHEDULED",
+      DAILY_AUTO_LAST_CONTINUATION_WATCHDOG_AT: finishedAt,
+    }, false);
+    notifyExportStatsGateTimeout_(collectionTargetDate_(), "import_timeout_export_scheduled");
+    Logger.log("dailyAuto_continuation_watchdog_skip_import " + JSON.stringify(pending));
     return true;
   }
   if (pending.attempt >= DAILY_AUTO_CONTINUATION_MAX_ATTEMPTS_) {
@@ -2512,7 +2586,55 @@ function sheetMetricWriteDecision_(cell, collected, manual) {
 }
 
 function exportStats() {
-  return exportStatsWithOptions_(null);
+  return exportStatsWithOptions_({ heartbeatSource: "manual" });
+}
+
+function markExportStatsSuccess_(summary) {
+  const payload = {
+    job: "exportStats",
+    written_date: summary.writtenDate,
+    cells_written: summary.cellsWritten,
+    blank_cells_filled: summary.blankCellsFilled,
+    auto_cells_corrected: summary.autoCellsCorrected,
+    formula_rows_written: summary.formulaRowsWritten,
+    added_date_columns: summary.addedDateColumns,
+    source: summary.source,
+    write_mode: summary.writeMode,
+    import_status: summary.importStatus,
+  };
+  const res = UrlFetchApp.fetch(CONFIG.EXPORT_STATS_HEARTBEAT_URL, {
+    method: "post",
+    contentType: "application/json",
+    headers: authHeaders_(),
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true,
+  });
+  const code = res.getResponseCode();
+  const body = res.getContentText();
+  if (code !== 200) throw new Error(`exportStats heartbeat API ${code}: ${body.slice(0, 300)}`);
+  const data = JSON.parse(body);
+  if (!data.ok || !data.marker || String(data.marker.run_date).slice(0, 10) !== payload.written_date) {
+    throw new Error("exportStats heartbeat 응답 검증 실패: " + body.slice(0, 300));
+  }
+  Logger.log("exportStats_heartbeat " + JSON.stringify(payload));
+  return data.marker;
+}
+
+function verifyExportStatsHeartbeat() {
+  const targetDate = collectionTargetDate_();
+  const res = UrlFetchApp.fetch(
+    CONFIG.EXPORT_STATS_HEARTBEAT_URL + "?written_date=" + encodeURIComponent(targetDate),
+    { method: "get", headers: authHeaders_(), muteHttpExceptions: true }
+  );
+  const code = res.getResponseCode();
+  const body = res.getContentText();
+  if (code !== 200) throw new Error(`exportStats heartbeat 조회 ${code}: ${body.slice(0, 300)}`);
+  const data = JSON.parse(body);
+  if (!data.ok || !data.marker || String(data.marker.run_date).slice(0, 10) !== targetDate) {
+    throw new Error("exportStats heartbeat 미확인: " + body.slice(0, 300));
+  }
+  Logger.log("exportStats_heartbeat_verified " + JSON.stringify(data.marker));
+  return data.marker;
 }
 
 // 날짜 원천값과 H는 건드리지 않고 I열 공식만 최신 수집일 규칙으로 전수 갱신한다.
@@ -2525,6 +2647,9 @@ function exportStatsWithOptions_(options) {
   const skipFormulaRefresh = !!(options && options.skipFormulaRefresh === true);
   const formulaOnly = !!(options && options.formulaOnly === true);
   const requestedIncrementTargetDate = String((options && options.incrementTargetDate) || "").slice(0, 10);
+  const heartbeatSource = String((options && options.heartbeatSource) || "exportStats").slice(0, 80);
+  const preserveExistingMetrics = !!(options && options.preserveExistingMetrics === true);
+  const importGateStatus = String((options && options.importGateStatus) || "UNKNOWN").slice(0, 80);
   try {
     const sheet = getSheet_();
     const fieldCols = buildFieldCols_(sheet);
@@ -2686,6 +2811,10 @@ function exportStatsWithOptions_(options) {
         const bi = dateCols[j].col - firstCol;
         const date = dateCols[j].date;
         const cell = block[i][bi];
+        if (preserveExistingMetrics && cell !== "" && cell !== null) {
+          preserved++;
+          continue;
+        }
         const postedAt = postedAtByRow[i];
         if (isBeforePostedDate_(date, postedAt)) {
           if (cell !== "" && cell !== null) { newBlock[i][bi] = ""; prePostedCleared++; }
@@ -2923,6 +3052,19 @@ function exportStatsWithOptions_(options) {
       if (dateKeyConflicts) msg += `\n⚠️ 중복 URL 키의 변경 ${dateKeyConflicts}칸은 어느 행이 정본인지 불명확해 쓰지 않았습니다.`;
       if (concurrentCellSkips) msg += `\n🛡️ 계산 뒤 사람이 수정한 ${concurrentCellSkips}칸은 최신 수기값을 보존했습니다.`;
       if (orphanRows) msg += `\n🧟 URL 없이 숫자만 있는 '고아 행' ${orphanRows}개 발견 — 행 삭제로 정리하세요(데이터는 DB에 있음).`;
+    }
+    if (!formulaOnly) {
+      markExportStatsSuccess_({
+        writtenDate: incrementTargetDate,
+        cellsWritten: dateKeyWrites,
+        blankCellsFilled: filled,
+        autoCellsCorrected: autoOverwritten,
+        formulaRowsWritten: incWritten,
+        addedDateColumns: addedCols,
+        source: heartbeatSource,
+        writeMode: preserveExistingMetrics ? "fill_blanks_only" : "full",
+        importStatus: importGateStatus,
+      });
     }
     safeAlert_(msg);
     return true;
