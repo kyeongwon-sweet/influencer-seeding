@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## ✅ 2026-09-07 [Codex 완료·라이브 시트/DB] 25.5_mag 게시일 08-30 → 08-28 정정
+- **대상·근거:** 연동시트 `콘텐츠 대시보드 연동`의 `3356행`, `25.5_mag`, URL `https://www.instagram.com/reel/DclKlzuJof6/`(`ig:DclKlzuJof6`). 보호형 dry-run이 대상 **정확히 1행**, 기존 게시일 `2026-08-30`, 헤더 `업로드일`, A:O 중 비대상 14열 불변 조건을 확인했다.
+- **실행:** 로컬 백업 `scratchpad/posted_at_25_5_mag_backup_20260907_094420.json` 생성 후 게시일 셀 **1개만** `2026-08-28`로 수정. 실행 직전·직후 URL/계정/행수와 A:O의 다른 값·수식을 재검증해 `status=OK · untouched_columns=14` 확인. 조회수·도달수·날짜별 통계·헤더는 무접촉.
+- **동기화·검증:** `syncAll()` 완료 로그는 `비교 3,532 · 신규 8 · 수정 1`이었다. 이어 읽기 전용 `verifyPostedAt20260907()`가 오류 없이 완료되어 **시트 posted_at=2026-08-28 · DB posted_at=2026-08-28 · DB 매칭 1건**의 단언을 모두 통과했다. Apify 미저장값 `104,248`은 수기로 쓰지 않았으며 다음 정상 수집부터 자동 복구 대상으로 둔다.
+- **코드·라이브:** 보호형 repair/runner/계약 테스트 `5ae8196c`·편집기용 0인자 래퍼 `8bf02c9f`. 기존 `syncAll()`은 성공 시 `undefined`를 반환하는데 래퍼가 `true`만 성공으로 본 오판을 `76472465`에서 수정(집중 테스트 **5/5**, `tsc --noEmit`, prepared JS syntax 통과). guarded clasp가 fresh pull 후 기존 32파일을 보존해 **09:56:30 KST** push하고 repo 소유 15파일 재-pull 일치를 확인했다.
+- **운영 메모:** Apps Script Execution API는 신규 함수와 기존 함수 모두 `403 caller lacks permission`이라 이번 실행은 인증된 Apps Script 편집기 UI를 사용했다. 공유 필터는 해제하지 않았다.
+
 ## 🔧 2026-09-07 [Claude 보강] 교차언어 계약 테스트의 '유일 매치' 가드 — 계약 테스트 자신의 조용한 사각 제거
 - **문제:** 어제 넣은 계약 테스트가 소스에서 상수·백로그 창을 뽑을 때 `re.search`/`.match()`를 써서 **첫 매치**만 봤다. 나중에 같은 모양(`\.days > N`, `gapDays > N`)이 앞쪽에 하나 더 생기면 **엉뚱한 줄을 고정**한다. 특히 미끼 값이 우연히 계약값과 같으면 **테스트는 통과하면서 진짜 드리프트를 놓친다** — 드리프트를 막으려는 테스트 안에 조용한 실패 모드가 있었다.
 - **수정:** 양쪽에 `_sole_match`/`soleMatch` 도입 — 패턴이 **정확히 1건**일 때만 값을 쓰고, 0건(이름 변경)·2건 이상(모호)은 명시적으로 실패시킨다. `scripts/test_metric_contract.py`, `web/tests/metric-contract.test.ts`.
