@@ -102,6 +102,20 @@ def _is_internal_channel(post) -> bool:
     return any(t in _channel_type(post) for t in ("위성채널", "온드미디어"))
 
 
+def _shares_values_by_design(post) -> bool:
+    """같은 콘텐츠의 값을 의도적으로 공유하는 미러링/내부채널인가.
+
+    미러링 라벨은 계정명에만 붙는 경우(예: 오하루(틱톡/미러링))도 있고,
+    예전 소재명·프로젝트명에만 남은 경우도 있어 세 필드를 각각 확인한다.
+    서비스·무상협찬은 비용이 0인 이유일 뿐 값 공유 근거는 아니므로 포함하지 않는다.
+    """
+    p = post or {}
+    return (
+        _is_internal_channel(p)
+        or any(is_mirror_label(p.get(field)) for field in ("account_name", "asset_name", "project_name"))
+    )
+
+
 def _is_free_seed_manual(post) -> bool:
     return "무상시딩" in _channel_type(post)
 
@@ -271,14 +285,8 @@ def _integrity_lines(db, posts):
     #      복사 지문(거의 확실)과 급등(정황)을 분리해 알린다. 차단·자동 정정은 하지 않는다(절대규칙).
     #      ⚠️ 미러링·내부채널(위성/온드)은 같은 콘텐츠를 여러 채널로 추적해 같은 값을 의도적으로
     #         적는 경우가 있다 → 복사 알림에서 제외한다(실측 28개 중 10개가 이 유형).
-    #      ⚠️ 여기는 **asset_name/project_name** 만 본다(account_name 아님) — 판정 목적이
-    #         '값을 의도적으로 공유하는가'라서 위 리포트의 미러링 판정과 필드 집합이 다르다.
-    #         account_name 까지 넓히면 복사 알림 민감도가 내려가므로 임의로 바꾸지 않는다
-    #         (2026-09-07 확인: 오하루(틱톡/미러링)처럼 account_name 에만 라벨이 있는 건은
-    #          이 제외에 안 걸린다 — 사용자 판단 대기 중인 알려진 구멍).
-    def _shares_values_by_design(p):
-        name = str((p or {}).get("asset_name") or (p or {}).get("project_name") or "")
-        return is_mirror_label(name) or _is_internal_channel(p or {})
+    #      2026-09-07 사용자 승인: account_name 에만 라벨이 있는 미러링도 제외한다.
+    #      서비스·무상협찬은 '비용 0' 근거일 뿐 값 공유 근거는 아니므로 여기서는 제외하지 않는다.
     skip_copy = {p["id"] for p in posts if _shares_values_by_design(p)}
     copy_hits, spike_hits = [], []
     for pid, rows in pseries.items():                    # 조회수만 — 배너 reach는 대상 아님
