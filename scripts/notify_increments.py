@@ -10,7 +10,7 @@ import json
 import urllib.parse
 import urllib.request
 from datetime import date
-from channel_kind import is_banner_channel
+from channel_kind import is_banner_channel, is_free_by_design
 from db import get_client
 
 CHANNEL = os.getenv("SLACK_CHANNEL") or "C0B4F7GBX17"  # 기본 #빙과_마케팅_리포트 (빈값이면 폴백). DM 미리보기 시 user id 주입
@@ -565,16 +565,17 @@ def main():
 
     def f(n): return f"{n:,}"
 
-    def _cpv(cost, views, ct):
+    def _cpv(cost, views, ct, name=None):
         # 배너는 views 자리에 도달수(reach 누적)가 들어옴 → CPV = 비용/도달수 = '도달당비용'(사용자 지시).
         # 그 외는 비용/누적조회수 = 조회당비용. 라벨은 공통 'CPV'.
         if not cost:
-            # 진짜 무상 채널: 온드미디어·위성채널·무상시딩만. 그 외(협찬·바이럴)는 유상 채널이므로
+            # 진짜 무상 채널: 온드미디어·위성채널·무상시딩. 그 외(협찬·바이럴)는 유상 채널이므로
             #   cost 없으면 '무상'이 아니라 '가격미매핑'(₩0 미기입 또는 DB cost 미동기화 = 확인 필요).
             #   (2026-09-03 수정: 협찬이 cost=0일 때 '무상'으로 오표기되던 버그.)
-            _c = ct or ""
-            if any(x in _c for x in ("온드미디어", "위성채널", "무상시딩")):
-                return "무상"
+            #   + 2026-09-07 사용자 지시: **미러링은 0원이 정상**(원본 게시물에 비용이 붙어 있음)이라
+            #     '무상(미러링)'으로 표기한다. 판정은 channel_kind.is_free_by_design 단일 정본.
+            if is_free_by_design(ct, name):
+                return "무상(미러링)" if name and "미러링" in str(name) else "무상"
             return "가격미매핑"
         if not views:
             return "CPV -"
@@ -675,9 +676,11 @@ def main():
         lines.append(f"⚠️ *미분류 {unclassified_cnt}건 (+{f(unclassified_inc)})* — 시트 채널분류가 DB에 아직 반영 안 됨(시트→DB 동기화 지연). 시트에서 `♻️ 전체 다시 추가`(syncAll) 실행 후 재발송하면 각 채널로 분류됩니다.")
     # ⚠️ 바이럴 배너 가격 미매핑 경고 — 배너는 유상인데 DB cost가 비어 CPV가 '무상'으로 둔갑하는 것 방지.
     #    시트엔 가격이 있어도 DB cost 동기화가 지연되면 여기 잡힘(신규 배너에서 흔함).
+    #    ⚠️ 미러링 배너는 원본에 비용이 붙어 있어 0원이 정상 → 경고에서 제외(is_free_by_design).
     banner_unmapped = [it for it in items
                        if "배너" in (it["channel_type"] or "") and "위성채널" not in (it["channel_type"] or "")
-                       and not it.get("cost")]
+                       and not it.get("cost")
+                       and not is_free_by_design(it["channel_type"], it.get("name"))]
     if banner_unmapped:
         lines.append("")
         lines.append(f"⚠️ *바이럴 배너 가격 미매핑 {len(banner_unmapped)}건* — 시트 비용 입력 또는 DB cost 동기화 확인 필요. 비용이 채워진 뒤 재발송하면 CPV가 정상 계산됩니다.")
@@ -690,7 +693,7 @@ def main():
         prod = (it.get("product") or "").strip()
         tag = f"[{_esc(prod)}] " if prod else ""
         pdate = it["posted_at"] or "업로드일 미상"
-        lines.append(f"{rank}. {tag}{label} _({it['platform']})_ *+{f(it['inc'])}*  {_cpv(it['cost'], it['cum'], it['channel_type'])}  `{pdate}`")
+        lines.append(f"{rank}. {tag}{label} _({it['platform']})_ *+{f(it['inc'])}*  {_cpv(it['cost'], it['cum'], it['channel_type'], it['name'])}  `{pdate}`")
 
     text = "\n".join(lines)
 
