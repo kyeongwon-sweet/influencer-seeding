@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## ✅⏸️ 2026-09-07 [Codex 완료 `036f430b`] Meta 토큰 복구 전 헬스체크 스케줄 보류 — 상시 2중 경보 차단
+- **Claude 검증 채택:** Vercel `SLACK_BOT_TOKEN`·`SLACK_WEBHOOK_URL` 중 웹훅 폴백이 살아 있어 알림 경로는 존재한다. 반면 현 만료 상태에서 schedule을 켜면 라우트 Slack 1건 + 실패 workflow를 집계하는 `cron_watchdog` 1건이 매일 반복돼 상시 빨간불이 된다.
+- **조치:** `.github/workflows/meta-ads-health.yml`은 `workflow_dispatch`만 남겼다. 기본 `notify=false`는 조용한 GET, 사람이 명시적으로 `notify=true`를 고를 때만 POST/Slack이다. 기존 교차 제공자 `WATCH_TARGETS`에서도 임시 제외해 "아직 켜지 않은 스케줄"을 미실행으로 오인하지 않는다.
+- **검증:** Meta/스케줄 focused test **10/10**, `tsc --noEmit`, pre-push 타입체크 통과. 다른 세션의 `scripts/*` WIP는 무접촉·미커밋 유지.
+- **재개 조건:** 새 시스템 사용자 토큰이 Vercel production + 로컬 정본에 반영되고 수동 헬스체크가 `healthy/HTTP 200`을 반환한 뒤, **정상→이상 상태 전이에서만 1회 알림**하도록 상태 저장을 붙여 schedule과 교차 하트비트를 다시 켠다. 알려진 장애 상태를 매일 재알림하지 않는다.
+
 ## ⚠️ 2026-09-07 [Claude 검증] Meta 헬스체크(0490f30b) 검증 통과 — 단 **토큰 교체 전까지 매일 2중 알림**이 뜬다
 - **Codex 보고 독립 확인 = 통과:** 내 선점 파일 5개 무접촉 / `dpl_4Kb8fJxzma6PMQ5DK9rWhNdYFZ74` production **Ready**·`-mu` 별칭 보유 / 헬스 라우트가 미들웨어 공개목록에 추가됨(`/api/ops/meta-ads-health(.*)`, 자체 CRON_SECRET 검사) / web **458**·python **260** 통과. (Codex 보고의 "453개"는 그 커밋 시점 값이고 이후 커밋 2건이 테스트를 더했다 — 불일치 아님.)
 - **➡️ 내 미실측 항목 해소:** 공개 헬스 라우트로 **프로덕션 토큰도 401/190 만료**가 확인됐다. 앞 섹션에서 "프로덕션은 추론"이라고 격하했던 부분은 이제 **실측**으로 올린다(측정 주체 Codex, 경로 = production 런타임에서 Meta 직접 호출).
