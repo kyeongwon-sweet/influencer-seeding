@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   decideMetaAdsHealthTransition,
   evaluateMetaAdsHealth,
+  META_ADS_UNHEALTHY_REMINDER_DAYS,
 } from "../lib/meta-ads-health.ts";
 
 const route = readFileSync(
@@ -33,21 +34,60 @@ test("Meta OAuth expiry and permission failures are classified without raw detai
   assert.equal(evaluateMetaAdsHealth(200, {}).status, "invalid_response");
 });
 
-test("Meta health alerts only on the first unhealthy transition", () => {
+test("Meta health alerts and fails on the first unhealthy transition", () => {
   assert.deepEqual(decideMetaAdsHealthTransition("healthy", false), {
     state: "unhealthy",
     changed: true,
+    reminderDue: false,
     shouldNotify: true,
     shouldFailWorkflow: true,
   });
-  assert.deepEqual(decideMetaAdsHealthTransition("unhealthy", false), {
+});
+
+test("Meta health stays quiet the day after an unhealthy alert", () => {
+  const lastAlertedAt = "2026-09-01T00:00:00.000Z";
+  assert.deepEqual(decideMetaAdsHealthTransition("unhealthy", false, {
+    lastAlertedAt,
+    nowMs: Date.parse("2026-09-02T00:00:00.000Z"),
+  }), {
     state: "unhealthy",
     changed: false,
+    reminderDue: false,
     shouldNotify: false,
     shouldFailWorkflow: false,
   });
-  assert.equal(decideMetaAdsHealthTransition("unhealthy", false, true).shouldNotify, true);
-  assert.equal(decideMetaAdsHealthTransition("unhealthy", true).state, "healthy");
+});
+
+test("Meta health repeats Slack only after seven unhealthy days", () => {
+  const decision = decideMetaAdsHealthTransition("unhealthy", false, {
+    lastAlertedAt: "2026-09-01T00:00:00.000Z",
+    nowMs: Date.parse("2026-09-08T00:00:00.000Z"),
+  });
+  assert.equal(META_ADS_UNHEALTHY_REMINDER_DAYS, 7);
+  assert.equal(decision.reminderDue, true);
+  assert.equal(decision.shouldNotify, true);
+  assert.equal(decision.shouldFailWorkflow, false);
+});
+
+test("Meta health stays quiet the day after a periodic reminder", () => {
+  const decision = decideMetaAdsHealthTransition("unhealthy", false, {
+    lastAlertedAt: "2026-09-08T00:00:00.000Z",
+    nowMs: Date.parse("2026-09-09T00:00:00.000Z"),
+  });
+  assert.equal(decision.reminderDue, false);
+  assert.equal(decision.shouldNotify, false);
+  assert.equal(decision.shouldFailWorkflow, false);
+});
+
+test("Meta health recovery stays quiet and green", () => {
+  const decision = decideMetaAdsHealthTransition("unhealthy", true, {
+    lastAlertedAt: "2026-09-01T00:00:00.000Z",
+    nowMs: Date.parse("2026-09-20T00:00:00.000Z"),
+  });
+  assert.equal(decision.state, "healthy");
+  assert.equal(decision.changed, true);
+  assert.equal(decision.shouldNotify, false);
+  assert.equal(decision.shouldFailWorkflow, false);
 });
 
 test("health route is cron-authenticated and never puts the Meta token in the URL", () => {
@@ -64,8 +104,13 @@ test("recovered-token workflow schedules stateful checks and supports quiet manu
   assert.match(workflow, /method=POST/);
   assert.match(workflow, /method=GET/);
   assert.match(workflow, /\?force=1/);
+  assert.match(workflow, /test_alert:/);
+  assert.match(workflow, /github\.event_name.*schedule/);
+  assert.match(workflow, /\?test_alert=1/);
   assert.match(workflow, /secrets\.CRON_SECRET/);
   assert.match(heartbeat, /meta-ads-health\.yml/);
   assert.match(route, /meta_ads_health_state/);
   assert.match(route, /repeatSuppressed/);
+  assert.match(route, /last_alerted_at/);
+  assert.match(route, /statePersisted: false/);
 });

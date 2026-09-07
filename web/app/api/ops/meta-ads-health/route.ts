@@ -13,6 +13,7 @@ export const runtime = "nodejs";
 
 const STATE_JOB_TYPE = "monitoring";
 const STATE_MARKER = "meta_ads_health_state";
+const TEST_ALERT_TEXT = "✅ [Meta 광고비 헬스체크] 알림 경로 테스트";
 
 type HealthResult = {
   ok: boolean;
@@ -43,6 +44,7 @@ async function readStoredState() {
     id: data?.id as string | undefined,
     state: normalizedState,
     lastChangedAt: typeof payload?.last_changed_at === "string" ? payload.last_changed_at : null,
+    lastAlertedAt: typeof payload?.last_alerted_at === "string" ? payload.last_alerted_at : null,
   };
 }
 
@@ -52,8 +54,10 @@ async function persistState(
   state: MetaAdsHealthState,
   changed: boolean,
   previousChangedAt: string | null,
+  previousAlertedAt: string | null,
+  alerted: boolean,
+  checkedAt: string,
 ) {
-  const checkedAt = new Date().toISOString();
   const payload = {
     ops_marker: STATE_MARKER,
     health_state: state,
@@ -64,6 +68,7 @@ async function persistState(
     target_date: result.targetDate ?? null,
     last_checked_at: checkedAt,
     last_changed_at: changed || !previousChangedAt ? checkedAt : previousChangedAt,
+    last_alerted_at: alerted ? checkedAt : previousAlertedAt,
   };
   const mutation = id
     ? getServerSupabase().from("jobs").update({ payload, error: null }).eq("id", id)
@@ -83,10 +88,15 @@ async function respond(req: NextRequest, result: HealthResult, alertText: string
 
   try {
     const previous = await readStoredState();
+    const checkedAt = new Date().toISOString();
     const transition = decideMetaAdsHealthTransition(
       previous.state,
       result.ok,
-      req.nextUrl.searchParams.get("force") === "1",
+      {
+        forceNotify: req.nextUrl.searchParams.get("force") === "1",
+        lastAlertedAt: previous.lastAlertedAt,
+        nowMs: Date.parse(checkedAt),
+      },
     );
     if (transition.shouldNotify) await notifyBot(alertText);
     await persistState(
@@ -95,12 +105,16 @@ async function respond(req: NextRequest, result: HealthResult, alertText: string
       transition.state,
       transition.changed,
       previous.lastChangedAt,
+      previous.lastAlertedAt,
+      transition.shouldNotify,
+      checkedAt,
     );
     return NextResponse.json({
       ...result,
       alerted: transition.shouldNotify,
+      reminderDue: transition.reminderDue,
       stateChanged: transition.changed,
-      repeatSuppressed: !result.ok && !transition.shouldFailWorkflow,
+      repeatSuppressed: !result.ok && !transition.shouldNotify,
     }, { status: transition.shouldFailWorkflow ? 503 : 200 });
   } catch {
     return NextResponse.json({
@@ -120,6 +134,15 @@ function yesterdayKST(): string {
 async function handler(req: NextRequest, notify: boolean) {
   if (checkCronAuth(req) !== "ok") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (req.method === "POST" && req.nextUrl.searchParams.get("test_alert") === "1") {
+    await notifyBot(TEST_ALERT_TEXT);
+    return NextResponse.json({
+      ok: true,
+      status: "test_alert_sent",
+      statePersisted: false,
+    });
   }
 
   const accessToken = process.env.META_BUSINESS_ACCESS_TOKEN;

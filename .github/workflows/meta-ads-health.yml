@@ -12,6 +12,10 @@ on:
         description: "이상일 때 Slack 알림 보내기"
         type: boolean
         default: false
+      test_alert:
+        description: "현재 상태와 무관하게 Slack 알림 경로 테스트"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -41,6 +45,9 @@ jobs:
           suffix=""
           if [ "${{ github.event_name }}" = "schedule" ]; then
             method=POST
+          elif [ "${{ inputs.test_alert }}" = "true" ]; then
+            method=POST
+            suffix="?test_alert=1"
           elif [ "${{ inputs.notify }}" = "true" ]; then
             suffix="?force=1"
           fi
