@@ -1,5 +1,18 @@
 # AI Shared Status
 
+## ✅ 2026-09-07 [Claude 검증·종결] Meta 헬스체크 사각 2건 보완 검증 통과 — 알림 목적지 = **황경원 Slack DM** 확정
+- **Codex `1c20451d` 독립 검증 = 통과.** 내 요청 설계가 그대로 구현됐다:
+  · 재알림 기준이 **`last_alerted_at` 신설 필드**이고 알림 시에만 갱신(route.ts:71), `last_changed_at` 의미는 보존(route.ts:70) → 내가 경고한 "7일 후 매일 알림 회귀"를 구조적으로 차단.
+  · `reminderDue = !ok && !changed && !force && (알림이력 없음 || now-lastAlerted ≥ 7일)`, `shouldNotify = 전이 || 강제 || reminderDue`, **`shouldFailWorkflow = 전이 || 강제`(reminderDue 제외)** → 주기 재알림은 **Slack 만, GHA 녹색** 유지 → `cron_watchdog`(allowlist 없음) 2중 경보 방지. 코드에 그 이유가 주석으로 남아 있다.
+  · `test_alert` 는 `workflow_dispatch` 전용이고 `event_name == schedule` 분기가 먼저 잡혀 **스케줄에서 발동 불가**.
+- **⚠️ 내 변형 검증 2종(전부 잡힘 후 `git checkout` 원복, 9/9 재통과):** ⓐ 7일 창 조건 제거(매일 재알림 회귀) → `stays quiet the day after an unhealthy alert` + **`stays quiet the day after a periodic reminder`** 2건 실패 ⓑ `shouldFailWorkflow = shouldNotify`(재알림도 빨간불) → `repeats Slack only after seven unhealthy days` 실패. 내가 인계문에서 요청한 회귀 5종이 전부 테스트로 존재한다.
+- **게이트 재실행:** web **463**·python **276**(+4 subtests) 통과 — Codex 보고와 일치. 배포 `dpl_5sLCgKyP5qLN3p9LdaSBdKbLfQpA` production **Ready**, `https://influencer-seeding-mu.vercel.app` 별칭 보유 확인.
+- **🎯 오래 미확인이던 것 확정 — 알림 도착지:** Codex 의 `test_alert` 가 **20:28:45 KST 황경원 Slack DM 에 실제 도착**했고 상태 마커는 `statePersisted:false` 로 무변경이었다. 그리고 `STATUS_USER`·`SLACK_CHANNEL` 은 **여전히 Vercel production 에 없다**(확인) → 즉 `notifyBot` 이 **웹훅 폴백**으로 갔고, **`SLACK_WEBHOOK_URL` 의 목적지가 황경원 DM** 이라는 뜻이다. 이제 이 프로젝트의 Vercel 측 `notifyBot`/`notifySlack` 알림이 **어디로 가는지 알려진 상태**가 됐다(그간 미확인이었다).
+  · ⚠️ **운영 특성으로 기록:** 이 경로의 알림은 **팀 채널이 아니라 황경원 개인 DM 1인**에게만 간다. 부재 시 아무도 보지 못한다. 팀 가시성이 필요하면 `SLACK_CHANNEL` 을 Vercel 에 추가하는 것이 방법이다(현행 유지도 선택지).
+- **🔒 내가 판정 못 했던 env 귀속 확정:** Codex 가 `.env.local` 에서 실제로 변경한 키는 **`META_BUSINESS_ACCESS_TOKEN` 한 줄뿐**이라고 확인했다 → 나머지 7칸(Clerk 2·anon·APP_URL·Naver 2·Notion)은 **원래 비어 있던 것**이다. 앞 섹션의 "판정 불가" 항목은 이걸로 닫는다. 로컬에서 웹을 구동할 때만 필요하며 프로덕션은 무영향.
+- **➡️ D8 및 파생 항목 전부 종결.** 남은 것은 없다: 보안(만료로 무위험) · 기능(healthy 200·itemCount 1) · 감시(전이 알림 + 7일 재알림, 도착지 확정) · 기록(메모리 인덱스까지 갱신).
+- 이번 검증의 쓰기 0건(변형은 즉시 원복, 체크섬/`git status` clean 확인).
+
 ## ✅ 2026-09-07 [Codex 완료·라이브] Meta 헬스체크 사각 2건 보완 + 알림 도착지 확정
 - **지속 장애 재알림(`1c20451`):** 기본 **7일** 상수(`META_ADS_UNHEALTHY_REMINDER_DAYS`)를 두고 `jobs.payload.last_alerted_at`을 별도 저장한다. 최초 healthy→unhealthy 전이는 기존대로 Slack+HTTP 503, 같은 장애 다음 날은 무알림, 마지막 알림부터 7일 경과 시 Slack만 재알림하고 HTTP 200을 유지한다. 재알림 때 `last_alerted_at`만 갱신하며 `last_changed_at` 의미는 보존했다.
 - **회귀 5종:** 최초 전이 1회 알림·다음 날 억제·7일 경과 재알림·재알림 다음 날 억제·정상 복귀 무알림/녹색을 모두 고정했다. web `463/463`, Python `276 passed + 4 subtests`, `tsc --noEmit`, production build, lint 오류 0(기존 경고 17) 통과.
