@@ -1,5 +1,19 @@
 # AI Shared Status
 
+## 🔎 2026-09-07 [Claude 진단·읽기전용] 위성 틱톡 '조회수 안 잡힘' 원인 분리 — 큐 제외 버그 아님(B5)
+- **방법(정본):** 내가 만든 분모로 세지 않고 `build_view_missing_queue.py`를 **직접 빌드**(읽기전용, 쓰기 동사 0건 확인)하고, 판정은 `exclusion_reason()`을 **그대로 import 해** 적용했다(재구현 금지).
+- **큐 실측(target 2026-09-06):** `eligible 835 / queue 11 / retryable 11`, 제외 내역 `measured 824 · collector_uncollectable 95 · non_tiktok_banner_reach_only 311 · free_seed_manual 4 · **internal_channel 0**`.
+  → **`internal_channel = 0`**: `channel_type`(위성채널) 때문에 큐에서 통째로 빠진 게시물은 **0건**이다. 2026-08-07 `c65a422` 수정이 유지되고 있으며, [[view-missing-queue-exclusion-blindspot]] 전례의 재발이 **아니다.**
+- **대상 재측정:** 위성채널 틱톡 활성 **411건**(09-05 인계문 399), 최근 7일 실측 0건 **95건**(인계문 104 → **감소**. "증가 중"이라는 우려는 현재 사실이 아니다).
+- **95건 내역(1:1 대조):**
+  - **87건 `collector_uncollectable`** — 수집기가 실제로 시도해 틱톡이 `POST_NOT_FOUND_OR_PRIVATE`를 반환하자 스스로 notes에 마킹하고 재시도에서 뺀 건들(노트 날짜 08-05~08-24 분포). **설계대로 동작**이며 게시물이 다시 잡히면 self-heal 로 큐에 복귀한다(코드 주석 기준. 실제 복구 사례는 확인 못 함).
+  - **8건 `QUEUED`(재시도 대상인데도 값이 안 잡힘)** — 전부 `이슈뜨기(틱톡)` (video 4 / photo 4). 매일 큐에 들어가 재시도되는데 **19~28일 연속 `play_count=NULL`**, 그런데 **좋아요·댓글 행은 매일 정상 생성**된다(즉 스크래퍼가 게시물에 닿기는 한다). `not_found_streak=0`, `review_requested_at` 없음, 조회수는 **한 번도** 잡힌 적 없음.
+    post_id: `5226308e` `56b8f215` `5b0983a2` `739b786f` `7d73f15d` `8084842a` `c86ab949` `f2cfe043`
+- **⚠️ 삭제로 단정 금지(반례 있음):** 이 8건은 전부 `likes_count=0` 평탄이라 [[tiktok-collection]]의 '삭제 신호'와 모양이 같지만, **같은 계정 형제글에서 사용자가 틱톡 공개 메타를 직접 확인해 실제 조회수 136을 확정한 전례**가 있다(상태판 line 356, `tt:7677969398061141255`). 즉 **살아 있는데 스크래퍼만 못 가져오는 경우가 실재**한다. 계정 자체는 정상(89건 중 73건은 조회수가 잡힌 이력 있음).
+- **기존 열린 항목과의 관계:** 상태판 line 1496 "재시도 큐의 틱톡 위성채널 18건(이슈뜨기·유머박스·썰뜨기·이슈박스) 계속 0 수집 — 선행 조사 대상"의 **후속**이다. 오늘 조사로 **18건 → 8건(전부 이슈뜨기)** 으로 좁혔고 원인 모양이 갈렸다.
+- **권고(쓰기·자동종료 없음):** ① 8건은 **사람 또는 Codex가 틱톡 실물 확인**(삭제인지, 살아 있는데 스크래퍼만 실패인지) — 값 자동 보정·자동 종료 금지. ② `좋아요 0 + 조회수 NULL`이 **N일 연속**이면 알리는 감지 규칙은 **현재 미구현**(전수 grep 확인) → 추가하면 이 유형이 조용히 쌓이는 걸 막는다. 규칙은 감지·알림만(절대규칙).
+- **이번 세션 쓰기 0건.** DB·시트·수집 무변경, Apify 호출 없음.
+
 ## ✅ 2026-09-07 [Codex 완료·라이브 검증] `dailyAuto` import/export 완전 분리 + `exportStats` DB 하트비트
 - **09-07 사고 재발 차단:** `dailyAuto` 본 실행의 메타데이터 단계 뒤에서 `importStats`와 `exportStats`를 **각각 별도 Apps Script 실행**으로 분리했다(`ad8dff26`). import가 30분 강제종료돼도 32분 워치독이 export 단계로 진행하며, 이때 export는 기존 시트값을 덮지 않는 `fill_blanks_only` 모드로 동작한다. 따라서 import 시간초과가 export를 굶기는 직렬 단일 실패점은 제거됐다. 아래의 예전 `05924cf1`/초기 Codex 항목 중 “importStats → exportStats가 같은 후속 실행” 설명은 이 항목으로 대체한다.
 - **완료 하트비트:** `exportStats`가 날짜셀·H/I 수식 쓰기와 검증을 모두 끝낸 뒤에만 `job=exportStats`, `written_date`, `last_success_at`, `cells_written`, `blank_cells_filled`, `auto_cells_corrected`, `formula_rows_written`, `added_date_columns`, `source`, `write_mode`, `import_status`를 기록한다. 인증 GET도 제공해 외부 마감형 워치독이 시트를 직접 읽지 않고 성공 여부를 확인할 수 있다(`a760a625`).
