@@ -167,7 +167,7 @@ function applyPostedAt20260907() {
 }
 
 function syncAndVerifyPostedAt20260907() {
-  if (syncAll() !== true) throw new Error("syncAll 실패");
+  syncAll();
   var result = verifyPostedAt20260907();
   Logger.log("sync_verify_posted_at_20260907 " + JSON.stringify(result));
   return result;

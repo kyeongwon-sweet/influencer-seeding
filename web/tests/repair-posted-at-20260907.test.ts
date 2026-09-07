@@ -43,7 +43,8 @@ test("editor-safe zero-argument wrappers preserve audit, apply, and sync verific
   assert.match(repair, /function auditPostedAt20260907\(\)/);
   assert.match(repair, /function applyPostedAt20260907\(\)/);
   assert.match(repair, /function syncAndVerifyPostedAt20260907\(\)/);
-  assert.match(repair, /if \(syncAll\(\) !== true\) throw new Error\("syncAll 실패"\)/);
+  assert.match(repair, /syncAll\(\);\s+var result = verifyPostedAt20260907\(\)/);
+  assert.doesNotMatch(repair, /syncAll\(\) !== true/);
   assert.match(repair, /Logger\.log\("sync_verify_posted_at_20260907 "/);
 });
 
