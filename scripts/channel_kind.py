@@ -44,6 +44,15 @@ FREE_CH = ("온드미디어", "위성채널", "무상시딩")
 MIRROR_MARK = "미러링"
 
 
+def is_mirror_label(account_name: Any) -> bool:
+    """계정 라벨이 미러링(원본을 다른 플랫폼에 복제 게시)인가.
+
+    ⚠️ 호출부에서 `"미러링" in name` 을 직접 쓰지 말 것 — is_banner_channel 이 Python 10곳·
+    TS 20곳에 흩어져 규칙이 어긋났던 것과 같은 함정이다(계약 테스트로 금지).
+    """
+    return MIRROR_MARK in str(account_name or "")
+
+
 def is_free_by_design(channel_type: Any, account_name: Any = None) -> bool:
     """cost=0 이 정상인 게시물인가(True=무상, False=가격미매핑으로 확인 필요).
 
@@ -51,4 +60,4 @@ def is_free_by_design(channel_type: Any, account_name: Any = None) -> bool:
     """
     if any(x in str(channel_type or "") for x in FREE_CH):
         return True
-    return MIRROR_MARK in str(account_name or "")
+    return is_mirror_label(account_name)

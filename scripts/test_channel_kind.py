@@ -64,3 +64,22 @@ def test_paid_channel_without_mirror_stays_unmapped():
 def test_free_by_design_ignores_project_asset_fields():
     """account_name 만 본다 — project/asset 에는 위성채널 139건이 '미러링'을 품어 신호가 오염된다."""
     assert not is_free_by_design("협찬 (인플루언서)", "이슈박스(유튜브)")
+
+
+def test_mirror_judgment_is_not_scattered():
+    """🚨 계약: '미러링' 판정을 호출부에 흩어 쓰지 말 것(channel_kind 단일 정본).
+
+    is_banner_channel 이 Python 10곳·TS 20곳에 흩어져 규칙이 어긋났던 것과 같은 함정이다.
+    2026-09-07 에 내가 notify_increments 안에 `"미러링" in name` 을 한 번 복제했다 — 이 테스트가
+    그때 있었으면 즉시 잡혔다.
+    """
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parent
+    bad = []
+    for f in sorted(root.glob("*.py")):
+        if f.name == "channel_kind.py" or f.name.startswith("test_"):
+            continue          # 정본 자신과 테스트 픽스처 문자열은 대상 아님
+        for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            if "미러링" in line and ("in " in line or "==" in line) and not line.lstrip().startswith("#"):
+                bad.append(f"{f.name}:{i}: {line.strip()}")
+    assert not bad, "미러링 판정은 channel_kind.is_mirror_label 을 쓰세요: " + " | ".join(bad)

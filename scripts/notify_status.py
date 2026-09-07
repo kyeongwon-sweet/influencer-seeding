@@ -8,9 +8,10 @@ import urllib.parse
 import urllib.request
 from datetime import date
 from db import get_client
-from channel_kind import is_banner_channel
+from channel_kind import is_banner_channel, is_mirror_label
 from ended_at_anomalies import ended_at_anomaly_lines
 from auto_end_rules import stale_high_cost_actives, stale_high_cost_line
+from cost_mapping_guard import unmapped_cost_actives, unmapped_cost_line
 from manual_entry_guards import copy_suspects, spike_suspects
 from metric_anomaly_guards import frozen_spike_suspects
 
@@ -270,9 +271,14 @@ def _integrity_lines(db, posts):
     #      복사 지문(거의 확실)과 급등(정황)을 분리해 알린다. 차단·자동 정정은 하지 않는다(절대규칙).
     #      ⚠️ 미러링·내부채널(위성/온드)은 같은 콘텐츠를 여러 채널로 추적해 같은 값을 의도적으로
     #         적는 경우가 있다 → 복사 알림에서 제외한다(실측 28개 중 10개가 이 유형).
+    #      ⚠️ 여기는 **asset_name/project_name** 만 본다(account_name 아님) — 판정 목적이
+    #         '값을 의도적으로 공유하는가'라서 위 리포트의 미러링 판정과 필드 집합이 다르다.
+    #         account_name 까지 넓히면 복사 알림 민감도가 내려가므로 임의로 바꾸지 않는다
+    #         (2026-09-07 확인: 오하루(틱톡/미러링)처럼 account_name 에만 라벨이 있는 건은
+    #          이 제외에 안 걸린다 — 사용자 판단 대기 중인 알려진 구멍).
     def _shares_values_by_design(p):
         name = str((p or {}).get("asset_name") or (p or {}).get("project_name") or "")
-        return "미러링" in name or _is_internal_channel(p or {})
+        return is_mirror_label(name) or _is_internal_channel(p or {})
     skip_copy = {p["id"] for p in posts if _shares_values_by_design(p)}
     copy_hits, spike_hits = [], []
     for pid, rows in pseries.items():                    # 조회수만 — 배너 reach는 대상 아님
@@ -366,6 +372,20 @@ def _integrity_lines(db, posts):
         lines.extend(ended_at_anomaly_lines(posts, kst_today.isoformat()))
     except Exception as e:
         print("[status] 종료일 이상 검사 실패(무시):", e)
+
+    # 9) 가격미매핑 활성 감시 — 리포트의 '가격미매핑' 경고는 그날 TOP10 에 든 글만 보이므로
+    #    총량이 보이지 않는다. 2026-09-03 `6682119e` 로 판정이 유상채널 전체로 넓어지면서
+    #    미러링 23건이 오탐이 됐는데 4일간 아무도 총량을 몰랐다(사람이 눈으로 발견).
+    #    이 줄은 매일 전수 카운트를 낸다 — 규칙이 깨져 오탐이 늘면 건수가 튀고(무상 제외
+    #    건수도 함께 찍는다), 진짜 미기입은 방치 일수로 압박한다. 값은 바꾸지 않는다.
+    try:
+        _um_line = unmapped_cost_line(
+            unmapped_cost_actives(posts, kst_today.isoformat()), kst_today.isoformat()
+        )
+        if _um_line:
+            lines.append(_um_line)
+    except Exception as e:
+        print("[status] 가격미매핑 검사 실패(무시):", e)
 
     # 6) 온드/위성 무상채널에 광고비·업체명 오입력 감시 — 리포트 CPV엔 무시하지만 시트·DB 정정 필요(사용자 지시로 댓글에만 표기).
     try:

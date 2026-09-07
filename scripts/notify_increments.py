@@ -10,7 +10,7 @@ import json
 import urllib.parse
 import urllib.request
 from datetime import date
-from channel_kind import is_banner_channel, is_free_by_design
+from channel_kind import is_banner_channel, is_free_by_design, is_mirror_label
 from db import get_client
 
 CHANNEL = os.getenv("SLACK_CHANNEL") or "C0B4F7GBX17"  # 기본 #빙과_마케팅_리포트 (빈값이면 폴백). DM 미리보기 시 user id 주입
@@ -575,7 +575,7 @@ def main():
             #   + 2026-09-07 사용자 지시: **미러링은 0원이 정상**(원본 게시물에 비용이 붙어 있음)이라
             #     '무상(미러링)'으로 표기한다. 판정은 channel_kind.is_free_by_design 단일 정본.
             if is_free_by_design(ct, name):
-                return "무상(미러링)" if name and "미러링" in str(name) else "무상"
+                return "무상(미러링)" if is_mirror_label(name) else "무상"
             return "가격미매핑"
         if not views:
             return "CPV -"
