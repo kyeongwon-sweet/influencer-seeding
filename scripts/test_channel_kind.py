@@ -1,7 +1,8 @@
 """배너 판정 회귀 테스트 — 2026-08-18 매거진 경계 규칙."""
 from __future__ import annotations
 
-from channel_kind import MAGAZINE_BANNER_FROM, is_banner_channel, is_free_by_design
+from channel_kind import (MAGAZINE_BANNER_FROM, free_cpv_label, free_reason,
+                          is_banner_channel, is_free_by_design)
 
 
 def test_name_contains_banner_is_always_banner():
@@ -54,9 +55,36 @@ def test_mirror_label_is_free_by_design():
         assert is_free_by_design("바이럴 (배너)", name)
 
 
+def test_service_label_is_free_by_design():
+    """유상계약에 서비스로 얹은 추가 게시(사용자 승인 2026-09-07). 실측 7건 전부 cost=0."""
+    for name in ("닥터후 (틱톡/서비스)", "닥터후 (유튜브/서비스)", "돈 되는 정보(틱톡/서비스)"):
+        assert free_reason("협찬 (인플루언서)", name) == "서비스"
+
+
+def test_free_project_label_is_free_by_design():
+    """project/asset 이 '무상협찬'이면 무상(실측 3건 전부 cost=0)."""
+    assert free_reason("협찬 (인플루언서)", "투데이단", "무상협찬", "무상협찬") == "무상협찬"
+    # ⚠️ '무상'까지 넓히면 안 된다 — '트위터 무상시딩' 2건은 cost=14,408(>0)로 성격이 다르다.
+    assert free_reason("협찬 (인플루언서)", "동동", "트위터 무상시딩", "트위터 무상시딩") is None
+
+
+def test_service_mark_requires_slash_and_account_field():
+    """🚨 소재명엔 '팬서비스로 커뮤에서 난리난' 같은 문구가 실제로 있다(2건) — asset 훑기 금지."""
+    assert free_reason("바이럴 (영상)", "렉카채널", None,
+                       "[26.08]F_V_JD멜_…팬서비스로 커뮤에서 난리난 이유…") is None
+    assert free_reason("바이럴 (영상)", "고객서비스센터") is None
+
+
+def test_free_cpv_label_only_annotates_mirror_and_service():
+    assert free_cpv_label("미러링") == "무상(미러링)"
+    assert free_cpv_label("서비스") == "무상(서비스)"
+    assert free_cpv_label("무상채널") == "무상"
+    assert free_cpv_label("무상협찬") == "무상"
+
+
 def test_paid_channel_without_mirror_stays_unmapped():
-    """미러링이 아닌 유상채널 cost=0 은 계속 '가격미매핑'으로 남아야 한다(팀 입력 대기)."""
-    for name in ("힐링하고 가세요", "맨투맨 스튜디오", "닥터후 (틱톡/서비스)", "오하루", None, ""):
+    """무상 사유가 없는 유상채널 cost=0 은 계속 '가격미매핑'으로 남아야 한다(팀 입력 대기)."""
+    for name in ("힐링하고 가세요", "맨투맨 스튜디오", "오하루", None, ""):
         assert not is_free_by_design("바이럴 (배너)", name)
         assert not is_free_by_design("협찬 (인플루언서)", name)
 

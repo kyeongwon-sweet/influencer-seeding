@@ -10,7 +10,7 @@ import json
 import urllib.parse
 import urllib.request
 from datetime import date
-from channel_kind import is_banner_channel, is_free_by_design, is_mirror_label
+from channel_kind import free_cpv_label, free_reason, is_banner_channel, is_free_by_design
 from db import get_client
 
 CHANNEL = os.getenv("SLACK_CHANNEL") or "C0B4F7GBX17"  # 기본 #빙과_마케팅_리포트 (빈값이면 폴백). DM 미리보기 시 user id 주입
@@ -324,7 +324,7 @@ def main():
     # 게시물 메타(이름/플랫폼/상품군/업로드일/채널분류)
     meta = {}
     for chunk in _chunks(post_ids, 100):
-        res = db.table("sponsored_posts").select("id, url, account_name, product_name, posted_at, channel_type, cost, ended_at").in_("id", chunk).execute()
+        res = db.table("sponsored_posts").select("id, url, account_name, product_name, posted_at, channel_type, cost, ended_at, project_name, asset_name").in_("id", chunk).execute()
         for r in (res.data or []):
             meta[r["id"]] = r
 
@@ -403,6 +403,8 @@ def main():
             "channel_type": ct or "미분류",
             "is_new": False,
             "cost": m.get("cost") or 0,
+            "project": (m.get("project_name") or "").strip(),
+            "asset": (m.get("asset_name") or "").strip(),
             "cum": cum,
         })
 
@@ -565,17 +567,19 @@ def main():
 
     def f(n): return f"{n:,}"
 
-    def _cpv(cost, views, ct, name=None):
+    def _cpv(cost, views, ct, name=None, project=None, asset=None):
         # 배너는 views 자리에 도달수(reach 누적)가 들어옴 → CPV = 비용/도달수 = '도달당비용'(사용자 지시).
         # 그 외는 비용/누적조회수 = 조회당비용. 라벨은 공통 'CPV'.
         if not cost:
             # 진짜 무상 채널: 온드미디어·위성채널·무상시딩. 그 외(협찬·바이럴)는 유상 채널이므로
             #   cost 없으면 '무상'이 아니라 '가격미매핑'(₩0 미기입 또는 DB cost 미동기화 = 확인 필요).
             #   (2026-09-03 수정: 협찬이 cost=0일 때 '무상'으로 오표기되던 버그.)
-            #   + 2026-09-07 사용자 지시: **미러링은 0원이 정상**(원본 게시물에 비용이 붙어 있음)이라
-            #     '무상(미러링)'으로 표기한다. 판정은 channel_kind.is_free_by_design 단일 정본.
-            if is_free_by_design(ct, name):
-                return "무상(미러링)" if is_mirror_label(name) else "무상"
+            #   + 2026-09-07 사용자 승인: **미러링·서비스·무상협찬은 0원이 정상**이라 '무상'으로
+            #     표기한다(미러링=원본에 비용 / 서비스=유상계약에 얹은 추가 게시 / 무상협찬=팀 명시).
+            #     판정은 channel_kind.free_reason 단일 정본이고, 사유는 라벨에 그대로 보인다.
+            _fr = free_reason(ct, name, project, asset)
+            if _fr:
+                return free_cpv_label(_fr)
             return "가격미매핑"
         if not views:
             return "CPV -"
@@ -680,7 +684,8 @@ def main():
     banner_unmapped = [it for it in items
                        if "배너" in (it["channel_type"] or "") and "위성채널" not in (it["channel_type"] or "")
                        and not it.get("cost")
-                       and not is_free_by_design(it["channel_type"], it.get("name"))]
+                       and not is_free_by_design(it["channel_type"], it.get("name"),
+                                                 it.get("project"), it.get("asset"))]
     if banner_unmapped:
         lines.append("")
         lines.append(f"⚠️ *바이럴 배너 가격 미매핑 {len(banner_unmapped)}건* — 시트 비용 입력 또는 DB cost 동기화 확인 필요. 비용이 채워진 뒤 재발송하면 CPV가 정상 계산됩니다.")
@@ -693,7 +698,7 @@ def main():
         prod = (it.get("product") or "").strip()
         tag = f"[{_esc(prod)}] " if prod else ""
         pdate = it["posted_at"] or "업로드일 미상"
-        lines.append(f"{rank}. {tag}{label} _({it['platform']})_ *+{f(it['inc'])}*  {_cpv(it['cost'], it['cum'], it['channel_type'], it['name'])}  `{pdate}`")
+        lines.append(f"{rank}. {tag}{label} _({it['platform']})_ *+{f(it['inc'])}*  {_cpv(it['cost'], it['cum'], it['channel_type'], it['name'], it.get('project'), it.get('asset'))}  `{pdate}`")
 
     text = "\n".join(lines)
 

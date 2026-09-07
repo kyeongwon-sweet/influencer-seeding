@@ -448,7 +448,7 @@ def main():
     posts, off = [], 0
     while True:
         res = db.table("sponsored_posts").select(
-            "id, url, account_name, created_at, ended_at, content_summary, posted_at, channel_type, notes, cost, company_name"
+            "id, url, account_name, created_at, ended_at, content_summary, posted_at, channel_type, notes, cost, company_name, project_name, asset_name"
         ).order("id").range(off, off + 999).execute()
         chunk = res.data or []
         posts.extend(chunk)

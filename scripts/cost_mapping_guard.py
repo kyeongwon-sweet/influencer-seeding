@@ -19,7 +19,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from channel_kind import FREE_CH, is_free_by_design
+from channel_kind import free_reason
 
 STALE_DAYS = 14          # 이 일수를 넘겨 방치된 미매핑은 별도 카운트로 압박
 MAX_DETAIL = 3
@@ -38,27 +38,25 @@ def _days_since(posted_at: Any, today: str) -> int | None:
 def unmapped_cost_actives(posts, today: str) -> dict:
     """활성 게시물 중 '가격미매핑'(유상채널·비용 0원) 집계.
 
-    반환: {"unmapped": [게시물…(게시일 오래된 순)], "mirror": N, "free_ch": N}
+    반환: {"unmapped": [게시물…(게시일 오래된 순)], "free_by_reason": {사유: 건수}}
     제외 건수를 **사유별로** 돌려주는 이유 — 두 숫자를 같이 봐야 '데이터가 늘었나
-    판정 규칙이 깨졌나'를 가를 수 있다. ⚠️ 미러링과 무상채널을 합치면 위성채널
-    수백 건에 묻혀(실측 free_ch≈696) 미러링 규칙 붕괴가 안 보인다 — 그래서 분리한다.
+    판정 규칙이 깨졌나'를 가를 수 있다. ⚠️ 사유를 합치면 위성채널 수백 건('무상채널')에
+    묻혀(실측 ≈689) 미러링·서비스 규칙 붕괴가 안 보인다 — 그래서 분리한다.
     """
-    unmapped, mirror, free_ch = [], 0, 0
+    unmapped, by_reason = [], {}
     for p in posts:
         if p.get("ended_at"):
             continue
         if (p.get("cost") or 0) > 0:
             continue
-        ct, name = p.get("channel_type"), p.get("account_name")
-        if any(x in str(ct or "") for x in FREE_CH):
-            free_ch += 1
-            continue
-        if is_free_by_design(ct, name):
-            mirror += 1
+        reason = free_reason(p.get("channel_type"), p.get("account_name"),
+                             p.get("project_name"), p.get("asset_name"))
+        if reason:
+            by_reason[reason] = by_reason.get(reason, 0) + 1
             continue
         unmapped.append(p)
     unmapped.sort(key=lambda p: str(p.get("posted_at") or "9999-99-99"))
-    return {"unmapped": unmapped, "mirror": mirror, "free_ch": free_ch}
+    return {"unmapped": unmapped, "free_by_reason": by_reason}
 
 
 def unmapped_cost_line(agg: dict, today: str, max_detail: int = MAX_DETAIL) -> str | None:
@@ -80,6 +78,7 @@ def unmapped_cost_line(agg: dict, today: str, max_detail: int = MAX_DETAIL) -> s
         line += f" … 외 {len(rows) - max_detail}건"
     if stale:
         line += f" · {STALE_DAYS}일+ 방치 {len(stale)}건"
-    line += (f" · 무상 제외 미러링 {agg.get('mirror', 0)}건·무상채널 {agg.get('free_ch', 0)}건"
-             " (미러링이 0으로 떨어지면 판정 규칙 붕괴 의심)")
+    by = agg.get("free_by_reason") or {}
+    detail = "·".join(f"{k} {v}건" for k, v in sorted(by.items(), key=lambda kv: -kv[1])) or "없음"
+    line += f" · 무상 제외 {detail} (사유별 건수가 0으로 떨어지면 판정 규칙 붕괴 의심)"
     return line

@@ -42,6 +42,15 @@ def is_banner_channel(channel_type: Any, posted_at: Any = None) -> bool:
 #      '미러링'을 품고 있어 신호가 오염된다(실측). cost>0 인 미러링 20건은 그대로 CPV 계산.
 FREE_CH = ("온드미디어", "위성채널", "무상시딩")
 MIRROR_MARK = "미러링"
+# 계정 라벨 '(플랫폼/서비스)' = 유상 계약에 서비스로 얹어준 추가 게시물 → 0원이 정상.
+#   실측(2026-09-07): account_name 에 '서비스' 가 든 7건 전부 cost=0(닥터후 6·돈되는정보 1),
+#   cost>0 은 0건. ⚠️ '/' 를 요구하고 **account_name 만** 본다 — 소재명(asset_name)에는
+#   "팬서비스로 커뮤에서 난리난" 같은 문구가 실제로 있어(2건) 그대로 훑으면 오판정한다.
+SERVICE_MARK = "/서비스"
+# 프로젝트/소재명이 '무상협찬' = 팀이 무상으로 명시한 협찬 → 0원이 정상.
+#   실측: 이 문구가 든 3건(투데이단·한입혜원·오부심) 전부 cost=0. ⚠️ 바로 '무상' 으로
+#   넓히지 않는다 — '트위터 무상시딩' 2건은 cost=14,408(>0)이라 성격이 다르다.
+FREE_PROJECT_MARK = "무상협찬"
 
 
 def is_mirror_label(account_name: Any) -> bool:
@@ -53,11 +62,45 @@ def is_mirror_label(account_name: Any) -> bool:
     return MIRROR_MARK in str(account_name or "")
 
 
-def is_free_by_design(channel_type: Any, account_name: Any = None) -> bool:
-    """cost=0 이 정상인 게시물인가(True=무상, False=가격미매핑으로 확인 필요).
+def is_service_label(account_name: Any) -> bool:
+    """계정 라벨이 '(플랫폼/서비스)'(무상 제공 추가 게시)인가.
 
-    무상 채널(온드/위성/무상시딩)이거나, 계정 라벨이 미러링이면 무상이다.
+    ⚠️ account_name 전용. asset_name/project_name 에 쓰면 '팬서비스' 같은 소재 문구에 걸린다.
+    """
+    return SERVICE_MARK in str(account_name or "")
+
+
+def free_reason(channel_type: Any, account_name: Any = None,
+                project_name: Any = None, asset_name: Any = None) -> str | None:
+    """cost=0 이 정상인 이유. 정상이 아니면 None(='가격미매핑'으로 확인 필요).
+
+    사유를 문자열로 돌려주는 이유 — 감시가 사유별로 세야 규칙이 깨진 것을 알아챌 수 있다
+    (합쳐 세면 위성채널 수백 건에 묻힌다). 사용자 승인 2026-09-07: 미러링·서비스·무상협찬.
     """
     if any(x in str(channel_type or "") for x in FREE_CH):
-        return True
-    return is_mirror_label(account_name)
+        return "무상채널"
+    if is_mirror_label(account_name):
+        return "미러링"
+    if is_service_label(account_name):
+        return "서비스"
+    if any(FREE_PROJECT_MARK in str(x or "") for x in (project_name, asset_name)):
+        return FREE_PROJECT_MARK
+    return None
+
+
+# 리포트 CPV 라벨에 사유를 덧붙일 사유들. '무상채널'·'무상협찬'은 덧붙이면 중복이라 뺀다.
+LABELED_REASONS = (MIRROR_MARK, "서비스")
+
+
+def free_cpv_label(reason: Any) -> str:
+    """무상 사유 → 리포트 표기('무상(미러링)' / '무상(서비스)' / '무상').
+
+    ⚠️ 라벨 판단도 여기 둔다 — 호출부에서 `reason == "미러링"` 을 쓰면 판정이 다시 흩어진다.
+    """
+    return f"무상({reason})" if reason in LABELED_REASONS else "무상"
+
+
+def is_free_by_design(channel_type: Any, account_name: Any = None,
+                      project_name: Any = None, asset_name: Any = None) -> bool:
+    """cost=0 이 정상인 게시물인가(True=무상, False=가격미매핑으로 확인 필요)."""
+    return free_reason(channel_type, account_name, project_name, asset_name) is not None

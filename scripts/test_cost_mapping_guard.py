@@ -24,7 +24,7 @@ def test_mirror_is_not_counted_as_unmapped():
     """🚨 미러링 0원은 정상(원본에 비용) — 미매핑으로 세면 09-03~09-07 오탐 재발."""
     agg = unmapped_cost_actives([_post(account_name="오하루(틱톡/미러링)")], TODAY)
     assert agg["unmapped"] == []
-    assert agg["mirror"] == 1 and agg["free_ch"] == 0
+    assert agg["free_by_reason"] == {"미러링": 1}
     assert unmapped_cost_line(agg, TODAY) is None
 
 
@@ -32,7 +32,7 @@ def test_free_channels_are_not_counted():
     posts = [_post(channel_type="위성채널"), _post(channel_type="온드미디어"),
              _post(channel_type="무상시딩 (영상)")]
     agg = unmapped_cost_actives(posts, TODAY)
-    assert agg["unmapped"] == [] and agg["free_ch"] == 3 and agg["mirror"] == 0
+    assert agg["unmapped"] == [] and agg["free_by_reason"] == {"무상채널": 3}
 
 
 def test_paid_zero_cost_is_reported_with_url():
@@ -48,12 +48,16 @@ def test_ended_and_paid_posts_are_excluded():
     assert unmapped_cost_actives(posts, TODAY)["unmapped"] == []
 
 
-def test_mirror_and_free_channel_counts_are_reported_separately():
-    """🚨 미러링을 무상채널과 합치면 위성 수백 건에 묻혀 규칙 붕괴가 안 보인다 — 분리 보고 고정."""
+def test_exclusion_counts_are_reported_per_reason():
+    """🚨 사유를 합치면 위성 수백 건에 묻혀 규칙 붕괴가 안 보인다 — 사유별 분리 보고 고정."""
     posts = [_post(account_name="힐링하고 가세요"), _post(account_name="이나 (틱톡/미러링)"),
+             _post(account_name="닥터후 (틱톡/서비스)"), _post(project_name="무상협찬"),
              _post(channel_type="위성채널"), _post(channel_type="위성채널")]
-    line = unmapped_cost_line(unmapped_cost_actives(posts, TODAY), TODAY)
-    assert "미러링 1건" in line and "무상채널 2건" in line
+    agg = unmapped_cost_actives(posts, TODAY)
+    assert agg["free_by_reason"] == {"미러링": 1, "서비스": 1, "무상협찬": 1, "무상채널": 2}
+    line = unmapped_cost_line(agg, TODAY)
+    for frag in ("미러링 1건", "서비스 1건", "무상협찬 1건", "무상채널 2건"):
+        assert frag in line
 
 
 def test_stale_count_uses_threshold():
