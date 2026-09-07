@@ -1,6 +1,11 @@
 import unittest
 
+from pathlib import Path
+
 from build_view_missing_queue import (
+    NON_RETRYABLE_REASONS,
+    build_history_state,
+    decide_reason,
     exclusion_reason,
     is_tiktok_view_post,
     has_no_public_view_metric,
@@ -167,3 +172,131 @@ class ImageAssumptionGuard(unittest.TestCase):
         post = {"url": "https://www.instagram.com/p/DbAAAAAAAAA/"}
         self.assertFalse(has_no_public_view_metric({**post, "posted_at": "2026-08-11"}, "2026-08-17"))
         self.assertTrue(has_no_public_view_metric({**post, "posted_at": "2026-08-10"}, "2026-08-17"))
+
+
+class ManualZeroConfirmedTest(unittest.TestCase):
+    """사람이 실물 확인해 넣은 조회수 0 은 재시도 대상에서 빼되, 값은 건드리지 않는다.
+
+    배경(2026-09-07 실측): 기존 규칙은 `best_today > 0` 만 '측정됨'으로 봤기 때문에
+    실측 0 이 영원히 미수집으로 남아 매일 재시도되고 cron-daily-collect 게이트를
+    상시 '미수집'으로 만들었다(이슈뜨기 틱톡 8건). 틱톡은 no_public_view_metric
+    탈출구를 못 쓰므로(is_unambiguous_view_post) 더 갇힌다.
+    """
+
+    TIKTOK = {
+        "url": "https://www.tiktok.com/@issuetteugi/video/7674635789774490887/",
+        "channel_type": "위성채널",
+        "posted_at": "2026-08-16",
+        "notes": "",
+    }
+    ZERO_ROW = [{"play_count": 0, "reach_count": None, "manual": True}]
+
+    def _state(self, **kw):
+        base = {"has_metric": False, "has_likes_or_comments": True, "has_manual_zero": False}
+        base.update(kw)
+        return base
+
+    def test_manual_zero_without_positive_history_is_confirmed(self):
+        reason = decide_reason(self.TIKTOK, self.ZERO_ROW, self._state(has_manual_zero=True), "2026-09-06")
+        self.assertEqual(reason, "manual_zero_confirmed")
+        self.assertIn(reason, NON_RETRYABLE_REASONS)
+
+    def test_positive_history_wins_so_it_self_heals(self):
+        """나중에 조회수가 붙으면 조건이 깨져 자동으로 큐에 복귀해야 한다."""
+        reason = decide_reason(
+            self.TIKTOK, self.ZERO_ROW,
+            self._state(has_manual_zero=True, has_metric=True), "2026-09-06")
+        self.assertNotEqual(reason, "manual_zero_confirmed")
+        self.assertNotIn(reason, NON_RETRYABLE_REASONS)
+
+    def test_automatic_zero_is_not_accepted(self):
+        """자동 0 은 수집 실패일 수 있다 — manual=True 인 0만 근거로 삼는다."""
+        auto_zero = [{"play_count": 0, "reach_count": None, "manual": False}]
+        reason = decide_reason(self.TIKTOK, auto_zero, self._state(), "2026-09-06")
+        self.assertEqual(reason, "same_day_non_positive_metric")
+        self.assertNotIn(reason, NON_RETRYABLE_REASONS)
+
+    def test_tiktok_cannot_use_no_public_view_escape(self):
+        """틱톡은 조회수가 반드시 있는 플랫폼이라 no_public_view_metric 이 안 걸린다(사용자 확인)."""
+        self.assertFalse(has_no_public_view_metric(self.TIKTOK, "2026-09-06"))
+
+    def test_missing_row_and_null_metric_reasons_unchanged(self):
+        self.assertEqual(decide_reason(self.TIKTOK, [], self._state(), "2026-09-06"), "missing_same_day_row")
+        null_row = [{"play_count": None, "reach_count": None, "manual": False}]
+        self.assertEqual(
+            decide_reason(self.TIKTOK, null_row, self._state(), "2026-09-06"),
+            "same_day_row_without_view_metric",
+        )
+
+
+class HistoryPaginationContractTest(unittest.TestCase):
+    """이력 조회는 반드시 끝까지 읽어야 한다.
+
+    2026-09-07 실측: 게시물 100개 묶음의 이력이 1,677행이라 단발 `.execute()` 는 PostgREST
+    1000 상한에 조용히 절단됐다. 그러면 has_metric 이 거짓 False 가 되어 no_public_view_metric
+    이 조회수 있는 글을 영구 제외할 수 있고(2026-08-18 사고와 같은 형태),
+    manual_zero_confirmed 의 self-heal 조건도 깨진다.
+    """
+
+    def test_history_query_uses_fetch_pages(self):
+        src = Path(__file__).resolve().parent.joinpath("build_view_missing_queue.py").read_text(encoding="utf-8")
+        self.assertIn("hist_rows = fetch_pages(", src)
+        # 단발 .execute() 로 되돌리면 위 문자열이 사라져 이 테스트가 즉시 깨진다.
+        hist_block = src.split("hist_rows = ")[1][:200]
+        self.assertNotIn(".execute()", hist_block,
+                         "이력 조회를 단발 .execute() 로 되돌리면 1000행에서 조용히 절단된다")
+
+    def test_excluded_counter_has_new_reason(self):
+        src = Path(__file__).resolve().parent.joinpath("build_view_missing_queue.py").read_text(encoding="utf-8")
+        self.assertIn('"manual_zero_confirmed": 0,', src, "제외 사유가 집계에 안 보이면 조용히 사라진다")
+
+
+class HistoryStateTest(unittest.TestCase):
+    """이력 요약이 '사람이 넣은 0'과 '자동 0'을 반드시 구분해야 한다.
+
+    자동 0을 '확정된 0'으로 받으면 수집 실패를 조용히 감춘다(절대규칙 위반).
+    """
+
+    def test_manual_zero_only_counts_when_manual(self):
+        manual = build_history_state([
+            {"measured_at": "2026-09-06", "play_count": 0, "reach_count": None,
+             "likes_count": 0, "comments_count": 1, "manual": True},
+        ])
+        self.assertTrue(manual["has_manual_zero"])
+        self.assertFalse(manual["has_metric"])
+
+        auto = build_history_state([
+            {"measured_at": "2026-09-06", "play_count": 0, "reach_count": None,
+             "likes_count": 0, "comments_count": 1, "manual": False},
+        ])
+        self.assertFalse(auto["has_manual_zero"], "자동 0을 확정된 0으로 받으면 수집 실패를 감춘다")
+
+    def test_null_metric_is_not_a_zero(self):
+        """공백(미측정) ≠ 0. NULL 을 0으로 읽으면 프로젝트 절대규칙 위반이다."""
+        state = build_history_state([
+            {"measured_at": "2026-09-06", "play_count": None, "reach_count": None,
+             "likes_count": 3, "comments_count": None, "manual": True},
+        ])
+        self.assertFalse(state["has_manual_zero"])
+        self.assertTrue(state["has_likes_or_comments"])
+
+    def test_positive_metric_and_latest_tracking(self):
+        state = build_history_state([
+            {"measured_at": "2026-09-01", "play_count": 100, "reach_count": None,
+             "likes_count": None, "comments_count": None, "manual": False},
+            {"measured_at": "2026-09-03", "play_count": 250, "reach_count": None,
+             "likes_count": None, "comments_count": None, "manual": False},
+            {"measured_at": "2026-09-02", "play_count": 180, "reach_count": None,
+             "likes_count": None, "comments_count": None, "manual": False},
+        ])
+        self.assertTrue(state["has_metric"])
+        self.assertEqual(state["last_metric"], 250)
+        self.assertEqual(state["last_metric_date"], "2026-09-03")
+
+    def test_banner_reach_counts_as_metric(self):
+        state = build_history_state([
+            {"measured_at": "2026-09-06", "play_count": None, "reach_count": 500,
+             "likes_count": None, "comments_count": None, "manual": True},
+        ])
+        self.assertTrue(state["has_metric"])
+        self.assertFalse(state["has_manual_zero"])

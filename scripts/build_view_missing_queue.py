@@ -154,6 +154,73 @@ def exclusion_reason(post: dict[str, Any], target_date: str | None = None) -> st
     return None
 
 
+def build_history_state(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """게시물 한 건의 이력 요약(순수 함수 — 행동 테스트용).
+
+    ⚠️ `has_manual_zero` 는 **manual=True 인 0만** 인정한다. 자동 0 은 수집 실패·접근 불가일 수
+    있어서 이를 '확정된 0'으로 받으면 수집 실패를 조용히 감추게 된다(프로젝트 절대규칙).
+    """
+    state: dict[str, Any] = {
+        "has_metric": False,
+        "has_likes_or_comments": False,
+        "has_manual_zero": False,
+        "last_metric": None,
+        "last_metric_date": None,
+    }
+    for row in rows:
+        value = metric(row)
+        if value is not None and value > 0:
+            state["has_metric"] = True
+            measured = str(row.get("measured_at"))[:10]
+            if not state["last_metric_date"] or measured >= state["last_metric_date"]:
+                state["last_metric"] = value
+                state["last_metric_date"] = measured
+        if row.get("manual") is True and value == 0:
+            state["has_manual_zero"] = True
+        if row.get("likes_count") is not None or row.get("comments_count") is not None:
+            state["has_likes_or_comments"] = True
+    return state
+
+
+# 재시도해도 값을 얻을 수 없다고 '확정'된 사유들 — 큐에서 빼고 excluded 에 따로 센다.
+NON_RETRYABLE_REASONS = frozenset({"no_public_view_metric", "manual_zero_confirmed"})
+
+
+def decide_reason(
+    post: dict[str, Any],
+    rows: list[dict[str, Any]],
+    state: dict[str, Any],
+    target_date: str | None,
+) -> str:
+    """대상일 행 + 이력 상태로 '미수집 사유'를 정한다(순수 함수 — 행동 테스트용).
+
+    `manual_zero_confirmed` (2026-09-07 신설):
+      사람이 실물을 확인해 **조회수가 진짜 0**임을 입력한 글은 재시도해도 얻을 값이 없다.
+      기존 규칙은 `best_today > 0` 만 '측정됨'으로 봤기 때문에 **실측 0이 영원히 미수집으로 남아**
+      매일 재시도되고 `cron-daily-collect` 게이트를 상시 '미수집'으로 만들었다(실측: 이슈뜨기 8건).
+      틱톡은 `is_unambiguous_view_post()` 때문에 `no_public_view_metric` 탈출구를 쓸 수 없어 더더욱 갇힌다.
+      ⚠️ **자동 0은 인정하지 않는다** — 자동 0은 수집 실패·접근 불가일 수 있다(프로젝트 규칙).
+         `manual=True` 인 0만 근거로 삼는다.
+      ⚠️ **양수 실측 이력이 한 번이라도 있으면 적용하지 않는다** → 나중에 값이 붙는 순간
+         조건이 깨져 자동으로 큐에 복귀한다(self-heal). 값을 지어내거나 고치지 않는다.
+    """
+    if not rows:
+        reason = "missing_same_day_row"
+    elif any(row.get("play_count") is None and row.get("reach_count") is None for row in rows):
+        reason = "same_day_row_without_view_metric"
+    else:
+        reason = "same_day_non_positive_metric"
+
+    if (state.get("has_likes_or_comments") and not state.get("has_metric")
+            and has_no_public_view_metric(post, target_date)):
+        reason = "no_public_view_metric"
+
+    if state.get("has_manual_zero") and not state.get("has_metric"):
+        reason = "manual_zero_confirmed"
+
+    return reason
+
+
 def metric(row: dict[str, Any] | None) -> int | None:
     if not row:
         return None
@@ -194,6 +261,7 @@ def main() -> None:
     eligible_ids = [post["id"] for post in eligible if post.get("id")]
 
     same_day_rows: dict[str, list[dict[str, Any]]] = {}
+    hist_by_post: dict[str, list[dict[str, Any]]] = {}
     history: dict[str, dict[str, Any]] = {}
     db = get_client()
     for ids in chunks(eligible_ids, 100):
@@ -209,32 +277,25 @@ def main() -> None:
         for row in same:
             same_day_rows.setdefault(row["post_id"], []).append(row)
 
-        hist_rows = (
-            db.table("post_daily_stats")
-            .select("post_id,measured_at,play_count,reach_count,likes_count,comments_count,manual")
-            .in_("post_id", ids)
-            .execute()
-            .data
-            or []
+        # ⚠️ 2026-09-07 실측: 게시물 100개 묶음의 이력이 1,677행이라 단발 `.execute()` 는
+        #    PostgREST 1000 상한에 걸려 **조용히 절단**됐다. 그러면 has_metric 이 거짓으로 False 가 되어
+        #    ① no_public_view_metric 이 조회수 있는 글을 영구 제외할 수 있고(2026-08-18 사고와 같은 형태)
+        #    ② 아래 manual_zero_confirmed 의 self-heal 조건도 깨진다. fetch_pages 로 끝까지 읽는다.
+        hist_rows = fetch_pages(
+            "post_daily_stats",
+            "post_id,measured_at,play_count,reach_count,likes_count,comments_count,manual",
+            lambda q, _ids=ids: q.in_("post_id", _ids),
         )
         for row in hist_rows:
-            state = history.setdefault(
-                row["post_id"],
-                {"has_metric": False, "has_likes_or_comments": False, "last_metric": None, "last_metric_date": None},
-            )
-            value = metric(row)
-            if value is not None and value > 0:
-                state["has_metric"] = True
-                if not state["last_metric_date"] or str(row["measured_at"])[:10] >= state["last_metric_date"]:
-                    state["last_metric"] = value
-                    state["last_metric_date"] = str(row["measured_at"])[:10]
-            if row.get("likes_count") is not None or row.get("comments_count") is not None:
-                state["has_likes_or_comments"] = True
+            hist_by_post.setdefault(row["post_id"], []).append(row)
+
+    history = {pid: build_history_state(rows) for pid, rows in hist_by_post.items()}
 
     queue: list[dict[str, Any]] = []
     excluded = {
         "measured": 0,
         "no_public_view_metric": 0,
+        "manual_zero_confirmed": 0,
         "not_retryable": 0,
         "manual_note": 0,
         "collector_uncollectable": 0,
@@ -272,21 +333,12 @@ def main() -> None:
             continue
 
         state = history.get(post["id"], {})
-        if not rows:
-            reason = "missing_same_day_row"
-        elif any(row.get("play_count") is None and row.get("reach_count") is None for row in rows):
-            reason = "same_day_row_without_view_metric"
-        else:
-            reason = "same_day_non_positive_metric"
-
-        if (state.get("has_likes_or_comments") and not state.get("has_metric")
-                and has_no_public_view_metric(post, target)):
-            reason = "no_public_view_metric"
+        reason = decide_reason(post, rows, state, target)
 
         pf = platform(post.get("url"))
-        retryable = pf in {"instagram", "youtube", "tiktok"} and reason != "no_public_view_metric"
+        retryable = pf in {"instagram", "youtube", "tiktok"} and reason not in NON_RETRYABLE_REASONS
         if not retryable and not args.include_all:
-            excluded["no_public_view_metric" if reason == "no_public_view_metric" else "not_retryable"] += 1
+            excluded[reason if reason in NON_RETRYABLE_REASONS else "not_retryable"] += 1
             continue
 
         queue.append({

@@ -1,5 +1,15 @@
 # AI Shared Status
 
+## ✅ 2026-09-07 [Claude 완료·코드] 실측 0을 재시도 큐에서 제외(`manual_zero_confirmed`) + 이력 조회 절단 버그 수정 (B5 종결)
+- **사용자 선택 ⓑ(지속 표시) 구현.** 사람이 실물 확인해 넣은 조회수 0은 재시도해도 얻을 값이 없으므로 큐에서 뺀다. **값은 하나도 바꾸지 않았다**(0은 실측이므로 보존).
+- **효과 실측(target 2026-09-06):** `queue_count·retryable 11 → 1`, `manual_zero_confirmed 8`, 이슈뜨기 잔존 0건. **행이 없는 미래 날짜(09-08)에서도 8건이 계속 제외**돼 매일 사람 입력이 필요한 ⓐ와 달리 지속된다. (참고: `measured 824→826`은 내 변경이 아니라 그사이 에스파·맨투맨에 실측이 붙은 데이터 변화다.)
+- **규칙(자동 0은 인정 안 함):** `manual=True` 인 0만 근거로 삼는다 — 자동 0은 수집 실패·접근 불가일 수 있어 이를 확정으로 받으면 **수집 실패를 조용히 감춘다**(절대규칙). 또 **양수 실측 이력이 한 번이라도 있으면 적용하지 않아** 나중에 값이 붙는 순간 자동으로 큐에 복귀한다(self-heal). 주 수집창(15:41 UTC)은 `VIEW_MISSING_TARGET_ONLY=0`·`FINAL_SNAPSHOT=1`이라 큐 제외와 무관하게 매일 재측정하므로 값이 얼어붙지 않는다(YAML 확인).
+- **🔴 함께 고친 별건(더 위험했음) — 이력 조회 조용한 절단:** `hist_rows` 가 단발 `.execute()` 라 **PostgREST 1000 상한에 걸려 절단**되고 있었다. 실측: 게시물 100개 묶음의 이력이 **1,677행**(전체 66,680행 / 3,534건, 평균 18.9행). 그러면 `has_metric` 이 거짓 False 가 되어 ① `no_public_view_metric` 이 **조회수 있는 글을 영구 제외**할 수 있고(2026-08-18 사고와 같은 형태) ② 내 self-heal 조건도 깨진다. 파일에 이미 있던 `fetch_pages`(order id 유일키 페이지네이션)로 교체했다.
+- **테스트 가능하게 추출:** 판정을 `decide_reason()`, 이력 요약을 `build_history_state()` 순수 함수로 빼고 `test_build_view_missing_queue.py` 에 **행동 테스트 추가(전체 26개)** — manual 0만 인정 / NULL≠0 / 양수이력 self-heal / 배너 reach도 지표 / 최신값 추적 / 페이지네이션 소스 계약.
+- **⚠️ 변형 검증 4종(전부 잡힘 후 체크섬 `4534267c52400c6e` 복원 확인):** ⓐ `manual_zero_confirmed` 규칙 제거 → 실패 ⓑ `manual` 조건 제거(자동 0 인정) → 실패 ⓒ self-heal 조건(`not has_metric`) 제거 → 실패 ⓓ 이력 페이지네이션 해제 → 실패. **첫 시도에서 ⓑ가 안 잡혔다** — 그 조건이 `main()` 안에 있어 순수함수 테스트가 못 덮었고, 그래서 `build_history_state()` 를 추가로 추출했다.
+- **게이트:** python **256 passed** · `py_compile` · pre-push `tsc` 통과. 쓰기 경로 변경 없음(이 스크립트는 읽기 전용이며 DB·시트·Apify 호출 0건).
+- **부수 효과:** `cron-daily-collect.yml:76` 의 `RETRYABLE > 0 → STATUS=missing` 상시 빨간불이 해소된다(대상일 기준 1건만 남고, 그건 실제 미수집인 `오늘의 메뉴` IG 글이다).
+
 ## ⚠️ 2026-09-07 [Claude 검증] Codex 09997924 쓰기는 정확 — 그러나 8건은 **여전히 재시도 큐에 남는다**(B5 미종결)
 - **Codex 작업 독립 검증 = 통과.** 보고 매니페스트(틱톡ID·시트셀)를 그대로 대상 목록으로 삼아 1:1 대조: 8건 전부 **행수 무변경**(22/23/19/28/22/28/27/27 그대로), `2026-09-06` **한 행에만** `play_count=0, manual=true`, **`ended_at` NULL 유지**, 0 아닌 play 값 없음, **댓글 수가 Codex 보고와 정확히 일치**(0/1/1/0/1/1/0/1). 좋아요·댓글 무변경.
 - **표현 정정 1건:** 보고의 "DB: `play_collected=true`"는 문자열 그대로는 성립하지 않는다. `post_daily_stats`에 **`play_collected` 컬럼은 없다**(실제 컬럼: id·post_id·measured_at·play_count·reach_count·likes_count·comments_count·manual·increment·created_at). `play_collected`는 `/api/sponsored-posts`가 mono 보정 **전에** `s.play_count != null`로 파생시키는 응답 전용 필드다. 즉 의도한 효과(파생값이 true가 됨)는 맞고 저장 위치 표현만 틀렸다 — 다음 세션이 없는 컬럼을 찾지 않도록 남긴다.
