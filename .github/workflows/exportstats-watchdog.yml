@@ -1,0 +1,41 @@
+name: exportStats Watchdog
+
+# exportStats(역채움 DB→시트) 결과 워치독.
+# dailyAuto의 exportStats 단계가 조용히 안 돌거나 실패해 연동 시트의 어제(T-1) 조회수 열이
+# 안 채워지는 사고를 매일 감지해 Slack(#빙과_마케팅_스틱바p, C0B659HEYDV)으로 알린다.
+#
+# 배경(2026-09-07): dailyAuto importStats→exportStats 직렬 실행에서 importStats가 30분 상한 초과로
+#   종료되자 exportStats가 통째로 스킵됐다(값은 DB 정상, 시트만 누락, 사람이 스크린샷으로 발견).
+#   Codex가 단계 분리+내부 재개+jobs 테이블 하트비트를 넣었고, 이 워치독은 그 하트비트를
+#   외부(GHA)에서 마감기준으로 확인해 '트리거 자체가 안 뜨는 경우'까지 잡는다(defense-in-depth).
+#   내부 재개(Apps Script)는 자기 자신이 안 뜨면 못 잡으므로 외부 감시가 필요하다.
+#
+# ⚠️ 필요한 GitHub Secret: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, INJIBOT_SLACK_TOKEN.
+on:
+  schedule:
+    - cron: "30 2 * * *"   # 11:30 KST (자연 분리 실행 10:15 KST 이후 + 버퍼, UTC0 데드존 회피)
+  workflow_dispatch:
+
+concurrency:
+  group: exportstats-watchdog
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run exportStats watchdog
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          INJIBOT_SLACK_TOKEN: ${{ secrets.INJIBOT_SLACK_TOKEN }}
+          PYTHONUTF8: "1"
+          TZ: "Asia/Seoul"
+        run: python scripts/exportstats_watchdog.py --send
