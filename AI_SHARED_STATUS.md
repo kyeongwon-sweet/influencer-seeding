@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## ✅ 2026-09-07 [Codex 재발방지·라이브 GAS] `dailyAuto` 30분 제한 단계분리 + 체크포인트 워치독
+- **대상 사고:** 09-07 `dailyAuto`가 앞 단계에 약 18분을 쓴 뒤 `importStats` 도중 30분 실행 한도에 걸려, 예외 처리도 실행되지 않은 채 `exportStats`가 조용히 건너뛴 문제를 구조적으로 막았다.
+- **실행 분리:** 08:30 본 실행은 `fillCaptionFromAsset → syncAll → syncPricing`까지만 처리하고, `importStats → exportStats → refreshCumulativeViews → syncStatusToDB → fixStatusColumn`은 **1분 뒤 새 Apps Script 실행창**에서 이어간다. 정상일에도 통계 단계가 온전한 실행 한도를 확보한다.
+- **강제종료 복구:** 후속 실행은 각 단계 직전에 `next_index`, 완료 직후 `completed_stages`를 Script Properties에 저장한다. catch/finally가 호출되지 않는 강제종료도 **32분 워치독**이 체크포인트부터 한 번 재개한다. 재개도 시간초과면 더 반복하지 않고 기존 운영 알림 경로로 경고하며 실행을 실패 상태로 남긴다.
+- **일반 오류 처리:** `importStats`뿐 아니라 `exportStats`도 정상 예외가 잡히면 기존 7분 1회 재시도 대상이다. 트리거 설치·제거 및 `checkSetup()`에 후속/워치독 트리거와 대기 상태를 포함해 고아 트리거를 남기지 않는다.
+- **검증:** web 전체 **435/435**, Apps Script 계약 **63/63**, `tsc --noEmit`, lint **0 errors**(기존 warnings 17), production build, Apps Script 15파일 prepare/source 일치, prepared JS syntax 검사를 통과했다. 배포 자체는 값·수식·시트를 쓰지 않으며, 전체 `dailyAuto` 수동 재실행은 피하고 다음 08:30 자연 실행에서 `CONTINUATION_SCHEDULED → OK`와 `exportStats` 완료를 운영 검증한다.
+
 ## ✅ 2026-09-07 [Codex 완료·라이브 시트] `dailyAuto` 시간초과 규명 + 09-06 `exportStats` 복구
 - **증상·기준선:** `콘텐츠 대시보드 연동`의 최신 날짜열이 `DW=2026-09-05`에서 멈춰 09-06 DB 실측이 시트에 없었다. 쓰기 전 CSV를 보관하고 공식 수식감사 run `34070168334`로 `P:DW · H/I 오류셀 0 · I불일치 0 · 고아행 0`을 기준선으로 잡았다.
 - **원인 확정:** `dailyAuto` 트리거는 **08:27:54 KST에 정상 발화**했지만 `1,802.537초` 뒤 실행 한도 초과로 종료됐다. 단계 로그는 `fillCaptionFromAsset` 59.497초 → `syncAll` 923.889초 → `syncPricing` 101.661초 → `importStats`가 3,989행·날짜열 112개·전송 대상 43,492건을 읽던 중 08:57:57 KST에 `Exceeded maximum execution time`이다. 따라서 **트리거 미실행이 아니라 `importStats` 도중 시간초과**, 뒤의 `exportStats`가 아예 시작되지 않은 조용한 실패였다.
@@ -7,7 +14,7 @@
 - **신규 5건 실물값:** 얌히 `19,137`, 유베니 `65,879`, 오홀 `16,623`, 인싸요정 `18,635`, 오늘뭐먹지 `90,147` — **DX 일별값·I 증분·H 누적이 각 행에서 동일**하다. 골목대장(매거진 비영상)·자곰 카카오/네이버 등 자동 메트릭 비대상 표본은 DX 공란을 유지했다.
 - **H 수식 후속:** 첫 사후감사 run `34071037695`가 얌히·오홀 H에 직접 입력된 `20,000`·`18,000` 때문에 `hInvalid=2`를 검출했다. URL을 각각 `ig:Dc7WMX0gZ9Q`·`ig:Dc8QpSsJRU0`로 재확인한 뒤 **H3524/H3526만** 표준 `=IF(COUNT(P행:DX행)=0,"",MAX(P행:DX행))`으로 복구했다. 날짜셀·I·다른 행은 무접촉이며 계산값은 `19,137`·`16,623`으로 DB 실측과 일치한다.
 - **최종 검증:** 공식 재감사 run `34071444501` HTTP 200 — `metricRange P:DX`, `dateColumnCount 113`, `snapshotRetryCount 0`, `dominantFormulaEnd DX 5,442/5,442`, **H/I 수식형태 오류 0 · H 오류셀/데이터有빈칸 0 · I 오류셀/불일치/필수빈칸 0 · 고아행 0**. 전체 `healthy=false`는 별개 기존 값정체 10건 때문이며 이번 역채움·수식 결함은 해소됐다.
-- **남은 구조 리스크:** `dailyAuto`가 직렬 체인에서 `importStats`만으로 30분 한도를 소진하면 뒤 단계가 또 건너뛸 수 있다. 이번 데이터는 복구했지만, 단계 분리·시간예산 체크·후속 트리거 재개 중 하나를 별도 재발방지로 설계해야 한다.
+- **구조 리스크 후속:** 위 `dailyAuto` 단계분리·체크포인트 워치독으로 09-07 재발방지까지 반영했다.
 
 ## ✅ 2026-09-07 [Codex 완료·라이브 시트/DB] 25.5_mag 게시일 08-30 → 08-28 정정
 - **대상·근거:** 연동시트 `콘텐츠 대시보드 연동`의 `3356행`, `25.5_mag`, URL `https://www.instagram.com/reel/DclKlzuJof6/`(`ig:DclKlzuJof6`). 보호형 dry-run이 대상 **정확히 1행**, 기존 게시일 `2026-08-30`, 헤더 `업로드일`, A:O 중 비대상 14열 불변 조건을 확인했다.

@@ -730,7 +730,7 @@ test("refreshSheetDerivedFields fills existing channel metadata before pricing",
   assert.match(refreshBody, /refreshSheetDerivedFields_step_end/);
 });
 
-test("dailyAuto prices sheet rows before gated import and export", () => {
+test("dailyAuto prices sheet rows before deferring gated import and export", () => {
   const defsStart = appsScript.indexOf("function dailyAutoStageDefs_()");
   const dailyStart = appsScript.indexOf("function dailyAuto()");
   const defsBody = appsScript.slice(defsStart, dailyStart);
@@ -749,6 +749,12 @@ test("dailyAuto prices sheet rows before gated import and export", () => {
   assert.match(appsScript, /DAILY_AUTO_LAST_STAGES_JSON/);
   assert.match(appsScript, /dailyAuto_stage /);
   assert.match(appsScript.slice(dailyStart), /return withAutoWriteGuard_\(function\(\)/);
+  const dailyBody = appsScript.slice(dailyStart, appsScript.indexOf("// ═", dailyStart));
+  assert.match(dailyBody, /findIndex\(function\(pair\) \{ return pair\[0\] === "importStats"; \}\)/);
+  assert.match(dailyBody, /defs\.slice\(0, continuationIndex\)/);
+  assert.match(dailyBody, /scheduleDailyAutoContinuation_/);
+  assert.match(dailyBody, /defs\.slice\(continuationIndex\)/);
+  assert.match(dailyBody, /CONTINUATION_SCHEDULED/);
 });
 
 test("linked sheet H/I audit is available from Apps Script and GitHub Actions", () => {
@@ -828,7 +834,7 @@ test("dailyAuto gates both import and export on collection completion", () => {
   assert.notEqual(retryStart, -1);
   assert.match(
     appsScript,
-    /DAILY_AUTO_RETRYABLE_STAGES_ = \["importStats"\]/,
+    /DAILY_AUTO_RETRYABLE_STAGES_ = \["importStats", "exportStats"\]/,
   );
   assert.match(appsScript, /DAILY_AUTO_RETRY_DELAY_MS_ = 7 \* 60 \* 1000/);
   assert.match(appsScript, /newTrigger\("dailyAutoRetry_"\)[\s\S]*?\.after\(DAILY_AUTO_RETRY_DELAY_MS_\)/);
@@ -863,6 +869,34 @@ test("dailyAuto gates both import and export on collection completion", () => {
   assert.match(appsScript, /\["exportStats", exportStatsDailyGate_\]/);
   assert.match(appsScript, /withDocLock_\(function\(\) \{[\s\S]*?const ok = exportStatsWithOptions_\(\{ incrementTargetDate: targetDate \}\)/);
   assert.match(appsScript, /EXPORT_STATS_COLLECTION_GATE_LAST_STATUS/);
+
+  assert.match(appsScript, /DAILY_AUTO_CONTINUATION_DELAY_MS_ = 60 \* 1000/);
+  assert.match(appsScript, /DAILY_AUTO_CONTINUATION_WATCHDOG_DELAY_MS_ = 32 \* 60 \* 1000/);
+  assert.match(appsScript, /DAILY_AUTO_CONTINUATION_MAX_ATTEMPTS_ = 1/);
+  assert.match(appsScript, /function dailyAutoContinuation_\(\)/);
+  assert.match(appsScript, /function dailyAutoContinuationWatchdog_\(\)/);
+  assert.match(
+    appsScript,
+    /newTrigger\("dailyAutoContinuation_"\)[\s\S]*?\.after\(delayMs \|\| DAILY_AUTO_CONTINUATION_DELAY_MS_\)/,
+  );
+  assert.match(
+    appsScript,
+    /newTrigger\("dailyAutoContinuationWatchdog_"\)[\s\S]*?\.after\(DAILY_AUTO_CONTINUATION_WATCHDOG_DELAY_MS_\)/,
+  );
+  const continuationStart = appsScript.indexOf("function dailyAutoContinuation_()");
+  const watchdogStart = appsScript.indexOf("function dailyAutoContinuationWatchdog_()", continuationStart);
+  const continuationBody = appsScript.slice(continuationStart, watchdogStart);
+  assert.match(continuationBody, /pending\.next_index = i;/);
+  assert.match(continuationBody, /pending\.next_index = i \+ 1;/);
+  assert.match(continuationBody, /pending\.completed_stages = stages;/);
+  assert.match(continuationBody, /saveDailyAutoContinuation_\(pending\)/);
+  assert.match(continuationBody, /DAILY_AUTO_LAST_FINISHED_AT/);
+  assert.match(continuationBody, /removeDailyAutoContinuationTriggers_\(\["dailyAutoContinuationWatchdog_"\]\)/);
+  const watchdogBody = appsScript.slice(watchdogStart, appsScript.indexOf("function scheduleDailyAutoRetry_", watchdogStart));
+  assert.match(watchdogBody, /pending\.attempt >= DAILY_AUTO_CONTINUATION_MAX_ATTEMPTS_/);
+  assert.match(watchdogBody, /notifyExportStatsGateTimeout_\(collectionTargetDate_\(\), reason\)/);
+  assert.match(watchdogBody, /throw new Error\(reason\)/);
+  assert.match(watchdogBody, /pending\.attempt \+= 1/);
 });
 
 test("exportStats overwrites only automatic DB metrics and never carry-forwards", () => {
@@ -1205,7 +1239,7 @@ test("daily trigger installs and removes syncNew plus independent DB pull trigge
   );
   assert.match(
     appsScript,
-    /function removeDailyTrigger\(\)[\s\S]*?\["syncNew", "dailyAuto", "dailyAutoRetry_", "exportStatsAfterCollection_", "scheduledDbPullSync_", "dbPullSyncRetry_", "dbPullSyncWatchdog_"\]/,
+    /function removeDailyTrigger\(\)[\s\S]*?\["syncNew", "dailyAuto", "dailyAutoContinuation_", "dailyAutoContinuationWatchdog_", "dailyAutoRetry_", "exportStatsAfterCollection_", "scheduledDbPullSync_", "dbPullSyncRetry_", "dbPullSyncWatchdog_"\]/,
   );
   assert.match(appsScript, /function installDailyTrigger\(\)[\s\S]*?installDbPullSyncTrigger_\(\)/);
 });

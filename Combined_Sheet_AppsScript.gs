@@ -1689,11 +1689,16 @@ function backfillViralCaptionsFromAsset() {
 //
 // 운영 관측:
 // - 각 단계의 시작/종료/소요시간/오류를 Script Properties + 실행 로그에 남긴다.
+// - 앞의 메타 동기화 3단계와 무거운 통계 단계를 별도 실행으로 나눠 30분 강제종료를 피한다.
 // - importStats/exportStats만 실패 시 7분 뒤 실패 단계만 1회 재시도한다.
 // - pullFromDB는 3시간 독립 트리거로 분리해 일일 작업 시간초과와 신규글 동기화 지연을 격리한다.
-// - 재시도도 실패하면 더 예약하지 않고 오류를 남겨 무한 트리거 생성을 막는다.
+// - 후속 실행도 강제종료되면 32분 워치독이 중단 단계부터 1회 재개하고, 또 실패하면 경고한다.
 const DAILY_AUTO_RETRY_DELAY_MS_ = 7 * 60 * 1000;
-const DAILY_AUTO_RETRYABLE_STAGES_ = ["importStats"];
+const DAILY_AUTO_RETRYABLE_STAGES_ = ["importStats", "exportStats"];
+const DAILY_AUTO_CONTINUATION_DELAY_MS_ = 60 * 1000;
+const DAILY_AUTO_CONTINUATION_WATCHDOG_DELAY_MS_ = 32 * 60 * 1000;
+const DAILY_AUTO_CONTINUATION_MAX_ATTEMPTS_ = 1;
+const DAILY_AUTO_CONTINUATION_PROP_ = "DAILY_AUTO_CONTINUATION_PENDING_JSON";
 const EXPORT_STATS_GATE_RETRY_DELAY_MS_ = 15 * 60 * 1000;
 const EXPORT_STATS_GATE_MAX_ATTEMPTS_ = 16; // 08:30 실행이 4시간가량 지연된 수집도 따라잡는다.
 const EXPORT_STATS_GATE_PENDING_PROP_ = "EXPORT_STATS_COLLECTION_GATE_PENDING_JSON";
@@ -2012,6 +2017,165 @@ function removeDailyAutoRetryTriggers_() {
   return retryTriggers.length;
 }
 
+function removeDailyAutoContinuationTriggers_(handlers) {
+  const wanted = handlers || ["dailyAutoContinuation_", "dailyAutoContinuationWatchdog_"];
+  const triggers = ScriptApp.getProjectTriggers()
+    .filter(function(t) { return wanted.indexOf(t.getHandlerFunction()) >= 0; });
+  triggers.forEach(function(t) { ScriptApp.deleteTrigger(t); });
+  return triggers.length;
+}
+
+function saveDailyAutoContinuation_(pending) {
+  PropertiesService.getScriptProperties()
+    .setProperty(DAILY_AUTO_CONTINUATION_PROP_, JSON.stringify(pending));
+}
+
+function scheduleDailyAutoContinuation_(sourceStartedAt, stageNames, delayMs, attempt) {
+  const names = stageNames || [];
+  if (!names.length) throw new Error("dailyAuto continuation stages가 비었습니다.");
+  removeDailyAutoContinuationTriggers_();
+  const pending = {
+    source_started_at: sourceStartedAt,
+    stages: names,
+    next_index: 0,
+    completed_stages: [],
+    attempt: Number(attempt || 0),
+    scheduled_at: new Date().toISOString(),
+  };
+  saveDailyAutoContinuation_(pending);
+  ScriptApp.newTrigger("dailyAutoContinuation_")
+    .timeBased()
+    .after(delayMs || DAILY_AUTO_CONTINUATION_DELAY_MS_)
+    .create();
+  Logger.log("dailyAuto_continuation_scheduled " + JSON.stringify(pending));
+  return names;
+}
+
+function scheduleDailyAutoContinuationWatchdog_() {
+  removeDailyAutoContinuationTriggers_(["dailyAutoContinuationWatchdog_"]);
+  ScriptApp.newTrigger("dailyAutoContinuationWatchdog_")
+    .timeBased()
+    .after(DAILY_AUTO_CONTINUATION_WATCHDOG_DELAY_MS_)
+    .create();
+}
+
+function parseDailyAutoContinuation_(raw) {
+  if (!raw) return null;
+  const pending = JSON.parse(raw);
+  if (!pending || !Array.isArray(pending.stages) || !pending.stages.length) {
+    throw new Error("dailyAuto continuation payload가 올바르지 않습니다.");
+  }
+  pending.next_index = Math.max(0, Number(pending.next_index || 0));
+  pending.completed_stages = Array.isArray(pending.completed_stages) ? pending.completed_stages : [];
+  pending.attempt = Math.max(0, Number(pending.attempt || 0));
+  return pending;
+}
+
+function dailyAutoContinuation_() {
+  return withAutoWriteGuard_(function() {
+    const props = PropertiesService.getScriptProperties();
+    const raw = props.getProperty(DAILY_AUTO_CONTINUATION_PROP_);
+    removeDailyAutoContinuationTriggers_(["dailyAutoContinuation_"]);
+    const pending = parseDailyAutoContinuation_(raw);
+    if (!pending) {
+      Logger.log("dailyAuto_continuation_skip: pending 없음");
+      return true;
+    }
+
+    // 실행 자체가 30분 강제종료되면 catch/finally가 호출되지 않는다. 먼저 32분 워치독을 둔다.
+    scheduleDailyAutoContinuationWatchdog_();
+    const defs = {};
+    dailyAutoStageDefs_().forEach(function(pair) { defs[pair[0]] = pair[1]; });
+    const priorStagesRaw = props.getProperty("DAILY_AUTO_LAST_STAGES_JSON") || "[]";
+    let priorStages = [];
+    try { priorStages = JSON.parse(priorStagesRaw); } catch (e) { priorStages = []; }
+    const stages = pending.completed_stages.slice();
+    const startedAt = new Date().toISOString();
+    props.setProperties({
+      DAILY_AUTO_LAST_CONTINUATION_STARTED_AT: startedAt,
+      DAILY_AUTO_LAST_STATUS: "CONTINUATION_RUNNING",
+    }, false);
+
+    for (let i = pending.next_index; i < pending.stages.length; i++) {
+      const name = pending.stages[i];
+      if (typeof defs[name] !== "function") throw new Error("알 수 없는 dailyAuto 단계: " + name);
+      pending.next_index = i; // 강제종료되면 이 단계부터 멱등 재실행한다.
+      saveDailyAutoContinuation_(pending);
+      const stage = runDailyAutoStage_(name, defs[name]);
+      stages.push(stage);
+      pending.next_index = i + 1;
+      pending.completed_stages = stages;
+      saveDailyAutoContinuation_(pending);
+    }
+
+    removeDailyAutoContinuationTriggers_(["dailyAutoContinuationWatchdog_"]);
+    props.deleteProperty(DAILY_AUTO_CONTINUATION_PROP_);
+    const allStages = priorStages.concat(stages);
+    const errors = allStages.filter(function(stage) { return stage.status !== "OK"; });
+    const failedNames = stages.filter(function(stage) { return stage.status !== "OK"; })
+      .map(function(stage) { return stage.name; });
+    let retryScheduled = [];
+    try {
+      retryScheduled = scheduleDailyAutoRetry_(failedNames, pending.source_started_at || startedAt);
+    } catch (e) {
+      const retryStage = { name: "scheduleRetry", status: "ERROR", duration_ms: 0, error: dailyAutoErrorText_(e) };
+      allStages.push(retryStage);
+      errors.push(retryStage);
+    }
+    const finishedAt = new Date().toISOString();
+    const status = errors.length
+      ? "ERROR: " + errors.map(function(stage) { return stage.name + ": " + stage.error; }).join(" | ")
+      : "OK";
+    props.setProperties({
+      DAILY_AUTO_LAST_FINISHED_AT: finishedAt,
+      DAILY_AUTO_LAST_STATUS: status,
+      DAILY_AUTO_LAST_STAGES_JSON: JSON.stringify(allStages),
+      DAILY_AUTO_LAST_RETRY_SCHEDULED_JSON: JSON.stringify(retryScheduled),
+      DAILY_AUTO_LAST_CONTINUATION_FINISHED_AT: finishedAt,
+    }, false);
+    Logger.log("dailyAuto_continuation_result " + JSON.stringify({
+      source_started_at: pending.source_started_at || null,
+      attempt: pending.attempt,
+      status: status,
+      retry_scheduled: retryScheduled,
+      stages: stages,
+    }));
+    if (errors.length) throw new Error(status);
+    return true;
+  });
+}
+
+function dailyAutoContinuationWatchdog_() {
+  const props = PropertiesService.getScriptProperties();
+  removeDailyAutoContinuationTriggers_(["dailyAutoContinuationWatchdog_"]);
+  const pending = parseDailyAutoContinuation_(props.getProperty(DAILY_AUTO_CONTINUATION_PROP_));
+  if (!pending) {
+    Logger.log("dailyAuto_continuation_watchdog_skip: pending 없음");
+    return true;
+  }
+  if (pending.attempt >= DAILY_AUTO_CONTINUATION_MAX_ATTEMPTS_) {
+    const reason = "daily_auto_continuation_timeout_after_retry";
+    props.setProperties({
+      DAILY_AUTO_LAST_STATUS: "ERROR: " + reason,
+      DAILY_AUTO_LAST_CONTINUATION_WATCHDOG_AT: new Date().toISOString(),
+    }, false);
+    notifyExportStatsGateTimeout_(collectionTargetDate_(), reason);
+    Logger.log("dailyAuto_continuation_watchdog_give_up " + JSON.stringify(pending));
+    throw new Error(reason);
+  }
+  pending.attempt += 1;
+  pending.scheduled_at = new Date().toISOString();
+  saveDailyAutoContinuation_(pending);
+  removeDailyAutoContinuationTriggers_(["dailyAutoContinuation_"]);
+  ScriptApp.newTrigger("dailyAutoContinuation_")
+    .timeBased()
+    .after(DAILY_AUTO_CONTINUATION_DELAY_MS_)
+    .create();
+  props.setProperty("DAILY_AUTO_LAST_STATUS", "CONTINUATION_RETRY_SCHEDULED");
+  Logger.log("dailyAuto_continuation_watchdog_retry " + JSON.stringify(pending));
+  return true;
+}
+
 function scheduleDailyAutoRetry_(failedStageNames, sourceStartedAt) {
   const retryable = DAILY_AUTO_RETRYABLE_STAGES_
     .filter(name => failedStageNames.indexOf(name) >= 0);
@@ -2088,39 +2252,46 @@ function dailyAuto() {
       DAILY_AUTO_LAST_STATUS: "RUNNING",
     }, false);
 
-    const stages = dailyAutoStageDefs_()
-      .map(pair => runDailyAutoStage_(pair[0], pair[1]));
+    const defs = dailyAutoStageDefs_();
+    const continuationIndex = defs.findIndex(function(pair) { return pair[0] === "importStats"; });
+    if (continuationIndex < 0) throw new Error("dailyAuto importStats 단계를 찾지 못했습니다.");
+    const stages = defs.slice(0, continuationIndex)
+      .map(function(pair) { return runDailyAutoStage_(pair[0], pair[1]); });
     const errors = stages.filter(stage => stage.status !== "OK");
-    const failedNames = errors.map(stage => stage.name);
-    let retryScheduled = [];
+    let continuationScheduled = [];
     try {
-      retryScheduled = scheduleDailyAutoRetry_(failedNames, startedAt);
+      continuationScheduled = scheduleDailyAutoContinuation_(
+        startedAt,
+        defs.slice(continuationIndex).map(function(pair) { return pair[0]; }),
+        DAILY_AUTO_CONTINUATION_DELAY_MS_,
+        0
+      );
     } catch (e) {
-      const retryScheduleStage = {
-        name: "scheduleRetry",
+      const continuationScheduleStage = {
+        name: "scheduleContinuation",
         status: "ERROR",
         duration_ms: 0,
         error: dailyAutoErrorText_(e),
       };
-      stages.push(retryScheduleStage);
-      errors.push(retryScheduleStage);
-      Logger.log("dailyAuto_retry_schedule_error " + JSON.stringify(retryScheduleStage));
+      stages.push(continuationScheduleStage);
+      errors.push(continuationScheduleStage);
+      Logger.log("dailyAuto_continuation_schedule_error " + JSON.stringify(continuationScheduleStage));
     }
-    const finishedAt = new Date().toISOString();
+    const phaseFinishedAt = new Date().toISOString();
     const status = errors.length
       ? "ERROR: " + errors.map(stage => stage.name + ": " + stage.error).join(" | ")
-      : "OK";
+      : "CONTINUATION_SCHEDULED";
     props.setProperties({
-      DAILY_AUTO_LAST_FINISHED_AT: finishedAt,
+      DAILY_AUTO_LAST_PHASE_FINISHED_AT: phaseFinishedAt,
       DAILY_AUTO_LAST_STATUS: status,
       DAILY_AUTO_LAST_STAGES_JSON: JSON.stringify(stages),
-      DAILY_AUTO_LAST_RETRY_SCHEDULED_JSON: JSON.stringify(retryScheduled),
+      DAILY_AUTO_LAST_CONTINUATION_SCHEDULED_JSON: JSON.stringify(continuationScheduled),
     }, false);
     Logger.log("dailyAuto_result " + JSON.stringify({
       status: status,
       started_at: startedAt,
-      finished_at: finishedAt,
-      retry_scheduled: retryScheduled,
+      phase_finished_at: phaseFinishedAt,
+      continuation_scheduled: continuationScheduled,
       stages: stages,
     }));
     if (errors.length) throw new Error(status);
@@ -2996,14 +3167,16 @@ function checkSetup() {
     const sheet = getSheet_();
     const fieldCols = buildFieldCols_(sheet);
     const triggers = ScriptApp.getProjectTriggers()
-      .filter(t => ["syncNew", "dailyAuto", "scheduledDbPullSync_"].indexOf(t.getHandlerFunction()) >= 0);
+      .filter(t => ["syncNew", "dailyAuto", "dailyAutoContinuation_", "dailyAutoContinuationWatchdog_", "scheduledDbPullSync_"].indexOf(t.getHandlerFunction()) >= 0);
     const dailyAutoCount = triggers.filter(t => t.getHandlerFunction() === "dailyAuto").length;
+    const continuationCount = triggers.filter(t => ["dailyAutoContinuation_", "dailyAutoContinuationWatchdog_"].indexOf(t.getHandlerFunction()) >= 0).length;
     const midnightSyncNewCount = triggers.filter(t => t.getHandlerFunction() === "syncNew").length;
     const dbPullSyncCount = triggers.filter(t => t.getHandlerFunction() === "scheduledDbPullSync_").length;
     const props = PropertiesService.getScriptProperties();
     const lastStarted = props.getProperty("DAILY_AUTO_LAST_STARTED_AT") || "-";
     const lastFinished = props.getProperty("DAILY_AUTO_LAST_FINISHED_AT") || "-";
     const lastStatus = props.getProperty("DAILY_AUTO_LAST_STATUS") || "기록 없음";
+    const continuationPending = props.getProperty(DAILY_AUTO_CONTINUATION_PROP_) ? "있음" : "없음";
     const dbPullLastStarted = props.getProperty("DB_PULL_SYNC_LAST_STARTED_AT") || "-";
     const dbPullLastFinished = props.getProperty("DB_PULL_SYNC_LAST_FINISHED_AT") || "-";
     const dbPullLastStatus = props.getProperty("DB_PULL_SYNC_LAST_STATUS") || "기록 없음";
@@ -3015,7 +3188,7 @@ function checkSetup() {
       `인식된 필드: ${Object.keys(fieldCols).join(", ")}\n\n` +
       `🕘 스크립트 시간대: ${scriptTimezone} / KST 오늘: ${kstToday}\n` +
       `⏰ 자동 동기화 상태: ${dailyAutoCount === 1 && midnightSyncNewCount === 1 && dbPullSyncCount === 1 ? "✅ 켜짐" : "⚠️ 복구 필요"}\n` +
-      `트리거: dailyAuto ${dailyAutoCount}개, 자정 syncNew ${midnightSyncNewCount}개, DB→시트 3시간 ${dbPullSyncCount}개\n` +
+      `트리거: dailyAuto ${dailyAutoCount}개, 후속/워치독 ${continuationCount}개(대기 ${continuationPending}), 자정 syncNew ${midnightSyncNewCount}개, DB→시트 3시간 ${dbPullSyncCount}개\n` +
       `예정: DB→시트 3시간 간격 / 일일 작업 ${CONFIG.TRIGGER_HOUR}:${CONFIG.TRIGGER_MINUTE} KST 전후\n` +
       `마지막 dailyAuto 시작: ${lastStarted}\n` +
       `마지막 dailyAuto 종료: ${lastFinished}\n` +
@@ -3069,7 +3242,7 @@ function checkSheetIssues() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 자동 트리거 (매일 8:30, dailyAuto 실행: syncAll → syncPricing → importStats → exportStats)
+// 자동 트리거 (매일 8:30): 메타 동기화 뒤 통계 import/export는 dailyAutoContinuation_의 새 실행창에서 이어간다.
 // DB→시트 pullFromDB는 3시간 독립 트리거로 실행한다.
 // ═══════════════════════════════════════════════════════════════
 function findHeaderCol_(sheet, names) {
@@ -4328,8 +4501,9 @@ function removeAuditFallbackTrigger() {
 function installDailyTrigger() {
   // 기존 트리거(구버전 syncNew·남은 1회 재시도 포함) 제거 후 일일 작업과 DB→시트 독립 동기화를 재등록
   ScriptApp.getProjectTriggers()
-    .filter(t => ["syncNew", "dailyAuto", "dailyAutoRetry_", "exportStatsAfterCollection_", "scheduledDbPullSync_", "dbPullSyncRetry_", "dbPullSyncWatchdog_"].indexOf(t.getHandlerFunction()) >= 0)
+    .filter(t => ["syncNew", "dailyAuto", "dailyAutoContinuation_", "dailyAutoContinuationWatchdog_", "dailyAutoRetry_", "exportStatsAfterCollection_", "scheduledDbPullSync_", "dbPullSyncRetry_", "dbPullSyncWatchdog_"].indexOf(t.getHandlerFunction()) >= 0)
     .forEach(t => ScriptApp.deleteTrigger(t));
+  PropertiesService.getScriptProperties().deleteProperty(DAILY_AUTO_CONTINUATION_PROP_);
   PropertiesService.getScriptProperties().deleteProperty("DAILY_AUTO_RETRY_PENDING_JSON");
   PropertiesService.getScriptProperties().deleteProperty(EXPORT_STATS_GATE_PENDING_PROP_);
   PropertiesService.getScriptProperties().deleteProperty("DB_PULL_SYNC_PENDING_JSON");
@@ -4359,8 +4533,9 @@ function installDailyTrigger() {
 
 function removeDailyTrigger() {
   const triggers = ScriptApp.getProjectTriggers()
-    .filter(t => ["syncNew", "dailyAuto", "dailyAutoRetry_", "exportStatsAfterCollection_", "scheduledDbPullSync_", "dbPullSyncRetry_", "dbPullSyncWatchdog_"].indexOf(t.getHandlerFunction()) >= 0);
+    .filter(t => ["syncNew", "dailyAuto", "dailyAutoContinuation_", "dailyAutoContinuationWatchdog_", "dailyAutoRetry_", "exportStatsAfterCollection_", "scheduledDbPullSync_", "dbPullSyncRetry_", "dbPullSyncWatchdog_"].indexOf(t.getHandlerFunction()) >= 0);
   triggers.forEach(t => ScriptApp.deleteTrigger(t));
+  PropertiesService.getScriptProperties().deleteProperty(DAILY_AUTO_CONTINUATION_PROP_);
   PropertiesService.getScriptProperties().deleteProperty("DAILY_AUTO_RETRY_PENDING_JSON");
   PropertiesService.getScriptProperties().deleteProperty(EXPORT_STATS_GATE_PENDING_PROP_);
   PropertiesService.getScriptProperties().deleteProperty("DB_PULL_SYNC_PENDING_JSON");
