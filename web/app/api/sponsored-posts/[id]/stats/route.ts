@@ -2,9 +2,9 @@ import { auth } from "@clerk/nextjs/server";
 import { isBannerChannel } from "@/app/monitoring/lib";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { todayKST } from "@/lib/dateRule";
+import { isValidEntryDate, todayKST } from "@/lib/dateRule";
 
-type PostMeta = { channel_type: string | null; ended_at: string | null };
+type PostMeta = { channel_type: string | null; ended_at: string | null; posted_at?: string | null };
 
 // PATCH /api/sponsored-posts/[id]/stats
 // post_daily_stats 수동 수정: play_count / likes_count / comments_count.
@@ -65,17 +65,28 @@ export async function PATCH(
       updates.play_count = null;
     }
   }
-  let targetDate: string | null = body.measured_at ?? null;
+  if (body.measured_at != null && typeof body.measured_at !== "string") {
+    return NextResponse.json({ error: "measured_at 값이 올바른 날짜가 아닙니다." }, { status: 400 });
+  }
+  let targetDate: string | null = typeof body.measured_at === "string" && body.measured_at.trim()
+    ? body.measured_at.trim()
+    : null;
+  let targetExists = false;
 
-  // 지정된 measured_at이 실제 행과 일치하는지 확인 (포맷/타임존 불일치 → 최신으로 폴백)
+  // 사람이 지정한 날짜는 그 날짜 자체가 정본이다. 행이 없으면 아래에서 정확히 그 날짜로 생성한다.
+  // 예전처럼 최신행으로 폴백하면 소급 입력이 엉뚱한 날짜를 덮고, 이력이 전혀 없는 Sidecar는 오늘행으로 오귀속된다.
   if (targetDate) {
-    const { data: rows } = await supabase
+    if (!isValidEntryDate(targetDate)) {
+      return NextResponse.json({ error: `measured_at 값이 올바르지 않습니다: "${targetDate}"` }, { status: 400 });
+    }
+    const { data: rows, error: targetError } = await supabase
       .from("post_daily_stats")
       .select("measured_at")
       .eq("post_id", id)
       .eq("measured_at", targetDate)
       .limit(1);
-    if (!rows || rows.length === 0) targetDate = null;
+    if (targetError) return NextResponse.json({ error: targetError.message }, { status: 500 });
+    targetExists = Boolean(rows && rows.length > 0);
   }
 
   if (!targetDate) {
@@ -87,46 +98,44 @@ export async function PATCH(
       .limit(1)
       .single();
     if (!latest) {
-      const today = todayKST();
-      if (!postMeta) {
-        const { data: post } = await supabase
-          .from("sponsored_posts")
-          .select("channel_type, ended_at")
-          .eq("id", id)
-          .single();
-        postMeta = (post ?? null) as PostMeta | null;
-      }
-      const endedAt = postMeta?.ended_at ? String(postMeta.ended_at).slice(0, 10) : null;
-      if (endedAt && today > endedAt) {
-        return NextResponse.json(
-          { error: "ended_at 이후 날짜에는 조회수/도달수 값을 입력할 수 없습니다.", measured_at: today, ended_at: endedAt },
-          { status: 400 }
-        );
-      }
-      const { error } = await supabase
-        .from("post_daily_stats")
-        .upsert({ post_id: id, measured_at: today, ...updates }, { onConflict: "post_id,measured_at" });
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      return NextResponse.json({ ok: true, measured_at: today });
+      targetDate = todayKST();
+      targetExists = false;
+    } else {
+      targetDate = latest.measured_at as string;
+      targetExists = true;
     }
-    targetDate = latest.measured_at as string;
   }
 
   // 실제 갱신 + 갱신된 행 확인
   if (!postMeta) {
     const { data: post } = await supabase
       .from("sponsored_posts")
-      .select("channel_type, ended_at")
+      .select("channel_type, ended_at, posted_at")
       .eq("id", id)
       .single();
     postMeta = (post ?? null) as PostMeta | null;
   }
   const endedAt = postMeta?.ended_at ? String(postMeta.ended_at).slice(0, 10) : null;
+  const postedAt = postMeta?.posted_at ? String(postMeta.posted_at).slice(0, 10) : null;
+  if (postedAt && targetDate < postedAt) {
+    return NextResponse.json(
+      { error: "posted_at 이전 날짜에는 조회수/도달수 값을 입력할 수 없습니다.", measured_at: targetDate, posted_at: postedAt },
+      { status: 400 }
+    );
+  }
   if (endedAt && targetDate > endedAt) {
     return NextResponse.json(
       { error: "ended_at 이후 날짜에는 조회수/도달수 값을 입력할 수 없습니다.", measured_at: targetDate, ended_at: endedAt },
       { status: 400 }
     );
+  }
+
+  if (!targetExists) {
+    const { error: insertError } = await supabase
+      .from("post_daily_stats")
+      .upsert({ post_id: id, measured_at: targetDate, ...updates }, { onConflict: "post_id,measured_at" });
+    if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
+    return NextResponse.json({ ok: true, measured_at: targetDate, created: true });
   }
 
   const { data: updated, error } = await supabase

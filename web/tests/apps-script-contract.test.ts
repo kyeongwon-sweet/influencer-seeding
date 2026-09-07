@@ -918,6 +918,11 @@ test("exportStats overwrites only automatic DB metrics and never carry-forwards"
   assert.match(appsScript, /const skipFormulaRefresh = !!\(options && options\.skipFormulaRefresh === true\)/);
   assert.match(appsScript, /if \(incrementCol && !skipFormulaRefresh\)/);
   assert.match(appsScript, /preserveExistingMetrics && cell !== "" && cell !== null/);
+  // 오늘·미래 자동값은 계속 비우되, DB에 manual=true로 안착한 수기 도달수는 채우거나 보존한다.
+  assert.match(
+    appsScript,
+    /if \(date >= today\) \{[\s\S]*?collected > 0 && manualDates\[date\] === true[\s\S]*?sheetMetricWriteDecision_\(cell, collected, true\)[\s\S]*?futureCleared\+\+/,
+  );
 });
 
 test("formula-only refresh rewrites I without touching date values or H", () => {

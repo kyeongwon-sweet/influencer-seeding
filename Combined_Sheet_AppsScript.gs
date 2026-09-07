@@ -2824,12 +2824,26 @@ function exportStatsWithOptions_(options) {
           if (cell !== "" && cell !== null) { newBlock[i][bi] = ""; endedCleared++; }
           continue;
         }
-        // 🛡️ 오늘·미래 날짜칸은 채우지 않고 비운다(수집일-1까지만; 대시보드 '오늘 제외'와 일치).
+        const collected = m ? m[date] : undefined;
+        // 🛡️ 오늘·미래 자동값/출처불명 셀은 기존처럼 비운다(수집일-1까지만).
+        // 단, DB에 manual=true로 안착한 사람 입력값은 명시적 정본이다. 빈칸이면 DB값을 채우고,
+        // 시트에 이미 다른 수기값이 있으면 보존해 다음 수동 import가 그 값을 갱신할 수 있게 한다.
+        // 이 예외가 없으면 대시보드에서 저장한 Sidecar 도달수도 exportStats가 즉시 지웠다.
         if (date >= today) {
-          if (cell !== "" && cell !== null) { newBlock[i][bi] = ""; futureCleared++; }
+          if (collected > 0 && manualDates[date] === true) {
+            const decision = sheetMetricWriteDecision_(cell, collected, true);
+            if (decision === "fill") {
+              newBlock[i][bi] = collected; filled++;
+            } else if (decision === "preserve_manual") {
+              if (Number(cell) !== Number(collected)) manualPreserved++;
+            } else {
+              preserved++;
+            }
+          } else if (cell !== "" && cell !== null) {
+            newBlock[i][bi] = ""; futureCleared++;
+          }
           continue;
         }
-        const collected = m ? m[date] : undefined;
         if (collected > 0) {
           const decision = sheetMetricWriteDecision_(cell, collected, manualDates[date] === true);
           if (decision === "fill") {

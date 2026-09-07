@@ -3,7 +3,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 // 게시물 표 — monitoring/page.tsx 에서 추출. 모든 상태/핸들러는 부모(MonitoringPage) 소유(props).
 // 인라인 편집/정렬/선택/열 리사이즈는 전부 부모 함수를 props로 받아 그대로 호출 → 동작 동일.
 import { type Post, type EditCell, type DailyStats, type Filters, pickRangeStats, hasNotableChange, viewIncrement, incrementTooltip, INCREMENT_HEADER_TOOLTIP, isBannerChannel, fmt, fmtChannelType, effectiveReach, bannerDailyMetric, assetNameOf, pickMetric, CHANNEL_TYPES, INIT_FILTERS, CHART } from "../lib";
-import { MIN_ENTRY_DATE, maxDateKST } from "@/lib/dateRule";
+import { MIN_ENTRY_DATE, maxDateKST, yesterdayKST } from "@/lib/dateRule";
 import { companyForAccount } from "@/lib/companyMap";
 import { productCodeOf } from "@/lib/productCode";
 
@@ -136,9 +136,9 @@ type Props = {
   setEditCell: React.Dispatch<React.SetStateAction<EditCell | null>>;
   patchPost: (postId: string, field: string, value: string) => void;
   patchStat: (postId: string, measuredAt: string, field: "likes_count" | "comments_count", value: string) => void;
-  patchPlayCount: (postId: string, value: string, measuredAt?: string | null) => void;
-  editPlayCount: { postId: string; value: string } | null;
-  setEditPlayCount: React.Dispatch<React.SetStateAction<{ postId: string; value: string } | null>>;
+  patchPlayCount: (postId: string, value: string, measuredAt: string) => void;
+  editPlayCount: { postId: string; value: string; measuredAt: string } | null;
+  setEditPlayCount: React.Dispatch<React.SetStateAction<{ postId: string; value: string; measuredAt: string } | null>>;
   selected: Set<string>;
   toggleSelectAll: () => void;
   handleRowCheck: (idx: number, id: string, e: React.MouseEvent) => void;
@@ -303,6 +303,13 @@ function PostsTable(props: Props) {
                   // 🔒 필터 불변식: 값(현재/직전)은 lib.pickRangeStats 단일 구현으로 —
                   // 날짜 필터 시 범위 밖(latest_stats) 폴백 금지. 합계·정렬·복사·CSV와 반드시 동일 규칙.
                   const { s, prev } = pickRangeStats(post, filters.dateFrom, filters.dateTo);
+                  const isBanner = isBannerChannel(post.channel_type, post.posted_at);
+                  // 일별 이력이 전혀 없는 수기 전용 Sidecar도 오늘칸이 아니라 마지막 완료일(T-1)에 기록한다.
+                  // 기존 일별값이 보이는 행은 화면에 보이는 그 날짜를 그대로 수정한다.
+                  const filteredSingleDate = filters.dateFrom && filters.dateFrom === filters.dateTo
+                    ? filters.dateFrom
+                    : null;
+                  const manualMetricDate = s?.measured_at ?? filteredSingleDate ?? yesterdayKST();
 
                   const displayName = post.account_name ?? post.influencers?.name ?? "-";
                   const hl = hasNotableChange(post);
@@ -459,18 +466,18 @@ function PostsTable(props: Props) {
                       </td>
                       <td style={{ minWidth: colWidths["조회수"] }}
                         className="px-3 py-4 text-xs tabular-nums text-right whitespace-nowrap">
-                        {editPlayCount?.postId === post.id ? (
+                        {!isBanner && editPlayCount?.postId === post.id ? (
                           <input autoFocus type="number" value={editPlayCount.value}
                             onChange={e => setEditPlayCount(v => v ? { ...v, value: e.target.value } : null)}
-                            onBlur={() => patchPlayCount(post.id, editPlayCount.value, s?.measured_at)}
-                            onKeyDown={e => { if (e.key === "Enter") patchPlayCount(post.id, editPlayCount.value, s?.measured_at); if (e.key === "Escape") setEditPlayCount(null); }}
+                            onBlur={() => patchPlayCount(post.id, editPlayCount.value, editPlayCount.measuredAt)}
+                            onKeyDown={e => { if (e.key === "Enter") patchPlayCount(post.id, editPlayCount.value, editPlayCount.measuredAt); if (e.key === "Escape") setEditPlayCount(null); }}
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
                         ) : (
                           <div className="flex items-center justify-end gap-1.5 relative">
-                            <span onClick={() => !isBannerChannel(post.channel_type, post.posted_at) && setEditPlayCount({ postId: post.id, value: String(s?.play_count ?? "") })}
+                            <span onClick={() => !isBanner && setEditPlayCount({ postId: post.id, value: String(s?.play_count ?? ""), measuredAt: manualMetricDate })}
                               title="여기서 고치면 화면에 보이는 그 날짜 값으로 고정됩니다. 이후 자동수집은 계속되지만 이 값보다 낮아지지 않고, 더 높게 수집되면 그때 갱신됩니다. 시트에 더 나중에 입력한 값이 있으면 그 값이 우선합니다."
                               className="text-a-ink-muted hover:text-a-blue transition-colors cursor-text">
-                              {isBannerChannel(post.channel_type, post.posted_at) ? <span className="text-gray-300">—</span> : fmt(s?.play_count)}
+                              {isBanner ? <span className="text-gray-300">—</span> : fmt(s?.play_count)}
                             </span>
                             {updatedPlayCounts.has(post.id) && (
                               <div
@@ -496,8 +503,29 @@ function PostsTable(props: Props) {
                       </TD>
                       <td style={{ minWidth: colWidths["도달수"] }}
                         className="px-3 py-4 text-xs tabular-nums text-right whitespace-nowrap cursor-text"
-                        onClick={() => editCell?.postId !== post.id && setEditCell({ postId: post.id, field: "reach_count", value: String(post.reach_count ?? "") })}>
-                        {editCell?.postId === post.id && editCell?.field === "reach_count" ? (
+                        onClick={() => {
+                          if (isBanner) {
+                            if (editPlayCount?.postId !== post.id) {
+                              setEditCell(null);
+                              setEditPlayCount({
+                                postId: post.id,
+                                value: String(bannerDailyMetric(s) ?? ""),
+                                measuredAt: manualMetricDate,
+                              });
+                            }
+                          } else if (editCell?.postId !== post.id) {
+                            setEditCell({ postId: post.id, field: "reach_count", value: String(post.reach_count ?? "") });
+                          }
+                        }}>
+                        {isBanner && editPlayCount?.postId === post.id ? (
+                          <input autoFocus type="number" value={editPlayCount.value}
+                            aria-label={`배너 도달수 ${editPlayCount.measuredAt}`}
+                            title={`${editPlayCount.measuredAt} 일별 도달수로 저장`}
+                            onChange={e => setEditPlayCount(v => v ? { ...v, value: e.target.value } : null)}
+                            onBlur={() => patchPlayCount(post.id, editPlayCount.value, editPlayCount.measuredAt)}
+                            onKeyDown={e => { if (e.key === "Enter") patchPlayCount(post.id, editPlayCount.value, editPlayCount.measuredAt); if (e.key === "Escape") setEditPlayCount(null); }}
+                            className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
+                        ) : !isBanner && editCell?.postId === post.id && editCell?.field === "reach_count" ? (
                           <input autoFocus type="number" value={editCell.value}
                             onChange={e => setEditCell(c => c ? { ...c, value: e.target.value } : null)}
                             onBlur={() => patchPost(post.id, "reach_count", editCell.value)}
@@ -505,14 +533,13 @@ function PostsTable(props: Props) {
                             className="w-full text-xs bg-transparent border-b border-a-blue outline-none py-0.5 text-right" />
                         ) : (
                           (() => {
-                            const isBanner = isBannerChannel(post.channel_type, post.posted_at);
                             // 배너=일별 도달수(reach 우선, 없으면 입력값 1:1) — bannerDailyMetric 단일 규칙. 그 외=reach_count(없으면 조회수×0.8 추정).
                             const eff = isBanner ? bannerDailyMetric(s) : effectiveReach(post.reach_count, s?.play_count);
                             if (eff == null) return <span className="text-gray-300">—</span>;
                             const isAuto = !isBanner && post.reach_count == null;
                             return (
                               <span className={`hover:text-a-blue transition-colors ${isAuto ? "text-gray-400" : "text-a-ink-muted"}`}
-                                title={isBanner ? "배너 도달수(시트 입력값)" : (isAuto ? "조회수의 80% 자동 추정" : undefined)}>
+                                title={isBanner ? `배너 일별 도달수 — 클릭하면 ${manualMetricDate} 수기값 입력` : (isAuto ? "조회수의 80% 자동 추정" : undefined)}>
                                 {eff.toLocaleString()}
                               </span>
                             );

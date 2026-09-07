@@ -61,7 +61,7 @@ export default function MonitoringPage() {
   const [trendPost, setTrendPost] = useState<Post | null>(null);
   const trendLoading = false;
   const [editCell, setEditCell] = useState<EditCell | null>(null);
-  const [editPlayCount, setEditPlayCount] = useState<{ postId: string; value: string } | null>(null);
+  const [editPlayCount, setEditPlayCount] = useState<{ postId: string; value: string; measuredAt: string } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const lastCheckedIdx = useRef<number | null>(null); // 체크박스 Ctrl/Shift 범위 선택 기준점
   const [deleting, setDeleting] = useState(false);
@@ -1242,7 +1242,7 @@ export default function MonitoringPage() {
     setEditCell(null);
   }
 
-  async function patchPlayCount(postId: string, value: string, measuredAt?: string | null) {
+  async function patchPlayCount(postId: string, value: string, measuredAt: string) {
     const play_count = value === "" ? null : Number(value);
     // 배너는 입력값 자체가 도달수 — /stats 라우트가 이 값을 reach_count로 저장(초크포인트). ×0.8 추정·post레벨 reach 덮기 안 함.
     const bannerPost = posts.find(p => p.id === postId);
@@ -1254,9 +1254,7 @@ export default function MonitoringPage() {
       const res = await fetch(`/api/sponsored-posts/${postId}/stats`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(measuredAt
-          ? { play_count, measured_at: measuredAt, manual: true }
-          : { play_count, manual: true }),
+        body: JSON.stringify({ play_count, measured_at: measuredAt, manual: true }),
       });
 
       if (!res.ok) {
@@ -1265,9 +1263,9 @@ export default function MonitoringPage() {
         return;
       }
 
-      // 낙관적 UI 갱신은 실제 저장된 날짜(measuredAt) 기준 — 오늘로 태깅하면 '오늘 제외' 규칙에 걸려
-      // 방금 고친 값이 화면에서 사라짐(새로고침 전까지). measuredAt 미전달 시에만 오늘로 폴백.
-      const now = measuredAt ?? new Date().toISOString().slice(0, 10);
+      // 낙관적 UI 갱신도 API에 보낸 정확한 측정일 기준. 날짜 없는 신규 배너는 표에서
+      // 전일을 명시해 보내므로 오늘 행으로 조용히 오귀속되지 않는다.
+      const now = measuredAt;
       let reach_count = null;
 
       // 2️⃣ 도달수 계산 및 저장 (영상만 — 배너는 위 /stats가 이미 reach_count로 저장했으므로 건너뜀)
