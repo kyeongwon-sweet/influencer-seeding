@@ -1,5 +1,15 @@
 # AI Shared Status
 
+## ✅ 2026-09-07 [Codex 완료·라이브 검증] `dailyAuto` import/export 완전 분리 + `exportStats` DB 하트비트
+- **09-07 사고 재발 차단:** `dailyAuto` 본 실행의 메타데이터 단계 뒤에서 `importStats`와 `exportStats`를 **각각 별도 Apps Script 실행**으로 분리했다(`ad8dff26`). import가 30분 강제종료돼도 32분 워치독이 export 단계로 진행하며, 이때 export는 기존 시트값을 덮지 않는 `fill_blanks_only` 모드로 동작한다. 따라서 import 시간초과가 export를 굶기는 직렬 단일 실패점은 제거됐다. 아래의 예전 `05924cf1`/초기 Codex 항목 중 “importStats → exportStats가 같은 후속 실행” 설명은 이 항목으로 대체한다.
+- **완료 하트비트:** `exportStats`가 날짜셀·H/I 수식 쓰기와 검증을 모두 끝낸 뒤에만 `job=exportStats`, `written_date`, `last_success_at`, `cells_written`, `blank_cells_filled`, `auto_cells_corrected`, `formula_rows_written`, `added_date_columns`, `source`, `write_mode`, `import_status`를 기록한다. 인증 GET도 제공해 외부 마감형 워치독이 시트를 직접 읽지 않고 성공 여부를 확인할 수 있다(`a760a625`).
+- **프로덕션 DB 스키마 불일치 발견·수정:** 최초 라이브 검증에서 repo migration의 `ops_daily_runs`가 실제 DB에 없어 `Could not find the table 'public.ops_daily_runs' in the schema cache`로 하트비트만 500이 났다(시트 export 본작업은 완료). 새 DDL을 요구하지 않고 실재하는 `jobs` 테이블에 `ops_marker=apps-script-export-stats + run_date` 멱등 마커를 갱신하도록 `46d8b139`에서 교정했다.
+- **라이브 반영:** guarded clasp가 10:29:33 KST에 fresh pull → repo 15파일 overlay → push → re-pull byte 검증까지 통과. 웹 수정은 Vercel production **`dpl_9K1SAtQHAxkwXiJD7Tmn6zf5nBox`**(10:41:51 KST, `-mu` 별칭)로 배포됐다.
+- **실측 성공:** 10:42:40~10:46:43 KST 수동 `exportStats`가 **243초**에 완료. `written_date=2026-09-06`, 새 날짜열 0, URL-key 쓰기 0, 빈칸 보강 0, 자동값 정정 0, **수기값 1칸 보존**, 증분수식 **3,989/3,989 검증**, 매칭 게시물 3,484, 날짜열 113. 이미 09-06 복구가 끝난 뒤의 멱등 재실행이므로 쓰기 0은 정상이다.
+- **DB 역조회 확인:** `verifyExportStatsHeartbeat()` 성공. marker id `044f307c-e242-4461-972c-0aa2e70c8290`, `run_date=2026-09-06`, `status=done`, `last_success_at=2026-09-07T01:46:41.250Z`, `source=manual`, `write_mode=full`, `import_status=UNKNOWN`, `formula_rows_written=3989`. 수동 실행이라 import 상태 `UNKNOWN`은 의도된 값이다.
+- **3순위 런타임 판단:** 09-07 시간초과는 `dailyAuto` 앞 단계가 약 18분을 이미 쓴 뒤 import에 약 12분만 남은 상태에서 발생했다. 과거 약 2,900행/33,632건 standalone import는 3분대였으므로 **standalone import 자체가 30분을 넘는다고 아직 확정할 근거는 없다**. 오래된 날짜의 팀 수기입력을 놓칠 수 있는 최근열-only 증분화는 지금 도입하지 않고, 다음 자연 08:30 분리 실행에서 import 시작·완료·소요시간과 export heartbeat의 `source=dailyAuto`, `import_status=OK`, 정상 규모의 쓰기 수치를 관찰한다.
+- **검증:** web 전체 **447/447**, 집중 계약 **67/67**, `tsc --noEmit`, production build 통과, lint 0 errors(기존 warnings 17). 전체 수집 재실행·DB 통계 수정은 하지 않았다.
+
 ## 🔧 2026-09-07 [Claude 정정] 내 'Codex 확인요청'이 전제 오류 — 시트 상태(O)열은 정본이 아니라 DB 파생
 - **정정 대상:** 위 에스파 건에서 내가 "연동시트 '상태' 열이 종료 표기면 DB 활성과 불일치 → **시트를 활성으로 되돌릴지 그쪽 레인 판단**"이라고 인계했다. **전제가 틀렸다.** 되돌릴 대상이 아니다.
 - **왜 틀렸나:** `Combined_Sheet_AppsScript.gs:3692` 가 상태 열을 **DB에서 받아 계산해 시트에 쓴다** — 방향이 DB → 시트다.
