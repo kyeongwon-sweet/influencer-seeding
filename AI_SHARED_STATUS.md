@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 🟠 2026-09-07 [Codex 완료·감지 / 기능복구는 새 토큰 입력 대기] Meta 광고비 라이브 만료 확정 + 무음 실패 차단
+- **프로덕션 실측 확정:** 새 읽기 전용 `/api/ops/meta-ads-health` 를 `-mu`에서 실행한 GitHub run `34099386696`이 `targetDate=2026-09-06`, **HTTP 401 / Meta code 190 / `oauth_error`** 를 반환했다. `notify=false` GET이라 Slack 변경은 없었고 토큰 값·Meta 원문 오류는 로그/응답에 남기지 않았다. 앞선 "프로덕션은 추론" 구멍은 이 실측으로 닫힘 — 현재 전환 광고비 그래프는 실제로 만료 토큰을 사용 중이다.
+- **감지 계층 배포:** `0490f30b`에 CRON_SECRET 보호 헬스체크 + `.github/workflows/meta-ads-health.yml`(매일 11:45 KST, 이상일 때만 Slack)을 추가했고, 기존 Google/외부 스케줄 하트비트도 이 워크플로를 26시간 기준으로 감시한다. `16c7181d`는 신규 워크플로가 첫 schedule 이력 생성 전 즉시 미실행 오탐을 내지 않도록 첫 예정 실행 후 26시간 유예를 추가했다. **200 + 빈 `data[]`는 광고비 0원일 수 있어 정상**, OAuth/권한/응답구조/연결 오류만 실패다.
+- **배포:** Vercel production `dpl_4Kb8fJxzma6PMQ5DK9rWhNdYFZ74` Ready, `https://influencer-seeding-mu.vercel.app` 별칭 반영. 웹 테스트 **453/453**, `tsc --noEmit`, build 통과. lint는 기존 경고 17개·오류 0.
+- **⏳ 기능복구 대기:** 새 Meta **시스템 사용자 장기 토큰**을 ① Vercel production `META_BUSINESS_ACCESS_TOKEN` ② 정본 `C:\Users\hwangkw\AI\.claude\influencer-seeding\web\.env.local` 두 곳에 입력하고 재배포해야 한다. GitHub Secrets·`_yeomun_wt/web/.env.local` 스텁은 무관/무접촉. 발급값은 공개 repo·상태판·로그에 절대 기록하지 않는다.
+- **브라우저 상태:** 로그인된 Ads Manager 탭은 확인했으나 Business Settings 직접 이동이 Chrome 제어 연결에서 반복 timeout되어 토큰 생성 UI는 진행하지 못했다. 사용자가 Meta Business 시스템 사용자 화면에서 생성·두 저장소 입력을 완료하면 Codex가 재배포 후 같은 헬스체크를 재실행해 `healthy/HTTP 200`, 광고비 그래프까지 확인한다.
+
 ## ✅ 2026-09-07 [Claude 완료·코드 `d37a2b64`] 미러링 게시물 `cost=0` → '가격미매핑' 오탐 제거, **'무상(미러링)'** 표기
 - **발단(사용자 지시):** 09-06 리포트 TOP10 9위 `오하루(틱톡/미러링) (틱톡) +16,600  가격미매핑` → "이거 가격 0원으로 반영해줘".
 - **🔎 먼저 확인한 사실 — DB는 이미 0원이다(쓸 것이 없었다):** 오하루(틱톡/미러링) `185b137a` `cost=0`. 같은 캠페인 **IG 원본 `06aaa351` 이 3,000,000원**(둘 다 posted_at 08-30·JD복), 유튜브 미러링 `b00673ca` 도 0원. 즉 **미러링 0원은 이중계상 방지로 정상**이며 문제는 DB 값이 아니라 **리포트 표기**였다. 증분 실측도 확인: `2026-09-05 387,500 → 09-06 404,100 = +16,600`.
