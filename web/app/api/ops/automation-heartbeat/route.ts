@@ -10,6 +10,8 @@ import { getServerSupabase } from "@/lib/supabase-server";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+const JOB_TYPE = "monitoring";
+
 function unauthorized() {
   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 }
@@ -28,23 +30,55 @@ export async function POST(req: NextRequest) {
   }
 
   const lastSuccessAt = new Date().toISOString();
-  const payload = { ...input, last_success_at: lastSuccessAt };
-  const { data, error } = await getServerSupabase()
-    .from("ops_daily_runs")
-    .upsert({
-      service: EXPORT_STATS_HEARTBEAT_SERVICE,
+  const payload = {
+    ops_marker: EXPORT_STATS_HEARTBEAT_SERVICE,
+    run_date: input.written_date,
+    ...input,
+    last_success_at: lastSuccessAt,
+  };
+  const supabase = getServerSupabase();
+  const existing = await supabase
+    .from("jobs")
+    .select("id")
+    .eq("type", JOB_TYPE)
+    .eq("status", "done")
+    .contains("payload", {
+      ops_marker: EXPORT_STATS_HEARTBEAT_SERVICE,
       run_date: input.written_date,
-      status: "done",
-      payload,
-    }, { onConflict: "service,run_date" })
-    .select("service, run_date, status, payload, updated_at")
+    })
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existing.error) {
+    console.error("[automation-heartbeat] exportStats lookup failed", existing.error.message);
+    return NextResponse.json({ error: "heartbeat lookup failed" }, { status: 500 });
+  }
+
+  const mutation = existing.data?.id
+    ? supabase
+      .from("jobs")
+      .update({ payload, error: null })
+      .eq("id", existing.data.id)
+    : supabase
+      .from("jobs")
+      .insert({ type: JOB_TYPE, status: "done", payload });
+  const { data, error } = await mutation
+    .select("id, status, payload, created_at, updated_at")
     .single();
 
   if (error) {
     console.error("[automation-heartbeat] exportStats mark failed", error.message);
     return NextResponse.json({ error: "heartbeat write failed" }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, marker: data });
+  return NextResponse.json({
+    ok: true,
+    marker: {
+      service: EXPORT_STATS_HEARTBEAT_SERVICE,
+      run_date: input.written_date,
+      ...data,
+    },
+  });
 }
 
 export async function GET(req: NextRequest) {
@@ -55,17 +89,38 @@ export async function GET(req: NextRequest) {
   }
 
   const base = getServerSupabase()
-    .from("ops_daily_runs")
-    .select("service, run_date, status, payload, created_at, updated_at")
-    .eq("service", EXPORT_STATS_HEARTBEAT_SERVICE)
+    .from("jobs")
+    .select("id, status, payload, created_at, updated_at")
+    .eq("type", JOB_TYPE)
     .eq("status", "done");
   const { data, error } = writtenDate
-    ? await base.eq("run_date", writtenDate).limit(1).maybeSingle()
-    : await base.order("run_date", { ascending: false }).order("updated_at", { ascending: false }).limit(1).maybeSingle();
+    ? await base
+      .contains("payload", {
+        ops_marker: EXPORT_STATS_HEARTBEAT_SERVICE,
+        run_date: writtenDate,
+      })
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    : await base
+      .contains("payload", { ops_marker: EXPORT_STATS_HEARTBEAT_SERVICE })
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
   if (error) {
     console.error("[automation-heartbeat] exportStats read failed", error.message);
     return NextResponse.json({ error: "heartbeat read failed" }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, marker: data ?? null });
+  const payload = data?.payload as Record<string, unknown> | null | undefined;
+  return NextResponse.json({
+    ok: true,
+    marker: data
+      ? {
+        service: EXPORT_STATS_HEARTBEAT_SERVICE,
+        run_date: payload?.run_date ?? null,
+        ...data,
+      }
+      : null,
+  });
 }

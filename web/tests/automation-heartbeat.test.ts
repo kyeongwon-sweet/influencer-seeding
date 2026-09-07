@@ -56,10 +56,12 @@ test("exportStats heartbeat rejects invalid dates, jobs, and counters", () => {
   assert.throws(() => parseExportStatsHeartbeatInput({ ...valid, write_mode: "overwrite" }), /write_mode/);
 });
 
-test("heartbeat API is authenticated and uses the existing daily marker table", () => {
+test("heartbeat API is authenticated and uses an idempotent marker in the existing jobs table", () => {
   assert.match(route, /checkCronAuth\(req\) !== "ok"/);
-  assert.match(route, /\.from\("ops_daily_runs"\)/);
-  assert.match(route, /onConflict: "service,run_date"/);
+  assert.match(route, /\.from\("jobs"\)/);
+  assert.match(route, /\.contains\("payload", \{/);
+  assert.match(route, /ops_marker: EXPORT_STATS_HEARTBEAT_SERVICE/);
+  assert.match(route, /existing\.data\?\.id/);
   assert.match(route, /EXPORT_STATS_HEARTBEAT_SERVICE/);
   assert.match(route, /export async function GET/);
   assert.match(route, /export async function POST/);
