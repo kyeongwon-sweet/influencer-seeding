@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { MISSING_PAGES_HEADER, PARTIAL_HEADER, POSTS_TRUNCATED_HEADER } from "@/lib/stats-pages";
 import { ElapsedTimer, useStableHandlers } from "./perf-utils";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
@@ -24,6 +25,10 @@ import PostsTable from "./components/PostsTable";
 export default function MonitoringPage() {
   const { toasts, show: toast } = useToast();
   const [posts, setPosts] = useState<Post[]>([]);
+  // 서버가 일별 이력 일부를 못 불러온 '부분 응답'을 조용히 넘기지 않는다.
+  // 이력 한 페이지가 빠지면 baseline 이 더 낮은 옛 값으로 내려앉아 증분이 부풀려 보이므로,
+  // 화면에서 그 사실을 알려야 사람이 잘못된 수치를 그대로 보고하지 않는다.
+  const [statsPartial, setStatsPartial] = useState<{ missingPages: number; postsTruncated: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
@@ -707,6 +712,15 @@ export default function MonitoringPage() {
       toast("데이터 로드에 실패했습니다", "error");
       return;
     }
+    // 부분 응답 신호는 헤더로 온다(본문은 배열 그대로라 아래 파싱은 그대로 유지된다).
+    setStatsPartial(
+      res.headers.get(PARTIAL_HEADER) === "1"
+        ? {
+            missingPages: Number(res.headers.get(MISSING_PAGES_HEADER) ?? 0) || 0,
+            postsTruncated: res.headers.get(POSTS_TRUNCATED_HEADER) === "1",
+          }
+        : null,
+    );
     const json = await res.json();
     // 서버는 일별 이력을 튜플(stats_v2)로 보낸다 — 응답 5.51MB → 2.76MB. 여기서 기존 all_stats와
     // **완전히 같은 객체 모양**으로 되돌리므로, 아래 모든 계산(증분·누적·배너 reach·정렬·CSV)은
@@ -1337,6 +1351,19 @@ export default function MonitoringPage() {
 
   return (
     <div className="min-h-screen">
+      {statsPartial && (
+        <div
+          role="alert"
+          className="mx-3 mt-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-[8px] text-[11px] text-amber-700 flex items-start gap-1.5"
+        >
+          <span>⚠️</span>
+          <span>
+            일별 이력을 일부 불러오지 못했습니다(누락 {statsPartial.missingPages}페이지
+            {statsPartial.postsTruncated ? " · 게시물 목록도 일부 누락" : ""}).
+            {" "}이 상태에서는 <b>증분이 실제보다 크게 보일 수 있습니다.</b> 새로고침해 이 경고가 사라진 뒤의 값을 사용하세요.
+          </span>
+        </div>
+      )}
       {/* 날짜 채널타입 분류 툴팁 */}
       {dateTooltip && (() => {
         const breakdown = typeBreakdownByDate.get(dateTooltip.date);

@@ -1,6 +1,14 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
+import {
+  fetchPageWithRetry,
+  fetchPagesWithRetry,
+  MISSING_PAGES_HEADER,
+  PARTIAL_HEADER,
+  POSTS_TRUNCATED_HEADER,
+  type PageResult,
+} from "@/lib/stats-pages";
 import { normalizeUrl, ALLOWED_POST_URL_RE, isInstagramNonPostUrl, isInvalidTikTokPostUrl } from "@/lib/url-utils";
 import { logger } from "@/lib/logger";
 import { normalizeChannelType, canonicalText } from "@/app/monitoring/lib";
@@ -99,6 +107,9 @@ export async function GET(req: NextRequest) {
 
   // sponsored_posts 조회 (influencer_id가 NULL이므로 조인 불가)
   // 게시물도 페이지네이션으로 전부 조회 (Supabase 기본 1000행 상한 우회 — 게시물 1000개 초과 시 누락 방지)
+  // 🛡️ 부분 실패를 '조용히' 넘기지 않기 위한 플래그(아래 응답 헤더로 나간다).
+  let postsTruncated = false;
+  let missingStatPages = 0;
   const posts: SponsoredPostRow[] = [];
   {
     const PAGE = 1000;
@@ -115,7 +126,7 @@ export async function GET(req: NextRequest) {
         .order("id", { ascending: true })
         .range(from, from + PAGE - 1);
       // graceful degrade: 한 페이지 조회가 실패해도 500으로 대시보드 전체를 죽이지 않고, 지금까지 모은 것으로 진행.
-      if (postsError) { console.error("[sponsored-posts] posts 조회 실패:", postsError.message); break; }
+      if (postsError) { console.error("[sponsored-posts] posts 조회 실패:", postsError.message); postsTruncated = true; break; }
       posts.push(...((page ?? []) as unknown as SponsoredPostRow[]));
       if (!page || page.length < PAGE) break;
     }
@@ -146,6 +157,19 @@ export async function GET(req: NextRequest) {
       statsByPost.set(s.post_id, arr);
     }
   };
+  // ⚠️ 한 페이지(최대 1,000행)가 조용히 빠지면 그 안에 있던 어떤 게시물의 '직전 유효값'이 사라져
+  //    safeIncrement 의 baseline 이 더 낮은 옛 값으로 내려앉고 증분이 부풀려진다. 실데이터 시뮬레이션에서
+  //    페이지 1개 드롭만으로 활성 279건의 증분이 과대해졌고(최악 19,140 → 238,609), 기준선 행이 든
+  //    페이지를 떨어뜨리면 2026-09-03 사고의 값(63,801 → 180,654)이 그대로 재현됐다.
+  //    → 실패 페이지는 1회 재시도하고, 그래도 실패하면 응답 헤더로 부분 실패를 알린다. 값은 손대지 않는다.
+  // Supabase 빌더는 thenable 이라 그대로는 Promise 계약을 만족하지 않는다 → 실제 Promise 로 감싼다.
+  const fetchStatPage = async (from: number): Promise<PageResult<DailyStatRow>> => {
+    const { data, error } = await supabase.from("post_daily_stats").select(STAT_COLS)
+      .order("measured_at", { ascending: false }).order("id", { ascending: true })
+      .range(from, from + PAGE - 1);
+    return { data: (data ?? null) as DailyStatRow[] | null, error };
+  };
+
   if (ids.length > 0) {
     const { count, error: cntErr } = await supabase
       .from("post_daily_stats")
@@ -154,28 +178,35 @@ export async function GET(req: NextRequest) {
       // count 실패 시 순차 폴백(절단 방지) — 마지막 페이지가 가득 차면 계속 조회.
       if (cntErr) console.error("[sponsored-posts] stats count 실패, 순차 폴백:", cntErr.message);
       for (let from = 0; ; from += PAGE) {
-        const { data: page, error } = await supabase.from("post_daily_stats").select(STAT_COLS)
-          .order("measured_at", { ascending: false }).order("id", { ascending: true }).range(from, from + PAGE - 1);
-        if (error) { console.error("[sponsored-posts] stats 조회 실패(있는 데이터로 진행):", error.message); break; }
+        const { data: page, error } = await fetchPageWithRetry(from, fetchStatPage);
+        if (error) {
+          console.error("[sponsored-posts] stats 조회 실패(재시도 후에도) — 부분 응답:", error.message);
+          missingStatPages++;
+          break;
+        }
         collect(page as DailyStatRow[]);
         if (!page || page.length < PAGE) break;
       }
     } else {
       // count 확보 → 전 페이지 병렬 조회(순차 왕복 제거).
       const pages = Math.max(1, Math.ceil(count / PAGE));
-      const results = await Promise.all(
-        Array.from({ length: pages }, (_, i) =>
-          supabase.from("post_daily_stats").select(STAT_COLS)
-            // ⚠️ measured_at은 중복(한 날짜에 수백 행) → 단독 정렬 시 range() 페이지 경계에서 행 누락/중복
-            //    (비결정적 정렬). 병렬·동시삽입에선 특히 심함. 고유키 id를 2차 정렬키로 붙여 결정적 페이지네이션.
-            //    (2026-07-07: 대시보드 07-06 증분이 2.5~3.0M로 오락가락한 원인 — 리포트/DB는 정상 3.46M였음)
-            .order("measured_at", { ascending: false }).order("id", { ascending: true }).range(i * PAGE, i * PAGE + PAGE - 1)
-        )
+      // ⚠️ measured_at은 중복(한 날짜에 수백 행) → 단독 정렬 시 range() 페이지 경계에서 행 누락/중복
+      //    (비결정적 정렬). 병렬·동시삽입에선 특히 심함. 고유키 id를 2차 정렬키로 붙여 결정적 페이지네이션.
+      //    (2026-07-07: 대시보드 07-06 증분이 2.5~3.0M로 오락가락한 원인 — 리포트/DB는 정상 3.46M였음)
+      const offsets = Array.from({ length: pages }, (_, i) => i * PAGE);
+      const { rows, missingPages } = await fetchPagesWithRetry<DailyStatRow>(
+        offsets,
+        fetchStatPage,
+        (message, offset, phase) =>
+          console.error(
+            phase === "retry"
+              ? `[sponsored-posts] stats 페이지 재시도 실패(offset=${offset}) — 부분 응답:`
+              : `[sponsored-posts] stats 페이지 조회 실패(offset=${offset}) — 재시도 예약:`,
+            message,
+          ),
       );
-      for (const { data: page, error } of results) {
-        if (error) { console.error("[sponsored-posts] stats 조회 실패(있는 데이터로 진행):", error.message); continue; }
-        collect(page as DailyStatRow[]);
-      }
+      collect(rows);
+      missingStatPages += missingPages;
     }
   }
 
@@ -238,7 +269,21 @@ export async function GET(req: NextRequest) {
 
   // 사용자별 실시간 데이터 — 엣지/브라우저 캐시 금지.
   // (기본 응답이 public이라 Vercel CDN이 옛 값을 HIT으로 내주는 문제 방지)
-  return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });
+  // 부분 응답 신호는 **헤더**로 낸다 — 본문은 배열 그대로라 기존 소비자에 영향이 없다.
+  // 값을 추정·보정하지 않고 "이 응답은 불완전하다"는 사실만 알린다(절대규칙: 자동 보정 금지, 감지 알림만).
+  const partial = postsTruncated || missingStatPages > 0;
+  return NextResponse.json(result, {
+    headers: {
+      "Cache-Control": "no-store",
+      ...(partial
+        ? {
+            [PARTIAL_HEADER]: "1",
+            [MISSING_PAGES_HEADER]: String(missingStatPages),
+            [POSTS_TRUNCATED_HEADER]: postsTruncated ? "1" : "0",
+          }
+        : {}),
+    },
+  });
 }
 
 export async function POST(req: NextRequest) {
