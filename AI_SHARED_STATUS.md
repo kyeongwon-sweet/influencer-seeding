@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## ✅ 2026-09-08 [Codex 자연실행 검증] `dailyAuto` 3단계 분리 종단 성공
+- **Apps Script 실행 이력(전부 시간 기반·완료):** 본 실행 `dailyAuto` 08:27:54 KST 시작·205.154초(약 08:31:19 종료), 첫 `dailyAutoContinuation_`에서 `importStats` 08:33:00.521~08:38:31.464 KST·330.943초, 둘째 continuation에서 `exportStats` 08:39:56.269~08:47:37.330 KST·461.061초. 둘째 continuation 전체는 08:39:49 시작·813.283초였고, 이후 `syncStatus` 등 남은 단계까지 완료했다.
+- **DB 완료 마커 실측:** `written_date=2026-09-07`, `source=dailyAuto`, `import_status=OK`, `write_mode=full`, `cells_written=831`, `blank_cells_filled=830`, `auto_cells_corrected=3`, `formula_rows_written=3991`, `added_date_columns=1`. `fill_blanks_only` 폴백이 아니라 정상 full 경로다.
+- **안전 카나리아:** 빈칸 보강 830칸은 09-07 사고 당시 누락 규모 819칸과 비슷한 정상 규모(+11)이며 0도 폭증도 아니다. 로그도 새 날짜열 1개·빈칸 830칸·자동 DB값 정정 3칸·수기값 보존 1칸으로 일치한다. 따라서 `fillEdits` 누락이나 선택 의미 변경 징후가 없다.
+- **판정:** import가 5분 31초, export가 7분 41초로 각자 독립 예산 안에서 완료되어, 과거 직렬 실행의 30분 초과로 export가 굶던 경로가 해소됐다. 수동 재실행·시트/DB/통계 쓰기 없이 실행 이력과 하트비트만 읽기전용으로 확인했다.
+
 ## ✅ 2026-09-07 [Claude 검증·종결] Meta 헬스체크 사각 2건 보완 검증 통과 — 알림 목적지 = **황경원 Slack DM** 확정
 - **Codex `1c20451d` 독립 검증 = 통과.** 내 요청 설계가 그대로 구현됐다:
   · 재알림 기준이 **`last_alerted_at` 신설 필드**이고 알림 시에만 갱신(route.ts:71), `last_changed_at` 의미는 보존(route.ts:70) → 내가 경고한 "7일 후 매일 알림 회귀"를 구조적으로 차단.
