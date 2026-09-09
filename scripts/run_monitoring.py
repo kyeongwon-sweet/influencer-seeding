@@ -1023,6 +1023,31 @@ def _yt_id(url: str):
     return m.group(1) if m else None
 
 
+def _yt_item_id(item) -> str | None:
+    """액터 아이템에서 영상 ID를 뽑는다. **여러 필드를 순서대로 시도한다.**
+
+    🚨 2026-09-08 사고: `streamers/youtube-scraper` 가 Shorts 아이템의 `url` 을
+    `"https://www.youtube.com/shorts/"` (**영상 ID가 잘린 값**)로, `id` 를 빈 문자열로
+    반환하도록 바뀌었다. 조회수(`viewCount`)는 정상으로 들어오는데 `_yt_id(url)` 가
+    None 이 되어 **아이템이 통째로 버려졌고**, 로그엔 '미반환 262건'으로 찍혀 스크래퍼
+    장애처럼 보였다(활성 유튜브 275건 중 268건 미수집, 백업 포함 3회 실행 전부).
+    `watch?v=` URL 만 살아남아 7건이 들어온 것이 단서였다.
+
+    순서: 반환된 영상 자체를 가리키는 값(url·id·thumbnail) 우선, 최후에 요청 URL(input).
+    """
+    for value in (item.get("url"), item.get("id"), item.get("thumbnailUrl")):
+        text = str(value or "")
+        vid = _yt_id(text)
+        if vid:
+            return vid
+        m = re.search(r"/vi/([A-Za-z0-9_-]{6,})/", text)      # i.ytimg.com/vi/<id>/...
+        if m:
+            return m.group(1)
+        if re.fullmatch(r"[A-Za-z0-9_-]{9,}", text):          # id 필드가 순수 ID인 경우
+            return text
+    return _yt_id(str(item.get("input") or ""))               # 최후: 요청 URL 에코
+
+
 def _fetch_youtube(urls: list) -> dict:
     """유튜브 영상 조회수 수집 (streamers/youtube-scraper). 반환: {video_id: {views,likes,comments,title}}.
     유튜브는 '캡션'이 따로 없어 영상 제목(title)을 캡션(content_summary)으로 쓴다."""
@@ -1037,9 +1062,11 @@ def _fetch_youtube(urls: list) -> dict:
         "maxResultsShorts": 0,
     })
     out = {}
+    dropped = 0
     for it in client.dataset(run["defaultDatasetId"]).iterate_items():
-        vid = _yt_id(it.get("url") or "")
+        vid = _yt_item_id(it)
         if not vid:
+            dropped += 1                # 조용히 버리지 않는다 — 2026-09-08 사고의 무음 지점
             continue
         # 비공개/삭제 영상은 액터가 {error:'VIDEO_UNAVAILABLE'}로 반환(실측 확인) → 자동 특이사항 태깅용 신호.
         if it.get("error"):
@@ -1051,6 +1078,9 @@ def _fetch_youtube(urls: list) -> dict:
             "comments": it.get("commentsCount"),
             "title": it.get("title"),
         }
+    if dropped:
+        print(f"[WARN] 유튜브 아이템 {dropped}건 ID 추출 실패 — 액터 응답 스키마 변경 의심"
+              " (url·id·thumbnail·input 모두 실패)")
     return out
 
 

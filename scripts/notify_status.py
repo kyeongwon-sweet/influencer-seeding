@@ -12,6 +12,7 @@ from channel_kind import is_banner_channel, is_mirror_label
 from ended_at_anomalies import ended_at_anomaly_lines
 from auto_end_rules import stale_high_cost_actives, stale_high_cost_line
 from cost_mapping_guard import unmapped_cost_actives, unmapped_cost_line
+from platform_coverage_guard import platform_collapse_line, platform_collapses
 from manual_entry_guards import copy_suspects, spike_suspects
 from metric_anomaly_guards import frozen_spike_suspects
 
@@ -176,6 +177,9 @@ def _integrity_lines(db, posts):
 
     first, day_cnt = {}, {}
     series, vidx, pseries, pvidx = {}, {}, {}, {}
+    # ⑩ 플랫폼 붕괴 감시용 — 최근 8일 '지표가 있는 post_id' 집합(같은 스캔 재사용, 추가 조회 0)
+    cov_cutoff = (kst_today - timedelta(days=8)).isoformat()
+    measured_by_date: dict[str, set] = {}
     off = 0
     while True:
         res = db.table("post_daily_stats").select(
@@ -188,6 +192,8 @@ def _integrity_lines(db, posts):
             if m >= cutoff and pid in active_view_ids and r["play_count"] is not None:
                 day_cnt[m] = day_cnt.get(m, 0) + 1
             d = m[:10]
+            if d >= cov_cutoff and (r.get("play_count") is not None or r.get("reach_count") is not None):
+                measured_by_date.setdefault(d, set()).add(pid)
             man = bool(r.get("manual"))
             pv = r.get("play_count") or 0
             if pv > 0:
@@ -380,6 +386,21 @@ def _integrity_lines(db, posts):
         lines.extend(ended_at_anomaly_lines(posts, kst_today.isoformat()))
     except Exception as e:
         print("[status] 종료일 이상 검사 실패(무시):", e)
+
+    # 10) 플랫폼 수집 붕괴 감시 — 계정·채널분류 단위 감시로는 안 잡히는 '플랫폼 통째 실패'.
+    #     2026-09-08 유튜브 268건 미수집이 '확인필요 12건'(위성 257건은 규칙상 제외) + '전멸 5개 계정'
+    #     으로 쪼개져 규모가 안 보였다. 어제 확보율을 직전 7일 중앙값과 비교해 한 줄로 알린다.
+    try:
+        _yday = (kst_today - timedelta(days=1)).isoformat()
+        _prev = [(kst_today - timedelta(days=i)).isoformat() for i in range(8, 1, -1)]
+        _pc_line = platform_collapse_line(
+            platform_collapses([p for p in posts if not p.get("ended_at")], measured_by_date, _yday, _prev),
+            _yday,
+        )
+        if _pc_line:
+            lines.append(_pc_line)
+    except Exception as e:
+        print("[status] 플랫폼 붕괴 검사 실패(무시):", e)
 
     # 9) 가격미매핑 활성 감시 — 리포트의 '가격미매핑' 경고는 그날 TOP10 에 든 글만 보이므로
     #    총량이 보이지 않는다. 2026-09-03 `6682119e` 로 판정이 유상채널 전체로 넓어지면서
