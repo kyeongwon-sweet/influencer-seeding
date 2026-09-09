@@ -1023,6 +1023,20 @@ def _yt_id(url: str):
     return m.group(1) if m else None
 
 
+def _warn_unmapped(platform: str, dropped: int, total: int) -> None:
+    """액터가 준 아이템 중 **매칭 키를 못 만든 수**를 알린다.
+
+    🚨 2026-09-08 사고의 무음 지점이 정확히 여기였다. 유튜브 액터가 Shorts 아이템의 `url` 에서
+    영상 ID를 빼고 주기 시작했는데, 매칭 실패 아이템을 `continue` 로 **세지도 않고 버려서**
+    조회수는 멀쩡히 들어오는데 268건이 통째로 유실됐다. 로그엔 '미반환'으로만 찍혀
+    '스크래퍼 장애 → 기다리면 복구'로 오진하기 딱 좋았다(실제로는 기다려도 안 낫는다).
+    → 어느 플랫폼이든 이 경고가 뜨면 **액터 응답 스키마부터 열어볼 것**(URL 2개 최소 프로브).
+    """
+    if dropped:
+        print(f"[WARN] {platform} 아이템 {dropped}/{total}건 매칭 키 추출 실패 — "
+              "액터 응답 스키마 변경 의심(필드명·값 형식 확인 필요)")
+
+
 def _yt_item_id(item) -> str | None:
     """액터 아이템에서 영상 ID를 뽑는다. **여러 필드를 순서대로 시도한다.**
 
@@ -1062,8 +1076,9 @@ def _fetch_youtube(urls: list) -> dict:
         "maxResultsShorts": 0,
     })
     out = {}
-    dropped = 0
+    dropped = total = 0
     for it in client.dataset(run["defaultDatasetId"]).iterate_items():
+        total += 1
         vid = _yt_item_id(it)
         if not vid:
             dropped += 1                # 조용히 버리지 않는다 — 2026-09-08 사고의 무음 지점
@@ -1078,9 +1093,7 @@ def _fetch_youtube(urls: list) -> dict:
             "comments": it.get("commentsCount"),
             "title": it.get("title"),
         }
-    if dropped:
-        print(f"[WARN] 유튜브 아이템 {dropped}건 ID 추출 실패 — 액터 응답 스키마 변경 의심"
-              " (url·id·thumbnail·input 모두 실패)")
+    _warn_unmapped("유튜브", dropped, total)
     return out
 
 
@@ -1173,9 +1186,12 @@ def _fetch_tiktok(urls: list) -> dict:
         "shouldDownloadSubtitles": False,
     })
     out = {}
+    dropped = total = 0
     for it in client.dataset(run["defaultDatasetId"]).iterate_items():
+        total += 1
         vid = _tt_id(it.get("webVideoUrl") or it.get("submittedVideoUrl") or it.get("url") or "")
         if not vid:
+            dropped += 1
             continue
         # 삭제/비공개/민감(POST_SENSITIVE 등)은 액터가 error/errorCode 반환(실측 확인) → 자동 특이사항 태깅 신호.
         err = it.get("errorCode") or it.get("error")
@@ -1189,6 +1205,7 @@ def _fetch_tiktok(urls: list) -> dict:
             # 틱톡 영상 설명 → 캡션(content_summary). 액터가 text로 반환(실측 확인). 300자 제한.
             "content_summary": (it.get("text") or "")[:300] or None,
         }
+    _warn_unmapped("틱톡", dropped, total)
     return out
 
 
@@ -1208,16 +1225,20 @@ def _fetch_threads(urls: list) -> dict:
         "startUrls": [{"url": u} for u in urls],
     })
     out = {}
+    dropped = total = 0
     for it in client.dataset(run["defaultDatasetId"]).iterate_items():
         th = it.get("thread") or {}
+        total += 1
         code = th.get("code") or _th_code(th.get("url") or "") or _th_code(it.get("url") or "")
         if not code:
+            dropped += 1
             continue
         err = it.get("errorCode") or it.get("error")
         if err:
             out[code] = {"error": err, "likes": None, "comments": None}
             continue
         out[code] = {"likes": th.get("like_count"), "comments": th.get("reply_count")}
+    _warn_unmapped("스레드", dropped, total)
     return out
 
 
@@ -1241,16 +1262,20 @@ def _fetch_facebook(urls: list) -> dict:
         "resultsLimit": len(urls),  # 요청 URL 수만큼만(단건에 최대 5 요청하던 과수집 제거)
     })
     out = {}
+    dropped = total = 0
     for it in client.dataset(run["defaultDatasetId"]).iterate_items():
         # facebookUrl이 입력 pfbid를 보존(url 필드는 FB가 다른 pfbid로 재생성하므로 매칭 실패)
+        total += 1
         key = _fb_key(it.get("facebookUrl") or it.get("url") or "") or it.get("postId")
         if not key:
+            dropped += 1
             continue
         err = it.get("errorCode") or it.get("error")
         if err:
             out[key] = {"error": err, "likes": None, "comments": None}
             continue
         out[key] = {"likes": it.get("likes"), "comments": it.get("comments")}
+    _warn_unmapped("페이스북", dropped, total)
     return out
 
 
@@ -1282,9 +1307,12 @@ def _fetch_twitter(urls: list) -> dict:
         "maxItems": max(len(clean), 1),
     })
     out = {}
+    dropped = total = 0
     for it in client.dataset(run["defaultDatasetId"]).iterate_items():
+        total += 1
         tid = _tw_id(it.get("url") or it.get("twitterUrl") or it.get("tweetUrl") or "")
         if not tid:
+            dropped += 1
             continue
         err = it.get("errorCode") or it.get("error")
         if err:
@@ -1297,6 +1325,7 @@ def _fetch_twitter(urls: list) -> dict:
             # 트윗 본문 → 캡션(content_summary). 액터가 fullText/text로 반환(실측 확인). 300자 제한.
             "content_summary": (it.get("fullText") or it.get("text") or "")[:300] or None,
         }
+    _warn_unmapped("트위터", dropped, total)
     return out
 
 
@@ -2103,11 +2132,17 @@ def _fetch_alive_instagram_handles(handles: list[str]) -> set[str]:
     })
     alive = set()
     requested_set = set(requested)
+    dropped = total = 0
     for item in client.dataset(run["defaultDatasetId"]).iterate_items():
+        total += 1
         owner = item.get("owner") or {}
         handle = normalize_instagram_handle(item.get("ownerUsername") or owner.get("username"))
+        if not handle:
+            dropped += 1        # ⚠️ 핸들을 못 읽으면 '계정 사망'으로 오판돼 종료 처리까지 번진다
+            continue
         if handle in requested_set:
             alive.add(handle)
+    _warn_unmapped("인스타 계정 스캔", dropped, total)
     return alive
 
 
@@ -2121,13 +2156,16 @@ def _fetch_ig_fallback(urls: list) -> dict:
     from instagram_metric_policy import pick_instagram_metric
     client = ApifyClient(os.getenv("APIFY_API_TOKEN"))
     out = {}
+    dropped = total = 0
     for i in range(0, len(urls), 40):
         chunk = urls[i:i + 40]
         try:
             run = client.actor("data-slayer/instagram-post-details").call(run_input={"postUrls": chunk})
             for it in client.dataset(run["defaultDatasetId"]).iterate_items():
+                total += 1
                 code = it.get("code") or it.get("shortcode") or it.get("shortCode")
                 if not code:
+                    dropped += 1
                     continue
                 m = it.get("metrics") or {}
                 cap = it.get("caption")
@@ -2140,6 +2178,7 @@ def _fetch_ig_fallback(urls: list) -> dict:
                 }
         except Exception as e:
             print(f"  [WARN] data-slayer 폴백 배치 실패: {e}")
+    _warn_unmapped("인스타 폴백(data-slayer)", dropped, total)
     return out
 
 
@@ -2178,6 +2217,7 @@ def _fetch_stats(urls: list) -> list:
 
     requested_keys = {_stats_key(u) for u in urls}
     result = []
+    dropped = 0
     for idx, item in enumerate(items):
         shortcode = item.get("shortCode") or item.get("shortcode")
         url = (
@@ -2185,6 +2225,7 @@ def _fetch_stats(urls: list) -> list:
             or (shortcode and f"https://www.instagram.com/p/{shortcode}/")
         )
         if not url:
+            dropped += 1        # url·shortCode 둘 다 없으면 이 게시물은 결과에서 사라진다
             continue
         response_key = _stats_key(url)
         if response_key not in requested_keys:
@@ -2264,6 +2305,7 @@ def _fetch_stats(urls: list) -> list:
             "error_description": error_description,
         })
 
+    _warn_unmapped("인스타", dropped, len(items))
     return result
 
 
