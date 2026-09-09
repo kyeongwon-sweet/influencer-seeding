@@ -20,6 +20,17 @@ def main() -> int:
     src = SCRIPT.read_text(encoding="utf-8")
     fails: list[str] = []
 
+    # REPORT_NOTE(숫자 해석 주석) — 값은 못 바꾸고 설명만 붙는다. 미설정이면 아무것도 안 붙어야 하고,
+    # 사용자 입력이 그대로 mrkdwn 에 흘러들지 않게 _esc 를 반드시 거쳐야 한다.
+    if 'os.getenv("REPORT_NOTE")' not in src:
+        fails.append("REPORT_NOTE 주입 지점을 찾지 못함")
+    else:
+        note_block = src[src.index('os.getenv("REPORT_NOTE")'):][:400]
+        if "_esc(" not in note_block:
+            fails.append("REPORT_NOTE 를 _esc 없이 본문에 넣고 있음(mrkdwn 주입 위험)")
+        if "if _note:" not in note_block:
+            fails.append("REPORT_NOTE 가 비었을 때 줄이 붙지 않는 가드가 없음")
+
     dedup = re.search(r"elif\s+(.+?_already_posted\(token,\s*CHANNEL,\s*target\)\s*):", src, re.S)
     if not dedup:
         fails.append("DEDUP _already_posted 분기를 찾지 못함")

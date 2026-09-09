@@ -42,6 +42,10 @@ on:
         description: "발송 대상 날짜(YYYY-MM-DD, 비우면 어제 KST). 특정일 정정 재발송용"
         type: string
         default: ""
+      note:
+        description: "본문 상단에 붙일 주석 한 줄(숫자 해석 주의사항). 비우면 안 붙음"
+        type: string
+        default: ""
 
 jobs:
   report:
@@ -78,6 +82,7 @@ jobs:
           DELETE_TS: ${{ github.event.inputs.delete_ts }}
           # 기존 리포트 메시지 본문만 수정. TS_OUT을 남기지 않아 상태 댓글은 재발송하지 않는다.
           UPDATE_TS: ${{ github.event.inputs.update_ts }}
+          REPORT_NOTE: ${{ github.event.inputs.note }}
           DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && '1' || '' }}
           TS_OUT: ${{ runner.temp }}/report_ts.txt
           PYTHONUNBUFFERED: "1"
