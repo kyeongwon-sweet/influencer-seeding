@@ -402,6 +402,22 @@ def _integrity_lines(db, posts):
     except Exception as e:
         print("[status] 플랫폼 붕괴 검사 실패(무시):", e)
 
+    # 11) 안전망 비활성 감시 — 폴백 코드는 있는데 시크릿이 없어 '조용히 무동작'인 상태.
+    #     2026-09-08: 유튜브 Data API 폴백(run_monitoring `_fetch_youtube_api`)이 켜져 있었으면
+    #     스키마 사고로 유실된 268건이 살았다. 그런데 미설정 경고는 GHA 로그에만 찍혀 아무도 못 봤다.
+    #     ⚠️ 켜기 전까지 매일 뜬다 — 그게 목적이다. 등록되면 이 줄은 저절로 사라진다.
+    try:
+        if not (os.getenv("YOUTUBE_API_KEY") or "").strip():
+            _yt_active = sum(1 for p in posts if not p.get("ended_at")
+                             and ("youtube.com" in (p.get("url") or "") or "youtu.be" in (p.get("url") or "")))
+            if _yt_active:
+                lines.append(
+                    f"안전망 비활성 — YOUTUBE_API_KEY 미등록으로 유튜브 Data API 폴백이 무동작"
+                    f"(활성 유튜브 {_yt_active}건 무방비). 스크래퍼가 값을 못 주는 날 전량 유실된다"
+                    f" — 2026-09-08 실제로 268건 유실. GitHub Secret 등록 필요.")
+    except Exception as e:
+        print("[status] 안전망 비활성 검사 실패(무시):", e)
+
     # 9) 가격미매핑 활성 감시 — 리포트의 '가격미매핑' 경고는 그날 TOP10 에 든 글만 보이므로
     #    총량이 보이지 않는다. 2026-09-03 `6682119e` 로 판정이 유상채널 전체로 넓어지면서
     #    미러링 23건이 오탐이 됐는데 4일간 아무도 총량을 몰랐다(사람이 눈으로 발견).

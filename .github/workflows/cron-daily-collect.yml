@@ -178,6 +178,9 @@ jobs:
           COLLECT_LOG: ${{ runner.temp }}/collect.log
           STATUS_USER: U0B2Y0ZC8QZ   # 황경원 Slack user id (DM)
           ONLY_ON_FAILURE: "1"        # 정상이면 발송 안 함(상태는 리포트 댓글로만)
+          # 안전망이 꺼져 있으면 '꺼져 있다'는 사실을 매일 알린다(2026-09-08 유튜브 268건 사고:
+          # Data API 폴백 코드는 있는데 시크릿 미등록이라 조용히 무동작이었다).
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           PYTHONUNBUFFERED: "1"
         run: cd scripts && python notify_status.py
 
@@ -292,6 +295,7 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           COLLECT_OUTCOME: success
           STATUS_USER: U0B2Y0ZC8QZ
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           PYTHONUNBUFFERED: "1"
         run: |
           export MONITORING_DATE=$(TZ=Asia/Seoul date -d 'yesterday' +%F)
