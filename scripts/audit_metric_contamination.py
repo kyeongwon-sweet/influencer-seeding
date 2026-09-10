@@ -125,6 +125,46 @@ def detect_spike_freeze(
     return None
 
 
+# 사람이 실측·궤적으로 '우연 일치'를 확정한 조합. Rule B 는 값이 정확히 겹치면 후보로 올리는데,
+# 확정된 우연을 적어둘 자리가 없으면 **영구 오탐**이 되어 매 감사마다 같은 건이 뜬다
+# (같은 문제의 다른 사례: 큐의 manual_zero_confirmed, 2026-09-07).
+#
+# ⚠️ 억제는 **날짜·값·게시물이 모두 일치할 때만** 된다. 제3의 게시물이 같은 값으로 새로 끼어들면
+#    확정 범위 밖이므로 억제하지 않는다(새 오염을 확정 기록 뒤에 숨기지 않기 위해서다).
+# ⚠️ 값은 어떤 경우에도 바꾸지 않는다. 이건 '알림에서 빼는' 기록일 뿐이다.
+CONFIRMED_COINCIDENCES: dict[tuple[str, int], dict] = {
+    ("2026-08-22", 40852): {
+        "post_ids": {
+            "8b3b791c-14da-4a1e-a300-1c353a973317",  # Ufo__purple (게시 2026-08-17)
+            "b5c9529d-69de-4e52-a997-abd245d2d7dd",  # nato.tving  (게시 2026-08-22)
+        },
+        # 근거(2026-09-07·09-10 두 번 실측, Apify 재측정 없이 궤적만으로 판정):
+        #  · Ufo__purple 은 40,758→40,799→40,819→40,830→**40,852**→40,879→40,906 으로
+        #    매일 수십씩 매끄럽게 자라며 그 값을 '통과'했다. 급등도 동결도 없다.
+        #  · nato.tving 은 게시 당일(08-22)의 **첫 측정값**이 40,852 였고 이후
+        #    45,223→102,311 로 정상 성장했다. 직전값이 없어서(prev=None) 규칙상 후보가 된 것이다.
+        #  · 이 프로젝트의 오염 시그니처는 '급등 후 완전동결 + 비라운드 값충돌'인데
+        #    **동결 조건이 양쪽 다 없다**. 3일 뒤 재확인 시에도 이 값은 여전히 2행뿐이었다.
+        "note": "궤적 매끄러움 + 동결 없음 → 우연 일치 확정(2026-09-10)",
+    },
+}
+
+
+def is_confirmed_coincidence(day, value, post_id, others, table=None) -> bool:
+    """확정된 우연 일치인가. 순수 함수 — 테스트 대상.
+
+    날짜·값·게시물이 전부 일치하고, **충돌 상대까지 확정 목록 안에 있을 때만** True.
+    """
+    table = CONFIRMED_COINCIDENCES if table is None else table
+    entry = table.get((str(day)[:10], value))
+    if not entry:
+        return False
+    ids = entry.get("post_ids") or set()
+    if post_id not in ids:
+        return False
+    return set(others or ()) <= set(ids)
+
+
 def detect_value_collisions(day_values, prev_by_post, min_value=None,
                             jump_ratio=None, round_unit=ROUND_UNIT):
     """Rule B — 같은 날 서로 다른 게시물의 정확한 값 충돌. 순수 함수 — 테스트 대상.
@@ -252,11 +292,15 @@ def main() -> int:
         pid: value for pid, value in by_day[baseline_day].items()
         if isinstance(value, int)
     }
+    confirmed_skipped = 0
     for day in days:
         collisions = detect_value_collisions(by_day[day], prev_by_post)
         for c in collisions:
             post = by_id.get(c["post_id"])
             if not post or post.get("ended_at") or c["post_id"] in findings:
+                continue
+            if is_confirmed_coincidence(day, c["value"], c["post_id"], c["others"]):
+                confirmed_skipped += 1
                 continue
             others = ", ".join((by_id.get(o) or {}).get("account_name") or "?"
                                for o in c["others"])
@@ -272,6 +316,9 @@ def main() -> int:
             if isinstance(value, int):
                 prev_by_post[pid] = value
 
+    if confirmed_skipped:
+        # 억제한 사실 자체는 항상 남긴다 — 조용히 사라지면 확정 기록이 오염을 가릴 수 있다.
+        print("[contamination] 우연 확정 제외 " + str(confirmed_skipped) + "건")
     if not findings:
         print("[contamination] ✅ 의심 0건")
         return 0

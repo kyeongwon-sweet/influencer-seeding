@@ -37,6 +37,60 @@ def all_fresh(**override: str | None) -> dict[str, str | None]:
     return base
 
 
+
+def _last_slot_kst(workflow: str) -> str | None:
+    """워크플로 파일의 마지막 cron 슬롯을 KST HH:MM 으로. 스케줄이 없으면 None."""
+    import re
+    from pathlib import Path
+    path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / workflow
+    if not path.exists():
+        return None
+    head = path.read_text(encoding="utf-8").split("jobs:")[0]
+    slots = []
+    for m in re.finditer(r"cron:\s*(.+)", head):
+        expr = m.group(1).strip()
+        if expr and expr[0] in "\"'":                 # 따옴표 안쪽만(뒤 주석 제거)
+            q = expr[0]
+            end = expr.find(q, 1)
+            if end < 0:
+                continue
+            expr = expr[1:end]
+        else:
+            expr = expr.split("#")[0].strip()
+        parts = expr.split()
+        if len(parts) < 2 or not parts[0].isdigit() or not parts[1].isdigit():
+            continue                                   # */5 같은 표현은 대상 아님
+        slots.append(((int(parts[1]) + 9) % 24) * 60 + int(parts[0]))
+    if not slots:
+        return None
+    last = max(slots)
+    return f"{last // 60:02d}:{last % 60:02d}"
+
+
+def check_deadline_after_last_slot() -> list[str]:
+    """⚠️ 마감이 **마지막 백업 슬롯보다 이른** 워크플로를 잡는다.
+
+    2026-09-10 실측 사고: cron-kpi 는 슬롯이 10:05·12:05·14:05 인데 유예 150분이라
+    마감이 12:35 였다 — **마지막 슬롯이 돌기 90분 전에 이미 지각 판정**이라 지킬 수 없는
+    설정이었고 5일 연속 매일 울렸다(데이터는 매일 복구됨).
+    프로젝트 공식: 유예 = 마지막슬롯 + 실측지연 + 30분.
+    """
+    bad = []
+    for wf, spec in DAILY_DEADLINE_KST.items():
+        last = _last_slot_kst(wf)
+        if not last:
+            continue
+        dh, dm = (int(x) for x in str(spec["due"]).split(":"))
+        deadline = dh * 60 + dm + int(spec["grace"])
+        lh, lm = (int(x) for x in last.split(":"))
+        if deadline <= lh * 60 + lm:
+            bad.append(
+                f"{wf}: 마감 {deadline // 60:02d}:{deadline % 60:02d} 가 "
+                f"마지막 슬롯 {last} 보다 이르다(유예 {spec['grace']}분)"
+            )
+    return bad
+
+
 def main() -> int:
     fails: list[str] = []
 
@@ -240,6 +294,9 @@ def main() -> int:
     report_schedule_ok = {"daily-increment-report.yml": "2026-08-27T07:32:52Z"}
     if check_daily_deadlines(report_schedule_ok, at_kst(8, 27, 17, 5), deadlines=REPORT):
         fails.append("⑰증분 리포트 오늘 예약 성공이 있으면 경고하지 않아야 함")
+
+    for msg in check_deadline_after_last_slot():
+        fails.append("⑲마감이 마지막 슬롯보다 이름 — " + msg)
 
     if fails:
         print("[FAIL] test_cron_watchdog 실패")

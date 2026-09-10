@@ -21,6 +21,7 @@ from audit_metric_contamination import (  # noqa: E402
     detect_spike_freeze,
     detect_value_collisions,
     is_round_value,
+    is_confirmed_coincidence,
 )
 
 
@@ -171,3 +172,38 @@ if __name__ == "__main__":
     print("[OK] test_audit_metric_contamination 통과 "
           "(기간경계 1종 + RuleA 7종: 사고재현/정상바이럴/완만증가/평탄/미세구간/동결길이/결측 + "
           "RuleB 6종: 라운드/충돌/이력정합/단독/소값/한쪽만)")
+
+
+# ── 확정된 우연 일치(Rule B 영구 오탐 방지) ───────────────────────────────
+# Rule B 는 값이 정확히 겹치면 후보로 올린다. 확정된 우연을 적어둘 자리가 없으면
+# 영구 오탐이 되지만, 너무 헐겁게 억제하면 새 오염을 확정 기록 뒤에 숨긴다. 그 경계를 고정한다.
+_DAY, _VALUE = "2026-08-22", 40852
+_A = "8b3b791c-14da-4a1e-a300-1c353a973317"   # Ufo__purple
+_B = "b5c9529d-69de-4e52-a997-abd245d2d7dd"   # nato.tving
+_TABLE = {(_DAY, _VALUE): {"post_ids": {_A, _B}, "note": "테스트"}}
+
+
+def test_confirmed_pair_is_suppressed():
+    assert is_confirmed_coincidence(_DAY, _VALUE, _A, [_B], _TABLE)
+    assert is_confirmed_coincidence(_DAY, _VALUE, _B, [_A], _TABLE)
+
+
+def test_third_post_breaks_suppression():
+    """제3의 게시물이 같은 값으로 끼어들면 확정 범위 밖 → 반드시 알려야 한다."""
+    assert not is_confirmed_coincidence(_DAY, _VALUE, _A, [_B, "new-post-id"], _TABLE)
+    assert not is_confirmed_coincidence(_DAY, _VALUE, "new-post-id", [_A], _TABLE)
+
+
+def test_other_date_or_value_is_not_suppressed():
+    assert not is_confirmed_coincidence("2026-08-23", _VALUE, _A, [_B], _TABLE)
+    assert not is_confirmed_coincidence(_DAY, 40853, _A, [_B], _TABLE)
+
+
+def test_timestamp_form_date_is_accepted():
+    assert is_confirmed_coincidence(_DAY + "T00:00:00", _VALUE, _A, [_B], _TABLE)
+
+
+def test_shipped_table_covers_the_known_pair():
+    """실제 배포 테이블이 그 2건을 억제하는지(post_id 오타 방지)."""
+    assert is_confirmed_coincidence(_DAY, _VALUE, _A, [_B])
+    assert is_confirmed_coincidence(_DAY, _VALUE, _B, [_A])

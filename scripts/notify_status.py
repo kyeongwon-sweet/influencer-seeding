@@ -12,6 +12,7 @@ from channel_kind import is_banner_channel, is_mirror_label
 from ended_at_anomalies import ended_at_anomaly_lines
 from auto_end_rules import stale_high_cost_actives, stale_high_cost_line
 from cost_mapping_guard import unmapped_cost_actives, unmapped_cost_line
+from owner_fields_guard import blank_owner_actives, blank_owner_line
 from platform_coverage_guard import platform_collapse_line, platform_collapses
 from manual_entry_guards import copy_suspects, spike_suspects
 from metric_anomaly_guards import frozen_spike_suspects
@@ -432,6 +433,20 @@ def _integrity_lines(db, posts):
     except Exception as e:
         print("[status] 가격미매핑 검사 실패(무시):", e)
 
+    # 12) 담당자 빈칸 활성 감시 — `invalid-creator-fields` 감사는 '잘못 들어간 값 지우기'가 일이라
+    #     `기획자·제작자가 둘 다 비어 있음 → 지울 게 없음`으로 **빈칸을 명시적으로 건너뛴다**.
+    #     그래서 빈칸은 감시 사각이었다: 2026-09-07 제작자 75 → 09-10 91(3일간 기존 75건 0건 채워짐,
+    #     09-09 에 16건이 통째로 빈칸 등록). 매일 전수 카운트로 늘어나는 것을 보이게 한다.
+    #     값은 채우지 않는다(담당자 정본 = 연동시트 팀 입력).
+    try:
+        _ow_line = blank_owner_line(
+            blank_owner_actives(posts, kst_today.isoformat()), kst_today.isoformat()
+        )
+        if _ow_line:
+            lines.append(_ow_line)
+    except Exception as e:
+        print("[status] 담당자 빈칸 검사 실패(무시):", e)
+
     # 6) 온드/위성 무상채널에 광고비·업체명 오입력 감시 — 리포트 CPV엔 무시하지만 시트·DB 정정 필요(사용자 지시로 댓글에만 표기).
     try:
         vr = (db.table("sponsored_posts")
@@ -493,7 +508,7 @@ def main():
     posts, off = [], 0
     while True:
         res = db.table("sponsored_posts").select(
-            "id, url, account_name, created_at, ended_at, content_summary, posted_at, channel_type, notes, cost, company_name, project_name, asset_name"
+            "id, url, account_name, created_at, ended_at, content_summary, posted_at, channel_type, notes, cost, company_name, project_name, asset_name, creator, planner"
         ).order("id").range(off, off + 999).execute()
         chunk = res.data or []
         posts.extend(chunk)

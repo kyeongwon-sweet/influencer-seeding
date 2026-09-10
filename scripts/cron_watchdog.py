@@ -57,7 +57,14 @@ DAILY_DEADLINE_KST: dict[str, dict[str, object]] = {
     "injibot-daily-report.yml":    {"due": "06:38", "grace": 210},  # 마감 10:08 KST
     "formula-audit.yml":           {"due": "09:10", "grace": 165},
     "invalid-creator-fields.yml":  {"due": "09:25", "grace": 165},
-    "cron-kpi.yml":                {"due": "10:05", "grace": 150},
+    # ⚠️ 2026-09-10 정정: 유예 150분이면 마감이 **12:35** 인데 마지막 백업 슬롯이 14:05 KST 라
+    #    마감이 마지막 슬롯보다 90분 먼저 끝나 있었다 — 설정 자체가 지킬 수 없는 값이었다.
+    #    실측 5일 연속 앞 두 슬롯(10:05·12:05)이 전부 드롭되고 마지막 슬롯만 발화:
+    #      09-05 14:33 / 09-06 14:45 / 09-07 14:56 / 09-08 14:49 / 09-09 14:52 (KST 첫 성공)
+    #    공식(유예 = 마지막슬롯 + 실측지연 + 30분): 14:05 + 51분 + 30분 ≈ 15:26 → 유예 320분.
+    #    데이터는 매일 복구되는데 마감만 못 지켜 매일 울리던 것을 없앤다.
+    #    ⚠️ 이 값을 다시 줄이면 test_cron_watchdog 의 check_deadline_after_last_slot 이 막는다.
+    "cron-kpi.yml":                {"due": "10:05", "grace": 320},  # 마감 15:25 KST
     # 증분 리포트는 GitHub 4중 크론(12:20~15:20) + Apps Script 자가치유(12:35·16:10)
     # 뒤에 검사한다. 워치독은 재발송하지 않고, 오늘 예약 성공이 끝내 없었다는 사실만 알린다.
     # 실제 발송은 ensure-daily-report가 담당하고 DEDUP이 중복을 막는다.
