@@ -2,7 +2,7 @@
 
 작성: Claude(DB세션) 2026-07-16 / 사용자 승인 방향: **#1·#2 먼저, #3=최신 수동수정 우선**
 배경: 시트와 대시보드(DB) 값이 반복적으로 어긋남. 원인 3가지를 땜질이 아니라 구조로 제거한다.
-관련: `DESIGN_oneway_db_source_of_truth.md`, `HANDOFF_ai_context_20260715.md`, Codex 배포 `b0a5167`(shortcode 매칭).
+관련: `DESIGN_oneway_db_source_of_truth.md`, `HANDOFF_ai_context.md`, Codex 배포 `b0a5167`(shortcode 매칭).
 
 ---
 

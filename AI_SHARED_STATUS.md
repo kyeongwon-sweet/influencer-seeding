@@ -1,5 +1,27 @@
 # AI Shared Status
 
+## 🔍 2026-09-10 [Claude 검증] Codex C12·C13 결과 독립 확인 — **전부 사실**, 그리고 C13 대상이 바뀐 이유
+- **독립 검증 결과(내가 직접 조회):** 대상 14건의 `channel_type`·`asset_name`·`content_summary` **14/14 채워짐**. 캡션은 소재명 파생으로 교체됐다(예: `카리나.맛잘알권위.솔직히면치기는안하는게호감임`). 사후 감사 `34433566045` 도 확인 — `hInvalid 0` · `incInvalid 0` · `anomalies []` · orphan/error/mismatch 전부 0.
+- **🔎 C13 대상이 슈기 → happy__pyeong 으로 바뀐 이유(감사 3회 비교):**
+
+  | 시각 | 감사 run | `hInvalid` | 지목된 행 | totalRows |
+  |---|---|---|---|---|
+  | 00:33Z | `34421774941` | 1 | **슈기** `ig:DdBU6JmhltN` 행 3569 | 3,587 |
+  | 03:19Z | `34432869190` | 1 | **happy__pyeong** `ig:DPYZlYekR3i` 행 94 | 3,588 |
+  | 03:30Z | `34433566045` | 0 | 없음 | 3,588 |
+
+  두 시점 모두 `hInvalid=1`(둘 다 깨졌다면 2였을 것)이므로 **각 시점에 실제로 1건씩이었고 대상이 교체된 것**이다. 즉 **내 C13 지시는 그 시점엔 맞았고, Codex 의 "슈기는 이미 정상 → 무접촉" 판단도 맞다.** 둘 다 옳다.
+- **🟠 관측 가설(단정 아님): 그 사이에 실행된 건 `backfillViralCaptionsFromAsset` + `syncAll` 뿐이다**(신규 2행 → totalRows 3,587→3,588). 슈기가 정상화되고 오래된 행(행 94)이 새로 깨진 것이 **syncAll 이 건드린 행의 H 수식을 다시 쓰기 때문**일 수 있다. 2026-08-06 H열 1,765행 손상도 '동기화 작업이 H를 건드린' 같은 계열이다. **다음 syncAll 직후 감사에서 새 `hInvalid` 가 또 1건 뜨는지**만 보면 갈린다 — 뜨면 패턴이고, 안 뜨면 이번 건은 우연이다. ⚠️ 지금 단정하지 말 것.
+- **`healthy:false` 의 실제 사유 = `stale: 10`(값정체), 수식 아님.** 목록은 대부분 **수기 관리 매거진**이다 — 오늘의메뉴(08-25, [[manual-only-magazine-reach-vanishes]] 로 이미 종결) · 이짓매거진 · 먹킷리스트 · s_3.mag(실측 없음) · shoushou.mgz · 뉴뉴매거진(실측 없음) 등. 즉 **이 플래그는 수기 매거진 때문에 상시 false 일 가능성이 높아 신호 가치가 낮다.** '값정체'를 수기 관리 대상과 분리해 세는 게 맞는지는 별도 판단 필요(미제안).
+
+## 🧹 2026-09-10 [Claude 정리] 인계 문서 **1개로 통합** — `HANDOFF_ai_context.md`(날짜 없음)
+- **문제:** 온보딩 진입점이 두 갈래로 갈려 있었고 그중 하나는 **존재하지 않는 파일**이었다.
+  `HANDOFF_ai_context_20260715.md` 는 `ec640227`(refactor/monitoring-decompose 브랜치)에만 추가됐고 **main 에 머지된 적이 없다.** 그런데 상태판 3891줄과 메모리가 이 파일을 '정본'으로 가리키고 있었다 → **죽은 포인터.** 실재하는 건 `HANDOFF_ai_context_20260905.md` 하나뿐이었다.
+- ⚠️ **내 초기 오독:** `ls HANDOFF*.md` 출력에서 파일명 컬럼이 비어 나온 걸 보고 '6.9KB/07-15 파일 = 0715 인계문'이라 단정했는데, 실제로는 **`HANDOFF_cluster_contamination_20260714.md`**(별개 주제)였다. 크기·날짜라는 곁가지 신호로 파일을 식별한 [[proxy-signal-vs-real-state]] 함정이다.
+- **조치:** `git mv` 로 `HANDOFF_ai_context_20260905.md` → **`HANDOFF_ai_context.md`**(이름에 날짜를 빼서 같은 분기 재발을 막음). 0715 문서의 **고유 내용은 누락 없이 흡수**했다 — ① 오염 제거로 생긴 빈칸은 '실측 필요' 목록으로 사람에게 보고(규칙 12) ② 세션 간 확인용 CCD `session_mgmt` MCP ③ 시트 메뉴 3종의 **인증 차이**(exportStats 불필요 / importStats·syncAll CRON_SECRET) ④ 시트 ID·날짜열 ⑤ 불변식 Σ증분==최종누적 ⑥ 오염 시그니처 ⑦ 클러스터 오염 문서 포인터.
+- **함께 갱신:** §0 현재상태 · **§2-B 09-08 유튜브 스키마 사고와 재발방지 3층** · §4-B 연동시트(dailyAuto 단계 순서·캡션 소재명 파생) · §4-C DB 불변식·`cost` NULL 0행 · §6 규칙 12~15 신설 · §7 열린항목 전면 재작성 · §10 커밋 지도 · §12 문서 지도. 총 341→368줄.
+- 옛 문서 내용은 git 이력에 그대로 남는다(`git show 7a2cffcd:HANDOFF_ai_context_20260905.md`, `git show ec640227:HANDOFF_ai_context_20260715.md`).
+
 ## ✅ 2026-09-10 [Codex 라이브 완료] C12 캡션 백필→syncAll + C13 단일 H수식 정리
 - **라이브 함수 실물 확인 후 순서대로 실행:** `backfillViralCaptionsFromAsset()` 는 **12:19:39~12:20:28 KST** 정상 완료(`caption_from_asset {"changed":8}`), 이어 `syncAll` 은 **12:23:49~12:25:28 KST** 정상 완료. `dailyAuto`·`importStats`·통계 재수집은 실행하지 않았다.
 - **syncAll 결과:** 비교 **3,579행** · 신규 **2건** · 변경 **15건** · 시트 중복 URL **2건**은 1건으로 합쳐 전송 · 지원하지 않는 URL **6건** 제외. 09-09 등록 대상 14계정을 DB에서 다시 읽어 **14/14행 모두 `channel_type`·`asset_name`·`content_summary` 비어 있음 0건**으로 확인했다.
@@ -3889,6 +3911,7 @@ function fillCaptionFromAsset_() {
 ## Handoff Context Document (2026-07-15)
 
 - `HANDOFF_ai_context_20260715.md` (repo root) is a single-file context handoff for any new AI session (Claude/Codex/Chrome).
+  - ⚠️ **정정(2026-09-10):** 이 파일은 `refactor/monitoring-decompose` 브랜치에만 있었고 **main 에는 한 번도 존재한 적이 없다**(죽은 참조였다). 온보딩 진입점 정본은 이제 날짜 없는 **`HANDOFF_ai_context.md`** 하나다 — 옛 두 문서 내용을 누락 없이 통합했다.
 - It covers: integrity rules, concurrent-session coordination, ownership model, 4 open issues, file/path map, DB access pattern, guards, and a pending-work checklist by owner.
 - It contains no secrets (locations only). This shared status file remains the source of truth; the handoff doc is an onboarding entry point that points back here.
 - Canonical branch at time of writing: `refactor/monitoring-decompose` (not main). Production deploys are manual Vercel CLI (owned by Codex).
