@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## ✅ 2026-09-10 [Codex 라이브 완료] C12 캡션 백필→syncAll + C13 단일 H수식 정리
+- **라이브 함수 실물 확인 후 순서대로 실행:** `backfillViralCaptionsFromAsset()` 는 **12:19:39~12:20:28 KST** 정상 완료(`caption_from_asset {"changed":8}`), 이어 `syncAll` 은 **12:23:49~12:25:28 KST** 정상 완료. `dailyAuto`·`importStats`·통계 재수집은 실행하지 않았다.
+- **syncAll 결과:** 비교 **3,579행** · 신규 **2건** · 변경 **15건** · 시트 중복 URL **2건**은 1건으로 합쳐 전송 · 지원하지 않는 URL **6건** 제외. 09-09 등록 대상 14계정을 DB에서 다시 읽어 **14/14행 모두 `channel_type`·`asset_name`·`content_summary` 비어 있음 0건**으로 확인했다.
+- **C13 기준선:** `ig:DdBU6JmhltN`(당시 행 3569)은 실행 전부터 H=`IF(COUNT(P:EA)=0,"",MAX(P:EA))`, I=V2 공식, DZ=`463,731`, EA=`534,304`로 이미 표준형이었다. 이 행은 값·수식 모두 건드리지 않았다.
+- **재감사에서 드러난 실제 1건:** 첫 재감사 run `34432869190`은 슈기가 아니라 `happy__pyeong`(`ig:DPYZlYekR3i`, 당시 행 94)의 H수식형태 오류 1건을 보고했다. 해당 H셀만 `=IF(COUNT(P94:EA94)=0,"",MAX(P94:EA94))`로 수술적으로 복원했고 H/I 범위 재생성은 하지 않았다.
+- **사후 formula-audit run `34433566045`:** `hInvalid=0`, `incInvalid=0`, `inc.mismatch=0`, H/I `errorCells=0`, `orphanRows=0`, 파싱불가 헤더 0. `healthy:false`는 수식이 아니라 기존 값정체 10건 때문이며 이번 쓰기 범위 밖이다.
+- **보존:** 조회수·도달수·`posted_at`·날짜열 원천값은 무접촉. `YOUTUBE_API_KEY` 등록과 09-08 리포트 `update_ts` 결정도 사용자 몫으로 그대로 두었다.
+
 ## ✅ 2026-09-10 [Claude 완료·코드] 담당자 빈칸 감시 신설 + KPI 마감 모순 정정 + Rule B 우연 확정 (사용자 "전부 다" 승인)
 - **⚠️ 먼저 내 오보 정정:** 2026-09-07 에 나는 담당자 빈칸이 "줄고 있으니 팀이 채우는 중"이라고 보고했다. **틀렸다.** 인계문 수치(113, 정의 불명)와 내 측정치(75)를 나란히 놓고 추세를 말한 것이었다. **같은 자로 재면 악화**다 — 09-07 제작자 75·기획자 52 → **09-10 91·68**. 기존 75건은 3일간 **0건** 채워졌고 09-09 에 16건이 통째로 빈칸으로 신규 등록됐다. ⚠️ 게다가 그 측정에서 나는 활성을 `ended_at IS NULL OR ended_at >= today` 로 잡았는데, 이 코드베이스 관례(`cost_mapping_guard`·`notify_status`)는 **`ended_at IS NULL` 만** 활성이다 → 관례 기준 실제 수치는 **유상활성 511 / 제작자 90 / 기획자 68**. **정의를 안 맞추고 숫자를 비교한 것이 오보의 뿌리**이며, 그래서 이번엔 정의를 코드로 고정했다.
 - **① 담당자 빈칸 감시 신설(체크 12):** `scripts/owner_fields_guard.py` 신규(`blank_owner_actives`/`blank_owner_line`, 순수 함수) + `notify_status._integrity_lines` 에 연결. 기존 `invalid-creator-fields` 감사는 **빈칸을 명시적으로 건너뛴다**(`기획자·제작자가 둘 다 비어 있음 → 지울 게 없음`) — 그 일은 '잘못된 값 지우기'라서다. 그래서 빈칸은 **감시 사각**이었고 아무도 세지 않았다. 이제 매일 전수 카운트 + 14일 초과 방치 건수 + 무상 제외를 **사유별로 분리**해 찍는다(합치면 무상채널 734건에 묻힌다). **값은 채우지 않는다**(정본=연동시트 팀 입력). `notify_status` 의 posts select 에 `creator, planner` 2컬럼 추가.
