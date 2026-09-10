@@ -15,6 +15,9 @@
 - **대상 14건(계정):** artistic.thu · luna.humor · jolly__humor · good_tip_magazine · smile_king_s2 · smile_today_s2 · lllll_lllli_llll · tving_box · apple_enter · nato.zzal · kutbba101 · smile_papa_s2 · purple_fun_diary · nato.tip
 - ⚠️ **값을 채우지 말 것.** 분류만 붙이고, 값은 수집기가 넣거나 팀 인사이트 실측으로만 들어간다(공백≠0).
 - 함께 볼 것: `moduhappy`·`smile_ggobuk_s2`(영상, 09-09 하루 누락) 이 09-10 에도 비면 개별 확인 대상으로 승격.
+- **⏰ 순서·시점(놓치면 하루 밀린다):** 자정수집은 **KST 03:50~04:10** 에 돈다. **syncAll 을 그 전(=오늘 업무시간 중)에** 끝내야 09-10 측정분 알림에 분류가 반영된다. 그 뒤에 하면 내일 알림에도 14건이 그대로 남고 판정이 하루 미뤄진다.
+- **✅ 검증 가능 시점:** `moduhappy`·`smile_ggobuk_s2` 의 09-10 측정 결과는 **09-11 새벽 수집 이후**에야 확인된다 — 그전에 '비었다/찼다'로 판단하지 말 것([[upstream-completion-gate]]).
+- **✅ Codex 인계 수령 확인(2026-09-10):** C9 종결·C12 착수 조건·재작업 금지 커밋 3건(`17f9ddca`·`fd961bce`·`c2cd82ad`)·`YOUTUBE_API_KEY` 사용자 몫·09-08 리포트 보류 — 7개 항목 모두 인계 내용과 일치함을 확인했다. 정본은 `29892bff` 이후 최신.
 
 ## ⚠️➡️✅ 2026-09-10 [Claude 오진 정정 `c2cd82ad`] data-slayer 는 **스키마 변경이 아니었다**
 - 어제 넣은 카운터가 `[WARN] 인스타 폴백(data-slayer) 아이템 2/3건 매칭 키 추출 실패` 를 잡았고, **나는 이를 "유튜브와 같은 스키마 변경"으로 사용자에게 보고했다. 틀렸다.**
