@@ -70,6 +70,18 @@ class LineTest(unittest.TestCase):
         line = blank_owner_line(blank_owner_actives([old], TODAY), TODAY)
         self.assertIn(f"{STALE_DAYS}일 초과 방치", line)
 
+    def test_line_surfaces_free_reasons(self):
+        """집계만 하고 출력을 빠뜨리면 '사유별로 센다'는 보호가 실재하지 않는다.
+
+        2026-09-10 실제로 그 상태로 배포하고 "사유별로 센다"고 보고했다 — 이 테스트가
+        그 형태의 재발을 막는다(사유가 line 에 안 보이면 실패).
+        """
+        posts = [post(creator=""), post(channel_type="위성채널"), post(channel_type="온드미디어")]
+        line = blank_owner_line(blank_owner_actives(posts, TODAY), TODAY)
+        self.assertIn("무상 제외", line)
+        self.assertIn("무상채널 2건", line)
+        self.assertIn("판정 규칙 붕괴", line)
+
     def test_line_never_suggests_autofill(self):
         line = blank_owner_line(blank_owner_actives([post(creator="")], TODAY), TODAY)
         self.assertIn("연동시트 담당자 입력 필요", line)

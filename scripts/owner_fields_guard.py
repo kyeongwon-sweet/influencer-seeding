@@ -110,5 +110,12 @@ def blank_owner_line(agg: dict, today: str, max_detail: int = MAX_DETAIL) -> str
         line += f": {ex}"
         if len(worst) > max_detail:
             line += f" … 외 {len(worst) - max_detail}건"
+    # ⚠️ 제외 사유는 **반드시 출력한다.** 집계만 하고 안 찍으면 '사유별로 센다'는 보호가
+    #    실제로는 존재하지 않는다(2026-09-10: 내가 정확히 그 상태로 배포하고 "사유별로 센다"고
+    #    보고했다 — 계산은 했으나 line 에서 한 번도 쓰지 않았다). 건수가 0으로 떨어지면
+    #    무상 판정 규칙이 깨진 신호다.
+    by = agg.get("free_by_reason") or {}
+    detail = "·".join(f"{k} {v}건" for k, v in sorted(by.items(), key=lambda kv: -kv[1])) or "없음"
+    line += f" · 무상 제외 {detail} (사유별 건수가 0으로 떨어지면 판정 규칙 붕괴 의심)"
     line += " → 연동시트 담당자 입력 필요"
     return line
