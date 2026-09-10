@@ -192,7 +192,7 @@ def _integrity_lines(db, posts):
     off = 0
     while True:
         res = db.table("post_daily_stats").select(
-            # created_at 은 체크 ⑫(소급 기록) 판정용 — 값을 '언제 읽었는지'를 여기서만 얻는다.
+            # created_at 은 체크 ⑬(소급 기록) 판정용 — 값을 '언제 읽었는지'를 여기서만 얻는다.
             "post_id, measured_at, play_count, reach_count, manual, created_at").order("id").range(off, off + 999).execute()
         chunk = res.data or []
         for r in chunk:
@@ -430,7 +430,7 @@ def _integrity_lines(db, posts):
     except Exception as e:
         print("[status] 안전망 비활성 검사 실패(무시):", e)
 
-    # 12) 소급 기록 감시 — 어제 값인데 리포트(12:35) 뒤에 들어온 행. 2026-09-10 슈기 사고.
+    # 13) 소급 기록 감시 — 어제 값인데 리포트(12:35) 뒤에 들어온 행. 2026-09-10 슈기 사고.
     #     measured_at 만 보면 자정수집 값과 소급 값이 구분되지 않는다. 특히 '첫 측정'이 지연되면
     #     safeIncrement 가 전액을 그 날짜에 얹어 그날은 부풀고 다음날은 깎인다(슈기 50,731).
     #     값은 바꾸지 않는다 — 사람이 팀 실측으로 정정하도록 표면화만 한다.

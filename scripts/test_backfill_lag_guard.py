@@ -74,14 +74,14 @@ def _notify_status_src():
 
 
 def test_scan_selects_created_at():
-    """🚨 공용 스캔이 created_at 을 안 뽑으면 체크 ⑫는 **항상 0건**이 된다(조용한 무력화).
+    """🚨 공용 스캔이 created_at 을 안 뽑으면 체크 ⑬는 **항상 0건**이 된다(조용한 무력화).
 
     실제로 그렇게 배선돼 있었고, 실데이터로 순수함수만 돌려선 통과했다 —
     `_integrity_lines` 를 직접 태워보고서야 드러났다.
     """
     src = _notify_status_src()
     i = src.index('db.table("post_daily_stats").select(')
-    assert "created_at" in src[i:i + 400], "공용 스캔 select 에 created_at 이 없다 → 체크 ⑫ 무력화"
+    assert "created_at" in src[i:i + 400], "공용 스캔 select 에 created_at 이 없다 → 체크 ⑬ 무력화"
 
 
 def test_backfill_window_covers_two_days():
