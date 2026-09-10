@@ -476,7 +476,7 @@ def _integrity_lines(db, posts):
     except Exception as e:
         print("[status] 담당자 빈칸 검사 실패(무시):", e)
 
-    # 6) 온드/위성 무상채널에 광고비·업체명 오입력 감시 — 리포트 CPV엔 무시하지만 시트·DB 정정 필요(사용자 지시로 댓글에만 표기).
+    # 14) 온드/위성 무상채널에 광고비·업체명 오입력 감시   (2026-09-10: 6번이 '누적 하락'과 중복이라 14로 옮김) — 리포트 CPV엔 무시하지만 시트·DB 정정 필요(사용자 지시로 댓글에만 표기).
     try:
         vr = (db.table("sponsored_posts")
               .select("account_name, channel_type, cost, company_name, product_name, ended_at")

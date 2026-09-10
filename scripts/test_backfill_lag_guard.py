@@ -96,3 +96,16 @@ def test_backfill_window_covers_two_days():
     i = src.index("backfill_dates")
     window = src[i:i + 200]
     assert "(1, 2)" in window, "소급 감시가 어제 하루만 본다 — 오후 소급을 영원히 못 잡는다"
+
+
+def test_check_numbers_are_unique():
+    """🚨 정합성 체크 번호는 유일해야 한다 — 2026-09-10 하루에 충돌이 두 번 났다.
+
+    ① 동시 세션이 '체크 12'(담당자 빈칸)를 쓴 줄 모르고 내가 소급 기록에도 12를 붙였다.
+    ② 그러다 발견한 기존 중복: '6) 누적 하락'과 '6) 온드/위성 오입력'.
+    번호는 사람이 로그·상태판에서 검색하는 키라, 겹치면 다른 체크를 보게 된다.
+    """
+    import collections, re
+    nums = re.findall(r"(?m)^    # (\d+)\) ", _notify_status_src())
+    dup = [n for n, c in collections.Counter(nums).items() if c > 1]
+    assert not dup, f"체크 번호 중복: {sorted(dup, key=int)} — 새 체크는 마지막 번호+1 을 쓸 것"
