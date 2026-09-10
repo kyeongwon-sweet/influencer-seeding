@@ -1023,7 +1023,7 @@ def _yt_id(url: str):
     return m.group(1) if m else None
 
 
-def _warn_unmapped(platform: str, dropped: int, total: int) -> None:
+def _warn_unmapped(platform: str, dropped: int, total: int, sample=None) -> None:
     """액터가 준 아이템 중 **매칭 키를 못 만든 수**를 알린다.
 
     🚨 2026-09-08 사고의 무음 지점이 정확히 여기였다. 유튜브 액터가 Shorts 아이템의 `url` 에서
@@ -1032,9 +1032,19 @@ def _warn_unmapped(platform: str, dropped: int, total: int) -> None:
     '스크래퍼 장애 → 기다리면 복구'로 오진하기 딱 좋았다(실제로는 기다려도 안 낫는다).
     → 어느 플랫폼이든 이 경고가 뜨면 **액터 응답 스키마부터 열어볼 것**(URL 2개 최소 프로브).
     """
-    if dropped:
-        print(f"[WARN] {platform} 아이템 {dropped}/{total}건 매칭 키 추출 실패 — "
-              "액터 응답 스키마 변경 의심(필드명·값 형식 확인 필요)")
+    if not dropped:
+        return
+    # ⚠️ 원인은 두 가지이고 대응이 다르다 — 로그만 보고 하나로 단정하지 말 것.
+    #    ① 스키마 변경: 정상 아이템인데 키 필드가 바뀜(2026-09-08 유튜브 268건) → 코드 수정
+    #    ② 개별 실패 스텁: 그 게시물만 못 읽어 빈 아이템이 옴 → 코드 문제 아님, 다음 회차 복구
+    #    구분하려면 '버려진 아이템이 어떻게 생겼는지'가 있어야 한다 → 키 목록을 같이 찍는다.
+    #    (2026-09-10: data-slayer 2/3 실패를 스키마 변경으로 오진할 뻔했다. 실제로는 code 필드가 멀쩡했다.)
+    keys = ""
+    if isinstance(sample, dict):
+        ks = sorted(sample.keys())
+        keys = f" · 버려진 아이템 키({len(ks)}개): {ks[:12]}{' …' if len(ks) > 12 else ''}"
+    print(f"[WARN] {platform} 아이템 {dropped}/{total}건 매칭 키 추출 실패 — "
+          f"스키마 변경 또는 개별 실패 스텁 의심(둘을 가르려면 아래 키 목록 확인){keys}")
 
 
 def _yt_item_id(item) -> str | None:
@@ -1077,11 +1087,13 @@ def _fetch_youtube(urls: list) -> dict:
     })
     out = {}
     dropped = total = 0
+    first_bad = None
     for it in client.dataset(run["defaultDatasetId"]).iterate_items():
         total += 1
         vid = _yt_item_id(it)
         if not vid:
-            dropped += 1                # 조용히 버리지 않는다 — 2026-09-08 사고의 무음 지점
+            dropped += 1
+            first_bad = first_bad or it                # 조용히 버리지 않는다 — 2026-09-08 사고의 무음 지점
             continue
         # 비공개/삭제 영상은 액터가 {error:'VIDEO_UNAVAILABLE'}로 반환(실측 확인) → 자동 특이사항 태깅용 신호.
         if it.get("error"):
@@ -1093,7 +1105,7 @@ def _fetch_youtube(urls: list) -> dict:
             "comments": it.get("commentsCount"),
             "title": it.get("title"),
         }
-    _warn_unmapped("유튜브", dropped, total)
+    _warn_unmapped("유튜브", dropped, total, first_bad)
     return out
 
 
@@ -1187,11 +1199,13 @@ def _fetch_tiktok(urls: list) -> dict:
     })
     out = {}
     dropped = total = 0
+    first_bad = None
     for it in client.dataset(run["defaultDatasetId"]).iterate_items():
         total += 1
         vid = _tt_id(it.get("webVideoUrl") or it.get("submittedVideoUrl") or it.get("url") or "")
         if not vid:
             dropped += 1
+            first_bad = first_bad or it
             continue
         # 삭제/비공개/민감(POST_SENSITIVE 등)은 액터가 error/errorCode 반환(실측 확인) → 자동 특이사항 태깅 신호.
         err = it.get("errorCode") or it.get("error")
@@ -1205,7 +1219,7 @@ def _fetch_tiktok(urls: list) -> dict:
             # 틱톡 영상 설명 → 캡션(content_summary). 액터가 text로 반환(실측 확인). 300자 제한.
             "content_summary": (it.get("text") or "")[:300] or None,
         }
-    _warn_unmapped("틱톡", dropped, total)
+    _warn_unmapped("틱톡", dropped, total, first_bad)
     return out
 
 
@@ -1226,19 +1240,21 @@ def _fetch_threads(urls: list) -> dict:
     })
     out = {}
     dropped = total = 0
+    first_bad = None
     for it in client.dataset(run["defaultDatasetId"]).iterate_items():
         th = it.get("thread") or {}
         total += 1
         code = th.get("code") or _th_code(th.get("url") or "") or _th_code(it.get("url") or "")
         if not code:
             dropped += 1
+            first_bad = first_bad or it
             continue
         err = it.get("errorCode") or it.get("error")
         if err:
             out[code] = {"error": err, "likes": None, "comments": None}
             continue
         out[code] = {"likes": th.get("like_count"), "comments": th.get("reply_count")}
-    _warn_unmapped("스레드", dropped, total)
+    _warn_unmapped("스레드", dropped, total, first_bad)
     return out
 
 
@@ -1263,19 +1279,21 @@ def _fetch_facebook(urls: list) -> dict:
     })
     out = {}
     dropped = total = 0
+    first_bad = None
     for it in client.dataset(run["defaultDatasetId"]).iterate_items():
         # facebookUrl이 입력 pfbid를 보존(url 필드는 FB가 다른 pfbid로 재생성하므로 매칭 실패)
         total += 1
         key = _fb_key(it.get("facebookUrl") or it.get("url") or "") or it.get("postId")
         if not key:
             dropped += 1
+            first_bad = first_bad or it
             continue
         err = it.get("errorCode") or it.get("error")
         if err:
             out[key] = {"error": err, "likes": None, "comments": None}
             continue
         out[key] = {"likes": it.get("likes"), "comments": it.get("comments")}
-    _warn_unmapped("페이스북", dropped, total)
+    _warn_unmapped("페이스북", dropped, total, first_bad)
     return out
 
 
@@ -1308,11 +1326,13 @@ def _fetch_twitter(urls: list) -> dict:
     })
     out = {}
     dropped = total = 0
+    first_bad = None
     for it in client.dataset(run["defaultDatasetId"]).iterate_items():
         total += 1
         tid = _tw_id(it.get("url") or it.get("twitterUrl") or it.get("tweetUrl") or "")
         if not tid:
             dropped += 1
+            first_bad = first_bad or it
             continue
         err = it.get("errorCode") or it.get("error")
         if err:
@@ -1325,7 +1345,7 @@ def _fetch_twitter(urls: list) -> dict:
             # 트윗 본문 → 캡션(content_summary). 액터가 fullText/text로 반환(실측 확인). 300자 제한.
             "content_summary": (it.get("fullText") or it.get("text") or "")[:300] or None,
         }
-    _warn_unmapped("트위터", dropped, total)
+    _warn_unmapped("트위터", dropped, total, first_bad)
     return out
 
 
@@ -2133,16 +2153,18 @@ def _fetch_alive_instagram_handles(handles: list[str]) -> set[str]:
     alive = set()
     requested_set = set(requested)
     dropped = total = 0
+    first_bad = None
     for item in client.dataset(run["defaultDatasetId"]).iterate_items():
         total += 1
         owner = item.get("owner") or {}
         handle = normalize_instagram_handle(item.get("ownerUsername") or owner.get("username"))
         if not handle:
             dropped += 1        # ⚠️ 핸들을 못 읽으면 '계정 사망'으로 오판돼 종료 처리까지 번진다
+            first_bad = first_bad or item
             continue
         if handle in requested_set:
             alive.add(handle)
-    _warn_unmapped("인스타 계정 스캔", dropped, total)
+    _warn_unmapped("인스타 계정 스캔", dropped, total, first_bad)
     return alive
 
 
@@ -2157,6 +2179,7 @@ def _fetch_ig_fallback(urls: list) -> dict:
     client = ApifyClient(os.getenv("APIFY_API_TOKEN"))
     out = {}
     dropped = total = 0
+    first_bad = None
     for i in range(0, len(urls), 40):
         chunk = urls[i:i + 40]
         try:
@@ -2166,6 +2189,7 @@ def _fetch_ig_fallback(urls: list) -> dict:
                 code = it.get("code") or it.get("shortcode") or it.get("shortCode")
                 if not code:
                     dropped += 1
+                    first_bad = first_bad or it
                     continue
                 m = it.get("metrics") or {}
                 cap = it.get("caption")
@@ -2178,7 +2202,7 @@ def _fetch_ig_fallback(urls: list) -> dict:
                 }
         except Exception as e:
             print(f"  [WARN] data-slayer 폴백 배치 실패: {e}")
-    _warn_unmapped("인스타 폴백(data-slayer)", dropped, total)
+    _warn_unmapped("인스타 폴백(data-slayer)", dropped, total, first_bad)
     return out
 
 
@@ -2218,6 +2242,7 @@ def _fetch_stats(urls: list) -> list:
     requested_keys = {_stats_key(u) for u in urls}
     result = []
     dropped = 0
+    first_bad = None
     for idx, item in enumerate(items):
         shortcode = item.get("shortCode") or item.get("shortcode")
         url = (
@@ -2226,6 +2251,7 @@ def _fetch_stats(urls: list) -> list:
         )
         if not url:
             dropped += 1        # url·shortCode 둘 다 없으면 이 게시물은 결과에서 사라진다
+            first_bad = first_bad or item
             continue
         response_key = _stats_key(url)
         if response_key not in requested_keys:
@@ -2305,7 +2331,7 @@ def _fetch_stats(urls: list) -> list:
             "error_description": error_description,
         })
 
-    _warn_unmapped("인스타", dropped, len(items))
+    _warn_unmapped("인스타", dropped, len(items), first_bad)
     return result
 
 

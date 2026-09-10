@@ -57,4 +57,23 @@ def test_warn_unmapped_reports_counts_and_points_at_schema(capsys):
     import run_monitoring as rm
     rm._warn_unmapped("유튜브", 268, 275)
     out = capsys.readouterr().out
-    assert "268/275건" in out and "스키마 변경 의심" in out
+    assert "268/275건" in out and "스키마 변경" in out and "스텁" in out
+
+
+def test_warn_unmapped_prints_sample_keys_to_separate_the_two_causes(capsys):
+    """🚨 스키마 변경 vs 개별 실패 스텁을 가르려면 '버려진 아이템의 모양'이 필요하다.
+
+    2026-09-10: data-slayer 2/3 실패를 스키마 변경으로 오진할 뻔했다 — 프로브해보니 `code` 는
+    멀쩡했고, 버려진 건 개별 실패 스텁이었다. 키 목록이 로그에 있었으면 프로브 없이 갈렸다.
+    """
+    import run_monitoring as rm
+    rm._warn_unmapped("인스타 폴백(data-slayer)", 2, 3, {"deleted_reason": 1, "pk": "x", "status": "fail"})
+    out = capsys.readouterr().out
+    assert "2/3건" in out and "deleted_reason" in out and "버려진 아이템 키(3개)" in out
+
+
+def test_warn_unmapped_without_sample_still_warns(capsys):
+    import run_monitoring as rm
+    rm._warn_unmapped("틱톡", 1, 5)
+    out = capsys.readouterr().out
+    assert "1/5건" in out and "버려진 아이템 키" not in out
