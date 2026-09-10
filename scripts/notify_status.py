@@ -182,13 +182,18 @@ def _integrity_lines(db, posts):
     # ⑩ 플랫폼 붕괴 감시용 — 최근 8일 '지표가 있는 post_id' 집합(같은 스캔 재사용, 추가 조회 0)
     cov_cutoff = (kst_today - timedelta(days=8)).isoformat()
     measured_by_date: dict[str, set] = {}
-    # ⑫ 소급 기록 감시용 — 어제 날짜 행의 (post_id, created_at, 값). 같은 스캔 재사용.
-    yday_iso = (kst_today - timedelta(days=1)).isoformat()
-    yday_rows: list[dict] = []
+    # ⑫ 소급 기록 감시용 — **최근 2일**(어제·그저께) 행. 같은 스캔 재사용.
+    #   ⚠️ 어제 하루만 보면 영원히 무음이다: notify_status 는 수집 직후(새벽)에만 도는데
+    #      소급 기록은 재시도(오후 15~17시)가 만든다. 새벽에 어제를 보면 아직 안 일어났고,
+    #      다음 새벽엔 그 날짜를 더 이상 안 본다 → 2026-09-08 슈기 건이 정확히 그 사각이었다.
+    #      그저께까지 보면 전날 오후의 소급이 다음날 새벽에 잡힌다.
+    backfill_dates = [(kst_today - timedelta(days=n)).isoformat() for n in (1, 2)]
+    rows_by_date: dict[str, list] = {d: [] for d in backfill_dates}
     off = 0
     while True:
         res = db.table("post_daily_stats").select(
-            "post_id, measured_at, play_count, reach_count, manual").order("id").range(off, off + 999).execute()
+            # created_at 은 체크 ⑫(소급 기록) 판정용 — 값을 '언제 읽었는지'를 여기서만 얻는다.
+            "post_id, measured_at, play_count, reach_count, manual, created_at").order("id").range(off, off + 999).execute()
         chunk = res.data or []
         for r in chunk:
             pid, m = r["post_id"], r["measured_at"]
@@ -197,8 +202,8 @@ def _integrity_lines(db, posts):
             if m >= cutoff and pid in active_view_ids and r["play_count"] is not None:
                 day_cnt[m] = day_cnt.get(m, 0) + 1
             d = m[:10]
-            if d == yday_iso:
-                yday_rows.append(r)
+            if d in rows_by_date:
+                rows_by_date[d].append(r)
             if d >= cov_cutoff and (r.get("play_count") is not None or r.get("reach_count") is not None):
                 measured_by_date.setdefault(d, set()).add(pid)
             man = bool(r.get("manual"))
@@ -434,11 +439,12 @@ def _integrity_lines(db, posts):
         #    `first` 는 값 없는 행까지 포함한 최초 '행' 날짜라 여기 쓰면 안 된다(매거진처럼 빈 행이
         #    먼저 쌓이는 유형에서 첫 측정 지연을 놓친다).
         _first_valued = {pid: min(d for d, _v, _m in rows) for pid, rows in series.items() if rows}
-        _bf_line = late_backfill_line(
-            late_backfills(yday_rows, yday_iso, _first_valued), yday_iso, name_of
-        )
-        if _bf_line:
-            lines.append(_bf_line)
+        for _d in backfill_dates:
+            _bf_line = late_backfill_line(
+                late_backfills(rows_by_date[_d], _d, _first_valued), _d, name_of
+            )
+            if _bf_line:
+                lines.append(_bf_line)
     except Exception as e:
         print("[status] 소급 기록 검사 실패(무시):", e)
 

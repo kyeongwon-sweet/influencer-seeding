@@ -64,3 +64,35 @@ def test_cutoff_is_report_time_not_midnight():
 def test_bad_created_at_does_not_crash():
     assert late_backfills([_row("p1", 10, "not-a-date")], TGT, {})["late"] == []
     assert late_backfills([_row("p1", 10, None)], TGT, {})["late"] == []
+
+
+# ── notify_status 배선 계약 ─────────────────────────────────────────────
+# 아래 둘은 2026-09-10 에 실제로 조용히 깨져 있었다. 순수함수 테스트만으로는 못 잡는다.
+def _notify_status_src():
+    import io, pathlib
+    return io.open(pathlib.Path(__file__).resolve().parent / "notify_status.py", encoding="utf-8").read()
+
+
+def test_scan_selects_created_at():
+    """🚨 공용 스캔이 created_at 을 안 뽑으면 체크 ⑫는 **항상 0건**이 된다(조용한 무력화).
+
+    실제로 그렇게 배선돼 있었고, 실데이터로 순수함수만 돌려선 통과했다 —
+    `_integrity_lines` 를 직접 태워보고서야 드러났다.
+    """
+    src = _notify_status_src()
+    i = src.index('db.table("post_daily_stats").select(')
+    assert "created_at" in src[i:i + 400], "공용 스캔 select 에 created_at 이 없다 → 체크 ⑫ 무력화"
+
+
+def test_backfill_window_covers_two_days():
+    """🚨 어제 하루만 보면 영원히 무음이다.
+
+    notify_status 는 수집 직후(새벽)에만 도는데 소급 기록은 재시도(오후)가 만든다.
+    새벽에 어제를 보면 아직 안 일어났고, 다음 새벽엔 그 날짜를 더 이상 안 본다.
+    2026-09-08 슈기 건이 정확히 그 사각이었다 → 그저께까지 봐야 한다.
+    """
+    src = _notify_status_src()
+    assert "backfill_dates" in src, "소급 감시 날짜 창 변수를 찾지 못함"
+    i = src.index("backfill_dates")
+    window = src[i:i + 200]
+    assert "(1, 2)" in window, "소급 감시가 어제 하루만 본다 — 오후 소급을 영원히 못 잡는다"
