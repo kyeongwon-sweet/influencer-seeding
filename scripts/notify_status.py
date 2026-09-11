@@ -596,6 +596,10 @@ def main():
     # 발송 판단은 '수집 스텝 exit code'가 아니라 '실측 데이터 갭'으로 한다 (2026-08-05 cry-wolf 방지).
     #   재시도 빈 배치·보조플랫폼 일시오류로 수집 스텝이 failure여도, 실제 데이터가 정상이면 실패 DM을
     #   보내지 않는다. 단, 진짜 갭(total 0 또는 활성 점검대상 미수집=check)은 반드시 알린다(blind spot 금지).
+    # ⚠️⚠️ 이 아래 게이트에서 **정상일엔 return 한다.** 즉 여기보다 아래에 있는 코드는
+    #      '수집에 갭이 있는 날'에만 돈다. 2026-09-11 까지 정합성 체크 1~14(`_integrity_lines`)가
+    #      통째로 여기 묻혀 **한 번도 사용자에게 안 갔다**(09-08 유튜브 전멸일에만 발송됐다).
+    #      → 매일 알려야 하는 것은 여기 두지 말고 **증분 리포트 스레드**(notify_increments)에 붙일 것.
     real_problem = (total == 0) or bool(check)
     if os.getenv("ONLY_ON_FAILURE") == "1" and not real_problem:
         print(f"[status] 실측 데이터 갭 없음(수집스텝={outcome or '?'}, total={total}, 점검=0) → ONLY_ON_FAILURE 발송 생략")
