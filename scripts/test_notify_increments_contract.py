@@ -31,6 +31,17 @@ def main() -> int:
         if "if _note:" not in note_block:
             fails.append("REPORT_NOTE 가 비었을 때 줄이 붙지 않는 가드가 없음")
 
+    # 정합성 체크(1~14) 전달 경로 — 2026-09-11 이전에는 notify_status 의 ONLY_ON_FAILURE 게이트에
+    # 막혀 **수집 정상일엔 한 번도 사용자에게 안 갔다**. 매일 도착하는 이 리포트 스레드가 유일한 경로다.
+    if "_integrity_lines" not in src:
+        fails.append("정합성 체크가 리포트 스레드에 안 붙는다 — notify_status 게이트에 막혀 영구 무음이 된다")
+    else:
+        blk = src[src.index("_integ_lines = []"):][:1600]
+        if "_asecs.append" not in blk:
+            fails.append("정합성 결과를 스레드 댓글(_asecs)에 넣지 않는다")
+        if "except Exception" not in blk:
+            fails.append("정합성 체크 실패가 리포트 본문 발송을 막을 수 있다(try/except 없음)")
+
     dedup = re.search(r"elif\s+(.+?_already_posted\(token,\s*CHANNEL,\s*target\)\s*):", src, re.S)
     if not dedup:
         fails.append("DEDUP _already_posted 분기를 찾지 못함")
