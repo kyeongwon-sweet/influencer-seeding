@@ -31,16 +31,22 @@ def main() -> int:
         if "if _note:" not in note_block:
             fails.append("REPORT_NOTE 가 비었을 때 줄이 붙지 않는 가드가 없음")
 
-    # 정합성 체크(1~14) 전달 경로 — 2026-09-11 이전에는 notify_status 의 ONLY_ON_FAILURE 게이트에
-    # 막혀 **수집 정상일엔 한 번도 사용자에게 안 갔다**. 매일 도착하는 이 리포트 스레드가 유일한 경로다.
-    if "_integrity_lines" not in src:
-        fails.append("정합성 체크가 리포트 스레드에 안 붙는다 — notify_status 게이트에 막혀 영구 무음이 된다")
+    # 정합성 체크(1~14)는 **정확히 한 번만** 전달돼야 한다 — 2026-09-11 반증.
+    #  실물: 채널 C0B4F7GBX17 ts=1789011312.360449 스레드(2026-09-10T03:35:52Z)에 🧪 블록이
+    #  이미 들어 있었다. 운반 주체는 daily-increment-report.yml 의 `상태 알럿을 리포트 댓글로`
+    #  스텝(notify_status + SLACK_THREAD_TS, ONLY_ON_FAILURE 없음)이다.
+    #  여기(notify_increments)에서 또 붙이면 **같은 스레드에 같은 내용이 댓글 2개**가 된다.
+    if "_integrity_lines(" in src or "import _integrity_lines" in src:
+        fails.append("정합성 체크를 리포트에서 또 호출한다 — 같은 스레드에 중복 게시된다"
+                     "(운반은 daily-increment-report.yml 의 notify_status 스텝이 이미 한다)")
+
+    wf = (ROOT / ".github" / "workflows" / "daily-increment-report.yml").read_text(encoding="utf-8")
+    if "SLACK_THREAD_TS" not in wf or "notify_status.py" not in wf:
+        fails.append("리포트 스레드 상태 댓글 스텝이 사라졌다 — 정합성 체크 전달 경로가 끊긴다")
     else:
-        blk = src[src.index("_integ_lines = []"):][:1600]
-        if "_asecs.append" not in blk:
-            fails.append("정합성 결과를 스레드 댓글(_asecs)에 넣지 않는다")
-        if "except Exception" not in blk:
-            fails.append("정합성 체크 실패가 리포트 본문 발송을 막을 수 있다(try/except 없음)")
+        _step = wf[wf.index("상태 알럿을 리포트 댓글로"):][:900]
+        if "ONLY_ON_FAILURE" in _step:
+            fails.append("리포트 댓글 스텝에 ONLY_ON_FAILURE 가 붙었다 — 수집 정상일엔 정합성 체크가 안 간다")
 
     dedup = re.search(r"elif\s+(.+?_already_posted\(token,\s*CHANNEL,\s*target\)\s*):", src, re.S)
     if not dedup:

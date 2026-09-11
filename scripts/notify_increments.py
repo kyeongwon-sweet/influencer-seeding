@@ -725,35 +725,15 @@ def main():
             _pc = f"{'+' if _a['dv'] >= 0 else ''}{_a['dv'] * 100:.0f}%"
             _al.append(f"{_a['dir']} {_lab2} _({_a['platform']})_ 오늘 *+{f(_a['today'])}* · 평소 +{f(round(_a['base']))} 대비 {_pc}")
         _asecs.append("\n".join(_al))
-    # ── 데이터 정합성 특이(체크 1~14)를 여기에 붙인다 ─────
-    #  🚨 2026-09-11 발견: 이 체크들은 `notify_status` 가 계산하는데, 그 스크립트는
-    #     `ONLY_ON_FAILURE=1 + real_problem(수집 갭)` 게이트에서 **먼저 return** 해버린다.
-    #     즉 **수집이 정상인 날엔 계산조차 안 되고 버려졌다**(09-07·09-09·09-10·09-11 전부
-    #     '발송 생략', 09-08 유튜브 전멸일에만 발송). 가격미매핑·안전망 비활성·담당자 빈칸·
-    #     소급 기록은 **수집이 정상인 날에 알려야 하는 것들**이라 사실상 영구 무음이었다.
-    #  → 매일 확실히 도착하는 이 리포트 스레드에 붙인다(사용자 결정 2026-09-11).
-    #     notify_status 의 DM 경로는 그대로 둔다(수집 실패일엔 거기로도 간다 — 중복 허용).
-    #  ⚠️ 실패해도 리포트 본문 발송은 절대 막지 않는다.
-    _integ_lines = []
-    try:
-        from notify_status import _integrity_lines
-        _ip, _off = [], 0
-        while True:
-            _res = db.table("sponsored_posts").select(
-                "id, url, account_name, created_at, ended_at, content_summary, posted_at, "
-                "channel_type, notes, cost, company_name, project_name, asset_name, creator, planner"
-            ).order("id").range(_off, _off + 999).execute()
-            _chunk = _res.data or []
-            _ip.extend(_chunk)
-            if len(_chunk) < 1000:
-                break
-            _off += 1000
-        _integ_lines = _integrity_lines(db, _ip) or []
-    except Exception as _e:
-        print("[notify] 정합성 체크 실패(리포트는 계속):", _e)
-    if _integ_lines:
-        _asecs.append("🧪 *데이터 정합성 특이* — 수집과 별개로 손질 필요" + chr(10)
-                      + chr(10).join("• " + l for l in _integ_lines))
+    # ⚠️ 2026-09-11: 여기에 정합성 체크(_integrity_lines)를 붙이지 말 것 — **이미 전달되고 있다.**
+    #    같은 스레드의 `상태 알럿을 리포트 댓글로 (여믄봇)` 스텝(daily-increment-report.yml:101)이
+    #    notify_status 를 ONLY_ON_FAILURE 없이 SLACK_THREAD_TS 로 실행해 🧪 블록을 이미 붙인다.
+    #    실물 확인: 채널 C0B4F7GBX17 ts=1789011312.360449 스레드(2026-09-10T03:35:52Z 발송)에
+    #    체크 7종이 그대로 들어 있다. 여기에 또 붙이면 **같은 스레드에 같은 내용이 댓글 2개**가 된다.
+    #    ⚠️ '안 간다'로 보이는 이유: cron-daily-collect 로그의 `ONLY_ON_FAILURE 발송 생략`은 DM 경로이고,
+    #       리포트 스텝은 `if ts != ''` 라 그날 **첫(게시) 실행에서만** 돈다. 최근 실행만 표본으로 보면
+    #       한 건도 안 보인다. 발송 본문은 stdout 에 안 찍히므로 로그 grep 으로 판정하지 말 것
+    #       (올바른 마커 `[status] ok=`, 최종 확인은 슬랙 실물).
 
     acct_comment = "\n\n".join(_asecs)   # 채널 이상 + 특이 계정(있는 것만). 스레드 댓글로 발송.
 
