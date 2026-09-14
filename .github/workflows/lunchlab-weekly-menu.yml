@@ -44,8 +44,10 @@ jobs:
           # 3. 주차 라벨 표시용 (HTML 검색 없이 계산값 사용)
           week_label_display = f"{month}월 {week_num}주차"
 
-          # 4. 전체 HTML에서 이미지 URL 추출 (section 슬라이싱 없음 — 라벨 위치에 무관)
-          raw_imgs = re.findall(r'https://images\.ctfassets\.net/[^\s"<>]+\.(?:png|jpg|jpeg|webp)', html)
+          # 4. 전체 HTML에서 이미지 URL 추출
+          # 패턴1: 직접 URL (RSC JSON payload: "src":"https://..." or "href":"https://...")
+          raw_imgs = re.findall(r'https://images\.ctfassets\.net/[^\s"\\<>]+\.(?:png|jpg|jpeg|webp)', html)
+          # 패턴2: URL-encoded (_next/image?url= 형태)
           encoded_imgs = re.findall(r'https?%3A%2F%2Fimages\.ctfassets\.net[^\s"<>&]+?\.(?:png|jpg|jpeg|webp)', html)
           decoded_imgs = [urllib.parse.unquote(u) for u in encoded_imgs]
           imgs = list(dict.fromkeys(raw_imgs + decoded_imgs))[:3]
