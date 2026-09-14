@@ -12,7 +12,7 @@ SKILL.md 형식을 코드로 고정 — 예약 실행 Claude가 형식/숫자를
 값 있음 = play_count 또는 reach_count가 not null.
 """
 import sys, os, json, urllib.request, urllib.error, datetime
-from channel_kind import is_banner_channel
+from channel_kind import is_banner_channel, is_reach_only_manual_channel
 
 CHANNEL = "C0B659HEYDV"
 ENV_PATHS = [
@@ -235,7 +235,36 @@ def main():
             return True
         return ("삭제" in n) or ("비공개" in n) or ("not_found" in n)
 
+    # ── 도달수만 수기로 관리되는 글(매거진·배너) ─────────────────────────────────
+    # 왜(2026-09-14 실측, '오늘의 메뉴' https://www.instagram.com/p/DbutARtkWS8/):
+    #   매거진 배너 경계일(channel_kind.MAGAZINE_BANNER_FROM=2026-08-18) **이전** 게시물은
+    #   is_banner_channel()에 안 걸려 매일 '활성인데 미수집'으로 보고됐다. 실물은 사진 캐러셀이라
+    #   조회수가 애초에 없다. 판정은 channel_kind 단일 정본에 두고 여기서는 재료만 모은다.
+    # ⚠️ 7일 창으로는 부족하다 — 이 글의 마지막 도달수는 2026-08-25로 창보다 앞선다.
+    #   경계 밖으로 새는 매거진만 대상이라 건수가 작아 후보만 전체 이력을 읽는다.
+    reach_only_ids = set()
+    for c in posts:
+        ct_c = c.get("channel_type") or ""
+        if not any(k in ct_c for k in ("매거진", "배너")):
+            continue
+        if is_banner_channel(ct_c, c.get("posted_at")) or is_ended(c):
+            continue                   # 이미 배너로 제외되거나 종료된 글은 볼 필요 없음
+        hist = get("/rest/v1/post_daily_stats?select=play_count,reach_count,manual&post_id=eq.%s&order=id.asc&limit=1000" % c["id"])
+        if is_reach_only_manual_channel(
+            ct_c,
+            has_reach_ever=any((h.get("reach_count") or 0) > 0 for h in hist),
+            has_auto_play_ever=any(h.get("play_count") is not None and not h.get("manual") for h in hist),
+        ):
+            reach_only_ids.add(c["id"])
+
+    def is_known_uncollectable(p):
+        """수집기가 액터 에러로 '수집 불가'를 자동 태깅한 글 — 재시도 큐가 빼는 것과 같은 기준.
+        (2026-09-14: 인스타 restricted_page 2건. 큐에서만 빼고 알림에 남기면 매일 같은 경고가 뜬다.)
+        복구되면 run_monitoring이 노트를 지워 자동으로 다시 감시 대상이 된다."""
+        return "수집 불가" in (p.get("notes") or "")
+
     b_tot = 0
+    uncollectable_cnt = 0          # 액터 에러로 '수집 불가' 태깅된 글(제한·민감 등) — 사람 확인 몫
     feed_cnt = 0                   # 피드/사진 — play_count 지표 자체가 없음(확보율 제외)
     internal_cnt = 0               # 위성/온드(내부채널) — 불규칙 수집이라 미측정 정상(확보율 제외)
     active_nb = val_nb = 0          # 종료 제외 활성 비배너 / 그중 값 확보
@@ -252,8 +281,8 @@ def main():
             ca_kst = ca.astimezone(datetime.timezone(datetime.timedelta(hours=9)))
             if ca_kst >= cutoff:
                 new_times.append(ca_kst)
-        if is_banner_channel(ct, p.get("posted_at")):
-            b_tot += 1
+        if is_banner_channel(ct, p.get("posted_at")) or r["post_id"] in reach_only_ids:
+            b_tot += 1               # 도달수 지표 글(배너 + 경계 밖 매거진) — 조회수 없음이 정상
             continue
         if any(k in ct for k in ("피드", "사진", "이미지")):
             feed_cnt += 1            # 사진/피드 — 조회수 지표 없음, 확보율 제외
@@ -266,10 +295,16 @@ def main():
             if not has_val:
                 ended_miss.append(item)     # 종료 게시물 — 값 없음이 정상
             continue                         # 확보율 분모에서 제외
-        active_nb += 1
         if has_val:
+            active_nb += 1
             val_nb += 1
+        elif is_known_uncollectable(p):
+            # 액터가 제한·민감으로 막은 글 — 재시도해도 같은 응답이라 매일 재알림할 일이 아니다.
+            # ⚠️ 값이 있으면 여기 오지 않는다(위 분기) — 회복된 글을 제외해 버리면 확보율이 부풀고
+            #    자가치유(노트 삭제)가 늦은 날 실제 수집 성공이 안 보인다.
+            uncollectable_cnt += 1
         else:
+            active_nb += 1
             real_miss.append(item)           # 활성인데 미수집 — 진짜 문제
 
     # ⚠️ 2026-08-03 사고: 위 루프는 '어제 측정행이 있는 게시물'만 순회한다. Apify가 not_found를 주면
@@ -282,11 +317,18 @@ def main():
     # (예: 이나(인스타) 미러링 글은 값이 전부 수기 입력이라 자동 측정행이 원래 없다)
     week_ago = (datetime.date.fromisoformat(yday) - datetime.timedelta(days=6)).isoformat()
     auto_ids, manual_ids = set(), set()
+    # 도달수만 수기로 관리되는 글(매거진·배너)을 가려내기 위한 지표 형태. 판정은
+    # channel_kind.is_reach_only_manual_channel() 한 곳에만 두고 여기서는 재료만 모은다.
+    auto_play_ids, reach_ids = set(), set()
     frm = 0
     while True:
-        pg = get("/rest/v1/post_daily_stats?select=post_id,manual&measured_at=gte.%s&measured_at=lte.%s&order=id.asc&limit=1000&offset=%d" % (week_ago, yday, frm))
+        pg = get("/rest/v1/post_daily_stats?select=post_id,manual,play_count,reach_count&measured_at=gte.%s&measured_at=lte.%s&order=id.asc&limit=1000&offset=%d" % (week_ago, yday, frm))
         for r in pg:
             (manual_ids if r.get("manual") else auto_ids).add(r["post_id"])
+            if r.get("play_count") is not None and not r.get("manual"):
+                auto_play_ids.add(r["post_id"])
+            if (r.get("reach_count") or 0) > 0:
+                reach_ids.add(r["post_id"])
         if len(pg) < 1000: break
         frm += 1000
 
@@ -296,7 +338,8 @@ def main():
         if p["id"] in measured_ids:
             continue
         ct = p.get("channel_type") or ""
-        if is_banner_channel(ct, p.get("posted_at")) or any(k in ct for k in ("피드", "사진", "이미지", "위성채널", "온드미디어")):
+        if is_banner_channel(ct, p.get("posted_at")) or p["id"] in reach_only_ids \
+                or any(k in ct for k in ("피드", "사진", "이미지", "위성채널", "온드미디어")):
             continue                      # 위 루프와 동일한 제외 규칙(조회수 지표 없음)
         if is_ended(p):
             continue                      # 종료글은 값 없음이 정상
@@ -308,6 +351,11 @@ def main():
             continue                      # 어제 이후 등록분 → 어제 수집 대상이 아님
         if p["id"] not in auto_ids and p["id"] in manual_ids:
             manual_only.append(p)         # 수기 관리 글 — 자동 측정행이 없는 게 정상, 확보율 제외
+            continue
+        if is_known_uncollectable(p):
+            # 제한·민감으로 막힌 글은 행 자체가 안 생긴다. 위 루프와 같은 기준으로, '정상 미측정'
+            # 필터를 전부 통과한 뒤에만 센다 — 앞에 두면 종료·게시전·수기전용까지 섞여 과다 집계된다.
+            uncollectable_cnt += 1
             continue
         streak = p.get("not_found_streak") or 0
         active_nb += 1
@@ -351,11 +399,11 @@ def main():
         "📊 자정 수집 %s 알림 (%s)\n\n"
         "• %s  %s 수집\n\n"
         "• *측정 대상*: %d건 중 값 확보 %d건(%d%%) · 확인필요 %d건\n"
-        "• *측정 제외* (조회수 지표 없음): 위성/온드 %d · 배너 %d · 종료 %d · 피드 %d · 수기 %d\n"
+        "• *측정 제외* (조회수 지표 없음): 위성/온드 %d · 배너 %d · 종료 %d · 피드 %d · 수기 %d · 수집불가 %d\n"
         "    ◦ IG 접근불가(3일↑ not_found·미종료): %d건\n"
         "• *특이사항*: %s\n"
         "    ◦ %s"
-    ) % (status_word, today, status_icon, first, active_nb, val_nb, P, len(real_miss), internal_cnt, b_tot, len(ended_miss), feed_cnt, len(manual_only), len(nf_review), note, watchdog["line"])
+    ) % (status_word, today, status_icon, first, active_nb, val_nb, P, len(real_miss), internal_cnt, b_tot, len(ended_miss), feed_cnt, len(manual_only), uncollectable_cnt, len(nf_review), note, watchdog["line"])
 
     thread = None
     sections = []

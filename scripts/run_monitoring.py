@@ -1047,6 +1047,50 @@ def _warn_unmapped(platform: str, dropped: int, total: int, sample=None) -> None
           f"스키마 변경 또는 개별 실패 스텁 의심(둘을 가르려면 아래 키 목록 확인){keys}")
 
 
+def _ig_error_signals(item) -> tuple[bool, str | None, str | None]:
+    """IG 액터 아이템에서 (삭제확정, 에러코드, 에러설명)을 뽑는다.
+
+    왜 갈라야 하나(2026-09-14 실측): 인스타가 게시물에 제한을 걸면 액터가
+    `error="restricted_page"` / `errorDescription="Restricted access, only partial data available"`
+    를 주면서 좋아요·계정 정보는 정상으로 돌려준다. **게시물은 살아 있고 조회수만 없다.**
+    예전 코드는 `error == "not_found"` 만 봤기 때문에 이 응답이 아무 흔적도 남기지 못했고,
+    재시도 큐가 매일 다시 담아 Apify를 재호출하며 '활성인데 미수집' 경고를 매일 냈다.
+
+    ⚠️ `deleted` 는 **삭제 확정에만** 쓴다(not_found_streak·ended_at 자동종료의 입력).
+       제한(restricted)은 삭제가 아니므로 절대 여기에 섞지 않는다 — 섞으면 살아 있는 게시물이
+       자동 종료된다.
+    """
+    error_description = str(item.get("errorDescription") or "") or None
+    raw_error = str(item.get("error") or "") or None
+    deleted = (raw_error == "not_found") or ("does not exist" in str(error_description or "").lower())
+    # 키 이름을 보조 플랫폼(`error`)과 일부러 다르게 둔다 — `_record_missing_view_event` 가
+    # `stat["error"]` 를 곧바로 deleted 로 읽어서, 제한이 삭제로 기록돼 버린다.
+    error_code = None if deleted else raw_error
+    return deleted, error_code, error_description
+
+
+IG_MASS_ERROR_MIN_POSTS = 5      # 표본이 너무 작으면 비율이 요동친다
+IG_MASS_ERROR_RATIO = 0.3        # 응답의 30% 이상이 에러면 개별 제한이 아니라 액터/플랫폼 쪽 문제
+
+
+def is_ig_mass_error(stats) -> bool:
+    """IG 응답 전반이 에러인가 — '개별 게시물 제한'과 '액터·플랫폼 장애'를 가른다.
+
+    🚨 왜 필요한가: 제한(restricted_page)을 자동으로 '수집 불가' 태깅하면 재시도 큐와 알림에서
+    빠진다. 그건 개별 게시물일 때만 옳다. 레이트리밋·차단으로 **배치 전체**가 에러를 받은 날에도
+    그대로 태깅하면 수백 건이 한꺼번에 감시망 밖으로 나가 진짜 장애가 조용히 묻힌다
+    (2026-08-18 `likely_image_no_view` 사고와 같은 형태 — 단정이 감시를 껐다).
+
+    그런 날은 태깅하지 않고 경고만 남긴다 → 다음 날 재시도로 자동 복구되고, 복구가 안 되면
+    '활성인데 미수집'으로 계속 보여서 사람이 본다.
+    """
+    values = list(stats or [])
+    if len(values) < IG_MASS_ERROR_MIN_POSTS:
+        return False
+    errored = sum(1 for s in values if (s or {}).get("error_code"))
+    return errored >= len(values) * IG_MASS_ERROR_RATIO
+
+
 def _yt_item_id(item) -> str | None:
     """액터 아이템에서 영상 ID를 뽑는다. **여러 필드를 순서대로 시도한다.**
 
@@ -1570,6 +1614,9 @@ def run():
                     # A successful fallback proves that the post exists even if
                     # the primary actor returned a batch-wide not_found error.
                     cur["deleted"] = False
+                    # 폴백이 응답을 받아냈으므로 1차 액터의 제한(restricted_page 등) 표시도 함께 푼다.
+                    # 안 풀면 아래 저장 루프가 되찾은 값을 '수집 불가'로 버린다.
+                    cur["error_code"] = None
                     stats_by_key[key] = cur
                 print(f"[LOG] data-slayer 폴백 보강 완료: 조회수 {merged}건 채움")
             elif exp_missing:
@@ -1589,6 +1636,9 @@ def run():
                         if m.get(field) is not None and (field != "content_summary" or not cur.get(field)):
                             cur[field] = m[field]
                     cur["deleted"] = False
+                    # 폴백이 응답을 받아냈으므로 1차 액터의 제한(restricted_page 등) 표시도 함께 푼다.
+                    # 안 풀면 아래 저장 루프가 되찾은 값을 '수집 불가'로 버린다.
+                    cur["error_code"] = None
                     if m.get("play_count") is not None:
                         merged += 1
                     stats_by_key[key] = cur
@@ -1628,6 +1678,9 @@ def run():
                     key = _stats_key(u)
                     cur = stats_by_key.get(key) or {"url": u}
                     cur["deleted"] = False
+                    # 폴백이 응답을 받아냈으므로 1차 액터의 제한(restricted_page 등) 표시도 함께 푼다.
+                    # 안 풀면 아래 저장 루프가 되찾은 값을 '수집 불가'로 버린다.
+                    cur["error_code"] = None
                     cur["comments_count"] = m["comments_count"]
                     for fld in ("play_count", "likes_count"):
                         if cur.get(fld) is None and m.get(fld) is not None:
@@ -1695,6 +1748,10 @@ def run():
             _flush_upward_spike_warnings()
 
         rows = []
+        # 개별 게시물 제한인가, 액터·플랫폼 전반의 장애인가. 후자면 자동 태깅을 멈춘다(감시 유지).
+        ig_mass_error = is_ig_mass_error(stats_by_key.values())
+        if ig_mass_error:
+            print("  [WARN] IG 응답 상당수가 액터 에러 — 개별 '수집 불가' 태깅 보류(감시 대상 유지)")
         # influencer_id 없는 IG 게시물을 프로필 URL 기준으로 한 번에 조회한다.
         # 기존 per-post SELECT와 동일한 exact URL 매칭만 사용한다.
         influencer_profile_by_post = {}
@@ -1803,6 +1860,32 @@ def run():
                 continue
             _record_not_found_observation(db, post, False)
 
+            # not_found 이외의 명시적 액터 에러 → '수집 불가' 자동 태깅 + 일별행 저장 안 함(직전값 유지).
+            # 왜(2026-09-14 실측): 인스타가 게시물 2건에 제한을 걸어 `restricted_page` 를 반환했는데,
+            #   이 경로가 `deleted`(=not_found) 만 봐서 아무 표시도 남지 않았다. 그 결과 재시도 큐가
+            #   매일 이 글들을 다시 담아 Apify를 재호출하고, '활성인데 미수집' 경고가 매일 떴다.
+            #   보조 플랫폼(_store_aux_rows)은 이미 `if s.get("error")` 로 어떤 에러든 태깅하는데
+            #   인스타 경로만 좁았던 비대칭을 맞춘다.
+            # ⚠️ 제한은 삭제가 아니다 — not_found_streak·ended_at 자동종료에는 절대 넣지 않는다.
+            #    (위 `deleted` 블록을 타지 않으므로 구조적으로 분리돼 있다.)
+            # ⚠️ `play_count is None` 을 반드시 함께 본다 — data-slayer 폴백이 조회수를 되찾아온
+            #    경우까지 '수집 불가'로 버리면, 폴백의 존재 이유가 사라진다.
+            if s.get("error_code") and s.get("play_count") is None:
+                if not ig_mass_error and not (post.get("notes") or "").strip():
+                    note = (
+                        f"인스타 수집 불가 감지(자동 {TODAY}, {s['error_code']}) — "
+                        "조회수 최종값에서 정지, 확인 필요"
+                    )
+                    db.table("sponsored_posts").update({"notes": note}).eq("id", post["id"]).execute()
+                    post["notes"] = note
+                _record_missing_view_event(
+                    post, "Instagram", "collector_error",
+                    stat=s, existing=last_stat.get(post["id"], {}),
+                    extra={"error_code": s.get("error_code")},
+                )
+                print(f"  ⚠️  IG 수집 불가({s['error_code']}) → 직전값 유지, 일별행 저장 안 함: {post['url']}")
+                continue
+
             updates = {}
             if not post.get("posted_at") and s.get("posted_at"):
                 updates["posted_at"] = s["posted_at"]
@@ -1820,6 +1903,14 @@ def run():
             profile_url = influencer_profile_by_post.get(post["id"])
             if profile_url and influencer_ids_by_url.get(profile_url):
                 updates["influencer_id"] = influencer_ids_by_url[profile_url]
+
+            # 자가치유: 예전에 '수집 불가 감지(자동)'로 태깅된 글이 이번에 실제 조회수를 다시 반환하면
+            # 그 자동 노트를 지운다 → 재시도 큐 제외(collector_uncollectable)·워치독에서 자동 해제.
+            # 수동으로 적은 특이사항은 문구가 달라 매칭되지 않으므로 보존된다(보조 플랫폼과 동일 규약).
+            _fresh_view = s.get("play_count")
+            if (isinstance(_fresh_view, (int, float)) and _fresh_view > 0
+                    and "수집 불가 감지(자동" in (post.get("notes") or "")):
+                updates["notes"] = None
 
             if updates:
                 db.table("sponsored_posts").update(updates).eq("id", post["id"]).execute()
@@ -2313,9 +2404,7 @@ def _fetch_stats(urls: list) -> list:
                 print(f"        가능한 조회수 필드: {non_none_fields or 'NONE'}")
                 print(f"        모든 필드 키: {list(item.keys())}\n")
 
-        # 삭제/비공개 감지 — Apify가 not_found(게시물 없음)로 응답한 경우. (자동 특이사항 태깅용)
-        error_description = str(item.get("errorDescription") or "") or None
-        deleted = (item.get("error") == "not_found") or ("does not exist" in str(error_description or "").lower())
+        deleted, error_code, error_description = _ig_error_signals(item)
 
         result.append({
             "url": url,
@@ -2328,6 +2417,7 @@ def _fetch_stats(urls: list) -> list:
             "owner_username": owner_username,
             "content_summary": (item.get("caption") or "")[:300] or None,
             "deleted": deleted,
+            "error_code": error_code,
             "error_description": error_description,
         })
 

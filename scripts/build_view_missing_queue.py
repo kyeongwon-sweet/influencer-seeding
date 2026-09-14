@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from channel_kind import is_banner_channel
+from channel_kind import is_banner_channel, is_reach_only_manual_channel
 
 import argparse
 import json
@@ -164,11 +164,21 @@ def build_history_state(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "has_metric": False,
         "has_likes_or_comments": False,
         "has_manual_zero": False,
+        "has_auto_play_ever": False,
+        "has_reach_ever": False,
         "last_metric": None,
         "last_metric_date": None,
     }
     for row in rows:
         value = metric(row)
+        # ⚠️ '조회수형 글인가'의 증거는 **자동수집된** play_count 뿐이다. 수기 행은 사람이 도달수를
+        #    어느 칸에 적었는지의 문제라 증거력이 없다 — 실측('오늘의 메뉴' 2026-08-10):
+        #    play_count=45,795 / reach_count=45,795 로 **같은 도달수가 두 칸에 복사된** 수기 행이 있어,
+        #    이걸 조회수로 세면 사진 캐러셀이 영원히 '조회수형 글'로 남는다.
+        if row.get("play_count") is not None and row.get("manual") is not True:
+            state["has_auto_play_ever"] = True
+        if (row.get("reach_count") or 0) > 0:
+            state["has_reach_ever"] = True
         if value is not None and value > 0:
             state["has_metric"] = True
             measured = str(row.get("measured_at"))[:10]
@@ -182,8 +192,26 @@ def build_history_state(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return state
 
 
+def is_reach_only_manual_channel_state(post: dict[str, Any], state: dict[str, Any]) -> bool:
+    """`build_history_state()` 결과로 단일 정본 판정(channel_kind)을 호출하는 얇은 어댑터.
+
+    판정 규칙 자체는 `channel_kind.is_reach_only_manual_channel()` 한 곳에만 둔다 —
+    알림(daily_collect_report)과 재시도 큐가 서로 다른 규칙을 쓰면, 큐에서 빠진 글이
+    알림에는 매일 뜨는 식으로 조용히 어긋난다(2026-09-14 실측).
+    """
+    return is_reach_only_manual_channel(
+        post.get("channel_type"),
+        has_reach_ever=bool(state.get("has_reach_ever")),
+        has_auto_play_ever=bool(state.get("has_auto_play_ever")),
+    )
+
+
 # 재시도해도 값을 얻을 수 없다고 '확정'된 사유들 — 큐에서 빼고 excluded 에 따로 센다.
-NON_RETRYABLE_REASONS = frozenset({"no_public_view_metric", "manual_zero_confirmed"})
+NON_RETRYABLE_REASONS = frozenset({
+    "no_public_view_metric",
+    "manual_zero_confirmed",
+    "reach_only_manual_channel",
+})
 
 
 def decide_reason(
@@ -217,6 +245,9 @@ def decide_reason(
 
     if state.get("has_manual_zero") and not state.get("has_metric"):
         reason = "manual_zero_confirmed"
+
+    if is_reach_only_manual_channel_state(post, state):
+        reason = "reach_only_manual_channel"
 
     return reason
 
@@ -296,6 +327,7 @@ def main() -> None:
         "measured": 0,
         "no_public_view_metric": 0,
         "manual_zero_confirmed": 0,
+        "reach_only_manual_channel": 0,
         "not_retryable": 0,
         "manual_note": 0,
         "collector_uncollectable": 0,

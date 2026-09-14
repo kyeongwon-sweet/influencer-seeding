@@ -31,6 +31,37 @@ def is_banner_channel(channel_type: Any, posted_at: Any = None) -> bool:
     return len(posted) == 10 and posted >= MAGAZINE_BANNER_FROM
 
 
+def is_reach_only_manual_channel(
+    channel_type: Any, *, has_reach_ever: bool, has_auto_play_ever: bool
+) -> bool:
+    """도달수만 수기로 관리하는 글인가 — **게시일 경계가 아니라 실제 지표 형태로** 판정한다.
+
+    왜 필요한가(2026-09-14 실측, '오늘의 메뉴' https://www.instagram.com/p/DbutARtkWS8/):
+      매거진을 '배너=도달수 수기'로 빼는 기준이 위 `is_banner_channel()` 의 게시일 경계
+      (`MAGAZINE_BANNER_FROM`=2026-08-18)였다. 이 글은 08-07 게시라 경계 밖이라 제외되지 않아
+      **매일 재시도 큐에 담기고 매일 '활성인데 미수집' 경고**가 떴다. 실물은 Apify
+      `type=Sidecar` / childPosts 7개 전부 `Image` — 영상이 아니라 조회수 자체가 없다.
+
+    ⚠️ `is_banner_channel()` 의 경계일은 건드리지 않는다. 그건 리포트의 배너 도달수 계산 규약이라
+       바꾸면 08-18 이전 매거진의 과거 리포트 숫자가 달라진다. 여기서는 '미수집이 정상인가'만 본다.
+
+    ⚠️ `has_auto_play_ever` 는 **자동수집된** play_count 만 세야 한다. 수기 행은 사람이 도달수를
+       어느 칸에 적었는지의 문제라 증거력이 없다 — 실측('오늘의 메뉴' 2026-08-10)에
+       play_count=45,795 / reach_count=45,795 로 같은 도달수가 두 칸에 복사된 수기 행이 있다.
+
+    판정(셋 다 만족해야 한다 — 좁게 잡아 오제외를 막는다):
+      · 도달수 채널 계열(매거진·배너)이다 — 다른 채널로 번지지 않게 한정
+      · 자동수집 조회수가 이력에 한 번도 없다
+      · 도달수는 실제로 있다 — 지표가 아예 없는 글은 수집 실패일 수 있으므로 제외하지 않는다
+
+    self-heal: 자동 조회수가 한 번이라도 들어오면 조건이 깨져 다시 감시 대상으로 돌아온다.
+    """
+    text = str(channel_type or "")
+    if "매거진" not in text and "배너" not in text:
+        return False
+    return bool(has_reach_ever) and not has_auto_play_ever
+
+
 # ── 비용 0이 '정상'인 게시물 판정 ────────────────────────────────────────
 # 왜 필요한가(2026-09-07 사용자 지시 — 오하루(틱톡/미러링) +16,600이 '가격미매핑'으로 떴다):
 #   `sponsored_posts.cost` 는 **NULL이 한 행도 없다**(실측 3,534행 전부 NOT NULL, 0=799행).

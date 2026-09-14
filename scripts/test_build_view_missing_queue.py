@@ -300,3 +300,71 @@ class HistoryStateTest(unittest.TestCase):
         ])
         self.assertTrue(state["has_metric"])
         self.assertFalse(state["has_manual_zero"])
+
+
+class ReachOnlyManualChannelTest(unittest.TestCase):
+    """매거진·배너처럼 도달수만 수기로 관리하는 글이 재시도 큐에 영원히 남지 않게 한다.
+
+    2026-09-14 실측: '오늘의 메뉴'(협찬 (파워채널/매거진), 게시일 2026-08-07)가 매거진 배너
+    경계일(2026-08-18) 이전이라 제외되지 않고, 과거 수기 도달수 때문에 no_public_view_metric
+    탈출구도 막혀 매일 재시도 + 매일 '활성인데 미수집' 경고를 냈다.
+    """
+
+
+    def setUp(self):
+        self.magazine = {
+            "channel_type": "협찬 (파워채널/매거진)",
+            "url": "https://www.instagram.com/p/DbutARtkWS8/",
+            "posted_at": "2026-08-07",
+            "notes": "",
+        }
+        self.reach_only_rows = [
+            {"measured_at": "2026-08-25", "play_count": None, "reach_count": 45795, "manual": True},
+            {"measured_at": "2026-09-13", "play_count": None, "reach_count": None, "manual": False},
+        ]
+
+    def _reason(self, post, rows, target="2026-09-13"):
+        state = build_history_state(rows)
+        return decide_reason(post, [rows[-1]], state, target)
+
+    def test_reach_only_magazine_is_excluded(self):
+        reason = self._reason(self.magazine, self.reach_only_rows)
+        self.assertEqual(reason, "reach_only_manual_channel")
+        self.assertIn(reason, NON_RETRYABLE_REASONS)
+
+    def test_posted_before_banner_cutoff_still_excluded(self):
+        """게시일 경계(2026-08-18) 이전이어도 빠져야 한다 — 이번 사고의 핵심."""
+        from channel_kind import is_banner_channel
+        self.assertFalse(is_banner_channel(self.magazine["channel_type"], self.magazine["posted_at"]))
+        self.assertEqual(self._reason(self.magazine, self.reach_only_rows), "reach_only_manual_channel")
+
+    def test_auto_play_count_returns_post_to_queue(self):
+        """자동수집 조회수가 한 번이라도 들어오면 조회수형 글 — 큐로 자동 복귀한다(self-heal)."""
+        rows = list(self.reach_only_rows)
+        rows.insert(0, {"measured_at": "2026-08-20", "play_count": 1200, "reach_count": None, "manual": False})
+        self.assertNotEqual(self._reason(self.magazine, rows), "reach_only_manual_channel")
+
+    def test_manual_row_copying_reach_into_play_is_not_evidence(self):
+        """실측 함정('오늘의 메뉴' 2026-08-10): 수기 행이 같은 도달수를 play/reach 두 칸에 복사해
+        넣어 두면, 그걸 조회수로 세는 순간 사진 캐러셀이 영원히 큐에 남는다."""
+        rows = list(self.reach_only_rows)
+        rows.insert(0, {"measured_at": "2026-08-10", "play_count": 45795, "reach_count": 45795, "manual": True})
+        state = build_history_state(rows)
+        self.assertFalse(state["has_auto_play_ever"], "수기 행을 자동 조회수로 세면 안 된다")
+        self.assertEqual(self._reason(self.magazine, rows), "reach_only_manual_channel")
+
+    def test_no_metric_at_all_is_not_excluded(self):
+        """지표가 아예 없는 글은 수집 실패일 수 있다 — '확보 불가'로 확정하지 않는다."""
+        rows = [{"measured_at": "2026-09-13", "play_count": None, "reach_count": None, "manual": False}]
+        self.assertNotEqual(self._reason(self.magazine, rows), "reach_only_manual_channel")
+
+    def test_other_channels_are_untouched(self):
+        """도달수 채널이 아닌 글로 번지지 않는다."""
+        post = dict(self.magazine, channel_type="바이럴 (영상)")
+        self.assertNotEqual(self._reason(post, self.reach_only_rows), "reach_only_manual_channel")
+
+    def test_reason_is_counted_in_excluded_summary(self):
+        """excluded 딕셔너리에 키가 없으면 집계에서 KeyError 로 죽는다 — 계약으로 고정."""
+        source = Path(__file__).with_name("build_view_missing_queue.py").read_text(encoding="utf-8")
+        for reason in NON_RETRYABLE_REASONS:
+            self.assertIn(f'"{reason}": 0', source, f"excluded 초기값에 {reason} 누락")
