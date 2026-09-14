@@ -17,7 +17,7 @@ jobs:
           TOKEN = os.environ['SLACK_BOT_TOKEN']
           payload = json.dumps({
               'channel': 'C0BFPQAPHEK',
-              'ts': '1786080551.517539'
+              'ts': '1789385978.922589'
           }).encode('utf-8')
           req = urllib.request.Request(
               'https://slack.com/api/chat.delete', data=payload,
