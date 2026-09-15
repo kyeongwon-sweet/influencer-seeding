@@ -13,6 +13,7 @@ SKILL.md 형식을 코드로 고정 — 예약 실행 Claude가 형식/숫자를
 """
 import sys, os, json, urllib.request, urllib.error, datetime
 from channel_kind import is_banner_channel, is_reach_only_manual_channel
+from platform_kind import has_no_view_metric_host
 from uncollectable_stale_guard import stale_lines, stuck_uncollectable
 
 CHANNEL = "C0B659HEYDV"
@@ -265,6 +266,7 @@ def main():
         return "수집 불가" in (p.get("notes") or "")
 
     b_tot = 0
+    no_metric_host_cnt = 0         # 조회수 지표가 없는 매체(카카오·네이버·스레드·페북) — 미수집이 정상
     uncollectable_cnt = 0          # 액터 에러로 '수집 불가' 태깅된 글(제한·민감 등) — 사람 확인 몫
     uncollectable_posts = []       # 그중 '오래 조용한' 것만 아래에서 다시 띄운다(영구 침묵 방지)
     feed_cnt = 0                   # 피드/사진 — play_count 지표 자체가 없음(확보율 제외)
@@ -300,6 +302,13 @@ def main():
         if has_val:
             active_nb += 1
             val_nb += 1
+        elif has_no_view_metric_host(p.get("url")):
+            # 매체가 조회수를 아예 안 준다(카카오 숏폼·네이버·스레드·페북) — 미수집이 정상.
+            # 큐는 is_view_capable 로 이미 빼고 있었는데 알림만 몰라서 '미수집(원인 미상)'으로
+            # 매일 떴다(2026-09-15 실측: 자곰 카카오 숏폼 1건).
+            # ⚠️ 종료 판정 **뒤**에 둔다 — 앞에 두면 이미 종료된 글까지 끌어와 '종료' 집계를
+            #    빼앗는다(처음에 그렇게 넣었다가 7건으로 부풀어 잡았다. 실제 활성은 1건).
+            no_metric_host_cnt += 1
         elif is_known_uncollectable(p):
             # 액터가 제한·민감으로 막은 글 — 재시도해도 같은 응답이라 매일 재알림할 일이 아니다.
             # ⚠️ 값이 있으면 여기 오지 않는다(위 분기) — 회복된 글을 제외해 버리면 확보율이 부풀고
@@ -355,6 +364,9 @@ def main():
         if p["id"] not in auto_ids and p["id"] in manual_ids:
             manual_only.append(p)         # 수기 관리 글 — 자동 측정행이 없는 게 정상, 확보율 제외
             continue
+        if has_no_view_metric_host(p.get("url")):
+            no_metric_host_cnt += 1   # 위 루프와 동일 기준(행이 아예 안 생기는 경우)
+            continue
         if is_known_uncollectable(p):
             # 제한·민감으로 막힌 글은 행 자체가 안 생긴다. 위 루프와 같은 기준으로, '정상 미측정'
             # 필터를 전부 통과한 뒤에만 센다 — 앞에 두면 종료·게시전·수기전용까지 섞여 과다 집계된다.
@@ -403,11 +415,11 @@ def main():
         "📊 자정 수집 %s 알림 (%s)\n\n"
         "• %s  %s 수집\n\n"
         "• *측정 대상*: %d건 중 값 확보 %d건(%d%%) · 확인필요 %d건\n"
-        "• *측정 제외* (조회수 지표 없음): 위성/온드 %d · 배너 %d · 종료 %d · 피드 %d · 수기 %d · 수집불가 %d\n"
+        "• *측정 제외* (조회수 지표 없음): 위성/온드 %d · 배너 %d · 종료 %d · 피드 %d · 수기 %d · 무지표매체 %d · 수집불가 %d\n"
         "    ◦ IG 접근불가(3일↑ not_found·미종료): %d건\n"
         "• *특이사항*: %s\n"
         "    ◦ %s"
-    ) % (status_word, today, status_icon, first, active_nb, val_nb, P, len(real_miss), internal_cnt, b_tot, len(ended_miss), feed_cnt, len(manual_only), uncollectable_cnt, len(nf_review), note, watchdog["line"])
+    ) % (status_word, today, status_icon, first, active_nb, val_nb, P, len(real_miss), internal_cnt, b_tot, len(ended_miss), feed_cnt, len(manual_only), no_metric_host_cnt, uncollectable_cnt, len(nf_review), note, watchdog["line"])
 
     thread = None
     sections = []

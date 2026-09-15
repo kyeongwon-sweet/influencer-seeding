@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from channel_kind import is_banner_channel, is_reach_only_manual_channel
+from platform_kind import is_view_capable, platform
 
 import argparse
 import json
@@ -41,24 +42,8 @@ def chunks(values: list[str], size: int = 100):
         yield values[index:index + size]
 
 
-def platform(url: str | None) -> str:
-    value = (url or "").lower()
-    if "instagram.com" in value:
-        return "instagram"
-    if "youtube.com" in value or "youtu.be" in value:
-        return "youtube"
-    if "tiktok.com" in value:
-        return "tiktok"
-    if "x.com" in value or "twitter.com" in value:
-        return "x"
-    return "other"
-
-
-def is_view_capable(post: dict[str, Any]) -> bool:
-    value = (post.get("url") or "").lower()
-    if any(host in value for host in ("threads.", "facebook.com", "naver.com", "kakao.com")):
-        return False
-    return platform(value) in {"instagram", "youtube", "tiktok", "x"}
+# 매체 판정은 platform_kind 단일 정본을 쓴다(알림과 큐가 갈라지지 않게). 이름은 재수출해
+# 기존 호출부·테스트가 그대로 동작한다.
 
 
 def is_tiktok_view_post(url: str | None) -> bool:
