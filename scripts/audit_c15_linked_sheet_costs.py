@@ -181,7 +181,29 @@ def main() -> None:
         "sheet_positive_cost": sum(1 for result in results if (result.get("sheet_cost") or 0) > 0),
         "sheet_zero_or_blank": sum(1 for result in results if (result.get("sheet_cost") or 0) <= 0),
     }
-    print("[C15_COST_AUDIT] " + json.dumps({"summary": summary, "rows": results}, ensure_ascii=False))
+    target_terms = {loose_key(label.split(" ")[0]) for label, _url in TARGETS}
+    target_terms.update(loose_key(result.get("account_name")) for result in results)
+    source_previews = []
+    for source in payload.get("cost_source_previews") or []:
+        source_rows = source.get("values") if isinstance(source, dict) else None
+        if not isinstance(source_rows, list):
+            continue
+        matches = []
+        for row_number, row in enumerate(source_rows, start=1):
+            normalized_cells = [loose_key(value) for value in row]
+            if any(term and any(term in value or value in term for value in normalized_cells if value) for term in target_terms):
+                matches.append({"row": row_number, "values": row})
+        source_previews.append({
+            "title": source.get("title"),
+            "range": source.get("range"),
+            "leading_rows": source_rows[:5],
+            "matches": matches,
+        })
+    print("[C15_COST_AUDIT] " + json.dumps({
+        "summary": summary,
+        "rows": results,
+        "cost_source_previews": source_previews,
+    }, ensure_ascii=False))
 
 
 if __name__ == "__main__":
