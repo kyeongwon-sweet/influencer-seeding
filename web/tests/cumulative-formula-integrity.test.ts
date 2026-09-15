@@ -36,6 +36,18 @@ function fixture(options: { fail?: boolean; ignore?: boolean } = {}) {
         assert.equal(col, 3); assert.equal(criterion, "team criterion"); restored++;
       } };
     } }),
+    getRangeList: (addresses: string[]) => ({ setFormulaR1C1: (formula: string) => {
+      assert.equal(formula, '=IF(COUNT(RC[8]:RC[128])=0,"",MAX(RC[8]:RC[128]))');
+      assert.equal(activeFilter, null, "hidden rows must not be skipped");
+      if (options.fail) throw new Error("write failed");
+      addresses.forEach(address => {
+        assert.match(address, /^H\d+$/);
+        const row = Number(address.slice(1));
+        const value = '=IF(COUNT(P' + row + ':EF' + row + ')=0,"",MAX(P' + row + ':EF' + row + '))';
+        writes.push({ row, value });
+        if (!options.ignore) cells[row - 2].formula = value;
+      });
+    } }),
   };
   const range = {
     getRow: () => 2, getColumn: () => 8,
@@ -45,18 +57,13 @@ function fixture(options: { fail?: boolean; ignore?: boolean } = {}) {
   const context: Record<string, unknown> = {
     SpreadsheetApp: { flush: () => {} },
     withDocLock_: (fn: () => unknown) => fn(),
-    standardCumulativeFormulaParts_: (formula: string) => formula.startsWith("=IF(COUNT(") ? {} : null,
-    assertRowCountStable_: () => {},
-    writeColumnRuns_: (_sheet: unknown, col: number, edits: Array<{ row: number; value: string }>) => {
-      assert.equal(col, 8);
-      assert.equal(activeFilter, null, "hidden rows must not be skipped");
-      if (options.fail) throw new Error("write failed");
-      edits.forEach(edit => {
-        writes.push(edit);
-        if (!options.ignore) cells[edit.row - 2].formula = edit.value;
-      });
-      return edits.length;
+    standardCumulativeFormulaParts_: (formula: string) => {
+      const match = formula.match(/^=IF\(COUNT\(([A-Z]+)\d+:([A-Z]+)\d+\)/);
+      return match ? { firstLetter: match[1], endLetter: match[2] } : null;
     },
+    metricColumnNumber_: (letter: string) => letter === "P" ? 16 : letter === "EF" ? 136 : 0,
+    colLetter_: (col: number) => { assert.equal(col, 8); return "H"; },
+    assertRowCountStable_: () => {},
   };
   runInNewContext(helper, context);
   const write = context.writeCumulativeFormulaChanges_ as (...args: unknown[]) => { written: number; verified: number };
@@ -121,7 +128,7 @@ test("backup is verified in a separate spreadsheet before H writes, without new 
 });
 
 test("source canary permits derived CPV recalculation but rejects input and formula edits", () => {
-  const context: Record<string, unknown> = { CONFIG: { DATA_START_ROW: 2 } };
+  const context: Record<string, unknown> = { CONFIG: { DATA_START_ROW: 2 }, standardCumulativeFormulaParts_: () => null };
   runInNewContext(helper, context);
   const verify = context.verifyCumulativeSourceCells_ as (...args: unknown[]) => void;
   const before = { lastRow: 2, values: [[50, 2, 50]], allFormulas: [['=MAX(C2)', '=100/A2', '']], iFormulas: [['']] };
@@ -131,4 +138,33 @@ test("source canary permits derived CPV recalculation but rejects input and form
   assert.throws(() => verify(before, after, 1), /non-H cell changed/);
   after.values[0][2] = 50; after.allFormulas[0][1] = '=200/A2';
   assert.throws(() => verify(before, after, 1), /non-H cell changed/);
+});
+
+test("the source canary preserves manual H even in a zero-write idempotent run", () => {
+  const context: Record<string, unknown> = { CONFIG: { DATA_START_ROW: 2 }, standardCumulativeFormulaParts_: () => null };
+  runInNewContext(helper, context);
+  const verify = context.verifyCumulativeSourceCells_ as (...args: unknown[]) => void;
+  const before = { lastRow: 2, values: [[77]], allFormulas: [['']], iFormulas: [['']] };
+  const after = { lastRow: 2, values: [[77]], allFormulas: [['']], iFormulas: [['']] };
+  assert.doesNotThrow(() => verify(before, after, 1));
+  after.values[0][0] = 78;
+  assert.throws(() => verify(before, after, 1), /manual or custom H changed/);
+});
+
+test("sparse H batches retain dynamic date bounds and never exceed 500 cells per call", () => {
+  const calls: Array<{ addresses: string[]; formula: string }> = [];
+  const context: Record<string, unknown> = {
+    standardCumulativeFormulaParts_: () => ({ firstLetter: "P", endLetter: "EG" }),
+    metricColumnNumber_: (letter: string) => letter === "P" ? 16 : 137,
+    colLetter_: () => "H", assertRowCountStable_: () => {},
+  };
+  runInNewContext(helper, context);
+  const batch = context.setCumulativeFormulaBatches_ as (...args: unknown[]) => number;
+  const edits = Array.from({ length: 1201 }, (_, i) => ({ row: 2 + i * 2, value: "standard formula" }));
+  const sheet = { getRangeList: (addresses: string[]) => ({ setFormulaR1C1: (formula: string) => calls.push({ addresses, formula }) }) };
+  assert.equal(batch(sheet, 8, edits, 3000), 1201);
+  assert.deepEqual(calls.map(call => call.addresses.length), [500, 500, 201]);
+  assert.equal(calls[0].addresses[0], "H2"); assert.equal(calls[0].addresses[1], "H4");
+  assert.equal(calls[2].addresses.at(-1), "H2402");
+  assert.equal(calls[0].formula, '=IF(COUNT(RC[8]:RC[129])=0,"",MAX(RC[8]:RC[129]))');
 });

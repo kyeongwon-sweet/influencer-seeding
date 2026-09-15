@@ -41,7 +41,7 @@ function writeCumulativeFormulaChanges_(sheet, range, values, formulas, expected
       SpreadsheetApp.flush();
     }
     try {
-      result.written = writeColumnRuns_(sheet, col, edits, lastRow);
+      result.written = setCumulativeFormulaBatches_(sheet, col, edits, lastRow);
       SpreadsheetApp.flush();
     } finally {
       if (filterState) {
@@ -75,6 +75,27 @@ function writeCumulativeFormulaChanges_(sheet, range, values, formulas, expected
     result.verified = edits.length;
     return result;
   });
+}
+
+function setCumulativeFormulaBatches_(sheet, col, edits, lastRow) {
+  const groups = {};
+  edits.forEach(function(edit) {
+    const parts = standardCumulativeFormulaParts_(edit.value, edit.row);
+    if (!parts) throw new Error("H_BATCH_FORMULA_NOT_STANDARD: row " + edit.row);
+    const left = "RC[" + (metricColumnNumber_(parts.firstLetter) - col) + "]";
+    const right = "RC[" + (metricColumnNumber_(parts.endLetter) - col) + "]";
+    const formula = '=IF(COUNT(' + left + ':' + right + ')=0,"",MAX(' + left + ':' + right + '))';
+    if (!groups[formula]) groups[formula] = [];
+    groups[formula].push(colLetter_(col) + edit.row);
+  });
+  Object.keys(groups).forEach(function(formula) {
+    const addresses = groups[formula];
+    for (let start = 0; start < addresses.length; start += 500) {
+      assertRowCountStable_(sheet, lastRow, "cumulative formula batch");
+      sheet.getRangeList(addresses.slice(start, start + 500)).setFormulaR1C1(formula);
+    }
+  });
+  return edits.length;
 }
 
 function cumulativeIntegritySnapshot_() {
@@ -111,8 +132,14 @@ function verifyCumulativeSourceCells_(before, after, hCol) {
   }
   for (let i = 0; i < before.values.length; i++) {
     for (let c = 0; c < before.values[i].length; c++) {
-      if (c === hCol - 1) continue;
       const formula = before.allFormulas[i][c];
+      if (c === hCol - 1) {
+        if ((!formula && (after.allFormulas[i][c] || JSON.stringify(after.values[i][c]) !== JSON.stringify(before.values[i][c]))) ||
+            (formula && !standardCumulativeFormulaParts_(formula, CONFIG.DATA_START_ROW + i) && after.allFormulas[i][c] !== formula)) {
+          throw new Error("H_REFRESH_CANARY_FAILED: manual or custom H changed at row " + (CONFIG.DATA_START_ROW + i));
+        }
+        continue;
+      }
       // CPV and other H-dependent outputs may recalculate, but their formulas must not change.
       if (after.allFormulas[i][c] !== formula ||
           (!formula && JSON.stringify(after.values[i][c]) !== JSON.stringify(before.values[i][c]))) {
@@ -133,6 +160,28 @@ function auditCumulativeFormulaIntegrity() {
     filter_range: snapshot.sheet.getFilter() ? snapshot.sheet.getFilter().getRange().getA1Notation() : null,
     dailyAuto_status: props.getProperty("DAILY_AUTO_LAST_STATUS"),
   }));
+}
+
+// Native formula conversion check in a new, tiny test file; never uses the linked sheet.
+function testCumulativeFormulaBatchReference() {
+  const file = SpreadsheetApp.create("C16_formula_reference_sandbox", 3, 137);
+  const sheet = file.getSheets()[0];
+  sheet.getRange("P2").setValue(10);
+  sheet.getRange("EF2").setValue(12);
+  sheet.getRange("P3").setValue(20);
+  sheet.getRange("EG3").setValue(25);
+  const edits = [
+    { row: 2, value: metricCumulativeFormula_(2, "P", "EF") },
+    { row: 3, value: metricCumulativeFormula_(3, "P", "EG") },
+  ];
+  setCumulativeFormulaBatches_(sheet, 8, edits, 3);
+  SpreadsheetApp.flush();
+  const formulas = sheet.getRange("H2:H3").getFormulas();
+  const values = sheet.getRange("H2:H3").getValues();
+  if (formulas[0][0] !== edits[0].value || formulas[1][0] !== edits[1].value || values[0][0] !== 12 || values[1][0] !== 25) {
+    throw new Error("H_NATIVE_REFERENCE_TEST_FAILED");
+  }
+  Logger.log("cumulative_native_reference_test " + JSON.stringify({ status: "OK", fileId: file.getId(), tested_ranges: ["P:EF", "P:EG"] }));
 }
 
 // Operator-only H backup and guarded refresh. I and every non-H cell are verified unchanged.
@@ -168,6 +217,7 @@ function backupAndRefreshCumulativeFormulaIntegrity() {
     Logger.log("cumulative_integrity_refresh " + JSON.stringify({
       status: after.stale.length ? "STALE_REMAINS" : "OK", stale_before: before.stale.length,
       stale_after: after.stale.length, fileId: file.getId(), non_h_unchanged: true,
+      manual_preserved: before.hFormulas.filter(function(row) { return !row[0]; }).length,
     }));
   }); });
 }
