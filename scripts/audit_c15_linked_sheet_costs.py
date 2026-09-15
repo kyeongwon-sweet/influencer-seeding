@@ -38,6 +38,13 @@ def header_index(headers: list[Any], name: str) -> int:
     raise RuntimeError(f"Missing linked-sheet header: {name}")
 
 
+def optional_header_index(headers: list[Any], name: str) -> int | None:
+    try:
+        return header_index(headers, name)
+    except RuntimeError:
+        return None
+
+
 def cell(row: list[Any], index: int) -> Any:
     return row[index] if index < len(row) else ""
 
@@ -99,7 +106,7 @@ def main() -> None:
         "channel_type": header_index(headers, "채널분류"),
         "cost": header_index(headers, "비용"),
         "asset_name": header_index(headers, "소재명"),
-        "project_name": header_index(headers, "프로젝트명"),
+        "project_name": optional_header_index(headers, "프로젝트명"),
         "product_name": header_index(headers, "상품명"),
     }
     targets_by_key = {link_key(url): (label, url) for label, url in TARGETS}
@@ -118,7 +125,7 @@ def main() -> None:
             "channel_type": cell(row, cols["channel_type"]),
             "posted_at": cell(row, cols["posted_at"]),
             "asset_name": cell(row, cols["asset_name"]),
-            "project_name": cell(row, cols["project_name"]),
+            "project_name": cell(row, cols["project_name"]) if cols["project_name"] is not None else "",
             "product_name": cell(row, cols["product_name"]),
             "sheet_cost": sheet_cost,
             "sheet_cost_raw": cell(row, cols["cost"]),
