@@ -13,6 +13,7 @@ SKILL.md 형식을 코드로 고정 — 예약 실행 Claude가 형식/숫자를
 """
 import sys, os, json, urllib.request, urllib.error, datetime
 from channel_kind import is_banner_channel, is_reach_only_manual_channel
+from uncollectable_stale_guard import stale_lines, stuck_uncollectable
 
 CHANNEL = "C0B659HEYDV"
 ENV_PATHS = [
@@ -265,6 +266,7 @@ def main():
 
     b_tot = 0
     uncollectable_cnt = 0          # 액터 에러로 '수집 불가' 태깅된 글(제한·민감 등) — 사람 확인 몫
+    uncollectable_posts = []       # 그중 '오래 조용한' 것만 아래에서 다시 띄운다(영구 침묵 방지)
     feed_cnt = 0                   # 피드/사진 — play_count 지표 자체가 없음(확보율 제외)
     internal_cnt = 0               # 위성/온드(내부채널) — 불규칙 수집이라 미측정 정상(확보율 제외)
     active_nb = val_nb = 0          # 종료 제외 활성 비배너 / 그중 값 확보
@@ -303,6 +305,7 @@ def main():
             # ⚠️ 값이 있으면 여기 오지 않는다(위 분기) — 회복된 글을 제외해 버리면 확보율이 부풀고
             #    자가치유(노트 삭제)가 늦은 날 실제 수집 성공이 안 보인다.
             uncollectable_cnt += 1
+            uncollectable_posts.append(p)
         else:
             active_nb += 1
             real_miss.append(item)           # 활성인데 미수집 — 진짜 문제
@@ -356,6 +359,7 @@ def main():
             # 제한·민감으로 막힌 글은 행 자체가 안 생긴다. 위 루프와 같은 기준으로, '정상 미측정'
             # 필터를 전부 통과한 뒤에만 센다 — 앞에 두면 종료·게시전·수기전용까지 섞여 과다 집계된다.
             uncollectable_cnt += 1
+            uncollectable_posts.append(p)
             continue
         streak = p.get("not_found_streak") or 0
         active_nb += 1
@@ -427,6 +431,31 @@ def main():
             tail = "  [%s]" % f["reason"] if f.get("reason") else ""
             lines.append("%d. %s · %s%s\n   %s" % (i, f.get("account_name") or "계정명 미등록", f.get("channel_type") or "-", tail, f.get("url") or "-"))
         sections.append("\n".join(lines))
+    # 🔁 '수집 불가' 태깅이 영구 침묵이 되지 않게 — 오래 값이 안 돌아온 것만 다시 띄운다.
+    #    태깅되면 재시도 큐·워치독·이 리포트 목록에서 모두 빠지고, 수기 입력 이력이 있으면
+    #    자동종료(나이 규칙)까지 면제된다 → 사람이 손대지 않으면 활성으로 영원히 남는다.
+    #    ⚠️ 여기서 자동 종료하지 않는다(살아 있는 글을 닫으면 되돌리기 어렵다). 다시 보여줄 뿐.
+    stuck = []
+    if uncollectable_posts:
+        last_seen = {}
+        ids = [p["id"] for p in uncollectable_posts]
+        for i in range(0, len(ids), 50):
+            batch = ",".join(ids[i:i + 50])
+            frm = 0
+            while True:
+                pg = get("/rest/v1/post_daily_stats?select=post_id,measured_at,play_count,reach_count"
+                         "&post_id=in.(%s)&order=id.asc&limit=1000&offset=%d" % (batch, frm))
+                for r in pg:
+                    if r.get("play_count") is None and r.get("reach_count") is None:
+                        continue            # 값 없는 행은 '마지막으로 값이 있던 날'이 아니다
+                    d = str(r.get("measured_at"))[:10]
+                    if d > last_seen.get(r["post_id"], ""):
+                        last_seen[r["post_id"]] = d
+                if len(pg) < 1000: break
+                frm += 1000
+        stuck = stuck_uncollectable(uncollectable_posts, last_seen, yday)
+    if stuck:
+        sections.append(chr(10).join(stale_lines(stuck)))
     if nf_review:
         lines = ["🚨 IG 접근불가 검토대상 %d건 — 3일 이상 not_found. 자동 종료하지 않았습니다.\n"
                  "   삭제/비공개면 종료 처리, 아니면 URL 확인이 필요합니다. (누적 조회수는 마지막 실측에서 정지)\n" % len(nf_review)]

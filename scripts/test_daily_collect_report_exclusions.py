@@ -63,6 +63,34 @@ FULL_HISTORY = {
 }
 
 
+# '수집 불가' 태깅 글의 마지막 실값. 09-13 기준 5일 경과 → 재확인 창(14일)에 아직 안 든다.
+IN_HISTORY = [
+    {"post_id": "restricted", "measured_at": "2026-09-08", "play_count": 51984, "reach_count": None},
+    {"post_id": "restricted", "measured_at": "2026-09-13", "play_count": None, "reach_count": None},
+]
+
+
+# 스레드 섹션 머리글 — 이 표식으로 시작하는 줄에서 새 섹션이 열린다.
+SECTION_MARKS = (chr(0x26A0), chr(0x1F6A8), chr(0x1F501))   # ⚠️ 🚨 🔁
+
+
+def _section(out, header):
+    """header 로 시작하는 섹션의 **본문까지** 잘라낸다.
+
+    ⚠️ 빈 줄로 자르면 안 된다 — 각 섹션이 '머리글 + 빈 줄 + 항목들' 구조라 빈 줄 분할은
+       머리글만 돌려주고 URL 목록을 잘라내 버린다(그러면 assertNotIn 이 항상 통과하는
+       무력한 테스트가 된다. 2026-09-15 실제로 그렇게 짰다가 수정 전 코드가 통과해서 잡았다).
+    """
+    out_lines = out.split(chr(10))
+    picked, active = [], False
+    for line in out_lines:
+        if line.startswith(SECTION_MARKS):
+            active = header in line
+        if active:
+            picked.append(line)
+    return chr(10).join(picked)
+
+
 class _FakeResponse(io.BytesIO):
     def __enter__(self): return self
     def __exit__(self, *a): return False
@@ -72,6 +100,8 @@ def _fake_urlopen(req, timeout=None):
     url = req.full_url if hasattr(req, "full_url") else str(req)
     if "sponsored_posts" in url:
         body = POSTS if "offset=0" in url else []
+    elif "select=post_id,measured_at,play_count,reach_count" in url and "post_id=in.(" in url:
+        body = [] if "offset=0" not in url else IN_HISTORY
     elif "select=play_count,reach_count,manual" in url:          # 후보 전체 이력
         pid = url.split("post_id=eq.")[1].split("&")[0]
         body = FULL_HISTORY.get(pid, [])
@@ -107,13 +137,29 @@ class DailyReportExclusionTest(unittest.TestCase):
 
     def test_out_of_cutoff_magazine_is_not_reported(self):
         out = self._run()
-        self.assertNotIn("DbutARtkWS8", out,
+        self.assertNotIn("DbutARtkWS8", _section(out, "확인필요"),
                          "경계 밖 매거진(사진 캐러셀)이 매일 '미수집'으로 다시 뜬다")
 
     def test_collector_tagged_restricted_post_is_not_reported(self):
         out = self._run()
-        self.assertNotIn("DclNwKLTAyg", out,
-                         "'수집 불가' 태깅된 글이 알림에 매일 다시 뜬다")
+        self.assertNotIn("DclNwKLTAyg", _section(out, "확인필요"),
+                         "'수집 불가' 태깅된 글이 '확인필요'로 매일 다시 뜬다")
+        self.assertNotIn("수집 불가 재확인", out,
+                         "마지막 값이 5일 전인데 벌써 재확인으로 올라오면 안 된다")
+
+    def test_stale_uncollectable_resurfaces_later(self):
+        """영구 침묵 방지 — 창을 넘기면 '재확인' 섹션으로 다시 올라온다."""
+        global IN_HISTORY
+        keep = IN_HISTORY
+        IN_HISTORY = [{"post_id": "restricted", "measured_at": "2026-08-20",
+                       "play_count": 51984, "reach_count": None}]
+        try:
+            out = self._run()
+        finally:
+            IN_HISTORY = keep
+        self.assertIn("수집 불가 재확인", out)
+        self.assertIn("DclNwKLTAyg", _section(out, "수집 불가 재확인"))
+        self.assertNotIn("DclNwKLTAyg", _section(out, "확인필요"))
 
     def test_genuine_miss_is_still_reported(self):
         """과잉 억제 금지 — 진짜 미수집은 반드시 남아야 한다."""
