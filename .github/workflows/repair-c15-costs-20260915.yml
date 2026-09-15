@@ -38,6 +38,7 @@ jobs:
                   "label": row.get("label"),
                   "sheetRow": row.get("sheetRow"),
                   "sheetCost": row.get("sheetCost"),
+                  "sheetCostFormula": row.get("sheetCostFormula"),
                   "dbCost": (row.get("dbPost") or {}).get("cost"),
                   "evidenceCosts": row.get("evidenceCosts"),
                   "safe": row.get("safe"),

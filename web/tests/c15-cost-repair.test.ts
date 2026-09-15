@@ -15,6 +15,7 @@ test("C15 repair is exact, backed up, and sheet-first", () => {
   assert.match(route, /\.ilike\("url", `%\$\{contentId\}%`\)/);
   assert.match(route, /linkKey\(post\.url\)\.toLowerCase\(\) === key/);
   assert.match(route, /evidence\.size === 1/);
+  assert.match(route, /!sheetCostFormula\.startsWith\("="\)/);
   assert.match(route, /c15_cost_repair_20260915_backup/);
   const sheetWriteAt = route.lastIndexOf("updateSheetTabValues(");
   const dbWriteAt = route.indexOf('.from("sponsored_posts")\n        .update');

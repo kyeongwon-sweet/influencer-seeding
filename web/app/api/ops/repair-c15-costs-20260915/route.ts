@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
-import { fetchSheetTabValues, updateSheetTabValues } from "@/lib/google-sheets";
+import { fetchSheetTabFormulas, fetchSheetTabValues, updateSheetTabValues } from "@/lib/google-sheets";
 import { getServerSupabase } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
@@ -78,8 +78,9 @@ type DbPost = {
 };
 
 async function inspect() {
-  const [rows, pricingRows] = await Promise.all([
+  const [rows, formulas, pricingRows] = await Promise.all([
     fetchSheetTabValues(SHEET_ID, SHEET_GID, SHEET_RANGE),
+    fetchSheetTabFormulas(SHEET_ID, SHEET_GID, SHEET_RANGE),
     fetchSheetTabValues(SHEET_ID, PRICING_GID, PRICING_RANGE),
   ]);
   if (!rows.length || !pricingRows.length) throw new Error("연동시트 또는 단가표가 비어 있습니다.");
@@ -146,18 +147,21 @@ async function inspect() {
     const sheetMatches = matches.get(key) ?? [];
     const dbMatches = dbByKey.get(key) ?? [];
     const row = sheetMatches[0]?.values ?? [];
+    const formulaRow = sheetMatches.length === 1 ? (formulas[sheetMatches[0].row - 1] ?? []) : [];
     const account = accountKey(cell(row, columns.account));
     const evidence = new Set<number>([
       ...(history.get(account) ?? []),
       ...(pricing.get(account) ?? []),
     ]);
     const sheetCost = parseCost(cell(row, columns.cost));
+    const sheetCostFormula = String(cell(formulaRow, columns.cost) ?? "").trim();
     const dbCost = dbMatches.length === 1 ? Number(dbMatches[0].cost ?? 0) : null;
     const safe = sheetMatches.length === 1
       && dbMatches.length === 1
       && evidence.size === 1
       && evidence.has(EXPECTED_COST)
       && (sheetCost === 0 || sheetCost === EXPECTED_COST)
+      && (sheetCost === EXPECTED_COST || !sheetCostFormula.startsWith("="))
       && (dbCost === 0 || dbCost === EXPECTED_COST);
     return {
       label: target.label,
@@ -168,6 +172,7 @@ async function inspect() {
       accountName: cell(row, columns.account),
       channelType: cell(row, columns.channelType),
       sheetCost,
+      sheetCostFormula,
       evidenceCosts: [...evidence].sort((a, b) => a - b),
       dbMatchCount: dbMatches.length,
       dbPost: dbMatches[0] ?? null,
