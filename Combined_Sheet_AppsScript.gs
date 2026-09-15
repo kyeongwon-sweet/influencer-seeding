@@ -3869,10 +3869,11 @@ function refreshCumulativeViews() {
       wrote++;
     }
   }
-  range.setValues(out);  // '='로 시작하는 문자열은 수식으로 들어감 — 값·수식 혼합 1회 배치 쓰기
+  const cumulativeWrite = writeCumulativeFormulaChanges_(sheet, range, values, formulas, out, lastRow);
+  Logger.log("cumulative_formula_write " + JSON.stringify(cumulativeWrite));
 
   SpreadsheetApp.getActive().toast(
-    "누적 조회수 행별 수식 " + wrote + "행 갱신 · 수동/레거시 값 보존 " + manualKept + "건",
+    "누적 조회수 수식 " + cumulativeWrite.verified + "행 적용 검증 · 기존 값/특수수식 보존",
     "완료",
     4
   );

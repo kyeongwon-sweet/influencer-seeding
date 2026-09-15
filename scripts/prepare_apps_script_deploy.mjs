@@ -13,6 +13,7 @@ const insightInquiryFile = "인사이트_문의_메시지_자동생성.gs";
 const deployFiles = [
   ["Combined_Sheet_AppsScript.gs", "AI 트래킹 대시보드 연동.js"],
   ["_WriteGuard.gs", "_WriteGuard.js"],
+  [join("apps-script", "cumulative_formula_integrity.gs"), "cumulative_formula_integrity.js"],
   [join("apps-script", insightInquiryFile), insightInquiryFile.replace(/\.gs$/, ".js")],
   [join("apps-script", "repair_asset_name_pollution_20260813.gs"), "repair_asset_name_pollution_20260813.js"],
   [join("apps-script", "repair_metric_contamination_20260828.gs"), "repair_metric_contamination_20260828.js"],
