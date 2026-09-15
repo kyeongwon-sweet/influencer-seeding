@@ -55,6 +55,23 @@ def price_key(value: Any) -> str:
     return re.sub(r"_+", "_", re.sub(r"\s+", "", str(value or "").strip().lower()))
 
 
+def loose_key(value: Any) -> str:
+    return re.sub(r"[^0-9a-z가-힣]+", "", str(value or "").strip().lower())
+
+
+def profile_key(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    for pattern in (
+        r"instagram\.com/([^/?#]+)",
+        r"tiktok\.com/@([^/?#]+)",
+        r"youtube\.com/@([^/?#]+)",
+    ):
+        match = re.search(pattern, text, re.I)
+        if match and match.group(1) not in {"p", "reel", "reels", "tv", "shorts", "watch"}:
+            return loose_key(match.group(1))
+    return ""
+
+
 def expected_format(channel_type: Any) -> str:
     value = str(channel_type or "")
     if "배너" in value:
@@ -85,6 +102,7 @@ def main() -> None:
     targets_by_key = {link_key(url): (label, url) for label, url in TARGETS}
     found: dict[str, list[dict[str, Any]]] = {key: [] for key in targets_by_key}
     account_cost_history: dict[str, list[dict[str, Any]]] = {}
+    loose_account_cost_history: dict[str, list[dict[str, Any]]] = {}
     for row_number, row in enumerate(rows[1:], start=2):
         key = link_key(str(cell(row, cols["url"])))
         account_name = cell(row, cols["account_name"])
@@ -103,6 +121,7 @@ def main() -> None:
             found[key].append(row_data)
         if sheet_cost is not None and sheet_cost > 0:
             account_cost_history.setdefault(price_key(account_name), []).append(row_data)
+            loose_account_cost_history.setdefault(loose_key(account_name), []).append(row_data)
 
     pricing_headers = pricing_rows[0]
     pricing = []
@@ -113,6 +132,7 @@ def main() -> None:
             "company_name": cell(row, 1),
             "format": cell(row, 2),
             "cost": parse_cost(cell(row, 3)),
+            "channel_url": cell(row, 6),
         })
 
     results = []
@@ -124,6 +144,17 @@ def main() -> None:
         item = matches[0]
         account_key = price_key(item["account_name"])
         candidates = [row for row in pricing if price_key(row["account_name"]) == account_key]
+        account_loose_key = loose_key(item["account_name"])
+        pricing_loose = [
+            row for row in pricing
+            if loose_key(row["account_name"]) == account_loose_key
+            or profile_key(row["channel_url"]) == account_loose_key
+        ]
+        requested_profile_key = profile_key(requested_url)
+        pricing_profile = [
+            row for row in pricing
+            if requested_profile_key and profile_key(row["channel_url"]) == requested_profile_key
+        ]
         fmt = expected_format(item["channel_type"])
         exact = [row for row in candidates if not fmt or str(row["format"]).strip() == fmt]
         results.append({
@@ -134,6 +165,9 @@ def main() -> None:
             "pricing_exact": exact,
             "pricing_all_for_account": candidates,
             "sheet_account_cost_history": account_cost_history.get(account_key, []),
+            "pricing_loose": pricing_loose,
+            "pricing_profile": pricing_profile,
+            "sheet_loose_account_cost_history": loose_account_cost_history.get(account_loose_key, []),
         })
 
     summary = {
