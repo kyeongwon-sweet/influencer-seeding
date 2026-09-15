@@ -1,7 +1,6 @@
 import crypto from "crypto";
 
-// 서비스 계정으로 Google Sheets API에 접근한다. 기본은 읽기 전용이고,
-// 제한된 복구 경로만 별도 쓰기 scope를 요청한다.
+// 서비스 계정으로 Google Sheets API에 읽기 전용으로 접근한다.
 // 의존성 추가 없이 Node crypto 로 RS256 JWT 를 서명해 access token 을 받는다.
 // 필요한 환경변수:
 //   GOOGLE_SA_CLIENT_EMAIL  - 서비스 계정 이메일
@@ -9,7 +8,6 @@ import crypto from "crypto";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const READ_SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonly";
-const WRITE_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 
 function base64url(input: Buffer | string): string {
   return Buffer.from(input)
@@ -147,42 +145,4 @@ export async function fetchSheetTabValuesByTitle(
   if (!res.ok) throw new Error(`시트 값 조회 실패 (${res.status}): ${await res.text()}`);
   const json = (await res.json()) as { values?: (string | number | null)[][] };
   return json.values ?? [];
-}
-
-export type SheetValueUpdate = {
-  range: string;
-  values: (string | number | boolean | null)[][];
-};
-
-// 고정 범위 복구 작업용 배치 쓰기. 호출부가 쓰기 전 URL/행과 기대값을 검증해야 한다.
-export async function updateSheetTabValues(
-  spreadsheetId: string,
-  gid: number,
-  updates: SheetValueUpdate[],
-): Promise<{ totalUpdatedCells: number }> {
-  if (!updates.length) return { totalUpdatedCells: 0 };
-  const title = await getSheetTitleByGid(spreadsheetId, gid);
-  const token = await getAccessToken(WRITE_SCOPE);
-  const quotedTitle = `'${title.replace(/'/g, "''")}'`;
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      valueInputOption: "RAW",
-      includeValuesInResponse: true,
-      responseValueRenderOption: "UNFORMATTED_VALUE",
-      data: updates.map((update) => ({
-        range: `${quotedTitle}!${update.range}`,
-        values: update.values,
-      })),
-    }),
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error(`시트 값 쓰기 실패 (${res.status}): ${await res.text()}`);
-  const json = (await res.json()) as { totalUpdatedCells?: number };
-  return { totalUpdatedCells: Number(json.totalUpdatedCells ?? 0) };
 }

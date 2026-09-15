@@ -96,82 +96,23 @@ function c15CostRepairPublic20260915_(snapshot, status, backupName) {
   };
 }
 
-function c15CostRepairBackup20260915_(snapshot) {
-  var target = C15_COST_REPAIR_20260915_;
-  var ss = snapshot.sheet.getParent();
-  var name = target.backupPrefix + "_" + Utilities.formatDate(new Date(), CONFIG.KST_TIMEZONE, "HHmmss");
-  var suffix = 2;
-  while (ss.getSheetByName(name)) {
-    name = target.backupPrefix + "_" + Utilities.formatDate(new Date(), CONFIG.KST_TIMEZONE, "HHmmss") + "_" + suffix;
-    suffix += 1;
-  }
-  var backup = ss.insertSheet(name);
-  var values = [["backed_up_at", "row", "url", "key", "account", "cost_a1", "old_cost", "new_cost", "formula"]];
-  snapshot.rows.forEach(function(row) {
-    values.push([
-      new Date().toISOString(), row.row, row.url, row.key, row.account,
-      row.costA1, row.cost, target.expectedCost, row.formula,
-    ]);
-  });
-  backup.getRange(1, 1, values.length, values[0].length).setValues(values);
-  backup.hideSheet();
-  SpreadsheetApp.flush();
-  return name;
-}
-
-function repairC15Costs20260915(signature, apply) {
+function repairC15Costs20260915(signature) {
   var target = C15_COST_REPAIR_20260915_;
   if (signature !== target.signature) throw new Error("승인 서명 불일치");
-  var lock = LockService.getDocumentLock();
-  lock.waitLock(30000);
-  try {
-    var before = c15CostRepairSnapshot20260915_();
-    if (before.rows.length !== target.targets.length || before.rows.some(function(row) { return !row.safe; })) {
-      throw new Error("C15 비용 복구 사전검증 실패: " + JSON.stringify(c15CostRepairPublic20260915_(before, "BLOCKED")));
-    }
-    var edits = before.rows.filter(function(row) { return row.cost !== target.expectedCost; });
-    if (!apply || edits.length === 0) {
-      return c15CostRepairPublic20260915_(before, edits.length ? "DRY_RUN" : "ALREADY_DONE");
-    }
-
-    assertRowCountStable_(before.sheet, before.lastRow, "repairC15Costs20260915");
-    edits.forEach(function(row) {
-      var currentUrl = String(before.sheet.getRange(row.row, before.fields.url).getValue() || "").trim();
-      var currentAccount = String(before.sheet.getRange(row.row, before.fields.account_name).getValue() || "").trim();
-      var currentCostRange = before.sheet.getRange(row.row, before.fields.cost);
-      if (String(linkKey_(currentUrl) || "") !== row.key || currentAccount !== row.expectedAccount) {
-        throw new Error("쓰기 직전 대상 행 지문 변경 감지: " + row.label);
-      }
-      if (Number(currentCostRange.getValue()) !== 0 || currentCostRange.getFormula() !== "") {
-        throw new Error("쓰기 직전 비용 셀 변경 감지: " + row.costA1);
-      }
-    });
-
-    var backupName = c15CostRepairBackup20260915_(before);
-    before.sheet.getRangeList(edits.map(function(row) { return row.costA1; })).setValue(target.expectedCost);
-    SpreadsheetApp.flush();
-
-    assertRowCountStable_(before.sheet, before.lastRow, "repairC15Costs20260915 verify");
-    var after = c15CostRepairSnapshot20260915_();
-    if (after.rows.some(function(row) {
-      return !row.safe || row.cost !== target.expectedCost || row.formula !== "";
-    })) {
-      throw new Error("C15 비용 복구 사후검증 실패");
-    }
-    return c15CostRepairPublic20260915_(after, "OK", backupName);
-  } finally {
-    lock.releaseLock();
+  var snapshot = c15CostRepairSnapshot20260915_();
+  if (snapshot.rows.length !== target.targets.length || snapshot.rows.some(function(row) { return !row.safe; })) {
+    throw new Error("C15 비용 감사 실패: " + JSON.stringify(c15CostRepairPublic20260915_(snapshot, "BLOCKED")));
   }
+  var pending = snapshot.rows.some(function(row) { return row.cost !== target.expectedCost; });
+  return c15CostRepairPublic20260915_(snapshot, pending ? "DRY_RUN" : "ALREADY_DONE");
 }
 
 function auditC15Costs20260915() {
-  var result = repairC15Costs20260915(C15_COST_REPAIR_20260915_.signature, false);
+  var result = repairC15Costs20260915(C15_COST_REPAIR_20260915_.signature);
   Logger.log("audit_c15_costs_20260915 " + JSON.stringify(result));
   return result;
 }
 
 function applyC15Costs20260915() {
-  var result = repairC15Costs20260915(C15_COST_REPAIR_20260915_.signature, true);
-  Logger.log("apply_c15_costs_20260915 " + JSON.stringify(result));
-  return result;
+  throw new Error("이 일회성 복구 함수는 2026-09-15 완료 후 영구 차단됐습니다.");
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
-import { fetchSheetTabFormulas, fetchSheetTabValues, updateSheetTabValues } from "@/lib/google-sheets";
+import { fetchSheetTabFormulas, fetchSheetTabValues } from "@/lib/google-sheets";
 import { getServerSupabase } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
@@ -13,8 +13,6 @@ const SHEET_RANGE = "A1:CZ5000";
 const PRICING_GID = 1649102171;
 const PRICING_RANGE = "A1:H500";
 const EXPECTED_COST = 60000;
-const SIGNATURE = "repair-c15-costs-2026-09-15";
-const BACKUP_MARKER = "c15_cost_repair_20260915_backup";
 
 const TARGETS = [
   { label: "힐링하고 가세요", key: "tt:7675271025176661269" },
@@ -54,17 +52,6 @@ function linkKey(value: unknown): string {
   const tiktok = text.match(/tiktok\.com\/(?:@[^/]+\/)?(?:video|photo)\/(\d+)/i);
   if (tiktok) return `tt:${tiktok[1]}`;
   return "";
-}
-
-function colLetter(index: number): string {
-  let value = index + 1;
-  let output = "";
-  while (value > 0) {
-    value -= 1;
-    output = String.fromCharCode(65 + (value % 26)) + output;
-    value = Math.floor(value / 26);
-  }
-  return output;
 }
 
 type DbPost = {
@@ -198,71 +185,5 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") return response({ error: "Unauthorized" }, 401);
-  let body: { signature?: string; expectedCount?: number };
-  try {
-    body = await req.json();
-  } catch {
-    return response({ error: "JSON body required" }, 400);
-  }
-  if (body.signature !== SIGNATURE || body.expectedCount !== TARGETS.length) {
-    return response({ error: "Invalid repair signature or expectedCount" }, 400);
-  }
-
-  try {
-    const before = await inspect();
-    if (before.inspected.length !== TARGETS.length || before.inspected.some((row) => !row.safe)) {
-      return response({ error: "Preflight failed", rows: before.inspected }, 409);
-    }
-
-    const supabase = getServerSupabase();
-    const { data: backup, error: backupError } = await supabase
-      .from("jobs")
-      .insert({
-        type: "monitoring",
-        status: "done",
-        payload: {
-          ops_marker: BACKUP_MARKER,
-          created_at: new Date().toISOString(),
-          expected_cost: EXPECTED_COST,
-          rows: before.inspected,
-        },
-      })
-      .select("id")
-      .single();
-    if (backupError || !backup?.id) throw new Error(`백업 기록 실패: ${backupError?.message ?? "id 없음"}`);
-
-    const costColumn = colLetter(before.columns.cost);
-    const sheetUpdates = before.inspected
-      .filter((row) => row.sheetCost !== EXPECTED_COST)
-      .map((row) => ({ range: `${costColumn}${row.sheetRow}`, values: [[EXPECTED_COST]] }));
-    const sheetWrite = await updateSheetTabValues(SHEET_ID, SHEET_GID, sheetUpdates);
-
-    const afterSheet = await inspect();
-    if (afterSheet.inspected.some((row) => !row.safe || row.sheetCost !== EXPECTED_COST)) {
-      throw new Error("시트 사후검증 실패");
-    }
-
-    for (const row of afterSheet.inspected) {
-      if (Number(row.dbPost?.cost ?? 0) === EXPECTED_COST) continue;
-      const { error } = await supabase
-        .from("sponsored_posts")
-        .update({ cost: EXPECTED_COST })
-        .eq("id", row.dbPost!.id);
-      if (error) throw new Error(`DB 비용 갱신 실패(${row.label}): ${error.message}`);
-    }
-
-    const verified = await inspect();
-    if (verified.inspected.some((row) => row.sheetCost !== EXPECTED_COST || Number(row.dbPost?.cost) !== EXPECTED_COST)) {
-      throw new Error("최종 시트/DB 검증 실패");
-    }
-    return response({
-      ok: true,
-      backupJobId: backup.id,
-      sheetWrite,
-      before: before.inspected,
-      after: verified.inspected,
-    });
-  } catch (error) {
-    return response({ error: error instanceof Error ? error.message : String(error) }, 500);
-  }
+  return response({ error: "This one-time repair is permanently disabled." }, 410);
 }

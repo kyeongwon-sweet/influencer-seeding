@@ -1,19 +1,13 @@
-name: Repair C15 Linked Sheet Costs
+name: Audit C15 Linked Sheet Costs
 
 on:
   workflow_dispatch:
-    inputs:
-      apply:
-        description: "Apply the four preflight-approved KRW 60,000 costs"
-        required: true
-        default: false
-        type: boolean
 
 permissions:
   contents: read
 
 jobs:
-  repair:
+  audit:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -48,44 +42,4 @@ jobs:
           print(json.dumps({"dry_run": payload.get("dry_run"), "rows": summary}, ensure_ascii=False))
           if len(rows) != 4 or any(not row.get("safe") for row in rows):
               raise SystemExit("C15 preflight did not approve exactly four rows")
-          PY
-
-      - name: Apply exact repair
-        if: ${{ inputs.apply }}
-        env:
-          APP_URL: "https://influencer-seeding-mu.vercel.app"
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-        run: |
-          set -euo pipefail
-          curl --fail-with-body --silent --show-error \
-            -X POST \
-            -H "Authorization: Bearer ${CRON_SECRET}" \
-            -H "Content-Type: application/json" \
-            --data '{"signature":"repair-c15-costs-2026-09-15","expectedCount":4}' \
-            "${APP_URL}/api/ops/repair-c15-costs-20260915" > applied.json
-          python - <<'PY'
-          import json
-
-          with open("applied.json", encoding="utf-8") as file:
-              payload = json.load(file)
-          rows = payload.get("after", [])
-          summary = [
-              {
-                  "label": row.get("label"),
-                  "sheetCost": row.get("sheetCost"),
-                  "dbCost": (row.get("dbPost") or {}).get("cost"),
-                  "safe": row.get("safe"),
-              }
-              for row in rows
-          ]
-          print(json.dumps({
-              "ok": payload.get("ok"),
-              "backupJobId": payload.get("backupJobId"),
-              "sheetUpdatedCells": (payload.get("sheetWrite") or {}).get("totalUpdatedCells"),
-              "rows": summary,
-          }, ensure_ascii=False))
-          if payload.get("ok") is not True or len(rows) != 4:
-              raise SystemExit("C15 repair did not verify exactly four rows")
-          if any(row.get("sheetCost") != 60000 or (row.get("dbPost") or {}).get("cost") != 60000 for row in rows):
-              raise SystemExit("C15 repair final values do not match KRW 60,000")
           PY
