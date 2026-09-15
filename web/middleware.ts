@@ -31,6 +31,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/ops/meta-ads-health(.*)",             // Meta 광고비 토큰·권한 헬스체크(자체 CRON_SECRET 검사)
   "/api/ops/repair-metric-contamination(.*)", // 승인된 8/27 오염 정리(정확키·날짜·값 가드 + CRON_SECRET)
   "/api/ops/repair-metric-spikes-20260903(.*)", // 승인된 9/3 배너 reach 오독 정리(정확키·날짜·값 + manual 잠금)
+  "/api/ops/repair-c15-costs-20260915(.*)", // C15 비용 정본 4건 복구(고정 URL·근거값·CRON_SECRET)
   "/api/sponsored-posts/banner-reach-sync(.*)",
   // Vercel 크론 라우트 (각 라우트가 자체 CRON_SECRET 검사 → 미들웨어는 통과시킴)
   "/api/marketing/sync(.*)",
