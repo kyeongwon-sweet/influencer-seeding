@@ -113,8 +113,12 @@ export async function GET(req: NextRequest) {
   const posts: SponsoredPostRow[] = [];
   {
     const PAGE = 1000;
-    for (let from = 0; ; from += PAGE) {
-      const { data: page, error: postsError } = await supabase
+    // ⚠️ 일별 이력(fetchPagesWithRetry)은 실패한 페이지를 1회 재시도하는데 **게시물 목록만
+    //    재시도가 없어서**, 같은 성격의 일시 오류(타임아웃·순간 5xx)인데 한쪽만 복구됐다.
+    //    그 비대칭 때문에 배너가 '누락 0페이지 · 게시물 목록도 일부 누락'으로 떴다(2026-09-11 실측).
+    //    이력과 같은 헬퍼로 재시도한다. 재시도 후에도 실패하면 그때만 truncated.
+    const fetchPostsPage = async (offset: number): Promise<PageResult<SponsoredPostRow>> => {
+      const { data, error } = await supabase
         .from("sponsored_posts")
         .select(POST_COLS)
         // 상품명(product_name) 공백 소재는 AI 대시보드에 표시하지 않음 (2026-08-03 사용자 지시, 모든 채널유형).
@@ -124,10 +128,14 @@ export async function GET(req: NextRequest) {
         // created_at is shared by sheet imports. A unique secondary key keeps range pagination deterministic.
         .order("created_at", { ascending: false })
         .order("id", { ascending: true })
-        .range(from, from + PAGE - 1);
-      // graceful degrade: 한 페이지 조회가 실패해도 500으로 대시보드 전체를 죽이지 않고, 지금까지 모은 것으로 진행.
-      if (postsError) { console.error("[sponsored-posts] posts 조회 실패:", postsError.message); postsTruncated = true; break; }
-      posts.push(...((page ?? []) as unknown as SponsoredPostRow[]));
+        .range(offset, offset + PAGE - 1);
+      return { data: (data ?? null) as unknown as SponsoredPostRow[] | null, error };
+    };
+    for (let from = 0; ; from += PAGE) {
+      const { data: page, error: postsError } = await fetchPageWithRetry<SponsoredPostRow>(from, fetchPostsPage);
+      // graceful degrade: 재시도까지 실패해도 500으로 대시보드 전체를 죽이지 않고, 지금까지 모은 것으로 진행.
+      if (postsError) { console.error("[sponsored-posts] posts 조회 실패(재시도 후):", postsError.message); postsTruncated = true; break; }
+      posts.push(...(page ?? []));
       if (!page || page.length < PAGE) break;
     }
   }

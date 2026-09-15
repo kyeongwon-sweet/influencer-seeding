@@ -1355,10 +1355,28 @@ export default function MonitoringPage() {
           className="mx-3 mt-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-[8px] text-[11px] text-amber-700 flex items-start gap-1.5"
         >
           <span>⚠️</span>
+          {/* 원인마다 숫자가 틀어지는 방향이 반대다 — 한 문구로 뭉치면 반대로 읽게 된다.
+              · 이력 페이지 누락 → 직전 유효값이 사라져 baseline 이 내려앉음 → 증분이 '크게'
+              · 게시물 목록 누락 → 행 자체가 빠짐 → 합계가 '작게'
+              (2026-09-11 실측: 누락 0페이지인데 게시물만 잘린 응답에 '크게 보인다'가 나갔다) */}
           <span>
-            일별 이력을 일부 불러오지 못했습니다(누락 {statsPartial.missingPages}페이지
-            {statsPartial.postsTruncated ? " · 게시물 목록도 일부 누락" : ""}).
-            {" "}이 상태에서는 <b>증분이 실제보다 크게 보일 수 있습니다.</b> 새로고침해 이 경고가 사라진 뒤의 값을 사용하세요.
+            {statsPartial.missingPages > 0 && statsPartial.postsTruncated ? (
+              <>
+                일별 이력 {statsPartial.missingPages}페이지와 게시물 목록 일부를 불러오지 못했습니다.
+                {" "}이 상태에서는 <b>증분과 합계가 모두 실제와 다를 수 있습니다.</b>
+              </>
+            ) : statsPartial.missingPages > 0 ? (
+              <>
+                일별 이력을 일부 불러오지 못했습니다(누락 {statsPartial.missingPages}페이지).
+                {" "}이 상태에서는 <b>증분이 실제보다 크게 보일 수 있습니다.</b>
+              </>
+            ) : (
+              <>
+                게시물 목록을 일부 불러오지 못했습니다(일별 이력은 정상).
+                {" "}이 상태에서는 <b>합계·건수가 실제보다 작게 보일 수 있습니다.</b>
+              </>
+            )}
+            {" "}새로고침해 이 경고가 사라진 뒤의 값을 사용하세요.
           </span>
         </div>
       )}
