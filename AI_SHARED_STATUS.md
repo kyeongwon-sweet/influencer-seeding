@@ -7,6 +7,19 @@
 - **보강:** I는 필터 보존·복원과 적용 후 검증을 사용하지만 H는 원시 `range.setValues(out)`만 사용했다. H도 변경된 표준식/진짜 빈 셀만 row-run으로 쓰고 필터 범위·조건 복원 후 전 행 재독립 검증하도록 바꿨다. 수동 숫자·value-only·커스텀 수식은 전부 보존한다. 숨김행 관련 원인은 기존 재현 이력과 이번 로그 비대칭에 근거한 유력 원인이고, Google 내부 동작 자체를 통제실험으로 확정한 것은 아니다.
 - **반영 안전:** 전체 repo 오버레이 대신 fresh-pull한 라이브의 H 호출부와 새 헬퍼만 graft하고 나머지 파일은 해시 보존했다. 백업 전에 Drive 권한 부족으로 첫 실행이 중단됐으며 H 쓰기는 0건이었다. 권한 확대 없이 기존 Sheets 권한의 별도 스프레드시트 백업으로 바꿨다. 이나 H346은 P:EF·36,025로 정상임을 별도 확인했다.
 
+## 2026-09-15 [Codex C16 정정·재감사] H 형태오류 42→0, 수기·보존값 유지
+- **쓰기 전 백업:** 별도 스프레드시트에 URL·원행·H 값·H/I 수식 원문 3,990행을 저장하고 재독립 검증한 뒤 실행했다. 원본 파일에 백업 탭을 추가하지 않았다. 백업 파일 ID `1AnZ1MHble7MccHF9SAeba2onBIPWuq9Y9AkXCGmrJLU`, [백업](https://docs.google.com/spreadsheets/d/1AnZ1MHble7MccHF9SAeba2onBIPWuq9Y9AkXCGmrJLU/edit).
+- **실제 적용:** 14:38:04 시작, 14:47:46 `cumulative_formula_write`가 `written:357 / verified:357 / manual_preserved:324 / filter_restored:true`를 기록했다. 기존 표준 H의 끝열만 최신 EF까지 확장했고 수기 숫자·보존값·특수식은 쓰지 않았다. DB·통계·게시일·날짜 원천값 쓰기 경로는 실행하지 않았다.
+- **첫 안전 검사 중단을 숨기지 않음:** 14:49:20의 후속 검사는 J1013 값 변경으로 실패했다. 실물 J1013은 `G/H` 기반 CPV 수식이라 H 수정에 따른 계산 결과 변경이었다. 원천 셀 수정으로 단정하지 않고, 비-H 수식 원문과 수식 없는 입력값은 동일해야 하되 동일 수식의 파생 계산 결과는 변할 수 있도록 검사를 보강했다. I 수식·수기 H·특수 H 보존 검사도 유지했다.
+- **재감사 실측:** GHA `34934264103` success, `hInvalid:0 / incInvalid:0 / mismatch:0 / H·I errorCells:0 / emptyButData:0`, 날짜 121열·P:EF·target=09-14. `hManual:324`, `valueOnly:332`는 전후 동일하다. `h.manualKept:17→0`은 H와 날짜열 MAX가 달랐던 감사 버킷의 해소이며 수기 H 17개를 수식으로 바꿨다는 뜻이 아니다(`h.ok:3224→3241`). 전체 `healthy:false`는 별개 `stale:11` 때문에 유지되므로 전체 건강 판정을 허위로 닫지 않는다.
+- **실물 표본:** H820·H1132가 P:EF로 읽혔고, 이나 H346도 P:EF·36,025 그대로다. 공유 기본 필터를 수동으로 지우지 않았다.
+- **성능 보강·다음 날짜 계약:** 첫 row-run 적용은 백업 완료 14:39:20부터 H 적용 검증 14:47:46까지 약 8분 26초로 느렸다. 변경 대상 H 주소만 500셀 이하 RangeList R1C1 배치로 묶도록 개선했다. 별도 3행 시험 파일의 native 실행 14:51:15~14:51:20은 P:EF/P:EG의 A1 수식 복원과 값 12/25를 확인해 OK였다. 시험 파일 ID `1P7LfB46G-8arEn78WRdknAg-axVrq-BKoYsNkYOoVa0`. 최적화 후 실제 대규모 변경 시간과 다음 예약 날짜 증가 시 재발 여부는 아직 실측 전이다.
+- **라이브 반영:** 마지막 14:52:38 targeted graft 후 37파일 재pull 해시 일치. 메인 H 호출부와 헬퍼 외 기존 라이브 파일은 보존했다. 해당 커밋 `635a5010`·`7062f3f9`. 최종 게이트 web 502/502, 새 회귀 12종 포함, `tsc --noEmit --incremental false`·production build·변경 테스트 ESLint·Apps Script 구문검사 통과. Python·웹 런타임 소스는 변경하지 않았다. C15 미근거 7건은 팀 입력 대기 그대로다.
+
+- **최종 멱등·원천 보존 실측:** 최신 라이브 헬퍼로 `backupAndRefreshCumulativeFormulaIntegrity`를 14:55:18~14:59:26 실행했다. 14:57:24 별도 백업 3,990행 재검증 완료(ID `14s21sra-BJvankBg6XEs8cxEJWKLgNJ9zqHRGUYZhro`), 14:58:26 H 추가 쓰기/검증 `0/0`, 14:59:25 `status:OK / stale_before:0 / stale_after:0 / non_h_unchanged:true / manual_preserved:324`. I 수식·비-H 수식 원문·수식 없는 원천 입력값·수기/특수 H가 동일함을 확인했다. 0건 쓰기에서 writer의 `manual_preserved:0`은 검사 루프 자체가 생략된 반환값이며, 운영 진입점의 독립 검사 324개와 혼동하지 않는다.
+
+- **최종 실행 후 재감사:** GHA `34935000169` 14:59:50 dispatch·audit job 56초·success. `hInvalid:0 / incInvalid:0 / mismatch:0 / errorCells H0·I0`, 수기 H 324·value-only 332 유지, P:EF·target=2026-09-14. `stale:11`만 남아 `healthy:false`, `slackSent:false / skippedNotify:true`. 다음 날짜열 추가 후 예약 단계의 실제 적용 시간·범위 재발 여부는 후속 관찰 대상으로 남긴다.
+
 ## 📮 2026-09-15 [Codex 인계] C16 — H수식 끝열 정체(`stale_range`) 42행 + **근본원인은 라이브 스크립트에 있다**
 - **확정 사실(읽기전용 감사 실측):** `hInvalid 42` 가 **전부 `cause=stale_range`**, 예외 없이 **끝열 `EE` / 최신데이터열 `EF`**. `overwritten`(숫자 덮어쓰기) **0건**. `incInvalid 0`(I열 정상). → 이 42행은 **09-14 값부터 누적(H)이 멈춘다**. 값이 틀린 게 아니라 갱신이 멈춘 것(2026-08-06 H열 사고와 같은 계열).
 - **영향 한정:** 대시보드·증분 리포트는 DB 재계산(`safeIncrement`)이라 무영향. `stats-import` 는 날짜열만 읽고 H는 안 읽는다(코드 확인). **연동시트 H 표시값에만** 영향.
