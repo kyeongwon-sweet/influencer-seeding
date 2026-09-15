@@ -1,0 +1,19 @@
+name: C15 Linked Sheet Cost Audit
+
+on:
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      APP_URL: "https://influencer-seeding-mu.vercel.app"
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Audit C15 costs from linked sheet
+        run: python scripts/audit_c15_linked_sheet_costs.py

@@ -8,7 +8,9 @@ export const maxDuration = 300;
 
 const SHEET_ID = "10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak";
 const SHEET_GID = 1937186871;
-const SHEET_RANGE = "A1:CZ3000";
+const SHEET_RANGE = "A1:CZ5000";
+const PRICING_GID = 1649102171;
+const PRICING_RANGE = "A1:H500";
 
 async function handler(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") {
@@ -16,7 +18,10 @@ async function handler(req: NextRequest) {
   }
 
   try {
-    const values = await fetchSheetTabValues(SHEET_ID, SHEET_GID, SHEET_RANGE);
+    const [values, pricingValues] = await Promise.all([
+      fetchSheetTabValues(SHEET_ID, SHEET_GID, SHEET_RANGE),
+      fetchSheetTabValues(SHEET_ID, PRICING_GID, PRICING_RANGE),
+    ]);
     return NextResponse.json(
       {
         ok: true,
@@ -24,6 +29,9 @@ async function handler(req: NextRequest) {
         gid: SHEET_GID,
         range: SHEET_RANGE,
         values,
+        pricing_gid: PRICING_GID,
+        pricing_range: PRICING_RANGE,
+        pricing_values: pricingValues,
       },
       { headers: { "Cache-Control": "no-store" } },
     );

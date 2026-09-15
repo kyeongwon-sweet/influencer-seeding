@@ -9,11 +9,14 @@ function read(relativePath: string): string {
   return fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 }
 
-test("private linked-sheet endpoint is fixed-range and cron-authenticated", () => {
+test("private linked-sheet endpoint covers current rows and pricing map", () => {
   const route = read("web/app/api/ops/linked-sheet-values/route.ts");
   assert.match(route, /checkCronAuth\(req\)/);
   assert.match(route, /10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak/);
-  assert.match(route, /A1:CZ3000/);
+  assert.match(route, /A1:CZ5000/);
+  assert.match(route, /1649102171/);
+  assert.match(route, /A1:H500/);
+  assert.match(route, /pricing_values: pricingValues/);
   assert.doesNotMatch(route, /searchParams/);
 
   const middleware = read("web/middleware.ts");

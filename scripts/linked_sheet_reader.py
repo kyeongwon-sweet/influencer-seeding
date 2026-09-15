@@ -19,7 +19,7 @@ def _required_env(name: str) -> str:
     return value
 
 
-def fetch_linked_sheet_rows(timeout: int = 120) -> list[list[str]]:
+def fetch_linked_sheet_payload(timeout: int = 120) -> dict[str, Any]:
     app_url = _required_env("APP_URL").rstrip("/")
     secret = _required_env("CRON_SECRET")
     request = urllib.request.Request(
@@ -34,6 +34,11 @@ def fetch_linked_sheet_rows(timeout: int = 120) -> list[list[str]]:
 
     if not isinstance(payload, dict) or payload.get("ok") is not True:
         raise RuntimeError("Linked-sheet API returned an invalid response")
+    return payload
+
+
+def fetch_linked_sheet_rows(timeout: int = 120) -> list[list[str]]:
+    payload = fetch_linked_sheet_payload(timeout)
     values = payload.get("values")
     if not isinstance(values, list):
         raise RuntimeError("Linked-sheet API response is missing values")

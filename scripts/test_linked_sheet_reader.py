@@ -6,7 +6,7 @@ import urllib.request
 
 import pytest
 
-from linked_sheet_reader import fetch_linked_sheet_rows
+from linked_sheet_reader import fetch_linked_sheet_payload, fetch_linked_sheet_rows
 
 
 class _Response(io.BytesIO):
@@ -36,6 +36,18 @@ def test_authenticated_fixed_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
         "auth": "Bearer secret-value",
         "timeout": 45,
     }
+
+
+def test_payload_reader_preserves_pricing_values(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_URL", "https://example.test")
+    monkeypatch.setenv("CRON_SECRET", "secret-value")
+    payload = {"ok": True, "values": [["URL"]], "pricing_values": [["채널명", "비용"]]}
+    monkeypatch.setattr(
+        urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: _Response(json.dumps(payload).encode()),
+    )
+    assert fetch_linked_sheet_payload() == payload
 
 
 def test_missing_credentials_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
