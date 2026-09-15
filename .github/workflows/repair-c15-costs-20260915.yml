@@ -20,7 +20,7 @@ jobs:
       - name: Preflight linked sheet and DB
         id: preflight
         env:
-          APP_URL: ${{ secrets.APP_URL }}
+          APP_URL: "https://influencer-seeding-mu.vercel.app"
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           set -euo pipefail
@@ -52,7 +52,7 @@ jobs:
       - name: Apply exact repair
         if: ${{ inputs.apply }}
         env:
-          APP_URL: ${{ secrets.APP_URL }}
+          APP_URL: "https://influencer-seeding-mu.vercel.app"
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           set -euo pipefail
