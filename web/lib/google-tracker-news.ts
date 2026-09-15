@@ -12,7 +12,7 @@ export function parseGoogleNews(xml: string, from: string, to: string): TrackerC
   if (!data.rss?.channel) throw new Error("뉴스 피드를 읽을 수 없습니다.");
   const raw = data.rss.channel.item;
   const items: Record<string, unknown>[] = Array.isArray(raw) ? raw : raw ? [raw] : [];
-  const clean = (s: unknown, limit = 1200) => typeof s === "string" ? s.replace(/<[^>]*>/g, "").slice(0, limit) : "";
+  const clean = (s: unknown, limit = 1200) => typeof s === "string" ? s.replace(/<[^>]*>/g, "").replace(/&nbsp;|&#160;/gi, " ").trim().slice(0, limit) : "";
   return items.slice(0, 100).map(p => {
     const date = typeof p.pubDate === "string" && Number.isFinite(Date.parse(p.pubDate)) ? new Date(p.pubDate).toISOString().slice(0, 10) : null;
     return { title: clean(p.title, 300), url: clean(p.link, 2000), author: clean(p.source, 150), date, description: clean(p.description), views: null, likes: null };
