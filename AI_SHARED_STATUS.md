@@ -1,10 +1,11 @@
 # AI Shared Status
 
-## 2026-09-15 [Codex 코드 완료·배포 검증 예정] 검색량 트래킹 메뉴 연결
+## ✅ 2026-09-15 [Codex 완료·배포·메뉴 클릭 검증] 검색량 트래킹 메뉴 연결
 - **사용자 요청:** 기존 Streamlit 검색량 트래킹을 인지 대시보드 메뉴에서 열기. 별도 서버 구현 없이 직접 이동 또는 인앱 열기를 허용했다.
 - **구현:** `web/components/Sidebar.tsx`의 협찬 모니터링 아래에 `검색량 트래킹` 메뉴를 추가했다. 클릭하면 같은 탭에서 `https://search-tracker-lalasweet.streamlit.app/`로 이동한다. 기존 메뉴 렌더러와 접힌 메뉴의 툴팁을 사용하며 일반 로그인 사용자에게도 표시된다.
 - **검증:** 해당 Sidebar ESLint, `tsc --noEmit --incremental false`, Next.js 16.3.0 `npm run build` 통과. 원본 공유 작업트리의 미커밋 변경은 접촉하지 않았다.
-- **남은 작업:** main 반영, Vercel Ready 확인, `-mu` 실제 메뉴 클릭 및 Streamlit 도착 확인.
+- **배포·실물 검증:** 구현 커밋 `3a688aa36771264a0a261c4f32900f757952d57a` main 반영. Vercel `dpl_BQN3nq9hSK5FktMbUzzmruwMdx3K` Ready 및 `-mu` 별칭 확인. 로그인된 Chrome의 실제 `/monitoring` 화면에서 협찬 모니터링 아래의 새 메뉴를 클릭해 같은 탭에서 Streamlit `검색량 트래킹` 제목·조회 설정·검색 버튼이 정상 표시됨을 확인했다.
+- **CI:** Build Test run `34931115437`의 build·python-tests 모두 success. 새 서버·API·페이지를 추가하지 않고 기존 Streamlit 서비스로 직접 연결한다.
 
 ## ✅ 2026-09-15 [Codex 완료·시트+DB+배포] C15 가격미매핑 11건 — 근거 있는 4건만 60,000원 정합
 - **전수 감사:** 연동시트 3,632행과 단가표·동일 계정 과거 비용을 URL key로 대조했다. 11건 모두 시트 비용 0원이었고, 정확한 단가 근거가 하나로 수렴한 것은 아래 4건뿐이다. 나머지 7건은 값을 만들지 않고 0원 그대로 보존했다.
