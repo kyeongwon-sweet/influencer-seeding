@@ -13,7 +13,7 @@ const PRICING_GID = 1649102171;
 const PRICING_RANGE = "A1:H500";
 const COST_SOURCE_PREVIEWS = [
   { title: "[세진, 지원]바이럴 정산", range: "A1:AZ100" },
-  { title: "[바이럴채널] 리스트업&부킹현황", range: "A1:AZ100" },
+  { title: "[바이럴채널] 리스트업&부킹현황", range: "A1:AZ2000" },
   { title: "출시마케팅", range: "A1:AZ100" },
 ] as const;
 

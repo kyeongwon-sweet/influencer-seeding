@@ -183,6 +183,7 @@ def main() -> None:
     }
     target_terms = {loose_key(label.split(" ")[0]) for label, _url in TARGETS}
     target_terms.update(loose_key(result.get("account_name")) for result in results)
+    target_terms.update(profile_key(url) for _label, url in TARGETS)
     source_previews = []
     for source in payload.get("cost_source_previews") or []:
         source_rows = source.get("values") if isinstance(source, dict) else None
@@ -191,7 +192,7 @@ def main() -> None:
         matches = []
         for row_number, row in enumerate(source_rows, start=1):
             normalized_cells = [loose_key(value) for value in row]
-            if any(term and any(term in value or value in term for value in normalized_cells if value) for term in target_terms):
+            if any(term and any(term == value for value in normalized_cells if value) for term in target_terms):
                 matches.append({"row": row_number, "values": row})
         source_previews.append({
             "title": source.get("title"),

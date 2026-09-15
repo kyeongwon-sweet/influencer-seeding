@@ -21,6 +21,7 @@ test("private linked-sheet endpoint covers current rows and pricing map", () => 
   assert.match(route, /sheet_titles: sheetTitles/);
   assert.match(route, /\[세진, 지원\]바이럴 정산/);
   assert.match(route, /\[바이럴채널\] 리스트업&부킹현황/);
+  assert.match(route, /A1:AZ2000/);
   assert.match(route, /cost_source_previews: costSourcePreviews/);
   assert.doesNotMatch(route, /searchParams/);
 
