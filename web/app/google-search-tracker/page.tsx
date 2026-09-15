@@ -98,14 +98,19 @@ export default function GoogleSearchTracker() {
       const data = JSON.parse(localStorage.getItem(storage) || "{}");
       setSaved(Array.isArray(data.saved) ? data.saved : []);
       setPending(null);
+      setConfig(null); setResult(null); setManual([]); setContents({}); setExcluded(new Set()); setPrompt("");
+      if (data.active) {
+        const c = validateConfig(data.active.config), r = validateResult(data.active.result, c);
+        setConfig(c); setResult(r); applyInputs(c); setManual(data.active.manual || []); setManualGroup(0); setContents(data.active.contents || {});
+      }
       if (data.pending && data.pending.started > Date.now() - 24 * 3600000) setPending(data.pending);
     } catch { setNotice("저장된 분석을 읽지 못했습니다. 새 분석을 시작할 수 있습니다."); }
     setLoadedStorage(storage);
   }, [storage]);
   useEffect(() => {
     if (!storage || loadedStorage !== storage) return;
-    try { localStorage.setItem(storage, JSON.stringify({ saved, pending })); } catch { setNotice("브라우저 저장 공간이 부족합니다. 엑셀로 내보낸 후 저장된 분석을 정리하세요."); }
-  }, [storage, loadedStorage, saved, pending]);
+    try { localStorage.setItem(storage, JSON.stringify({ saved, pending, active: config && result ? { config, result, manual, contents } : null })); } catch { setNotice("브라우저 저장 공간이 부족합니다. 엑셀로 내보낸 후 저장된 분석을 정리하세요."); }
+  }, [storage, loadedStorage, saved, pending, config, result, manual, contents]);
   useEffect(() => {
     if (!pending || paused) return;
     let stopped = false, timer: ReturnType<typeof setTimeout>, failures = 0;
