@@ -123,17 +123,22 @@ async function inspect() {
   }
 
   const supabase = getServerSupabase();
-  const { data: dbRows, error } = await supabase
-    .from("sponsored_posts")
-    .select("id, normalized_key, url, account_name, channel_type, cost, manual_fields")
-    .in("normalized_key", TARGETS.map((target) => target.key));
-  if (error) throw new Error(`DB 조회 실패: ${error.message}`);
+  const dbResults = await Promise.all(TARGETS.map(async (target) => {
+    const contentId = target.key.slice(target.key.indexOf(":") + 1);
+    const { data, error } = await supabase
+      .from("sponsored_posts")
+      .select("id, normalized_key, url, account_name, channel_type, cost, manual_fields")
+      .ilike("url", `%${contentId}%`);
+    if (error) throw new Error(`DB 조회 실패(${target.label}): ${error.message}`);
+    const key = target.key.toLowerCase();
+    return ((data ?? []) as DbPost[]).filter((post) => (
+      String(post.normalized_key ?? "").toLowerCase() === key
+      || linkKey(post.url).toLowerCase() === key
+    ));
+  }));
   const dbByKey = new Map<string, DbPost[]>();
-  for (const post of (dbRows ?? []) as DbPost[]) {
-    const key = post.normalized_key.toLowerCase();
-    const found = dbByKey.get(key) ?? [];
-    found.push(post);
-    dbByKey.set(key, found);
+  for (let index = 0; index < TARGETS.length; index += 1) {
+    dbByKey.set(TARGETS[index].key.toLowerCase(), dbResults[index]);
   }
 
   const inspected = TARGETS.map((target) => {

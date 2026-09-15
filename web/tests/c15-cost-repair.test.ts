@@ -12,6 +12,8 @@ test("C15 repair is exact, backed up, and sheet-first", () => {
   assert.match(route, /TARGETS\.map/);
   assert.match(route, /sheetMatches\.length === 1/);
   assert.match(route, /dbMatches\.length === 1/);
+  assert.match(route, /\.ilike\("url", `%\$\{contentId\}%`\)/);
+  assert.match(route, /linkKey\(post\.url\)\.toLowerCase\(\) === key/);
   assert.match(route, /evidence\.size === 1/);
   assert.match(route, /c15_cost_repair_20260915_backup/);
   const sheetWriteAt = route.lastIndexOf("updateSheetTabValues(");
