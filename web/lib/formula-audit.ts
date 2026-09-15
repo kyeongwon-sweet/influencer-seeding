@@ -58,6 +58,26 @@ export type AuditResult = {
   inc: { ok: number; emptyOk: number; errorCells: number; mismatch: number; blankExpected: number };
   formulaShape: { hInvalid: number; hManual: number; incInvalid: number };
   formulaDiagnostics: Array<{ row: number; actual: string; expected: string }>;
+  /**
+   * H수식형태 오류 행의 **원인 판별용** 상세 (JSON 응답 전용 — Slack 메시지에는 안 들어간다).
+   *
+   * 왜 필요한가(2026-09-15): hInvalid 가 하루 만에 1 → 42 로 뛰었는데, 요약 라인은 상한 12건이라
+   * **어떤 행이 왜 걸렸는지 볼 방법이 없었다.** hInvalid 는 원인이 둘인데 숫자만으로는 못 가른다:
+   *   · `overwritten` — 날짜 이력이 있는데 H가 **숫자로 덮임**(사람이 값을 직접 넣음)
+   *   · `stale_range` — 수식은 살아 있는데 **끝 열이 최신 데이터 열보다 앞섬**
+   *     (새 날짜열이 MAX 범위 밖 → 그날부터 누적이 조용히 멈춘다. 2026-08-06 H열 사고와 같은 계열)
+   * 둘은 조치가 정반대다 — 전자는 수식 복원, 후자는 범위 확장. 그래서 판별 재료를 같이 낸다.
+   * ⚠️ 읽기 전용 진단이다. 이 필드를 보고 자동으로 고치지 않는다(시트 쓰기는 사람·Codex 레인).
+   */
+  hInvalidRows: Array<{
+    row: number;
+    key: string;
+    label: string;
+    cause: "overwritten" | "stale_range" | "other";
+    endColumn: string | null;
+    latestDataColumn: string | null;
+    dateCount: number;
+  }>;
   anomalies: string[];     // 사람이 읽을 요약 라인 (상한 있음)
   /**
    * 값 정체 — 수식은 멀쩡한데 **새 값이 안 들어오는** 행.
@@ -301,6 +321,39 @@ function validFormulaEndColumn(
   return columnNumber(endColumn) >= columnNumber(latestDataColumn) ? endColumn : null;
 }
 
+const H_INVALID_DETAIL_CAP = 200;
+
+/** H수식형태 오류 한 행의 원인 판별 재료를 뽑는다(순수 함수 — 읽기 전용). */
+export function describeHInvalid(row: SheetAuditRow): AuditResult["hInvalidRows"][number] {
+  const formula = row.hFormula;
+  const latestDataColumn = row.dates.reduce<string | null>(
+    (latest, item) => item.column && (!latest || columnNumber(item.column) > columnNumber(latest))
+      ? item.column
+      : latest,
+    null,
+  );
+  let endColumn: string | null = null;
+  if (typeof formula === "string") {
+    const m = formula.replace(/\s+/g, "").toUpperCase()
+      .match(/^=IF\(COUNT\([A-Z]+\d+:([A-Z]+)\d+\)=0,"",MAX\(/);
+    endColumn = m ? m[1] : null;
+  }
+  // 숫자로 덮인 것과, 수식은 있는데 범위가 뒤처진 것은 조치가 정반대다.
+  const cause: AuditResult["hInvalidRows"][number]["cause"] =
+    typeof formula === "number" ? "overwritten"
+    : endColumn && latestDataColumn && columnNumber(endColumn) < columnNumber(latestDataColumn) ? "stale_range"
+    : "other";
+  return {
+    row: row.sourceRow ?? 0,
+    key: row.key,
+    label: row.label,
+    cause,
+    endColumn,
+    latestDataColumn,
+    dateCount: row.dates.length,
+  };
+}
+
 function measuredRefs(row: SheetAuditRow, post: AuditPost, targetDate: string) {
   return row.dates.filter((d) =>
     d.date <= targetDate &&
@@ -346,6 +399,7 @@ export function auditRows(
     h: { ok: 0, manualKept: 0, emptyOk: 0, valueOnly: 0, errorCells: 0, emptyButData: 0 },
     inc: { ok: 0, emptyOk: 0, errorCells: 0, mismatch: 0, blankExpected: 0 },
     formulaShape: { hInvalid: 0, hManual: 0, incInvalid: 0 },
+    hInvalidRows: [],
     formulaDiagnostics: [],
     anomalies: [],
     stale: 0,
@@ -370,6 +424,9 @@ export function auditRows(
       } else {
         res.formulaShape.hInvalid += 1;
         note(`H수식형태 오류 ${row.label} (${row.key} · 행 ${row.sourceRow})`);
+        if (res.hInvalidRows.length < H_INVALID_DETAIL_CAP) {
+          res.hInvalidRows.push(describeHInvalid(row));
+        }
       }
     }
     const post = posts.get(row.key);
