@@ -43,3 +43,28 @@ jobs:
           if len(rows) != 4 or any(not row.get("safe") for row in rows):
               raise SystemExit("C15 preflight did not approve exactly four rows")
           PY
+
+      - name: Verify the completed repair cannot write again
+        env:
+          APP_URL: "https://influencer-seeding-mu.vercel.app"
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          status="$(curl --silent --show-error \
+            -o disabled.json \
+            -w '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            --data '{}' \
+            "${APP_URL}/api/ops/repair-c15-costs-20260915")"
+          python - "${status}" <<'PY'
+          import json
+          import sys
+
+          with open("disabled.json", encoding="utf-8") as file:
+              payload = json.load(file)
+          print(json.dumps({"httpStatus": int(sys.argv[1]), "error": payload.get("error")}, ensure_ascii=False))
+          if sys.argv[1] != "410":
+              raise SystemExit("completed C15 repair POST is not permanently disabled")
+          PY
