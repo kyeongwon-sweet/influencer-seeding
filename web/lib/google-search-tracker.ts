@@ -35,7 +35,9 @@ export function validateConfig(input: unknown): TrackerConfig {
   if (!validDate(c.start) || !validDate(c.end) || c.start > c.end || c.end > new Date().toISOString().slice(0, 10) || Date.parse(c.end) - Date.parse(c.start) > 5 * 366 * DAY || c.start < "2004-02-01") throw new Error("분석 기간은 2004년 2월 이후, 오늘 이전의 최대 5년으로 설정하세요.");
   if (!["KR", "US", "JP", ""].includes(c.geo)) throw new Error("지원하지 않는 국가입니다.");
   for (const [key, min, max] of [["multiplier", 1.5, 5], ["minIndex", 1, 100], ["gapDays", 1, 21], ["windowDays", 1, 21]] as const) if (typeof c[key] !== "number" || !Number.isFinite(c[key]) || c[key] < min || c[key] > max) throw new Error("고급 분석 설정 범위를 확인하세요.");
-  return { ...c, groups };
+  const config = { groups, start: c.start, end: c.end, geo: c.geo, multiplier: c.multiplier, minIndex: c.minIndex, gapDays: c.gapDays, windowDays: c.windowDays };
+  if (new TextEncoder().encode(JSON.stringify(config)).length > 15000) throw new Error("분석 설정이 너무 큽니다. 검색어를 줄여주세요.");
+  return config;
 }
 export function trendsUrl(c: TrackerConfig) {
   const params = new URLSearchParams({ date: `${dateOffset(c.start, -28)} ${c.end}`, geo: c.geo, q: c.groups.map(g => g.terms.join(" + ")).join(",") });
@@ -78,7 +80,7 @@ export function parseTrendDataset(items: unknown[], c: TrackerConfig): TrackerRe
   if (covered.size !== c.groups.length) throw new Error("일부 상품의 시계열이 누락됐습니다. 검색어 묶음을 줄여 다시 수집하세요.");
   const intervals = points.slice(1).map((p, i) => (Date.parse(p.date) - Date.parse(points[i].date)) / DAY).sort((a, b) => a - b);
   const median = intervals[Math.floor(intervals.length / 2)] ?? 1;
-  return { points, collectedAt: new Date().toISOString(), granularity: median >= 27 ? "월별" : median >= 6 ? "주별" : "일별", sourceUrl: trendsUrl(c), warnings: ["0은 검색이 없다는 뜻이 아니라 낮은 관심도 또는 부족한 표본일 수 있습니다.", ...c.groups.filter((_, i) => !found.has(i)).map(g => `${g.label}: 유효 표본이 없습니다. 검색어를 넓혀 확인하세요.`), ...(partial ? [`미완료 구간 ${partial}개를 분석에서 제외했습니다.`] : [])] };
+  return { points, collectedAt: new Date().toISOString(), granularity: median >= 27 ? "월별" : median >= 6 ? "주별" : "일별", sourceUrl: trendsUrl(c), warnings: ["0은 검색이 없다는 뜻이 아니라 낮은 관심도 또는 부족한 표본일 수 있습니다.", ...(median >= 27 ? ["월별 데이터는 직전 28일 표본이 부족해 급등을 판정하지 못할 수 있습니다. 더 짧은 기간으로 조회하세요."] : []), ...c.groups.filter((_, i) => !found.has(i)).map(g => `${g.label}: 유효 표본이 없습니다. 검색어를 넓혀 확인하세요.`), ...(partial ? [`미완료 구간 ${partial}개를 분석에서 제외했습니다.`] : [])] };
 }
 export function validateResult(input: unknown, c: TrackerConfig): TrackerResult {
   const r = record(input);
@@ -130,7 +132,7 @@ export function parseContent(items: unknown[], platform: "youtube" | "instagram"
     }
     const url = textValue(p.url ?? p.videoUrl);
     const owner = record(p.channel);
-    return { title: textValue(p.title ?? p.caption, 300), url, author: textValue(p.channelName ?? p.ownerUsername ?? owner.name), date, views: countValue(p.viewCount ?? p.videoPlayCount ?? p.videoViewCount), likes: countValue(p.likesCount ?? p.likes), description: textValue(p.description ?? p.caption, 1200) };
+    return { title: textValue(p.title ?? p.caption, 300), url, author: textValue(p.channelName ?? p.ownerUsername ?? owner.name), date, views: countValue(p.viewCount ?? p.videoPlayCount ?? p.videoViewCount), likes: countValue(p.likesCount ?? p.likes), description: textValue(p.description ?? p.text ?? p.caption, 1200) };
   }).filter(p => {
     try { const u = new URL(p.url); if (u.protocol !== "https:" || !((platform === "youtube" ? /(^|\.)youtube\.com$|^youtu\.be$/ : /(^|\.)instagram\.com$/).test(u.hostname))) return false; } catch { return false; }
     return platform === "instagram" || (p.date !== null && p.date >= from && p.date <= to);

@@ -10,6 +10,8 @@ test("one comparison request preserves OR groups and a shared normalization wind
   assert.throws(() => parseGroups("x=a\nx=b"));
   assert.throws(() => validateConfig({ ...config, multiplier: NaN }));
   assert.throws(() => validateConfig({ ...config, start: "2026-02-30" }));
+  const large = Array.from({ length: 5 }, (_, i) => ({ id: `g${i}`, label: `group${i}`, terms: Array.from({ length: 25 }, (_, j) => "가".repeat(77) + j), tags: [] }));
+  assert.throws(() => validateConfig({ ...config, groups: large }), /설정이 너무 큽니다/);
 });
 test("real actor response: hasData=false stays null; genuine zero stays zero; partial is omitted", () => {
   const r = parseTrendDataset([{ searchTerm: "라라스윗,멜론쫀득바 + 라라스윗멜론쫀득바", interestOverTime_timelineData: [point("2026-06-29", [43, 0], [true, false]), point("2026-06-30", [0, 0], [true, false]), point("2026-07-01", [100, 90], [true, true], true)] }], config);
@@ -24,6 +26,8 @@ test("weekly observations remain weekly, with no synthetic daily values", () => 
   const r = parseTrendDataset([{ searchTerm: "compare", interestOverTime_timelineData: [point("2026-06-29", [10, 1]), point("2026-07-06", [20, 2]), point("2026-07-13", [50, 5])] }], config);
   assert.equal(r.granularity, "주별"); assert.equal(r.points.length, 3);
   assert.throws(() => validateResult({ ...r, points: [...r.points, r.points[0]] }, config), /중복/);
+  const monthly = parseTrendDataset([{ searchTerm: "compare", interestOverTime_timelineData: [point("2026-06-29", [10, 1]), point("2026-07-29", [20, 2]), point("2026-08-29", [100, 5])] }], config);
+  assert.equal(monthly.granularity, "월별"); assert.equal(analyzeTrends(monthly, config).length, 0); assert.match(monthly.warnings.join(" "), /28일 표본이 부족/);
 });
 test("spike baseline uses prior 28 calendar days, excludes null and the current point", () => {
   const r: TrackerResult = { points: Array.from({ length: 41 }, (_, i) => ({ date: dateOffset("2026-06-01", i), values: [i < 28 ? 10 : i === 28 || i === 32 || i === 36 ? 100 : null, null] })), collectedAt: "", granularity: "일별", sourceUrl: "", warnings: [] };
@@ -35,8 +39,9 @@ test("spike baseline uses prior 28 calendar days, excludes null and the current 
   assert.equal(analyzeTrends(zero, config)[0].change, null);
 });
 test("content evidence uses real publication dates, rejects wrong platforms, preserves missing metrics", () => {
-  const rows = parseContent([{ title: "in range", url: "https://www.youtube.com/watch?v=a", date: "2026-06-29", viewCount: 123 }, { url: "https://www.youtube.com/watch?v=b", date: "2026-05-01", viewCount: 9999 }, { url: "javascript:alert(1)", date: "2026-06-29" }, { url: "https://www.youtube.com/watch?v=c" }], "youtube", "2026-06-22", "2026-07-06");
+  const rows = parseContent([{ title: "in range", url: "https://www.youtube.com/watch?v=a", date: "2026-06-29", viewCount: 123, text: "video <b>description</b>" }, { url: "https://www.youtube.com/watch?v=b", date: "2026-05-01", viewCount: 9999 }, { url: "javascript:alert(1)", date: "2026-06-29" }, { url: "https://www.youtube.com/watch?v=c" }], "youtube", "2026-06-22", "2026-07-06");
   assert.equal(rows.length, 1); assert.equal(rows[0].views, 123); assert.equal(rows[0].likes, null);
+  assert.equal(rows[0].description, "video description");
   const ig = parseContent([{ url: "https://www.instagram.com/reel/abc/", timestamp: "2026-01-01", likesCount: 12 }], "instagram", "2026-06-22", "2026-07-06");
   assert.equal(ig.length, 1); assert.equal(ig[0].views, null);
 });

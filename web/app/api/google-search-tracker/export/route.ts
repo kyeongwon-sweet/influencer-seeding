@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     series.addRow(["날짜 (UTC)", "분석/기준 구간", ...c.groups.map(g => g.label)]);
     r.points.forEach(p => series.addRow([p.date, p.date < c.start ? "직전 기준" : "분석", ...p.values]));
     const summary = book.addWorksheet("상품 요약");
-    summary.addRow(["상품", "검색어 (OR)", "최고 관심도", "최고 날짜", "평균 관심도", "유효 표본 수"]);
+    summary.addRow(["상품", "검색어 (OR)", "최고 관심도", "최고 날짜", "유효 표본 평균 관심도", "유효 표본 수"]);
     c.groups.forEach((g, i) => { const s = trendSummary(r, c, i); summary.addRow([g.label, g.terms.join(" + "), s.peak, s.date, s.mean, s.count]); });
     const events = book.addWorksheet("이벤트");
     events.addRow(["상품", "유형", "시작", "종료", "피크 날짜", "피크 지수", "직전 28일 평균", "상승률 (%)"]);
