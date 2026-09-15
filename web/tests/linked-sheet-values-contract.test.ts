@@ -17,6 +17,8 @@ test("private linked-sheet endpoint covers current rows and pricing map", () => 
   assert.match(route, /1649102171/);
   assert.match(route, /A1:H500/);
   assert.match(route, /pricing_values: pricingValues/);
+  assert.match(route, /getSheetTitles\(SHEET_ID\)/);
+  assert.match(route, /sheet_titles: sheetTitles/);
   assert.doesNotMatch(route, /searchParams/);
 
   const middleware = read("web/middleware.ts");

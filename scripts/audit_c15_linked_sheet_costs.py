@@ -176,6 +176,7 @@ def main() -> None:
         "pricing_range": payload.get("pricing_range"),
         "pricing_rows": len(pricing_rows),
         "pricing_headers": pricing_headers,
+        "sheet_titles": payload.get("sheet_titles"),
         "unique_matches": sum(1 for rows_for_key in found.values() if len(rows_for_key) == 1),
         "sheet_positive_cost": sum(1 for result in results if (result.get("sheet_cost") or 0) > 0),
         "sheet_zero_or_blank": sum(1 for result in results if (result.get("sheet_cost") or 0) <= 0),

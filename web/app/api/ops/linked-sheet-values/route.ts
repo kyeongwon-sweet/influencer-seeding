@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
-import { fetchSheetTabValues } from "@/lib/google-sheets";
+import { fetchSheetTabValues, getSheetTitles } from "@/lib/google-sheets";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -18,9 +18,10 @@ async function handler(req: NextRequest) {
   }
 
   try {
-    const [values, pricingValues] = await Promise.all([
+    const [values, pricingValues, sheetTitles] = await Promise.all([
       fetchSheetTabValues(SHEET_ID, SHEET_GID, SHEET_RANGE),
       fetchSheetTabValues(SHEET_ID, PRICING_GID, PRICING_RANGE),
+      getSheetTitles(SHEET_ID),
     ]);
     return NextResponse.json(
       {
@@ -32,6 +33,7 @@ async function handler(req: NextRequest) {
         pricing_gid: PRICING_GID,
         pricing_range: PRICING_RANGE,
         pricing_values: pricingValues,
+        sheet_titles: sheetTitles,
       },
       { headers: { "Cache-Control": "no-store" } },
     );
