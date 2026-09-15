@@ -1,5 +1,28 @@
 # AI Shared Status
 
+## 📮 2026-09-15 [Codex 인계] C16 — H수식 끝열 정체(`stale_range`) 42행 + **근본원인은 라이브 스크립트에 있다**
+- **확정 사실(읽기전용 감사 실측):** `hInvalid 42` 가 **전부 `cause=stale_range`**, 예외 없이 **끝열 `EE` / 최신데이터열 `EF`**. `overwritten`(숫자 덮어쓰기) **0건**. `incInvalid 0`(I열 정상). → 이 42행은 **09-14 값부터 누적(H)이 멈춘다**. 값이 틀린 게 아니라 갱신이 멈춘 것(2026-08-06 H열 사고와 같은 계열).
+- **영향 한정:** 대시보드·증분 리포트는 DB 재계산(`safeIncrement`)이라 무영향. `stats-import` 는 날짜열만 읽고 H는 안 읽는다(코드 확인). **연동시트 H 표시값에만** 영향.
+- **⚠️ 고정 집합이 아니다:** 어제 1건은 `감성퀸(ig:DPAgRr4CBDi · 행 52)` 이었고 **오늘 42건에 없다**(해소). 오늘 42건은 전혀 다른 행 → **매일 대상이 바뀌는 부분 실패**다. 42행만 고치고 닫으면 내일 또 생긴다.
+- **🔎 내가 좁힌 것(그리고 막힌 지점):** repo 의 `Combined_Sheet_AppsScript.gs` 를 읽어보면 **이 증상이 나올 수 없다.**
+  - `refreshCumulativeViews()` 는 `dailyAutoStageDefs_()` 의 정규 단계이고, 전 행을 **한 번의 `range.setValues(out)`** 로 같은 `firstDate..lastDate` 범위로 다시 쓴다 → 돌았으면 전 행이 `EF`, 안 돌았으면 전 행이 `EE`. **42행만 남는 형태가 안 나온다.**
+  - 수동 보존 분기는 **숫자를 남기므로** `overwritten` 이 돼야 한다 — 실측은 0건이라 이 분기도 아니다.
+  - 다른 작성 경로(`~1254`)는 `!cell.getFormula()` 일 때만 쓰므로 기존 수식을 `EE` 로 되돌릴 수 없다.
+  - ➡️ **결론: 라이브 Apps Script 가 repo 본과 다르게 동작하고 있을 가능성이 높다**([[apps-script-live-divergence]] 그대로). 나는 시트 서비스계정이 없어 **라이브 코드·셀·수식을 열람할 수 없다** → 여기서 막힌다.
+- **Codex 확인 요청(순서대로):**
+  1. 라이브 `refreshCumulativeViews()` 실물이 repo 본과 같은지(특히 `dateRe`·serial 헤더 인식, 배치 `setValues` 여부).
+  2. 오늘 `dailyAuto` 실행 로그에서 **`refreshCumulativeViews` 단계가 성공했는지**(6분 한도·단계 스킵 이력 있음 — [[dailyauto-serial-timeout-starves-exportstats]]).
+  3. 라이브에 **repo에 없는 H 수식 작성 경로**가 더 있는지(정렬·행삽입 트리거, onEdit 계열).
+  4. 그 42행의 H 셀 수식 실물 1~2개를 직접 읽어 `EE` 확인(감사 판정 교차검증).
+- **⚠️ 고칠 때:** `refreshCumulativeViews()` 는 멱등이고 수동값을 보존하도록 설계돼 있으니 **그 함수를 한 번 돌리는 것이 최소 조치**로 보인다. 단 **대량 셀 직접 쓰기는 금지**(8/6 에 H열 1,765행 손상). 실행 전 H열 백업 + 실행 후 감사 재실행으로 `hInvalid 0` 확인 세트.
+- **⚠️ repo `Combined_Sheet_AppsScript.gs` 를 라이브에 clasp push 하지 말 것** — 라이브가 더 최신일 수 있어 되레 회귀시킨다. 수정은 라이브 파악 후.
+- **대상 42행(행번호 · 계정 · 키):** 820 썰뜨기(틱톡) · 822 썰뜨기(유튜브) · 823 썰박스(유튜브) · 824 썰박스(틱톡) · 912 썰뜨기(틱톡) · 919·925·926 썰뜨기(유튜브) · 927 썰박스(유튜브) · 929 썰뜨기(틱톡) · 933 썰박스(틱톡) · 1013 nasso_home · 1132 iosonojaei · 1135 kllmsanga_ · 1136 moon_ji._ · 1137 ho.0ng_ · 1138 shojo_ooo · 1139 hee_book_ · 1141 liaa_307 · 1146 yum.704 · 1147 young__da__ · 1158 simsi.m.life · 1159 __gyeom2___ · 1168 yg_311 · 1171 cowj_41 · 1173 hej_____yoo · 1174 xeoj.ng · 1176 zzung_184 · 1187 litidi_outfit · 1190 tppdus · 1224 another__summer · 1230 euntto_z · 1276 i.i_mg · 1377 ddanggomang_2 · 1534 with.seoro_ · 1563 ddo_chichi · 2887 ufo__green · 2901 smile_today_s2 · 3472 _si.dore · 3598 rx_witch.cf · 3599 sue_yaksa · 3600 gangnam_kimyaksa
+- **기대 수식(감사 정본):** `=IF(COUNT(P{r}:EF{r})=0,"",MAX(P{r}:EF{r}))` — 첫 날짜열 `P`, 최신 `EF`(2026-09-14).
+
+## ✅ 2026-09-15 [Claude 조치] 워크트리 되돌림 지뢰 복원
+- `_yeomun_wt` 의 `web/lib/formula-audit.ts` 가 `fc655c56`(hInvalidRows 상세, 프로덕션 반영됨)을 **57줄 삭제하는 미커밋 상태**였다. 그대로 누가 `git add -A` 하면 진단 기능이 조용히 사라진다.
+- **사용자 승인 후 `git checkout -- web/lib/formula-audit.ts` 로 복원**했다. 복원 전 워킹트리 사본을 스크래치패드에 백업했고(486줄), 되돌릴 내용은 git 에 그대로 있다. 워크트리는 현재 깨끗하다.
+
 ## 🔴 2026-09-15 [Claude 진단·읽기전용] 수식감사 `hInvalid 42` 규명 — **42건 전부 `stale_range`(수식 범위 미확장)**
 - **증상:** 아침 4가지 루틴 점검 중 발견. ③수식감사가 `healthy:false`, **`hInvalid` 어제 1 → 오늘 42**. 판독 기준(`hInvalid=0·incInvalid=0`) 위반.
 - **규명(다른 Claude 세션이 `fc655c56` 로 배포한 `hInvalidRows` 상세를 읽기전용 재실행으로 수신):**
