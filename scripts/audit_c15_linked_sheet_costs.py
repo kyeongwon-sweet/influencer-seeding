@@ -84,20 +84,25 @@ def main() -> None:
     }
     targets_by_key = {link_key(url): (label, url) for label, url in TARGETS}
     found: dict[str, list[dict[str, Any]]] = {key: [] for key in targets_by_key}
+    account_cost_history: dict[str, list[dict[str, Any]]] = {}
     for row_number, row in enumerate(rows[1:], start=2):
         key = link_key(str(cell(row, cols["url"])))
-        if key not in found:
-            continue
-        found[key].append({
+        account_name = cell(row, cols["account_name"])
+        sheet_cost = parse_cost(cell(row, cols["cost"]))
+        row_data = {
             "sheet_row": row_number,
             "url": cell(row, cols["url"]),
-            "account_name": cell(row, cols["account_name"]),
+            "account_name": account_name,
             "company_name": cell(row, cols["company_name"]),
             "channel_type": cell(row, cols["channel_type"]),
             "posted_at": cell(row, cols["posted_at"]),
-            "sheet_cost": parse_cost(cell(row, cols["cost"])),
+            "sheet_cost": sheet_cost,
             "sheet_cost_raw": cell(row, cols["cost"]),
-        })
+        }
+        if key in found:
+            found[key].append(row_data)
+        if sheet_cost is not None and sheet_cost > 0:
+            account_cost_history.setdefault(price_key(account_name), []).append(row_data)
 
     pricing_headers = pricing_rows[0]
     pricing = []
@@ -128,6 +133,7 @@ def main() -> None:
             "expected_format": fmt,
             "pricing_exact": exact,
             "pricing_all_for_account": candidates,
+            "sheet_account_cost_history": account_cost_history.get(account_key, []),
         })
 
     summary = {
