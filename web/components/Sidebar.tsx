@@ -89,11 +89,21 @@ const NAV: { href: string; label: string; highlight?: boolean; adminOnly?: boole
   },
   {
     href: "https://search-tracker-lalasweet.streamlit.app/",
-    label: "검색량 트래킹",
+    label: "네이버 검색 트래킹",
     icon: (
       <svg width="15" height="15" viewBox="0 0 20 20" fill="none">
         <path d="M3 3v14h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
         <polyline points="6,12 9,8 12,10 17,4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    ),
+  },
+  {
+    href: "/google-search-tracker",
+    label: "구글 검색 트래킹",
+    icon: (
+      <svg width="15" height="15" viewBox="0 0 20 20" fill="none">
+        <path d="M3 3v14h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M6 12l3-3 3 2 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
       </svg>
     ),
   },
