@@ -98,6 +98,9 @@ def main() -> None:
         "company_name": header_index(headers, "업체명"),
         "channel_type": header_index(headers, "채널분류"),
         "cost": header_index(headers, "비용"),
+        "asset_name": header_index(headers, "소재명"),
+        "project_name": header_index(headers, "프로젝트명"),
+        "product_name": header_index(headers, "상품명"),
     }
     targets_by_key = {link_key(url): (label, url) for label, url in TARGETS}
     found: dict[str, list[dict[str, Any]]] = {key: [] for key in targets_by_key}
@@ -114,6 +117,9 @@ def main() -> None:
             "company_name": cell(row, cols["company_name"]),
             "channel_type": cell(row, cols["channel_type"]),
             "posted_at": cell(row, cols["posted_at"]),
+            "asset_name": cell(row, cols["asset_name"]),
+            "project_name": cell(row, cols["project_name"]),
+            "product_name": cell(row, cols["product_name"]),
             "sheet_cost": sheet_cost,
             "sheet_cost_raw": cell(row, cols["cost"]),
         }
