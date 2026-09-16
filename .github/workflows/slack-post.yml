@@ -29,6 +29,11 @@ on:
         required: false
         type: boolean
         default: false
+      update_ts:
+        description: "설정 시 새 게시 대신 이 ts 메시지를 chat.update로 수정"
+        required: false
+        type: string
+        default: ""
 
 jobs:
   post:
@@ -42,6 +47,7 @@ jobs:
           IMAGE_URL: ${{ github.event.inputs.image_url }}
           IMAGE_ALT: ${{ github.event.inputs.image_alt }}
           UNFURL: ${{ github.event.inputs.unfurl_links }}
+          UPDATE_TS: ${{ github.event.inputs.update_ts }}
         run: |
           python3 - <<'PY'
           import os, json, sys, urllib.request
@@ -51,6 +57,7 @@ jobs:
           image_url = (os.environ.get("IMAGE_URL") or "").strip()
           image_alt = (os.environ.get("IMAGE_ALT") or "image").strip() or "image"
           unfurl = (os.environ.get("UNFURL") or "false").lower() == "true"
+          update_ts = (os.environ.get("UPDATE_TS") or "").strip()
           if not token:
               print("SLACK_BOT_TOKEN 없음"); sys.exit(1)
 
@@ -58,21 +65,26 @@ jobs:
           if image_url:
               blocks.append({"type": "image", "image_url": image_url, "alt_text": image_alt})
 
-          payload = {
-              "channel": channel,
-              "text": text,            # 알림/폴백용
-              "blocks": blocks,
-              "unfurl_links": unfurl,
-              "unfurl_media": unfurl,
-          }
+          if update_ts:
+              method = "chat.update"
+              payload = {"channel": channel, "ts": update_ts, "text": text, "blocks": blocks}
+          else:
+              method = "chat.postMessage"
+              payload = {
+                  "channel": channel,
+                  "text": text,            # 알림/폴백용
+                  "blocks": blocks,
+                  "unfurl_links": unfurl,
+                  "unfurl_media": unfurl,
+              }
           req = urllib.request.Request(
-              "https://slack.com/api/chat.postMessage",
+              "https://slack.com/api/" + method,
               data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
               headers={"Authorization": "Bearer " + token,
                        "Content-Type": "application/json; charset=utf-8"},
           )
           r = json.load(urllib.request.urlopen(req, timeout=20))
-          print("Slack ok=", r.get("ok"), "error=", r.get("error", ""), "ts=", r.get("ts", ""))
+          print("Slack", method, "ok=", r.get("ok"), "error=", r.get("error", ""), "ts=", r.get("ts", ""))
           if not r.get("ok"):
               sys.exit(1)
           PY
