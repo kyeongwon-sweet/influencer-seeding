@@ -17,6 +17,7 @@ export async function startTrackerRun(userId: string, kind: TrackerRun["kind"], 
   const input = kind === "trends" ? {
     startUrls: [{ url: trendsUrl(config) }], isMultiple: true, maxItems: config.groups.length,
     maxConcurrency: 1, maxRequestRetries: 1, pageLoadTimeoutSecs: 120, skipDebugScreen: true,
+    ...(config.category !== "0" ? { category: config.category } : {}),
   } : kind === "youtube" ? {
     searchQueries: [g.terms[0]], maxResults: 30, maxResultsShorts: 10, sortingOrder: "views",
   } : { hashtags: g.tags.length ? g.tags : [g.terms[0].replace(/\s/g, "")], resultsType: "reels", resultsLimit: 15, keywordSearch: false };

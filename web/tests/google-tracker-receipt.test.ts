@@ -5,7 +5,7 @@ test("run receipt rejects tampered, foreign, expired and unsigned actor IDs", ()
   const prior = process.env.WEBHOOK_SECRET;
   process.env.WEBHOOK_SECRET = "unit-test-only-key";
   try {
-    const run: TrackerRun = { userId: "user-a", runId: "actor-a", kind: "trends", config: { groups: [{ id: "g0", label: "brand", terms: ["brand"], tags: [] }], start: "2026-01-01", end: "2026-02-01", geo: "KR", multiplier: 2.5, minIndex: 5, gapDays: 7, windowDays: 7 }, group: 0, date: "2026-01-01", expires: Date.now() + 60000 };
+    const run: TrackerRun = { userId: "user-a", runId: "actor-a", kind: "trends", config: { groups: [{ id: "g0", label: "brand", terms: ["brand"], tags: [] }], start: "2026-01-01", end: "2026-02-01", geo: "KR", category: "0", multiplier: 2.5, minIndex: 5, gapDays: 7, windowDays: 7 }, group: 0, date: "2026-01-01", expires: Date.now() + 60000 };
     const token = signRun(run);
     assert.equal(verifyRun(token, "user-a").runId, "actor-a");
     assert.throws(() => verifyRun(token, "user-b"), /다른 사용자/);

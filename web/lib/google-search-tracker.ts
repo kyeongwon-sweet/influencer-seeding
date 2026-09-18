@@ -1,8 +1,13 @@
 /** Google Trends observations are relative interest, never absolute search counts. */
 export type TrackerGroup = { id: string; label: string; terms: string[]; tags: string[] };
-export type TrackerConfig = { groups: TrackerGroup[]; start: string; end: string; geo: string; multiplier: number; minIndex: number; gapDays: number; windowDays: number };
+export const GOOGLE_TREND_CATEGORIES = [
+  ["0", "전체 카테고리"], ["3", "예술·엔터테인먼트"], ["47", "자동차"], ["44", "뷰티·피트니스"], ["22", "도서·문학"], ["12", "비즈니스·산업"], ["5", "컴퓨터·전자제품"], ["7", "금융"], ["71", "음식·음료"], ["8", "게임"], ["45", "건강"], ["65", "취미·레저"], ["11", "주택·정원"], ["13", "인터넷·통신"], ["958", "직업·교육"], ["19", "법률·정부"], ["16", "뉴스"], ["299", "온라인 커뮤니티"], ["14", "사람·사회"], ["66", "반려동물"], ["29", "부동산"], ["533", "참고자료"], ["174", "과학"], ["18", "쇼핑"], ["20", "스포츠"], ["67", "여행"],
+] as const;
+export const categoryLabel = (id: string) => GOOGLE_TREND_CATEGORIES.find(([value]) => value === id)?.[1] ?? "전체 카테고리";
+export type TrackerConfig = { groups: TrackerGroup[]; start: string; end: string; geo: string; category: string; multiplier: number; minIndex: number; gapDays: number; windowDays: number };
 export type TrendPoint = { date: string; values: (number | null)[] };
-export type TrackerResult = { points: TrendPoint[]; collectedAt: string; granularity: string; sourceUrl: string; warnings: string[] };
+export type TrackerRegion = { geoCode: string; geoName: string; values: (number | null)[] };
+export type TrackerResult = { points: TrendPoint[]; regions: TrackerRegion[]; regionLevel: string; collectedAt: string; granularity: string; sourceUrl: string; warnings: string[] };
 export type TrackerEvent = { id: string; group: number; date: string; start: string; end: string; peak: number | null; baseline: number | null; change: number | null; kind: string; manual?: boolean };
 export type TrackerContent = { title: string; url: string; author: string; date: string | null; views: number | null; likes: number | null; description: string };
 const DAY = 86400000;
@@ -34,22 +39,28 @@ export function validateConfig(input: unknown): TrackerConfig {
   const groups = parseGroups(c.groups.map(g => `${g.label}=${g.terms.join(",")}|${g.tags.join(",")}`).join("\n"));
   if (!validDate(c.start) || !validDate(c.end) || c.start > c.end || c.end > new Date().toISOString().slice(0, 10) || Date.parse(c.end) - Date.parse(c.start) > 5 * 366 * DAY || c.start < "2004-02-01") throw new Error("분석 기간은 2004년 2월 이후, 오늘 이전의 최대 5년으로 설정하세요.");
   if (!["KR", "US", "JP", ""].includes(c.geo)) throw new Error("지원하지 않는 국가입니다.");
+  const category = typeof c.category === "string" ? c.category : "0";
+  if (!GOOGLE_TREND_CATEGORIES.some(([id]) => id === category)) throw new Error("지원하지 않는 검색 카테고리입니다.");
   for (const [key, min, max] of [["multiplier", 1.5, 5], ["minIndex", 1, 100], ["gapDays", 1, 21], ["windowDays", 1, 21]] as const) if (typeof c[key] !== "number" || !Number.isFinite(c[key]) || c[key] < min || c[key] > max) throw new Error("고급 분석 설정 범위를 확인하세요.");
-  const config = { groups, start: c.start, end: c.end, geo: c.geo, multiplier: c.multiplier, minIndex: c.minIndex, gapDays: c.gapDays, windowDays: c.windowDays };
+  const config = { groups, start: c.start, end: c.end, geo: c.geo, category, multiplier: c.multiplier, minIndex: c.minIndex, gapDays: c.gapDays, windowDays: c.windowDays };
   if (new TextEncoder().encode(JSON.stringify(config)).length > 15000) throw new Error("분석 설정이 너무 큽니다. 검색어를 줄여주세요.");
   return config;
 }
 export function trendsUrl(c: TrackerConfig) {
   const params = new URLSearchParams({ date: `${dateOffset(c.start, -28)} ${c.end}`, geo: c.geo, q: c.groups.map(g => g.terms.join(" + ")).join(",") });
+  if (c.category !== "0") params.set("cat", c.category);
   return `https://trends.google.com/trends/explore?${params}`;
 }
 const record = (v: unknown): Record<string, unknown> => v && typeof v === "object" ? v as Record<string, unknown> : {};
 const indexValue = (v: unknown): number | null => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 100 ? v : null;
+const KR_REGIONS: Record<string, string> = { "KR-11": "서울특별시", "KR-26": "부산광역시", "KR-27": "대구광역시", "KR-28": "인천광역시", "KR-29": "광주광역시", "KR-30": "대전광역시", "KR-31": "울산광역시", "KR-41": "경기도", "KR-42": "강원특별자치도", "KR-43": "충청북도", "KR-44": "충청남도", "KR-45": "전북특별자치도", "KR-46": "전라남도", "KR-47": "경상북도", "KR-48": "경상남도", "KR-49": "제주특별자치도", "KR-50": "세종특별자치시" };
 export function parseTrendDataset(items: unknown[], c: TrackerConfig): TrackerResult {
   const dates = new Map<string, (number | null)[]>();
+  const regionRows = new Map<string, TrackerRegion>();
   const found = new Set<number>();
   const covered = new Set<number>();
   let partial = 0;
+  let regionLevel = "";
   for (const raw of items) {
     const item = record(raw);
     const timeline = item.interestOverTime_timelineData;
@@ -74,13 +85,35 @@ export function parseTrendDataset(items: unknown[], c: TrackerConfig): TrackerRe
       }
       dates.set(date, row);
     }
+    const source = !c.geo && Array.isArray(item.interestBy) && item.interestBy.length ? item.interestBy
+      : Array.isArray(item.interestBySubregion) && item.interestBySubregion.length ? item.interestBySubregion
+      : Array.isArray(item.interestByCity) && item.interestByCity.length ? item.interestByCity
+      : Array.isArray(item.interestBy) ? item.interestBy : [];
+    if (Array.isArray(source) && source.length) {
+      const level = source === item.interestBy ? "국가" : source === item.interestBySubregion ? (c.geo === "KR" ? "시·도" : "하위 지역") : "도시";
+      if (!regionLevel || regionLevel === level) regionLevel = level;
+      for (const rawRegion of source) {
+        const region = record(rawRegion);
+        const geoCode = textValue(region.geoCode, 80);
+        const rawName = textValue(region.geoName, 120);
+        if (!geoCode && !rawName) continue;
+        const key = geoCode || rawName;
+        const row = regionRows.get(key) ?? { geoCode, geoName: c.geo === "KR" && KR_REGIONS[geoCode] ? KR_REGIONS[geoCode] : rawName || geoCode, values: c.groups.map(() => null) };
+        const values = Array.isArray(region.value) ? region.value : [];
+        const hasData = Array.isArray(region.hasData) ? region.hasData : [];
+        if (values.length === c.groups.length && (values.length > 1 || single === 0)) values.forEach((value, i) => { row.values[i] = hasData[i] === false ? null : indexValue(value); });
+        else if (single >= 0 && values.length === 1) row.values[single] = hasData[0] === false ? null : indexValue(values[0]);
+        regionRows.set(key, row);
+      }
+    }
   }
   const points = [...dates].sort(([a], [b]) => a.localeCompare(b)).map(([date, values]) => ({ date, values }));
   if (!points.some(p => p.date >= c.start && p.values.some(v => v !== null))) throw new Error("Google Trends가 유효한 데이터를 반환하지 않았습니다. 검색량이 적거나 수집이 제한됐을 수 있습니다. 검색어를 넓히거나 Google Trends에서 직접 확인하세요.");
   if (covered.size !== c.groups.length) throw new Error("일부 상품의 시계열이 누락됐습니다. 검색어 묶음을 줄여 다시 수집하세요.");
   const intervals = points.slice(1).map((p, i) => (Date.parse(p.date) - Date.parse(points[i].date)) / DAY).sort((a, b) => a - b);
   const median = intervals[Math.floor(intervals.length / 2)] ?? 1;
-  return { points, collectedAt: new Date().toISOString(), granularity: median >= 27 ? "월별" : median >= 6 ? "주별" : "일별", sourceUrl: trendsUrl(c), warnings: ["0은 검색이 없다는 뜻이 아니라 낮은 관심도 또는 부족한 표본일 수 있습니다.", ...(median >= 27 ? ["월별 데이터는 직전 28일 표본이 부족해 급등을 판정하지 못할 수 있습니다. 더 짧은 기간으로 조회하세요."] : []), ...c.groups.filter((_, i) => !found.has(i)).map(g => `${g.label}: 유효 표본이 없습니다. 검색어를 넓혀 확인하세요.`), ...(partial ? [`미완료 구간 ${partial}개를 분석에서 제외했습니다.`] : [])] };
+  const regions = [...regionRows.values()].filter(row => row.values.some(value => value !== null)).slice(0, 500);
+  return { points, regions, regionLevel: regions.length ? regionLevel : "", collectedAt: new Date().toISOString(), granularity: median >= 27 ? "월별" : median >= 6 ? "주별" : "일별", sourceUrl: trendsUrl(c), warnings: ["0은 검색이 없다는 뜻이 아니라 낮은 관심도 또는 부족한 표본일 수 있습니다.", ...(median >= 27 ? ["월별 데이터는 직전 28일 표본이 부족해 급등을 판정하지 못할 수 있습니다. 더 짧은 기간으로 조회하세요."] : []), ...c.groups.filter((_, i) => !found.has(i)).map(g => `${g.label}: 유효 표본이 없습니다. 검색어를 넓혀 확인하세요.`), ...(partial ? [`미완료 구간 ${partial}개를 분석에서 제외했습니다.`] : []), ...(!regions.length ? ["지역별 관심도 데이터가 반환되지 않았습니다. 검색량이 적거나 선택 지역에서 제공되지 않을 수 있습니다."] : [])] };
 }
 export function validateResult(input: unknown, c: TrackerConfig): TrackerResult {
   const r = record(input);
@@ -91,7 +124,15 @@ export function validateResult(input: unknown, c: TrackerConfig): TrackerResult 
     return { date: p.date, values: p.values as (number | null)[] };
   });
   if (points.some((p, i) => i > 0 && p.date <= points[i - 1].date)) throw new Error("시계열 날짜가 중복되거나 순서가 잘못됐습니다.");
-  return { points, collectedAt: textValue(r.collectedAt, 60), granularity: textValue(r.granularity, 20), sourceUrl: trendsUrl(c), warnings: Array.isArray(r.warnings) ? r.warnings.map(w => textValue(w, 500)).slice(0, 10) : [] };
+  const regions = Array.isArray(r.regions) ? r.regions.slice(0, 500).map(raw => {
+    const region = record(raw);
+    if (!Array.isArray(region.values) || region.values.length !== c.groups.length || region.values.some(value => value !== null && indexValue(value) === null)) throw new Error("유효하지 않은 지역별 관심도입니다.");
+    const geoCode = textValue(region.geoCode, 80), geoName = textValue(region.geoName, 120);
+    if (!geoCode && !geoName) throw new Error("유효하지 않은 지역 이름입니다.");
+    return { geoCode, geoName, values: region.values as (number | null)[] };
+  }) : [];
+  if (new Set(regions.map(region => region.geoCode || region.geoName)).size !== regions.length) throw new Error("지역별 관심도에 중복 지역이 있습니다.");
+  return { points, regions, regionLevel: regions.length ? textValue(r.regionLevel, 30) : "", collectedAt: textValue(r.collectedAt, 60), granularity: textValue(r.granularity, 20), sourceUrl: trendsUrl(c), warnings: Array.isArray(r.warnings) ? r.warnings.map(w => textValue(w, 500)).slice(0, 12) : [] };
 }
 export function analyzeTrends(result: TrackerResult, c: TrackerConfig): TrackerEvent[] {
   const events: TrackerEvent[] = [];

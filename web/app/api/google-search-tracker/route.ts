@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     const body = JSON.parse(raw);
     if (body.action === "poll") {
       const run = verifyRun(body.receipt, userId);
-      return NextResponse.json(await pollTrackerRun(run), { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json(await pollTrackerRun({ ...run, config: validateConfig(run.config) }), { headers: { "Cache-Control": "no-store" } });
     }
     if (body.action !== "start" || !["trends", "youtube", "instagram"].includes(body.kind)) throw new Error("지원하지 않는 분석 요청입니다.");
     const config = validateConfig(body.config);
