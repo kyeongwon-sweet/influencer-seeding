@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { analyzeTrends, dateOffset, parseContent, parseGroups, parseTrendDataset, trendSummary, trendsUrl, validateConfig, validateResult, type TrackerConfig, type TrackerResult } from "../lib/google-search-tracker.ts";
+import { buildAgeDistribution, sumNaverRatios, validateAgeDistribution } from "../lib/google-tracker-age.ts";
 const config: TrackerConfig = { groups: parseGroups("브랜드=라라스윗\n멜론=멜론쫀득바,라라스윗멜론쫀득바|멜론쫀득바"), start: "2026-06-29", end: "2026-09-14", geo: "KR", multiplier: 2.5, minIndex: 5, gapDays: 7, windowDays: 7 };
 const point = (date: string, value: unknown[], hasData?: boolean[], isPartial?: boolean) => ({ time: String(Date.parse(date) / 1000), value, hasData, isPartial });
 test("one comparison request preserves OR groups and a shared normalization window", () => {
@@ -44,4 +45,26 @@ test("content evidence uses real publication dates, rejects wrong platforms, pre
   assert.equal(rows[0].description, "video description");
   const ig = parseContent([{ url: "https://www.instagram.com/reel/abc/", timestamp: "2026-01-01", likesCount: 12 }], "instagram", "2026-06-22", "2026-07-06");
   assert.equal(ig.length, 1); assert.equal(ig[0].views, null);
+});
+
+test("Naver age responses keep an unclassified remainder and never invent Google demographics", () => {
+  const response = (values: number[]) => ({ results: [{ data: values.map((ratio, i) => ({ period: `2026-09-${String(i + 1).padStart(2, "0")}`, ratio })) }] });
+  assert.equal(sumNaverRatios(response([1.5, 2.5])), 4);
+  assert.throws(() => sumNaverRatios({ results: [{ data: [{ period: "bad", ratio: -1 }] }] }));
+  const ageTotals = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+  const distribution = buildAgeDistribution({ groupId: "g0", label: "쫀득바", start: "2026-01-01", end: "2026-09-18", granularity: "일별", total: 76, ageTotals, collectedAt: "2026-09-18T00:00:00.000Z" });
+  assert.equal(distribution.source, "Naver DataLab");
+  assert.equal(distribution.rows.length, 12);
+  assert.equal(distribution.rows.at(-1)?.label, "나이 미상");
+  assert.equal(distribution.rows.at(-1)?.relativeTotal, 10);
+  assert.equal(distribution.rows.reduce((sum, row) => sum + row.share, 0), 1);
+  assert.match(distribution.note, /Google 검색 사용자/);
+  assert.deepEqual(validateAgeDistribution(distribution), distribution);
+});
+
+test("age distribution falls back to known-age shares when filtered totals exceed the all-age total", () => {
+  const distribution = buildAgeDistribution({ groupId: "g0", label: "쫀득바", start: "2026-01-01", end: "2026-09-18", granularity: "월별", total: 10, ageTotals: Array(11).fill(2), collectedAt: "2026-09-18T00:00:00.000Z" });
+  assert.equal(distribution.rows.length, 11);
+  assert.match(distribution.warning, /나이 미상/);
+  assert.equal(distribution.rows.reduce((sum, row) => sum + row.share, 0), 1);
 });

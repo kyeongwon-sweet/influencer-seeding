@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## 🚧 2026-09-18 [Codex 구현·배포 검증 중] 구글 검색 트래킹 연령 분포
+- 업데이트된 Streamlit 실물에서 상품 1개 선택 → 네이버 DataLab 연령 필터 11회 → `~12세`부터 `60세 이상`, 조건이 맞으면 `나이 미상`까지 도넛·표로 표시하고 같은 상품·기간은 재조회하지 않는 구조를 확인했다.
+- Google Trends 자체에는 연령 차원이 없으므로 `/google-search-tracker`에는 출처를 명확히 분리한 `네이버 DataLab 참고` 패널로 구현했다. 선택 상품·검색어·기간을 연동하고 전체 1회+연령 11회를 버튼 요청 때만 조회한다. Google 상대지수와 합산하지 않는다.
+- 브라우저 자동보존·이름 저장, CSV·PNG, XLSX `연령 분포` 시트, Cowork 프롬프트에 연결했다. 전체값과 연령 11개 합이 맞지 않으면 `나이 미상`을 만들지 않고 확인된 연령대 안에서만 정규화하며 경고한다.
+- 검증 진행: 새 순수함수 회귀 2개 포함 전체 web 테스트 504/504, 변경 파일 ESLint, 캐시 없는 `tsc --noEmit --incremental false`, Next.js production build 통과. 실제 프로덕션 Naver DataLab 조회와 화면·내보내기 검증 후 완료로 갱신 예정.
+
 ## 2026-09-15 [Codex C16 실측·보강] H 범위 미갱신 — 라이브/저장소 괴리가 아닌 미검증 작성 경로
 - **진단:** 14:20 KST부터 authenticated clasp fresh-pull 36파일과 실행 로그를 확인했다. 라이브 메인 파일의 `refreshCumulativeViews()`는 저장소와 바이트 동일하며 날짜 문자열·serial 헤더 인식도 같다. 별도 라이브 파일의 H 작성 경로도 탐색했다. 라이브가 낡았다는 가설이나 오늘 해당 단계가 스킵됐다는 가설은 이번 실측과 맞지 않는다.
 - **오늘 예약 실행:** 마지막 `dailyAutoContinue` 08:45:50 시작, 1,010.342초 후 완료. `exportStats` 08:45:52.935~08:53:40.030(467,095ms), `refreshCumulativeViews` 08:55:22.864~08:56:21.312(58,448ms), 다음 `repairMetricFormulaRanges`도 OK였다. 그러나 08:53:39와 08:58:30의 범위 보강 로그가 모두 `cumulative:357 / increment:0 / P:EF`였다. 성공 기록만으로 실제 적용을 확인하지 못한 경로다.

@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import { validateConfig, validateResult, analyzeTrends, trendSummary, validDate } from "@/lib/google-search-tracker";
+import { validateAgeDistribution } from "@/lib/google-tracker-age";
 export async function POST(request: Request) {
   if (!(await auth()).userId) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   try {
@@ -23,6 +24,8 @@ export async function POST(request: Request) {
     const content = book.addWorksheet("조회 콘텐츠");
     content.addRow(["이벤트", "제목", "URL", "작성자", "게시일", "조회수", "좋아요", "설명"]);
     if (body.contents && typeof body.contents === "object") Object.entries(body.contents).slice(0, 300).forEach(([key, rows]) => { if (Array.isArray(rows)) rows.slice(0, 20).forEach(p => content.addRow([key.slice(0, 150), String(p.title || "").slice(0, 500), String(p.url || "").slice(0, 1000), String(p.author || "").slice(0, 200), p.date || null, typeof p.views === "number" ? p.views : null, typeof p.likes === "number" ? p.likes : null, String(p.description || "").slice(0, 1500)])); });
+    const ageRows = body.ages && typeof body.ages === "object" ? Object.values(body.ages).slice(0, 25).flatMap(value => { try { const age = validateAgeDistribution(value); return age.rows.map(row => [age.source, age.label, age.start, age.end, age.granularity, row.label, row.relativeTotal, row.share, age.note, age.warning]); } catch { return []; } }) : [];
+    if (ageRows.length) { const ages = book.addWorksheet("연령 분포"); ages.addRow(["출처", "상품", "시작", "종료", "간격", "연령대", "상대 누적값", "구성비", "해석 주의", "경고"]); ages.addRows(ageRows); }
     book.eachSheet(sheet => { sheet.views = [{ state: "frozen", ySplit: 1 }]; sheet.getRow(1).font = { bold: true }; sheet.columns.forEach((column, i) => { column.width = i === 0 ? 24 : 30; }); });
     const buffer = await book.xlsx.writeBuffer();
     return new Response(new Uint8Array(buffer), { headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": `attachment; filename="google-search-tracker-${c.start}-${c.end}.xlsx"` } });

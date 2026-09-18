@@ -2,10 +2,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { analyzeTrends, dateOffset, parseGroups, trendSummary, validateConfig, validateResult, validDate, type TrackerConfig, type TrackerContent, type TrackerEvent, type TrackerResult } from "@/lib/google-search-tracker";
+import { validateAgeDistribution, type AgeDistribution } from "@/lib/google-tracker-age";
 
 type Kind = "trends" | "youtube" | "instagram";
 type Pending = { receipt: string; kind: Kind; key: string; config: TrackerConfig; started: number };
-type Snapshot = { name: string; config: TrackerConfig; result: TrackerResult; manual: TrackerEvent[]; contents: Record<string, TrackerContent[]> };
+type Snapshot = { name: string; config: TrackerConfig; result: TrackerResult; manual: TrackerEvent[]; contents: Record<string, TrackerContent[]>; ages?: Record<string, AgeDistribution> };
 const COLORS = ["#2563eb", "#e87722", "#0d9488", "#ad46b8", "#e04060"];
 const DEFAULT_GROUPS = "라라스윗=라라스윗,라라스윗아이스크림|라라스윗\n쫀득바=쫀득바,라라스윗쫀득바|쫀득바\n멜론 쫀득바=멜론쫀득바,라라스윗멜론쫀득바|멜론쫀득바";
 const field = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100";
@@ -13,7 +14,14 @@ const button = "rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm fo
 const primary = "rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-wait disabled:opacity-50";
 const fmt = (n: number | null | undefined, digits = 1) => typeof n === "number" ? n.toLocaleString("ko-KR", { maximumFractionDigits: digits }) : "—";
 const contentKey = (e: TrackerEvent, kind: string) => kind === "instagram" ? `${e.group}:instagram` : `${e.id}:${kind}`;
+const ageKey = (c: TrackerConfig, group: number) => JSON.stringify([c.start, c.end, c.groups[group]?.id, c.groups[group]?.terms]);
 const groupText = (c: TrackerConfig) => c.groups.map(g => `${g.label}=${g.terms.join(",")}${g.tags.length ? "|" + g.tags.join(",") : ""}`).join("\n");
+function ageMap(raw: unknown) {
+  if (!raw || typeof raw !== "object") return {};
+  const safe: Record<string, AgeDistribution> = {};
+  Object.entries(raw).slice(0, 25).forEach(([key, value]) => { try { safe[key.slice(0, 1000)] = validateAgeDistribution(value); } catch { /* Skip stale or malformed browser data. */ } });
+  return safe;
+}
 async function api(body: unknown, path = "/api/google-search-tracker") {
   const response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   if (!response.headers.get("content-type")?.includes("application/json")) throw new Error("로그인이 만료됐거나 서버에 연결할 수 없습니다. 새로고침 후 다시 시도하세요.");
@@ -22,6 +30,32 @@ async function api(body: unknown, path = "/api/google-search-tracker") {
   return data;
 }
 function download(data: Blob, name: string) { const url = URL.createObjectURL(data); const a = document.createElement("a"); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
+
+const AGE_COLORS = ["#1d4ed8", "#2563eb", "#0ea5e9", "#06b6d4", "#14b8a6", "#10b981", "#84cc16", "#eab308", "#f59e0b", "#f97316", "#e11d48", "#94a3b8"];
+function AgeDistributionPanel({ config, selected, setSelected, data, load, busy }: { config: TrackerConfig; selected: number; setSelected: (value: number) => void; data?: AgeDistribution; load: () => void; busy: boolean }) {
+  const ref = useRef<SVGSVGElement>(null);
+  const radius = 76, circumference = 2 * Math.PI * radius;
+  let offset = 0;
+  async function png() {
+    if (!ref.current || !data) return;
+    const blob = new Blob([new XMLSerializer().serializeToString(ref.current)], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(blob), img = new Image();
+    img.onload = () => { const canvas = document.createElement("canvas"); canvas.width = 1000; canvas.height = 720; const ctx = canvas.getContext("2d"); if (ctx) { ctx.fillStyle = "white"; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.drawImage(img, 0, 0, canvas.width, canvas.height); canvas.toBlob(file => { if (file) download(file, "naver-age-distribution.png"); }); } URL.revokeObjectURL(url); };
+    img.onerror = () => URL.revokeObjectURL(url); img.src = url;
+  }
+  function csv() {
+    if (!data) return;
+    const rows = [["출처", "상품", "기간", "연령대", "상대 누적값", "구성비"], ...data.rows.map(row => [data.source, data.label, `${data.start}~${data.end}`, row.label, row.relativeTotal, row.share])];
+    const cell = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+    download(new Blob(["\uFEFF" + rows.map(row => row.map(cell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" }), "naver-age-distribution.csv");
+  }
+  return <div className="rounded-xl border border-slate-200 bg-white p-5">
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-semibold">상품별 연령 분포 <span className="ml-1 text-xs font-normal text-slate-400">네이버 DataLab 참고</span></h2><p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-500">Google Trends에는 연령 데이터가 없습니다. 선택 상품과 기간을 네이버 DataLab 연령 필터로 별도 조회하며 Google 관심도 지수와 합산하지 않습니다.</p></div>{data && <div className="flex gap-2"><button className={button} onClick={csv}>CSV</button><button className={button} onClick={() => void png()}>차트 PNG</button></div>}</div>
+    <div className="mt-4 flex flex-wrap items-center gap-2"><select aria-label="연령 분포를 볼 상품" className={`${field} w-auto`} value={selected} onChange={event => setSelected(Number(event.target.value))}>{config.groups.map((group, index) => <option value={index} key={group.id}>{group.label}</option>)}</select><button className={primary} disabled={busy || !!data} onClick={load}>{busy ? "연령 분포 조회 중…" : data ? "이 조건은 저장됨" : "연령 분포 불러오기"}</button></div>
+    <p className="mt-2 text-xs text-slate-400">처음 조회할 때 전체 1회와 연령대 11회를 호출합니다. 같은 상품·검색어·기간의 결과는 현재 브라우저에 저장해 다시 호출하지 않습니다.</p>
+    {data && <><div className="mt-5 grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]"><svg ref={ref} viewBox="0 0 500 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label={`${data.label} 네이버 DataLab 연령 분포`} className="mx-auto w-full max-w-[500px]"><rect width="500" height="360" fill="white" /><text x="250" y="28" textAnchor="middle" fontSize="18" fontWeight="bold" fill="#1e293b">{data.label} 연령 분포</text><text x="250" y="48" textAnchor="middle" fontSize="11" fill="#64748b">네이버 DataLab · {data.start} ~ {data.end} · {data.granularity}</text>{data.rows.map((row, index) => { const start = offset; offset += row.share; return <circle key={row.code} cx="180" cy="185" r={radius} fill="none" stroke={AGE_COLORS[index]} strokeWidth="44" strokeDasharray={`${row.share * circumference} ${circumference}`} strokeDashoffset={-start * circumference} transform="rotate(-90 180 185)" />; })}<circle cx="180" cy="185" r="45" fill="white" /><text x="180" y="181" textAnchor="middle" fontSize="13" fill="#64748b">확인된 분포</text><text x="180" y="204" textAnchor="middle" fontSize="22" fontWeight="bold" fill="#1e293b">100%</text>{data.rows.map((row, index) => { const x = index < 6 ? 300 : 405, y = 95 + (index % 6) * 38; return <g key={`legend:${row.code}`}><rect x={x} y={y - 11} width="10" height="10" rx="2" fill={AGE_COLORS[index]} /><text x={x + 16} y={y - 2} fontSize="11" fill="#334155">{row.label}</text><text x={x + 16} y={y + 13} fontSize="11" fill="#64748b">{(row.share * 100).toFixed(1)}%</text></g>; })}<text x="250" y="345" textAnchor="middle" fontSize="10" fill="#64748b">Google 검색 사용자 분포가 아닌 네이버 DataLab 보조 지표</text></svg><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b text-xs text-slate-500"><th className="px-3 py-2">연령대</th><th className="px-3 py-2 text-right">상대 누적값</th><th className="px-3 py-2 text-right">구성비</th></tr></thead><tbody>{data.rows.map((row, index) => <tr className="border-b border-slate-100" key={row.code}><td className="px-3 py-2"><span className="mr-2 inline-block h-2.5 w-2.5 rounded-sm" style={{ background: AGE_COLORS[index] }} />{row.label}</td><td className="px-3 py-2 text-right tabular-nums">{fmt(row.relativeTotal, 2)}</td><td className="px-3 py-2 text-right font-medium tabular-nums">{(row.share * 100).toFixed(1)}%</td></tr>)}</tbody></table></div></div><p className="mt-3 text-xs leading-relaxed text-slate-500">{data.note}</p>{data.warning && <p className="mt-2 rounded-lg bg-amber-50 p-3 text-xs text-amber-800">{data.warning}</p>}</>}
+  </div>;
+}
 
 function TrendChart({ result, config, events, visible }: { result: TrackerResult; config: TrackerConfig; events: TrackerEvent[]; visible: Set<number> }) {
   const ref = useRef<SVGSVGElement>(null);
@@ -88,6 +122,7 @@ export default function GoogleSearchTracker() {
   const [config, setConfig] = useState<TrackerConfig | null>(null), [result, setResult] = useState<TrackerResult | null>(null);
   const [manual, setManual] = useState<TrackerEvent[]>([]), [manualDate, setManualDate] = useState(""), [manualGroup, setManualGroup] = useState(0);
   const [contents, setContents] = useState<Record<string, TrackerContent[]>>({}), [pending, setPending] = useState<Pending | null>(null), [paused, setPaused] = useState(false);
+  const [ages, setAges] = useState<Record<string, AgeDistribution>>({}), [ageGroup, setAgeGroup] = useState(0), [ageBusy, setAgeBusy] = useState(false);
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
   const [saved, setSaved] = useState<Snapshot[]>([]), [name, setName] = useState(""), [openName, setOpenName] = useState("");
   const [visible, setVisible] = useState(new Set([0, 1, 2, 3, 4])), [excluded, setExcluded] = useState(new Set<string>()), [prompt, setPrompt] = useState("");
@@ -102,10 +137,10 @@ export default function GoogleSearchTracker() {
       const data = JSON.parse(localStorage.getItem(storage) || "{}");
       setSaved(Array.isArray(data.saved) ? data.saved : []);
       setPending(null);
-      setConfig(null); setResult(null); setManual([]); setContents({}); setExcluded(new Set()); setPrompt("");
+      setConfig(null); setResult(null); setManual([]); setContents({}); setAges({}); setExcluded(new Set()); setPrompt("");
       if (data.active) {
         const c = validateConfig(data.active.config), r = validateResult(data.active.result, c);
-        setConfig(c); setResult(r); applyInputs(c); setManual(data.active.manual || []); setManualGroup(0); setContents(data.active.contents || {});
+        setConfig(c); setResult(r); applyInputs(c); setManual(data.active.manual || []); setManualGroup(0); setContents(data.active.contents || {}); setAges(ageMap(data.active.ages)); setAgeGroup(0);
       }
       if (data.pending && data.pending.started > Date.now() - 24 * 3600000) setPending(data.pending);
     } catch { setNotice("저장된 분석을 읽지 못했습니다. 새 분석을 시작할 수 있습니다."); }
@@ -113,8 +148,8 @@ export default function GoogleSearchTracker() {
   }, [storage]);
   useEffect(() => {
     if (!storage || loadedStorage !== storage) return;
-    try { localStorage.setItem(storage, JSON.stringify({ saved, pending, active: config && result ? { config, result, manual, contents } : null })); } catch { setNotice("브라우저 저장 공간이 부족합니다. 엑셀로 내보낸 후 저장된 분석을 정리하세요."); }
-  }, [storage, loadedStorage, saved, pending, config, result, manual, contents]);
+    try { localStorage.setItem(storage, JSON.stringify({ saved, pending, active: config && result ? { config, result, manual, contents, ages } : null })); } catch { setNotice("브라우저 저장 공간이 부족합니다. 엑셀로 내보낸 후 저장된 분석을 정리하세요."); }
+  }, [storage, loadedStorage, saved, pending, config, result, manual, contents, ages]);
   useEffect(() => {
     if (!pending || paused) return;
     let stopped = false, timer: ReturnType<typeof setTimeout>, failures = 0;
@@ -130,7 +165,7 @@ export default function GoogleSearchTracker() {
           timer = setTimeout(poll, 8000); return;
         }
         if (pending.kind === "trends") {
-          setConfig(pending.config); setResult(data.result); applyInputs(pending.config); setManual([]); setManualGroup(0); setContents({}); setExcluded(new Set()); setPrompt(""); setVisible(new Set([0, 1, 2, 3, 4]));
+          setConfig(pending.config); setResult(data.result); applyInputs(pending.config); setManual([]); setManualGroup(0); setContents({}); setAges({}); setAgeGroup(0); setExcluded(new Set()); setPrompt(""); setVisible(new Set([0, 1, 2, 3, 4]));
         } else setContents(current => ({ ...current, [pending.key]: data.content }));
         setPending(null); setBusy(false); setNotice("수집이 완료됐습니다.");
       } catch (e) {
@@ -156,6 +191,18 @@ export default function GoogleSearchTracker() {
     try { const data = await api({ config, group: e.group, date: e.date }, "/api/google-search-tracker/news"); setContents(current => ({ ...current, [contentKey(e, kind)]: data.content })); }
     catch (error) { setError(error instanceof Error ? error.message : "조회 실패"); } finally { setBusy(false); }
   }
+  async function collectAge() {
+    if (!config || !config.groups[ageGroup]) return;
+    const key = ageKey(config, ageGroup);
+    if (ages[key]) { setNotice("같은 상품·검색어·기간의 저장된 연령 분포를 사용합니다."); return; }
+    setAgeBusy(true); setError(""); setNotice("");
+    try {
+      const data = await api({ config, group: ageGroup }, "/api/google-search-tracker/age");
+      const distribution = validateAgeDistribution(data.distribution);
+      if (distribution.groupId !== config.groups[ageGroup].id || distribution.start < config.start || distribution.end !== config.end) throw new Error("연령 분포 조회 조건이 현재 분석과 다릅니다.");
+      setAges(current => ({ ...current, [key]: distribution })); setNotice("연령 분포를 불러와 현재 브라우저에 저장했습니다.");
+    } catch (error) { setError(error instanceof Error ? error.message : "연령 분포 조회 실패"); } finally { setAgeBusy(false); }
+  }
   function addManual() {
     if (!config || !result || !validDate(manualDate) || manualDate < config.start || manualDate > config.end) { setError("분석 기간 안의 날짜를 지정하세요."); return; }
     if (manual.length >= 100) { setError("수동 날짜는 최대 100개입니다."); return; }
@@ -165,17 +212,17 @@ export default function GoogleSearchTracker() {
   }
   function save() {
     if (!config || !result || !name.trim()) { setError("저장할 분석의 이름을 입력하세요."); return; }
-    const item = { name: name.trim().slice(0, 60), config, result, manual, contents };
+    const item = { name: name.trim().slice(0, 60), config, result, manual, contents, ages };
     setSaved(current => [item, ...current.filter(s => s.name !== item.name)].slice(0, 8)); setOpenName(item.name); setNotice("이 브라우저에 저장했습니다. 같은 이름은 새 결과로 갱신됩니다.");
   }
   function load() {
     const s = saved.find(s => s.name === openName); if (!s) return;
-    try { const c = validateConfig(s.config), r = validateResult(s.result, c); applyInputs(c); setConfig(c); setResult(r); setManual(s.manual || []); setManualGroup(0); setContents(s.contents || {}); setExcluded(new Set()); setPrompt(""); setError(""); } catch { setError("저장된 분석 데이터가 올바르지 않습니다."); }
+    try { const c = validateConfig(s.config), r = validateResult(s.result, c); applyInputs(c); setConfig(c); setResult(r); setManual(s.manual || []); setManualGroup(0); setContents(s.contents || {}); setAges(ageMap(s.ages)); setAgeGroup(0); setExcluded(new Set()); setPrompt(""); setError(""); } catch { setError("저장된 분석 데이터가 올바르지 않습니다."); }
   }
   async function exportExcel() {
     if (!config || !result) return;
     setBusy(true); setError("");
-    try { const response = await fetch("/api/google-search-tracker/export", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config, result, manual, contents }) }); if (!response.ok) { const body = await response.json(); throw new Error(body.error || "내보내기 실패"); } download(await response.blob(), `google-search-tracker-${config.start}-${config.end}.xlsx`); } catch (e) { setError(e instanceof Error ? e.message : "내보내기 실패"); } finally { setBusy(false); }
+    try { const response = await fetch("/api/google-search-tracker/export", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config, result, manual, contents, ages }) }); if (!response.ok) { const body = await response.json(); throw new Error(body.error || "내보내기 실패"); } download(await response.blob(), `google-search-tracker-${config.start}-${config.end}.xlsx`); } catch (e) { setError(e instanceof Error ? e.message : "내보내기 실패"); } finally { setBusy(false); }
   }
   function csv() {
     if (!config || !result) return;
@@ -187,7 +234,8 @@ export default function GoogleSearchTracker() {
     if (!config || !result) return;
     const chosen = events.filter(e => !excluded.has(e.id));
     if (!chosen.length) { setError("분석에 포함할 이벤트를 선택하세요."); return; }
-    setPrompt(["라라스윗 Google 검색 관심도 상승 원인을 분석해 주세요.", `기간: ${config.start} ~ ${config.end}; 국가: ${config.geo || "전 세계"}; 원본 간격: ${result.granularity}.`, "지표는 Google Trends 상대 관심도 0–100이며 실제 검색 횟수가 아닙니다. 연령별 데이터는 제공되지 않습니다. 결측은 0으로 계산하지 마세요. 모든 상품은 동일 비교 요청으로 정규화했으며 직전 28일을 포함합니다.", `급등 기준: 직전 28일 유효 표본(최소 3개) 평균의 ${config.multiplier}배 이상, 지수 ${config.minIndex} 이상. ${config.gapDays}일 이내 급등은 하나로 묶습니다.`, "콘텐츠의 시점과 검색 상승의 선후관계를 검토하고, 상관관계와 인과관계를 구분하세요. 조회되지 않은 콘텐츠나 수치를 만들지 마세요. 인스타 결과는 상품 전체의 현재 검색 결과이며, YouTube와 뉴스 검색 결과도 완전한 과거 목록이 아닙니다.", ...chosen.flatMap((e, i) => [`\n[이벤트 ${i + 1}] ${config.groups[e.group].label} / ${e.kind} / ${e.start} ~ ${e.end} / 피크 ${e.date}`, `관심도 ${fmt(e.peak)}, 직전 평균 ${fmt(e.baseline)}, 상승률 ${e.change === null ? "계산 불가" : fmt(e.change, 0) + "%"}`, ...["youtube", "instagram", "news"].flatMap(kind => { const rows = contents[contentKey(e, kind)]; return [`${kind}: ${rows === undefined ? "미조회" : rows.length + "건"}`, ...(rows || []).map(p => `${p.date || "게시일 미확인"} | ${p.title} | ${p.author} | 조회 ${fmt(p.views, 0)} | 좋아요 ${fmt(p.likes, 0)} | ${p.url}\n${p.description}`)]; })]), "\n상품별 상승 원인 후보와 근거 링크, 불확실한 점, 추가로 확인할 자료를 정리하고 마케팅 시사점을 제안해 주세요."].join("\n")); setError("");
+    const ageEvidence = Object.values(ages).map(age => `\n[연령 참고: ${age.label}] ${age.source} / ${age.start}~${age.end}\n${age.rows.map(row => `${row.label} ${(row.share * 100).toFixed(1)}%`).join("; ")}\n주의: ${age.note}${age.warning ? ` ${age.warning}` : ""}`);
+    setPrompt(["라라스윗 Google 검색 관심도 상승 원인을 분석해 주세요.", `기간: ${config.start} ~ ${config.end}; 국가: ${config.geo || "전 세계"}; 원본 간격: ${result.granularity}.`, "지표는 Google Trends 상대 관심도 0–100이며 실제 검색 횟수가 아닙니다. Google Trends 자체에는 연령 데이터가 없습니다. 결측은 0으로 계산하지 마세요. 모든 상품은 동일 비교 요청으로 정규화했으며 직전 28일을 포함합니다.", `급등 기준: 직전 28일 유효 표본(최소 3개) 평균의 ${config.multiplier}배 이상, 지수 ${config.minIndex} 이상. ${config.gapDays}일 이내 급등은 하나로 묶습니다.`, "콘텐츠의 시점과 검색 상승의 선후관계를 검토하고, 상관관계와 인과관계를 구분하세요. 조회되지 않은 콘텐츠나 수치를 만들지 마세요. 인스타 결과는 상품 전체의 현재 검색 결과이며, YouTube와 뉴스 검색 결과도 완전한 과거 목록이 아닙니다.", ...ageEvidence, ...chosen.flatMap((e, i) => [`\n[이벤트 ${i + 1}] ${config.groups[e.group].label} / ${e.kind} / ${e.start} ~ ${e.end} / 피크 ${e.date}`, `관심도 ${fmt(e.peak)}, 직전 평균 ${fmt(e.baseline)}, 상승률 ${e.change === null ? "계산 불가" : fmt(e.change, 0) + "%"}`, ...["youtube", "instagram", "news"].flatMap(kind => { const rows = contents[contentKey(e, kind)]; return [`${kind}: ${rows === undefined ? "미조회" : rows.length + "건"}`, ...(rows || []).map(p => `${p.date || "게시일 미확인"} | ${p.title} | ${p.author} | 조회 ${fmt(p.views, 0)} | 좋아요 ${fmt(p.likes, 0)} | ${p.url}\n${p.description}`)]; })]), "\n상품별 상승 원인 후보와 근거 링크, 불확실한 점, 추가로 확인할 자료를 정리하고 마케팅 시사점을 제안해 주세요."].join("\n")); setError("");
   }
   return <main className="min-h-screen bg-slate-50 px-5 pb-12 pt-20 lg:px-8">
     <div className="mx-auto max-w-[1500px]">
@@ -206,10 +254,11 @@ export default function GoogleSearchTracker() {
           <div className="border-t pt-4"><h2 className="mb-2 text-sm font-semibold">저장된 분석</h2><p className="mb-2 text-xs text-slate-500">이 계정의 현재 브라우저에 최대 8개 저장</p><select aria-label="저장된 분석" className={field} value={openName} onChange={e => setOpenName(e.target.value)}><option value="">분석 선택</option>{saved.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}</select><div className="mt-2 flex gap-2"><button className={button} disabled={!openName || busy || !!pending} onClick={load}>열기</button><button className={button} disabled={!openName || busy || !!pending} onClick={() => { setSaved(current => current.filter(s => s.name !== openName)); setOpenName(""); }}>삭제</button></div><input aria-label="분석 저장 이름" placeholder="저장 이름" className={`${field} mt-3`} value={name} onChange={e => setName(e.target.value)} maxLength={60} /><button className={`${button} mt-2 w-full`} disabled={!result || busy || !!pending} onClick={save}>현재 분석 저장·갱신</button></div>
         </aside>
         <section className="min-w-0 space-y-5">
-          <div className="rounded-xl border border-slate-200 bg-white p-5 text-sm leading-relaxed text-slate-600"><b className="text-slate-800">Google Trends 상대 관심도 0–100</b><p className="mt-1">100은 선택한 검색어·국가·수집 기간에서 가장 높은 관심도입니다. 실제 검색 횟수, 연령별 검색량, 누적 검색량은 제공되지 않습니다. 급등 기준을 계산하기 위해 시작일 전 28일도 함께 수집합니다.</p><a className="mt-2 inline-block text-xs text-blue-600 hover:underline" href="https://support.google.com/trends/answer/4365533?hl=ko" target="_blank" rel="noopener noreferrer">지표 설명 ↗</a></div>
+          <div className="rounded-xl border border-slate-200 bg-white p-5 text-sm leading-relaxed text-slate-600"><b className="text-slate-800">Google Trends 상대 관심도 0–100</b><p className="mt-1">100은 선택한 검색어·국가·수집 기간에서 가장 높은 관심도입니다. 실제 검색 횟수와 Google 연령별 검색량은 제공되지 않습니다. 급등 기준을 계산하기 위해 시작일 전 28일도 함께 수집합니다. 아래 연령 분포는 출처가 다른 네이버 DataLab 참고 지표입니다.</p><a className="mt-2 inline-block text-xs text-blue-600 hover:underline" href="https://support.google.com/trends/answer/4365533?hl=ko" target="_blank" rel="noopener noreferrer">지표 설명 ↗</a></div>
           {!result || !config ? <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center"><div className="mb-3 text-4xl text-blue-200">↗</div><h2 className="font-semibold">상품과 기간을 선택해 분석을 시작하세요</h2><p className="mt-2 text-sm text-slate-500">검색 관심도 추이와 급등 이벤트가 이곳에 표시됩니다.</p><p className="mt-1 text-xs text-slate-400">낮은 검색량으로 데이터가 없으면 검색어를 넓혀 다시 확인할 수 있습니다.</p></div> : <>
             <div className="flex flex-wrap items-center justify-between gap-3"><div className="text-sm text-slate-500">{config.start} ~ {config.end} · {config.geo || "전 세계"} · {result.granularity} · 수집 {new Date(result.collectedAt).toLocaleString("ko-KR")}</div><div className="flex gap-2"><button className={button} disabled={busy} onClick={csv}>CSV</button><button className={button} disabled={busy} onClick={() => void exportExcel()}>엑셀 내보내기</button><a className={button} href={result.sourceUrl} target="_blank" rel="noopener noreferrer">Google Trends ↗</a></div></div>
             <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">{config.groups.map((g, i) => { const s = trendSummary(result, config, i); return <div key={g.id} className="rounded-xl border border-slate-200 bg-white p-4"><h3 className="font-semibold" style={{ color: COLORS[i] }}>{g.label}</h3><div className="mt-3 flex justify-between"><div><p className="text-xs text-slate-500">최고 관심도</p><b className="text-2xl">{fmt(s.peak)}</b><p className="text-xs text-slate-400">{s.date || "유효 표본 없음"}</p></div><div className="text-right text-sm"><p>표본 평균 {fmt(s.mean)}</p><p className="mt-1 text-xs text-slate-500">유효 표본 {s.count}개</p><p className="mt-1 text-xs text-slate-500">급등 {events.filter(e => e.group === i && !e.manual).length}건</p></div></div></div>; })}</div>
+            <AgeDistributionPanel config={config} selected={ageGroup} setSelected={setAgeGroup} data={ages[ageKey(config, ageGroup)]} load={() => void collectAge()} busy={ageBusy} />
             <div className="flex flex-wrap gap-2">{config.groups.map((g, i) => <button key={g.id} aria-pressed={visible.has(i)} className={`rounded-full border px-3 py-1.5 text-xs font-medium ${visible.has(i) ? "bg-white" : "bg-slate-100 opacity-50"}`} style={{ borderColor: COLORS[i], color: COLORS[i] }} onClick={() => setVisible(current => { const next = new Set(current); if (next.has(i)) next.delete(i); else next.add(i); return next; })}>{g.label}</button>)}</div>
             <TrendChart result={result} config={config} events={events} visible={visible} />
             <div className="rounded-lg bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">{result.warnings.map(w => <p key={w}>{w}</p>)}{result.granularity !== "일별" && <p>긴 기간은 주·월 단위로 반환될 수 있습니다. 급등 날짜는 해당 관측 구간의 시작일이며 일별 피크 날짜가 아닙니다.</p>}</div>
