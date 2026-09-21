@@ -119,7 +119,7 @@ test("UI 안내와 실제 동작이 같은 출처를 쓴다(계약)", async () =
 
 // ── 별칭(동의어) 그룹 (2026-09-21) ────────────────────────────────────
 // 요구: "'에스파'를 검색하면 에스파·카리나·지젤·아우디즈가 모두 포함된 결과로"
-import { SEARCH_ALIAS_GROUPS, expandAlias } from "../lib/search-filter.ts";
+import { SEARCH_ALIAS_MAP, expandAlias } from "../lib/search-filter.ts";
 
 test("그룹명으로 치면 멤버·팬덤명 행도 잡힌다", () => {
   assert.equal(matchesSearch("카리나 챌린지 영상", "에스파"), true);
@@ -128,21 +128,26 @@ test("그룹명으로 치면 멤버·팬덤명 행도 잡힌다", () => {
   assert.equal(matchesSearch("아이브 무대", "에스파"), false); // 무관한 행은 그대로 탈락
 });
 
-test("별칭은 양방향 — 멤버명으로 쳐도 그룹이 잡힌다", () => {
-  assert.equal(matchesSearch("에스파 신곡", "카리나"), true);
-  assert.equal(matchesSearch("지젤 브이로그", "카리나"), true);
+test("🚨 별칭은 단방향 — 멤버명으로 치면 그 멤버만 나온다", () => {
+  // 사용자 지시(2026-09-21): "카리나로 치면 카리나만, 에스파로 쳤을 때만 전원".
+  // 멤버 한 명을 콕 집어 보려는 게 더 흔한 쓰임이라, 양방향이면 그 방법이 아예 없어진다.
+  assert.equal(matchesSearch("카리나 챌린지", "카리나"), true);
+  assert.equal(matchesSearch("에스파 신곡", "카리나"), false);   // 그룹명 행은 안 나온다
+  assert.equal(matchesSearch("지젤 브이로그", "카리나"), false); // 다른 멤버도 안 나온다
+  assert.equal(expandAlias("카리나").length, 1);
 });
 
-test("대소문자·영문 표기도 같은 그룹", () => {
+test("그룹명은 한글·영문 둘 다 키 — 대소문자 무시", () => {
   assert.equal(matchesSearch("aespa comeback", "에스파"), true);
-  assert.equal(matchesSearch("카리나", "AESPA"), true);
+  assert.equal(matchesSearch("카리나", "AESPA"), true);   // aespa 도 그룹명이라 확장된다
 });
 
-test("제외어도 그룹 전원을 제외한다", () => {
-  // "에스파 빼고" 했는데 카리나가 남으면 더 헷갈린다.
-  assert.equal(matchesSearch("카리나 광고", "-에스파"), false);
+test("제외어도 같은 방향 — -에스파는 전원 제외, -카리나는 카리나만", () => {
+  assert.equal(matchesSearch("카리나 광고", "-에스파"), false);  // 그룹명 제외 → 멤버도 빠짐
   assert.equal(matchesSearch("아이브 광고", "-에스파"), true);
   assert.equal(matchesSearch("딸기 카리나", "딸기 -에스파"), false);
+  assert.equal(matchesSearch("지젤 광고", "-카리나"), true);     // 멤버명 제외는 그 멤버만
+  assert.equal(matchesSearch("카리나 광고", "-카리나"), false);
 });
 
 test("별칭은 쉼표 OR·공백 AND 와 함께 동작한다", () => {
@@ -161,20 +166,17 @@ test("🚨 별칭에 없는 단어는 동작이 하나도 안 바뀐다(회귀 �
 test("⚠️ 1글자 별칭 금지 — 부분일치라 아무 행에나 걸린다", () => {
   // 처음엔 3글자 이상으로 막았다가 `지젤`(2글자)에 걸려 내렸다. 실제 이름이 2글자인 경우가 있다.
   // 2글자는 허용하되, 추가할 때 실데이터 매칭 건수를 세어 오탐을 확인하는 게 원칙이다.
-  for (const group of SEARCH_ALIAS_GROUPS) {
-    for (const name of group) {
+  for (const [key, names] of Object.entries(SEARCH_ALIAS_MAP)) {
+    for (const name of [key, ...names]) {
       assert.ok(name.trim().length >= 2, `별칭이 너무 짧다: "${name}" (2글자 이상만)`);
     }
   }
 });
 
-test("같은 이름이 두 그룹에 중복 선언되지 않는다", () => {
-  const seen = new Set<string>();
-  for (const group of SEARCH_ALIAS_GROUPS) {
-    for (const name of group) {
-      const k = name.toLowerCase();
-      assert.ok(!seen.has(k), `중복 별칭: "${name}" — 그룹이 조용히 갈라진다`);
-      seen.add(k);
-    }
+test("키는 자기 자신을 반드시 포함한다 — 빼먹으면 그룹명 행이 사라진다", () => {
+  for (const [key, names] of Object.entries(SEARCH_ALIAS_MAP)) {
+    const lowered = names.map((n) => n.toLowerCase());
+    assert.ok(lowered.includes(key.toLowerCase()),
+      `"${key}" 가 자기 목록에 없다 — 그 단어로 검색하면 정작 그 단어 행이 안 나온다`);
   }
 });

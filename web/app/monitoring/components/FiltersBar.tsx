@@ -19,9 +19,11 @@ function SearchHintWrap({ children }: { children: React.ReactNode }) {
   return (
     <div className="relative group/sh">
       {children}
+      {/* ⚠️ hover 전용이다. focus-within 도 걸었더니 **포커스된 칸과 마우스 올린 칸의 툴팁이
+          동시에 열려 서로 겹쳤다**(실물 확인). 키보드 사용자는 대신 placeholder 로 칸을 구분한다. */}
       <div
         role="tooltip"
-        className="hidden group-hover/sh:block group-focus-within/sh:block absolute top-full left-0 mt-1.5 z-[9999]
+        className="hidden group-hover/sh:block absolute top-full left-0 mt-1.5 z-[9999]
                    bg-white border border-a-hairline rounded-[10px] px-3 py-2 shadow-lg w-[340px]
                    pointer-events-none text-left font-normal normal-case tracking-normal
                    whitespace-normal text-[11px] text-a-ink-muted leading-relaxed"
