@@ -5,11 +5,13 @@
 - Meta 응답 계약인 `{ url, confirmation_code }`를 반환하고, `GET /api/meta/data-deletion/status`에서 사람이 읽을 수 있는 완료 상태를 보여 준다. 상태 URL은 사용자 ID를 포함하지 않는 128-bit 확인 코드 + HMAC proof로 위변조를 막고, `no-store`/CSP/`noindex`/`no-referrer`를 적용했다. Clerk 공개 예외는 자체 서명 검증 경로에만 추가했다.
 - 로컬 검증: 서명 조작·잘못된 secret·algorithm·payload 거절, receipt 위변조 거절, 사용자 ID 미노출 회귀를 포함한 web 전체 **509/509**, `tsc --noEmit --incremental false`, 변경 파일 ESLint, Next.js production build 통과. 프로덕션 배포와 Meta 대시보드의 Data Deletion Request URL 연결은 다음 단계다.
 
-## ⏳ 2026-09-21 [Codex 구현·로컬 검증] Google Search Trends 전건 실패 복구
+## ✅ 2026-09-21 [Codex 완료·배포·실물 검증] Google Search Trends 전건 실패 복구
 - 2026-09-21 KST 정기 workflow `35543144350`은 API 호출 11건과 Apify run 자체는 모두 성공 상태였지만 데이터셋이 전부 0건이라 hard fail했다. 각 run 로그에서 Google Trends 초기 요청을 하나도 처리하지 못했고 `RELATED_QUERIES`·`RELATED_TOPICS` selector timeout 뒤 내부 요청이 실패한 것을 확인했다. 같은 커밋의 전날 실행도 11건 중 7건이 비어 있어 배포 코드보다 기존 `apify/google-trends-scraper` 브라우저 경로의 불안정이 원인이다.
 - 기존 액터에 한국 주거용 위치를 명시한 최소 재현 run `PnYQew1MnfNMIMKZJ`도 같은 오류를 내어 중단했다. 브라우저를 쓰지 않고 Trends JSON endpoint를 호출하는 `signalbench/google-trends-scraper` 최소 run `mqMbsDQJ020pWvHkn`은 같은 `라라스윗 / KR / today 3-m` 조건에서 약 13초 만에 성공했고 일별 93개를 반환했다.
 - 정기 수집 API를 검증된 액터로 교체하고 웹 검색·한국·최근 3개월·시계열만 요청한다. 응답의 Unix timestamp와 숫자 값을 기존 `google_search_trends` 행으로 변환하며 실제 0을 보존한다. 이미 시작된 구형 run의 늦은 webhook도 처리하도록 기존 형식 호환을 남겼다. 워크플로 polling은 10초, 키워드 간 간격은 10초로 줄이되 11개 run은 계속 순차 실행한다.
-- 로컬 검증: 새 형식·구형 호환 회귀 포함 web 테스트 **505/505**, 변경 파일 ESLint, `tsc --noEmit --incremental false`, Next.js production build 통과. 프로덕션 배포와 실제 workflow 재실행은 다음 단계다.
+- 로컬 검증: 새 형식·구형 호환 회귀 포함 web 테스트 **505/505**, 변경 파일 ESLint, `tsc --noEmit --incremental false`, Next.js production build 통과. 구현 `c1e82fcad6c4eb6233d9a0138c9410f4e3c38145`, Vercel `dpl_TqHNwAkVjWBNTzXhbxgRKtEittpz` Ready, workflow lint `35547365838`과 build test `35547365844` success.
+- 프로덕션 전체 수집 workflow `35547529911`을 수동 실행해 **5분 32초·success**를 확인했다. 11개 API 요청이 모두 HTTP 200이고 11개 액터 run도 모두 `SUCCEEDED`였다. 검색 데이터가 있는 5개 키워드는 저장됐고, 검색량이 희박해 결과가 없는 6개는 `EMPTY_DATASET` 경고로 남았지만 전체 workflow를 실패시키지 않았다.
+- Vercel 운영 로그에서 11개 collect GET과 11개 webhook POST가 모두 200인 것을 확인했다. 캐시 갱신 뒤 로그인된 `/monitoring` 실물의 `그 외` 메뉴에 `구글 라라스윗, 라라스윗아이스크림 검색량`과 `구글 멜론쫀득바,망고쫀득바,라라스윗쫀득바 검색량` 두 시리즈가 모두 노출되는 것까지 확인했다.
 
 ## ✅ 2026-09-18 [Codex 재검증·읽기전용] C16 재발 없음 · C15 잔여 7건 근거 없음
 - **C16:** 최신 `formula-audit` run `35307649313`을 확인했다. 날짜열이 124개·최신 `EI(2026-09-17)`로 늘어난 뒤에도 표준 H 수식 **5,308/5,308개가 EI를 참조**했고, `hInvalid=0 / incInvalid=0 / mismatch=0 / H·I errorCells=0`이다. 2026-09-15의 H 범위 보강 이후 재발하지 않았으므로 `refreshCumulativeViews()`를 다시 실행하거나 시트 수식을 재작성하지 않았다. `healthy:false`는 별개 `stale:11` 때문이다.
