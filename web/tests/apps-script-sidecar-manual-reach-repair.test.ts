@@ -31,17 +31,20 @@ test("Sidecar 복구는 쓰기 전에 compact 백업을 남기고 목표 셀·�
   assert.doesNotMatch(repair, /deleteRow|deleteRows|setFormula|setFormulas/);
 });
 
-test("Sidecar 복구는 완료 마커로 재실행을 no-op 하고 독립 잠금 단계·정기 동기화에 배선된다", () => {
+test("완료된 Sidecar 복구는 기록 소스로 보존하되 일상 동기화에서는 분리된다", () => {
   assert.match(repair, /if \(props\.getProperty\(cfg\.doneProperty\)\) return \{ status: "ALREADY_DONE" \}/);
   assert.match(repair, /LockService\.getDocumentLock\(\)/);
-  assert.match(combined, /function scheduledDbPullSync_\(\) \{[\s\S]*?runSidecarManualReachRepair20260907IfNeeded_\(\)/);
-  assert.match(combined, /\["repairSidecarManualReach20260907", function\(\) \{[\s\S]*?runSidecarManualReachRepair20260907IfNeeded_\(\)/);
+  assert.doesNotMatch(combined, /runSidecarManualReachRepair20260907IfNeeded_\(\)/);
+  assert.doesNotMatch(combined, /repairSidecarManualReach20260907/);
   const exportStart = combined.indexOf("function exportStatsWithOptions_(options)");
   const exportEnd = combined.indexOf("function parseMonthDay_", exportStart);
   assert.ok(exportStart >= 0 && exportEnd > exportStart);
   assert.doesNotMatch(combined.slice(exportStart, exportEnd), /runSidecarManualReachRepair20260907IfNeeded_\(\)/);
 });
 
-test("guarded clasp 배포에 Sidecar 수기 도달수 복구 파일이 포함된다", () => {
-  assert.match(deploy, /repair_sidecar_manual_reach_20260907\.gs/);
+test("guarded clasp 정리 목록이 완료된 Sidecar 복구 파일의 재배포를 막는다", () => {
+  const deployList = deploy.slice(deploy.indexOf("const deployFiles"), deploy.indexOf("const preservedLiveOnlyFiles"));
+  const deprecatedList = deploy.slice(deploy.indexOf("const deprecatedLiveFiles"), deploy.indexOf("function read("));
+  assert.doesNotMatch(deployList, /repair_sidecar_manual_reach_20260907\.gs/);
+  assert.match(deprecatedList, /repair_sidecar_manual_reach_20260907\.js/);
 });

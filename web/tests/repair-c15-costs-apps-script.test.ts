@@ -25,5 +25,5 @@ test("C15 Apps Script apply entry point is permanently disabled", () => {
   assert.doesNotMatch(repair, /insertSheet\(|getRangeList\(|\.setValue\(|\.setValues\(/);
   assert.doesNotMatch(repair, /sponsored_posts|post_daily_stats|posted_at|reach_count|play_count/);
   assert.match(repair, /c15CostRepairSnapshot20260915_\(\)/);
-  assert.match(deploy, /repair_c15_costs_20260915\.gs/);
+  assert.match(deploy, /deprecatedLiveFiles[\s\S]*repair_c15_costs_20260915\.js/);
 });

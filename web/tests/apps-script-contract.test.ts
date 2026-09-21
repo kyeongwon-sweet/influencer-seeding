@@ -123,7 +123,7 @@ test("row-format standard matches the readability theme (drift guard)", () => {
 });
 
 test("duplicate audit is read-only and includes sheet plus DB evidence", () => {
-  assert.match(appsScriptDeploy, /linked_sheet_duplicate_audit_20260901\.gs/);
+  assert.match(appsScriptDeploy, /deprecatedLiveFiles[\s\S]*linked_sheet_duplicate_audit_20260901\.js/);
   assert.match(duplicateAudit, /function auditLinkedSheetDuplicates20260901\(\)/);
   assert.match(duplicateAudit, /fetchCollectedStats_\(\)/);
   assert.match(duplicateAudit, /recentMetrics/);
@@ -133,7 +133,7 @@ test("duplicate audit is read-only and includes sheet plus DB evidence", () => {
 });
 
 test("duplicate repair is target-specific, backed up, and deletes bottom-up", () => {
-  assert.match(appsScriptDeploy, /repair_duplicate_rows_20260901\.gs/);
+  assert.match(appsScriptDeploy, /deprecatedLiveFiles[\s\S]*repair_duplicate_rows_20260901\.js/);
   assert.match(duplicateRepair, /auditDuplicateRepairPlan20260901/);
   assert.match(duplicateRepair, /copyTo\(ss\)\.setName\(backupName\)/);
   assert.match(duplicateRepair, /sort\(function \(a, b\) \{ return b - a; \}\)/);
@@ -143,7 +143,7 @@ test("duplicate repair is target-specific, backed up, and deletes bottom-up", ()
 });
 
 test("issuebox YouTube duplicate repair keeps the data-rich canonical row and never writes DB", () => {
-  assert.match(appsScriptDeploy, /repair_issuebox_youtube_duplicate_20260903\.gs/);
+  assert.match(appsScriptDeploy, /deprecatedLiveFiles[\s\S]*repair_issuebox_youtube_duplicate_20260903\.js/);
   assert.match(issueboxYoutubeDuplicateRepair, /videoKey: "yt:6ronnq9uRbE"/);
   assert.match(issueboxYoutubeDuplicateRepair, /youtube\\\.com\\\/@issuebox_x\\\/shorts/);
   assert.match(issueboxYoutubeDuplicateRepair, /videoRows\.length !== 2 \|\| profileRows\.length !== 1/);
@@ -182,11 +182,37 @@ test("dailyAuto runs the row-format normalizer last", () => {
 
 test("guarded clasp deploy includes the daily row-format file", () => {
   assert.match(appsScriptDeploy, /linked_sheet_row_format_daily\.gs/);
-  assert.match(appsScriptDeploy, /linked_sheet_row_format_daily\.js/);
+  assert.match(appsScriptDeploy, /05_연동시트_신규행_서식\.js/);
+});
+
+test("guarded clasp deploy keeps only the Korean-named production Apps Script inventory", () => {
+  const deployList = appsScriptDeploy.slice(
+    appsScriptDeploy.indexOf("const deployFiles"),
+    appsScriptDeploy.indexOf("const preservedLiveOnlyFiles"),
+  );
+  for (const name of [
+    "01_연동시트_자동동기화.js",
+    "02_시트쓰기_충돌방지.js",
+    "03_누적조회수_수식안전.js",
+    "04_연동시트_기본서식.js",
+    "05_연동시트_신규행_서식.js",
+    "06_소재명_파일목록_자동정리.js",
+    "07_배너_인사이트_문의_자동생성.js",
+  ]) assert.match(deployList, new RegExp(name.replace(".", "\\.")));
+  for (const retired of [
+    "repair_metric_contamination_20260828.gs",
+    "repair_banner_reach_20260901.gs",
+    "repair_sidecar_manual_reach_20260907.gs",
+    "audit_cost_mapping_20260915.gs",
+  ]) assert.ok(!deployList.includes(retired), `완료된 수리 파일 재배포 금지: ${retired}`);
+  assert.match(appsScriptDeploy, /바이럴 최신효율 업데이트\.js[\s\S]*08_바이럴_최신효율_업데이트\.js/);
+  assert.match(appsScriptDeploy, /파인트집계\.js[\s\S]*09_제품별_일별성과_집계\.js/);
+  assert.match(appsScriptDeploy, /verifyLiveInventory\("staged after cleanup"\)/);
+  assert.match(appsScriptDeploy, /verifyLiveInventory\("live pull"\)/);
 });
 
 test("DS1 date-header repair is one-cell, backed up, and formula-safe", () => {
-  assert.match(appsScriptDeploy, /repair_missing_date_header_20260901\.gs/);
+  assert.match(appsScriptDeploy, /deprecatedLiveFiles[\s\S]*repair_missing_date_header_20260901\.js/);
   assert.match(missingDateHeaderRepair, /DS_HEADER_REPAIR_PREV_A1_ = "DR1"/);
   assert.match(missingDateHeaderRepair, /DS_HEADER_REPAIR_TARGET_A1_ = "DS1"/);
   assert.match(missingDateHeaderRepair, /2026-08-31/);

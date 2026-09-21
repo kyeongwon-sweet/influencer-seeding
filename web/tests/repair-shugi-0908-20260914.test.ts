@@ -41,6 +41,6 @@ test("runner requires dry-run, backs up, applies, and independently re-reads", (
   assert.match(runner, /verified\.cumulativeFormula !== before\.cumulativeFormula/);
 });
 
-test("guarded clasp deploy includes the one-off Shugi repair source", () => {
-  assert.match(deploy, /repair_shugi_0908_20260914\.gs/);
+test("guarded clasp cleanup retires the completed one-off Shugi repair source", () => {
+  assert.match(deploy, /deprecatedLiveFiles[\s\S]*repair_shugi_0908_20260914\.js/);
 });

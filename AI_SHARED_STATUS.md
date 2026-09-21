@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## ✅ 2026-09-21 [Codex 완료·라이브] Apps Script 일회성 파일 정리 · 운영 파일 한글명 통일
+- **전수 판정:** production scriptId `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn`을 authenticated clasp로 fresh pull해 **37파일**을 함수 참조·설치 트리거 17개와 대조했다. 완료된 날짜별 수리/감사, 진단용 `제목 없음`, 메인에 이미 병합된 `ensureDailyReport`·`scheduleHeartbeat` 중복 파일을 운영 프로젝트에서 제거했다.
+- **최종 라이브 구성:** 코드 파일은 **9개**만 남겼다 — `01_연동시트_자동동기화`, `02_시트쓰기_충돌방지`, `03_누적조회수_수식안전`, `04_연동시트_기본서식`, `05_연동시트_신규행_서식`, `06_소재명_파일목록_자동정리`, `07_배너_인사이트_문의_자동생성`, `08_바이럴_최신효율_업데이트`, `09_제품별_일별성과_집계`(+ 숨은 `appsscript.json`). 파일명만 바꿨고 트리거가 참조하는 함수명은 유지했다.
+- **완료 수리 연결 제거:** 2026-09-07 골목대장 Sidecar 고아행 복구는 완료 마커 이후 no-op이었으므로 `dailyAuto`와 `scheduledDbPullSync_`의 일회성 호출도 제거했다. 수리 소스와 회귀 테스트는 git에 기록으로 보존하되 재배포 목록에서는 제외했다.
+- **재발방지:** guarded 배포는 fresh pull 뒤 운영 파일 10개 외의 파일이 남거나 빠지면 push 전에 실패하고, push 후 재다운로드에서도 exact inventory를 재검증한다. 라이브 전후 전체 백업은 `backups/apps-script-live-before-cleanup-20260921-1225.zip`(37파일, SHA256 `D0D65A612C712A66860E2E063E10C1017FEC849E9535D04FED642587C3C64604`).
+- **검증:** clasp push 뒤 재pull **10/10파일**, repo-owned 8파일 바이트 일치. Apps Script 편집기에서 한글명 코드 9개만 노출되고, 트리거 화면은 배포 전후 **17개 유지**(`dailyAuto`, `syncNew`, `ensureDailyReport`, `scheduleHeartbeat`, `PT_run`, `updateExpectedViews`, 인사이트 메뉴 등 함수 연결 보존). web 테스트 **510/510**, `tsc --noEmit --incremental false`, 린트 오류 0, Next production build 통과.
+
 ## ✅ 2026-09-21 [Codex 구현·배포·Meta 연결] Meta 사용자 데이터 삭제 콜백
 - Meta App Review/플랫폼 정책에 맞춰 `POST /api/meta/data-deletion`을 추가했다. `signed_request`는 `META_APP_SECRET`의 HMAC-SHA256로 검증하고, 서명·사용자 ID 또는 원문을 로그에 남기지 않는다. 현재 앱은 Facebook 앱 범위 사용자 프로필/ASID 연결 테이블을 저장하지 않으므로, 정상 서명 요청은 삭제할 연결 데이터가 없음을 확인하고 즉시 완료한다.
 - Meta 응답 계약인 `{ url, confirmation_code }`를 반환하고, `GET /api/meta/data-deletion/status`에서 사람이 읽을 수 있는 완료 상태를 보여 준다. 상태 URL은 사용자 ID를 포함하지 않는 128-bit 확인 코드 + HMAC proof로 위변조를 막고, `no-store`/CSP/`noindex`/`no-referrer`를 적용했다. Clerk 공개 예외는 자체 서명 검증 경로에만 추가했다.

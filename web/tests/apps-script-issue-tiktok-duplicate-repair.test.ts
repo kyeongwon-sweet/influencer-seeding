@@ -31,8 +31,8 @@ test("issue TikTok duplicate repair backs up and changes only the misplaced URL"
   assert.match(source, /metric_values_preserved: true/);
 });
 
-test("guarded clasp deployment includes the surgical duplicate repair", () => {
-  assert.match(deploy, /repair_issue_tiktok_duplicate_20260901\.gs/);
+test("guarded clasp cleanup retires the completed surgical duplicate repair", () => {
+  assert.match(deploy, /deprecatedLiveFiles[\s\S]*repair_issue_tiktok_duplicate_20260901\.js/);
 });
 
 test("issue TikTok duplicate repair verifies the final sheet and DB state read-only", () => {

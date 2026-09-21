@@ -41,7 +41,7 @@ test("metric spike repair writes only target date cells and preserves H/I formul
   assert.match(repair, /changed !== expectedChanged/);
 });
 
-test("runner backs up the dry-run before apply and guarded deploy includes the repair", () => {
+test("runner backs up the dry-run before apply and guarded cleanup retires the completed repair", () => {
   const backupAt = runner.indexOf("fs.writeFileSync(backupPath");
   const applyAt = runner.indexOf("const applied = await execute(token, true)");
   assert.ok(backupAt >= 0 && applyAt > backupAt);
@@ -51,7 +51,7 @@ test("runner backs up the dry-run before apply and guarded deploy includes the r
   assert.match(runner, /result\.pending \+ result\.blank \+ result\.drift !== EXPECTED/);
   assert.match(runner, /applied\.drift !== dryRun\.drift/);
   assert.match(runner, /verify\.drift !== applied\.drift/);
-  assert.match(deploy, /repair_metric_spikes_20260903\.gs/);
+  assert.match(deploy, /deprecatedLiveFiles[\s\S]*repair_metric_spikes_20260903\.js/);
   assert.match(repair, /function auditMetricSpikes20260903\(\)/);
   assert.match(repair, /function applyMetricSpikes20260903\(\)/);
 });

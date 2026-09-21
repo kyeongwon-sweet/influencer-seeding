@@ -48,6 +48,6 @@ test("editor-safe zero-argument wrappers preserve audit, apply, and sync verific
   assert.match(repair, /Logger\.log\("sync_verify_posted_at_20260907 "/);
 });
 
-test("guarded clasp deploy includes the one-off repair source", () => {
-  assert.match(deploy, /repair_posted_at_20260907\.gs/);
+test("guarded clasp cleanup retires the completed one-off repair source", () => {
+  assert.match(deploy, /deprecatedLiveFiles[\s\S]*repair_posted_at_20260907\.js/);
 });

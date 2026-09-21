@@ -30,6 +30,6 @@ test("banner reach repair backs up before writing and never writes H", () => {
   assert.doesNotMatch(source, /getRange\(before\.cumulativeA1\)\.setValue/);
 });
 
-test("guarded clasp deployment includes the one-cell repair", () => {
-  assert.match(deploy, /repair_banner_reach_20260901\.gs/);
+test("guarded clasp cleanup retires the completed one-cell repair", () => {
+  assert.match(deploy, /deprecatedLiveFiles[\s\S]*repair_banner_reach_20260901\.js/);
 });
