@@ -10,6 +10,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/slack-events(.*)",
   "/api/slack/events(.*)",
   "/api/slack/injibot-action(.*)",  // injibot 부정댓글 버튼(자체 서명검증) → 미들웨어 통과
+  "/api/slack/summarize(.*)",       // 여믄봇 '요약' 메시지 단축키(자체 서명검증) → 미들웨어 통과
   "/api/meta/instagram-comments(.*)", // Meta IG 댓글 Webhook(HMAC 서명검증) → 미들웨어 통과
   "/api/meta/data-deletion(.*)", // Meta 사용자 데이터 삭제 콜백(자체 signed_request/상태 proof 검증)
   "/api/kpi/ingest(.*)",

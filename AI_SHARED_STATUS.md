@@ -1,5 +1,18 @@
 # AI Shared Status
 
+## 🟡 2026-09-21 [Claude 코드완료·미활성] 여믄봇 '요약' 메시지 단축키 — 스레드 요약 엔드포인트
+- **사용자 요청:** "`/요약` 치면 요청자 기준으로 그 스레드의 그 전까지 내용을 가독성 좋게 요약." (예: 황경원이 요청 → "경원님이~" 언급된 것 위주)
+- **🔴 슬래시 커맨드로는 불가(확인함):** Slack 공식 문서상 **개발자가 만든 커스텀 슬래시 커맨드는 스레드 안에서 실행되지 않고**, payload 에 `thread_ts` 도 오지 않는다. 스레드 맥락을 받는 유일한 수단이 **메시지 단축키**(메시지 `...` → "요약")라 사용자 승인 후 그 방식으로 구현했다.
+- **구현:** `web/app/api/slack/summarize/route.ts` — 서명검증(`SLACK_SIGNING_SECRET`) → **3초 내 200 ACK** → `after()` 백그라운드에서 `conversations.replies` 로 **작동시킨 메시지 ts 이하**('그 전까지')만 수집 → `users.info` 실명 매핑 → LLM 요약 → `chat.postMessage(thread_ts)` 로 **스레드에 공개 게시**. 실패 시 요청자에게만 ephemeral 안내(채널 미초대/스코프 부족 등).
+- **요약 규칙:** 요청자를 성 뗀 이름+님(황경원→경원님)으로 호칭, `경원님 관련`(멘션·요청받은 것) 섹션 강조. **없는 사실·수치는 지어내지 않고 생략**(데이터 무결성 규칙 반영).
+- **미들웨어:** `middleware.ts` 의 `isPublicRoute` 에 `/api/slack/summarize(.*)` 추가. **이게 빠지면 Clerk 가 Slack POST 를 막아 조용히 실패**한다(기존 slack 라우트 3개와 동일 패턴).
+- **검증한 것:** `tsc --noEmit` 0 에러, `eslint` 0, production build 성공, 빌드 매니페스트에 `/api/slack/summarize` 포함.
+- **검증 못 한 것:** 워크트리 `.env.local` 의 Clerk·Slack 키가 placeholder 라 로컬은 **전 라우트 500** → 미들웨어 통과 실증 불가. **배포 후 프로덕션에 위조 서명으로 POST 해 `{"error":"bad signature"}` 401(= Clerk 통과 증거)이 오는지 확인**해야 한다.
+- **🚧 아직 동작 안 함 — 남은 프로비저닝(코드 밖):**
+  1. **여믄봇 Slack 앱**: Interactivity ON → Request URL `https://influencer-seeding-mu.vercel.app/api/slack/summarize`, **메시지 단축키** 생성(Name `요약`, **Callback ID `summarize_thread`**), 봇 스코프 `channels:history`·`groups:history`·`chat:write`·`users:read` 추가 후 **재설치**, 사용할 채널에 여믄봇 초대.
+  2. **Vercel 환경변수 `ANTHROPIC_API_KEY` 추가**(현재 없음, 없으면 요약 생성 실패). 모델 기본 `claude-sonnet-5`, `SUMMARY_MODEL` 로 변경 가능.
+- **레인:** 코드=Claude(완료). Vercel 환경변수·Slack 앱 설정은 라이브 설정이라 Codex/사람 몫.
+
 ## ✅ 2026-09-21 [Codex 완료·라이브] C18 — 인스타 실물 일치 바이럴 캡션 40건 수술적 교체
 - **판별:** 후보 1,091건 중 파생값이 깨진 A 83건은 처음부터 제외했다. 나머지 1,008건을 Instagram 공개 embed의 실제 캡션과 직접 대조해 **355건은 실물 판독 성공, 638건은 삭제·비공개 등으로 판독 불가, 15건은 게시물 URL이 아니어서 확인 불가**로 분리했다. 판독 불가/URL 이상은 전부 무변경이다.
 - **대상 기준:** 시트 현재 캡션이 Instagram 실물 캡션과 **문자열까지 정확히 일치**하고, `captionFromAssetName_()`이 별도의 정상 캡션을 산출한 **40건만** 확정했다. 브라우저 실물 표본과 embed 파서 결과도 교차확인했다(`DbX9ebNp8nd`: `먹을 때도 미모 ㅁㅊ다 ㄷㄷ`). 형태·문장 길이 같은 추측 기준은 쓰지 않았다.
