@@ -59,22 +59,26 @@ export async function GET(req: NextRequest) {
 }
 
 /** 저장된 URL 전량(중복 판정용). 목록이 크지 않아 한 번에 읽되 페이지네이션은 지킨다. */
-async function loadExistingUrls(supabase: ReturnType<typeof getServerSupabase>): Promise<string[]> {
-  const urls: string[] = [];
+// ⚠️ `uploaded_at` 을 함께 읽는다 — 프로필 URL(인스타 스토리 등)은 URL+업로드일자로 식별하므로
+//    URL만 넘기면 같은 계정의 다른 날짜 노출이 기존 1건에 전부 흡수된다(`mentionDedupeKey` 참조).
+async function loadExistingUrls(
+  supabase: ReturnType<typeof getServerSupabase>,
+): Promise<Array<{ url: string; uploaded_at: string | null }>> {
+  const rows: Array<{ url: string; uploaded_at: string | null }> = [];
   const PAGE = 1000;
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await supabase
       .from("organic_mentions")
-      .select("url")
+      .select("url,uploaded_at")
       .order("id", { ascending: true })
       .range(from, from + PAGE - 1);
     if (error) throw new Error(error.message);
-    for (const row of (data ?? []) as Array<{ url: string | null }>) {
-      if (row.url) urls.push(row.url);
+    for (const row of (data ?? []) as Array<{ url: string | null; uploaded_at: string | null }>) {
+      if (row.url) rows.push({ url: row.url, uploaded_at: row.uploaded_at ?? null });
     }
     if (!data || data.length < PAGE) break;
   }
-  return urls;
+  return rows;
 }
 
 export async function POST(req: NextRequest) {
@@ -87,7 +91,7 @@ export async function POST(req: NextRequest) {
   // URL 정규화 + 중복 차단.
   //  - 정규화(normalizeUrl)가 쿼리스트링을 버리므로 utm_source·igsh·fbclid 등이 붙어도 같은 글로 접힌다.
   //  - 이미 저장된 URL, 그리고 같은 요청 안에서 겹치는 URL 모두 저장하지 않는다.
-  let existingUrls: string[];
+  let existingUrls: Array<{ url: string; uploaded_at: string | null }>;
   try {
     existingUrls = await loadExistingUrls(supabase);
   } catch (e) {
