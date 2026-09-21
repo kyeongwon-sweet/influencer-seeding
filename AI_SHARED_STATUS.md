@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## ⏳ 2026-09-21 [Codex 구현·라이브 경보 검증 / 24시간 실측 대기] negative-comment-monitor 트리거 미발화 대응
+- **커버리지(`223b85b`):** `monitor.yml` 예약 run은 즉시·15·30·45분에 4회 게이트를 재평가한다. 게이트가 닫힌 iteration은 Supabase GET 1회만 수행하고 의존성 설치·`npm start`를 건너뛰며 `gate_supabase_get=1 monitor_external_api_calls=0`을 로그에 남긴다. 게이트 장애는 fail-open, 3시간 floor schedule의 첫 iteration은 기존처럼 전체 스캔이다. `concurrency.cancel-in-progress=false`와 기존 fingerprint/upsert dedup은 유지했다.
+- **비용 판정:** 실측 약 15 run/일 기준 추가는 Supabase GET 약 45회/일이다. 닫힌 iteration의 YouTube·IG·Apify·Gemini 추가 호출은 0이며, 기존 Meta/TikTok/YouTube 보조 스텝은 workflow당 1회로 느지 않는다. public repo hosted runner라 runner 분당 비용은 발생하지 않는다.
+- **공백 감시:** 기존 KST 09:10 아침 체크를 유지하고, 최근 24시간 성공 run의 시작·종료 경계를 포함한 최대 공백을 계산해 기본 3.5시간 초과 시 Slack에 시간과 KST 구간을 출력한다. heartbeat 스케줄은 하루 2회 그대로다.
+- **실 Slack 검증:** heartbeat run `35549806989`에서 임계를 1분으로 낮춰 테스트했고, `#빙과_마케팅_인지p_통합댓글관리`(`C0BHD9S69JA`)에 **10:06:50 KST** 실제 경보가 도착했다. 문구의 최대 공백 **4시간 17분**, 구간 **09-20 15:39→19:56 KST**, 임계 1분과 자가치유 dispatch를 화면에서 확인했다.
+- **게이트:** 집중 테스트 24/24, 전체 `npm test` **514/514**, YAML 파싱, `git diff --check`, push CI run `35549773496` 모두 통과. 자가치유 monitor run `35549822178`의 새 `Run monitor coverage loop` 스텝도 성공했다.
+- **남은 실측:** 배포 후 24시간 run·iteration·full scan·gate skip을 전수 재집계하고, 배포 전 **15 run/일·최장 5시간 12분**과 비교해야 운영 효과가 닫힌다. 2026-09-22 후속 하트비트에 실측과 기존 `미결` 상태를 최종 갱신한다.
+
 ## ⏳ 2026-09-21 [Codex 구현·라이브 반영 / 예약 실측 대기] 리포트 미분류 보류 고착 자가치유
 - **원인 경로 보강:** Apps Script `ensureDailyReport`가 먼저 무작용 `probe=1`로 전일 리포트 게시 여부를 확인한다. 이미 게시됐으면 무동작이고, 미게시·확인불가일 때만 문서 잠금 아래 `runSync_(false)`를 실행해 시트의 최신 채널분류를 DB에 반영한 뒤 GitHub 리포트를 재dispatch한다. 08:30 이후 팀이 분류한 글도 12:35·16:10 워치독 재검수에서 더 이상 옛 DB 분류에 고착되지 않는다.
 - **최종 에스컬레이션:** 16시대 Apps Script 호출은 `final_retry=true`를 `daily-increment-report.yml`에 전달한다. 이 실행이 발송 전 검수에서 다시 막히면 수집성/정합성 사유와 무관하게 황경원 담당 DM으로 `리포트 최종 재시도 후 발송 보류`를 한 번 보내며, 일반 보류 공지와 별도 표식으로 중복 억제한다.
