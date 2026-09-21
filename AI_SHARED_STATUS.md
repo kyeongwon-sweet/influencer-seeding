@@ -1,5 +1,10 @@
 # AI Shared Status
 
+## ✅ 2026-09-21 [Codex 실측·읽기전용] `ensureDailyReport` 자가치유 첫 예약 경로 정상
+- **Apps Script 실행:** 설치형 트리거가 **12:34:16 KST** `ensureDailyReport` 를 시작해 198.39초 뒤 정상 완료했다. 첫 probe는 HTTP 200·`reportDate=2026-09-20`·`posted=false`였고, 미게시 경로에서 `runSync_(false)`가 실행돼 **`pre-dispatch syncAll=true`**를 남겼다(비교 4,607행, 신규 1건, 수정 9건). 후속 ensure API도 HTTP 200·`acted=true`·`dispatched=true`·`detail=204`·`finalRetry=false`·`syncOk=true`를 반환했다.
+- **GHA·Slack 종단 검증:** Apps Script 직후 생성된 `daily-increment-report.yml` workflow_dispatch run **`35558154678`**이 12:37:34~12:39:53 KST success로 끝났다. Slack `#빙과_마케팅_리포트` 실물에 **2026-09-20 리포트**가 12:38:36 KST, ts `1789961916.280329`로 게시됐고 상태 댓글도 붙어 있다. 분류 미반영 보류 없이 게시됐으므로 16:10 최종 재시도·DM 에스컬레이션은 불필요한 정상 결과다.
+- **변경 없음:** 수동 실행·DB/시트 쓰기를 하지 않았다. 부정댓글 감시 24시간 후속 실측은 예정된 **2026-09-22 10:06 KST 이후** 별도로 진행한다.
+
 ## ✅ 2026-09-21 [Codex 완료·배포·데이터] C17 — `organic_mentions` 중복 식별자 `url` → `mention_key`
 - **순서 준수:** Step 1 SQL(컬럼·함수·트리거·UNIQUE 추가, 기존 URL UNIQUE 유지) → main `b747323ce5dc6612bf8f306038758891fb9dd877` 배포 → Step 3 SQL(기존 `organic_mentions_url_key` 제거)을 중단 없이 순서대로 적용했다. SQL은 Supabase production project `vkdvncwzccqtqnszxdwo`에서 트랜잭션으로 실행하고 매 단계 직후 재조회했다.
 - **Step 1 전 실측:** 당시 1,054행, 계산 키 NULL 0·중복 0, 프로필 37행·게시물/기타 1,017행, 기존 URL UNIQUE 1개였다. 인계 시점 1,053행보다 1행 늘어 있었지만 키 충돌은 없었다.
