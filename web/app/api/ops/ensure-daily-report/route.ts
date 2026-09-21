@@ -50,7 +50,7 @@ async function isReportPosted(reportDate: string): Promise<boolean | null> {
   }
 }
 
-async function dispatchReport(): Promise<{ ok: boolean; detail: string }> {
+async function dispatchReport(finalRetry: boolean): Promise<{ ok: boolean; detail: string }> {
   // ⚠️ 조회용 토큰은 읽기 전용일 수 있어 dispatch 전용 토큰을 우선(ensure-daily-audits와 동일).
   const token = process.env.GH_DISPATCH_TOKEN?.trim() || resolveGitHubActionsToken();
   if (!token) return { ok: false, detail: "dispatch 토큰 없음(GH_DISPATCH_TOKEN)" };
@@ -64,7 +64,10 @@ async function dispatchReport(): Promise<{ ok: boolean; detail: string }> {
         "Content-Type": "application/json",
         "User-Agent": "ensure-daily-report",
       },
-      body: JSON.stringify({ ref: REF }), // 입력 없음 → date=어제(KST)=오늘 리포트, dry_run/update_ts 없음(실발송)
+      body: JSON.stringify({
+        ref: REF,
+        inputs: { final_retry: finalRetry ? "true" : "false" },
+      }), // date는 비움 → 어제(KST). final_retry만 최종 보류 DM 라우팅에 사용한다.
       cache: "no-store",
     });
     if (res.status === 204) return { ok: true, detail: "204" };
@@ -79,9 +82,17 @@ async function handler(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const dryRun = req.nextUrl.searchParams.get("dry_run") === "1";
+  const probe = req.nextUrl.searchParams.get("probe") === "1";
+  const finalRetry = req.nextUrl.searchParams.get("final_retry") === "1";
+  const syncOk = req.nextUrl.searchParams.get("sync_ok") !== "0";
   const kdate = todayKST();
   const reportDate = kstYesterday(kdate);
   const posted = await isReportPosted(reportDate); // true/false/null(확인불가)
+
+  // Apps Script가 syncAll 필요 여부만 확인하는 1차 조회. 알림·dispatch·상태 변경이 없다.
+  if (probe) {
+    return NextResponse.json({ ok: true, kdate, reportDate, posted, acted: false, probe: true });
+  }
 
   if (posted === true) {
     return NextResponse.json({ ok: true, kdate, reportDate, posted: true, acted: false }); // 이미 게시됨 → 무동작
@@ -91,16 +102,18 @@ async function handler(req: NextRequest) {
   let dispatched = false;
   let detail = "dry_run";
   if (!dryRun) {
-    const r = await dispatchReport();
+    const r = await dispatchReport(finalRetry);
     dispatched = r.ok;
     detail = r.detail;
     if (!r.ok) console.error("[ensure-daily-report] dispatch 실패", detail);
   }
   const why = posted === false ? "미게시 확인" : "게시 여부 확인 불가";
-  const msg = `⚠️ *리포트 발송 보장* \`(${reportDate})\`\n어제 증분 리포트 ${why} → **자동 발송 dispatch**${dryRun ? "(dry_run)" : dispatched ? " 완료(데이터 있으면 곧 게시, DEDUP로 중복 없음)." : ` 실패: ${detail}`}.`;
+  const syncText = syncOk ? "syncAll 완료" : "syncAll 실패(기존 DB로 재검수)";
+  const retryText = finalRetry ? " · 최종 재시도" : "";
+  const msg = `⚠️ *리포트 발송 보장* \`(${reportDate})\`\n어제 증분 리포트 ${why} → ${syncText}${retryText} → **자동 발송 dispatch**${dryRun ? "(dry_run)" : dispatched ? " 완료(데이터 있으면 곧 게시, DEDUP로 중복 없음)." : ` 실패: ${detail}`}.`;
   await notifyBot(msg).catch(() => {});
   const ok = dryRun || dispatched;
-  return NextResponse.json({ ok, kdate, reportDate, posted, acted: true, dispatched, detail }, { status: ok ? 200 : 500 });
+  return NextResponse.json({ ok, kdate, reportDate, posted, acted: true, dispatched, detail, finalRetry, syncOk }, { status: ok ? 200 : 500 });
 }
 
 export async function POST(req: NextRequest) { return handler(req); }

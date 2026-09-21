@@ -4647,10 +4647,9 @@ function installAuditFallbackTrigger() {
   return installEnsureDailyAuditsTrigger();
 }
 
-// 리포트 결과 워치독 — GitHub cron이 일일 증분 리포트 발송을 누락하면 서버가 직접 dispatch한다.
-// 서버가 KST 오늘의 성공 실행을 먼저 확인하므로 정상 발송된 날은 무동작(중복 발송 없음).
-function ensureDailyReport() {
-  const res = UrlFetchApp.fetch(CONFIG.ENSURE_DAILY_REPORT_URL, {
+function requestEnsureDailyReport_(query) {
+  const suffix = query ? "?" + query : "";
+  const res = UrlFetchApp.fetch(CONFIG.ENSURE_DAILY_REPORT_URL + suffix, {
     method: "post",
     headers: authHeaders_(),
     muteHttpExceptions: true,
@@ -4659,6 +4658,26 @@ function ensureDailyReport() {
   const body = res.getContentText();
   Logger.log("[ensureDailyReport] HTTP " + code + " " + body.slice(0, 500));
   if (code !== 200) throw new Error("ensureDailyReport HTTP " + code + ": " + body.slice(0, 200));
+  try { return JSON.parse(body); }
+  catch (e) { throw new Error("ensureDailyReport 응답 파싱 실패: " + e.message); }
+}
+
+// 리포트 결과 워치독 — 미게시일 때만 시트 최신 분류를 DB에 반영한 뒤 GitHub 리포트를 재dispatch한다.
+// 16시대 호출은 최종 재시도로 표시해, 재검수에서도 막히면 워크플로가 담당자 DM으로 에스컬레이션한다.
+function ensureDailyReport() {
+  const probe = requestEnsureDailyReport_("probe=1");
+  if (probe.posted === true) {
+    Logger.log("[ensureDailyReport] 이미 게시됨 — syncAll/dispatch 생략");
+    return true;
+  }
+
+  const syncOk = withDocLock_(function() { return runSync_(false); });
+  Logger.log("[ensureDailyReport] pre-dispatch syncAll=" + syncOk);
+  const hour = Number(Utilities.formatDate(new Date(), "Asia/Seoul", "HH"));
+  const finalRetry = hour >= 15;
+  const query = "final_retry=" + (finalRetry ? "1" : "0") + "&sync_ok=" + (syncOk ? "1" : "0");
+  const result = requestEnsureDailyReport_(query);
+  if (!result.ok) throw new Error("ensureDailyReport dispatch 실패: " + String(result.detail || "unknown"));
   return true;
 }
 

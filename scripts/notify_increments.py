@@ -174,8 +174,8 @@ def _open_dm(token: str, user_id: str) -> str | None:
     return None
 
 
-def _hold_notice_exists(token: str, channel: str, target: str) -> bool:
-    """channel에 이미 (target) 발송보류 공지가 있으면 True(중복 도배 방지)."""
+def _hold_notice_exists(token: str, channel: str, target: str, final_retry: bool = False) -> bool:
+    """channel에 같은 단계의 (target) 발송보류 공지가 있으면 True(중복 도배 방지)."""
     try:
         req = urllib.request.Request(
             f"https://slack.com/api/conversations.history?channel={channel}&limit=30",
@@ -189,7 +189,8 @@ def _hold_notice_exists(token: str, channel: str, target: str) -> bool:
         return False
     for m in d.get("messages", []):
         t = m.get("text", "")
-        if "발송 보류" in t and f"({target})" in t:
+        marker = "최종 재시도 후 발송 보류" if final_retry else "발송 보류"
+        if marker in t and f"({target})" in t:
             return True
     return False
 
@@ -771,17 +772,26 @@ def main():
             # 리포트 채널에 도배하지 않고 운영자 DM으로만 조용히. 실질 불일치·분류 미반영·검수 오류가
             # 하나라도 있으면 사람 조치가 필요하므로 팀 채널에 노출. 어느 경우든 같은 날짜 1회만(중복 억제).
             _real = [b for b in _blocks if not is_collection_hold(b)]
-            _alert = "🚫 *리포트 발송 보류* `(" + target + ")`\n" + "\n".join(f"• {b}" for b in _blocks)
+            _final_retry = os.getenv("FINAL_RETRY") == "1"
+            _alert_head = "🚨 *리포트 최종 재시도 후 발송 보류*" if _final_retry else "🚫 *리포트 발송 보류*"
+            _alert = _alert_head + " `(" + target + ")`\n" + "\n".join(f"• {b}" for b in _blocks)
             if _warns:
                 _alert += "\n\n⚠️ 참고(비차단):\n" + "\n".join(f"• {w}" for w in _warns)
-            _alert += "\n\n_동기화/수집 완료 후 자동 백업발송(13:20/14:20/15:20 KST)에 재검수됩니다._"
-            if _real:
+            if _final_retry:
+                _alert += "\n\n_최종 자가치유 후에도 게시되지 않았습니다. 담당자 확인이 필요합니다._"
+            else:
+                _alert += "\n\n_동기화/수집 완료 후 자동 백업발송(13:20/14:20/15:20 KST)에 재검수됩니다._"
+            if _final_retry:
+                _uid = os.getenv("STATUS_USER") or "U0B2Y0ZC8QZ"
+                _dest = _uid
+                _hist_ch = _open_dm(token, _uid)
+            elif _real:
                 _dest, _hist_ch = CHANNEL, CHANNEL          # 사람 조치 필요 → 팀 채널
             else:
                 _uid = os.getenv("STATUS_USER") or "U0B2Y0ZC8QZ"  # 운영자(황경원) DM
                 _dest = _uid                                 # chat.postMessage는 U...로 바로 발송됨
                 _hist_ch = _open_dm(token, _uid)             # 중복조회용 D...(실패 시 조회 스킵)
-            if _hist_ch and _hold_notice_exists(token, _hist_ch, target):
+            if _hist_ch and _hold_notice_exists(token, _hist_ch, target, final_retry=_final_retry):
                 print("[notify] 보류 공지 이미 있음 — 중복 억제:", _dest, target)
             else:
                 _ad = urllib.parse.urlencode({"channel": _dest, "text": _alert, "unfurl_links": "false"}).encode()

@@ -46,6 +46,10 @@ on:
         description: "본문 상단에 붙일 주석 한 줄(숫자 해석 주의사항). 비우면 안 붙음"
         type: string
         default: ""
+      final_retry:
+        description: "16:10 최종 재시도 — 다시 보류되면 담당자 DM으로 에스컬레이션"
+        type: boolean
+        default: false
 
 jobs:
   report:
@@ -83,6 +87,7 @@ jobs:
           # 기존 리포트 메시지 본문만 수정. TS_OUT을 남기지 않아 상태 댓글은 재발송하지 않는다.
           UPDATE_TS: ${{ github.event.inputs.update_ts }}
           REPORT_NOTE: ${{ github.event.inputs.note }}
+          FINAL_RETRY: ${{ github.event.inputs.final_retry == 'true' && '1' || '' }}
           DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && '1' || '' }}
           TS_OUT: ${{ runner.temp }}/report_ts.txt
           PYTHONUNBUFFERED: "1"
