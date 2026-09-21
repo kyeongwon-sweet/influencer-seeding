@@ -1,5 +1,32 @@
 # AI Shared Status
 
+## 📮 2026-09-21 [Claude → Codex 인계] 여믄봇 '요약' 단축키 활성화 (코드·배포는 끝, 설정 2건만 남음)
+**사용자 지시: 남은 작업 전부 Codex.** 코드는 `65646ed7` 로 main 배포 완료·프로덕션 실측까지 끝났고(아래 🟡 항목), **아래 2건을 하기 전까지 기능은 동작하지 않는다.**
+
+### A. Vercel 환경변수 `ANTHROPIC_API_KEY` 추가
+- Production 에 추가 후 **재배포**(환경변수는 재배포해야 반영). 없으면 요약 생성 단계에서 실패하고 요청자에게 그 사유로 ephemeral 안내가 간다.
+- 모델 기본값 `claude-sonnet-5`. 바꾸려면 `SUMMARY_MODEL` 도 같이 추가.
+- **🔴 선행 의존:** **키 값은 팀이 발급해야 한다**(Anthropic Console). Claude·Codex 가 만들 수 없음. 키가 없으면 이 건은 대기.
+
+### B. 여믄봇 Slack 앱 설정 (api.slack.com/apps → 여믄봇)
+1. **Interactivity & Shortcuts** → ON → Request URL:
+   `https://influencer-seeding-mu.vercel.app/api/slack/summarize`
+   - ⚠️ **여믄봇에 이미 다른 Interactivity Request URL 이 들어 있으면 덮어쓰지 말고 먼저 알릴 것.** (확인한 범위에선 여믄봇은 Event Subscriptions(`/api/slack-events`)만 쓰고 Interactivity 는 미사용. injibot 은 **다른 앱**이라 무관.)
+2. **Create New Shortcut → On messages** — Name `요약`, **Callback ID `summarize_thread`** (콜백 ID 가 다르면 코드가 무시한다. `요약`·`summarize` 도 허용.)
+3. 봇 스코프 추가: `channels:history`, `groups:history`, `chat:write`, `users:read` → **앱 재설치**
+4. 사용할 채널에 `/invite @여믄봇` (봇이 멤버여야 스레드를 읽고 답글을 단다)
+
+### 🚨 B-3 재설치 전 필독 — 여믄봇 토큰은 매일 리포트가 쓰고 있다
+- `SLACK_BOT_TOKEN`(여믄봇)은 **GHA 시크릿 + Vercel 양쪽**에서 `notify_increments.py` 일일 증분 리포트·DM·`/api/slack-events` 가 쓰는 **운영 토큰**이다.
+- 스코프 추가 재설치로 **봇 토큰이 바뀌면 매일 리포트가 조용히 죽는다.**
+- **절차:** 재설치 직후 `xoxb-` 토큰을 확인해 기존 값과 **같은지 대조** → 바뀌었으면 **Vercel 환경변수와 GitHub 시크릿 `SLACK_BOT_TOKEN` 을 둘 다 갱신**하고, `auth.test` 1회 + 다음 리포트 실제 도착까지 확인할 것.
+
+### 완료 검증(Codex 몫)
+1. 실제 스레드에서 메시지 `...` → `요약` 실행 → **스레드에 요약이 게시**되는지 실물 확인.
+2. 위조 서명 POST 가 여전히 `401 {"error":"bad signature"}` 인지 확인(회귀 없음).
+3. 위 🚨 대로 `SLACK_BOT_TOKEN` 무결성 + 다음 일일 리포트 도착 확인.
+4. 결과를 이 상태판에 기재.
+
 ## 🟡 2026-09-21 [Claude 코드완료·미활성] 여믄봇 '요약' 메시지 단축키 — 스레드 요약 엔드포인트
 - **사용자 요청:** "`/요약` 치면 요청자 기준으로 그 스레드의 그 전까지 내용을 가독성 좋게 요약." (예: 황경원이 요청 → "경원님이~" 언급된 것 위주)
 - **🔴 슬래시 커맨드로는 불가(확인함):** Slack 공식 문서상 **개발자가 만든 커스텀 슬래시 커맨드는 스레드 안에서 실행되지 않고**, payload 에 `thread_ts` 도 오지 않는다. 스레드 맥락을 받는 유일한 수단이 **메시지 단축키**(메시지 `...` → "요약")라 사용자 승인 후 그 방식으로 구현했다.
