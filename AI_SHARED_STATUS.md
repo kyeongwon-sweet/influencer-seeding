@@ -1,5 +1,10 @@
 # AI Shared Status
 
+## ⏳ 2026-09-21 [Codex 구현·로컬 검증] Meta 사용자 데이터 삭제 콜백
+- Meta App Review/플랫폼 정책에 맞춰 `POST /api/meta/data-deletion`을 추가했다. `signed_request`는 `META_APP_SECRET`의 HMAC-SHA256로 검증하고, 서명·사용자 ID 또는 원문을 로그에 남기지 않는다. 현재 앱은 Facebook 앱 범위 사용자 프로필/ASID 연결 테이블을 저장하지 않으므로, 정상 서명 요청은 삭제할 연결 데이터가 없음을 확인하고 즉시 완료한다.
+- Meta 응답 계약인 `{ url, confirmation_code }`를 반환하고, `GET /api/meta/data-deletion/status`에서 사람이 읽을 수 있는 완료 상태를 보여 준다. 상태 URL은 사용자 ID를 포함하지 않는 128-bit 확인 코드 + HMAC proof로 위변조를 막고, `no-store`/CSP/`noindex`/`no-referrer`를 적용했다. Clerk 공개 예외는 자체 서명 검증 경로에만 추가했다.
+- 로컬 검증: 서명 조작·잘못된 secret·algorithm·payload 거절, receipt 위변조 거절, 사용자 ID 미노출 회귀를 포함한 web 전체 **509/509**, `tsc --noEmit --incremental false`, 변경 파일 ESLint, Next.js production build 통과. 프로덕션 배포와 Meta 대시보드의 Data Deletion Request URL 연결은 다음 단계다.
+
 ## ⏳ 2026-09-21 [Codex 구현·로컬 검증] Google Search Trends 전건 실패 복구
 - 2026-09-21 KST 정기 workflow `35543144350`은 API 호출 11건과 Apify run 자체는 모두 성공 상태였지만 데이터셋이 전부 0건이라 hard fail했다. 각 run 로그에서 Google Trends 초기 요청을 하나도 처리하지 못했고 `RELATED_QUERIES`·`RELATED_TOPICS` selector timeout 뒤 내부 요청이 실패한 것을 확인했다. 같은 커밋의 전날 실행도 11건 중 7건이 비어 있어 배포 코드보다 기존 `apify/google-trends-scraper` 브라우저 경로의 불안정이 원인이다.
 - 기존 액터에 한국 주거용 위치를 명시한 최소 재현 run `PnYQew1MnfNMIMKZJ`도 같은 오류를 내어 중단했다. 브라우저를 쓰지 않고 Trends JSON endpoint를 호출하는 `signalbench/google-trends-scraper` 최소 run `mqMbsDQJ020pWvHkn`은 같은 `라라스윗 / KR / today 3-m` 조건에서 약 13초 만에 성공했고 일별 93개를 반환했다.
