@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## ✅ 2026-09-21 [Codex 완료·배포·데이터] C17 — `organic_mentions` 중복 식별자 `url` → `mention_key`
+- **순서 준수:** Step 1 SQL(컬럼·함수·트리거·UNIQUE 추가, 기존 URL UNIQUE 유지) → main `b747323ce5dc6612bf8f306038758891fb9dd877` 배포 → Step 3 SQL(기존 `organic_mentions_url_key` 제거)을 중단 없이 순서대로 적용했다. SQL은 Supabase production project `vkdvncwzccqtqnszxdwo`에서 트랜잭션으로 실행하고 매 단계 직후 재조회했다.
+- **Step 1 전 실측:** 당시 1,054행, 계산 키 NULL 0·중복 0, 프로필 37행·게시물/기타 1,017행, 기존 URL UNIQUE 1개였다. 인계 시점 1,053행보다 1행 늘어 있었지만 키 충돌은 없었다.
+- **코드 배포:** `organic_mentions` 업서트 2곳은 `onConflict:'mention_key'`, 프로필 URL 조회수 갱신은 skip한다. 같은 파일의 `influencers` 업서트 `onConflict:'url'`은 다른 테이블이라 보존했다. 로컬 web 528/528·tsc·production build 통과, GitHub Build Test `35558105022`의 build·python-tests 성공, Vercel production `dpl_7BvuHufFdqXNaSFrqWxRQX1HHXSf` Ready 및 `-mu` 별칭을 확인한 뒤 Step 3을 실행했다.
+- **최종 스키마 검증:** `organic_mentions_url_key=0`, `organic_mentions_mention_key_uidx=true`, `trg_organic_mentions_mention_key=true`, `mention_key NULL=0`, 중복=0. 게시물/기타 1,017행은 `mention_key=url`, 프로필 37행은 날짜 접미 키라 기존 게시물 중복 차단 강도는 유지된다.
+- **누락 1건 적재:** `jungyun_diet` 프로필 URL에 2023-11-30 / 초코바 / `운동 후에 초코바지` / `source=notion-natural-list`를 1행 추가했다(`view_count=NULL`, 값 추정 없음). 기존 2023-02-12 / 파인트 / `속세의 맛` 행은 무변경이다. 최종 전체 1,055행, 해당 계정 2행·서로 다른 키 2개, 전체 키 중복 0을 재확인했다.
+
 ## 📮 2026-09-21 [Codex 인계] C17 — organic_mentions 중복 식별자 `url` → `mention_key` (3단계, SQL은 사람 몫)
 - **브랜치 `feat/organic-mention-key`(`6b800a01`)에 코드·마이그레이션이 올라가 있다. main 아님 = 배포 안 됨.** 로컬 main 은 origin 과 동일하게 맞춰 두었다(실수 배포 방지).
 - **왜:** 인스타 스토리는 영구 링크가 없어 노션·수기 모두 **프로필 주소**로 기록하는데 `organic_mentions.url` 단독 UNIQUE(`organic_mentions_url_key`) 때문에 **같은 계정의 다른 날짜 노출을 1건밖에 저장 못 한다**(실측: 운동하는 쩡 `jungyun_diet` 2023-02-12 파인트 / 2023-11-30 초코바 중 1건만 적재, 나머지 23505 거부).
