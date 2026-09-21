@@ -1,7 +1,7 @@
 "use client";
 // 필터 바 — monitoring/page.tsx 에서 추출.
 // filters 상태/세터는 부모 소유(prop). 드롭다운 열림상태는 필터바 전용이라 내부 보관.
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { type Filters, INIT_FILTERS, CHANNEL_TYPES, fmtChannelType } from "../lib";
 import { productCodeOf } from "@/lib/productCode";
 
@@ -13,8 +13,6 @@ const SEARCH_RULES: Array<{ ex: string; means: string }> = [
   { ex: "딸기 -광고", means: "'딸기' 포함, '광고' 제외" },
   { ex: "에스파, 아이브 -광고", means: "(에스파 또는 아이브) 이고 광고 제외" },
 ];
-// 네이티브 title 도 남겨 둔다 — 터치기기·스크린리더처럼 hover 가 없는 환경의 대체 수단.
-const SEARCH_HINT = SEARCH_RULES.map((r) => `${r.ex} → ${r.means}`).join(String.fromCharCode(10));
 
 /** 검색칸을 감싸 hover 시 사용법을 보여준다. 표 내용은 SEARCH_RULES 단일 출처. */
 function SearchHintWrap({ children }: { children: React.ReactNode }) {
@@ -24,17 +22,21 @@ function SearchHintWrap({ children }: { children: React.ReactNode }) {
       <div
         role="tooltip"
         className="hidden group-hover/sh:block group-focus-within/sh:block absolute top-full left-0 mt-1.5 z-[9999]
-                   bg-white border border-a-hairline rounded-[10px] px-3 py-2 shadow-lg w-[290px]
+                   bg-white border border-a-hairline rounded-[10px] px-3 py-2 shadow-lg w-[340px]
                    pointer-events-none text-left font-normal normal-case tracking-normal
                    whitespace-normal text-[11px] text-a-ink-muted leading-relaxed"
       >
-        <div className="font-medium text-a-ink mb-1">검색 방법</div>
-        {SEARCH_RULES.map((r) => (
-          <div key={r.ex} className="flex gap-1.5 items-baseline">
-            <code className="shrink-0 text-a-blue">{r.ex}</code>
-            <span className="text-a-ink-muted">{r.means}</span>
-          </div>
-        ))}
+        <div className="font-medium text-a-ink mb-1.5">검색 방법</div>
+        {/* 2열 그리드 — 예시 열 너비를 맞춰야 설명이 들쭉날쭉하지 않다.
+            ⚠️ 예시는 한글이라 <code>(monospace) 금지 — 자형이 섞여 어색해진다. */}
+        <div className="grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-1 items-baseline">
+          {SEARCH_RULES.map((r) => (
+            <Fragment key={r.ex}>
+              <span className="text-a-blue whitespace-nowrap">{r.ex}</span>
+              <span>{r.means}</span>
+            </Fragment>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -72,7 +74,6 @@ export default function FiltersBar({ filters, setFilters, creatorOptions, planne
         <input
           type="text"
           placeholder="인플루언서 검색"
-          title={SEARCH_HINT}
           value={filters.name}
           onChange={e => setFilters(p => ({ ...p, name: e.target.value }))}
           className={`filter-input w-32 ${filters.name ? "border-a-blue" : ""}`}
@@ -82,7 +83,6 @@ export default function FiltersBar({ filters, setFilters, creatorOptions, planne
         <input
           type="text"
           placeholder="소재명"
-          title={SEARCH_HINT}
           value={filters.project}
           onChange={e => setFilters(p => ({ ...p, project: e.target.value }))}
           className={`filter-input w-28 ${filters.project ? "border-a-blue" : ""}`}
@@ -92,7 +92,6 @@ export default function FiltersBar({ filters, setFilters, creatorOptions, planne
         <input
           type="text"
           placeholder="캡션 검색"
-          title={SEARCH_HINT}
           value={filters.caption}
           onChange={e => setFilters(p => ({ ...p, caption: e.target.value }))}
           className={`filter-input w-32 ${filters.caption ? "border-a-blue" : ""}`}
