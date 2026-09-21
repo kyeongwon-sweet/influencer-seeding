@@ -1,9 +1,9 @@
 # AI Shared Status
 
-## ⏳ 2026-09-21 [Codex 구현·로컬 검증] Meta 사용자 데이터 삭제 콜백
+## ✅ 2026-09-21 [Codex 구현·배포·Meta 연결] Meta 사용자 데이터 삭제 콜백
 - Meta App Review/플랫폼 정책에 맞춰 `POST /api/meta/data-deletion`을 추가했다. `signed_request`는 `META_APP_SECRET`의 HMAC-SHA256로 검증하고, 서명·사용자 ID 또는 원문을 로그에 남기지 않는다. 현재 앱은 Facebook 앱 범위 사용자 프로필/ASID 연결 테이블을 저장하지 않으므로, 정상 서명 요청은 삭제할 연결 데이터가 없음을 확인하고 즉시 완료한다.
 - Meta 응답 계약인 `{ url, confirmation_code }`를 반환하고, `GET /api/meta/data-deletion/status`에서 사람이 읽을 수 있는 완료 상태를 보여 준다. 상태 URL은 사용자 ID를 포함하지 않는 128-bit 확인 코드 + HMAC proof로 위변조를 막고, `no-store`/CSP/`noindex`/`no-referrer`를 적용했다. Clerk 공개 예외는 자체 서명 검증 경로에만 추가했다.
-- 로컬 검증: 서명 조작·잘못된 secret·algorithm·payload 거절, receipt 위변조 거절, 사용자 ID 미노출 회귀를 포함한 web 전체 **509/509**, `tsc --noEmit --incremental false`, 변경 파일 ESLint, Next.js production build 통과. 프로덕션 배포와 Meta 대시보드의 Data Deletion Request URL 연결은 다음 단계다.
+- 검증·배포: 서명 조작·잘못된 secret·algorithm·payload 거절, receipt 위변조 거절, 사용자 ID 미노출 회귀를 포함한 web 전체 **509/509**, `tsc --noEmit --incremental false`, 변경 파일 ESLint, Next.js production build 통과. PR #19를 `main` 병합했고 CI build·python-tests와 Vercel 프로덕션 배포가 성공했다. 운영 상태 URL은 서명 없이 400/no-store/CSP를, 콜백은 잘못된 `signed_request`에 401을 반환해 secret 배선까지 확인했다. Meta App `965303019541316` 기본 설정의 사용자 데이터 삭제를 **데이터 삭제 콜백 URL**로 바꾸고 `https://influencer-seeding-mu.vercel.app/api/meta/data-deletion`을 저장한 후 `Changes saved`를 확인했다.
 
 ## ✅ 2026-09-21 [Codex 완료·배포·실물 검증] Google Search Trends 전건 실패 복구
 - 2026-09-21 KST 정기 workflow `35543144350`은 API 호출 11건과 Apify run 자체는 모두 성공 상태였지만 데이터셋이 전부 0건이라 hard fail했다. 각 run 로그에서 Google Trends 초기 요청을 하나도 처리하지 못했고 `RELATED_QUERIES`·`RELATED_TOPICS` selector timeout 뒤 내부 요청이 실패한 것을 확인했다. 같은 커밋의 전날 실행도 11건 중 7건이 비어 있어 배포 코드보다 기존 `apify/google-trends-scraper` 브라우저 경로의 불안정이 원인이다.
