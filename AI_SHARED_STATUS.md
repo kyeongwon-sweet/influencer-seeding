@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## ✅ 2026-09-21 [Codex 완료·라이브] 기획자/제작자 편집 트리거 100% 실패 복구
+- **실패 원문 확인:** Apps Script 실행기록에서 `syncManualCreatorsOnEdit`가 시트 편집 때마다 `Script function not found: syncManualCreatorsOnEdit`로 실패했다. API·권한·시트 값 오류가 아니라, 같은 날 운영 파일 정리에서 라이브 전용 핸들러가 빠진 반면 설치형 onEdit 트리거는 남은 회귀였다.
+- **판정:** 트리거는 불필요한 잔재가 아니다. 기획자·제작자를 사람이 시트에서 수정했을 때 DB `/bulk`로 즉시 보내는 경로이며, 정기 전체 동기화와 역할이 다르다. 따라서 트리거 삭제 대신 핸들러를 현재 정본에 복원했다.
+- **중복 제거:** 복원 함수는 기획자·제작자 열을 포함한 편집만 처리한다. 상태 열은 이미 살아 있는 `onStatusEdit_`가 전용 API로 처리하므로 옛 코드의 상태 동기화 분기는 되살리지 않았다. 자동 쓰기 억제·대상 탭/데이터행·URL 검증도 유지한다.
+- **검증:** 계약 테스트에 설치형 트리거 핸들러 존속과 상태 중복 전송 금지를 고정했다. web 전체 **511/511**, `tsc --noEmit`, Next production build 통과. guarded clasp push·fresh pull로 라이브 10파일 exact inventory와 repo-owned 8파일 바이트 일치를 확인했다. 라이브 편집기의 함수 목록에 `syncManualCreatorsOnEdit`가 다시 노출되고, 이벤트 없는 무변경 수동 실행이 `실행이 완료됨`으로 끝나 함수 없음 오류가 해소됐다. 실제 다음 기획자/제작자 편집부터 설치형 트리거가 같은 핸들러를 호출한다.
+
 ## ✅ 2026-09-21 [Codex 완료·라이브] Apps Script 일회성 파일 정리 · 운영 파일 한글명 통일
 - **전수 판정:** production scriptId `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn`을 authenticated clasp로 fresh pull해 **37파일**을 함수 참조·설치 트리거 17개와 대조했다. 완료된 날짜별 수리/감사, 진단용 `제목 없음`, 메인에 이미 병합된 `ensureDailyReport`·`scheduleHeartbeat` 중복 파일을 운영 프로젝트에서 제거했다.
 - **최종 라이브 구성:** 코드 파일은 **9개**만 남겼다 — `01_연동시트_자동동기화`, `02_시트쓰기_충돌방지`, `03_누적조회수_수식안전`, `04_연동시트_기본서식`, `05_연동시트_신규행_서식`, `06_소재명_파일목록_자동정리`, `07_배너_인사이트_문의_자동생성`, `08_바이럴_최신효율_업데이트`, `09_제품별_일별성과_집계`(+ 숨은 `appsscript.json`). 파일명만 바꿨고 트리거가 참조하는 함수명은 유지했다.

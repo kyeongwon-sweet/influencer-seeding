@@ -3440,6 +3440,45 @@ function postTrackingRows_(rows) {
   return JSON.parse(text);
 }
 
+// 설치형 편집 트리거 전용: 기획자/제작자 수동 수정값을 즉시 DB로 전송한다.
+// 상태 열은 onStatusEdit_가 전용 API로 처리하므로 여기서는 중복 전송하지 않는다.
+function syncManualCreatorsOnEdit(e) {
+  try {
+    if (!e || !e.range) return;
+    if (skipEditDuringAutoWrite_("syncManualCreatorsOnEdit")) return;
+    const sheet = e.range.getSheet();
+    if (sheet.getSheetId() !== CONFIG.SHEET_GID) return;
+    if (e.range.getLastRow() < CONFIG.DATA_START_ROW) return;
+
+    const fieldCols = buildFieldCols_(sheet);
+    if (!fieldCols.url || (!fieldCols.planner && !fieldCols.creator)) return;
+    const firstCol = e.range.getColumn();
+    const lastCol = e.range.getLastColumn();
+    const touchesPlanner = !!fieldCols.planner && firstCol <= fieldCols.planner && lastCol >= fieldCols.planner;
+    const touchesCreator = !!fieldCols.creator && firstCol <= fieldCols.creator && lastCol >= fieldCols.creator;
+    if (!touchesPlanner && !touchesCreator) return;
+
+    const firstRow = Math.max(CONFIG.DATA_START_ROW, e.range.getRow());
+    const rowCount = e.range.getLastRow() - firstRow + 1;
+    const width = Math.max(fieldCols.url, fieldCols.planner || 0, fieldCols.creator || 0);
+    const values = sheet.getRange(firstRow, 1, rowCount, width).getValues();
+    const rows = [];
+    values.forEach(row => {
+      const url = String(row[fieldCols.url - 1] || "").trim();
+      if (!url || !ALLOWED_URL_RE.test(url)) return;
+      rows.push({
+        url: url,
+        planner: fieldCols.planner ? String(row[fieldCols.planner - 1] || "").trim() || null : null,
+        creator: fieldCols.creator ? String(row[fieldCols.creator - 1] || "").trim() || null : null,
+      });
+    });
+    if (rows.length) postRows_(rows);
+  } catch (err) {
+    Logger.log("syncManualCreatorsOnEdit: " + (err.stack || err.message));
+    try { SpreadsheetApp.getActive().toast("기획자/제작자 DB 반영 실패: " + err.message, "오류", 6); } catch (_) {}
+  }
+}
+
 function onStatusEdit_(e) {
   try {
     if (!e || !e.range || !e.source) return;

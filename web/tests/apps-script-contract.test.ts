@@ -278,6 +278,18 @@ test("Apps Script mirror keeps live metadata and URL guards", () => {
   );
 });
 
+test("installed creator edit trigger keeps its live handler and avoids duplicate status writes", () => {
+  const start = appsScript.indexOf("function syncManualCreatorsOnEdit(e)");
+  const end = appsScript.indexOf("\nfunction onStatusEdit_(e)", start);
+  assert.ok(start >= 0 && end > start, "syncManualCreatorsOnEdit handler must remain deployed");
+  const body = appsScript.slice(start, end);
+  assert.match(body, /skipEditDuringAutoWrite_\("syncManualCreatorsOnEdit"\)/);
+  assert.match(body, /touchesPlanner/);
+  assert.match(body, /touchesCreator/);
+  assert.match(body, /postRows_\(rows\)/);
+  assert.doesNotMatch(body, /postTrackingRows_|trackingEndedAtFromStatus_|touchesStatus/);
+});
+
 test("sheet issue menu target runs both blank and duplicate checks", () => {
   assert.match(appsScript, /\.addItem\("빈칸 · 중복 URL 검사",\s*"checkSheetIssues"\)/);
   assert.match(
