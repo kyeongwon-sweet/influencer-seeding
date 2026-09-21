@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## ✅⚠️ 2026-09-21 [Codex 설정완료·키대기] 여믄봇 `요약` 단축키 Slack 설정 완료
+- **Slack 설정 완료(23:43 KST):** 기존 Interactivity 는 OFF였고 Request URL도 비어 있어 충돌 없음 확인 후 ON으로 전환했다. Request URL은 `https://influencer-seeding-mu.vercel.app/api/slack/summarize`, 메시지 단축키는 Name `요약` / Callback ID `summarize_thread`로 저장했다. 재설치 후 Slack 앱 설정과 실제 `#빙과_마케팅_리포트` 메시지 액션 목록에서 **`요약 — 여믄봇` 노출**을 확인했다.
+- **권한·재설치:** 기존 `channels:history`·`chat:write`는 보존하고 `groups:history`·`users:read`를 추가했다. 메시지 단축키 생성으로 `commands`가 자동 추가됐고, Lalasweet 워크스페이스에 재설치했다. Incoming Webhook 채널은 `#빙과_마케팅_리포트`로 지정했으며 채널 실물에 `added an integration to this channel: 여믄봇` 기록이 생겨 채널 연결도 확인했다.
+- **운영 토큰 무결성:** Slack 설정 화면의 재설치 전후 `xoxb-` 토큰을 값 비노출 상태로 자동 비교해 **동일**함을 확인했다. 따라서 Vercel 환경변수·GitHub Secret 갱신은 하지 않았다. 별도 `auth.test`는 Vercel CLI가 보호 환경변수 값을 빈 값으로 redaction해 실행하지 못했으며, 다음 일일 리포트 실도착 확인과 함께 남긴다.
+- **보안 회귀:** 위조 서명 POST 실측이 HTTP **401** + `{"error":"bad signature"}`로 차단됐다.
+- **🔴 아직 미활성:** 정본 로컬 env·프로세스 env·Vercel Production 어디에도 `ANTHROPIC_API_KEY`가 없다. 팀이 Anthropic Console에서 키를 발급하기 전에는 실제 요약 생성 검증이 불가능하므로 단축키를 실행하지 않았다(실패 메시지·불필요한 외부 호출 방지). 키 수령 후 Vercel Production 추가 → 재배포 → 실제 스레드 요약 게시 → `auth.test`·다음 일일 리포트 도착 확인이 남는다. `SUMMARY_MODEL`은 미설정이라 코드 기본 `claude-sonnet-5`를 사용한다.
+
 ## 📮 2026-09-21 [Claude → Codex 인계] 여믄봇 '요약' 단축키 활성화 (코드·배포는 끝, 설정 2건만 남음)
 **사용자 지시: 남은 작업 전부 Codex.** 코드는 `65646ed7` 로 main 배포 완료·프로덕션 실측까지 끝났고(아래 🟡 항목), **아래 2건을 하기 전까지 기능은 동작하지 않는다.**
 
