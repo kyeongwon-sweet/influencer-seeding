@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## ⏳ 2026-09-21 [Codex 구현·라이브 반영 / 예약 실측 대기] 리포트 미분류 보류 고착 자가치유
+- **원인 경로 보강:** Apps Script `ensureDailyReport`가 먼저 무작용 `probe=1`로 전일 리포트 게시 여부를 확인한다. 이미 게시됐으면 무동작이고, 미게시·확인불가일 때만 문서 잠금 아래 `runSync_(false)`를 실행해 시트의 최신 채널분류를 DB에 반영한 뒤 GitHub 리포트를 재dispatch한다. 08:30 이후 팀이 분류한 글도 12:35·16:10 워치독 재검수에서 더 이상 옛 DB 분류에 고착되지 않는다.
+- **최종 에스컬레이션:** 16시대 Apps Script 호출은 `final_retry=true`를 `daily-increment-report.yml`에 전달한다. 이 실행이 발송 전 검수에서 다시 막히면 수집성/정합성 사유와 무관하게 황경원 담당 DM으로 `리포트 최종 재시도 후 발송 보류`를 한 번 보내며, 일반 보류 공지와 별도 표식으로 중복 억제한다.
+- **배포:** 구현 `7e511c114c7b031f8aa6a445913dbd8b910e0ca3`. Vercel production `dpl_EQAEwusYGWmcrTFhhQyQ73RBUnMT` Ready, `influencer-seeding-mu.vercel.app` 별칭 확인. guarded clasp가 라이브 10파일을 fresh pull→overlay→push→재pull했고 repo-owned 8파일 바이트 일치·운영 inventory 10파일 일치를 확인했다(09:52:56 KST).
+- **게이트:** web **527/527**, Python **372 passed + 4 subtests**, 신규 실제경로 계약 3종, 변경 파일 ESLint, `tsc --noEmit --incremental false`, Next production build, Apps Script 구문·배포 준비, Workflow Lint run `35549025846`, Build Test run `35549025835` 모두 통과.
+- **남은 실측:** 현재 시각에 `ensureDailyReport`를 수동 실행하면 정오 리포트가 조기 발송되므로 실행하지 않았다. 다음 12:35 KST 실제 설치형 트리거에서 `probe → syncAll → dispatch/게시` 로그와 리포트 실물을 확인해야 완결이다. 이미 게시된 날이면 `syncAll/dispatch 생략`이 정상 결과다.
+
 ## ✅ 2026-09-21 [Codex 완료·라이브] 기획자/제작자 편집 트리거 100% 실패 복구
 - **실패 원문 확인:** Apps Script 실행기록에서 `syncManualCreatorsOnEdit`가 시트 편집 때마다 `Script function not found: syncManualCreatorsOnEdit`로 실패했다. API·권한·시트 값 오류가 아니라, 같은 날 운영 파일 정리에서 라이브 전용 핸들러가 빠진 반면 설치형 onEdit 트리거는 남은 회귀였다.
 - **판정:** 트리거는 불필요한 잔재가 아니다. 기획자·제작자를 사람이 시트에서 수정했을 때 DB `/bulk`로 즉시 보내는 경로이며, 정기 전체 동기화와 역할이 다르다. 따라서 트리거 삭제 대신 핸들러를 현재 정본에 복원했다.
