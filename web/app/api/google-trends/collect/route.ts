@@ -3,11 +3,10 @@ import { checkCronAuth } from "@/lib/cron-auth";
 import { startActorRunWithId } from "@/lib/apify";
 import { GOOGLE_TREND_KEYWORDS } from "@/lib/google-trend-groups";
 
-// 구글 웹 검색 트렌드를 볼 키워드 (Google Trends 웹 검색, gprop 미지정, 상대값 0~100).
+// 구글 웹 검색 트렌드를 볼 키워드 (Google Trends 웹 검색, 상대값 0~100).
 // 그룹 정의(합산·라벨)는 lib/google-trend-groups 한 곳에서 관리 — 여기선 평탄화된 수집 대상만 쓴다.
-// ⚠️ 액터는 키워드당 구글 트렌드 페이지를 직접 열어(1개당 수 분) 한 run에 1건만 안정적으로 산출한다.
-// 그래서 한 run=한 키워드(?kw=N)가 원칙이고, 전용 워크플로(google-search-trends.yml)가 kw=0..N을
-// 시간차로 순차 호출한다(동시 실행 시 Google 차단). geo 입력 enum이 KR에서 깨져 있어 startUrls로 geo=KR 지정.
+// 한 run=한 키워드(?kw=N)가 원칙이고, 전용 워크플로(google-search-trends.yml)가 kw=0..N을
+// 순차 호출한다. 액터 내부에서도 키워드별 주거용 프록시 세션과 재시도를 사용한다.
 const KEYWORDS = GOOGLE_TREND_KEYWORDS;
 
 function getAppUrl() {
@@ -16,8 +15,7 @@ function getAppUrl() {
   return "http://localhost:3000";
 }
 
-// Apify google-trends-scraper는 콜드 실행 시 수 분~10분 걸려 동기 대기가 불가 →
-// 비동기로 시작하고, 완료되면 /api/google-trends/webhook 이 결과를 저장한다.
+// 액터를 비동기로 시작하고, 완료되면 /api/google-trends/webhook 이 결과를 저장한다.
 export async function POST(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") { // fail-closed: CRON_SECRET 미설정 시에도 차단(무인증 오픈 방지)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -36,8 +34,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ?kw=N → 해당 키워드 1개만 수집(키워드별 순차 실행용).
-  // 한 run에 여러 키워드를 넣으면 1개만 산출되고, 동시에 별도 run을 띄우면 Google이 차단함 →
-  // GitHub Actions가 kw=0 → 대기 → kw=1 로 시간차 호출(순차)해 두 키워드 모두 안정 수집.
+  // GitHub Actions가 kw=0 완료 → kw=1 순서로 호출해 실패 범위와 재시도 대상을 분리한다.
   const kwParam = params.get("kw");
   const idx = kwParam !== null ? Number(kwParam) : NaN;
   // ⚠️ kw가 범위를 벗어나면(개수 드리프트 등) '전체를 한 run에' 대신 안전 no-op으로 끝낸다.
@@ -47,19 +44,23 @@ export async function POST(req: NextRequest) {
   }
   const keywords = Number.isInteger(idx) && idx >= 0 && idx < KEYWORDS.length ? [KEYWORDS[idx]] : KEYWORDS;
 
-  // gprop 미지정 = 웹 검색(유튜브 트렌드와의 유일한 차이). 나머지는 동일.
-  const startUrls = keywords.map((kw) => ({
-    url: `https://trends.google.com/trends/explore?date=today%203-m&geo=KR&q=${encodeURIComponent(kw)}`,
-  }));
   const runId = await startActorRunWithId(
-    "apify/google-trends-scraper",
+    "signalbench/google-trends-scraper",
     {
-      startUrls,
-      maxItems: 50,
-      maxConcurrency: 1,
-      maxRequestRetries: 2,
-      pageLoadTimeoutSecs: 120,
-      skipDebugScreen: true,
+      searchTerms: keywords,
+      timeRange: "today 3-m",
+      geo: "KR",
+      category: "0",
+      includeInterestOverTime: true,
+      includeInterestByRegion: false,
+      includeRelatedQueries: false,
+      includeRelatedTopics: false,
+      language: "ko-KR",
+      maxRetriesPerTerm: 5,
+      proxyConfiguration: {
+        useApifyProxy: true,
+        apifyProxyGroups: ["RESIDENTIAL"],
+      },
     },
     webhookUrl,
   );

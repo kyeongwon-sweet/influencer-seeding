@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## ⏳ 2026-09-21 [Codex 구현·로컬 검증] Google Search Trends 전건 실패 복구
+- 2026-09-21 KST 정기 workflow `35543144350`은 API 호출 11건과 Apify run 자체는 모두 성공 상태였지만 데이터셋이 전부 0건이라 hard fail했다. 각 run 로그에서 Google Trends 초기 요청을 하나도 처리하지 못했고 `RELATED_QUERIES`·`RELATED_TOPICS` selector timeout 뒤 내부 요청이 실패한 것을 확인했다. 같은 커밋의 전날 실행도 11건 중 7건이 비어 있어 배포 코드보다 기존 `apify/google-trends-scraper` 브라우저 경로의 불안정이 원인이다.
+- 기존 액터에 한국 주거용 위치를 명시한 최소 재현 run `PnYQew1MnfNMIMKZJ`도 같은 오류를 내어 중단했다. 브라우저를 쓰지 않고 Trends JSON endpoint를 호출하는 `signalbench/google-trends-scraper` 최소 run `mqMbsDQJ020pWvHkn`은 같은 `라라스윗 / KR / today 3-m` 조건에서 약 13초 만에 성공했고 일별 93개를 반환했다.
+- 정기 수집 API를 검증된 액터로 교체하고 웹 검색·한국·최근 3개월·시계열만 요청한다. 응답의 Unix timestamp와 숫자 값을 기존 `google_search_trends` 행으로 변환하며 실제 0을 보존한다. 이미 시작된 구형 run의 늦은 webhook도 처리하도록 기존 형식 호환을 남겼다. 워크플로 polling은 10초, 키워드 간 간격은 10초로 줄이되 11개 run은 계속 순차 실행한다.
+- 로컬 검증: 새 형식·구형 호환 회귀 포함 web 테스트 **505/505**, 변경 파일 ESLint, `tsc --noEmit --incremental false`, Next.js production build 통과. 프로덕션 배포와 실제 workflow 재실행은 다음 단계다.
+
 ## ✅ 2026-09-18 [Codex 재검증·읽기전용] C16 재발 없음 · C15 잔여 7건 근거 없음
 - **C16:** 최신 `formula-audit` run `35307649313`을 확인했다. 날짜열이 124개·최신 `EI(2026-09-17)`로 늘어난 뒤에도 표준 H 수식 **5,308/5,308개가 EI를 참조**했고, `hInvalid=0 / incInvalid=0 / mismatch=0 / H·I errorCells=0`이다. 2026-09-15의 H 범위 보강 이후 재발하지 않았으므로 `refreshCumulativeViews()`를 다시 실행하거나 시트 수식을 재작성하지 않았다. `healthy:false`는 별개 `stale:11` 때문이다.
 - **C15:** 연동시트·가격표 읽기 전용 감사 run `35329710930`을 현재 데이터로 다시 실행했다. 기존 11건 중 힐링하고 가세요·wikitrip·happy__pyeong·맨투맨 스튜디오(틱톡) 4건은 이미 각각 **60,000원**으로 반영돼 있다. 남은 7건(음식덕후, shoushou.mgz 2건, 김쏘콩, 후루룹, 챱챱쓰, 빵야)은 본행 비용 0원이며 가격표 exact/loose/profile 매칭과 동일 계정 과거 양수 비용이 모두 0건이다. **근거 없는 금액을 만들지 않고 팀 입력 대기**로 유지했다.

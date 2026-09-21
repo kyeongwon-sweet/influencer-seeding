@@ -2,7 +2,7 @@ name: Google Search Trends (구글 웹 검색량 수집)
 
 # 구글 웹 검색 트렌드 11개 키워드를 한 액터씩 순차 수집한다.
 # collect API는 액터를 비동기로 시작하므로 run id를 받아 종료까지 확인해야 한다.
-# 고정 시간만 기다리면 느린 런과 다음 런이 겹쳐 Google 차단을 유발할 수 있다.
+# 각 run 완료를 확인한 뒤 다음 키워드를 호출해 실패 범위와 재시도 대상을 분리한다.
 on:
   schedule:
     - cron: "0 21 * * *"   # 06:00 KST
@@ -17,7 +17,7 @@ on:
 env:
   APP_URL: "https://influencer-seeding-mu.vercel.app"
   KEYWORD_COUNT: "11"
-  GAP_SECONDS: "60"       # 액터 완료 뒤 다음 키워드까지 추가 냉각 시간
+  GAP_SECONDS: "10"       # 액터 완료 뒤 다음 키워드까지 짧은 간격 유지
 
 jobs:
   collect:
@@ -52,12 +52,12 @@ jobs:
               else
                 terminal=""
                 status="UNKNOWN"
-                # 최대 20분 동안 현재 액터 완료를 기다린 뒤에만 다음 키워드로 간다.
-                for attempt in $(seq 1 40); do
+                # 최대 10분 동안 현재 액터 완료를 기다린 뒤에만 다음 키워드로 간다.
+                for attempt in $(seq 1 60); do
                   run_json=$(curl -fsS "https://api.apify.com/v2/actor-runs/$run_id" \
                     -H "Authorization: Bearer ${{ secrets.APIFY_API_TOKEN }}" || true)
                   status=$(printf '%s' "$run_json" | jq -r '.data.status // "UNKNOWN"')
-                  echo "kw=$i run=$run_id status=$status ($attempt/40)"
+                  echo "kw=$i run=$run_id status=$status ($attempt/60)"
                   case "$status" in
                     SUCCEEDED)
                       dataset_id=$(printf '%s' "$run_json" | jq -r '.data.defaultDatasetId // empty')
@@ -73,7 +73,7 @@ jobs:
                       break ;;
                     FAILED|TIMED-OUT|ABORTED) terminal=failed; break ;;
                   esac
-                  sleep 30
+                  sleep 10
                 done
                 if [ "$terminal" != "success" ]; then
                   echo "::warning::google-trends kw=$i actor=$status"
