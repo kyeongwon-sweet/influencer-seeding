@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 🟡 2026-09-21 [Codex 보강·배포] heartbeat 공백 경보 24시간 중복 억제
+- **검증 정정:** `monitor-loop.js` 의 `forceFirstMonitor()`가 `*/15` 이외 예약의 iteration 0을 강제 full scan하므로 3시간 floor 스캔은 유지된다. 다만 뒤 3회는 게이트가 닫히면 skip하므로, 조용한 시기의 floor 트리거 미발화(①)는 아직 GitHub scheduler에 의존한다. 해소된 것은 부정 댓글 감지 후 3시간 집중 추적(②)이다.
+- **선택 ⓒ 반영(`cfed79c`):** 24시간 실측 전에 floor 외부 호출을 늘리거나 3.5시간 임계를 바꾸지 않았다. 대신 이미 운영 중인 `platform_collection_health.last_alerted_at` 을 재사용해 같은 unhealthy 상태의 Slack 경보와 자가치유 dispatch를 **24시간에 1회**로 제한했다. 정상 복귀 관측 시 claim을 초기화해 새 장애는 즉시 알림한다.
+- **실패 방향:** 상태 DB 읽기·쓰기가 실패하면 중복 억제를 포기하고 기존처럼 경보·dispatch하는 fail-open이다. Slack 발송이 실패하면 alert claim을 풀어 다음 회차에 재시도한다.
+- **게이트:** 중복 억제·24시간 후 재알림·정상 복귀 후 신규 장애·상태 DB 장애 fail-open 회귀를 추가했고, 전체 `npm test` **517/517**, YAML 파싱, `git diff --check`, CI run `35552139863` 통과.
+- **보류:** ①을 수용할지·floor 빈도를 올릴지·3.5시간 임계를 조정할지는 `223b85b` 배포 후 24시간 실측 이후 판단한다. 기존 24시간 후속 하트비트에 이 판정을 포함했다.
+
 ## ⏳ 2026-09-21 [Codex 구현·라이브 경보 검증 / 24시간 실측 대기] negative-comment-monitor 트리거 미발화 대응
 - **커버리지(`223b85b`):** `monitor.yml` 예약 run은 즉시·15·30·45분에 4회 게이트를 재평가한다. 게이트가 닫힌 iteration은 Supabase GET 1회만 수행하고 의존성 설치·`npm start`를 건너뛰며 `gate_supabase_get=1 monitor_external_api_calls=0`을 로그에 남긴다. 게이트 장애는 fail-open, 3시간 floor schedule의 첫 iteration은 기존처럼 전체 스캔이다. `concurrency.cancel-in-progress=false`와 기존 fingerprint/upsert dedup은 유지했다.
 - **비용 판정:** 실측 약 15 run/일 기준 추가는 Supabase GET 약 45회/일이다. 닫힌 iteration의 YouTube·IG·Apify·Gemini 추가 호출은 0이며, 기존 Meta/TikTok/YouTube 보조 스텝은 workflow당 1회로 느지 않는다. public repo hosted runner라 runner 분당 비용은 발생하지 않는다.
