@@ -205,8 +205,11 @@ export async function POST() {
   // ⚠️ 원본 URL 문자열로 비교하면 노션 링크에 붙은 utm/igsh 등 파라미터 때문에 같은 글도
   //    새 행으로 들어간다. 저장·비교 모두 정규화된 URL 기준으로 한다(수동 추가 경로와 동일 규칙).
   const supabase = getServerSupabase();
-  const { data: existing } = await supabase.from("organic_mentions").select("url");
-  const existingUrls = (existing ?? []).map((m: { url: string }) => m.url);
+  // ⚠️ uploaded_at 동반 필수 — 프로필 URL은 URL+업로드일자로 식별한다(mentionDedupeKey).
+  const { data: existing } = await supabase.from("organic_mentions").select("url,uploaded_at");
+  const existingUrls = (existing ?? []).map(
+    (m: { url: string; uploaded_at: string | null }) => ({ url: m.url, uploaded_at: m.uploaded_at }),
+  );
   const { unique: newMentions, duplicates } = splitDuplicateMentions(mentions, existingUrls);
 
   if (newMentions.length === 0) {

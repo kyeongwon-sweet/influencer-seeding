@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { fetchDatasetItems } from "@/lib/apify";
-import { normalizeYouTubeUrl, normalizeInstagramUrl } from "@/lib/url-utils";
+import { normalizeYouTubeUrl, normalizeInstagramUrl, isInstagramNonPostUrl } from "@/lib/url-utils";
 import { notifyBot, notifyJob } from "@/lib/slack";
 import { requireMonitoringWebhookDate } from "@/lib/dateRule";
 import { isBannerChannel } from "@/app/monitoring/lib";
@@ -782,11 +782,17 @@ async function handleOrganicRefresh(supabase: ReturnType<typeof getServerSupabas
       cleanUrl = `https://www.instagram.com${u.pathname.replace(/\/$/, '')}/`;
     } catch { continue; }
 
+    // ⚠️ 프로필 URL(스토리 등)은 건너뛴다. 이 업서트는 url+view_count 만 보내는데,
+    //    프로필 행의 식별자(mention_key)에는 업로드일자가 들어가므로 날짜 없이 upsert 하면
+    //    기존 행을 갱신하지 못하고 **날짜 없는 새 행을 만든다**(같은 계정이 두 줄로 쪼개진다).
+    //    프로필 URL은 애초에 재생수가 없어 여기 도달할 일도 거의 없다.
+    if (isInstagramNonPostUrl(cleanUrl)) continue;
     updates.push({ url: cleanUrl, view_count: viewCount });
   }
 
   if (updates.length > 0) {
-    await supabase.from('organic_mentions').upsert(updates, { onConflict: 'url' });
+    // 식별자는 mention_key(게시물 URL은 url과 동일). url 단독 UNIQUE는 제거됐다 — migrations 20260921 참조.
+    await supabase.from('organic_mentions').upsert(updates, { onConflict: 'mention_key' });
   }
   await supabase.from('jobs').update({ status: 'done', payload: { updated: updates.length } }).eq('id', jobId);
 }
@@ -950,7 +956,8 @@ async function handleOrganic(supabase: ReturnType<typeof getServerSupabase>, job
   console.log(`[LOG] ${platform.toUpperCase()} 수집 완료: ${collectedCount}건 저장 (제외어 ${excludedCount}건 건너뜀)`);
 
   if (rows.length > 0) {
-    await supabase.from('organic_mentions').upsert(rows, { onConflict: 'url', ignoreDuplicates: false });
+    // 식별자는 mention_key — 프로필 URL은 업로드일자까지 봐야 같은 계정의 다른 노출이 안 묻힌다.
+    await supabase.from('organic_mentions').upsert(rows, { onConflict: 'mention_key', ignoreDuplicates: false });
   }
   await supabase.from('jobs').update({ status: 'done', payload: { saved: rows.length } }).eq('id', jobId);
 }
