@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## ✅⚠️ 2026-09-22 [Codex 운영 실측] 리포트 자가치유·Slack 토큰 정상, 댓글감시 공백은 일부 잔존
+- **`ensureDailyReport` 설치형 실행 실측:** 12:34:16 KST 예약 실행이 완료됐다(302.448초). 첫 probe는 `posted:false, acted:false`; 이어 `syncAll`이 4,618행을 비교해 추가 0·수정 11·중복 URL 5건 통합 후 `[ensureDailyReport] pre-dispatch syncAll=true`를 남겼다. 최종 HTTP 200은 `acted:true, dispatched:true, detail:"204", finalRetry:false, syncOk:true`였다. 미게시일에 최신 시트 분류를 먼저 동기화한 뒤 리포트를 dispatch하는 실제 진입경로가 확인됐으며 16:10 최종 재시도·DM 에스컬레이션은 필요 없었다.
+- **일일 리포트·Slack 토큰 종단검증:** GHA `Daily Increment Report` run `35683949184`가 12:39:18 KST `workflow_dispatch`로 시작해 성공했다. 대상일 2026-09-21 리포트가 12:40:26 KST `#빙과_마케팅_리포트`에 **여믄봇**으로 실제 게시됐고(`ts=1790048426.193789`), 상태 댓글도 같은 스레드에 성공했다. Slack 앱 재설치 뒤 `SLACK_BOT_TOKEN`의 리포트 게시·스레드 댓글 권한이 모두 정상임을 확인했다.
+- **요약 기능 의존성 정정:** 현재 production 요약은 Vercel AI Gateway의 `google/gemini-2.5-flash-lite`를 사용해 동작한다. `ANTHROPIC_API_KEY` 부재는 더 이상 종단검증 대기 사유가 아니며, 2026-09-22 실제 요약 게시와 HTTP 200까지 이미 확인됐다.
+- **부정댓글 감시 24시간 실측:** 2026-09-21 10:06~2026-09-22 10:06 KST 고정 창에서 workflow run 17회(예약 14·dispatch 3), iteration 판정 53회, 실제 full scan 45회, gate-closed skip 8회를 확인했다. skip 8회 모두 `gate_supabase_get=1 monitor_external_api_calls=0`로 비용 방어가 성립했다. 배포 전 약 15회/일 대비 실제 점검은 45회로 늘었고, 최대 점검 공백은 5시간 12분에서 **4시간 44분 38초**(09-21 22:59:33~09-22 03:44:12 KST)로 줄었지만 목표 3.5시간 이내에는 아직 못 들었다.
+- **중복경보 억제·상태 저장:** 동일 unhealthy 상태의 재실행은 `[heartbeat] SUPPRESSED — 같은 unhealthy 상태를 24시간 내 이미 알림`으로 억제됐고, 이후 예약 실행은 scan ledger 기준 healthy로 복귀했다. DB `platform_collection_health`의 `monitor_heartbeat`는 success·연속실패 0으로 저장돼 있다. 표본 도중 후속 보강 `0e1cce2`·`329c6be`가 배포돼 최신 구성만의 온전한 24시간 표본은 아직 아니므로, 3.5시간 목표 달성까지는 확정하지 않는다.
+- **무접촉:** 모든 검증은 로그·Slack·DB 읽기 전용이었다. 수동 workflow 실행, 메시지 발송, DB·시트·설정 변경은 하지 않았다.
+
 ## ✅ 2026-09-22 [Codex 완료·라이브] 여믄봇 요청자 중심 스레드 요약 활성화
 - **사용법:** Slack 제약상 커스텀 `/요약`은 스레드 문맥을 받지 못하므로 지원하지 않는다. 스레드 안에서 **`@여믄봇 요약`**을 보내거나 대상 메시지의 **`··· → 요약`** 단축키를 사용한다.
 - **구현·모델:** 스레드 전체를 페이지네이션해 명령·과거 봇 요약을 제외하고, 요청자 이름을 `황경원 → 경원님`으로 정규화해 요청자 관련 언급·결정·미결을 우선 정리한다. Anthropic 유료 키 없이 Vercel AI Gateway의 무료 크레딧 범위에서 `google/gemini-2.5-flash-lite`를 사용한다. Vertex 전용·prompt training 차단·zero data retention 옵션을 유지한다.
