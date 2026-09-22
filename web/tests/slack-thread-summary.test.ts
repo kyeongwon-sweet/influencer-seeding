@@ -68,6 +68,11 @@ test("Slack events route keeps app mention wiring and excludes the command messa
   assert.match(source, /after\(async/);
 });
 
+test("repeated summary commands are excluded from the transcript", () => {
+  const source = fs.readFileSync("lib/slack-thread-summary.ts", "utf8");
+  assert.match(source, /!isSummaryMention\(message\.text \|\| ""\)/);
+});
+
 test("both Slack entry points forward the runtime OIDC header to AI Gateway", () => {
   for (const path of ["app/api/slack-events/route.ts", "app/api/slack/summarize/route.ts"]) {
     const source = fs.readFileSync(path, "utf8");

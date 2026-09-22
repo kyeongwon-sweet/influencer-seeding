@@ -268,7 +268,12 @@ export async function runSlackThreadSummary(options: {
   );
   if (!thread.ok) return { ok: false, code: "thread", error: thread.error };
 
-  const messages = thread.messages.filter((message) => (message.text || "").trim() && !message.subtype);
+  const messages = thread.messages.filter(
+    (message) =>
+      (message.text || "").trim() &&
+      !message.subtype &&
+      !isSummaryMention(message.text || ""),
+  );
   if (messages.length === 0) return { ok: false, code: "empty" };
 
   const userIds = Array.from(new Set(messages.map((message) => message.user).filter(Boolean) as string[]));
