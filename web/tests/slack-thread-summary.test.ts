@@ -28,8 +28,10 @@ test("uses the requester's given name for Korean full names", () => {
 
 test("normalizes common Markdown into Slack mrkdwn", () => {
   assert.equal(
-    normalizeSlackSummary("### 요약\n\n**핵심**\n- 첫째\n* 둘째"),
-    "*요약*\n\n*핵심*\n• 첫째\n• 둘째",
+    normalizeSlackSummary(
+      "### 요약\n\n1) 한 줄 개요 첫 문장\n\n**2) **핵심 내용****\n- 첫째\n* 둘째\n\n**3) **경원님 관련****\n- 없음",
+    ),
+    "*요약*\n\n*한 줄 개요*\n첫 문장\n\n*핵심 내용*\n\n• 첫째\n• 둘째\n\n*경원님 관련*\n\n• 없음",
   );
 });
 

@@ -44,9 +44,14 @@ export function shortName(name: string): string {
 
 export function normalizeSlackSummary(text: string): string {
   return String(text || "")
+    .replace(/^\s*\*\s+/gm, "• ")
+    .replace(/^\s*-\s+/gm, "• ")
+    .replace(/\*+/g, "")
     .replace(/^#{1,6}\s+(.+)$/gm, "*$1*")
-    .replace(/\*\*([^*\n]+)\*\*/g, "*$1*")
-    .replace(/^\s*[-*]\s+/gm, "• ")
+    .replace(
+      /^[ \t]*\d+[.)][ \t]*(한 줄 개요|핵심 내용|[^\n]{1,24}?님 관련|결정\/미결)[ \t]*:?[ \t]*/gm,
+      (_, heading: string) => `*${heading.trim()}*\n`,
+    )
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
