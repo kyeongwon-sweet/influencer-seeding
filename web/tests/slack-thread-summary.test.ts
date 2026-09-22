@@ -3,6 +3,7 @@ import fs from "node:fs";
 import test from "node:test";
 import {
   DEFAULT_SUMMARY_MODEL,
+  SUMMARY_MAX_TOKENS,
   isGeneratedSummary,
   isSummaryMention,
   normalizeSlackSummary,
@@ -33,6 +34,12 @@ test("normalizes common Markdown into Slack mrkdwn", () => {
     ),
     "*요약*\n\n*한 줄 개요*\n첫 문장\n\n*핵심 내용*\n\n• 첫째\n• 둘째\n\n*경원님 관련*\n\n• 없음",
   );
+  assert.equal(
+    normalizeSlackSummary(
+      "**1) **한 줄 요약****\n한 문장\n\n**2) **핵심****\n- 첫째\n\n**3) **경원님 관련/할 일****\n- 직접 언급 없음",
+    ),
+    "*한 줄 요약*\n\n한 문장\n\n*핵심*\n\n• 첫째\n\n*경원님 관련/할 일*\n\n• 직접 언급 없음",
+  );
 });
 
 test("uses a free-credit-compatible Gateway model by default", () => {
@@ -62,6 +69,7 @@ test("calls Vercel AI Gateway with OIDC and strict privacy routing", async () =>
   assert.equal(seenUrl, "https://ai-gateway.vercel.sh/v1/chat/completions");
   assert.equal(seenAuth, "Bearer oidc-test");
   assert.equal(seenBody.model, DEFAULT_SUMMARY_MODEL);
+  assert.equal(seenBody.max_tokens, SUMMARY_MAX_TOKENS);
   assert.deepEqual(seenBody.providerOptions, {
     gateway: {
       only: ["vertex"],
@@ -70,7 +78,9 @@ test("calls Vercel AI Gateway with OIDC and strict privacy routing", async () =>
     },
   });
   const serialized = JSON.stringify(seenBody);
-  assert.match(serialized, /경원님 관련/);
+  assert.match(serialized, /전체 500자 이내/);
+  assert.match(serialized, /핵심.*최대 3개/);
+  assert.match(serialized, /경원님 관련\/할 일/);
 });
 
 test("Slack events route keeps app mention wiring and excludes the command message", () => {
