@@ -9,6 +9,7 @@ import os
 import json
 import urllib.parse
 import urllib.request
+from cross_post_metrics import fb_increment, ig_only
 from datetime import date
 from channel_kind import free_cpv_label, free_reason, is_banner_channel, is_free_by_design
 from db import get_client
@@ -335,7 +336,7 @@ def main():
     for chunk in _chunks(jd_pids, 100):
         frm = 0
         while True:
-            cr = (db.table("post_daily_stats").select("post_id, measured_at, play_count, reach_count")
+            cr = (db.table("post_daily_stats").select("post_id, measured_at, play_count, reach_count, fb_play_count")
                   .in_("post_id", chunk).lte("measured_at", target).order("id").range(frm, frm + 999).execute())
             cg = cr.data or []
             for r in cg:
@@ -344,11 +345,18 @@ def main():
                 break
             frm += 1000
 
-    def _metric(r, isb):
+    # IG↔Facebook 교차게시(2026-09-22~): play_count 는 **IG+FB 합계**다.
+    #   그대로 증분을 잡으면 합산을 시작한 날 하루에 FB 누적 전액(퐁패밀리 71만)이 찍힌다.
+    #   → 대시보드 lib.ts(fbAt/fbIncrement/safeIncrement)와 **같은 규칙**으로 FB 몫을 빼고 계산하고,
+    #     FB 는 직전 FB 측정이 있을 때만 그 차이를 더한다(첫 FB 측정 = 증분 기여 0).
+    #   ⚠️ 두 구현이 어긋나면 대시보드와 리포트 숫자가 갈린다. 한쪽만 고치지 말 것.
+    def _metric(r, isb, rows=None):
         if isb:
             rc = r.get("reach_count")
             return rc if rc is not None else r.get("play_count")
-        return r.get("play_count")
+        if rows is None:
+            return r.get("play_count")     # 누적·CPV = 합계 그대로(인스타 앱과 같은 값)
+        return ig_only(rows, r)            # 증분 = FB 몫을 뺀 IG 계열
 
     def _safe_inc(rows, isb, posted_at=None, tgt=None):
         """대시보드 safeIncrement와 동일: 그날값 − 직전 '유효(>0)' 값. 첫 유효측정=그날 전체, 그날0/None=None.
@@ -357,7 +365,7 @@ def main():
         tgt = tgt or target
         cur, base, has = None, 0, False
         for r in rows:
-            v = _metric(r, isb)
+            v = _metric(r, isb, rows)
             if r["measured_at"] == tgt:
                 cur = v
             elif r["measured_at"] < tgt and v is not None and v > 0:
@@ -373,8 +381,8 @@ def main():
                         return None
                 except Exception:
                     pass
-            return cur             # 첫 유효 측정(게시 7일 이내) = 그날 값 전체(업로드날 성과)
-        return max(0, cur - base)
+            return cur + (0 if isb else fb_increment(rows, tgt))   # 첫 유효 측정 = 그날 값 전체(업로드날 성과)
+        return max(0, cur - base) + (0 if isb else fb_increment(rows, tgt))
 
     # items: 안전 규칙으로 재계산(저장 increment 무시). 첫 측정/0 baseline은 증분 아님 → 제외(과집계 차단).
     items = []
@@ -393,6 +401,8 @@ def main():
         if not inc or inc <= 0:
             continue
         url = (m.get("url") or "").strip()
+        # CPV용 누적은 **합계 그대로**(rows 미전달 → play_count 원값) — 팀이 인스타 앱에서 보는 값과 같아야 한다.
+        # 증분과 달리 여기선 FB 몫을 빼지 않는다(그게 실제 총 조회수다).
         cum = max([(_metric(r, isb) or 0) for r in rows] or [0])  # CPV용 누적 = 이력 최댓값
         items.append({
             "inc": inc,

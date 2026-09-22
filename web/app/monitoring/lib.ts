@@ -10,6 +10,9 @@ export type DailyStats = {
   reach_count?: number | null; // 배너 도달수 일별 이력 — 배너 증분 계산용(조회수 대체)
   created_at?: string | null; // 적재(수집) 시각 — 마지막 업데이트 표시용
   play_collected?: boolean;   // 원본 조회수가 실제 수집됐는지 (mono 보정 전) — 당일 반영 판정용
+  // IG↔Facebook 교차게시 글의 play_count 중 **FB 몫**(2026-09-22~). 교차게시가 아니면 null.
+  // play_count 는 합계(IG+FB)이고, IG 전용값 = play_count - (fb_play_count ?? 0).
+  fb_play_count?: number | null;
 };
 
 export type Post = {
@@ -41,9 +44,11 @@ export type Post = {
  * 의미는 기존 `all_stats`와 동일하다. 실측: 응답 5.51MB → 2.76MB.
  *
  * ⚠️ 순서는 `/api/sponsored-posts` 라우트의 statsV2 생성 순서와 **반드시 같아야 한다.**
- *    [측정일(YYYY-MM-DD), 조회수, 좋아요, 댓글, 도달수, 수집여부(1/0)]
+ *    [측정일(YYYY-MM-DD), 조회수, 좋아요, 댓글, 도달수, 수집여부(1/0), FB조회수]
+ *    ⚠️ FB조회수(7번째)는 2026-09-22 에 **뒤에 덧붙인** 항목이라 없을 수도 있다(배포 과도기·옛 캐시).
+ *       없으면 null 로 읽는다 — 0 으로 읽으면 안 된다(교차게시 아님과 미측정을 못 가른다).
  */
-export type StatTupleV2 = [string, number | null, number | null, number | null, number | null, 0 | 1];
+export type StatTupleV2 = [string, number | null, number | null, number | null, number | null, 0 | 1, (number | null)?];
 
 /** 튜플 → 기존 all_stats와 **완전히 같은 객체 모양**으로 복원. 이후 계산 경로는 전혀 바뀌지 않는다. */
 export function decodeStatsV2(tuples: unknown): DailyStats[] {
@@ -58,6 +63,8 @@ export function decodeStatsV2(tuples: unknown): DailyStats[] {
       comments_count: t[3] as number | null,
       reach_count: t[4] as number | null,
       play_collected: t[5] === 1,
+      // 길이 6짜리 옛 튜플과 섞여도 안전하게 — 없으면 null(교차게시 아님/미측정).
+      fb_play_count: (t.length > 6 ? (t[6] as number | null) : null),
     });
   }
   return out;
@@ -311,10 +318,55 @@ export function bannerDailyMetric(s: DailyStats | null | undefined): number | nu
   return s.play_count ?? null;
 }
 
+// 그 측정일 시점에 play_count 에 섞여 있는 FB 몫. 그날 값이 비면 **직전까지 알려진 최대값**을 쓴다.
+// (FB 조회가 하루 실패해도 play_count 는 mono 보정으로 합계를 유지하므로, 0 으로 읽으면 안 된다.)
+// 교차게시가 아닌 글은 어느 행에도 fb 값이 없어 항상 0 → 기존 동작과 완전히 같다.
+export function fbAt(allStats: DailyStats[], s: DailyStats): number {
+  const own = s.fb_play_count ?? null;
+  if (own != null && own > 0) return own;
+  let carried = 0;
+  for (const st of allStats ?? []) {
+    if (st.measured_at > s.measured_at) continue;
+    const v = st.fb_play_count ?? null;
+    if (v != null && v > carried) carried = v;
+  }
+  return carried;
+}
+
+// IG↔Facebook 교차게시 글의 **FB 몫 증분**. 첫 FB 측정은 0 을 돌려준다.
+//
+// 왜(2026-09-22): 교차게시 글은 play_count 가 어느 날 갑자기 IG 전용 → IG+FB 합계로 뛴다
+// (퐁패밀리 414,066 → 1,125,552). 그 점프를 그대로 증분으로 치면 하루에 71만이 찍혀
+// 리포트 TOP10·그래프가 통째로 망가진다. 그런데 그 71만이 **언제 쌓였는지는 알 방법이 없다** —
+// 과거 날짜별 FB 조회수를 되살릴 수 없기 때문이다(없는 값을 지어내지 않는다는 절대 규칙).
+// 그래서 첫 측정은 아무 날에도 얹지 않고, 두 번째 측정부터 실제 증가분만 더한다.
+// → 교차게시 글은 의도적으로 Σ증분 < 최종 누적이 된다.
+export function fbIncrement(allStats: DailyStats[], s: DailyStats | null | undefined): number {
+  const cur = s?.fb_play_count ?? null;
+  if (cur == null || cur <= 0) return 0;
+  let baseline = 0, hasBaseline = false;
+  for (const st of allStats ?? []) {
+    if (st.measured_at >= s!.measured_at) continue;
+    const v = st.fb_play_count ?? null;
+    if (v != null && v > 0) { hasBaseline = true; if (v > baseline) baseline = v; }
+  }
+  if (!hasBaseline) return 0;                   // 첫 FB 측정 → 어느 날의 성과인지 모른다 → 0
+  return Math.max(0, cur - baseline);
+}
+
 export function safeIncrement(allStats: DailyStats[], s: DailyStats | null | undefined, isBanner: boolean, postedAt?: string | null): number | null {
   if (!s) return null;
+  // ⚠️ 증분은 **IG 계열**로 잡는다 — play_count 는 교차게시 글에서 IG+FB 합계라 그대로 쓰면
+  //    합산을 시작한 날 하루에 FB 누적 전액이 증분으로 찍힌다. FB 몫은 fbIncrement 로 따로 더한다.
+  //    ⚠️ FB 조회가 하루 실패하면 그 행의 fb_play_count 가 비는데, play_count 는 mono(직전 최대)
+  //       보정으로 **합계 그대로** 유지된다. 그 행에서 fb 를 0 으로 읽으면 IG 가 갑자기 FB 만큼
+  //       늘어난 것처럼 보여 증분이 튄다 → 직전까지 알려진 FB 값을 이어서 뺀다(fbAt).
+  const igOnly = (st: DailyStats) => {
+    const p = st.play_count ?? null;
+    return p == null ? null : p - fbAt(allStats, st);
+  };
   const val = (st: DailyStats | null | undefined) =>
-    st ? (isBanner ? bannerDailyMetric(st) : (st.play_count ?? null)) : null;
+    st ? (isBanner ? bannerDailyMetric(st) : igOnly(st)) : null;
   const cur = val(s);
   if (cur == null || cur <= 0) return null;      // 오늘 측정 없음/실패 → 증분 아님
   let baseline = 0, hasBaseline = false;
@@ -331,9 +383,9 @@ export function safeIncrement(allStats: DailyStats[], s: DailyStats | null | und
       const gapDays = (Date.parse(s.measured_at) - Date.parse(String(postedAt).slice(0, 10))) / 86400000;
       if (gapDays > 7) return null;               // 백로그 첫 측정 → 스파이크 방지로 제외
     }
-    return cur;
+    return cur + (isBanner ? 0 : fbIncrement(allStats, s));
   }
-  return Math.max(0, cur - baseline);
+  return Math.max(0, cur - baseline) + (isBanner ? 0 : fbIncrement(allStats, s));
 }
 
 // 증분량(게시물 열/상단 카드 합계): 안전 규칙으로 계산. 배너는 도달수(reach) 기준.

@@ -1,0 +1,53 @@
+name: Cross-post Detect (IG↔FB)
+
+# 인스타 앱이 보여주는 조회수는 IG + Facebook 교차게시 합계인데 우리 기본 수집기(apify/instagram-scraper)는
+# IG 전용값만 준다. 그래서 퐁패밀리 건이 대시보드 414,066 vs 실제 1,125,552 로 벌어졌다(2026-09-22 실측).
+#
+# 이 워크플로는 **어떤 글이 교차게시인지만** 찾아 sponsored_posts.is_cross_posted 에 표시한다.
+# 실제 FB 조회수 합산은 일일 수집(run_monitoring)이 표시된 글만 골라서 한다 — 전량 data-slayer 는
+# 기본 액터의 ~2.7배라 매일 돌릴 수 없다.
+#
+# 대상: **활성 IG 글 중 배너(이미지) 제외**. 배너는 재생수가 없어 교차게시가 성립하지 않는다.
+# 주기: 주 1회. 교차게시 여부는 게시 시점에 정해지고 거의 안 바뀐다(전수조사 3,675건 중 148건=4%).
+#   ⚠️ UTC 0시(=KST 9시)는 GitHub 크론 대량 드롭 구간이라 피한다.
+on:
+  schedule:
+    - cron: "17 5 * * 1"    # 월 05:17 UTC = 14:17 KST
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: "active=활성만(기본) / all=종료 포함(비용 큼, 전수 재조사용)"
+        type: choice
+        options: ["active", "all"]
+        default: "active"
+      dry_run:
+        description: "쓰지 않고 판정만 출력"
+        type: boolean
+        default: false
+
+concurrency:
+  group: cross-post-detect
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: 교차게시 탐지
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
+          PYTHONUNBUFFERED: "1"
+        run: |
+          cd scripts
+          python detect_cross_posts.py \
+            --scope "${{ github.event.inputs.scope || 'active' }}" \
+            ${{ github.event.inputs.dry_run == 'true' && ' ' || '--apply' }}

@@ -14,8 +14,9 @@ const route = readFileSync(new URL("../app/api/sponsored-posts/route.ts", import
 test("라우트의 튜플 생성 순서가 디코더와 일치한다", () => {
   // 라우트의 statsV2 생성 블록을 뽑아 필드 순서를 확인한다.
   const block = route.slice(route.indexOf("const statsV2"), route.indexOf("stats_v2: statsV2"));
-  const order = [...block.matchAll(/s\.(play_count|likes_count|comments_count|reach_count|play_collected)/g)].map(m => m[1]);
-  assert.deepEqual(order, ["play_count", "likes_count", "comments_count", "reach_count", "play_collected"]);
+  const order = [...block.matchAll(/s\.(play_count|likes_count|comments_count|reach_count|play_collected|fb_play_count)/g)].map(m => m[1]);
+  // fb_play_count(교차게시 FB 몫)는 2026-09-22 에 **맨 뒤에** 덧붙였다 — 뒤에 붙여야 옛 튜플과 섞여도 안전하다.
+  assert.deepEqual(order, ["play_count", "likes_count", "comments_count", "reach_count", "play_collected", "fb_play_count"]);
   // 측정일은 YYYY-MM-DD로 잘라 보낸다(디코더가 그대로 measured_at에 넣는다).
   assert.match(block, /String\(s\.measured_at\)\.slice\(0, 10\)/);
 });
@@ -30,6 +31,7 @@ test("디코드 결과가 기존 all_stats 객체 모양과 동일하다", () =>
     comments_count: 7,
     reach_count: null,
     play_collected: true,
+    fb_play_count: null,   // 6칸짜리 옛 튜플 → 교차게시 아님/미측정(0 아님)
   });
 });
 

@@ -1,5 +1,23 @@
 # AI Shared Status
 
+## ✅⏸️ 2026-09-22 [Claude] IG↔Facebook 교차게시 조회수 합산 — 코드 완료 / **SQL 적용·일회성 보정 대기**
+- **문제(실측):** 인스타 앱이 보여주는 조회수는 **IG + Facebook 교차게시 합계**인데 수집기는 IG 전용값만 저장해 팀이 보는 값과 달랐다. 퐁패밀리 `p/DdeIMT0ynk2/` 대시보드 414,066 vs 실제 1,125,552(FB 711,486).
+- **전수조사:** IG 3,675건(활성 516·종료 3,159) 전수 → 교차게시 **148건**(활성 15·종료 133), 숨은 FB 조회수 합 **1,587,351**. 상위 4건(퐁패밀리·자연님·얌야미·츄베릅)이 93%, 120건은 FB 1,000 미만.
+  - ⚠️ 방법 교훈: 액터가 아이템을 통째로 안 주는 일이 있다(9건 중 7건이 재시도로 회수, 그중 1건이 실제 교차게시) → **재시도 필수**. 끝까지 무응답은 대개 삭제된 글(표본 60건 검증: 73% 무응답, 그중 34건은 자동수집 이력 자체가 없고 10건은 캠페인 종료 후 내려감). 이미지(carousel_container)는 재생수가 없어 대상 아님.
+- **설계(사용자 지시 "합계로 변경"):** 교차게시 글은 `play_count` 에 **IG+FB 합계**를 저장하고 FB 몫을 `fb_play_count` 에 남긴다. 표시·정렬·CPV·시트 역채움 20여 곳을 안 고쳐도 전부 인스타 앱과 같은 값이 된다.
+- **증분 스파이크 차단:** 과거 날짜별 FB 증분은 복구 불가 → 지어내지 않는다. 증분은 `play_count - fb_play_count`(IG 계열)로 잡고 FB 는 **직전 FB 측정이 있을 때만** 차이를 더한다(첫 측정 = 기여 0). → 교차게시 글은 **의도적으로 Σ증분 < 최종 누적**. FB 조회가 하루 실패해도 mono 보정 때문에 튀지 않도록 `fbAt` 이 직전 FB 값을 이어 쓴다.
+- **변경:** `supabase/migrations/20260922_cross_post_fb_metrics.sql`(열 2개) · `scripts/detect_cross_posts.py`(탐지·플래그) · `scripts/cross_post_metrics.py`(Python 증분 규칙 정본) · `scripts/backfill_cross_post_fb.py`(종료분 일회성 보정) · `run_monitoring._attach_fb_play_counts` · `notify_increments`(정본 모듈 사용) · `lib.ts fbAt/fbIncrement/safeIncrement` · `sponsored-posts` 라우트(7번째 튜플) · `.github/workflows/cross-post-detect.yml`(주1회 탐지).
+- **배포 순서 안전장치:** 라우트가 `fb_play_count` 열을 한 번 찔러보고 없으면 옛 컬럼으로 내려간다(`statColsSupportFb`). 수집기도 열 확인 후에만 동작. → SQL 이 늦어도 대시보드가 비지 않는다.
+- **게이트:** web **563/563** · `tsc --noEmit` · production build · python 테스트 55개 전부 통과. 변이 주입(`fbAt`→0)으로 핵심 테스트 4개가 실제로 깨지는 것까지 확인(무의미 테스트 아님).
+- **🔴 남은 일(순서대로):**
+  1. Supabase 콘솔 SQL Editor 에서 `20260922_cross_post_fb_metrics.sql` 실행(추가만·재실행 안전).
+  2. `python scripts/detect_cross_posts.py --scope all --from-json <스윕결과> --apply` → 148건 플래그(Apify 재호출 없음).
+  3. `python scripts/backfill_cross_post_fb.py --from-json <스윕결과>` (dry-run) → 확인 후 `--apply` → 종료 133건 마지막 행 제자리 보정(증분 불변, 백업 JSON 생성).
+  4. 다음 자동수집에서 활성 15건이 합계로 바뀌는지 확인(퐁패밀리 1,125,552 근처).
+- **별건:** `moduhappy` `p/DclNwKLTAyg/` · `smile_ggobuk_s2` `p/DcLQlnwRtFt/` — 09-13 이후 수집 끊김·재시도도 무응답(삭제/제한 의심). 교차게시와 무관.
+- **⚠️ 비용 사고(기록):** 종료분 스윕 중 배너 제외로 비용을 줄이려 작업을 중단시켰는데 **중단이 파이썬 자식 프로세스를 죽이지 못해** 기존 작업이 끝까지 돌았고, 새로 띄운 것까지 둘 다 실행돼 **약 2,200건어치를 중복 소비**했다. 다음부터 백그라운드 중단은 자식 프로세스 종료까지 확인할 것. 데이터는 활성 516/516·종료 3,159/3,159 누락 0으로 온전하다.
+
+
 ## ✅⚠️ 2026-09-22 [Codex 운영 실측] 리포트 자가치유·Slack 토큰 정상, 댓글감시 공백은 일부 잔존
 - **`ensureDailyReport` 설치형 실행 실측:** 12:34:16 KST 예약 실행이 완료됐다(302.448초). 첫 probe는 `posted:false, acted:false`; 이어 `syncAll`이 4,618행을 비교해 추가 0·수정 11·중복 URL 5건 통합 후 `[ensureDailyReport] pre-dispatch syncAll=true`를 남겼다. 최종 HTTP 200은 `acted:true, dispatched:true, detail:"204", finalRetry:false, syncOk:true`였다. 미게시일에 최신 시트 분류를 먼저 동기화한 뒤 리포트를 dispatch하는 실제 진입경로가 확인됐으며 16:10 최종 재시도·DM 에스컬레이션은 필요 없었다.
 - **일일 리포트·Slack 토큰 종단검증:** GHA `Daily Increment Report` run `35683949184`가 12:39:18 KST `workflow_dispatch`로 시작해 성공했다. 대상일 2026-09-21 리포트가 12:40:26 KST `#빙과_마케팅_리포트`에 **여믄봇**으로 실제 게시됐고(`ts=1790048426.193789`), 상태 댓글도 같은 스레드에 성공했다. Slack 앱 재설치 뒤 `SLACK_BOT_TOKEN`의 리포트 게시·스레드 댓글 권한이 모두 정상임을 확인했다.

@@ -26,7 +26,21 @@ type DailyStatRow = {
   created_at?: string | null;
   reach_count?: number | null;
   manual?: boolean | null;
+  fb_play_count?: number | null;   // 교차게시(IG+FB) 글의 FB 몫. play_count 는 합계다.
 };
+
+// fb_play_count 열 존재 여부 — 프로세스당 1회만 확인하고 캐시한다(매 요청 추가 왕복 방지).
+// null = 아직 확인 안 함.
+let _fbColSupported: boolean | null = null;
+async function statColsSupportFb(
+  supabase: { from: (t: string) => { select: (c: string) => { limit: (n: number) => PromiseLike<{ error: unknown }> } } },
+): Promise<boolean> {
+  if (_fbColSupported !== null) return _fbColSupported;
+  const { error } = await supabase.from("post_daily_stats").select("fb_play_count").limit(1);
+  _fbColSupported = !error;
+  if (error) console.warn("[sponsored-posts] fb_play_count 열 없음 → 교차게시 합산 없이 동작(마이그레이션 미적용?)");
+  return _fbColSupported;
+}
 
 type MonotonicDailyStatRow = DailyStatRow & {
   play_collected: boolean;
@@ -157,7 +171,14 @@ export async function GET(req: NextRequest) {
   //    PostgREST가 0행을 반환(2026-07-01 확인). ids=전체 게시물이라 필터 불필요 → 전량 조회 후 post_id로 그룹핑.
   // 성능: select("*") 대신 필요한 컬럼만 + 순차 페이지네이션(왕복 N회) 대신 count 기반 병렬 조회로 로딩 단축.
   const PAGE = 1000;
-  const STAT_COLS = "post_id, measured_at, play_count, likes_count, comments_count, created_at, reach_count, manual";
+  // ⚠️ fb_play_count 는 교차게시(IG+FB) 글의 FB 몫 — 증분 계산이 이 값을 빼야 해서 반드시 함께 읽는다.
+  //    (없이 보내면 합산 시작일이 하루 증분 71만으로 찍힌다. lib.ts safeIncrement 주석 참고.)
+  // ⚠️ 마이그레이션(20260922_cross_post_fb_metrics.sql)보다 코드가 먼저 배포되면 이 열이 없어
+  //    **모든 stats 페이지 조회가 실패**한다 = 대시보드 전체가 빈다. 그래서 한 번 찔러보고 없으면
+  //    옛 컬럼으로 내려간다(그 경우 FB 합산만 빠지고 나머지는 정상 동작).
+  const STAT_COLS = (await statColsSupportFb(supabase))
+    ? "post_id, measured_at, play_count, likes_count, comments_count, created_at, reach_count, manual, fb_play_count"
+    : "post_id, measured_at, play_count, likes_count, comments_count, created_at, reach_count, manual";
   const collect = (page: DailyStatRow[] | null | undefined) => {
     for (const s of page ?? []) {
       const arr = statsByPost.get(s.post_id) ?? [];
@@ -254,7 +275,7 @@ export async function GET(req: NextRequest) {
     //
     // ⚠️ 값은 하나도 바뀌지 않는다. 클라이언트가 decodeStatsV2()로 **기존 all_stats와 완전히 동일한
     //    객체 모양**으로 되돌린 뒤 쓰므로, 증분·누적·배너 reach 계산 경로는 전혀 손대지 않았다.
-    // 순서: [측정일(YYYY-MM-DD), 조회수, 좋아요, 댓글, 도달수, 수집여부(1/0)]
+    // 순서: [측정일(YYYY-MM-DD), 조회수, 좋아요, 댓글, 도달수, 수집여부(1/0), FB조회수]
     //   — lib.ts의 STATS_V2_FIELDS와 반드시 같은 순서를 유지할 것.
     const statsV2 = mono.map((s: MonotonicDailyStatRow) => [
       String(s.measured_at).slice(0, 10),
@@ -263,6 +284,7 @@ export async function GET(req: NextRequest) {
       s.comments_count ?? null,
       s.reach_count ?? null,
       s.play_collected ? 1 : 0,
+      s.fb_play_count ?? null,       // 7번째 = 교차게시 FB 몫(열 없거나 미측정이면 null). decodeStatsV2 와 순서 일치.
     ]);
     return {
       ...post,

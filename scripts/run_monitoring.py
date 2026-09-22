@@ -2094,6 +2094,10 @@ def run():
                 print(f"[ERROR] 트위터 수집 실패: {e}")
                 tw_failed = True
 
+        # 🔄 IG↔Facebook 교차게시분 FB 조회수 보강(플래그된 글만). 상세는 _attach_fb_play_counts.
+        if not skip_apify:
+            _attach_fb_play_counts(db, rows)
+
         if rows:
             # 🛡️ 수집 도중 삭제된 게시물 행 제거 — 없는 post_id가 섞이면 FK 위반으로 upsert 전체가 실패한다.
             row_pids = list({r["post_id"] for r in rows})
@@ -2257,6 +2261,117 @@ def _fetch_alive_instagram_handles(handles: list[str]) -> set[str]:
             alive.add(handle)
     _warn_unmapped("인스타 계정 스캔", dropped, total, first_bad)
     return alive
+
+
+_FB_COLS_OK = None   # None=미확인 / True·False=확인됨(프로세스 1회만 검사)
+
+
+def _fb_metrics_enabled(db) -> bool:
+    """마이그레이션(20260922_cross_post_fb_metrics.sql) 적용 전에는 조용히 건너뛴다.
+
+    ⚠️ 없는 열을 upsert 에 넣으면 400 으로 **그날 수집 전체가 죽는다**. 코드가 SQL 보다 먼저
+    배포될 수 있으므로(둘은 같이 못 나간다) 열 존재를 먼저 확인한다.
+    """
+    global _FB_COLS_OK
+    if _FB_COLS_OK is None:
+        try:
+            db.table("post_daily_stats").select("fb_play_count").limit(1).execute()
+            db.table("sponsored_posts").select("is_cross_posted").limit(1).execute()
+            _FB_COLS_OK = True
+        except Exception as e:
+            print(f"[WARN] FB 교차게시 열 없음 → 보강 건너뜀(마이그레이션 미적용?): {e}")
+            _FB_COLS_OK = False
+    return _FB_COLS_OK
+
+
+def _attach_fb_play_counts(db, rows: list) -> None:
+    """교차게시로 표시된 IG 글의 play_count 를 **IG+FB 합계**로 바꾸고 FB 몫을 fb_play_count 에 남긴다.
+
+    왜(2026-09-22 실측): 인스타 앱이 보여주는 조회수는 IG+FB 합계인데 우리는 IG 전용값만 저장해
+    퐁패밀리 건이 414,066 vs 실제 1,125,552 로 벌어졌다(사용자 지시: "합계로 변경").
+    IG 3,675건 전수조사에서 교차게시는 148건뿐이라 **표시된 글만** 추가 조회한다
+    (전량 data-slayer 는 비용이 감당 안 된다 — 기본 액터의 ~2.7배).
+
+    ⚠️ play_count 에 합계를 넣는 이유: 대시보드 표시·정렬·CPV·시트 역채움이 모두 play_count 를 읽는다.
+       여기서 합쳐두면 그 20여 곳을 건드리지 않아도 전부 인스타 앱과 같은 값이 된다.
+       대신 증분은 fb_play_count 를 빼고 계산한다(lib.ts safeIncrement) — 첫 FB 측정일이
+       하루 증분 71만으로 찍히는 걸 막기 위해서다.
+    ⚠️ 값을 못 받으면 **아무것도 바꾸지 않는다**(0 으로 쓰지 않는다). 0 은 '실측 0'이라 누적·증분을 깨뜨린다.
+    """
+    if not rows or not _fb_metrics_enabled(db):
+        return
+    # ⚠️ 메인 게시물 select 에 is_cross_posted 를 끼워 넣지 않는다 — 마이그레이션 전에 코드가
+    #    먼저 배포되면 없는 열 때문에 수집 전체가 죽는다. 여기서만(열 확인 뒤) 따로 읽는다.
+    try:
+        _res = db.table("sponsored_posts").select("id, url").eq("is_cross_posted", True).execute()
+    except Exception as e:
+        print(f"[WARN] 교차게시 목록 조회 실패 → FB 보강 건너뜀: {e}")
+        return
+    flagged = {a["id"]: a["url"] for a in (_res.data or [])
+               if "instagram.com" in (a.get("url") or "").lower()}
+    if not flagged:
+        return
+    targets = {r["post_id"]: flagged[r["post_id"]] for r in rows if r["post_id"] in flagged}
+    if not targets:
+        return
+
+    got = _fetch_fb_play_counts(list(targets.values()))
+    code_of = {pid: _ig_shortcode(url) for pid, url in targets.items()}
+    filled = skipped = 0
+    for r in rows:
+        g = got.get(code_of.get(r["post_id"]))
+        if not g:
+            skipped += 1
+            continue
+        fb, ig = g.get("fb"), g.get("ig")
+        if not isinstance(fb, (int, float)) or fb <= 0:
+            skipped += 1
+            continue
+        base = r.get("play_count")
+        if not isinstance(base, (int, float)) or base <= 0:
+            # 기본 액터가 IG 값을 못 준 날 — data-slayer 의 IG 값으로 대신한다. 그것도 없으면 건너뛴다.
+            base = ig if isinstance(ig, (int, float)) and ig > 0 else None
+        if base is None:
+            skipped += 1
+            continue
+        r["play_count"] = int(base) + int(fb)
+        r["fb_play_count"] = int(fb)
+        filled += 1
+    print(f"[LOG] 교차게시 FB 합산: 대상 {len(targets)}건 · 반영 {filled}건 · 값없음 {skipped}건")
+
+
+def _fetch_fb_play_counts(urls: list) -> dict:
+    """{shortcode: {"ig": .., "fb": ..}}. 값을 못 받은 건은 키가 없다(0 으로 채우지 않는다).
+
+    ⚠️ 액터가 아이템을 통째로 안 주는 일이 있다 — 실측에서 9건 중 7건이 재시도로 회수됐고 그중
+       1건은 실제 교차게시였다(재시도 없으면 과소계상). 그래서 못 받은 건은 한 번 더 호출한다.
+       그래도 없으면 대개 글이 삭제된 것이다(표본 조사로 확인).
+    """
+    from apify_client import ApifyClient
+    client = ApifyClient(os.getenv("APIFY_API_TOKEN"))
+
+    def _run(batch):
+        out = {}
+        for i in range(0, len(batch), 40):
+            chunk = batch[i:i + 40]
+            try:
+                run = client.actor("data-slayer/instagram-post-details").call(
+                    run_input={"postUrls": chunk})
+                for it in client.dataset(run["defaultDatasetId"]).iterate_items():
+                    code = it.get("code") or it.get("shortcode") or it.get("shortCode")
+                    if not code:
+                        continue
+                    m = it.get("metrics") or {}
+                    out[code] = {"ig": m.get("ig_play_count"), "fb": m.get("fb_play_count")}
+            except Exception as e:
+                print(f"  [WARN] FB 조회 배치 실패: {type(e).__name__} {e}")
+        return out
+
+    got = _run(urls)
+    missing = [u for u in urls if _ig_shortcode(u) not in got]
+    if missing:
+        got.update(_run(missing))
+    return got
 
 
 def _fetch_ig_fallback(urls: list) -> dict:
