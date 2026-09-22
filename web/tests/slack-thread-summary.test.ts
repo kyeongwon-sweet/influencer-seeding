@@ -40,6 +40,12 @@ test("normalizes common Markdown into Slack mrkdwn", () => {
     ),
     "*한 줄 요약*\n\n한 문장\n\n*핵심*\n\n• 첫째\n\n*경원님 관련/할 일*\n\n• 직접 언급 없음",
   );
+  assert.equal(
+    normalizeSlackSummary(
+      "* 한 줄 요약\n한 문장\n\n* 핵심\n- 첫째\n\n* 경원님 관련/할 일\n- 직접 언급 없음",
+    ),
+    "*한 줄 요약*\n한 문장\n*핵심*\n• 첫째\n*경원님 관련/할 일*\n• 직접 언급 없음",
+  );
 });
 
 test("uses a free-credit-compatible Gateway model by default", () => {

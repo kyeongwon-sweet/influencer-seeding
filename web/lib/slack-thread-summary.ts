@@ -53,6 +53,10 @@ export function normalizeSlackSummary(text: string): string {
       /^[ \t]*\d+[.)][ \t]*(한 줄 요약|한 줄 개요|핵심(?: 내용)?|[^\n]{1,24}?님 관련(?:\/할 일)?|결정\/미결)[ \t]*:?[ \t]*/gm,
       (_, heading: string) => `*${heading.trim()}*\n`,
     )
+    .replace(
+      /^[ \t]*(?:•[ \t]*)?(한 줄 요약|한 줄 개요|핵심(?: 내용)?|[^\n]{1,24}?님 관련(?:\/할 일)?|결정\/미결)[ \t]*:?[ \t]*$/gm,
+      (_, heading: string) => `*${heading.trim()}*`,
+    )
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
