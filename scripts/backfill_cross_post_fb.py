@@ -18,24 +18,19 @@
    이 글들은 Σ증분 < 최종 누적이 된다(의도된 것).
 ⚠️ 되돌리기: --apply 시 백업 JSON 을 남긴다(수정 전 play_count·fb_play_count).
 
-실행:
-  python scripts/backfill_cross_post_fb.py --from-json <스윕결과>              # dry-run
-  python scripts/backfill_cross_post_fb.py --from-json <스윕결과> --apply
+실행(⚠️ 전수조사 결과는 활성·종료 두 파일이라 **둘 다** 넘긴다 — 하나만 넘기면 절반이 조용히 빠진다):
+  python scripts/backfill_cross_post_fb.py --from-json <활성.json> <종료.json>            # dry-run
+  python scripts/backfill_cross_post_fb.py --from-json <활성.json> <종료.json> --apply
 """
 import argparse
 import io
 import json
 import os
-import re
 import sys
 from datetime import datetime
 
+from cross_post_metrics import load_fb_by_shortcode, shortcode
 from db import get_client
-
-
-def shortcode(url: str):
-    m = re.search(r"/(?:p|reels|reel|tv)/([A-Za-z0-9_-]+)", url or "")
-    return m.group(1) if m else None
 
 
 def _all(db, table, select, **eq):
@@ -62,14 +57,10 @@ def main():
                     help="종료된 글만(기본). 활성 글은 다음 수집이 알아서 고친다.")
     args = ap.parse_args()
 
-    fb_by_code = {}
-    for path in args.from_json:
-        for u, v in json.load(io.open(path, encoding="utf-8")).items():
-            fb = (v or {}).get("fb")
-            code = shortcode(u)
-            if code and isinstance(fb, (int, float)) and fb > 0:
-                fb_by_code[code] = int(fb)
-    print(f"[backfill] 실측 FB 값 {len(fb_by_code)}건 로드")
+    # detect_cross_posts 와 **같은 로더**를 쓴다 — 두 스크립트가 같은 파일에서 같은 값을 읽어야
+    # '표시된 글'과 '보정된 글'이 어긋나지 않는다.
+    fb_by_code = load_fb_by_shortcode(args.from_json)
+    print(f"[backfill] 실측 FB 값 {len(fb_by_code)}건 로드 (파일 {len(args.from_json)}개)")
 
     db = get_client()
     posts = _all(db, "sponsored_posts", "id, url, account_name, ended_at")

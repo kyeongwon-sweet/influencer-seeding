@@ -9,7 +9,9 @@ import sys
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from cross_post_metrics import fb_at, fb_increment, ig_only  # noqa: E402
+from cross_post_metrics import (  # noqa: E402
+    fb_at, fb_increment, ig_only, load_fb_by_shortcode, shortcode,
+)
 
 
 def day(measured_at, play_count, fb=None):
@@ -77,6 +79,37 @@ def run():
 
     # 측정 없음
     eq(ig_only([], day("2026-09-22", None)), None, "play 없음 → None")
+
+    # ── 스윕 결과 로더 ────────────────────────────────────────────────
+    # 🚨 전수조사 결과는 활성·종료 **두 파일**이다. 한 파일만 넘기면 나머지 절반이 조용히
+    #    빠지고, detect 는 그 글들을 '교차게시 아님'으로 해제해 버린다(실제로 처음에 그렇게 짰다).
+    import json
+    import tempfile
+
+    def tmp(obj):
+        f = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8")
+        json.dump(obj, f, ensure_ascii=False)
+        f.close()
+        return f.name
+
+    P = "https://www.instagram.com/p/"
+    f1 = tmp({P + "AAA1/": {"ig": 100, "fb": 50}, P + "BBB2/": {"ig": 9, "fb": 0}})
+    f2 = tmp({P + "CCC3/": {"ig": 7, "fb": 3}, P + "DDD4/": {"ig": 7, "fb": None}})
+
+    eq(load_fb_by_shortcode([f1, f2]), {"AAA1": 50, "CCC3": 3}, "두 파일 병합")
+    eq(load_fb_by_shortcode(f1), {"AAA1": 50}, "문자열 하나도 받는다")
+    eq(len(load_fb_by_shortcode([f1])), 1, "한 파일만 넘기면 다른 파일 건은 안 들어온다")
+
+    # fb=0·None 은 '교차게시 아님'이지 '측정값 0'이 아니다 → 담지 않는다.
+    eq("BBB2" in load_fb_by_shortcode([f1]), False, "fb=0 을 담으면 안 된다")
+    eq("DDD4" in load_fb_by_shortcode([f2]), False, "fb=None 을 담으면 안 된다")
+
+    # 프로필 URL 등 게시물이 아닌 주소는 무시
+    f3 = tmp({"https://www.instagram.com/someacct/": {"fb": 999}})
+    eq(load_fb_by_shortcode([f3]), {}, "게시물 URL 이 아니면 무시")
+
+    eq(shortcode(P + "AAA1/"), "AAA1", "shortcode 추출")
+    eq(shortcode("https://www.instagram.com/acct/"), None, "프로필 URL 은 None")
 
     if fails:
         for f in fails:

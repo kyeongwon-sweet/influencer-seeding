@@ -62,3 +62,38 @@ def ig_only(rows, row):
     if pc is None:
         return None
     return pc - fb_at(rows, row)
+
+# ── 스윕 결과 읽기 ────────────────────────────────────────────────────
+# 전수조사 결과는 {url: {ig, fb, all}} 형태 JSON 이고 **활성분·종료분 두 파일로 나뉘어 있다**
+# (data/output/crosspost_sweep_active_*.json, _ended_*.json). 한 파일만 받으면 절반이 조용히 빠지므로
+# 두 스크립트(detect_cross_posts·backfill_cross_post_fb) 모두 여러 파일을 받는다.
+
+import io as _io
+import json as _json
+import re as _re
+
+_SHORTCODE_RE = _re.compile(r"/(?:p|reels|reel|tv)/([A-Za-z0-9_-]+)")
+
+
+def shortcode(url: str):
+    """게시물 URL → shortcode. 게시물 URL 이 아니면 None."""
+    m = _SHORTCODE_RE.search(url or "")
+    return m.group(1) if m else None
+
+
+def load_fb_by_shortcode(paths) -> dict:
+    """스윕 결과 JSON 여러 개 → {shortcode: fb_play_count}. FB 가 0/없음이면 담지 않는다.
+
+    ⚠️ 0 을 담지 않는 이유: 0 은 '교차게시 아님'이지 '측정값 0'이 아니다. 담으면
+       교차게시 해제/보정 판정이 '실측 0' 인 것처럼 오동작한다.
+    """
+    if isinstance(paths, (str, bytes)):
+        paths = [paths]
+    out = {}
+    for path in paths:
+        for u, v in _json.load(_io.open(path, encoding="utf-8")).items():
+            fb = (v or {}).get("fb")
+            code = shortcode(u)
+            if code and isinstance(fb, (int, float)) and not isinstance(fb, bool) and fb > 0:
+                out[code] = int(fb)
+    return out

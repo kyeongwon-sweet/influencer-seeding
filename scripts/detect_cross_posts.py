@@ -20,24 +20,18 @@ IG 3,675건 전수조사 결과 교차게시 148건(활성 15·종료 133), 숨�
   python scripts/detect_cross_posts.py                 # 활성 IG만 탐지, 쓰기 없음(dry-run)
   python scripts/detect_cross_posts.py --apply         # 판정 결과를 DB에 반영
   python scripts/detect_cross_posts.py --scope all --apply
-  python scripts/detect_cross_posts.py --from-json <파일> --apply   # 이미 돌린 결과 재사용(Apify 재호출 없음)
+  python scripts/detect_cross_posts.py --from-json <활성.json> <종료.json> --apply
+      # 이미 돌린 전수조사 결과 재사용(Apify 재호출 없음). ⚠️ 활성·종료가 두 파일이라 둘 다 넘겨야 한다.
 """
 import argparse
-import io
-import json
 import os
-import re
 import sys
 
+from cross_post_metrics import load_fb_by_shortcode, shortcode
 from db import get_client
 
 BATCH = 40
 ACTOR = "data-slayer/instagram-post-details"
-
-
-def shortcode(url: str):
-    m = re.search(r"/(?:p|reels|reel|tv)/([A-Za-z0-9_-]+)", url or "")
-    return m.group(1) if m else None
 
 
 def _load_targets(db, scope: str):
@@ -107,7 +101,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scope", choices=["active", "all"], default="active")
     ap.add_argument("--apply", action="store_true", help="DB 에 반영(없으면 dry-run)")
-    ap.add_argument("--from-json", help="{url: {ig,fb,all}} 형태 기존 결과 재사용")
+    ap.add_argument("--from-json", nargs="+",
+                    help="{url: {ig,fb,all}} 형태 기존 결과 재사용. **활성·종료 두 파일을 모두** 넘길 것.")
     args = ap.parse_args()
 
     db = get_client()
@@ -117,13 +112,11 @@ def main():
         return 0
 
     if args.from_json:
-        raw = json.load(io.open(args.from_json, encoding="utf-8"))
-        got = {}
-        for u, v in raw.items():
-            code = shortcode(u)
-            if code:
-                got[code] = v
-        print(f"[cross-post] 기존 결과 {len(got)}건 재사용 — Apify 호출 없음")
+        # load_fb_by_shortcode 는 FB>0 인 것만 담는다 → 여기 없는 글은 '교차게시 아님'으로 본다.
+        # ⚠️ 그래서 스윕 파일을 하나만 넘기면 나머지 절반이 통째로 '해제' 판정될 수 있다.
+        fb_map = load_fb_by_shortcode(args.from_json)
+        got = {code: {"fb": fb} for code, fb in fb_map.items()}
+        print(f"[cross-post] 기존 결과 {len(args.from_json)}개 파일 · 교차게시 {len(got)}건 재사용 — Apify 호출 없음")
     else:
         got = detect([a["url"] for a in targets])
 
@@ -132,10 +125,11 @@ def main():
         code = shortcode(a["url"])
         g = got.get(code)
         cur = a.get("is_cross_posted")
-        if g is None:
+        if g is None and not args.from_json:
             unknown.append(a)                       # 응답 없음 = 대개 삭제된 글 → 판정 유지
             continue
-        want = (g.get("fb") or 0) > 0
+        # --from-json 은 이미 전수조사한 결과라, 목록에 없으면 '교차게시 아님'이 맞다.
+        want = ((g or {}).get("fb") or 0) > 0
         if want and cur is not True:
             to_true.append(a)
         elif not want and cur is True:
