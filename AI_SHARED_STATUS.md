@@ -1,5 +1,14 @@
 # AI Shared Status
 
+## ✅ 2026-09-22 [Codex 완료·라이브] 여믄봇 요청자 중심 스레드 요약 활성화
+- **사용법:** Slack 제약상 커스텀 `/요약`은 스레드 문맥을 받지 못하므로 지원하지 않는다. 스레드 안에서 **`@여믄봇 요약`**을 보내거나 대상 메시지의 **`··· → 요약`** 단축키를 사용한다.
+- **구현·모델:** 스레드 전체를 페이지네이션해 명령·과거 봇 요약을 제외하고, 요청자 이름을 `황경원 → 경원님`으로 정규화해 요청자 관련 언급·결정·미결을 우선 정리한다. Anthropic 유료 키 없이 Vercel AI Gateway의 무료 크레딧 범위에서 `google/gemini-2.5-flash-lite`를 사용한다. Vertex 전용·prompt training 차단·zero data retention 옵션을 유지한다.
+- **수정 커밋:** `751b5548`(기능), `e11b600`(runtime OIDC), `8618a43`(명령 제외), `a1dd433`(무료 모델), `02b73bfc`(이름·서식), `7f1aa740`(과거 요약 제외), `3bb7c986`(Slack `:memo:` 별칭), `985e2f04`(깨끗한 Slack 제목 서식). `origin/main=985e2f04`.
+- **배포:** production `dpl_9TcdoUo6xocWT6t6bZrTGJ2NTKnt` Ready, `influencer-seeding-mu.vercel.app` 별칭 반영 확인.
+- **라이브 종단검증:** `#빙과_마케팅_리포트`의 2026-09-20 리포트 스레드(`1789961916.280329`)에서 2026-09-22 11:18:21 KST `@여믄봇 요약` 실행 → 11:18:26 KST 같은 스레드에 공개 요약 게시. **`경원님 관련`**, 원문 **3개 메시지** 표기, 이전 명령·과거 요약 재포함 없음, 중첩 `*` 깨짐 없는 제목·불릿 렌더를 실화면으로 확인했다. 해당 production route 로그도 HTTP 200이다.
+- **보안 회귀:** `/api/slack/summarize`와 `/api/slack-events`에 위조 서명 POST → 각각 HTTP **401**, `bad signature` 확인. 정상 app mention은 같은 배포에서 HTTP 200.
+- **게이트:** web **552/552**, `tsc --noEmit --incremental false`, production build, `git diff --check` 통과. ESLint는 오류 0, 기존 경고 17. `ANTHROPIC_API_KEY`는 필요 없고 추가하지 않았다.
+
 ## ✅⚠️ 2026-09-21 [Codex 설정완료·키대기] 여믄봇 `요약` 단축키 Slack 설정 완료
 - **Slack 설정 완료(23:43 KST):** 기존 Interactivity 는 OFF였고 Request URL도 비어 있어 충돌 없음 확인 후 ON으로 전환했다. Request URL은 `https://influencer-seeding-mu.vercel.app/api/slack/summarize`, 메시지 단축키는 Name `요약` / Callback ID `summarize_thread`로 저장했다. 재설치 후 Slack 앱 설정과 실제 `#빙과_마케팅_리포트` 메시지 액션 목록에서 **`요약 — 여믄봇` 노출**을 확인했다.
 - **권한·재설치:** 기존 `channels:history`·`chat:write`는 보존하고 `groups:history`·`users:read`를 추가했다. 메시지 단축키 생성으로 `commands`가 자동 추가됐고, Lalasweet 워크스페이스에 재설치했다. Incoming Webhook 채널은 `#빙과_마케팅_리포트`로 지정했으며 채널 실물에 `added an integration to this channel: 여믄봇` 기록이 생겨 채널 연결도 확인했다.
