@@ -93,6 +93,7 @@ test("previous bot summaries are excluded from repeated summaries", () => {
     true,
   );
   assert.equal(isGeneratedSummary("📝 스레드 요약 — 요청: 경원님 (3개 메시지)"), true);
+  assert.equal(isGeneratedSummary(":memo: *스레드 요약* — 요청: 경원님 (3개 메시지)"), true);
   assert.equal(isGeneratedSummary("일반 대화에서 스레드 요약을 논의했습니다."), false);
 });
 

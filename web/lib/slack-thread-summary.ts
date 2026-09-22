@@ -60,7 +60,7 @@ export function isSummaryMention(text: string): boolean {
 }
 
 export function isGeneratedSummary(text: string): boolean {
-  return /^📝\s*\*?스레드 요약\*?\s*—\s*요청:/u.test(String(text || "").trim());
+  return /^(?:📝|:memo:)?\s*\*?스레드 요약\*?\s*—\s*요청:/u.test(String(text || "").trim());
 }
 
 function replaceMentions(text: string, names: Record<string, string>): string {
