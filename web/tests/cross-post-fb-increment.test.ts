@@ -4,9 +4,11 @@
 // 퐁패밀리 https://www.instagram.com/p/DdeIMT0ynk2/ 가 대시보드 414,066 vs 실제 1,125,552 였다.
 // 사용자 지시로 교차게시 글의 play_count 에 **합계**를 저장한다.
 //
-// 이 파일이 지키는 것: 합계로 바꾸면서도 **증분이 튀지 않아야 한다.**
-// 과거 날짜별 FB 조회수는 복구할 수 없으므로(값을 지어내지 않는다는 절대 규칙),
-// 첫 FB 측정은 어느 날의 성과로도 계산하지 않는다 → 교차게시 글은 Σ증분 < 최종 누적이 된다.
+// 증분 규칙(사용자 결정 2026-09-22): 첫 FB 측정분은 **그날 증분에 전액 포함**한다.
+// 처음엔 '어느 날에도 얹지 않는' 쪽이었으나 그러면 그만큼이 일일 리포트 총합에서 영구히
+// 빠진다(리포트 대상 기준 718,363). 총량이 사라지는 것보다 낫다는 판단이다.
+// ⚠️ 그래서 전환일 하루가 크게 튄다 — 실제 급상승이 아니라 합산 전환이다.
+// ⚠️ Σ증분 == 최종 누적 불변식은 이 규칙에서 유지된다.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -26,16 +28,28 @@ test("교차게시가 아니면 동작이 완전히 같다(회귀 방지)", () =
   assert.equal(fbIncrement(stats, stats[2]), 0);
 });
 
-test("🚨 합산을 시작한 날은 증분이 튀지 않는다 — FB 누적 전액이 하루에 찍히면 안 된다", () => {
-  // 퐁패밀리 실측 형태: IG 414,066 로 쌓이다가 합산 시작일에 1,125,552(=+FB 711,486)로 점프.
+test("합산 전환일: IG 증가분 + FB 전액이 그날 증분에 들어간다", () => {
+  // 퐁패밀리 실측 형태: IG 로만 쌓이다가 전환일에 +FB 711,486.
   const stats = [
     day("2026-09-20", 410_000),
     day("2026-09-21", 414_066),
     day("2026-09-22", 1_125_552, 711_486),
   ];
-  const inc = safeIncrement(stats, stats[2], false, "2026-09-01");
-  assert.equal(inc, 0, `IG 증가분 0 만 잡혀야 한다(실제 ${inc})`);
-  assert.notEqual(inc, 711_486, "FB 과거 누적이 하루 증분으로 찍혔다");
+  // IG 증가분 0(414,066 그대로) + FB 전액 711,486
+  assert.equal(safeIncrement(stats, stats[2], false, "2026-09-01"), 711_486);
+});
+
+test("🚨 Σ증분 == 최종 누적 (교차게시 글도 총량이 안 샌다)", () => {
+  // 이 불변식이 깨지면 리포트 총합이 대시보드 누적과 영구히 어긋난다.
+  const stats = [
+    day("2026-09-20", 100_000),
+    day("2026-09-21", 150_000),
+    day("2026-09-22", 900_000, 700_000),   // 전환: IG 200,000 + FB 700,000
+    day("2026-09-23", 920_000, 705_000),   // IG +15,000 · FB +5,000
+  ];
+  const sum = stats.reduce(
+    (acc, s) => acc + (safeIncrement(stats, s, false, "2026-09-19") ?? 0), 0);
+  assert.equal(sum, 920_000, `Σ증분 ${sum} 이 최종 누적 920,000 과 다르다`);
 });
 
 test("두 번째 FB 측정부터는 실제 증가분이 더해진다", () => {
@@ -57,10 +71,9 @@ test("🚨 FB 조회가 하루 실패해도 증분이 튀지 않는다 — mono 
   assert.equal(safeIncrement(stats, stats[1], false, "2026-09-01"), 0);
 });
 
-test("첫 측정이 곧 첫 FB 측정이어도 FB 몫은 얹지 않는다", () => {
-  // 게시 직후(7일 이내) 첫 측정 = 그날 전액이 원래 규칙이지만, 그 '전액'은 IG 몫까지다.
+test("첫 측정이 곧 첫 FB 측정이면 그날 전액(IG+FB)이 증분이다", () => {
   const stats = [day("2026-09-22", 50_000, 20_000)];
-  assert.equal(safeIncrement(stats, stats[0], false, "2026-09-20"), 30_000);
+  assert.equal(safeIncrement(stats, stats[0], false, "2026-09-20"), 50_000);
 });
 
 test("배너(도달수)는 FB 합산과 무관하다", () => {
@@ -71,11 +84,11 @@ test("배너(도달수)는 FB 합산과 무관하다", () => {
   assert.equal(safeIncrement(stats, stats[1], true, "2026-09-01"), 500);
 });
 
-test("fbIncrement: 첫 측정 0, 이후 델타, 감소는 0", () => {
+test("fbIncrement: 첫 측정 전액, 이후 델타, 감소는 0", () => {
   const a = day("2026-09-22", 100, 50);
   const b = day("2026-09-23", 120, 70);
   const c = day("2026-09-24", 120, 60);       // FB 가 줄어든 이상값
-  assert.equal(fbIncrement([a], a), 0);
+  assert.equal(fbIncrement([a], a), 50, "첫 FB 측정 = 전액 귀속");
   assert.equal(fbIncrement([a, b], b), 20);
   assert.equal(fbIncrement([a, b, c], c), 0, "감소를 음수 증분으로 흘리면 총합이 깎인다");
 });

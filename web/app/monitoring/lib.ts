@@ -333,14 +333,20 @@ export function fbAt(allStats: DailyStats[], s: DailyStats): number {
   return carried;
 }
 
-// IG↔Facebook 교차게시 글의 **FB 몫 증분**. 첫 FB 측정은 0 을 돌려준다.
+// IG↔Facebook 교차게시 글의 **FB 몫 증분**. 첫 FB 측정분도 그날 증분에 **포함**한다.
 //
-// 왜(2026-09-22): 교차게시 글은 play_count 가 어느 날 갑자기 IG 전용 → IG+FB 합계로 뛴다
-// (퐁패밀리 414,066 → 1,125,552). 그 점프를 그대로 증분으로 치면 하루에 71만이 찍혀
-// 리포트 TOP10·그래프가 통째로 망가진다. 그런데 그 71만이 **언제 쌓였는지는 알 방법이 없다** —
-// 과거 날짜별 FB 조회수를 되살릴 수 없기 때문이다(없는 값을 지어내지 않는다는 절대 규칙).
-// 그래서 첫 측정은 아무 날에도 얹지 않고, 두 번째 측정부터 실제 증가분만 더한다.
-// → 교차게시 글은 의도적으로 Σ증분 < 최종 누적이 된다.
+// 배경(2026-09-22): 교차게시 글은 play_count 가 어느 날 IG 전용 → IG+FB 합계로 뛴다
+// (퐁패밀리 409,802 → 1,121,288). 그 71만이 **언제 쌓였는지는 알 방법이 없다** —
+// 과거 날짜별 FB 조회수를 되살릴 수 없다.
+//
+// 처음엔 '아무 날에도 얹지 않는' 쪽으로 만들었으나, 그러면 그만큼이 **어느 날 증분에도 안 잡혀**
+// 일일 리포트 총합에서 영구히 빠진다(실측 영향: 리포트 대상 쫀득바 기준 718,363).
+// **사용자 결정(2026-09-22): 총량이 사라지는 것보다 낫다 — 전환일 하루에 몰아넣는다.**
+//
+// ⚠️ 그래서 전환일은 하루 증분이 크게 튄다(퐁패밀리 51,068 → 762,554). 리포트 TOP10 상위와
+//    그래프 봉우리는 **실제 급상승이 아니라 합산 전환**이다. 급변 알림을 트리아지할 때
+//    그 날짜의 fb_play_count 첫 등장 여부를 먼저 볼 것.
+// ⚠️ Σ증분 == 최종 누적 불변식은 이 규칙으로 (교차게시 글에서도) 유지된다.
 export function fbIncrement(allStats: DailyStats[], s: DailyStats | null | undefined): number {
   const cur = s?.fb_play_count ?? null;
   if (cur == null || cur <= 0) return 0;
@@ -350,7 +356,8 @@ export function fbIncrement(allStats: DailyStats[], s: DailyStats | null | undef
     const v = st.fb_play_count ?? null;
     if (v != null && v > 0) { hasBaseline = true; if (v > baseline) baseline = v; }
   }
-  if (!hasBaseline) return 0;                   // 첫 FB 측정 → 어느 날의 성과인지 모른다 → 0
+  // 첫 FB 측정 = 그때까지 쌓인 FB 전액을 그날에 귀속(사용자 결정). 어느 날인지 모르지만 총량은 지킨다.
+  if (!hasBaseline) return cur;
   return Math.max(0, cur - baseline);
 }
 
