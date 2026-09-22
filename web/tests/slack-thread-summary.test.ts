@@ -3,6 +3,7 @@ import fs from "node:fs";
 import test from "node:test";
 import {
   DEFAULT_SUMMARY_MODEL,
+  isGeneratedSummary,
   isSummaryMention,
   normalizeSlackSummary,
   shortName,
@@ -84,6 +85,15 @@ test("Slack events route keeps app mention wiring and excludes the command messa
 test("repeated summary commands are excluded from the transcript", () => {
   const source = fs.readFileSync("lib/slack-thread-summary.ts", "utf8");
   assert.match(source, /!isSummaryMention\(message\.text \|\| ""\)/);
+});
+
+test("previous bot summaries are excluded from repeated summaries", () => {
+  assert.equal(
+    isGeneratedSummary("📝 *스레드 요약* — 요청: 경원님 (3개 메시지)\n\n요약 본문"),
+    true,
+  );
+  assert.equal(isGeneratedSummary("📝 스레드 요약 — 요청: 경원님 (3개 메시지)"), true);
+  assert.equal(isGeneratedSummary("일반 대화에서 스레드 요약을 논의했습니다."), false);
 });
 
 test("both Slack entry points forward the runtime OIDC header to AI Gateway", () => {

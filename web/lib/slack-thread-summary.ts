@@ -59,6 +59,10 @@ export function isSummaryMention(text: string): boolean {
   return /^요약(?:해\s*줘|해주세요|해줘)?[.!?~]*$/i.test(withoutMentions);
 }
 
+export function isGeneratedSummary(text: string): boolean {
+  return /^📝\s*\*?스레드 요약\*?\s*—\s*요청:/u.test(String(text || "").trim());
+}
+
 function replaceMentions(text: string, names: Record<string, string>): string {
   return String(text || "").replace(/<@([A-Z0-9]+)>/gi, (whole, id: string) => names[id] || whole);
 }
@@ -284,7 +288,8 @@ export async function runSlackThreadSummary(options: {
     (message) =>
       (message.text || "").trim() &&
       !message.subtype &&
-      !isSummaryMention(message.text || ""),
+      !isSummaryMention(message.text || "") &&
+      !isGeneratedSummary(message.text || ""),
   );
   if (messages.length === 0) return { ok: false, code: "empty" };
 
