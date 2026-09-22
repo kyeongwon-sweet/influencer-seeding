@@ -41,3 +41,6 @@ logs/
 
 # Local investigation / rollback backups. May contain URLs, account names, or owners.
 scratchpad/
+
+# 교차게시 FB 보정 롤백 백업 — 게시물 지표가 들어 있어 PUBLIC repo 에 올리지 않는다
+scripts/backup_cross_post_fb_*.json

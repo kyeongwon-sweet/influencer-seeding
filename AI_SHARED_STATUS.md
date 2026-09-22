@@ -1,5 +1,16 @@
 # AI Shared Status
 
+## ✅ 2026-09-22 [Claude] 교차게시 활성 15건도 즉시 합산 반영 (사용자 지시 "오늘 합쳐줘")
+- **한 일:** 다음 자동수집을 기다리지 않고 활성 15건의 **마지막 측정행(2026-09-21)을 제자리 보정**했다. 종료분 96건에 쓴 것과 같은 방식·같은 스크립트(`backfill_cross_post_fb.py --include-active`). 더해진 FB 합 **719,996**.
+  - 퐁패밀리 `p/DdeIMT0ynk2/` 409,802 → **1,121,288**. 앱 표기 1,125,552 와의 차 4,264 는 어제 이후 IG 증가분이라 **오늘 IG 값을 지어내지 않고** 그대로 뒀다(내일 수집에서 채워짐).
+- **증분 불변 확인(독립 재현):** 09-19 126,000 · 09-20 232,734 · **09-21 51,068**(=409,802−358,734). FB 711,486 이 증분으로 새지 않았다. 보정 후 재감사 불일치 **0/15**.
+- **왜 새 행이 아니라 제자리 보정인가:** ① 대시보드 차트·증분표는 **오늘(KST) 행을 제외**한다(page.tsx `todayKST`) → 오늘 날짜로 넣으면 어차피 안 보인다. ② 오늘 행이 있으면 다음 자동수집이 그 글을 '같은 날 이미 측정됨'으로 **건너뛴다**(`_should_apply_same_day_cost_guard`). 제자리 보정이면 내일 수집이 정상 진행된다.
+- **대가(기록):** 활성 글의 09-21 행에 **오늘 잰 FB 값**이 붙었다 — FB 측정일이 하루 앞당겨졌다. 증분에는 영향이 없고(FB 는 증분에서 빼고 계산), 첫 FB 측정은 어차피 증분 기여 0 이다. 09-22 의 FB 증분만 소폭 과소 계상될 수 있다.
+- **스크립트 수정:** `--only-ended` 가 `store_true·default=True` 라 **끌 방법이 없었다**(활성 포함 불가). `--include-active` 로 교체했다.
+- **보안:** 롤백 백업(`scripts/backup_cross_post_fb_*.json`)이 gitignore 에 없어 PUBLIC repo 에 올라갈 수 있었다 → 패턴 추가했다.
+- **남은 것:** 내일 13:10 KST 자동 검증(Codex 예약) — 퐁패밀리가 1,125,552 근처로 갱신되는지, 증분 리포트에 71만 가짜 스파이크가 없는지.
+
+
 ## ✅⏳ 2026-09-22 [Codex 라이브 적용] IG↔Facebook 교차게시 스키마·플래그·종료분 보정 완료 / 다음 수집 확인 대기
 - **프로덕션:** 커밋 `5347a1a7`의 Vercel production `dpl_CRhqTF7BKgNp6qksDSK5aXAJPtEP`가 `READY`이고 `influencer-seeding-mu.vercel.app` 별칭에 연결된 것을 확인했다.
 - **DB 스키마:** `sponsored_posts.is_cross_posted boolean`, `post_daily_stats.fb_play_count integer`를 `IF NOT EXISTS`로 추가했다. 추가 직후 기준 `is_cross_posted=true 0건`, `fb_play_count IS NOT NULL 0행`이었다.

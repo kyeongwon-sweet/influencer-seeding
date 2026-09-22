@@ -18,6 +18,11 @@
    이 글들은 Σ증분 < 최종 누적이 된다(의도된 것).
 ⚠️ 되돌리기: --apply 시 백업 JSON 을 남긴다(수정 전 play_count·fb_play_count).
 
+⚠️ --include-active 주의: 활성 글의 마지막 행은 '어제' 측정분인데 거기에 **오늘 잰 FB 값**을 붙이게 된다.
+   증분에는 영향이 없지만(FB 는 증분에서 빼고 계산한다) FB 측정일이 하루 앞당겨 기록되는 셈이다.
+   그래도 이 방식을 쓰는 이유: 오늘 날짜로 새 행을 만들면 ①대시보드 차트·증분표가 당일 행을 제외해
+   어차피 안 보이고 ②그 행 때문에 다음 자동수집이 해당 글을 '같은 날 이미 측정됨'으로 건너뛴다.
+
 실행(⚠️ 전수조사 결과는 활성·종료 두 파일이라 **둘 다** 넘긴다 — 하나만 넘기면 절반이 조용히 빠진다):
   python scripts/backfill_cross_post_fb.py --from-json <활성.json> <종료.json>            # dry-run
   python scripts/backfill_cross_post_fb.py --from-json <활성.json> <종료.json> --apply
@@ -53,8 +58,11 @@ def main():
     ap.add_argument("--from-json", required=True, nargs="+",
                     help="{url: {ig, fb, all}} 형태 스윕 결과(여러 개 가능)")
     ap.add_argument("--apply", action="store_true")
-    ap.add_argument("--only-ended", action="store_true", default=True,
-                    help="종료된 글만(기본). 활성 글은 다음 수집이 알아서 고친다.")
+    # ⚠️ 원래 --only-ended 를 store_true·default=True 로 둬서 **끌 방법이 없었다**(활성 포함 불가).
+    #    활성 글도 "오늘 당장 합계로 보이게 해달라"는 요청이 실제로 나와서 스위치를 제대로 만든다.
+    ap.add_argument("--include-active", action="store_true",
+                    help="활성 글도 포함. 기본은 종료된 글만 — 활성은 다음 자동수집이 알아서 고친다. "
+                         "당장 반영이 필요할 때만 쓴다(아래 주의 참고).")
     args = ap.parse_args()
 
     # detect_cross_posts 와 **같은 로더**를 쓴다 — 두 스크립트가 같은 파일에서 같은 값을 읽어야
@@ -69,7 +77,7 @@ def main():
         code = shortcode(p.get("url") or "")
         if not code or code not in fb_by_code:
             continue
-        if args.only_ended and not p.get("ended_at"):
+        if not args.include_active and not p.get("ended_at"):
             continue
         targets[p["id"]] = (p, fb_by_code[code])
     print(f"[backfill] 대상 게시물 {len(targets)}건")
