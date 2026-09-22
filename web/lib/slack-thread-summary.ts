@@ -1,6 +1,6 @@
 const SLACK = "https://slack.com/api";
 
-export const DEFAULT_SUMMARY_MODEL = "google/gemini-3.1-flash-lite";
+export const DEFAULT_SUMMARY_MODEL = "google/gemini-2.5-flash-lite";
 
 export type SlackMessage = {
   ts?: string;

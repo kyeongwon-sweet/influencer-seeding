@@ -23,6 +23,10 @@ test("uses the requester's given name for Korean full names", () => {
   assert.equal(shortName("Alex"), "Alex");
 });
 
+test("uses a free-credit-compatible Gateway model by default", () => {
+  assert.equal(DEFAULT_SUMMARY_MODEL, "google/gemini-2.5-flash-lite");
+});
+
 test("calls Vercel AI Gateway with OIDC and strict privacy routing", async () => {
   let seenUrl = "";
   let seenAuth = "";

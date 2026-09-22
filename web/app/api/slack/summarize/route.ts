@@ -17,7 +17,7 @@ import { runSlackThreadSummary, summaryFailureMessage } from "@/lib/slack-thread
 //   여믄봇이 대상 채널의 멤버여야 스레드를 읽고 답글을 달 수 있다.
 //
 // 필요 env: SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET(여믄봇)
-// LLM: Vercel 배포의 자동 OIDC → AI Gateway(기본 google/gemini-3.1-flash-lite).
+// LLM: Vercel 배포의 자동 OIDC → AI Gateway(기본 google/gemini-2.5-flash-lite).
 //   선택 env: SUMMARY_MODEL, AI_GATEWAY_API_KEY(로컬), ANTHROPIC_API_KEY(로컬 폴백)
 //
 // 동작: 3초 내 200 ACK → after()로 스레드(conversations.replies) 수집 →
