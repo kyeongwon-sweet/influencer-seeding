@@ -35,8 +35,20 @@ export type SummaryResult =
 
 export function shortName(name: string): string {
   const normalized = (name || "").trim();
-  if (/^[가-힣]{3,4}$/.test(normalized)) return normalized.slice(1);
+  const koreanPrefix = normalized.match(/^([가-힣](?:\s*[가-힣]){1,3})(?:\s|\(|$)/)?.[1];
+  const compactKorean = koreanPrefix?.replace(/\s+/g, "") || "";
+  if (/^[가-힣]{3,4}$/.test(compactKorean)) return compactKorean.slice(1);
+  if (/^[가-힣]{2}$/.test(compactKorean)) return compactKorean;
   return normalized;
+}
+
+export function normalizeSlackSummary(text: string): string {
+  return String(text || "")
+    .replace(/^#{1,6}\s+(.+)$/gm, "*$1*")
+    .replace(/\*\*([^*\n]+)\*\*/g, "*$1*")
+    .replace(/^\s*[-*]\s+/gm, "• ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 export function isSummaryMention(text: string): boolean {
@@ -200,7 +212,8 @@ export async function summarizeWithAI(
         console.error("[summarize] AI Gateway 오류", data.error || data);
         return null;
       }
-      return data.choices?.[0]?.message?.content?.trim() || null;
+      const content = data.choices?.[0]?.message?.content || "";
+      return normalizeSlackSummary(content) || null;
     } catch (error) {
       console.error("[summarize] AI Gateway 호출 실패", error);
       return null;
@@ -234,13 +247,12 @@ export async function summarizeWithAI(
       console.error("[summarize] Anthropic 오류", data.error || data);
       return null;
     }
-    return (
+    const content =
       data.content
         ?.filter((part) => part.type === "text")
         .map((part) => part.text || "")
-        .join("")
-        .trim() || null
-    );
+        .join("") || "";
+    return normalizeSlackSummary(content) || null;
   } catch (error) {
     console.error("[summarize] Anthropic 호출 실패", error);
     return null;

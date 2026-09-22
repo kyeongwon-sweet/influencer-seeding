@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   DEFAULT_SUMMARY_MODEL,
   isSummaryMention,
+  normalizeSlackSummary,
   shortName,
   summarizeWithAI,
 } from "../lib/slack-thread-summary.ts";
@@ -19,8 +20,16 @@ test("recognizes only the intended @bot summary phrases", () => {
 
 test("uses the requester's given name for Korean full names", () => {
   assert.equal(shortName("황경원"), "경원");
+  assert.equal(shortName("황 경원 (빙과_마케팅T_스틱바P)"), "경원");
   assert.equal(shortName("이선민"), "선민");
   assert.equal(shortName("Alex"), "Alex");
+});
+
+test("normalizes common Markdown into Slack mrkdwn", () => {
+  assert.equal(
+    normalizeSlackSummary("### 요약\n\n**핵심**\n- 첫째\n* 둘째"),
+    "*요약*\n\n*핵심*\n• 첫째\n• 둘째",
+  );
 });
 
 test("uses a free-credit-compatible Gateway model by default", () => {
