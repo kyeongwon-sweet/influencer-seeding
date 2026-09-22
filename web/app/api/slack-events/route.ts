@@ -1,10 +1,18 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import crypto from "crypto";
 import { getServerSupabase } from "@/lib/supabase-server";
+import {
+  isSummaryMention,
+  runSlackThreadSummary,
+  summaryFailureMessage,
+} from "@/lib/slack-thread-summary";
 
-// 여믄봇 이벤트 수신: 누가 DM을 보내든 사진 1장을 랜덤 응답
+// 여믄봇 이벤트 수신:
+// 1) 누가 DM을 보내든 사진 1장을 랜덤 응답
+// 2) 스레드에서 "@여믄봇 요약"을 받으면 그 메시지 전까지 요청자 기준 요약
 // 사진은 Supabase Storage 'yeomun' 버킷에서 실시간 조회 → 버킷에 넣기만 하면 즉시 포함됨
 // Slack Event Subscriptions Request URL: https://<도메인>/api/slack-events
+// @멘션 요약 설정: app_mentions:read 스코프 + app_mention bot event.
 // 필요 env: SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET, NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 
 export const runtime = "nodejs";
@@ -22,8 +30,26 @@ type SlackEventPayload = {
     subtype?: string;
     user?: string;
     channel?: string;
+    text?: string;
+    ts?: string;
+    thread_ts?: string;
   };
 };
+
+async function postEphemeral(token: string, channel: string, user: string, text: string): Promise<void> {
+  try {
+    await fetch("https://slack.com/api/chat.postEphemeral", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json; charset=utf-8",
+      },
+      body: JSON.stringify({ channel, user, text }),
+    });
+  } catch (error) {
+    console.error("[slack-events] ephemeral 전송 실패", error);
+  }
+}
 
 function verifySlack(raw: string, ts: string, sig: string, secret: string): boolean {
   if (!ts || !sig) return false;
@@ -68,6 +94,60 @@ export async function POST(req: NextRequest) {
 
   if (body.type === "event_callback") {
     const e = body.event || {};
+    const token = process.env.SLACK_BOT_TOKEN || "";
+    const isSummaryRequest =
+      e.type === "app_mention" &&
+      !e.bot_id &&
+      !e.subtype &&
+      !!e.user &&
+      !!e.channel &&
+      !!e.ts &&
+      isSummaryMention(e.text || "");
+
+    if (isSummaryRequest) {
+      after(async () => {
+        try {
+          if (!token) return;
+          if (!e.thread_ts) {
+            await postEphemeral(
+              token,
+              e.channel || "",
+              e.user || "",
+              "요약할 스레드 안에서 `@여믄봇 요약`이라고 입력해주세요.",
+            );
+            return;
+          }
+
+          const result = await runSlackThreadSummary({
+            channel: e.channel || "",
+            rootTs: e.thread_ts,
+            cutoffTs: e.ts || "",
+            includeCutoff: false,
+            requesterId: e.user || "",
+            token,
+          });
+          if (!result.ok) {
+            await postEphemeral(
+              token,
+              e.channel || "",
+              e.user || "",
+              summaryFailureMessage(result),
+            );
+          }
+        } catch (error) {
+          console.error("[slack-events] 스레드 요약 실패", error);
+          if (token) {
+            await postEphemeral(
+              token,
+              e.channel || "",
+              e.user || "",
+              "요약 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
+            );
+          }
+        }
+      });
+    }
+
     // DM 메시지이고, 봇/시스템 메시지가 아닐 때만 응답 (봇 자기 응답으로 인한 루프 방지)
     const isUserDM =
       e.type === "message" &&
@@ -83,8 +163,6 @@ export async function POST(req: NextRequest) {
       const imgs = (files || []).filter((f) => /\.(jpe?g|png|webp|gif)$/i.test(f.name));
       if (imgs.length === 0) return NextResponse.json({ ok: true });
       const pick = imgs[Math.floor(Math.random() * imgs.length)].name;
-      const token = process.env.SLACK_BOT_TOKEN || "";
-
       // 사진을 Slack에 '실물 업로드'(files.uploadV2 3단계)로 보낸다.
       // 예전엔 image 블록의 image_url(외부 링크)로 보냈으나, Slack이 그 URL을 서버에서
       // 직접 가져오다 실패하면 파일이 멀쩡해도 깨진 이미지로 영구히 남는 문제가 있었다(2026-07-08).
