@@ -69,6 +69,13 @@ export async function POST(req: NextRequest) {
   const signingSecret = process.env.SLACK_SIGNING_SECRET || "";
   const ts = req.headers.get("x-slack-request-timestamp") || "";
   const sig = req.headers.get("x-slack-signature") || "";
+  const summaryEnv = {
+    AI_GATEWAY_API_KEY: process.env.AI_GATEWAY_API_KEY,
+    VERCEL_OIDC_TOKEN:
+      req.headers.get("x-vercel-oidc-token") || process.env.VERCEL_OIDC_TOKEN,
+    SUMMARY_MODEL: process.env.SUMMARY_MODEL,
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+  };
 
   let body: SlackEventPayload;
   try {
@@ -125,6 +132,7 @@ export async function POST(req: NextRequest) {
             includeCutoff: false,
             requesterId: e.user || "",
             token,
+            env: summaryEnv,
           });
           if (!result.ok) {
             await postEphemeral(

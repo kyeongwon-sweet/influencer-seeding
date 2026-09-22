@@ -63,5 +63,16 @@ test("Slack events route keeps app mention wiring and excludes the command messa
   assert.match(source, /isSummaryMention/);
   assert.match(source, /runSlackThreadSummary/);
   assert.match(source, /includeCutoff:\s*false/);
+  assert.match(source, /headers\.get\("x-vercel-oidc-token"\)/);
+  assert.match(source, /env:\s*summaryEnv/);
   assert.match(source, /after\(async/);
+});
+
+test("both Slack entry points forward the runtime OIDC header to AI Gateway", () => {
+  for (const path of ["app/api/slack-events/route.ts", "app/api/slack/summarize/route.ts"]) {
+    const source = fs.readFileSync(path, "utf8");
+    assert.match(source, /headers\.get\("x-vercel-oidc-token"\)/, path);
+    assert.match(source, /VERCEL_OIDC_TOKEN:/, path);
+    assert.match(source, /env:\s*summaryEnv/, path);
+  }
 });

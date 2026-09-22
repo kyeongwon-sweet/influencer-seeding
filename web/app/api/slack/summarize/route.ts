@@ -78,6 +78,13 @@ export async function POST(req: NextRequest) {
   const secret = (process.env.SLACK_SIGNING_SECRET || "").trim();
   const ts = req.headers.get("x-slack-request-timestamp") || "";
   const sig = req.headers.get("x-slack-signature") || "";
+  const summaryEnv = {
+    AI_GATEWAY_API_KEY: process.env.AI_GATEWAY_API_KEY,
+    VERCEL_OIDC_TOKEN:
+      req.headers.get("x-vercel-oidc-token") || process.env.VERCEL_OIDC_TOKEN,
+    SUMMARY_MODEL: process.env.SUMMARY_MODEL,
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+  };
   if (!secret || !verifySlack(raw, ts, sig, secret)) {
     return NextResponse.json({ error: "bad signature" }, { status: 401 });
   }
@@ -122,6 +129,7 @@ export async function POST(req: NextRequest) {
         includeCutoff: true,
         requesterId,
         token,
+        env: summaryEnv,
       });
       if (!result.ok) await ephemeral(responseUrl, summaryFailureMessage(result));
     } catch (e) {
