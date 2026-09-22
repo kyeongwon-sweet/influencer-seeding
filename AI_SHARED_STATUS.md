@@ -11,6 +11,7 @@
 ## ✅ 2026-09-22 [Codex 완료·라이브] 여믄봇 요청자 중심 스레드 요약 활성화
 - **사용법:** Slack 제약상 커스텀 `/요약`은 스레드 문맥을 받지 못하므로 지원하지 않는다. 스레드 안에서 **`@여믄봇 요약`**을 보내거나 대상 메시지의 **`··· → 요약`** 단축키를 사용한다.
 - **구현·모델:** 스레드 전체를 페이지네이션해 명령·과거 봇 요약을 제외하고, 요청자 이름을 `황경원 → 경원님`으로 정규화해 요청자 관련 언급·결정·미결을 우선 정리한다. Anthropic 유료 키 없이 Vercel AI Gateway의 무료 크레딧 범위에서 `google/gemini-2.5-flash-lite`를 사용한다. Vertex 전용·prompt training 차단·zero data retention 옵션을 유지한다.
+- **운영 결정: 유료 폴백 보류.** 현재 월 $5 Gateway 무료 크레딧이면 현 사용량에서 수천 회 수준을 감당하므로 Anthropic 직접 호출 폴백은 만들지 않는다. 현 코드의 Anthropic 블록은 production Gateway 실패 시 도달하는 폴백이 아니며, `ANTHROPIC_API_KEY`만 추가해도 대체 동작하지 않는다. 향후 실제 크레딧 부족이 확인될 때만 과금·비밀키 운영을 승인받아 Gateway 실패 후 Anthropic 호출을 구현하고, 모델 설정도 `GATEWAY_SUMMARY_MODEL`과 `ANTHROPIC_SUMMARY_MODEL`로 분리한다.
 - **수정 커밋:** `751b5548`(기능), `e11b600`(runtime OIDC), `8618a43`(명령 제외), `a1dd433`(무료 모델), `02b73bfc`(이름·서식), `7f1aa740`(과거 요약 제외), `3bb7c986`(Slack `:memo:` 별칭), `985e2f04`(깨끗한 Slack 제목 서식). `origin/main=985e2f04`.
 - **배포:** production `dpl_9TcdoUo6xocWT6t6bZrTGJ2NTKnt` Ready, `influencer-seeding-mu.vercel.app` 별칭 반영 확인.
 - **라이브 종단검증:** `#빙과_마케팅_리포트`의 2026-09-20 리포트 스레드(`1789961916.280329`)에서 2026-09-22 11:18:21 KST `@여믄봇 요약` 실행 → 11:18:26 KST 같은 스레드에 공개 요약 게시. **`경원님 관련`**, 원문 **3개 메시지** 표기, 이전 명령·과거 요약 재포함 없음, 중첩 `*` 깨짐 없는 제목·불릿 렌더를 실화면으로 확인했다. 해당 production route 로그도 HTTP 200이다.
