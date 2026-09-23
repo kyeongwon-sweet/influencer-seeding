@@ -32,6 +32,8 @@ test("수식감사 라우트가 공용 배너·무지표 정책으로 제외 사
   const route = readFileSync(new URL("../app/api/sponsored-posts/formula-audit/route.ts", import.meta.url), "utf8");
   assert.match(route, /hasNoViewMetricHost\(url\)/);
   assert.match(route, /isBannerChannel\(channelType, posted\)/);
+  assert.match(route, /select\("post_id, measured_at, play_count, reach_count, manual, id"\)/);
+  assert.match(route, /resolveStaleExclusionReason\(context\)/);
   assert.match(route, /staleExclusionReason/);
   assert.match(route, /stale_excluded_uncollectable:\s*result\.staleExcludedUncollectable/);
 });

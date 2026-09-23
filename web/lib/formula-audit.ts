@@ -21,6 +21,25 @@ export type AuditPost = {
   measured: Map<string, number>; // YYYY-MM-DD → 양수 지표(배너=reach 우선, 그 외 play)
 };
 
+export type StaleExclusionReason = "manual-reach-banner" | "unsupported-platform";
+
+export function resolveStaleExclusionReason(input: {
+  channelType?: string | null;
+  canonicalBanner: boolean;
+  noMetricHost: boolean;
+  hasManualReachMetric: boolean;
+  hasAutomaticMetric: boolean;
+}): StaleExclusionReason | null {
+  if (input.noMetricHost) return "unsupported-platform";
+  if (input.canonicalBanner) return "manual-reach-banner";
+  // 경계일 이전 매거진도 수기 reach만 있고 자동 play/reach가 한 번도 없으면 Sidecar 수기 전용이다.
+  // 단순 매거진명만으로 제외하지 않아, 자동 영상 실측 이력이 있는 매거진은 계속 정체로 잡는다.
+  if (/매거진/.test(String(input.channelType ?? ""))
+    && input.hasManualReachMetric
+    && !input.hasAutomaticMetric) return "manual-reach-banner";
+  return null;
+}
+
 // 값 정체(수집 끊김) 판정 기준: 자동수집은 '어제'까지 채우므로 2일 넘게 새 값이 없으면 이상.
 export const STALE_DAYS = 2;
 

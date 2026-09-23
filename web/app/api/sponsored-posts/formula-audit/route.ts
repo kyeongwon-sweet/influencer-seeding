@@ -12,6 +12,7 @@ import {
   dominantMetricFormulaEndColumn,
   formatAuditMessage,
   isMetriclessChannel,
+  resolveStaleExclusionReason,
   resolveMetricDateColumns,
   type AuditPost,
   type SheetAuditRow,
@@ -320,6 +321,13 @@ async function handler(req: NextRequest) {
   const maxAuditDate = auditDates.length > 0 ? auditDates.reduce((a, b) => a > b ? a : b) : null;
   const posts = new Map<string, AuditPost>();
   const idToKey = new Map<string, string>();
+  const staleContexts = new Map<string, {
+    channelType: string | null;
+    canonicalBanner: boolean;
+    noMetricHost: boolean;
+    hasManualReachMetric: boolean;
+    hasAutomaticMetric: boolean;
+  }>();
   {
     const PAGE = 1000;
     for (let from = 0; ; from += PAGE) {
@@ -335,16 +343,18 @@ async function handler(req: NextRequest) {
         const url = p.url ? String(p.url) : null;
         const posted = p.posted_at ? String(p.posted_at).slice(0, 10) : null;
         const channelType = p.channel_type ? String(p.channel_type) : null;
-        const staleExclusionReason = hasNoViewMetricHost(url)
-          ? "unsupported-platform" as const
-          : !isMetriclessChannel(channelType) && isBannerChannel(channelType, posted)
-            ? "manual-reach-banner" as const
-            : null;
+        staleContexts.set(key, {
+          channelType,
+          canonicalBanner: !isMetriclessChannel(channelType) && isBannerChannel(channelType, posted),
+          noMetricHost: hasNoViewMetricHost(url),
+          hasManualReachMetric: false,
+          hasAutomaticMetric: false,
+        });
         posts.set(key, {
           posted,
           ended: p.ended_at ? String(p.ended_at).slice(0, 10) : null,
           channelType,
-          staleExclusionReason,
+          staleExclusionReason: null,
           measured: new Map(),
         });
       }
@@ -353,7 +363,7 @@ async function handler(req: NextRequest) {
     for (let from = 0; ; from += PAGE) {
       let query = supabase
         .from("post_daily_stats")
-        .select("post_id, measured_at, play_count, reach_count, id");
+        .select("post_id, measured_at, play_count, reach_count, manual, id");
       if (minAuditDate) query = query.gte("measured_at", minAuditDate);
       if (maxAuditDate) query = query.lte("measured_at", maxAuditDate);
       const { data, error } = await query
@@ -365,10 +375,19 @@ async function handler(req: NextRequest) {
       for (const s of data ?? []) {
         const key = idToKey.get(String(s.post_id));
         if (!key) continue;
+        const reach = Number(s.reach_count ?? 0);
+        const play = Number(s.play_count ?? 0);
+        const context = staleContexts.get(key);
+        if (context && s.manual === true && reach > 0) context.hasManualReachMetric = true;
+        if (context && s.manual !== true && (reach > 0 || play > 0)) context.hasAutomaticMetric = true;
         const metric = Number(s.reach_count ?? s.play_count ?? 0);
         if (metric > 0) posts.get(key)?.measured.set(String(s.measured_at).slice(0, 10), metric);
       }
       if (!data || data.length < PAGE) break;
+    }
+    for (const [key, context] of staleContexts) {
+      const post = posts.get(key);
+      if (post) post.staleExclusionReason = resolveStaleExclusionReason(context);
     }
   }
 

@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { auditRows, formatAuditMessage, isMetriclessChannel, type AuditPost, type SheetAuditRow } from "../lib/formula-audit.ts";
+import {
+  auditRows,
+  formatAuditMessage,
+  isMetriclessChannel,
+  resolveStaleExclusionReason,
+  type AuditPost,
+  type SheetAuditRow,
+} from "../lib/formula-audit.ts";
 
 // 2026-08-03 사고 회귀: 삭제된 74건과 게시일 불일치로 버려진 6건이 며칠째 값이 멈춰 있었는데,
 // 시트끼리는 앞뒤가 맞아 이 감사가 나흘 내리 "이상 없음"으로 보고했다.
@@ -149,6 +156,22 @@ test("경계 이전 매거진과 깨진 URL은 정상 제외로 숨기지 않는
   );
   assert.equal(r.staleExcludedUncollectable, 0);
   assert.equal(r.stale, 2);
+});
+
+test("경계 이전 매거진은 수기 reach만 있고 자동 실측이 0일 때만 제외한다", () => {
+  const base = {
+    channelType: "협찬 (파워채널/매거진)",
+    canonicalBanner: false,
+    noMetricHost: false,
+    hasManualReachMetric: true,
+  };
+  assert.equal(resolveStaleExclusionReason({ ...base, hasAutomaticMetric: false }), "manual-reach-banner");
+  assert.equal(resolveStaleExclusionReason({ ...base, hasAutomaticMetric: true }), null);
+  assert.equal(resolveStaleExclusionReason({
+    ...base,
+    channelType: "바이럴 (영상)",
+    hasAutomaticMetric: false,
+  }), null);
 });
 
 test("갓 올린 글(어제 게시)은 아직 실측이 없어도 정체 아님", () => {
