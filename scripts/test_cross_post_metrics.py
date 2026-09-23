@@ -150,3 +150,10 @@ def run():
 
 if __name__ == "__main__":
     sys.exit(run())
+
+
+def test_cross_post_metrics_contract():
+    """pytest 진입점. 이 래퍼가 없으면 이 파일은 어디서도 실행되지 않는다
+    (2026-09-23 전수 점검에서 발견). 하필 이 파일이 지키는 교차게시 코드가
+    같은 날 빌드를 깨뜨린 지점이었다."""
+    assert run() == 0

@@ -68,3 +68,10 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def test_cron_kpi_workflow_contract():
+    """pytest 진입점. 이 래퍼가 없으면 이 파일은 어디서도 실행되지 않는다
+    (2026-09-23 전수 점검에서 '아무 데서도 안 도는 테스트'로 발견) —
+    구조적 재발방지는 test_script_tests_are_wired.py 가 맡는다."""
+    assert main() == 0

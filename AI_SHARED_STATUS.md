@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## ✅ 2026-09-23 [Claude 재발방지] 안 도는 테스트 2건 발견·연결 + "모든 test_*.py는 CI에서 실행" 계약
+- **발단:** 워치독 거짓 경보를 고치며 `pytest -q`의 "372 passed"를 근거로 신규 테스트가 돌았다고 판단하려다, `test_cron_watchdog.py`가 **pytest 미수집**임을 발견했다(`test_` 함수 없이 `main()` 구조, CI에선 `workflow-lint.yml`이 직접 실행). 건수만 보면 속는 구조라 `scripts/test_*.py` 55개를 전수 점검했다.
+- **전수 결과:** pytest 수집 46개 · 워크플로 직접 실행 전용 7개 · **아무 데서도 안 도는 것 2개** — `test_cron_kpi_workflow.py`, `test_cross_post_metrics.py`. 둘 다 실행하면 통과하므로 숨은 버그는 없었고, 잠자던 보호였다. ⚠️ 하필 `test_cross_post_metrics.py`가 **같은 날 빌드를 깨뜨린 교차게시(`_fetch_fb_play_counts`) 코드를 지키는 테스트**였고, `test_cron_kpi_workflow.py`는 09-21에 바꾼 cron-kpi 유예(150→320)의 '워치독 마감 정합' 불변식을 지키는 테스트였다.
+- **조치:** 두 파일에 pytest 진입점(`def test_..._contract()`)을 추가해 `pytest -q`가 잡게 했다. 기존 `__main__` 직접 실행 경로는 그대로 둬 양쪽 다 동작한다. pytest 375 passed(372→375).
+- **구조적 가드(`scripts/test_script_tests_are_wired.py`):** `scripts/test_*.py` 중 **pytest도 워크플로도 부르지 않는 파일**이 있으면 실패한다. 판정은 `pytest --collect-only`로 **pytest에게 직접 묻는다** — ⚠️ 수집 규칙을 재구현하면 안 된다. 첫 시도에서 `unittest.TestCase` 서브클래스를 `Test*` 접두로만 찾다가 `*Test` 접미 이름 7개를 '죽은 테스트'로 오판했다(9건 → 실제 2건). 수집 자체가 실패하면 조용히 통과시키지 않고 에러를 낸다(fail-closed). 가드는 자기 자신도 glob 대상이라 자기가 죽으면 자기가 잡는다.
+- **검증:** 돌연변이 2종 — ① 죽은 테스트 파일 투입 → `[FAIL] test_zz_mutant_dead.py` ② 방금 넣은 진입점 제거 → `[FAIL] test_cross_post_metrics.py`. 복원 후 `[OK] 56개 전부 CI에서 실행됨`. 게이트: pytest 375 passed, workflow-lint 파이썬 검사 8종 전부 통과.
+- **다른 경로 점검:** 워치독의 마감·신선도 경로(`check_daily_deadlines`/`fired_but_failed`)는 이미 **최신 런 기준**으로 판정해 '이미 해소된 실패'를 다시 알리는 같은 결함이 없다. 거짓 경보 결함은 `classify_failures` 한 곳뿐이었다.
+
 ## ✅ 2026-09-23 [Codex 라이브 정정] 교차게시 09-22 시트 이중계상 12건을 DB 정본으로 복구
 - **사전 실측:** 연동시트 전체 CSV 4,650행을 다시 읽어 교차게시 12건의 `2026-09-22` 값이 모두 DB 정정 전 이중계상값으로 남아 있음을 확인했다. 대표 퐁패밀리 `ig:DdeIMT0ynk2`는 시트 **2,207,775** vs DB 정본 **1,500,553**였다. DB 12행은 모두 계획값과 일치하고 `manual=false`였다.
 - **실행:** 라이브 설치형 Apps Script의 `exportStats`를 2026-09-23 10:07:56 KST에 1회 실행해 10:15:47 완료했다. 완료 하트비트는 `written_date=2026-09-22`, `cells_written=12`, `auto_cells_corrected=12`, `blank_cells_filled=0`, `source=manual`을 기록했다. H 누적 수식 재작성은 0행이었고, 필터 기준 1개는 복원됐다.
