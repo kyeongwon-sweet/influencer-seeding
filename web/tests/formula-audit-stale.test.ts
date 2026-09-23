@@ -172,6 +172,11 @@ test("경계 이전 매거진은 수기 reach만 있고 자동 실측이 0일 �
     channelType: "바이럴 (영상)",
     hasAutomaticMetric: false,
   }), null);
+  assert.equal(resolveStaleExclusionReason({
+    ...base,
+    channelType: "협찬 (파워채널/매거진 배너)",
+    hasAutomaticMetric: false,
+  }), null, "원래 stale 대상 밖인 명시적 배너는 새 제외 카운트에 중복 산입하지 않는다");
 });
 
 test("갓 올린 글(어제 게시)은 아직 실측이 없어도 정체 아님", () => {

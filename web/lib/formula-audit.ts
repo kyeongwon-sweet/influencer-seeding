@@ -30,6 +30,8 @@ export function resolveStaleExclusionReason(input: {
   hasManualReachMetric: boolean;
   hasAutomaticMetric: boolean;
 }): StaleExclusionReason | null {
+  // 명시적 배너·피드·위성/온드는 원래부터 stale 대상 밖이다. 새 제외 카운트에 중복 산입하지 않는다.
+  if (isMetriclessChannel(input.channelType)) return null;
   if (input.noMetricHost) return "unsupported-platform";
   if (input.canonicalBanner) return "manual-reach-banner";
   // 경계일 이전 매거진도 수기 reach만 있고 자동 play/reach가 한 번도 없으면 Sidecar 수기 전용이다.
