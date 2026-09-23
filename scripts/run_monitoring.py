@@ -2401,20 +2401,28 @@ def _fetch_fb_play_counts(urls: list) -> dict:
     client = ApifyClient(os.getenv("APIFY_API_TOKEN"))
 
     def _run(batch):
+        # ⚠️ 키(shortcode) 추출에 실패한 아이템을 **조용히 버리지 않는다** — 그 무음이 2026-09-08
+        #    유튜브 268건 유실을 '스크래퍼 장애'로 오진하게 만든 지점이다(test_actor_unmapped_contract).
         out = {}
+        dropped = total = 0
+        first_bad = None
         for i in range(0, len(batch), 40):
             chunk = batch[i:i + 40]
             try:
                 run = client.actor("data-slayer/instagram-post-details").call(
                     run_input={"postUrls": chunk})
                 for it in client.dataset(run["defaultDatasetId"]).iterate_items():
+                    total += 1
                     code = it.get("code") or it.get("shortcode") or it.get("shortCode")
                     if not code:
+                        dropped += 1
+                        first_bad = first_bad or it
                         continue
                     m = it.get("metrics") or {}
                     out[code] = {"ig": m.get("ig_play_count"), "fb": m.get("fb_play_count")}
             except Exception as e:
                 print(f"  [WARN] FB 조회 배치 실패: {type(e).__name__} {e}")
+        _warn_unmapped("교차게시 FB 조회(data-slayer)", dropped, total, first_bad)
         return out
 
     got = _run(urls)
