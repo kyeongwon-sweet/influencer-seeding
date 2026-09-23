@@ -94,6 +94,63 @@ test("배너·피드·위성/온드는 매일 값이 없는 게 정상 — 제�
   assert.equal(isMetriclessChannel("바이럴 (영상)"), false);
 });
 
+test("후행 매거진 7건과 카카오 1건은 별도 제외 카운트, 정상 영상 정체는 유지", () => {
+  const rows: SheetAuditRow[] = [];
+  const posts: Array<[string, AuditPost]> = [];
+  for (let i = 0; i < 7; i += 1) {
+    const key = `ig:sidecar-${i}`;
+    rows.push(mkRow(`매거진${i + 1}`, [["2026-08-20", 100 + i]], key));
+    posts.push([key, mkPost([["2026-08-20", 100 + i]], {
+      posted: "2026-08-18",
+      channelType: "협찬 (파워채널/매거진)",
+      staleExclusionReason: "manual-reach-banner",
+    })]);
+  }
+  const kakaoKey = "url:https://shortform.kakao.com/contents/x/";
+  rows.push(mkRow("자곰", [["2026-08-20", 77]], kakaoKey));
+  posts.push([kakaoKey, mkPost([["2026-08-20", 77]], {
+    channelType: "협찬 (인플루언서)",
+    staleExclusionReason: "unsupported-platform",
+  })]);
+  const videoKey = "ig:real-stale-video";
+  rows.push(mkRow("실제정체영상", [["2026-08-20", 999]], videoKey));
+  posts.push([videoKey, mkPost([["2026-08-20", 999]], {
+    channelType: "바이럴 (영상)",
+  })]);
+
+  const r = auditRows(rows, new Map(posts), "2026-09-23");
+  assert.equal(r.staleExcludedUncollectable, 8);
+  assert.equal(r.stale, 1, "실제 영상 정체는 과잉 제외하면 안 된다");
+  assert.match(r.staleNotes[0], /실제정체영상/);
+  const formatted = formatAuditMessage(r);
+  assert.match(formatted.text, /값 정체 제외\(수집 불가 정상\) 8건/);
+  assert.equal(formatted.healthy, false, "실제 정체 1건 때문에 healthy=false 유지");
+
+  const excludedOnly = auditRows(rows.slice(0, 8), new Map(posts.slice(0, 8)), "2026-09-23");
+  assert.equal(excludedOnly.stale, 0);
+  assert.equal(formatAuditMessage(excludedOnly).healthy, true, "정상 제외만 있으면 healthy=true");
+});
+
+test("경계 이전 매거진과 깨진 URL은 정상 제외로 숨기지 않는다", () => {
+  const oldMagazine = "ig:old-magazine";
+  const broken = "url:broken";
+  const rows = [mkRow("옛영상매거진", [], oldMagazine), mkRow("깨진주소", [], broken)];
+  const posts: Array<[string, AuditPost]> = [
+    [oldMagazine, mkPost([], {
+      posted: "2026-06-30",
+      channelType: "협찬 (파워채널/매거진)",
+    })],
+    [broken, mkPost([], { channelType: "협찬 (인플루언서)" })],
+  ];
+  const r = auditRows(
+    rows,
+    new Map(posts),
+    "2026-09-23",
+  );
+  assert.equal(r.staleExcludedUncollectable, 0);
+  assert.equal(r.stale, 2);
+});
+
 test("갓 올린 글(어제 게시)은 아직 실측이 없어도 정체 아님", () => {
   const row: SheetAuditRow = { key: "신규", label: "신규", h: null, inc: null, dates: [] };
   const r = run([row], [["신규", mkPost([], { posted: "2026-08-02" })]]);

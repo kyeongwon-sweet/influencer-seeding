@@ -17,6 +17,7 @@ export type AuditPost = {
   posted: string | null;   // YYYY-MM-DD
   ended: string | null;    // YYYY-MM-DD
   channelType?: string | null;
+  staleExclusionReason?: "manual-reach-banner" | "unsupported-platform" | null;
   measured: Map<string, number>; // YYYY-MM-DD → 양수 지표(배너=reach 우선, 그 외 play)
 };
 
@@ -88,6 +89,8 @@ export type AuditResult = {
    */
   stale: number;
   staleNotes: string[];
+  staleExcludedUncollectable: number;
+  staleExcludedNotes: string[];
 };
 
 const ANOMALY_CAP = 12;
@@ -404,10 +407,15 @@ export function auditRows(
     anomalies: [],
     stale: 0,
     staleNotes: [],
+    staleExcludedUncollectable: 0,
+    staleExcludedNotes: [],
   };
   const note = (line: string) => { if (res.anomalies.length < ANOMALY_CAP) res.anomalies.push(line); };
   // 정체 노트는 별도 상한 — 수식 이상 노트를 밀어내지 않게 한다.
   const staleNote = (line: string) => { if (res.staleNotes.length < ANOMALY_CAP) res.staleNotes.push(line); };
+  const staleExcludedNote = (line: string) => {
+    if (res.staleExcludedNotes.length < ANOMALY_CAP) res.staleExcludedNotes.push(line);
+  };
   const staleCutoff = shiftDate(todayKst, -STALE_DAYS);
 
   for (const row of rows) {
@@ -451,8 +459,7 @@ export function auditRows(
     {
       const p0 = posts.get(row.key);
       const eligible = p0 && !p0.ended && p0.posted
-        && p0.posted <= staleCutoff            // 갓 올린 글은 아직 값이 없는 게 정상
-        && !isMetriclessChannel(p0.channelType); // 배너·피드·위성/온드는 매일 값이 없는 게 정상
+        && p0.posted <= staleCutoff;            // 갓 올린 글은 아직 값이 없는 게 정상
       if (eligible) {
         // ⚠️ 반드시 **DB 실측**으로 판정한다. 시트 날짜칸은 exportStats가 '측정 없음' 빈칸을 직전
         //    누적값으로 이어받아 채우므로(표시 보정), 시트만 보면 수집이 끊겨도 연속처럼 보인다.
@@ -460,8 +467,18 @@ export function auditRows(
         const measuredDates = [...p0!.measured.keys()].sort();
         const lastMeasured = measuredDates.length ? measuredDates[measuredDates.length - 1] : null;
         if (!lastMeasured || lastMeasured < staleCutoff) {
-          res.stale += 1;
-          staleNote(`값정체 ${row.label} (${row.key}): 마지막 실측 ${lastMeasured ?? "없음"} (게시 ${p0!.posted})`);
+          // 명시적 배너·피드·위성/온드는 기존부터 조용히 제외했다. 여기서 새로 별도 집계하는 것은
+          // ① 공용 게시일 경계로 배너가 되는 매거진, ② 조회수 지표 자체가 없는 확정 매체뿐이다.
+          // 주소가 깨진/모르는 URL까지 정상으로 숨기지 않는다.
+          const staleExclusionReason = p0!.staleExclusionReason ?? null;
+          if (staleExclusionReason) {
+            res.staleExcludedUncollectable += 1;
+            const reason = staleExclusionReason === "unsupported-platform" ? "미지원 플랫폼" : "수기 도달수 배너";
+            staleExcludedNote(`정체제외 ${row.label} (${row.key}): ${reason} · 마지막 실측 ${lastMeasured ?? "없음"}`);
+          } else if (!isMetriclessChannel(p0!.channelType)) {
+            res.stale += 1;
+            staleNote(`값정체 ${row.label} (${row.key}): 마지막 실측 ${lastMeasured ?? "없음"} (게시 ${p0!.posted})`);
+          }
         }
       }
     }
@@ -532,6 +549,11 @@ export function formatAuditMessage(r: AuditResult): { text: string; healthy: boo
       + r.staleNotes.slice(0, 8).map((s) => "• " + s).join("\n")
       + (r.stale > 8 ? `\n• ...외 ${r.stale - 8}건` : "")
     : "";
+  const staleExcludedTail = r.staleExcludedUncollectable > 0
+    ? `\n🟢 값 정체 제외(수집 불가 정상) ${r.staleExcludedUncollectable}건 — 수기 도달수 배너·미지원 플랫폼`
+      + `\n${r.staleExcludedNotes.slice(0, 8).map((s) => "• " + s).join("\n")}`
+      + (r.staleExcludedUncollectable > 8 ? `\n• ...외 ${r.staleExcludedUncollectable - 8}건` : "")
+    : "";
   // ⚠️ '이상 없음'은 **수식 정합**에 한한 말이다. 값이 안 들어오는 건 별도로 반드시 붙인다
   //    (그렇지 않으면 74건이 멈춰 있어도 "이상 없음"으로 읽힌다 — 2026-08-03 실제 사고).
   const head = problems === 0
@@ -539,5 +561,5 @@ export function formatAuditMessage(r: AuditResult): { text: string; healthy: boo
     : `🔴 [수식 전수감사] 이상 ${problems}건 — 고아행 ${r.orphanRows} / 수식형태 H오류 ${r.formulaShape.hInvalid}·H수기 ${r.formulaShape.hManual}·I오류 ${r.formulaShape.incInvalid} / H 오류셀 ${r.h.errorCells}·데이터有빈칸 ${r.h.emptyButData} / I 오류셀 ${r.inc.errorCells}·불일치 ${r.inc.mismatch}·증분빈칸(값있어야함) ${r.inc.blankExpected} (행 ${r.totalRows}, 정합 H ${r.h.ok}·I ${r.inc.ok})`;
   const detail = [...r.orphanNotes, ...r.anomalies].slice(0, ANOMALY_CAP);
   const body = problems === 0 ? "" : "\n" + detail.map((a) => "• " + a).join("\n");
-  return { text: head + body + staleTail, healthy: problems === 0 && r.stale === 0 };
+  return { text: head + body + staleTail + staleExcludedTail, healthy: problems === 0 && r.stale === 0 };
 }

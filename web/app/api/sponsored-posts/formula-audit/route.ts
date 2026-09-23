@@ -11,11 +11,14 @@ import {
   auditRows,
   dominantMetricFormulaEndColumn,
   formatAuditMessage,
+  isMetriclessChannel,
   resolveMetricDateColumns,
   type AuditPost,
   type SheetAuditRow,
   findUnparsableDateHeaders,
 } from "@/lib/formula-audit";
+import { isBannerChannel } from "@/app/monitoring/lib";
+import { hasNoViewMetricHost } from "@/lib/platform-kind";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -329,10 +332,19 @@ async function handler(req: NextRequest) {
       for (const p of data ?? []) {
         const key = linkKeyOf(String(p.url));
         idToKey.set(String(p.id), key);
+        const url = p.url ? String(p.url) : null;
+        const posted = p.posted_at ? String(p.posted_at).slice(0, 10) : null;
+        const channelType = p.channel_type ? String(p.channel_type) : null;
+        const staleExclusionReason = hasNoViewMetricHost(url)
+          ? "unsupported-platform" as const
+          : !isMetriclessChannel(channelType) && isBannerChannel(channelType, posted)
+            ? "manual-reach-banner" as const
+            : null;
         posts.set(key, {
-          posted: p.posted_at ? String(p.posted_at).slice(0, 10) : null,
+          posted,
           ended: p.ended_at ? String(p.ended_at).slice(0, 10) : null,
-          channelType: p.channel_type ? String(p.channel_type) : null,
+          channelType,
+          staleExclusionReason,
           measured: new Map(),
         });
       }
@@ -389,6 +401,7 @@ ${text}` : text;
       unparsableDateHeaders,
       snapshotRetryCount,
       dominantFormulaEnd,
+      stale_excluded_uncollectable: result.staleExcludedUncollectable,
       ...result,
     });
   }
@@ -411,6 +424,7 @@ ${text}` : text;
       hFormulaManual: result.formulaShape.hManual,
       incFormulaInvalid: result.formulaShape.incInvalid,
       stale: result.stale,
+      staleExcludedUncollectable: result.staleExcludedUncollectable,
       orphanRows: result.orphanRows,
     });
   }
@@ -427,6 +441,7 @@ ${text}` : text;
     unparsableDateHeaders,
     snapshotRetryCount,
     dominantFormulaEnd,
+    stale_excluded_uncollectable: result.staleExcludedUncollectable,
     ...result,
   });
 }
