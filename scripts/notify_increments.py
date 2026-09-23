@@ -93,6 +93,22 @@ def _fetch_awareness_ads(target: str):
     return d
 
 
+def is_report_for(text: str, target: str) -> bool:
+    r"""이 메시지가 **target 일자 증분 리포트인가**. 제목줄(첫 줄)만 본다.
+
+    🚨 2026-09-23 실사고: 본문 아무 데나 `(YYYY-MM-DD)` 가 있으면 그 날짜 리포트로 오판했다.
+       09-21 리포트를 정정하며 본문에 "정정(2026-09-22): …" 을 넣었더니,
+       ① `_already_posted` 가 "09-22 리포트 이미 게시됨"으로 오판해 그날 리포트를 **통째로 막았고**
+       ② Apps Script `ensureDailyReport` 안전망도 같은 이유로 dispatch 를 건너뛰어
+       09-22 리포트가 3시간 넘게 발송되지 않았다(사람이 눈으로 발견).
+    ⚠️ `_find_report_ts` 도 같은 판정을 쓴다 — 거기서 틀리면 REPLACE/DELETE 가
+       **엉뚱한 날짜의 리포트를 지운다.** 그래서 한 함수로 모은다.
+    제목줄 형태: `📈 *쫀득바 조회수 일일 증분* \`(2026-09-22)\``
+    """
+    head = (text or "").splitlines()[0] if (text or "").strip() else ""
+    return "일일 증분" in head and f"({target})" in head
+
+
 def _already_posted(token: str, channel: str, target: str) -> bool:
     """채널에 오늘(target) 리포트가 이미 있으면 True (백업 창 중복 발송 방지).
     조회 실패/스코프 없으면 False(발송 진행) — 막지 않음."""
@@ -108,8 +124,7 @@ def _already_posted(token: str, channel: str, target: str) -> bool:
         print("[notify] 중복조회 ok=False(발송 진행):", d.get("error"))
         return False
     for m in d.get("messages", []):
-        t = m.get("text", "")
-        if "일일 증분" in t and f"({target})" in t:
+        if is_report_for(m.get("text", ""), target):
             return True
     return False
 
@@ -126,8 +141,7 @@ def _find_report_ts(token: str, channel: str, target: str) -> list:
         return []
     out = []
     for m in d.get("messages", []):
-        t = m.get("text", "")
-        if "일일 증분" in t and f"({target})" in t and m.get("ts"):
+        if is_report_for(m.get("text", ""), target) and m.get("ts"):
             out.append(m["ts"])
     return out
 
