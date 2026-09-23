@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   DEFAULT_SUMMARY_MODEL,
   SUMMARY_MAX_TOKENS,
+  formatSummaryHeader,
   isGeneratedSummary,
   isSummaryMention,
   normalizeSlackSummary,
@@ -32,19 +33,32 @@ test("normalizes common Markdown into Slack mrkdwn", () => {
     normalizeSlackSummary(
       "### 요약\n\n1) 한 줄 개요 첫 문장\n\n**2) **핵심 내용****\n- 첫째\n* 둘째\n\n**3) **경원님 관련****\n- 없음",
     ),
-    "*요약*\n\n*한 줄 개요*\n첫 문장\n\n*핵심 내용*\n\n• 첫째\n• 둘째\n\n*경원님 관련*\n\n• 없음",
+    "*한눈에 보기*\n> 첫 문장\n\n*핵심 내용*\n• 첫째\n• 둘째\n\n*경원님 확인사항*\n• 별도 확인사항 없음",
   );
   assert.equal(
     normalizeSlackSummary(
       "**1) **한 줄 요약****\n한 문장\n\n**2) **핵심****\n- 첫째\n\n**3) **경원님 관련/할 일****\n- 직접 언급 없음",
     ),
-    "*한 줄 요약*\n\n한 문장\n\n*핵심*\n\n• 첫째\n\n*경원님 관련/할 일*\n\n• 직접 언급 없음",
+    "*한눈에 보기*\n> 한 문장\n\n*핵심 내용*\n• 첫째\n\n*경원님 확인사항*\n• 별도 확인사항 없음",
   );
   assert.equal(
     normalizeSlackSummary(
       "* 한 줄 요약\n한 문장\n\n* 핵심\n- 첫째\n\n* 경원님 관련/할 일\n- 직접 언급 없음",
     ),
-    "*한 줄 요약*\n한 문장\n*핵심*\n• 첫째\n*경원님 관련/할 일*\n• 직접 언급 없음",
+    "*한눈에 보기*\n> 한 문장\n\n*핵심 내용*\n• 첫째\n\n*경원님 확인사항*\n• 별도 확인사항 없음",
+  );
+});
+
+test("formats title and metadata on separate lines", () => {
+  assert.equal(formatSummaryHeader("황경원", 420), "📝 *스레드 요약*\n_경원님 요청 · 원문 420개_");
+});
+
+test("removes empty bullets and contradictory requester placeholders", () => {
+  assert.equal(
+    normalizeSlackSummary(
+      "•\n\n한 줄 요약\n운영 현황과 후속 조치를 정리했습니다.\n\n핵심\n• 첫째\n• 둘째\n\n경원님 관련/할 일\n• 캠페인 상태를 확인해 주세요.\n• 직접 언급 없음",
+    ),
+    "*한눈에 보기*\n> 운영 현황과 후속 조치를 정리했습니다.\n\n*핵심 내용*\n• 첫째\n• 둘째\n\n*경원님 확인사항*\n• 캠페인 상태를 확인해 주세요.",
   );
 });
 
@@ -84,9 +98,10 @@ test("calls Vercel AI Gateway with OIDC and strict privacy routing", async () =>
     },
   });
   const serialized = JSON.stringify(seenBody);
-  assert.match(serialized, /전체 500자 이내/);
-  assert.match(serialized, /핵심.*최대 3개/);
-  assert.match(serialized, /경원님 관련\/할 일/);
+  assert.match(serialized, /전체 360자 이내/);
+  assert.match(serialized, /핵심 내용.*최대 3개/);
+  assert.match(serialized, /경원님 확인사항/);
+  assert.match(serialized, /불릿 하나에는 사실 하나만 담고 65자 이내/);
 });
 
 test("Slack events route keeps app mention wiring and excludes the command message", () => {
@@ -112,6 +127,7 @@ test("previous bot summaries are excluded from repeated summaries", () => {
   );
   assert.equal(isGeneratedSummary("📝 스레드 요약 — 요청: 경원님 (3개 메시지)"), true);
   assert.equal(isGeneratedSummary(":memo: *스레드 요약* — 요청: 경원님 (3개 메시지)"), true);
+  assert.equal(isGeneratedSummary("📝 *스레드 요약*\n_경원님 요청 · 원문 3개_"), true);
   assert.equal(isGeneratedSummary("일반 대화에서 스레드 요약을 논의했습니다."), false);
 });
 
