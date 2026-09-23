@@ -182,6 +182,10 @@ test("URL 없이 조회수만 남은 고아 행은 행번호와 함께 즉시 �
   assert.equal(m.healthy, false);
   assert.match(m.text, /고아행 1/);
   assert.match(m.text, /1877/);
+
+  const source = readFileSync(new URL("../app/api/sponsored-posts/formula-audit/route.ts", import.meta.url), "utf8");
+  assert.match(source, /if \(!url\) \{[\s\S]*?dates\.length > 0 \|\| h != null \|\| inc != null/);
+  assert.match(source, /고아행 \$\{i \+ 1\}: URL 없음 · H=/);
 });
 
 test("데이터 있는데 H 빈칸 = 이상 / 수동 보존(값≠MAX)은 허용 집계", () => {

@@ -2585,6 +2585,15 @@ function sheetMetricWriteDecision_(cell, collected, manual) {
   return Number(cell) === Number(collected) ? "same" : "overwrite_auto";
 }
 
+function hasOrphanMetricWithoutUrl_(url, cumulative, increment, dateValues) {
+  if (String(url || "").trim()) return false;
+  const hasValue = function(value) {
+    return value !== "" && value !== null && value !== undefined;
+  };
+  if (hasValue(cumulative) || hasValue(increment)) return true;
+  return (dateValues || []).some(hasValue);
+}
+
 function exportStats() {
   return exportStatsWithOptions_({ heartbeatSource: "manual" });
 }
@@ -2766,6 +2775,14 @@ function exportStatsWithOptions_(options) {
     const width = lastDateCol - firstCol + 1;
     // 현재값 1회 읽기(읽기는 수식 비파괴). ⚠️ 쓰기는 '날짜 열 단위'로만 → 날짜 아닌 열(수식·메모 등)은 절대 안 건드림.
     const block = sheet.getRange(CONFIG.DATA_START_ROW, firstCol, nRows, width).getValues();
+    const incrementCol = getIncrementCol_(sheet);
+    const cumulativeCol = findHeaderCol_(sheet, ["누적 조회수", "누적조회수"]);
+    const cumulativeValuesForOrphan = cumulativeCol
+      ? sheet.getRange(CONFIG.DATA_START_ROW, cumulativeCol, nRows, 1).getValues()
+      : new Array(nRows).fill([null]);
+    const incrementValuesForOrphan = incrementCol
+      ? sheet.getRange(CONFIG.DATA_START_ROW, incrementCol, nRows, 1).getValues()
+      : new Array(nRows).fill([null]);
 
     // 행별 매칭 맵 선계산 + 매칭/누락 카운트
     let matched = 0, missing = 0, shortcodeFormatMatched = 0;
@@ -2797,12 +2814,16 @@ function exportStatsWithOptions_(options) {
     const newBlock = block.map(r => r.slice());
     for (let i = 0; i < nRows; i++) {
       const m = rowMap[i];
-      // 🛡️ URL 없는 '고아' 행은 절대 건드리지 않는다(ffill로 숫자 옆번짐 차단). 데이터 남은 고아는 카운트→경고.
+      // 🛡️ URL 없는 '고아' 행은 절대 건드리지 않는다(ffill로 숫자 옆번짐 차단).
+      // 날짜열뿐 아니라 H/I에만 값이 남은 빈 행도 같은 고아로 세어 조용히 숨지 않게 한다.
       if (!String(urlVals[i][0] || "").trim()) {
-        for (let j = 0; j < dateCols.length; j++) {
-          const c = block[i][dateCols[j].col - firstCol];
-          if (c !== "" && c !== null) { orphanRows++; break; }
-        }
+        const dateValues = dateCols.map(function(dc) { return block[i][dc.col - firstCol]; });
+        if (hasOrphanMetricWithoutUrl_(
+          urlVals[i][0],
+          cumulativeValuesForOrphan[i][0],
+          incrementValuesForOrphan[i][0],
+          dateValues
+        )) orphanRows++;
         continue;
       }
       const endedAt = rowKeys[i] ? endedByKey[rowKeys[i]] : null;
@@ -2934,7 +2955,6 @@ function exportStatsWithOptions_(options) {
       });
     }
 
-    const incrementCol = getIncrementCol_(sheet);
     let incWritten = 0;
     if (incrementCol && !skipFormulaRefresh) {
       // 증분 수식은 아직 행번호를 참조하는 3단계 대상이다. 날짜값은 이미 URL-key로
@@ -3028,7 +3048,6 @@ function exportStatsWithOptions_(options) {
     // DB에 양수 조회수/도달수 이력이 있으면 "최종 누적 조회수" 값만 H열에 보존한다.
     // 날짜별 히스토리 칸에 소급 기입하면 측정일을 왜곡하므로 H열 빈칸만 채운다.
     let endedFinalFilled = 0, endedFinalNoMetric = 0;
-    const cumulativeCol = findHeaderCol_(sheet, ["누적 조회수", "누적조회수"]);
     if (cumulativeCol && !formulaOnly) {
       const cumRange = sheet.getRange(CONFIG.DATA_START_ROW, cumulativeCol, nRows, 1);
       const cumVals = cumRange.getValues();
@@ -3065,7 +3084,7 @@ function exportStatsWithOptions_(options) {
       if (futureCleared) msg += `\n🗓️ 오늘·미래(수집일-1 이후) 날짜칸 ${futureCleared}개를 비웠습니다.`;
       if (dateKeyConflicts) msg += `\n⚠️ 중복 URL 키의 변경 ${dateKeyConflicts}칸은 어느 행이 정본인지 불명확해 쓰지 않았습니다.`;
       if (concurrentCellSkips) msg += `\n🛡️ 계산 뒤 사람이 수정한 ${concurrentCellSkips}칸은 최신 수기값을 보존했습니다.`;
-      if (orphanRows) msg += `\n🧟 URL 없이 숫자만 있는 '고아 행' ${orphanRows}개 발견 — 행 삭제로 정리하세요(데이터는 DB에 있음).`;
+      if (orphanRows) msg += `\n🧟 URL 없이 H/I·날짜값만 남은 '고아 행' ${orphanRows}개 발견 — 자동수정하지 않았습니다. 백업 후 H/I·날짜값을 확인해 정리하세요.`;
     }
     if (!formulaOnly) {
       markExportStatsSuccess_({
@@ -3963,8 +3982,7 @@ function auditLinkedSheetFormulas_() {
     const inc = String(incrementValues[i][0] || "").trim();
     const incFormula = String(incrementFormulas[i][0] || "");
     if (!url) {
-      const hasMetric = (metricValues[i] || []).some(v => typeof v === "number" && v > 0);
-      if (h || inc || hasMetric) {
+      if (hasOrphanMetricWithoutUrl_(url, h, inc, metricValues[i] || [])) {
         result.orphan_metric_rows++;
         if (samples.length < 8) samples.push("row " + row + " orphan: URL blank, H=" + (h || "blank") + ", I=" + (inc || "blank"));
       }

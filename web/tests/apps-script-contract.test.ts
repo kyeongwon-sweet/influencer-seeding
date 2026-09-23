@@ -963,6 +963,30 @@ test("exportStats overwrites only automatic DB metrics and never carry-forwards"
   );
 });
 
+test("URL 없는 행의 H/I literal도 exportStats 고아 경고에 포함한다", () => {
+  const start = appsScript.indexOf("function hasOrphanMetricWithoutUrl_(");
+  const end = appsScript.indexOf("function exportStats()", start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const helper = new Function(
+    `${appsScript.slice(start, end)}\nreturn hasOrphanMetricWithoutUrl_;`,
+  )() as (url: unknown, h: unknown, inc: unknown, dates: unknown[]) => boolean;
+
+  assert.equal(helper("https://example.com/post", 13, "", []), false, "URL 행은 고아가 아니다");
+  assert.equal(helper("", "", "", []), false, "완전 빈 행은 고아가 아니다");
+  assert.equal(helper("", 13, "", []), true, "H만 남은 빈 행을 잡는다");
+  assert.equal(helper("", "", 7, []), true, "I만 남은 빈 행을 잡는다");
+  assert.equal(helper("", "", "", [null, 0]), true, "날짜열 숫자 0도 잔존값으로 잡는다");
+
+  const exportStart = appsScript.indexOf("function exportStatsWithOptions_(options)");
+  const exportEnd = appsScript.indexOf("function refreshCumulativeViews()", exportStart);
+  const exportBody = appsScript.slice(exportStart, exportEnd);
+  assert.match(exportBody, /cumulativeValuesForOrphan/);
+  assert.match(exportBody, /incrementValuesForOrphan/);
+  assert.match(exportBody, /hasOrphanMetricWithoutUrl_\(/);
+  assert.match(exportBody, /URL 없이 H\/I·날짜값만 남은/);
+});
+
 test("formula-only refresh rewrites I without touching date values or H", () => {
   const start = appsScript.indexOf("function exportStats()");
   const end = appsScript.indexOf("function parseMonthDay_", start);
