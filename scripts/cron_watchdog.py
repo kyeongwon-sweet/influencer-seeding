@@ -98,20 +98,69 @@ def kst(ts: str) -> str:
     return (datetime.fromisoformat(ts.replace("Z", "+00:00")) + timedelta(hours=9)).strftime("%m-%d %H:%M")
 
 
-def classify_failures(runs: list[dict], now: datetime, window_min: int) -> list[str]:
-    """최근 window_min 분 내 실패/취소/타임아웃 런을 알림 줄로. 순수 함수 — 테스트 대상."""
-    out: list[str] = []
+def _workflow_key(run: dict) -> str:
+    """워크플로 식별자. path 가 정본이고, 없을 때만 표시명으로 떨어진다."""
+    return str(run.get("path") or run.get("name") or "")
+
+
+def _latest_success_by_workflow(runs: list[dict]) -> dict[str, tuple[datetime, str]]:
+    """워크플로별 가장 최근 **성공** 런의 (시각, 원본 ts).
+
+    ⚠️ `conclusion` 이 None 인 **진행중** 런을 성공으로 치지 않는다. 실측 응답에 실제로
+       `"conclusion": null` 행이 섞여 들어온다 — 성공/실패 두 상태만 있다고 보면
+       진행중을 '해소'로 오인해 진짜 실패를 조용히 삼킨다.
+    """
+    latest: dict[str, tuple[datetime, str]] = {}
+    for r in runs:
+        if r.get("conclusion") != "success":
+            continue
+        raw = str(r.get("updated_at", ""))
+        try:
+            ts = _parse_github_ts(raw)
+        except ValueError:
+            continue
+        key = _workflow_key(r)
+        if key and (key not in latest or ts > latest[key][0]):
+            latest[key] = (ts, raw)
+    return latest
+
+
+def partition_failures(
+    runs: list[dict], now: datetime, window_min: int
+) -> tuple[list[str], list[str]]:
+    """최근 window_min 분 실패를 (아직 안 풀린 것, 이후 성공으로 해소된 것)으로 가른다.
+
+    왜 나누나 (2026-09-23): `push → CI 빨강 → 수정 push → CI 초록` 은 정상 작업 흐름인데
+    두 런이 같은 70분 창에 들어가면 워치독이 **이미 해소된 실패로 🔴 를 쏜다**.
+    실측: build-test 09:23 실패 → 09:49 성공 → 09:52 알림 발송(그 시점 최신은 이미 초록).
+    거짓 경보가 쌓이면 사람이 워치독을 안 읽게 되고, 그게 이 워치독이 막으려던
+    '조용한 실패'로 그대로 되돌아간다.
+
+    해소분은 **지우지 않고** 별도 줄로 남긴다 — 실패↔성공을 오가는 플래핑이 보여야 하고,
+    사람이 확인한 '해소'가 데이터에 남을 자리가 필요하다.
+    """
+    unresolved: list[str] = []
+    resolved: list[str] = []
     cutoff = now - timedelta(minutes=window_min)
+    latest_success = _latest_success_by_workflow(runs)
     for r in runs:
         if r.get("conclusion") not in FAILURE_CONCLUSIONS:
             continue
         updated = datetime.fromisoformat(str(r.get("updated_at", "")).replace("Z", "+00:00"))
         if updated < cutoff:
             continue
-        out.append(
-            f"❌ {r.get('name')} — {r.get('conclusion')} ({kst(r['updated_at'])} KST) {r.get('html_url', '')}"
-        )
-    return out
+        head = f"{r.get('name')} — {r.get('conclusion')} ({kst(r['updated_at'])} KST)"
+        success = latest_success.get(_workflow_key(r))
+        if success is not None and success[0] > updated:
+            resolved.append(f"ℹ️ {head} → 이후 {kst(success[1])} KST 성공으로 해소")
+        else:
+            unresolved.append(f"❌ {head} {r.get('html_url', '')}")
+    return unresolved, resolved
+
+
+def classify_failures(runs: list[dict], now: datetime, window_min: int) -> list[str]:
+    """최근 window_min 분 내 **아직 해소되지 않은** 실패만. 순수 함수 — 테스트 대상."""
+    return partition_failures(runs, now, window_min)[0]
 
 
 def _parse_github_ts(ts: str) -> datetime:
@@ -328,7 +377,7 @@ def main() -> int:
     data = _api(f"/repos/{repo}/actions/runs?per_page=100", token)
     runs = data.get("workflow_runs", [])
     now = datetime.now(timezone.utc)
-    failures = classify_failures(runs, now, window_min)
+    failures, resolved = partition_failures(runs, now, window_min)
     watched = sorted(set(FRESHNESS_HOURS) | set(DAILY_DEADLINE_KST))
     last_success = {wf: fetch_last_success(repo, wf, token) for wf in watched}
     any_success = {wf: fetch_last_success_run(repo, wf, token) for wf in watched}
@@ -338,8 +387,10 @@ def main() -> int:
     stale = suppress_redundant_freshness(stale, late)
 
     if not failures and not stale and not late:
+        # 해소된 실패는 조용한 경로에서도 건수를 남긴다 — 플래핑이 로그에서 사라지지 않게.
+        note = f", 해소된 실패 {len(resolved)}건" if resolved else ""
         print(
-            f"[watchdog] ✅ 이상 없음 — 조회 {len(runs)}건, 최근 {window_min}분 실패 0, "
+            f"[watchdog] ✅ 이상 없음 — 조회 {len(runs)}건, 최근 {window_min}분 실패 0{note}, "
             "신선도 경고 0, 마감 경고 0"
         )
         return 0
@@ -348,6 +399,9 @@ def main() -> int:
     if failures:
         lines.append(f"*최근 {window_min}분 실패 {len(failures)}건*")
         lines += ["• " + f for f in failures[:8]]
+    if resolved:
+        lines.append(f"*이후 성공으로 해소된 실패 {len(resolved)}건*")
+        lines += ["• " + s for s in resolved[:5]]
     if late:
         lines.append(f"*오늘 예약 미실행 {len(late)}건*")
         lines += ["• " + s for s in late[:8]]

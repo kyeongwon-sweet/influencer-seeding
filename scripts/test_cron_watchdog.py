@@ -15,6 +15,7 @@ from cron_watchdog import (  # noqa: E402
     check_daily_deadlines,
     check_freshness,
     classify_failures,
+    partition_failures,
     suppress_redundant_freshness,
 )
 
@@ -173,6 +174,52 @@ def main() -> int:
     if len(f) != 2:
         fails.append(f"⑥timed_out/cancelled 미검출: {f}")
 
+    # ───────── 해소된 실패 구분(2026-09-23 거짓 경보 회귀) ─────────
+    # 사고: build-test 09:23 실패 → 09:49 성공 → 09:52 워치독이 🔴 발송.
+    # 알림 시점의 최신 런은 이미 초록이었다. `push → 빨강 → 수정 push → 초록` 은 정상
+    # 작업 흐름이라 이대로 두면 매번 거짓 경보가 나고, 사람이 워치독을 안 읽게 된다.
+    f, res = partition_failures([
+        run("build-test.yml", "success", 3, "Build Test"),
+        run("build-test.yml", "failure", 29, "Build Test"),
+    ], NOW, 70)
+    if f:
+        fails.append(f"⑦이후 성공으로 해소된 실패를 여전히 경보함: {f}")
+    if len(res) != 1:
+        fails.append(f"⑦해소분이 기록에서 사라짐(플래핑이 안 보이게 됨): {res}")
+
+    # ⑧ 진행중(conclusion=None)을 '성공'으로 오인하면 진짜 실패를 삼킨다.
+    #    실측 응답에 `"conclusion": null` 행이 실제로 섞여 들어온다.
+    f, res = partition_failures([
+        run("build-test.yml", None, 3, "Build Test"),
+        run("build-test.yml", "failure", 29, "Build Test"),
+    ], NOW, 70)
+    if len(f) != 1:
+        fails.append(f"⑧진행중 런을 해소로 오인함: f={f} res={res}")
+
+    # ⑨ 성공이 실패보다 **앞**이면 해소가 아니다(순서 역전 금지).
+    f, _ = partition_failures([
+        run("build-test.yml", "failure", 5, "Build Test"),
+        run("build-test.yml", "success", 40, "Build Test"),
+    ], NOW, 70)
+    if len(f) != 1:
+        fails.append(f"⑨더 오래된 성공을 해소로 오인함: {f}")
+
+    # ⑩ 다른 워크플로의 성공은 해소 근거가 될 수 없다.
+    f, _ = partition_failures([
+        run("cron-kpi.yml", "success", 3, "KPI"),
+        run("build-test.yml", "failure", 29, "Build Test"),
+    ], NOW, 70)
+    if len(f) != 1:
+        fails.append(f"⑩다른 워크플로 성공으로 해소 처리함: {f}")
+
+    # ⑪ 해소 판정은 창 밖 실패까지 되살리지 않는다(기존 윈도우 계약 유지).
+    f, res = partition_failures([
+        run("build-test.yml", "success", 3, "Build Test"),
+        run("build-test.yml", "failure", 150, "Build Test"),
+    ], NOW, 70)
+    if f or res:
+        fails.append(f"⑪창 밖 실패가 살아남음: f={f} res={res}")
+
 
     # ───────── 마감 기반 검사(2026-08-27 사고 회귀) ─────────
     # 사고: injibot(06:38 KST)이 3h23m 지연. 나이 기준 26h는 '전날 성공 시각'에 좌우되므로
@@ -304,8 +351,9 @@ def main() -> int:
             print("  - " + x)
         return 1
     print(
-        "[OK] test_cron_watchdog 통과: 나이기준 8종 + 마감기준 11종 "
-        "(사각지대재현/유예내침묵/오늘성공/since전후/수동복구주석/유예여유/중복억제/복구창)"
+        "[OK] test_cron_watchdog 통과: 나이기준 8종 + 마감기준 11종 + 해소판정 5종 "
+        "(사각지대재현/유예내침묵/오늘성공/since전후/수동복구주석/유예여유/중복억제/복구창 "
+        "/해소분리/진행중오인/순서역전/타워크플로/창밖)"
     )
     return 0
 
