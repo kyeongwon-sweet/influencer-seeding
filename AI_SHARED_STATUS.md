@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## ✅ 2026-09-23 [Codex 수정·라이브 검증] 수식감사 값정체 정상 제외 분리 — stale 11→3 / 정상 제외 8
+- **판단:** 모든 매거진을 문자열만으로 제외하면 영상 정체를 숨길 수 있어 채널명 일괄 예외는 쓰지 않았다. 기존 정본 `isBannerChannel(channel_type, posted_at)`과 통계 출처를 재사용했다. ① 정본상 수기 도달수 배너, ② 경계일 이전 매거진 중 **수기 reach는 있고 자동 play/reach 실측은 0**, ③ Python 수집기와 같은 확정 무지표 호스트(`threads/facebook/naver/kakao`)만 정상 제외한다. 미디어타입 컬럼·DB 마이그레이션은 추가하지 않았다.
+- **표시:** 제외분을 숨기지 않고 `stale_excluded_uncollectable` / `staleExcludedUncollectable`과 Slack의 `🟢 값 정체 제외(수집 불가 정상)` 상세 목록으로 노출한다. 명시적 배너·피드·위성/온드는 종전부터 stale 대상 밖이므로 새 카운트에 중복 산입하지 않는다. 깨진/미지 URL·자동 영상 실측이 있는 매거진·일반 영상 정체는 계속 이상으로 잡는다.
+- **라이브 재감사:** run `35807231175` HTTP 200/success. `stale 11→3`, `stale_excluded_uncollectable=8` — Sidecar 수기 도달수 매거진 7건(오늘의메뉴 `DbutARtkWS8` 포함) + 자곰 카카오 1건. 남은 3건은 `moduhappy DclNwKLTAyg`, `smile_ggobuk_s2 DcLQlnwRtFt`, `예랑 YouTube 95Dbj9kWQ28`로 인계 진단과 정확히 일치한다. 수식 `hInvalid=0 / incInvalid=0 / mismatch=0 / errorCells=0` 유지.
+- **별개 실신호:** 같은 최종 감사에서 새 `orphanRows=1`(행 4652, URL 없음)이 잡혀 `healthy=false`는 유지된다. 이번 수정이 이를 정상 제외로 숨기지 않았으며 시트 값은 건드리지 않았다. 값정체 3건과 고아행 1건이 해소되면 healthy가 자동으로 true가 된다.
+- **회귀 방지·게이트:** 정상 영상 정체 유지, 정상 제외만 있을 때 healthy=true, 경계 이전 매거진의 수기 reach 전용 판정, 모르는 URL 비제외, TS↔Python 무지표 호스트 동기 계약을 테스트로 고정. web **573/573**, Python platform-kind **11/11**, tsc, lint 0 errors(기존 warning 17), production build 통과. CI Build Test run `35807164095` success. 커밋 `85db0393`, `431b9e66`, `ded01ff6`.
+
 ## ✅ 2026-09-23 [Claude 실측·읽기전용] negative-comment-monitor 커버리지 — 원장 기준 ㉠·㉡ 모두 닫힘 (24h 표본은 오늘 밤 마감)
 - **왜 다시 쟀나:** 09-21 ⏳ 항목의 "남은 실측"이 *배포 후 24시간 run·iteration을 배포 전(15 run/일·최장 5시간 12분)과 비교*로 남아 있었다. 그 사이 `191ec160 fix(monitor): self-chain intensive coverage runs`(09-22 13:45 UTC)가 들어가 기준선이 다시 바뀌었다.
 - **⚠️ 측정 계기:** **run 시작 간격으로 재지 않았다.** 그 방식이 내부 4×15분 루프를 못 봐서 과대계상했던 지점이다([[monitor-loop-gap-false-alarm]]). PR#17·#18이 넣은 `monitor_scan_heartbeats` 원장 **87행 전수**(서버 `count`와 일치 — 절단 아님)로 실제 스캔 시각을 직접 집계했다.
