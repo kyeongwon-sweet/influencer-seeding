@@ -103,3 +103,16 @@ def load_fb_by_shortcode(paths) -> dict:
             if code and isinstance(fb, (int, float)) and not isinstance(fb, bool) and fb > 0:
                 out[code] = int(fb)
     return out
+
+def prev_ig_baseline(prev_play, prev_fb):
+    """역행 가드가 새 IG 실측과 비교해야 할 **직전 IG 전용값**. 측정이 없으면 None.
+
+    🚨 2026-09-23 실사고: 저장된 ``play_count`` 는 교차게시 글에서 **IG+FB 합계**다.
+       새 IG 실측(약 41만)을 그 합계(112만)와 비교하니 매번 '역행'으로 잡혀 합계로 clamp 됐고,
+       그 뒤 FB 를 다시 더해 **이중 계상**이 났다(퐁패밀리 누적 2,207,775, 활성 15건 중 12건 오염).
+       비교도 clamp 도 반드시 이 값 기준이어야 한다.
+    """
+    if not isinstance(prev_play, (int, float)) or isinstance(prev_play, bool):
+        return None
+    return prev_play - (prev_fb or 0)
+

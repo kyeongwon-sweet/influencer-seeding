@@ -13,6 +13,7 @@ from account_name_policy import collected_account_name_update
 from caption_text import normalize_caption
 from monitoring_retry_guard import zero_result_alert
 from auto_end_rules import classify_auto_end, row_metric
+from cross_post_metrics import prev_ig_baseline
 from channel_kind import is_banner_channel
 from not_found_policy import (
     NOT_FOUND_REVIEW_THRESHOLD,
@@ -1950,9 +1951,11 @@ def run():
                 # 🛡️ 조회수 0 = 접근불가·수집 글리치(IG가 조회수를 0으로 반환). '수집 실패 ≠ 0' 원칙.
                 #   0을 저장하면 ①다음날 증분이 pmax 대비 폭증(며칠치 몰림) ②수기 입력값을 0으로 덮음.
                 #   직전값이 있으면 그 값으로 clamp(누적 유지), 없으면 이 행 자체를 스킵(0 미적재).
-                if existing.get("play_count"):
-                    print(f"  ⚠️  IG 조회수 0(글리치) → 직전값 유지 {post['url']} (→{existing.get('play_count')})")
-                    play_count = existing.get("play_count")
+                _prev_ig0 = prev_ig_baseline(existing.get("play_count"), _prev_fb_map(db).get(post["id"])) or 0
+                if _prev_ig0 > 0:
+                    # ⚠️ 여기서도 합계가 아니라 IG 전용값을 넣는다 — 합계를 넣으면 뒤에서 FB 가 또 더해진다.
+                    print(f"  ⚠️  IG 조회수 0(글리치) → 직전 IG값 유지 {post['url']} (→{_prev_ig0})")
+                    play_count = _prev_ig0
                 else:
                     _record_missing_view_event(post, "Instagram", "zero_play_no_previous", stat=s, existing=existing)
                     print(f"  ⚠️  IG 조회수 0(글리치)·직전값 없음 → 조회수 NULL, 참여지표만 저장 {post['url']}")
@@ -1970,14 +1973,21 @@ def run():
                 )
                 # 의심스러운 조회수만 버리고 댓글·좋아요 신호는 보존한다.
                 play_count = None
-            elif existing.get("play_count") is not None and play_count < existing.get("play_count"):
+            elif prev_ig_baseline(existing.get("play_count"),
+                                  _prev_fb_map(db).get(post["id"])) is not None and play_count < (
+                prev_ig_baseline(existing.get("play_count"), _prev_fb_map(db).get(post["id"]))
+            ):
+                # 🚨 비교 기준은 **IG 전용값**이다 — 교차게시 글의 저장값(play_count)은 IG+FB 합계라,
+                #    합계와 비교하면 멀쩡한 IG 실측이 매번 '역행'으로 잡혀 합계로 clamp 되고,
+                #    그 뒤 _attach_fb_play_counts 가 FB 를 또 더해 이중 계상이 난다(2026-09-23 실사고).
+                _prev_ig = prev_ig_baseline(existing.get("play_count"), _prev_fb_map(db).get(post["id"]))
                 _record_auto_cumulative_decrease_candidate(post, "Instagram", play_count, existing)
                 _record_overrecord_candidate(post, "Instagram", play_count, existing)
                 # 누적값인데 줄어들었다 = 오류(글리치) 또는 IG 정상 미세감소(중복/봇 필터링 지터).
                 # NULL로 버리면 성숙 게시물에 톱니형 결측이 생기고 유효값이 사라지므로,
-                # 직전 최대값으로 clamp(하향 무시) — 표시 레이어의 monotonic과 동일하게 누적 불변식 유지.
-                print(f"  ⚠️  조회수 역행 clamp {post['url']} ({play_count} → {existing.get('play_count')} 유지)")
-                play_count = existing.get("play_count")
+                # 직전 IG 최대값으로 clamp(하향 무시). FB 는 _attach_fb_play_counts 가 따로 더한다.
+                print(f"  ⚠️  조회수 역행 clamp {post['url']} ({play_count} → {_prev_ig} 유지, IG 기준)")
+                play_count = _prev_ig
 
             rows.append({
                 "post_id": post["id"],
@@ -2282,6 +2292,46 @@ def _fb_metrics_enabled(db) -> bool:
             print(f"[WARN] FB 교차게시 열 없음 → 보강 건너뜀(마이그레이션 미적용?): {e}")
             _FB_COLS_OK = False
     return _FB_COLS_OK
+
+
+_PREV_FB_MAP = None   # {post_id: 직전(오늘 이전) fb_play_count}. None=미로딩
+
+
+def _prev_fb_map(db) -> dict:
+    """교차게시 글의 **직전 FB 몫**. 역행 가드가 IG 를 IG 와 비교하게 만들기 위해 필요하다.
+
+    🚨 왜 생겼나(2026-09-23 실사고): 역행 가드가 새 IG 실측을 직전 `play_count`(= IG+FB **합계**)와
+       비교해 "줄었다"고 오판하고 합계로 clamp 했다. 그 뒤 _attach_fb_play_counts 가 FB 를 또 더해
+       **FB 이중 계상**이 났다(퐁패밀리 09-22 누적 2,207,775, 활성 15건 중 12건 오염).
+       → 비교 기준을 `play_count - 직전 fb_play_count`(IG 전용)로 내린다.
+    """
+    global _PREV_FB_MAP
+    if _PREV_FB_MAP is not None:
+        return _PREV_FB_MAP
+    _PREV_FB_MAP = {}
+    if not _fb_metrics_enabled(db):
+        return _PREV_FB_MAP
+    try:
+        seen, frm = {}, 0
+        while True:
+            res = (db.table("post_daily_stats")
+                   .select("post_id, measured_at, fb_play_count")
+                   .not_.is_("fb_play_count", "null")
+                   .lt("measured_at", TODAY)
+                   .order("measured_at", desc=True)
+                   .order("id", desc=True)
+                   .range(frm, frm + 999).execute())
+            chunk = res.data or []
+            for r in chunk:
+                seen.setdefault(r["post_id"], r.get("fb_play_count") or 0)
+            if len(chunk) < 1000:
+                break
+            frm += 1000
+        _PREV_FB_MAP = seen
+        print(f"[LOG] 교차게시 직전 FB 기준 {len(seen)}건 로드(역행 가드용)")
+    except Exception as e:
+        print(f"[WARN] 직전 FB 조회 실패 → 역행 가드 기준은 합계 그대로 사용: {e}")
+    return _PREV_FB_MAP
 
 
 def _attach_fb_play_counts(db, rows: list) -> None:

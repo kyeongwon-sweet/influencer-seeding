@@ -10,7 +10,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cross_post_metrics import (  # noqa: E402
-    fb_at, fb_increment, ig_only, load_fb_by_shortcode, shortcode,
+    fb_at, fb_increment, ig_only, load_fb_by_shortcode, prev_ig_baseline, shortcode,
 )
 
 
@@ -115,6 +115,29 @@ def run():
 
     eq(shortcode(P + "AAA1/"), "AAA1", "shortcode 추출")
     eq(shortcode("https://www.instagram.com/acct/"), None, "프로필 URL 은 None")
+
+    # ── 역행 가드 기준(2026-09-23 실사고 재발 방지) ───────────────────
+    # 🚨 저장된 play_count 는 교차게시 글에서 IG+FB 합계다. 새 IG 실측을 그 합계와 비교하면
+    #    멀쩡한 값이 '역행'으로 잡혀 합계로 clamp 되고, 뒤이어 FB 가 다시 더해져 이중 계상이 난다.
+    #    실제로 퐁패밀리 09-22 누적이 2,207,775 로 부풀었고 활성 15건 중 12건이 오염됐다.
+    eq(prev_ig_baseline(1_121_288, 711_486), 409_802, "합계에서 FB 를 빼야 IG 기준")
+    eq(prev_ig_baseline(1_121_288, None), 1_121_288, "교차게시 아님(FB 없음) → 종전과 동일")
+    eq(prev_ig_baseline(None, 711_486), None, "직전 측정 없음 → 비교 안 함")
+    eq(prev_ig_baseline(0, None), 0, "0 도 값이다(없음과 구분)")
+
+    # 사고 재현: 새 IG 414,066 은 직전 IG 409,802 보다 크므로 clamp 되면 안 된다.
+    new_ig, prev_total, prev_fb = 414_066, 1_121_288, 711_486
+    eq(new_ig < prev_total, True, "합계와 비교하면 역행으로 오판한다(사고 원인)")
+    eq(new_ig < prev_ig_baseline(prev_total, prev_fb), False, "IG 기준이면 역행이 아니다")
+
+    # 소스 계약: 수집기가 합계를 그대로 비교/대입하면 안 된다.
+    import os as _os
+    src = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "run_monitoring.py"),
+               encoding="utf-8").read()
+    if 'play_count = existing.get("play_count")' in src:
+        fails.append("run_monitoring: 역행 clamp 가 합계(existing.play_count)를 그대로 대입한다 — 이중 계상 재발")
+    if "prev_ig_baseline" not in src:
+        fails.append("run_monitoring: 역행 가드가 prev_ig_baseline 을 안 쓴다")
 
     if fails:
         for f in fails:
