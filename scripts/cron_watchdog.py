@@ -18,6 +18,8 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
+from report_message import is_report_for
+
 SuccessRun = dict[str, str]
 
 # 워크플로 파일명 → 최근 성공이 이 시간(h)보다 오래되면 '안 돌았음'으로 경고
@@ -78,6 +80,61 @@ DAILY_DEADLINE_KST: dict[str, dict[str, object]] = {
 RECOVERED_ALERT_WINDOW_MIN = 120
 
 FAILURE_CONCLUSIONS = {"failure", "timed_out", "cancelled", "startup_failure"}
+
+
+
+# ── 결과(도착) 워치독 ────────────────────────────────────────────────────
+# 🚨 2026-09-23 사고: 증분 리포트 워크플로가 **성공**으로 끝났는데 실제 발송은 0이었다
+#    (중복 판정이 오판해 스킵). 실행 기준 감시(위 DEADLINE/FRESHNESS)는 성공을 보고 침묵했고,
+#    Apps Script 자가치유도 같은 오판으로 건너뛰어 3시간 26분간 아무도 몰랐다.
+#    → **실행이 아니라 결과(채널에 글이 실제로 있는가)를 본다.**
+REPORT_DELIVERY = {
+    # 대상 채널(#빙과_마케팅_리포트). 마감은 실행 워치독과 같은 17:05 KST
+    # (GitHub 4중 크론 마지막 슬롯 + Apps Script 16:10 최종재시도 이후).
+    "channel": os.environ.get("REPORT_CHANNEL") or "C0B4F7GBX17",
+    "due_kst": "17:05",
+}
+
+
+def _slack_history(channel: str, token: str, limit: int = 30) -> list[dict]:
+    req = urllib.request.Request(
+        f"https://slack.com/api/conversations.history?channel={channel}&limit={limit}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    with urllib.request.urlopen(req, timeout=20) as res:
+        d = json.loads(res.read().decode("utf-8"))
+    if not d.get("ok"):
+        raise RuntimeError(f"conversations.history ok=False: {d.get('error')}")
+    return d.get("messages", [])
+
+
+def check_report_delivery(now: datetime, token: str | None, fetch=None) -> list[str]:
+    """어제(KST) 증분 리포트가 **채널에 실제로 있는지** 본다. 마감 전이면 조용하다.
+
+    ⚠️ 조회 실패는 '없음'으로 단정하지 않는다 — 스코프/네트워크 문제로 매시간 오탐이 난다.
+       대신 조회 실패 사실 자체를 한 줄 알린다(침묵보다 낫다).
+    """
+    target = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+    hh, mm = (int(x) for x in REPORT_DELIVERY["due_kst"].split(":"))
+    due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+    # 마감 전이라도 배선(토큰 스코프·채널 id)을 확인할 수 있게 강제 스위치를 둔다.
+    # 스코프가 없으면 매일 "확인 실패"만 반복하므로 배포 직후 한 번은 실제로 찔러봐야 한다.
+    if now < due and os.environ.get("REPORT_DELIVERY_FORCE") != "1":
+        return []
+    if not token:
+        return []
+    try:
+        msgs = (fetch or (lambda: _slack_history(REPORT_DELIVERY["channel"], token)))()
+    except Exception as e:  # noqa: BLE001 — 어떤 실패든 침묵하지 않는다
+        return [f"⚠️ 증분 리포트 도착 확인 실패({target}): {type(e).__name__} {e}"]
+    if any(is_report_for(m.get("text", ""), target) for m in msgs):
+        return []
+    return [
+        f"🚨 증분 리포트 미발송 — 대상일 {target} 리포트가 "
+        f"{REPORT_DELIVERY['due_kst']} KST 까지 채널에 없습니다. "
+        f"워크플로가 '성공'이어도 발송은 0일 수 있습니다(2026-09-23 실사고). "
+        f"수동 발송: Actions → Daily Increment Report → date={target}"
+    ]
 
 
 def _api(path: str, token: str) -> dict:
@@ -385,13 +442,16 @@ def main() -> int:
     stale = check_freshness(last_success, now, any_success, latest_schedule)
     late = check_daily_deadlines(last_success, now, any_success)
     stale = suppress_redundant_freshness(stale, late)
+    # 실행이 아니라 **결과**를 본다 — '성공했는데 발송 0'을 잡는 유일한 검사(2026-09-23 사고).
+    kst_now = now + timedelta(hours=9)
+    undelivered = check_report_delivery(kst_now, os.environ.get("SLACK_BOT_TOKEN"))
 
-    if not failures and not stale and not late:
+    if not failures and not stale and not late and not undelivered:
         # 해소된 실패는 조용한 경로에서도 건수를 남긴다 — 플래핑이 로그에서 사라지지 않게.
         note = f", 해소된 실패 {len(resolved)}건" if resolved else ""
         print(
             f"[watchdog] ✅ 이상 없음 — 조회 {len(runs)}건, 최근 {window_min}분 실패 0{note}, "
-            "신선도 경고 0, 마감 경고 0"
+            "신선도 경고 0, 마감 경고 0, 리포트 미도착 0"
         )
         return 0
 
@@ -405,6 +465,9 @@ def main() -> int:
     if late:
         lines.append(f"*오늘 예약 미실행 {len(late)}건*")
         lines += ["• " + s for s in late[:8]]
+    if undelivered:
+        lines.append("*결과 미도착*")
+        lines += ["• " + s for s in undelivered]
     if stale:
         lines.append(f"*스케줄 이상 {len(stale)}건*")
         lines += ["• " + s for s in stale[:8]]

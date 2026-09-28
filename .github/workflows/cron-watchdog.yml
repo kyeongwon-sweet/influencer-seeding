@@ -16,6 +16,10 @@ on:
         description: "Slack 발송 없이 콘솔 출력만"
         type: boolean
         default: false
+      force_delivery_check:
+        description: "마감(17:05 KST) 전이어도 리포트 도착 검사를 실행(배선 확인용)"
+        type: boolean
+        default: false
 
 permissions:
   actions: read
@@ -36,6 +40,9 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           STATUS_USER: U0B2Y0ZC8QZ
+          # 결과(도착) 검사 대상 — #빙과_마케팅_리포트
+          REPORT_CHANNEL: C0B4F7GBX17
+          REPORT_DELIVERY_FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force_delivery_check == true && '1' || '0' }}
           WINDOW_MIN: "70"
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true && '1' || '0' }}
         run: python scripts/cron_watchdog.py
