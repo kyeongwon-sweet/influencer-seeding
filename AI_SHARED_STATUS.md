@@ -10,7 +10,9 @@
   - 판정은 `scripts/report_message.is_report_for` **단일 정본**을 발송기와 공유한다(제목줄만 본다).
   - 배선 확인용 `force_delivery_check` 입력 추가 — 스코프가 없으면 매일 "확인 실패"만 반복하므로 배포 직후 한 번은 실제로 찔러봐야 한다.
 - **게이트:** python **389 passed** · web **573/573** · 워크플로 lint 통과. 도착 워치독은 변이 주입(제목줄→본문 전체)으로 실제 실패를 확인했다.
-- **🔴 남은 것:** ① Apps Script `ensureDailyReport` 의 '이미 게시됨' 판정도 제목줄 기준으로 좁혀야 한다(Codex 레인, 09-23부터 미해결). ② 새 워치독 **실제 발화 검증** — 배포 후 `force_delivery_check=true` 로 1회 dry-run 해 토큰 스코프·채널 id 를 확인할 것.
+- **✅ 자가치유 probe 도 고쳤다(내 오판 정정):** 09-23 사고의 두 번째 오판 지점은 Apps Script 가 아니라 **웹 라우트** `web/app/api/ops/ensure-daily-report/route.ts` 의 `isReportPosted` 였다 — Apps Script(`ensureDailyReport`)는 그 라우트를 호출하고 `posted` 를 읽을 뿐 판정하지 않는다. 그 라우트가 `m.text.includes(...)` 로 본문 전체를 훑어 정정 주석의 날짜를 보고 `posted=true` 로 답했고, 자가치유 dispatch 가 통째로 건너뛰어졌다. 공용 판정 `web/lib/report-message.ts` 의 `isReportForDate`(제목줄만)로 교체하고 파이썬 정본과 짝이 유지되는지 계약 테스트로 묶었다. **"Codex 레인"이라고 한 건 내 오판이었다 — 이 레포의 TS 코드다.**
+- **✅ 새 워치독 배선 검증 완료:** `force_delivery_check=true` dry-run 에서 Slack 조회 성공(스코프 정상)·채널 id 정상, "대상일 2026-09-27 리포트 없음"을 정확히 감지했다(마감 전 강제 실행이라 기대된 동작). DRY_RUN=1 이라 발송은 없었다.
+- **🔴 남은 것:** 없음. 다음 자연 발화(매일 17:05 KST 이후)에서 오탐 없이 조용한지만 확인하면 된다.
 
 
 ## ✅ 2026-09-23 [Codex 최종 실물검증] 교차게시 첫 자동수집·09-22 증분 리포트 정상

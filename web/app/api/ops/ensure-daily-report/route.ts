@@ -3,6 +3,7 @@ import { checkCronAuth } from "@/lib/cron-auth";
 import { todayKST } from "@/lib/dateRule";
 import { resolveGitHubActionsToken } from "@/lib/github-actions-auth";
 import { notifyBot } from "@/lib/slack";
+import { isReportForDate } from "@/lib/report-message";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -24,7 +25,7 @@ const REPO = process.env.GITHUB_REPOSITORY || "kyeongwon-sweet/influencer-seedin
 const WORKFLOW = "daily-increment-report.yml";
 const REF = "main";
 const REPORT_CHANNEL = process.env.SLACK_CHANNEL || "C0B4F7GBX17"; // #빙과_마케팅_리포트
-const REPORT_TITLE = "쫀득바 조회수 일일 증분";
+
 
 // KST 어제(리포트 대상일) = 워크플로가 MONITORING_DATE로 쓰는 그 날짜.
 function kstYesterday(kToday: string): string {
@@ -43,8 +44,9 @@ async function isReportPosted(reportDate: string): Promise<boolean | null> {
     });
     const j = (await res.json()) as { ok?: boolean; messages?: Array<{ text?: string }> };
     if (!j.ok) return null;
-    const needle = `(${reportDate})`;
-    return (j.messages ?? []).some((m) => typeof m.text === "string" && m.text.includes(REPORT_TITLE) && m.text.includes(needle));
+    // ⚠️ 본문 전체가 아니라 **제목줄**만 본다 — 정정 주석에 들어간 날짜를 '게시됨'으로
+    //    오인해 자가치유가 dispatch 를 건너뛴 사고가 있었다(2026-09-23).
+    return (j.messages ?? []).some((m) => isReportForDate(m.text, reportDate));
   } catch {
     return null;
   }
