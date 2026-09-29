@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## ✅ 2026-09-29 [Codex 추가 검증·후속 수술] CPV 신규 공백 J4652 1셀 복구 + 동시세션 정합
+- **동시 작업 정합:** 작업 중 `a884f838`의 86셀 복구·일일/신규행 자가치유가 `origin/main`에 먼저 반영됐다. 기존 86셀을 다시 쓰지 않고 라이브 재분류했으며, 14:44 KST 기준 후보는 `J2989=1.95` 수기값과 새 빈칸 `J4652` 두 건뿐이었다. `J2989`는 **팀 확인 전 보존** 상태이며 앞 항목의 "확정" 표현보다 이 상태를 우선한다.
+- **원래 literal 0 52건 비용 분류:** 현재 G값 실측은 무상(`G=0`) 47건, 유상 5건이었다. 유상은 행 4668 `4,500,000원`, 행 4669~4672 각 `13,760원`; 재분류 시점에는 5건 모두 이미 정본 CPV 수식으로 정상화돼 추가 쓰기하지 않았다.
+- **수술 결과:** 별도 백업 스프레드시트(ID `1At0_JfhrUmZp_JJ54vFbwY3CImbPJM9CAjwPOedlhmQ`, 후보 2행)를 만든 뒤 **J4652 한 셀만** 정본 수식으로 복구했다. Apps Script 결과 `written=1 · preserved=1 · remaining_invalid=1 · preserved_row=2989 · h_i_unchanged=true`; H/I 및 다른 셀은 무변경이다.
+- **독립 재감사:** Formula Audit run `36528067284` success. `totalRows=4685 · cpv.ok=4684 · cpv.invalid=1(J2989만) · ok+invalid=totalRows`; `hInvalid=0 · incInvalid=0 · mismatch=0 · errorCells=0 · orphanRows=0`. `healthy=false`는 별도 값정체 3건 때문이며 CPV/H/I 결함은 아니다.
+- **라이브/게이트:** `origin/main=381e789f` 정본으로 guarded clasp 재배포(14:55:32 KST) 후 10파일 인벤토리·repo 소유 8파일 fresh-pull exact 검증 통과. 일회성 수술 함수는 라이브에서 제거되고, `syncNew`와 매일 `repairStaleMetricFormulaRanges_`의 J 자가치유만 남았다. web `589/589`, `tsc --noEmit` 통과.
+
 ## ✅ 2026-09-29 [Codex 수정·라이브 검증] 연동시트 CPV(J) 86셀 복구 + 일일/신규행 자가치유
 - **기준선:** Formula Audit run `36525679007`에서 `cpv.invalid=87`, `cpv.unmeasured=1255`. H/I는 `hInvalid=0 · incInvalid=0 · mismatch=0 · errorCells=0 · orphanRows=0`이었다.
 - **분류:** 87건 전수 대조 결과 `J2989 text_pyeong=1.95` 한 건만 의도적 수기 CPV로 확정해 보존했다. 나머지 86건은 `#REF!` 1 · 구식/오참조 수식 6 · 빈칸 27 · 대량 붙여넣기형 literal 0 52로, 표준식 `=IF(G{r}="","",IF(N(G{r})=0,0,IFERROR(G{r}/H{r},"?")))`으로 수술 복구했다.
