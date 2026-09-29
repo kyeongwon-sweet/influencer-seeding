@@ -466,7 +466,7 @@ test("increment V3: target-day formula is range-safe and blanks when target is m
   assert.match(body, /incFormulas\.push\(\['=""'\]\)/);
 });
 
-test("new DB-appended rows immediately receive H/I formulas and numeric date headers are supported", () => {
+test("new DB-appended rows immediately receive H/I/J formulas and numeric date headers are supported", () => {
   const pullStart = appsScript.indexOf("function pullFromDB()");
   const pullEnd = appsScript.indexOf("function dailyAuto()", pullStart);
   const pullBody = appsScript.slice(pullStart, pullEnd);
@@ -482,6 +482,8 @@ test("new DB-appended rows immediately receive H/I formulas and numeric date hea
   assert.match(helperBody, /!cell\.getFormula\(\).*trim\(\) === ""/s);
   assert.match(helperBody, /=IF\(COUNT\(/);
   assert.match(helperBody, /metricIncrementFormula_\(row, firstLetter, lastLetter, targetLetter\)/);
+  assert.match(helperBody, /metricCpvFormula_\(row, costLetter, cumulativeLetter\)/);
+  assert.match(helperBody, /const cpvCol = findHeaderCol_\(sheet, \["CPV", "cpv"\]\)/);
 
   const parserStart = appsScript.indexOf("function parseMonthDay_(label)");
   const parserEnd = appsScript.indexOf("function onEdit", parserStart);
@@ -490,7 +492,7 @@ test("new DB-appended rows immediately receive H/I formulas and numeric date hea
   assert.match(parserBody, /Date\.UTC\(1899, 11, 30\)/);
 });
 
-test("syncNew fills missing H/I formulas before marking rows registered", () => {
+test("syncNew fills missing H/I/J formulas before marking rows registered", () => {
   const collectStart = appsScript.indexOf("function collectRows_(onlyNew)");
   const collectEnd = appsScript.indexOf("function urlKey_(u)", collectStart);
   const collectBody = appsScript.slice(collectStart, collectEnd);
@@ -511,7 +513,8 @@ test("syncNew fills missing H/I formulas before marking rows registered", () => 
   const markAt = runBody.indexOf("markRegistered_(sheet, statusCol, rowNums)");
   assert.ok(fillAt >= 0, "syncNew formula fill call missing");
   assert.ok(markAt > fillAt, "registration status must be written only after formula fill succeeds");
-  assert.match(runBody, /H\/I 수식 보강/);
+  assert.match(runBody, /H\/I\/J 수식 보강/);
+  assert.match(runBody, /CPV \$\{formulaResult\.cpv\}칸/);
 
   assert.match(appsScript, /function syncNew\(\)\s*\{ return withDocLock_\(function\(\) \{ return runSync_\(true\); \}\); \}/);
 });
@@ -649,7 +652,7 @@ test("new date columns receive real dates, display format, and input validation"
   assert.match(body, /repairStaleMetricFormulaRanges_\(sheet\)/);
 });
 
-test("stale metric formula ranges extend without overwriting manual or custom cells", () => {
+test("daily metric repair extends H/I and heals CPV formulas without overwriting literals", () => {
   const start = appsScript.indexOf("function repairStaleMetricFormulaRanges_(sheet)");
   const end = appsScript.indexOf("function ensureNewRowsMetricFormulas_", start);
   const body = appsScript.slice(start, end);
@@ -663,6 +666,10 @@ test("stale metric formula ranges extend without overwriting manual or custom ce
   assert.match(body, /current\.targetLetter/);
   assert.match(body, /writeColumnRuns_\(targetSheet, cumulativeCol, cumulativeEdits, lastRow\)/);
   assert.match(body, /writeColumnRuns_\(targetSheet, incrementCol, incrementEdits, lastRow\)/);
+  assert.match(body, /writeColumnRuns_\(targetSheet, cpvCol, cpvEdits, lastRow\)/);
+  assert.match(body, /const hasLiteral = !currentFormula && currentValue !== "" && currentValue != null/);
+  assert.match(body, /if \(hasLiteral\) continue/);
+  assert.match(body, /metricCpvFormula_\(row, costLetter, cumulativeLetter\)/);
   assert.doesNotMatch(body, /clearContent\(/);
   assert.doesNotMatch(body, /setValues\(out\)/);
 
@@ -673,20 +680,22 @@ test("stale metric formula ranges extend without overwriting manual or custom ce
   const repairIdx = defsBody.indexOf('["repairMetricFormulaRanges"');
   assert.notEqual(refreshIdx, -1);
   assert.notEqual(repairIdx, -1);
-  assert.ok(refreshIdx < repairIdx, "H 수동값 보존 갱신 뒤 표준 H/I 끝열만 확장해야 함");
+  assert.ok(refreshIdx < repairIdx, "H 수동값 보존 갱신 뒤 표준 H/I 범위와 CPV 수식을 복구해야 함");
 
   const helperStart = appsScript.indexOf("function metricCumulativeFormula_(");
   const helperEnd = appsScript.indexOf("function repairStaleMetricFormulaRanges_", helperStart);
   const helperSource = appsScript.slice(helperStart, helperEnd);
   const helpers = Function(
     helperSource
-      + "; return { metricCumulativeFormula_, metricIncrementFormula_, metricColumnNumber_,"
+      + "; return { metricCumulativeFormula_, metricCpvFormula_, metricIncrementFormula_, metricColumnNumber_,"
       + " standardCumulativeFormulaParts_, standardCumulativeFormulaEnd_, standardIncrementFormulaParts_, standardIncrementFormulaEnd_ };",
   )();
   const hDh = helpers.metricCumulativeFormula_(2764, "P", "DH");
+  const cpv = helpers.metricCpvFormula_(2764, "G", "H");
   const iDh = helpers.metricIncrementFormula_(2764, "P", "DH");
   const iTargetDg = helpers.metricIncrementFormula_(2764, "P", "DH", "DG");
   assert.equal(helpers.standardCumulativeFormulaEnd_(hDh, 2764, "P"), "DH");
+  assert.equal(cpv, '=IF(G2764="","",IF(N(G2764)=0,0,IFERROR(G2764/H2764,"?")))');
   assert.equal(helpers.standardIncrementFormulaEnd_(iDh, 2764, "P"), "DH");
   assert.equal(helpers.standardIncrementFormulaEnd_(iTargetDg, 2764, "P"), "DH");
   assert.deepEqual(

@@ -565,19 +565,20 @@ function assertSyncRowsStable_(sheet, rowRefs, expectedLastRow) {
 }
 
 function ensureMetricFormulasForRows_(sheet, rowRefs, expectedLastRow) {
-  if (!rowRefs || rowRefs.length === 0) return { rows: 0, cumulative: 0, increment: 0 };
+  if (!rowRefs || rowRefs.length === 0) return { rows: 0, cumulative: 0, increment: 0, cpv: 0 };
   assertSyncRowsStable_(sheet, rowRefs, expectedLastRow);
   const rows = Array.from(new Set(rowRefs.map(ref => Number(ref.row))))
     .filter(row => Number.isFinite(row) && row >= CONFIG.DATA_START_ROW)
     .sort((a, b) => a - b);
-  if (rows.length === 0) return { rows: 0, cumulative: 0, increment: 0 };
-  let cumulative = 0, increment = 0;
+  if (rows.length === 0) return { rows: 0, cumulative: 0, increment: 0, cpv: 0 };
+  let cumulative = 0, increment = 0, cpv = 0;
   let start = rows[0], end = rows[0];
   const flushRun = () => {
     assertRowCountStable_(sheet, expectedLastRow, "syncNew formula fill");
     const result = ensureNewRowsMetricFormulas_(sheet, start, end);
     cumulative += result.cumulative || 0;
     increment += result.increment || 0;
+    cpv += result.cpv || 0;
   };
   for (let i = 1; i < rows.length; i++) {
     if (rows[i] === end + 1) {
@@ -590,7 +591,7 @@ function ensureMetricFormulasForRows_(sheet, rowRefs, expectedLastRow) {
   }
   flushRun();
   assertSyncRowsStable_(sheet, rowRefs, expectedLastRow);
-  return { rows: rows.length, cumulative: cumulative, increment: increment };
+  return { rows: rows.length, cumulative: cumulative, increment: increment, cpv: cpv };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -607,12 +608,12 @@ function runSync_(onlyNew) {
     const sheet = getSheet_();
     const formulaResult = onlyNew
       ? ensureMetricFormulasForRows_(sheet, rowRefs, lastRow)
-      : { rows: 0, cumulative: 0, increment: 0 };
+      : { rows: 0, cumulative: 0, increment: 0, cpv: 0 };
     markRegistered_(sheet, statusCol, rowNums);
     let okMsg;
     if (onlyNew) {
       okMsg = `✅ 신규 광고 확인 완료\n• 비교한 행: ${count}건\n• 새로 추가: ${created}건\n• 기존 행 변경: ${filled}건`;
-      okMsg += `\n• H/I 수식 보강: 누적 ${formulaResult.cumulative}칸 · 증분 ${formulaResult.increment}칸`;
+      okMsg += `\n• H/I/J 수식 보강: 누적 ${formulaResult.cumulative}칸 · 증분 ${formulaResult.increment}칸 · CPV ${formulaResult.cpv}칸`;
     } else {
       okMsg = `✅ 시트 변경사항 DB 반영 완료\n• 비교한 행: ${count}건\n• 새로 추가: ${created}건\n• 값이 달라 수정: ${filled}건`;
     }
@@ -1081,6 +1082,12 @@ function metricCumulativeFormula_(row, firstLetter, lastLetter) {
   return "=IF(COUNT(" + firstLetter + row + ":" + lastLetter + row + ")=0,\"\",MAX(" + firstLetter + row + ":" + lastLetter + row + "))";
 }
 
+function metricCpvFormula_(row, costLetter, cumulativeLetter) {
+  const costRef = costLetter + row;
+  const cumulativeRef = cumulativeLetter + row;
+  return '=IF(' + costRef + '=\"\",\"\",IF(N(' + costRef + ')=0,0,IFERROR(' + costRef + '/' + cumulativeRef + ',\"?\")))';
+}
+
 function metricIncrementFormula_(row, firstLetter, lastLetter, targetLetter) {
   const rangeRef = "$" + firstLetter + row + ":$" + lastLetter + row;
   const firstCellRef = "$" + firstLetter + row;
@@ -1158,6 +1165,7 @@ function repairStaleMetricFormulaRanges_(sheet) {
     last_col: null,
     cumulative: 0,
     increment: 0,
+    cpv: 0,
   };
   if (!dateCols.length || result.rows === 0) return result;
 
@@ -1167,6 +1175,8 @@ function repairStaleMetricFormulaRanges_(sheet) {
   const lastLetter = colLetter_(lastCol);
   const cumulativeCol = findHeaderCol_(targetSheet, ["누적 조회수", "누적조회수"]);
   const incrementCol = getIncrementCol_(targetSheet);
+  const costCol = findHeaderCol_(targetSheet, ["비용"]);
+  const cpvCol = findHeaderCol_(targetSheet, ["CPV", "cpv"]);
   const dateColumnNumbers = {};
   dateCols.forEach(function(item) { dateColumnNumbers[item.col] = true; });
   result.first_col = firstLetter;
@@ -1213,13 +1223,38 @@ function repairStaleMetricFormulaRanges_(sheet) {
     }
   }
 
+  // CPV는 날짜열과 무관하지만 H/I 범위 보강과 같은 일일 자가치유 단계에서 점검한다.
+  // 빈칸·깨진 수식·구식 수식만 정식 수식으로 복구하고, 수식이 아닌 값은 수기 정정으로 보고 보존한다.
+  const cpvEdits = [];
+  if (cpvCol && costCol && cumulativeCol) {
+    const cpvRange = targetSheet.getRange(CONFIG.DATA_START_ROW, cpvCol, result.rows, 1);
+    const cpvFormulas = cpvRange.getFormulas();
+    const cpvValues = cpvRange.getValues();
+    const costLetter = colLetter_(costCol);
+    const cumulativeLetter = colLetter_(cumulativeCol);
+    for (let i = 0; i < result.rows; i++) {
+      const row = CONFIG.DATA_START_ROW + i;
+      const currentFormula = cpvFormulas[i][0];
+      const currentValue = cpvValues[i][0];
+      const hasLiteral = !currentFormula && currentValue !== "" && currentValue != null;
+      if (hasLiteral) continue;
+      const expected = metricCpvFormula_(row, costLetter, cumulativeLetter);
+      if (metricFormulaText_(currentFormula) !== metricFormulaText_(expected)) {
+        cpvEdits.push({ row: row, value: expected });
+      }
+    }
+  }
+
   result.cumulative = cumulativeCol
     ? writeColumnRuns_(targetSheet, cumulativeCol, cumulativeEdits, lastRow)
     : 0;
   result.increment = incrementCol
     ? writeColumnRuns_(targetSheet, incrementCol, incrementEdits, lastRow)
     : 0;
-  if (result.cumulative || result.increment) SpreadsheetApp.flush();
+  result.cpv = cpvCol
+    ? writeColumnRuns_(targetSheet, cpvCol, cpvEdits, lastRow)
+    : 0;
+  if (result.cumulative || result.increment || result.cpv) SpreadsheetApp.flush();
   Logger.log("metric_formula_range_repair " + JSON.stringify(result));
   return result;
 }
@@ -1231,9 +1266,9 @@ function repairStaleMetricFormulaRanges() {
 }
 
 function ensureNewRowsMetricFormulas_(sheet, startRow, endRow) {
-  if (!sheet || startRow > endRow) return { cumulative: 0, increment: 0 };
+  if (!sheet || startRow > endRow) return { cumulative: 0, increment: 0, cpv: 0 };
   const dateCols = metricDateColumns_(sheet);
-  if (!dateCols.length) return { cumulative: 0, increment: 0 };
+  if (!dateCols.length) return { cumulative: 0, increment: 0, cpv: 0 };
   const firstCol = Math.min.apply(null, dateCols.map(x => x.col));
   const lastCol = Math.max.apply(null, dateCols.map(x => x.col));
   const firstLetter = colLetter_(firstCol);
@@ -1246,7 +1281,11 @@ function ensureNewRowsMetricFormulas_(sheet, startRow, endRow) {
   const targetLetter = colLetter_(targetDateCol.col);
   const cumulativeCol = findHeaderCol_(sheet, ["누적 조회수", "누적조회수"]);
   const incrementCol = getIncrementCol_(sheet);
-  let cumulative = 0, increment = 0;
+  const costCol = findHeaderCol_(sheet, ["비용"]);
+  const cpvCol = findHeaderCol_(sheet, ["CPV", "cpv"]);
+  const costLetter = costCol ? colLetter_(costCol) : "";
+  const cumulativeLetter = cumulativeCol ? colLetter_(cumulativeCol) : "";
+  let cumulative = 0, increment = 0, cpv = 0;
   for (let row = startRow; row <= endRow; row++) {
     if (cumulativeCol) {
       const cell = sheet.getRange(row, cumulativeCol);
@@ -1262,9 +1301,16 @@ function ensureNewRowsMetricFormulas_(sheet, startRow, endRow) {
         increment++;
       }
     }
+    if (cpvCol && costCol && cumulativeCol) {
+      const cell = sheet.getRange(row, cpvCol);
+      if (!cell.getFormula() && String(cell.getValue() == null ? "" : cell.getValue()).trim() === "") {
+        cell.setFormula(metricCpvFormula_(row, costLetter, cumulativeLetter));
+        cpv++;
+      }
+    }
   }
   SpreadsheetApp.flush();
-  const result = { start_row: startRow, end_row: endRow, cumulative: cumulative, increment: increment };
+  const result = { start_row: startRow, end_row: endRow, cumulative: cumulative, increment: increment, cpv: cpv };
   Logger.log("new_row_metric_formulas " + JSON.stringify(result));
   return result;
 }
