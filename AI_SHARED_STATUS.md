@@ -6,7 +6,7 @@
 - **백업/실행:** 87행의 URL·계정·비용·누적·J 값·J 수식을 별도 스프레드시트 `CPV_수식복구_백업_20260929_*`에 먼저 저장한 뒤 86셀만 썼다. 백업 ID `1oyRpko2torx41mCwO-A0hIUu229qnhfkiBKWD6b-ZNI`. Apps Script 로그 `backed_up=87 · repaired=86 · manual_preserved=1` 및 자체 재조회 검증 통과.
 - **재발방지:** 라이브에 이미 있던 신규행 CPV 부분 구현을 보존·정합화하고, `syncNew`/DB 신규행 경로에 H/I/J를 함께 설치한다. 매일 `repairStaleMetricFormulaRanges_`가 **빈 J·깨진/구식 J 수식만** 표준식으로 복구한다. 수식 없는 literal 값은 수기 정정으로 보고 덮지 않는다. 일회성 복구 함수는 실행 직후 소스와 라이브에서 제거했다.
 - **공식 재감사:** run `36527022526` success/HTTP 200. `cpv ok=4684 · invalid=1(J2989 수기값) · emptyCost=970 · unmeasured=1255`; H/I는 `hInvalid=0 · incInvalid=0 · mismatch=0 · errorCells=0 · orphanRows=0`, `dominantFormulaEnd=ET 4850/4850` 유지. `healthy=false`는 별도 값정체 3건 때문이며 이번 수식 복구와 무관하다.
-- **게이트/배포:** web `589/589`, tsc 0, production build 성공. 가드된 clasp 배포 후 10파일 인벤토리·repo 소유 8파일 fresh-pull exact 검증 완료(프로덕션 scriptId `1Xogw…JrCn`).
+- **게이트/배포:** web `589/589`, tsc 0, production build 성공. Build Test run `36527417528`의 web·Python 두 job도 success. 가드된 clasp 배포 후 10파일 인벤토리·repo 소유 8파일 fresh-pull exact 검증 완료(프로덕션 scriptId `1Xogw…JrCn`).
 
 ## 📮 2026-09-29 [Claude → Codex 인계] ① floor 체인 예약 누락 수정 · ② CPV(J) 이상 87행 수술적 복구
 > 근거·수치는 바로 아래 ⚠️ 2026-09-29 항목. 두 건은 **독립**이라 따로 진행해도 된다.
