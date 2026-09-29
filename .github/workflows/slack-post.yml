@@ -34,6 +34,11 @@ on:
         required: false
         type: string
         default: ""
+      thread_ts:
+        description: "설정 시 이 부모 메시지의 스레드 답글(댓글)로 게시"
+        required: false
+        type: string
+        default: ""
 
 jobs:
   post:
@@ -48,6 +53,7 @@ jobs:
           IMAGE_ALT: ${{ github.event.inputs.image_alt }}
           UNFURL: ${{ github.event.inputs.unfurl_links }}
           UPDATE_TS: ${{ github.event.inputs.update_ts }}
+          THREAD_TS: ${{ github.event.inputs.thread_ts }}
         run: |
           python3 - <<'PY'
           import os, json, sys, urllib.request
@@ -58,6 +64,7 @@ jobs:
           image_alt = (os.environ.get("IMAGE_ALT") or "image").strip() or "image"
           unfurl = (os.environ.get("UNFURL") or "false").lower() == "true"
           update_ts = (os.environ.get("UPDATE_TS") or "").strip()
+          thread_ts = (os.environ.get("THREAD_TS") or "").strip()
           if not token:
               print("SLACK_BOT_TOKEN 없음"); sys.exit(1)
 
@@ -77,6 +84,8 @@ jobs:
                   "unfurl_links": unfurl,
                   "unfurl_media": unfurl,
               }
+              if thread_ts:
+                  payload["thread_ts"] = thread_ts  # 부모 메시지의 스레드 답글(댓글)로
           req = urllib.request.Request(
               "https://slack.com/api/" + method,
               data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
