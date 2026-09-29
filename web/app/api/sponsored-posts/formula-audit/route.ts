@@ -456,7 +456,7 @@ ${text}` : text;
       hFormulaManual: result.formulaShape.hManual,
       incFormulaInvalid: result.formulaShape.incInvalid,
       cpvInvalid: result.cpv.invalid,
-      cpvZeroWithCost: result.cpv.zeroWithCost,
+      cpvUnmeasured: result.cpv.unmeasured,
       stale: result.stale,
       staleExcludedUncollectable: result.staleExcludedUncollectable,
       orphanRows: result.orphanRows,

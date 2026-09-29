@@ -37,8 +37,15 @@ test("기대 수식과 같으면 ok", () => {
 });
 
 test("공백·대소문자만 다른 건 같은 수식으로 본다", () => {
-  const r = audit([row({ cpvFormula: '=if(G2="", "", IF(N(H2)=0,0,IFERROR(G2/H2,"?")))' })]);
+  const r = audit([row({ cpvFormula: '=if(G2="", "", IF(N(G2)=0,0,IFERROR(G2/H2,"?")))' })]);
   assert.equal(r.cpv.ok, 1);
+});
+
+test("🚨 0 조건은 비용(G)이지 누적(H)이 아니다 — 내가 오독했던 지점", () => {
+  // 실제 시트는 N(G)=0. N(H)=0 으로 잘못 기대하면 전 행이 invalid 로 뜬다(실제로 4,685건 오탐냈다).
+  const wrong = '=IF(G2="","",IF(N(H2)=0,0,IFERROR(G2/H2,"?")))';
+  assert.notEqual(expectedCpvFormula(2, REFS), wrong);
+  assert.equal(audit([row({ cpvFormula: wrong })]).cpv.invalid, 1);
 });
 
 test("🚨 수기 숫자로 덮이면 invalid — 다음날부터 갱신이 멈춘다", () => {
@@ -48,26 +55,26 @@ test("🚨 수기 숫자로 덮이면 invalid — 다음날부터 갱신이 멈�
 });
 
 test("다른 열을 가리키는 수식도 invalid — 조용히 남의 값을 나눈다", () => {
-  const r = audit([row({ cpvFormula: '=IF(G2="","",IF(N(H3)=0,0,IFERROR(G2/H3,"?")))' })]);
+  const r = audit([row({ cpvFormula: '=IF(G2="","",IF(N(G2)=0,0,IFERROR(G2/H3,"?")))' })]);
   assert.equal(r.cpv.invalid, 1);
 });
 
-test("🚨 비용이 있는데 누적이 0이면 zeroWithCost — CPV 가 0원으로 보인다", () => {
-  // 0원은 '계산 불가'지 '최고 효율'이 아니다. CPV 오름차순 정렬에서 맨 위로 올라온다.
+test("비용이 있는데 누적이 0이면 unmeasured — 화면엔 \"?\" 가 뜬다(정상)", () => {
+  // G/H 가 0 나누기라 IFERROR 가 "?" 를 쓴다. 수식 결함이 아니라 데이터 공백이다.
   const r = audit([row({ dates: [], h: 0, cost: 11_000_000 })]);
-  assert.equal(r.cpv.zeroWithCost, 1);
-  assert.equal(r.cpv.ok, 1, "수식 자체는 현행과 같으므로 invalid 가 아니다");
+  assert.equal(r.cpv.unmeasured, 1);
+  assert.equal(r.cpv.ok, 1, "수식은 현행과 같으므로 invalid 가 아니다");
 });
 
-test("비용이 없으면 zeroWithCost 가 아니다 — 무상 채널은 정상", () => {
+test("비용이 없으면 unmeasured 가 아니다 — 무상 채널은 정상", () => {
   const r = audit([row({ dates: [], h: 0, cost: null })]);
-  assert.equal(r.cpv.zeroWithCost, 0);
+  assert.equal(r.cpv.unmeasured, 0);
   assert.equal(r.cpv.emptyCost, 1);
 });
 
-test("누적이 있으면 비용이 있어도 zeroWithCost 가 아니다", () => {
+test("누적이 있으면 비용이 있어도 unmeasured 가 아니다", () => {
   const r = audit([row({ cost: 70000 })]);
-  assert.equal(r.cpv.zeroWithCost, 0);
+  assert.equal(r.cpv.unmeasured, 0);
 });
 
 test("CPV 재료가 없으면 감사를 건너뛴다 — 헤더 못 찾은 시트에서 오탐 금지", () => {
@@ -83,5 +90,5 @@ test("라우트가 CPV 를 실제로 넘긴다(소스 계약)", async () => {
   assert.match(src, /cpvCol = findCol\(\["CPV", "cpv"\]\)/, "CPV 열을 안 찾으면 감사가 통째로 꺼진다");
   assert.match(src, /cpvRefs:/, "행에 cpvRefs 를 안 실으면 기대 수식을 만들 수 없다");
   assert.match(src, /Math\.max\(cumCol, incCol, cpvCol/, "수식 조회 범위에 J 가 빠지면 항상 null 이다");
-  assert.match(src, /cpvZeroWithCost/, "응답에 노출돼야 사람이 본다");
+  assert.match(src, /cpvUnmeasured/, "응답에 노출돼야 사람이 본다");
 });

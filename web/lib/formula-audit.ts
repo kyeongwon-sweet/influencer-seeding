@@ -87,11 +87,10 @@ export type AuditResult = {
    * CPV(J) 감사. 2026-09-29 추가 — 그전까진 누적(H)·증분(I)만 봐서 "CPV 수식 괜찮냐"에
    * 답할 수단이 아예 없었다(사람이 셀을 눈으로 찍어볼 수밖에).
    *   · invalid      — 기대 수식과 다른 형태(수기 덮어쓰기 포함)
-   *   · zeroWithCost — 비용이 있는데 누적이 0/빈칸이라 **CPV 가 0원으로 표시되는** 행.
-   *     0원은 '계산 불가'지 '최고 효율'이 아니다 — CPV 오름차순 정렬에서 맨 위로 올라온다.
-   *     수식 파손이 아니라 **표시 설계 문제**라 따로 센다.
+   *   · unmeasured   — 비용은 있는데 누적이 0/빈칸이라 CPV 를 낼 수 없는 행(화면엔 "?").
+   *     수식 결함이 아니라 데이터 공백이다. 구분해서 센다.
    */
-  cpv: { ok: number; invalid: number; emptyCost: number; zeroWithCost: number };
+  cpv: { ok: number; invalid: number; emptyCost: number; unmeasured: number };
   cpvInvalidRows: Array<{ row: number; label: string; actual: string }>;
   formulaDiagnostics: Array<{ row: number; actual: string; expected: string }>;
   /**
@@ -308,9 +307,14 @@ export function expectedCumulativeFormula(
 }
 
 /**
- * CPV 기대 수식. 비용(G) / 누적(H).
- * ⚠️ 누적이 0이면 0 을 쓴다 — 시트에 실제로 들어 있는 형태이고, 이 감사는 **현행 수식과의
- *    일치**만 본다. 0 표시가 타당한지는 zeroWithCost 로 따로 센다(시트 수식 변경은 사람 레인).
+ * CPV 기대 수식 — **라이브 시트에서 API 로 읽은 실제 형태**(2026-09-29 확인).
+ *
+ *   =IF(G{r}="","",IF(N(G{r})=0,0,IFERROR(G{r}/H{r},"?")))
+ *
+ * 0 이 되는 조건은 **비용이 0** 일 때지 누적이 0 일 때가 아니다.
+ * 비용이 있는데 누적이 0/빈칸이면 G/H 가 0 나누기라 IFERROR 가 **"?"** 를 쓴다 — 올바른 동작이다.
+ * ⚠️ 나는 이걸 브라우저 확대 이미지에서 N(G)를 N(H)로 오독해 "1,251건이 ₩0으로 보인다"고
+ *    잘못 보고했다. 수식은 **화면 캡처가 아니라 이 감사(FORMULA 렌더)로** 확인할 것.
  */
 export function expectedCpvFormula(
   row: number,
@@ -318,7 +322,7 @@ export function expectedCpvFormula(
 ): string {
   const g = `${refs.costColumn}${row}`;
   const h = `${refs.cumulativeColumn}${row}`;
-  return `=IF(${g}="","",IF(N(${h})=0,0,IFERROR(${g}/${h},"?")))`;
+  return `=IF(${g}="","",IF(N(${g})=0,0,IFERROR(${g}/${h},"?")))`;
 }
 
 export function expectedIncrementFormula(
@@ -451,7 +455,7 @@ export function auditRows(
     h: { ok: 0, manualKept: 0, emptyOk: 0, valueOnly: 0, errorCells: 0, emptyButData: 0 },
     inc: { ok: 0, emptyOk: 0, errorCells: 0, mismatch: 0, blankExpected: 0 },
     formulaShape: { hInvalid: 0, hManual: 0, incInvalid: 0 },
-    cpv: { ok: 0, invalid: 0, emptyCost: 0, zeroWithCost: 0 },
+    cpv: { ok: 0, invalid: 0, emptyCost: 0, unmeasured: 0 },
     cpvInvalidRows: [],
     hInvalidRows: [],
     formulaDiagnostics: [],
@@ -481,8 +485,9 @@ export function auditRows(
       if (costNum === null || !Number.isFinite(costNum) || costNum === 0) {
         res.cpv.emptyCost += 1;
       } else if (rowMax === null || rowMax <= 0) {
-        // 비용은 있는데 누적이 0 → 수식대로면 CPV 가 0원으로 표시된다.
-        res.cpv.zeroWithCost += 1;
+        // 비용은 있는데 누적이 0/빈칸 → 수식상 G/H 가 0 나누기라 화면엔 **"?"** 가 뜬다(정상 동작).
+        // CPV 를 낼 수 없는 '측정 없음' 건수로만 남긴다 — 수식 결함이 아니다.
+        res.cpv.unmeasured += 1;
       }
       if (sameFormula(row.cpvFormula, expectedCpvFormula(row.sourceRow, row.cpvRefs))) {
         res.cpv.ok += 1;
