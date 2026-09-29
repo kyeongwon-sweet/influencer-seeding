@@ -1,5 +1,30 @@
 # AI Shared Status
 
+## 📮 2026-09-29 [Claude → Codex 인계] ① floor 체인 예약 누락 수정 · ② CPV(J) 이상 87행 수술적 복구
+> 근거·수치는 바로 아래 ⚠️ 2026-09-29 항목. 두 건은 **독립**이라 따로 진행해도 된다.
+
+### 📮-1 negative-comment-monitor floor 체인이 다음 wake를 예약하지 않는다
+- **repo:** `kyeongwon-sweet/negative-comment-monitor` (master). influencer-seeding 아님.
+- **원인:** `src/monitor-chain.js` `chainNextMonitor()` floor 경로의 조기 종료 두 개가 모두 **다음 실행을 예약하지 않는다** — `scannedThisRun`→`floor-scan-completed`, `ageMs<floorMs`→`floor-not-due`. floor는 "이번 run 미스캔 AND ≥150분" 순간에 GitHub 트리거가 우연히 떨어질 때만 발동한다. 실측 floor claim 09-22~28 **0건**.
+- **제약(반드시 지킬 것):** `src/monitor-loop.js`는 의도적으로 `intensive gate closed; ending loop early so floor/backup schedules are not blocked` 한다. concurrency `negative-comment-monitor-production`(`cancel-in-progress:false`)을 오래 잡으면 다른 스캔을 막기 때문이다. → **대기는 이 그룹 밖에서** 해야 한다. production 그룹 안에서 sleep 하는 방식은 금지.
+- **방향(설계는 Codex 판단):** 스캔 직후(`floor-scan-completed`)·`floor-not-due` 시 **지연 wake를 1개 예약**. 예: 별도 경량 워크플로(자체 concurrency 그룹)가 `lastScannedAt + floorMinutes`까지 대기 후 `monitor.yml`을 `monitor_chain_floor=true`로 dispatch. 받은 run이 그 사이 다른 스캔이 있었으면 `floor-not-due`로 다시 **1개만** 재예약. 기존 `floorMaxPerDay=12`(`cost_usage_ledger` claim) 상한 유지, waiter dispatch 자체에도 일일 상한을 둘 것(무한 재예약 방지). 공개 repo라 runner 분 비용 없음. 예상 스캔 ≈ 24h/150분 ≈ 10회/일.
+- **하지 말 것:** cron 줄 추가(이 repo 명시 cron 발화율 5~40% 실측, 09-21 기록). intensive 체인(매일 7~13건 정상) 동작 변경.
+- **검증(완료 보고에 실측치 포함):**
+  - 단위: `floor-scan-completed`·`floor-not-due` 각각 **정확히 1개** wake 예약(0개·2개 모두 실패). GitHub 트리거 0인 6시간 시뮬레이션에서 스캔 간격 ≤150분.
+  - 운영 24h: **`monitor_scan_heartbeats` 원장 기준**(run 시작 간격 금지 — 내부 루프를 못 봐 과대/과소계상한다) 최장 < 210분·3.5h 초과 0회, **`cost_usage_ledger` floor claim > 0건/일**. ⚠️ 09-23 Claude 판정은 "스캔 간격이 짧다"만 보고 floor claim 0건을 놓쳐 틀렸다 — **floor claim 실측이 필수 게이트**.
+  - heartbeat 일일 STALE 경보가 멈추는지 실제 Slack(`C0BHD9S69JA`)에서 확인.
+
+### 📮-2 연동시트 CPV(J) 이상 87행 — 수술적 복구
+- **대상:** 수식감사 run `36510712935`(코드 `1ce288da`)의 `cpvInvalidRows` 87행. 정본 수식 `=IF(G{r}="","",IF(N(G{r})=0,0,IFERROR(G{r}/H{r},"?")))`.
+- **⚠️ 먼저 분류, 그다음 수정:**
+  - 숫자 `0` **52건** → 행별 비용(G)을 먼저 본다. 비용 0(무상)이면 표시값이 같아 무해하나 일관성을 위해 수식 복원 가능. **유상이면 잘못된 0원**이 CPV 정렬 최상단에 뜨는 실제 결함.
+  - 숫자 `1.95`(행 2989 `text_pyeong`) → **의도적 수기 CPV일 수 있다.** 팀 확인 전 덮어쓰기 금지.
+  - **`#REF!`(행 1338 `365_real`)** → 참조 깨짐, 확실한 결함. 우선 복원.
+  - 빈 셀 27 · 구형 `=G/H` 5 · 기타 1 → 정본 수식으로 복원.
+- **원칙([[feedback-verify-before-after-sheet-writes]]):** 87행만 수술적으로. 열 전체 재기입 금지. 쓰기 직전 baseline(해당 행 J 원문 백업) + 직후 재감사. H·I 수식은 건드리지 말 것(수식 재생성 금지).
+- **재발방지:** 빈 셀 27건은 신규행 경로가 J를 안 쓰는 것일 수 있다. 라이브 Apps Script `05_연동시트_신규행_서식`이 CPV 수식을 쓰는지 **라이브 기준**으로 확인([[apps-script-live-divergence]]). 안 쓰면 새 행에서 계속 재발한다.
+- **완료 판정:** 수식감사 재실행에서 `cpv.invalid`가 의도적 수기(팀 확인분)만 남을 것. `ok + invalid == totalRows` 유지.
+
 ## ⚠️ 2026-09-29 [Claude 진단·읽기전용] 부정댓글 감시 공백 재발 원인 = floor 체인 미발동 · ⚠️ 09-23 "㉠ 닫힘" 판정 정정 · CPV 감사 오탐 수정 확인
 ### ① 부정댓글 감시 — 평상시 공백이 다시 커지는 중 (📮 Codex 인계, 아래)
 - **증상:** heartbeat가 `09-27 STALE 3h47m` → `09-28 STALE 4h18m` 연속 경보. `monitor_scan_heartbeats` 원장(386행 전수, 서버 count 대조) 최근 24h 최장 **301분(5h01m)**, 3.5h 초과 2회 — `09-28 15:59→20:20`, `09-29 00:32→05:33` KST. 경보는 정상 작동(STALE 발송→24h SUPPRESSED)이지만 4일째 조치가 없었다.
