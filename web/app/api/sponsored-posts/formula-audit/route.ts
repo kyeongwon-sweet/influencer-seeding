@@ -130,6 +130,8 @@ async function handler(req: NextRequest) {
     urlCol: number;
     cumCol: number;
     incCol: number;
+    cpvCol: number;
+    costCol: number;
     acctCol: number;
     metricStatusCol: number;
     statusCol: number;
@@ -148,16 +150,19 @@ async function handler(req: NextRequest) {
     const urlCol = findCol(["게시물url"]);
     const cumCol = findCol(["누적조회수", "누적 조회수"]);
     const incCol = findCol(["증분값", "증분"]);
+    // CPV(J)·비용(G) — 2026-09-29 추가. 그전엔 CPV 가 감사 밖이라 사람이 셀을 찍어볼 수밖에 없었다.
+    const cpvCol = findCol(["CPV", "cpv"]);
+    const costCol = findCol(["비용"]);
     const acctCol = findCol(["채널명"]);
     const metricStatusCol = findCol(["상태"]);
     const statusCol = findCol(["등록상태"]);
     const formulaFirstCol = Math.min(cumCol, incCol);
-    const formulaLastCol = Math.max(cumCol, incCol);
+    const formulaLastCol = Math.max(cumCol, incCol, cpvCol >= 0 ? cpvCol : cumCol);
     const formulaRange = `${columnNumberToA1(formulaFirstCol + 1)}2:${columnNumberToA1(formulaLastCol + 1)}${Math.max(2, values.length)}`;
     const formulaValues = urlCol >= 0 && cumCol >= 0 && incCol >= 0
       ? await fetchSheetTabFormulas(SHEET_ID, SHEET_GID, formulaRange)
       : [];
-    return { values, header, urlCol, cumCol, incCol, acctCol, metricStatusCol, statusCol, formulaFirstCol, formulaValues };
+    return { values, header, urlCol, cumCol, incCol, cpvCol, costCol, acctCol, metricStatusCol, statusCol, formulaFirstCol, formulaValues };
   };
 
   let snapshot: SheetSnapshot;
@@ -224,7 +229,7 @@ async function handler(req: NextRequest) {
     }, { status: 503 });
   }
 
-  const { values, header, urlCol, cumCol, incCol, acctCol, formulaFirstCol, formulaValues } = snapshot;
+  const { values, header, urlCol, cumCol, incCol, cpvCol, costCol, acctCol, formulaFirstCol, formulaValues } = snapshot;
   // 날짜 구간 안의 '비어 있지 않은데 날짜로 못 읽히는' 헤더 — 조용히 건너뛰면 첫 날짜열이 밀려
   // 정상 수식이 전부 형태오류로 계산된다(2026-05-17 P1 사고: 원인 한 칸이 1,977건에 묻혀 몇 주 방치).
   // 끝열 어긋남은 이미 snapshotAhead가 한 줄로 알리므로, 그 짝을 구간 내부에도 둔다.
@@ -310,6 +315,14 @@ async function handler(req: NextRequest) {
       inc,
       hFormula: formulaValues[i - 1]?.[cumCol - formulaFirstCol] ?? null,
       incFormula: formulaValues[i - 1]?.[incCol - formulaFirstCol] ?? null,
+      ...(cpvCol >= 0 && costCol >= 0 ? {
+        cpvFormula: formulaValues[i - 1]?.[cpvCol - formulaFirstCol] ?? null,
+        cost: rawCell(row[costCol]),
+        cpvRefs: {
+          costColumn: columnNumberToA1(costCol + 1),
+          cumulativeColumn: columnNumberToA1(cumCol + 1),
+        },
+      } : {}),
       metricRange,
       dates,
     });
@@ -442,6 +455,8 @@ ${text}` : text;
       hFormulaInvalid: result.formulaShape.hInvalid,
       hFormulaManual: result.formulaShape.hManual,
       incFormulaInvalid: result.formulaShape.incInvalid,
+      cpvInvalid: result.cpv.invalid,
+      cpvZeroWithCost: result.cpv.zeroWithCost,
       stale: result.stale,
       staleExcludedUncollectable: result.staleExcludedUncollectable,
       orphanRows: result.orphanRows,

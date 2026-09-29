@@ -68,6 +68,10 @@ export type SheetAuditRow = {
   // H 숫자는 날짜 이력이 없는 행의 수기 보존만 허용한다.
   hFormula?: string | number | boolean | null;
   incFormula?: string | number | boolean | null;
+  // CPV(J) 감사 재료. undefined면 미실행(기존 단위테스트 호환).
+  cpvFormula?: string | number | boolean | null;
+  cost?: number | string | null;                       // 비용(G) 실제값 — 'CPV 0원' 판정용
+  cpvRefs?: { costColumn: string; cumulativeColumn: string };
   metricRange: { firstColumn: string; lastColumn: string; targetColumn?: string; columns?: string[] };
   dates: Array<{ date: string; value: number; column?: string }>; // 양수 날짜값(오름차순)
 };
@@ -79,6 +83,16 @@ export type AuditResult = {
   h: { ok: number; manualKept: number; emptyOk: number; valueOnly: number; errorCells: number; emptyButData: number };
   inc: { ok: number; emptyOk: number; errorCells: number; mismatch: number; blankExpected: number };
   formulaShape: { hInvalid: number; hManual: number; incInvalid: number };
+  /**
+   * CPV(J) 감사. 2026-09-29 추가 — 그전까진 누적(H)·증분(I)만 봐서 "CPV 수식 괜찮냐"에
+   * 답할 수단이 아예 없었다(사람이 셀을 눈으로 찍어볼 수밖에).
+   *   · invalid      — 기대 수식과 다른 형태(수기 덮어쓰기 포함)
+   *   · zeroWithCost — 비용이 있는데 누적이 0/빈칸이라 **CPV 가 0원으로 표시되는** 행.
+   *     0원은 '계산 불가'지 '최고 효율'이 아니다 — CPV 오름차순 정렬에서 맨 위로 올라온다.
+   *     수식 파손이 아니라 **표시 설계 문제**라 따로 센다.
+   */
+  cpv: { ok: number; invalid: number; emptyCost: number; zeroWithCost: number };
+  cpvInvalidRows: Array<{ row: number; label: string; actual: string }>;
   formulaDiagnostics: Array<{ row: number; actual: string; expected: string }>;
   /**
    * H수식형태 오류 행의 **원인 판별용** 상세 (JSON 응답 전용 — Slack 메시지에는 안 들어간다).
@@ -293,6 +307,20 @@ export function expectedCumulativeFormula(
   return `=IF(COUNT(${firstColumn}${row}:${lastColumn}${row})=0,"",MAX(${firstColumn}${row}:${lastColumn}${row}))`;
 }
 
+/**
+ * CPV 기대 수식. 비용(G) / 누적(H).
+ * ⚠️ 누적이 0이면 0 을 쓴다 — 시트에 실제로 들어 있는 형태이고, 이 감사는 **현행 수식과의
+ *    일치**만 본다. 0 표시가 타당한지는 zeroWithCost 로 따로 센다(시트 수식 변경은 사람 레인).
+ */
+export function expectedCpvFormula(
+  row: number,
+  refs: { costColumn: string; cumulativeColumn: string },
+): string {
+  const g = `${refs.costColumn}${row}`;
+  const h = `${refs.cumulativeColumn}${row}`;
+  return `=IF(${g}="","",IF(N(${h})=0,0,IFERROR(${g}/${h},"?")))`;
+}
+
 export function expectedIncrementFormula(
   row: number,
   { firstColumn, lastColumn, targetColumn }: SheetAuditRow["metricRange"],
@@ -423,6 +451,8 @@ export function auditRows(
     h: { ok: 0, manualKept: 0, emptyOk: 0, valueOnly: 0, errorCells: 0, emptyButData: 0 },
     inc: { ok: 0, emptyOk: 0, errorCells: 0, mismatch: 0, blankExpected: 0 },
     formulaShape: { hInvalid: 0, hManual: 0, incInvalid: 0 },
+    cpv: { ok: 0, invalid: 0, emptyCost: 0, zeroWithCost: 0 },
+    cpvInvalidRows: [],
     hInvalidRows: [],
     formulaDiagnostics: [],
     anomalies: [],
@@ -442,6 +472,31 @@ export function auditRows(
   for (const row of rows) {
     const positives = row.dates.map((d) => d.value);
     const rowMax = positives.length ? Math.max(...positives) : null;
+
+    // ── CPV(J) ──────────────────────────────────────────────────
+    if (row.sourceRow && row.cpvFormula !== undefined && row.cpvRefs) {
+      const costNum = typeof row.cost === "number" ? row.cost
+        : typeof row.cost === "string" && row.cost.trim() !== "" ? Number(row.cost.replace(/[^0-9.-]/g, ""))
+        : null;
+      if (costNum === null || !Number.isFinite(costNum) || costNum === 0) {
+        res.cpv.emptyCost += 1;
+      } else if (rowMax === null || rowMax <= 0) {
+        // 비용은 있는데 누적이 0 → 수식대로면 CPV 가 0원으로 표시된다.
+        res.cpv.zeroWithCost += 1;
+      }
+      if (sameFormula(row.cpvFormula, expectedCpvFormula(row.sourceRow, row.cpvRefs))) {
+        res.cpv.ok += 1;
+      } else {
+        res.cpv.invalid += 1;
+        if (res.cpvInvalidRows.length < H_INVALID_DETAIL_CAP) {
+          res.cpvInvalidRows.push({
+            row: row.sourceRow,
+            label: row.label,
+            actual: typeof row.cpvFormula === "string" ? row.cpvFormula.slice(0, 120) : String(row.cpvFormula),
+          });
+        }
+      }
+    }
 
     // 값이 맞는지와 수식이 살아 있는지는 별개다. 날짜 이력이 있는 H 숫자 덮어쓰기와
     // I의 `=""` 스텁은 다음 날짜 값부터 갱신이 멈추므로 즉시 경고한다.
