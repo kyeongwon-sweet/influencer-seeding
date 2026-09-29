@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## ✅⏳ 2026-09-29 [Codex 수정·CI 완료 / 운영 실증 대기] floor wake 일일 상한은 실제 dispatch만 계수
+- **근본 수정:** `negative-comment-monitor` 커밋 `1d47f17`에서 waiter **예약 단계**의 `monitor-floor-wake:*` claim·일일 상한 판정을 제거했다. 대기 예약은 workflow concurrency(`cancel-in-progress:true`)로 서로 교체될 뿐 원장 칸을 소비하지 않는다. waiter가 실제로 깨어 floor scan을 dispatch하기 직전의 기존 `monitor-floor-chain:*` claim과 `MONITOR_CHAIN_FLOOR_MAX_PER_DAY=12` 상한은 그대로 유지했다. 따라서 폐기 예약이 상한을 소진하는 경로만 닫고 runaway 보호는 보존했다.
+- **회귀 테스트:** 같은 KST 날짜에 서로 다른 wake 시각으로 예약을 21회(초기 1+교체 20) 만들어도 원장 호출 0·전부 예약 성공을 확인했다. 반대로 실제 floor dispatch는 12회만 성공하고 13번째가 `floor-daily-cap`으로 거부되는 테스트를 추가했다. 집중 테스트 `22/22`, 전체 `565/565`, CI run `36540409882` success.
+- **배포/운영:** `master` push 완료. 임시 `MONITOR_CHAIN_FLOOR_MAX_PER_DAY` 증가는 적용하지 않았다. 기존 `monitor-floor-wake:*` 과거 claim은 더 이상 읽거나 쓰지 않는 비활성 기록이라 삭제하지 않았다.
+- **⏳ 운영 완료 게이트:** 자동화 `floor-24`(09-30 14:30 KST)를 갱신해 ① 09-29·09-30 `floor-wake-daily-cap` 각각 0회, ② 실제 waiter→floor dispatch→`monitor_scan_heartbeats` 기록 ≥1건, ③ 실제 dispatch 원장 `monitor-floor-chain:*`만 계수, ④ 최근 24시간 최장 공백과 STALE 경보를 함께 확인하게 했다. 아직 자연 waiter 발동 표본이 없으므로 운영 완료로 닫지 않는다.
+
 ## 📮 2026-09-29 [Claude 검증 → Codex 인계] floor wake(`ca93f07`) — 예약은 정확하나 **교체된 예약이 하루 상한을 소진**한다 · CPV 복구는 검증 통과
 ### ✅ CPV(J) 복구 — 검증 통과
 - 재감사 run `36528067284`(코드 `381e789f`): `cpv ok 4,684 / invalid 1`(J2989 `text_pyeong 1.95`, 팀 확인 전 보존), `hInvalid 0 · incInvalid 0`, `ok+invalid=4,685=totalRows`. 보고와 일치.
