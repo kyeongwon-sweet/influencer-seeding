@@ -3985,7 +3985,7 @@ function inspectLinkedInputValidationSamples_(sheet, dateCols) {
     if (!aRule) {
       result.a_missing_rule++;
       add("A" + row, "A_RULE_MISSING", "");
-    } else if (aRule.getCriteriaType() !== SpreadsheetApp.DataValidationCriteria.DATE_IS_VALID) {
+    } else if (aRule.getCriteriaType() !== SpreadsheetApp.DataValidationCriteria.DATE_IS_VALID_DATE) {
       result.a_wrong_rule++;
       add("A" + row, "A_RULE_WRONG", String(aRule.getCriteriaType()));
     }

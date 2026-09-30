@@ -687,7 +687,7 @@ test("linked-sheet input-validation repair backs up rules and proves values are 
   assert.match(body, /getDataValidations\(\)\[0\]/);
   assert.match(body, /const rule = rowRules\[col - 1\]/);
   assert.doesNotMatch(body, /getRange\(row, col\)\.getDataValidation/);
-  assert.match(body, /DATE_IS_VALID/);
+  assert.match(body, /DATE_IS_VALID_DATE/);
   assert.match(body, /CUSTOM_FORMULA/);
   assert.match(body, /formula\.indexOf\("#REF!"\)/);
   assert.match(body, /SpreadsheetApp\.create\("linked_input_validation_backup_"/);
