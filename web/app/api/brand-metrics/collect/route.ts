@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { notifyJob } from "@/lib/slack";
+import { parseInstagramInsightResponse, type InstagramMetricResult } from "@/lib/brand-metrics-instagram";
 
 export const maxDuration = 60; // 백필(?days=N) 시 여러 날 순차 수집 여유
 
@@ -55,11 +56,21 @@ async function fetchYouTubeMetrics(dateStr: string) {
 }
 
 // ── Instagram Graph API ────────────────────────────────────────────────────
-async function fetchInstagramMetrics(dateStr: string) {
+async function fetchInstagramMetrics(dateStr: string): Promise<InstagramMetricResult> {
   const accessToken = process.env.INSTAGRAM_ACCESS_TOKEN;
   const userId      = process.env.INSTAGRAM_USER_ID;
 
-  if (!accessToken || !userId) return null;
+  if (!accessToken || !userId) {
+    return {
+      ig_profile_views: null,
+      error: {
+        httpStatus: 500,
+        code: null,
+        type: "missing_configuration",
+        message: "INSTAGRAM_ACCESS_TOKEN / INSTAGRAM_USER_ID is missing",
+      },
+    };
+  }
 
   // since/until은 Unix timestamp (period=day 기준 하루)
   const since = Math.floor(new Date(dateStr + "T00:00:00+09:00").getTime() / 1000);
@@ -76,22 +87,24 @@ async function fetchInstagramMetrics(dateStr: string) {
   url.searchParams.set("period",       "day");
   url.searchParams.set("since",        String(since));
   url.searchParams.set("until",        String(until));
-  url.searchParams.set("access_token", accessToken);
-
-  const res = await fetch(url.toString());
-  if (!res.ok) return null;
-
-  const json = await res.json();
-  const metrics: Record<string, number> = {};
-  for (const item of json.data ?? []) {
-    // metric_type=total_value 응답은 item.total_value.value 형태
-    const value = item.total_value?.value ?? null;
-    if (value !== null) metrics[item.name] = value;
+  try {
+    const res = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    });
+    const payload = await res.json().catch(() => ({}));
+    return parseInstagramInsightResponse(res.status, payload);
+  } catch {
+    return {
+      ig_profile_views: null,
+      error: {
+        httpStatus: 0,
+        code: null,
+        type: "network_error",
+        message: "Instagram Graph API network error",
+      },
+    };
   }
-
-  return {
-    ig_profile_views: metrics["profile_views"] ?? null,
-  };
 }
 
 // ── Handler ────────────────────────────────────────────────────────────────
@@ -106,6 +119,13 @@ export async function POST(req: NextRequest) {
   const days = Math.min(30, Math.max(1, Number.isFinite(daysParam) ? daysParam : 1));
 
   const rows: Record<string, unknown>[] = [];
+  const instagramFailures: Array<{
+    measured_at: string;
+    httpStatus: number;
+    code: number | null;
+    type: string | null;
+    message: string;
+  }> = [];
   for (let back = 1; back <= days; back++) {
     const kst = new Date(Date.now() + 9 * 3600 * 1000);
     kst.setDate(kst.getDate() - back);
@@ -119,21 +139,59 @@ export async function POST(req: NextRequest) {
       yt_views:          yt?.yt_views          ?? null,
       yt_unique_viewers: yt?.yt_unique_viewers ?? null,
       yt_search_views:   yt?.yt_search_views   ?? null,
-      ig_profile_views:  ig?.ig_profile_views  ?? null,
+      ig_profile_views:  ig.ig_profile_views,
     });
+    if (ig.error) instagramFailures.push({ measured_at: dateStr, ...ig.error });
   }
 
+  const allInstagramNull = rows.every((row) => row.ig_profile_views == null);
+  if (allInstagramNull) {
+    const first = instagramFailures[0];
+    const detail = first
+      ? `HTTP ${first.httpStatus}${first.code == null ? "" : ` / Meta ${first.code}`} · ${first.message}`
+      : "profile_views가 모든 날짜에서 null";
+    await notifyJob("브랜드 지표", "fail", `인스타 프로필 방문 전부 미수집: ${detail}`);
+    return NextResponse.json({
+      ok: false,
+      collected: 0,
+      attempted: rows.length,
+      instagram: { allNull: true, failures: instagramFailures },
+    }, { status: 502 });
+  }
+
+  // 오류 날짜의 null을 기존 실측 위에 덮지 않는다. PostgREST의 defaultToNull=false와
+  // 함께 실제로 측정된 필드만 갱신한다(0은 유효 실측이라 보존).
+  const writeRows = rows.map((row) => Object.fromEntries(
+    Object.entries(row).filter(([key, value]) => key === "measured_at" || value != null),
+  ));
   const supabase = getServerSupabase();
   const { error } = await supabase
     .from("brand_daily_metrics")
-    .upsert(rows, { onConflict: "measured_at" });
+    .upsert(writeRows, { onConflict: "measured_at", defaultToNull: false });
 
   if (error) {
     await notifyJob("브랜드 지표", "fail", `DB 저장 실패: ${error.message}`);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+  if (instagramFailures.length > 0) {
+    const first = instagramFailures[0];
+    await notifyJob(
+      "브랜드 지표",
+      "fail",
+      `인스타 일부 미수집 ${instagramFailures.length}/${rows.length}: HTTP ${first.httpStatus}`
+      + `${first.code == null ? "" : ` / Meta ${first.code}`} · ${first.message}`,
+    );
+    return NextResponse.json({
+      ok: false,
+      partial: true,
+      collected: rows.length - instagramFailures.length,
+      attempted: rows.length,
+      instagram: { allNull: false, failures: instagramFailures },
+      rows,
+    }, { status: 502 });
+  }
   await notifyJob("브랜드 지표", "ok", `${rows.length}일 수집 (인스타/유튜브)`);
-  return NextResponse.json({ ok: true, collected: rows.length, rows });
+  return NextResponse.json({ ok: true, collected: rows.length, rows, instagram: { allNull: false, failures: [] } });
 }
 
 // Vercel 크론은 GET으로 호출 → POST와 동일 처리 (body 미사용, ?days= 쿼리만 사용)

@@ -1,0 +1,139 @@
+type SheetCell = string | number | null | undefined;
+
+export type B2bDayValues = {
+  order: number;
+  profit: number | null;
+  ad: number | null;
+  contrib: number | null;
+};
+
+function toNum(value: SheetCell): number | null {
+  if (value == null || value === "") return null;
+  if (typeof value === "number") return Number.isFinite(value) ? Math.round(value) : null;
+  const normalized = String(value).replace(/[,\s₩]/g, "").replace(/^\((.+)\)$/, "-$1").trim();
+  if (!normalized || normalized === "-" || normalized.startsWith("#")) return null;
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? Math.round(parsed) : null;
+}
+
+function validDate(year: number, month: number, day: number): string | null {
+  const candidate = new Date(Date.UTC(year, month - 1, day));
+  if (
+    candidate.getUTCFullYear() !== year
+    || candidate.getUTCMonth() !== month - 1
+    || candidate.getUTCDate() !== day
+  ) return null;
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+export function parseB2bDate(cell: SheetCell, nowKST = new Date(Date.now() + 9 * 3_600_000)): string | null {
+  if (typeof cell === "number" && Number.isFinite(cell) && cell >= 30_000 && cell <= 80_000) {
+    const date = new Date(Date.UTC(1899, 11, 30) + Math.round(cell) * 86_400_000);
+    return validDate(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
+  }
+  if (typeof cell !== "string") return null;
+  const value = cell.trim();
+
+  const ymd = value.match(/^(\d{2}|\d{4})\s*[.\/-]\s*(\d{1,2})\s*[.\/-]\s*(\d{1,2})(?:\D.*)?$/);
+  if (ymd) {
+    const rawYear = Number(ymd[1]);
+    const year = rawYear < 100 ? 2000 + rawYear : rawYear;
+    return validDate(year, Number(ymd[2]), Number(ymd[3]));
+  }
+
+  const mdy = value.match(/^(\d{1,2})\s*[.\/-]\s*(\d{1,2})(?:\s*[.\/-]\s*(\d{4}))?$/);
+  if (!mdy) return null;
+  const month = Number(mdy[1]);
+  const day = Number(mdy[2]);
+  const currentYear = nowKST.getUTCFullYear();
+  const currentMonth = nowKST.getUTCMonth() + 1;
+  const year = mdy[3]
+    ? Number(mdy[3])
+    : month - currentMonth > 6
+      ? currentYear - 1
+      : currentMonth - month > 6
+        ? currentYear + 1
+        : currentYear;
+  return validDate(year, month, day);
+}
+
+function findCell(row: SheetCell[], predicate: (value: string) => boolean): number {
+  return row.findIndex((cell) => typeof cell === "string" && predicate(cell.trim()));
+}
+
+function detectDateColumn(rows: SheetCell[][], headerIndex: number, orderColumn: number, nowKST: Date): number {
+  const candidates = Array.from({ length: Math.max(0, orderColumn) }, (_, index) => index);
+  let best = -1;
+  let bestScore = 0;
+  for (const column of candidates) {
+    let score = 0;
+    for (let row = headerIndex + 1; row < Math.min(rows.length, headerIndex + 80); row++) {
+      if (parseB2bDate(rows[row]?.[column], nowKST)) score++;
+    }
+    if (score > bestScore) {
+      best = column;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+export function parseB2bSheetRows(
+  rows: SheetCell[][],
+  options: { nowKST?: Date; maxDate?: string } = {},
+): Map<string, B2bDayValues> {
+  const nowKST = options.nowKST ?? new Date(Date.now() + 9 * 3_600_000);
+  const out = new Map<string, B2bDayValues>();
+  const markerIndex = rows.findIndex((row) => row.some(
+    (cell) => typeof cell === "string" && cell.includes("일자별 현황"),
+  ));
+
+  let headerIndex = -1;
+  let cvsColumn = -1;
+  let b2bColumn = -1;
+  let profitColumn = -1;
+  let adColumn = -1;
+  let contributionColumn = -1;
+
+  for (let row = Math.max(0, markerIndex); row < rows.length; row++) {
+    const cvs = findCell(rows[row], (value) => value === "CVS 발주량");
+    const b2b = findCell(rows[row], (value) => value === "B2B 발주량");
+    if (cvs < 0 || b2b < 0) continue;
+    headerIndex = row;
+    cvsColumn = cvs;
+    b2bColumn = b2b;
+    profitColumn = findCell(rows[row], (value) => value.includes("이익") && value.includes("원"));
+    adColumn = findCell(rows[row], (value) => value === "전체 광고비" || value === "인지 광고비");
+    contributionColumn = findCell(rows[row], (value) => value.startsWith("CVS 손익"));
+    break;
+  }
+  if (headerIndex < 0) return out;
+
+  const dateColumn = detectDateColumn(rows, headerIndex, cvsColumn, nowKST);
+  if (dateColumn < 0) return out;
+
+  let started = false;
+  let gap = 0;
+  for (let row = headerIndex + 1; row < rows.length; row++) {
+    const date = parseB2bDate(rows[row]?.[dateColumn], nowKST);
+    if (!date) {
+      if (started && ++gap > 8) break;
+      continue;
+    }
+    gap = 0;
+    started = true;
+    if (options.maxDate && date > options.maxDate) continue;
+    out.set(date, {
+      order: (toNum(rows[row]?.[cvsColumn]) ?? 0) + (toNum(rows[row]?.[b2bColumn]) ?? 0),
+      profit: profitColumn >= 0 ? toNum(rows[row]?.[profitColumn]) : null,
+      ad: adColumn >= 0 ? toNum(rows[row]?.[adColumn]) : null,
+      contrib: contributionColumn >= 0 ? toNum(rows[row]?.[contributionColumn]) : null,
+    });
+  }
+  return out;
+}
+
+export function yesterdayKST(nowMs = Date.now()): string {
+  const today = new Date(nowMs + 9 * 3_600_000).toISOString().slice(0, 10);
+  return new Date(Date.parse(`${today}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+}

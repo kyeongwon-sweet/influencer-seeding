@@ -3,6 +3,7 @@ import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { fetchSheetTabValuesByTitle } from "@/lib/google-sheets";
 import { notifyJob } from "@/lib/slack";
+import { parseB2bSheetRows, yesterdayKST, type B2bDayValues } from "@/lib/b2b-sheet";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -14,72 +15,23 @@ const SPREADSHEET_ID = "1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s";
 const DUMBUK_TAB = "인지_듬뿍바";   // → dumbuk_* (대시보드 '듬뿍바' 칸)
 const JJONDEUK_TAB = "인지_쫀득바"; // → jjondeuk_* (대시보드 '쫀득바' 칸)
 
-function toNum(v: string | number | null | undefined): number | null {
-  if (v == null || v === "") return null;
-  if (typeof v === "number") return Math.round(v);
-  const s = String(v).replace(/[,\s₩]/g, "").replace(/^\((.+)\)$/, "-$1").trim();
-  if (s === "" || s === "-" || s.startsWith("#")) return null;
-  const n = parseFloat(s);
-  return isNaN(n) ? null : Math.round(n);
-}
-
-type DayVals = { order: number; profit: number | null; ad: number | null; contrib: number | null };
-
 export async function GET(req: NextRequest) {
   if (checkCronAuth(req) !== "ok") { // fail-closed: CRON_SECRET 미설정 시에도 차단(무인증 오픈 방지)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
-  const curYear = nowKST.getUTCFullYear(), curMonth = nowKST.getUTCMonth() + 1;
-  const yearOf = (mo: number) => (mo - curMonth > 6 ? curYear - 1 : curMonth - mo > 6 ? curYear + 1 : curYear);
-  const parseMD = (cell: string | number | null): { mo: number; day: number } | null => {
-    const s = typeof cell === "string" ? cell : ""; // 월 합계행(26.05 등)은 number → 제외
-    const m = s.match(/(\d{1,2})\s*[.\/-]\s*(\d{1,2})/);
-    if (!m) return null;
-    const mo = Number(m[1]), day = Number(m[2]);
-    return mo >= 1 && mo <= 12 && day >= 1 && day <= 31 ? { mo, day } : null;
-  };
+  const expectedLast = yesterdayKST();
 
   // 한 제품 탭의 [일자별 현황] 섹션을 날짜별로 파싱
-  const parseTab = async (title: string): Promise<Map<string, DayVals>> => {
-    const out = new Map<string, DayVals>();
-    const rr = await fetchSheetTabValuesByTitle(SPREADSHEET_ID, title, "A1:T160");
-    const mk = rr.findIndex((r) => r.some((c) => typeof c === "string" && c.includes("일자별 현황")));
-    const find = (row: (string | number | null)[], pred: (s: string) => boolean) =>
-      row.findIndex((c) => typeof c === "string" && pred(c.trim()));
-    // 마커 이후 'CVS 발주량'+'B2B 발주량' 둘 다 있는 헤더 행(월요약 섹션과 구분)
-    let h = -1, cCVS = -1, cB2B = -1, cDate = -1, cProfit = -1, cAd = -1, cContrib = -1;
-    for (let i = Math.max(0, mk); i < rr.length; i++) {
-      const ci = find(rr[i], (s) => s === "CVS 발주량"), bi = find(rr[i], (s) => s === "B2B 발주량");
-      if (ci >= 0 && bi >= 0) {
-        h = i; cCVS = ci; cB2B = bi;
-        const di = find(rr[i], (s) => s === "날짜"); cDate = di >= 0 ? di : ci - 1;
-        cProfit = find(rr[i], (s) => s.includes("이익") && s.includes("원")); // "○○바 이익(300원)"
-        cAd = find(rr[i], (s) => s === "전체 광고비");
-        cContrib = find(rr[i], (s) => s === "CVS 손익");
-        break;
-      }
-    }
-    if (h < 0) return out;
-    let started = false, gap = 0;
-    for (let i = h + 1; i < rr.length; i++) {
-      const md = parseMD(rr[i][cDate]);
-      if (!md) { if (started && ++gap > 8) break; continue; }
-      gap = 0; started = true;
-      const date = `${yearOf(md.mo)}-${String(md.mo).padStart(2, "0")}-${String(md.day).padStart(2, "0")}`;
-      const order = (toNum(rr[i][cCVS]) ?? 0) + (toNum(rr[i][cB2B]) ?? 0);
-      out.set(date, {
-        order,
-        profit: cProfit >= 0 ? toNum(rr[i][cProfit]) : null,
-        ad: cAd >= 0 ? toNum(rr[i][cAd]) : null,
-        contrib: cContrib >= 0 ? toNum(rr[i][cContrib]) : null,
-      });
-    }
-    return out;
+  const parseTab = async (title: string): Promise<Map<string, B2bDayValues>> => {
+    // 쫀득바 일별 섹션은 200행 이후까지 늘어났고, 2026-07 개편 뒤 실제 날짜가
+    // '날짜' 헤더 오른쪽 열로 이동했다. 고정 위치 대신 값이 날짜인 열을 탐지한다.
+    const rows = await fetchSheetTabValuesByTitle(SPREADSHEET_ID, title, "A1:T500");
+    return parseB2bSheetRows(rows, { nowKST, maxDate: expectedLast });
   };
 
-  let dumbuk: Map<string, DayVals>, jjondeuk: Map<string, DayVals>;
+  let dumbuk: Map<string, B2bDayValues>, jjondeuk: Map<string, B2bDayValues>;
   try {
     [dumbuk, jjondeuk] = await Promise.all([parseTab(DUMBUK_TAB), parseTab(JJONDEUK_TAB)]);
   } catch (e) {
@@ -114,6 +66,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "일자별 데이터 행을 찾지 못했습니다." }, { status: 500 });
   }
 
+  const lastDate = records[records.length - 1].date;
+  if (lastDate !== expectedLast) {
+    const message = `최신 일자 불일치: expected=${expectedLast}, actual=${lastDate}`;
+    await notifyJob("B2B 발주량", "fail", message);
+    return NextResponse.json({ error: message, expectedLast, last: lastDate }, { status: 502 });
+  }
+
   const supabase = getServerSupabase();
   const { error } = await supabase.from("b2b_daily_metrics").upsert(records, { onConflict: "date" });
   if (error) {
@@ -122,5 +81,5 @@ export async function GET(req: NextRequest) {
   }
 
   await notifyJob("B2B 발주량", "ok", `${records.length}일 (${records[0].date} ~ ${records[records.length - 1].date})`);
-  return NextResponse.json({ ok: true, count: records.length, first: records[0].date, last: records[records.length - 1].date });
+  return NextResponse.json({ ok: true, count: records.length, first: records[0].date, last: lastDate });
 }

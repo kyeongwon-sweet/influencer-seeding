@@ -1,0 +1,42 @@
+name: Dashboard Metrics Recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      brand_days:
+        description: "인스타 프로필 방문 백필 일수(1~30)"
+        required: true
+        default: "30"
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    env:
+      APP_URL: "https://influencer-seeding-mu.vercel.app"
+    steps:
+      - name: Validate input
+        shell: bash
+        run: |
+          days='${{ inputs.brand_days }}'
+          [[ "$days" =~ ^[0-9]+$ ]] && [ "$days" -ge 1 ] && [ "$days" -le 30 ]
+
+      - name: Backfill brand metrics
+        shell: bash
+        run: |
+          code=$(curl -sS -o /tmp/brand.json -w "%{http_code}" \
+            -X POST "$APP_URL/api/brand-metrics/collect?days=${{ inputs.brand_days }}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          cat /tmp/brand.json; echo "HTTP $code"
+          [ "${code:0:1}" = "2" ]
+
+      - name: Refresh B2B metrics
+        shell: bash
+        run: |
+          code=$(curl -sS -o /tmp/b2b.json -w "%{http_code}" \
+            "$APP_URL/api/b2b-revenue/fetch" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          cat /tmp/b2b.json; echo "HTTP $code"
+          [ "${code:0:1}" = "2" ]
