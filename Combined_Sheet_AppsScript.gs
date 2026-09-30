@@ -3878,6 +3878,217 @@ function applyDateInputValidation_(sheet, startCol, numCols) {
   );
 }
 
+function linkedInputFingerprintMix_(hash, text) {
+  const value = String(text == null ? "" : text);
+  let out = hash >>> 0;
+  for (let i = 0; i < value.length; i++) {
+    out = (Math.imul(out ^ value.charCodeAt(i), 16777619)) >>> 0;
+  }
+  return Math.imul(out ^ 31, 16777619) >>> 0;
+}
+
+function inspectLinkedInputValidationState_(sheet, dateCols) {
+  const lastRow = sheet.getLastRow();
+  const rowCount = Math.max(0, lastRow - CONFIG.DATA_START_ROW + 1);
+  const result = {
+    last_row: lastRow,
+    date_column_count: dateCols.length,
+    value_fingerprint: "",
+    a_invalid_values: 0,
+    a_missing_rule: 0,
+    a_wrong_rule: 0,
+    date_missing_rule: 0,
+    date_ref_rule: 0,
+    date_wrong_rule: 0,
+    anomaly_count: 0,
+    anomalies: [],
+  };
+  if (!rowCount) {
+    result.value_fingerprint = "0";
+    return result;
+  }
+
+  let hash = 2166136261;
+  const sampleLimit = 5000;
+  const addAnomaly = function(cell, kind, detail) {
+    result.anomaly_count++;
+    if (result.anomalies.length < sampleLimit) result.anomalies.push([cell, kind, detail || ""]);
+  };
+  const aRange = sheet.getRange(CONFIG.DATA_START_ROW, 1, rowCount, 1);
+  const aValues = aRange.getValues();
+  const aDisplays = aRange.getDisplayValues();
+  const aRules = aRange.getDataValidations();
+  for (let i = 0; i < rowCount; i++) {
+    const row = CONFIG.DATA_START_ROW + i;
+    hash = linkedInputFingerprintMix_(hash, "A" + row + ":" + aDisplays[i][0]);
+    const value = aValues[i][0];
+    if (value !== "" && value != null && (!(value instanceof Date) || isNaN(value.getTime()))) {
+      result.a_invalid_values++;
+      addAnomaly("A" + row, "A_VALUE_NOT_DATE", aDisplays[i][0]);
+    }
+    const rule = aRules[i][0];
+    if (!rule) {
+      result.a_missing_rule++;
+      addAnomaly("A" + row, "A_RULE_MISSING", "");
+    } else if (rule.getCriteriaType() !== SpreadsheetApp.DataValidationCriteria.DATE_IS_VALID) {
+      result.a_wrong_rule++;
+      addAnomaly("A" + row, "A_RULE_WRONG", String(rule.getCriteriaType()));
+    }
+  }
+
+  const chunkRows = 250;
+  let runStart = null;
+  let runEnd = null;
+  const runs = [];
+  dateCols.forEach(function(col) {
+    if (runStart == null) {
+      runStart = col;
+      runEnd = col;
+    } else if (col === runEnd + 1) {
+      runEnd = col;
+    } else {
+      runs.push([runStart, runEnd]);
+      runStart = col;
+      runEnd = col;
+    }
+  });
+  if (runStart != null) runs.push([runStart, runEnd]);
+
+  runs.forEach(function(run) {
+    const width = run[1] - run[0] + 1;
+    for (let offset = 0; offset < rowCount; offset += chunkRows) {
+      const height = Math.min(chunkRows, rowCount - offset);
+      const startRow = CONFIG.DATA_START_ROW + offset;
+      const range = sheet.getRange(startRow, run[0], height, width);
+      const displays = range.getDisplayValues();
+      const rules = range.getDataValidations();
+      for (let r = 0; r < height; r++) {
+        for (let c = 0; c < width; c++) {
+          const row = startRow + r;
+          const col = run[0] + c;
+          const cell = colLetter_(col) + row;
+          hash = linkedInputFingerprintMix_(hash, cell + ":" + displays[r][c]);
+          const rule = rules[r][c];
+          if (!rule) {
+            result.date_missing_rule++;
+            addAnomaly(cell, "DATE_RULE_MISSING", "");
+            continue;
+          }
+          if (rule.getCriteriaType() !== SpreadsheetApp.DataValidationCriteria.CUSTOM_FORMULA) {
+            result.date_wrong_rule++;
+            addAnomaly(cell, "DATE_RULE_WRONG_TYPE", String(rule.getCriteriaType()));
+            continue;
+          }
+          const criteria = rule.getCriteriaValues();
+          const formula = String(criteria && criteria.length ? criteria[0] : "");
+          if (formula.indexOf("#REF!") >= 0) {
+            result.date_ref_rule++;
+            addAnomaly(cell, "DATE_RULE_REF", formula);
+          } else if (formula.indexOf("ISNUMBER") < 0 || formula.indexOf("TODAY()") < 0 || formula.indexOf("$A") < 0) {
+            result.date_wrong_rule++;
+            addAnomaly(cell, "DATE_RULE_WRONG_FORMULA", formula);
+          }
+        }
+      }
+    }
+  });
+  result.value_fingerprint = (hash >>> 0).toString(16);
+  return result;
+}
+
+function repairLinkedInputValidationsWithBackup() {
+  return withDocLock_(function() {
+    return withAutoWriteGuard_(function() {
+      const sheet = getSheet_();
+      const headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, 2).getDisplayValues()[0];
+      if (norm_(headers[0]) !== norm_("업로드일") || norm_(headers[1]).indexOf("url") < 0) {
+        throw new Error("대상 검증 실패: A열=업로드일, B열=게시물URL 헤더가 아닙니다.");
+      }
+      const dateColumns = linkedDateColumns_(sheet);
+      const cols = Object.keys(dateColumns).map(Number).sort(function(a, b) { return a - b; });
+      if (!cols.length) throw new Error("일자별 데이터 열을 찾지 못했습니다.");
+      const expectedLastRow = sheet.getLastRow();
+      const before = inspectLinkedInputValidationState_(sheet, cols);
+
+      const stamp = Utilities.formatDate(new Date(), CONFIG.KST_TIMEZONE, "yyyyMMdd_HHmmss");
+      const backup = SpreadsheetApp.create("linked_input_validation_backup_" + stamp, Math.max(20, before.anomalies.length + 2), 3);
+      const summary = backup.getSheets()[0];
+      summary.setName("검사규칙 백업");
+      const summaryRows = [
+        ["item", "before", "note"],
+        ["sheet", sheet.getName(), ""],
+        ["last_row", before.last_row, ""],
+        ["date_column_count", before.date_column_count, ""],
+        ["value_fingerprint", before.value_fingerprint, "수정 전 표시값 지문"],
+        ["a_invalid_values", before.a_invalid_values, ""],
+        ["a_missing_rule", before.a_missing_rule, ""],
+        ["a_wrong_rule", before.a_wrong_rule, ""],
+        ["date_missing_rule", before.date_missing_rule, ""],
+        ["date_ref_rule", before.date_ref_rule, ""],
+        ["date_wrong_rule", before.date_wrong_rule, ""],
+        ["anomaly_count", before.anomaly_count, "샘플 상한 " + before.anomalies.length + "건"],
+      ];
+      summary.getRange(1, 1, summaryRows.length, 3).setValues(summaryRows);
+      if (before.anomalies.length) {
+        const anomalySheet = backup.insertSheet("이상 규칙");
+        anomalySheet.getRange(1, 1, before.anomalies.length + 1, 3)
+          .setValues([["cell", "kind", "detail"]].concat(before.anomalies));
+      }
+
+      assertRowCountStable_(sheet, expectedLastRow, "repairLinkedInputValidationsWithBackup");
+      const rowCount = Math.max(1, sheet.getMaxRows() - CONFIG.DATA_START_ROW + 1);
+      sheet.getRange(CONFIG.DATA_START_ROW, 1, rowCount, 1)
+        .setDataValidation(linkedUploadDateValidationRule_());
+      let start = cols[0], previous = cols[0];
+      for (let i = 1; i <= cols.length; i++) {
+        const col = cols[i];
+        if (i < cols.length && col === previous + 1) {
+          previous = col;
+          continue;
+        }
+        applyDateInputValidation_(sheet, start, previous - start + 1);
+        start = col;
+        previous = col;
+      }
+      SpreadsheetApp.flush();
+      assertRowCountStable_(sheet, expectedLastRow, "repairLinkedInputValidationsWithBackup verify");
+      const after = inspectLinkedInputValidationState_(sheet, cols);
+      if (after.value_fingerprint !== before.value_fingerprint) {
+        throw new Error("검사규칙 수정 전후 표시값 지문이 다릅니다. before=" + before.value_fingerprint + " after=" + after.value_fingerprint);
+      }
+      const remaining = after.a_invalid_values + after.a_missing_rule + after.a_wrong_rule
+        + after.date_missing_rule + after.date_ref_rule + after.date_wrong_rule;
+      if (remaining !== 0) {
+        throw new Error("검사규칙 재검증 실패: 잔여 " + remaining + "건");
+      }
+      const result = {
+        before: {
+          a_invalid_values: before.a_invalid_values,
+          a_missing_rule: before.a_missing_rule,
+          a_wrong_rule: before.a_wrong_rule,
+          date_missing_rule: before.date_missing_rule,
+          date_ref_rule: before.date_ref_rule,
+          date_wrong_rule: before.date_wrong_rule,
+          anomaly_count: before.anomaly_count,
+        },
+        after_remaining: remaining,
+        verified_rows: expectedLastRow - CONFIG.DATA_START_ROW + 1,
+        verified_date_columns: cols.length,
+        value_fingerprint: after.value_fingerprint,
+        backup_id: backup.getId(),
+        backup_url: backup.getUrl(),
+      };
+      Logger.log("linked_input_validation_repair " + JSON.stringify(result));
+      SpreadsheetApp.getActive().toast(
+        "A열·일자별 검사규칙 정리 완료 · 잔여 0건",
+        "✅ 유효성 검사 정리",
+        8
+      );
+      return result;
+    });
+  });
+}
+
 function applyLinkedSheetInputValidation_() {
   const sheet = getSheet_();
   const rowCount = Math.max(1, sheet.getMaxRows() - CONFIG.DATA_START_ROW + 1);

@@ -676,6 +676,24 @@ test("linked-sheet upload dates are written as native dates and existing text da
   assert.doesNotMatch(repairBody, /deleteRow|clearContent/);
 });
 
+test("linked-sheet input-validation repair backs up rules and proves values are unchanged", () => {
+  const start = appsScript.indexOf("function linkedInputFingerprintMix_(hash, text)");
+  const end = appsScript.indexOf("function applyLinkedSheetInputValidation_()", start);
+  const body = appsScript.slice(start, end);
+  assert.notEqual(start, -1);
+  assert.match(body, /function inspectLinkedInputValidationState_\(sheet, dateCols\)/);
+  assert.match(body, /getDataValidations\(\)/);
+  assert.match(body, /DATE_IS_VALID/);
+  assert.match(body, /CUSTOM_FORMULA/);
+  assert.match(body, /formula\.indexOf\("#REF!"\)/);
+  assert.match(body, /SpreadsheetApp\.create\("linked_input_validation_backup_"/);
+  assert.match(body, /setDataValidation\(linkedUploadDateValidationRule_\(\)\)/);
+  assert.match(body, /applyDateInputValidation_\(sheet, start, previous - start \+ 1\)/);
+  assert.match(body, /after\.value_fingerprint !== before\.value_fingerprint/);
+  assert.match(body, /after_remaining: remaining/);
+  assert.doesNotMatch(body, /setValues\(.*dateRange|clearContent|deleteRow/);
+});
+
 test("new date columns receive real dates, display format, and input validation", () => {
   const start = appsScript.indexOf("function fillInsertedDateHeadersOnChange_(e)");
   const end = appsScript.indexOf("function fillInsertedDateHeadersOnChange(e)", start);
