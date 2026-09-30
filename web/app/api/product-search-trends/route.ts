@@ -22,6 +22,7 @@ export async function GET() {
     rows = await fetchSheetTabValues(SHEET_ID, SHEET_GID, "A1:U2000");
   } catch (error) {
     const message = error instanceof Error ? error.message : "시트 네트워크 오류";
+    console.error(`[product-search-trends] ${message}`);
     return NextResponse.json({ error: message }, { status: 502 });
   }
   const result = buildProductSearchTrends(rows, PRODUCT_SEARCH_BRAND_KEY);
