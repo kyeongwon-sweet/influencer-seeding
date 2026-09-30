@@ -4017,6 +4017,15 @@ function inspectLinkedInputValidationSamples_(sheet, dateCols) {
   return result;
 }
 
+function inspectLinkedInputValidationsNow() {
+  const sheet = getSheet_();
+  const dateColumns = linkedDateColumns_(sheet);
+  const cols = Object.keys(dateColumns).map(Number).sort(function(a, b) { return a - b; });
+  const rules = inspectLinkedInputValidationSamples_(sheet, cols);
+  Logger.log("linked_input_validation_diagnostic " + JSON.stringify(rules));
+  return rules;
+}
+
 function repairLinkedInputValidationsWithBackup() {
   return withDocLock_(function() {
     return withAutoWriteGuard_(function() {
@@ -4083,6 +4092,10 @@ function repairLinkedInputValidationsWithBackup() {
       const remaining = afterValues.a_invalid_values + afterRules.a_missing_rule + afterRules.a_wrong_rule
         + afterRules.date_missing_rule + afterRules.date_ref_rule + afterRules.date_wrong_rule;
       if (remaining !== 0) {
+        Logger.log("linked_input_validation_remaining " + JSON.stringify({
+          a_invalid_values: afterValues.a_invalid_values,
+          rules: afterRules,
+        }));
         throw new Error("검사규칙 재검증 실패: 잔여 " + remaining + "건");
       }
       const result = {
