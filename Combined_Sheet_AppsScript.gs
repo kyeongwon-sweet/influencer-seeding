@@ -4017,15 +4017,6 @@ function inspectLinkedInputValidationSamples_(sheet, dateCols) {
   return result;
 }
 
-function inspectLinkedInputValidationsNow() {
-  const sheet = getSheet_();
-  const dateColumns = linkedDateColumns_(sheet);
-  const cols = Object.keys(dateColumns).map(Number).sort(function(a, b) { return a - b; });
-  const rules = inspectLinkedInputValidationSamples_(sheet, cols);
-  Logger.log("linked_input_validation_diagnostic " + JSON.stringify(rules));
-  return rules;
-}
-
 function repairLinkedInputValidationsWithBackup() {
   return withDocLock_(function() {
     return withAutoWriteGuard_(function() {
