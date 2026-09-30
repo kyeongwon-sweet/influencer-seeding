@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## ✅ 2026-09-30 [Codex 운영 반영] 미모지상주의(틱톡) 최종 조회수 갱신·트래킹 종료
+- **대상:** `미모지상주의(틱톡)` · `https://www.tiktok.com/@mimoji_kpop/video/7685007397705846034/` · post id `7711f698-1b24-447e-bd5b-e88c0db95747`.
+- **최종 실측:** 단일 게시물만 Apify(`clockworks/tiktok-scraper`, run `oKQgpgygeEQds0rxb`)로 재측정해 2026-09-30 `play_count=2,087`을 확인했다. 기존 09-28 `2,065` → 09-29 `2,075` → 09-30 `2,087`로 단조 증가하며, 새 행은 자동 실측 의미를 보존해 `manual=false`로 저장했다.
+- **종료 처리:** `ended_at=2026-09-30`, `manual_fields=["ended_at"]`으로 반영했다. 읽기 재검증에서 활성 대상 0건, 통계 시계열 중복/역행 0건을 확인했다.
+- **범위·백업:** 조회수 최종 행 1개와 종료 필드만 변경했고 다른 통계·게시물 필드는 무접촉이다. 자동 종료 사각의 원인이었던 `posted_at=null`은 이번 사용자 요청 범위가 아니어서 그대로 보존했다. 쓰기 전 백업은 `scratchpad/backup_mimoji_tiktok_final_20260930.json`(gitignore)에 있다.
+
 ## ✅ 2026-09-30 [Codex 수정·라이브 반영] 연동시트 A열 업로드일 유효성 오류 완결
 - **원인:** A열에 날짜처럼 보이는 `2026. 7. 24.` 등이 실제로는 **문자열**로 저장돼 있었다. `4ef88c0`에서 검사 규칙은 내장 `requireDate()`로 고쳤지만, 기존 문자열을 실제 날짜로 변환하지 않아 A열과 `ISNUMBER($A행)`을 쓰는 일자별 칸이 함께 `잘못됨`으로 표시됐다. 또한 DB→시트 `fmtVal_("posted_at")`도 문자열을 쓰고 있어 재발 경로가 남아 있었다.
 - **시트 수술:** `normalizeLinkedUploadDatesWithBackup()`를 라이브에 배포·실행해 문자열 날짜 **561건을 실제 Date로 변환**, 561/561 재검증, `remaining_invalid=0`, `formula_skipped=0`. A열 유효성은 전 행을 단일 내장 날짜 규칙으로 통일했다. 외부 백업: `linked_upload_date_backup_20260930_...`, ID `1_dTeVXz7ly2gtQKSyMX_t7EhRxJEComtu6eaicmFVHk`.
