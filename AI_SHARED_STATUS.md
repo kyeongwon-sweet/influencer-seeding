@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## ✅ 2026-09-30 [Codex 수정·라이브 반영] 연동시트 A열 업로드일 유효성 오류 완결
+- **원인:** A열에 날짜처럼 보이는 `2026. 7. 24.` 등이 실제로는 **문자열**로 저장돼 있었다. `4ef88c0`에서 검사 규칙은 내장 `requireDate()`로 고쳤지만, 기존 문자열을 실제 날짜로 변환하지 않아 A열과 `ISNUMBER($A행)`을 쓰는 일자별 칸이 함께 `잘못됨`으로 표시됐다. 또한 DB→시트 `fmtVal_("posted_at")`도 문자열을 쓰고 있어 재발 경로가 남아 있었다.
+- **시트 수술:** `normalizeLinkedUploadDatesWithBackup()`를 라이브에 배포·실행해 문자열 날짜 **561건을 실제 Date로 변환**, 561/561 재검증, `remaining_invalid=0`, `formula_skipped=0`. A열 유효성은 전 행을 단일 내장 날짜 규칙으로 통일했다. 외부 백업: `linked_upload_date_backup_20260930_...`, ID `1_dTeVXz7ly2gtQKSyMX_t7EhRxJEComtu6eaicmFVHk`.
+- **실물 검증:** 대표 `A2532`(`2026. 7. 24.`)의 `입력값은 유효한 날짜여야 합니다` 경고가 사라졌고, 연결된 `DL2532=252,427`도 동일한 `잘못됨` 경고 없이 통과했다.
+- **재발 방지/성능:** `de467f8` 실제 Date 생성·백업·검증, `61d7f00` 단일 열 배치 쓰기로 실행시간 폭주 방지. 앞으로 DB에서 추가되는 `posted_at`도 문자열이 아닌 실제 Date로 쓴다. Apps Script push 후 live pull 일치 검증.
+- **게이트:** web `611/611`, `tsc --noEmit`, production build, pre-push typecheck 통과. formula-audit run `36661866366` success: `hInvalid=0 · incInvalid=0 · errorCells=0 · incMismatch=0 · orphanRows=0`, 범위 `P:EU` 136열. `healthy=false`는 별건인 CPV invalid 16건·기존 stale 3건 때문이며 번 날짜 수정과 무관하다.
+
 ## ✅ 2026-09-30 [Codex 수정·배포·운영복구] B2B 듬뿍바 60일 가짜 0 제거 + 보조지표 실패 표시
 - **시트 실물 판정(읽기 전용):** `인지_듬뿍바`(gid `1033585305`)는 일자별 데이터와 월별 요약이 모두 **2026-07-31에서 끝나며**, 다른 듬뿍바 연속 탭은 없다. 07-31 원본 `CVS 16,560 + B2B 810 = 17,370`이 DB와 일치해 탭·열 매핑을 교차검증했다. 반면 `인지_쫀득바`(gid `1224959784`)의 09-24~09-28은 두 발주량 칸에 **명시적 0**이 들어 있어 실제 0으로 보존해야 한다.
 - **원인/수정:** 누락 행과 빈 셀을 `d?.order ?? 0`으로 합쳐 저장하던 것이 원인이었다. `525ecda7`에서 발주량도 `number | null`로 유지하고, **명시적 0은 0 / 빈칸·날짜 없음은 NULL**로 분리했다. 합계는 존재하는 상품 값만 더하며 양쪽 모두 없을 때만 NULL이다. `fetch/route.ts`도 공용 레코드 생성기를 사용한다.
