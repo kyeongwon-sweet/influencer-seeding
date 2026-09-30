@@ -3977,7 +3977,10 @@ function inspectLinkedInputValidationSamples_(sheet, dateCols) {
   };
 
   rows.forEach(function(row) {
-    const aRule = sheet.getRange(row, 1).getDataValidation();
+    // 셀마다 getDataValidation()을 호출하면 표본이 2천 셀뿐이어도 원격 호출이
+    // 2천 번 발생한다. 표본 행 전체를 한 번에 읽어 같은 검사를 수행한다.
+    const rowRules = sheet.getRange(row, 1, 1, dateCols[dateCols.length - 1]).getDataValidations()[0];
+    const aRule = rowRules[0];
     result.probe_cells++;
     if (!aRule) {
       result.a_missing_rule++;
@@ -3988,7 +3991,7 @@ function inspectLinkedInputValidationSamples_(sheet, dateCols) {
     }
     dateCols.forEach(function(col) {
       const cell = colLetter_(col) + row;
-      const rule = sheet.getRange(row, col).getDataValidation();
+      const rule = rowRules[col - 1];
       result.probe_cells++;
       if (!rule) {
         result.date_missing_rule++;

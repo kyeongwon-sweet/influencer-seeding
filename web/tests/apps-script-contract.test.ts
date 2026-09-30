@@ -684,7 +684,9 @@ test("linked-sheet input-validation repair backs up rules and proves values are 
   assert.match(body, /function inspectLinkedInputValueState_\(sheet, dateCols\)/);
   assert.match(body, /function inspectLinkedInputValidationSamples_\(sheet, dateCols\)/);
   assert.match(body, /for \(let row = CONFIG\.DATA_START_ROW; row <= maxRows; row \+= 250\)/);
-  assert.match(body, /getDataValidation\(\)/);
+  assert.match(body, /getDataValidations\(\)\[0\]/);
+  assert.match(body, /const rule = rowRules\[col - 1\]/);
+  assert.doesNotMatch(body, /getRange\(row, col\)\.getDataValidation/);
   assert.match(body, /DATE_IS_VALID/);
   assert.match(body, /CUSTOM_FORMULA/);
   assert.match(body, /formula\.indexOf\("#REF!"\)/);
