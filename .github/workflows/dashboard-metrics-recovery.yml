@@ -33,6 +33,7 @@ jobs:
           [ "${code:0:1}" = "2" ]
 
       - name: Refresh B2B metrics
+        if: always()
         shell: bash
         run: |
           code=$(curl -sS -o /tmp/b2b.json -w "%{http_code}" \
