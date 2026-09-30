@@ -4,6 +4,7 @@ import { getServerSupabase } from "@/lib/supabase-server";
 import { fetchSheetTabValuesByTitle } from "@/lib/google-sheets";
 import { notifyJob } from "@/lib/slack";
 import {
+  buildB2bDailyRecords,
   diagnoseB2bSheetRows,
   parseB2bSheetRows,
   yesterdayKST,
@@ -48,26 +49,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 502 });
   }
 
-  const dates = [...new Set([...dumbuk.keys(), ...jjondeuk.keys()])].sort((a, b) => a.localeCompare(b));
-  const records = dates.map((date) => {
-    const d = dumbuk.get(date), j = jjondeuk.get(date);
-    return {
-      date,
-      dumbuk_order: d?.order ?? 0,
-      dumbuk_profit: d?.profit ?? null,
-      dumbuk_conv_pl: null,        // 일별 섹션에 전환손익 컬럼 없음 → 통일해서 비움
-      dumbuk_ad_cost: d?.ad ?? null,
-      dumbuk_contribution: d?.contrib ?? null,
-      jjondeuk_order: j?.order ?? 0,
-      jjondeuk_profit: j?.profit ?? null,
-      jjondeuk_conv_pl: null,
-      jjondeuk_ad_cost: j?.ad ?? null,
-      jjondeuk_contribution: j?.contrib ?? null,
-      total_order: (d?.order ?? 0) + (j?.order ?? 0),
-      total_contribution: (d?.contrib ?? 0) + (j?.contrib ?? 0),
-      updated_at: new Date().toISOString(),
-    };
-  });
+  const records = buildB2bDailyRecords(dumbuk, jjondeuk);
 
   if (records.length === 0) {
     await notifyJob("B2B 발주량", "fail", "일자별 데이터 행을 찾지 못함");

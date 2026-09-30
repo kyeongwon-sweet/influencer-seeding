@@ -12,6 +12,7 @@ import { dedupeRowsById } from "@/lib/dedupe-rows";
 import { matchesSearch } from "@/lib/search-filter";
 import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, decodeStatsV2, INIT_FILTERS, CHANNEL_TYPES, STICKY_COL_ORDER, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, getFilteredStats, pickRangeStats, formatTimestamp, isBannerChannel, normalizeChannelType, fmtChannelType, updatePostLatestStats, viewIncrement, safeIncrement, pickMetric, productLabel, effectiveReach, bannerDailyMetric, assetNameOf, weekKeyOf, pearson, alignedPairs, bestLag, alignMulti, multipleR2, parseCsvLine } from "./lib";
 import { GOOGLE_TREND_GROUPS } from "@/lib/google-trend-groups";
+import { readJsonResponse } from "@/lib/http-json";
 import CorrelationPanel from "./components/CorrelationPanel";
 import DayOfWeekPanel, { type DowData } from "./components/DayOfWeekPanel";
 import CompanyPanel, { type CompanyData } from "./components/CompanyPanel";
@@ -70,6 +71,7 @@ export default function MonitoringPage() {
   const [hoverUpdatedId, setHoverUpdatedId] = useState<string | null>(null);
   const [collectedAtLabel, setCollectedAtLabel] = useState<string>("");
   const [mainAdCosts, setMainAdCosts] = useState<{ date: string; total_cost: number }[]>([]);
+  const [auxErrors, setAuxErrors] = useState<Set<string>>(new Set());
   const previousPlayCountsRef = useRef<Map<string, number | null>>(new Map());
   const runningJobIdRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -497,7 +499,8 @@ export default function MonitoringPage() {
 
   // 보조 그래프 데이터(검색량·B2B·광고비 등) 로드 실패 시 1회만 알림 (토스트 도배 방지)
   const auxErrShown = useRef(false);
-  const auxFail = () => {
+  const auxFail = (label: string) => () => {
+    setAuxErrors(previous => new Set(previous).add(label));
     if (auxErrShown.current) return;
     auxErrShown.current = true;
     toast("일부 그래프 데이터를 불러오지 못했어요", "error");
@@ -525,25 +528,25 @@ export default function MonitoringPage() {
 
   useEffect(() => {
     fetch("/api/brand-metrics")
-      .then(r => r.ok ? r.json() : [])
+      .then(r => readJsonResponse<unknown>(r))
       .then(data => setBrandMetrics(Array.isArray(data) ? data : []))
-      .catch(auxFail);
+      .catch(auxFail("브랜드 지표"));
     fetch("/api/youtube-trends")
-      .then(r => r.ok ? r.json() : [])
+      .then(r => readJsonResponse<unknown>(r))
       .then(data => setYtTrends(Array.isArray(data) ? data : []))
-      .catch(auxFail);
+      .catch(auxFail("유튜브 검색량"));
     fetch("/api/google-trends")
-      .then(r => r.ok ? r.json() : [])
+      .then(r => readJsonResponse<unknown>(r))
       .then(data => setGoogleTrends(Array.isArray(data) ? data : []))
-      .catch(auxFail);
+      .catch(auxFail("구글 검색량"));
     fetch("/api/b2b-revenue")
-      .then(r => r.ok ? r.json() : { rows: [] })
+      .then(r => readJsonResponse<{ rows?: unknown }>(r))
       .then(d => setB2bDaily(Array.isArray(d?.rows) ? d.rows : []))
-      .catch(auxFail);
+      .catch(auxFail("B2B 발주량"));
     fetch("/api/monitoring/last-update")
-      .then(r => r.ok ? r.json() : { at: null, byEmail: null })
+      .then(r => readJsonResponse<{ at?: string | null; byEmail?: string | null }>(r))
       .then(d => setLastUpdate({ at: d?.at ?? null, byEmail: d?.byEmail ?? null }))
-      .catch(auxFail);
+      .catch(auxFail("마지막 업데이트"));
   }, []);
 
   // '그외' 시리즈(인스타 프로필 방문 / 유튜브 검색량)는 기본 노출(ON). 별도 초기 숨김 처리 없음.
@@ -551,13 +554,13 @@ export default function MonitoringPage() {
   // 상품별 검색량 (Google Sheet)
   useEffect(() => {
     fetch("/api/product-search-trends")
-      .then(r => r.ok ? r.json() : { products: [], data: [] })
+      .then(r => readJsonResponse<{ brandKey?: unknown; products?: unknown; data?: unknown }>(r))
       .then(d => setProductTrends({
         brandKey: typeof d?.brandKey === "string" ? d.brandKey : "",
         products: Array.isArray(d?.products) ? d.products : [],
         data: Array.isArray(d?.data) ? d.data : [],
       }))
-      .catch(auxFail);
+      .catch(auxFail("라라스윗 검색량"));
   }, []);
 
   const productColorOf = (name: string) =>
@@ -1521,6 +1524,12 @@ export default function MonitoringPage() {
 
       <div className="px-4 py-5 xl:px-6">
 
+        {auxErrors.size > 0 && (
+          <div role="alert" className="mb-4 border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-700">
+            불러오기 실패: {[...auxErrors].join(", ")}. 실패한 지표는 0으로 간주하지 않습니다.
+          </div>
+        )}
+
         {/* 필터 바 */}
         <FiltersBar filters={filters} setFilters={setFilters} creatorOptions={creatorOptions} plannerOptions={plannerOptions} productOptions={productOptions} companyOptions={companyOptions} hasFilter={hasFilter} />
 
@@ -1565,21 +1574,23 @@ export default function MonitoringPage() {
                   </div>
                 );
                 return [
-                  { label: hasDateFilter ? "기간 조회수 증가분" : "조회수 합계", value: hasDateFilter ? periodPlayGain : totalPlayCount, color: "text-a-ink", suffix: "", delta: wow(playInc), tooltip: (
+                  { label: hasDateFilter ? "기간 조회수 증가분" : "조회수 합계", value: hasDateFilter ? periodPlayGain : totalPlayCount, color: "text-a-ink", suffix: "", delta: wow(playInc), loadError: null as string | null, tooltip: (
                     hasDateFilter ? (
                       <div className="text-a-ink-muted leading-relaxed max-w-[260px] whitespace-normal">선택한 <span className="font-semibold text-a-ink">조회수 기간</span> 동안 늘어난 조회수의 합입니다(전일 대비 증분의 합 = 기간 순증, 아래 일자별 증감표 합계와 동일). 이 기간 마지막 기준 누적 합계는 <span className="font-semibold text-a-ink">{totalPlayCount.toLocaleString()}</span>.</div>
                     ) : (
                       <div className="text-a-ink-muted leading-relaxed">바이럴(배너) 소재는 조회수 대신 <span className="font-semibold text-a-ink">도달수</span>가 합산됩니다.</div>
                     )
                   ) as React.ReactNode },
-                  { label: "라라스윗 검색량 총합", value: searchTotalSum, color: "text-gray-600", suffix: "", delta: wow((lsSearchData ?? []).map(d => ({ date: d.date, v: d.value ?? 0 }))), tooltip: null as React.ReactNode },
-                  { label: "B2B 발주량", value: b2bTotal, color: "text-green-600", suffix: "", delta: wow(b2bDaily.map(d => ({ date: d.date, v: b2bOrderOf(d) ?? 0 }))), tooltip: b2bTooltip },
+                  { label: "라라스윗 검색량 총합", value: searchTotalSum, color: "text-gray-600", suffix: "", delta: auxErrors.has("라라스윗 검색량") ? null : wow((lsSearchData ?? []).map(d => ({ date: d.date, v: d.value ?? 0 }))), loadError: auxErrors.has("라라스윗 검색량") ? "불러오기 실패" : null, tooltip: null as React.ReactNode },
+                  { label: "B2B 발주량", value: b2bTotal, color: "text-green-600", suffix: "", delta: auxErrors.has("B2B 발주량") ? null : wow(b2bDaily.map(d => ({ date: d.date, v: b2bOrderOf(d) ?? 0 }))), loadError: auxErrors.has("B2B 발주량") ? "불러오기 실패" : null, tooltip: b2bTooltip },
                 ];
               })().map((item, i) => (
                 <div key={i} className={`px-6 py-5 relative group/kpi ${i > 0 ? "sm:border-l border-slate-200" : ""} ${i > 0 ? "border-t sm:border-t-0 border-slate-100" : ""} ${item.tooltip ? "cursor-help" : ""}`}>
                   <div className={`absolute left-0 top-4 bottom-4 w-[3px] rounded-r-full ${i === 0 ? "bg-blue-500" : i === 1 ? "bg-slate-400" : "bg-emerald-500"}`} />
                   <p className="text-[11px] font-semibold text-slate-500 tracking-[0.06em] mb-2">{item.label}</p>
-                  <p className={`text-[30px] font-bold tabular-nums tracking-[-0.025em] leading-none ${item.color}`}>{item.value.toLocaleString()}{item.suffix}</p>
+                  <p className={`font-bold tabular-nums tracking-[-0.025em] leading-none ${item.color} ${item.loadError ? "text-[18px]" : "text-[30px]"}`}>
+                    {item.loadError ?? `${item.value.toLocaleString()}${item.suffix}`}
+                  </p>
                   {item.delta != null && (
                     <p className={`mt-1 text-[11px] font-medium tabular-nums ${item.delta > 0 ? "text-red-500" : item.delta < 0 ? "text-blue-600" : "text-gray-400"}`}>
                       {item.delta > 0 ? "▲" : item.delta < 0 ? "▼" : ""} {item.delta > 0 ? "+" : ""}{item.delta.toFixed(1)}% <span className="text-gray-400 font-normal">전주 대비</span>

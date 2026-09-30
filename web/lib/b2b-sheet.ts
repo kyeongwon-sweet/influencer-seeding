@@ -1,10 +1,27 @@
 type SheetCell = string | number | null | undefined;
 
 export type B2bDayValues = {
-  order: number;
+  order: number | null;
   profit: number | null;
   ad: number | null;
   contrib: number | null;
+};
+
+export type B2bDailyRecord = {
+  date: string;
+  dumbuk_order: number | null;
+  dumbuk_profit: number | null;
+  dumbuk_conv_pl: number | null;
+  dumbuk_ad_cost: number | null;
+  dumbuk_contribution: number | null;
+  jjondeuk_order: number | null;
+  jjondeuk_profit: number | null;
+  jjondeuk_conv_pl: number | null;
+  jjondeuk_ad_cost: number | null;
+  jjondeuk_contribution: number | null;
+  total_order: number | null;
+  total_contribution: number | null;
+  updated_at: string;
 };
 
 function toNum(value: SheetCell): number | null {
@@ -14,6 +31,11 @@ function toNum(value: SheetCell): number | null {
   if (!normalized || normalized === "-" || normalized.startsWith("#")) return null;
   const parsed = Number.parseFloat(normalized);
   return Number.isFinite(parsed) ? Math.round(parsed) : null;
+}
+
+function sumPresent(...values: Array<number | null | undefined>): number | null {
+  const present = values.filter((value): value is number => value != null);
+  return present.length === 0 ? null : present.reduce((sum, value) => sum + value, 0);
 }
 
 function validDate(year: number, month: number, day: number): string | null {
@@ -162,13 +184,42 @@ export function parseB2bSheetRows(
     started = true;
     if (options.maxDate && date > options.maxDate) continue;
     out.set(date, {
-      order: (toNum(rows[row]?.[cvsColumn]) ?? 0) + (toNum(rows[row]?.[b2bColumn]) ?? 0),
+      // 행/셀 부재는 미측정(null), 시트에 명시된 숫자 0만 실제 0으로 보존한다.
+      order: sumPresent(toNum(rows[row]?.[cvsColumn]), toNum(rows[row]?.[b2bColumn])),
       profit: profitColumn >= 0 ? toNum(rows[row]?.[profitColumn]) : null,
       ad: adColumn >= 0 ? toNum(rows[row]?.[adColumn]) : null,
       contrib: contributionColumn >= 0 ? toNum(rows[row]?.[contributionColumn]) : null,
     });
   }
   return out;
+}
+
+export function buildB2bDailyRecords(
+  dumbuk: Map<string, B2bDayValues>,
+  jjondeuk: Map<string, B2bDayValues>,
+  updatedAt = new Date().toISOString(),
+): B2bDailyRecord[] {
+  const dates = [...new Set([...dumbuk.keys(), ...jjondeuk.keys()])].sort((a, b) => a.localeCompare(b));
+  return dates.map((date) => {
+    const d = dumbuk.get(date);
+    const j = jjondeuk.get(date);
+    return {
+      date,
+      dumbuk_order: d?.order ?? null,
+      dumbuk_profit: d?.profit ?? null,
+      dumbuk_conv_pl: null,
+      dumbuk_ad_cost: d?.ad ?? null,
+      dumbuk_contribution: d?.contrib ?? null,
+      jjondeuk_order: j?.order ?? null,
+      jjondeuk_profit: j?.profit ?? null,
+      jjondeuk_conv_pl: null,
+      jjondeuk_ad_cost: j?.ad ?? null,
+      jjondeuk_contribution: j?.contrib ?? null,
+      total_order: sumPresent(d?.order, j?.order),
+      total_contribution: sumPresent(d?.contrib, j?.contrib),
+      updated_at: updatedAt,
+    };
+  });
 }
 
 export function yesterdayKST(nowMs = Date.now()): string {
