@@ -3706,6 +3706,16 @@ function linkedValidationRule_(formula, helpText) {
     .build();
 }
 
+function linkedUploadDateValidationRule_() {
+  // 맞춤 수식은 행 삽입·삭제 때 참조가 #REF!로 갈라질 수 있다.
+  // A열은 셀 참조가 필요 없는 내장 '올바른 날짜' 규칙으로 고정한다.
+  return SpreadsheetApp.newDataValidation()
+    .requireDate()
+    .setAllowInvalid(false)
+    .setHelpText("업로드일은 실제 날짜만 입력하세요.")
+    .build();
+}
+
 function applyDateInputValidation_(sheet, startCol, numCols) {
   if (numCols <= 0) return;
   const rowCount = Math.max(1, sheet.getMaxRows() - CONFIG.DATA_START_ROW + 1);
@@ -3724,11 +3734,12 @@ function applyLinkedSheetInputValidation_() {
   const fieldCols = buildFieldCols_(sheet);
   const cpvCol = findHeaderCol_(sheet, ["CPV", "cpv"]);
   const rules = [
-    [1, '=OR(A2="",AND(ISNUMBER(A2),A2>0))', "업로드일은 실제 날짜만 입력하세요."],
     [2, '=OR(B2="",REGEXMATCH(TO_TEXT(B2),"^https?://[^[:space:]]+$"))', "http(s) URL만 입력하세요."],
     [6, '=OR(F2="",F2="-",AND(REGEXMATCH(TO_TEXT(F2),"[A-Z]"),REGEXMATCH(TO_TEXT(F2),"[가-힣]")))', "상품명은 '-' 또는 대문자 영문과 한글을 모두 포함한 값만 입력하세요."],
     [7, '=OR(G2="",ISNUMBER(G2))', "비용은 숫자만 입력하세요."],
   ];
+  sheet.getRange(CONFIG.DATA_START_ROW, 1, rowCount, 1)
+    .setDataValidation(linkedUploadDateValidationRule_());
   if (cpvCol) {
     const cpvCell = colLetter_(cpvCol) + CONFIG.DATA_START_ROW;
     rules.push([cpvCol, '=OR(' + cpvCell + '="",' + cpvCell + '="?",ISNUMBER(' + cpvCell + '))', "CPV는 숫자, ?, 또는 빈칸만 입력하세요."]);
