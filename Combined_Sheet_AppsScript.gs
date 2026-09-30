@@ -276,6 +276,31 @@ function toDateStr_(v) {
   return isNaN(d.getTime()) ? null : Utilities.formatDate(d, Session.getScriptTimeZone(), "yyyy-MM-dd");
 }
 
+function dateObjectFromDateKey_(key) {
+  const text = String(key == null ? "" : key).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+  try {
+    const parsed = Utilities.parseDate(text, CONFIG.KST_TIMEZONE, "yyyy-MM-dd");
+    return Utilities.formatDate(parsed, CONFIG.KST_TIMEZONE, "yyyy-MM-dd") === text
+      ? parsed
+      : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+// 화면에는 날짜처럼 보여도 문자열이면 Sheets 내장 날짜 검증과 일자별 입력 검증에서 거부된다.
+// 기존값 정규화에는 완전한 연-월-일 문자열만 허용해 애매한 값을 추측 변환하지 않는다.
+function linkedUploadDateObject_(value) {
+  if (value instanceof Date && !isNaN(value.getTime())) return new Date(value.getTime());
+  const text = String(value == null ? "" : value).trim();
+  if (!text) return null;
+  const match = text.match(/^(\d{4})\D+(\d{1,2})\D+(\d{1,2})\D*$/);
+  if (!match) return null;
+  const key = match[1] + "-" + ("0" + match[2]).slice(-2) + "-" + ("0" + match[3]).slice(-2);
+  return dateObjectFromDateKey_(key);
+}
+
 function headerDate_(value) {
   if (value instanceof Date && !isNaN(value.getTime())) return true;
   return /^\s*\d{1,2}\s*[.]\s*\d{1,2}(\s|\(|$)/.test(String(value || ""));
@@ -967,7 +992,10 @@ function repairCompanyPollution20260818(payload) {
 // 인증: bulk와 동일한 Bearer CRON_SECRET. 조회수(일자별)·등록상태 열은 건드리지 않음.
 function fmtVal_(field, v) {
   if (v == null) return "";
-  if (field === "posted_at") return toDateStr_(v) || "";
+  if (field === "posted_at") {
+    const key = toDateStr_(v);
+    return key ? dateObjectFromDateKey_(key) || "" : "";
+  }
   return v;  // cost는 숫자 그대로, 나머지는 문자열
 }
 
@@ -3714,6 +3742,113 @@ function linkedUploadDateValidationRule_() {
     .setAllowInvalid(false)
     .setHelpText("업로드일은 실제 날짜만 입력하세요.")
     .build();
+}
+
+function normalizeLinkedUploadDatesWithBackup() {
+  return withDocLock_(function() {
+    return withAutoWriteGuard_(function() {
+      const sheet = getSheet_();
+      const headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, 2).getDisplayValues()[0];
+      if (norm_(headers[0]) !== norm_("업로드일") || norm_(headers[1]).indexOf("url") < 0) {
+        throw new Error("대상 검증 실패: A열=업로드일, B열=게시물URL 헤더가 아닙니다.");
+      }
+
+      const lastRow = sheet.getLastRow();
+      const rowCount = Math.max(0, lastRow - CONFIG.DATA_START_ROW + 1);
+      if (!rowCount) return { converted: 0, remaining_invalid: 0, backup_url: null };
+
+      const dateRange = sheet.getRange(CONFIG.DATA_START_ROW, 1, rowCount, 1);
+      const values = dateRange.getValues();
+      const displays = dateRange.getDisplayValues();
+      const formulas = dateRange.getFormulas();
+      const urls = sheet.getRange(CONFIG.DATA_START_ROW, 2, rowCount, 1).getDisplayValues();
+      const edits = [];
+      const backupRows = [["sheet_row", "url", "before_value", "before_display", "after_date"]];
+      const invalidRows = [];
+      let formulaSkipped = 0;
+
+      for (let i = 0; i < rowCount; i++) {
+        const row = CONFIG.DATA_START_ROW + i;
+        const value = values[i][0];
+        if (value === "" || value == null || (value instanceof Date && !isNaN(value.getTime()))) continue;
+        if (formulas[i][0]) {
+          formulaSkipped++;
+          invalidRows.push(row);
+          continue;
+        }
+        const parsed = linkedUploadDateObject_(value);
+        if (!parsed) {
+          invalidRows.push(row);
+          continue;
+        }
+        const afterKey = Utilities.formatDate(parsed, CONFIG.KST_TIMEZONE, "yyyy-MM-dd");
+        backupRows.push([row, urls[i][0], String(value), displays[i][0], afterKey]);
+        edits.push({ row: row, value: parsed, expected: afterKey });
+      }
+
+      let backupFile = null;
+      if (edits.length) {
+        const stamp = Utilities.formatDate(new Date(), CONFIG.KST_TIMEZONE, "yyyyMMdd_HHmmss");
+        backupFile = SpreadsheetApp.create(
+          "linked_upload_date_backup_" + stamp,
+          Math.max(backupRows.length, 2),
+          backupRows[0].length
+        );
+        const backupSheet = backupFile.getSheets()[0];
+        backupSheet.setName("업로드일 백업");
+        backupSheet.getRange(1, 1, backupRows.length, backupRows[0].length).setValues(backupRows);
+
+        const expectedLastRow = sheet.getLastRow();
+        writeColumnRuns_(sheet, 1, edits, expectedLastRow);
+        SpreadsheetApp.flush();
+      }
+
+      // 과거 행 삽입·삭제로 갈라진 규칙까지 한 번에 단일 내장 날짜 규칙으로 덮는다.
+      sheet.getRange(CONFIG.DATA_START_ROW, 1, Math.max(1, sheet.getMaxRows() - CONFIG.DATA_START_ROW + 1), 1)
+        .setDataValidation(linkedUploadDateValidationRule_());
+      SpreadsheetApp.flush();
+
+      const afterValues = dateRange.getValues();
+      let verified = 0;
+      edits.forEach(function(edit) {
+        const actual = afterValues[edit.row - CONFIG.DATA_START_ROW][0];
+        const actualKey = actual instanceof Date && !isNaN(actual.getTime())
+          ? Utilities.formatDate(actual, CONFIG.KST_TIMEZONE, "yyyy-MM-dd")
+          : "";
+        if (actualKey !== edit.expected) {
+          throw new Error("업로드일 변환 검증 실패: A" + edit.row + " expected=" + edit.expected + " actual=" + actualKey);
+        }
+        verified++;
+      });
+
+      let remainingInvalid = 0;
+      for (let i = 0; i < afterValues.length; i++) {
+        const value = afterValues[i][0];
+        if (value === "" || value == null) continue;
+        if (!(value instanceof Date) || isNaN(value.getTime())) remainingInvalid++;
+      }
+      if (remainingInvalid !== invalidRows.length) {
+        throw new Error("업로드일 잔여 검증 수가 다릅니다. expected=" + invalidRows.length + " actual=" + remainingInvalid);
+      }
+
+      const result = {
+        converted: edits.length,
+        verified: verified,
+        remaining_invalid: remainingInvalid,
+        invalid_rows: invalidRows.slice(0, 50),
+        formula_skipped: formulaSkipped,
+        backup_id: backupFile ? backupFile.getId() : null,
+        backup_url: backupFile ? backupFile.getUrl() : null,
+      };
+      Logger.log("linked_upload_date_normalization " + JSON.stringify(result));
+      SpreadsheetApp.getActive().toast(
+        "업로드일 실제 날짜 변환 " + result.converted + "건 · 잔여 " + result.remaining_invalid + "건",
+        result.remaining_invalid ? "⚠️ 업로드일 정규화" : "✅ 업로드일 정규화",
+        8
+      );
+      return result;
+    });
+  });
 }
 
 function applyDateInputValidation_(sheet, startCol, numCols) {

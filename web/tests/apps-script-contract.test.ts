@@ -643,6 +643,36 @@ test("linked-sheet data validation rejects invalid input without including regis
   assert.match(dateColsBody, /const endCol = statusCol > 0 \? statusCol - 1 : lastCol/);
 });
 
+test("linked-sheet upload dates are written as native dates and existing text dates have a guarded repair", () => {
+  const helperStart = appsScript.indexOf("function dateObjectFromDateKey_(key)");
+  const helperEnd = appsScript.indexOf("function headerDate_", helperStart);
+  const helperBody = appsScript.slice(helperStart, helperEnd);
+  assert.notEqual(helperStart, -1);
+  assert.match(helperBody, /Utilities\.parseDate\(text, CONFIG\.KST_TIMEZONE, "yyyy-MM-dd"\)/);
+  assert.match(helperBody, /Utilities\.formatDate\(parsed, CONFIG\.KST_TIMEZONE, "yyyy-MM-dd"\) === text/);
+  assert.match(helperBody, /function linkedUploadDateObject_\(value\)/);
+  assert.match(helperBody, /\^\(\\d\{4\}\)\\D\+/);
+
+  const fmtStart = appsScript.indexOf("function fmtVal_(field, v)");
+  const fmtEnd = appsScript.indexOf("function assertRowCountStable_", fmtStart);
+  const fmtBody = appsScript.slice(fmtStart, fmtEnd);
+  assert.match(fmtBody, /field === "posted_at"/);
+  assert.match(fmtBody, /dateObjectFromDateKey_\(key\)/);
+  assert.doesNotMatch(fmtBody, /field === "posted_at"\) return toDateStr_\(v\)/);
+
+  const repairStart = appsScript.indexOf("function normalizeLinkedUploadDatesWithBackup()");
+  const repairEnd = appsScript.indexOf("function applyDateInputValidation_", repairStart);
+  const repairBody = appsScript.slice(repairStart, repairEnd);
+  assert.notEqual(repairStart, -1);
+  assert.match(repairBody, /withDocLock_/);
+  assert.match(repairBody, /withAutoWriteGuard_/);
+  assert.match(repairBody, /SpreadsheetApp\.create\(/);
+  assert.match(repairBody, /writeColumnRuns_\(sheet, 1, edits, expectedLastRow\)/);
+  assert.match(repairBody, /setDataValidation\(linkedUploadDateValidationRule_\(\)\)/);
+  assert.match(repairBody, /remaining_invalid/);
+  assert.doesNotMatch(repairBody, /deleteRow|clearContent/);
+});
+
 test("new date columns receive real dates, display format, and input validation", () => {
   const start = appsScript.indexOf("function fillInsertedDateHeadersOnChange_(e)");
   const end = appsScript.indexOf("function fillInsertedDateHeadersOnChange(e)", start);
