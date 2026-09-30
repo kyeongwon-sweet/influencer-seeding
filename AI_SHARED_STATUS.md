@@ -1,5 +1,44 @@
 # AI Shared Status
 
+## 📮 2026-09-30 [Claude 진단·수정 / → Codex 인계] 협찬 모니터링 메인 그래프 "데이터 끊김" — 4개 시리즈, 원인 4개, **전부 '성공한 척하는 실패'**
+> 사용자 제보(09-30): `/monitoring` 표·그래프에 끊긴 데이터가 많다. 로그인 없이 볼 수 없어 **화면 대신 코드→API→DB/시트를 직접 추적**했다.
+
+| 시리즈 | 증상 | 원인(실측) | 상태 |
+|---|---|---|---|
+| **구글 검색량** | 선이 8월 중순에서 끊김 | 수집은 정상(05-12~09-30, 1,505행). `/api/google-trends`가 페이지를 안 넘겨 **PostgREST 1,000행 상한**에서 잘림 | ✅ **수정·배포 `f2b1e602`** |
+| **라라스윗 검색량** | 합계 `0`, 표 `—` | 공개 CSV 시트(`1fxxx…`, gid `426959601`)가 **공개 해제** → gviz가 CSV 대신 **Google 로그인 페이지를 HTTP 200으로** 반환 → HTML을 표로 파싱 → 브랜드 컬럼 없음 → 조용히 0 | 📮 사람/Codex |
+| **B2B 발주량** | 9월 전부 `-` | `/api/b2b-revenue/fetch`가 매일 `{"ok":true,"count":92,"first":"05-01","last":"07-31"}` — **5~7월만** 읽음. 탭 `인지_듬뿍바`·`인지_쫀득바`를 **`A1:T160` 고정 범위**로 읽는다 | 📮 Codex(원인 확정 필요) |
+| **인스타 프로필 방문** | 09-01부터 없음 | `/api/brand-metrics/collect`가 매일 `{"ok":true,"collected":7}`인데 **7일치 전부 null**. Graph API 실패를 `if (!res.ok) return null`로 삼킴. 08-31에 딱 끊겨 **장기 토큰(60일) 만료 유력** | 📮 Codex(토큰 확인) |
+
+### ✅ 구글 검색량 — 수정·운영 검증 완료 (`f2b1e602`)
+- `web/lib/fetch-all-pages.ts` 신설: 짧은 페이지가 나올 때까지 끝까지 넘김. **중간 실패 시 앞부분만 성공처럼 돌려주지 않고 error**, 페이지 상한 도달도 error.
+- 같은 동작인 보조 라우트 **4개 전부** 적용(google-trends · youtube-trends · brand-metrics · b2b-revenue). youtube-trends는 401행·하루 2행 증가라 약 10개월 뒤 같은 식으로 끊길 예정이었다.
+- 정렬: 네 테이블 모두 `id`가 없어 자연 유일 키(`measured_at+keyword` / `measured_at` / `date`). 기존 `pagination-order` 계약(마지막 정렬=`id`)을 약화하지 않고, **쓰기 쪽 `upsert onConflict` 키와 정확히 같을 때만** 예외 허용(PostgREST onConflict는 UNIQUE 제약이 없으면 에러 → 유일성 DB 보장). 계약 테스트로 묶음.
+- 검증: 신규 테스트 10건, 돌연변이 4종(첫 페이지만/라우트 원복/2차 정렬 제거/쓰기 키 변경) 전부 검출. web 599/599·tsc·eslint·build. 운영 화면 "코드 업데이트: 2026-09-30 09:28" 확인. 같은 쿼리 실데이터 재현 **수정 전 1,000행·마지막 08-14·9월 0행 → 수정 후 1,505행·마지막 09-30·9월 309행**. (CDN `s-maxage=300, swr=900`이라 최대 ~20분 옛 응답 가능, 새로고침 필요.)
+
+### ⚠️ Claude 정정
+- 최초 조사에서 "구글 검색량 08-19~09-29 공백 42일"이라 보고했다 — **틀렸다.** 내 조회도 같은 1,000행 절단에 걸렸다(`limit=5000`을 줬지만 서버 상한 1,000). 전수 페이지로 다시 받아 수집 정상을 확인했다. 결국 **대시보드와 조사자가 같은 함정에 동시에 빠졌다** — [[pagination-unique-sort-key]] [[db-probe-canonical-env]].
+
+### 공통 패턴 — 4개 전부 "성공"으로 보고됐다
+라라스윗 검색량(HTTP 200 로그인 페이지) · B2B(`ok:true`, 5~7월만) · 인스타(`ok:true`, 전부 null) · 구글(에러 없이 1,000행). **워크플로는 HTTP 2xx만 봐서 전부 통과**했고, 사람이 그래프를 보고서야 알았다([[scheduled-automation-silent-failure]]). 근본 재발방지는 **결과 워치독**(시리즈별 "가장 늦은 날짜 ≥ 어제" + "값이 전부 null 아님")이다 — 미착수, 사용자 결정 대기.
+
+### 📮 Codex 인계
+**① 라라스윗 검색량 시트 공개 복구** (사람 또는 Codex)
+- 시트 `1fxxxTHRQUQ7NIAB8WSK2lKjPyVYrPe63_RPMKfm_v3M` gid `426959601`. 라우트 주석이 "공개 링크 · CSV 내보내기" 전제다. 공유를 "링크가 있는 모든 사용자 — 뷰어"로 되돌리거나, 공개가 의도적으로 해제된 것이면 **서비스계정 읽기로 전환**(다른 시트들이 쓰는 `fetchSheetTabValuesByTitle` 경로). 누가 언제 공개를 껐는지 먼저 확인할 것 — 의도적 해제일 수 있다.
+- 검증: 공개 URL을 로그인 없이 받았을 때 CSV(첫 줄에 `라라스윗 라라스윗` 헤더)가 오는지. 대시보드 라라스윗 검색량 합계 ≠ 0.
+
+**② B2B 발주량 8·9월 미수집 원인 확정** (Codex — 서비스계정 필요)
+- 시트 `1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s`, 탭 `인지_듬뿍바`·`인지_쫀득바`. fetch는 `A1:T160` 범위에서 `일자별 현황` 마커 아래 날짜행을 읽는다. 읽힌 게 정확히 92일(5+6+7월)이다.
+- **두 가설을 시트 실물로 가를 것:** (a) 8·9월 행이 **160행 밖**에 있어 범위에서 잘림 → 범위 확장(코드) / (b) 팀이 7월 이후 그 섹션을 안 채움·구조 변경(2026-07에도 제품별 탭 개편이 있었다) → 매핑 재정의. 추측으로 범위만 늘리지 말 것.
+- 검증: fetch 응답 `last`가 어제 날짜. 대시보드 표 09월 B2B 칸 채워짐.
+
+**③ 인스타 프로필 방문 09-01~ 미수집 — 토큰 확인** (Codex — Vercel env)
+- `INSTAGRAM_ACCESS_TOKEN`(Vercel Production)을 Graph `debug_token`으로 만료·권한(`instagram_manage_insights`) 확인. 만료면 재발급 후 Vercel 반영·재배포. 로컬 정본 env엔 이 키가 없다(값 대조 불가).
+- 재발급 후 `brand-metrics/collect?days=30` 수동 1회로 09-01~ 복구 가능한지 확인(Graph insights가 과거 30일을 주는지 실측).
+- **코드 재발방지(같이):** `fetchInstagramMetrics`가 `!res.ok`를 null로 삼키지 말고 응답 코드·메시지를 로그+응답에 남길 것, 그리고 수집 결과가 **전부 null이면 `ok:false`**. 지금은 토큰이 죽어도 매일 `ok:true`다.
+
+- 이번 작업의 쓰기: 코드 배포 1건(`f2b1e602`, 읽기 경로만 변경). DB·시트·Apps Script 쓰기 0건.
+
 ## ✅⏳ 2026-09-29 [Codex 수정·CI 완료 / 운영 실증 대기] floor wake 일일 상한은 실제 dispatch만 계수
 - **근본 수정:** `negative-comment-monitor` 커밋 `1d47f17`에서 waiter **예약 단계**의 `monitor-floor-wake:*` claim·일일 상한 판정을 제거했다. 대기 예약은 workflow concurrency(`cancel-in-progress:true`)로 서로 교체될 뿐 원장 칸을 소비하지 않는다. waiter가 실제로 깨어 floor scan을 dispatch하기 직전의 기존 `monitor-floor-chain:*` claim과 `MONITOR_CHAIN_FLOOR_MAX_PER_DAY=12` 상한은 그대로 유지했다. 따라서 폐기 예약이 상한을 소진하는 경로만 닫고 runaway 보호는 보존했다.
 - **회귀 테스트:** 같은 KST 날짜에 서로 다른 wake 시각으로 예약을 21회(초기 1+교체 20) 만들어도 원장 호출 0·전부 예약 성공을 확인했다. 반대로 실제 floor dispatch는 12회만 성공하고 13번째가 `floor-daily-cap`으로 거부되는 테스트를 추가했다. 집중 테스트 `22/22`, 전체 `565/565`, CI run `36540409882` success.
