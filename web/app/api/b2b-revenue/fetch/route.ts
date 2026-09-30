@@ -3,7 +3,12 @@ import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { fetchSheetTabValuesByTitle } from "@/lib/google-sheets";
 import { notifyJob } from "@/lib/slack";
-import { parseB2bSheetRows, yesterdayKST, type B2bDayValues } from "@/lib/b2b-sheet";
+import {
+  diagnoseB2bSheetRows,
+  parseB2bSheetRows,
+  yesterdayKST,
+  type B2bDayValues,
+} from "@/lib/b2b-sheet";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -22,13 +27,16 @@ export async function GET(req: NextRequest) {
 
   const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
   const expectedLast = yesterdayKST();
+  const diagnostics: Array<{ title: string; layout: ReturnType<typeof diagnoseB2bSheetRows> }> = [];
 
   // 한 제품 탭의 [일자별 현황] 섹션을 날짜별로 파싱
   const parseTab = async (title: string): Promise<Map<string, B2bDayValues>> => {
     // 쫀득바 일별 섹션은 200행 이후까지 늘어났고, 2026-07 개편 뒤 실제 날짜가
     // '날짜' 헤더 오른쪽 열로 이동했다. 고정 위치 대신 값이 날짜인 열을 탐지한다.
     const rows = await fetchSheetTabValuesByTitle(SPREADSHEET_ID, title, "A1:T500");
-    return parseB2bSheetRows(rows, { nowKST, maxDate: expectedLast });
+    const parsed = parseB2bSheetRows(rows, { nowKST, maxDate: expectedLast });
+    if (parsed.size === 0) diagnostics.push({ title, layout: diagnoseB2bSheetRows(rows, nowKST) });
+    return parsed;
   };
 
   let dumbuk: Map<string, B2bDayValues>, jjondeuk: Map<string, B2bDayValues>;
@@ -63,7 +71,7 @@ export async function GET(req: NextRequest) {
 
   if (records.length === 0) {
     await notifyJob("B2B 발주량", "fail", "일자별 데이터 행을 찾지 못함");
-    return NextResponse.json({ error: "일자별 데이터 행을 찾지 못했습니다." }, { status: 500 });
+    return NextResponse.json({ error: "일자별 데이터 행을 찾지 못했습니다.", diagnostics }, { status: 500 });
   }
 
   const lastDate = records[records.length - 1].date;

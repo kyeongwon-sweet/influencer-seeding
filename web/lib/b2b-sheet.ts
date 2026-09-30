@@ -78,6 +78,42 @@ function detectDateColumn(rows: SheetCell[][], headerIndex: number, orderColumn:
   return best;
 }
 
+export function diagnoseB2bSheetRows(
+  rows: SheetCell[][],
+  nowKST = new Date(Date.now() + 9 * 3_600_000),
+) {
+  const markerIndex = rows.findIndex((row) => row.some(
+    (cell) => typeof cell === "string" && cell.includes("일자별 현황"),
+  ));
+  let headerIndex = -1;
+  let orderColumn = -1;
+  for (let row = Math.max(0, markerIndex); row < rows.length; row++) {
+    const cvs = findCell(rows[row], (value) => value === "CVS 발주량");
+    const b2b = findCell(rows[row], (value) => value === "B2B 발주량");
+    if (cvs >= 0 && b2b >= 0) {
+      headerIndex = row;
+      orderColumn = cvs;
+      break;
+    }
+  }
+  const dateColumn = headerIndex < 0 ? -1 : detectDateColumn(rows, headerIndex, orderColumn, nowKST);
+  const dateCandidates = headerIndex < 0
+    ? []
+    : Array.from({ length: Math.max(0, orderColumn) }, (_, column) => ({
+      column,
+      samples: rows
+        .slice(headerIndex + 1, headerIndex + 8)
+        .map((row) => row?.[column])
+        .filter((value) => value != null && value !== "")
+        .map((value) => ({
+          type: typeof value,
+          value: String(value).slice(0, 40),
+          parsed: parseB2bDate(value, nowKST),
+        })),
+    }));
+  return { rowCount: rows.length, markerIndex, headerIndex, orderColumn, dateColumn, dateCandidates };
+}
+
 export function parseB2bSheetRows(
   rows: SheetCell[][],
   options: { nowKST?: Date; maxDate?: string } = {},

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseB2bDate, parseB2bSheetRows } from "../lib/b2b-sheet.ts";
+import { diagnoseB2bSheetRows, parseB2bDate, parseB2bSheetRows } from "../lib/b2b-sheet.ts";
 
 test("B2B parser finds the real date column after the July layout change", () => {
   const rows = [
@@ -18,6 +18,7 @@ test("B2B parser finds the real date column after the July layout change", () =>
   assert.equal(result.get("2026-09-29")?.ad, 200);
   assert.equal(result.get("2026-09-29")?.contrib, 28_656_396);
   assert.equal(result.has("2026-09-30"), false);
+  assert.equal(diagnoseB2bSheetRows(rows, new Date("2026-09-30T01:00:00.000Z")).dateColumn, 2);
 });
 
 test("week labels are not accepted as dates", () => {
