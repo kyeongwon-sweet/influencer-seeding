@@ -590,12 +590,12 @@ function assertSyncRowsStable_(sheet, rowRefs, expectedLastRow) {
 }
 
 function ensureMetricFormulasForRows_(sheet, rowRefs, expectedLastRow) {
-  if (!rowRefs || rowRefs.length === 0) return { rows: 0, cumulative: 0, increment: 0, cpv: 0 };
+  if (!rowRefs || rowRefs.length === 0) return { rows: 0, cumulative: 0, increment: 0, cpv: 0, validation_cells: 0 };
   assertSyncRowsStable_(sheet, rowRefs, expectedLastRow);
   const rows = Array.from(new Set(rowRefs.map(ref => Number(ref.row))))
     .filter(row => Number.isFinite(row) && row >= CONFIG.DATA_START_ROW)
     .sort((a, b) => a - b);
-  if (rows.length === 0) return { rows: 0, cumulative: 0, increment: 0, cpv: 0 };
+  if (rows.length === 0) return { rows: 0, cumulative: 0, increment: 0, cpv: 0, validation_cells: 0 };
   let cumulative = 0, increment = 0, cpv = 0;
   let start = rows[0], end = rows[0];
   const flushRun = () => {
@@ -615,8 +615,15 @@ function ensureMetricFormulasForRows_(sheet, rowRefs, expectedLastRow) {
     end = rows[i];
   }
   flushRun();
+  const validationResult = ensureLinkedInputValidationsForRows_(sheet, rowRefs, expectedLastRow);
   assertSyncRowsStable_(sheet, rowRefs, expectedLastRow);
-  return { rows: rows.length, cumulative: cumulative, increment: increment, cpv: cpv };
+  return {
+    rows: rows.length,
+    cumulative: cumulative,
+    increment: increment,
+    cpv: cpv,
+    validation_cells: validationResult.validation_cells || 0,
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1454,6 +1461,7 @@ function pullFromDB() {
       }
       added = pendingRows.length;
       ensureNewRowsMetricFormulas_(sheet, startRow, startRow + added - 1);
+      applyLinkedInputValidationsToRows_(sheet, startRow, added);
     }
 
     safeAlert_(`⬇️ DB→시트 반영 완료\n• 신규 행 추가: ${added}건\n• 기존 행 빈칸 채움: ${filled}건` +
@@ -3578,6 +3586,8 @@ function onStatusEdit_(e) {
     if (skipEditDuringAutoWrite_("onStatusEdit_")) return;
     const sheet = e.range.getSheet();
     if (sheet.getSheetId() !== CONFIG.SHEET_GID) return;
+    normalizeLinkedUploadDatesOnEdit_(e, sheet);  // YYYY.M.D 등 확실한 날짜 문자열만 실제 Date로 즉시 정규화
+    repairLinkedInputValidationsOnEdit_(e, sheet);  // 붙여넣기로 덮인 A/날짜열 검사규칙을 편집 범위만 복구
     const hasInputIssue = validateLinkedSheetInputOnEdit_(e, sheet);  // 잘못된 단일 입력·다중셀 붙여넣기 즉시 경고(기존 값 자동삭제 금지)
     sanitizeAssetNameOnEdit_(e, sheet);  // 소재명 뒤 파일 목록(.mp4, 2. 속지 …) 재유입 즉시 제거
     healCumulativeOnEdit_(e, sheet);  // 누적(H) 열이 편집됐으면 즉시 자가치유 — 다중셀 붙여넣기도 잡아야 하므로 단일셀 제한보다 앞에서
@@ -3867,15 +3877,148 @@ function normalizeLinkedUploadDatesWithBackup() {
 }
 
 function applyDateInputValidation_(sheet, startCol, numCols) {
-  if (numCols <= 0) return;
   const rowCount = Math.max(1, sheet.getMaxRows() - CONFIG.DATA_START_ROW + 1);
-  const topLeft = colLetter_(startCol) + CONFIG.DATA_START_ROW;
+  applyDateInputValidationRows_(sheet, CONFIG.DATA_START_ROW, rowCount, startCol, numCols);
+}
+
+function applyDateInputValidationRows_(sheet, startRow, rowCount, startCol, numCols) {
+  if (rowCount <= 0 || numCols <= 0) return;
+  const topLeft = colLetter_(startCol) + startRow;
+  const uploadDate = "$A" + startRow;
   const formula = '=OR(' + topLeft + '="",AND(ISNUMBER(' + topLeft + '),'
-    + colLetter_(startCol) + '$1<=TODAY(),ISNUMBER($A' + CONFIG.DATA_START_ROW + '),'
-    + colLetter_(startCol) + '$1>=$A' + CONFIG.DATA_START_ROW + '))';
-  sheet.getRange(CONFIG.DATA_START_ROW, startCol, rowCount, numCols).setDataValidation(
+    + colLetter_(startCol) + '$1<=TODAY(),ISNUMBER(' + uploadDate + '),'
+    + colLetter_(startCol) + '$1>=' + uploadDate + '))';
+  sheet.getRange(startRow, startCol, rowCount, numCols).setDataValidation(
     linkedValidationRule_(formula, "숫자만 입력할 수 있습니다. 업로드일 이전 및 오늘 이후 날짜에는 입력할 수 없습니다.")
   );
+}
+
+function applyLinkedInputValidationsToRows_(sheet, startRow, rowCount) {
+  if (rowCount <= 0) return { rows: 0, validation_cells: 0 };
+  const safeStart = Math.max(CONFIG.DATA_START_ROW, Number(startRow) || CONFIG.DATA_START_ROW);
+  const safeEnd = Math.min(sheet.getMaxRows(), safeStart + rowCount - 1);
+  const safeCount = safeEnd - safeStart + 1;
+  if (safeCount <= 0) return { rows: 0, validation_cells: 0 };
+
+  sheet.getRange(safeStart, 1, safeCount, 1)
+    .setDataValidation(linkedUploadDateValidationRule_());
+  const cols = Object.keys(linkedDateColumns_(sheet)).map(Number).sort(function(a, b) { return a - b; });
+  let dateCells = 0;
+  if (cols.length) {
+    let runStart = cols[0], previous = cols[0];
+    for (let i = 1; i <= cols.length; i++) {
+      const col = cols[i];
+      if (i < cols.length && col === previous + 1) {
+        previous = col;
+        continue;
+      }
+      applyDateInputValidationRows_(sheet, safeStart, safeCount, runStart, previous - runStart + 1);
+      dateCells += safeCount * (previous - runStart + 1);
+      runStart = col;
+      previous = col;
+    }
+  }
+  return { rows: safeCount, validation_cells: safeCount + dateCells };
+}
+
+function ensureLinkedInputValidationsForRows_(sheet, rowRefs, expectedLastRow) {
+  const rows = Array.from(new Set((rowRefs || []).map(function(ref) { return Number(ref.row); })))
+    .filter(function(row) { return Number.isFinite(row) && row >= CONFIG.DATA_START_ROW; })
+    .sort(function(a, b) { return a - b; });
+  if (!rows.length) return { rows: 0, validation_cells: 0 };
+  let totalRows = 0, validationCells = 0;
+  let start = rows[0], end = rows[0];
+  const flushRun = function() {
+    assertRowCountStable_(sheet, expectedLastRow, "syncNew validation fill");
+    const result = applyLinkedInputValidationsToRows_(sheet, start, end - start + 1);
+    totalRows += result.rows || 0;
+    validationCells += result.validation_cells || 0;
+  };
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i] === end + 1) {
+      end = rows[i];
+      continue;
+    }
+    flushRun();
+    start = rows[i];
+    end = rows[i];
+  }
+  flushRun();
+  return { rows: totalRows, validation_cells: validationCells };
+}
+
+function normalizeLinkedUploadDatesOnEdit_(e, sheet) {
+  const range = e && e.range;
+  if (!range || range.getLastRow() < CONFIG.DATA_START_ROW || range.getColumn() > 1 || range.getLastColumn() < 1) return 0;
+  const startRow = Math.max(CONFIG.DATA_START_ROW, range.getRow());
+  const rowCount = range.getLastRow() - startRow + 1;
+  const target = sheet.getRange(startRow, 1, rowCount, 1);
+  const values = target.getValues();
+  const formulas = target.getFormulas();
+  const edits = [];
+  for (let i = 0; i < rowCount; i++) {
+    const value = values[i][0];
+    if (value === "" || value == null || (value instanceof Date && !isNaN(value.getTime())) || formulas[i][0]) continue;
+    const parsed = linkedUploadDateObject_(value);
+    if (!parsed) continue;
+    edits.push({ row: startRow + i, value: parsed });
+  }
+  if (!edits.length) return 0;
+  let runStart = edits[0].row;
+  let runValues = [[edits[0].value]];
+  const flushRun = function() {
+    sheet.getRange(runStart, 1, runValues.length, 1).setValues(runValues);
+  };
+  for (let i = 1; i < edits.length; i++) {
+    if (edits[i].row === edits[i - 1].row + 1) {
+      runValues.push([edits[i].value]);
+      continue;
+    }
+    flushRun();
+    runStart = edits[i].row;
+    runValues = [[edits[i].value]];
+  }
+  flushRun();
+  SpreadsheetApp.flush();
+  Logger.log("linked_upload_date_edit_normalized " + JSON.stringify({
+    range: range.getA1Notation(),
+    converted: edits.length,
+    rows: edits.slice(0, 50).map(function(edit) { return edit.row; }),
+  }));
+  return edits.length;
+}
+
+function repairLinkedInputValidationsOnEdit_(e, sheet) {
+  const range = e && e.range;
+  if (!range || range.getLastRow() < CONFIG.DATA_START_ROW) return { rows: 0, validation_cells: 0 };
+  const rowStart = Math.max(CONFIG.DATA_START_ROW, range.getRow());
+  const rowCount = range.getLastRow() - rowStart + 1;
+  const firstCol = range.getColumn();
+  const lastCol = range.getLastColumn();
+  let cells = 0;
+  if (firstCol <= 1 && lastCol >= 1) {
+    sheet.getRange(rowStart, 1, rowCount, 1).setDataValidation(linkedUploadDateValidationRule_());
+    cells += rowCount;
+  }
+  const dateCols = Object.keys(linkedDateColumns_(sheet)).map(Number)
+    .filter(function(col) { return col >= firstCol && col <= lastCol; })
+    .sort(function(a, b) { return a - b; });
+  if (dateCols.length) {
+    let runStart = dateCols[0], previous = dateCols[0];
+    for (let i = 1; i <= dateCols.length; i++) {
+      const col = dateCols[i];
+      if (i < dateCols.length && col === previous + 1) {
+        previous = col;
+        continue;
+      }
+      applyDateInputValidationRows_(sheet, rowStart, rowCount, runStart, previous - runStart + 1);
+      cells += rowCount * (previous - runStart + 1);
+      runStart = col;
+      previous = col;
+    }
+  }
+  if (cells) Logger.log("linked_input_validation_edit_repair " + JSON.stringify({ range: range.getA1Notation(), cells: cells }));
+  return { rows: rowCount, validation_cells: cells };
 }
 
 function linkedInputFingerprintMix_(hash, text) {
@@ -4936,10 +5079,25 @@ function dateFromHeaderValue_(value, fallbackYear) {
 }
 
 function fillInsertedDateHeadersOnChange_(e) {
-  if (!e || e.changeType !== "INSERT_COLUMN") return;
+  if (!e) return;
   const ss = e.source || SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getActiveSheet();
   if (!sheet || sheet.getSheetId() !== CONFIG.SHEET_GID) return;
+
+  // 행 삽입·삭제 때 상대참조 검사식이 #REF!로 갈라질 수 있다.
+  // 구조 변경은 드물고 이벤트에 정확한 행 범위가 없으므로 이때만 A/날짜열 규칙 전체를 복구한다.
+  // setDataValidation만 사용하며 값·수식·서식에는 손대지 않는다.
+  if (e.changeType === "INSERT_ROW" || e.changeType === "REMOVE_ROW") {
+    const rowCount = Math.max(1, sheet.getMaxRows() - CONFIG.DATA_START_ROW + 1);
+    const result = applyLinkedInputValidationsToRows_(sheet, CONFIG.DATA_START_ROW, rowCount);
+    Logger.log("linked_input_validation_structure_repair " + JSON.stringify({
+      change_type: e.changeType,
+      rows: result.rows,
+      validation_cells: result.validation_cells,
+    }));
+    return result;
+  }
+  if (e.changeType !== "INSERT_COLUMN") return;
 
   const lastCol = sheet.getLastColumn();
   const headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];

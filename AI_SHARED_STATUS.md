@@ -8,6 +8,7 @@
 - **재발 방지/성능:** `de467f8` 실제 Date 생성·백업·검증, `61d7f00` 단일 열 배치 쓰기로 실행시간 폭주 방지. 앞으로 DB에서 추가되는 `posted_at`도 문자열이 아닌 실제 Date로 쓴다. Apps Script push 후 live pull 일치 검증.
 - **게이트:** web `611/611`, `tsc --noEmit`, production build, pre-push typecheck 통과. formula-audit run `36661866366` success: `hInvalid=0 · incInvalid=0 · errorCells=0 · incMismatch=0 · orphanRows=0`, 범위 `P:EU` 136열. `healthy=false`는 별건인 CPV invalid 16건·기존 stale 3건 때문이며 번 날짜 수정과 무관하다.
 - **운영 복구/사후감사:** 장기 진단 잠금 때문에 한 번 실패한 `scheduledDbPullSync_`는 수동 `runDbPullSyncNow`로 재실행해 12:48 KST `status=OK`(신규 0·빈칸 채움 0) 확인. formula-audit run `36666110965` success/HTTP 200, `errorCells=0 · incMismatch=0 · orphanRows=0 · metricRange=P:EU`. 기준선 뒤 동시 편집으로 `jolly__humor` 1행의 H/I 형태오류와 CPV 1건이 추가됐지만 전후 값 지문이 같아 이번 검사규칙 수술과 무관하며 별도 자가치유/팀 입력 이슈다.
+- **재발 방지:** A열을 직접 편집·붙여넣으면 완전한 `YYYY-M-D` 계열 문자열만 즉시 실제 Date로 정규화하고, 해당 편집 범위의 A/일자별 검사규칙을 즉시 재적용한다. `syncNew`·DB→시트 신규행에도 같은 규칙을 붙이며, 행 삽입·삭제 시에는 값·수식은 건드리지 않고 A/일자별 검사규칙만 전체 재설치해 `#REF!` 재발을 차단한다. 계약 테스트는 신규행·붙여넣기·행 구조 변경 3경로를 고정한다.
 
 ## ✅ 2026-09-30 [Codex 수정·배포·운영복구] B2B 듬뿍바 60일 가짜 0 제거 + 보조지표 실패 표시
 - **시트 실물 판정(읽기 전용):** `인지_듬뿍바`(gid `1033585305`)는 일자별 데이터와 월별 요약이 모두 **2026-07-31에서 끝나며**, 다른 듬뿍바 연속 탭은 없다. 07-31 원본 `CVS 16,560 + B2B 810 = 17,370`이 DB와 일치해 탭·열 매핑을 교차검증했다. 반면 `인지_쫀득바`(gid `1224959784`)의 09-24~09-28은 두 발주량 칸에 **명시적 0**이 들어 있어 실제 0으로 보존해야 한다.

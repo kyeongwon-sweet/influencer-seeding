@@ -699,6 +699,42 @@ test("linked-sheet input-validation repair backs up rules and proves values are 
   assert.doesNotMatch(body, /setValues\(.*dateRange|clearContent|deleteRow/);
 });
 
+test("linked-sheet validations self-heal on new rows, paste edits, and row structure changes", () => {
+  const formulaStart = appsScript.indexOf("function ensureMetricFormulasForRows_(sheet, rowRefs, expectedLastRow)");
+  const formulaEnd = appsScript.indexOf("// ═══════════════════════════════════════════════════════════════", formulaStart);
+  const formulaBody = appsScript.slice(formulaStart, formulaEnd);
+  assert.match(formulaBody, /ensureLinkedInputValidationsForRows_\(sheet, rowRefs, expectedLastRow\)/);
+
+  const pullStart = appsScript.indexOf("function pullFromDB()");
+  const pullEnd = appsScript.indexOf("function refreshSheetDerivedFields", pullStart);
+  const pullBody = appsScript.slice(pullStart, pullEnd);
+  assert.match(pullBody, /applyLinkedInputValidationsToRows_\(sheet, startRow, added\)/);
+
+  const editStart = appsScript.indexOf("function onStatusEdit_(e)");
+  const editEnd = appsScript.indexOf("// ═══════════════════════════════════════════════════════════════", editStart);
+  const editBody = appsScript.slice(editStart, editEnd);
+  assert.match(editBody, /normalizeLinkedUploadDatesOnEdit_\(e, sheet\)/);
+  assert.match(editBody, /repairLinkedInputValidationsOnEdit_\(e, sheet\)/);
+  assert.ok(
+    editBody.indexOf("normalizeLinkedUploadDatesOnEdit_(e, sheet)") < editBody.indexOf("validateLinkedSheetInputOnEdit_(e, sheet)"),
+    "문자열 날짜를 실제 Date로 바꾼 뒤 값 검증해야 한다",
+  );
+
+  const helperStart = appsScript.indexOf("function applyDateInputValidationRows_(sheet, startRow, rowCount, startCol, numCols)");
+  const helperEnd = appsScript.indexOf("function linkedInputFingerprintMix_", helperStart);
+  const helperBody = appsScript.slice(helperStart, helperEnd);
+  assert.match(helperBody, /function applyLinkedInputValidationsToRows_/);
+  assert.match(helperBody, /function normalizeLinkedUploadDatesOnEdit_/);
+  assert.match(helperBody, /function repairLinkedInputValidationsOnEdit_/);
+  assert.doesNotMatch(helperBody, /clearContent|deleteRow|deleteRows/);
+
+  const changeStart = appsScript.indexOf("function fillInsertedDateHeadersOnChange_(e)");
+  const changeEnd = appsScript.indexOf("function fillInsertedDateHeadersOnChange(e)", changeStart);
+  const changeBody = appsScript.slice(changeStart, changeEnd);
+  assert.match(changeBody, /e\.changeType === "INSERT_ROW" \|\| e\.changeType === "REMOVE_ROW"/);
+  assert.match(changeBody, /applyLinkedInputValidationsToRows_\(sheet, CONFIG\.DATA_START_ROW, rowCount\)/);
+});
+
 test("new date columns receive real dates, display format, and input validation", () => {
   const start = appsScript.indexOf("function fillInsertedDateHeadersOnChange_(e)");
   const end = appsScript.indexOf("function fillInsertedDateHeadersOnChange(e)", start);
