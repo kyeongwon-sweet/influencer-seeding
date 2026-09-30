@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## ✅ 2026-09-30 [Codex 완료·운영 실측] 협찬 모니터링 메인 그래프 3종 복구 — 검색량·B2B·인스타 프로필 방문
+- **라라스윗 검색량:** 08-20 최서은님이 공개 공유를 의도적으로 해제한 이력을 확인해 공개 링크를 되살리지 않았다. 시트에 운영 서비스계정 `b2b-843@dynamic-music-499614-t2.iam.gserviceaccount.com`을 **Viewer로만** 추가하고 라우트를 서비스계정 읽기로 전환했다. 운영 API HTTP 200, 대시보드 `라라스윗 검색량 총합=433,938` 실물 확인. 조직/공개 공유 설정은 무변경이다.
+- **B2B 발주량:** `A1:T160` 절단뿐 아니라 시트 구조가 `B=주차 라벨, C=실제 날짜, D=CVS, E=B2B`로 바뀐 것이 원인이었다. 범위를 `A1:T500`으로 늘리고 실제 헤더를 탐색해 날짜/값 열을 찾으며 `5. 1 (금)` 형식도 파싱하도록 수정했다. recovery run `36656486403`에서 `count=152 · first=2026-05-01 · last=2026-09-29`, 대시보드 09-29 `95,160` 및 기간 합계 `8,124,528` 확인.
+- **인스타 프로필 방문:** 기존 Production 토큰은 만료가 아니라 Graph HTTP 400 / OAuth code 10 `Application does not have permission for this action`이었다. 같은 Meta 앱(ID `965303019541316`)의 기존 페이지·댓글감시 자산 범위를 보존한 채 `instagram_manage_insights`를 추가하고, Meta가 발급한 **만료되지 않는 장기 사용자 토큰**으로 Vercel Production `INSTAGRAM_ACCESS_TOKEN`을 교체했다. 토큰 값은 로그·문서·git에 남기지 않았고 임시 파일/클립보드를 제거했다.
+- **배포/백필:** Vercel `dpl_36YckQTPz9FpcdnLtf6fJ7gqws3t` Ready, `influencer-seeding-mu.vercel.app` 별칭 확인. recovery run `36656486403` 성공: 2026-08-31~09-29 **30일 전부 실값**, `instagram.allNull=false · failures=[]`, 09-29 `ig_profile_views=1,519`. 운영 대시보드 `그 외 > 인스타 프로필 방문` 시리즈 노출 확인.
+- **재발방지 코드:** `43e8caeb`에서 Graph 오류를 보존해 반환하고, 전부 null이면 HTTP 502/`ok:false`, 부분 성공이면 null로 기존값을 덮지 않게 했다. 검색량/B2B 보강은 `fcabf879 · 0e69c42c · cc60a4f2 · 6b8f7509 · a2753db8`. web `605/605`, `tsc --noEmit`, production build 통과(기존 lint warning 17, error 0).
+- **남은 운영 사실:** 토큰 자체는 비만료지만 Meta 디버거의 데이터 접근 만료 표시는 약 3개월이었다. 매일 사용하는 동안 갱신될 수 있으나, 다시 권한이 끊기면 이번 all-null 가드가 조용히 성공하지 않고 즉시 실패/알림으로 드러난다.
+
 ## 📮 2026-09-30 [Claude 진단·수정 / → Codex 인계] 협찬 모니터링 메인 그래프 "데이터 끊김" — 4개 시리즈, 원인 4개, **전부 '성공한 척하는 실패'**
 > 사용자 제보(09-30): `/monitoring` 표·그래프에 끊긴 데이터가 많다. 로그인 없이 볼 수 없어 **화면 대신 코드→API→DB/시트를 직접 추적**했다.
 
