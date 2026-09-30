@@ -667,7 +667,10 @@ test("linked-sheet upload dates are written as native dates and existing text da
   assert.match(repairBody, /withDocLock_/);
   assert.match(repairBody, /withAutoWriteGuard_/);
   assert.match(repairBody, /SpreadsheetApp\.create\(/);
-  assert.match(repairBody, /writeColumnRuns_\(sheet, 1, edits, expectedLastRow\)/);
+  assert.match(repairBody, /if \(formulaSkipped > 0\)/);
+  assert.match(repairBody, /dateRange\.setValues\(rewrittenValues\)/);
+  assert.match(repairBody, /assertRowCountStable_\(sheet, expectedLastRow, "normalizeLinkedUploadDatesWithBackup"\)/);
+  assert.doesNotMatch(repairBody, /writeColumnRuns_\(sheet, 1, edits, expectedLastRow\)/);
   assert.match(repairBody, /setDataValidation\(linkedUploadDateValidationRule_\(\)\)/);
   assert.match(repairBody, /remaining_invalid/);
   assert.doesNotMatch(repairBody, /deleteRow|clearContent/);

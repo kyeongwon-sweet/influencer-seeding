@@ -3799,7 +3799,22 @@ function normalizeLinkedUploadDatesWithBackup() {
         backupSheet.getRange(1, 1, backupRows.length, backupRows[0].length).setValues(backupRows);
 
         const expectedLastRow = sheet.getLastRow();
-        writeColumnRuns_(sheet, 1, edits, expectedLastRow);
+        // 문자열 날짜가 여러 구간에 흩어져 있으면 구간별 setValues가 재계산을 반복해
+        // Apps Script 실행시간을 소진한다. A열은 수식이 없는 입력 열이므로 한 번에
+        // 동일 열을 다시 쓰되, 수식이 하나라도 있으면 중단해 의도치 않은 덮어쓰기를 막는다.
+        if (formulaSkipped > 0) {
+          throw new Error("업로드일 A열에 수식 " + formulaSkipped + "건이 있어 전체 쓰기를 중단했습니다.");
+        }
+        const replacementByRow = {};
+        edits.forEach(function(edit) { replacementByRow[edit.row] = edit.value; });
+        const rewrittenValues = values.map(function(rowValues, i) {
+          const sheetRow = CONFIG.DATA_START_ROW + i;
+          return Object.prototype.hasOwnProperty.call(replacementByRow, sheetRow)
+            ? [replacementByRow[sheetRow]]
+            : [rowValues[0]];
+        });
+        assertRowCountStable_(sheet, expectedLastRow, "normalizeLinkedUploadDatesWithBackup");
+        dateRange.setValues(rewrittenValues);
         SpreadsheetApp.flush();
       }
 
