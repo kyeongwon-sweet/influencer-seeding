@@ -24,4 +24,5 @@ test("B2B parser finds the real date column after the July layout change", () =>
 test("week labels are not accepted as dates", () => {
   assert.equal(parseB2bDate("26.09. W5", new Date("2026-09-30T01:00:00.000Z")), null);
   assert.equal(parseB2bDate("2026-09-29", new Date("2026-09-30T01:00:00.000Z")), "2026-09-29");
+  assert.equal(parseB2bDate("9. 29 (화)", new Date("2026-09-30T01:00:00.000Z")), "2026-09-29");
 });

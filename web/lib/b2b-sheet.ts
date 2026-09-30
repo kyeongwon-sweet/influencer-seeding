@@ -32,7 +32,9 @@ export function parseB2bDate(cell: SheetCell, nowKST = new Date(Date.now() + 9 *
     return validDate(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
   }
   if (typeof cell !== "string") return null;
-  const value = cell.trim();
+  // Google Sheets API의 한국어 날짜 표시(예: "5. 1 (금)")에서 요일과 끝 마침표만 제거한다.
+  // 주차 라벨("26.04. W4")은 그대로 남아 아래의 엄격한 날짜 정규식에서 거부된다.
+  const value = cell.trim().replace(/\s*\([^)]*\)\s*$/, "").replace(/\.\s*$/, "").trim();
 
   const ymd = value.match(/^(\d{2}|\d{4})\s*[.\/-]\s*(\d{1,2})\s*[.\/-]\s*(\d{1,2})(?:\D.*)?$/);
   if (ymd) {
