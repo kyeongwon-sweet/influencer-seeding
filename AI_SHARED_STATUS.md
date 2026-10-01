@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## ✅ 2026-10-01 [Codex 운영 실증 완료] negative-comment-monitor delayed floor wake · 실제 dispatch 상한
+- **검증 대상:** `negative-comment-monitor`의 delayed floor wake `ca93f07`와 예약 claim 상한 수정 `1d47f17`. 수정 배포 후 36시간 이상 지난 시점에 GitHub run 시작시각이 아닌 정본 `monitor_scan_heartbeats.scanned_at`으로 검증했다.
+- **단위 게이트:** `node --test test/monitor-chain.test.js test/monitor-floor-wake.test.js` **17/17 통과**. `floor-scan-completed`·`floor-not-due`가 각각 wake를 정확히 1개 예약하고, 교체 예약 21회는 원장을 전혀 소비하지 않으며, 실제 floor dispatch 12회 뒤 13번째만 상한에 걸리고, GitHub 스케줄 0회 6시간 시뮬레이션도 스캔 간격 150분 이하를 유지한다.
+- **24시간 운영 원장:** 2026-09-30 14:31~2026-10-01 14:31 KST의 실제 scan heartbeat **56건**, 최장 공백 **152.274분(2시간 32분 16초)**, **210분(3.5시간) 초과 0회**. heartbeat workflow run `36704472725`·`36731406998`도 각각 `OK`, Slack `C0BHD9S69JA`에는 `1d47f17` 배포 뒤 heartbeat STALE/실행공백 경보 **0건**이었다.
+- **상한/비용 원장:** 실제 dispatch claim `monitor-floor-chain:*`은 KST 09-29 **2건**, 09-30 **4건**(10-01 1건)으로 모두 0이 아니며 상한 12 미만이다. 해당 날짜의 `floor-wake-daily-cap` 발생은 **09-29 0회 · 09-30 0회**. 취소·교체 waiter는 `monitor-floor-chain:*` claim을 만들지 않아 상한을 소비하지 않았다.
+- **실제 waiter→scan 증거:** floor waiter run `36696361943`가 2026-09-30 20:58:40 KST에 깨어 `chain=floor-queued`; 실제 monitor run `36711852606`을 dispatch했고, 원장에 `scanned_at=2026-09-30 21:00:56.786 KST`(`scan_key=36711852606:1:1`)가 기록됐다. 같은 run의 gate-closed iteration은 `monitor_external_api_calls=0`으로 비용 가드도 유지됐다.
+- **판정:** 요청한 운영 게이트를 모두 통과했다. `floor-24` 검증 자동화는 더 이상 필요하지 않아 일시중지한다. 운영 코드·DB·Slack 메시지는 변경하지 않았고 이 상태판만 추가했다.
+
 ## ✅ 2026-09-30 [Codex 운영 반영] 미모지상주의(틱톡) 최종 조회수 갱신·트래킹 종료
 - **대상:** `미모지상주의(틱톡)` · `https://www.tiktok.com/@mimoji_kpop/video/7685007397705846034/` · post id `7711f698-1b24-447e-bd5b-e88c0db95747`.
 - **최종 실측:** 단일 게시물만 Apify(`clockworks/tiktok-scraper`, run `oKQgpgygeEQds0rxb`)로 재측정해 2026-09-30 `play_count=2,087`을 확인했다. 기존 09-28 `2,065` → 09-29 `2,075` → 09-30 `2,087`로 단조 증가하며, 새 행은 자동 실측 의미를 보존해 `manual=false`로 저장했다.
