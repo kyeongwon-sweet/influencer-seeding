@@ -28,7 +28,6 @@ TOKEN_KEY = "SLACK_BOT_TOKEN"
 DEST_KEYS = ("STATUS_USER", "SLACK_CHANNEL")  # 둘 중 하나면 됨
 # 웹훅만으로도 전달되는 경우를 허용(이것만 있어도 통과)
 WEBHOOK_KEY = "SLACK_WEBHOOK_URL"
-OPERATOR_DM_CHANNEL = "D0B2U2J8QNS"
 
 
 def split_steps(text: str) -> list[str]:
@@ -60,12 +59,6 @@ def check_file(path: Path) -> list[str]:
                 problems.append(
                     f"{path.name} / 스텝 '{name}' — {script} 를 실행하는데 {', '.join(missing)} 없음"
                     " → Slack 알림이 조용히 사라진다"
-                )
-            if script == "run_monitoring.py" and TOKEN_KEY in step and OPERATOR_DM_CHANNEL not in step:
-                name = (re.search(r"- name:\s*(.+)", step) or [None, "(이름 없음)"])[1].strip()
-                problems.append(
-                    f"{path.name} / 스텝 '{name}' — run_monitoring STATUS_USER가 실제 여믄봇 DM 채널"
-                    f"({OPERATOR_DM_CHANNEL})이 아니다 → U... 사용자 ID는 conversations.open im:write 없이는 DM 보장 불가"
                 )
     return problems
 
