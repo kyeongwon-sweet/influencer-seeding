@@ -16,6 +16,11 @@ import {
   quarantineAutomaticSuspects,
   type AutomaticPlayMeasurement,
 } from "@/lib/stats-import-spike";
+import {
+  resolveImportedManualFlag,
+  type ExistingMetricSnapshot,
+  type StatsImportSource,
+} from "@/lib/stats-import-provenance";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -58,7 +63,7 @@ export async function POST(req: NextRequest) {
   // 임포트 때마다 Slack 경고를 울려 드리프트를 그날 안에 드러낸다. 처리 자체는 막지 않는다(경고만).
   const EXPECTED_IMPORTSTATS_CLIENT = "2026-08-25-banner-reclass-v1";
   const clientVersion = typeof body?.client_version === "string" ? body.client_version : null;
-  const importSource = body?.source === "daily_auto" ? "daily_auto" : "manual_sheet";
+  const importSource: StatsImportSource = body?.source === "daily_auto" ? "daily_auto" : "manual_sheet";
   const isManualImport = importSource === "manual_sheet";
   if (clientVersion !== EXPECTED_IMPORTSTATS_CLIENT) {
     await notifyBot(
@@ -353,7 +358,7 @@ export async function POST(req: NextRequest) {
   // 자정 자동수집·리포트의 T-1 정책은 별도 경로에서 유지하며, 미래 날짜만 차단한다.
   const maxStatsDate = maxDateKST();
   let incoming: GuardInput[] = [];
-  let bannerRows: Array<{ post_id: string; measured_at: string; play_count: null; reach_count: number; manual: boolean }> = [];
+  let bannerRows: Array<{ post_id: string; measured_at: string; play_count: null; reach_count: number }> = [];
   const postIdSet = new Set<string>();
   for (const it of items) {
     const pid = idByKey.get(it.key) ?? idByUrl.get(it.url);
@@ -373,7 +378,7 @@ export async function POST(req: NextRequest) {
     if (endedAt && measuredDate > endedAt) { postEnded.push({ url: it.url, date: it.measured_at, ended_at: endedAt }); continue; }
     // 배너: reach_count로 저장(입력값=도달수). 비배너: 기존대로 play_count(누적 mono가드 대상).
     if (isBannerByKey.get(it.key)) {
-      bannerRows.push({ post_id: pid, measured_at: it.measured_at, play_count: null, reach_count: it.play_count, manual: isManualImport });
+      bannerRows.push({ post_id: pid, measured_at: it.measured_at, play_count: null, reach_count: it.play_count });
     } else if (explicitlyNonVideoKeys.has(it.key)) {
       nonVideoPlayRejected.push({ url: it.url, date: it.measured_at, value: it.play_count });
       continue;
@@ -527,6 +532,7 @@ export async function POST(req: NextRequest) {
   // 4) 기존 post_daily_stats 조회 (누적 감소 판정 기준) — 페이지네이션으로 전량
   const existingStats: GuardInput[] = [];
   const manualSet = new Set<string>(); // 대시보드에서 수동수정된 (post_id|measured_at) → 동기화가 덮지 않고 보존
+  const existingMetricByKey = new Map<string, ExistingMetricSnapshot>();
   const automaticPlayRows: AutomaticPlayMeasurement[] = [];
   // ⚠️ .in("post_id", postIds)를 통째로 쓰면 시트가 대량 배치를 보낼 때 id 목록이 쿼리 URL 한도를 넘어
   //    0행/에러가 됨(sponsored-posts 500 버그와 동일 계열) → id를 청크로 나눠 조회.
@@ -539,16 +545,23 @@ export async function POST(req: NextRequest) {
       for (let from = 0; ; from += PAGE) {
         const { data: page, error: pe2 } = await supabase
           .from("post_daily_stats")
-          .select("id, post_id, measured_at, play_count, manual")
+          .select("id, post_id, measured_at, play_count, reach_count, manual")
           .in("post_id", batch)
           .order("post_id", { ascending: true })
           .order("measured_at", { ascending: true })
           .order("id", { ascending: true })
           .range(from, from + PAGE - 1);
         if (pe2) return NextResponse.json({ error: pe2.message }, { status: 500 });
-        for (const s of (page ?? []) as Array<{ post_id: string; measured_at: string; play_count: number | null; manual: boolean | null }>) {
-          existingStats.push({ post_id: s.post_id, measured_at: s.measured_at, play_count: Number(s.play_count ?? 0) });
-          if (s.manual) manualSet.add(`${s.post_id}|${s.measured_at}`);
+        for (const s of (page ?? []) as Array<{ post_id: string; measured_at: string; play_count: number | null; reach_count: number | null; manual: boolean | null }>) {
+          const measuredAt = String(s.measured_at).slice(0, 10);
+          const key = `${s.post_id}|${measuredAt}`;
+          existingStats.push({ post_id: s.post_id, measured_at: measuredAt, play_count: Number(s.play_count ?? 0) });
+          existingMetricByKey.set(key, {
+            play_count: s.play_count == null ? null : Number(s.play_count),
+            reach_count: s.reach_count == null ? null : Number(s.reach_count),
+            manual: s.manual,
+          });
+          if (s.manual) manualSet.add(key);
           if (!s.manual) automaticPlayRows.push(s);
         }
         if (!page || page.length < PAGE) break;
@@ -556,12 +569,9 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 4-b) 조회수 입력 우선순위 = "가장 최근에 사람이 손댄 값이 이긴다".
-  //   시트 조회수 입력(importStats)은 사람이 메뉴를 눌러 '지금 이 값을 넣겠다'는 의도적 행위이며
-  //   자동(밤 수집)이 절대 부르지 않는 경로다. 따라서 대시보드에서 먼저 수정한 값(manual)이라도
-  //   시트에서 새로 입력하면 덮어쓴다(예전엔 manual이면 무조건 보존 → 시트 정정이 반영 안 되던 반대 문제).
-  //   ⚠️ importStats는 '시트에 현재 적힌 값'을 밀어넣으므로, 최신 상태로 두고 입력할 것(안내 문구로 고지).
-  //   manualSet은 진단 표시에만 사용(어떤 칸이 대시보드값을 덮었는지).
+  // 4-b) 수기값 보존은 임포트 실행 주체가 아니라 값의 출처를 따른다.
+  //   dailyAuto가 읽더라도 DB에 없거나 같은 날짜 DB값과 다른 시트값은 사람이 시트에 입력한 값이다.
+  //   반대로 DB의 기존 자동값과 같은 왕복 값만 automatic을 유지한다.
   // Sheet display may forward-fill cumulative cells. If that repeated value comes back through
   // stats-import, do not store it as a new real measurement.
   const existingByPost = new Map<string, GuardInput[]>();
@@ -662,8 +672,26 @@ export async function POST(req: NextRequest) {
   // 오류가 DB로 되밀리는 것을 막는다(2026-08-28 사고). 사람이 올린 정정(manual_sheet)은 허용.
   const { kept: keptRows, dropped } = filterMonotonicStats(
     incomingWritable, existingStats, { sameDateFloor: !isManualImport });
-  // 메뉴 직접 실행만 사람 수기값이다. dailyAuto 값은 자동 실측이 이후 교정할 수 있게 manual=false.
-  const statsRows = keptRows.map(r => ({ ...r, manual: isManualImport }));
+  const statsRows = keptRows.map((r) => ({
+    ...r,
+    manual: resolveImportedManualFlag({
+      source: importSource,
+      metric: "play_count",
+      incomingValue: Number(r.play_count),
+      existing: existingMetricByKey.get(`${r.post_id}|${String(r.measured_at).slice(0, 10)}`),
+    }),
+  }));
+  const bannerStatsRows = bannerRowsWritable.map((r) => ({
+    ...r,
+    manual: resolveImportedManualFlag({
+      source: importSource,
+      metric: "reach_count",
+      incomingValue: r.reach_count,
+      existing: existingMetricByKey.get(`${r.post_id}|${String(r.measured_at).slice(0, 10)}`),
+    }),
+  }));
+  const manualRowsWritten = [...statsRows, ...bannerStatsRows].filter((r) => r.manual).length;
+  const automaticRowsWritten = statsRows.length + bannerStatsRows.length - manualRowsWritten;
   const droppedDecrease = dropped.length;
   // 진단용: 제외된 건 샘플(어떤 글의 어느 날짜 값이, 어느 날짜의 어떤 값에 막혔는지)
   const urlByPid = new Map<string, string>([...idByUrl.entries()].map(([u, id]) => [id, u]));
@@ -693,10 +721,10 @@ export async function POST(req: NextRequest) {
     play_count: number | null;
     reach_count: number | null;
   }> = [];
-  if (bannerRowsWritable.length > 0) {
+  if (bannerStatsRows.length > 0) {
     const { data, error } = await supabase
       .from("post_daily_stats")
-      .upsert(bannerRowsWritable, { onConflict: "post_id,measured_at" })
+      .upsert(bannerStatsRows, { onConflict: "post_id,measured_at" })
       .select("post_id, measured_at, play_count, reach_count");
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     bannerInserted = (data ?? []).length;
@@ -751,6 +779,8 @@ export async function POST(req: NextRequest) {
     inserted,
     bannerInserted,
     preservedManual: preservedManual.length,
+    manualRowsWritten,
+    automaticRowsWritten,
     copySuspectedSkipped,
     spikeSuspectedSkipped: spikePartition.quarantined.length,
     nonVideoPlayRejected: nonVideoPlayRejected.length,
@@ -774,6 +804,8 @@ export async function POST(req: NextRequest) {
     banner_reach_verified_sample: bannerVerified.slice(0, 10),
     source: importSource,
     manual: isManualImport,
+    manual_rows_written: manualRowsWritten,
+    automatic_rows_written: automaticRowsWritten,
     preserved_manual: preservedManual.length,
     created_posts: created,
     meta_filled: metaFilled,

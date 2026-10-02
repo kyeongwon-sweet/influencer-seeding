@@ -50,15 +50,18 @@ test("stats-import: explicit non-video play is rejected but banner reach routing
   assert.match(route, /non_video_play_rejected:\s*nonVideoPlayRejected\.length/);
 });
 
-test("stats-import: dailyAuto values stay automatic and cannot overwrite human manual rows", () => {
+test("stats-import: dailyAuto preserves existing automatic values but marks new or changed sheet values manual", () => {
   assert.match(appsScript, /function importStats\(source\)/);
   assert.match(appsScript, /importStats\("daily_auto"\)/);
   assert.match(appsScript, /source: importSource/);
-  assert.match(route, /const importSource = body\?\.source === "daily_auto" \? "daily_auto" : "manual_sheet"/);
+  assert.match(route, /const importSource(?:: StatsImportSource)? = body\?\.source === "daily_auto" \? "daily_auto" : "manual_sheet"/);
   assert.match(route, /const isManualImport = importSource === "manual_sheet"/);
   assert.match(route, /const incomingWritable = incomingAfterSpikeGuard\.filter/);
   assert.match(route, /!manualSet\.has\(`\$\{i\.post_id\}\|\$\{i\.measured_at\}`\)/);
-  assert.match(route, /const statsRows = keptRows\.map\(r => \(\{ \.\.\.r, manual: isManualImport \}\)\)/);
+  assert.match(route, /resolveImportedManualFlag\(\{/);
+  assert.match(route, /metric: "play_count"/);
+  assert.match(route, /metric: "reach_count"/);
+  assert.doesNotMatch(route, /manual: isManualImport \}\)/);
   assert.match(route, /preserved_manual: preservedManual\.length/);
 });
 

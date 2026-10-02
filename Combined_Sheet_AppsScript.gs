@@ -3226,8 +3226,8 @@ function postStats_(payload) {
 
 function importStats(source) {
   try {
-    // 메뉴에서 직접 실행하면 수기 확정값, dailyAuto에서 호출하면 자동 동기화값이다.
-    // 서버가 이 출처를 기준으로 manual 플래그와 기존 수기행 보존 정책을 적용한다.
+    // 메뉴/자동 실행 모드는 서버 가드의 강도를 정한다. manual 플래그는 서버가
+    // 같은 날짜의 기존 DB 값과 대조해 실제 값 출처(시트 신규·변경 여부)로 판정한다.
     const importSource = source === "daily_auto" ? "daily_auto" : "manual_sheet";
     const sheet = getSheet_();
     const fieldCols = buildFieldCols_(sheet);
