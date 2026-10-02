@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## ✅ 2026-10-02 [Codex 완료·실측] 뀨티 게시일 정정 + 대상 재수집 복구
+- **시트 1셀 정정:** 연동시트 `콘텐츠 대시보드 연동`에서 URL `https://www.instagram.com/reel/DdtfCVAJH2e/`를 검색해 유일한 대상 `뀨티`를 **B4625 1/1**로 식별하고, **A4625만** `2026. 9. 23.` → `2026. 9. 25.`로 정정했다. ISO `2026-09-25`로 입력해 실제 날짜로 저장됐으며 A4624/A4626, B/C, H=`398,000`은 그대로임을 전후 확인했다.
+- **DB 정합:** `sponsored_posts.id=7a44a949-2364-4b48-acc6-ab56b0aa9fa2`의 `posted_at`만 `2026-09-23` → `2026-09-25`로 조건부 갱신했다. URL 기준 대상 1건, 비대상 필드 변경 0건을 재조회로 확인했다. 쓰기 전 전체 행 백업은 `scratchpad/backup_gyutti_posted_at_20261002_032200Z.json`(gitignore)에 있다.
+- **재수집 실측:** `monitoring-retry.yml`을 `target_only=true`로 1회 실행한 run `36959875604`가 **success**(12:22:25~12:30:32 KST). 큐에서 뀨티는 `posted_at=2026-09-25 · reason=missing_same_day_row`로 포함됐고, 실행 전체의 `posted_at_mismatch`/`IG 게시일 불일치 응답 제외`는 **0건**이었다.
+- **복구 결과:** `post_daily_stats`에 `measured_at=2026-10-01 · play_count=527,952 · manual=false` 행이 12:29:35 KST 새로 생성됐다. 기존 마지막 `2026-09-29 · 398,000` 정체가 해소됐으며 조회수·다른 날짜행·종료 상태는 수동 변경하지 않았다. 코드 변경 없음.
+
 ## ✅ 2026-10-02 [Codex 수정·실물검증] 시트 게시일 1셀 정정 + 수집기 운영자 DM 복구
 - **시트 정정:** 연동시트 `콘텐츠 대시보드 연동`의 URL `https://www.instagram.com/reels/Dd3t0FOTawJ/`(`sj.uju`)을 URL로 단일 식별해 **A4757만** `2026. 9. 26.` → `2026. 9. 29.`로 정정했다. 재내보낸 CSV에서 A/B/C가 각각 `2026. 9. 29.` / 대상 URL / `sj.uju`임을 독립 확인했다. DB·조회수·다른 셀은 무접촉이며 다음 정규 sync/수집부터 자동 복구 대상이다.
 - **알림 미도착 원인 확정:** 수집 run `36940564172`에는 게시일 불일치 이벤트와 flush 호출이 있었지만, 기존 구현은 `STATUS_USER=U...`를 `chat.postMessage`에 바로 넘기고 성공 로그도 남기지 않았다. 분리 테스트 run `36957887711`에서 Slack API가 `missing_scope`를 반환해, 여믄봇에 **`im:write`가 없어서 DM 대화 생성이 막힌 것**을 실측 확정했다.
