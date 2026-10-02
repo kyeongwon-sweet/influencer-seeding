@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## ✅ 2026-10-02 [Codex 수정·실물검증] 시트 게시일 1셀 정정 + 수집기 운영자 DM 복구
+- **시트 정정:** 연동시트 `콘텐츠 대시보드 연동`의 URL `https://www.instagram.com/reels/Dd3t0FOTawJ/`(`sj.uju`)을 URL로 단일 식별해 **A4757만** `2026. 9. 26.` → `2026. 9. 29.`로 정정했다. 재내보낸 CSV에서 A/B/C가 각각 `2026. 9. 29.` / 대상 URL / `sj.uju`임을 독립 확인했다. DB·조회수·다른 셀은 무접촉이며 다음 정규 sync/수집부터 자동 복구 대상이다.
+- **알림 미도착 원인 확정:** 수집 run `36940564172`에는 게시일 불일치 이벤트와 flush 호출이 있었지만, 기존 구현은 `STATUS_USER=U...`를 `chat.postMessage`에 바로 넘기고 성공 로그도 남기지 않았다. 분리 테스트 run `36957887711`에서 Slack API가 `missing_scope`를 반환해, 여믄봇에 **`im:write`가 없어서 DM 대화 생성이 막힌 것**을 실측 확정했다.
+- **코드 수정:** `04aabc2c`에서 `U...` 대상은 `conversations.open`으로 실제 `D...` DM을 만든 뒤 전송하고, 자격증명 누락·DM 열기 실패·전송 실패·성공을 모두 명시 로그로 남기도록 공용 헬퍼와 회귀 테스트를 추가했다. 수집/DB 쓰기 없이 알림 경로만 검증하는 `collector_alert_test` 수동 입력도 추가했다. 과거 DM ID를 재사용한 임시 시도는 `channel_not_found`여서 `5bc599f2`로 완전히 되돌렸다.
+- **Slack 운영 설정:** 사용자 승인으로 여믄봇(App `A0B8DBC6XJQ`) Bot Token Scope에 `im:write`를 추가하고 워크스페이스에 재설치했다. 기존 Incoming Webhook 목적지 `#빙과_마케팅_리포트`와 다른 scope는 보존했다. 토큰은 재설치 전후 동일해 Vercel/GitHub Secret 갱신이 필요 없었으며 값은 어디에도 기록하지 않았다.
+- **종단 검증:** 최종 run `36958816361`은 `collector-alert-test=success`, 실제 수집 job은 **skipped**였고 로그에 `[SLACK_ALERT] delivered kind=direct_message`가 남았다. Slack 실물에서도 여믄봇→황경원 DM의 **2026-10-02 12:08:38 KST** `✅ [협찬 수집기] Slack 알림 경로 테스트`를 확인했다. 같은 DM에 **11:56:32 KST** 실제 `뀨티` 게시일 불일치 경고도 도착해 테스트 전용 경로가 아닌 운영 경로까지 복구됐음을 확인했다.
+- **게이트:** Python 전체 `393 passed` + 별도 subtest 4건, workflow YAML parse, pre-push `tsc --noEmit` 통과. 별도 발견 `뀨티`(`DdtfCVAJH2e`, 시트 2026-09-23 / 실제 2026-09-25)는 이번 승인 범위 밖이라 시트·DB를 건드리지 않았다.
+
 ## ✅ 2026-10-01 [Codex 운영 실증 완료] negative-comment-monitor delayed floor wake · 실제 dispatch 상한
 - **검증 대상:** `negative-comment-monitor`의 delayed floor wake `ca93f07`와 예약 claim 상한 수정 `1d47f17`. 수정 배포 후 36시간 이상 지난 시점에 GitHub run 시작시각이 아닌 정본 `monitor_scan_heartbeats.scanned_at`으로 검증했다.
 - **단위 게이트:** `node --test test/monitor-chain.test.js test/monitor-floor-wake.test.js` **17/17 통과**. `floor-scan-completed`·`floor-not-due`가 각각 wake를 정확히 1개 예약하고, 교체 예약 21회는 원장을 전혀 소비하지 않으며, 실제 floor dispatch 12회 뒤 13번째만 상한에 걸리고, GitHub 스케줄 0회 6시간 시뮬레이션도 스캔 간격 150분 이하를 유지한다.
