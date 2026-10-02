@@ -24,6 +24,10 @@ on:
         description: "수집 안 하고 상태 알럿(황경원 DM)만 테스트 발송"
         type: boolean
         default: false
+      collector_alert_test:
+        description: "수집 없이 run_monitoring 알림 경로만 황경원 DM으로 테스트"
+        type: boolean
+        default: false
       recollect_all:
         description: "강제 전체 재수집(기본 false) — 같은 MONITORING_DATE 기존 측정행도 다시 Apify 호출"
         type: boolean
@@ -40,7 +44,7 @@ env:
 
 jobs:
   collect:
-    if: ${{ github.event.inputs.status_test != 'true' }}
+    if: ${{ github.event.inputs.status_test != 'true' && github.event.inputs.collector_alert_test != 'true' }}
     runs-on: ubuntu-latest
     # 수집 완료 후 리포트를 dispatch하므로 actions:write가 필요하다(gh workflow run).
     # 그 외 스텝은 checkout + 시크릿 기반 python이라 contents:read로 충분하다.
@@ -300,3 +304,33 @@ jobs:
         run: |
           export MONITORING_DATE=$(TZ=Asia/Seoul date -d 'yesterday' +%F)
           cd scripts && python notify_status.py
+
+  # run_monitoring의 자체 경고(게시일 불일치·수동 과대기록 등)가 실제 운영자 DM에
+  # 도착하는지 수집/DB 쓰기 없이 종단 검증한다.
+  collector-alert-test:
+    if: ${{ github.event.inputs.collector_alert_test == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: 수집기 자체 알림 경로 테스트 (황경원 DM)
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          STATUS_USER: U0B2Y0ZC8QZ
+          PYTHONUNBUFFERED: "1"
+        run: |
+          cd scripts
+          python - <<'PY'
+          import run_monitoring
+
+          ok = run_monitoring._send_status_alert(
+              "✅ [협찬 수집기] Slack 알림 경로 테스트\n"
+              "게시일 불일치 등 run_monitoring 자체 경고의 운영자 DM 경로가 정상입니다."
+          )
+          raise SystemExit(0 if ok else 1)
+          PY

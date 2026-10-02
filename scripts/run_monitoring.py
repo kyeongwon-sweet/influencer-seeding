@@ -23,6 +23,7 @@ from not_found_policy import (
     next_not_found_state,
     normalize_instagram_handle,
 )
+from slack_alert import send_bot_message
 
 
 OVERRECORDED_WARNINGS = []
@@ -99,31 +100,25 @@ def _looks_like_engagement_count_as_views(play_count, likes_count, comments_coun
     return False
 
 
-def _send_status_alert(text: str):
+def _send_status_alert(text: str) -> bool:
     """Best-effort Slack alert. Never fail monitoring because alert delivery failed."""
     try:
         token = os.getenv("SLACK_BOT_TOKEN")
         channel = os.getenv("STATUS_USER") or os.getenv("SLACK_CHANNEL")
         if token and channel:
-            data = json.dumps({"channel": channel, "text": text}).encode("utf-8")
-            req = urllib.request.Request(
-                "https://slack.com/api/chat.postMessage",
-                data=data,
-                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"},
-            )
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                body = json.loads(resp.read().decode("utf-8"))
-                if not body.get("ok"):
-                    print(f"[WARN] Slack bot alert failed: {body.get('error')}")
-            return
+            return send_bot_message(token, channel, text)
 
         webhook = os.getenv("SLACK_WEBHOOK_URL")
         if webhook:
             data = json.dumps({"text": text}).encode("utf-8")
             req = urllib.request.Request(webhook, data=data, headers={"Content-Type": "application/json"})
             urllib.request.urlopen(req, timeout=10).read()
+            print("[SLACK_ALERT] delivered kind=webhook")
+            return True
+        print("[WARN] Slack alert not sent: missing bot destination and webhook")
     except Exception as e:
-        print(f"[WARN] over-record alert delivery failed: {e}")
+        print(f"[WARN] Slack alert delivery failed: {e}")
+    return False
 
 
 def _record_overrecord_candidate(post: dict, label: str, observed: int | float | None, existing: dict):
