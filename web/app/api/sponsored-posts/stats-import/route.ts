@@ -675,7 +675,6 @@ export async function POST(req: NextRequest) {
   const statsRows = keptRows.map((r) => ({
     ...r,
     manual: resolveImportedManualFlag({
-      source: importSource,
       metric: "play_count",
       incomingValue: Number(r.play_count),
       existing: existingMetricByKey.get(`${r.post_id}|${String(r.measured_at).slice(0, 10)}`),
@@ -684,7 +683,6 @@ export async function POST(req: NextRequest) {
   const bannerStatsRows = bannerRowsWritable.map((r) => ({
     ...r,
     manual: resolveImportedManualFlag({
-      source: importSource,
       metric: "reach_count",
       incomingValue: r.reach_count,
       existing: existingMetricByKey.get(`${r.post_id}|${String(r.measured_at).slice(0, 10)}`),

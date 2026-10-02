@@ -4,7 +4,7 @@
 - **실물 확정:** 연동시트 `뀨티` URL `DdtfCVAJH2e`의 행 4625에서 `ER:EU`(09-26~09-29)를 직접 읽어 **100,000 / 200,000 / 300,000 / 398,000**을 확인했다. DB의 같은 4행은 모두 동일 `created_at=2026-10-01 08:44:50 KST · manual=false`였고, 당시 수집기는 게시일 불일치로 값을 폐기 중이어서 시트 `daily_auto` 임포트 외 생성 경로가 없었다.
 - **DB 수술:** post id `7a44a949-2364-4b48-acc6-ab56b0aa9fa2`의 위 4행만 조건부로 `manual=false → true` 교정했다. 조회수·날짜·`created_at`·`reach_count` 등 다른 필드는 전후 동일하다. 백업은 `scratchpad/backup_gyutti_manual_provenance_20261002_034734Z.json`(gitignore)에 있다. 10-01 자동 실측 `527,952 · manual=false`는 무접촉이다.
 - **영향 전수감사:** 결함이 도입된 2026-08-03 이후 `manual=false` 통계 **60,614행**을 전수 조회했다. 자동 수집으로는 만들 수 없는 **한 게시물·동일 생성시각·여러 측정일 일괄 생성** 패턴은 뀨티 4행 1그룹뿐이었다. 단일 날짜로 들어온 과거 행은 당시 provenance 로그가 없어 사후 확정할 수 없으므로 추정 변경하지 않았다.
-- **근본 수정 `c8280e79`:** `daily_auto`는 이제 가드 강도만 뜻한다. `manual_sheet`는 항상 수기, `daily_auto`는 **같은 날짜의 기존 자동 DB값과 동일한 왕복만 `manual=false` 유지**하고, DB에 없거나 값이 달라 시트가 새 정본을 제시한 행은 `manual=true`로 저장한다. 조회수·배너 도달수 양쪽에 같은 규칙을 적용하며 기존 수기행 보존, 복사·급변·단조 가드는 그대로다.
+- **근본 수정 `c8280e79`(+후속 정밀화):** 실행 모드는 가드 강도만 정하고 `manual`을 결정하지 않는다. 수동 메뉴·`daily_auto` 모두 **같은 날짜의 기존 DB값과 동일한 왕복은 기존 플래그 유지**, DB에 없거나 값이 달라 시트가 새 정본을 제시한 행만 `manual=true`로 저장한다. 조회수·배너 도달수 양쪽에 같은 규칙을 적용하며 기존 수기행 보존, 복사·급변·단조 가드는 그대로다.
 - **게이트/배포:** provenance 순수함수 회귀 6종 포함 web **619/619**, `tsc --noEmit`, production build, pre-push 타입체크 통과. Vercel `dpl_9RwCgcuQW5GvH1LHusA7wv3igoYH` Ready, `influencer-seeding-mu.vercel.app` 별칭 반영. Apps Script 실행 로직 변경은 없고 repo 주석만 실제 의미에 맞췄다.
 - **별건 보존:** `moduhappy`·`smile_ggobuk_s2` 지역 제한 2건 종료 처리는 이번 범위가 아니므로 무접촉이다.
 

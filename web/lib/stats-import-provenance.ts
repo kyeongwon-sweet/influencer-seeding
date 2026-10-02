@@ -8,7 +8,6 @@ export type ExistingMetricSnapshot = {
 };
 
 type ResolveImportedManualFlagArgs = {
-  source: StatsImportSource;
   metric: ImportedMetric;
   incomingValue: number;
   existing?: ExistingMetricSnapshot;
@@ -20,12 +19,10 @@ type ResolveImportedManualFlagArgs = {
  * or changed sheet value is sheet-authored and must remain protected as manual.
  */
 export function resolveImportedManualFlag({
-  source,
   metric,
   incomingValue,
   existing,
 }: ResolveImportedManualFlagArgs): boolean {
-  if (source === "manual_sheet") return true;
   if (!existing || existing.manual) return true;
 
   const existingValue = existing[metric];
