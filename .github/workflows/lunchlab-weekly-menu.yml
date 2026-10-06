@@ -44,13 +44,35 @@ jobs:
           # 3. 주차 라벨 표시용 (HTML 검색 없이 계산값 사용)
           week_label_display = f"{month}월 {week_num}주차"
 
-          # 4. 전체 HTML에서 이미지 URL 추출
-          # 패턴1: 직접 URL (RSC JSON payload: "src":"https://..." or "href":"https://...")
-          raw_imgs = re.findall(r'https://images\.ctfassets\.net/[^\s"\\<>]+\.(?:png|jpg|jpeg|webp)', html)
-          # 패턴2: URL-encoded (_next/image?url= 형태)
-          encoded_imgs = re.findall(r'https?%3A%2F%2Fimages\.ctfassets\.net[^\s"<>&]+?\.(?:png|jpg|jpeg|webp)', html)
-          decoded_imgs = [urllib.parse.unquote(u) for u in encoded_imgs]
-          imgs = list(dict.fromkeys(raw_imgs + decoded_imgs))[:3]
+          # 4. 현재 주차 라벨 이후 이미지만 추출 (이전 주차 이미지 제외)
+          # 패턴1: 직접 URL (RSC JSON payload)
+          all_raw = re.findall(r'https://images\.ctfassets\.net/[^\s"\\<>]+\.(?:png|jpg|jpeg|webp)', html)
+          # 패턴2: URL-encoded
+          all_enc = re.findall(r'https?%3A%2F%2Fimages\.ctfassets\.net[^\s"<>&]+?\.(?:png|jpg|jpeg|webp)', html)
+          all_enc_dec = [urllib.parse.unquote(u) for u in all_enc]
+          all_imgs = list(dict.fromkeys(all_raw + all_enc_dec))
+
+          # 현재 주차 라벨(예: "10월2주차") 위치 이후 이미지만 사용
+          # HTML에서 라벨 등장 위치를 기준으로 해당 인덱스 이후 이미지 추출
+          label_variants = [target_label, target_label.replace('월', '월 ')]
+          label_pos = -1
+          for lv in label_variants:
+              p = html.find(lv)
+              if p != -1:
+                  label_pos = p
+                  break
+
+          imgs = []
+          if label_pos != -1:
+              html_after = html[label_pos:]
+              after_raw = re.findall(r'https://images\.ctfassets\.net/[^\s"\\<>]+\.(?:png|jpg|jpeg|webp)', html_after)
+              after_enc = re.findall(r'https?%3A%2F%2Fimages\.ctfassets\.net[^\s"<>&]+?\.(?:png|jpg|jpeg|webp)', html_after)
+              after_dec = [urllib.parse.unquote(u) for u in after_enc]
+              imgs = list(dict.fromkeys(after_raw + after_dec))[:3]
+
+          # 라벨을 못 찾으면 전체에서 처음 3개 (단일 주차 페이지)
+          if not imgs:
+              imgs = all_imgs[:3]
           print(f"이미지 {len(imgs)}개 발견")
           if not imgs:
               print("이미지 없음 — 전송 중단 (사이트 구조 변경 또는 메뉴 미업로드)")

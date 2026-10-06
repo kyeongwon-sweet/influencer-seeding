@@ -7,7 +7,7 @@ jobs:
   send:
     runs-on: ubuntu-latest
     steps:
-      - name: 9월 3주차 식단표 발송
+      - name: 10월 2주차 식단표 발송 + 이전 메시지 삭제
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_LUNCHLAB_BOT_TOKEN }}
         run: |
@@ -16,15 +16,30 @@ jobs:
 
           TOKEN = os.environ['SLACK_BOT_TOKEN']
           CHANNEL = 'C0BFPQAPHEK'
+          DELETE_TS = '1791206923.994769'
 
+          # 10월 2주차 이미지 (페이지에서 4~6번째 이미지)
           imgs = [
-              'https://images.ctfassets.net/r2ug8n4acrsb/m8tOVKhKrZ8egMjOhDHRJ/66433d6164c2101429626ed4ae8ba842/6f1a9e84-5274-4bdd-848a-cf87ceccf3f5.png',
-              'https://images.ctfassets.net/r2ug8n4acrsb/1kRUJAdVtWdYMlMHQyy1Ya/85bfbb6b75e9abab23bafda3ccd92a15/ec7e328a-a6ef-475b-9e7e-a8fcff865fcb.png',
-              'https://images.ctfassets.net/r2ug8n4acrsb/5OU5aHdVnndnRzunVuA8fH/2191756d7f5f5b8e8168151ae2532a25/e7f99a06-8f74-4f67-bfac-7e915ac824b1.png',
+              'https://images.ctfassets.net/r2ug8n4acrsb/4TWU8jC7mSx49BlW0SVRuR/f943317dd3c27164c89f4e80cc352d2c/9ba018fd-54e2-40a6-9b9f-e6e4401e59a0.png',
+              'https://images.ctfassets.net/r2ug8n4acrsb/4icQExRoz5jZCPlmw8phvn/b52bcb725ee30e007c7e33a787fc6051/1743ace7-0936-4d5c-9586-1750586eaecf.png',
+              'https://images.ctfassets.net/r2ug8n4acrsb/6rzK5USXkWW0zQCC7YFMza/594fafb192bec3c9bee874e9fcdd979e/fbf2161e-4e71-4a5f-bd0d-ebc8491c18e9.png',
           ]
           titles = ['가정식 도시락', '프레시밀', '라이트밀']
-          week_label = '9월 3주차'
+          week_label = '10월 2주차'
 
+          def api(endpoint, payload):
+              data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
+              req = urllib.request.Request(
+                  f'https://slack.com/api/{endpoint}', data=data,
+                  headers={'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json; charset=utf-8'}
+              )
+              return json.load(urllib.request.urlopen(req, timeout=15))
+
+          # 1. 잘못 보낸 메시지 삭제
+          r = api('chat.delete', {'channel': CHANNEL, 'ts': DELETE_TS})
+          print('삭제:', r.get('ok'), r.get('error', ''))
+
+          # 2. 올바른 주차 이미지로 발송
           blocks = [
               {
                   'type': 'section',
@@ -42,13 +57,8 @@ jobs:
                   'alt_text': f'{week_label} {titles[i]}'
               })
 
-          payload = json.dumps({'channel': CHANNEL, 'blocks': blocks}, ensure_ascii=False).encode('utf-8')
-          req = urllib.request.Request(
-              'https://slack.com/api/chat.postMessage', data=payload,
-              headers={'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json; charset=utf-8'}
-          )
-          r = json.load(urllib.request.urlopen(req, timeout=15))
-          print('ok:', r.get('ok'), 'error:', r.get('error', ''))
+          r = api('chat.postMessage', {'channel': CHANNEL, 'blocks': blocks})
+          print('발송:', r.get('ok'), r.get('error', ''))
           if not r.get('ok'):
               sys.exit(1)
           EOF
