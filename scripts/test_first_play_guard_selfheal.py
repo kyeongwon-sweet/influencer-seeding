@@ -71,6 +71,8 @@ def test_요약이_이력집합까지_돌려준다_소스_계약():
     # run()이 5번째 반환값을 쓰므로 arity 가 바뀌면 수집 전체가 죽는다.
     from pathlib import Path
     src = (Path(__file__).resolve().parent / "run_monitoring.py").read_text(encoding="utf-8")
-    assert "had_play_by_post,\n    )" in src, "_active_stats_summary 가 이력집합을 반환해야 한다"
+    summary = src[src.index("def _active_stats_summary"):src.index("def _influencer_ids_by_profile_url")]
+    assert "had_play_by_post = set()" in summary, "_active_stats_summary 가 이력집합을 만들어야 한다"
+    assert "had_play_by_post," in summary.split("return", 1)[1], "반환에 이력집합이 빠지면 호출부가 못 받는다"
     assert "had_play_before=post[\"id\"] in had_play_ids" in src, "호출부가 이력을 넘겨야 한다"
     assert "had_play_ids: set = set()" in src, "요약 실패 시 보수적 기본값이 있어야 한다"

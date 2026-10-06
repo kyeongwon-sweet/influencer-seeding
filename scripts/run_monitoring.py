@@ -675,6 +675,7 @@ def _summarize_history_rows(
     manual_tracked_ids,
     last_valid_metric_date_by_post=None,
     had_play_by_post=None,
+    last_manual_at_by_post=None,
 ):
     """정렬된 이력 한 페이지에서 auto-end와 mono 가드 입력을 동시에 계산한다.
 
@@ -694,6 +695,13 @@ def _summarize_history_rows(
         # reach(배너)는 조회수가 아니므로 제외하고, play_count 가 양수인 행만 이력으로 친다.
         if had_play_by_post is not None and _positive_int(row.get("play_count")):
             had_play_by_post.add(post_id)
+        # 사람이 '숫자를 마지막으로 적은 날' — 수기추적 면제의 유효기간 판정에 쓴다.
+        # 값 없는 수기 행은 보호할 값이 없으므로 치지 않는다.
+        if (last_manual_at_by_post is not None and row.get("manual")
+                and (row.get("play_count") is not None or row.get("reach_count") is not None)):
+            _md = str(row.get("measured_at") or "")[:10]
+            if _md and _md > last_manual_at_by_post.get(post_id, ""):
+                last_manual_at_by_post[post_id] = _md
         measured_at = str(row.get("measured_at") or "")[:10]
         if (
             last_valid_metric_date_by_post is not None
@@ -720,6 +728,7 @@ def _active_stats_summary(db, post_ids):
     manual_tracked_ids = set()
     last_valid_metric_date_by_post = {}
     had_play_by_post = set()
+    last_manual_at_by_post = {}
     ids = [post_id for post_id in post_ids if post_id]
     page_size = 1000
     for start in range(0, len(ids), 100):
@@ -742,6 +751,7 @@ def _active_stats_summary(db, post_ids):
                 manual_tracked_ids,
                 last_valid_metric_date_by_post,
                 had_play_by_post,
+                last_manual_at_by_post,
             )
             if len(page) < page_size:
                 break
@@ -752,6 +762,7 @@ def _active_stats_summary(db, post_ids):
         manual_tracked_ids,
         last_valid_metric_date_by_post,
         had_play_by_post,
+        last_manual_at_by_post,
     )
 
 
@@ -1489,6 +1500,7 @@ def run():
         last_valid_metric_date_by_post = {}
         # 조회수 이력이 있는 글 — 비면 '첫 측정 가드'가 예전처럼 보수적으로 동작한다(안전한 기본값).
         had_play_ids: set = set()
+        last_manual_at_by_post: dict = {}
         try:
             active_ids = [p["id"] for p in all_posts if not p.get("ended_at")]
             (
@@ -1497,6 +1509,7 @@ def run():
                 manual_tracked_ids,
                 last_valid_metric_date_by_post,
                 had_play_ids,
+                last_manual_at_by_post,
             ) = _active_stats_summary(db, active_ids)
             to_end = []
             for p in all_posts:
@@ -1507,6 +1520,7 @@ def run():
                     target_date=TODAY,
                     max_metric=max_metric_by_post.get(p["id"], 0),
                     manual_tracked=(p["id"] in manual_tracked_ids),
+                    last_manual_at=last_manual_at_by_post.get(p["id"]),
                 )
                 if decision.should_end:
                     to_end.append(p["id"])
