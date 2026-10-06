@@ -85,8 +85,26 @@ def _pick_instagram_play_count(item: dict, url: str | None):
     return None, None
 
 
-def _looks_like_engagement_count_as_views(play_count, likes_count, comments_count, existing: dict | None = None) -> bool:
-    if (existing or {}).get("play_count"):
+def _looks_like_engagement_count_as_views(
+    play_count,
+    likes_count,
+    comments_count,
+    existing: dict | None = None,
+    *,
+    had_play_before: bool = False,
+) -> bool:
+    """스크래퍼가 좋아요/댓글 수를 조회수 자리에 넣은 **첫 측정**만 걸러낸다.
+
+    🚨 2026-10-06 실사고(자기고착): 판정 기준이 '직전 행에 조회수가 있나'였다.
+       그런데 이 가드가 걸리면 그날 조회수를 None 으로 비우므로, **다음날의 직전 행도
+       조회수가 없다**. 그래서 매일 "첫 측정"으로 보이고 매일 다시 비워졌다 —
+       한 번 걸리면 영구히 못 빠져나온다. fromsensuous(p/Dd4HREdSQKa)가 그렇게
+       나흘간 조회수 공백이었고(실제값 1,199, Apify 도 1,099~1,166 을 꾸준히 반환),
+       사람이 실물로 확인해 준 뒤에야 드러났다.
+       → '**이 글이 과거에 한 번이라도 조회수를 가진 적 있나**'로 판정한다.
+          수기 입력분도 이력으로 친다(사람이 본 값도 '첫 측정 아님'의 증거다).
+    """
+    if had_play_before or (existing or {}).get("play_count"):
         return False
     play = _positive_int(play_count)
     if play is None:
@@ -656,6 +674,7 @@ def _summarize_history_rows(
     max_metric_by_post,
     manual_tracked_ids,
     last_valid_metric_date_by_post=None,
+    had_play_by_post=None,
 ):
     """정렬된 이력 한 페이지에서 auto-end와 mono 가드 입력을 동시에 계산한다.
 
@@ -671,6 +690,10 @@ def _summarize_history_rows(
             max_metric_by_post[post_id] = metric
         if row.get("manual"):
             manual_tracked_ids.add(post_id)
+        # 조회수 이력 유무 — '첫 측정 가드'가 자기가 비운 공백을 보고 영구 재발화하는 것을 막는다.
+        # reach(배너)는 조회수가 아니므로 제외하고, play_count 가 양수인 행만 이력으로 친다.
+        if had_play_by_post is not None and _positive_int(row.get("play_count")):
+            had_play_by_post.add(post_id)
         measured_at = str(row.get("measured_at") or "")[:10]
         if (
             last_valid_metric_date_by_post is not None
@@ -696,6 +719,7 @@ def _active_stats_summary(db, post_ids):
     max_metric_by_post = {}
     manual_tracked_ids = set()
     last_valid_metric_date_by_post = {}
+    had_play_by_post = set()
     ids = [post_id for post_id in post_ids if post_id]
     page_size = 1000
     for start in range(0, len(ids), 100):
@@ -717,11 +741,18 @@ def _active_stats_summary(db, post_ids):
                 max_metric_by_post,
                 manual_tracked_ids,
                 last_valid_metric_date_by_post,
+                had_play_by_post,
             )
             if len(page) < page_size:
                 break
             offset += page_size
-    return last, max_metric_by_post, manual_tracked_ids, last_valid_metric_date_by_post
+    return (
+        last,
+        max_metric_by_post,
+        manual_tracked_ids,
+        last_valid_metric_date_by_post,
+        had_play_by_post,
+    )
 
 
 def _influencer_ids_by_profile_url(db, profile_urls):
@@ -1456,6 +1487,8 @@ def run():
         #   예외: 위성채널·온드미디어만(무상시딩·50만 예외는 2026-07-14 사용자 지시로 제거 — 무상시딩(피드)도 7일 종료). 업로드일은 카운트에서 제외(age 0).
         history_last_stat = None
         last_valid_metric_date_by_post = {}
+        # 조회수 이력이 있는 글 — 비면 '첫 측정 가드'가 예전처럼 보수적으로 동작한다(안전한 기본값).
+        had_play_ids: set = set()
         try:
             active_ids = [p["id"] for p in all_posts if not p.get("ended_at")]
             (
@@ -1463,6 +1496,7 @@ def run():
                 max_metric_by_post,
                 manual_tracked_ids,
                 last_valid_metric_date_by_post,
+                had_play_ids,
             ) = _active_stats_summary(db, active_ids)
             to_end = []
             for p in all_posts:
@@ -1960,6 +1994,7 @@ def run():
                 s.get("likes_count"),
                 s.get("comments_count"),
                 existing,
+                had_play_before=post["id"] in had_play_ids,
             ):
                 _record_missing_view_event(post, "Instagram", "implausible_play_engagement_ratio", stat=s, existing=existing)
                 print(
