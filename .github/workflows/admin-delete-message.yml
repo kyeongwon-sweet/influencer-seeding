@@ -12,6 +12,14 @@ on:
         description: "채널 ID"
         required: true
         default: "C0B4F7GBX17"
+      bot:
+        description: "메시지를 작성한 봇"
+        required: true
+        type: choice
+        default: "default"
+        options:
+          - default
+          - inji
 
 jobs:
   delete:
@@ -19,8 +27,19 @@ jobs:
     steps:
       - name: chat.delete
         env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          DEFAULT_SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          INJIBOT_SLACK_TOKEN: ${{ secrets.INJIBOT_SLACK_TOKEN }}
+          BOT: ${{ github.event.inputs.bot }}
         run: |
+          if [ "$BOT" = "inji" ]; then
+            SLACK_BOT_TOKEN="$INJIBOT_SLACK_TOKEN"
+          else
+            SLACK_BOT_TOKEN="$DEFAULT_SLACK_BOT_TOKEN"
+          fi
+          if [ -z "$SLACK_BOT_TOKEN" ]; then
+            echo "선택한 봇 토큰이 없습니다"
+            exit 1
+          fi
           resp=$(curl -s -X POST https://slack.com/api/chat.delete \
             -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
             -H "Content-type: application/x-www-form-urlencoded" \
