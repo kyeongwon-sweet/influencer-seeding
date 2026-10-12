@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## ✅ 2026-10-12 [Codex 완료·라이브검증] `sponsoredTargets` evergreen 상한 1000 → 요청값 기반 최대 3000
+
+- **원인:** 부정댓글 봇은 `limit=2000`을 보내고 있었지만 GAS `getSponsoredRpaTargets_`가 `Math.min(limit, 1000)`으로 온드/위성 evergreen을 다시 잘랐다. 라이브 실측은 `evergreenCount=1096 > evergreenLimit=1000`, `rawEligibleCount=1126`, `duplicateCount=5`, `returnedCount=1029`로 약 96건이 미전달됐다.
+- **수정/배포:** Apps Script 프로젝트 `제목 없는 프로젝트`의 evergreen 상한을 **요청 limit을 따르되 최대 3000**으로 변경했다. 기존 `/exec` 배포 ID는 유지하고 **버전 85**로 재배포했다. 최근 14일 일반 대상은 기존처럼 상한 없이 먼저 포함하고, evergreen만 보조 상한을 적용하는 계약은 유지했다.
+- **라이브 검증:** cache-buster를 붙인 `/exec?action=sponsoredTargets&limit=2000` 응답이 `evergreenCount=1096`, `evergreenLimit=2000`, `rawEligibleCount=1126`, `duplicateCount=5`, `returnedCount=1121`, `targets.length=1121`을 반환했다. 즉 `evergreenLimit ≥ evergreenCount`와 `returnedCount = rawEligibleCount − duplicateCount`가 모두 성립한다.
+- **종단 검증:** `negative-comment-monitor` target-sync watchdog run `38189283340` 성공. 로그는 `갭 0건(임계 10 미만), GAS타겟 1121`로 상류 누락이 해소됐음을 확인했다.
+- **시트 4628~4632행 확인:** 화면상 잘린 문자열과 달리 실제 B열 값은 각각 `DsouarB9vpA`, `M4Nr4EDZUqc`, `NbJV6j0gxXk`, `y3DVfA2CamQ`, `AZyle4ilZ34`의 **정상 `https://www.youtube.com/watch?v=...` URL**이다. 시트 값은 변경하지 않았다.
+
 ## ✅ 2026-10-12 [Claude 실측·DB반영] 위성 유튜브 본편 '미수집' 19건 = 실제 조회수 0 → manual 확인값 기록
 
 - **발단:** `수집 사각 감지` 알림(10-10·10-11) 위성채널 유튜브 본편 7건(10-08 게시) + 같은 상태의 본편 12건, 총 19건이 조회수 측정 이력 0.
