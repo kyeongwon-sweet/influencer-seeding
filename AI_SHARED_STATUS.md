@@ -8,6 +8,15 @@
 - **결과:** 10/1~10/10 10건 적용·재조회 확인. 예) 10/7 +209,042 → +456,603(전환 +247,561). 10/11분은 아직 미발송이라 정규 발송에 자동 포함 예정. **9/18·9/25·9/26은 미보정** — 이 탭에 9월 행이 더 이상 없어 값 출처가 없다.
 - **⚠️ 남은 위험(미수정):** 일별 표 헤더가 '전환 조회수'→**'전환 노출수'**로 바뀌었는데 라우트(`web/app/api/awareness-ads/route.ts`)는 '전환조회수' 글자만 찾는다. 지금은 위쪽 월별 요약표에 옛 라벨이 남아 있고 열 위치가 같아서 우연히 동작한다. 요약표 라벨도 바뀌면 경고 없이 영구 누락 → 두 라벨 모두 인식하도록 고칠 것을 권고.
 
+## ✅ 2026-10-12 [Codex 수정·설정·운영검증] 정상 YouTube 링크 미수집 — 공식 API 폴백·0회 추적 완결
+
+- **원인:** Slack 제보 7건은 정상 공개 영상이지만 외부 YouTube 액터가 아이템을 반환하지 않았다. 공식 Data API 폴백 코드는 있었으나 운영 `YOUTUBE_API_KEY`가 없었고, 재시도 workflow도 해당 secret을 전달하지 않았다. 추가로 공식 API가 `viewCount=0`을 반환해도 저장 병합 조건이 `>0`이라 0회를 다시 결측으로 버렸으며, 사람이 확인한 수기 0은 `manual_zero_confirmed`로 이후 날짜까지 영구 재시도 제외됐다.
+- **운영 설정/1차 수정:** Google Cloud 프로젝트 `future-campaign-497004-t3`에서 YouTube Data API v3를 활성화하고, 해당 API로만 제한한 키를 GitHub Actions secret `YOUTUBE_API_KEY`에 등록했다(키 값은 문서·git에 미기록). `ddaa0c8`에서 `monitoring-retry.yml`도 secret을 수집기에 전달하도록 수정했다.
+- **운영 검증:** retry run `38189089019` 성공. Apify가 `mFlTdLNFC6E`를 두 차례 미반환한 뒤 로그에 `유튜브 Data API 폴백 보강: 1건 / 미반환 1건`, `유튜브 수집: 실값 1건 / 1개 요청`이 남고 자동 실측 1행이 저장됐다. 즉 secret·workflow·공식 API 종단 경로가 실제 운영에서 동작한다.
+- **0회 근본 수정 `1e8d35dc`:** 공식 API 응답은 `views is not None`이면 **0도 유효 실측으로 저장**한다. 외부 액터만 준 0은 공식 API 확인 없이는 NULL로 돌려 다음 재시도를 유지한다. 재시도 큐는 YouTube의 당일 0만 측정 완료로 보고, 과거 수기 0 때문에 다음 날짜가 영구 제외되지 않게 했다. TikTok·Instagram의 기존 자동 0 정책은 무변경이다.
+- **제보 7건 실측:** 공식 API가 `_99CrZgenyA=0 · DZmwd2uIndc=0 · Dumt3lqTso4=0 · jZmGFWyIovs=0 · io1PkNSPfBQ=0 · jE2YAQIo0fo=10 · 71gC1s_bzuo=0`을 반환했고 영상 제목도 Slack unfurl과 일치했다. DB에는 이 작업 전 이미 같은 `2026-10-11` 수기값(6×0, 1×10)이 있어 **값을 다시 쓰거나 변경하지 않았다**. 앞으로는 다음 날짜마다 공식 API로 다시 확인해 0→양수 증가도 자동 추적한다.
+- **게이트:** 관련 51건 + 전체 Python **427 passed, 4 subtests passed**, `py_compile`, `git diff --check` 통과. 공식 API의 0 저장·미확인 액터 0 폐기·YouTube 수기 0의 다음날 재시도·타 플랫폼 자동 0 유지가 회귀 테스트로 고정됐다.
+
 ## ✅ 2026-10-12 [Codex 완료·라이브검증] `sponsoredTargets` evergreen 상한 1000 → 요청값 기반 최대 3000
 
 - **원인:** 부정댓글 봇은 `limit=2000`을 보내고 있었지만 GAS `getSponsoredRpaTargets_`가 `Math.min(limit, 1000)`으로 온드/위성 evergreen을 다시 잘랐다. 라이브 실측은 `evergreenCount=1096 > evergreenLimit=1000`, `rawEligibleCount=1126`, `duplicateCount=5`, `returnedCount=1029`로 약 96건이 미전달됐다.
