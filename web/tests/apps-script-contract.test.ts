@@ -1047,12 +1047,15 @@ test("exportStats overwrites only automatic DB metrics and never carry-forwards"
   assert.notEqual(end, -1);
   const helper = new Function(
     `${appsScript.slice(start, end)}\nreturn sheetMetricWriteDecision_;`,
-  )() as (cell: unknown, collected: number, manual: boolean) => string;
+  )() as (cell: unknown, collected: number, manual: boolean, zeroConfirmed?: boolean) => string;
 
   assert.equal(helper("", 100, false), "fill", "automatic values fill blanks");
   assert.equal(helper(90, 100, false), "overwrite_auto", "automatic DB values repair stale cells");
   assert.equal(helper(90, 100, true), "preserve_manual", "manual DB rows never overwrite sheet manual values");
   assert.equal(helper(100, 100, false), "same");
+  assert.equal(helper("", 0, true, true), "fill", "confirmed YouTube zero fills a blank");
+  assert.equal(helper(7, 0, false, true), "overwrite_auto", "official YouTube zero is an automatic DB truth");
+  assert.equal(helper("", 0, true, false), "preserve", "unconfirmed zero remains blocked");
   assert.doesNotMatch(appsScript, /shouldCarryForwardMetric_/);
   assert.doesNotMatch(appsScript, /newBlock\[i\]\[bi\] = lastVal/);
   assert.match(appsScript, /carry-forward[\s\S]*?완전히 금지/);
@@ -1063,8 +1066,10 @@ test("exportStats overwrites only automatic DB metrics and never carry-forwards"
   // 오늘·미래 자동값은 계속 비우되, DB에 manual=true로 안착한 수기 도달수는 채우거나 보존한다.
   assert.match(
     appsScript,
-    /if \(date >= today\) \{[\s\S]*?collected > 0 && manualDates\[date\] === true[\s\S]*?sheetMetricWriteDecision_\(cell, collected, true\)[\s\S]*?futureCleared\+\+/,
+    /if \(date >= today\) \{[\s\S]*?hasCollected && manualDates\[date\] === true[\s\S]*?sheetMetricWriteDecision_\(cell, collected, true, zeroConfirmed\)[\s\S]*?futureCleared\+\+/,
   );
+  assert.match(appsScript, /zeroConfirmedDates\[measuredAt\] = zeroConfirmed/);
+  assert.match(appsScript, /const hasCollected = collected > 0 \|\| zeroConfirmed/);
 });
 
 test("URL 없는 행의 H/I literal도 exportStats 고아 경고에 포함한다", () => {

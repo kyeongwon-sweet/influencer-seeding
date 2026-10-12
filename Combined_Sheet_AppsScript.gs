@@ -2657,11 +2657,11 @@ function fetchCollectedStats_() {
   });
   const code = res.getResponseCode();
   if (code !== 200) throw new Error(`API ${code}: ${res.getContentText()}`);
-  return (JSON.parse(res.getContentText()).posts) || []; // [{url, key, ended_at, stats:[[date,metric,manual],...]}] — 종료·통계없음 글은 stats:[]
+  return (JSON.parse(res.getContentText()).posts) || []; // [{url, key, ended_at, stats:[[date,metric,manual,zeroConfirmed],...]}] — 종료·통계없음 글은 stats:[]
 }
 
-function sheetMetricWriteDecision_(cell, collected, manual) {
-  if (!(collected > 0)) return "preserve";
+function sheetMetricWriteDecision_(cell, collected, manual, zeroConfirmed) {
+  if (!(collected > 0) && !(collected === 0 && zeroConfirmed === true)) return "preserve";
   if (cell === "" || cell === null) return "fill";
   if (manual === true) return "preserve_manual";
   return Number(cell) === Number(collected) ? "same" : "overwrite_auto";
@@ -2764,6 +2764,7 @@ function exportStatsWithOptions_(options) {
     const byKey = {};
     const endedByKey = {};
     const manualByKey = {};
+    const zeroConfirmedByKey = {};
     const finalMetricByKey = {};
     const allDatesSet = {};
     const today = todayStr_();
@@ -2773,13 +2774,16 @@ function exportStatsWithOptions_(options) {
       if (p.ended_at) endedByKey[k] = String(p.ended_at).slice(0, 10);
       const m = byKey[k] || (byKey[k] = {});
       const manualDates = manualByKey[k] || (manualByKey[k] = {});
+      const zeroConfirmedDates = zeroConfirmedByKey[k] || (zeroConfirmedByKey[k] = {});
       (p.stats || []).forEach(pair => {
         const metric = Number(pair[1]);
         const measuredAt = String(pair[0]).slice(0, 10);
-        if (!(metric > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(measuredAt)) return; // 0·음수·비숫자 방어 — 시트에 0 찍힘/기존값 덮음/빈 열 추가 방지(엔드포인트도 >0만 반환)
+        const zeroConfirmed = pair.length >= 4 && pair[3] === true;
+        if ((!isFinite(metric) || metric < 0 || (metric === 0 && !zeroConfirmed)) || !/^\d{4}-\d{2}-\d{2}$/.test(measuredAt)) return;
         m[measuredAt] = metric;
         // 구버전 서버가 provenance를 생략하면 보수적으로 수기 취급해 기존 셀을 덮지 않는다.
         manualDates[measuredAt] = pair.length >= 3 ? pair[2] === true : true;
+        zeroConfirmedDates[measuredAt] = zeroConfirmed;
         allDatesSet[measuredAt] = true;
         if (measuredAt < today && (!(finalMetricByKey[k] > 0) || metric > finalMetricByKey[k])) {
           finalMetricByKey[k] = metric;
@@ -2910,6 +2914,7 @@ function exportStatsWithOptions_(options) {
       }
       const endedAt = rowKeys[i] ? endedByKey[rowKeys[i]] : null;
       const manualDates = rowKeys[i] ? (manualByKey[rowKeys[i]] || {}) : {};
+      const zeroConfirmedDates = rowKeys[i] ? (zeroConfirmedByKey[rowKeys[i]] || {}) : {};
       for (let j = 0; j < dateCols.length; j++) {
         const bi = dateCols[j].col - firstCol;
         const date = dateCols[j].date;
@@ -2928,13 +2933,15 @@ function exportStatsWithOptions_(options) {
           continue;
         }
         const collected = m ? m[date] : undefined;
+        const zeroConfirmed = collected === 0 && zeroConfirmedDates[date] === true;
+        const hasCollected = collected > 0 || zeroConfirmed;
         // 🛡️ 오늘·미래 자동값/출처불명 셀은 기존처럼 비운다(수집일-1까지만).
         // 단, DB에 manual=true로 안착한 사람 입력값은 명시적 정본이다. 빈칸이면 DB값을 채우고,
         // 시트에 이미 다른 수기값이 있으면 보존해 다음 수동 import가 그 값을 갱신할 수 있게 한다.
         // 이 예외가 없으면 대시보드에서 저장한 Sidecar 도달수도 exportStats가 즉시 지웠다.
         if (date >= today) {
-          if (collected > 0 && manualDates[date] === true) {
-            const decision = sheetMetricWriteDecision_(cell, collected, true);
+          if (hasCollected && manualDates[date] === true) {
+            const decision = sheetMetricWriteDecision_(cell, collected, true, zeroConfirmed);
             if (decision === "fill") {
               newBlock[i][bi] = collected; filled++;
             } else if (decision === "preserve_manual") {
@@ -2947,8 +2954,8 @@ function exportStatsWithOptions_(options) {
           }
           continue;
         }
-        if (collected > 0) {
-          const decision = sheetMetricWriteDecision_(cell, collected, manualDates[date] === true);
+        if (hasCollected) {
+          const decision = sheetMetricWriteDecision_(cell, collected, manualDates[date] === true, zeroConfirmed);
           if (decision === "fill") {
             newBlock[i][bi] = collected; filled++;
           } else if (decision === "overwrite_auto") {
