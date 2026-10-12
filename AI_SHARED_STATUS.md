@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## ✅ 2026-10-12 [Codex 완료·라이브검증] YouTube 공식 0회 DB→연동시트 전달 + 제보 Slack 정리
+
+- **남은 결함:** 공식 API 폴백으로 DB에는 0회가 정상 저장돼도 `stats-for-sheet`와 Apps Script `exportStats`가 모두 `metric <= 0`을 버려, 제보 7건의 연동시트 2026-10-11 열이 계속 공란이었다. 10회인 1건도 DB 보정 뒤 `exportStats`가 다시 돌지 않아 공란이었다.
+- **재발방지 `1f270df8`:** `stats-for-sheet` 튜플을 `[date, metric, manual, zeroConfirmed]`로 확장했다. 양수는 기존과 동일하고, 0은 **YouTube이면서 수기 확인값 또는 공식 API 0 확인이 보장된 배포 경계(2026-10-12 00:55Z) 이후 자동행**만 전달한다. Apps Script도 네 번째 확인 플래그가 있는 0만 허용해 Instagram/TikTok 미확인 0과 과거 오염 0은 계속 차단한다. `apps-script:deploy` guarded push 후 라이브 pull 대조까지 통과했다.
+- **실데이터 복구:** 전체 `exportStats`는 10:40:25 KST 시작 후 10:50:19까지 종료되지 않아 취소했다. URL로 재식별한 정확한 7행의 `2026-10-11`(FG) 셀만 수술적으로 입력: `Dumt3lqTso4=0 · _99CrZgenyA=0 · io1PkNSPfBQ=0 · jZmGFWyIovs=0 · 71gC1s_bzuo=0 · DZmwd2uIndc=0 · jE2YAQIo0fo=10`. 인증된 gviz 범위 재조회에서 7개 날짜값과 H 누적(`0×6, 10×1`), 마지막 건 I 증분 `10`을 확인했다. 다른 셀은 쓰지 않았다.
+- **게이트:** 대상 테스트 72/72, 전체 web 620/620, `tsc --noEmit`, production build, pre-push 타입체크 통과. main `1f270df8` 반영 및 자동배포. 입력 직후 formula-audit run `38193954051` HTTP 200: `metricRange=P:FG · snapshotRetryCount=0 · errorCells=0 · incMismatch=0 · orphanRows=0`; 기존 H 형태오류 4·CPV 형태오류 16·값정체 3은 그대로 별도 운영 이슈이며 이번 FG 7셀 쓰기로 새 오류는 생기지 않았다.
+- **Slack 정리:** `C0B659HEYDV / 1791596851.776729`의 `수집 사각 감지` 원문은 inji-bot 작성 메시지라 기존 기본 봇 삭제가 거부됐다. `ebbf7794`에서 수동 `admin-delete-message`에 `bot=inji` 선택지를 추가하고 run `38193902920`으로 `chat.delete ok=true` 삭제 완료. `C0BHD9S69JA / 1791765645.304559`의 LLM degraded 경고는 삭제 요청 시 `message_not_found`였고, permalink도 로드 불가라 이미 원문이 없는 상태를 확인했다.
+
 ## ✅ 2026-10-12 [Claude 완료·Slack 편집] 10/1~10/10 + 9/18·9/25·9/26 리포트에 전환 조회수 사후 보정
 - **증상:** 10/1~10/11분 리포트 11건 모두 인지 광고 아래 `전환 조회수` 줄이 빠졌고 총 증분에도 합산되지 않았다(9월은 9/18·9/25·9/26만 빠짐).
 - **원인(시트 실물 확인):** [인지_쫀득바] 실제 열은 **M=총 조회수 · N=전환 노출수 · O=인지 조회수**. N은 `='(26.09~) 전환_쫀득바'!D행` 참조(별도 전환 탭), O는 협찬·바이럴·인지광고 등 채널 조회수 `SUM`이라 **리포트가 N을 더해도 중복 합산 아님**. 전환 탭 값이 **리포트 발송(익일 12:20) 뒤에 채워져** 빈칸→줄 숨김(빈칸≠0). 증거: 10/6 12:38 발송본과 10/6 17:09 dry-run 모두 10/5 전환 없음 → 지금은 39,670. 라우트·스크립트 코드는 8/21 이후 무변경. ⚠️HTML보기(htmlview)는 숨김 열(S~AA)·접힌 그룹 행을 빼고 열 문자도 한 칸 밀려 보인다 — 열 판정은 편집화면 수식줄로 할 것.
