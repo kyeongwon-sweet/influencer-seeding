@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+"""patch_report_conversion.patch_text 단위 테스트 — 2026-10 전환 조회수 사후 보정 회귀 케이스.
+
+배경: 10/1~10/11 리포트가 발송 시점에 시트 '전환 노출수' 칸이 비어 전환 조회수 없이 나갔다.
+보정은 발송 당시 숫자를 건드리지 않고 전환 줄 삽입 + 총 증분 합산 + 목표% 재계산만 해야 한다.
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from patch_report_conversion import patch_text  # noqa: E402
+
+AD_SECTION = """• *인지 광고*  `CPV는 일일 기준`
+    메타 *+212,173*  CPV 4.9원
+    틱톡 *+15,783*  CPV 5.2원
+    유튜브 *+144,255*  CPV 15.8원
+
+"""
+
+REPORT = (
+    """:chart_with_upwards_trend: *쫀득바 조회수 일일 증분* `(2026-10-05)`
+오늘 총 증분 *+658,089*
+:dart: *일 190만 목표* 35% · 미달 -1,241,911
+:black_medium_small_square: *제품별*  JD혼 +183K · JD멜 +57.5K · JD복 +45.4K
+
+:black_medium_small_square: *채널분류별*
+
+"""
+    + AD_SECTION
+    + """`CPV는 누적 기준 / 하이퍼링크 금일 채널별 BEST`
+
+• <https://www.instagram.com/p/DdbCnMYS4SN/|협찬 (인플루언서)> *+240,943*  CPV 7.2원"""
+)
+
+
+def test_adds_line_total_and_goal_only():
+    new, info = patch_text(REPORT, 39670)
+    assert info["new_total"] == 697_759
+    assert "오늘 총 증분 *+697,759*" in new
+    assert "*일 190만 목표* 37% · 미달 -1,202,241" in new
+    assert "    유튜브 *+144,255*  CPV 15.8원\n    전환 조회수 *+39,670*\n\n`CPV는 누적" in new
+    # 나머지 줄은 발송 당시 그대로
+    untouched = [ln for ln in REPORT.split("\n") if "총 증분" not in ln and "만 목표" not in ln]
+    assert all(ln in new.split("\n") for ln in untouched)
+
+
+def test_idempotent_when_line_exists():
+    new, _ = patch_text(REPORT, 39670)
+    again, reason = patch_text(new, 39670)
+    assert again is None and "이미" in reason
+
+
+def test_creates_section_when_report_had_no_ad_lines():
+    no_ads = REPORT.replace(AD_SECTION, "")
+    new, info = patch_text(no_ads, 1000)
+    assert info["new_total"] == 659_089
+    assert "• *인지 광고*  `CPV는 일일 기준`\n    전환 조회수 *+1,000*\n\n`CPV는 누적" in new
+
+
+def test_goal_crossing_and_rounding():
+    near = REPORT.replace("+658,089", "+1,880,000").replace("35% · 미달 -1,241,911", "99% · 미달 -20,000")
+    new, info = patch_text(near, 30000.4)
+    assert info["conv"] == 30000
+    assert "*일 190만 목표* 101% · 달성 +10,000" in new
+
+
+def test_zero_without_section_is_not_shown():
+    new, reason = patch_text(REPORT.replace(AD_SECTION, ""), 0)
+    assert new is None and "표시 안 함" in reason

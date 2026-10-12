@@ -1,0 +1,34 @@
+name: Report patch — add conversion views (manual)
+
+# 발송된 일일 증분 리포트에 '전환 조회수'만 사후 보정한다(다른 숫자는 발송 당시 그대로).
+# 시트 '전환 노출수'가 발송 뒤에 입력된 날짜용. update_ts 재생성은 늦게 들어온 다른 데이터까지
+# 바꾸므로 그 대신 쓴다. 기본 dry_run=true(편집 없이 대상·변경 수치만 출력).
+on:
+  workflow_dispatch:
+    inputs:
+      dates:
+        description: "보정할 리포트 대상 날짜(쉼표 구분 YYYY-MM-DD)"
+        required: true
+        type: string
+      dry_run:
+        description: "true면 편집 없이 미리보기만"
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Patch conversion views into sent reports
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          APP_URL: "https://influencer-seeding-mu.vercel.app"
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DATES: ${{ github.event.inputs.dates }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: python scripts/patch_report_conversion.py
