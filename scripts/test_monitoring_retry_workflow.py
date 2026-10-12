@@ -25,6 +25,13 @@ def test_targeted_retry_zero_result_is_not_reported_as_success():
     assert "raise RuntimeError(retry_zero_alert)" in text
 
 
+def test_youtube_official_api_fallback_is_available_in_retry_workflow():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    collect_step = text[text.index("- name: Collect (full, run_monitoring.py)"):]
+
+    assert "YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}" in collect_step
+
+
 def test_targeted_instagram_not_found_uses_profile_survival_not_batch_ratio():
     text = RUN_MONITORING.read_text(encoding="utf-8")
 
@@ -61,6 +68,7 @@ def test_cron_backup_zero_result_is_nonfatal_but_retry_workflow_remains_fatal():
 if __name__ == "__main__":
     test_manual_monitoring_retry_defaults_to_target_queue()
     test_targeted_retry_zero_result_is_not_reported_as_success()
+    test_youtube_official_api_fallback_is_available_in_retry_workflow()
     test_targeted_instagram_not_found_uses_profile_survival_not_batch_ratio()
     test_confirmed_delete_auto_end_keeps_raw_signal_behind_outage_quarantine()
     test_cron_backup_zero_result_is_nonfatal_but_retry_workflow_remains_fatal()
