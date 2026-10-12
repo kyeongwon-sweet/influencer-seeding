@@ -214,6 +214,8 @@ def decide_reason(
       틱톡은 `is_unambiguous_view_post()` 때문에 `no_public_view_metric` 탈출구를 쓸 수 없어 더더욱 갇힌다.
       ⚠️ **자동 0은 인정하지 않는다** — 자동 0은 수집 실패·접근 불가일 수 있다(프로젝트 규칙).
          `manual=True` 인 0만 근거로 삼는다.
+      ⚠️ YouTube는 예외다. 공식 Data API 폴백이 공개 viewCount=0도 확정하므로, 당일 0은
+         측정 완료로 보되 과거 수기 0 때문에 다음 날짜까지 영구 제외하지 않는다.
       ⚠️ **양수 실측 이력이 한 번이라도 있으면 적용하지 않는다** → 나중에 값이 붙는 순간
          조건이 깨져 자동으로 큐에 복귀한다(self-heal). 값을 지어내거나 고치지 않는다.
     """
@@ -228,7 +230,8 @@ def decide_reason(
             and has_no_public_view_metric(post, target_date)):
         reason = "no_public_view_metric"
 
-    if state.get("has_manual_zero") and not state.get("has_metric"):
+    if (state.get("has_manual_zero") and not state.get("has_metric")
+            and platform(post.get("url")) != "youtube"):
         reason = "manual_zero_confirmed"
 
     if is_reach_only_manual_channel_state(post, state):
@@ -249,6 +252,21 @@ def metric(row: dict[str, Any] | None) -> int | None:
         except Exception:
             return None
     return None
+
+
+def has_same_day_measurement(post: dict[str, Any], rows: list[dict[str, Any]]) -> bool:
+    """대상일의 유효 누적값이 있는가(YouTube 공식 0 포함).
+
+    일반 플랫폼의 자동 0은 수집 실패일 수 있어 종전처럼 미수집으로 둔다. YouTube는
+    ``run_monitoring`` 이 외부 스크래퍼 0을 버리고 공식 Data API 확인분만 자동 0으로
+    저장하므로, 같은 날짜의 play_count=0도 유효 측정이다. 수기 0도 그 날짜에 한해서만
+    유효하고, 다음 날짜에는 다시 공식 API를 조회한다.
+    """
+    if any((metric(row) or 0) > 0 for row in rows):
+        return True
+    if platform(post.get("url")) != "youtube":
+        return False
+    return any(row.get("play_count") == 0 for row in rows)
 
 
 def tail(url: str | None) -> str:
@@ -344,8 +362,7 @@ def main() -> None:
             })
     for post in eligible:
         rows = same_day_rows.get(post["id"], [])
-        best_today = max((metric(row) or 0 for row in rows), default=0)
-        if best_today > 0:
+        if has_same_day_measurement(post, rows):
             excluded["measured"] += 1
             continue
 

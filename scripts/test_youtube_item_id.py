@@ -51,3 +51,28 @@ def test_unresolvable_item_returns_none():
     """전부 실패하면 None — 호출부가 세어서 '스키마 변경 의심' 경고를 낸다(무음 금지)."""
     assert rm._yt_item_id({"url": "https://www.youtube.com/shorts/", "id": "", "input": ""}) is None
     assert rm._yt_item_id({}) is None
+
+
+def test_official_api_zero_is_accepted_as_a_measurement():
+    collector = {"zeroVideo01": {"views": 0, "likes": 0, "comments": None}}
+    confirmed = rm._merge_youtube_api_measurements(
+        collector,
+        {"zeroVideo01": {"views": 0, "likes": 0, "comments": None, "title": "new"}},
+    )
+    rm._discard_unconfirmed_youtube_zeroes(collector, confirmed)
+    assert confirmed == {"zeroVideo01"}
+    assert collector["zeroVideo01"]["views"] == 0
+
+
+def test_scraper_zero_without_api_confirmation_is_not_stored_as_real_zero():
+    collector = {"maybeMissing": {"views": 0, "likes": 0, "comments": None}}
+    confirmed = rm._merge_youtube_api_measurements(collector, {})
+    rm._discard_unconfirmed_youtube_zeroes(collector, confirmed)
+    assert collector["maybeMissing"]["views"] is None
+
+
+def test_positive_scraper_value_is_untouched_without_api_confirmation():
+    collector = {"viralVideo1": {"views": 63119, "likes": 300, "comments": 12}}
+    confirmed = rm._merge_youtube_api_measurements(collector, {})
+    rm._discard_unconfirmed_youtube_zeroes(collector, confirmed)
+    assert collector["viralVideo1"]["views"] == 63119

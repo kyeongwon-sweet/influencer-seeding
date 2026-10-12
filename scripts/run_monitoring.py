@@ -51,6 +51,36 @@ def _has_positive_views(stats: dict | None) -> bool:
     return ((stats or {}).get("views") or 0) > 0
 
 
+def _merge_youtube_api_measurements(
+    collector_stats: dict,
+    api_stats: dict,
+) -> set[str]:
+    """공식 API가 실제로 반환한 조회수(0 포함)를 수집 결과에 병합한다.
+
+    YouTube의 공개 ``viewCount=0`` 은 결측이 아니라 유효한 누적값이다. 반면 외부
+    스크래퍼의 0은 접근 실패 때도 관측되어 신뢰할 수 없다. 따라서 공식 API 응답에서
+    ``views is not None`` 인 영상만 덮어쓰고, 그 ID를 호출부에 돌려준다.
+    """
+    confirmed: set[str] = set()
+    for video_id, stat in api_stats.items():
+        if stat.get("views") is None:
+            continue
+        collector_stats[video_id] = stat
+        confirmed.add(video_id)
+    return confirmed
+
+
+def _discard_unconfirmed_youtube_zeroes(stats: dict, confirmed_ids: set[str]) -> None:
+    """공식 API가 확인하지 않은 YouTube 0을 결측으로 되돌린다(양수는 무접촉)."""
+    for video_id, stat in stats.items():
+        try:
+            is_zero = stat.get("views") is not None and int(stat.get("views")) == 0
+        except (TypeError, ValueError):
+            is_zero = False
+        if is_zero and video_id not in confirmed_ids:
+            stat["views"] = None
+
+
 def _positive_int(value):
     try:
         n = int(value)
@@ -2060,15 +2090,20 @@ def run():
                             yt_stats[vid] = s
                 # (A) 스크래퍼가 끝내 못 준 영상(VIDEO_UNAVAILABLE 등) → 공식 Data API 보강(YOUTUBE_API_KEY 있을 때만)
                 yt_unavail = _miss()
+                api_confirmed_ids: set[str] = set()
                 if yt_unavail:
-                    filled = 0
-                    for vid, s in _fetch_youtube_api(yt_unavail).items():
-                        if (s.get("views") or 0) > 0:
-                            yt_stats[vid] = s
-                            filled += 1
+                    api_confirmed_ids = _merge_youtube_api_measurements(
+                        yt_stats,
+                        _fetch_youtube_api(yt_unavail),
+                    )
+                    filled = len(api_confirmed_ids)
                     if filled:
                         print(f"[LOG] 유튜브 Data API 폴백 보강: {filled}건 / 미반환 {len(yt_unavail)}건")
-                print(f"[LOG] 유튜브 수집: 실값 {sum(1 for s in yt_stats.values() if (s.get('views') or 0) > 0)}건 / {len(yt_posts)}개 요청")
+                # 외부 스크래퍼의 0은 접근 실패일 수 있다. 공식 API가 0을 반환한 경우만
+                # 유효 측정으로 저장하고, 확인 못 한 0은 NULL로 남겨 다음 재시도 대상이 되게 한다.
+                _discard_unconfirmed_youtube_zeroes(yt_stats, api_confirmed_ids)
+                measured = sum(1 for s in yt_stats.values() if s.get("views") is not None)
+                print(f"[LOG] 유튜브 수집: 실측 {measured}건 / {len(yt_posts)}개 요청")
                 # 비공개/삭제(error=VIDEO_UNAVAILABLE) 자동 특이사항 태깅은 _store_aux_rows가 공통 처리.
                 # 유튜브 캡션 = 영상 제목. 조회수 None이어도 행 저장(좋아요 유지) + 역행 clamp.
                 _store_aux_rows(db, rows, yt_posts, yt_stats, lambda p: _yt_id(p["url"]), "유튜브",

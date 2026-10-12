@@ -7,6 +7,7 @@ from build_view_missing_queue import (
     build_history_state,
     decide_reason,
     exclusion_reason,
+    has_same_day_measurement,
     is_tiktok_view_post,
     has_no_public_view_metric,
 )
@@ -227,6 +228,41 @@ class ManualZeroConfirmedTest(unittest.TestCase):
             decide_reason(self.TIKTOK, null_row, self._state(), "2026-09-06"),
             "same_day_row_without_view_metric",
         )
+
+    def test_youtube_manual_zero_is_not_a_permanent_exclusion(self):
+        """YouTube 수기 0은 당일만 측정 완료이고 다음 날짜에는 다시 조회한다."""
+        youtube = {
+            "url": "https://www.youtube.com/shorts/_99CrZgenyA",
+            "channel_type": "위성채널",
+            "posted_at": "2026-10-11",
+            "notes": "",
+        }
+        reason = decide_reason(
+            youtube,
+            [],
+            self._state(has_manual_zero=True),
+            "2026-10-12",
+        )
+        self.assertEqual(reason, "missing_same_day_row")
+        self.assertNotIn(reason, NON_RETRYABLE_REASONS)
+
+    def test_youtube_zero_counts_only_for_that_day(self):
+        youtube = {"url": "https://www.youtube.com/watch?v=_99CrZgenyA"}
+        self.assertTrue(has_same_day_measurement(
+            youtube,
+            [{"play_count": 0, "reach_count": None, "manual": False}],
+        ))
+        self.assertTrue(has_same_day_measurement(
+            youtube,
+            [{"play_count": 0, "reach_count": None, "manual": True}],
+        ))
+        self.assertFalse(has_same_day_measurement(youtube, []))
+
+    def test_other_platform_automatic_zero_remains_retryable(self):
+        self.assertFalse(has_same_day_measurement(
+            self.TIKTOK,
+            [{"play_count": 0, "reach_count": None, "manual": False}],
+        ))
 
 
 class HistoryPaginationContractTest(unittest.TestCase):
