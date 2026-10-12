@@ -16,6 +16,7 @@
 - **0회 근본 수정 `1e8d35dc`:** 공식 API 응답은 `views is not None`이면 **0도 유효 실측으로 저장**한다. 외부 액터만 준 0은 공식 API 확인 없이는 NULL로 돌려 다음 재시도를 유지한다. 재시도 큐는 YouTube의 당일 0만 측정 완료로 보고, 과거 수기 0 때문에 다음 날짜가 영구 제외되지 않게 했다. TikTok·Instagram의 기존 자동 0 정책은 무변경이다.
 - **제보 7건 실측:** 공식 API가 `_99CrZgenyA=0 · DZmwd2uIndc=0 · Dumt3lqTso4=0 · jZmGFWyIovs=0 · io1PkNSPfBQ=0 · jE2YAQIo0fo=10 · 71gC1s_bzuo=0`을 반환했고 영상 제목도 Slack unfurl과 일치했다. DB에는 이 작업 전 이미 같은 `2026-10-11` 수기값(6×0, 1×10)이 있어 **값을 다시 쓰거나 변경하지 않았다**. 앞으로는 다음 날짜마다 공식 API로 다시 확인해 0→양수 증가도 자동 추적한다.
 - **게이트:** 관련 51건 + 전체 Python **427 passed, 4 subtests passed**, `py_compile`, `git diff --check` 통과. 공식 API의 0 저장·미확인 액터 0 폐기·YouTube 수기 0의 다음날 재시도·타 플랫폼 자동 0 유지가 회귀 테스트로 고정됐다.
+- **배포 후 스모크:** retry run `38189900551`이 main `e1959a72`로 성공. 대상일 `2026-10-11` 큐는 `eligible=1105 · queue=0 · retryable=0 · manual_zero_confirmed=0`이었고 `YOUTUBE_API_KEY` 주입도 마스킹 상태로 확인됐다. 처리 대상 0건이라 값·외부 수집 호출은 추가 발생하지 않았다.
 
 ## ✅ 2026-10-12 [Codex 완료·라이브검증] `sponsoredTargets` evergreen 상한 1000 → 요청값 기반 최대 3000
 
