@@ -78,6 +78,55 @@ const FIELD_BY_HEADER = {
 // 사이트가 허용하는 URL (인스타 / 유튜브 / 틱톡 / 페이스북 / 스레드 / X(트위터) / 카카오 숏폼 / 네이버 클립, 다단계 서브도메인 포함). 서버 필터와 동일.
 const ALLOWED_URL_RE = /^https:\/\/([a-z0-9-]+\.)*(instagram\.com|youtube\.com|youtu\.be|tiktok\.com|facebook\.com|threads\.com|threads\.net|x\.com|twitter\.com|t\.co|kakao\.com|naver\.com)\//i;
 
+// 주소 정규화만으로 새 수집 대상이 되면 운영 판단이 필요한 레거시 행.
+// 행번호는 삽입/삭제로 바뀌므로 게시물 식별자로 막는다. 사용자 결정 전까지 DB 등록·통계 import 금지.
+const DEFERRED_SHEET_SYNC_KEYS_ = {
+  "yt:7brYyMz4wZ0": "HTTP 주소 자동 보완 보류(레거시 협찬 · 사용자 결정 대기)",
+};
+
+/** 시트 주소를 서버와 같은 HTTPS 입력 형태로만 보완한다. 셀 자체는 수정하지 않는다. */
+function normalizeSheetSyncUrl_(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return { raw: "", url: "", changed: false, reason: "" };
+  if (/^http:\/\//i.test(raw)) {
+    return {
+      raw: raw,
+      url: "https://" + raw.replace(/^http:\/\//i, ""),
+      changed: true,
+      reason: "http → https 자동 보완",
+    };
+  }
+  if (!/^https:\/\//i.test(raw)) {
+    return {
+      raw: raw,
+      url: "https://" + raw.replace(/^\/+/, ""),
+      changed: true,
+      reason: "https 누락 자동 보완",
+    };
+  }
+  return { raw: raw, url: raw, changed: false, reason: "" };
+}
+
+/** 모든 시트→DB/DB→시트 경로가 같은 URL 허용·제외 판정을 쓰게 한다. */
+function classifySheetSyncUrl_(value) {
+  const normalized = normalizeSheetSyncUrl_(value);
+  if (!normalized.raw) return { valid: false, url: "", changed: false, normalizationReason: "", skipReason: "URL 빈칸" };
+  if (!ALLOWED_URL_RE.test(normalized.url)) {
+    return { valid: false, url: normalized.url, changed: normalized.changed, normalizationReason: normalized.reason, skipReason: "지원 플랫폼 아님" };
+  }
+  if (/instagram\.com/i.test(normalized.url) && !/instagram\.com\/(?:[^/?#]+\/)*(?:p|reels|reel|tv)\/[A-Za-z0-9_-]+/i.test(normalized.url)) {
+    return { valid: false, url: normalized.url, changed: normalized.changed, normalizationReason: normalized.reason, skipReason: "인스타 비게시물" };
+  }
+  if (isInvalidTikTokPostUrl_(normalized.url)) {
+    return { valid: false, url: normalized.url, changed: normalized.changed, normalizationReason: normalized.reason, skipReason: "틱톡 ID 오류" };
+  }
+  const deferredReason = DEFERRED_SHEET_SYNC_KEYS_[linkKey_(normalized.url)];
+  if (deferredReason) {
+    return { valid: false, url: normalized.url, changed: normalized.changed, normalizationReason: normalized.reason, skipReason: deferredReason };
+  }
+  return { valid: true, url: normalized.url, changed: normalized.changed, normalizationReason: normalized.reason, skipReason: "" };
+}
+
 // TikTok video/photo ID는 uint64 snowflake. 잘못 붙은 20자리 숫자가 별도 게시물로 등록돼
 // DB→시트에서 조회수만 남은 고아 행을 만든 사고(2026-08-07)를 모든 시트 경로에서 차단한다.
 const MAX_TIKTOK_SNOWFLAKE_ = "18446744073709551615";
@@ -327,7 +376,7 @@ function todayStr_() {
 // ═══════════════════════════════════════════════════════════════
 /**
  * @param {boolean} onlyNew - true면 등록상태가 비어있는 행만
- * @returns {{rows, rowNums, rowRefs, statusCol, skipped:number, dupCount:number, future:number, lastRow:number}}
+ * @returns {{rows, rowNums, rowRefs, statusCol, skipped:number, skipDetails:Array, normalizedDetails:Array, dupCount:number, future:number, lastRow:number}}
  */
 function collectRows_(onlyNew) {
   const sheet = getSheet_();
@@ -338,8 +387,10 @@ function collectRows_(onlyNew) {
   const lastCol = sheet.getLastColumn();
   const today = todayStr_();
   let skipped = 0, dupCount = 0, future = 0;
+  const skipDetails = [];
+  const normalizedDetails = [];
   if (lastRow < CONFIG.DATA_START_ROW) {
-    return { rows: [], rowNums: [], rowRefs: [], statusCol, skipped, dupCount, future, lastRow };
+    return { rows: [], rowNums: [], rowRefs: [], statusCol, skipped, skipDetails, normalizedDetails, dupCount, future, lastRow };
   }
 
   const values = sheet
@@ -358,14 +409,21 @@ function collectRows_(onlyNew) {
     const status = String(row[statusCol - 1] || "").trim();
     if (onlyNew && status) return; // 이미 추가된 행
 
-    if (!ALLOWED_URL_RE.test(rawUrl)) { skipped++; return; } // 지원 안 되는 URL
-    if (/instagram\.com/i.test(rawUrl) && !/\/(p|reels|reel|tv)\/[A-Za-z0-9_-]+/i.test(rawUrl)) { skipped++; return; }
-    if (isInvalidTikTokPostUrl_(rawUrl)) { skipped++; return; }
+    const urlCheck = classifySheetSyncUrl_(rawUrl);
+    if (!urlCheck.valid) {
+      skipped++;
+      skipDetails.push({ row: rowNum, reason: urlCheck.skipReason, url: rawUrl });
+      return;
+    }
+    const url = urlCheck.url;
+    if (urlCheck.changed) {
+      normalizedDetails.push({ row: rowNum, reason: urlCheck.normalizationReason, from: rawUrl, to: url });
+    }
 
     const postedAt = fieldCols.posted_at ? toDateStr_(row[fieldCols.posted_at - 1]) : null;
     if (postedAt && postedAt > today) { future++; return; } // 업로드일이 오늘 이후 → 아직 게시 전, 제외
 
-    const obj = { url: rawUrl };
+    const obj = { url: url };
     if (fieldCols.posted_at)       obj.posted_at       = postedAt;
     if (fieldCols.account_name)    obj.account_name    = String(row[fieldCols.account_name - 1] || "").trim() || null;
     if (fieldCols.company_name)    obj.company_name    = String(row[fieldCols.company_name - 1] || "").trim() || null;
@@ -378,7 +436,7 @@ function collectRows_(onlyNew) {
     if (fieldCols.creator)         obj.creator         = String(row[fieldCols.creator - 1] || "").trim() || null;
     if (fieldCols.cost)            obj.cost            = toNumber_(row[fieldCols.cost - 1]);
 
-    const key = urlKey_(rawUrl);
+    const key = urlKey_(url);
     if (byKey[key]) {
       dupCount++;
       rowNums.push(rowNum);
@@ -391,7 +449,7 @@ function collectRows_(onlyNew) {
   });
 
   const rows = Object.keys(byKey).map(k => byKey[k]);
-  return { rows, rowNums, rowRefs, statusCol, skipped, dupCount, future, lastRow };
+  return { rows, rowNums, rowRefs, statusCol, skipped, skipDetails, normalizedDetails, dupCount, future, lastRow };
 }
 
 /** 중복 판정용 URL 키: 쿼리스트링·끝슬래시 제거 + 소문자 (서버 정규화와 동일 기준) */
@@ -483,11 +541,27 @@ function removeDuplicateLinks() {
   }
 }
 
-function noteExtra_(skipped, dupCount, future) {
+function urlDetailLines_(items, formatter) {
+  const max = 12;
+  const lines = (items || []).slice(0, max).map(formatter);
+  if ((items || []).length > max) lines.push(`  · … 외 ${items.length - max}건`);
+  return lines.join("\n");
+}
+
+function noteExtra_(skipped, dupCount, future, skipDetails, normalizedDetails) {
   let s = "";
   if (dupCount) s += `\n\n🔁 시트 내 중복 URL ${dupCount}건은 1건으로 합쳐 전송(중복 추가 방지).`;
   if (future)   s += `\n⏭️ 업로드일이 오늘 이후인 행 ${future}건 제외(아직 게시 전).`;
-  if (skipped)  s += `\n⚠️ 지원 플랫폼(IG/YT/TikTok/FB/Threads/X/카카오/네이버) URL이 아니어서 제외됨: ${skipped}건`;
+  if ((normalizedDetails || []).length) {
+    s += `\n🔧 주소 자동 보완 ${normalizedDetails.length}건:\n` + urlDetailLines_(normalizedDetails, function(d) {
+      return `  · ${d.row}행 · ${d.reason}: ${d.from} → ${d.to}`;
+    });
+  }
+  if (skipped) {
+    s += `\n⚠️ URL 제외 ${skipped}건(행·사유):\n` + urlDetailLines_(skipDetails, function(d) {
+      return `  · ${d.row}행 · ${d.reason}: ${d.url}`;
+    });
+  }
   return s;
 }
 
@@ -631,9 +705,9 @@ function ensureMetricFormulasForRows_(sheet, rowRefs, expectedLastRow) {
 // ═══════════════════════════════════════════════════════════════
 function runSync_(onlyNew) {
   try {
-    const { rows, rowNums, rowRefs, statusCol, skipped, dupCount, future, lastRow } = collectRows_(onlyNew);
+    const { rows, rowNums, rowRefs, statusCol, skipped, skipDetails, normalizedDetails, dupCount, future, lastRow } = collectRows_(onlyNew);
     if (rows.length === 0) {
-      safeAlert_((onlyNew ? "추가할 신규 광고가 없습니다." : "반영할 시트 행이 없습니다.") + noteExtra_(skipped, dupCount, future));
+      safeAlert_((onlyNew ? "추가할 신규 광고가 없습니다." : "반영할 시트 행이 없습니다.") + noteExtra_(skipped, dupCount, future, skipDetails, normalizedDetails));
       return true;
     }
     const { count, created, ended, filled } = postRows_(rows);
@@ -650,7 +724,7 @@ function runSync_(onlyNew) {
       okMsg = `✅ 시트 변경사항 DB 반영 완료\n• 비교한 행: ${count}건\n• 새로 추가: ${created}건\n• 값이 달라 수정: ${filled}건`;
     }
     if (ended) okMsg += `\n• 삭제/보관 캡션으로 종료: ${ended}건`;
-    safeAlert_(okMsg + noteExtra_(skipped, dupCount, future) + blankNote_());
+    safeAlert_(okMsg + noteExtra_(skipped, dupCount, future, skipDetails, normalizedDetails) + blankNote_());
     return true;
   } catch (e) {
     safeAlert_("❌ 오류\n" + e.message);
@@ -1393,8 +1467,10 @@ function pullFromDB() {
     posts.forEach(p => {
       const rawUrl = String(p.url || "").trim();
       // shortcode 없는 IG 프로필 URL은 append 안 함 — 시트↔DB 재추가 루프 방지(2026-08-25 one_star_video 사고).
-      if (isInvalidTikTokPostUrl_(rawUrl) || (/instagram\.com/i.test(rawUrl) && !/\/(p|reels|reel|tv)\/[A-Za-z0-9_-]+/i.test(rawUrl))) { rejectedInvalid++; return; }
-      const key = linkKey_(rawUrl);   // 시트 인덱스와 동일 기준 — DB /p/ ↔ 시트 /reel/ 매칭되어 재추가 안 됨
+      const urlCheck = classifySheetSyncUrl_(rawUrl);
+      if (!urlCheck.valid) { rejectedInvalid++; return; }
+      const normalizedUrl = urlCheck.url;
+      const key = linkKey_(normalizedUrl);   // 시트 인덱스와 동일 기준 — DB /p/ ↔ 시트 /reel/ 매칭되어 재추가 안 됨
       if (!key || pendingKeys[key]) return;
       if (rowByKey[key]) {
         // 기존 행 — 빈 칸만 DB값으로 채움(수동 편집 보존)
@@ -1418,13 +1494,13 @@ function pullFromDB() {
         // 신규 글은 URL→메타를 셀별로 쓰지 않고 한 행 전체를 원자적으로 기록한다.
         // 중간 실패/동시 정렬로 URL만 사라지고 날짜값만 남는 고아 행을 만들지 않는다.
         const newRow = Array(lastCol).fill("");
-        newRow[urlCol - 1] = rawUrl;
+        newRow[urlCol - 1] = normalizedUrl;
         fillFields.forEach(f => {
           if (!fieldCols[f]) return;
           const val = fmtVal_(f, p[f]);
           if (val !== "") newRow[fieldCols[f] - 1] = val;
         });
-        pendingRows.push({ key: key, url: rawUrl, values: newRow });
+        pendingRows.push({ key: key, url: normalizedUrl, values: newRow });
         pendingKeys[key] = true;
       }
     });
@@ -2878,8 +2954,11 @@ function exportStatsWithOptions_(options) {
     const postedAtByRow = new Array(nRows);
     for (let i = 0; i < nRows; i++) {
       postedAtByRow[i] = toDateStr_(postedVals[i][0]);
-      const url = String(urlVals[i][0] || "").trim();
-      if (!url) { rowMap[i] = null; rowKeys[i] = null; continue; }
+      const rawUrl = String(urlVals[i][0] || "").trim();
+      if (!rawUrl) { rowMap[i] = null; rowKeys[i] = null; continue; }
+      const urlCheck = classifySheetSyncUrl_(rawUrl);
+      const url = urlCheck.url;
+      if (!urlCheck.valid) { rowMap[i] = null; rowKeys[i] = null; continue; }
       const key = linkKey_(url);
       rowKeys[i] = key;
       if (key) keyRowCounts[key] = (keyRowCounts[key] || 0) + 1;
@@ -2888,7 +2967,7 @@ function exportStatsWithOptions_(options) {
         rowMap[i] = m; matched++;
         if (/instagram\.com\/(?:[^/?#]+\/)*(?:reels|reel|tv)\//i.test(url)) shortcodeFormatMatched++;
       }
-      else { rowMap[i] = null; if (ALLOWED_URL_RE.test(url)) missing++; }
+      else { rowMap[i] = null; missing++; }
     }
 
     // 행별 DB→시트 동기화:
@@ -3268,11 +3347,23 @@ function importStats(source) {
     let carrySkipped = 0;
     let bannerRows = 0;
     let bannerStats = 0;
+    const skipDetails = [];
+    const normalizedDetails = [];
     const stats = [];
     const postByKey = {}; // url-key → 광고 메타 (첫 행 우선). 없는 광고 생성용, 기존은 서버가 덮어쓰지 않음.
-    values.forEach(row => {
-      const url = String(row[fieldCols.url - 1] || "").trim();
-      if (!url || !ALLOWED_URL_RE.test(url)) return; // URL 없거나 미지원
+    values.forEach((row, rowIndex) => {
+      const rawUrl = String(row[fieldCols.url - 1] || "").trim();
+      if (!rawUrl) return;
+      const rowNum = CONFIG.DATA_START_ROW + rowIndex;
+      const urlCheck = classifySheetSyncUrl_(rawUrl);
+      if (!urlCheck.valid) {
+        skipDetails.push({ row: rowNum, reason: urlCheck.skipReason, url: rawUrl });
+        return;
+      }
+      const url = urlCheck.url;
+      if (urlCheck.changed) {
+        normalizedDetails.push({ row: rowNum, reason: urlCheck.normalizationReason, from: rawUrl, to: url });
+      }
 
       const postedAt = fieldCols.posted_at ? toDateStr_(row[fieldCols.posted_at - 1]) : null;
       if (postedAt && postedAt > today) { future++; return; } // 업로드일이 오늘 이후 → 아직 게시 전, 제외
@@ -3332,9 +3423,14 @@ function importStats(source) {
       future_date_cells_skipped: futureDateCells,
       blank_date_cells_skipped: blankDateCells,
       non_banner_carry_skipped: carrySkipped,
+      url_rows_skipped: skipDetails.length,
+      url_rows_normalized: normalizedDetails.length,
     }));
 
-    if (stats.length === 0) { safeAlert_("입력할 조회수 데이터가 없습니다."); return true; }
+    if (stats.length === 0) {
+      safeAlert_("입력할 조회수 데이터가 없습니다." + noteExtra_(skipDetails.length, 0, future, skipDetails, normalizedDetails));
+      return true;
+    }
 
     // ⚠️ Vercel 서버리스 함수 요청 본문 한도(~4.5MB). 시트가 커지면서 posts+stats 전체를 한 번에
     //    POST하면 413(FUNCTION_PAYLOAD_TOO_LARGE)로 거부된다(2026-08-20 발생). → 게시물 단위로 배치 전송.
@@ -3404,7 +3500,7 @@ function importStats(source) {
       msg += `\n\nℹ️ 대시보드에서 수정돼 있던 ${res.overwrote_manual}칸을 시트 값으로 갱신했습니다(가장 최근 입력이 반영됨).`;
     }
     msg += `\n\n📌 여기서 입력한 조회수는 대시보드에 반영되며, 밤 자동수집은 이 값을 덮지 않습니다.\n   같은 칸을 대시보드에서 더 나중에 고치면 그 값이 최신으로 우선합니다.`;
-    safeAlert_(msg + blankNote_());
+    safeAlert_(msg + noteExtra_(skipDetails.length, 0, 0, skipDetails, normalizedDetails) + blankNote_());
     return true;
   } catch (e) {
     safeAlert_("❌ 오류\n" + e.message);
@@ -3415,12 +3511,12 @@ function importStats(source) {
 
 function previewNew() {
   try {
-    const { rows, skipped, dupCount, future } = collectRows_(true);
-    if (rows.length === 0) { safeAlert_("추가할 신규 광고가 없습니다." + noteExtra_(skipped, dupCount, future)); return; }
+    const { rows, skipped, skipDetails, normalizedDetails, dupCount, future } = collectRows_(true);
+    if (rows.length === 0) { safeAlert_("추가할 신규 광고가 없습니다." + noteExtra_(skipped, dupCount, future, skipDetails, normalizedDetails)); return; }
     const sample = rows.slice(0, 5)
       .map((r, i) => `${i + 1}. ${r.url}\n   채널:${r.account_name || "-"} / 분류:${r.channel_type || "-"} / 프로젝트:${r.project_name || "-"} / 비용:${r.cost != null ? r.cost : "-"}`)
       .join("\n");
-    safeAlert_(`총 ${rows.length}개 추가 예정 (상위 5개 미리보기)\n\n${sample}` + noteExtra_(skipped, dupCount, future));
+    safeAlert_(`총 ${rows.length}개 추가 예정 (상위 5개 미리보기)\n\n${sample}` + noteExtra_(skipped, dupCount, future, skipDetails, normalizedDetails));
   } catch (e) {
     safeAlert_("❌ 오류\n" + e.message);
   }
@@ -3480,9 +3576,11 @@ function checkDuplicates() {
     const byKey = {}; // urlKey → [{row, url}]
     values.forEach((row, i) => {
       const rawUrl = String(row[fieldCols.url - 1] || "").trim();
-      if (!rawUrl || !ALLOWED_URL_RE.test(rawUrl)) return;
-      const key = urlKey_(rawUrl);
-      (byKey[key] = byKey[key] || []).push({ row: CONFIG.DATA_START_ROW + i, url: rawUrl });
+      if (!rawUrl) return;
+      const urlCheck = classifySheetSyncUrl_(rawUrl);
+      if (!urlCheck.valid) return;
+      const key = urlKey_(urlCheck.url);
+      (byKey[key] = byKey[key] || []).push({ row: CONFIG.DATA_START_ROW + i, url: urlCheck.url });
     });
 
     const dups = Object.keys(byKey).map(k => byKey[k]).filter(g => g.length > 1);
@@ -3572,10 +3670,12 @@ function syncManualCreatorsOnEdit(e) {
     const values = sheet.getRange(firstRow, 1, rowCount, width).getValues();
     const rows = [];
     values.forEach(row => {
-      const url = String(row[fieldCols.url - 1] || "").trim();
-      if (!url || !ALLOWED_URL_RE.test(url)) return;
+      const rawUrl = String(row[fieldCols.url - 1] || "").trim();
+      if (!rawUrl) return;
+      const urlCheck = classifySheetSyncUrl_(rawUrl);
+      if (!urlCheck.valid) return;
       rows.push({
-        url: url,
+        url: urlCheck.url,
         planner: fieldCols.planner ? String(row[fieldCols.planner - 1] || "").trim() || null : null,
         creator: fieldCols.creator ? String(row[fieldCols.creator - 1] || "").trim() || null : null,
       });

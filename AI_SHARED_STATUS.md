@@ -1,5 +1,15 @@
 # AI Shared Status
 
+## ✅ 2026-10-13 [Codex 완료·라이브반영] 연동시트 주소 스킴 자동보완 + 조용한 제외 해소
+
+- **근본 수정:** `Combined_Sheet_AppsScript.gs`에 `normalizeSheetSyncUrl_`·`classifySheetSyncUrl_`를 단일 진입점으로 추가했다. 시트 URL은 허용 플랫폼 검사 전에 `http://`→`https://`, 스킴 없음→`https://`로 보완하며, 시트→DB 신규/전체 동기화·DB→시트 빈칸 채움·일별값 import/export 대조·중복검사·수동 담당자 동기화가 같은 판정을 사용한다. `ALLOWED_URL_RE.test` 직접 호출은 공용 판정 함수 1곳만 남았다.
+- **제외가 더 이상 조용하지 않음:** 동기화 결과에 건수만 내던 것을 `행 번호 · 사유 · URL`로 바꿨다. 라이브 `syncNew` 실측에서 940 인스타 비게시물, 1099 사용자 결정 대기, 1160~1162 다음카페, 4410 네이버 단축주소가 각각 이유와 함께 표시됐다.
+- **1099 보호:** `yt:7brYyMz4wZ0`는 행번호가 아닌 게시물 식별자로 `DEFERRED_SHEET_SYNC_KEYS_`에 보류했다. 일반 `http` 주소는 자동 보완하되 이 레거시 협찬만 사용자 결정 전 DB 등록·통계 import에서 제외한다. 시트 B1099는 원래 `http://youtube.com/watch?v=7brYyMz4wZ0`, DB는 0건으로 유지됐다.
+- **B4998 수술:** 쓰기 전 A4997:C4999을 백업하고 `instagram.com/reel/DeVzfGRBw_l/`→`https://www.instagram.com/reel/DeVzfGRBw_l/` 한 셀만 교정했다. gviz 재판독에서 A4997:C4999 인접행 불변, shortcode 검색 결과 시트 1행, DB도 `normalized_key=ig:DeVzfGRBw_l` 1행만 확인했다. DB에는 2026-10-12 자동 실측 `play_count=139`가 있으며 다음 `dailyAuto/exportStats` 반영을 후속 확인한다.
+- **운영 동기화:** `syncNew`는 비교 3·신규 0·수정 0으로 끝났고, `runDbPullSyncNow`는 `status=OK`(신규 0·빈칸 0)였다. 공식 감사에서 별건 `4899 soosoo_beauty`가 시트 전용으로 새로 드러나, 일상 배치와 같은 `syncAll`을 실행했다(비교 4,925·신규 1·수정 0). DB에 `ig:DdTfR1VTzxE`가 정확히 1행 생겼고 1099는 제외됐다.
+- **사후감사:** formula-audit run `38341686071` success/HTTP 200, `sheetOnly=1`은 **1099 한 건만**, `orphanRows=0 · incMismatch=0 · snapshotRetryCount=0`. 4908·4909는 시트에서 업로드일 `2026-10-07`, 누적 `1,668 / 1,648`을 확인했다. 기존 `hInvalid=12 · cpv.invalid=16 · stale=2`는 이번 URL 수정과 무관한 별도 운영 이슈다.
+- **배포/게이트:** guarded Apps Script push 후 live pull 8파일 일치, 편집기에서 공용 정규화·행별 사유 코드를 재확인했다. URL 계약 테스트는 무스킴/http/정상 https와 1099 보류를 고정하며, 전체 web 테스트·lint(error 0)·`tsc --noEmit`·production build를 통과했다.
+
 ## 📮 2026-10-13 [Claude 점검·읽기전용 → Codex 인계] 연동시트 URL 정리 2차 — 숨은 중복 51 + 오타·꼬리표 (아래 1차 4쌍과 **한 번에** 실행)
 > 사용자 지시(10-13): "오타·잘못된 주소 수정", "단축링크·꼬리표 URL을 중복검사에서 걸러지게 수정", 중복은 **데이터 많은 행을 남기고 적은 행 삭제**. 시트 `10WpAQU9…` gid `1937186871`. Claude는 시트·DB 쓰기 0건.
 

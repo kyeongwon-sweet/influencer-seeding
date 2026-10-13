@@ -269,8 +269,8 @@ test("Apps Script mirror keeps live metadata and URL guards", () => {
     appsScript.indexOf("function fetchPostsFromDB_()"),
   );
   for (const body of [collectRowsBody, pullFromDbBody]) {
-    assert.ok(body.includes("/instagram\\.com/i.test(rawUrl)"));
-    assert.ok(body.includes("!/\\/(p|reels|reel|tv)\\/[A-Za-z0-9_-]+/i.test(rawUrl)"));
+    assert.match(body, /const urlCheck = classifySheetSyncUrl_\(rawUrl\)/);
+    assert.match(body, /if \(!urlCheck\.valid\)/);
   }
   assert.match(
     appsScript,
@@ -497,7 +497,7 @@ test("syncNew fills missing H/I/J formulas before marking rows registered", () =
   const collectEnd = appsScript.indexOf("function urlKey_(u)", collectStart);
   const collectBody = appsScript.slice(collectStart, collectEnd);
   assert.match(collectBody, /rowRefs\.push\(\{ row: rowNum, key: key \}\)/);
-  assert.match(collectBody, /return \{ rows, rowNums, rowRefs, statusCol, skipped, dupCount, future, lastRow \}/);
+  assert.match(collectBody, /return \{ rows, rowNums, rowRefs, statusCol, skipped, skipDetails, normalizedDetails, dupCount, future, lastRow \}/);
 
   const helperStart = appsScript.indexOf("function assertSyncRowsStable_(sheet, rowRefs, expectedLastRow)");
   const helperEnd = appsScript.indexOf("// ═", helperStart);
@@ -517,6 +517,63 @@ test("syncNew fills missing H/I/J formulas before marking rows registered", () =
   assert.match(runBody, /CPV \$\{formulaResult\.cpv\}칸/);
 
   assert.match(appsScript, /function syncNew\(\)\s*\{ return withDocLock_\(function\(\) \{ return runSync_\(true\); \}\); \}/);
+});
+
+test("sheet sync normalizes URL schemes before one shared allow-list check and reports row-level reasons", () => {
+  const normalizeStart = appsScript.indexOf("function normalizeSheetSyncUrl_(value)");
+  const normalizeEnd = appsScript.indexOf("function classifySheetSyncUrl_(value)", normalizeStart);
+  const normalizeBody = appsScript.slice(normalizeStart, normalizeEnd);
+  assert.match(normalizeBody, /\^http:\\\/\\\//);
+  assert.match(normalizeBody, /url: "https:\/\/" \+ raw\.replace/);
+  assert.match(normalizeBody, /reason: "http → https 자동 보완"/);
+  assert.match(normalizeBody, /reason: "https 누락 자동 보완"/);
+  const normalize = new Function(`${normalizeBody}; return normalizeSheetSyncUrl_;`)() as (value: unknown) => {
+    raw: string; url: string; changed: boolean; reason: string;
+  };
+  assert.deepEqual(normalize("instagram.com/reel/DeVzfGRBw_l/"), {
+    raw: "instagram.com/reel/DeVzfGRBw_l/",
+    url: "https://instagram.com/reel/DeVzfGRBw_l/",
+    changed: true,
+    reason: "https 누락 자동 보완",
+  });
+  assert.deepEqual(normalize("http://youtube.com/watch?v=7brYyMz4wZ0"), {
+    raw: "http://youtube.com/watch?v=7brYyMz4wZ0",
+    url: "https://youtube.com/watch?v=7brYyMz4wZ0",
+    changed: true,
+    reason: "http → https 자동 보완",
+  });
+  assert.equal(normalize("https://www.instagram.com/p/ABC123/").changed, false);
+
+  const classifyStart = normalizeEnd;
+  const classifyEnd = appsScript.indexOf("// TikTok video/photo ID", classifyStart);
+  const classifyBody = appsScript.slice(classifyStart, classifyEnd);
+  assert.match(classifyBody, /ALLOWED_URL_RE\.test\(normalized\.url\)/);
+  assert.match(classifyBody, /skipReason: "인스타 비게시물"/);
+  assert.match(classifyBody, /skipReason: "틱톡 ID 오류"/);
+  assert.match(classifyBody, /DEFERRED_SHEET_SYNC_KEYS_\[linkKey_\(normalized\.url\)\]/);
+  assert.equal((appsScript.match(/ALLOWED_URL_RE\.test\(/g) || []).length, 1, "raw URL allow-list checks must not reappear");
+  assert.match(appsScript, /"yt:7brYyMz4wZ0": "HTTP 주소 자동 보완 보류/);
+
+  const collectStart = appsScript.indexOf("function collectRows_(onlyNew)");
+  const collectEnd = appsScript.indexOf("function urlKey_(u)", collectStart);
+  const collectBody = appsScript.slice(collectStart, collectEnd);
+  assert.match(collectBody, /const urlCheck = classifySheetSyncUrl_\(rawUrl\)/);
+  assert.match(collectBody, /skipDetails\.push\(\{ row: rowNum, reason: urlCheck\.skipReason, url: rawUrl \}\)/);
+  assert.match(collectBody, /normalizedDetails\.push\(\{ row: rowNum, reason: urlCheck\.normalizationReason/);
+  assert.match(collectBody, /const obj = \{ url: url \}/);
+
+  const noteStart = appsScript.indexOf("function noteExtra_(");
+  const noteEnd = appsScript.indexOf("// ═", noteStart);
+  const noteBody = appsScript.slice(noteStart, noteEnd);
+  assert.match(noteBody, /URL 제외 \$\{skipped\}건\(행·사유\)/);
+  assert.match(noteBody, /\$\{d\.row\}행 · \$\{d\.reason\}/);
+
+  const importStart = appsScript.indexOf("function importStats(source)");
+  const importEnd = appsScript.indexOf("function previewNew()", importStart);
+  const importBody = appsScript.slice(importStart, importEnd);
+  assert.match(importBody, /const urlCheck = classifySheetSyncUrl_\(rawUrl\)/);
+  assert.match(importBody, /url_rows_skipped: skipDetails\.length/);
+  assert.match(importBody, /noteExtra_\(skipDetails\.length, 0, 0, skipDetails, normalizedDetails\)/);
 });
 
 test("exportStats preserves final DB metric in blank cumulative cells for ended posts", () => {
