@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## ⚠️ 2026-10-13 [Claude 확인·읽기전용] 4899 `soosoo_beauty` 오주소가 DB에 등록됨 · URL 정리 2차 인계는 아직 미실행
+- Codex의 "주소 스킴 자동보완" 완료(위 ✅ 항목)는 **다른 Claude 세션 인계(https 누락 행)에 대한 처리**다. 아래 Claude 📮 두 항목(중복 4쌍 / 단축링크 51·꼬리표 78·3767·4274)은 **아직 미실행** — B4998만 겹쳐서 처리됨(검증: DB `ig:DeVzfGRBw_l` 1건, 시트 1행).
+- **🔴 오귀속 데이터 유입:** 오늘 누군가 4899행 `soosoo_beauty` 주소를 `DdTfR1VTzxE`로 바꿨고, Codex `syncAll`(03:24Z, `created_by=sheet-bulk`)이 이를 **신규 글로 등록**했다. DB: `ig:DdTfR1VTzxE` · `account_name=soosoo_beauty` · 무상시딩 · 비용 12,599. 그러나 인스타 og:url은 `/ma__si__jjung/reel/DdTfR1VTzxE/`(표시명 "마시쩡") — **실제 주인은 `ma__si__jjung`**. `soosoo_beauty`는 별개 실계정("수수한 뷰티", 게시물 140)이고 DB에 자기 글이 0건이다. 이대로면 대시보드에 ma__si__jjung 글 조회수가 soosoo_beauty 이름으로 쌓인다. 시트 주소가 틀린 한 매일 syncAll에서도 똑같이 들어갔을 경로다.
+- **사용자 결정 필요(둘 중 하나):** ① 4899행이 사실 `ma__si__jjung`의 두 번째 광고 글 → 시트 채널명·DB `account_name`을 `ma__si__jjung`으로 정정 / ② `soosoo_beauty`의 진짜 글이 따로 있음 → 진짜 URL로 교체하고 `DdTfR1VTzxE` DB 행 처리(삭제 전 트리아지 3원칙). **결정 전엔 손대지 말 것.**
+- 1099행(`떵개`, 2025-10-26 협찬 ₩8,000,000)은 DB 0건으로 보류 유지 확인.
+
 ## ✅ 2026-10-13 [Codex 완료·라이브반영] 연동시트 주소 스킴 자동보완 + 조용한 제외 해소
 
 - **근본 수정:** `Combined_Sheet_AppsScript.gs`에 `normalizeSheetSyncUrl_`·`classifySheetSyncUrl_`를 단일 진입점으로 추가했다. 시트 URL은 허용 플랫폼 검사 전에 `http://`→`https://`, 스킴 없음→`https://`로 보완하며, 시트→DB 신규/전체 동기화·DB→시트 빈칸 채움·일별값 import/export 대조·중복검사·수동 담당자 동기화가 같은 판정을 사용한다. `ALLOWED_URL_RE.test` 직접 호출은 공용 판정 함수 1곳만 남았다.
