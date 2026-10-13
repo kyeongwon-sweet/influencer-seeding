@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## ✅ 2026-10-13 [Codex 완료·사용자 승인] URL 정리 2차 후속 — `DdTfR1VTzxE` 채널명 정정 + `DeCO-E5SJL7` 빈 중복행 삭제
+- **실행 전 URL-key 재식별:** 라이브 연동시트에서 `ig:DdTfR1VTzxE`는 4866행 1건(`soosoo_beauty`, H 공란·날짜값 0), `ig:DeCO-E5SJL7`은 4815 `mz_eun6`(H 579·날짜값 3) + 4868 `mua.jieun`(H 공란·날짜값 0) 두 행이었다. 인계문의 `DB 통계 8행`과 `시트 날짜값`을 혼동하지 않고 현재 시트 실물 지문으로 다시 고정했다. `vt/vm.tiktok`은 실행 전 이미 0행이었다.
+- **백업 후 최소 변경:** 외부 스프레드시트 `_codex_url_followup_backup_20261013_20261013_191735`(ID `1izrAukQh6XdgqNgS5u4I2c8g2WCyq0IPCrh94n8EZXI`)에 대상·보존행 3개의 **A:FH 값과 수식 텍스트**를 저장한 뒤, `DdTfR1VTzxE`의 C열만 `ma__si__jjung`으로 수정하고 지표가 없는 `mua.jieun` 중복행 1개만 삭제했다. 보존 `mz_eun6` 행의 H 579·날짜값 3은 전후 동일하다.
+- **동기화/재유입 검증:** 같은 문서 잠금 경로로 `syncAll=true`, 이어 `runDbPullSyncNow=true`를 실행했다. pull 이후 재판독도 `DdTfR1VTzxE` 1행(`ma__si__jjung`)·`DeCO-E5SJL7` 1행(`mz_eun6`)·단축링크 0행으로 동일해 삭제행 재생성 0건이다. 공식 감사의 stale 라벨도 `ig:DdTfR1VTzxE = ma__si__jjung`으로 나와 DB `account_name` 반영을 확인했다.
+- **공식 감사:** formula-audit run `38383443896` success/HTTP 200. `totalRows=4,943 · orphanRows=0 · sheetOnly=1(1099 떵개만) · shortLinkRows=0 · incMismatch=0 · errorCells=0`. 기존 `hInvalid=13 · incInvalid=1 · cpv.invalid=16 · stale=2`는 이번 URL 정리와 무관한 선행 운영 이슈다.
+- **일회성 코드 제거:** 서명·URL-key·보존값 가드가 있는 임시 실행 경로로 처리한 뒤 웹앱과 Apps Script에서 즉시 제거했다. 라이브 pull에서 정본 **10파일**만 남음을 확인했고 임시 action은 다시 `unknown action`을 반환한다. 4274 이슈박스 채널주소 DB행은 앞선 `83a66819`에서 이미 삭제 완료 상태라 중복 삭제하지 않았다.
+
 ## 🔍 2026-10-13 [Claude 사후검증] Codex 83a66819 — 인계 4건 중 1건(이슈박스 DB) 완료 · 3건 남음 · DB→시트 6분 초과 관찰
 - **확인됨(DB 직접 조회):** `74fc3bb4` 0행. 전체 `sponsored_posts` 4,939→4,938. CI(Build·Workflow Lint·삭제 워크플로) 전부 success.
 - **아직 그대로(c063fd03 📮의 1·2·3b·4):** DB `1a885fba`(`tiktok.com/@sseoltteugi/`) **1행 남음** + 시트 4945행 남음 · `ig:DdTfR1VTzxE` DB 이름 아직 `soosoo_beauty`(시트 4866 미변경) · 시트 4868 `mua.jieun` 미삭제 · Apps Script `classifySheetSyncUrl_` 규칙 미추가. 썰뜨기는 이슈박스와 같은 조건(통계 0·비용 0·종료)이라 `delete_specific_sponsored_post.py` 재사용 가능, 단 **시트 4945 먼저 삭제**(서버가 이제 거부하므로 순서 바뀌어도 재생성은 없음).
