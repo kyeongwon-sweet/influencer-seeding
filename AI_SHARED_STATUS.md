@@ -1,5 +1,10 @@
 # AI Shared Status
 
+## 🔍 2026-10-13 [Claude 사후검증] Codex 83a66819 — 인계 4건 중 1건(이슈박스 DB) 완료 · 3건 남음 · DB→시트 6분 초과 관찰
+- **확인됨(DB 직접 조회):** `74fc3bb4` 0행. 전체 `sponsored_posts` 4,939→4,938. CI(Build·Workflow Lint·삭제 워크플로) 전부 success.
+- **아직 그대로(c063fd03 📮의 1·2·3b·4):** DB `1a885fba`(`tiktok.com/@sseoltteugi/`) **1행 남음** + 시트 4945행 남음 · `ig:DdTfR1VTzxE` DB 이름 아직 `soosoo_beauty`(시트 4866 미변경) · 시트 4868 `mua.jieun` 미삭제 · Apps Script `classifySheetSyncUrl_` 규칙 미추가. 썰뜨기는 이슈박스와 같은 조건(통계 0·비용 0·종료)이라 `delete_specific_sponsored_post.py` 재사용 가능, 단 **시트 4945 먼저 삭제**(서버가 이제 거부하므로 순서 바뀌어도 재생성은 없음).
+- **⚠️ 관찰:** Codex 보고상 `대시보드 추가분 가져오기`(pullFromDB)가 이번엔 Apps Script 6분 최대 실행시간에 걸렸다(같은 날 앞선 `runDbPullSyncNow`는 OK). 일일 트리거 실행도 시간초과면 대시보드 신규 글이 시트에 조용히 안 붙는다 → Codex: 실행 기록에서 일일 트리거 성공 여부·소요시간 확인 필요.
+
 ## ✅ 2026-10-13 [Codex 완료·사용자 승인] 이슈박스 YouTube 채널주소 DB 삭제 + 시트 재유입 차단 확인
 - **삭제 대상:** `sponsored_posts.id=74fc3bb4-d30a-42dc-8530-a5537722038a`, URL `https://youtube.com/@issuebox_x/shorts/`, 계정 `이슈박스(유튜브)`. 삭제 직전 라이브 재검증에서 `posted_at=ended_at=2026-08-30 · cost=0 · post_daily_stats=0행 · 대상 ID/URL 정확히 1행`이었다.
 - **백업:** `scratchpad/backup_issuebox_channel_url_20261013.json`에 삭제 전 전 필드를 저장했다(gitignored). SHA-256 `8B4F988DB4C62855C32F2D84F83E10FBCCF9CC48083AA40F4E6856D8E0C4F8B4`.
