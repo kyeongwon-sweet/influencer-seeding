@@ -1,5 +1,5 @@
 import type { getServerSupabase } from "@/lib/supabase-server";
-import { normalizeUrl, postIdentityKey, ALLOWED_POST_URL_RE, isInstagramNonPostUrl, isInvalidTikTokPostUrl, instagramRequestUrl } from "@/lib/url-utils";
+import { normalizeUrl, postIdentityKey, ALLOWED_POST_URL_RE, isInstagramNonPostUrl, isAccountNonPostUrl, isInvalidTikTokPostUrl, instagramRequestUrl } from "@/lib/url-utils";
 import { normalizeChannelType, isFreeChannel, canonicalText } from "@/app/monitoring/lib";
 import { repairPollutedCompanyName } from "@/lib/companyMap";
 import { triggerCaptionBackfill, needsCaption } from "@/lib/github-dispatch";
@@ -101,7 +101,7 @@ export async function upsertSponsoredRows(
       };
     })
     .filter(r => {
-      if (!r.url || !ALLOWED_POST_URL_RE.test(r.url) || isInstagramNonPostUrl(r.url) || isInvalidTikTokPostUrl(r.url)) {
+      if (!r.url || !ALLOWED_POST_URL_RE.test(r.url) || isInstagramNonPostUrl(r.url) || isAccountNonPostUrl(r.url) || isInvalidTikTokPostUrl(r.url)) {
         rejectedInvalidUrl += 1;
         return false;
       }

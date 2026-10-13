@@ -9,7 +9,7 @@ import {
   POSTS_TRUNCATED_HEADER,
   type PageResult,
 } from "@/lib/stats-pages";
-import { normalizeUrl, ALLOWED_POST_URL_RE, isInstagramNonPostUrl, isInvalidTikTokPostUrl } from "@/lib/url-utils";
+import { normalizeUrl, ALLOWED_POST_URL_RE, isInstagramNonPostUrl, isAccountNonPostUrl, isInvalidTikTokPostUrl } from "@/lib/url-utils";
 import { logger } from "@/lib/logger";
 import { normalizeChannelType, canonicalText } from "@/app/monitoring/lib";
 import { triggerCaptionBackfill, needsCaption } from "@/lib/github-dispatch";
@@ -340,7 +340,8 @@ export async function POST(req: NextRequest) {
 
   const cleaned = { ...body, url: body.url ? (normalizeUrl(body.url) || body.url) : body.url };
   if (!cleaned.url || !ALLOWED_POST_URL_RE.test(String(cleaned.url)) ||
-      isInstagramNonPostUrl(String(cleaned.url)) || isInvalidTikTokPostUrl(String(cleaned.url))) {
+      isInstagramNonPostUrl(String(cleaned.url)) || isAccountNonPostUrl(String(cleaned.url)) ||
+      isInvalidTikTokPostUrl(String(cleaned.url))) {
     return NextResponse.json({ error: "올바른 게시물 URL이 아닙니다." }, { status: 400 });
   }
   if (cleaned.channel_type) cleaned.channel_type = normalizeChannelType(String(cleaned.channel_type));

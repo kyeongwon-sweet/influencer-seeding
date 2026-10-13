@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { normalizeUrl, postIdentityKey, ALLOWED_POST_URL_RE, isInvalidTikTokPostUrl } from "@/lib/url-utils";
+import { normalizeUrl, postIdentityKey, ALLOWED_POST_URL_RE, isInstagramNonPostUrl, isAccountNonPostUrl, isInvalidTikTokPostUrl } from "@/lib/url-utils";
 import { filterMonotonicStats, type GuardInput } from "@/lib/stats-guard";
 import { normalizeChannelType, isFreeChannel, canonicalText, isBannerChannel } from "@/app/monitoring/lib";
 import { resolveTikTokShortUrl, tagCreatedBy } from "@/lib/sponsored-write";
@@ -128,7 +128,8 @@ export async function POST(req: NextRequest) {
   for (const p of postsIn) {
     if (!p || !p.url) continue;
     const url = normalizeUrl(resolveU(String(p.url))) || String(p.url);
-    if (!ALLOWED_POST_URL_RE.test(url) || isInvalidTikTokPostUrl(url)) { rejectInvalidUrl(url); continue; } // 허용 플랫폼·유효 게시물만 신규 생성
+    // 프로필·채널 주소는 게시물이 아니다 — 여기서 만들면 시트에서 지워도 pullFromDB가 되살린다(2026-10-13).
+    if (!ALLOWED_POST_URL_RE.test(url) || isInstagramNonPostUrl(url) || isAccountNonPostUrl(url) || isInvalidTikTokPostUrl(url)) { rejectInvalidUrl(url); continue; } // 허용 플랫폼·유효 게시물만 신규 생성
     const postKey = postIdentityKey(url) ?? url;
     if (postByUrl.has(postKey)) continue;
     const clean: Record<string, unknown> = { url, normalized_key: postKey };

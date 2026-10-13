@@ -136,6 +136,30 @@ export function isInstagramNonPostUrl(url: string): boolean {
   return /instagram\.com/i.test(u) && !/\/(p|reels|reel|tv)\/[A-Za-z0-9_-]+/i.test(u);
 }
 
+/**
+ * TikTok 프로필(`tiktok.com/@계정/`)·YouTube 채널(`youtube.com/@계정/shorts/`, `/channel/…`) 주소인지 판정한다.
+ * 게시물이 아니라 수집도 안 되는데, 한 번 DB에 들어가면 시트에서 지워도 pullFromDB가 종료글까지
+ * 다시 붙여 되살아난다(2026-10-13 썰뜨기(틱톡)·이슈박스(유튜브) 실측). 게시물 ID가 있으면 통과.
+ * 단축링크(vt/vm, /t/)나 옛 형식(m.tiktok.com/v/…)은 계정 주소가 아니므로 건드리지 않는다.
+ */
+export function isAccountNonPostUrl(url: string): boolean {
+  const raw = String(url || "");
+  try {
+    const u = new URL(raw.startsWith("http") ? raw : "https://" + raw);
+    const host = u.hostname.toLowerCase().replace(/^www\./, "");
+    if (host === "tiktok.com" || host === "m.tiktok.com") {
+      return /^\/@[^/]+\/?$/.test(u.pathname);
+    }
+    if (host === "youtube.com" || host === "m.youtube.com") {
+      if (postIdentityKey(raw)?.startsWith("yt:")) return false;
+      return /^\/(@[^/]+|channel\/[^/]+|c\/[^/]+|user\/[^/]+)(\/|$)/.test(u.pathname);
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 export function normalizeYouTubeUrl(url: string): string | null {
   if (!url) return null;
   try {

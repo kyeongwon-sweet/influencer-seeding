@@ -5,6 +5,7 @@ import {
   normalizeUrl,
   ALLOWED_POST_URL_RE,
   isInstagramNonPostUrl,
+  isAccountNonPostUrl,
   isInvalidTikTokPostUrl,
   isValidTikTokSnowflake,
   normalizeInstagramUrl,
@@ -20,6 +21,36 @@ test("normalizeUrl: 프로토콜·trailing slash 통일 + 쿼리 제거", () => 
   assert.equal(normalizeUrl("instagram.com/p/ABC/"), "https://www.instagram.com/p/ABC/");
   assert.equal(normalizeUrl(""), null);
   assert.equal(normalizeUrl("not a url"), null);
+});
+
+test("isAccountNonPostUrl: 틱톡 프로필·유튜브 채널은 차단, 게시물·단축링크는 허용", () => {
+  // 2026-10-13 실측: 이 두 주소가 DB 글로 들어가 시트에서 지워도 pullFromDB가 다시 붙였다.
+  for (const u of [
+    "https://www.tiktok.com/@sseoltteugi/",
+    "https://www.tiktok.com/@sseoltteugi",
+    "https://youtube.com/@issuebox_x/shorts/",
+    "https://www.youtube.com/@issuebox_x",
+    "https://www.youtube.com/channel/UC1234567890/",
+    "https://m.youtube.com/c/somechannel/videos",
+  ]) {
+    assert.equal(isAccountNonPostUrl(u), true, `차단해야 함: ${u}`);
+  }
+  for (const u of [
+    "https://www.tiktok.com/@a/video/7667204307820760338/",
+    "https://www.tiktok.com/@a/photo/7667204307820760338/",
+    "https://vt.tiktok.com/ZSabc123/",
+    "https://www.tiktok.com/t/ZTabc/",
+    "https://m.tiktok.com/v/7667204307820760338.html",
+    "https://www.youtube.com/watch?v=7brYyMz4wZ0",
+    "https://www.youtube.com/shorts/6ronnq9uRbE/",
+    "https://youtu.be/LQODaXCtlG8",
+    "https://www.youtube.com/live/abcdefghijk",
+    "https://www.instagram.com/kimbbuingg/",
+    "https://x.com/punchricee/status/2071174482916671870/",
+    "",
+  ]) {
+    assert.equal(isAccountNonPostUrl(u), false, `허용해야 함: ${u}`);
+  }
 });
 
 test("isInstagramNonPostUrl: 프로필·목록은 차단하고 게시물 shortcode는 허용", () => {
