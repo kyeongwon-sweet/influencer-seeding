@@ -1,5 +1,15 @@
 # AI Shared Status
 
+## 📮 2026-10-13 [사용자 승인 "진행해" → Claude 코드 완료 · Codex 인계] 계정·채널 주소 차단 + 남은 정리 4건
+- **✅ Claude 서버 수정 `24f41597`(Vercel success):** `isAccountNonPostUrl`(틱톡 `tiktok.com/@계정/`, 유튜브 `youtube.com/@계정…`·`/channel/`·`/c/`·`/user/`, 게시물 ID 있으면 통과·단축링크 통과)을 시트 bulk(`sponsored-write`)·단건 추가·stats-import 신규생성 입구에 추가. stats-import 신규생성에 빠져 있던 인스타 비게시물 검사도 추가. 테스트 645/645·tsc·build 통과. **현 DB 4,939글 전체에 돌려 차단 2건뿐**(아래 두 주소). 이제 이 두 주소는 시트→DB로 다시 못 들어온다.
+- **📮 Codex 실행(사용자 승인됨):**
+  1. 시트 4866 `soosoo_beauty`(URL `DdTfR1VTzxE`) → 채널명(C)만 `ma__si__jjung`. syncAll 후 DB `account_name=ma__si__jjung` 확인.
+  2. 시트 4868 `mua.jieun`(URL `DeCO-E5SJL7`) 행 삭제. 4815 `mz_eun6`(누적 579) 보존.
+  3. 시트 4945 `썰뜨기 (틱톡)` 프로필주소 행 삭제 + DB `sponsored_posts` 2행 삭제: `1a885fba-ee0d-4c09-8756-6a40e3e00421`(`https://www.tiktok.com/@sseoltteugi/`) · `74fc3bb4-d30a-42dc-8530-a5537722038a`(`https://youtube.com/@issuebox_x/shorts/`). 둘 다 통계 0행·비용 0·종료(Claude 실측). **삭제 전 두 행 전 컬럼 + 이 id를 참조하는 다른 테이블 행까지 백업**, id로만 삭제(패턴 삭제 금지).
+  4. 라이브 Apps Script `classifySheetSyncUrl_`에 같은 규칙(틱톡 프로필·유튜브 채널 = 비게시물, 사유 표시) 추가 — 서버만 막으면 시트 동기화 결과에 '거부'로만 잡히고 이유가 안 보인다.
+- **순서:** 백업 → 시트 행 삭제(4868·4945, URL 키로 직전 재확인) → DB 2행 삭제 → 채널명 변경 → syncAll → pullFromDB.
+- **검증:** `DeCO-E5SJL7`·`DdTfR1VTzxE` 시트 각 1행 · pullFromDB 후 두 계정·채널 주소 시트 0행 · DB 두 id 0건 · formula-audit `orphanRows=0`·`sheetOnly`=1099만.
+
 ## 🔍 2026-10-13 [Claude 사후검증·읽기전용] Codex URL 정리(b11fd254) 대조 — 정리 자체는 맞음 · 미실행 2건 · 지운 행이 되살아난 사례 1건
 - **맞음:** 시트(gviz 4,944행)↔DB(4,939글) 키 대조. 인스타 3,757=3,757 · 틱톡영상 420=420 · 유튜브 488=487+1099 → 세 플랫폼 집합 일치. 단축링크 0행. 남은 중복 키는 `ig:DeCO-E5SJL7` 1개뿐(아래).
 - **미실행(사용자 결정 10-13, 📮 a663a4ba):** Codex가 4899·4903을 '보호행'으로 두어 반영 안 됨. 현재 행번호 기준 **4866 `soosoo_beauty`→채널명 `ma__si__jjung`**, **4868 `mua.jieun` 삭제**(4815 `mz_eun6` 누적 579와 같은 글). 그대로 유효.
