@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## ✅ 2026-10-13 [Codex 완료·사용자 승인] 이슈박스 YouTube 채널주소 DB 삭제 + 시트 재유입 차단 확인
+- **삭제 대상:** `sponsored_posts.id=74fc3bb4-d30a-42dc-8530-a5537722038a`, URL `https://youtube.com/@issuebox_x/shorts/`, 계정 `이슈박스(유튜브)`. 삭제 직전 라이브 재검증에서 `posted_at=ended_at=2026-08-30 · cost=0 · post_daily_stats=0행 · 대상 ID/URL 정확히 1행`이었다.
+- **백업:** `scratchpad/backup_issuebox_channel_url_20261013.json`에 삭제 전 전 필드를 저장했다(gitignored). SHA-256 `8B4F988DB4C62855C32F2D84F83E10FBCCF9CC48083AA40F4E6856D8E0C4F8B4`.
+- **엄격 가드:** `9d2943fe`에 대상 ID·URL·계정·게시일·종료일·비용·통계행 수가 하나라도 다르면 중단하는 `delete_specific_sponsored_post.py`와 수동 워크플로를 추가했다. 단위테스트 3종·py_compile·pre-push tsc 통과. 드라이런 `38379536579`가 사전조건 전부 일치함을 확인한 뒤 실제 실행 `38379621106`에서 **정확히 1행 삭제**, 삭제 후 동일 ID 0행·통계 0행을 확인했다.
+- **라이브 사후검증:** 인증된 `/api/sponsored-posts` 재조회에서 대상 ID·URL 모두 0건. DB→시트 `대시보드 추가분 가져오기`는 전체 처리 중 Apps Script 최대 실행시간에 걸렸지만, 그 실행 뒤 최신 연동탭 CSV(4,944 데이터행) 전수검색에서 채널주소 0건을 확인했다. 남겨야 할 실제 쇼츠 `6ronnq9uRbE`는 **1행(누적 3)** 그대로다. 서버 `24f41597`도 YouTube 채널주소 신규 유입을 거부하므로 다시 생성될 경로가 닫혔다.
+- **정정:** 아래 `b11fd254` 기록의 “DB `74fc3bb4…` 미삭제·재등장 가능”은 이 조치로 해소됐다.
+
 ## 📮 2026-10-13 [사용자 승인 "진행해" → Claude 코드 완료 · Codex 인계] 계정·채널 주소 차단 + 남은 정리 4건
 - **✅ Claude 서버 수정 `24f41597`(Vercel success):** `isAccountNonPostUrl`(틱톡 `tiktok.com/@계정/`, 유튜브 `youtube.com/@계정…`·`/channel/`·`/c/`·`/user/`, 게시물 ID 있으면 통과·단축링크 통과)을 시트 bulk(`sponsored-write`)·단건 추가·stats-import 신규생성 입구에 추가. stats-import 신규생성에 빠져 있던 인스타 비게시물 검사도 추가. 테스트 645/645·tsc·build 통과. **현 DB 4,939글 전체에 돌려 차단 2건뿐**(아래 두 주소). 이제 이 두 주소는 시트→DB로 다시 못 들어온다.
 - **📮 Codex 실행(사용자 승인됨):**
