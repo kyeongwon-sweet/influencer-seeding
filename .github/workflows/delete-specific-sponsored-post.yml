@@ -1,0 +1,63 @@
+name: Delete Specific Sponsored Post
+
+on:
+  workflow_dispatch:
+    inputs:
+      post_id:
+        description: "Exact sponsored_posts.id"
+        required: true
+      expected_url:
+        description: "Exact current URL"
+        required: true
+      expected_account_name:
+        description: "Exact current account_name"
+        required: true
+      expected_posted_at:
+        description: "Expected posted_at (YYYY-MM-DD)"
+        required: true
+      expected_ended_at:
+        description: "Expected ended_at (YYYY-MM-DD)"
+        required: true
+      expected_cost:
+        description: "Expected cost"
+        required: true
+      expected_stats_count:
+        description: "Expected post_daily_stats row count"
+        required: true
+      apply:
+        description: "Delete after all strict checks pass"
+        type: boolean
+        default: false
+
+jobs:
+  delete:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Verify and optionally delete one exact post row
+        run: |
+          args=(
+            --post-id "${{ inputs.post_id }}"
+            --expected-url "${{ inputs.expected_url }}"
+            --expected-account-name "${{ inputs.expected_account_name }}"
+            --expected-posted-at "${{ inputs.expected_posted_at }}"
+            --expected-ended-at "${{ inputs.expected_ended_at }}"
+            --expected-cost "${{ inputs.expected_cost }}"
+            --expected-stats-count "${{ inputs.expected_stats_count }}"
+          )
+          if [ "${{ inputs.apply }}" = "true" ]; then
+            args+=(--apply)
+          fi
+          cd scripts
+          python delete_specific_sponsored_post.py "${args[@]}"
