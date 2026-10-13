@@ -159,7 +159,7 @@ async function collect(req: NextRequest) {
       const requestedKeys = new Set(igPosts.map((p) => igShortcode(p.url)).filter(Boolean));
       const urlToStats: Record<
         string,
-        { views: number; likes: number; comments: number; posted_at: string | null }
+        { views: number; likes: number; comments: number; posted_at: string | null; source: string | null }
       > = {};
 
       for (const item of resultItems) {
@@ -196,7 +196,7 @@ async function collect(req: NextRequest) {
           );
         }
 
-        if (sc) urlToStats[sc] = { views, likes, comments, posted_at: postedAt };
+        if (sc) urlToStats[sc] = { views, likes, comments, posted_at: postedAt, source: pickedPlay.source };
       }
 
       // 4️⃣ 직전(measuredAt 이전) 마지막 조회수 — 누적 단조성 검증용
@@ -287,6 +287,7 @@ async function collect(req: NextRequest) {
           likesCount: stats.likes,
           commentsCount: stats.comments,
           previousPlay: toPositiveMetric(prevPlay),
+          source: stats.source,
         })) {
           console.warn(
             `   [WARN] suspicious first IG play skipped: ${cleanUrl} ` +

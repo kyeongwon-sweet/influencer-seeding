@@ -76,3 +76,35 @@ def test_요약이_이력집합까지_돌려준다_소스_계약():
     assert "had_play_by_post," in summary.split("return", 1)[1], "반환에 이력집합이 빠지면 호출부가 못 받는다"
     assert "had_play_before=post[\"id\"] in had_play_ids" in src, "호출부가 이력을 넘겨야 한다"
     assert "had_play_ids: set = set()" in src, "요약 실패 시 보수적 기본값이 있어야 한다"
+
+
+# ── 2026-10-13: 조회수 출처(필드)별 판정 ─────────────────────────────────
+# neighbor.mia(p/Dd_LfJwSelW)가 463→480 으로 매일 늘어나는 진짜 조회수를 8일째 버렸다
+# (좋아요 숨김 → 댓글 비율 규칙만 남음). 웹 쪽 짝: web/tests/ig-metric-guard-source.test.ts
+
+def test_neighbor_mia_신뢰필드_진짜조회수는_통과():
+    assert rm._looks_like_engagement_count_as_views(480, -1, 31, source="videoPlayCount") is False
+
+
+def test_fromsensuous_신뢰필드면_좋아요비율로_버리지_않는다():
+    assert rm._looks_like_engagement_count_as_views(1166, 531, 8, source="videoPlayCount") is False
+
+
+def test_숫자_자체가_참여지표인_모양은_신뢰필드여도_잡는다():
+    T = "videoViewCount"
+    assert rm._looks_like_engagement_count_as_views(531, 531, 8, source=T) is True   # = 좋아요
+    assert rm._looks_like_engagement_count_as_views(400, 531, 8, source=T) is True   # < 좋아요
+    assert rm._looks_like_engagement_count_as_views(31, -1, 31, source=T) is True    # = 댓글
+    assert rm._looks_like_engagement_count_as_views(539, 531, 8, source=T) is True   # = 합계
+
+
+def test_모호한필드나_출처미상은_종전_비율규칙():
+    assert rm._looks_like_engagement_count_as_views(480, -1, 31, source="views") is True
+    assert rm._looks_like_engagement_count_as_views(480, -1, 31) is True
+
+
+def test_일일수집이_출처를_넘긴다_소스계약():
+    from pathlib import Path
+    src = (Path(__file__).resolve().parent / "run_monitoring.py").read_text(encoding="utf-8")
+    assert 'source=s.get("play_count_source")' in src
+    assert '"play_count_source": play_count_source' in src, "출처를 통계에 싣는 곳이 없어지면 가드가 늘 보수적으로 돈다"

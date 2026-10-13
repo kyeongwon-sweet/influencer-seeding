@@ -93,6 +93,10 @@ def _is_instagram_reel_url(url: str | None) -> bool:
     return bool(re.search(r"/(?:reel|reels|tv)/[A-Za-z0-9_-]+", url or "", re.I))
 
 
+# 조회수 전용 필드 — 여기서 온 값은 좋아요/댓글 수가 섞여 들어올 경로가 없다.
+_TRUSTED_IG_PLAY_SOURCES = frozenset({"videoPlayCount", "videoViewCount"})
+
+
 def _pick_instagram_play_count(item: dict, url: str | None):
     """Return a trusted IG play count and the source field used.
 
@@ -122,6 +126,7 @@ def _looks_like_engagement_count_as_views(
     existing: dict | None = None,
     *,
     had_play_before: bool = False,
+    source: str | None = None,
 ) -> bool:
     """스크래퍼가 좋아요/댓글 수를 조회수 자리에 넣은 **첫 측정**만 걸러낸다.
 
@@ -133,6 +138,18 @@ def _looks_like_engagement_count_as_views(
        사람이 실물로 확인해 준 뒤에야 드러났다.
        → '**이 글이 과거에 한 번이라도 조회수를 가진 적 있나**'로 판정한다.
           수기 입력분도 이력으로 친다(사람이 본 값도 '첫 측정 아님'의 증거다).
+
+    🚨 2026-10-13 실사고(비율 기준 오탐): neighbor.mia(p/Dd_LfJwSelW, 무상시딩 영상)가
+       조회수 463→466→473→475→477→480 으로 **매일 실제로 늘어나는 값**을 8일째 버렸다.
+       좋아요가 숨김(-1)이라 댓글 규칙(조회수 ≤ 댓글×20)만 남았는데, 무상시딩 글은 댓글
+       이벤트 때문에 조회수 대비 댓글이 많은 게 정상이다. fromsensuous 도 같은 가드의 오탐이었다.
+       도입(2026-07-30) 이후 슬랙 기록에 남은 발동은 이 두 글뿐이고 둘 다 진짜 값이었다.
+       → 같은 커밋에서 근본 원인(모호한 views/count 필드)은 이미 막혔다: 조회수가 신뢰 필드
+         (videoPlayCount/videoViewCount)에서 왔으면 **숫자 자체가 참여 지표인 모양**만 거른다
+         (조회수 < 좋아요, 또는 좋아요·댓글·합계와 정확히 같음). 실제 저장된 IG 자동 측정
+         21,221행 중 이 모양은 0행이다(현행 '≤ 좋아요×3' 모양은 21행 — 정상 데이터도 걸린다).
+         비율 추정은 모호한 필드(impressions/viewCount/views/count — /p/ 주소의 대체값)에서
+         온 값에만 남긴다. 출처를 모르면(source=None) 종전처럼 보수적으로 판정한다.
     """
     if had_play_before or (existing or {}).get("play_count"):
         return False
@@ -140,9 +157,19 @@ def _looks_like_engagement_count_as_views(
     if play is None:
         return False
     likes = _positive_int(likes_count)
+    comments = _positive_int(comments_count)
+    # 어느 필드에서 왔든: 숫자 자체가 좋아요/댓글 수인 모양
+    if likes is not None and play <= likes:
+        return True
+    if comments is not None and play == comments:
+        return True
+    if likes is not None and comments is not None and play == likes + comments:
+        return True
+    if source in _TRUSTED_IG_PLAY_SOURCES:
+        return False
+    # 모호한 필드(또는 출처 미상)에서 온 값만 비율로 추정한다
     if likes is not None and likes >= 100 and play <= max(likes * 3, likes + 50):
         return True
-    comments = _positive_int(comments_count)
     if comments is not None and comments >= 20 and play <= comments * 20:
         return True
     return False
@@ -2039,6 +2066,7 @@ def run():
                 s.get("comments_count"),
                 existing,
                 had_play_before=post["id"] in had_play_ids,
+                source=s.get("play_count_source"),
             ):
                 _record_missing_view_event(post, "Instagram", "implausible_play_engagement_ratio", stat=s, existing=existing)
                 print(

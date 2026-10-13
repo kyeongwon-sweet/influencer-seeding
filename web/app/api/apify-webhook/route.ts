@@ -5,7 +5,7 @@ import { normalizeYouTubeUrl, normalizeInstagramUrl, isInstagramNonPostUrl } fro
 import { notifyBot, notifyJob } from "@/lib/slack";
 import { requireMonitoringWebhookDate } from "@/lib/dateRule";
 import { isBannerChannel } from "@/app/monitoring/lib";
-import { looksLikeEngagementCountAsViews } from "@/lib/ig-metric-guard";
+import { looksLikeEngagementCountAsViews, trustedPlaySourceOf } from "@/lib/ig-metric-guard";
 import { organicExcludeHit, organicOwnedMediaHit, organicTradePostHit } from "@/lib/organic-filter";
 
 // ── 지표 계산 (metrics.py 포팅) ─────────────────────────────────────
@@ -276,6 +276,7 @@ async function handleMonitoring(
     statsByKey[key] = {
       url,
       play_count: (item.videoPlayCount ?? item.videoViewCount) ?? null,
+      play_count_source: trustedPlaySourceOf(item as Record<string, unknown>),
       likes_count: (item.likesCount ?? item.likes) ?? null,
       comments_count: (item.commentsCount ?? item.comments) ?? null,
       posted_at: postedAt,
@@ -407,6 +408,7 @@ async function handleMonitoring(
       likesCount: s.likes_count,
       commentsCount: s.comments_count,
       previousPlay: prevPlay,
+      source: (s.play_count_source as string | null | undefined) ?? null,
     })) {
       suspiciousFirstPlay.push({
         account: (post.account_name as string | null) ?? null,
