@@ -5,6 +5,7 @@
 - **4899행 `soosoo_beauty` → 채널명 `ma__si__jjung`** (URL `DdTfR1VTzxE` 유지). 4829행 `ma__si__jjung`(`DeE0dDhTvpM`)과 **다른 글**이라 중복 아님 — ma__si__jjung 광고 글 2개. DB `ig:DdTfR1VTzxE`는 `account_name=soosoo_beauty`·`manual_fields=[]`·통계 0행 → 시트 이름을 바꾸면 **다음 syncAll에서 DB 이름도 자동 정정**(시트 정본 필드). 검증: syncAll 후 DB `account_name=ma__si__jjung`.
 - **4903행 `mua.jieun` → 삭제.** 업로더 `@mz_eun6`(mua.jieun 소개글 "M- @mz_eun6", 같은 사람 부계정). 이름을 바꾸면 4831행 `mz_eun6`과 **URL까지 같은 완전 중복**(비용 ₩12,599 이중 계상)이 되므로, 사용자 중복 규칙(데이터 적은 행 삭제)대로 4903 삭제와 결과가 같다. 4903: 누적 빈칸·날짜값 0 / 4831: 누적 579·DB 통계 8행. DB `ig:DeCO-E5SJL7`은 이미 `mz_eun6` 1건 → 시트 삭제 후에도 pullFromDB 재추가 없음.
 - 원칙 동일: URL 키로 찾고 쓰기 직전 재확인, 대상 행 A:FH 백업 먼저, Apps Script 실행 중 금지. 검증: `DeCO-E5SJL7` 시트 1행, `DdTfR1VTzxE` 시트 1행(채널명 ma__si__jjung), 수식감사 고아행 0.
+- **⚠️ 4274 추가 주의(2차 A-3):** 시트만 지우면 되살아난다. DB에 `https://youtube.com/@issuebox_x/shorts/`(채널 주소) 행 `74fc3bb4…`가 있다(이슈박스(유튜브), 08-30 게시·종료, 비용 0, 통계 0행, created_by sheet-bulk, manual_fields [ended_at]). pullFromDB는 종료글도 거르지 않아 다음 실행 때 시트에 다시 붙인다. → 4308(`6ronnq9uRbE`)과 같은 글로 확인되면 **DB 행도 백업 후 같이 삭제**, 아니면 4274는 이번에 빼고 55행만.
 
 ## ⚠️ 2026-10-13 [Claude 조사] 연동시트 '채널명 빈칸' 854행 — 원본에도 거의 없음 · 요거트바 대시보드 숨김탭 1개 노출(되돌림 필요)
 - **범위:** 연동시트에서 URL은 있는데 채널명(C)이 빈 행 **854**(행 44~917). 전부 09-18 일괄등록된 2025-05~07 요거트바(BA혼 511·BA복 236·BA딸 92·ZB혼 15) 인스타, 이미 종료. DB `account_name`도 NULL이라 Apps Script 빈칸채움(DB→시트)으로는 채울 값이 없다. 업로드일 빈칸 0. 상태(O) 빈칸 57은 위 📮 'URL 정리 2차'(단축링크 중복 51 등)와 겹쳐 그쪽에서 처리.
