@@ -297,3 +297,21 @@ export function instagramRequestUrl(url: string): string {
   const m = String(url ?? "").match(/\/(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)/);
   return m ? `https://www.instagram.com/reel/${m[1]}/` : url;
 }
+
+/**
+ * 연동시트 행 주소를 **서버가 실제로 받아주는가** 기준으로 분류한다(formula-audit 의 '시트에만 있는 행' 감사용).
+ *
+ * 판정 순서는 sponsored-write.ts 의 upsert 와 같다 — 먼저 normalizeUrl 로 정규화하고 그 결과를 검사한다.
+ * 그래서 `instagram.com/reel/X/`(https:// 없음)·`http://youtube.com/...` 은 'post' 다. 서버는 받는데
+ * Apps Script 가 원본 문자열에 `^https://` 를 걸어 버리던 행이 바로 이것이다(2026-10-13 사고).
+ *   · short       — 틱톡 단축주소. 서버는 저장 직전 리다이렉트로 풀지만 감사는 오프라인이라 대조 불가.
+ *   · unsupported — 서버도 거부(미지원 도메인·인스타 프로필 링크·잘못된 틱톡 ID 등).
+ */
+export function classifySheetPostUrl(raw: string): "post" | "short" | "unsupported" {
+  const text = String(raw ?? "").trim();
+  if (!text) return "unsupported";
+  if (/^(https?:\/\/)?v[tm]\.tiktok\.com\//i.test(text)) return "short";
+  const url = normalizeUrl(text) || text;
+  if (!ALLOWED_POST_URL_RE.test(url) || isInstagramNonPostUrl(url) || isInvalidTikTokPostUrl(url)) return "unsupported";
+  return "post";
+}

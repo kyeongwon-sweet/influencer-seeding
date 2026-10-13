@@ -3,7 +3,7 @@ import { checkCronAuth } from "@/lib/cron-auth";
 import { fetchSheetTabFormulas, fetchSheetTabValues } from "@/lib/google-sheets";
 import { normalizeSheetHeader, toSheetNumber } from "@/lib/sheet-banner-reach";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { normalizeUrl, postIdentityKey } from "@/lib/url-utils";
+import { classifySheetPostUrl, normalizeUrl, postIdentityKey } from "@/lib/url-utils";
 import { todayKST } from "@/lib/dateRule";
 import { FORMULA_AUDIT_SERVICE, shouldSkipFormulaAuditReport } from "@/lib/formula-audit-dedupe";
 import { notifyBot } from "@/lib/slack";
@@ -309,6 +309,8 @@ async function handler(req: NextRequest) {
     }
     rows.push({
       key: linkKeyOf(url),
+      url,
+      urlKind: classifySheetPostUrl(url),
       label: String(row[acctCol >= 0 ? acctCol : urlCol] ?? "").trim().slice(0, 20) || url.slice(-16),
       sourceRow: i + 1,
       h,
@@ -460,6 +462,9 @@ ${text}` : text;
       stale: result.stale,
       staleExcludedUncollectable: result.staleExcludedUncollectable,
       orphanRows: result.orphanRows,
+      sheetOnly: result.sheetOnly,
+      shortLinkRows: result.shortLinkRows,
+      unsupportedUrlRows: result.unsupportedUrlRows,
     });
   }
 

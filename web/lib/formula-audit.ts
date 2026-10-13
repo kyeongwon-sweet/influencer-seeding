@@ -74,7 +74,19 @@ export type SheetAuditRow = {
   cpvRefs?: { costColumn: string; cumulativeColumn: string };
   metricRange: { firstColumn: string; lastColumn: string; targetColumn?: string; columns?: string[] };
   dates: Array<{ date: string; value: number; column?: string }>; // 양수 날짜값(오름차순)
+  // 시트에만 있는 행(DB 미등록) 감사 재료. undefined면 미실행(기존 단위테스트 호환).
+  url?: string;
+  urlKind?: SheetUrlKind;
 };
+
+/**
+ * 시트 URL 분류 — **서버가 실제로 받아주는 주소인가**(sponsored-write 의 정규화→검사 순서와 같다).
+ *   · post        — 서버가 게시물로 받는 주소. DB에 없으면 동기화가 조용히 건너뛴 것이다.
+ *   · short       — 틱톡 단축주소. 서버는 저장 직전 네트워크로 풀지만 감사는 오프라인이라
+ *                   DB 키와 대조할 수 없다 → 대조 제외(오탐 방지).
+ *   · unsupported — 서버도 거부하는 주소(미지원 플랫폼·프로필 링크 등). 정보로만 센다.
+ */
+export type SheetUrlKind = "post" | "short" | "unsupported";
 
 export type AuditResult = {
   totalRows: number;
@@ -125,6 +137,20 @@ export type AuditResult = {
   staleNotes: string[];
   staleExcludedUncollectable: number;
   staleExcludedNotes: string[];
+  /**
+   * 시트엔 있는데 DB에 없는 게시물 — 동기화가 **조용히 건너뛴** 행.
+   *
+   * 🚨 2026-10-13 실사고: 연동시트 행 주소가 `instagram.com/reel/...`(https:// 없음)이라
+   *    Apps Script 의 `^https://` 검사에 걸려 DB로 아예 안 넘어갔다. 서버는 정규화 후 받아주는
+   *    주소인데 시트 쪽에서만 버렸다. DB에 없으니 수집·업로드일 채움·조회수 역채움이 전부 없었고,
+   *    아래 '값 정체' 검사도 **DB에 짝이 있는 행만** 봐서 이 행들은 어떤 집계에도 안 걸렸다.
+   *    사람이 "왜 업로드일이 안 채워지냐"고 물어서야 드러났다(4908·4909행, 그날 4998행이 또 생김).
+   *    도입 직전 전수 실측(시트 4,992행): 진짜 누락 2건(1099 http·4998 https 누락), 그 외 0건.
+   */
+  sheetOnly: number;
+  sheetOnlyRows: Array<{ row: number; label: string; url: string }>;
+  shortLinkRows: number;
+  unsupportedUrlRows: number;
 };
 
 const ANOMALY_CAP = 12;
@@ -464,6 +490,10 @@ export function auditRows(
     staleNotes: [],
     staleExcludedUncollectable: 0,
     staleExcludedNotes: [],
+    sheetOnly: 0,
+    sheetOnlyRows: [],
+    shortLinkRows: 0,
+    unsupportedUrlRows: 0,
   };
   const note = (line: string) => { if (res.anomalies.length < ANOMALY_CAP) res.anomalies.push(line); };
   // 정체 노트는 별도 상한 — 수식 이상 노트를 밀어내지 않게 한다.
@@ -474,6 +504,18 @@ export function auditRows(
   const staleCutoff = shiftDate(todayKst, -STALE_DAYS);
 
   for (const row of rows) {
+    // ── 시트에만 있는 행 ── 다른 모든 검사가 'DB 짝'을 전제로 하므로 맨 먼저 따로 센다.
+    if (row.urlKind === "post" && !posts.has(row.key)) {
+      res.sheetOnly += 1;
+      if (res.sheetOnlyRows.length < ANOMALY_CAP) {
+        res.sheetOnlyRows.push({ row: row.sourceRow ?? 0, label: row.label, url: row.url ?? row.key });
+      }
+    } else if (row.urlKind === "short") {
+      res.shortLinkRows += 1;
+    } else if (row.urlKind === "unsupported") {
+      res.unsupportedUrlRows += 1;
+    }
+
     const positives = row.dates.map((d) => d.value);
     const rowMax = positives.length ? Math.max(...positives) : null;
 
@@ -640,7 +682,18 @@ export function formatAuditMessage(r: AuditResult): { text: string; healthy: boo
   const head = problems === 0
     ? `✅ [수식 전수감사] 수식 이상 없음 — 행 ${r.totalRows} · 수식형태 H오류 ${r.formulaShape.hInvalid}·H수기 ${r.formulaShape.hManual}/I오류 ${r.formulaShape.incInvalid} · 누적 정합 ${r.h.ok}(수동보존 ${r.h.manualKept}·보존값 ${r.h.valueOnly}·빈칸정상 ${r.h.emptyOk}) · 증분 정합 ${r.inc.ok}(빈칸정상 ${r.inc.emptyOk})`
     : `🔴 [수식 전수감사] 이상 ${problems}건 — 고아행 ${r.orphanRows} / 수식형태 H오류 ${r.formulaShape.hInvalid}·H수기 ${r.formulaShape.hManual}·I오류 ${r.formulaShape.incInvalid} / H 오류셀 ${r.h.errorCells}·데이터有빈칸 ${r.h.emptyButData} / I 오류셀 ${r.inc.errorCells}·불일치 ${r.inc.mismatch}·증분빈칸(값있어야함) ${r.inc.blankExpected} (행 ${r.totalRows}, 정합 H ${r.h.ok}·I ${r.inc.ok})`;
+  // 시트에만 있는 행은 맨 앞에 세운다 — 수집·업로드일·역채움이 **전부** 안 되는 상태라 정체보다 심각하다.
+  const sheetOnlyHead = r.sheetOnly > 0
+    ? `🔴 시트에만 있고 DB에 없는 게시물 ${r.sheetOnly}건 — 동기화가 조용히 건너뛰어 수집·업로드일·조회수가 전혀 안 들어옵니다`
+      + `(주소 앞 https:// 누락·http 등). 시트 주소를 https://로 고치면 다음 동기화 때 들어갑니다.\n`
+      + r.sheetOnlyRows.slice(0, 8).map((s) => `• 행 ${s.row} ${s.label} — ${s.url}`).join("\n")
+      + (r.sheetOnly > 8 ? `\n• ...외 ${r.sheetOnly - 8}건` : "")
+      + "\n\n"
+    : "";
   const detail = [...r.orphanNotes, ...r.anomalies].slice(0, ANOMALY_CAP);
   const body = problems === 0 ? "" : "\n" + detail.map((a) => "• " + a).join("\n");
-  return { text: head + body + staleTail + staleExcludedTail, healthy: problems === 0 && r.stale === 0 };
+  return {
+    text: sheetOnlyHead + head + body + staleTail + staleExcludedTail,
+    healthy: problems === 0 && r.stale === 0 && r.sheetOnly === 0,
+  };
 }
