@@ -89,6 +89,22 @@ async function getSheetTitleByGid(spreadsheetId: string, gid: number): Promise<s
 }
 
 // 지정한 탭의 셀 값을 2차원 배열로 가져온다. (UNFORMATTED_VALUE → 숫자는 number)
+/**
+ * 연동시트(gid=1937186871) 전체를 읽는 범위 — **행 상한 없음**.
+ *
+ * 🚨 2026-10-13: 이 시트를 읽는 경로들이 `A1:CZ3000`·`A1:ZZ5000`·`A1:CZ5000` 처럼 행·열 상한을 박아
+ *    두었다. 시트가 5,001행·FH열(날짜열이 매일 1칸씩 늘어남)까지 자라면서, 매일 감사·배너 도달수
+ *    동기화가 **최신 행부터 조용히** 빠지기 시작했다(에러 없이 '완료'). sheet-integrity 는 1,993행을
+ *    통째로 못 보고 있었다. 최신 행이 가장 문제가 나기 쉬운 행이라 가장 나쁜 방향으로 잘렸다.
+ * 행은 열린 범위(A1 표기 `A1:ZZ` = 마지막 데이터 행까지, 공식 표기 `A5:A` 와 같은 꼴)라 상한이 없다.
+ * 열은 운영에서 매일 검증된 ZZ(702열)로 둔다 — 격자 밖 열까지 요청하는 더 넓은 범위는 검증된 적이
+ * 없다. 날짜열이 하루 1칸씩 늘어 2026-10 기준 FH(164열)이므로 약 1년 반 여유이고, 소진 전에
+ * formula-audit 가 `LINKED_SHEET_COLUMN_WARN` 을 넘으면 경고한다.
+ */
+export const LINKED_SHEET_FULL_RANGE = "A1:ZZ";
+export const LINKED_SHEET_MAX_COLUMNS = 702;          // ZZ
+export const LINKED_SHEET_COLUMN_WARN = 650;          // 소진 약 50일 전
+
 export async function fetchSheetTabValues(
   spreadsheetId: string,
   gid: number,

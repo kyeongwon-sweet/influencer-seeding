@@ -13,7 +13,9 @@ test("private linked-sheet endpoint covers current rows and pricing map", () => 
   const route = read("web/app/api/ops/linked-sheet-values/route.ts");
   assert.match(route, /checkCronAuth\(req\)/);
   assert.match(route, /10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak/);
-  assert.match(route, /A1:CZ5000/);
+  // 2026-10-13: 옛 `A1:CZ5000` 은 시트가 5,001행·FH열로 자라 최신 행·날짜열을 잘랐다 → 공용 무상한 범위.
+  assert.match(route, /const SHEET_RANGE = LINKED_SHEET_FULL_RANGE;/);
+  assert.doesNotMatch(route, /A1:CZ5000/);
   assert.match(route, /1649102171/);
   assert.match(route, /A1:H500/);
   assert.match(route, /pricing_values: pricingValues/);

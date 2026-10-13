@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { isBannerChannel } from "@/app/monitoring/lib";
 import { maxDateKST } from "@/lib/dateRule";
-import { fetchSheetTabValues } from "@/lib/google-sheets";
+import { fetchSheetTabValues, LINKED_SHEET_FULL_RANGE } from "@/lib/google-sheets";
 import { extractBannerReachRows } from "@/lib/sheet-banner-reach";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl, postIdentityKey } from "@/lib/url-utils";
@@ -14,7 +14,7 @@ export const runtime = "nodejs";
 
 const SHEET_ID = "10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak";
 const SHEET_GID = 1937186871;
-const SHEET_RANGE = "A1:ZZ5000";
+const SHEET_RANGE = LINKED_SHEET_FULL_RANGE;
 
 type SponsoredPostRow = {
   id: string;

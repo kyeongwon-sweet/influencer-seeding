@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
-import { fetchSheetTabFormulas, fetchSheetTabValues } from "@/lib/google-sheets";
+import { fetchSheetTabFormulas, fetchSheetTabValues, LINKED_SHEET_COLUMN_WARN, LINKED_SHEET_FULL_RANGE, LINKED_SHEET_MAX_COLUMNS } from "@/lib/google-sheets";
 import { normalizeSheetHeader, toSheetNumber } from "@/lib/sheet-banner-reach";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { classifySheetPostUrl, normalizeUrl, postIdentityKey } from "@/lib/url-utils";
@@ -35,7 +35,7 @@ export const maxDuration = 300;
 
 const SHEET_ID = "10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak";
 const SHEET_GID = 1937186871;
-const SHEET_RANGE = "A1:ZZ5000";
+const SHEET_RANGE = LINKED_SHEET_FULL_RANGE;
 const STATS_START_YEAR = 2026;
 
 async function hasTodayReport(supabase: ReturnType<typeof getServerSupabase>, kdate: string): Promise<boolean | null> {
@@ -415,10 +415,14 @@ async function handler(req: NextRequest) {
       + unparsableDateHeaders.map((h) => `${h.column}1="${h.label}"`).join(" / ")
       + ` → 해당 셀을 실제 날짜로 복구 후 재감사 필요.`
     : null;
+  // 읽기 범위 열 상한(ZZ) 소진 예고 — 넘기면 최신 날짜열이 조용히 잘린다(2026-10-13 행 상한 사고와 같은 꼴).
+  const columnAlert = header.length >= LINKED_SHEET_COLUMN_WARN
+    ? `🟠 [수식 전수감사] 연동시트 열이 ${header.length}개로 읽기 상한(${LINKED_SHEET_MAX_COLUMNS}열)에 다가왔습니다 — `
+      + `lib/google-sheets.ts LINKED_SHEET_FULL_RANGE 를 넓히세요(넘으면 최신 날짜열이 감사·동기화에서 빠집니다).`
+    : null;
   const healthy = shapeHealthy && unparsableDateHeaders.length === 0;
-  const notifyText = headerAlert ? `${headerAlert}
-
-${text}` : text;
+  // 원인 경보(열 상한·헤더 파손)는 집계 앞에 세운다 — 없으면 종전 메시지 그대로.
+  const notifyText = [columnAlert, headerAlert, text].filter(Boolean).join("\n\n");
   const alreadyReported = await hasTodayReport(supabase, kdate);
   if (alreadyReported != null && shouldSkipFormulaAuditReport({ alreadyReported, force })) {
     return NextResponse.json({

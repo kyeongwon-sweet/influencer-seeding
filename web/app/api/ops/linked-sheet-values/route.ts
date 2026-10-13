@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
-import { fetchSheetTabValues, fetchSheetTabValuesByTitle, getSheetTitles } from "@/lib/google-sheets";
+import { fetchSheetTabValues, fetchSheetTabValuesByTitle, getSheetTitles, LINKED_SHEET_FULL_RANGE } from "@/lib/google-sheets";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -8,7 +8,7 @@ export const maxDuration = 300;
 
 const SHEET_ID = "10WpAQU9TAsi3hRZ3ELvcQYj7Z228ILXfF6BUGz495Ak";
 const SHEET_GID = 1937186871;
-const SHEET_RANGE = "A1:CZ5000";
+const SHEET_RANGE = LINKED_SHEET_FULL_RANGE;
 const PRICING_GID = 1649102171;
 const PRICING_RANGE = "A1:H500";
 const COST_SOURCE_PREVIEWS = [

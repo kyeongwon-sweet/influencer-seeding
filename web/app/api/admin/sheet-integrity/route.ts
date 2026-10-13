@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
-import { fetchSheetTabValues } from "@/lib/google-sheets";
+import { fetchSheetTabValues, LINKED_SHEET_FULL_RANGE } from "@/lib/google-sheets";
 import { parseHeaderDate } from "@/lib/formula-audit";
 import { normalizeUrl } from "@/lib/url-utils";
 
@@ -22,7 +22,7 @@ export async function GET() {
 
   let values: (string | number | null)[][];
   try {
-    values = await fetchSheetTabValues(SHEET_ID, GID, "A1:CZ3000");
+    values = await fetchSheetTabValues(SHEET_ID, GID, LINKED_SHEET_FULL_RANGE);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     const shared = !/403/.test(msg);
