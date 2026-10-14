@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## 🛠 2026-10-14 [Claude 재발방지] 관리 워크플로 오입력 실패 3건 → 표기 정규화 + DM 정리 '방 바인딩'
+- **사건:** `Delete Specific Sponsored Post` 38501857186(URL `/reels/`↔DB `/p/`, ended_at `NULL`↔`__NULL__` → 가드 중단), `Purge 여믄봇 DM` 38501091929·38501223965(`D0B2U2J8QNS` → `channel_not_found`). 3건 모두 **무삭제 안전실패**, 직후 재실행 성공.
+- **드러난 위험:** DM 정리가 입력한 `D0B2U2J8QNS`가 아니라 봇 토큰이 해석한 **다른 DM `D0B8FHE8R0A`**를 잡았다. dry-run은 건수·ts만 보여 줘 다른 방이어도 실행 전에 구분할 수 없었다(되돌릴 수 없는 삭제).
+- **수정 1 `delete_specific_sponsored_post.py`:** URL은 `web/lib/url-utils.ts postIdentityKey`와 같은 게시물 식별키로 비교(`/p/`·`/reel/`·`/reels/`·쿼리·끝슬래시 동일), 실제 삭제 필터는 사전검증을 통과한 **DB 원문 URL**(id·url 이중조건 유지), ended_at `NULL`/`null`/`__NULL__` 허용. **post_id 정확일치·다른 글 URL이면 중단은 그대로**(테스트 고정).
+- **수정 2 `admin-purge-bot-dm.yml`:** `auth.test`로 토큰 봇 표시 → 대상 방·대화 상대·**최근 봇 메시지 3건** 출력, 이 토큰 봇 메시지만 집계, **실제 삭제는 `confirm='DELETE <해석된 채널ID>'`일 때만**(방이 바뀌면 즉시 중단). dry-run 마지막 줄에 정확한 확인 문자열 출력.
+- **검증:** `scripts/test_admin_purge_bot_dm_workflow.py` — run 블록을 가짜 Slack 응답으로 **실제 실행**(dry-run 무삭제 / 맨 `DELETE` 거부 / 다른 방 ID 거부 / 맞는 방에서 자기 봇 메시지만 1건 삭제). CI에서 jq 없으면 skip이 아니라 실패. delete 테스트 10건, 워크플로 env 린트 52개 0건.
+- **보류(사용자 결정):** 봇 메시지 741건 실제 삭제는 **미실행**. 대상이 `D0B8FHE8R0A`가 맞는지 dry-run 견본으로 확인 후 진행.
+
 ## ✅ 2026-10-14 [Codex 완료·사용자 최종결정] `ig:DdTfR1VTzxE` 오귀속 DB 삭제 + 시트 `soosoo_beauty` 빈 URL 행 복원
 - **결정 정합:** 사용자의 이번 명시 지시에 따라, 아래의 더 이른 📮 `DdTfR1VTzxE = ma__si__jjung 말차 파인트로 별도 추적` 안은 **폐기**했다. 이 글을 새 추적행으로 다시 만들거나 syncAll로 재등록하지 않는다.
 - **URL-key 재식별/백업:** 연동시트에서 `ig:DdTfR1VTzxE` 1행(실제 4866행)과 비교 대상 `ig:DeE0dDhTvpM` 1행(4813행)을 다시 찾았다. 외부 백업 스프레드시트 `_codex_ddtf_revert_backup_20261014_113511`(ID `15ejqLdy5hzekrHYR0wrlShbfhWa3kY7cyKYUujxxGhY`)에 두 행의 **A:FH 값·수식**과 SHA-256 지문을 저장했다.

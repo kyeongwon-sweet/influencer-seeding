@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
+from urllib.parse import parse_qs, urlsplit
 from dataclasses import dataclass
 from typing import Any
 
@@ -34,14 +36,73 @@ POST_SELECT = (
 NULL_DATE_SENTINEL = "__NULL__"
 
 
+NULL_DATE_SPELLINGS = {NULL_DATE_SENTINEL.lower(), "null"}
+
+# TikTok 게시물 ID는 unsigned 64-bit snowflake (web/lib/url-utils.ts isValidTikTokSnowflake 와 동일).
+_MAX_TIKTOK_SNOWFLAKE = "18446744073709551615"
+
+
 def parse_expected_nullable_date(value: str) -> str:
     """Represent a required workflow input whose expected DB date is NULL.
 
     GitHub workflow_dispatch rejects an empty value for required inputs, so
     callers pass ``__NULL__`` and the strict comparison keeps using ``""``
-    for a missing database date.
+    for a missing database date. ``NULL``/``null`` are accepted too: they mean
+    the same thing, and rejecting them only produced a confusing abort
+    (2026-10-14 run 38501857186).
     """
-    return "" if value == NULL_DATE_SENTINEL else value
+    return "" if value.strip().lower() in NULL_DATE_SPELLINGS else value
+
+
+def _valid_tiktok_id(value: str) -> bool:
+    digits = value.lstrip("0") or "0"
+    if len(digits) != len(_MAX_TIKTOK_SNOWFLAKE):
+        return len(digits) < len(_MAX_TIKTOK_SNOWFLAKE)
+    return digits <= _MAX_TIKTOK_SNOWFLAKE
+
+
+def post_identity(url: str) -> str:
+    """Same post → same key. Mirrors web/lib/url-utils.ts ``postIdentityKey``.
+
+    Instagram /p/·/reel/·/reels/·/tv/ and tracking query strings all point at
+    one post, so comparing raw strings aborted a correct deletion
+    (``/reels/DdTfR1VTzxE/`` vs DB ``/p/DdTfR1VTzxE/``, 2026-10-14). URLs
+    without a post ID fall back to a near-exact form so a different row never
+    matches.
+    """
+    raw = (url or "").strip()
+    if not raw:
+        return ""
+    parts = urlsplit(raw if raw.startswith("http") else "https://" + raw)
+    host = (parts.hostname or "").lower()
+    host = host[4:] if host.startswith("www.") else host
+    path = parts.path
+
+    if "instagram.com" in host or "instagr.am" in host:
+        m = re.search(r"/(?:p|reels|reel|tv)/([A-Za-z0-9_-]+)", path)
+        if m:
+            return f"ig:{m.group(1)}"
+    if "tiktok.com" in host:
+        m = re.search(r"/(?:video|photo)/(\d+)", path)
+        if m and _valid_tiktok_id(m.group(1)):
+            return f"tt:{m.group(1)}"
+    if host == "youtu.be" or host.endswith("youtube.com"):
+        m = re.search(r"/shorts/([A-Za-z0-9_-]{6,})", path)
+        if m:
+            return f"yt:{m.group(1)}"
+        m = re.search(r"/(?:embed|live|v)/([A-Za-z0-9_-]{6,})", path)
+        vid = None
+        if host == "youtu.be":
+            vid = next((seg for seg in path.split("/") if seg), None)
+        elif m:
+            vid = m.group(1)
+        elif path.rstrip("/") == "/watch":
+            vid = (parse_qs(parts.query).get("v") or [None])[0]
+        if vid and re.fullmatch(r"[A-Za-z0-9_-]{6,}", vid):
+            return f"yt:{vid}"
+
+    rest = path.rstrip("/") + (("?" + parts.query) if parts.query else "")
+    return f"url:{host}{rest}"
 
 
 def fetch_rows(post_id: str) -> list[dict[str, Any]]:
@@ -91,7 +152,11 @@ def preflight_errors(
             actual = int(actual or 0)
         elif field in {"posted_at", "ended_at"}:
             actual = str(actual or "")[:10]
-        if actual != wanted:
+        if field == "url":
+            same = post_identity(str(actual or "")) == post_identity(str(wanted or ""))
+        else:
+            same = actual == wanted
+        if not same:
             errors.append({"field": field, "expected": wanted, "actual": actual})
     if stats_count != expected.stats_count:
         errors.append({
@@ -141,7 +206,9 @@ def main() -> None:
             db.table("sponsored_posts")
             .delete()
             .eq("id", expected.post_id)
-            .eq("url", expected.url)
+            # 입력 URL이 아니라 사전검증을 통과한 DB 원문 URL — 표기만 다른 입력(/reels/ 등)으로
+            # 0건 삭제되는 일 없이 id·url 이중 조건은 그대로 유지한다.
+            .eq("url", before_rows[0]["url"])
             .execute()
             .data
             or []
