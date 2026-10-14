@@ -100,3 +100,51 @@ def test_find_report_reads_channel_history_once_for_many_dates(monkeypatch):
     assert [m["ts"] for m in prc.find_report("tok", "2026-10-12")] == ["1"]
     assert prc.find_report("tok", "2026-10-01") == []
     assert len(calls) == 1
+
+
+# ── 재발방지(2026-10-14): 발송 때 시트가 비면 notify가 '미입력' 줄을 남기고, 보정이 그 줄을 값으로 바꾼다 ──
+
+def test_notify_conversion_line_states():
+    from notify_increments import CONV_PENDING_LINE, conversion_line
+
+    assert conversion_line({"views": 39670}) == "    전환 조회수 *+39,670*"
+    assert conversion_line({"views": 0}) == "    전환 조회수 *+0*"        # 0은 명시값 → 그대로 표시
+    assert conversion_line({"views": 1234.6}) == "    전환 조회수 *+1,235*"
+    assert conversion_line({"views": None}) == CONV_PENDING_LINE          # 빈칸 → 숨기지 않고 미입력
+    assert conversion_line({}) == CONV_PENDING_LINE
+    assert conversion_line(None) is None                                 # 구버전 라우트 → 생략
+
+
+def test_patch_replaces_pending_line_in_place():
+    from notify_increments import CONV_PENDING_LINE
+
+    pending = REPORT.replace("    유튜브 *+144,255*  CPV 15.8원\n",
+                             "    유튜브 *+144,255*  CPV 15.8원\n" + CONV_PENDING_LINE + "\n")
+    new, info = patch_text(pending, 39670)
+    assert info["new_total"] == 697_759
+    assert CONV_PENDING_LINE not in new
+    assert "    유튜브 *+144,255*  CPV 15.8원\n    전환 조회수 *+39,670*\n\n`CPV는 누적" in new
+    assert new.count("전환 조회수") == 1
+
+
+def test_patch_zero_keeps_totals_and_still_applies():
+    from notify_increments import CONV_PENDING_LINE
+
+    # 미입력 → 0 입력: 줄만 +0으로, 총 증분·목표는 그대로(예전 가드는 '2줄 변경'을 강제해 0을 거부했음)
+    pending = REPORT.replace("    유튜브 *+144,255*  CPV 15.8원\n",
+                             "    유튜브 *+144,255*  CPV 15.8원\n" + CONV_PENDING_LINE + "\n")
+    new, info = patch_text(pending, 0)
+    assert info["new_total"] == 658_089 and "    전환 조회수 *+0*" in new
+    assert "*일 190만 목표* 35% · 미달 -1,241,911" in new
+    # 섹션은 있는데 전환 줄이 아예 없던 옛 발송본도 0 보정 가능
+    new2, info2 = patch_text(REPORT, 0)
+    assert info2["new_total"] == 658_089 and "    전환 조회수 *+0*" in new2
+
+
+def test_pending_line_is_not_mistaken_for_value():
+    from notify_increments import CONV_PENDING_LINE
+
+    pending = REPORT.replace("    유튜브 *+144,255*  CPV 15.8원\n",
+                             "    유튜브 *+144,255*  CPV 15.8원\n" + CONV_PENDING_LINE + "\n")
+    new, reason = patch_text(pending, 100)
+    assert new is not None, reason   # '이미 있음'으로 건너뛰면 안 됨

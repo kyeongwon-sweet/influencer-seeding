@@ -25,6 +25,9 @@ TOTAL_RE = re.compile(r"오늘 총 증분 \*\+([\d,]+)\*")
 # 이모지는 Slack이 단축코드(:dart:)로 돌려줄 수 있어 패턴에서 제외
 GOAL_RE = re.compile(r"\*일 (\d+)만 목표\* \d+% · (?:달성 \+|미달 -)[\d,]+")
 CONV_LABEL = "전환 조회수"
+CONV_VALUE_RE = re.compile(r"^    전환 조회수 \*\+[\d,]+\*", re.M)
+# 발송 시점에 시트가 비어 notify가 남긴 '미입력' 줄(값 없는 전환 줄). 이 줄을 값으로 바꾼다.
+CONV_PENDING_RE = re.compile(r"^    전환 조회수(?! \*\+).*$", re.M)
 
 
 def f(n):
@@ -33,7 +36,7 @@ def f(n):
 
 def patch_text(text, conv):
     """(new_text, info) 반환. 고칠 수 없거나 고칠 필요 없으면 (None, 사유)."""
-    if CONV_LABEL in text:
+    if CONV_VALUE_RE.search(text):
         return None, "이미 전환 조회수 줄 있음"
     conv = round(conv)
     m = TOTAL_RE.search(text)
@@ -46,8 +49,11 @@ def patch_text(text, conv):
     new_total = old_total + conv
 
     lines = text.split("\n")
+    pend = next((i for i, ln in enumerate(lines) if CONV_PENDING_RE.match(ln)), None)
     sec = next((i for i, ln in enumerate(lines) if "*인지 광고*" in ln), None)
-    if sec is not None:
+    if pend is not None:
+        lines[pend] = f"    {CONV_LABEL} *+{f(conv)}*"   # '미입력' 줄을 값으로 교체(0이면 +0)
+    elif sec is not None:
         j = sec + 1
         while j < len(lines) and lines[j].startswith("    "):
             j += 1
@@ -71,7 +77,9 @@ def patch_text(text, conv):
     old_set, new_set = text.split("\n"), new.split("\n")
     removed = [ln for ln in old_set if ln not in new_set]
     added = [ln for ln in new_set if ln not in old_set]
-    if len(removed) != 2 or not all(("총 증분" in ln or "만 목표" in ln) for ln in removed):
+    # 삭제는 총 증분·목표 줄(전환 0이면 안 바뀜)과 교체된 미입력 줄만 허용
+    if new == text or len(removed) > 3 or not all(
+            ("총 증분" in ln or "만 목표" in ln or CONV_PENDING_RE.match(ln)) for ln in removed):
         return None, f"예상 외 변경(삭제 {removed})"
     if any(not ("총 증분" in ln or "만 목표" in ln or CONV_LABEL in ln or "*인지 광고*" in ln or ln == "")
            for ln in added):
@@ -171,7 +179,7 @@ def main():
         chk = _slack("conversations.history", token,
                      {"channel": CHANNEL, "latest": msg["ts"], "inclusive": "true", "limit": 1})
         cur = ((chk.get("messages") or [{}])[0].get("text") or "")
-        ok = CONV_LABEL in cur and f"*+{f(info['new_total'])}*" in cur
+        ok = bool(CONV_VALUE_RE.search(cur)) and f"*+{f(info['new_total'])}*" in cur
         print(f"[{date}] 편집 {'확인됨' if ok else '⚠️ 재조회 불일치'}")
         failed += 0 if ok else 1
     sys.exit(1 if failed else 0)

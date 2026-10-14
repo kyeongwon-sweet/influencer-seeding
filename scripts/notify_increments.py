@@ -71,6 +71,25 @@ def _kf(n) -> str:
     return f"{n:,}"
 
 
+CONV_LABEL = "전환 조회수"
+# 시트 '전환 노출수'가 발송 시점에 비어 있을 때의 줄. 빈칸은 0이 아니라 총증분에 넣지 않지만,
+# 예전처럼 줄을 숨기면 누락을 아무도 모른다(2026-10 반복 누락) → 드러내고, 값이 들어오면
+# report-patch-conversion 스케줄(scripts/patch_report_conversion.py)이 이 줄을 값으로 바꾼다.
+CONV_PENDING_LINE = f"    {CONV_LABEL} _미입력 — 시트에 입력되면 자동 반영_"
+
+
+def conversion_line(conv):
+    """라우트 응답의 conversion 객체 → 리포트 한 줄.
+    값 있음 → '+N'(0 포함, 정수 반올림) / 키는 있는데 값 없음(시트 빈칸·헤더 미탐지) → 미입력 줄 /
+    키 자체가 없음(구버전 라우트) → None(종전처럼 생략)."""
+    if not isinstance(conv, dict):
+        return None
+    v = conv.get("views")
+    if isinstance(v, (int, float)):
+        return f"    {CONV_LABEL} *+{round(v):,}*"
+    return CONV_PENDING_LINE
+
+
 def _fetch_awareness_ads(target: str):
     """마케팅T [인지_쫀득바] 시트의 그날 인지광고(메타/틱톡/유튜브) '일별' 조회수·광고비.
     값이 DB에 없고 시트에만 있어(팀 수동입력) 웹 라우트(/api/awareness-ads, Vercel 서비스계정)로 읽는다.
@@ -650,16 +669,17 @@ def main():
             v, c = a.get("views"), a.get("cost")
             if isinstance(v, (int, float)) and v > 0:
                 ad_lines.append(f"    {_lab} *+{f(v)}*  {_ad_cpv(c or 0, v)}".rstrip())
-        # 전환 조회수(M열) — CPV 없이 조회수만, 0도 표시(사용자 지시). 총증분엔 위에서 합산됨.
-        #   라우트가 conversion을 주는 경우에만 줄 노출(구버전 응답이면 종전과 동일).
+        # 전환 조회수 — CPV 없이 조회수만, 0도 표시(사용자 지시). 값이 있으면 총증분엔 위에서 합산됨.
+        #   시트가 비어 있으면 숨기지 않고 '미입력'으로 드러낸다(conversion_line 참고).
         _conv = ads.get("conversion")
+        _conv_ln = conversion_line(_conv)
         _cv = _conv.get("views") if isinstance(_conv, dict) else None
         _cv = _cv if isinstance(_cv, (int, float)) else None
-        if ad_lines or (_cv is not None and _cv > 0):
+        if ad_lines or (_cv is not None and _cv > 0) or (_cv is None and _conv_ln):
             lines.append("• *인지 광고*  `CPV는 일일 기준`")   # 광고 CPV = 그날 광고비 ÷ 그날 조회수(일일)
             lines.extend(ad_lines)
-            if _cv is not None:
-                lines.append(f"    전환 조회수 *+{f(round(_cv))}*")   # CPV 미표시, 정수 반올림
+            if _conv_ln:
+                lines.append(_conv_ln)
             lines.append("")
     # 아래 DB 채널들의 CPV는 누적 기준(누적비용÷누적조회수) — 인지광고(일일)와 구분해 별도 표기.
     #   채널명 하이퍼링크 = 그날 채널별 최고 증분 소재. 라벨로 안내.

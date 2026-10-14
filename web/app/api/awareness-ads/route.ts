@@ -64,9 +64,12 @@ function detectColumns(rows: Cell[][]): ColMap | null {
 
   // 3) 전환 조회수 열: "전환 조회수" 라벨이 있는 열. ⚠️ 이 라벨은 ad 서브헤더와 '다른 행'에 있을 수
   //    있어(시트 버전에 따라 secRow·secRow+1·별도 헤더행) 서브헤더 한 줄만 보면 놓침 → 전 행 스캔.
+  //    10월 일별 표부터 헤더가 "전환 노출수"로 바뀌었다(같은 N열, 전환_쫀득바 탭 참조). 옛 라벨만 찾으면
+  //    월별 요약표의 옛 이름에 우연히 기대게 돼 그마저 바뀌면 조용히 영구 누락 → 두 이름 모두 인정.
+  const CONVERSION_LABELS = ["전환조회수", "전환노출수"];
   let conversionView = -1;
   for (const r of rows) {
-    const c = r.findIndex((v) => norm(v) === "전환조회수");
+    const c = r.findIndex((v) => CONVERSION_LABELS.includes(norm(v)));
     if (c >= 0) { conversionView = c; break; }
   }
 
