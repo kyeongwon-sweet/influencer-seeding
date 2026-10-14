@@ -1,12 +1,21 @@
 # AI Shared Status
 
+## ✅ 2026-10-14 [Codex 완료·사용자 최종결정] `ig:DdTfR1VTzxE` 오귀속 DB 삭제 + 시트 `soosoo_beauty` 빈 URL 행 복원
+- **결정 정합:** 사용자의 이번 명시 지시에 따라, 아래의 더 이른 📮 `DdTfR1VTzxE = ma__si__jjung 말차 파인트로 별도 추적` 안은 **폐기**했다. 이 글을 새 추적행으로 다시 만들거나 syncAll로 재등록하지 않는다.
+- **URL-key 재식별/백업:** 연동시트에서 `ig:DdTfR1VTzxE` 1행(실제 4866행)과 비교 대상 `ig:DeE0dDhTvpM` 1행(4813행)을 다시 찾았다. 외부 백업 스프레드시트 `_codex_ddtf_revert_backup_20261014_113511`(ID `15ejqLdy5hzekrHYR0wrlShbfhWa3kY7cyKYUujxxGhY`)에 두 행의 **A:FH 값·수식**과 SHA-256 지문을 저장했다.
+- **DB 엄격 삭제:** `Delete Specific Sponsored Post` dry-run **38502005321**에서 id `520875e4-bd2a-4cbb-a079-9feaf3df93c7`의 URL `/p/DdTfR1VTzxE/` · account `ma__si__jjung` · posted `2026-10-04` · ended NULL · cost `12599` · 통계 0행을 전부 일치 확인했다. apply run **38502062620**이 정확히 1행 삭제했고 `after_rows=[] · stats_count_after=0`을 확인했다.
+- **시트 최소수술:** 백업 뒤 대상/비교행 지문이 바뀌지 않았을 때만 4866행 **B를 빈칸, C를 `soosoo_beauty`**로 변경했다. A·D:FH는 무변경이다. 이어 `runDbPullSyncNow()`가 `true`로 완료됐고 `DdTfR1VTzxE` 재생성 0건, 빈 URL `soosoo_beauty` 행 유지, 비교행 `DeE0dDhTvpM` A:FH 지문 동일을 확인했다.
+- **공식 사후감사:** formula-audit 강제 run **38502592086** success/HTTP 200 — `totalRows=4950 · orphanRows=0 · incMismatch=0 · incInvalid=0 · sheetOnly=1(1099 떵개만) · shortLinkRows=0 · stale=0`. 기존 `hInvalid=9 · cpv.invalid=16`은 이번 B/C 수술 전부터 있던 별건이다.
+- **임시 경로 제거:** 일회성 Apps Script 함수와 웹앱 action을 실행 직후 모두 제거하고 배포 **@36**으로 갱신했다. 삭제된 action 재호출은 `unknown action`, fresh live pull의 `codexDdtf` 잔존 0건이다.
+- **도구 보강 `1c321ab2`:** GitHub required input으로 NULL 종료일을 표현하지 못하던 엄격 삭제 도구에 `__NULL__` 센티널만 추가했다. 기존 검증 3종+신규 2종 **5 passed**, pre-push `tsc --noEmit` 통과. 삭제 강도·비NULL 날짜 판정은 그대로다.
+
 ## 📮 2026-10-14 [Claude 점검·읽기전용 → Codex 인계] 수식감사 별건 3종 정리 — H 숫자고정 9 · CPV 숫자고정 16 · stale 1
 > 근거: formula-audit `38500998342`(11:26 KST) 상세 + 시트 실물(수식줄·gviz) + DB. 쓰기 0건.
 - **H 숫자고정 8행 = 표시값 변화 없이 수식 복구 가능:** 모두 H 숫자 = 그 행 날짜열 최댓값(수식줄 확인, 텍스트 아닌 숫자). `26 ig:Dd8rivfCZ-H 이짓매거진 155,691` · `27 ig:Dd8VOSOEUIv 골목대장 68,908` · `29 ig:Dd-5f6SCdaz 오늘의메뉴 74,811` · `4769 ig:Dd_UcBPgUAn apple_enter 11,645` · `4772 ig:Dd_Uz2Cmd9v flower_words03 13,041` · `4773 ig:Dd_UWcjlLem Ufo__blue 33,738` · `4774 ig:Dd_UY8-mSj1 Ufo__NIGHT 64,695` · `4859 tt:7694208839746407687 panseob_pyeong 1,068`(매거진 3·배너 5).
 - **왜 매일 안 고쳐지나(코드 의도↔실제 불일치):** `refreshCumulativeViews` 주석은 "값==MAX면 수식으로 환원"이라 하지만, 실제 쓰기 함수 `writeCumulativeFormulaChanges_`(apps-script/cumulative_formula_integrity.gs)는 **표준 수식이거나 빈 칸일 때만** 쓰고 숫자 칸은 절대 안 쓴다 → 같은 값 숫자도 영구 잔류 → 감사 hInvalid 영구. 배너·매거진 행에 사람이 H를 직접 치면 재발.
 - **CPV 숫자고정 15행 = 표시값 변화 없이 수식 복구 가능:** `4689~4703` 위성채널(유튜브 7·틱톡 8, 09-29 등록) 모두 G=₩0·J=0 → 표준식 결과도 0.
 - **팀 결정 필요 2건(덮지 말 것):** ① `4137 ig:Dcfd2MCkWGj 먹킷리스트` H=469,130 vs 날짜열 89,000(8/27~30) — 기존 미결. ② `2352 ig:DbnLmD4EUSJ text_pyeong`(바이럴 배너·동후작가, 08-04~08-21 종료) G=₩0·J=1.95 수기. **같은 계정·같은 업체 다른 배너 글은 전부 ₩60,000** → 비용 칸이 빠진 것으로 보임(₩60,000 ÷ 1.95 ≈ 30,769 = 입력 당시 누적으로 추정). DB cost 0. 표준식으로 바꾸면 CPV가 0으로 바뀌므로 **비용 확인 전 무접촉**.
-- **stale 1 = `ig:DdTfR1VTzxE` ma__si__jjung:** 바로 아래 c926a135 📮(말차 파인트 별도 추적) 실행되면 해소 — 중복 인계 안 함.
+- **stale 1 정리됨:** 당시 `ig:DdTfR1VTzxE`가 원인이었지만, 사용자의 이후 최종결정과 위 Codex 수술 뒤 강제 감사 `38502592086`에서 `stale=0`으로 해소됐다. H/CPV 별건만 남는다.
 
 ## ✅ 2026-10-14 [Codex 강제 재감사 완료] exportStats 복구 결과 Slack 재보고 (`06764f43`)
 - **강제 실행 경로:** formula-audit 라우트는 `?force=1`을 지원했지만 수동 GHA 워크플로가 이를 전달할 입력이 없었다. `workflow_dispatch.force`(boolean)를 추가해 정기 스케줄은 종전 중복 방지를 유지하고, 사람이 요청한 재보고만 `?force=1`로 호출하게 했다. pre-push `tsc --noEmit` 통과.
