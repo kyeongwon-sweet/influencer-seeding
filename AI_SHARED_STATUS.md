@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## 📮 2026-10-14 [Claude 점검·읽기전용 → Codex 인계] 수식감사 별건 3종 정리 — H 숫자고정 9 · CPV 숫자고정 16 · stale 1
+> 근거: formula-audit `38500998342`(11:26 KST) 상세 + 시트 실물(수식줄·gviz) + DB. 쓰기 0건.
+- **H 숫자고정 8행 = 표시값 변화 없이 수식 복구 가능:** 모두 H 숫자 = 그 행 날짜열 최댓값(수식줄 확인, 텍스트 아닌 숫자). `26 ig:Dd8rivfCZ-H 이짓매거진 155,691` · `27 ig:Dd8VOSOEUIv 골목대장 68,908` · `29 ig:Dd-5f6SCdaz 오늘의메뉴 74,811` · `4769 ig:Dd_UcBPgUAn apple_enter 11,645` · `4772 ig:Dd_Uz2Cmd9v flower_words03 13,041` · `4773 ig:Dd_UWcjlLem Ufo__blue 33,738` · `4774 ig:Dd_UY8-mSj1 Ufo__NIGHT 64,695` · `4859 tt:7694208839746407687 panseob_pyeong 1,068`(매거진 3·배너 5).
+- **왜 매일 안 고쳐지나(코드 의도↔실제 불일치):** `refreshCumulativeViews` 주석은 "값==MAX면 수식으로 환원"이라 하지만, 실제 쓰기 함수 `writeCumulativeFormulaChanges_`(apps-script/cumulative_formula_integrity.gs)는 **표준 수식이거나 빈 칸일 때만** 쓰고 숫자 칸은 절대 안 쓴다 → 같은 값 숫자도 영구 잔류 → 감사 hInvalid 영구. 배너·매거진 행에 사람이 H를 직접 치면 재발.
+- **CPV 숫자고정 15행 = 표시값 변화 없이 수식 복구 가능:** `4689~4703` 위성채널(유튜브 7·틱톡 8, 09-29 등록) 모두 G=₩0·J=0 → 표준식 결과도 0.
+- **팀 결정 필요 2건(덮지 말 것):** ① `4137 ig:Dcfd2MCkWGj 먹킷리스트` H=469,130 vs 날짜열 89,000(8/27~30) — 기존 미결. ② `2352 ig:DbnLmD4EUSJ text_pyeong`(바이럴 배너·동후작가, 08-04~08-21 종료) G=₩0·J=1.95 수기. **같은 계정·같은 업체 다른 배너 글은 전부 ₩60,000** → 비용 칸이 빠진 것으로 보임(₩60,000 ÷ 1.95 ≈ 30,769 = 입력 당시 누적으로 추정). DB cost 0. 표준식으로 바꾸면 CPV가 0으로 바뀌므로 **비용 확인 전 무접촉**.
+- **stale 1 = `ig:DdTfR1VTzxE` ma__si__jjung:** 바로 아래 c926a135 📮(말차 파인트 별도 추적) 실행되면 해소 — 중복 인계 안 함.
+
 ## ✅ 2026-10-14 [Codex 강제 재감사 완료] exportStats 복구 결과 Slack 재보고 (`06764f43`)
 - **강제 실행 경로:** formula-audit 라우트는 `?force=1`을 지원했지만 수동 GHA 워크플로가 이를 전달할 입력이 없었다. `workflow_dispatch.force`(boolean)를 추가해 정기 스케줄은 종전 중복 방지를 유지하고, 사람이 요청한 재보고만 `?force=1`로 호출하게 했다. pre-push `tsc --noEmit` 통과.
 - **운영 실행:** GitHub Actions run **38500998342**(head `06764f43`) success/HTTP 200. 응답은 `slackSent=true · skippedNotify=false`로, 당일 중복 방지를 건너뛴 최신 감사가 Slack에 실제 재발송됐다.
