@@ -1,5 +1,9 @@
 # AI Shared Status
 
+## 🔍 2026-10-14 [Claude 사후검증] Codex 239f548b — 채널명·중복행 확인 완료 · 남은 3건
+- **확인됨(DB 직접 조회):** `ig:DdTfR1VTzxE` `account_name=ma__si__jjung` · `ig:DeCO-E5SJL7` 1건(`mz_eun6`) · `74fc3bb4` 0건.
+- **아직 남음(c063fd03 📮 3b·4, a5b5889d 5):** ① DB `1a885fba`(`tiktok.com/@sseoltteugi/`) **여전히 1행** + 시트 `썰뜨기 (틱톡)` 프로필주소 행(옛 4945) — Codex 보고·상태판에 언급 없음 · ② 라이브 `classifySheetSyncUrl_` 틱톡 프로필·유튜브 채널 '비게시물' 규칙 미추가 · ③ pullFromDB 6분 초과의 **일일 트리거** 실행 기록 확인 미보고(239f548b의 수동 `runDbPullSyncNow` 1회 성공만 확인).
+
 ## ✅ 2026-10-13 [Codex 완료·사용자 승인] URL 정리 2차 후속 — `DdTfR1VTzxE` 채널명 정정 + `DeCO-E5SJL7` 빈 중복행 삭제
 - **실행 전 URL-key 재식별:** 라이브 연동시트에서 `ig:DdTfR1VTzxE`는 4866행 1건(`soosoo_beauty`, H 공란·날짜값 0), `ig:DeCO-E5SJL7`은 4815 `mz_eun6`(H 579·날짜값 3) + 4868 `mua.jieun`(H 공란·날짜값 0) 두 행이었다. 인계문의 `DB 통계 8행`과 `시트 날짜값`을 혼동하지 않고 현재 시트 실물 지문으로 다시 고정했다. `vt/vm.tiktok`은 실행 전 이미 0행이었다.
 - **백업 후 최소 변경:** 외부 스프레드시트 `_codex_url_followup_backup_20261013_20261013_191735`(ID `1izrAukQh6XdgqNgS5u4I2c8g2WCyq0IPCrh94n8EZXI`)에 대상·보존행 3개의 **A:FH 값과 수식 텍스트**를 저장한 뒤, `DdTfR1VTzxE`의 C열만 `ma__si__jjung`으로 수정하고 지표가 없는 `mua.jieun` 중복행 1개만 삭제했다. 보존 `mz_eun6` 행의 H 579·날짜값 3은 전후 동일하다.
