@@ -1,5 +1,10 @@
 # AI Shared Status
 
+## ✅ 2026-10-14 [Codex 라이브배포·검증] 틱톡 단축링크 시트 해석 반영 (`1ce26a8c`)
+- **배포:** 최신 `origin/main=35ae361c`에서 `083d5905` 계정·채널 주소 제외와 `1ce26a8c` 단축링크 해석을 함께 재검증했다. guarded `apps-script:deploy`를 10:06 KST 실행했고, 라이브 pull에서 정본 **10파일**, repo 소스 **8파일 전부 일치**, deprecated/임시 파일 0건을 확인했다.
+- **동작:** `syncNew`·`syncAll`·`pullFromDB`가 키 비교 전에 `vt/vm.tiktok.com`을 서버의 정식 TikTok 게시물 URL로 해석해 **시트 B셀 자체를 정식 주소로 저장**한다. 쓰기 직전 셀값 재확인, 해석 실패 시 셀 무변경·TikTok 신규 append 보류, 기존 정식 행과 겹치면 자동삭제 없이 행번호 경고를 유지한다. `083d5905`의 TikTok 프로필·YouTube 채널 비게시물 제외도 그대로 포함됐다.
+- **게이트:** web **653/653**, `tsc --noEmit`, lint **0 errors**(기존 warning 17), production build 통과. 프로덕션 `/api/sponsored-posts/resolve-short-links` 미인증 POST가 **401**을 반환해 라우트·fail-closed 인증이 살아 있음을 확인했다. 현재 시트 단축링크는 0행이라 실제 셀 변환은 다음 신규 단축링크 입력 때 자연 검증한다.
+
 ## 📮 2026-10-14 [Claude 코드 완료 → Codex 라이브 배포 인계] 틱톡 단축링크를 시트에서 정식 주소로 저장 · pullFromDB 중복 추가 차단 (`1ce26a8c`)
 - **원인(10-13 재발 실증):** 시트에 `vt.tiktok.com` 단축링크 입력 → 서버(bulk)는 풀어서 정식 주소로 DB 저장 → Apps Script `linkKey_`는 못 풀어 pullFromDB가 "DB에만 있는 글"로 오판 → 정식 주소 행을 시트 끝에 또 추가(위성 틱톡 8건, 09월엔 51건).
 - **✅ 서버(배포 완료, Vercel success):** `POST /api/sponsored-posts/resolve-short-links` — CRON_SECRET(fail-closed), DB 쓰기 없음, 최대 200개, 쓰기 경로와 같은 `resolveTikTokShortUrl`. 미인증 호출 401 확인. 실측: `vt.tiktok.com/ZSboSxcJg` → `@ssulbox_1/photo/7696140243162074388`, `ZSboAr765` → `@issuetteugi/photo/7696141069397806357`(DB 글 ID와 일치).
