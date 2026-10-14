@@ -107,6 +107,31 @@ function normalizeSheetSyncUrl_(value) {
   return { raw: raw, url: raw, changed: false, reason: "" };
 }
 
+/** TikTok 프로필·YouTube 채널처럼 게시물 ID가 없는 계정 주소를 사람이 읽을 사유로 돌려준다. */
+function accountNonPostReason_(value) {
+  var raw = String(value || "").trim();
+  var parsed = raw.match(/^https?:\/\/([^/?#]+)(\/[^?#]*)?(?:\?([^#]*))?/i);
+  if (!parsed) return "";
+  var host = String(parsed[1] || "").toLowerCase().replace(/^www\./, "");
+  var path = String(parsed[2] || "/");
+  var query = String(parsed[3] || "");
+
+  if (host === "tiktok.com" || host === "m.tiktok.com") {
+    return /^\/@[^/]+\/?$/.test(path) ? "틱톡 프로필 주소(게시물 아님)" : "";
+  }
+  if (host === "youtube.com" || host === "m.youtube.com") {
+    // 서버 postIdentityKey와 같은 영상 ID 형식은 채널 경로 아래에 있어도 통과시킨다.
+    var hasPostId = /\/shorts\/[A-Za-z0-9_-]{6,}(?:\/|$)/.test(path) ||
+      /\/(?:embed|live|v)\/[A-Za-z0-9_-]{6,}(?:\/|$)/.test(path) ||
+      (/\/watch\/?$/.test(path) && /(?:^|&)v=[A-Za-z0-9_-]{6,}(?:&|$)/.test(query));
+    if (hasPostId) return "";
+    return /^\/(?:@[^/]+|channel\/[^/]+|c\/[^/]+|user\/[^/]+)(?:\/|$)/.test(path)
+      ? "유튜브 채널 주소(게시물 아님)"
+      : "";
+  }
+  return "";
+}
+
 /** 모든 시트→DB/DB→시트 경로가 같은 URL 허용·제외 판정을 쓰게 한다. */
 function classifySheetSyncUrl_(value) {
   const normalized = normalizeSheetSyncUrl_(value);
@@ -116,6 +141,10 @@ function classifySheetSyncUrl_(value) {
   }
   if (/instagram\.com/i.test(normalized.url) && !/instagram\.com\/(?:[^/?#]+\/)*(?:p|reels|reel|tv)\/[A-Za-z0-9_-]+/i.test(normalized.url)) {
     return { valid: false, url: normalized.url, changed: normalized.changed, normalizationReason: normalized.reason, skipReason: "인스타 비게시물" };
+  }
+  var accountNonPostReason = accountNonPostReason_(normalized.url);
+  if (accountNonPostReason) {
+    return { valid: false, url: normalized.url, changed: normalized.changed, normalizationReason: normalized.reason, skipReason: accountNonPostReason };
   }
   if (isInvalidTikTokPostUrl_(normalized.url)) {
     return { valid: false, url: normalized.url, changed: normalized.changed, normalizationReason: normalized.reason, skipReason: "틱톡 ID 오류" };
@@ -1459,6 +1488,7 @@ function pullFromDB() {
     const _pfBlock = _pfN > 0 ? sheet.getRange(CONFIG.DATA_START_ROW, 1, _pfN, sheet.getLastColumn()).getValues() : [];
 
     let added = 0, filled = 0, rejectedInvalid = 0;
+    const rejectedReasons = {};
     const pendingRows = [];
     const pendingKeys = {};
     // 기존 행 빈칸 채움을 모아 열 단위로 1회씩 쓴다(개별 setValue 왕복 제거).
@@ -1468,7 +1498,12 @@ function pullFromDB() {
       const rawUrl = String(p.url || "").trim();
       // shortcode 없는 IG 프로필 URL은 append 안 함 — 시트↔DB 재추가 루프 방지(2026-08-25 one_star_video 사고).
       const urlCheck = classifySheetSyncUrl_(rawUrl);
-      if (!urlCheck.valid) { rejectedInvalid++; return; }
+      if (!urlCheck.valid) {
+        rejectedInvalid++;
+        const reason = urlCheck.skipReason || "URL 제외";
+        rejectedReasons[reason] = (rejectedReasons[reason] || 0) + 1;
+        return;
+      }
       const normalizedUrl = urlCheck.url;
       const key = linkKey_(normalizedUrl);   // 시트 인덱스와 동일 기준 — DB /p/ ↔ 시트 /reel/ 매칭되어 재추가 안 됨
       if (!key || pendingKeys[key]) return;
@@ -1540,8 +1575,11 @@ function pullFromDB() {
       applyLinkedInputValidationsToRows_(sheet, startRow, added);
     }
 
+    const rejectedSummary = Object.keys(rejectedReasons)
+      .map(reason => `${reason} ${rejectedReasons[reason]}건`)
+      .join(" · ");
     safeAlert_(`⬇️ DB→시트 반영 완료\n• 신규 행 추가: ${added}건\n• 기존 행 빈칸 채움: ${filled}건` +
-      (rejectedInvalid ? `\n• 잘못된 TikTok ID 차단: ${rejectedInvalid}건` : ""));
+      (rejectedInvalid ? `\n• URL 제외 ${rejectedInvalid}건: ${rejectedSummary}` : ""));
     return true;
   } catch (e) {
     safeAlert_("❌ DB→시트 반영 오류\n" + e.message);

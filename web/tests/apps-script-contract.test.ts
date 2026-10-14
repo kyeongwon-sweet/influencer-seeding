@@ -549,10 +549,37 @@ test("sheet sync normalizes URL schemes before one shared allow-list check and r
   const classifyBody = appsScript.slice(classifyStart, classifyEnd);
   assert.match(classifyBody, /ALLOWED_URL_RE\.test\(normalized\.url\)/);
   assert.match(classifyBody, /skipReason: "인스타 비게시물"/);
+  assert.match(classifyBody, /accountNonPostReason_\(normalized\.url\)/);
   assert.match(classifyBody, /skipReason: "틱톡 ID 오류"/);
   assert.match(classifyBody, /DEFERRED_SHEET_SYNC_KEYS_\[linkKey_\(normalized\.url\)\]/);
   assert.equal((appsScript.match(/ALLOWED_URL_RE\.test\(/g) || []).length, 1, "raw URL allow-list checks must not reappear");
   assert.match(appsScript, /"yt:7brYyMz4wZ0": "HTTP 주소 자동 보완 보류/);
+
+  const accountReasonStart = appsScript.indexOf("function accountNonPostReason_(value)");
+  const accountReasonEnd = appsScript.indexOf("/** 모든 시트→DB/DB→시트 경로", accountReasonStart);
+  const accountReasonBody = appsScript.slice(accountReasonStart, accountReasonEnd);
+  const accountReason = new Function(`${accountReasonBody}; return accountNonPostReason_;`)() as (value: unknown) => string;
+  for (const u of [
+    "https://www.tiktok.com/@sseoltteugi/",
+    "https://www.tiktok.com/@sseoltteugi",
+  ]) assert.equal(accountReason(u), "틱톡 프로필 주소(게시물 아님)");
+  for (const u of [
+    "https://youtube.com/@issuebox_x/shorts/",
+    "https://www.youtube.com/@issuebox_x",
+    "https://www.youtube.com/channel/UC1234567890/",
+    "https://m.youtube.com/c/somechannel/videos",
+    "https://www.youtube.com/user/oldname/about",
+  ]) assert.equal(accountReason(u), "유튜브 채널 주소(게시물 아님)");
+  for (const u of [
+    "https://www.tiktok.com/@a/video/7667204307820760338/",
+    "https://www.tiktok.com/@a/photo/7667204307820760338/",
+    "https://vt.tiktok.com/ZSabc123/",
+    "https://www.tiktok.com/t/ZTabc/",
+    "https://www.youtube.com/watch?v=7brYyMz4wZ0",
+    "https://www.youtube.com/shorts/6ronnq9uRbE/",
+    "https://www.youtube.com/@issuebox_x/shorts/6ronnq9uRbE/",
+    "https://youtu.be/LQODaXCtlG8",
+  ]) assert.equal(accountReason(u), "", `게시물·단축링크는 허용해야 함: ${u}`);
 
   const collectStart = appsScript.indexOf("function collectRows_(onlyNew)");
   const collectEnd = appsScript.indexOf("function urlKey_(u)", collectStart);
@@ -574,6 +601,12 @@ test("sheet sync normalizes URL schemes before one shared allow-list check and r
   assert.match(importBody, /const urlCheck = classifySheetSyncUrl_\(rawUrl\)/);
   assert.match(importBody, /url_rows_skipped: skipDetails\.length/);
   assert.match(importBody, /noteExtra_\(skipDetails\.length, 0, 0, skipDetails, normalizedDetails\)/);
+
+  const pullStart = appsScript.indexOf("function pullFromDB()");
+  const pullEnd = appsScript.indexOf("// 기존 URL 행만 DB 메타데이터로 보강", pullStart);
+  const pullBody = appsScript.slice(pullStart, pullEnd);
+  assert.match(pullBody, /rejectedReasons\[reason\]/);
+  assert.match(pullBody, /URL 제외 \$\{rejectedInvalid\}건: \$\{rejectedSummary\}/);
 });
 
 test("exportStats preserves final DB metric in blank cumulative cells for ended posts", () => {
