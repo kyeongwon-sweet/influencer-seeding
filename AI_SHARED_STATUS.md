@@ -1,5 +1,17 @@
 # AI Shared Status
 
+## ✅ 2026-10-14 [Codex 완료] 누적 H 숫자고정 8칸 + CPV J 숫자고정 15칸 표준 수식 복구
+- **백업·대상 고정:** 외부 백업 스프레드시트 `_codex_formula_literal_repair_backup_20261014`(ID `1R4-a52-H0ESqG4c8Tj8Guss6UrUbbsRQCwA5GTVJHJ8`)에 대상 23행의 원본 값·수식과 A:FK 스냅샷을 저장한 뒤, URL 식별키·원값·빈 수식·계산 결과가 모두 일치할 때만 썼다.
+- **최소수술:** H 8칸(26·27·29·4769·4772·4773·4774·4859)은 `=IF(COUNT(P행:FI행)=0,"",MAX(P행:FI행))`, J 15칸(4689~4703)은 `=IF(G행="","",IF(N(G행)=0,0,IFERROR(G행/H행,"?")))` 표준식으로 바꿨다. 표시값은 전부 전후 동일(H 8칸의 누적값, J 15칸의 `₩0.00`). 라이브 화면에서도 H26=`155,691`과 J4689=`₩0.00` 및 각 수식 입력줄을 교차확인했다.
+- **보류 2건 보존:** H4137 먹킷리스트(469,130 vs 날짜열 MAX 89,000), G/J2352 text_pyeong(비용 0·CPV 1.95)는 팀 결정 전이라 무접촉이다.
+- **공식 사후감사:** formula-audit run **38506792122** success/HTTP 200 — 요청 대상 23칸은 모두 해소, `orphanRows=0 · incMismatch=0 · stale=0 · shortLinkRows=0`. 남은 `hInvalid=2 · cpv.invalid=2 · incInvalid=1`은 보류 2건과 작업 중 별도로 추가된 4954행 `윤츄릅` 신규 수식 미설치분이다.
+- **임시 경로 제거:** 수술용 Apps Script action·비밀 속성·임시 소스를 모두 제거하고 정본 웹앱 배포 **@45**로 갱신했다. fresh live pull에서 임시 식별자 잔존 0건을 확인했다.
+
+## ✅ 2026-10-14 [Codex 완료] 해결된 inji-bot `수집 사각 감지` Slack 알림 1건 정확 삭제
+- **대상:** 채널 `C0B659HEYDV`, ts `1791940534.583309`, 작성자 `U0BHFHSNEDQ`; 본문에 `수집 사각 감지`와 `DdTfR1VTzxE`가 모두 있는 메시지 1건.
+- **삭제 전 가드:** workflow run **38505767230**에서 `conversations.replies`로 부모 1건·작성자·본문 두 조각·`reply_count=0`을 모두 재확인했다. 하나라도 다르면 삭제하지 않도록 관리 워크플로를 `201346d7`에서 보강했다.
+- **결과:** inji-bot 토큰으로 `chat.delete`를 정확히 1회 호출해 `ok:true`. 사후 `conversations.replies=thread_not_found`, `conversations.history` exact ts 0건으로 삭제를 확인했다. 다른 메시지는 건드리지 않았다.
+
 ## ✅ 2026-10-14 [Claude 수집·DB 1행] 말차 파인트 `ig:DdTfR1VTzxE`(ma__si__jjung 9/15) 조회수 1회 실측 기록 — 등록 즉시 자동종료라 매일 수집은 안 됨
 - **상태:** 사용자 재결정으로 새 행이 DB에 생김(id `c8e69328-…`, posted 2026-09-15, P말, cost/채널분류 NULL, 11:59 KST). 재시도 수집 dispatch `38504930678` 실행 → 이 글 **수집 안 됨**: 같은 실행에서 `🛑 자동 종료: 1건 (ended_at=2026-10-13)` — 게시 14일 초과(9/15→28일) 나이 규칙(`auto_end_rules.classify_auto_end age_after_14`)이 등록되자마자 종료시켰다. 정책대로의 동작(버그 아님)이고 ended_at은 건드리지 않았다.
 - **1회 실측 기록:** Apify `instagram-scraper` 1건(run `mFqmb936egGQGIHdE`) — owner `ma__si__jjung`·timestamp 2026-09-15 확인 후 `videoPlayCount=2476`·likes 21·comments 5를 `post_daily_stats`에 **1행**(measured_at **2026-10-13**, manual=false — 재시도 수집과 같은 D-1 라벨) 삽입·재조회 확인. 첫 측정이라 대시보드 10-13 증분에 2,476이 얹힌다(10-13 리포트는 이미 발송됨).
