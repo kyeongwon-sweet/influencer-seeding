@@ -1,5 +1,14 @@
 # AI Shared Status
 
+## ✅ 2026-10-14 [Codex 완료·사용자 최종결정 변경] `ig:DdTfR1VTzxE` = 9/15 말차 파인트 광고 **별도 추적**
+- **결정 정합:** 사용자의 가장 최근 지시에 따라 아래 📮 별도 추적안을 실행했다. 바로 아래의 더 이른 ✅ "오귀속 DB 삭제 + 빈 URL 복원"은 과거 이력이며, 현재 정본은 이 항목이다.
+- **선행 백업:** 외부 백업 스프레드시트 `_codex_ddtf_separate_tracking_backup_20261014`(ID `1Id1Ot5o_tWMJBp_zjSTgQYq_Xxe080-is0HjzwETY48`)에 기존 쫀득바 행(4866)과 비교행 `ig:DeE0dDhTvpM`(4813)의 사용 범위 167열 값·수식과 SHA-256 지문을 저장했다.
+- **시트 최소수술:** 기존 쫀득바 행은 `B=빈칸 · C=soosoo_beauty`를 유지했다. 신규 4953행에 `A=2026-09-15(날짜값) · B=https://www.instagram.com/p/DdTfR1VTzxE/ · C=ma__si__jjung · F=P말`을 넣고 H/I/J에는 현행 표준 수식을 설치했다. 나머지 캠페인·비용·채널분류·업체명·소재명은 지어내지 않고 비웠다. 동기화의 기존 캡션 보강기가 인스타 실물과 일치하는 실제 캡션(`#광고 … 라라스윗 말차 파인트 …`)만 M열에 채웠다.
+- **DB 재생성:** 실행 전 `ig:DdTfR1VTzxE`는 앞선 롤백으로 0건이어서 삭제는 안전한 no-op였다. `syncAll`의 게시물 upsert 단계가 새 시트 행을 읽어 DB에 정확히 1건을 생성했다: `posted_at=2026-09-15 · account_name=ma__si__jjung · product_name=P말 · cost/channel_type/asset_name/company_name=NULL`. 전체 실행은 약 5천 행 등록상태 마킹 꼬리 단계에서 Apps Script 최대 실행시간에 닿았지만, DB upsert 완료와 아래 공식 감사의 `sheetOnly` 비포함으로 핵심 동기화 성공을 교차확인했다.
+- **무손상 확인:** 신규 URL은 시트·DB 각각 정확히 1건이고 기존 빈 URL `soosoo_beauty` 행도 정확히 1건이다. 비교행 `ig:DeE0dDhTvpM`의 날짜 이력·표시값은 불변이다. full sync가 비교행 H/I/J의 같은 표시값 `529 / 10 / 23.816635…`을 literal에서 표준 수식으로 자가복구했고, 등록상태 시각만 최신화됐다.
+- **공식 사후감사:** formula-audit run **38505219270** success/HTTP 200 — `totalRows=4952 · orphanRows=0 · incMismatch=0 · stale=0 · shortLinkRows=0`; `DdTfR1VTzxE`는 `sheetOnly`에 없다. 감사 중 별도로 추가된 4954행 `윤츄릅`이 `hInvalid/incInvalid/cpvInvalid/sheetOnly` 각 1건을 만들었으며 이번 작업 대상과 무관하다.
+- **임시 경로 제거:** 작업용 Apps Script 함수·속성·웹앱 action을 모두 제거하고 정본 웹앱 배포 **@42**로 갱신했다. 삭제 action 재호출은 `unknown action`, fresh live pull에서 `codexDdtf/CODEX_DDTF` 잔존 0건이다. **Claude는 이제 이 DB 행을 대상으로 조회수 수집을 진행하면 된다.**
+
 ## 🛠 2026-10-14 [Claude 재발방지] 관리 워크플로 오입력 실패 3건 → 표기 정규화 + DM 정리 '방 바인딩'
 - **사건:** `Delete Specific Sponsored Post` 38501857186(URL `/reels/`↔DB `/p/`, ended_at `NULL`↔`__NULL__` → 가드 중단), `Purge 여믄봇 DM` 38501091929·38501223965(`D0B2U2J8QNS` → `channel_not_found`). 3건 모두 **무삭제 안전실패**, 직후 재실행 성공.
 - **드러난 위험:** DM 정리가 입력한 `D0B2U2J8QNS`가 아니라 봇 토큰이 해석한 **다른 DM `D0B8FHE8R0A`**를 잡았다. dry-run은 건수·ts만 보여 줘 다른 방이어도 실행 전에 구분할 수 없었다(되돌릴 수 없는 삭제).
