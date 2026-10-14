@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## ✅ 2026-10-14 [Claude 코드] '수집 사각'·'게시일 불일치' 알림에 원인·행동 표시 (4d579ff6)
+- **왜:** `p/DdTfR1VTzxE`(위 📮) — 수집기는 매번 응답을 받고 '시트 10-04 ≠ 실제 09-15'로 버렸는데, 채널 알림은 "한 번도 수집 안 됨"만, 수집기 DM은 "시트 게시일을 실제 값으로 정정"만 안내했다(링크가 틀린 경우라 따랐으면 엉뚱한 글이 캠페인 비용으로 굳음).
+- **변경:** `scripts/posted_at_mismatch.py`(문구 단일 정본: "업로드일 오타 **또는** 다른 글 링크 → 글을 열어 날짜·계정·내용 확인 후 틀린 쪽 정정", 시트 채널명≠실제 글 주인이면 '링크 오류 가능성 큼') · 수집기 불일치 이벤트에 `actual_owner` 기록 · `view-tracking-watchdog.yml`이 최근 daily-collect/retry 3회의 `missing-view-diagnostics-*` 산출물을 받아(`actions: read`, 실패해도 감시는 그대로) 플래그마다 `↳ 사유` 표시.
+- **검증:** 실제 10-13 수집 산출물로 재생(발송 없이) → `↳ 수집은 되는데 버려짐: 시트 업로드일 2026-10-04 ≠ 실제 2026-09-15 → …` 출력. 기존 `test_posted_at_mismatch_alert.py`(build-test) 통과 유지 + 신규 `test_mismatch_reason_in_alerts.py` 8건 · Python 전체 443 passed.
+- **후속 확인:** 다음 워치독 실행 로그의 `collector reasons loaded: N`(N>0)으로 산출물 다운로드가 GHA에서도 되는지 확인.
+
 ## 📮 2026-10-14 [사용자 결정 → Codex 인계] `ig:DdTfR1VTzxE` 행 = soosoo_beauty 행으로 되돌림 (10-13 'ma__si__jjung 정정' 결정을 대체)
 > 발단: 인지봇 10:15 '수집 사각 감지 1건' — 2026-10-04 `무상시딩 (영상)` ma__si__jjung `p/DdTfR1VTzxE`, 통계 0행.
 - **원인(실측):** 수집기는 이 글을 매번 정상으로 받아오지만 `[WARN] IG 게시일 불일치 응답 제외 (sheet=2026-10-04, apify=2026-09-15)`로 버린다(Daily Collect 38465781398·38474358761·38484076634). 수집기 버그 아님 — **링크가 틀렸다.**
