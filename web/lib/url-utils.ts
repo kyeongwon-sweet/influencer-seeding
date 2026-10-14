@@ -137,6 +137,15 @@ export function isInstagramNonPostUrl(url: string): boolean {
 }
 
 /**
+ * 틱톡 단축링크(`vt.tiktok.com/…`, `vm.tiktok.com/…`)인지. 영상 ID가 주소에 없어 해석(리다이렉트) 전에는
+ * 어떤 글인지 알 수 없다. 서버는 쓰기 때 풀어 정식 주소로 저장하지만 시트(Apps Script)는 못 풀어,
+ * 같은 글이 시트에 단축·정식 두 줄로 생겼다(2026-09 51건, 2026-10-13 8건 재발).
+ */
+export function isTikTokShortLink(url: string): boolean {
+  return /^(?:https?:\/\/)?(?:vt|vm)\.tiktok\.com\/[A-Za-z0-9]+\/?(?:[?#].*)?$/i.test(String(url || "").trim());
+}
+
+/**
  * TikTok 프로필(`tiktok.com/@계정/`)·YouTube 채널(`youtube.com/@계정/shorts/`, `/channel/…`) 주소인지 판정한다.
  * 게시물이 아니라 수집도 안 되는데, 한 번 DB에 들어가면 시트에서 지워도 pullFromDB가 종료글까지
  * 다시 붙여 되살아난다(2026-10-13 썰뜨기(틱톡)·이슈박스(유튜브) 실측). 게시물 ID가 있으면 통과.

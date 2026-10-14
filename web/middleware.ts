@@ -19,6 +19,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/sponsored-posts/stats-import(.*)",
   "/api/sponsored-posts/list-for-sheet(.*)",
   "/api/sponsored-posts/stats-for-sheet(.*)",
+  "/api/sponsored-posts/resolve-short-links(.*)",  // 시트 단축링크 해석(자체 CRON_SECRET 검사)
   "/api/sponsored-posts/tracking-by-url(.*)",
   "/api/sponsored-posts/formula-audit(.*)",  // 수식 전수감사 크론(자체 CRON_SECRET 검사)
   "/api/ops/schedule-heartbeat(.*)",         // 크로스 프로바이더 스케줄 하트비트(Apps Script/외부 핑, 자체 CRON_SECRET 검사)

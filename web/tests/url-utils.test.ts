@@ -6,6 +6,7 @@ import {
   ALLOWED_POST_URL_RE,
   isInstagramNonPostUrl,
   isAccountNonPostUrl,
+  isTikTokShortLink,
   isInvalidTikTokPostUrl,
   isValidTikTokSnowflake,
   normalizeInstagramUrl,
@@ -21,6 +22,22 @@ test("normalizeUrl: 프로토콜·trailing slash 통일 + 쿼리 제거", () => 
   assert.equal(normalizeUrl("instagram.com/p/ABC/"), "https://www.instagram.com/p/ABC/");
   assert.equal(normalizeUrl(""), null);
   assert.equal(normalizeUrl("not a url"), null);
+});
+
+test("isTikTokShortLink: vt/vm 단축링크만 참, 정식 주소·다른 플랫폼은 거짓", () => {
+  for (const u of [
+    "https://vt.tiktok.com/ZSboSxcJg/",
+    "https://vm.tiktok.com/ZMabc123/",
+    "vt.tiktok.com/ZSboSxcJg",
+    "https://vt.tiktok.com/ZSboSxcJg/?k=1",
+  ]) assert.equal(isTikTokShortLink(u), true, `단축링크: ${u}`);
+  for (const u of [
+    "https://www.tiktok.com/@ssulbox_1/photo/7696140243162074388/",
+    "https://www.tiktok.com/@sseoltteugi/",
+    "https://vt.tiktok.com/",
+    "https://youtu.be/LQODaXCtlG8",
+    "",
+  ]) assert.equal(isTikTokShortLink(u), false, `단축링크 아님: ${u}`);
 });
 
 test("isAccountNonPostUrl: 틱톡 프로필·유튜브 채널은 차단, 게시물·단축링크는 허용", () => {

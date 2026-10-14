@@ -35,6 +35,7 @@ const CONFIG = {
   TRACKING_API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/tracking-by-url",
   LIST_API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/list-for-sheet",  // DB→시트 반영(대시보드 추가분 가져오기)용 조회
   STATS_EXPORT_API_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/stats-for-sheet",  // 자동수집 조회수 → 시트 I열~ 역채움용 조회
+  SHORT_LINK_RESOLVE_URL: "https://influencer-seeding-mu.vercel.app/api/sponsored-posts/resolve-short-links",  // 틱톡 단축링크 → 정식 주소(서버 해석, DB 쓰기 없음)
   SCHEDULE_HEARTBEAT_URL: "https://influencer-seeding-mu.vercel.app/api/ops/schedule-heartbeat",  // GitHub 크론 생존 감시(구글 스케줄러가 호출 = 크로스 프로바이더)
   COLLECT_FALLBACK_URL: "https://influencer-seeding-mu.vercel.app/api/ops/collect-fallback",      // 자정수집 누락 시 Apify 폴백 수집(비어 있을 때만 동작)
   AUDIT_FALLBACK_URL: "https://influencer-seeding-mu.vercel.app/api/ops/audit-fallback",          // 아침 수식감사 미발화 시 폴백 감사(오늘 감사 없을 때만 동작)
@@ -523,6 +524,100 @@ function linkKey_(u) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// 🔗 틱톡 단축링크 → 정식 주소 (시트 셀을 정식 주소로 바꿔 저장)
+// ═══════════════════════════════════════════════════════════════
+// 왜: vt.tiktok.com/… 단축링크에는 영상 ID가 없어 linkKey_가 어떤 글인지 모른다. 서버는 쓰기 때
+// 풀어 정식 주소로 DB에 저장하므로, pullFromDB는 "DB에 있는데 시트에 없는 글"로 오판해 정식 주소
+// 행을 한 번 더 붙였다(2026-09 51건, 2026-10-13 위성 틱톡 8건 재발). 동기화 전에 셀을 정식 주소로
+// 바꿔 시트↔DB 키를 처음부터 같게 만든다. 해석은 서버(resolve-short-links) 한 곳 — 쓰기 경로와 같은 규칙.
+function isTikTokShortLink_(u) {
+  return /^(?:https?:\/\/)?(?:vt|vm)\.tiktok\.com\/[A-Za-z0-9]+\/?(?:[?#].*)?$/i.test(String(u || "").trim());
+}
+
+/** 서버에 단축링크 해석을 요청한다. 실패해도 예외 대신 빈 결과(셀은 그대로 둔다). */
+function fetchShortLinkResolutions_(inputs) {
+  const out = {};
+  if (!inputs.length) return out;
+  for (let i = 0; i < inputs.length; i += 200) {
+    try {
+      const res = UrlFetchApp.fetch(CONFIG.SHORT_LINK_RESOLVE_URL, {
+        method: "post",
+        contentType: "application/json",
+        headers: authHeaders_(),
+        payload: JSON.stringify({ urls: inputs.slice(i, i + 200) }),
+        muteHttpExceptions: true,
+      });
+      if (res.getResponseCode() !== 200) {
+        Logger.log("resolve-short-links HTTP " + res.getResponseCode() + ": " + res.getContentText().slice(0, 200));
+        continue;
+      }
+      (JSON.parse(res.getContentText()).results || []).forEach(function(r) {
+        if (r && r.input && r.resolved && /^tt:/.test(linkKey_(r.resolved))) out[r.input] = r.resolved;
+      });
+    } catch (e) {
+      Logger.log("resolve-short-links 실패: " + (e && e.message));
+    }
+  }
+  return out;
+}
+
+/**
+ * 게시물URL 열의 틱톡 단축링크를 정식 주소로 바꿔 저장한다.
+ * - 쓰기 직전 같은 셀 값이 그대로인지 다시 확인한다(사람 편집·행 밀림 경합 시 건너뜀).
+ * - 못 푼 링크는 셀을 건드리지 않고 unresolved로 돌려준다(호출부가 중복 추가를 보류하는 근거).
+ * - 풀고 나니 같은 글 행이 이미 있으면 지우지 않고 duplicates로 알린다(어느 행을 남길지는 사람 판단).
+ */
+function resolveSheetShortLinks_(sheet) {
+  const empty = { resolved: [], unresolved: [], duplicates: [] };
+  const urlCol = buildFieldCols_(sheet).url;
+  const lastRow = sheet.getLastRow();
+  if (!urlCol || lastRow < CONFIG.DATA_START_ROW) return empty;
+  const values = sheet.getRange(CONFIG.DATA_START_ROW, urlCol, lastRow - CONFIG.DATA_START_ROW + 1, 1).getValues();
+  const targets = [];
+  values.forEach(function(r, i) {
+    const raw = String(r[0] || "").trim();
+    if (isTikTokShortLink_(raw)) targets.push({ row: CONFIG.DATA_START_ROW + i, raw: raw, input: normalizeSheetSyncUrl_(raw).url });
+  });
+  if (!targets.length) return empty;
+
+  const map = fetchShortLinkResolutions_(Array.from(new Set(targets.map(function(t) { return t.input; }))));
+  const resolved = [], unresolved = [];
+  targets.forEach(function(t) {
+    const to = map[t.input];
+    if (!to) { unresolved.push({ row: t.row, url: t.raw }); return; }
+    const cell = sheet.getRange(t.row, urlCol);
+    if (String(cell.getValue() || "").trim() !== t.raw) { unresolved.push({ row: t.row, url: t.raw }); return; }
+    cell.setValue(to);
+    resolved.push({ row: t.row, from: t.raw, to: to, key: linkKey_(to) });
+  });
+  if (resolved.length) SpreadsheetApp.flush();
+
+  const duplicates = [];
+  if (resolved.length) {
+    const rowsByKey = {};
+    values.forEach(function(r, i) {
+      const k = linkKey_(String(r[0] || "").trim());
+      if (k) (rowsByKey[k] = rowsByKey[k] || []).push(CONFIG.DATA_START_ROW + i);
+    });
+    resolved.forEach(function(x) {
+      const others = (rowsByKey[x.key] || []).filter(function(n) { return n !== x.row; });
+      if (others.length) duplicates.push({ row: x.row, key: x.key, others: others });
+    });
+  }
+  Logger.log("shortLinks " + JSON.stringify({ resolved: resolved.length, unresolved: unresolved.length, duplicates: duplicates.length }));
+  return { resolved: resolved, unresolved: unresolved, duplicates: duplicates };
+}
+
+function shortLinkNote_(r) {
+  if (!r || (!r.resolved.length && !r.unresolved.length)) return "";
+  let msg = "\n\n🔗 틱톡 단축링크";
+  if (r.resolved.length) msg += "\n• 정식 주소로 변경: " + r.resolved.length + "건 (" + r.resolved.map(function(x) { return x.row + "행"; }).join(", ") + ")";
+  if (r.duplicates.length) msg += "\n• ⚠️ 바꾸고 보니 같은 글 행이 이미 있음: " + r.duplicates.map(function(x) { return x.row + "행=" + x.others.join("·") + "행"; }).join(", ") + " → 한 줄만 남기세요";
+  if (r.unresolved.length) msg += "\n• ⚠️ 못 푼 링크(셀 그대로): " + r.unresolved.map(function(x) { return x.row + "행"; }).join(", ") + " → 정식 주소로 직접 바꿔 주세요";
+  return msg;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // 🧹 중복 링크 정리 — 겹치는 링크 행을 각 1개만 남기고 삭제
 // ═══════════════════════════════════════════════════════════════
 // 같은 게시물(IG shortcode·틱톡 영상ID·정규화 URL 동일)을 그룹으로 묶어, 그룹마다
@@ -734,9 +829,12 @@ function ensureMetricFormulasForRows_(sheet, rowRefs, expectedLastRow) {
 // ═══════════════════════════════════════════════════════════════
 function runSync_(onlyNew) {
   try {
+    // 단축링크를 먼저 정식 주소로 바꾼다 — 그래야 DB에 저장되는 주소와 시트 키가 같아져
+    // pullFromDB가 같은 글을 다시 붙이지 않는다.
+    const shortLinks = resolveSheetShortLinks_(getSheet_());
     const { rows, rowNums, rowRefs, statusCol, skipped, skipDetails, normalizedDetails, dupCount, future, lastRow } = collectRows_(onlyNew);
     if (rows.length === 0) {
-      safeAlert_((onlyNew ? "추가할 신규 광고가 없습니다." : "반영할 시트 행이 없습니다.") + noteExtra_(skipped, dupCount, future, skipDetails, normalizedDetails));
+      safeAlert_((onlyNew ? "추가할 신규 광고가 없습니다." : "반영할 시트 행이 없습니다.") + noteExtra_(skipped, dupCount, future, skipDetails, normalizedDetails) + shortLinkNote_(shortLinks));
       return true;
     }
     const { count, created, ended, filled } = postRows_(rows);
@@ -753,7 +851,7 @@ function runSync_(onlyNew) {
       okMsg = `✅ 시트 변경사항 DB 반영 완료\n• 비교한 행: ${count}건\n• 새로 추가: ${created}건\n• 값이 달라 수정: ${filled}건`;
     }
     if (ended) okMsg += `\n• 삭제/보관 캡션으로 종료: ${ended}건`;
-    safeAlert_(okMsg + noteExtra_(skipped, dupCount, future, skipDetails, normalizedDetails) + blankNote_());
+    safeAlert_(okMsg + noteExtra_(skipped, dupCount, future, skipDetails, normalizedDetails) + shortLinkNote_(shortLinks) + blankNote_());
     return true;
   } catch (e) {
     safeAlert_("❌ 오류\n" + e.message);
@@ -1467,6 +1565,12 @@ function pullFromDB() {
     if (res.getResponseCode() !== 200) throw new Error(`API ${res.getResponseCode()}: ${res.getContentText()}`);
     const posts = (JSON.parse(res.getContentText()).posts) || [];
 
+    // 시트의 단축링크를 먼저 정식 주소로 바꾼 뒤 키 목록을 만든다. 못 푼 단축링크가 남아 있으면
+    // 그 행이 어떤 글인지 모르므로, 이번 실행은 틱톡 신규 행 추가를 보류한다(같은 글 두 줄 방지).
+    const shortLinks = resolveSheetShortLinks_(sheet);
+    const holdTikTokAppends = shortLinks.unresolved.length > 0;
+    let heldTikTok = 0;
+
     // 시트 기존 URL → 행번호
     const lastRow = sheet.getLastRow();
     const rowByKey = {};
@@ -1525,6 +1629,8 @@ function pullFromDB() {
           fillEdits.push({ col: fieldCols[f], row: rowNum, value: val });
           filled++;
         });
+      } else if (holdTikTokAppends && /tiktok\.com/i.test(normalizedUrl)) {
+        heldTikTok++;
       } else {
         // 신규 글은 URL→메타를 셀별로 쓰지 않고 한 행 전체를 원자적으로 기록한다.
         // 중간 실패/동시 정렬로 URL만 사라지고 날짜값만 남는 고아 행을 만들지 않는다.
@@ -1579,7 +1685,9 @@ function pullFromDB() {
       .map(reason => `${reason} ${rejectedReasons[reason]}건`)
       .join(" · ");
     safeAlert_(`⬇️ DB→시트 반영 완료\n• 신규 행 추가: ${added}건\n• 기존 행 빈칸 채움: ${filled}건` +
-      (rejectedInvalid ? `\n• URL 제외 ${rejectedInvalid}건: ${rejectedSummary}` : ""));
+      (rejectedInvalid ? `\n• URL 제외 ${rejectedInvalid}건: ${rejectedSummary}` : "") +
+      (heldTikTok ? `\n• ⚠️ 못 푼 틱톡 단축링크가 있어 틱톡 신규 ${heldTikTok}건 추가 보류(중복 방지)` : "") +
+      shortLinkNote_(shortLinks));
     return true;
   } catch (e) {
     safeAlert_("❌ DB→시트 반영 오류\n" + e.message);
