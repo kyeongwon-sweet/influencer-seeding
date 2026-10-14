@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## ✅ 2026-10-14 [Claude 완료·배포] 전환 조회수 누락 재발방지 — 빈칸 노출 + 헤더 이름 이중 인식 (`388fa5e3`)
+- **문제:** 시트 전환 값이 발송 때 비면 리포트에서 줄이 **조용히 사라져** 사람이 눈으로 발견(10/1~10/10, 10/13분). 자동 보정 스케줄만으론 ① 값이 끝내 안 들어오거나 ② 스케줄이 멈추거나 ③ 헤더 이름이 바뀌면 여전히 아무도 모름.
+- **① 빈칸을 드러냄(`scripts/notify_increments.py`):** 라우트가 conversion을 주는데 값이 없으면 `전환 조회수 _미입력 — 시트에 입력되면 자동 반영_` 줄을 넣는다. 빈칸≠0이라 **총 증분에는 미합산**(무결성 규칙 유지). 값이 있으면 출력은 종전과 동일. 줄 생성은 `conversion_line()`으로 분리·테스트.
+- **② 자동 보정 확장(`scripts/patch_report_conversion.py`):** '미입력' 줄을 값으로 교체. 덤으로 **전환 0인 날 보정이 '정확히 2줄 변경' 가드에 걸려 거부되던 버그** 수정.
+- **③ 라우트(`web/app/api/awareness-ads/route.ts`):** '전환조회수'·'전환노출수' 둘 다 인정(10월 일별 표 헤더가 '전환 노출수'로 바뀌어 월별 요약표 옛 이름에 우연히 기대던 상태).
+- **검증:** scripts 456 passed, web 653/653, tsc·eslint·build 통과, 프로덕션 배포 success 확인 후 실경로 dry-run — 10/13분 '미입력' 줄 표시·총 증분 208,281 불변, 10/12분 전환 +185,655. 시트 실물(htmlview, M=N+O 검산)로 10/12 N=185,655(발송 당시 185,629 → 원천이 26 갱신, 발송본은 그대로 둠)·10/13 N 빈칸 확인.
+- **남은 것:** 이미 나간 10/13분 리포트는 '미입력' 줄 없이 나갔음 → 시트 값이 들어오면 자동 보정이 삽입. 유튜브 등 다른 인지광고 빈칸은 여전히 숨김(범위 밖). 전환 탭이 발송 전에 채워지도록 하는 건 팀 운영 몫.
+
 ## ⚠️ 2026-10-14 [Codex 확인] 인지봇 Anthropic 1순위 복귀 보류 — 운영 API 키 검증 실패
 - **조건부 보류:** `negative-comment-monitor` workflow run **38513798111**의 `Verify Anthropic API key` 단계가 2026-10-14 14:06 KST에 HTTP 400 `Your credit balance is too low to access the Anthropic API`로 실패했다. 운영 GHA secret과 로컬 키(Haiku 4.5·Sonnet 5.5)가 모두 같은 잔액 부족을 재현해, **Anthropic API 크레딧 정상 확인 전에는 1순위를 바꾸지 않는다**는 요청 조건을 지켰다.
 - **운영 설정 무변경:** `monitor.yml` 4곳 + `youtube-owner-channel.yml` + `youtube-owner-coverage-audit.yml` + YouTube Ads targeted-rescan/survey/backfill의 `LLM_PROVIDER` 값은 모두 `gemini` 유지. `ANTHROPIC_MODEL=claude-haiku-4-5-20251001`, Gemini 키·폴백도 무손상.
