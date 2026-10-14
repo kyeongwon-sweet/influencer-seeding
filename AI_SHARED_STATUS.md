@@ -1,5 +1,10 @@
 # AI Shared Status
 
+## ✅ 2026-10-14 [Codex 강제 재감사 완료] exportStats 복구 결과 Slack 재보고 (`06764f43`)
+- **강제 실행 경로:** formula-audit 라우트는 `?force=1`을 지원했지만 수동 GHA 워크플로가 이를 전달할 입력이 없었다. `workflow_dispatch.force`(boolean)를 추가해 정기 스케줄은 종전 중복 방지를 유지하고, 사람이 요청한 재보고만 `?force=1`로 호출하게 했다. pre-push `tsc --noEmit` 통과.
+- **운영 실행:** GitHub Actions run **38500998342**(head `06764f43`) success/HTTP 200. 응답은 `slackSent=true · skippedNotify=false`로, 당일 중복 방지를 건너뛴 최신 감사가 Slack에 실제 재발송됐다.
+- **복구 핵심 수치 재확인:** `metricRange=P:FI(target 2026-10-13) · snapshotRetryCount=0 · inc.mismatch=0 · incInvalid=0 · orphanRows=0 · sheetOnly=1(1099 떵개) · shortLinkRows=0`. `cpv.invalid=16`, `hInvalid=9`, `stale=1(ma__si__jjung)`은 기존 별건이며 exportStats 복구 실패가 아니다.
+
 ## 🔍 2026-10-14 [Claude 사후검증] Codex a5a5ee62 확인 — exportStats 10-13 완료·I 10-13 기준 정상
 - **확인됨:** `jobs` 마커 `apps-script-export-stats` written_date 2026-10-13 (02:11Z, source collection_retry, formula_rows_written 4951). formula-audit `38500278839` success(`inc.mismatch=0 · blankExpected=0 · sheetOnly=1`). gviz 재검산: I(증분) **4,950/4,951행이 10-13 기준 규칙과 일치**, H는 3,624행 일치(예외 4137 먹킷리스트 그대로), 4945~4952 위성 틱톡 8행 10-13=H=I(252·87·22·26·58·738·361·61).
 - **남은 1행(경미):** 4817 `neighbor.mia`(`Dd_LfJwSelW`, 10-02 게시) — 10-13이 첫 측정(480)인데 I 빈칸. 감사는 정상으로 판정(blankExpected 0)하지만 시트 규칙상 기대값 480. 첫 측정이 게시 11일 뒤라 '소급 첫 측정' 처리일 가능성 — 미조사.
