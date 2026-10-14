@@ -1,5 +1,10 @@
 # AI Shared Status
 
+## ✅ 2026-10-14 [Claude 수집·DB 1행] 말차 파인트 `ig:DdTfR1VTzxE`(ma__si__jjung 9/15) 조회수 1회 실측 기록 — 등록 즉시 자동종료라 매일 수집은 안 됨
+- **상태:** 사용자 재결정으로 새 행이 DB에 생김(id `c8e69328-…`, posted 2026-09-15, P말, cost/채널분류 NULL, 11:59 KST). 재시도 수집 dispatch `38504930678` 실행 → 이 글 **수집 안 됨**: 같은 실행에서 `🛑 자동 종료: 1건 (ended_at=2026-10-13)` — 게시 14일 초과(9/15→28일) 나이 규칙(`auto_end_rules.classify_auto_end age_after_14`)이 등록되자마자 종료시켰다. 정책대로의 동작(버그 아님)이고 ended_at은 건드리지 않았다.
+- **1회 실측 기록:** Apify `instagram-scraper` 1건(run `mFqmb936egGQGIHdE`) — owner `ma__si__jjung`·timestamp 2026-09-15 확인 후 `videoPlayCount=2476`·likes 21·comments 5를 `post_daily_stats`에 **1행**(measured_at **2026-10-13**, manual=false — 재시도 수집과 같은 D-1 라벨) 삽입·재조회 확인. 첫 측정이라 대시보드 10-13 증분에 2,476이 얹힌다(10-13 리포트는 이미 발송됨).
+- **남은 것:** ①이 글을 매일 계속 추적하려면 자동종료 예외가 필요(사용자 결정) — 아니면 이 값이 최종. ②채널분류·업체명·비용·소재명은 사용자 입력 대기(비어 있으면 리포트 '미분류'). ③시트 날짜칸 반영은 다음 exportStats에서 확인.
+
 ## ✅ 2026-10-14 [Codex 완료·사용자 최종결정 변경] `ig:DdTfR1VTzxE` = 9/15 말차 파인트 광고 **별도 추적**
 - **결정 정합:** 사용자의 가장 최근 지시에 따라 아래 📮 별도 추적안을 실행했다. 바로 아래의 더 이른 ✅ "오귀속 DB 삭제 + 빈 URL 복원"은 과거 이력이며, 현재 정본은 이 항목이다.
 - **선행 백업:** 외부 백업 스프레드시트 `_codex_ddtf_separate_tracking_backup_20261014`(ID `1Id1Ot5o_tWMJBp_zjSTgQYq_Xxe080-is0HjzwETY48`)에 기존 쫀득바 행(4866)과 비교행 `ig:DeE0dDhTvpM`(4813)의 사용 범위 167열 값·수식과 SHA-256 지문을 저장했다.
