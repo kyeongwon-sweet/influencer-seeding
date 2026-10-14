@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## ✅ 2026-10-14 [Codex 완료·라이브검증] TikTok 단축링크 런타임 확인 + exportStats 10-13 완료·정렬 오탐 근본수정 (`69d77ca9`)
+- **단축링크 라이브 실측:** repo `1ce26a8c`를 `083d5905` 위 최신 정본으로 guarded Apps Script 배포했다. 편집기 런타임에서 `fetchShortLinkResolutions_(["https://vt.tiktok.com/ZSboSxcJg/"])`가 `https://www.tiktok.com/@ssulbox_1/photo/7696140243162074388/`을 반환함을 확인했다(10:20 KST, 1.721초). 검증용 임시 함수는 즉시 제거했고, 최종 live pull에서 정본 10파일·repo 소스 8파일 일치·임시/폐기 파일 0건을 재확인했다.
+- **오늘 지연의 직접 원인:** `exportStatsWithOptions_`가 최초 URL 목록은 `classifySheetSyncUrl_`로 정규화·제외한 뒤 키를 만들면서, 증분 수식 직전 순서 재검사는 원본 URL에 `linkKey_`를 바로 적용했다. 따라서 행이 전혀 움직이지 않아도 1099 보류 URL·비게시물·미지원 URL은 `""`와 비어 있지 않은 키로 달라져 매번 **“실행 중 행 정렬” 오탐**이 났다. 10:28 회차에는 별도로 Apps Script 플랫폼 server error가 한 번 발생해 예약 체인이 끊겨 안전하게 재무장했다.
+- **근본수정 `69d77ca9`:** 마지막 순서 검사도 최초와 동일하게 `classifySheetSyncUrl_` → 유효한 정규 URL의 `linkKey_` 순서로 비교한다. 실제 정렬·행수 변경 가드는 그대로 유지하며 날짜값·수동값·수식 생성 규칙은 바꾸지 않았다. 회귀 계약은 원본 URL 직접 키화가 다시 들어오면 실패하도록 고정했다. web **653/653** · `tsc --noEmit` · production build · pre-push typecheck 통과.
+- **라이브 완료:** 수정본 guarded 배포 후 예약 재시도 `exportStatsAfterCollection_`가 **11:04:06~11:13:16 KST, 550.116초**로 완료됐다. 로그: `increment_formula_write written=verified=4951` · `exportStats_heartbeat written_date=2026-10-13, formula_rows_written=4951` · `metric_formula_range_repair P:FI` · `exportStats_collection_gate_result status=OK, attempt=6, collection run=38484076634 marker_success`. 스크립트 속성은 `PENDING` 2종 모두 없음, 최종 `STATUS=OK · ATTEMPT=6 · REASON=collection_complete`다.
+- **시트 실물:** I4945 수식은 `$P4945:$FI4945`와 `targetC=COLUMN($FI4945)`를 참조한다. 4945~4952의 10-13(FI) 값은 순서대로 **252 · 87 · 22 · 26 · 58 · 738 · 361 · 61**. 4908/4909도 업로드일 2026-10-11과 최근값이 유지됐다(4908 H/I=941/46, FG/FH/FI=153/895/941 · 4909 H/I=877/30, FG/FH/FI=519/847/877).
+- **공식 감사:** formula-audit run **38500278839** success/HTTP 200. `totalRows=4951 · dateColumnCount=150 · metricRange=P:FI(target 2026-10-13) · snapshotRetryCount=0 · orphanRows=0 · inc.errorCells=0 · inc.mismatch=0 · incInvalid=0 · sheetOnly=1(1099 떵개) · shortLinkRows=0`. 기존 별건 `hInvalid=9 · cpv.invalid=16 · stale=1(ma__si__jjung 잘못된 링크 후속)` 때문에 전체 `healthy=false`인 것은 이번 export/단축링크 작업과 무관하다.
+
 ## 📮 2026-10-14 [사용자 결정 변경 → Codex 인계] `p/DdTfR1VTzxE` = ma__si__jjung 9/15 말차 파인트 광고로 **따로 추적** + 쫀득바 행은 soosoo_beauty로 되돌림
 > 사용자(10-14 10:4x): "말차 파인트 광고로 따로 추적", "지금 조회수 수집해서 기록". 바로 아래 ⛔ 항목(링크 비우고 DB 삭제만)을 대체한다.
 - **실물 대조(전 필드):** `DdTfR1VTzxE` = 계정 `ma__si__jjung`(og:url) · 게시 **2026-09-15**(time 10:27Z) · 캡션 "#광고 … 라라스윗 **말차 파인트** … 당류 6g" → 제품 `P말`. 시트·DB 어디에도 이 글의 캠페인·비용·업체 기록 없음(9월 이후 `P말` 글은 이 잘못된 행 1건뿐) → **채널분류·업체명·비용·소재명·요약은 빈칸**(지어내지 말 것, 사용자가 채움).
