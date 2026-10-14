@@ -148,3 +148,24 @@ def test_pending_line_is_not_mistaken_for_value():
                              "    유튜브 *+144,255*  CPV 15.8원\n" + CONV_PENDING_LINE + "\n")
     new, reason = patch_text(pending, 100)
     assert new is not None, reason   # '이미 있음'으로 건너뛰면 안 됨
+
+
+def test_fetch_conversion_retries_transient_502(monkeypatch):
+    import io
+    import json as _json
+    import urllib.error
+    import patch_report_conversion as prc
+
+    monkeypatch.setenv("APP_URL", "https://x.example")
+    monkeypatch.setenv("CRON_SECRET", "s")
+    monkeypatch.setattr(prc.time, "sleep", lambda s: None)
+    calls = {"n": 0}
+
+    def fake_urlopen(req, timeout=0):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise urllib.error.HTTPError(req.full_url, 502, "Bad Gateway", {}, None)
+        return io.BytesIO(_json.dumps({"found": True, "conversion": {"views": 7}}).encode())
+
+    monkeypatch.setattr(prc.urllib.request, "urlopen", fake_urlopen)
+    assert prc.fetch_conversion("2026-09-21") == 7 and calls["n"] == 3

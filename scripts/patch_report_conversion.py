@@ -16,6 +16,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.parse
 import urllib.request
 
@@ -132,11 +133,19 @@ def find_report(token, date):
             _history["done"] = True
 
 
-def fetch_conversion(date):
+def fetch_conversion(date, attempts=3, wait=5):
+    """라우트(시트 조회)는 간헐 502를 낸다 → 몇 번 재시도. 끝내 실패하면 예외(호출부가 그 날짜만 실패 처리)."""
     base = os.environ["APP_URL"].rstrip("/")
     req = urllib.request.Request(f"{base}/api/awareness-ads?date={urllib.parse.quote(date)}",
                                  headers={"Authorization": "Bearer " + os.environ["CRON_SECRET"]})
-    d = json.load(urllib.request.urlopen(req, timeout=40))
+    for i in range(attempts):
+        try:
+            d = json.load(urllib.request.urlopen(req, timeout=40))
+            break
+        except Exception:
+            if i == attempts - 1:
+                raise
+            time.sleep(wait * (i + 1))
     if not d.get("found"):
         return None
     v = (d.get("conversion") or {}).get("views")
@@ -152,7 +161,12 @@ def main():
     print(f"모드: {'DRY_RUN(편집 안 함)' if dry else 'APPLY'} / 채널 {CHANNEL} / 대상 {dates}")
     failed = 0
     for date in dates:
-        conv = fetch_conversion(date)
+        try:
+            conv = fetch_conversion(date)
+        except Exception as e:  # 한 날짜의 조회 실패로 나머지 날짜까지 멈추지 않게
+            print(f"[{date}] 시트 조회 실패(재시도 후) → 건너뜀: {e}")
+            failed += 1
+            continue
         if conv is None:
             print(f"[{date}] 시트 전환 조회수 없음(빈칸/행없음) → 건너뜀")
             continue
