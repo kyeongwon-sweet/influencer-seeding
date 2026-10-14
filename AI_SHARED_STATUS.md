@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## ⚠️ 2026-10-14 [Codex 확인] 인지봇 Anthropic 1순위 복귀 보류 — 운영 API 키 검증 실패
+- **조건부 보류:** `negative-comment-monitor` workflow run **38513798111**의 `Verify Anthropic API key` 단계가 2026-10-14 14:06 KST에 즉시 실패했다. 로컬 키도 Haiku 4.5·Sonnet 5.5 모두 HTTP 400 `credit balance is too low`로 재현되어, **Anthropic API 크레딧 정상 확인 전에는 1순위를 바꾸지 않는다**는 요청 조건을 지켰다.
+- **운영 설정 무변경:** `monitor.yml` 4곳 + `youtube-owner-channel.yml` + `youtube-owner-coverage-audit.yml` + YouTube Ads targeted-rescan/survey/backfill의 `LLM_PROVIDER` 값은 모두 `gemini` 유지. `ANTHROPIC_MODEL=claude-haiku-4-5-20251001`, Gemini 키·폴백도 무손상.
+- **비용 계약 확인:** `src/pricing.js`에 `claude-haiku-4-5-20251001` 단가(input $1/M, output $5/M, cache read $0.10/M, cache create $1.25/M)가 이미 등록돼 있어 전환 후 비용 추정 경로는 준비됨.
+- **다음 조치:** `console.anthropic.com > Plans & Billing`에서 API 크레딧을 충전한 뒤 `verify_anthropic=true`를 재실행해 `Anthropic API verified` 로그를 확인해야 한다. 그때만 요청된 10곳을 `anthropic`으로 전환하고, 실행 로그의 `anthropicCalls>0`, `deferred=0`, LLM degraded 0을 종단 검증한다. 소유채널 2차 판정 `OWNED_BRAND_ESCALATION_MODEL`(Gemini 3.1 Pro)은 사용자 비용 결정 전까지 유지.
+
 ## 📌 2026-10-14 [사용자 결정] 4866행 `soosoo_beauty`(URL 빈칸·10-04 쫀득바 2차 캠페인) 제품 칸 = `P말` **유지**
 - 사용자 지시: "P말로 유지하자". 캠페인·캡션은 쫀득바(4813 `ig:DeE0dDhTvpM` JD혼과 동일)지만 **제품 칸을 JD혼 등으로 바꾸지 말 것**(감사·정리 작업에서 '오입력'으로 자동 교정 금지). URL 빈칸이라 DB·대시보드 영향 없음.
 - 같은 확인에서: 9/15 `ig:DdTfR1VTzxE` ma__si__jjung 말차 글은 시트 4953 1행·DB 1건(`c8e69328`)으로 **중복 아님**. 시트 전체 같은 글 키 2행 이상 0건.
