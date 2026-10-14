@@ -130,9 +130,10 @@ jobs:
           fi   # ts_list 분기 끝
 
           TOTAL=$(wc -l < /tmp/ts.txt | tr -d ' ')
+          sort -n /tmp/ts.txt > /tmp/ts.sorted
           echo "----------------------------------------"
           echo "페이지 $PAGES · 봇 메시지 $TOTAL건 발견"
-          echo "가장 오래된/최신 ts:"; sort -n /tmp/ts.txt | head -1; sort -n /tmp/ts.txt | tail -1
+          echo "가장 오래된/최신 ts:"; head -1 /tmp/ts.sorted; tail -1 /tmp/ts.sorted
           echo "----------------------------------------"
 
           if [ "$DRY_RUN" = "true" ]; then
@@ -143,7 +144,7 @@ jobs:
 
           # 2) 삭제. 오래된 것부터, max까지만. chat.delete는 Tier 3(분당 약 50) → 1.3초 간격.
           DONE=0; FAILED=0
-          for TS in $(sort -n /tmp/ts.txt); do
+          for TS in $(cat /tmp/ts.sorted); do
             if [ "$DONE" -ge "$MAX" ]; then echo "max($MAX) 도달 — 중단"; break; fi
             RESP=$(curl -s -X POST https://slack.com/api/chat.delete \
               -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
