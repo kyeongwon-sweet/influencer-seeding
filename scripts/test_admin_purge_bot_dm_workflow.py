@@ -115,3 +115,18 @@ def test_confirm_bound_to_resolved_room_deletes_only_own_bot_messages() -> None:
     assert "삭제 1건 / 실패 0건 / 발견 1건" in out
     deletes = [c for c in calls.splitlines() if "chat.delete" in c]
     assert len(deletes) == 1 and "ts=3.000003" in deletes[0]
+
+
+def test_ts_list_keeps_original_user_destination_instead_of_opening_app_dm() -> None:
+    rc, out, calls = _run(
+        TS_LIST="3.000003",
+        DRY_RUN="false",
+        CONFIRM="DELETE U0B2Y0ZC8QZ",
+    )
+    assert rc == 0, out
+    assert "원래 메시지 대상 사용자 ID 유지: U0B2Y0ZC8QZ" in out
+    assert "conversations.open" not in calls
+    deletes = [c for c in calls.splitlines() if "chat.delete" in c]
+    assert len(deletes) == 1
+    assert "channel=U0B2Y0ZC8QZ" in deletes[0]
+    assert "ts=3.000003" in deletes[0]
