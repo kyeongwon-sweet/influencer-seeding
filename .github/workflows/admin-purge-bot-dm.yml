@@ -91,11 +91,14 @@ jobs:
           CURSOR=""
           while : ; do
             PAGES=$((PAGES+1))
-            ARGS="channel=$CHANNEL&limit=200"
-            [ -n "$LATEST" ] && ARGS="$ARGS&latest=$LATEST"
-            [ -n "$CURSOR" ] && ARGS="$ARGS&cursor=$CURSOR"
+            ARGS=(
+              --data-urlencode "channel=$CHANNEL"
+              --data-urlencode "limit=200"
+            )
+            [ -n "$LATEST" ] && ARGS+=(--data-urlencode "latest=$LATEST")
+            [ -n "$CURSOR" ] && ARGS+=(--data-urlencode "cursor=$CURSOR")
             RESP=$(curl -s -G "https://slack.com/api/conversations.history" \
-              -H "Authorization: Bearer $SLACK_BOT_TOKEN" --data-urlencode "$ARGS" || true)
+              -H "Authorization: Bearer $SLACK_BOT_TOKEN" "${ARGS[@]}" || true)
             OK=$(echo "$RESP" | jq -r '.ok')
             if [ "$OK" != "true" ]; then
               echo "conversations.history 실패: $(echo "$RESP" | jq -r '.error // "unknown"')"
