@@ -6,6 +6,11 @@ name: Admin — Purge 여믄봇 DM messages
 #  - `chat.delete`는 봇 토큰으로 **봇 자신의 메시지만** 지울 수 있다 → 사람이 쓴 메시지는 원리적으로 못 지운다.
 #  - 기본은 dry_run=true(**세기만 하고 안 지움**). 실제 삭제는 dry_run=false **그리고** confirm에 정확히
 #    `DELETE`를 입력해야 진행한다.
+#  - 실제 삭제는 confirm에 **`DELETE <해석된 DM 채널 ID>`** 를 정확히 넣어야 진행한다(2026-10-14 재발방지).
+#    앱 재설치·토큰 교체 뒤에는 사람이 보던 D… 채널과 봇이 해석한 DM이 다를 수 있다
+#    (실제로 D0B2U2J8QNS 입력 → 봇은 D0B8FHE8R0A 를 잡음). dry-run이 보여 준 그 방에서만 지워지도록
+#    확인 문자열을 방 ID에 묶는다. 방이 바뀌면 즉시 중단.
+#  - dry-run은 토큰 봇 이름·대화 상대·최근 봇 메시지 3건을 출력한다 → 맞는 방인지 눈으로 확인 후 실행.
 #  - before(선택)로 "그 날짜 이전만" 지울 수 있다. 최근 알림은 남기고 옛것만 치울 때 쓴다.
 #  - max로 한 번에 지울 최대 건수를 제한한다(사고 시 피해 범위 축소).
 #  - ⚠️ 슬랙 메시지 삭제는 **되돌릴 수 없다.** 되돌리기 기능이 없다.
@@ -39,7 +44,7 @@ on:
         type: boolean
         default: true
       confirm:
-        description: "실제 삭제하려면 DELETE 를 정확히 입력 (dry_run=false일 때만 의미 있음)"
+        description: "실제 삭제: dry-run 로그 마지막 줄에 나온 'DELETE <채널ID>' 를 그대로 입력 (예: DELETE D0B8FHE8R0A)"
         required: false
         default: ""
 
@@ -60,10 +65,19 @@ jobs:
           set -euo pipefail
 
           if [ -z "${SLACK_BOT_TOKEN:-}" ]; then echo "SLACK_BOT_TOKEN 없음"; exit 1; fi
-          if [ "$DRY_RUN" != "true" ] && [ "$CONFIRM" != "DELETE" ]; then
-            echo "🛑 실제 삭제에는 confirm=DELETE 가 필요합니다. (지금 입력: '$CONFIRM')"
+          if [ "$DRY_RUN" != "true" ] && [[ "$CONFIRM" != DELETE\ * ]]; then
+            echo "🛑 실제 삭제에는 confirm='DELETE <채널ID>' 가 필요합니다. 먼저 dry-run으로 방을 확인하세요. (지금 입력: '$CONFIRM')"
             exit 1
           fi
+
+          # 토큰이 어느 봇인지 먼저 밝힌다(여믄봇/다른 봇 토큰 혼동 방지).
+          AUTH=$(curl -s -X POST https://slack.com/api/auth.test -H "Authorization: Bearer $SLACK_BOT_TOKEN" || true)
+          if [ "$(echo "$AUTH" | jq -r '.ok')" != "true" ]; then
+            echo "auth.test 실패: $(echo "$AUTH" | jq -r '.error // "unknown"')"; exit 1
+          fi
+          BOT_USER=$(echo "$AUTH" | jq -r '.user // ""')
+          BOT_ID=$(echo "$AUTH" | jq -r '.bot_id // ""')
+          echo "토큰 봇: ${BOT_USER:-?} (bot_id=${BOT_ID:-?}, team=$(echo "$AUTH" | jq -r '.team // "?"'))"
 
           # 사용자 ID가 들어오면 여믄봇 관점의 현재 DM 채널 ID로 해석한다.
           # 앱 재설치·토큰 교체 뒤에는 사람이 보는 예전 D... 링크와 봇이 접근할 수 있는
@@ -81,6 +95,21 @@ jobs:
             echo "사용자 ID에서 DM 채널 해석 완료: $CHANNEL"
           fi
 
+          # 어느 방인지 밝힌다. conversations.info(im:read)가 없으면 '확인 불가'로만 표기하고 진행.
+          INFO=$(curl -s -G https://slack.com/api/conversations.info             -H "Authorization: Bearer $SLACK_BOT_TOKEN" --data-urlencode "channel=$CHANNEL" || true)
+          PEER=$(echo "$INFO" | jq -r 'if .ok then (.channel.user // "") else "" end' 2>/dev/null || true)
+          if [ -n "$PEER" ]; then echo "대상 방: $CHANNEL · 대화 상대: $PEER"
+          else echo "대상 방: $CHANNEL · 대화 상대: 확인 불가($(echo "$INFO" | jq -r '.error // "?"' 2>/dev/null || echo '?'))"; fi
+
+          # 실제 삭제는 dry-run에서 본 '바로 그 방'일 때만. 방이 바뀌었으면(토큰 교체 등) 지우지 않는다.
+          EXPECTED_CONFIRM="DELETE $CHANNEL"
+          if [ "$DRY_RUN" != "true" ] && [ "$CONFIRM" != "$EXPECTED_CONFIRM" ]; then
+            echo "🛑 확인 문자열이 해석된 방과 다릅니다 → 삭제하지 않습니다."
+            echo "   입력: '$CONFIRM' / 이 방을 지우려면: '$EXPECTED_CONFIRM'"
+            echo "   방이 의도와 다르면 dry-run으로 최근 메시지를 먼저 확인하세요."
+            exit 1
+          fi
+
           # before(KST 날짜) → epoch. 슬랙 ts는 UTC epoch라 KST 자정을 UTC로 환산한다.
           LATEST=""
           if [ -n "$BEFORE" ]; then
@@ -91,7 +120,7 @@ jobs:
           fi
 
           # 1) 봇이 보낸 메시지 ts 수집.
-          : > /tmp/ts.txt
+          : > /tmp/ts.txt; : > /tmp/other.txt; : > /tmp/sample.txt
           PAGES=0
 
           # 1-a) ts_list를 받았으면 DM을 읽지 않는다 → `im:history` 스코프가 없어도 동작한다.
@@ -120,8 +149,13 @@ jobs:
               echo "conversations.history 실패: $(echo "$RESP" | jq -r '.error // "unknown"')"
               exit 1
             fi
-            # 봇 메시지 판별: bot_id가 있는 메시지(사람 메시지에는 없다)
-            echo "$RESP" | jq -r '.messages[] | select(.bot_id != null) | .ts' >> /tmp/ts.txt
+            # 봇 메시지 판별: 이 토큰의 봇(bot_id)이 쓴 것만 — chat.delete가 지울 수 있는 것만 센다.
+            # (bot_id를 못 얻으면 예전처럼 봇 메시지 전체)
+            echo "$RESP" | jq -r --arg b "$BOT_ID"               '.messages[] | select(.bot_id != null and ($b == "" or .bot_id == $b)) | .ts' >> /tmp/ts.txt
+            echo "$RESP" | jq -r --arg b "$BOT_ID"               '.messages[] | select(.bot_id != null and $b != "" and .bot_id != $b) | .ts' >> /tmp/other.txt || true
+            if [ "$PAGES" -eq 1 ]; then
+              echo "$RESP" | jq -r --arg b "$BOT_ID" '[.messages[] | select(.bot_id != null and ($b == "" or .bot_id == $b))] | .[0:3][] | "  · \(.ts)  \((.text // "") | gsub("\n"; " ") | .[0:80])"' > /tmp/sample.txt || true
+            fi
             CURSOR=$(echo "$RESP" | jq -r '.response_metadata.next_cursor // ""')
             [ -z "$CURSOR" ] && break
             sleep 1.2   # conversations.history 레이트리밋(Tier 3) 여유
@@ -134,11 +168,15 @@ jobs:
           echo "----------------------------------------"
           echo "페이지 $PAGES · 봇 메시지 $TOTAL건 발견"
           echo "가장 오래된/최신 ts:"; head -1 /tmp/ts.sorted; tail -1 /tmp/ts.sorted
+          OTHER=$(wc -l < /tmp/other.txt | tr -d ' ')
+          [ "$OTHER" -gt 0 ] && echo "다른 봇 메시지 ${OTHER}건은 이 토큰으로 못 지우므로 제외"
+          if [ -s /tmp/sample.txt ]; then echo "이 방의 최근 봇 메시지(맞는 방인지 확인):"; cat /tmp/sample.txt
+          else echo "최근 메시지 견본 없음(ts_list 입력이거나 봇 메시지 0건)"; fi
           echo "----------------------------------------"
 
           if [ "$DRY_RUN" = "true" ]; then
             echo "🔎 dry-run — 아무것도 지우지 않았습니다."
-            echo "실제로 지우려면 dry_run=false + confirm=DELETE 로 다시 실행하세요."
+            echo "위 방이 맞으면: dry_run=false, confirm='$EXPECTED_CONFIRM' 로 다시 실행하세요."
             exit 0
           fi
 
