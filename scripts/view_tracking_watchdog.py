@@ -32,6 +32,8 @@ import urllib.parse
 import urllib.request
 from datetime import date, datetime, timedelta, timezone
 
+from posted_at_mismatch import CHECK_HINT, describe
+
 GRACE_DAYS = int(os.getenv("VIEW_WATCHDOG_GRACE_DAYS", "2"))
 # 삭제 검토요청(review_requested_at)이 뜬 지 이 일수 이상 지났는데 아직 활성이면
 # '확정삭제 방치'로 별도 경고. not_found는 자동종료를 안 하고 사람 손만 기다리므로
@@ -126,7 +128,52 @@ def fetch_active_posts() -> list[dict]:
     return posts
 
 
-def build(today: date) -> dict:
+def load_collector_reasons(diag_dir: str) -> dict[str, dict]:
+    """수집기가 남긴 '왜 저장 안 했나' 기록(view_missing_events_*.jsonl)을 post_id별 최신 1건으로.
+
+    2026-10-14: `p/DdTfR1VTzxE`는 수집기가 매번 응답을 받고도 '게시일 불일치'로 버렸는데, 이 알림은
+    "한 번도 수집 안 됨"만 보여 원인(시트 링크가 다른 글)을 사람이 다시 파야 했다. 워크플로가 최근
+    수집 실행의 진단 산출물을 내려받아 두면 여기서 읽어 사유를 붙인다. 없거나 깨져 있으면 빈 dict —
+    사유 표시는 부가 정보라 워치독 본연의 감시는 그대로 돈다.
+    """
+    reasons: dict[str, dict] = {}
+    if not diag_dir or not os.path.isdir(diag_dir):
+        return reasons
+    for root, _dirs, files in os.walk(diag_dir):
+        for name in files:
+            if not (name.startswith("view_missing_events_") and name.endswith(".jsonl")):
+                continue
+            try:
+                lines = open(os.path.join(root, name), encoding="utf-8").read().splitlines()
+            except OSError:
+                continue
+            for line in lines:
+                try:
+                    ev = json.loads(line)
+                except ValueError:
+                    continue
+                pid = ev.get("post_id")
+                if not pid:
+                    continue
+                prev = reasons.get(pid)
+                if prev is None or str(ev.get("measured_at") or "") >= str(prev.get("measured_at") or ""):
+                    reasons[pid] = ev
+    return reasons
+
+
+def reason_text(ev: dict | None) -> str:
+    """플래그 한 줄 아래 붙일 사유. 기록이 없으면 그 사실 자체가 정보다(수집 대상에서 빠졌을 수 있음)."""
+    if not ev:
+        return "수집기 사유 기록 없음 — 수집 대상에서 빠졌을 수 있음"
+    reason = ev.get("reason")
+    if reason == "posted_at_mismatch":
+        return f"수집은 되는데 버려짐: {describe(ev)} → {CHECK_HINT}"
+    if reason == "no_collector_response":
+        return "수집기 응답 없음 — 비공개·삭제·지역제한 가능, 링크 직접 확인"
+    return f"수집기 기록: {reason}"
+
+
+def build(today: date, reasons: dict[str, dict] | None = None) -> dict:
     posted_cutoff = (today - timedelta(days=GRACE_DAYS)).isoformat()
     created_cutoff = (today - timedelta(days=1)).isoformat()
     review_cutoff = (today - timedelta(days=REVIEW_STALE_DAYS)).isoformat()
@@ -181,6 +228,7 @@ def build(today: date) -> dict:
             "posted_at": posted,
             "created_at": created,
             "url": url,
+            "reason": reason_text((reasons or {}).get(p["id"])),
         }
         (bad_url if is_uncollectable_url(url) else flagged).append(row)
 
@@ -206,6 +254,8 @@ def slack_lines(result: dict) -> str:
     ]
     for r in result["flagged"][:20]:
         parts.append(f"• {r['posted_at']} `{r['channel_type']}` {r['account_name']} — {r['url']}")
+        if r.get("reason"):
+            parts.append(f"   ↳ {r['reason']}")
     if n > 20:
         parts.append(f"  …외 {n - 20}건")
     if result["bad_url_count"]:
@@ -250,9 +300,12 @@ def main() -> int:
     parser.add_argument("--date", default=datetime.now(KST).date().isoformat())
     parser.add_argument("--send", action="store_true", help="Slack으로 결과 발송")
     parser.add_argument("--out", default="")
+    parser.add_argument("--diag-dir", default="", help="수집기 진단 산출물(view_missing_events_*.jsonl) 폴더")
     args = parser.parse_args()
 
-    result = build(date.fromisoformat(args.date))
+    reasons = load_collector_reasons(args.diag_dir)
+    print(f"[VIEW_WATCHDOG] collector reasons loaded: {len(reasons)}")
+    result = build(date.fromisoformat(args.date), reasons)
     print("[VIEW_WATCHDOG]", json.dumps(result, ensure_ascii=False))
     if args.out:
         with open(args.out, "w", encoding="utf-8") as f:

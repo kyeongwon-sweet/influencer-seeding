@@ -24,6 +24,7 @@ from not_found_policy import (
     normalize_instagram_handle,
 )
 from slack_alert import send_bot_message
+from posted_at_mismatch import alert_text as posted_at_mismatch_alert_text
 
 
 OVERRECORDED_WARNINGS = []
@@ -607,24 +608,13 @@ def _flush_posted_at_mismatch_alert():
     URL 키(shortcode)는 정확히 일치하므로 이건 '다른 게시물 응답'이 아니라 **시트 게시일 오입력**이다.
     가드는 보수적으로 유지하되(값을 함부로 넣지 않음), 조용히 사라지지 않도록 알림만 낸다.
     ⚠️ posted_at은 절대 자동 수정하지 않는다 — 사람이 시트에서 정정해야 다음 수집부터 자동 복구된다.
+    ⚠️ 2026-10-14: shortcode가 일치해도 '시트에 붙은 링크가 맞는 글'은 아닐 수 있다(DdTfR1VTzxE 사고).
+       날짜만 고치라고 안내하지 않는다 — 문구 정본은 posted_at_mismatch.py.
     """
     events = [e for e in MISSING_VIEW_EVENTS if e.get("reason") == "posted_at_mismatch"]
     if not events:
         return
-    sample = events[:8]
-    lines = [
-        f"🚨 [협찬 모니터링] 시트 게시일이 실제와 달라 조회수를 버린 게시물 {len(events)}건",
-        "Apify는 값을 정상 반환했지만 게시일이 1일 초과로 어긋나 저장하지 않았습니다.",
-        "**시트의 게시일을 실제 값으로 정정**하면 다음 수집부터 자동 복구됩니다(게시일은 자동 수정하지 않습니다).",
-    ]
-    for e in sample:
-        lines.append(
-            f"- {e.get('account_name') or '-'} 시트={e.get('expected_posted_at')} "
-            f"실제={e.get('actual_posted_at')} (미저장 조회수 {e.get('returned_metric')}) {e.get('url')}"
-        )
-    if len(events) > len(sample):
-        lines.append(f"- ...외 {len(events) - len(sample)}건")
-    _send_status_alert("\n".join(lines))
+    _send_status_alert(posted_at_mismatch_alert_text(events))
 
 
 def _record_not_found_observation(db, post: dict, detected: bool, *, confirmed: bool = False):
@@ -1888,7 +1878,12 @@ def run():
                             "Instagram",
                             "posted_at_mismatch",
                             stat=s,
-                            extra={"expected_posted_at": str(post_date), "actual_posted_at": str(stat_date)},
+                            extra={
+                                "expected_posted_at": str(post_date),
+                                "actual_posted_at": str(stat_date),
+                                # 링크가 다른 계정 글인지 사람이 바로 알 수 있게(2026-10-14 DdTfR1VTzxE)
+                                "actual_owner": s.get("owner_username"),
+                            },
                         )
                         print(
                             f"  [WARN] IG 게시일 불일치 응답 제외: {post['url']} "
