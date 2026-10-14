@@ -1407,6 +1407,9 @@ test("exportStats phase 2 writes date values by URL key and guards row-based for
   assert.match(body, /keyRowCounts\[key\] > 1 \|\| latestKeyCounts\[key\] > 1/);
   assert.doesNotMatch(body, /writeColumnRuns_\(sheet, dc\.col/);
   assert.match(body, /const formulaUrls = sheet\.getRange\(CONFIG\.DATA_START_ROW, fieldCols\.url, nRows, 1\)\.getValues\(\)/);
+  assert.match(body, /const latestUrlCheck = classifySheetSyncUrl_\(String\(formulaUrls\[i\]\[0\] \|\| ""\)\.trim\(\)\)/);
+  assert.match(body, /const latestKey = latestUrlCheck\.valid \? linkKey_\(latestUrlCheck\.url\) : ""/);
+  assert.doesNotMatch(body, /const latestKey = linkKey_\(String\(formulaUrls\[i\]\[0\] \|\| ""\)\.trim\(\)\)/);
   assert.match(body, /const originalKey = rowKeys\[i\] \|\| ""/);
   assert.match(body, /if \(urlOrderChanged\)[\s\S]*?return false/);
 });

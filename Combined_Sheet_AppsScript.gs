@@ -3281,7 +3281,11 @@ function exportStatsWithOptions_(options) {
       const formulaUrls = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.url, nRows, 1).getValues();
       let urlOrderChanged = false;
       for (let i = 0; i < nRows; i++) {
-        const latestKey = linkKey_(String(formulaUrls[i][0] || "").trim());
+        // 최초 rowKeys와 같은 분류·정규화 규칙으로 비교한다. 원본 URL에 바로 linkKey_를
+        // 적용하면 지원 밖/비게시물/명시적 보류 행도 키가 생겨, 행이 그대로인데도
+        // "행 정렬"로 오판하고 exportStats가 영구 재시도된다(2026-10-14).
+        const latestUrlCheck = classifySheetSyncUrl_(String(formulaUrls[i][0] || "").trim());
+        const latestKey = latestUrlCheck.valid ? linkKey_(latestUrlCheck.url) : "";
         const originalKey = rowKeys[i] || ""; // 빈 URL: 초기 null과 재조회 ""를 같은 값으로 취급
         if (latestKey !== originalKey) { urlOrderChanged = true; break; }
       }
