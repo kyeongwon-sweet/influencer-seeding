@@ -16,7 +16,7 @@ on:
         description: "Expected posted_at (YYYY-MM-DD)"
         required: true
       expected_ended_at:
-        description: "Expected ended_at (YYYY-MM-DD)"
+        description: "Expected ended_at (YYYY-MM-DD, or __NULL__)"
         required: true
       expected_cost:
         description: "Expected cost"

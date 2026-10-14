@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 
-from delete_specific_sponsored_post import ExpectedPost, preflight_errors
+from delete_specific_sponsored_post import (
+    ExpectedPost,
+    parse_expected_nullable_date,
+    preflight_errors,
+)
 
 
 EXPECTED = ExpectedPost(
@@ -46,3 +50,10 @@ def test_stat_row_or_duplicate_row_aborts() -> None:
         "expected": 1,
         "actual": 2,
     }]
+
+def test_null_date_sentinel_maps_to_empty_expected_value() -> None:
+    assert parse_expected_nullable_date("__NULL__") == ""
+
+
+def test_real_date_is_preserved() -> None:
+    assert parse_expected_nullable_date("2026-10-14") == "2026-10-14"

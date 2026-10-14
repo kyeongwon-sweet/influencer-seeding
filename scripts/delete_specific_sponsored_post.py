@@ -31,6 +31,18 @@ POST_SELECT = (
     "asset_name,project_name,product_name,notes,content_summary"
 )
 
+NULL_DATE_SENTINEL = "__NULL__"
+
+
+def parse_expected_nullable_date(value: str) -> str:
+    """Represent a required workflow input whose expected DB date is NULL.
+
+    GitHub workflow_dispatch rejects an empty value for required inputs, so
+    callers pass ``__NULL__`` and the strict comparison keeps using ``""``
+    for a missing database date.
+    """
+    return "" if value == NULL_DATE_SENTINEL else value
+
 
 def fetch_rows(post_id: str) -> list[dict[str, Any]]:
     db = get_client()
@@ -107,7 +119,7 @@ def main() -> None:
         url=args.expected_url,
         account_name=args.expected_account_name,
         posted_at=args.expected_posted_at,
-        ended_at=args.expected_ended_at,
+        ended_at=parse_expected_nullable_date(args.expected_ended_at),
         cost=args.expected_cost,
         stats_count=args.expected_stats_count,
     )
