@@ -1,5 +1,18 @@
 # AI Shared Status
 
+## 📮 2026-10-14 [사용자 결정 → Codex 인계] `ig:DdTfR1VTzxE` 행 = soosoo_beauty 행으로 되돌림 (10-13 'ma__si__jjung 정정' 결정을 대체)
+> 발단: 인지봇 10:15 '수집 사각 감지 1건' — 2026-10-04 `무상시딩 (영상)` ma__si__jjung `p/DdTfR1VTzxE`, 통계 0행.
+- **원인(실측):** 수집기는 이 글을 매번 정상으로 받아오지만 `[WARN] IG 게시일 불일치 응답 제외 (sheet=2026-10-04, apify=2026-09-15)`로 버린다(Daily Collect 38465781398·38474358761·38484076634). 수집기 버그 아님 — **링크가 틀렸다.**
+- **근거:** `DdTfR1VTzxE` 실물 = ma__si__jjung **2026-09-15 '#광고' 라라스윗 말차 파인트** 글(로그인 브라우저 og:url·time 확인). 이 행의 나머지 정보(10-04 · 무디 · 쫀득바 2차 캠페인 - 뷰티 · ₩12,599 · 요약 "일반 아이스크림과 다른 쫀득함 ↔️ GS25 1+1")는 ma__si__jjung의 **진짜 10-04 쫀득바 글 `ig:DeE0dDhTvpM`(시트 별도 행·DB 통계 9행)과 제품만 빼고 동일**. 그대로 두면 비용 ₩12,599 이중계상. soosoo_beauty 계정엔 9/25~10/11 라라스윗 글 없음(전부 뷰티 협찬) → 아직 미게시로 판단. 10-13 '채널명=ma__si__jjung' 결정은 이 날짜·제품 불일치가 드러나기 전 판단이었다.
+- **사용자 결정(10-14):** soosoo_beauty 행으로 되돌리고, 잘못 들어간 링크는 비워 '아직 안 올라옴'으로 둔다. 잘못 생긴 DB 1건은 정리.
+- **Codex 실행(순서 중요 — DB 먼저, 그다음 시트):**
+  1. 시트 행은 **URL 키 `ig:DdTfR1VTzxE`로 찾기**(현재 대략 4866행, 행번호 믿지 말 것). 쓰기 직전 재확인 + 대상 행 A:FH 값·수식 백업.
+  2. DB `ig:DdTfR1VTzxE`(id `520875e4-bd2a-4cbb-a079-9feaf3df93c7`) 삭제. 조건 확인: 통계 0행·`created_by=sheet-bulk`·`created_at=2026-10-13T03:24Z`(10-13 syncAll이 잘못 등록). 기존 `Delete Specific Sponsored Post` 경로 사용. **⚠️ DB를 남긴 채 시트 B만 비우면 pullFromDB가 이 링크를 새 행으로 되살린다.**
+  3. 같은 시트 행에서 **C열 → `soosoo_beauty`, B열(URL) → 빈칸**. 다른 칸(A 10-04·비용·소재·제품 P말 등) 무변경.
+  4. 검증: 시트 `DdTfR1VTzxE` 0행 · DB 0건 · `runDbPullSyncNow` 후에도 재생성 0 · `ig:DeE0dDhTvpM`(ma__si__jjung 10-04) 행·통계 불변 · formula-audit `orphanRows=0` · 내일 '수집 사각 감지'에 이 글 미등장.
+- soosoo_beauty가 실제로 올리면 그 링크를 B열에 넣으면 된다(그때 정상 동기화). Slack 알림 원문 삭제는 사용자가 직접(Claude 영구삭제 금지).
+- 이번 조사에서 Claude의 DB·시트 쓰기 0건(인스타 페이지 읽기만).
+
 ## ✅ 2026-10-14 [Codex 라이브배포·검증] 틱톡 단축링크 시트 해석 반영 (`1ce26a8c`)
 - **배포:** 최신 `origin/main=35ae361c`에서 `083d5905` 계정·채널 주소 제외와 `1ce26a8c` 단축링크 해석을 함께 재검증했다. guarded `apps-script:deploy`를 10:06 KST 실행했고, 라이브 pull에서 정본 **10파일**, repo 소스 **8파일 전부 일치**, deprecated/임시 파일 0건을 확인했다.
 - **동작:** `syncNew`·`syncAll`·`pullFromDB`가 키 비교 전에 `vt/vm.tiktok.com`을 서버의 정식 TikTok 게시물 URL로 해석해 **시트 B셀 자체를 정식 주소로 저장**한다. 쓰기 직전 셀값 재확인, 해석 실패 시 셀 무변경·TikTok 신규 append 보류, 기존 정식 행과 겹치면 자동삭제 없이 행번호 경고를 유지한다. `083d5905`의 TikTok 프로필·YouTube 채널 비게시물 제외도 그대로 포함됐다.
