@@ -74,6 +74,9 @@ def _run(**env_over: str) -> tuple[int, str, str]:
             "MAX": "200",
             "DRY_RUN": "true",
             "CONFIRM": "",
+            "TOKEN_SOURCE": "github",
+            "CRON_SECRET": "cron-test",
+            "APP_URL": "https://example.invalid",
             "CALLS": str(calls),
         }
         env.update(env_over)
