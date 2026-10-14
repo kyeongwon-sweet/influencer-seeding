@@ -19,9 +19,9 @@ on:
   workflow_dispatch:
     inputs:
       channel:
-        description: "DM 채널 ID (황경원 DM = D0B2U2J8QNS)"
+        description: "DM 채널 ID 또는 Slack 사용자 ID (황경원 = U0B2Y0ZC8QZ)"
         required: true
-        default: "D0B2U2J8QNS"
+        default: "U0B2Y0ZC8QZ"
       before:
         description: "이 날짜(KST, YYYY-MM-DD) '이전' 메시지만 대상. 비우면 전체"
         required: false
@@ -63,6 +63,22 @@ jobs:
           if [ "$DRY_RUN" != "true" ] && [ "$CONFIRM" != "DELETE" ]; then
             echo "🛑 실제 삭제에는 confirm=DELETE 가 필요합니다. (지금 입력: '$CONFIRM')"
             exit 1
+          fi
+
+          # 사용자 ID가 들어오면 여믄봇 관점의 현재 DM 채널 ID로 해석한다.
+          # 앱 재설치·토큰 교체 뒤에는 사람이 보는 예전 D... 링크와 봇이 접근할 수 있는
+          # DM 채널이 달라질 수 있으므로 사용자 ID가 더 안정적인 입력이다.
+          if [[ "$CHANNEL" == U* ]]; then
+            OPEN_RESP=$(curl -s -X POST https://slack.com/api/conversations.open \
+              -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+              -H "Content-type: application/x-www-form-urlencoded" \
+              --data-urlencode "users=$CHANNEL")
+            if [ "$(echo "$OPEN_RESP" | jq -r '.ok')" != "true" ]; then
+              echo "conversations.open 실패: $(echo "$OPEN_RESP" | jq -r '.error // "unknown"')"
+              exit 1
+            fi
+            CHANNEL=$(echo "$OPEN_RESP" | jq -r '.channel.id')
+            echo "사용자 ID에서 DM 채널 해석 완료: $CHANNEL"
           fi
 
           # before(KST 날짜) → epoch. 슬랙 ts는 UTC epoch라 KST 자정을 UTC로 환산한다.
