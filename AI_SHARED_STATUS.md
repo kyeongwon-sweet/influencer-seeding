@@ -1,5 +1,14 @@
 # AI Shared Status
 
+## 📮 2026-10-14 [Claude 코드 완료 → Codex 라이브 배포 인계] 틱톡 단축링크를 시트에서 정식 주소로 저장 · pullFromDB 중복 추가 차단 (`1ce26a8c`)
+- **원인(10-13 재발 실증):** 시트에 `vt.tiktok.com` 단축링크 입력 → 서버(bulk)는 풀어서 정식 주소로 DB 저장 → Apps Script `linkKey_`는 못 풀어 pullFromDB가 "DB에만 있는 글"로 오판 → 정식 주소 행을 시트 끝에 또 추가(위성 틱톡 8건, 09월엔 51건).
+- **✅ 서버(배포 완료, Vercel success):** `POST /api/sponsored-posts/resolve-short-links` — CRON_SECRET(fail-closed), DB 쓰기 없음, 최대 200개, 쓰기 경로와 같은 `resolveTikTokShortUrl`. 미인증 호출 401 확인. 실측: `vt.tiktok.com/ZSboSxcJg` → `@ssulbox_1/photo/7696140243162074388`, `ZSboAr765` → `@issuetteugi/photo/7696141069397806357`(DB 글 ID와 일치).
+- **📮 Codex: repo `Combined_Sheet_AppsScript.gs` 라이브 반영 필요.** 변경점: `CONFIG.SHORT_LINK_RESOLVE_URL` · `isTikTokShortLink_` · `fetchShortLinkResolutions_` · `resolveSheetShortLinks_`(단축링크 셀을 정식 주소로 바꿔 저장, **쓰기 직전 셀 재확인**, 못 풀면 셀 그대로) · `shortLinkNote_` · `runSync_` 맨 앞에서 해석 · `pullFromDB`가 키 목록 만들기 전에 해석하고 **못 푼 단축링크가 남으면 그 실행의 틱톡 신규 행 추가 보류** · 풀고 나니 같은 글 행이 있으면 **지우지 않고** 알림만.
+  - 배포 전 라이브≠repo 여부 확인(guarded push 절차), 배포 후 live pull 일치 확인.
+  - 라이브 검증: 편집기에서 `Logger.log(JSON.stringify(fetchShortLinkResolutions_(["https://vt.tiktok.com/ZSboSxcJg/"])))` → `…/@ssulbox_1/photo/7696140243162074388/` 기대. 현재 시트 단축링크 0행이라 일상 실행에선 '🔗' 줄이 안 나오는 게 정상.
+- **테스트:** 실물 Apps Script 코드를 가짜 시트·UrlFetchApp에서 실행하는 `web/tests/apps-script-short-links.test.ts` 7개(변환·실패시 무변경·ID 없는 응답 거부·중복 알림·판정 서버와 일치·호출 순서). 전체 653/653 · tsc · build 통과.
+- **남은 정리(사람/Codex):** 현 4945~4952 위성 틱톡 8행(pullFromDB가 붙인 정식 주소 행)은 기획자·소재명·10-13 값 빈칸 — 단축 행은 이미 삭제됨. 메타는 팀 입력 필요, 값은 다음 exportStats 빈칸채움 확인.
+
 ## ✅ 2026-10-14 [Codex 완료·라이브검증] 썰뜨기 TikTok 프로필 행/DB 삭제 + 계정주소 재유입 차단 + pullFromDB 실행시간 확인
 - **시트 선삭제·백업:** URL 문자열이 아니라 정규화된 정확한 키 `https://www.tiktok.com/@sseoltteugi/`로 재식별한 현재 4944행 1건을 확인했다. 삭제 직전 지문은 `계정=썰뜨기 (틱톡) · 게시일=2026-10-01 · 비용=0 · 누적/증분 공란 · 날짜값 0 · 상태=트래킹 종료`였다. 외부 백업 `_codex_sseoltteugi_profile_backup_20261014_092810`(ID `1brJvVwKwNUvLZ8GmrnOErFJx2ju7s-w2as-2lWQiysw`)에 A:FH 값·수식과 메타데이터를 저장한 뒤 그 한 행만 삭제했다. 시트 lastRow 4,953→4,952, 대상 URL 잔존 0건.
 - **DB 엄격 삭제:** `delete_specific_sponsored_post.py` 드라이런 `38489472150`에서 `id=1a885fba-ee0d-4c09-8756-6a40e3e00421 · URL/계정 정확 일치 · posted_at=ended_at=2026-10-01 · cost=0 · post_daily_stats=0`을 다시 확인했다. 사용자 요청 순서대로 시트 삭제 뒤 실제 실행 `38490520055`에서 정확히 1행만 삭제했고, 사후 동일 ID 0행·통계 0행이다.
