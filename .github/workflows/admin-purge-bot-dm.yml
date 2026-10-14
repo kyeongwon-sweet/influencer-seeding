@@ -88,6 +88,7 @@ jobs:
           # 단, ts_list는 이미 사람이 검증한 메시지 ID를 원래 chat.postMessage 대상(U...)에서
           # 지우는 복구 경로다. 이때 conversations.open으로 바꾸면 별도 앱 DM(D...)을 잡아
           # 셀프 DM 메시지를 전부 channel_not_found로 놓친다.
+          DELETE_AS_USER_ARGS=()
           if [[ "$CHANNEL" == U* ]] && [ -z "$TS_LIST" ]; then
             OPEN_RESP=$(curl -s -X POST https://slack.com/api/conversations.open \
               -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
@@ -101,6 +102,10 @@ jobs:
             echo "사용자 ID에서 DM 채널 해석 완료: $CHANNEL"
           elif [[ "$CHANNEL" == U* ]]; then
             echo "ts_list 입력 — 원래 메시지 대상 사용자 ID 유지: $CHANNEL"
+            # chat.postMessage(channel=U...)로 만들어진 Slackbot/셀프 DM은 현재 봇의
+            # D... 채널로 다시 열리지 않는다. 이 복구 경로에서만 메시지를 쓴 주체로
+            # 삭제하도록 요청한다. 다른 방/일반 DM 삭제에는 적용하지 않는다.
+            DELETE_AS_USER_ARGS+=(--data-urlencode "as_user=true")
           fi
 
           # 어느 방인지 밝힌다. conversations.info(im:read)가 없으면 '확인 불가'로만 표기하고 진행.
@@ -195,7 +200,8 @@ jobs:
             RESP=$(curl -s -X POST https://slack.com/api/chat.delete \
               -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
               -H "Content-type: application/x-www-form-urlencoded" \
-              --data-urlencode "channel=$CHANNEL" --data-urlencode "ts=$TS")
+              --data-urlencode "channel=$CHANNEL" --data-urlencode "ts=$TS" \
+              "${DELETE_AS_USER_ARGS[@]}")
             if echo "$RESP" | jq -e '.ok' >/dev/null; then
               DONE=$((DONE+1))
             else

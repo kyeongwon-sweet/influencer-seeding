@@ -130,3 +130,4 @@ def test_ts_list_keeps_original_user_destination_instead_of_opening_app_dm() -> 
     assert len(deletes) == 1
     assert "channel=U0B2Y0ZC8QZ" in deletes[0]
     assert "ts=3.000003" in deletes[0]
+    assert "as_user=true" in deletes[0]
