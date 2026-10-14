@@ -1,7 +1,7 @@
 name: Admin — Delete Slack message
 
-# 여믄봇이 자기가 보낸 슬랙 메시지(ts)를 삭제. 정정/중복/고아 스레드 답글 청소용. 수동 전용.
-# chat.delete는 봇이 '자기 메시지'만 지울 수 있어 안전(여믄봇 발송분만 대상).
+# 봇이 자기가 보낸 슬랙 메시지(ts)를 삭제. 정정/중복/고아 알림 청소용. 수동 전용.
+# 작성자·본문 2개 조각·답글 0건을 먼저 확인하며, 하나라도 다르면 삭제하지 않는다.
 on:
   workflow_dispatch:
     inputs:
@@ -20,17 +20,32 @@ on:
         options:
           - default
           - inji
+      expected_author_user:
+        description: "삭제 대상 작성자 Slack user ID"
+        required: true
+      expected_text_1:
+        description: "본문에 반드시 있어야 할 문자열 1"
+        required: true
+      expected_text_2:
+        description: "본문에 반드시 있어야 할 문자열 2"
+        required: true
 
 jobs:
   delete:
     runs-on: ubuntu-latest
     steps:
-      - name: chat.delete
+      - name: Verify exact target, delete once, verify absence
         env:
           DEFAULT_SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           INJIBOT_SLACK_TOKEN: ${{ secrets.INJIBOT_SLACK_TOKEN }}
           BOT: ${{ github.event.inputs.bot }}
+          CHANNEL: ${{ github.event.inputs.channel }}
+          MESSAGE_TS: ${{ github.event.inputs.ts }}
+          EXPECTED_AUTHOR_USER: ${{ github.event.inputs.expected_author_user }}
+          EXPECTED_TEXT_1: ${{ github.event.inputs.expected_text_1 }}
+          EXPECTED_TEXT_2: ${{ github.event.inputs.expected_text_2 }}
         run: |
+          set -euo pipefail
           if [ "$BOT" = "inji" ]; then
             SLACK_BOT_TOKEN="$INJIBOT_SLACK_TOKEN"
           else
@@ -40,10 +55,67 @@ jobs:
             echo "선택한 봇 토큰이 없습니다"
             exit 1
           fi
-          resp=$(curl -s -X POST https://slack.com/api/chat.delete \
+
+          before=$(curl -sS -G https://slack.com/api/conversations.replies \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            --data-urlencode "channel=$CHANNEL" \
+            --data-urlencode "ts=$MESSAGE_TS" \
+            --data-urlencode "limit=100")
+          echo "$before" | jq -e '.ok == true' >/dev/null || {
+            echo "사전 조회 실패: $(echo "$before" | jq -r '.error // "unknown"')"
+            exit 1
+          }
+
+          message_count=$(echo "$before" | jq '.messages | length')
+          actual_ts=$(echo "$before" | jq -r '.messages[0].ts // ""')
+          actual_author=$(echo "$before" | jq -r '.messages[0].user // ""')
+          actual_text=$(echo "$before" | jq -r '.messages[0].text // ""')
+          reply_count=$(echo "$before" | jq -r '.messages[0].reply_count // 0')
+          if [ "$message_count" -ne 1 ] || [ "$reply_count" -ne 0 ]; then
+            echo "답글 0건 가드 실패: messages=$message_count reply_count=$reply_count"
+            exit 1
+          fi
+          if [ "$actual_ts" != "$MESSAGE_TS" ] || [ "$actual_author" != "$EXPECTED_AUTHOR_USER" ]; then
+            echo "대상 식별 가드 실패: ts=$actual_ts author=$actual_author"
+            exit 1
+          fi
+          if [[ "$actual_text" != *"$EXPECTED_TEXT_1"* ]] || [[ "$actual_text" != *"$EXPECTED_TEXT_2"* ]]; then
+            echo "본문 가드 실패"
+            exit 1
+          fi
+          echo "사전검증 통과: ts=$actual_ts author=$actual_author replies=$reply_count"
+
+          resp=$(curl -sS -X POST https://slack.com/api/chat.delete \
             -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
             -H "Content-type: application/x-www-form-urlencoded" \
-            --data-urlencode "channel=${{ github.event.inputs.channel }}" \
-            --data-urlencode "ts=${{ github.event.inputs.ts }}")
+            --data-urlencode "channel=$CHANNEL" \
+            --data-urlencode "ts=$MESSAGE_TS")
           echo "$resp"
-          echo "$resp" | grep -q '"ok":true' || { echo "삭제 실패"; exit 1; }
+          echo "$resp" | jq -e '.ok == true' >/dev/null || { echo "삭제 실패"; exit 1; }
+
+          after=$(curl -sS -G https://slack.com/api/conversations.replies \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            --data-urlencode "channel=$CHANNEL" \
+            --data-urlencode "ts=$MESSAGE_TS" \
+            --data-urlencode "limit=100")
+          if echo "$after" | jq -e '.ok == false and (.error == "message_not_found" or .error == "thread_not_found")' >/dev/null; then
+            echo "사후검증 통과: $(echo "$after" | jq -r '.error')"
+          else
+            echo "사후검증 실패: 삭제 대상이 여전히 조회되거나 예상 밖 응답"
+            echo "$after"
+            exit 1
+          fi
+
+          history=$(curl -sS -G https://slack.com/api/conversations.history \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            --data-urlencode "channel=$CHANNEL" \
+            --data-urlencode "oldest=$MESSAGE_TS" \
+            --data-urlencode "latest=$MESSAGE_TS" \
+            --data-urlencode "inclusive=true" \
+            --data-urlencode "limit=1")
+          echo "$history" | jq -e --arg ts "$MESSAGE_TS" '.ok == true and ([.messages[]? | select(.ts == $ts)] | length == 0)' >/dev/null || {
+            echo "history 사후검증 실패"
+            echo "$history"
+            exit 1
+          }
+          echo "history 사후검증 통과: exact ts 없음"
