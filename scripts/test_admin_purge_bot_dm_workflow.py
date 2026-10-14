@@ -36,6 +36,8 @@ curl() {
     *conversations.info*) echo '{"ok":true,"channel":{"user":"U0B2Y0ZC8QZ"}}' ;;
     *conversations.history*) echo '{"ok":true,"messages":[
         {"ts":"3.000003","bot_id":"B_SELF","text":"최신 알림\n둘째줄"},
+        {"ts":"2.900003","bot_id":"B_SELF","text":"🚨 자동화 워치독 — 실패"},
+        {"ts":"2.800003","bot_id":"B_SELF","text":"⚠️ 협찬 데이터 점검 필요 — 비용"},
         {"ts":"2.000002","bot_id":"B_OTHER","text":"다른 봇"},
         {"ts":"1.000001","user":"U1","text":"사람"}],
       "response_metadata":{"next_cursor":""}}' ;;
@@ -71,6 +73,7 @@ def _run(**env_over: str) -> tuple[int, str, str]:
             "CHANNEL": "U0B2Y0ZC8QZ",
             "BEFORE": "",
             "TS_LIST": "",
+            "CONTAINS_ANY": "",
             "MAX": "200",
             "DRY_RUN": "true",
             "CONFIRM": "",
@@ -86,7 +89,7 @@ def test_dry_run_shows_which_bot_and_which_room_and_deletes_nothing() -> None:
     assert rc == 0, out
     assert "토큰 봇: yeomunbot (bot_id=B_SELF" in out
     assert "대상 방: D_RESOLVED · 대화 상대: U0B2Y0ZC8QZ" in out
-    assert "봇 메시지 1건" in out  # 이 토큰 봇 것만 센다
+    assert "봇 메시지 3건" in out  # 이 토큰 봇 것만 센다
     assert "다른 봇 메시지 1건" in out
     assert "최신 알림 둘째줄" in out  # 맞는 방인지 눈으로 확인할 견본(줄바꿈 평탄화)
     assert "confirm='DELETE D_RESOLVED'" in out
@@ -112,6 +115,42 @@ def test_confirm_for_a_different_room_never_deletes() -> None:
 def test_confirm_bound_to_resolved_room_deletes_only_own_bot_messages() -> None:
     rc, out, calls = _run(DRY_RUN="false", CONFIRM="DELETE D_RESOLVED")
     assert rc == 0, out
-    assert "삭제 1건 / 실패 0건 / 발견 1건" in out
+    assert "삭제 3건 / 실패 0건 / 발견 3건" in out
     deletes = [c for c in calls.splitlines() if "chat.delete" in c]
-    assert len(deletes) == 1 and "ts=3.000003" in deletes[0]
+    assert len(deletes) == 3
+    assert {c.split("ts=")[1].split()[0] for c in deletes} == {
+        "3.000003",
+        "2.900003",
+        "2.800003",
+    }
+
+
+def test_contains_any_limits_dry_run_to_matching_own_bot_messages() -> None:
+    rc, out, calls = _run(CONTAINS_ANY="자동화 워치독,협찬 데이터 점검 필요")
+    assert rc == 0, out
+    assert "본문 필터(2개" in out
+    assert "봇 메시지 2건" in out
+    assert "2.900003" in out and "자동화 워치독" in out
+    assert "2.800003" in out and "협찬 데이터 점검 필요" in out
+    assert "3.000003" not in out
+    assert "chat.delete" not in calls
+
+
+def test_contains_any_deletes_only_matching_own_bot_messages() -> None:
+    rc, out, calls = _run(
+        CONTAINS_ANY="자동화 워치독,협찬 데이터 점검 필요",
+        DRY_RUN="false",
+        CONFIRM="DELETE D_RESOLVED",
+    )
+    assert rc == 0, out
+    assert "삭제 2건 / 실패 0건 / 발견 2건" in out
+    deletes = [c for c in calls.splitlines() if "chat.delete" in c]
+    assert len(deletes) == 2
+    assert all("ts=3.000003" not in c for c in deletes)
+
+
+def test_ts_list_and_contains_any_cannot_be_combined() -> None:
+    rc, out, calls = _run(TS_LIST="3.000003", CONTAINS_ANY="자동화 워치독")
+    assert rc != 0
+    assert "함께 쓸 수 없습니다" in out
+    assert calls == ""

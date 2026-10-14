@@ -35,6 +35,10 @@ on:
         description: "선택: 삭제할 ts 목록(콤마/줄바꿈 구분). 넣으면 DM 읽기를 건너뛴다 → im:history 스코프 불필요"
         required: false
         default: ""
+      contains_any:
+        description: "선택: 본문에 포함할 문구(쉼표 구분). 이 토큰의 봇 메시지 중 하나라도 포함한 것만 대상"
+        required: false
+        default: ""
       max:
         description: "한 번에 삭제할 최대 건수(안전장치)"
         required: true
@@ -58,6 +62,7 @@ jobs:
           CHANNEL: ${{ github.event.inputs.channel }}
           BEFORE: ${{ github.event.inputs.before }}
           TS_LIST: ${{ github.event.inputs.ts_list }}
+          CONTAINS_ANY: ${{ github.event.inputs.contains_any }}
           MAX: ${{ github.event.inputs.max }}
           DRY_RUN: ${{ github.event.inputs.dry_run }}
           CONFIRM: ${{ github.event.inputs.confirm }}
@@ -65,6 +70,10 @@ jobs:
           set -euo pipefail
 
           if [ -z "${SLACK_BOT_TOKEN:-}" ]; then echo "SLACK_BOT_TOKEN 없음"; exit 1; fi
+          if [ -n "$TS_LIST" ] && [ -n "$CONTAINS_ANY" ]; then
+            echo "🛑 ts_list와 contains_any는 함께 쓸 수 없습니다. 삭제 대상을 한 방식으로만 지정하세요."
+            exit 1
+          fi
           if [ "$DRY_RUN" != "true" ] && [[ "$CONFIRM" != DELETE\ * ]]; then
             echo "🛑 실제 삭제에는 confirm='DELETE <채널ID>' 가 필요합니다. 먼저 dry-run으로 방을 확인하세요. (지금 입력: '$CONFIRM')"
             exit 1
@@ -119,8 +128,23 @@ jobs:
             echo "대상: 전체 기간"
           fi
 
+          FILTER_JSON='[]'
+          if [ -n "$CONTAINS_ANY" ]; then
+            FILTER_JSON=$(printf '%s' "$CONTAINS_ANY" | jq -R '
+              split(",")
+              | map(gsub("^\\s+|\\s+$"; ""))
+              | map(select(length > 0))
+            ')
+            FILTER_COUNT=$(echo "$FILTER_JSON" | jq 'length')
+            if [ "$FILTER_COUNT" -eq 0 ]; then
+              echo "🛑 contains_any에 유효한 문구가 없습니다."
+              exit 1
+            fi
+            echo "본문 필터($FILTER_COUNT개, 하나라도 포함): $(echo "$FILTER_JSON" | jq -r 'join(" OR ")')"
+          fi
+
           # 1) 봇이 보낸 메시지 ts 수집.
-          : > /tmp/ts.txt; : > /tmp/other.txt; : > /tmp/sample.txt
+          : > /tmp/ts.txt; : > /tmp/other.txt; : > /tmp/matches.tsv; : > /tmp/sample.txt
           PAGES=0
 
           # 1-a) ts_list를 받았으면 DM을 읽지 않는다 → `im:history` 스코프가 없어도 동작한다.
@@ -151,11 +175,21 @@ jobs:
             fi
             # 봇 메시지 판별: 이 토큰의 봇(bot_id)이 쓴 것만 — chat.delete가 지울 수 있는 것만 센다.
             # (bot_id를 못 얻으면 예전처럼 봇 메시지 전체)
-            echo "$RESP" | jq -r --arg b "$BOT_ID"               '.messages[] | select(.bot_id != null and ($b == "" or .bot_id == $b)) | .ts' >> /tmp/ts.txt
-            echo "$RESP" | jq -r --arg b "$BOT_ID"               '.messages[] | select(.bot_id != null and $b != "" and .bot_id != $b) | .ts' >> /tmp/other.txt || true
-            if [ "$PAGES" -eq 1 ]; then
-              echo "$RESP" | jq -r --arg b "$BOT_ID" '[.messages[] | select(.bot_id != null and ($b == "" or .bot_id == $b))] | .[0:3][] | "  · \(.ts)  \((.text // "") | gsub("\n"; " ") | .[0:80])"' > /tmp/sample.txt || true
-            fi
+            echo "$RESP" | jq -r --arg b "$BOT_ID" --argjson needles "$FILTER_JSON" '
+              .messages[]
+              | select(.bot_id != null and ($b == "" or .bot_id == $b))
+              | (.text // "") as $text
+              | select(($needles | length) == 0 or any($needles[]; . as $needle | $text | contains($needle)))
+              | [.ts, ($text | gsub("\n"; " ") | .[0:120])]
+              | @tsv
+            ' >> /tmp/matches.tsv
+            echo "$RESP" | jq -r --arg b "$BOT_ID" --argjson needles "$FILTER_JSON" '
+              .messages[]
+              | select(.bot_id != null and $b != "" and .bot_id != $b)
+              | (.text // "") as $text
+              | select(($needles | length) == 0 or any($needles[]; . as $needle | $text | contains($needle)))
+              | .ts
+            ' >> /tmp/other.txt || true
             CURSOR=$(echo "$RESP" | jq -r '.response_metadata.next_cursor // ""')
             [ -z "$CURSOR" ] && break
             sleep 1.2   # conversations.history 레이트리밋(Tier 3) 여유
@@ -163,8 +197,17 @@ jobs:
 
           fi   # ts_list 분기 끝
 
+          if [ -z "$TS_LIST" ]; then
+            cut -f1 /tmp/matches.tsv | sort -u > /tmp/ts.txt
+            if [ -n "$CONTAINS_ANY" ]; then
+              awk -F '\t' '{print "  · " $1 "  " $2}' /tmp/matches.tsv > /tmp/sample.txt
+            else
+              head -3 /tmp/matches.tsv | awk -F '\t' '{print "  · " $1 "  " $2}' > /tmp/sample.txt
+            fi
+          fi
+
           TOTAL=$(wc -l < /tmp/ts.txt | tr -d ' ')
-          sort -n /tmp/ts.txt > /tmp/ts.sorted
+          sort -nu /tmp/ts.txt > /tmp/ts.sorted
           echo "----------------------------------------"
           echo "페이지 $PAGES · 봇 메시지 $TOTAL건 발견"
           echo "가장 오래된/최신 ts:"; head -1 /tmp/ts.sorted; tail -1 /tmp/ts.sorted
