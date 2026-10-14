@@ -1,24 +1,35 @@
-name: Report patch — add conversion views (manual)
+name: Report patch — add conversion views
 
 # 발송된 일일 증분 리포트에 '전환 조회수'만 사후 보정한다(다른 숫자는 발송 당시 그대로).
-# 시트 '전환 노출수'가 발송 뒤에 입력된 날짜용. update_ts 재생성은 늦게 들어온 다른 데이터까지
-# 바꾸므로 그 대신 쓴다. 기본 dry_run=true(편집 없이 대상·변경 수치만 출력).
+# 시트 '전환 노출수'(전환_쫀득바 탭 참조)가 리포트 발송(익일 12:20) 뒤에 채워지는 날이 반복돼 자동으로 돈다.
+# update_ts 재생성은 늦게 들어온 다른 데이터까지 바꾸므로 그 대신 쓴다.
+#  - 스케줄: 최근 5일(KST 어제부터) 중 전환 줄이 없고 시트에 값이 생긴 리포트만 편집. 재실행 안전.
+#  - 수동: dates 지정(비우면 최근 5일), 기본 dry_run=true(편집 없이 대상·변경 수치만 출력).
 on:
+  schedule:
+    - cron: "30 8 * * *"    # 17:30 KST
+    - cron: "30 13 * * *"   # 22:30 KST (UTC 0시 크론 드롭 구간 회피)
   workflow_dispatch:
     inputs:
       dates:
-        description: "보정할 리포트 대상 날짜(쉼표 구분 YYYY-MM-DD)"
-        required: true
+        description: "보정할 리포트 대상 날짜(쉼표 구분 YYYY-MM-DD). 비우면 스케줄과 같이 최근 5일"
+        required: false
         type: string
+        default: ""
       dry_run:
         description: "true면 편집 없이 미리보기만"
         required: false
         type: boolean
         default: true
 
+concurrency:
+  group: report-patch-conversion
+  cancel-in-progress: false
+
 jobs:
   patch:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -30,5 +41,7 @@ jobs:
           APP_URL: "https://influencer-seeding-mu.vercel.app"
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           DATES: ${{ github.event.inputs.dates }}
-          DRY_RUN: ${{ github.event.inputs.dry_run }}
+          # 스케줄 실행은 inputs가 없으므로 적용 모드로 고정
+          DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || github.event.inputs.dry_run }}
+          AUTO_DAYS: "5"
         run: python scripts/patch_report_conversion.py

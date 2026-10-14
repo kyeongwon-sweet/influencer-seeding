@@ -71,3 +71,32 @@ def test_goal_crossing_and_rounding():
 def test_zero_without_section_is_not_shown():
     new, reason = patch_text(REPORT.replace(AD_SECTION, ""), 0)
     assert new is None and "표시 안 함" in reason
+
+
+def test_default_dates_use_kst_yesterday_backwards():
+    import datetime as dt
+    from patch_report_conversion import default_dates
+
+    # 17:30 KST(08:30 UTC) 실행 → KST 어제(10/13)부터 5일
+    assert default_dates(dt.datetime(2026, 10, 14, 8, 30), 5) == [
+        "2026-10-13", "2026-10-12", "2026-10-11", "2026-10-10", "2026-10-09"]
+    # UTC로는 아직 10/13이지만 KST는 10/14 01:00 → 어제는 10/13
+    assert default_dates(dt.datetime(2026, 10, 13, 16, 0), 1) == ["2026-10-13"]
+
+
+def test_find_report_reads_channel_history_once_for_many_dates(monkeypatch):
+    import patch_report_conversion as prc
+
+    page = {"ok": True, "messages": [
+        {"ts": "2", "bot_id": "B", "text": ":chart: *쫀득바 조회수 일일 증분* `(2026-10-13)`\n오늘 총 증분 *+1*"},
+        {"ts": "1", "bot_id": "B", "text": ":chart: *쫀득바 조회수 일일 증분* `(2026-10-12)`\n오늘 총 증분 *+1*"},
+        {"ts": "0", "text": "사람이 쓴 `(2026-10-12)` 일일 증분 언급"},  # 봇 아님 → 제외
+    ], "response_metadata": {"next_cursor": ""}}
+    calls = []
+    monkeypatch.setattr(prc, "_slack", lambda *a, **k: calls.append(a) or page)
+    monkeypatch.setattr(prc, "_history", {"msgs": [], "cursor": None, "done": False, "pages": 0})
+
+    assert [m["ts"] for m in prc.find_report("tok", "2026-10-13")] == ["2"]
+    assert [m["ts"] for m in prc.find_report("tok", "2026-10-12")] == ["1"]
+    assert prc.find_report("tok", "2026-10-01") == []
+    assert len(calls) == 1

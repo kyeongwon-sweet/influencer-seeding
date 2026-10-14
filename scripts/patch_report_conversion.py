@@ -8,7 +8,10 @@ update_ts 재생성을 쓰면 늦게 등록된 게시물의 첫 측정 몰림 �
 식은 notify_increments.py와 같다(전환은 round 후 합산, 0이면 줄만 '+0'으로 표시).
 
 env: SLACK_BOT_TOKEN, APP_URL, CRON_SECRET, DATES(쉼표 구분 YYYY-MM-DD), DRY_RUN("true"면 미편집)
+     DATES가 비면(스케줄 실행) 최근 AUTO_DAYS일(기본 5, KST 어제부터)을 본다 — 전환 탭은 주말분을
+     다음 주에 몰아 채우는 경우가 있어 넉넉히 잡는다. 이미 전환 줄이 있거나 시트가 비어 있으면 건너뛴다.
 """
+import datetime as dt
 import json
 import os
 import re
@@ -87,24 +90,38 @@ def _slack(method, token, params=None, post=False):
     return json.load(urllib.request.urlopen(req, timeout=30))
 
 
+def default_dates(now_utc, days):
+    """KST 기준 어제부터 days일치 날짜(최신순). 어제분 리포트는 오늘 12:20에 나간다."""
+    today_kst = (now_utc + dt.timedelta(hours=9)).date()
+    return [(today_kst - dt.timedelta(days=i)).isoformat() for i in range(1, days + 1)]
+
+
+_history = {"msgs": [], "cursor": None, "done": False, "pages": 0}
+
+
 def find_report(token, date):
-    """채널에서 그 날짜 증분 리포트(제목 줄 기준) 메시지를 찾는다. 정확히 1건이 아니면 None."""
-    hits, cursor = [], None
-    for _ in range(8):
+    """채널에서 그 날짜 증분 리포트(제목 줄 기준) 메시지를 찾는다. 반환은 매칭 목록(정확히 1건이어야 정상).
+    채널 기록은 페이지 단위로 한 번만 읽어 날짜 간에 재사용한다(여러 날짜 실행 시 호출 수 절약)."""
+    def match(msg):
+        first = (msg.get("text") or "").split("\n", 1)[0]
+        return "일일 증분" in first and f"`({date})`" in first and msg.get("bot_id")
+
+    while True:
+        hits = [m for m in _history["msgs"] if match(m)]
+        # 리포트는 최신순으로 쌓이므로, 이미 읽은 범위에 있으면 더 읽지 않는다
+        if hits or _history["done"] or _history["pages"] >= 8:
+            return hits
         p = {"channel": CHANNEL, "limit": 200}
-        if cursor:
-            p["cursor"] = cursor
+        if _history["cursor"]:
+            p["cursor"] = _history["cursor"]
         d = _slack("conversations.history", token, p)
         if not d.get("ok"):
             raise RuntimeError(f"history 실패: {d.get('error')}")
-        for msg in d.get("messages", []):
-            first = (msg.get("text") or "").split("\n", 1)[0]
-            if "일일 증분" in first and f"`({date})`" in first and msg.get("bot_id"):
-                hits.append(msg)
-        cursor = (d.get("response_metadata") or {}).get("next_cursor")
-        if not cursor:
-            break
-    return hits
+        _history["msgs"].extend(d.get("messages", []))
+        _history["pages"] += 1
+        _history["cursor"] = (d.get("response_metadata") or {}).get("next_cursor")
+        if not _history["cursor"]:
+            _history["done"] = True
 
 
 def fetch_conversion(date):
@@ -123,8 +140,7 @@ def main():
     dry = (os.getenv("DRY_RUN") or "true").lower() == "true"
     dates = [s.strip() for s in (os.getenv("DATES") or "").split(",") if s.strip()]
     if not dates:
-        print("DATES 비어 있음")
-        sys.exit(1)
+        dates = default_dates(dt.datetime.now(dt.timezone.utc).replace(tzinfo=None), int(os.getenv("AUTO_DAYS") or 5))
     print(f"모드: {'DRY_RUN(편집 안 함)' if dry else 'APPLY'} / 채널 {CHANNEL} / 대상 {dates}")
     failed = 0
     for date in dates:
