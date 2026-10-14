@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## ✅ 2026-10-14 [Codex 완료·라이브검증] 썰뜨기 TikTok 프로필 행/DB 삭제 + 계정주소 재유입 차단 + pullFromDB 실행시간 확인
+- **시트 선삭제·백업:** URL 문자열이 아니라 정규화된 정확한 키 `https://www.tiktok.com/@sseoltteugi/`로 재식별한 현재 4944행 1건을 확인했다. 삭제 직전 지문은 `계정=썰뜨기 (틱톡) · 게시일=2026-10-01 · 비용=0 · 누적/증분 공란 · 날짜값 0 · 상태=트래킹 종료`였다. 외부 백업 `_codex_sseoltteugi_profile_backup_20261014_092810`(ID `1brJvVwKwNUvLZ8GmrnOErFJx2ju7s-w2as-2lWQiysw`)에 A:FH 값·수식과 메타데이터를 저장한 뒤 그 한 행만 삭제했다. 시트 lastRow 4,953→4,952, 대상 URL 잔존 0건.
+- **DB 엄격 삭제:** `delete_specific_sponsored_post.py` 드라이런 `38489472150`에서 `id=1a885fba-ee0d-4c09-8756-6a40e3e00421 · URL/계정 정확 일치 · posted_at=ended_at=2026-10-01 · cost=0 · post_daily_stats=0`을 다시 확인했다. 사용자 요청 순서대로 시트 삭제 뒤 실제 실행 `38490520055`에서 정확히 1행만 삭제했고, 사후 동일 ID 0행·통계 0행이다.
+- **재발방지 `083d5905`:** 라이브 `classifySheetSyncUrl_`가 서버 `isAccountNonPostUrl`과 같은 범위로 TikTok 프로필(`tiktok.com/@계정/`)과 YouTube 채널(`/@계정…`, `/channel/`, `/c/`, `/user/`)을 각각 `틱톡 프로필 주소(게시물 아님)`·`유튜브 채널 주소(게시물 아님)` 사유로 제외한다. TikTok video/photo·vt/vm·`/t/` 단축링크와 YouTube watch/shorts/embed/live/v 영상 ID는 통과하는 계약 테스트를 고정했고, DB→시트 결과도 제외 사유별 건수를 표시한다. web 645/645·tsc·lint 0 errors·production build 통과. Apps Script guarded 배포 후 live pull에서 정본 10파일·repo 일치를 확인했다.
+- **pullFromDB 트리거 실측:** 현행은 일 1회가 아니라 **3시간 독립 CLOCK 트리거 1개**다. 최근 정기 실행은 `2026-10-14T00:04:31.790Z→00:08:13.261Z`, `OK · source=scheduled · error/pending 없음`, **221.471초(3분 41초)**였다. 6분 제한의 62%로 임박 상태는 아니며, 이번 수동 사후검증은 `00:34:48.660Z→00:36:03.835Z` **75.175초**(`runDbPullSyncNow=true`)였다. 체크포인트/단계 분리는 지금 추가하지 않고, 정기 실행이 5분 이상으로 재상승하거나 watchdog이 뜰 때 도입한다.
+- **재유입·공식 감사:** 수동 pull 뒤에도 프로필 URL 시트 0행·lastRow 4,952 유지. formula-audit `38491256324` success/HTTP 200: `totalRows=4,951(헤더 제외) · orphanRows=0 · shortLinkRows=0`. `sheetOnly=2`는 보류 중 1099 `떵개`와 작업 중 새로 들어온 별건 4944 `와뜨기`이며, 삭제한 프로필 주소는 없다. 기존 H/I/CPV 형태·정체 이슈는 이번 작업과 무관하다. 실행용 임시 웹앱 action은 즉시 제거해 다시 `unknown action`을 반환한다.
+
 ## 🔍 2026-10-14 [Claude 점검·읽기전용] 연동시트 아침 점검 — 값 검산 정상 · 단축링크 중복 재발 · 시트쓰기 완료기록 지연
 - **값 검산(gviz 전수, 09:2x KST):** 10-13 열 1,108칸 = DB 10-13 수집값과 **전부 일치**(불일치 0, 시트에만 있는 값 0). H=날짜열 MAX 3,616행 일치(예외 4137 먹킷리스트). I는 **아직 10-12 기준**으로 4,951행 전부 일치 → 10-13 기준 재기입 전. CPV 값 4,922행 일치, 값 오류 1행(2352 text_pyeong G=0·J=1.95). 수식 형태는 전날 감사(38383443896) 기준 hInvalid 13 · incInvalid 1 · cpv.invalid 16(text_pyeong + 4689~4703 위성 15행 CPV가 수식 아닌 숫자 0).
 - **⚠️ exportStats 완료기록 미도착:** `jobs` 마커 `apps-script-export-stats` 2026-10-13분이 09:32 KST까지 없음(최근 4일 08:59~09:05). 10-13 값은 이미 써졌는데 I 수식 목표열은 10-12 그대로 → 값 쓰기 후 수식 재기입/마커 단계 전 중단 또는 진행 중 의심. 11:30 exportStats 워치독 확인 필요.
