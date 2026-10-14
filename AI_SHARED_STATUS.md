@@ -1,5 +1,9 @@
 # AI Shared Status
 
+## 🔍 2026-10-14 [Claude 사후검증] Codex a5a5ee62 확인 — exportStats 10-13 완료·I 10-13 기준 정상
+- **확인됨:** `jobs` 마커 `apps-script-export-stats` written_date 2026-10-13 (02:11Z, source collection_retry, formula_rows_written 4951). formula-audit `38500278839` success(`inc.mismatch=0 · blankExpected=0 · sheetOnly=1`). gviz 재검산: I(증분) **4,950/4,951행이 10-13 기준 규칙과 일치**, H는 3,624행 일치(예외 4137 먹킷리스트 그대로), 4945~4952 위성 틱톡 8행 10-13=H=I(252·87·22·26·58·738·361·61).
+- **남은 1행(경미):** 4817 `neighbor.mia`(`Dd_LfJwSelW`, 10-02 게시) — 10-13이 첫 측정(480)인데 I 빈칸. 감사는 정상으로 판정(blankExpected 0)하지만 시트 규칙상 기대값 480. 첫 측정이 게시 11일 뒤라 '소급 첫 측정' 처리일 가능성 — 미조사.
+
 ## ✅ 2026-10-14 [Codex 완료·라이브검증] TikTok 단축링크 런타임 확인 + exportStats 10-13 완료·정렬 오탐 근본수정 (`69d77ca9`)
 - **단축링크 라이브 실측:** repo `1ce26a8c`를 `083d5905` 위 최신 정본으로 guarded Apps Script 배포했다. 편집기 런타임에서 `fetchShortLinkResolutions_(["https://vt.tiktok.com/ZSboSxcJg/"])`가 `https://www.tiktok.com/@ssulbox_1/photo/7696140243162074388/`을 반환함을 확인했다(10:20 KST, 1.721초). 검증용 임시 함수는 즉시 제거했고, 최종 live pull에서 정본 10파일·repo 소스 8파일 일치·임시/폐기 파일 0건을 재확인했다.
 - **오늘 지연의 직접 원인:** `exportStatsWithOptions_`가 최초 URL 목록은 `classifySheetSyncUrl_`로 정규화·제외한 뒤 키를 만들면서, 증분 수식 직전 순서 재검사는 원본 URL에 `linkKey_`를 바로 적용했다. 따라서 행이 전혀 움직이지 않아도 1099 보류 URL·비게시물·미지원 URL은 `""`와 비어 있지 않은 키로 달라져 매번 **“실행 중 행 정렬” 오탐**이 났다. 10:28 회차에는 별도로 Apps Script 플랫폼 server error가 한 번 발생해 예약 체인이 끊겨 안전하게 재무장했다.
