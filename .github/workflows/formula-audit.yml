@@ -9,6 +9,12 @@ on:
     #        ⚠️ dailyAuto(08:30 KST) **이후**여야 한다. 앞서면 동기화 전 시트를 감사해 오진한다.
     #        2026-08-06 아침 배치 1시간 앞당김(10:10 → 09:10)
   workflow_dispatch:
+    inputs:
+      force:
+        description: "당일 중복 방지를 건너뛰고 Slack에 다시 보고"
+        required: false
+        default: false
+        type: boolean
 
 env:
   APP_URL: "https://influencer-seeding-mu.vercel.app"
@@ -19,9 +25,13 @@ jobs:
     steps:
       - name: Run formula audit & report to Slack
         run: |
+          suffix=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force }}" = "true" ]; then
+            suffix="?force=1"
+          fi
           code=$(curl -sS -X POST -o /tmp/formula-audit.out -w "%{http_code}" \
             --max-time 280 \
-            "$APP_URL/api/sponsored-posts/formula-audit" \
+            "$APP_URL/api/sponsored-posts/formula-audit${suffix}" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
           cat /tmp/formula-audit.out
           echo ""
