@@ -1,5 +1,14 @@
 # AI Shared Status
 
+## 📮 2026-10-15 [사용자 요청 → Codex 인계] 연동시트 수정분(소재명·채널명·조회수) DB·대시보드 반영 — syncAll + importStats 1회
+> 사용자(10-15 11:4x): "연동 시트에 소재명, 채널명, 조회수 등을 수정했어. db랑 대시보드에 반영해줘". 대시보드는 DB를 바로 읽으므로 DB 반영 = 대시보드 반영.
+- **Claude 사전 대조(읽기전용, 11:5x KST):** 시트 4,967 글 키 ↔ DB 4,962글의 C/D/E/F/G/K/L/N을 해시로 전수 대조 → 다른 글 24개. 미등록 신규 행 0(등록상태 빈칸 6행은 기존 제외 대상 940·1099·1160~1162·4408뿐).
+  - **반영될 것(시트에 값 있음 → syncAll이 DB 덮음):** 소재명 `에스파셀럽바이럴` 5행(4517 `yt:KFQxIbb9UiA` · 4519 `yt:DTwSk1CfFus` · 4520 `yt:Nc6S1NuWnb4` · 4521 `yt:TlSm1FliKy0` · 4522 `tt:7685007397705846034`) / 위성 유튜브 5행 채널명·채널분류·소재명·제품·비용·기획자(김보나→이재원)·제작자(이하림) (4625 `yt:DsouarB9vpA` 채널명 썰박스→**매일1분** · 4626 `yt:M4Nr4EDZUqc` · 4627 `yt:NbJV6j0gxXk` · 4628 `yt:y3DVfA2CamQ` · 4629 `yt:AZyle4ilZ34`).
+  - **반영 안 되는 것(정책상, 실측 확인):** ① 2352 `ig:DbnLmD4EUSJ` 채널명 `text_pyeong (서비스)` — 인스타 바이럴 채널명은 핸들만 저장(`accountNameForSponsoredWrite`→null) → DB `text_pyeong` 유지. ② 3210 `ig:Db0ERW8Gqsr` 업체명 `요매거진` — 채널명과 같아 오염 판정(`repairPollutedCompanyName` polluted=true) → DB 빈칸 유지. ③ 시트 빈칸·DB 값 있음 10행(시트 빈칸은 DB를 안 지움): 기획자 `이세진` 6행(2612·2613·2796·2801·2805·2807) · 제작자 `노현경` 3행(1442·1664·1668) · 4253 `ig:Dcnc1fqEbM8` 기획자 김바다·제작자 오혜정 · 4944 `ig:DebdJiES0CJ` 와뜨기 제품 `P바치`. 사용자 의도 삭제인지 확인 필요(의도면 DB 비우기 별도 작업).
+  - **조회수:** 날짜칸↔DB 해시 대조는 배너(reach)/일반(play)·수기보존 규칙 차이로 잡음이 커서 칸 단위 특정 실패. importStats가 시트값과 다른 칸만 manual로 반영하므로 실행 결과로 확인.
+- **📮 Codex 실행:** dailyAuto·exportStats·importStats 실행 중 아님 확인 → `syncAll` 1회 → `importStats` 1회(오늘 08:30 정기 실행 이후 수정분 반영; 매일 아침 도는 같은 루틴이라 추가 위험 없음). 각 결과 요약(비교/신규/수정 건수, import inserted/updated/manual 건수, lockedDrift 경고)을 상태판에 기록. 끝나면 formula-audit `force=1`.
+- **검증(Claude가 이어서):** 위 10개 글 DB 값 변경 확인, 반영 안 되는 3종은 변화 없음 확인, import 변경 칸 수 확인.
+
 ## 🛡️ 2026-10-15 [Claude→Codex 공유·운영 정본] negative-comment-monitor 10/12~10/15 변경 — **되돌리지 말 것**
 - **소유채널 강한모델 판정(`a2970c6`):** 소유채널 게이트가 `llm-strong-owned` 승격 결과를 통과시키며, 게이트에서 억제된 댓글도 강한 모델 2차 판정을 받는다. 먹짱언니·먹는김에 등 소유채널의 저신호 부정 누락을 줄이는 현행 정본이다.
 - **기존 판정 이월·정상 보호(`8705164`):** 분류기 해시가 바뀌어도 이미 판정된 옛 댓글은 이전 결과를 이월해 전량 재판정하지 않는다. `category=정상`은 자동숨김하지 않는다.
