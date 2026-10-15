@@ -1,5 +1,15 @@
 # AI Shared Status
 
+## ✅ 2026-10-15 [Codex 완료] 연동시트 수정분 DB 반영 + YouTube `watch?v=` 식별키 결함 재발방지 (`0eac48f2`)
+- **실행 충돌 없음 확인:** dailyAuto·exportStats·importStats가 실행 중이지 않은 시점에 작업했다.
+- **1차 `syncAll`(12:16:33~12:19:42 KST):** 비교 **4,956** · 신규 **0** · 수정 **5** · 중복 URL **6** · URL 제외 **6**. 소재명 수정 5건은 반영됐지만 위성 YouTube 5건은 반영되지 않아 즉시 원인을 추적했다.
+- **원인·재발방지:** Apps Script가 `youtube.com/watch?v=...`를 `urlKey_`로 비교하면서 쿼리를 잘라 서로 다른 영상들을 모두 `youtube.com/watch` 하나로 축약했다. `collectRows_`·실행 중 행 안정성 검사·`importStats`의 게시물/통계 키·중복 검사 5곳을 영상 ID 보존형 `linkKey_`로 통일하고, 대문자 YouTube 호스트도 인식하되 영상 ID 대소문자는 보존하도록 했다. 서로 다른 watch ID 분리, watch/youtu.be/shorts 동일 ID 통합, 5개 경로의 `urlKey_` 재유입 방지 계약을 추가했다. web **655/655** · `tsc --noEmit` · production build · Apps Script prepare 통과, guarded 배포 뒤 live pull로 repo-owned 8파일 일치를 확인했다.
+- **보정 `syncAll`(12:38:56~12:42:00 KST):** 비교 **4,961** · 신규 **0** · 수정 **5** · 중복 URL **1** · URL 제외 **6**. 기존 중복 6건 중 잘못 합쳐졌던 YouTube 5건이 해소됐다. DB 직접 대조에서 소재명 5건은 모두 `에스파 셀럽바이럴`, 위성 YouTube 5건은 각각 `매일1분(유튜브)`·`정리해드림(유튜브)`·`이슈박스(유튜브)`·`이슈뜨기(유튜브)`·`썰뜨기(유튜브)` 및 요청 메타가 반영됐다.
+- **lockedDrift:** 실행 알림은 전역 `locked_drift` 숫자를 노출하지 않으므로 임의의 전역 수치를 만들지 않았다. 요청 대상 10건은 `manual_fields`와 사후 DB 값을 직접 대조했고 **잠금 때문에 미반영된 필드 0건**이다. 정책상 보존 대상도 그대로다: `text_pyeong` 계정명, `요매거진` 업체명 NULL, 시트 빈칸 10행의 기존 DB 값.
+- **`importStats` 1회(12:20:14~12:27:50 KST):** 17배치 · 게시물 **4,956** · 통계 **58,235** · play 신규삽입 **0** · 배너 reach/manual upsert **13,194** · automatic rows **0** · preserved manual **0** · missing URL **0** · 감소차단 **127**. API에 별도 `updated` 카운터가 없어 13,194를 신규 수정 건수로 오표기하지 않는다(기존값을 포함한 멱등 upsert 쓰기 수).
+- **최종 강제 감사:** formula-audit run **38677739594** success/HTTP 200 — `totalRows=4968 · metricRange=P:FJ(target 2026-10-14) · hInvalid=0 · incInvalid=0 · incMismatch=0 · cpv.invalid=0 · orphanRows=0 · stale=0 · shortLinkRows=0 · sheetOnly=1(1099 떵개만)`. `healthy=false`는 기존 H 숫자 직접입력 `hManual=1241`을 별도 가시화한 결과이며 수식·증분·CPV 오류는 0이다.
+- **무결성:** 조회수 추정·자동보정·기존 수동값 삭제 없음. 보정 실행은 누락됐던 5개 YouTube 메타를 반영하는 `syncAll`만 추가했고, `importStats`는 요청대로 정확히 1회만 실행했다.
+
 ## ✅ 2026-10-15 [Claude · 사용자 결정] 먹킷리스트 `ig:Dcfd2MCkWGj`(4137행) 최종 도달수 **469,130** 확정 — 오랜 '팀 결정 필요' 항목 종결
 - **결정(사용자 10-15):** "H4137 값으로 최종 조회수 확정". 협찬 매거진(게시 8/26 → 배너, 정본=reach). 기록일은 사용자 선택 **8/31**(마지막 수기값 8/30 다음날 — 오늘·어제 리포트/급변 알림에 안 걸림). 증분 380,130은 8/31에 잡힌다.
 - **DB:** `post_daily_stats` 8/31 행(id `41d561fc…`, 기존 likes 4,775 자동행)에 `reach_count=469130, manual=true` PATCH. 원본 백업 scratchpad `backup_mukitlist_0831_20261015.json`(reach NULL·manual false).
