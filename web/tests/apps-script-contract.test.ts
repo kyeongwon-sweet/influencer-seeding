@@ -503,7 +503,7 @@ test("syncNew fills missing H/I/J formulas before marking rows registered", () =
   const helperEnd = appsScript.indexOf("// ═", helperStart);
   const helperBody = appsScript.slice(helperStart, helperEnd);
   assert.match(helperBody, /assertRowCountStable_\(sheet, expectedLastRow, "syncNew formula fill"\)/);
-  assert.match(helperBody, /urlKey_\(sheet\.getRange\(ref\.row, urlCol\)\.getValue\(\)\)/);
+  assert.match(helperBody, /linkKey_\(sheet\.getRange\(ref\.row, urlCol\)\.getValue\(\)\)/);
   assert.match(helperBody, /ensureNewRowsMetricFormulas_\(sheet, start, end\)/);
 
   const runStart = appsScript.indexOf("function runSync_(onlyNew)");

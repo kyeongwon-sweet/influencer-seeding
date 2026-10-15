@@ -466,7 +466,10 @@ function collectRows_(onlyNew) {
     if (fieldCols.creator)         obj.creator         = String(row[fieldCols.creator - 1] || "").trim() || null;
     if (fieldCols.cost)            obj.cost            = toNumber_(row[fieldCols.cost - 1]);
 
-    const key = urlKey_(url);
+    // 게시물 동일성은 쿼리 제거용 urlKey_가 아니라 플랫폼 ID 기반 linkKey_로 판정한다.
+    // YouTube watch 주소는 영상 ID가 ?v=에 있으므로 urlKey_를 쓰면 서로 다른 모든 영상이
+    // youtube.com/watch 하나로 합쳐져 첫 행만 전송되는 사고가 난다(2026-10-15).
+    const key = linkKey_(url);
     if (byKey[key]) {
       dupCount++;
       rowNums.push(rowNum);
@@ -512,10 +515,10 @@ function linkKey_(u) {
   var ig = u.match(/instagram\.com\/(?:[^/?#]+\/)*(?:p|reels|reel|tv)\/([A-Za-z0-9_-]+)/i);
   if (ig) return "ig:" + ig[1];
   // 유튜브: 영상ID로 통일(www/non-www·shorts·watch·youtu.be 모두 동일 영상). ID는 대소문자 구분(소문자화 X).
-  var yt = u.match(/youtube\.com\/shorts\/([A-Za-z0-9_-]{6,})/)
-        || u.match(/youtu\.be\/([A-Za-z0-9_-]{6,})/)
-        || u.match(/youtube\.com\/(?:embed|live|v)\/([A-Za-z0-9_-]{6,})/)
-        || (/youtube\.com\/watch/.test(u) ? u.match(/[?&]v=([A-Za-z0-9_-]{6,})/) : null);
+  var yt = u.match(/youtube\.com\/shorts\/([A-Za-z0-9_-]{6,})/i)
+        || u.match(/youtu\.be\/([A-Za-z0-9_-]{6,})/i)
+        || u.match(/youtube\.com\/(?:embed|live|v)\/([A-Za-z0-9_-]{6,})/i)
+        || (/youtube\.com\/watch/i.test(u) ? u.match(/[?&]v=([A-Za-z0-9_-]{6,})/i) : null);
   if (yt) return "yt:" + yt[1];
   var tt = u.match(/tiktok\.com\/(?:.*\/)?(?:video|photo)\/(\d+)/i)
         || u.match(/\/(?:video|photo)\/(\d+)/i);
@@ -780,7 +783,7 @@ function assertSyncRowsStable_(sheet, rowRefs, expectedLastRow) {
   if (!rowRefs || rowRefs.length === 0) return;
   const urlCol = buildFieldCols_(sheet).url;
   rowRefs.forEach(ref => {
-    const currentKey = urlKey_(sheet.getRange(ref.row, urlCol).getValue());
+    const currentKey = linkKey_(sheet.getRange(ref.row, urlCol).getValue());
     if (!currentKey || currentKey !== ref.key) {
       throw new Error("신규 등록 중 행 위치가 바뀌었습니다. 수식/상태 쓰기를 중단합니다. (" + ref.row + "행)");
     }
@@ -3518,7 +3521,7 @@ function importStats(source) {
       const postedAt = fieldCols.posted_at ? toDateStr_(row[fieldCols.posted_at - 1]) : null;
       if (postedAt && postedAt > today) { future++; return; } // 업로드일이 오늘 이후 → 아직 게시 전, 제외
 
-      const key = urlKey_(url);
+      const key = linkKey_(url);
       if (!postByKey[key]) {
         const p = { url: url };
         if (fieldCols.posted_at)       p.posted_at       = toDateStr_(row[fieldCols.posted_at - 1]);
@@ -3587,7 +3590,7 @@ function importStats(source) {
     //    한 게시물의 조회수 이력은 반드시 같은 배치에 함께 보내야 서버의 누적-역행 가드(dropped_decrease)가
     //    배치 경계에서 오작동하지 않는다. 데이터 계약·payload 모양은 동일 → 서버/Vercel 변경 불필요.
     const statsByKey = {};
-    stats.forEach(function (s) { const k = urlKey_(s.url); (statsByKey[k] = statsByKey[k] || []).push(s); });
+    stats.forEach(function (s) { const k = linkKey_(s.url); (statsByKey[k] = statsByKey[k] || []).push(s); });
 
     const POSTS_PER_BATCH = 300; // 300 게시물/배치 ≈ 본문 수백KB (4.5MB 대비 충분한 여유). 필요시 조정.
     const keys = Object.keys(postByKey);
@@ -3729,7 +3732,7 @@ function checkDuplicates() {
       if (!rawUrl) return;
       const urlCheck = classifySheetSyncUrl_(rawUrl);
       if (!urlCheck.valid) return;
-      const key = urlKey_(urlCheck.url);
+      const key = linkKey_(urlCheck.url);
       (byKey[key] = byKey[key] || []).push({ row: CONFIG.DATA_START_ROW + i, url: urlCheck.url });
     });
 
