@@ -1,5 +1,16 @@
 # AI Shared Status
 
+## ✅/⏳ 2026-10-15 [Codex 수리·재발방지] 연동시트 종료후 값·링크·검사규칙·배너 지표 정리 완료 / TikTok photo DB 키 SQL만 인증 대기 (`7ffbe11b`)
+- **모든 배너=reach 정책 통일:** 수집기·시트 불일치 수리·웹 경로를 같은 정책으로 고쳤다. 라이브 DB의 TikTok 배너 **21게시물 / 자동 통계 200행**은 `play_count → reach_count`로 exact-guard 이관했고, 기존 수기 reach **229행**은 보존했다. 사후값은 총 429행 모두 `play_nonnull=0 · reach_nonnull=429 · both=0`; 백업 `scratchpad/tiktok_banner_metric_backup_20261015.json`, SHA-256 `7AC53176E98E1A441A2BEFC10F1CCEF415E48177B483E203C55BA3044B977C71`.
+- **종료 뒤 잔존값 제거:** 13게시물의 종료일 뒤 일자값 **444칸**을 값 추정 없이 비웠다. `exportStats`도 `preserveExistingMetrics`보다 종료일 경계 정리를 먼저 하도록 바꿔 재발을 막았다. 최근 잔존 4칸은 현재 행 기준 `FJ4770 · FJ4775 · FJ4776 · FJ4953`이었다.
+- **시트 수술 백업·검증:** 외부 백업 [`codex_live_repair_backup_20261015_20261015_183823`](https://docs.google.com/spreadsheets/d/1S1G8fNeoPc29PTcwpwTSKxecCQjEm2EuHIvmw_irAOY/edit)에 값/수식/링크 **449셀**과 검사규칙 **53셀**을 저장·재개방 검증한 뒤 썼다. 적용 후 종료후 잔존 0, 미처리 검사규칙 0.
+- **B4097·틱톡 역행 수리:** B4097 표시 문자열은 유지하고 실제 링크 타깃을 `https://www.instagram.com/p/DcakMZokd2s/`로 교정했다. `tt:7696141069397806357`은 10/13 수기 `28,000`을 비우고 10/14 실물 `1,380`으로 교정했으며, H는 기존 표준 수식 그대로 `1,380`, I는 무접촉했다.
+- **유효성 검사 53셀:** 알려진 파손 26셀(`#REF!` 14 + H/I 오열 규칙 12)은 수술적으로 교정했고, F/G/J 4953 및 최신 날짜열 24셀은 실행 전 이미 자가치유돼 보존했다. 총 53/53이 최종 규칙과 일치한다. 라이브 Apps Script에는 B/F/G/J/K/L·H/I·신규 날짜열 검사규칙 자가치유가 배포됐다.
+- **공식 감사 단일화:** 신뢰할 수 없던 `.github/workflows/sheet-formula-audit.yml`과 `scripts/audit_linked_sheet_formulas.py`를 삭제하고 공식 `formula-audit`만 남겼다. 작업 중 새로 생긴 4970행 `머거보께`는 정식 `syncNew`로 DB 등록·H/I/J 설치까지 완료했다. 최종 run **38715895556** success/HTTP 200 — `hInvalid=0 · incInvalid=0 · incMismatch=0 · cpv.invalid=0 · orphanRows=0 · stale=0 · shortLinkRows=0 · sheetOnly=1(기존 보류 1099 떵개만)`. `healthy=false`는 이 기존 sheetOnly 1건 때문이며 이번 수리 결함은 0이다.
+- **임시 경로 정리:** 일회성 웹 액션·비밀값·수리 파일과 @46~@54 임시 배포를 전부 제거했다. 라이브는 정식 10파일만 남고 fresh pull 검증 통과. 배포 스크립트의 폐기 목록에도 이번 일회성 파일을 추가했다.
+- **검증:** web **660/660**, Python **463 passed · 7 skipped**, tsc/build/lint 통과, CI Build Test **38707892096**·Workflow Lint **38707892185** success.
+- **⏳ 남은 1건 — TikTok `/photo/` DB 식별키:** 라이브 268건 전수는 아직 옛 `url:` 키이고 신규 4건도 같은 상태다. 사전검사는 `uint64 오류 0 · 예상키 중복 0 · 기존 tt 충돌 0`; full-row 백업 `scratchpad/tiktok_photo_identity_backup_20261015.json`(268행, active 258/ended 10), SHA-256 `8ed807e83910f2f6fce215f09f02574c4d8237cf7df576cd4f24eba893a6c0d2`. 마이그레이션 `supabase/migrations/20261015_sponsored_posts_tiktok_photo_identity.sql`은 준비됐지만 현재 환경에 올바른 Supabase 로그인·DB 비밀번호·management token이 없어 **라이브 SQL만 미실행**이다. 서비스 역할 REST 키로 DDL을 우회하지 말 것. 사용자가 올바른 프로젝트 SQL Editor에 로그인하면 즉시 실행·5종 postverify로 닫는다.
+
 ## ✅ 2026-10-15 [Codex 완료] 연동시트 수정분 DB 반영 + YouTube `watch?v=` 식별키 결함 재발방지 (`0eac48f2`)
 - **실행 충돌 없음 확인:** dailyAuto·exportStats·importStats가 실행 중이지 않은 시점에 작업했다.
 - **1차 `syncAll`(12:16:33~12:19:42 KST):** 비교 **4,956** · 신규 **0** · 수정 **5** · 중복 URL **6** · URL 제외 **6**. 소재명 수정 5건은 반영됐지만 위성 YouTube 5건은 반영되지 않아 즉시 원인을 추적했다.

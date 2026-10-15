@@ -73,6 +73,7 @@ const deprecatedLiveFiles = [
   "repair_tiktok_20260729.js",
   "repair_zero_metrics_20260728.js",
   "schedule_heartbeat.js",
+  "10_codex_20261015_일회성_수리.js",
 ];
 
 function read(path) {
