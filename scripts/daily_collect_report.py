@@ -256,6 +256,7 @@ def main():
             ct_c,
             has_reach_ever=any((h.get("reach_count") or 0) > 0 for h in hist),
             has_auto_play_ever=any(h.get("play_count") is not None and not h.get("manual") for h in hist),
+            has_auto_reach_ever=any(h.get("reach_count") is not None and not h.get("manual") for h in hist),
         ):
             reach_only_ids.add(c["id"])
 

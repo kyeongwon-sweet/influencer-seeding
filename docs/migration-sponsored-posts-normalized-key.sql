@@ -2,6 +2,10 @@
 -- This prevents /reel/ vs /p/, www vs non-www, and YouTube URL spelling variants
 -- from creating separate sponsored_posts rows for the same post.
 
+begin;
+
+lock table public.sponsored_posts in share row exclusive mode;
+
 create or replace function public.sponsored_post_identity_key(p_url text)
 returns text
 language plpgsql
@@ -35,9 +39,17 @@ begin
   end if;
 
   if host like '%tiktok.com' then
-    m := regexp_match(path, '/video/([0-9]+)');
+    -- TikTok photo/slideshow posts have the same numeric post identity as videos.
+    -- Keeping photo URLs on the generic url: fallback lets query strings and short
+    -- link spellings create duplicate sponsored_posts rows.
+    m := regexp_match(path, '/(?:video|photo)/([0-9]+)');
     if m is not null then
-      return 'tt:' || m[1];
+      id := ltrim(m[1], '0');
+      if id = '' then id := '0'; end if;
+      if length(id) < 20 or (length(id) = 20 and id <= '18446744073709551615') then
+        return 'tt:' || m[1];
+      end if;
+      return null;
     end if;
   end if;
 
@@ -121,3 +133,5 @@ drop trigger if exists trg_sponsored_posts_normalized_key on public.sponsored_po
 create trigger trg_sponsored_posts_normalized_key
   before insert or update of url on public.sponsored_posts
   for each row execute function public.set_sponsored_post_normalized_key();
+
+commit;

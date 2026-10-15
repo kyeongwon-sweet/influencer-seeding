@@ -197,9 +197,16 @@ def _send_status_alert(text: str) -> bool:
     return False
 
 
-def _record_overrecord_candidate(post: dict, label: str, observed: int | float | None, existing: dict):
+def _record_overrecord_candidate(
+    post: dict,
+    label: str,
+    observed: int | float | None,
+    existing: dict,
+    *,
+    metric_field: str = "play_count",
+):
     """Detect likely manual over-recording when fresh auto measurement is far below stored manual value."""
-    prev = existing.get("play_count")
+    prev = existing.get(metric_field)
     if observed is None or prev is None or not existing.get("manual"):
         return
     try:
@@ -272,10 +279,12 @@ def _record_auto_cumulative_decrease_candidate(
     label: str,
     observed: int | float | None,
     existing: dict,
+    *,
+    metric_field: str = "play_count",
 ):
     """Record a raw decrease after an automatic high value, before clamping."""
     if existing.get("manual") or not _is_auto_cumulative_decrease_candidate(
-        existing.get("play_count"), observed
+        existing.get(metric_field), observed
     ):
         return
     warning = {
@@ -283,7 +292,7 @@ def _record_auto_cumulative_decrease_candidate(
         "url": post.get("url"),
         "account_name": post.get("account_name"),
         "observed": int(observed),
-        "stored": int(existing["play_count"]),
+        "stored": int(existing[metric_field]),
         "stored_date": str(existing.get("measured_at") or "")[:10],
         "observed_date": TODAY,
     }
@@ -698,7 +707,7 @@ def _prev_stats(db, post_ids):
         frm = 0
         while True:
             res = (db.table("post_daily_stats")
-                   .select("post_id, play_count, likes_count, comments_count, measured_at, manual")
+                   .select("post_id, play_count, reach_count, likes_count, comments_count, measured_at, manual")
                    .in_("post_id", chunk)
                    .lt("measured_at", TODAY)
                    .order("measured_at", desc=True)
@@ -761,6 +770,7 @@ def _summarize_history_rows(
             last[post_id] = {
                 "post_id": post_id,
                 "play_count": row.get("play_count"),
+                "reach_count": row.get("reach_count"),
                 "likes_count": row.get("likes_count"),
                 "comments_count": row.get("comments_count"),
                 "measured_at": row.get("measured_at"),
@@ -935,13 +945,29 @@ def _target_ids_from_missing_queue(path):
 def _same_day_measured_ids(db, posts, measured_at=TODAY):
     """Return post ids that already have the needed measurement for measured_at.
 
-    View-capable posts must have play_count. Auxiliary-only rows with likes or
-    comments are intentionally treated as missing so retries recollect the view
-    row instead of skipping the post.
+    Non-banner view-capable posts must have play_count. TikTok banners are also
+    view-capable, but their public playCount is stored in canonical reach_count,
+    so reach_count completes those posts. Auxiliary-only rows with likes or
+    comments are intentionally treated as missing so retries recollect the
+    required metric instead of skipping the post.
     """
     done = set()
     ids = [p.get("id") for p in posts if p.get("id")]
-    play_required = {p.get("id") for p in posts if p.get("id") and _tracks_play_count(p.get("url"))}
+    reach_required = {
+        p.get("id")
+        for p in posts
+        if p.get("id")
+        and "tiktok.com" in (p.get("url") or "").lower()
+        and is_banner_channel(p.get("channel_type"), p.get("posted_at"))
+    }
+    play_required = {
+        p.get("id")
+        for p in posts
+        if p.get("id")
+        and p.get("id") not in reach_required
+        and not is_banner_channel(p.get("channel_type"), p.get("posted_at"))
+        and _tracks_play_count(p.get("url"))
+    }
     for c in range(0, len(ids), 100):
         chunk = ids[c:c + 100]
         frm = 0
@@ -958,7 +984,10 @@ def _same_day_measured_ids(db, posts, measured_at=TODAY):
             rows = res.data or []
             for row in rows:
                 post_id = row["post_id"]
-                if post_id in play_required:
+                if post_id in reach_required:
+                    if row.get("reach_count") is not None:
+                        done.add(post_id)
+                elif post_id in play_required:
                     if row.get("play_count") is not None:
                         done.add(post_id)
                 elif any(row.get(k) is not None for k in ("play_count", "likes_count", "comments_count", "reach_count")):
@@ -992,8 +1021,10 @@ def _store_aux_rows(db, rows, posts, stats, key_fn, label, *, views="clamp", cap
     views:
       - "clamp":    0/미반환은 접근불가로 보고 행 자체를 저장 안 함(직전 값 유지) + 역행 clamp. (틱톡·X)
       - "optional": 조회수 None이어도 행 저장(좋아요 등 유지) + 값 있으면 역행 clamp. (유튜브)
-      - "none":     플랫폼이 조회수 미제공 → play_count는 항상 None. (스레드·FB)
+      - "none":     플랫폼이 조회수 미제공 → metric은 항상 None. (스레드·FB)
     caption_field: 비어 있는 content_summary만 stats의 이 필드로 자동 채움(시트/수동 캡션 보존).
+    비-TikTok 배너는 자동 metric을 저장하지 않고 수기 reach를 정본으로 유지한다.
+    TikTok 배너만 공개 playCount를 수집할 수 있으므로 그 값을 reach_count에 저장한다.
     """
     if last_stat is None:
         last_stat = _prev_stats(db, [p["id"] for p in posts])
@@ -1011,6 +1042,9 @@ def _store_aux_rows(db, rows, posts, stats, key_fn, label, *, views="clamp", cap
             _record_missing_view_event(post, label, "no_collector_response")
             continue
         existing = last_stat.get(post["id"], {})
+        is_banner = is_banner_channel(post.get("channel_type"), post.get("posted_at"))
+        is_tiktok_banner = is_banner and "tiktok.com" in (post.get("url") or "").lower()
+        metric_field = "reach_count" if is_tiktok_banner else (None if is_banner else "play_count")
         if s.get("error"):
             # 액터가 명시적 에러(삭제/비공개/민감/수집불가) 반환 → 특이사항 자동 태깅(notes 빈 것만, 수동 특이사항 보존)
             # + 행 저장 안 함(직전값 유지). 모든 보조 매체(YT·틱톡·스레드·FB·X) 공통 처리.
@@ -1031,28 +1065,45 @@ def _store_aux_rows(db, rows, posts, stats, key_fn, label, *, views="clamp", cap
         # 이전 날짜가 manual=True라는 이유로 이후 날짜 수집까지 영구 중단하면 TikTok photo 등
         # 보조 플랫폼의 일별 시계열이 끊긴다. 저장 직전 _preserve_same_date_manual_stats와
         # ignore_duplicates가 같은 날짜의 수기 행을 절대 덮지 않으면서 다음 날짜 수집은 허용한다.
-        play = None if views == "none" else s.get("views")
-        if views == "clamp" and (not play or play <= 0):
+        metric = None if views == "none" or metric_field is None else s.get("views")
+        if metric_field is not None and views == "clamp" and (not metric or metric <= 0):
             _record_missing_view_event(post, label, "missing_or_zero_view", stat=s, existing=existing)
             # 조회수 실패가 독립적으로 수집된 댓글수까지 버리게 하지 않는다.
             # 직전 양수 조회수는 유지하고, 없으면 NULL로 두되 참여지표는 저장한다.
-            previous_play = existing.get("play_count")
-            play = previous_play if previous_play is not None and previous_play > 0 else None
-        if play is not None and existing.get("play_count") is not None and play < existing.get("play_count"):
-            _record_auto_cumulative_decrease_candidate(post, label, play, existing)
-            _record_overrecord_candidate(post, label, play, existing)
+            previous_metric = existing.get(metric_field)
+            metric = previous_metric if previous_metric is not None and previous_metric > 0 else None
+        if (
+            metric_field is not None
+            and metric is not None
+            and existing.get(metric_field) is not None
+            and metric < existing.get(metric_field)
+        ):
+            _record_auto_cumulative_decrease_candidate(
+                post, label, metric, existing, metric_field=metric_field
+            )
+            _record_overrecord_candidate(
+                post, label, metric, existing, metric_field=metric_field
+            )
             # 미세 감소는 정상 지터 → NULL 대신 직전 최대값 유지(clamp)
-            print(f"  ⚠️  {label} 조회수 역행 clamp {post['url']} ({play} → {existing.get('play_count')} 유지)")
-            play = existing.get("play_count")
+            print(
+                f"  ⚠️  {label} 누적지표 역행 clamp {post['url']} "
+                f"({metric} → {existing.get(metric_field)} 유지, field={metric_field})"
+            )
+            metric = existing.get(metric_field)
         likes, comments = s.get("likes"), s.get("comments")
-        rows.append({
+        row = {
             "post_id": post["id"],
             "measured_at": TODAY,
-            "play_count": play,
             # 액터가 필드 누락 시 None으로 덮어쓰지 않도록 직전값 폴백 (실제 0은 그대로 저장)
             "likes_count": _coalesce_metric(likes, existing.get("likes_count")),
             "comments_count": _coalesce_metric(comments, existing.get("comments_count")),
-        })
+        }
+        if metric_field is not None:
+            row[metric_field] = metric
+        if is_banner:
+            # 동일 날짜 기존 play 오염을 FINAL_SNAPSHOT upsert가 치울 수 있게 명시한다.
+            row["play_count"] = None
+        rows.append(row)
 
 
 def _snapshot_totals(db, post_ids, upto):
@@ -2024,13 +2075,14 @@ def run():
 
             play_count = s.get("play_count")
 
-            # Banner posts have no play metric \u2014 reach only. Daily reach is stored by reach_rows below.
-            # \uc608\uc678: \ud2f1\ud1a1 \ubc30\ub108(\uc0ac\uc9c4/\uc2ac\ub77c\uc774\ub4dc\uc1fc)\ub294 \uc2e4\uc81c playCount\uac00 \uc788\uc5b4 \uc870\ud68c\uc218\ub85c \uc218\uc9d1\ud55c\ub2e4(\uc0ac\uc6a9\uc790 \uc9c0\uc2dc 2026-07-28).
-            _is_tiktok = "tiktok.com" in (post.get("url") or "")
-            if "\ubc30\ub108" in (post.get("channel_type") or "") and not _is_tiktok:
+            # Instagram 배너의 공개 play는 reach가 아니다. 자동 metric은 저장하지 않고
+            # banner-reach-sync로 들어오는 수기 reach만 정본으로 유지한다.
+            # TikTok 배너의 공개 playCount→reach 매핑은 별도 TikTok 수집 경로가 담당한다.
+            if is_banner_channel(post.get("channel_type"), post.get("posted_at")):
                 rows.append({
                     "post_id": post["id"],
                     "measured_at": TODAY,
+                    "play_count": None,
                     "likes_count": _coalesce_metric(s.get("likes_count"), existing.get("likes_count")),
                     "comments_count": _coalesce_metric(s.get("comments_count"), existing.get("comments_count")),
                 })
@@ -2455,12 +2507,21 @@ def _attach_fb_play_counts(db, rows: list) -> None:
     # ⚠️ 메인 게시물 select 에 is_cross_posted 를 끼워 넣지 않는다 — 마이그레이션 전에 코드가
     #    먼저 배포되면 없는 열 때문에 수집 전체가 죽는다. 여기서만(열 확인 뒤) 따로 읽는다.
     try:
-        _res = db.table("sponsored_posts").select("id, url").eq("is_cross_posted", True).execute()
+        _res = (
+            db.table("sponsored_posts")
+            .select("id, url, channel_type, posted_at")
+            .eq("is_cross_posted", True)
+            .execute()
+        )
     except Exception as e:
         print(f"[WARN] 교차게시 목록 조회 실패 → FB 보강 건너뜀: {e}")
         return
-    flagged = {a["id"]: a["url"] for a in (_res.data or [])
-               if "instagram.com" in (a.get("url") or "").lower()}
+    flagged = {
+        a["id"]: a["url"]
+        for a in (_res.data or [])
+        if "instagram.com" in (a.get("url") or "").lower()
+        and not is_banner_channel(a.get("channel_type"), a.get("posted_at"))
+    }
     if not flagged:
         return
     targets = {r["post_id"]: flagged[r["post_id"]] for r in rows if r["post_id"] in flagged}

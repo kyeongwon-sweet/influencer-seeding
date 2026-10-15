@@ -260,8 +260,10 @@ async function collect(req: NextRequest) {
           }
         }
 
-        // 틱톡 배너(사진/슬라이드쇼)는 실제 playCount가 있어 조회수로 수집한다(run_monitoring과 동일). 그 외 배너는 reach 전용.
-        if (isBannerChannel(post.channel_type, post.posted_at) && !String(post.url || "").includes("tiktok.com")) {
+        // 이 엔드포인트는 Instagram 전용이다. IG 배너의 공개 play는 reach가 아니므로
+        // 자동 metric을 저장하지 않고 수기 reach 경로를 정본으로 유지한다.
+        // TikTok 배너 playCount→reach 변환은 run_monitoring의 TikTok 수집 경로가 담당한다.
+        if (isBannerChannel(post.channel_type, post.posted_at)) {
           statsToInsert.push({
             post_id: post.id,
             measured_at: measuredAt,

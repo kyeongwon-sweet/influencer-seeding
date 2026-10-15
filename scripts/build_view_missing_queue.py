@@ -134,6 +134,9 @@ def exclusion_reason(post: dict[str, Any], target_date: str | None = None) -> st
     # (2026-08-07: '무상시딩' 통째 제외라 IG 영상 미수집이 재시도 큐에서 빠져 자동 복구가 안 되던 버그 수정)
     if "무상시딩" in channel_type and "영상" not in channel_type:
         return "free_seed_manual"
+    # 이 분기는 **재시도 가능 여부**만 정한다. TikTok 배너는 공개 playCount를
+    # 자동 수집할 수 있으므로 큐에 남기되, 수집된 값은 다른 모든 배너와 같이
+    # canonical reach_count에 저장한다(run_monitoring의 저장 정책과 별개).
     if is_banner_channel(channel_type, post.get("posted_at")) and "tiktok.com" not in url:
         return "non_tiktok_banner_reach_only"
     return None
@@ -150,6 +153,7 @@ def build_history_state(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "has_likes_or_comments": False,
         "has_manual_zero": False,
         "has_auto_play_ever": False,
+        "has_auto_reach_ever": False,
         "has_reach_ever": False,
         "last_metric": None,
         "last_metric_date": None,
@@ -162,6 +166,8 @@ def build_history_state(rows: list[dict[str, Any]]) -> dict[str, Any]:
         #    이걸 조회수로 세면 사진 캐러셀이 영원히 '조회수형 글'로 남는다.
         if row.get("play_count") is not None and row.get("manual") is not True:
             state["has_auto_play_ever"] = True
+        if row.get("reach_count") is not None and row.get("manual") is not True:
+            state["has_auto_reach_ever"] = True
         if (row.get("reach_count") or 0) > 0:
             state["has_reach_ever"] = True
         if value is not None and value > 0:
@@ -188,6 +194,7 @@ def is_reach_only_manual_channel_state(post: dict[str, Any], state: dict[str, An
         post.get("channel_type"),
         has_reach_ever=bool(state.get("has_reach_ever")),
         has_auto_play_ever=bool(state.get("has_auto_play_ever")),
+        has_auto_reach_ever=bool(state.get("has_auto_reach_ever")),
     )
 
 

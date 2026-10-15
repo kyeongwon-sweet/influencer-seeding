@@ -23,10 +23,11 @@ def test_shared_history_summary_keeps_prev_stats_and_auto_end_meanings_separate(
     rm._summarize_history_rows(rows, last, maximums, manual_ids, last_valid_dates)
 
     assert last["p1"] == {
-        "post_id": "p1", "play_count": 120, "likes_count": 8,
+        "post_id": "p1", "play_count": 120, "reach_count": None, "likes_count": 8,
         "comments_count": 1, "measured_at": yesterday, "manual": False,
     }
     assert last["p2"]["play_count"] is None
+    assert last["p2"]["reach_count"] == 500
     assert maximums == {"p1": 1001, "p2": 500}
     assert manual_ids == {"p1"}
     assert last_valid_dates == {"p1": rm.TODAY, "p2": yesterday}

@@ -86,9 +86,10 @@ def fetch_all(table: str, select: str) -> list[dict[str, Any]]:
 
 def metric_column(post: dict[str, Any]) -> str:
     channel_type = str(post.get("channel_type") or "")
-    url = str(post.get("url") or "").lower()
     is_banner = is_banner_channel(channel_type, post.get("posted_at"))
-    return "reach_count" if is_banner and "tiktok.com" not in url else "play_count"
+    # 배너는 플랫폼과 무관하게 reach_count가 정본이다. TikTok 배너도 공개
+    # playCount를 수집할 수는 있지만, 그 값의 저장 열은 reach_count여야 한다.
+    return "reach_count" if is_banner else "play_count"
 
 
 def main() -> None:

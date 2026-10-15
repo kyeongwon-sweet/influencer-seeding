@@ -33,7 +33,6 @@ test("private linked-sheet endpoint covers current rows and pricing map", () => 
 
 test("sheet maintenance scripts use the authenticated reader", () => {
   for (const file of [
-    "scripts/audit_linked_sheet_formulas.py",
     "scripts/report_blank_sheet_metrics.py",
     "scripts/reconcile_sheet_stat_mismatches.py",
   ]) {
@@ -45,7 +44,6 @@ test("sheet maintenance scripts use the authenticated reader", () => {
 
 test("sheet workflows provide endpoint and cron authentication", () => {
   for (const file of [
-    ".github/workflows/sheet-formula-audit.yml",
     ".github/workflows/report-blank-sheet-metrics.yml",
     ".github/workflows/reconcile-sheet-stat-mismatches.yml",
   ]) {

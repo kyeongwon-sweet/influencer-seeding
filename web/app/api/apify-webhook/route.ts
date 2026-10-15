@@ -392,8 +392,10 @@ async function handleMonitoring(
     // 중간 시점 조회수를 일자별 최종값으로 남기지 않고, 자정 FINAL_SNAPSHOT이 처음 저장한다.
     if (metadataOnly) continue;
 
-    // 틱톡 배너(사진/슬라이드쇼)는 실제 playCount가 있어 조회수로 수집한다(run_monitoring과 동일). 그 외 배너는 reach 전용.
-    if (isBannerChannel(post.channel_type, post.posted_at) && !String(post.url || "").includes("tiktok.com")) {
+    // monitoring webhook은 Instagram scraper 응답을 처리한다. IG 배너의 공개 play를
+    // reach로 둔갑시키지 않고, 자동 metric 없음 + 수기 reach 정본 정책을 유지한다.
+    // TikTok 배너의 공개 playCount는 Python TikTok 수집기가 reach_count에 저장한다.
+    if (isBannerChannel(post.channel_type, post.posted_at)) {
       rows.push({ post_id: post.id, measured_at: today, play_count: null, likes_count: s.likes_count, comments_count: s.comments_count });
       continue;
     }

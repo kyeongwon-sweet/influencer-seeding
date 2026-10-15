@@ -40,6 +40,12 @@ def main() -> int:
     eq("desync.sheet_noise_pct", A.is_material_desync(1_000_000, 1_010_000), False)  # 1% → 무시
     eq("desync.sheet_ahead_material", A.is_material_desync(62322, 75890), True)  # 시트 앞섬+실질차 → 차단
 
+    # 배너의 정본 지표는 플랫폼과 무관하게 reach_count다. TikTok 배너를
+    # play_count로 읽으면 repair와 발송 전 검수가 같은 오염을 정상으로 오판한다.
+    eq("metric.ig_banner", A.metric_column({"channel_type": "바이럴 (배너)", "url": "https://www.instagram.com/p/x/"}), "reach_count")
+    eq("metric.tiktok_banner", A.metric_column({"channel_type": "바이럴 (배너)", "url": "https://www.tiktok.com/@u/photo/1"}), "reach_count")
+    eq("metric.tiktok_video", A.metric_column({"channel_type": "바이럴 (영상)", "url": "https://www.tiktok.com/@u/video/1"}), "play_count")
+
     # ②-b decide_stat_mismatches
     eq("stat.empty", A.decide_stat_mismatches([]), None)
     m = A.decide_stat_mismatches([("u1", 100, 5000), ("u2", 5, 9000)])

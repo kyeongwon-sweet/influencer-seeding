@@ -32,7 +32,11 @@ def is_banner_channel(channel_type: Any, posted_at: Any = None) -> bool:
 
 
 def is_reach_only_manual_channel(
-    channel_type: Any, *, has_reach_ever: bool, has_auto_play_ever: bool
+    channel_type: Any,
+    *,
+    has_reach_ever: bool,
+    has_auto_play_ever: bool,
+    has_auto_reach_ever: bool = False,
 ) -> bool:
     """도달수만 수기로 관리하는 글인가 — **게시일 경계가 아니라 실제 지표 형태로** 판정한다.
 
@@ -59,7 +63,9 @@ def is_reach_only_manual_channel(
     text = str(channel_type or "")
     if "매거진" not in text and "배너" not in text:
         return False
-    return bool(has_reach_ever) and not has_auto_play_ever
+    # TikTok 배너는 공개 playCount를 자동수집하지만 정책상 reach_count에 저장한다.
+    # 자동 reach 이력을 수기 도달수로 오인하면 재시도 큐·일일 리포트에서 영구 제외된다.
+    return bool(has_reach_ever) and not (has_auto_play_ever or has_auto_reach_ever)
 
 
 # ── 비용 0이 '정상'인 게시물 판정 ────────────────────────────────────────

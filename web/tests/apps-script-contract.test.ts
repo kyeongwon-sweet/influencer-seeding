@@ -704,6 +704,28 @@ test("linked-sheet edit validation covers fixed fields and date-history paste ru
 });
 
 test("linked-sheet data validation rejects invalid input without including registration status", () => {
+  const specsStart = appsScript.indexOf("function linkedFixedInputValidationSpecs_(sheet, startRow)");
+  const specsEnd = appsScript.indexOf("function applyLinkedFixedInputValidationsRows_", specsStart);
+  assert.notEqual(specsStart, -1);
+  const specsBody = appsScript.slice(specsStart, specsEnd);
+  assert.match(specsBody, /const row = Math\.max\(CONFIG\.DATA_START_ROW, Number\(startRow\)/);
+  assert.match(specsBody, /const fieldCols = buildFieldCols_\(sheet\)/);
+  assert.match(specsBody, /const cpvCol = findHeaderCol_\(sheet, \["CPV", "cpv"\]\)/);
+  assert.match(specsBody, /\{ col: 2, formula: '=OR\(B' \+ row/);
+  assert.match(specsBody, /\{ col: 6, formula: '=OR\(F' \+ row/);
+  assert.match(specsBody, /\{ col: 7, formula: '=OR\(G' \+ row/);
+  assert.match(specsBody, /specs\.push\(\{ col: cpvCol, formula: '=OR\('/);
+  assert.match(specsBody, /\[fieldCols\.planner, fieldCols\.creator\]\.forEach/);
+
+  const fixedStart = specsEnd;
+  const fixedEnd = appsScript.indexOf("function normalizeLinkedUploadDatesWithBackup()", fixedStart);
+  const fixedBody = appsScript.slice(fixedStart, fixedEnd);
+  assert.match(fixedBody, /linkedFixedInputValidationSpecs_\(sheet, startRow\)/);
+  assert.match(fixedBody, /setDataValidation\(linkedValidationRule_\(spec\.formula, spec\.help\)\)/);
+  assert.match(fixedBody, /findHeaderCol_\(sheet, \["누적 조회수", "누적조회수"\]\)/);
+  assert.match(fixedBody, /const incrementCol = getIncrementCol_\(sheet\)/);
+  assert.match(fixedBody, /clearDataValidations\(\)/);
+
   const start = appsScript.indexOf("function applyLinkedSheetInputValidation_()");
   const end = appsScript.indexOf("function installLinkedSheetInputValidation()", start);
   assert.notEqual(start, -1);
@@ -712,17 +734,7 @@ test("linked-sheet data validation rejects invalid input without including regis
   assert.match(appsScript, /\.requireDate\(\)/);
   assert.match(body, /setDataValidation\(linkedUploadDateValidationRule_\(\)\)/);
   assert.doesNotMatch(body, /\[1, '=OR\(A2="",AND\(ISNUMBER\(A2\),A2>0\)\)'/);
-  assert.match(body, /\[2, '=OR\(B2="",REGEXMATCH/);
-  assert.match(body, /\[6, '=OR\(F2="",F2="-",AND\(REGEXMATCH/);
-  assert.match(body, /\[7, '=OR\(G2="",ISNUMBER\(G2\)\)'/);
-  assert.match(body, /const fieldCols = buildFieldCols_\(sheet\)/);
-  assert.match(body, /const cpvCol = findHeaderCol_\(sheet, \["CPV", "cpv"\]\)/);
-  assert.match(body, /rules\.push\(\[cpvCol, '=OR\('/);
-  assert.match(body, /cpvCell \+ '="\?",ISNUMBER/);
-  assert.match(body, /\[fieldCols\.planner, fieldCols\.creator\]\.forEach/);
-  assert.match(body, /rules\.push\(\[col, '=OR\('/);
-  assert.doesNotMatch(body, /\[10, '=OR\(J2="",REGEXMATCH/);
-  assert.doesNotMatch(body, /\[11, '=OR\(K2="",REGEXMATCH/);
+  assert.match(body, /applyLinkedFixedInputValidationsRows_\(sheet, CONFIG\.DATA_START_ROW, rowCount\)/);
   assert.match(body, /linkedDateColumns_\(sheet\)/);
   assert.match(appsScript, /setAllowInvalid\(false\)/);
 
@@ -814,8 +826,10 @@ test("linked-sheet validations self-heal on new rows, paste edits, and row struc
   const helperEnd = appsScript.indexOf("function linkedInputFingerprintMix_", helperStart);
   const helperBody = appsScript.slice(helperStart, helperEnd);
   assert.match(helperBody, /function applyLinkedInputValidationsToRows_/);
+  assert.match(helperBody, /applyLinkedFixedInputValidationsRows_\(sheet, safeStart, safeCount\)/);
   assert.match(helperBody, /function normalizeLinkedUploadDatesOnEdit_/);
   assert.match(helperBody, /function repairLinkedInputValidationsOnEdit_/);
+  assert.match(helperBody, /applyLinkedFixedInputValidationsRows_\(sheet, rowStart, rowCount, firstCol, lastCol\)/);
   assert.doesNotMatch(helperBody, /clearContent|deleteRow|deleteRows/);
 
   const changeStart = appsScript.indexOf("function fillInsertedDateHeadersOnChange_(e)");
@@ -835,6 +849,13 @@ test("new date columns receive real dates, display format, and input validation"
   assert.match(body, /setNumberFormat\(DATE_HEADER_FORMAT_\)/);
   assert.match(body, /applyDateInputValidation_\(sheet, lastDateCol \+ 1, insertedCount\)/);
   assert.match(body, /repairStaleMetricFormulaRanges_\(sheet\)/);
+
+  const exportStart = appsScript.indexOf("function exportStatsWithOptions_(options)");
+  const exportEnd = appsScript.indexOf("function importStats", exportStart);
+  const exportBody = appsScript.slice(exportStart, exportEnd);
+  assert.notEqual(exportStart, -1);
+  assert.match(exportBody, /setNumberFormat\("yyyy\. m\. d\."\)/);
+  assert.match(exportBody, /applyDateInputValidation_\(sheet, anchor \+ 1, newDates\.length\)/);
 });
 
 test("daily metric repair extends H/I and heals CPV formulas without overwriting literals", () => {
@@ -989,22 +1010,14 @@ test("dailyAuto prices sheet rows before deferring gated import and export", () 
   assert.match(dailyBody, /CONTINUATION_SCHEDULED/);
 });
 
-test("linked sheet H/I audit is available from Apps Script and GitHub Actions", () => {
+test("linked sheet H/I audit uses the single authoritative formula-audit workflow", () => {
   assert.match(appsScript, /function auditLinkedSheetFormulas_\(\)/);
   assert.match(appsScript, /cumulative_blank_no_formula/);
   assert.match(appsScript, /increment_ref_errors/);
   assert.match(appsScript, /linked_sheet_formula_audit/);
 
-  const csvWorkflow = readFileSync(
-    new URL("../../.github/workflows/sheet-formula-audit.yml", import.meta.url),
-    "utf8",
-  );
   const canonicalWorkflow = readFileSync(
     new URL("../../.github/workflows/formula-audit.yml", import.meta.url),
-    "utf8",
-  );
-  const auditScript = readFileSync(
-    new URL("../../scripts/audit_linked_sheet_formulas.py", import.meta.url),
     "utf8",
   );
   // ⚠️ 시각을 하드코딩하지 않는다(2026-08-06 아침 배치를 1시간 앞당길 때 이 테스트가 깨졌다).
@@ -1025,11 +1038,6 @@ test("linked sheet H/I audit is available from Apps Script and GitHub Actions", 
     `수식감사는 dailyAuto(08:30) 이후 · 자가치유 폴백(09:40) 이전이어야 한다. 현재 KST ${Math.floor(kstMinutes / 60)}:${String(kstMinutes % 60).padStart(2, "0")}`,
   );
   assert.match(canonicalWorkflow, /\/api\/sponsored-posts\/formula-audit/);
-  assert.match(csvWorkflow, /workflow_dispatch:/);
-  assert.doesNotMatch(csvWorkflow, /\n\s*schedule:/);
-  assert.match(csvWorkflow, /python scripts\/audit_linked_sheet_formulas\.py/);
-  assert.match(auditScript, /#REF/);
-  assert.match(auditScript, /increment column is fully blank/);
 });
 
 test("Apps Script clasp deploy path is staged and guarded", () => {
@@ -1153,6 +1161,19 @@ test("exportStats overwrites only automatic DB metrics and never carry-forwards"
   assert.match(appsScript, /const skipFormulaRefresh = !!\(options && options\.skipFormulaRefresh === true\)/);
   assert.match(appsScript, /if \(incrementCol && !skipFormulaRefresh\)/);
   assert.match(appsScript, /preserveExistingMetrics && cell !== "" && cell !== null/);
+  const exportStart = appsScript.indexOf("function exportStatsWithOptions_(options)");
+  const exportEnd = appsScript.indexOf("function refreshCumulativeViews()", exportStart);
+  const exportBody = appsScript.slice(exportStart, exportEnd);
+  assert.ok(
+    exportBody.indexOf("if (endedAt && date > endedAt)") <
+      exportBody.indexOf('if (preserveExistingMetrics && cell !== "" && cell !== null)'),
+    "fill-blanks mode must still clear values after ended_at",
+  );
+  assert.ok(
+    exportBody.indexOf("if (isBeforePostedDate_(date, postedAt))") <
+      exportBody.indexOf('if (preserveExistingMetrics && cell !== "" && cell !== null)'),
+    "fill-blanks mode must still clear values before posted_at",
+  );
   // 오늘·미래 자동값은 계속 비우되, DB에 manual=true로 안착한 수기 도달수는 채우거나 보존한다.
   assert.match(
     appsScript,

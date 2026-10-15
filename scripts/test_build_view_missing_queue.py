@@ -58,7 +58,7 @@ class TikTokInternalRetryPolicyTest(unittest.TestCase):
             }
             self.assertEqual(exclusion_reason(post), "internal_channel")
 
-    def test_internal_non_tiktok_banner_stays_reach_only(self):
+    def test_banner_retryability_is_separate_from_reach_storage_policy(self):
         for url in (
             "https://www.instagram.com/p/example/",
             "https://www.youtube.com/shorts/example",
@@ -69,6 +69,15 @@ class TikTokInternalRetryPolicyTest(unittest.TestCase):
                 "notes": "",
             }
             self.assertEqual(exclusion_reason(post), "non_tiktok_banner_reach_only")
+
+        # TikTok 배너는 공개 playCount를 얻을 수 있어 재시도 큐에는 남는다.
+        # 수집값을 reach_count에 저장하는 정책과 '수집 가능한가'는 별개다.
+        tiktok_banner = {
+            "channel_type": "위성채널(배너)",
+            "url": "https://www.tiktok.com/@channel/photo/7667917090640252168",
+            "notes": "",
+        }
+        self.assertIsNone(exclusion_reason(tiktok_banner))
 
     def test_free_seed_video_is_retryable_but_feed_is_manual(self):
         # 무상시딩 (영상) = 조회수 있음 → 재수집 대상(제외 아님)
@@ -379,6 +388,24 @@ class ReachOnlyManualChannelTest(unittest.TestCase):
         rows = list(self.reach_only_rows)
         rows.insert(0, {"measured_at": "2026-08-20", "play_count": 1200, "reach_count": None, "manual": False})
         self.assertNotEqual(self._reason(self.magazine, rows), "reach_only_manual_channel")
+
+    def test_tiktok_banner_auto_reach_returns_post_to_queue(self):
+        """TikTok 배너 자동값은 정책상 reach_count에 저장해도 수기전용이 아니다."""
+        post = {
+            "channel_type": "위성채널 (배너)",
+            "url": "https://www.tiktok.com/@u/photo/7696140243162074388/",
+            "posted_at": "2026-10-01",
+            "notes": "",
+        }
+        rows = [
+            {"measured_at": "2026-10-13", "play_count": None, "reach_count": 1200, "manual": False},
+            {"measured_at": "2026-10-14", "play_count": None, "reach_count": None, "manual": False},
+        ]
+        state = build_history_state(rows)
+        self.assertTrue(state["has_auto_reach_ever"])
+        reason = self._reason(post, rows, "2026-10-14")
+        self.assertNotEqual(reason, "reach_only_manual_channel")
+        self.assertNotIn(reason, NON_RETRYABLE_REASONS)
 
     def test_manual_row_copying_reach_into_play_is_not_evidence(self):
         """실측 함정('오늘의 메뉴' 2026-08-10): 수기 행이 같은 도달수를 play/reach 두 칸에 복사해

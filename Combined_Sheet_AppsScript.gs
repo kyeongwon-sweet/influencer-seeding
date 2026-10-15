@@ -3041,6 +3041,7 @@ function exportStatsWithOptions_(options) {
       sheet.getRange(CONFIG.HEADER_ROW, anchor + 1, 1, newDates.length)
         .setValues([headerRow])
         .setNumberFormat("yyyy. m. d.");
+      applyDateInputValidation_(sheet, anchor + 1, newDates.length);
       newDates.forEach((d, i) => dateCols.push({ col: anchor + 1 + i, date: d }));
       addedCols = newDates.length;
     }
@@ -3147,10 +3148,6 @@ function exportStatsWithOptions_(options) {
         const bi = dateCols[j].col - firstCol;
         const date = dateCols[j].date;
         const cell = block[i][bi];
-        if (preserveExistingMetrics && cell !== "" && cell !== null) {
-          preserved++;
-          continue;
-        }
         const postedAt = postedAtByRow[i];
         if (isBeforePostedDate_(date, postedAt)) {
           if (cell !== "" && cell !== null) { newBlock[i][bi] = ""; prePostedCleared++; }
@@ -3158,6 +3155,12 @@ function exportStatsWithOptions_(options) {
         }
         if (endedAt && date > endedAt) {
           if (cell !== "" && cell !== null) { newBlock[i][bi] = ""; endedCleared++; }
+          continue;
+        }
+        // collection gate 대기 중의 fill-blanks 모드도 기간 밖 값까지 보존하면 안 된다.
+        // 업로드 전·종료 후 clear가 항상 먼저이며, 정상 추적기간의 기존값만 보존한다.
+        if (preserveExistingMetrics && cell !== "" && cell !== null) {
+          preserved++;
           continue;
         }
         const collected = m ? m[date] : undefined;
@@ -3847,7 +3850,7 @@ function onStatusEdit_(e) {
     const sheet = e.range.getSheet();
     if (sheet.getSheetId() !== CONFIG.SHEET_GID) return;
     normalizeLinkedUploadDatesOnEdit_(e, sheet);  // YYYY.M.D 등 확실한 날짜 문자열만 실제 Date로 즉시 정규화
-    repairLinkedInputValidationsOnEdit_(e, sheet);  // 붙여넣기로 덮인 A/날짜열 검사규칙을 편집 범위만 복구
+    repairLinkedInputValidationsOnEdit_(e, sheet);  // 붙여넣기로 덮인 입력열 규칙과 H/I 오규칙을 편집 범위만 복구
     const hasInputIssue = validateLinkedSheetInputOnEdit_(e, sheet);  // 잘못된 단일 입력·다중셀 붙여넣기 즉시 경고(기존 값 자동삭제 금지)
     sanitizeAssetNameOnEdit_(e, sheet);  // 소재명 뒤 파일 목록(.mp4, 2. 속지 …) 재유입 즉시 제거
     healCumulativeOnEdit_(e, sheet);  // 누적(H) 열이 편집됐으면 즉시 자가치유 — 다중셀 붙여넣기도 잡아야 하므로 단일셀 제한보다 앞에서
@@ -3870,7 +3873,7 @@ function onStatusEdit_(e) {
 
 // ═══════════════════════════════════════════════════════════════
 // 연동 시트 입력 검증 — 값은 자동 수정/삭제하지 않고, 잘못된 입력을 거부하거나 즉시 알린다.
-// A: 실제 날짜, B: URL, F: 대문자 영문+한글 상품명, G: 숫자, J/K: 한글 사람 이름.
+// A: 실제 날짜, B: URL, F: 대문자 영문+한글 상품명, G: 숫자, J: CPV, K/L: 한글 사람 이름.
 // O 이후는 '날짜 제목이 붙은 열'만 조회수 영역으로 취급한다. 등록상태 등 관리 열은 제외한다.
 // 조회수는 숫자만 허용하며, 해당 행 업로드일 전이나 KST 오늘 이후 날짜 열에는 입력할 수 없다.
 const LINKED_INPUT_FIRST_DATE_COL_ = 15;  // O열
@@ -4012,6 +4015,55 @@ function linkedUploadDateValidationRule_() {
     .setAllowInvalid(false)
     .setHelpText("업로드일은 실제 날짜만 입력하세요.")
     .build();
+}
+
+function linkedFixedInputValidationSpecs_(sheet, startRow) {
+  const row = Math.max(CONFIG.DATA_START_ROW, Number(startRow) || CONFIG.DATA_START_ROW);
+  const fieldCols = buildFieldCols_(sheet);
+  const cpvCol = findHeaderCol_(sheet, ["CPV", "cpv"]);
+  const specs = [
+    { col: 2, formula: '=OR(B' + row + '="",REGEXMATCH(TO_TEXT(B' + row + '),"^https?://[^[:space:]]+$"))', help: "http(s) URL만 입력하세요." },
+    { col: 6, formula: '=OR(F' + row + '="",F' + row + '="-",AND(REGEXMATCH(TO_TEXT(F' + row + '),"[A-Z]"),REGEXMATCH(TO_TEXT(F' + row + '),"[가-힣]")))', help: "상품명은 '-' 또는 대문자 영문과 한글을 모두 포함한 값만 입력하세요." },
+    { col: 7, formula: '=OR(G' + row + '="",ISNUMBER(G' + row + '))', help: "비용은 숫자만 입력하세요." },
+  ];
+  if (cpvCol) {
+    const cpvCell = colLetter_(cpvCol) + row;
+    specs.push({ col: cpvCol, formula: '=OR(' + cpvCell + '="",' + cpvCell + '="?",ISNUMBER(' + cpvCell + '))', help: "CPV는 숫자, ?, 또는 빈칸만 입력하세요." });
+  }
+  [fieldCols.planner, fieldCols.creator].forEach(function(col) {
+    if (!col) return;
+    const cell = colLetter_(col) + row;
+    specs.push({ col: col, formula: '=OR(' + cell + '="",REGEXMATCH(TO_TEXT(' + cell + '),"^[가-힣]+$"))', help: "한글로만 된 사람 이름을 입력하세요." });
+  });
+  return specs;
+}
+
+function applyLinkedFixedInputValidationsRows_(sheet, startRow, rowCount, firstCol, lastCol) {
+  if (rowCount <= 0) return { validation_cells: 0, cleared_metric_cells: 0 };
+  const fromCol = Number(firstCol) || 1;
+  const toCol = Number(lastCol) || sheet.getLastColumn();
+  let validationCells = 0;
+  linkedFixedInputValidationSpecs_(sheet, startRow).forEach(function(spec) {
+    if (spec.col < fromCol || spec.col > toCol) return;
+    sheet.getRange(startRow, spec.col, rowCount, 1)
+      .setDataValidation(linkedValidationRule_(spec.formula, spec.help));
+    validationCells += rowCount;
+  });
+
+  // H(누적)·I(증분)는 계산 수식 열이다. 붙여넣기로 입력 검증이 복사되면 수식 자체는
+  // 정상이어도 빨간 경고가 남으므로, 헤더로 찾은 두 열의 검증 규칙만 제거한다.
+  const cumulativeCol = findHeaderCol_(sheet, ["누적 조회수", "누적조회수"]);
+  const incrementCol = getIncrementCol_(sheet);
+  const metricCols = [cumulativeCol, incrementCol].filter(function(col, index, cols) {
+    return col && col >= fromCol && col <= toCol && cols.indexOf(col) === index;
+  });
+  metricCols.forEach(function(col) {
+    sheet.getRange(startRow, col, rowCount, 1).clearDataValidations();
+  });
+  return {
+    validation_cells: validationCells,
+    cleared_metric_cells: metricCols.length * rowCount,
+  };
 }
 
 function normalizeLinkedUploadDatesWithBackup() {
@@ -4162,6 +4214,7 @@ function applyLinkedInputValidationsToRows_(sheet, startRow, rowCount) {
 
   sheet.getRange(safeStart, 1, safeCount, 1)
     .setDataValidation(linkedUploadDateValidationRule_());
+  const fixedResult = applyLinkedFixedInputValidationsRows_(sheet, safeStart, safeCount);
   const cols = Object.keys(linkedDateColumns_(sheet)).map(Number).sort(function(a, b) { return a - b; });
   let dateCells = 0;
   if (cols.length) {
@@ -4178,7 +4231,11 @@ function applyLinkedInputValidationsToRows_(sheet, startRow, rowCount) {
       previous = col;
     }
   }
-  return { rows: safeCount, validation_cells: safeCount + dateCells };
+  return {
+    rows: safeCount,
+    validation_cells: safeCount + fixedResult.validation_cells + dateCells,
+    cleared_metric_cells: fixedResult.cleared_metric_cells,
+  };
 }
 
 function ensureLinkedInputValidationsForRows_(sheet, rowRefs, expectedLastRow) {
@@ -4260,6 +4317,8 @@ function repairLinkedInputValidationsOnEdit_(e, sheet) {
     sheet.getRange(rowStart, 1, rowCount, 1).setDataValidation(linkedUploadDateValidationRule_());
     cells += rowCount;
   }
+  const fixedResult = applyLinkedFixedInputValidationsRows_(sheet, rowStart, rowCount, firstCol, lastCol);
+  cells += fixedResult.validation_cells + fixedResult.cleared_metric_cells;
   const dateCols = Object.keys(linkedDateColumns_(sheet)).map(Number)
     .filter(function(col) { return col >= firstCol && col <= lastCol; })
     .sort(function(a, b) { return a - b; });
@@ -4525,28 +4584,9 @@ function repairLinkedInputValidationsWithBackup() {
 function applyLinkedSheetInputValidation_() {
   const sheet = getSheet_();
   const rowCount = Math.max(1, sheet.getMaxRows() - CONFIG.DATA_START_ROW + 1);
-  const fieldCols = buildFieldCols_(sheet);
-  const cpvCol = findHeaderCol_(sheet, ["CPV", "cpv"]);
-  const rules = [
-    [2, '=OR(B2="",REGEXMATCH(TO_TEXT(B2),"^https?://[^[:space:]]+$"))', "http(s) URL만 입력하세요."],
-    [6, '=OR(F2="",F2="-",AND(REGEXMATCH(TO_TEXT(F2),"[A-Z]"),REGEXMATCH(TO_TEXT(F2),"[가-힣]")))', "상품명은 '-' 또는 대문자 영문과 한글을 모두 포함한 값만 입력하세요."],
-    [7, '=OR(G2="",ISNUMBER(G2))', "비용은 숫자만 입력하세요."],
-  ];
   sheet.getRange(CONFIG.DATA_START_ROW, 1, rowCount, 1)
     .setDataValidation(linkedUploadDateValidationRule_());
-  if (cpvCol) {
-    const cpvCell = colLetter_(cpvCol) + CONFIG.DATA_START_ROW;
-    rules.push([cpvCol, '=OR(' + cpvCell + '="",' + cpvCell + '="?",ISNUMBER(' + cpvCell + '))', "CPV는 숫자, ?, 또는 빈칸만 입력하세요."]);
-  }
-  [fieldCols.planner, fieldCols.creator].forEach(function(col) {
-    if (!col) return;
-    const cell = colLetter_(col) + CONFIG.DATA_START_ROW;
-    rules.push([col, '=OR(' + cell + '="",REGEXMATCH(TO_TEXT(' + cell + '),"^[가-힣]+$"))', "한글로만 된 사람 이름을 입력하세요."]);
-  });
-  rules.forEach(function(item) {
-    sheet.getRange(CONFIG.DATA_START_ROW, item[0], rowCount, 1)
-      .setDataValidation(linkedValidationRule_(item[1], item[2]));
-  });
+  applyLinkedFixedInputValidationsRows_(sheet, CONFIG.DATA_START_ROW, rowCount);
 
   const dateColumns = linkedDateColumns_(sheet);
   const cols = Object.keys(dateColumns).map(Number).sort(function(a, b) { return a - b; });
@@ -5345,7 +5385,7 @@ function fillInsertedDateHeadersOnChange_(e) {
   if (!sheet || sheet.getSheetId() !== CONFIG.SHEET_GID) return;
 
   // 행 삽입·삭제 때 상대참조 검사식이 #REF!로 갈라질 수 있다.
-  // 구조 변경은 드물고 이벤트에 정확한 행 범위가 없으므로 이때만 A/날짜열 규칙 전체를 복구한다.
+  // 구조 변경은 드물고 이벤트에 정확한 행 범위가 없으므로 이때만 입력열 규칙 전체를 복구한다.
   // setDataValidation만 사용하며 값·수식·서식에는 손대지 않는다.
   if (e.changeType === "INSERT_ROW" || e.changeType === "REMOVE_ROW") {
     const rowCount = Math.max(1, sheet.getMaxRows() - CONFIG.DATA_START_ROW + 1);
