@@ -120,3 +120,15 @@ export function productCodeOf(name: string | null | undefined): string | null {
   if (!name) return null;
   return BY_NORM.get(norm(name)) ?? null;
 }
+
+/**
+ * 파인트 계열인가 — 협찬 모니터링 '파인트' 묶음 칩이 쓰는 단일 판정.
+ * 제품코드는 `P + 한글`(P혼·P망·P말…). ⚠️ 한글이 2자 이상일 수 있다: 바치케 파인트 = `P바치`
+ * (2026-10-16 사용자 지시 "P바치를 파인트로 포함"). 팝콘(`PC혼` 등)은 C가 영문이라 제외된다.
+ * 코드 대신 상품명이 들어온 행(…파인트)도 파인트로 본다.
+ */
+export function isPintProduct(value: string | null | undefined): boolean {
+  const v = String(value ?? "").replace(/\s+/g, "");
+  if (!v) return false;
+  return /^P[가-힣]+$/.test(v) || v.endsWith("파인트");
+}
