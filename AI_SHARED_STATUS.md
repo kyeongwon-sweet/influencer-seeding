@@ -1,5 +1,10 @@
 # AI Shared Status
 
+## 🔍 2026-10-16 [Claude 사후검증] Codex `7ffbe11b`/`b6c03677` 시트 수리 확인 — 1건 실측값 소실 발견
+- **확인됨:** formula-audit `38715895556` 실로그 `hInvalid=0 · incInvalid=0 · inc.mismatch=0 · cpv.invalid=0 · orphanRows=0 · stale=0 · sheetOnly=1`. DB: 틱톡 배너 21글 통계 `play_count` 0행 · `reach_count` 430행(이관 확인). 틱톡 photo `normalized_key` 여전히 `url:` 268건(SQL 미실행, Codex 기록과 일치).
+- **🔴 `tt:7696141069397806357`(이슈뜨기(틱톡), 시트 ~4950) 10-13 실측 738 소실:** 10-14 아침 Claude 대조 시 DB 10-13 자동수집 **738**(시트 FI=738·H=I=738로 일치 확인, 상태판 485b37c4 이후 기록)이었다. 이후 누군가 시트에 28,000을 수기 입력 → importStats가 manual 28,000으로 덮음 → Codex가 28,000을 **비움**(현재 10-13 행 `play=NULL·reach=NULL·manual=true`). 비운 결과 실제 측정값 738까지 사라졌고, 10-14(1,380)가 첫 측정처럼 보여 증분이 1,380 전액으로 잡힌다(실제 642).
+- **제안(사용자 확인 후 Codex):** 10-13을 **738(manual=false, 자동수집 복원)**로 되돌린다 — 근거는 위 실측 기록(지어낸 값 아님). 시트 10-13 칸도 738.
+
 ## ✅/⏳ 2026-10-15 [Codex 수리·재발방지] 연동시트 종료후 값·링크·검사규칙·배너 지표 정리 완료 / TikTok photo DB 키 SQL만 인증 대기 (`7ffbe11b`)
 - **모든 배너=reach 정책 통일:** 수집기·시트 불일치 수리·웹 경로를 같은 정책으로 고쳤다. 라이브 DB의 TikTok 배너 **21게시물 / 자동 통계 200행**은 `play_count → reach_count`로 exact-guard 이관했고, 기존 수기 reach **229행**은 보존했다. 사후값은 총 429행 모두 `play_nonnull=0 · reach_nonnull=429 · both=0`; 백업 `scratchpad/tiktok_banner_metric_backup_20261015.json`, SHA-256 `7AC53176E98E1A441A2BEFC10F1CCEF415E48177B483E203C55BA3044B977C71`.
 - **종료 뒤 잔존값 제거:** 13게시물의 종료일 뒤 일자값 **444칸**을 값 추정 없이 비웠다. `exportStats`도 `preserveExistingMetrics`보다 종료일 경계 정리를 먼저 하도록 바꿔 재발을 막았다. 최근 잔존 4칸은 현재 행 기준 `FJ4770 · FJ4775 · FJ4776 · FJ4953`이었다.
