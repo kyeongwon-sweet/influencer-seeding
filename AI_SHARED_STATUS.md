@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## ✅ 2026-10-16 [Claude 코드·배포] 바치케 파인트(`P바치`)를 파인트로 포함 — 협찬 모니터링·무상노출 (`171ea64e`) + 인지 Streamlit PR
+- **사용자 지시:** "무상노출, 협찬 모니터링 전부 P바치를 파인트로 포함" + 협찬은 '파인트' 묶음 칩(사용자 선택).
+- **원인 공통점:** `P바치`는 P 뒤 한글이 2자라 '영문+한글 1자' 가정에서 빠진다. 인지 Streamlit(`sonyg-ops/lalasweet-icecream-dashboard`)은 이 규칙 때문에 메타 1,642행(9/29~10/15, 광고비 약 1.6억)을 `(기타)`로 버리고 있었다 → [PR #3](https://github.com/sonyg-ops/lalasweet-icecream-dashboard/pull/3)(PRODUCT_GROUPS·meta_api·survey 목록에 P바치, 실데이터 재현으로 바뀌는 행=P바치 1,642행만, 미병합).
+- **협찬 모니터링:** `web/lib/productCode.ts isPintProduct()`(P+한글 1자 이상 또는 '…파인트', 팝콘 PC 제외) 단일 판정 → `FiltersBar` 맨 앞 '파인트' 묶음 칩(파인트 코드 일괄 선택/해제). 칩 세로 줄바꿈도 수정. 라이브 확인: 칩=P골·P말·P망·P바·P바치·P요·P혼, 선택 시 **566건** = DB 실측 합계(236+224+47+30+22+4+3) 일치, P바치 행 노출.
+- **무상노출:** `organic/page.tsx` PRODUCT_GROUPS['파인트']에 DB 표기 `바스크치즈케이크파인트`(4건) 추가 — 라이브에서 '파인트' 선택 시 함께 선택됨 확인.
+- **검증:** web 666/666 · tsc · eslint(0 error) · build. 신규 `web/tests/pint-family.test.ts` 6건.
+- **남은 별건(무상노출):** `라즈베리오렌지파인트`·`애플민트파인트`는 원래 파인트 목록에 없어 '파인트' 선택에서 빠진다(이번 수정 이전부터). 사용자 확인 시 한 줄씩 추가.
+
 ## ✅ 2026-10-16 [Claude 실행·사용자 승인] `tt:7696141069397806357` 10-13 실측 738 복구 (DB 1행)
 - **근거:** 10-14 Claude DB 조회 기록 `t7696141069397806357=738`(자동수집, 당시 시트 10-13칸도 738). 사용자 승인("10-13은 738로 복구하는 것이 맞습니다").
 - **실행:** `Repair Specific Daily Stat` dry-run `38865795301`(대상 정확히 1행, stat `97a45aab-40a5-4a70-a9df-c26775b3ae00`, before `play=NULL·reach=NULL·manual=true` 기록) → apply `38865874475` `updated_rows=1`, after `play=738·manual=false`. 독립 재조회: 10-13 738(auto) · 10-14 1,380(manual) · 10-15 1,471(auto) → 대시보드 10-14 증분 642.
