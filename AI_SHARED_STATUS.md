@@ -4,6 +4,7 @@
 - **사용자 결정:** 기존 별건으로 남아 있던 두 제품을 무상노출 `/organic`의 `파인트` 묶음에 포함했다. `PRODUCT_GROUPS["파인트"]`에 두 정확한 DB 표기만 추가했으며 다른 제품 그룹·DB 데이터·집계 규칙은 변경하지 않았다.
 - **회귀 방지:** `pint-family.test.ts`의 소스 계약에 `바스크치즈케이크파인트`와 함께 두 제품이 계속 포함되는지 고정했다.
 - **검증:** web **666/666**, `tsc --noEmit`, production build, `git diff --check` 통과.
+- **라이브 확인:** main 자동배포 뒤 `/organic`에서 `파인트` 선택 시 두 제품 칩이 모두 함께 선택되고 결과가 기존 **172건 → 175건**으로 늘었다. 대상은 라즈베리오렌지 2행·애플민트 2행이며, 두 제품을 함께 가진 1행은 중복 없이 한 번만 집계된다.
 
 ## ✅ 2026-10-16 [Codex 완료] 인지 Streamlit 대시보드 PR #3 병합
 - [`sonyg-ops/lalasweet-icecream-dashboard#3`](https://github.com/sonyg-ops/lalasweet-icecream-dashboard/pull/3)을 16:47:27 KST에 `main`으로 병합했다. merge commit `cb445b189470a8596fff70bc5a4a4888ce25aecd`.
