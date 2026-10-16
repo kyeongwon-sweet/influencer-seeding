@@ -1,5 +1,10 @@
 # AI Shared Status
 
+## ✅ 2026-10-16 [Codex 완료] 인지 Streamlit 대시보드 PR #3 병합
+- [`sonyg-ops/lalasweet-icecream-dashboard#3`](https://github.com/sonyg-ops/lalasweet-icecream-dashboard/pull/3)을 16:47:27 KST에 `main`으로 병합했다. merge commit `cb445b189470a8596fff70bc5a4a4888ce25aecd`.
+- 병합 직전 확인: 1커밋·3파일, 충돌 없음(`MERGEABLE/CLEAN`), 별도 CI check 없음. 변경은 `streamlit_app.py`·`scripts/meta_api.py`·`scripts/survey_ig_links.py`의 파인트 코드 목록에 `P바치`를 추가하는 것뿐이며 다른 제품·집계 규칙 변경은 없다. 세 파일 `py_compile`·`git diff --check` 및 AST 표본 `P바치→파인트/is_bingwa=true`를 통과했다.
+- 병합 직후 `main` 원문을 다시 읽어 세 파일 모두 `P바치`가 반영됐음을 확인했다. 아래 Claude 항목의 "PR #3 미병합" 상태는 이 항목으로 종결한다.
+
 ## ✅ 2026-10-16 [Codex 완료] Apps Script 파인트 일별집계에 `P바치` 포함 (`8fdf9ff5`)
 - **라이브 기준 최소 수정:** production scriptId `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn`을 fresh pull한 뒤 10개 파일을 백업하고, live-only `09_제품별_일별성과_집계`의 `PT_JOBS[0].products`만 `['P망', 'P혼', 'P말', 'P바치']`로 1줄 수정했다. `01~08`·`appsscript.json`은 배포 전후 바이트 동일이며 `P요`·`P골`·별도 `P바`는 추가하지 않았다.
 - **백업·배포 검증:** `scratchpad/apps_script_before_pbar_20261016.zip`, SHA-256 `cb96c751d97db75356408e5f123bc3bb92488b4e48c3a3cf2403b16f5e38755e`. 16:38 KST guarded direct push 후 즉시 live pull해 10파일·09 파일 SHA-256 `b46a3e1fcd779765c60385932e3da4926af9415af9a74ea30abbd64ea029c379`·P바치 1회 출현을 재확인했다. 이후 일반 배포가 live-only 설정을 되돌리지 못하도록 배포 보존 마커와 계약 테스트도 추가했다.
