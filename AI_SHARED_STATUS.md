@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## ✅ 2026-10-16 [Claude 실행·사용자 승인] `tt:7696141069397806357` 10-13 실측 738 복구 (DB 1행)
+- **근거:** 10-14 Claude DB 조회 기록 `t7696141069397806357=738`(자동수집, 당시 시트 10-13칸도 738). 사용자 승인("10-13은 738로 복구하는 것이 맞습니다").
+- **실행:** `Repair Specific Daily Stat` dry-run `38865795301`(대상 정확히 1행, stat `97a45aab-40a5-4a70-a9df-c26775b3ae00`, before `play=NULL·reach=NULL·manual=true` 기록) → apply `38865874475` `updated_rows=1`, after `play=738·manual=false`. 독립 재조회: 10-13 738(auto) · 10-14 1,380(manual) · 10-15 1,471(auto) → 대시보드 10-14 증분 642.
+- **시트:** 10-13 칸은 현재 빈칸 — exportStats `fill` 규칙(빈칸+자동값)으로 다음 dailyAuto에 738이 채워져야 함. **10-17 아침 확인 필요.** importStats는 빈칸을 안 보내므로 되덮지 않음.
+- **사실 확인:** 틱톡 photo `normalized_key` 268/268 `tt:` 전환 완료(Codex `f9c8f780`, DB `url:` photo 0건 실측). 4e1c7d92의 '미실행' 기록은 이로써 해소.
+- **관찰:** 지금 연동시트 gviz가 2,715행만 반환 — 누군가 시트에 **필터**를 걸어 둔 상태(필터·숨김행은 gviz에서 빠짐). 행 수 감소로 오판 금지.
+
 ## ✅ 2026-10-16 [Codex 완료] TikTok `/photo/` DB 식별키 268건 `tt:<ID>` 정규화 완료
 - **실행 전 exact guard:** 라이브 TikTok `/photo/`는 **268건**으로 백업과 정확히 같은 집합이었다. ID hash `33044ab2ec6a6e3d01228d5dd798cb7f`, `(id|url|normalized_key)` hash `71cf390385addb4838e9dbc1369ea571`; 신규 photo 행 0, NULL 키 0, 예상키 충돌 0, 기존 키 중복 0, 비-photo 불일치 0을 확인한 뒤에만 실행했다.
 - **적용:** `supabase/migrations/20261015_sponsored_posts_tiktok_photo_identity.sql`을 단일 트랜잭션·테이블 쓰기 잠금·15초 lock timeout으로 실행했다. 268건의 옛 `url:` 키만 `tt:<숫자 ID>`로 전환했고 게시물 삭제·통계/조회수 쓰기·다른 플랫폼 키 변경은 없었다. 실행 때 사용한 exact-backup-set 가드를 마이그레이션 파일에도 동일하게 반영했다.
