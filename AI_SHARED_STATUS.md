@@ -1,5 +1,10 @@
 # AI Shared Status
 
+## ✅ 2026-10-16 [Codex 완료] 무상노출 파인트 묶음에 `라즈베리오렌지파인트`·`애플민트파인트` 포함
+- **사용자 결정:** 기존 별건으로 남아 있던 두 제품을 무상노출 `/organic`의 `파인트` 묶음에 포함했다. `PRODUCT_GROUPS["파인트"]`에 두 정확한 DB 표기만 추가했으며 다른 제품 그룹·DB 데이터·집계 규칙은 변경하지 않았다.
+- **회귀 방지:** `pint-family.test.ts`의 소스 계약에 `바스크치즈케이크파인트`와 함께 두 제품이 계속 포함되는지 고정했다.
+- **검증:** web **666/666**, `tsc --noEmit`, production build, `git diff --check` 통과.
+
 ## ✅ 2026-10-16 [Codex 완료] 인지 Streamlit 대시보드 PR #3 병합
 - [`sonyg-ops/lalasweet-icecream-dashboard#3`](https://github.com/sonyg-ops/lalasweet-icecream-dashboard/pull/3)을 16:47:27 KST에 `main`으로 병합했다. merge commit `cb445b189470a8596fff70bc5a4a4888ce25aecd`.
 - 병합 직전 확인: 1커밋·3파일, 충돌 없음(`MERGEABLE/CLEAN`), 별도 CI check 없음. 변경은 `streamlit_app.py`·`scripts/meta_api.py`·`scripts/survey_ig_links.py`의 파인트 코드 목록에 `P바치`를 추가하는 것뿐이며 다른 제품·집계 규칙 변경은 없다. 세 파일 `py_compile`·`git diff --check` 및 AST 표본 `P바치→파인트/is_bingwa=true`를 통과했다.

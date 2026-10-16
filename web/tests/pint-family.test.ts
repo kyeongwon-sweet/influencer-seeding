@@ -36,8 +36,10 @@ test("협찬 필터의 '파인트' 칩이 단일 판정(isPintProduct)을 쓴다
   assert.match(src, />파인트<\/button>/);
 });
 
-test("무상노출 파인트 묶음에 바치케 파인트 표기(바스크치즈케이크파인트)가 있다(소스 계약)", () => {
+test("무상노출 파인트 묶음에 바치케·라즈베리오렌지·애플민트 파인트 표기가 있다(소스 계약)", () => {
   const src = readFileSync(join(import.meta.dirname, "../app/organic/page.tsx"), "utf8");
   const pint = src.slice(src.indexOf('"파인트": ['), src.indexOf("],", src.indexOf('"파인트": [')));
   assert.match(pint, /"바스크치즈케이크파인트"/);
+  assert.match(pint, /"라즈베리오렌지파인트"/);
+  assert.match(pint, /"애플민트파인트"/);
 });
