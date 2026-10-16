@@ -207,6 +207,7 @@ test("guarded clasp deploy keeps only the Korean-named production Apps Script in
   ]) assert.ok(!deployList.includes(retired), `완료된 수리 파일 재배포 금지: ${retired}`);
   assert.match(appsScriptDeploy, /바이럴 최신효율 업데이트\.js[\s\S]*08_바이럴_최신효율_업데이트\.js/);
   assert.match(appsScriptDeploy, /파인트집계\.js[\s\S]*09_제품별_일별성과_집계\.js/);
+  assert.match(appsScriptDeploy, /products: \['P망', 'P혼', 'P말', 'P바치'\]/);
   assert.match(appsScriptDeploy, /verifyLiveInventory\("staged after cleanup"\)/);
   assert.match(appsScriptDeploy, /verifyLiveInventory\("live pull"\)/);
 });

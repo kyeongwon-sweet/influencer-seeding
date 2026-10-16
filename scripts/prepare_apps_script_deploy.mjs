@@ -32,7 +32,11 @@ const preservedLiveOnlyFiles = [
   {
     oldName: "파인트집계.js",
     newName: "09_제품별_일별성과_집계.js",
-    markers: ["function PT_run", "function PT_addMenu"],
+    markers: [
+      "function PT_run",
+      "function PT_addMenu",
+      "products: ['P망', 'P혼', 'P말', 'P바치']",
+    ],
   },
 ];
 
