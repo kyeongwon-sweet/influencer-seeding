@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## ✅ 2026-10-16 [Codex 완료] Apps Script 파인트 일별집계에 `P바치` 포함 (`8fdf9ff5`)
+- **라이브 기준 최소 수정:** production scriptId `1XogwTHJb-oanoOw3suAt9rgh8H6vOqkIZwAWTZdgS_mhc1yaFjU6JrCn`을 fresh pull한 뒤 10개 파일을 백업하고, live-only `09_제품별_일별성과_집계`의 `PT_JOBS[0].products`만 `['P망', 'P혼', 'P말', 'P바치']`로 1줄 수정했다. `01~08`·`appsscript.json`은 배포 전후 바이트 동일이며 `P요`·`P골`·별도 `P바`는 추가하지 않았다.
+- **백업·배포 검증:** `scratchpad/apps_script_before_pbar_20261016.zip`, SHA-256 `cb96c751d97db75356408e5f123bc3bb92488b4e48c3a3cf2403b16f5e38755e`. 16:38 KST guarded direct push 후 즉시 live pull해 10파일·09 파일 SHA-256 `b46a3e1fcd779765c60385932e3da4926af9415af9a74ea30abbd64ea029c379`·P바치 1회 출현을 재확인했다. 이후 일반 배포가 live-only 설정을 되돌리지 못하도록 배포 보존 마커와 계약 테스트도 추가했다.
+- **원본 분류:** P바치 30행 = `바이럴 (배너)` **11행** + 협찬 **19행**. 현행 `PT_buildTab`의 정확 일치 필터 때문에 바이럴 배너 11행만 파인트 집계에 포함되고 협찬 19행은 계속 제외된다.
+- **라이브 실행:** Apps Script 편집기에서 `PT_runPint` 1회 실행(16:39:32~16:40:59 KST), 로그 `파인트 427건`·정상 완료. `파인트_일별집계` gid `2105093332`를 실행 전후 A:K로 대조했다.
+- **결과:** 9/29~10/15 영상 B:F는 전 날짜 완전 불변. 배너 합계는 **23→34건(+11)**, **₩2,540,000→₩3,790,000(+₩1,250,000)**, **1,018,791→1,550,305(+531,514)**로 사전 계산과 100% 일치했다. P바치 반영은 10/02부터 시작했고 9/29~10/01은 변화 0이다.
+- **검증:** web **666/666**, `tsc --noEmit`, `node --check`, `git diff --check` 통과. Google Sheets 실물 전후 비교로 행수·비용·조회수 증분 및 영상 집계 무변경을 확인했다.
+
 ## ✅ 2026-10-16 [Claude 코드·배포] 바치케 파인트(`P바치`)를 파인트로 포함 — 협찬 모니터링·무상노출 (`171ea64e`) + 인지 Streamlit PR
 - **사용자 지시:** "무상노출, 협찬 모니터링 전부 P바치를 파인트로 포함" + 협찬은 '파인트' 묶음 칩(사용자 선택).
 - **원인 공통점:** `P바치`는 P 뒤 한글이 2자라 '영문+한글 1자' 가정에서 빠진다. 인지 Streamlit(`sonyg-ops/lalasweet-icecream-dashboard`)은 이 규칙 때문에 메타 1,642행(9/29~10/15, 광고비 약 1.6억)을 `(기타)`로 버리고 있었다 → [PR #3](https://github.com/sonyg-ops/lalasweet-icecream-dashboard/pull/3)(PRODUCT_GROUPS·meta_api·survey 목록에 P바치, 실데이터 재현으로 바뀌는 행=P바치 1,642행만, 미병합).
