@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## ✅ 2026-10-16 [Codex 완료] TikTok `/photo/` DB 식별키 268건 `tt:<ID>` 정규화 완료
+- **실행 전 exact guard:** 라이브 TikTok `/photo/`는 **268건**으로 백업과 정확히 같은 집합이었다. ID hash `33044ab2ec6a6e3d01228d5dd798cb7f`, `(id|url|normalized_key)` hash `71cf390385addb4838e9dbc1369ea571`; 신규 photo 행 0, NULL 키 0, 예상키 충돌 0, 기존 키 중복 0, 비-photo 불일치 0을 확인한 뒤에만 실행했다.
+- **적용:** `supabase/migrations/20261015_sponsored_posts_tiktok_photo_identity.sql`을 단일 트랜잭션·테이블 쓰기 잠금·15초 lock timeout으로 실행했다. 268건의 옛 `url:` 키만 `tt:<숫자 ID>`로 전환했고 게시물 삭제·통계/조회수 쓰기·다른 플랫폼 키 변경은 없었다. 실행 때 사용한 exact-backup-set 가드를 마이그레이션 파일에도 동일하게 반영했다.
+- **사후 무결성:** 전체 게시물 **4,964 → 4,964**, photo **268**, canonical `tt:` **268**, legacy `url:` **0**, 잘못된 키 **0**, 전체 함수 불일치 **0**, 중복 키 **0**. 대상 비-key hash `868581bddc2cd8cfec8188c2392bea1f`와 통계 **9,393행 / hash `bf219a7ff31bba5f5142d9f6d3f9fc48`**가 실행 전후 동일하다.
+- **DB 재발방지 검증:** `sponsored_posts_normalized_key_uidx`는 UNIQUE·VALID, `trg_sponsored_posts_normalized_key`는 enabled 상태이며 INSERT/URL UPDATE 전에 정규화 함수를 호출한다. 함수 표본은 TikTok photo/video 모두 `tt:7696140243162074388`, Instagram `ig:DeVzfGRBw_l`, YouTube `yt:7brYyMz4wZ0`으로 통과했다.
+- **리포지토리 검증:** exact-set 가드가 backfill보다 먼저 실행되는 계약을 고정했고 web **660/660**, `tsc --noEmit`, `git diff --check` 통과.
+- **백업:** `scratchpad/tiktok_photo_identity_backup_20261015.json`(268행), SHA-256 `8ed807e83910f2f6fce215f09f02574c4d8237cf7df576cd4f24eba893a6c0d2`. 이로써 아래 10-15 항목의 마지막 `⏳ TikTok /photo/ DB 식별키` 작업을 닫는다.
+
 ## 🔍 2026-10-16 [Claude 사후검증] Codex `7ffbe11b`/`b6c03677` 시트 수리 확인 — 1건 실측값 소실 발견
 - **확인됨:** formula-audit `38715895556` 실로그 `hInvalid=0 · incInvalid=0 · inc.mismatch=0 · cpv.invalid=0 · orphanRows=0 · stale=0 · sheetOnly=1`. DB: 틱톡 배너 21글 통계 `play_count` 0행 · `reach_count` 430행(이관 확인). 틱톡 photo `normalized_key` 여전히 `url:` 268건(SQL 미실행, Codex 기록과 일치).
 - **🔴 `tt:7696141069397806357`(이슈뜨기(틱톡), 시트 ~4950) 10-13 실측 738 소실:** 10-14 아침 Claude 대조 시 DB 10-13 자동수집 **738**(시트 FI=738·H=I=738로 일치 확인, 상태판 485b37c4 이후 기록)이었다. 이후 누군가 시트에 28,000을 수기 입력 → importStats가 manual 28,000으로 덮음 → Codex가 28,000을 **비움**(현재 10-13 행 `play=NULL·reach=NULL·manual=true`). 비운 결과 실제 측정값 738까지 사라졌고, 10-14(1,380)가 첫 측정처럼 보여 증분이 1,380 전액으로 잡힌다(실제 642).

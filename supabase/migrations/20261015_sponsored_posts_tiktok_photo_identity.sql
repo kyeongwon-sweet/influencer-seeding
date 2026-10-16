@@ -3,6 +3,7 @@
 --
 -- Safety:
 --   * lock writers while the projected keys are checked and backfilled;
+--   * abort unless the live TikTok /photo/ set exactly matches the reviewed 268-row backup;
 --   * abort before any UPDATE if two existing rows would collapse to one key;
 --   * keep the existing partial UNIQUE index as the final database guard.
 
@@ -84,6 +85,48 @@ begin
   u := regexp_replace(u, '[?#].*$', '');
   u := regexp_replace(u, '/+$', '');
   return 'url:' || u || '/';
+end;
+$$;
+
+do $$
+declare
+  v_photo_count bigint;
+  v_photo_id_hash text;
+  v_photo_tuple_hash text;
+  v_non_photo_mismatches bigint;
+begin
+  with photo as (
+    select p.id, p.url, p.normalized_key
+    from public.sponsored_posts p
+    where p.url ~* 'tiktok\.com/[^?#]*/photo/[0-9]+'
+  )
+  select
+    count(*),
+    md5(string_agg(id::text, ',' order by id::text)),
+    md5(string_agg(
+      id::text || '|' || url || '|' || coalesce(normalized_key, ''),
+      chr(10) order by id::text
+    ))
+  into v_photo_count, v_photo_id_hash, v_photo_tuple_hash
+  from photo;
+
+  select count(*)
+  into v_non_photo_mismatches
+  from public.sponsored_posts p
+  where p.url !~* 'tiktok\.com/[^?#]*/photo/[0-9]+'
+    and p.normalized_key is distinct from public.sponsored_post_identity_key(p.url);
+
+  if v_photo_count <> 268
+     or v_photo_id_hash <> '33044ab2ec6a6e3d01228d5dd798cb7f'
+     or v_photo_tuple_hash <> '71cf390385addb4838e9dbc1369ea571' then
+    raise exception 'TikTok photo backup set changed (count %, id_hash %, tuple_hash %); aborting',
+      v_photo_count, v_photo_id_hash, v_photo_tuple_hash;
+  end if;
+
+  if v_non_photo_mismatches <> 0 then
+    raise exception 'non-photo normalized_key mismatches found (%); aborting broad backfill',
+      v_non_photo_mismatches;
+  end if;
 end;
 $$;
 
