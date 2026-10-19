@@ -115,7 +115,7 @@ def fetch_active_posts() -> list[dict]:
             "sponsored_posts?"
             + _q(
                 {
-                    "select": "id,account_name,channel_type,posted_at,created_at,url,"
+                    "select": "id,account_name,channel_type,product_name,posted_at,created_at,url,"
                     "notes,not_found_streak,review_requested_at",
                     "ended_at": "is.null",
                     "order": "id.asc",
@@ -194,6 +194,7 @@ def build(today: date, reasons: dict[str, dict] | None = None) -> dict:
                 "post_id": p["id"],
                 "account_name": p.get("account_name"),
                 "channel_type": p.get("channel_type"),
+                "product_name": p.get("product_name"),
                 "posted_at": (p.get("posted_at") or "")[:10],
                 "review_requested_at": rr,
                 "not_found_streak": p.get("not_found_streak") or 0,
@@ -227,6 +228,7 @@ def build(today: date, reasons: dict[str, dict] | None = None) -> dict:
             "post_id": p["id"],
             "account_name": p.get("account_name"),
             "channel_type": p.get("channel_type"),
+            "product_name": p.get("product_name"),
             "posted_at": posted,
             "created_at": created,
             "url": url,
@@ -279,14 +281,15 @@ def slack_lines(result: dict) -> str:
     return "\n".join(parts)
 
 
-def send_slack(text: str, today: str) -> None:
+def send_slack(text: str, today: str, products=None) -> None:
     """채널에 새 글로 올리지 않고 그날 '자정 수집' 보고 스레드의 댓글로, 담당자 태그를 붙여 단다(2026-10-19).
-    보고가 아직 없으면 REPORT_THREAD_WAIT_SECONDS 만큼 기다렸다가, 끝내 없으면 채널에 바로 올린다."""
+    태그 = 걸린 글들의 제품 담당(파인트/쫀득바, 모르면 전원). 보고가 아직 없으면
+    REPORT_THREAD_WAIT_SECONDS 만큼 기다렸다가, 끝내 없으면 채널에 바로 올린다."""
     if not SLACK_TOKEN:
         print("[WARN] INJIBOT_SLACK_TOKEN 없음 — 발송 스킵")
         return
     post_to_report_thread(
-        slack_api(SLACK_TOKEN), SLACK_CHANNEL, mention_prefix() + text, today,
+        slack_api(SLACK_TOKEN), SLACK_CHANNEL, mention_prefix(products=products) + text, today,
         wait_seconds=int(os.getenv("REPORT_THREAD_WAIT_SECONDS", "0")),
     )
 
@@ -310,7 +313,8 @@ def main() -> int:
         text = slack_lines(result)
         print(text)
         if args.send:
-            send_slack(text, args.date)
+            products = [r.get("product_name") for k in ("flagged", "bad_url", "review_stale") for r in result.get(k, [])]
+            send_slack(text, args.date, products)
     else:
         print("✅ 수집 사각 없음")
     return 0

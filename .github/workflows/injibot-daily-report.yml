@@ -58,7 +58,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           INJIBOT_SLACK_TOKEN: ${{ secrets.INJIBOT_SLACK_TOKEN }}
-          # 확인 필요 항목이 있는 날 요약 댓글에 태그할 담당자(쉼표 목록, 비우면 김보나)
+          # 확인 필요 항목이 있는 날 요약 댓글에 태그할 담당자(쉼표 목록). 비우면 제품별 담당: 파인트 이재원·김보나 / 쫀득바 김바다·권예원(collect_report_thread.PRODUCT_ASSIGNEES)
           COLLECT_ALERT_ASSIGNEES: ${{ vars.COLLECT_ALERT_ASSIGNEES }}
           PYTHONUTF8: "1"
           TZ: "Asia/Seoul"

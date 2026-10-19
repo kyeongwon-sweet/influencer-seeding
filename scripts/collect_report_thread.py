@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 import urllib.parse
 import urllib.request
@@ -23,8 +24,43 @@ from typing import Callable
 
 KST = timezone(timedelta(hours=9))
 REPORT_KEYWORD = "자정 수집"
-# 기본 태그 = 김보나(2026-10-19 사용자 지정). 바꿀 땐 GHA 변수 COLLECT_ALERT_ASSIGNEES(쉼표 목록)로.
-DEFAULT_ASSIGNEES = "U0C0W2V4X4G"
+# 제품군별 기본 담당자(2026-10-19 사용자 지정). 알림에 걸린 글의 제품으로 고른다.
+#   파인트 = 이재원 · 김보나 / 쫀득바 = 김바다 · 권예원
+# 제품을 모르거나 글과 무관한 알림(exportStats 등)은 두 팀 전원 — 누구에게도 안 가는 것보다 낫다.
+# 전체를 한 번에 바꾸려면 GHA 변수 COLLECT_ALERT_ASSIGNEES(쉼표 목록)가 이 표보다 우선한다.
+PRODUCT_ASSIGNEES = {
+    "파인트": ["U09RCJ1B9ML", "U0C0W2V4X4G"],  # 이재원, 김보나
+    "쫀득바": ["U08S4MCC4HY", "U0C7QDL5GHF"],  # 김바다, 권예원
+}
+ALL_ASSIGNEES = [u for ids in PRODUCT_ASSIGNEES.values() for u in ids]
+
+
+def product_group(product: str | None) -> str | None:
+    """제품코드/상품명 → 담당 제품군. P바치처럼 한글 2자 코드도 파인트(2026-10-16 결정)."""
+    v = re.sub(r"\s+", "", str(product or ""))
+    if re.fullmatch(r"P[가-힣]+", v) or v.endswith("파인트"):
+        return "파인트"
+    if re.fullmatch(r"JD[가-힣]+", v) or "쫀득" in v:
+        return "쫀득바"
+    return None
+
+
+def assignees_for(products=None, env: dict | None = None) -> list[str]:
+    """알림에 걸린 글들의 제품으로 태그할 사람. 하나라도 제품을 모르면(또는 글 무관 알림) 전원."""
+    raw = (env if env is not None else os.environ).get("COLLECT_ALERT_ASSIGNEES") or ""
+    override = [x.strip() for x in raw.split(",") if x.strip()]
+    if override:
+        return override
+    items = list(products or [])
+    groups = [product_group(p) for p in items]
+    if not items or any(g is None for g in groups):
+        return list(ALL_ASSIGNEES)
+    out: list[str] = []
+    for g in groups:
+        for u in PRODUCT_ASSIGNEES[g]:
+            if u not in out:
+                out.append(u)
+    return out
 
 Api = Callable[[str, dict], dict]
 
@@ -54,9 +90,8 @@ def find_report_ts(messages: list[dict], today: str) -> str | None:
     return None
 
 
-def mention_prefix(env: dict | None = None) -> str:
-    raw = (env if env is not None else os.environ).get("COLLECT_ALERT_ASSIGNEES") or DEFAULT_ASSIGNEES
-    ids = [x.strip() for x in raw.split(",") if x.strip()]
+def mention_prefix(env: dict | None = None, products=None) -> str:
+    ids = assignees_for(products, env)
     return " ".join("<@%s>" % x for x in ids) + " " if ids else ""
 
 

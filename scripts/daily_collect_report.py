@@ -218,7 +218,7 @@ def main():
     # 전체 게시물 메타
     posts = []; frm = 0
     while True:
-        pg = get("/rest/v1/sponsored_posts?select=id,account_name,channel_type,url,notes,ended_at,posted_at,created_at,not_found_streak,review_requested_at&order=id.asc&limit=1000&offset=%d" % frm)
+        pg = get("/rest/v1/sponsored_posts?select=id,account_name,channel_type,product_name,url,notes,ended_at,posted_at,created_at,not_found_streak,review_requested_at&order=id.asc&limit=1000&offset=%d" % frm)
         posts += pg
         if len(pg) < 1000: break
         frm += 1000
@@ -297,7 +297,8 @@ def main():
         if any(k in ct for k in ("위성채널", "온드미디어")):
             internal_cnt += 1        # 내부채널(위성/온드) — 캠페인 아님·불규칙 수집 → 미측정 정상(2026-07-15 사용자 지시, notify_status와 동일 규칙)
             continue
-        item = {"account_name": p.get("account_name"), "channel_type": ct, "url": p.get("url")}
+        item = {"account_name": p.get("account_name"), "channel_type": ct, "url": p.get("url"),
+                "product_name": p.get("product_name")}
         if is_ended(p):
             if not has_val:
                 ended_miss.append(item)     # 종료 게시물 — 값 없음이 정상
@@ -490,7 +491,9 @@ def main():
     title = report_title(status_word, today, attention)
     summary = body.split("\n", 1)[1].lstrip("\n") if "\n" in body else body
     if attention or not success:
-        summary = mention_prefix(env) + "\n" + summary
+        # 태그 = 확인 필요 글들의 제품 담당(파인트/쫀득바). 제품 모름·실패일은 두 팀 전원.
+        products = [i.get("product_name") for i in (real_miss + nf_review + stuck + (watchdog.get("items") or []))]
+        summary = mention_prefix(env, products if success else None) + "\n" + summary
 
     print("===== 제목(채널) =====")
     print(title)

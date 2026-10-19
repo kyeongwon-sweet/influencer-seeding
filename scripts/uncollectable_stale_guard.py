@@ -75,6 +75,7 @@ def stuck_uncollectable(
             "post_id": post.get("id"),
             "account_name": post.get("account_name"),
             "channel_type": post.get("channel_type"),
+            "product_name": post.get("product_name"),
             "url": post.get("url"),
             "last_seen": str(since)[:10],
             "days": days,

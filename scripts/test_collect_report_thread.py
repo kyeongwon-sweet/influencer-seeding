@@ -55,9 +55,25 @@ def test_끝내_보고가_없으면_채널에_바로_올린다_경보유실_금�
     assert "자정 수집 보고가 아직 없어" in api.posts[0]["text"] and "🚨 경보" in api.posts[0]["text"]
 
 
-def test_담당자_태그는_기본_김보나이고_변수로_바꾼다():
-    assert crt.mention_prefix({}) == "<@U0C0W2V4X4G> "
-    assert crt.mention_prefix({"COLLECT_ALERT_ASSIGNEES": "UA, UB"}) == "<@UA> <@UB> "
+PINT = ["U09RCJ1B9ML", "U0C0W2V4X4G"]      # 이재원, 김보나
+JJONDEUK = ["U08S4MCC4HY", "U0C7QDL5GHF"]  # 김바다, 권예원
+
+
+def test_담당자는_제품군별_파인트_이재원김보나_쫀득바_김바다권예원():
+    assert crt.assignees_for(["P말", "P바치", "P혼"], {}) == PINT        # P바치도 파인트(10-16 결정)
+    assert crt.assignees_for(["JD혼", "JD멜"], {}) == JJONDEUK
+    assert crt.assignees_for(["P망", "JD복"], {}) == PINT + JJONDEUK      # 섞이면 두 팀
+
+
+def test_제품을_모르거나_글과_무관한_알림은_전원():
+    assert crt.assignees_for(None, {}) == PINT + JJONDEUK                 # exportStats 같은 시스템 알림
+    assert crt.assignees_for(["P말", None], {}) == PINT + JJONDEUK        # 하나라도 모르면 놓치지 않게 전원
+    assert crt.assignees_for(["DB딸"], {}) == PINT + JJONDEUK             # 표에 없는 제품군
+
+
+def test_변수로_전체를_덮어쓸_수_있다():
+    assert crt.assignees_for(["P말"], {"COLLECT_ALERT_ASSIGNEES": "UA, UB"}) == ["UA", "UB"]
+    assert crt.mention_prefix({}, ["JD혼"]) == "<@U08S4MCC4HY> <@U0C7QDL5GHF> "
 
 
 def test_보고_제목은_중복판정_열쇠를_유지한다():
