@@ -1,7 +1,7 @@
 name: Admin — Delete Slack message
 
 # 봇이 자기가 보낸 슬랙 메시지(ts)를 삭제. 정정/중복/고아 알림 청소용. 수동 전용.
-# 작성자·본문 2개 조각·답글 0건을 먼저 확인하며, 하나라도 다르면 삭제하지 않는다.
+# 작성자·본문 2개 조각·예상 답글 수를 먼저 확인하며, 답글이 있으면 그 ts를 삭제 전후 대조한다.
 on:
   workflow_dispatch:
     inputs:
@@ -29,6 +29,15 @@ on:
       expected_text_2:
         description: "본문에 반드시 있어야 할 문자열 2"
         required: true
+      expected_reply_count:
+        description: "보존되어야 할 답글 수"
+        required: true
+        default: "0"
+      dry_run:
+        description: "true면 검증만 하고 삭제하지 않음"
+        required: true
+        type: boolean
+        default: true
 
 jobs:
   delete:
@@ -44,6 +53,8 @@ jobs:
           EXPECTED_AUTHOR_USER: ${{ github.event.inputs.expected_author_user }}
           EXPECTED_TEXT_1: ${{ github.event.inputs.expected_text_1 }}
           EXPECTED_TEXT_2: ${{ github.event.inputs.expected_text_2 }}
+          EXPECTED_REPLY_COUNT: ${{ github.event.inputs.expected_reply_count }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
         run: |
           set -euo pipefail
           if [ "$BOT" = "inji" ]; then
@@ -53,6 +64,14 @@ jobs:
           fi
           if [ -z "$SLACK_BOT_TOKEN" ]; then
             echo "선택한 봇 토큰이 없습니다"
+            exit 1
+          fi
+          if [[ ! "$EXPECTED_REPLY_COUNT" =~ ^[0-9]+$ ]]; then
+            echo "expected_reply_count는 0 이상의 정수여야 합니다: $EXPECTED_REPLY_COUNT"
+            exit 1
+          fi
+          if [ "$DRY_RUN" != "true" ] && [ "$DRY_RUN" != "false" ]; then
+            echo "dry_run은 true/false여야 합니다: $DRY_RUN"
             exit 1
           fi
 
@@ -71,8 +90,17 @@ jobs:
           actual_author=$(echo "$before" | jq -r '.messages[0].user // ""')
           actual_text=$(echo "$before" | jq -r '.messages[0].text // ""')
           reply_count=$(echo "$before" | jq -r '.messages[0].reply_count // 0')
-          if [ "$message_count" -ne 1 ] || [ "$reply_count" -ne 0 ]; then
-            echo "답글 0건 가드 실패: messages=$message_count reply_count=$reply_count"
+          expected_message_count=$((EXPECTED_REPLY_COUNT + 1))
+          reply_ts_before=$(echo "$before" | jq -c --arg ts "$MESSAGE_TS" \
+            '[.messages[]? | select(.ts != $ts and .thread_ts == $ts) | .ts] | sort')
+          bad_reply_links=$(echo "$before" | jq --arg ts "$MESSAGE_TS" \
+            '[.messages[1:][]? | select(.ts == $ts or .thread_ts != $ts)] | length')
+          if [ "$message_count" -ne "$expected_message_count" ] || [ "$reply_count" -ne "$EXPECTED_REPLY_COUNT" ]; then
+            echo "답글 수 가드 실패: messages=$message_count/$expected_message_count reply_count=$reply_count/$EXPECTED_REPLY_COUNT"
+            exit 1
+          fi
+          if [ "$bad_reply_links" -ne 0 ] || [ "$(echo "$reply_ts_before" | jq 'length')" -ne "$EXPECTED_REPLY_COUNT" ]; then
+            echo "답글 연결 가드 실패: bad_links=$bad_reply_links reply_ts=$reply_ts_before"
             exit 1
           fi
           if [ "$actual_ts" != "$MESSAGE_TS" ] || [ "$actual_author" != "$EXPECTED_AUTHOR_USER" ]; then
@@ -83,7 +111,11 @@ jobs:
             echo "본문 가드 실패"
             exit 1
           fi
-          echo "사전검증 통과: ts=$actual_ts author=$actual_author replies=$reply_count"
+          echo "사전검증 통과: ts=$actual_ts author=$actual_author replies=$reply_count reply_ts=$reply_ts_before"
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "DRY RUN 완료: 삭제하지 않음"
+            exit 0
+          fi
 
           resp=$(curl -sS -X POST https://slack.com/api/chat.delete \
             -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
@@ -98,7 +130,22 @@ jobs:
             --data-urlencode "channel=$CHANNEL" \
             --data-urlencode "ts=$MESSAGE_TS" \
             --data-urlencode "limit=100")
-          if echo "$after" | jq -e '.ok == false and (.error == "message_not_found" or .error == "thread_not_found")' >/dev/null; then
+          if [ "$EXPECTED_REPLY_COUNT" -gt 0 ]; then
+            echo "$after" | jq -e '.ok == true' >/dev/null || {
+              echo "답글 보존 사후조회 실패: $(echo "$after" | jq -r '.error // "unknown"')"
+              exit 1
+            }
+            reply_ts_after=$(echo "$after" | jq -c --arg ts "$MESSAGE_TS" \
+              '[.messages[]? | select(.ts != $ts and .thread_ts == $ts) | .ts] | sort')
+            original_parent_after=$(echo "$after" | jq --arg ts "$MESSAGE_TS" --arg author "$EXPECTED_AUTHOR_USER" \
+              --arg text1 "$EXPECTED_TEXT_1" --arg text2 "$EXPECTED_TEXT_2" \
+              '[.messages[]? | select(.ts == $ts and .user == $author and (.text // "" | contains($text1)) and (.text // "" | contains($text2)))] | length')
+            if [ "$reply_ts_after" != "$reply_ts_before" ] || [ "$original_parent_after" -ne 0 ]; then
+              echo "답글 보존 사후검증 실패: before=$reply_ts_before after=$reply_ts_after original_parent=$original_parent_after"
+              exit 1
+            fi
+            echo "답글 보존 사후검증 통과: reply_ts=$reply_ts_after"
+          elif echo "$after" | jq -e '.ok == false and (.error == "message_not_found" or .error == "thread_not_found")' >/dev/null; then
             echo "사후검증 통과: $(echo "$after" | jq -r '.error')"
           else
             echo "사후검증 실패: 삭제 대상이 여전히 조회되거나 예상 밖 응답"
@@ -113,9 +160,11 @@ jobs:
             --data-urlencode "latest=$MESSAGE_TS" \
             --data-urlencode "inclusive=true" \
             --data-urlencode "limit=1")
-          echo "$history" | jq -e --arg ts "$MESSAGE_TS" '.ok == true and ([.messages[]? | select(.ts == $ts)] | length == 0)' >/dev/null || {
+          echo "$history" | jq -e --arg ts "$MESSAGE_TS" --arg author "$EXPECTED_AUTHOR_USER" \
+            --arg text1 "$EXPECTED_TEXT_1" --arg text2 "$EXPECTED_TEXT_2" \
+            '.ok == true and ([.messages[]? | select(.ts == $ts and .user == $author and (.text // "" | contains($text1)) and (.text // "" | contains($text2)))] | length == 0)' >/dev/null || {
             echo "history 사후검증 실패"
             echo "$history"
             exit 1
           }
-          echo "history 사후검증 통과: exact ts 없음"
+          echo "history 사후검증 통과: 원문 작성자·본문 없음"
