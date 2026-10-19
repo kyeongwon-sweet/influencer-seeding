@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## ✅ 2026-10-19 [Claude 재발방지·배포] 업무 날짜 KST 통일 + UTC 날짜 자르기 차단 (`37245e4f`, Vercel·Build Test·Workflow Lint success)
+- **같은 계열 전수 정리(오늘 수집 사각 오탐의 뿌리):** UTC 타임스탬프를 `[:10]`/`toISOString().slice(0,10)`/`utcfromtimestamp`로 날짜화 → KST 00~09시 기록이 하루 이르게 읽힘.
+  - 판단을 틀리게 하던 곳: 수집상태 알림의 일별 기대치·'당일 등록 대기' 판정(`notify_status`), 수집 리포트 '어제 이후 등록' 제외(`daily_collect_report`), 진단(`inspect_monitoring_status`), 수기추적 경과일(`auto_end_rules`), not_found 관측일(`not_found_policy`), **게시일 추출**(`run_monitoring` utcfromtimestamp · 웹 `apify-webhook`·`collect-now`) — 빈 posted_at을 채울 때 KST 새벽 게시글이 하루 이른 날짜로 들어갈 수 있었다(기존 값은 불변, 앞으로만).
+  - 그 외: 오가닉 업로드일·오늘, 검색트래커 종료일 검증, 모니터링 화면 수기저장 날짜, `date.today()` 기본값(러너 UTC) → KST.
+- **공용 도구:** Python `scripts/kst_dates.py`(`kst_date`·`kst_today`), Web `dateRule.kstDateOf`.
+- **재발 차단:** `scripts/test_kst_date_guard.py`(타임스탬프`[:10]`·`utcfromtimestamp`·`date.today()` 금지) · `web/tests/kst-date.test.ts`(epoch/now→`toISOString().slice(0,10)` 금지, 의도적 UTC는 `utc-date-ok` 사유 주석 필수 — Trends 일 버킷 2곳).
+- **검증:** scripts 476 passed · web 668/668 · tsc · next build. 다른 세션의 수집보고 스레드 변경(`collect_report_thread`)과 `view_tracking_watchdog.py` import 충돌은 양쪽 유지로 해결.
+
 ## ✅ 2026-10-19 [Claude 코드·배포] 인지봇 수집 보고 = 제목 한 줄 + 댓글, 수집 경보는 그날 보고 스레드 댓글(담당자 태그) (`74499e19`)
 - **요청:** 사용자 "이런 오류 스레드 댓글로 달기로 했잖아"(10-19 09:16 `수집 사각 감지`가 채널 새 글로 게시) + 최서은 "인지봇 수집 보고도 스레드 형식 + 담당자 태그로"(손익트래커봇 `[10.19 시트 업데이트 현황]` + 댓글 형식).
 - **변경:** `scripts/collect_report_thread.py`(단일 정본) — 오늘 `자정 수집 … (YYYY-MM-DD)` 최상위 글을 찾아 그 스레드에 댓글. 없으면 대기 후 끝내 없으면 **채널에 바로**(안내문 포함, 경보 유실 금지). `daily_collect_report`: 채널엔 제목 한 줄만(확인 필요 시 `— 확인 필요 N건`), 요약·상세는 댓글, 확인 필요/실패일 때만 요약 댓글에 담당자 태그. `view_tracking_watchdog`(대기 30분)·`exportstats_watchdog`(대기 10분): 보고 스레드 댓글 + 담당자 태그. 담당자 = GHA 변수 `COLLECT_ALERT_ASSIGNEES`(쉼표). 미설정 시 기본 **김보나 U0C0W2V4X4G**(10-19 사용자 지정, `ac622abf`; 처음엔 황경원이었음). 현재 GHA 변수 미설정.
