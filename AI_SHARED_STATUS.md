@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## ⚠️→✅ 2026-10-19 [Claude 정정] 37245e4f가 만든 수집상태 알림 빈틈 수정 (`f7a0c024`, Build Test·Workflow Lint success)
+- **사용자 "확실하지?" 재검증 중 발견:** `notify_status`의 '대상일 등록 → 신규 대기' 규칙이 KST 전환 후 **대상일 D 하루 전체를 점검에서 제외** — 가장 흔한 등록 시점(D 08:30 dailyAuto·D 00:51 syncNew)이 빠졌다(예전 UTC 비교에선 우연히 점검되던 분량).
+- **근거:** D 수집은 D+1 00:41 → D 등록분은 그 수집에 들어가야 정상. 실측: 10-15 KST 등록 16건 중 15건(미측정 1건은 점검 제외 대상인 위성채널), 10-16 등록 9건 전부 D 측정.
+- **수정:** `is_waiting_registration()` 분리 — 오늘 대상 수동 수집의 오늘 등록분만 대기. 예전 UTC 규칙의 KST 09~24시 등록 사각도 해소. `scripts/test_notify_status_waiting.py` 3개, scripts 479 passed.
+- **가드 실효 확인(mutation):** 파이썬·웹 가드 모두 일부러 넣은 UTC 자르기 코드를 실패로 잡음(시험 코드 원복 확인).
+- **관찰:** 공용 워크트리 `_yeomun_wt`에 다른 세션의 `web/lib/dateRule.ts` 확장 작업(헬퍼 추가·`kst-date-guard.test.ts` 예고, "2026-10-19 사용자 지시") 미커밋 상태 — 무접촉.
+
 ## ✅ 2026-10-19 [Claude 재발방지·배포] 업무 날짜 KST 통일 + UTC 날짜 자르기 차단 (`37245e4f`, Vercel·Build Test·Workflow Lint success)
 - **같은 계열 전수 정리(오늘 수집 사각 오탐의 뿌리):** UTC 타임스탬프를 `[:10]`/`toISOString().slice(0,10)`/`utcfromtimestamp`로 날짜화 → KST 00~09시 기록이 하루 이르게 읽힘.
   - 판단을 틀리게 하던 곳: 수집상태 알림의 일별 기대치·'당일 등록 대기' 판정(`notify_status`), 수집 리포트 '어제 이후 등록' 제외(`daily_collect_report`), 진단(`inspect_monitoring_status`), 수기추적 경과일(`auto_end_rules`), not_found 관측일(`not_found_policy`), **게시일 추출**(`run_monitoring` utcfromtimestamp · 웹 `apify-webhook`·`collect-now`) — 빈 posted_at을 채울 때 KST 새벽 게시글이 하루 이른 날짜로 들어갈 수 있었다(기존 값은 불변, 앞으로만).
