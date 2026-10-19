@@ -4,6 +4,21 @@
 # 비상 우회: git push --no-verify
 root="$(git rev-parse --show-toplevel)"
 
+# ⛔ 절대 규칙(2026-10-19): 업무 날짜는 KST — UTC 날짜 자르기가 들어오면 푸시 중단.
+#    node 내장 모듈만 쓰므로 node_modules 없이도 돈다. (web/tests/kst-date-guard.test.ts)
+if command -v node >/dev/null 2>&1; then
+  echo "[pre-push] KST 날짜 규칙 검사 중…"
+  if ! ( cd "$root/web" && node --test --test-reporter=dot --experimental-strip-types tests/kst-date-guard.test.ts ); then
+    echo ""
+    echo "❌ [pre-push] UTC 날짜 자르기 발견 — 푸시 중단. 업무 날짜는 KST 헬퍼로만 만드세요:"
+    echo "   web: web/lib/dateRule.ts (todayKST·kstDateOf·addDaysToDate…) / python: scripts/kst_dates.py (kst_today·kst_now·kst_date)"
+    exit 1
+  fi
+  echo "✅ [pre-push] KST 날짜 규칙 통과"
+else
+  echo "⚠️ [pre-push] node 없음 — KST 날짜 규칙 검사 건너뜀(CI에서 다시 검사)"
+fi
+
 # node_modules 없으면(예: 막 clone, docs 전용 worktree) 검사 불가 → 건너뜀(거짓 차단 방지)
 if [ ! -d "$root/web/node_modules" ]; then
   echo "[pre-push] web/node_modules 없음 — 타입체크 건너뜀(npm install 후 적용)"

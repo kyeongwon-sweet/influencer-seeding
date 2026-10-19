@@ -5,7 +5,7 @@ import { ElapsedTimer, useStableHandlers } from "./perf-utils";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
-import { isValidEntryDate } from "@/lib/dateRule";
+import { addDaysToDate, isValidEntryDate, todayKST as kstTodayDate } from "@/lib/dateRule";
 import { companyForAccount } from "@/lib/companyMap";
 import { batchFetch } from "@/lib/batchFetch";
 import { dedupeRowsById } from "@/lib/dedupe-rows";
@@ -144,7 +144,7 @@ export default function MonitoringPage() {
   const chartData = useMemo(() => {
     // 오늘(KST)은 수집 중·미완성 → 제외. playDeltaData·델타표와 동일 정책으로 맞춰
     // 이 배열에서 파생되는 광고비/검색량 조회 범위·차트 축이 하루 어긋나지 않게 한다.
-    const todayKST = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const todayKST = kstTodayDate();
     const map = new Map<string, number>();
     for (const post of filteredPosts) {
       // ⚠️ 재발방지: getFilteredStats() 사용해서 날짜 범위 일관성 보장
@@ -359,7 +359,7 @@ export default function MonitoringPage() {
   // dailyTotals(전일 forward-fill + 단조보정)에서 파생 → 일자별 증감 표의 '조회수' 값과 정확히 일치.
   // 늦게 등록된 게시물의 첫 등장 조회수도 그날 증분에 그대로 포함(전부 포함 방식).
   const playDeltaData = useMemo(() => {
-    const todayKST = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const todayKST = kstTodayDate();
     return dailyTotals.slice(1)
       .map(d => ({ date: d.date, value: d.inc }))   // 안전 재계산 증분 합(safeIncrement, 리포트와 동일 규칙)
       .filter(d => d.date < todayKST); // 오늘(KST)은 수집 중·미완성이라 제외(완료된 날만 표시)
@@ -426,7 +426,7 @@ export default function MonitoringPage() {
       return cur - prev;                                  // 실제 증감(값 같으면 0 그대로 표시)
     };
     // 오늘(아직 수집 중)은 미완성 데이터라 증감이 음수로 떠 혼란을 주므로 표에서 제외
-    const todayKST = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const todayKST = kstTodayDate();
     return dailyTotals.slice(1).map((d, i) => ({
       date:     d.date,
       play:     d.inc, // 안전 재계산 증분 합(safeIncrement, 리포트와 동일 규칙, 배너=도달수 포함)
@@ -636,13 +636,13 @@ export default function MonitoringPage() {
         ...(b2bCategory !== "쫀득" ? [{
           label: "듬뿍바 발주량",
           data: b2bDaily
-            .filter(d => d.date <= new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10))
+            .filter(d => d.date <= kstTodayDate())
             .map(d => ({ date: d.date, value: d.dumbuk_order })),
         }] : []),
         ...(b2bCategory !== "듬뿍" ? [{
           label: "쫀득바 발주량",
           data: b2bDaily
-            .filter(d => d.date <= new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10))
+            .filter(d => d.date <= kstTodayDate())
             .map(d => ({ date: d.date, value: d.jjondeuk_order })),
         }] : []),
       ],
@@ -781,7 +781,7 @@ export default function MonitoringPage() {
     }
 
     // '오늘'(KST)은 항상 제외한다. 새벽 자동 수집분은 전일 실적으로 귀속된다.
-    const todayKST = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const todayKST = kstTodayDate();
     newPosts = newPosts.map(p => {
       const all = p.all_stats ?? [];
       const stats = all.filter((s: DailyStats) => s.measured_at < todayKST);
@@ -789,7 +789,7 @@ export default function MonitoringPage() {
       // 증분량 기준 = '달력 하루'(어제자정~오늘자정): '직전 행'이 아니라 '최신 날짜 −1일' 측정으로 비교.
       // 그 전날 측정이 없으면 null → 표에 빈칸(수집시각·건너뛴 날 노이즈 제거). 최초 측정(이전 전무)은 viewIncrement에서 전체값 표시.
       const prevDayKey = latest
-        ? new Date(new Date(latest.measured_at + "T00:00:00Z").getTime() - 86400000).toISOString().slice(0, 10)
+        ? addDaysToDate(latest.measured_at, -1)
         : null;
       const prevDay = prevDayKey
         ? (stats.find((s: DailyStats) => s.measured_at === prevDayKey && s.play_count != null) ?? null)
@@ -1073,7 +1073,7 @@ export default function MonitoringPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `모니터링_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `모니터링_${kstTodayDate()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -1128,7 +1128,7 @@ export default function MonitoringPage() {
   // 트래킹 종료/해제 — ended_at 설정(오늘, KST)/해제(null). 종료 시 자동 수집 제외, 기존 데이터는 보존.
   async function endPost(id: string, end: boolean) {
     if (end && !confirm("이 게시물의 트래킹을 종료하시겠습니까?\n(이후 자동 수집에서 제외, 기존 데이터는 보존)")) return;
-    const ended_at = end ? new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10) : null;
+    const ended_at = end ? kstTodayDate() : null;
     const res = await fetch(`/api/sponsored-posts/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -1148,7 +1148,7 @@ export default function MonitoringPage() {
     const ids = [...selected].filter(id => !posts.find(p => p.id === id)?.ended_at);
     if (ids.length === 0) { toast("이미 모두 종료된 게시물입니다.", "error"); return; }
     if (!confirm(`선택한 ${ids.length}건의 트래킹을 종료하시겠습니까?\n(이후 자동 수집에서 제외, 기존 데이터는 보존)`)) return;
-    const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const today = kstTodayDate();
     setDeleting(true);
     const { ok, failed } = await batchFetch(ids, id => fetch(`/api/sponsored-posts/${id}`, {
       method: "PATCH",
@@ -1233,7 +1233,7 @@ export default function MonitoringPage() {
     });
     if (res.ok) {
       const stored = isNumeric ? (value === "" ? null : Number(value)) : (value || null);
-      const now = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);  // KST 오늘
+      const now = kstTodayDate();  // KST 오늘
       setPosts(prev => prev.map(p => p.id === postId ? {
         ...p,
         [field]: stored,
@@ -1542,12 +1542,12 @@ export default function MonitoringPage() {
                 // (차트 점선 '검색량'과 동일 기준. chartData는 조회수라 검색량과 무관 → lsSearchData 사용)
                 const searchTotalSum = (lsSearchData ?? []).reduce((acc, d) => acc + (d.value ?? 0), 0);
                 // B2B 발주량 월 누계 — 오늘까지 실데이터만(미래 계획행 제외), 카테고리 필터 반영
-                const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+                const today = kstTodayDate();
                 const b2bTotal = b2bDaily
                   .filter(d => d.date <= today)
                   .reduce((acc, d) => acc + (b2bOrderOf(d) ?? 0), 0);
                 // 전주 대비: 최근 7일 합 vs 직전 7일 합 (일별 흐름값 기준)
-                const addDays = (s: string, n: number) => { const d = new Date(s + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+                const addDays = (s: string, n: number) => addDaysToDate(s, n);
                 const cutLast = addDays(today, -6), cutPrior = addDays(today, -13);
                 const wow = (daily: { date: string; v: number }[]) => {
                   let last = 0, prior = 0;

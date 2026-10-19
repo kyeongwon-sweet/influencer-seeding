@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
-import { todayKST } from "@/lib/dateRule";
+import { addDaysToDate, todayKST } from "@/lib/dateRule";
 import { resolveGitHubActionsToken } from "@/lib/github-actions-auth";
 import { notifyBot } from "@/lib/slack";
 import { isReportForDate } from "@/lib/report-message";
@@ -29,9 +29,7 @@ const REPORT_CHANNEL = process.env.SLACK_CHANNEL || "C0B4F7GBX17"; // #빙과_�
 
 // KST 어제(리포트 대상일) = 워크플로가 MONITORING_DATE로 쓰는 그 날짜.
 function kstYesterday(kToday: string): string {
-  const d = new Date(kToday + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() - 1);
-  return d.toISOString().slice(0, 10);
+  return addDaysToDate(kToday, -1);
 }
 
 // 어제 리포트가 채널에 실제 게시됐는지. true=게시됨 / false=미게시 / null=확인불가.

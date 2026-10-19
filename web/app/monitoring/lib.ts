@@ -1,3 +1,4 @@
+import { addDaysToDate, todayKST, yesterdayKST } from "../../lib/dateRule.ts";
 // monitoring/page.tsx 에서 분리한 순수 유틸 — 타입·상수·데이터/통계 헬퍼.
 // React/JSX 의존이 없어 단위 테스트 가능(tests/monitoring-lib.test.ts).
 // JSX 컴포넌트(TH/TD/Sparkline/LineChart)는 page.tsx 에 그대로 둔다.
@@ -277,11 +278,8 @@ export function getThumbnailUrl(url: string): string | null {
 
 export function isRecentPost(postedAt: string | null): boolean {
   if (!postedAt) return false;
-  const today = new Date();
-  const todayStr = today.toISOString().slice(0, 10);
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = yesterday.toISOString().slice(0, 10);
+  const todayStr = todayKST();
+  const yesterdayStr = yesterdayKST();
   return postedAt.slice(0, 10) >= yesterdayStr && postedAt.slice(0, 10) <= todayStr;
 }
 
@@ -555,9 +553,7 @@ export function pearson(xs: number[], ys: number[]): number | null {
 export function alignedPairs(x: Map<string, number>, y: Map<string, number>, lag: number): [number[], number[]] {
   const xs: number[] = [], ys: number[] = [];
   for (const [d, xv] of x) {
-    const yd = new Date(d + "T00:00:00Z");
-    yd.setUTCDate(yd.getUTCDate() + lag);
-    const yKey = yd.toISOString().slice(0, 10);
+    const yKey = addDaysToDate(d, lag);
     const yv = y.get(yKey);
     if (yv != null) { xs.push(xv); ys.push(yv); }
   }

@@ -13,6 +13,7 @@ import argparse
 import json
 import re
 from datetime import datetime
+from kst_dates import kst_now
 from pathlib import Path
 from typing import Any
 
@@ -209,7 +210,7 @@ def main() -> None:
 
     backup_dir = Path(args.backup_dir)
     backup_dir.mkdir(parents=True, exist_ok=True)
-    backup_path = backup_dir / f"banner_cost_sync_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    backup_path = backup_dir / f"banner_cost_sync_{kst_now().strftime('%Y%m%d_%H%M%S')}.json"
     backup_payload = {
         "apply": args.apply,
         "target_count": len(target_keys),

@@ -6,7 +6,7 @@ import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
 import { platformLabel } from "@/lib/platform";
 import { parseNumInput } from "@/lib/num";
 import { batchFetch } from "@/lib/batchFetch";
-import { MIN_ENTRY_DATE, maxDateKST, isValidEntryDate } from "@/lib/dateRule";
+import { MIN_ENTRY_DATE, maxDateKST, isValidEntryDate, addDaysToDate, todayKST } from "@/lib/dateRule";
 
 type Metrics = {
   id: string;
@@ -525,7 +525,7 @@ export default function ScreeningPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `스크리닝_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `스크리닝_${todayKST()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -1167,8 +1167,8 @@ export default function ScreeningPage() {
                 {kwForm.keywords && kwForm.adDate && (
                   <div className="rounded-[10px] bg-a-parchment px-4 py-3 text-[12px] text-a-ink-muted">
                     광고 날짜 <strong className="text-a-ink">{kwForm.adDate}</strong> 기준<br />
-                    전 7일 ({new Date(new Date(kwForm.adDate).getTime() - 7*86400000).toISOString().slice(0,10)}) ~
-                    후 7일 ({new Date(new Date(kwForm.adDate).getTime() + 7*86400000).toISOString().slice(0,10)}) 검색량 비교
+                    전 7일 ({addDaysToDate(kwForm.adDate, -7)}) ~
+                    후 7일 ({addDaysToDate(kwForm.adDate, 7)}) 검색량 비교
                   </div>
                 )}
               </div>

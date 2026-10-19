@@ -1,3 +1,4 @@
+import { utcDateOf } from "./dateRule.ts";
 export type SheetValue = string | number | null | undefined;
 
 export type BannerReachCell = {
@@ -46,9 +47,7 @@ export function normalizeSheetHeader(value: SheetValue): string {
 function googleSerialDateToYmd(serial: number): string | null {
   if (!Number.isFinite(serial) || serial <= 0) return null;
   const ms = Math.round((serial - 25569) * 86400 * 1000);
-  const d = new Date(ms);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toISOString().slice(0, 10);
+  return utcDateOf(ms); // 시트 날짜 일련번호 = 시각 없는 날짜(UTC 자정 기준)
 }
 
 function formatYmd(year: number, month: number, day: number): string | null {

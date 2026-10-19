@@ -1,4 +1,5 @@
 "use client";
+import { todayKST, utcDateOf } from "@/lib/dateRule";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { analyzeTrends, categoryLabel, dateOffset, GOOGLE_TREND_CATEGORIES, parseGroups, trendSummary, validateConfig, validateResult, validDate, type TrackerConfig, type TrackerContent, type TrackerEvent, type TrackerResult } from "@/lib/google-search-tracker";
@@ -73,7 +74,7 @@ function TrendChart({ result, config, events, visible }: { result: TrackerResult
         <text x={L} y="38" fontSize="11" fill="#64748b">{config.geo || "전 세계"} · {categoryLabel(config.category)} · {config.start} ~ {config.end} · {result.granularity} · 실제 검색 횟수가 아님 · 정규화에 직전 28일 포함</text>
         {config.groups.map((g, i) => visible.has(i) && <g key={`legend:${g.id}`}><line x1={L + i * 180} x2={L + i * 180 + 18} y1="57" y2="57" stroke={COLORS[i]} strokeWidth="3" /><text x={L + i * 180 + 23} y="61" fontSize="11" fill={COLORS[i]}>{g.label.length > 12 ? g.label.slice(0, 12) + "…" : g.label}</text></g>)}
         {[0, 25, 50, 75, 100].map(v => <g key={v}><line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke="#e2e8f0" /><text x={L - 10} y={y(v) + 4} textAnchor="end" fontSize="12" fill="#64748b">{v}</text></g>)}
-        {[0, 0.25, 0.5, 0.75, 1].map(t => { const date = new Date(Date.parse(config.start) + t * span).toISOString().slice(0, 10); return <text key={t} x={L + t * (W - L - R)} y={H - 15} textAnchor={t === 0 ? "start" : t === 1 ? "end" : "middle"} fontSize="12" fill="#64748b">{date}</text>; })}
+        {[0, 0.25, 0.5, 0.75, 1].map(t => { const date = utcDateOf(Date.parse(config.start) + t * span); return <text key={t} x={L + t * (W - L - R)} y={H - 15} textAnchor={t === 0 ? "start" : t === 1 ? "end" : "middle"} fontSize="12" fill="#64748b">{date}</text>; })}
         {config.groups.map((g, group) => {
           if (!visible.has(group)) return null;
           let path = "", connected = false;
@@ -105,7 +106,7 @@ function EventCard({ event: e, index, config, selected, toggle, contents, collec
 }
 export default function GoogleSearchTracker() {
   const { user } = useUser();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayKST();
   const [groups, setGroups] = useState(DEFAULT_GROUPS), [start, setStart] = useState(dateOffset(today, -90)), [end, setEnd] = useState(dateOffset(today, -1)), [geo, setGeo] = useState("KR"), [category, setCategory] = useState("0");
   const [multiplier, setMultiplier] = useState(2.5), [minIndex, setMinIndex] = useState(5), [gapDays, setGapDays] = useState(7), [windowDays, setWindowDays] = useState(7);
   const [config, setConfig] = useState<TrackerConfig | null>(null), [result, setResult] = useState<TrackerResult | null>(null);

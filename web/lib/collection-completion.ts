@@ -1,3 +1,4 @@
+import { addDaysToDate, isIsoDateString, kstDateOf } from "./dateRule.ts";
 export const COLLECTION_COMPLETE_STEP = "Collection completion marker";
 export const COLLECTION_MARKER_REQUIRED_AFTER = "2026-08-28T03:00:00Z";
 
@@ -16,17 +17,13 @@ export type GitHubJob = {
 };
 
 function isoDateKST(value: string): string | null {
-  const time = Date.parse(value);
-  if (!Number.isFinite(time)) return null;
-  return new Date(time + 9 * 3_600_000).toISOString().slice(0, 10);
+  return Number.isFinite(Date.parse(value)) ? kstDateOf(value) : null;
 }
 
 export function collectionRunKstDate(targetDate: string): string | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) return null;
-  const time = Date.parse(`${targetDate}T00:00:00Z`);
-  if (!Number.isFinite(time)) return null;
-  if (new Date(time).toISOString().slice(0, 10) !== targetDate) return null;
-  return new Date(time + 86_400_000).toISOString().slice(0, 10);
+  if (!isIsoDateString(targetDate)) return null;
+  return addDaysToDate(targetDate, 1);
 }
 
 export function isCandidateCollectionRun(run: CollectionWorkflowRun, targetDate: string): boolean {

@@ -1,4 +1,5 @@
 "use client";
+import { daysAgoKST, todayKST } from "@/lib/dateRule";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import DOMPurify from "dompurify";
@@ -357,8 +358,8 @@ export default function ContactPage() {
     if (trendTimerRef.current) clearInterval(trendTimerRef.current);
     trendTimerRef.current = setInterval(() => setTrendElapsed(s => s + 1), 1000);
     try {
-      const endDate = new Date().toISOString().slice(0, 10);
-      const startDate = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+      const endDate = todayKST();
+      const startDate = daysAgoKST(365);
       const res = await fetch("/api/naver-trends", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

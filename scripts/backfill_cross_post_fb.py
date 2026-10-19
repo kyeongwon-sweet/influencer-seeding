@@ -33,6 +33,7 @@ import json
 import os
 import sys
 from datetime import datetime
+from kst_dates import kst_now
 
 from cross_post_metrics import load_fb_by_shortcode, shortcode
 from db import get_client
@@ -116,7 +117,7 @@ def main():
         print("[backfill] dry-run — 쓰지 않았다. 반영하려면 --apply")
         return 0
 
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stamp = kst_now().strftime("%Y%m%d_%H%M%S")
     bpath = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                          f"backup_cross_post_fb_{stamp}.json")
     json.dump([{"row_id": x["row_id"], "play_count": x["before"], "fb_play_count": None}

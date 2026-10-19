@@ -1,3 +1,4 @@
+import { utcDateOf } from "./dateRule.ts";
 export type GoogleTrendRow = {
   measured_at: string;
   keyword: string;
@@ -13,9 +14,7 @@ function isRecord(value: unknown): value is UnknownRecord {
 function dateFromUnixSeconds(value: unknown): string | null {
   const seconds = typeof value === "number" || typeof value === "string" ? Number(value) : NaN;
   if (!Number.isFinite(seconds) || seconds <= 0) return null;
-  const date = new Date(seconds * 1000);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString().slice(0, 10);
+  return utcDateOf(seconds * 1000); // Trends 일 단위 버킷 시각(UTC 자정)이 곧 그 날짜
 }
 
 function numericValue(value: unknown): number | null {

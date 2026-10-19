@@ -1,3 +1,4 @@
+import { utcDateOf } from "@/lib/dateRule";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { getAdminEmail } from "@/lib/admin-server";
@@ -16,7 +17,7 @@ function addDays(date: Date, days: number) {
 }
 
 function fmtDate(d: Date) {
-  return d.toISOString().slice(0, 10);
+  return utcDateOf(d) ?? ""; // d는 날짜만 있는 광고일(UTC 자정)에서 계산된 Date
 }
 
 function avg(arr: { ratio: number }[]) {

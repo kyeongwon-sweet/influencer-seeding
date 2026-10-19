@@ -4,6 +4,7 @@ import json
 import os
 import re
 from datetime import datetime
+from kst_dates import kst_now
 from apify_client import ApifyClient
 from config import APIFY_API_TOKEN, APIFY_ACTOR_ID, APIFY_YOUTUBE_ACTOR_ID, APIFY_RESULTS_LIMIT, OUTPUT_DIR
 
@@ -203,7 +204,7 @@ def _extract_tags_from_text(text: str) -> list[str]:
 
 def _cache_path(url: str) -> str:
     username = url.rstrip("/").split("/")[-1]
-    today = datetime.now().strftime("%Y%m%d")
+    today = kst_now().strftime("%Y%m%d")
     return os.path.join(CACHE_DIR, f"{username}_{today}.json")
 
 

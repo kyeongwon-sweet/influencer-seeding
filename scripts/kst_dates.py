@@ -15,6 +15,11 @@ from datetime import date, datetime, timedelta, timezone
 KST = timezone(timedelta(hours=9))
 
 
+def kst_now() -> datetime:
+    """지금(KST, 시간대 포함). 파일명 타임스탬프 등 사람이 읽는 시각은 `datetime.now()`(러너=UTC) 대신 이걸로."""
+    return datetime.now(KST)
+
+
 def kst_today() -> str:
     """오늘(KST) YYYY-MM-DD. GitHub 러너는 UTC라 `date.today()`는 KST 오전에 어제가 된다."""
     return datetime.now(KST).date().isoformat()

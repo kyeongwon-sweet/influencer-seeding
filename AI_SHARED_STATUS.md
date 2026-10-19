@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## ⛔ 2026-10-19 [Claude · 사용자 절대 규칙] 업무 날짜는 KST — 레포 전체 강제(pre-push 훅·CI) + 남은 UTC 날짜 자르기 전수 제거
+- **지시:** "날짜를 한국 시간이 아니라 UTC로 계산하는 오류가 너무 자주 일어나. 다신 일어나지 않게 절대 규칙으로 못 박아."
+- **규칙 문서:** `CLAUDE.md` 최상단 ⛔ 절대 규칙 · 신규 `AGENTS.md`(Codex 등 모든 AI) · Codex 로컬 `Documents/인지 증분 대시보드/AGENTS.md`에도 추가(원본 백업 scratchpad).
+- **강제 장치:** 신규 `web/tests/kst-date-guard.test.ts` — 웹(app·lib·components·scripts)·레포 scripts JS·파이썬·Apps Script·워크플로를 **전부** 훑는다. 금지: `toISOString().slice(0,10)`·`.split("T")`·`toJSON().slice` / `x_at[:10]`·`date.today()`·`datetime.now()`·`utcnow`·`utcfromtimestamp`·tz 없는 `fromtimestamp` / Apps Script `formatDate(…,"UTC")` / `date +%F`(같은 줄 TZ=Asia/Seoul 없이). TS·Python은 **예외 표시 없음**(헬퍼 파일만 허용), Apps Script만 `utc-date-ok: 이유`. 자기검증 테스트로 규칙이 무뎌지면 실패. **`.githooks/pre-push`가 타입체크 전에 이 검사를 돌려 위반 push를 막는다**(node 내장만 써서 node_modules 없어도 동작) — 일부러 위반 파일을 넣어 차단되는 것까지 확인.
+- **헬퍼:** `web/lib/dateRule.ts`에 `isIsoDateString`·`addDaysToDate`·`daysAgoKST`·`utcDateOf`(UTC 일 버킷 전용) 추가. `scripts/kst_dates.py`에 `kst_now()` 추가. lib 파일끼리 `./dateRule.ts`로 import 할 수 있게 `tsconfig.allowImportingTsExtensions`(noEmit이라 안전) — node 테스트가 직접 여는 lib도 헬퍼를 쓸 수 있다.
+- **고친 실제 버그(UTC라 KST 00~09시에 하루 어긋나던 것):** 모니터링 `isRecentPost`(오늘/어제), 홈 인사이트 비교일(`latest.date-2일`을 로컬 파싱해 하루 더 밀림), 리스트업 업로드일 수정창·필터, 문의/검색트래커 '오늘'·365일 범위, 인사이트 API 기간, 검색트래커 콘텐츠 업로드일·뉴스 날짜(KST로), 마케팅 sync posted_at, 파이썬 `sheets.py` today·`instagram_fetcher` today·백업 파일명 시각. 나머지(날짜만 ± n일, Trends 일 버킷, 시트 일련번호, 이미 +9h 시프트)는 결과 동일하게 헬퍼로 교체.
+- **검증:** web 677/677 · Python 479 passed · tsc · eslint(0 error) · next build 성공 · pre-push 훅 실행(통과/위반 차단 둘 다).
+
 ## ⚠️→✅ 2026-10-19 [Claude 정정] 37245e4f가 만든 수집상태 알림 빈틈 수정 (`f7a0c024`, Build Test·Workflow Lint success)
 - **사용자 "확실하지?" 재검증 중 발견:** `notify_status`의 '대상일 등록 → 신규 대기' 규칙이 KST 전환 후 **대상일 D 하루 전체를 점검에서 제외** — 가장 흔한 등록 시점(D 08:30 dailyAuto·D 00:51 syncNew)이 빠졌다(예전 UTC 비교에선 우연히 점검되던 분량).
 - **근거:** D 수집은 D+1 00:41 → D 등록분은 그 수집에 들어가야 정상. 실측: 10-15 KST 등록 16건 중 15건(미측정 1건은 점검 제외 대상인 위성채널), 10-16 등록 9건 전부 D 측정.

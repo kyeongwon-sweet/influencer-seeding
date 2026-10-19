@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 from datetime import datetime
+from kst_dates import kst_now
 from pathlib import Path
 from typing import Any
 
@@ -119,7 +120,7 @@ def main() -> None:
     if candidates:
         backup_dir = Path(args.backup_dir)
         backup_dir.mkdir(parents=True, exist_ok=True)
-        backup_path = backup_dir / f"ended_overrecord_{args.date}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        backup_path = backup_dir / f"ended_overrecord_{args.date}_{kst_now().strftime('%Y%m%d_%H%M%S')}.json"
         backup_path.write_text(json.dumps(candidates, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
         summary["backup"] = str(backup_path)
 

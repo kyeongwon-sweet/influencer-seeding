@@ -6,7 +6,7 @@ import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
 import { platformFromUrl, platformLabel } from "@/lib/platform";
 import { parseNumInput } from "@/lib/num";
 import { matchesSearch } from "@/lib/search-filter";
-import { maxDateKST, isValidEntryDate } from "@/lib/dateRule";
+import { maxDateKST, isValidEntryDate, todayKST } from "@/lib/dateRule";
 
 // 보도자료·커뮤니티는 URL로 자동판정되지 않는 수동 분류 플랫폼(추가/편집 시 직접 선택). 저장값=한글 그대로.
 // (커뮤니티=블라인드 등 커뮤니티 글. enrich ACTOR 허용목록에 없어 조회수 자동수집 대상이 아니며 수기 입력만.)
@@ -758,7 +758,7 @@ export default function OrganicPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `무상노출_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `무상노출_${todayKST()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }

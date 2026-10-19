@@ -1,3 +1,4 @@
+import { utcDateOf } from "@/lib/dateRule";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { fetchDatasetItems } from "@/lib/apify";
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest) {
     for (const p of it.interestOverTime_timelineData ?? []) {
       const ts = Number(p.time);
       if (!ts) continue;
-      const date = new Date(ts * 1000).toISOString().slice(0, 10);  // utc-date-ok: Trends 일 단위 버킷 시각(UTC 자정)을 그대로 날짜로
+      const date = utcDateOf(ts * 1000) ?? "";  // Trends 일 단위 버킷 시각(UTC 자정)이 곧 그 날짜
       const v = Array.isArray(p.value) ? p.value[0] : null;
       rows.push({ measured_at: date, keyword: kw, value: v ?? null });
     }

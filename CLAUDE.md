@@ -6,6 +6,12 @@ After meaningful changes, update `AI_SHARED_STATUS.md` so Claude, Codex, and oth
 ## 🚨 절대 규칙 — 데이터 무결성 (모든 AI 필수)
 **실측이 없으면 값을 지어내지 않는다.** 지표(조회수/도달수 등)는 실제 수집 또는 팀이 실제로 본 값만 DB·시트에 넣는다. 수집 불가(틱톡 민감영상 등)·미측정이면 **비워둔다**(마지막 값 복사·타 게시물 값·추정치 저장 금지). 이상치는 자동 보정하지 말고 **감지 알림만**, 사람이 실제 값으로 정정. ⚠️ **빈 값(측정 없음)을 0으로 읽지 말 것**(공백≠0, 증분·누적 깨짐). 상세는 `AI_SHARED_STATUS.md` 최상단.
 
+## ⛔ 절대 규칙 — 업무 날짜는 KST (모든 AI 필수, 2026-10-19 사용자 지시)
+**날짜는 한국 시간(KST) 기준. UTC 날짜를 업무 날짜로 쓰지 않는다.** DB·Apify·GitHub 러너·Vercel 서버 시각은 UTC라서 앞 10자리를 자르면 **UTC 날짜**가 되고, KST 00:00~08:59 기록이 '어제'로 찍힌다(수집 사각 오탐·게시일 하루 밀림·날짜 필터 어긋남이 반복됐다).
+- **금지:** `toISOString().slice(0,10)`·`.split("T")[0]`·`toJSON().slice` / 파이썬 `created_at[:10]`(타임스탬프)·`date.today()`·`datetime.now()`(시간대 없음)·`utcnow()`·`utcfromtimestamp()`·`fromtimestamp()`(tz 없음) / Apps Script `formatDate(…,"UTC")` / 워크플로 `date +%F`(TZ 없이).
+- **대신(헬퍼로만):** web `web/lib/dateRule.ts` — `todayKST()`·`yesterdayKST()`·`daysAgoKST(n)`·`kstDateOf(ts)`·`addDaysToDate(day,n)`·(원본이 UTC 일 버킷일 때만) `utcDateOf()` / python `scripts/kst_dates.py` — `kst_today()`·`kst_now()`·`kst_date(ts)` / 워크플로 `TZ=Asia/Seoul date +%F`.
+- **강제:** `web/tests/kst-date-guard.test.ts`가 웹·파이썬·Apps Script·워크플로 전체를 검사하고 **git pre-push 훅**과 CI에서 돈다 → 위반은 push 자체가 막힌다. 검사를 끄거나 예외를 늘리지 말 것(Apps Script만 그 줄에 `utc-date-ok: 이유` 허용).
+
 # 인플루언서 시딩 시스템
 
 ## 프로젝트 개요

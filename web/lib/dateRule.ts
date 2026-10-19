@@ -33,6 +33,46 @@ export function kstDateOf(value: unknown): string | null {
   return new Date(ms + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
+/*
+ * ⛔ 절대 규칙(2026-10-19 사용자 지시): 업무 날짜를 `toISOString().slice(0, 10)`·`.split("T")[0]` 등으로
+ *    직접 만들지 않는다 — 그건 **UTC 날짜**라 KST 00:00~08:59 시각이 하루 이르게 찍힌다(반복 사고).
+ *    날짜 문자열은 **이 파일의 헬퍼로만** 만든다. web/tests/kst-date-guard.test.ts 가 이 파일 밖의 사용을 막는다.
+ *      · 지금/오늘          → todayKST() · yesterdayKST() · daysAgoKST(n)
+ *      · 타임스탬프 → 날짜   → kstDateOf(value)
+ *      · 날짜 ± n일          → addDaysToDate(day, n)   (날짜만 다루므로 시간대 무관)
+ *      · 원본이 UTC 일 버킷  → utcDateOf(value)        (Trends·시트 일련번호처럼 '그 날짜 자체'가 UTC 자정일 때만)
+ */
+
+/** YYYY-MM-DD 이고 달력상 실제 날짜인가(2026-02-30 같은 값은 false). */
+export function isIsoDateString(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const d = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
+}
+
+/** 날짜(YYYY-MM-DD)에 n일을 더한다. 시각이 없으므로 시간대와 무관하게 정확하다. */
+export function addDaysToDate(day: string, delta: number): string {
+  const d = new Date(`${day.slice(0, 10)}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + delta);
+  return d.toISOString().slice(0, 10);
+}
+
+/** KST 오늘로부터 n일 전 날짜. */
+export function daysAgoKST(n: number): string {
+  return addDaysToDate(todayKST(), -n);
+}
+
+/**
+ * ⚠️ 의도적 UTC 날짜 — 원본 값이 'UTC 자정에 찍힌 일 단위 버킷'일 때만 쓴다
+ * (Google Trends 일 버킷 시각, Google 시트 날짜 일련번호, 이미 +9h 시프트한 Date).
+ * 실제 사건 시각(등록·게시·수집 시각)에는 절대 쓰지 말고 kstDateOf 를 쓴다.
+ */
+export function utcDateOf(value: number | Date): string | null {
+  const ms = value instanceof Date ? value.getTime() : value;
+  if (!Number.isFinite(ms)) return null;
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
 /** Max date for manual date inputs. */
 export function maxDateKST(): string {
   return todayKST();

@@ -1,3 +1,4 @@
+import { daysAgoKST } from "@/lib/dateRule";
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
@@ -127,9 +128,7 @@ export async function POST(req: NextRequest) {
     message: string;
   }> = [];
   for (let back = 1; back <= days; back++) {
-    const kst = new Date(Date.now() + 9 * 3600 * 1000);
-    kst.setDate(kst.getDate() - back);
-    const dateStr = kst.toISOString().slice(0, 10);
+    const dateStr = daysAgoKST(back);
     const [yt, ig] = await Promise.all([
       fetchYouTubeMetrics(dateStr),
       fetchInstagramMetrics(dateStr),

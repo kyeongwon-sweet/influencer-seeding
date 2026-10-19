@@ -10,6 +10,7 @@ import json
 import re
 from collections import defaultdict
 from datetime import date, datetime
+from kst_dates import kst_now
 from pathlib import Path
 from typing import Any
 
@@ -164,7 +165,7 @@ def main() -> None:
 
     backup_dir = Path(args.backup_dir)
     backup_dir.mkdir(parents=True, exist_ok=True)
-    backup = backup_dir / f"sheet_stat_mismatch_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    backup = backup_dir / f"sheet_stat_mismatch_{kst_now().strftime('%Y%m%d_%H%M%S')}.json"
     backup.write_text(json.dumps(candidates, ensure_ascii=False, indent=2), encoding="utf-8")
 
     updated = 0

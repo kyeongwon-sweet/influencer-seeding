@@ -1,4 +1,5 @@
 "use client";
+import { utcDateOf } from "@/lib/dateRule";
 // 필터 바 — monitoring/page.tsx 에서 추출.
 // filters 상태/세터는 부모 소유(prop). 드롭다운 열림상태는 필터바 전용이라 내부 보관.
 import { Fragment, useState } from "react";
@@ -350,7 +351,7 @@ export default function FiltersBar({ filters, setFilters, creatorOptions, planne
         {/* 빠른 선택 버튼 — 날짜 인풋 바로 우측 */}
         {(() => {
           // KST 고정: toISOString은 UTC라 00~09시(KST)엔 날짜가 하루 밀림 → +9h 시프트 후 UTC 필드로만 계산.
-          const fmt = (d: Date) => d.toISOString().slice(0, 10);
+          const fmt = (d: Date) => utcDateOf(d) ?? ""; // d는 이미 +9h 시프트된 Date(UTC 필드 = KST 달력)
           const today = new Date(Date.now() + 9 * 60 * 60 * 1000);
           const todayStr = fmt(today);
           // 일요일(getUTCDay=0)을 7로 처리해 월요일 시작 기준 올바르게 계산

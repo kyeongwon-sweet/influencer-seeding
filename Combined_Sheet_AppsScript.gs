@@ -2018,7 +2018,7 @@ function shiftDateStr_(dateStr, days) {
   const parts = String(dateStr || "").split("-").map(Number);
   if (parts.length !== 3 || parts.some(function(v) { return !isFinite(v); })) return null;
   const date = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2] + Number(days || 0)));
-  return Utilities.formatDate(date, "UTC", "yyyy-MM-dd");
+  return Utilities.formatDate(date, "UTC", "yyyy-MM-dd"); // utc-date-ok: 날짜만 더하는 계산(시각 없음)이라 UTC가 정확
 }
 
 function collectionTargetDate_() {

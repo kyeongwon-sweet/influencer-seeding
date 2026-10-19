@@ -1,3 +1,4 @@
+import { daysAgoKST } from "@/lib/dateRule";
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { dedupeRowsById } from "@/lib/dedupe-rows";
@@ -53,7 +54,7 @@ export async function GET() {
 
   // 최근 통계만 (급상승 = 최신 2개 비교 → 창 하나면 충분). 전체 이력은 조회하지 않는다.
   const WINDOW_DAYS = 7;
-  const since = new Date(Date.now() - WINDOW_DAYS * 86400000).toISOString().slice(0, 10);
+  const since = daysAgoKST(WINDOW_DAYS);
   const byPost = new Map<string, { measured_at: string; play_count: number | null; comments_count: number | null }[]>();
   const statRows: InsightStatRow[] = [];
   {

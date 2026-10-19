@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 from datetime import datetime
+from kst_dates import kst_now
 from pathlib import Path
 from typing import Any
 
@@ -164,7 +165,7 @@ def main() -> None:
     if repair_ids:
         backup_dir = Path(args.backup_dir)
         backup_dir.mkdir(parents=True, exist_ok=True)
-        backup_path = backup_dir / f"status_integrity_repair_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        backup_path = backup_dir / f"status_integrity_repair_{kst_now().strftime('%Y%m%d_%H%M%S')}.json"
         backup_rows = [row for row in stats if row.get("id") in repair_ids]
         backup_path.write_text(json.dumps({
             "repair_ids": repair_ids,

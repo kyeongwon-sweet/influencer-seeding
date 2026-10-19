@@ -1,3 +1,4 @@
+import { todayKST } from "@/lib/dateRule";
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import {
@@ -125,7 +126,7 @@ async function respond(req: NextRequest, result: HealthResult, alertText: string
 }
 
 function yesterdayKST(): string {
-  const kstToday = new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10);
+  const kstToday = todayKST();
   return new Date(Date.parse(`${kstToday}T00:00:00Z`) - 86_400_000)
     .toISOString()
     .slice(0, 10);

@@ -1,3 +1,4 @@
+import { yesterdayKST } from "@/lib/dateRule";
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { fetchSheetTabValues } from "@/lib/google-sheets";
@@ -124,9 +125,7 @@ function sumOrNull(row: Cell[], idxs: number[]): number | null {
 }
 
 function kstYesterday(): string {
-  const now = new Date();
-  const kst = new Date(now.getTime() + 9 * 3600 * 1000 - 24 * 3600 * 1000);
-  return kst.toISOString().slice(0, 10);
+  return yesterdayKST();
 }
 
 type Channel = { views: number | null; cost: number | null };

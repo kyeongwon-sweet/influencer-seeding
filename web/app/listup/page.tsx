@@ -5,7 +5,7 @@ import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
 import { platformLabel } from "@/lib/platform";
 import { normalizeYouTubeUrl } from "@/lib/url-utils";
-import { MIN_ENTRY_DATE, maxDateKST, isValidEntryDate } from "@/lib/dateRule";
+import { MIN_ENTRY_DATE, maxDateKST, isValidEntryDate, kstDateOf, todayKST } from "@/lib/dateRule";
 import { batchFetch } from "@/lib/batchFetch";
 
 type Keyword = { id: string; keyword: string; platform: string; created_at: string };
@@ -145,7 +145,7 @@ export default function ListupPage() {
     if (filters.keyword !== "all" && inf.keyword !== filters.keyword) return false;
     // 업로드일 필터: KST 달력 날짜로 비교 (UTC 경계 비교는 KST 00~09시 게시물이 경계에서 빠지거나 넘침)
     if ((filters.uploadedFrom || filters.uploadedTo) && inf.post_uploaded_at) {
-      const kst = new Date(new Date(inf.post_uploaded_at).getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const kst = kstDateOf(inf.post_uploaded_at) ?? "";
       if (filters.uploadedFrom && kst < filters.uploadedFrom) return false;
       if (filters.uploadedTo && kst > filters.uploadedTo) return false;
     }
@@ -417,7 +417,7 @@ export default function ListupPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `리스트업_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `리스트업_${todayKST()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -1236,7 +1236,7 @@ export default function ListupPage() {
                             />
                           ) : (
                             <span
-                              onClick={() => setEditDate({ id: inf.id, value: inf.post_uploaded_at ? new Date(inf.post_uploaded_at).toISOString().slice(0, 10) : "" })}
+                              onClick={() => setEditDate({ id: inf.id, value: inf.post_uploaded_at ? (kstDateOf(inf.post_uploaded_at) ?? "") : "" })}
                               className="cursor-pointer flex items-center gap-1 group/date"
                             >
                               {inf.post_uploaded_at

@@ -1,3 +1,4 @@
+import { addDaysToDate, todayKST } from "@/lib/dateRule";
 export const runtime = 'nodejs';
 
 const MODULE = "meta-ads";
@@ -26,8 +27,8 @@ export async function GET(req) {
     });
 
     // 오늘은 Meta가 계속 갱신하는 잠정치 → 제외하고 "어제"까지만 집계 (값 안정화)
-    const kstToday = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
-    const yesterday = new Date(new Date(kstToday + "T00:00:00Z").getTime() - 86400000).toISOString().slice(0, 10);
+    const kstToday = todayKST();
+    const yesterday = addDaysToDate(kstToday, -1);
     const effectiveTo = dateTo < kstToday ? dateTo : yesterday;
     if (effectiveTo < dateFrom) {
       return Response.json([]);

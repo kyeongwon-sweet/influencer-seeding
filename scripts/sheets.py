@@ -1,5 +1,6 @@
 from __future__ import annotations
 from datetime import datetime
+from kst_dates import kst_today
 import gspread
 from gspread.exceptions import WorksheetNotFound
 from config import OAUTH_CREDENTIALS_PATH, SPREADSHEET_ID, SHEET_NAME
@@ -70,7 +71,7 @@ _WHITE_BG = {"backgroundColor": {"red": 1.0,  "green": 1.0,  "blue": 1.0}}
 
 def write_row_result(ws: gspread.Worksheet, row: int, metrics: dict) -> None:
     """한 행에 실행일 + 지표 일괄 기재. '-' 값 셀은 회색 배경 처리."""
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = kst_today()
     values = [today] + [_cell_value(metrics.get(h, "-")) for h in METRIC_HEADERS[1:]]
     ws.update(_col_range(row, len(values)), [values], value_input_option="USER_ENTERED")
     ws.batch_format([

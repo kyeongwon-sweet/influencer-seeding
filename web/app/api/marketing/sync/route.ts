@@ -1,3 +1,4 @@
+import { kstDateOf } from "@/lib/dateRule";
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest) {
     if (r.posted_at) {
       const date = new Date(String(r.posted_at));
       if (!isNaN(date.getTime())) {
-        posted_at = date.toISOString().split('T')[0]; // YYYY-MM-DD 형식
+        posted_at = kstDateOf(date); // YYYY-MM-DD(KST 달력)
       }
     }
 

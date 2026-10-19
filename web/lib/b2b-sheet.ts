@@ -1,3 +1,4 @@
+import { addDaysToDate, kstDateOf } from "./dateRule.ts";
 type SheetCell = string | number | null | undefined;
 
 export type B2bDayValues = {
@@ -223,6 +224,5 @@ export function buildB2bDailyRecords(
 }
 
 export function yesterdayKST(nowMs = Date.now()): string {
-  const today = new Date(nowMs + 9 * 3_600_000).toISOString().slice(0, 10);
-  return new Date(Date.parse(`${today}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+  return addDaysToDate(kstDateOf(nowMs) as string, -1);
 }

@@ -1,3 +1,4 @@
+import { addDaysToDate } from "./dateRule.ts";
 // 연동시트 누적(H)·증분(I) 수식 전수감사 — 순수 로직 (매일 아침 크론이 라우트로 호출)
 //
 // 배경: 수식 파손은 조용히 발생한다(2026-07-27 열 삭제로 증분 #REF! 전멸, 2026-07-29 V2 반영
@@ -52,9 +53,7 @@ export function isMetriclessChannel(channelType: string | null | undefined): boo
 }
 
 function shiftDate(day: string, delta: number): string {
-  const d = new Date(day + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + delta);
-  return d.toISOString().slice(0, 10);
+  return addDaysToDate(day, delta);
 }
 
 export type SheetAuditRow = {

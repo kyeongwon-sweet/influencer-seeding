@@ -1,3 +1,4 @@
+import { addDaysToDate, isIsoDateString, kstDateOf, todayKST, utcDateOf } from "./dateRule.ts";
 /** Google Trends observations are relative interest, never absolute search counts. */
 export type TrackerGroup = { id: string; label: string; terms: string[]; tags: string[] };
 export const GOOGLE_TREND_CATEGORIES = [
@@ -11,9 +12,9 @@ export type TrackerResult = { points: TrendPoint[]; regions: TrackerRegion[]; re
 export type TrackerEvent = { id: string; group: number; date: string; start: string; end: string; peak: number | null; baseline: number | null; change: number | null; kind: string; manual?: boolean };
 export type TrackerContent = { title: string; url: string; author: string; date: string | null; views: number | null; likes: number | null; description: string };
 const DAY = 86400000;
-export const dateOffset = (date: string, days: number) => new Date(Date.parse(date) + days * DAY).toISOString().slice(0, 10);
+export const dateOffset = (date: string, days: number) => addDaysToDate(date, days);
 export function validDate(value: unknown): value is string {
-  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
+  return typeof value === "string" && isIsoDateString(value);
 }
 export function parseGroups(text: string): TrackerGroup[] {
   const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
@@ -37,7 +38,7 @@ export function validateConfig(input: unknown): TrackerConfig {
   const c = input as TrackerConfig;
   if (!Array.isArray(c.groups) || c.groups.some(g => !g || typeof g.label !== "string" || !Array.isArray(g.terms) || g.terms.some(t => typeof t !== "string") || !Array.isArray(g.tags) || g.tags.some(t => typeof t !== "string"))) throw new Error("검색어 묶음을 확인하세요.");
   const groups = parseGroups(c.groups.map(g => `${g.label}=${g.terms.join(",")}|${g.tags.join(",")}`).join("\n"));
-  if (!validDate(c.start) || !validDate(c.end) || c.start > c.end || c.end > new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10) /* KST 오늘 */ || Date.parse(c.end) - Date.parse(c.start) > 5 * 366 * DAY || c.start < "2004-02-01") throw new Error("분석 기간은 2004년 2월 이후, 오늘 이전의 최대 5년으로 설정하세요.");
+  if (!validDate(c.start) || !validDate(c.end) || c.start > c.end || c.end > todayKST() || Date.parse(c.end) - Date.parse(c.start) > 5 * 366 * DAY || c.start < "2004-02-01") throw new Error("분석 기간은 2004년 2월 이후, 오늘 이전의 최대 5년으로 설정하세요.");
   if (!["KR", "US", "JP", ""].includes(c.geo)) throw new Error("지원하지 않는 국가입니다.");
   const category = typeof c.category === "string" ? c.category : "0";
   if (!GOOGLE_TREND_CATEGORIES.some(([id]) => id === category)) throw new Error("지원하지 않는 검색 카테고리입니다.");
@@ -71,7 +72,7 @@ export function parseTrendDataset(items: unknown[], c: TrackerConfig): TrackerRe
       const p = record(rawPoint);
       const time = typeof p.time === "number" || typeof p.time === "string" ? Number(p.time) : NaN;
       if (!Number.isFinite(time) || time <= 0) continue;
-      const date = new Date(time * 1000).toISOString().slice(0, 10);  // utc-date-ok: Trends 일 단위 버킷 시각(UTC 자정)을 그대로 날짜로
+      const date = utcDateOf(time * 1000) ?? "";  // Trends 일 단위 버킷 시각(UTC 자정)이 곧 그 날짜
       if (date < dateOffset(c.start, -28) || date > c.end) continue;
       const values = Array.isArray(p.value) ? p.value : [];
       const hasData = Array.isArray(p.hasData) ? p.hasData : [];
@@ -169,7 +170,7 @@ export function parseContent(items: unknown[], platform: "youtube" | "instagram"
     let date: string | null = null;
     for (const value of [p.date, p.uploadDate, p.publishedAt, p.timestamp]) {
       const parsed = typeof value === "number" ? new Date(value * 1000) : typeof value === "string" ? new Date(value) : null;
-      if (parsed && Number.isFinite(parsed.getTime())) { date = parsed.toISOString().slice(0, 10); break; }
+      if (parsed && Number.isFinite(parsed.getTime())) { date = kstDateOf(parsed); break; }
     }
     const url = textValue(p.url ?? p.videoUrl);
     const owner = record(p.channel);
