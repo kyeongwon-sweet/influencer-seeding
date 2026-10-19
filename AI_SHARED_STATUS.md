@@ -2,7 +2,7 @@
 
 ## ✅ 2026-10-19 [Claude 코드·배포] 인지봇 수집 보고 = 제목 한 줄 + 댓글, 수집 경보는 그날 보고 스레드 댓글(담당자 태그) (`74499e19`)
 - **요청:** 사용자 "이런 오류 스레드 댓글로 달기로 했잖아"(10-19 09:16 `수집 사각 감지`가 채널 새 글로 게시) + 최서은 "인지봇 수집 보고도 스레드 형식 + 담당자 태그로"(손익트래커봇 `[10.19 시트 업데이트 현황]` + 댓글 형식).
-- **변경:** `scripts/collect_report_thread.py`(단일 정본) — 오늘 `자정 수집 … (YYYY-MM-DD)` 최상위 글을 찾아 그 스레드에 댓글. 없으면 대기 후 끝내 없으면 **채널에 바로**(안내문 포함, 경보 유실 금지). `daily_collect_report`: 채널엔 제목 한 줄만(확인 필요 시 `— 확인 필요 N건`), 요약·상세는 댓글, 확인 필요/실패일 때만 요약 댓글에 담당자 태그. `view_tracking_watchdog`(대기 30분)·`exportstats_watchdog`(대기 10분): 보고 스레드 댓글 + 담당자 태그. 담당자 = GHA 변수 `COLLECT_ALERT_ASSIGNEES`(쉼표, 미설정=황경원 U0B2Y0ZC8QZ).
+- **변경:** `scripts/collect_report_thread.py`(단일 정본) — 오늘 `자정 수집 … (YYYY-MM-DD)` 최상위 글을 찾아 그 스레드에 댓글. 없으면 대기 후 끝내 없으면 **채널에 바로**(안내문 포함, 경보 유실 금지). `daily_collect_report`: 채널엔 제목 한 줄만(확인 필요 시 `— 확인 필요 N건`), 요약·상세는 댓글, 확인 필요/실패일 때만 요약 댓글에 담당자 태그. `view_tracking_watchdog`(대기 30분)·`exportstats_watchdog`(대기 10분): 보고 스레드 댓글 + 담당자 태그. 담당자 = GHA 변수 `COLLECT_ALERT_ASSIGNEES`(쉼표). 미설정 시 기본 **김보나 U0C0W2V4X4G**(10-19 사용자 지정, `ac622abf`; 처음엔 황경원이었음). 현재 GHA 변수 미설정.
 - ⚠️ 제목에 `자정 수집`·`(YYYY-MM-DD)`는 중복발송 판정과 스레드 찾기의 열쇠라 유지(빼면 중복발송·경보가 채널로 샘).
 - **참고:** 오늘 09:16 경보 8건(위성 틱톡)은 KST 08:33 등록분을 UTC 날짜로 잘라 '어제 등록'으로 본 **오탐** — 다른 세션 `28f6129a`가 수정.
 - **동시작업 주의:** 커밋 시점에 같은 작업폴더에 다른 세션의 미커밋 KST 정리 작업(`scripts/kst_dates.py` 신규, run_monitoring·notify_status·auto_end_rules·build_view_missing_queue·inspect_monitoring_status·daily_collect_report·view_tracking_watchdog 수정)이 있었다. **내 hunk만 인덱스에 올려 커밋**했고 그 WIP는 무접촉(미커밋 그대로). 커밋본만 따로 꺼내 pytest 473 passed + 워크플로 직접실행 테스트 전부 통과 확인.
