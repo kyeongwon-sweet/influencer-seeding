@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from kst_dates import kst_date, kst_today
 from channel_kind import is_banner_channel, is_reach_only_manual_channel
 from platform_kind import is_view_capable, platform
 
@@ -282,7 +283,7 @@ def tail(url: str | None) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--date", default=date.today().isoformat())
+    parser.add_argument("--date", default=kst_today())
     parser.add_argument("--out-dir", default=os.getenv("RUNNER_TEMP") or "data/monitoring")
     parser.add_argument("--include-all", action="store_true", help="Include non-retryable diagnostics in queue.")
     args = parser.parse_args()
@@ -360,7 +361,7 @@ def main() -> None:
                 "platform": platform(post.get("url")),
                 "channel_type": post.get("channel_type"),
                 "posted_at": str(post.get("posted_at") or "")[:10] or None,
-                "created_at": str(post.get("created_at") or "")[:10] or None,
+                "created_at": kst_date(post.get("created_at")) or None,
                 "reason": reason,
                 "retryable": False,
                 "same_day_rows": 0,
@@ -390,7 +391,7 @@ def main() -> None:
             "platform": pf,
             "channel_type": post.get("channel_type"),
             "posted_at": str(post.get("posted_at") or "")[:10] or None,
-            "created_at": str(post.get("created_at") or "")[:10] or None,
+            "created_at": kst_date(post.get("created_at")) or None,
             "reason": reason,
             "retryable": retryable,
             "same_day_rows": len(rows),

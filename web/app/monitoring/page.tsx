@@ -1233,7 +1233,7 @@ export default function MonitoringPage() {
     });
     if (res.ok) {
       const stored = isNumeric ? (value === "" ? null : Number(value)) : (value || null);
-      const now = new Date().toISOString().slice(0, 10);
+      const now = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);  // KST 오늘
       setPosts(prev => prev.map(p => p.id === postId ? {
         ...p,
         [field]: stored,

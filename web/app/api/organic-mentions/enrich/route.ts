@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { logger } from "@/lib/logger";
+import { todayKST } from "@/lib/dateRule";
 import { platformFromUrl } from "@/lib/platform";
 import { enrichSupported, runActorSync, pickViewCount, pickUploadedAt, pickCaption, pickThumbnail, productsFromCaption } from "@/lib/organic-enrich";
 
@@ -52,7 +53,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ enriched: false, reason: "수집 결과 없음(비공개·삭제·미지원 링크일 수 있음)", patch: {} });
   }
 
-  const todayISO = new Date().toISOString().slice(0, 10);
+  const todayISO = todayKST();
   const patch: Record<string, unknown> = {};
   if (!row.platform && platform) patch.platform = platform;
   if (!row.uploaded_at) {

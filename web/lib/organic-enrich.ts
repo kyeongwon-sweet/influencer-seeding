@@ -93,7 +93,9 @@ export function pickUploadedAt(item: Record<string, unknown>, todayISO: string):
     if (typeof v === "number") d = new Date(v > 1e12 ? v : v * 1000);   // 초/밀리초 자동 판별
     else if (typeof v === "string" && v.trim()) d = new Date(v);
     if (!d || Number.isNaN(d.getTime())) continue;
-    const iso = d.toISOString().slice(0, 10);
+    // UTC 날짜가 아니라 KST 업로드일(KST 00~09시 업로드가 하루 이르게 찍히지 않게). 이 파일은 테스트가 직접
+    // 불러와 다른 lib 모듈을 import하지 않으므로 dateRule.kstDateOf와 같은 계산을 여기서 한다.
+    const iso = new Date(d.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
     if (iso < "2015-01-01" || iso > todayISO) continue;                  // 범위 밖은 신뢰하지 않는다
     return iso;
   }

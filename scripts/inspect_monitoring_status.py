@@ -7,6 +7,7 @@ notify_status.py without sending a Slack message.
 
 from __future__ import annotations
 
+from kst_dates import kst_date, kst_today
 from channel_kind import is_banner_channel
 
 import argparse
@@ -71,7 +72,7 @@ def shortcode_tail(url: str | None) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--date", default=date.today().isoformat())
+    parser.add_argument("--date", default=kst_today())
     args = parser.parse_args()
     target = args.date
 
@@ -109,7 +110,7 @@ def main() -> None:
             continue
         if post.get("id") in today_ids:
             continue
-        created = str(post.get("created_at") or "")[:10]
+        created = kst_date(post.get("created_at"))
         if created > target:
             excluded["future_created"] += 1
             continue
@@ -161,7 +162,7 @@ def main() -> None:
             "tail": shortcode_tail(post.get("url")),
             "url": post.get("url"),
             "channel_type": post.get("channel_type"),
-            "created_at": str(post.get("created_at") or "")[:10],
+            "created_at": kst_date(post.get("created_at")),
             "posted_at": str(post.get("posted_at") or "")[:10],
         }
 

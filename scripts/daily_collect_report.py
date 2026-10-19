@@ -11,6 +11,7 @@ SKILL.md 형식을 코드로 고정 — 예약 실행 Claude가 형식/숫자를
 배너 = channel_type에 '배너' 포함 → 격일 수집이라 값 없음이 정상 → 확보율에서 제외.
 값 있음 = play_count 또는 reach_count가 not null.
 """
+from kst_dates import kst_date
 import sys, os, json, urllib.request, urllib.error, datetime
 from channel_kind import is_banner_channel, is_reach_only_manual_channel
 from platform_kind import has_no_view_metric_host
@@ -358,7 +359,7 @@ def main():
         if is_ended(p):
             continue                      # 종료글은 값 없음이 정상
         posted = (p.get("posted_at") or "")[:10]
-        created = (p.get("created_at") or "")[:10]
+        created = kst_date(p.get("created_at"))
         if not posted or posted > yday:
             continue                      # 아직 게시 전 → 미측정이 정상
         if created > yday:

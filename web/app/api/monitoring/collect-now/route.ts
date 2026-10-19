@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { instagramRequestUrl } from "@/lib/url-utils";
+import { kstDateOf } from "@/lib/dateRule";
 import { createClient } from "@supabase/supabase-js";
 import { createApifyClient } from "@/lib/apify";
 import { checkCronAuth } from "@/lib/cron-auth";
@@ -180,8 +181,7 @@ async function collect(req: NextRequest) {
         const comments = toMetric(item.commentsCount ?? item.commentCount ?? item.comments);
         const ts = item.timestamp || item.takenAt;
         let postedAt: string | null = null;
-        if (typeof ts === "string") postedAt = ts.slice(0, 10);
-        else if (typeof ts === "number") postedAt = new Date(ts * 1000).toISOString().slice(0, 10);
+        if (typeof ts === "string" || typeof ts === "number") postedAt = kstDateOf(ts);  // UTC 시각 → KST 게시일
 
         // 🔍 음수 조회수 감지 (Apify 버그 추적)
         if (views < 0) {

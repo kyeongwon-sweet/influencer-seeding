@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from kst_dates import kst_date
 import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -130,7 +131,7 @@ def next_not_found_state(
         } if dirty else {}), False
 
     observed = date.fromisoformat(observed_at)
-    last_raw = str(post.get("not_found_last_at") or "")[:10]
+    last_raw = kst_date(post.get("not_found_last_at"))  # observed_at(KST 날짜)와 같은 기준
     if last_raw == observed_at:
         # A later targeted retry can add stronger owner-profile evidence for the
         # same observation day. Keep the daily streak idempotent, but do not

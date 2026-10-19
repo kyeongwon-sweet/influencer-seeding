@@ -3,7 +3,7 @@ import { getServerSupabase } from "@/lib/supabase-server";
 import { fetchDatasetItems } from "@/lib/apify";
 import { normalizeYouTubeUrl, normalizeInstagramUrl, isInstagramNonPostUrl } from "@/lib/url-utils";
 import { notifyBot, notifyJob } from "@/lib/slack";
-import { requireMonitoringWebhookDate } from "@/lib/dateRule";
+import { kstDateOf, requireMonitoringWebhookDate } from "@/lib/dateRule";
 import { isBannerChannel } from "@/app/monitoring/lib";
 import { looksLikeEngagementCountAsViews, trustedPlaySourceOf } from "@/lib/ig-metric-guard";
 import { organicExcludeHit, organicOwnedMediaHit, organicTradePostHit } from "@/lib/organic-filter";
@@ -269,8 +269,8 @@ async function handleMonitoring(
 
     const ts = item.timestamp || item.takenAt;
     let postedAt: string | null = null;
-    if (typeof ts === 'string') postedAt = ts.slice(0, 10);
-    else if (typeof ts === 'number') postedAt = new Date(ts * 1000).toISOString().slice(0, 10);
+    // 게시 시각은 UTC다. KST 00~09시 게시글이 하루 이른 게시일로 읽히지 않게 KST 날짜로.
+    if (typeof ts === 'string' || typeof ts === 'number') postedAt = kstDateOf(ts);
 
     const owner = (item.owner as Record<string, unknown>) || {};
     statsByKey[key] = {
@@ -808,12 +808,7 @@ const ORGANIC_MIN_VIEWS = 500_000;      // 50만 이상 뷰
 // Helper: 날짜 파싱 (다양한 형식 지원)
 function parseDate(rawTs: unknown): string | null {
   if (!rawTs) return null;
-  if (typeof rawTs === 'number') {
-    return new Date(rawTs * 1000).toISOString().slice(0, 10);
-  }
-  if (typeof rawTs === 'string') {
-    return rawTs.slice(0, 10);
-  }
+  if (typeof rawTs === 'number' || typeof rawTs === 'string') return kstDateOf(rawTs);
   return null;
 }
 

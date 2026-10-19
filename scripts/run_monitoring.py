@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # 협찬 모니터링 Instagram 데이터 수집 및 통계 생성
+from kst_dates import kst_date
 import os
 import re
 import json
@@ -2687,11 +2688,10 @@ def _fetch_stats(urls: list) -> list:
 
         # 게시일 추출
         posted_at = None
+        # 게시 시각은 UTC 타임스탬프다. KST 00~09시 게시글이 하루 이른 게시일로 읽히지 않게 KST로 변환.
         ts = item.get("timestamp") or item.get("takenAt")
-        if isinstance(ts, str):
-            posted_at = ts[:10]
-        elif isinstance(ts, (int, float)):
-            posted_at = datetime.utcfromtimestamp(ts).date().isoformat()
+        if isinstance(ts, (str, int, float)) and ts != "":
+            posted_at = kst_date(ts) or None
 
         # 계정 정보 추출
         owner = item.get("owner") or {}

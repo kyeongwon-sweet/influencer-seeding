@@ -33,6 +33,7 @@ import urllib.request
 from datetime import date, datetime, timedelta, timezone
 
 from collect_report_thread import mention_prefix, post_to_report_thread, slack_api
+from kst_dates import kst_date
 from posted_at_mismatch import CHECK_HINT, describe
 
 GRACE_DAYS = int(os.getenv("VIEW_WATCHDOG_GRACE_DAYS", "2"))
@@ -172,27 +173,6 @@ def reason_text(ev: dict | None) -> str:
     if reason == "no_collector_response":
         return "수집기 응답 없음 — 비공개·삭제·지역제한 가능, 링크 직접 확인"
     return f"수집기 기록: {reason}"
-
-
-def kst_date(ts: str | None) -> str:
-    """DB 타임스탬프(UTC ISO)를 KST 날짜 문자열로. 앞 10자리를 자르면 UTC 날짜가 된다.
-
-    2026-10-19 오탐: KST 08:33에 등록된 위성 틱톡 8건의 created_at은 `2026-10-18T23:33Z`라
-    `[:10]`이 '어제'가 됐고, '오늘 막 등록 → 다음 수집 대기' 제외를 빠져나가 수집 사각으로 울렸다.
-    `today`는 KST 날짜이므로 비교 대상도 KST로 맞춘다.
-    """
-    raw = str(ts or "").strip()
-    if not raw:
-        return ""
-    if len(raw) == 10:
-        return raw  # 날짜만 있는 값(posted_at 등)은 그대로
-    try:
-        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-    except ValueError:
-        return raw[:10]
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(KST).date().isoformat()
 
 
 def build(today: date, reasons: dict[str, dict] | None = None) -> dict:

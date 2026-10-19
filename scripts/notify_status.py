@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # 협찬 데이터 수집 상태(정상/실패+사유) → 황경원 DM(여믄봇).
 # cron-daily-collect.yml의 수집 직후 always() 단계에서 실행 — 수집 성공/실패 무관하게 발송.
+from kst_dates import kst_date, kst_today
 import os
 import json
 import re
@@ -250,7 +251,7 @@ def _integrity_lines(db, posts):
         for d in done:
             expected_by_day[d] = sum(
                 1 for p in active_view_posts
-                if str(p.get("created_at") or "")[:10] <= d
+                if kst_date(p.get("created_at")) <= d
                 and (not p.get("posted_at") or str(p.get("posted_at"))[:10] <= d)
             )
         low = sorted(
@@ -509,7 +510,7 @@ def _integrity_lines(db, posts):
 
 def main():
     token = os.environ["SLACK_BOT_TOKEN"]
-    target = os.getenv("MONITORING_DATE") or date.today().isoformat()
+    target = os.getenv("MONITORING_DATE") or kst_today()
     outcome = (os.getenv("COLLECT_OUTCOME") or "").lower()  # success | failure | ""
     db = get_client()
 
@@ -562,7 +563,7 @@ def main():
             continue
         if a["id"] in today_ids:
             continue
-        c = str(a.get("created_at"))[:10]
+        c = kst_date(a.get("created_at"))
         if c > target:
             continue                # 대상일 이후 등록 → 그날 존재 안 함(미측정 아님)
         u = (a.get("url") or "").lower()

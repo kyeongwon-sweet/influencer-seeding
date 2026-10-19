@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from kst_dates import kst_date
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
@@ -90,7 +91,7 @@ def _manual_track_expired(
         # 수기 행은 있는데 값이 기록된 적이 없다 = 사람이 숫자를 넣은 적 없음 → 보호할 값이 없다.
         return True
     try:
-        gap = (date.fromisoformat(target_date) - date.fromisoformat(str(last_manual_at)[:10])).days
+        gap = (date.fromisoformat(target_date) - date.fromisoformat(kst_date(last_manual_at))).days
     except ValueError:
         return False
     return gap >= MANUAL_TRACK_GRACE_DAYS

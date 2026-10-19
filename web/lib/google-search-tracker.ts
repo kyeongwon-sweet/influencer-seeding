@@ -37,7 +37,7 @@ export function validateConfig(input: unknown): TrackerConfig {
   const c = input as TrackerConfig;
   if (!Array.isArray(c.groups) || c.groups.some(g => !g || typeof g.label !== "string" || !Array.isArray(g.terms) || g.terms.some(t => typeof t !== "string") || !Array.isArray(g.tags) || g.tags.some(t => typeof t !== "string"))) throw new Error("검색어 묶음을 확인하세요.");
   const groups = parseGroups(c.groups.map(g => `${g.label}=${g.terms.join(",")}|${g.tags.join(",")}`).join("\n"));
-  if (!validDate(c.start) || !validDate(c.end) || c.start > c.end || c.end > new Date().toISOString().slice(0, 10) || Date.parse(c.end) - Date.parse(c.start) > 5 * 366 * DAY || c.start < "2004-02-01") throw new Error("분석 기간은 2004년 2월 이후, 오늘 이전의 최대 5년으로 설정하세요.");
+  if (!validDate(c.start) || !validDate(c.end) || c.start > c.end || c.end > new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10) /* KST 오늘 */ || Date.parse(c.end) - Date.parse(c.start) > 5 * 366 * DAY || c.start < "2004-02-01") throw new Error("분석 기간은 2004년 2월 이후, 오늘 이전의 최대 5년으로 설정하세요.");
   if (!["KR", "US", "JP", ""].includes(c.geo)) throw new Error("지원하지 않는 국가입니다.");
   const category = typeof c.category === "string" ? c.category : "0";
   if (!GOOGLE_TREND_CATEGORIES.some(([id]) => id === category)) throw new Error("지원하지 않는 검색 카테고리입니다.");
@@ -71,7 +71,7 @@ export function parseTrendDataset(items: unknown[], c: TrackerConfig): TrackerRe
       const p = record(rawPoint);
       const time = typeof p.time === "number" || typeof p.time === "string" ? Number(p.time) : NaN;
       if (!Number.isFinite(time) || time <= 0) continue;
-      const date = new Date(time * 1000).toISOString().slice(0, 10);
+      const date = new Date(time * 1000).toISOString().slice(0, 10);  // utc-date-ok: Trends 일 단위 버킷 시각(UTC 자정)을 그대로 날짜로
       if (date < dateOffset(c.start, -28) || date > c.end) continue;
       const values = Array.isArray(p.value) ? p.value : [];
       const hasData = Array.isArray(p.hasData) ? p.hasData : [];
