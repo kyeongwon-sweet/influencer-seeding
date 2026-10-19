@@ -36,6 +36,9 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           INJIBOT_SLACK_TOKEN: ${{ secrets.INJIBOT_SLACK_TOKEN }}
+          # 2026-10-19: 경보는 그날 '자정 수집' 보고 스레드의 댓글로(담당자 태그). 없으면 10분 기다렸다 채널로.
+          REPORT_THREAD_WAIT_SECONDS: "600"
+          COLLECT_ALERT_ASSIGNEES: ${{ vars.COLLECT_ALERT_ASSIGNEES }}
           PYTHONUTF8: "1"
           TZ: "Asia/Seoul"
         run: python scripts/exportstats_watchdog.py --send

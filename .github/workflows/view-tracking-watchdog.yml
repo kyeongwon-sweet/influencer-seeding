@@ -49,6 +49,10 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           INJIBOT_SLACK_TOKEN: ${{ secrets.INJIBOT_SLACK_TOKEN }}
+          # 2026-10-19: 경보는 그날 '자정 수집' 보고 스레드의 댓글로(담당자 태그). 보고는 수집 완료 뒤에
+          # 올라오므로 최대 30분 기다렸다가, 끝내 없으면 채널에 바로 올린다(경보 유실 금지).
+          REPORT_THREAD_WAIT_SECONDS: "1800"
+          COLLECT_ALERT_ASSIGNEES: ${{ vars.COLLECT_ALERT_ASSIGNEES }}
           PYTHONUTF8: "1"
           TZ: "Asia/Seoul"
         run: python scripts/view_tracking_watchdog.py --send --out "$RUNNER_TEMP/view_watchdog.json" --diag-dir "$RUNNER_TEMP/collect_diag"

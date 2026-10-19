@@ -32,6 +32,7 @@ import urllib.parse
 import urllib.request
 from datetime import date, datetime, timedelta, timezone
 
+from collect_report_thread import mention_prefix, post_to_report_thread, slack_api
 from posted_at_mismatch import CHECK_HINT, describe
 
 GRACE_DAYS = int(os.getenv("VIEW_WATCHDOG_GRACE_DAYS", "2"))
@@ -298,22 +299,16 @@ def slack_lines(result: dict) -> str:
     return "\n".join(parts)
 
 
-def send_slack(text: str) -> None:
+def send_slack(text: str, today: str) -> None:
+    """채널에 새 글로 올리지 않고 그날 '자정 수집' 보고 스레드의 댓글로, 담당자 태그를 붙여 단다(2026-10-19).
+    보고가 아직 없으면 REPORT_THREAD_WAIT_SECONDS 만큼 기다렸다가, 끝내 없으면 채널에 바로 올린다."""
     if not SLACK_TOKEN:
         print("[WARN] INJIBOT_SLACK_TOKEN 없음 — 발송 스킵")
         return
-    data = json.dumps({"channel": SLACK_CHANNEL, "text": text}).encode()
-    req = urllib.request.Request(
-        "https://slack.com/api/chat.postMessage",
-        data=data,
-        headers={
-            "Authorization": f"Bearer {SLACK_TOKEN}",
-            "Content-Type": "application/json; charset=utf-8",
-        },
-        method="POST",
+    post_to_report_thread(
+        slack_api(SLACK_TOKEN), SLACK_CHANNEL, mention_prefix() + text, today,
+        wait_seconds=int(os.getenv("REPORT_THREAD_WAIT_SECONDS", "0")),
     )
-    resp = json.load(urllib.request.urlopen(req, timeout=30))
-    print("[SLACK]", "ok" if resp.get("ok") else f"FAIL {resp.get('error')}")
 
 
 def main() -> int:
@@ -335,7 +330,7 @@ def main() -> int:
         text = slack_lines(result)
         print(text)
         if args.send:
-            send_slack(text)
+            send_slack(text, args.date)
     else:
         print("✅ 수집 사각 없음")
     return 0

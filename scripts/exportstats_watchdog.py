@@ -26,11 +26,11 @@ import argparse
 import json
 import os
 import sys
-import urllib.request
 from datetime import date, datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db_probe as db  # noqa: E402
+from collect_report_thread import mention_prefix, post_to_report_thread, slack_api  # noqa: E402
 
 KST = timezone(timedelta(hours=9))
 SLACK_TOKEN = os.getenv("INJIBOT_SLACK_TOKEN")
@@ -106,22 +106,16 @@ def slack_text(r: dict) -> str:
     )
 
 
-def send_slack(text: str) -> None:
+def send_slack(text: str, today: str) -> None:
+    """그날 '자정 수집' 보고 스레드의 댓글로, 담당자 태그를 붙여 단다(2026-10-19 — 채널 새 글 금지).
+    보고가 없으면 REPORT_THREAD_WAIT_SECONDS 만큼 기다렸다가, 끝내 없으면 채널에 바로 올린다."""
     if not SLACK_TOKEN:
         print("[WARN] INJIBOT_SLACK_TOKEN 없음 — 발송 스킵")
         return
-    data = json.dumps({"channel": SLACK_CHANNEL, "text": text}).encode()
-    req = urllib.request.Request(
-        "https://slack.com/api/chat.postMessage",
-        data=data,
-        headers={
-            "Authorization": f"Bearer {SLACK_TOKEN}",
-            "Content-Type": "application/json; charset=utf-8",
-        },
-        method="POST",
+    post_to_report_thread(
+        slack_api(SLACK_TOKEN), SLACK_CHANNEL, mention_prefix() + text, today,
+        wait_seconds=int(os.getenv("REPORT_THREAD_WAIT_SECONDS", "0")),
     )
-    resp = json.load(urllib.request.urlopen(req, timeout=30))
-    print("[SLACK]", "ok" if resp.get("ok") else f"FAIL {resp.get('error')}")
 
 
 def main() -> int:
@@ -138,7 +132,7 @@ def main() -> int:
         text = slack_text(result)
         print(text)
         if args.send:
-            send_slack(text)
+            send_slack(text, args.date)
     else:
         print("✅ exportStats 정상 — ", result["reason"])
     return 0

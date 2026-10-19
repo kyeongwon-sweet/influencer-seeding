@@ -15,6 +15,7 @@ import sys, os, json, urllib.request, urllib.error, datetime
 from channel_kind import is_banner_channel, is_reach_only_manual_channel
 from platform_kind import has_no_view_metric_host
 from uncollectable_stale_guard import stale_lines, stuck_uncollectable
+from collect_report_thread import report_title, mention_prefix
 
 CHANNEL = "C0B659HEYDV"
 ENV_PATHS = [
@@ -482,7 +483,17 @@ def main():
     if sections:
         thread = "\n\n".join(sections)
 
-    print("===== 본문 =====")
+    # 2026-10-19 스레드 형식(최서은 요청 "손익트래커봇처럼"): 채널엔 제목 한 줄만, 내용은 댓글.
+    #   확인할 게 있으면 제목에 건수를 붙이고 요약 댓글에 담당자를 태그한다(정상일엔 태그 없음 — 매일 울리면 묻힌다).
+    attention = (watchdog.get("count") or 0) + len(real_miss) + len(stuck) + len(nf_review)
+    title = report_title(status_word, today, attention)
+    summary = body.split("\n", 1)[1].lstrip("\n") if "\n" in body else body
+    if attention or not success:
+        summary = mention_prefix(env) + "\n" + summary
+
+    print("===== 제목(채널) =====")
+    print(title)
+    print("===== 본문(댓글 1) =====")
     print(body)
     if thread:
         print("\n===== 실패 스레드 =====")
@@ -538,11 +549,14 @@ def main():
         except Exception as e:
             print("[idempotency] 예외(%s) → 발송 진행" % e)
 
-    r1 = post({"channel": CHANNEL, "text": body})
-    print("\n본문 발송:", {k: r1.get(k) for k in ("ok", "error", "ts")})
-    if r1.get("ok") and thread:
-        r2 = post({"channel": CHANNEL, "thread_ts": r1["ts"], "text": thread})
-        print("스레드 발송:", {k: r2.get(k) for k in ("ok", "error", "ts")})
+    r1 = post({"channel": CHANNEL, "text": title})
+    print("\n제목 발송:", {k: r1.get(k) for k in ("ok", "error", "ts")})
+    if r1.get("ok"):
+        r2 = post({"channel": CHANNEL, "thread_ts": r1["ts"], "text": summary})
+        print("요약 댓글:", {k: r2.get(k) for k in ("ok", "error", "ts")})
+        if thread:
+            r3 = post({"channel": CHANNEL, "thread_ts": r1["ts"], "text": thread})
+            print("상세 댓글:", {k: r3.get(k) for k in ("ok", "error", "ts")})
     return 0
 
 if __name__ == "__main__":
