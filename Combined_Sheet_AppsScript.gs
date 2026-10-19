@@ -82,7 +82,6 @@ const ALLOWED_URL_RE = /^https:\/\/([a-z0-9-]+\.)*(instagram\.com|youtube\.com|y
 // 주소 정규화만으로 새 수집 대상이 되면 운영 판단이 필요한 레거시 행.
 // 행번호는 삽입/삭제로 바뀌므로 게시물 식별자로 막는다. 사용자 결정 전까지 DB 등록·통계 import 금지.
 const DEFERRED_SHEET_SYNC_KEYS_ = {
-  "yt:7brYyMz4wZ0": "HTTP 주소 자동 보완 보류(레거시 협찬 · 사용자 결정 대기)",
 };
 
 /** 시트 주소를 서버와 같은 HTTPS 입력 형태로만 보완한다. 셀 자체는 수정하지 않는다. */

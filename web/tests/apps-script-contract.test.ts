@@ -554,7 +554,7 @@ test("sheet sync normalizes URL schemes before one shared allow-list check and r
   assert.match(classifyBody, /skipReason: "틱톡 ID 오류"/);
   assert.match(classifyBody, /DEFERRED_SHEET_SYNC_KEYS_\[linkKey_\(normalized\.url\)\]/);
   assert.equal((appsScript.match(/ALLOWED_URL_RE\.test\(/g) || []).length, 1, "raw URL allow-list checks must not reappear");
-  assert.match(appsScript, /"yt:7brYyMz4wZ0": "HTTP 주소 자동 보완 보류/);
+  assert.doesNotMatch(appsScript, /"yt:7brYyMz4wZ0":/);
 
   const accountReasonStart = appsScript.indexOf("function accountNonPostReason_(value)");
   const accountReasonEnd = appsScript.indexOf("/** 모든 시트→DB/DB→시트 경로", accountReasonStart);

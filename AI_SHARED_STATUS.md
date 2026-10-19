@@ -1,5 +1,14 @@
 # AI Shared Status
 
+## ✅ 2026-10-19 [Codex 완료] 1099행 떵개 최종값 시트 반영·수식 복구·동기화 보류 해제
+- **DB→시트 최종값:** 라이브 `exportStats`를 다른 실행 0건인 시점에 1회 완료(10:17:22~10:29:55 KST, 752.656초). `yt:7brYyMz4wZ0`의 2026-10-18 날짜셀은 **FN1099=281,413**으로 채워졌다.
+- **H/I/J 수술:** A:G·K:O를 보존하고 H1099를 표준식 `=IF(COUNT(P1099:FN1099)=0,"",MAX(P1099:FN1099))`으로 복구해 **281,413**, I1099는 게시 7일 초과 뒤 첫 측정치를 당일 증분으로 세지 않는 정책상 `=""`(표시 공란), J1099는 **28.427968857…(표시 약 ₩28.43)**로 정상화했다. 원값은 Script Property `CODEX_BACKUP_YT_7BRYYMZ4WZ0_20261019`에 백업했다.
+- **숨김 행 함정·검증:** 공유 기본 필터로 1099행이 숨겨져 있어 일반 `setFormula(s)`는 오류 없이 무적용됐다. 기존 `setColumnFormulasWithFilterRestore_`로 필터 범위·조건을 보존한 채 H/I를 각각 1셀만 쓰고, 두 쓰기 모두 `written=1 · verified=1 · filter_removed=true · criteria_restored=1`을 확인했다. 행수와 보호 열은 불변이다.
+- **보류 해제:** 라이브와 repo의 `DEFERRED_SHEET_SYNC_KEYS_`에서 `yt:7brYyMz4wZ0`를 제거하고, 해당 키가 다시 들어오지 않는 계약 테스트로 바꿨다. 일회성 복구 함수는 실행 직후 라이브·repo에서 제거했으며 guarded pull 결과 production 10파일이 repo와 일치한다.
+- **DB 불변 재확인:** 게시물 `de6fd044-8a62-4c24-91eb-84da132fcd69`은 URL/key·게시일 2025-10-26·종료일 2026-10-19·`manual_fields=['ended_at']`·비용 8,000,000 유지. 통계 `04b0b163-2429-4a49-b98a-cb98af43dcef`도 2026-10-18 play **281,413**·likes 3,000·comments 377·manual=false 그대로다.
+- **공식 감사:** force run `39187375845` success/HTTP 200. 1099 복구 효과는 `hManual 1,241→1,240`, `metricRange=P:FN`, 1099 관련 hInvalid·incInvalid·sheetOnly 0으로 확인됐다. 단, 감사 직전 팀이 새로 추가한 **5014행 하움(`ig:DeoX1_FiFK_`)**이 아직 DB 0건·H/I/J 미설치라 전역 결과는 `sheetOnly=1 · hInvalid=1 · incInvalid=1 · cpv.invalid=1 · healthy=false`; 이번 수리와 무관한 신규 동기화 대기 건이며 임의 등록하지 않았다.
+- **검증:** web **677/677**, `tsc --noEmit`, production build, Apps Script syntax·70개 계약 테스트 통과(기존 middleware deprecation 경고만).
+
 ## ✅ 2026-10-19 [Codex 완료] 오탐 `수집 사각 감지` Slack 부모 원문 1건만 삭제
 - **대상:** 채널 `C0B659HEYDV`, ts `1792369008.878269`, inji-bot(`U0BHFHSNEDQ`)의 `수집 사각 감지 … 8건`. KST 날짜 판정 오탐은 `28f6129a`로 이미 해결된 상태에서 원문만 정리했다.
 - **사전 가드:** 최초 dry-run `39183197103`은 인계 당시 2건이던 답글이 실행 시점에 **5건**으로 늘어 자동 중단(삭제 0회). Slack 실물에서 추가 3건도 요청·확인·추가 담당자 태그 요청으로 확인해 전부 보존 대상으로 확정했다. `admin-delete-message`에 dry-run·예상 답글 수·답글 ts 전후 동일성 가드를 보강한 커밋은 `ac162567`.
