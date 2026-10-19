@@ -55,8 +55,8 @@ def test_끝내_보고가_없으면_채널에_바로_올린다_경보유실_금�
     assert "자정 수집 보고가 아직 없어" in api.posts[0]["text"] and "🚨 경보" in api.posts[0]["text"]
 
 
-def test_담당자_태그는_기본_황경원이고_변수로_바꾼다():
-    assert crt.mention_prefix({}) == "<@U0B2Y0ZC8QZ> "
+def test_담당자_태그는_기본_김보나이고_변수로_바꾼다():
+    assert crt.mention_prefix({}) == "<@U0C0W2V4X4G> "
     assert crt.mention_prefix({"COLLECT_ALERT_ASSIGNEES": "UA, UB"}) == "<@UA> <@UB> "
 
 

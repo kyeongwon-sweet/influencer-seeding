@@ -23,8 +23,8 @@ from typing import Callable
 
 KST = timezone(timedelta(hours=9))
 REPORT_KEYWORD = "자정 수집"
-# 수집 파이프라인 운영 담당(황경원). 바꿀 땐 GHA 변수 COLLECT_ALERT_ASSIGNEES(쉼표 목록)로.
-DEFAULT_ASSIGNEES = "U0B2Y0ZC8QZ"
+# 기본 태그 = 김보나(2026-10-19 사용자 지정). 바꿀 땐 GHA 변수 COLLECT_ALERT_ASSIGNEES(쉼표 목록)로.
+DEFAULT_ASSIGNEES = "U0C0W2V4X4G"
 
 Api = Callable[[str, dict], dict]
 
