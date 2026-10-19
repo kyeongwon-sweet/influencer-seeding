@@ -1,5 +1,15 @@
 # AI Shared Status
 
+## 📮 2026-10-19 [사용자 지시 → Codex 인계] 오탐 '수집 사각 감지' Slack 원문 1건 삭제
+- **대상:** 채널 `C0B659HEYDV`, ts `1792369008.878269`, 작성자 inji-bot(`U0BHFHSNEDQ`), 2026-10-19 09:16 KST, 본문 `수집 사각 감지 … 8건`(위성 틱톡 8건 — KST 08:33 등록을 UTC 날짜로 본 **오탐**, `28f6129a`로 수정).
+- **스레드 답글 2건 있음:** 최서은(09:18 요청) · 황경원 계정 답글(09:39, Claude 작성 '반영 안내'). 부모를 지우면 Slack이 "삭제된 메시지" 자리표시로 스레드를 남긴다 — 답글은 지우지 말 것(사용자 지시는 부모 1건).
+- **절차:** 삭제 직전 대상 재확인(작성자·본문에 `수집 사각 감지`·`8건`) → 기존 `admin-delete-message`(bot=inji) dry-run → apply 1회 → 재조회로 삭제 확인 → 상태판 기록. 다른 메시지 무접촉.
+
+## ✅ 2026-10-19 [Claude 코드] 수집 알림 담당자 태그 = 제품별 (`2c108747`)
+- **사용자 지정:** 파인트 = 이재원(U09RCJ1B9ML)·김보나(U0C0W2V4X4G) / 쫀득바 = 김바다(U08S4MCC4HY)·권예원(U0C7QDL5GHF).
+- `collect_report_thread.PRODUCT_ASSIGNEES` + `assignees_for(products)`: 알림에 걸린 글의 `product_name`으로 고른다(P바치=파인트). 제품 모름·표에 없는 제품·실패일·글 무관 알림(exportStats)은 **두 팀 전원**. GHA 변수 `COLLECT_ALERT_ASSIGNEES`가 있으면 그게 우선(현재 미설정).
+- 적용: 자정 수집 보고 요약 댓글(확인 필요/실패일만) · 수집 사각 워치독 · exportStats 워치독. 일일 보고·워치독이 `product_name`을 함께 조회하도록 수정. Python 481 passed.
+
 ## ⛔ 2026-10-19 [Claude · 사용자 절대 규칙] 업무 날짜는 KST — 레포 전체 강제(pre-push 훅·CI) + 남은 UTC 날짜 자르기 전수 제거
 - **지시:** "날짜를 한국 시간이 아니라 UTC로 계산하는 오류가 너무 자주 일어나. 다신 일어나지 않게 절대 규칙으로 못 박아."
 - **규칙 문서:** `CLAUDE.md` 최상단 ⛔ 절대 규칙 · 신규 `AGENTS.md`(Codex 등 모든 AI) · Codex 로컬 `Documents/인지 증분 대시보드/AGENTS.md`에도 추가(원본 백업 scratchpad).
