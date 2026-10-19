@@ -24,6 +24,17 @@ SLACK_API = "https://slack.com/api/chat.postMessage"
 # SLACK_THREAD_TS 있으면 그 메시지의 '댓글(스레드 답글)'로 게시.
 
 
+def is_waiting_registration(created_kst: str, target: str, today_kst: str) -> bool:
+    """'다음 수집 대기'로 볼 등록인가(KST 날짜끼리 비교).
+
+    예약 수집의 대상일 D는 D+1 00:41(KST)에 수집되므로 D에 등록된 글(08:30 dailyAuto·00:51 syncNew 포함)은
+    그 수집에 들어가야 정상이다 → 대기 아님, 점검 대상. 실측: 10-15 등록 16건 중 15건·10-16 등록 9건 전부 D 측정.
+    대상일이 오늘인 수동 당일 수집일 때만 오늘 등록분을 대기로 본다.
+    (D 이후 등록은 호출부가 '그날 존재 안 함'으로 먼저 건너뛴다.)
+    """
+    return bool(created_kst) and created_kst == target and target >= today_kst
+
+
 def _platform(url: str) -> str:
     u = (url or "").lower()
     if "instagram.com" in u: return "IG"
@@ -567,8 +578,8 @@ def main():
         if c > target:
             continue                # 대상일 이후 등록 → 그날 존재 안 함(미측정 아님)
         u = (a.get("url") or "").lower()
-        if c == target:
-            waiting += 1            # 당일 등록 → 다음 수집에서 측정(정상)
+        if is_waiting_registration(c, target, kst_today()):
+            waiting += 1            # 오늘 대상 수동 수집에서 오늘 등록분 → 다음 수집 대기
         elif _is_banner(a):
             banner_skip += 1        # 배너는 도달수(reach_count)로 측정 → 조회수 미측정은 정상(점검 제외)
         elif _is_internal_channel(a):
