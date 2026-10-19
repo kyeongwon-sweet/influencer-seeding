@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## ✅ 2026-10-19 [Claude 코드·배포] 인지봇 수집 보고 = 제목 한 줄 + 댓글, 수집 경보는 그날 보고 스레드 댓글(담당자 태그) (`74499e19`)
+- **요청:** 사용자 "이런 오류 스레드 댓글로 달기로 했잖아"(10-19 09:16 `수집 사각 감지`가 채널 새 글로 게시) + 최서은 "인지봇 수집 보고도 스레드 형식 + 담당자 태그로"(손익트래커봇 `[10.19 시트 업데이트 현황]` + 댓글 형식).
+- **변경:** `scripts/collect_report_thread.py`(단일 정본) — 오늘 `자정 수집 … (YYYY-MM-DD)` 최상위 글을 찾아 그 스레드에 댓글. 없으면 대기 후 끝내 없으면 **채널에 바로**(안내문 포함, 경보 유실 금지). `daily_collect_report`: 채널엔 제목 한 줄만(확인 필요 시 `— 확인 필요 N건`), 요약·상세는 댓글, 확인 필요/실패일 때만 요약 댓글에 담당자 태그. `view_tracking_watchdog`(대기 30분)·`exportstats_watchdog`(대기 10분): 보고 스레드 댓글 + 담당자 태그. 담당자 = GHA 변수 `COLLECT_ALERT_ASSIGNEES`(쉼표, 미설정=황경원 U0B2Y0ZC8QZ).
+- ⚠️ 제목에 `자정 수집`·`(YYYY-MM-DD)`는 중복발송 판정과 스레드 찾기의 열쇠라 유지(빼면 중복발송·경보가 채널로 샘).
+- **참고:** 오늘 09:16 경보 8건(위성 틱톡)은 KST 08:33 등록분을 UTC 날짜로 잘라 '어제 등록'으로 본 **오탐** — 다른 세션 `28f6129a`가 수정.
+- **동시작업 주의:** 커밋 시점에 같은 작업폴더에 다른 세션의 미커밋 KST 정리 작업(`scripts/kst_dates.py` 신규, run_monitoring·notify_status·auto_end_rules·build_view_missing_queue·inspect_monitoring_status·daily_collect_report·view_tracking_watchdog 수정)이 있었다. **내 hunk만 인덱스에 올려 커밋**했고 그 WIP는 무접촉(미커밋 그대로). 커밋본만 따로 꺼내 pytest 473 passed + 워크플로 직접실행 테스트 전부 통과 확인.
+- **검증:** 신규 `scripts/test_collect_report_thread.py` 7건(스레드 댓글·다른날/남의 스레드 무시·늦은 보고 대기·끝내 없으면 채널·태그·제목 열쇠·세 알림 소스계약). 실발송 확인은 다음 자연 실행(내일 06:38~ 보고, 경보 발생 시)으로.
+
 ## ✅ 2026-10-19 [Claude 수정] '수집 사각' 위성 틱톡 8건 = 오탐(오늘 아침 등록) · 워치독 KST 날짜 버그 수정 (`28f6129a`)
 - **원인:** 8건(10-17 게시, `tt:7698134624303697173` 외 7)은 DB 등록이 **10-19 08:33 KST**(dailyAuto syncAll, `created_at=2026-10-18T23:33Z`) → 10-18분 자정 수집(10-19 00:41) 뒤라 아직 수집 차례 전. `view_tracking_watchdog.py`가 `created_at[:10]`(UTC 날짜)을 KST 오늘과 비교해 '오늘 등록 제외'를 놓침 → KST 00~09시 등록분이 항상 하루 일찍 '사각'으로 울리는 구조.
 - **수정:** `kst_date()`로 created_at·review_requested_at을 KST 날짜로 변환. 회귀 테스트 `scripts/test_view_tracking_watchdog_kst.py` 3개(사고 재현·어제 등록은 계속 잡음·변환). scripts pytest 466 passed.
