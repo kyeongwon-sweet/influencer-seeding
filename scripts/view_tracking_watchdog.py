@@ -173,6 +173,27 @@ def reason_text(ev: dict | None) -> str:
     return f"수집기 기록: {reason}"
 
 
+def kst_date(ts: str | None) -> str:
+    """DB 타임스탬프(UTC ISO)를 KST 날짜 문자열로. 앞 10자리를 자르면 UTC 날짜가 된다.
+
+    2026-10-19 오탐: KST 08:33에 등록된 위성 틱톡 8건의 created_at은 `2026-10-18T23:33Z`라
+    `[:10]`이 '어제'가 됐고, '오늘 막 등록 → 다음 수집 대기' 제외를 빠져나가 수집 사각으로 울렸다.
+    `today`는 KST 날짜이므로 비교 대상도 KST로 맞춘다.
+    """
+    raw = str(ts or "").strip()
+    if not raw:
+        return ""
+    if len(raw) == 10:
+        return raw  # 날짜만 있는 값(posted_at 등)은 그대로
+    try:
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return raw[:10]
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(KST).date().isoformat()
+
+
 def build(today: date, reasons: dict[str, dict] | None = None) -> dict:
     posted_cutoff = (today - timedelta(days=GRACE_DAYS)).isoformat()
     created_cutoff = (today - timedelta(days=1)).isoformat()
@@ -186,7 +207,7 @@ def build(today: date, reasons: dict[str, dict] | None = None) -> dict:
     for p in posts:
         # 확정삭제 방치: 삭제 검토요청(review_requested_at)이 뜬 지 오래인데 아직 활성.
         # not_found 처리는 자동종료를 안 하므로(run_monitoring), 사람이 놓치면 삭제글이 무한 활성.
-        rr = (p.get("review_requested_at") or "")[:10]
+        rr = kst_date(p.get("review_requested_at"))
         if rr and rr <= review_cutoff:
             review_stale.append({
                 "post_id": p["id"],
@@ -201,7 +222,7 @@ def build(today: date, reasons: dict[str, dict] | None = None) -> dict:
         if not is_view_capable(url):
             continue
         posted = (p.get("posted_at") or "")[:10]
-        created = (p.get("created_at") or "")[:10]
+        created = kst_date(p.get("created_at"))
         if not posted or posted > posted_cutoff:
             continue  # 갓 올라온 글은 아직 수집 정상 대기
         if created and created > created_cutoff:
