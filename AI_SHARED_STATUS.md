@@ -3,6 +3,12 @@
 ## ✅ 2026-10-20 [Claude · 사용자 지정] 자정 수집 알림 제목 양식 변경 + 지난 92건 일괄 변환 (`acae8c15`)
 - **양식(앞으로):** `:bar_chart: *자정 수집 성공 알림* (YYYY-MM-DD)` + 확인 필요가 있으면 다음 줄 ` — 확인 필요 N건`. 중복발송·스레드 찾기 열쇠(`자정 수집`·`(날짜)`)는 그대로라 영향 없음(테스트로 고정).
 - **지난 메시지(사용자 요청 "모두 바꿔줘"):** 인지봇 `자정 수집 … 알림` 최상위 글 **92건**(07-21~10-20, 실패 1건 포함)을 `chat.update`로 새 양식으로 바꿨다. 옛 양식 91건은 제목 메시지에 본문이 통째로 있어서 **본문을 먼저 그 스레드 댓글로 옮긴 뒤** 제목만 남겼다(내용 유실 0). 확인 필요 건수는 옛 본문의 확인필요·IG 접근불가·자동종료 누락 + 스레드의 수집불가 재확인 건수를 합산. 원문 백업 = Claude scratchpad `reformat_reports_backup.json`(92건 원문 text·ts). 사후 재실행 dry → 대상 0건, 10-19·10-20 실물 확인.
+## ✅ 2026-10-20 [Codex 실행] 말랑동만 `ig:DejZ6R5z4T3` 업로드일 10-19 → 10-16 정정·DB 동기화 완료
+- **대상·백업:** URL key로 유일 행 `5013`(`말랑동만`, 시트 URL은 `/reel/DejZ6R5z4T3/`+쿼리)를 재확인한 뒤 `A5013` 원본을 `scratchpad/posted_at_dongman_backup_20261020_144910.json`과 Script Property `CODEX_BACKUP_IG_DEJZ6R5Z4T3_20261020`에 백업했다. DB 원본(`posted_at=2026-10-19`, `manual_fields=[]`, 통계 0행)도 `scratchpad/posted_at_dongman_db_backup_20261020_145500.json`에 따로 남겼다.
+- **시트 1칸 교정:** `A5013`만 텍스트가 아닌 네이티브 날짜 `2026-10-16`으로 저장. 공유 필터로 숨겨진 행이라 기존 필터를 보존·복원하는 안전 쓰기를 사용했고 `filter_removed=true · criteria_restored=2`를 확인했다. 날짜 형식 `yyyy. m. d.`·유효성 규칙 `DATE_IS_VALID_DATE`는 유지, A열 제외 전체 행 지문 `52cff842…b79982a`는 전후 동일하다.
+- **DB 반영:** 대상 1건 bulk는 `upserted=1 · created=0 · meta_filled=1 · locked_drift=0`, 이후 요청된 `syncAll` 1회도 15:02:02~15:05:06 KST에 성공(`비교 5,026 · 신규 0 · 수정 3`). exact id `e87c3a29-b651-4b28-8727-205fb3b0fb87`을 독립 재조회해 `posted_at=2026-10-16 · manual_fields=[] · ended_at=NULL`, `post_daily_stats=0행`을 확인했다. 이전 10-16~10-18 일별값은 없으므로 추정·역채움하지 않았다.
+- **실행·정리 검증:** Apps Script 함수 선택과 실행을 한 UI 호출에 묶으면 직전 함수가 실행될 수 있는 선택 반영 race를 확인했다(값 쓰기 없음). 이후 **선택 → AX 선택값 확인 → 별도 실행**으로 진행했다. 일회성 복구 함수는 실행 직후 라이브·repo에서 전부 제거했고 guarded push+fresh live pull로 정식 10파일과 일치를 확인했다. 사전 web **677/677**·Apps Script syntax·`git diff --check` 통과.
+- **다음 담당:** Claude는 이제 `DejZ6R5z4T3`를 재수집해 첫 조회수 행 저장을 확인하면 된다.
 
 ## ✅/📮 2026-10-20 [Claude 실행·사용자 지시 "해결해줘"] moduhappy 7건 트래킹 종료 완료 · 말랑동만 업로드일 정정은 Codex 인계
 - **✅ moduhappy 7건 종료(ended_at=2026-10-19):** `Repair Specific Post` dry-run 7건(39358697788~39358744227) 대상·현재값 확인 → apply 7건(39358885611~39358931929) 성공. 독립 재조회: 7건 모두 ended_at 2026-10-19, 통계행 그대로(58~87행), moduhappy 활성 0건. 종료일은 자동 삭제종료 규칙과 동일(마지막 측정 10-18 + 1일). 근거: 로그인 브라우저에서 글 "페이지를 사용할 수 없습니다"(계정은 정상). 매일 자동 종료정리(`auto-end-reconcile`)는 end-only라 되살리지 않음.
