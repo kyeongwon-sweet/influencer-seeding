@@ -48,6 +48,16 @@ body {
      한 픽셀도 안 잘린다. 카드 반지름을 바꾸면 이 값도 같이 바꿔야 한다. */
   .scrollbar-inset::-webkit-scrollbar-track:vertical { margin-block: 18px; }
   .scrollbar-inset::-webkit-scrollbar-track:horizontal { margin-inline: 18px; }
+  /* 연한 얇은 스크롤바(칩 줄 등 보조 영역). 2026-10-20 사용자: "스크롤 컬러를 조금 더 연하게".
+     ⚠️ 크롬은 scrollbar-width/scrollbar-color 가 걸리면 아래 ::-webkit 스타일을 무시하고 기본(진한 회색+양끝 화살표)
+        스크롤바를 그린다 → 크롬엔 ::-webkit 만, 그걸 모르는 브라우저(파이어폭스)에만 표준 속성을 준다. */
+  .scrollbar-soft::-webkit-scrollbar { height: 5px; width: 5px; }
+  .scrollbar-soft::-webkit-scrollbar-track { background: transparent; }
+  .scrollbar-soft::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 99px; }
+  .scrollbar-soft::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+  @supports not selector(::-webkit-scrollbar) {
+    .scrollbar-soft { scrollbar-width: thin; scrollbar-color: #e5e7eb transparent; }
+  }
 }
 
 @layer base {

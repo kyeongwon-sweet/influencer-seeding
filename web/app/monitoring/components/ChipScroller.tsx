@@ -53,8 +53,7 @@ export default function ChipScroller({ children, className = "" }: { children: R
       <div
         ref={ref}
         onScroll={update}
-        className="flex items-center gap-1.5 overflow-x-auto flex-nowrap pb-1.5"
-        style={{ scrollbarWidth: "thin" }}
+        className="flex items-center gap-1.5 overflow-x-auto flex-nowrap pb-1.5 scrollbar-soft"
       >
         {children}
       </div>
