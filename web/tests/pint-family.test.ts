@@ -30,10 +30,10 @@ test("상품명으로 들어온 행도 파인트로 본다", () => {
   assert.equal(isPintProduct("망고요거트 파인트"), true);
 });
 
-test("협찬 필터의 '파인트' 칩이 단일 판정(isPintProduct)을 쓴다(소스 계약)", () => {
+test("협찬 필터엔 '파인트' 묶음 칩이 없다 — 2026-10-20 사용자 지시로 삭제(되살리지 말 것)", () => {
   const src = readFileSync(join(import.meta.dirname, "../app/monitoring/components/FiltersBar.tsx"), "utf8");
-  assert.match(src, /productOptions\.filter\(isPintProduct\)/);
-  assert.match(src, />파인트<\/button>/);
+  assert.doesNotMatch(src, />파인트<\/button>/);
+  assert.doesNotMatch(src, /__pint_family/);
 });
 
 test("무상노출 파인트 묶음에 바치케·라즈베리오렌지·애플민트 파인트 표기가 있다(소스 계약)", () => {

@@ -4,7 +4,7 @@ import { utcDateOf } from "@/lib/dateRule";
 // filters 상태/세터는 부모 소유(prop). 드롭다운 열림상태는 필터바 전용이라 내부 보관.
 import { Fragment, useState } from "react";
 import { type Filters, INIT_FILTERS, CHANNEL_TYPES, fmtChannelType } from "../lib";
-import { productCodeOf, isPintProduct } from "@/lib/productCode";
+import { productCodeOf } from "@/lib/productCode";
 
 // 검색창 사용법 — 세 검색칸(인플루언서·소재명·캡션)이 같은 문법을 쓴다(lib/search-filter.ts).
 // ⚠️ 문법이 바뀌면 이 표와 matchesSearch 를 **함께** 고칠 것. 한쪽만 고치면 안내가 거짓말이 된다.
@@ -272,27 +272,7 @@ export default function FiltersBar({ filters, setFilters, creatorOptions, planne
       )}
       {productOptions.length > 0 && (
         <div className="flex items-center gap-1.5 overflow-x-auto flex-nowrap scrollbar-none pb-0.5 flex-1 min-w-0">
-          {(() => {
-            // '파인트' 묶음 칩 — 누르면 파인트 계열 코드(P혼·P망·P말·P바치…)를 한 번에 선택/해제.
-            // 판정은 isPintProduct 단일 출처(P바치처럼 한글 2자 코드 포함, 팝콘 PC는 제외).
-            const pint = productOptions.filter(isPintProduct);
-            if (pint.length === 0) return null;
-            const allOn = pint.every(p => filters.products.includes(p));
-            return (
-              <button key="__pint_family"
-                onClick={() => setFilters(prev => ({
-                  ...prev,
-                  products: allOn
-                    ? prev.products.filter(x => !pint.includes(x))
-                    : [...prev.products, ...pint.filter(x => !prev.products.includes(x))],
-                }))}
-                title={`파인트 전체: ${pint.join(", ")}`}
-                className={`text-xs px-2.5 py-1 rounded-full border transition whitespace-nowrap shrink-0 ${
-                  allOn ? "border-a-blue bg-blue-50 text-a-blue font-medium" : "border-a-hairline text-a-ink-muted hover:border-gray-400"
-                }`}
-              >파인트</button>
-            );
-          })()}
+          {/* 2026-10-20 사용자 지시로 '파인트' 묶음 칩 삭제 — 제품 칩은 코드별(P혼·P망·P바치…)만 둔다. */}
           {productOptions.map(p => {
             const active = filters.products.includes(p);
             return (
