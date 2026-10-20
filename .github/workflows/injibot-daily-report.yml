@@ -53,6 +53,20 @@ jobs:
             --target-date "$target_date" \
             --end-only \
             --out data/output/auto-end-watchdog.json
+      # 2026-10-20: 미수집 사유(게시일 불일치 등)를 리포트에 붙이려고 최근 수집·재시도 실행의
+      # view_missing_events_*.jsonl 을 받아 둔다(view-tracking-watchdog 와 같은 방식). 실패해도 리포트는 간다.
+      - name: Download recent collector diagnostics (best-effort)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/collect_diag"
+          for wf in cron-daily-collect.yml monitoring-retry.yml; do
+            for id in $(gh run list -R "$GITHUB_REPOSITORY" --workflow "$wf" --limit 3 --json databaseId -q '.[].databaseId'); do
+              gh run download "$id" -R "$GITHUB_REPOSITORY" --pattern 'missing-view-diagnostics-*' -D "$RUNNER_TEMP/collect_diag/$id" || true
+            done
+          done
+          find "$RUNNER_TEMP/collect_diag" -name 'view_missing_events_*.jsonl' | head -20
       - name: Send injibot daily report
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -68,4 +82,4 @@ jobs:
           # 대상일 수집이 끝나기 전 발송을 막는 게이트용(없으면 게이트 비활성 = 기존 동작)
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: python scripts/daily_collect_report.py --send $FORCE_FLAG
+        run: python scripts/daily_collect_report.py --send $FORCE_FLAG --diag-dir "$RUNNER_TEMP/collect_diag"

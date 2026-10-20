@@ -17,6 +17,7 @@ from channel_kind import is_banner_channel, is_reach_only_manual_channel
 from platform_kind import has_no_view_metric_host
 from uncollectable_stale_guard import stale_lines, stuck_uncollectable
 from collect_report_thread import report_title, mention_prefix
+from collector_reasons import account_burst_lines, load_collector_reasons, miss_reason
 
 CHANNEL = "C0B659HEYDV"
 ENV_PATHS = [
@@ -198,6 +199,9 @@ def main():
     date_override = None
     if "--date" in args:
         date_override = args[args.index("--date") + 1]
+    # 수집기가 남긴 '왜 저장 안 했나' 기록(워크플로가 최근 수집 산출물을 내려받아 둔 폴더).
+    # 없으면 빈 dict — 사유는 부가 정보라 리포트 본연의 집계는 그대로 돈다.
+    reasons = load_collector_reasons(args[args.index("--diag-dir") + 1] if "--diag-dir" in args else "")
 
     env = load_env()
     SUPA = env.get("NEXT_PUBLIC_SUPABASE_URL") or env.get("SUPABASE_URL")
@@ -298,7 +302,7 @@ def main():
             internal_cnt += 1        # 내부채널(위성/온드) — 캠페인 아님·불규칙 수집 → 미측정 정상(2026-07-15 사용자 지시, notify_status와 동일 규칙)
             continue
         item = {"account_name": p.get("account_name"), "channel_type": ct, "url": p.get("url"),
-                "product_name": p.get("product_name")}
+                "product_name": p.get("product_name"), "post_id": r["post_id"]}
         if is_ended(p):
             if not has_val:
                 ended_miss.append(item)     # 종료 게시물 — 값 없음이 정상
@@ -321,6 +325,9 @@ def main():
             uncollectable_posts.append(p)
         else:
             active_nb += 1
+            ev = reasons.get(r["post_id"])
+            if ev:
+                item["reason"] = miss_reason(p, ev)
             real_miss.append(item)           # 활성인데 미수집 — 진짜 문제
 
     # ⚠️ 2026-08-03 사고: 위 루프는 '어제 측정행이 있는 게시물'만 순회한다. Apify가 not_found를 주면
@@ -377,10 +384,12 @@ def main():
             uncollectable_cnt += 1
             uncollectable_posts.append(p)
             continue
-        streak = p.get("not_found_streak") or 0
         active_nb += 1
+        # 사유는 공용 정본(collector_reasons)으로 — 수집기 기록(게시일 불일치 등) > 삭제 확인 > 접근 실패 일수.
+        # 2026-10-20: 수집기가 '게시일 불일치'로 버린 글을 이 리포트만 '원인 미상'으로 보냈다.
         norow_miss.append({"account_name": p.get("account_name"), "channel_type": ct, "url": p.get("url"),
-                           "reason": ("접근 실패 not_found %d일" % streak) if streak else "미수집(원인 미상)"})
+                           "product_name": p.get("product_name"), "post_id": p.get("id"),
+                           "reason": miss_reason(p, reasons.get(p.get("id")))})
     real_miss += norow_miss
 
     # IG 접근불가 검토대상: 3일 연속 not_found로 검토 플래그가 찍힌 미종료 게시물(배너 포함).
@@ -443,6 +452,9 @@ def main():
         sections.append("\n".join(lines))
     if real_miss:
         lines = ["⚠️ 확인필요 — 활성 게시물인데 조회수 미수집 (%s 측정) %d건\n" % (yday, len(real_miss))]
+        bursts = account_burst_lines(real_miss)   # 한 계정 글이 한꺼번에 사라졌으면 먼저 한 줄로
+        if bursts:
+            lines += bursts + [""]
         for i, f in enumerate(real_miss, 1):
             tail = "  [%s]" % f["reason"] if f.get("reason") else ""
             lines.append("%d. %s · %s%s\n   %s" % (i, f.get("account_name") or "계정명 미등록", f.get("channel_type") or "-", tail, f.get("url") or "-"))

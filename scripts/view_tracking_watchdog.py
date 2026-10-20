@@ -34,6 +34,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from collect_report_thread import mention_prefix, post_to_report_thread, slack_api
 from kst_dates import kst_date
+from collector_reasons import load_collector_reasons, reason_text  # noqa: F401 — 알림·리포트 공용 정본
 from posted_at_mismatch import CHECK_HINT, describe
 
 GRACE_DAYS = int(os.getenv("VIEW_WATCHDOG_GRACE_DAYS", "2"))
@@ -128,51 +129,6 @@ def fetch_active_posts() -> list[dict]:
             break
         start += 1000
     return posts
-
-
-def load_collector_reasons(diag_dir: str) -> dict[str, dict]:
-    """수집기가 남긴 '왜 저장 안 했나' 기록(view_missing_events_*.jsonl)을 post_id별 최신 1건으로.
-
-    2026-10-14: `p/DdTfR1VTzxE`는 수집기가 매번 응답을 받고도 '게시일 불일치'로 버렸는데, 이 알림은
-    "한 번도 수집 안 됨"만 보여 원인(시트 링크가 다른 글)을 사람이 다시 파야 했다. 워크플로가 최근
-    수집 실행의 진단 산출물을 내려받아 두면 여기서 읽어 사유를 붙인다. 없거나 깨져 있으면 빈 dict —
-    사유 표시는 부가 정보라 워치독 본연의 감시는 그대로 돈다.
-    """
-    reasons: dict[str, dict] = {}
-    if not diag_dir or not os.path.isdir(diag_dir):
-        return reasons
-    for root, _dirs, files in os.walk(diag_dir):
-        for name in files:
-            if not (name.startswith("view_missing_events_") and name.endswith(".jsonl")):
-                continue
-            try:
-                lines = open(os.path.join(root, name), encoding="utf-8").read().splitlines()
-            except OSError:
-                continue
-            for line in lines:
-                try:
-                    ev = json.loads(line)
-                except ValueError:
-                    continue
-                pid = ev.get("post_id")
-                if not pid:
-                    continue
-                prev = reasons.get(pid)
-                if prev is None or str(ev.get("measured_at") or "") >= str(prev.get("measured_at") or ""):
-                    reasons[pid] = ev
-    return reasons
-
-
-def reason_text(ev: dict | None) -> str:
-    """플래그 한 줄 아래 붙일 사유. 기록이 없으면 그 사실 자체가 정보다(수집 대상에서 빠졌을 수 있음)."""
-    if not ev:
-        return "수집기 사유 기록 없음 — 수집 대상에서 빠졌을 수 있음"
-    reason = ev.get("reason")
-    if reason == "posted_at_mismatch":
-        return f"수집은 되는데 버려짐: {describe(ev)} → {CHECK_HINT}"
-    if reason == "no_collector_response":
-        return "수집기 응답 없음 — 비공개·삭제·지역제한 가능, 링크 직접 확인"
-    return f"수집기 기록: {reason}"
 
 
 def build(today: date, reasons: dict[str, dict] | None = None) -> dict:
