@@ -5,6 +5,7 @@ import { utcDateOf } from "@/lib/dateRule";
 import { Fragment, useState } from "react";
 import { type Filters, INIT_FILTERS, CHANNEL_TYPES, fmtChannelType } from "../lib";
 import { productCodeOf } from "@/lib/productCode";
+import ChipScroller from "./ChipScroller";
 
 // 검색창 사용법 — 세 검색칸(인플루언서·소재명·캡션)이 같은 문법을 쓴다(lib/search-filter.ts).
 // ⚠️ 문법이 바뀌면 이 표와 matchesSearch 를 **함께** 고칠 것. 한쪽만 고치면 안내가 거짓말이 된다.
@@ -271,7 +272,7 @@ export default function FiltersBar({ filters, setFilters, creatorOptions, planne
         </div>
       )}
       {productOptions.length > 0 && (
-        <div className="flex items-center gap-1.5 overflow-x-auto flex-nowrap scrollbar-none pb-0.5 flex-1 min-w-0">
+        <ChipScroller className="flex-1">
           {/* 2026-10-20 사용자 지시로 '파인트' 묶음 칩 삭제 — 제품 칩은 코드별(P혼·P망·P바치…)만 둔다. */}
           {productOptions.map(p => {
             const active = filters.products.includes(p);
@@ -288,7 +289,7 @@ export default function FiltersBar({ filters, setFilters, creatorOptions, planne
               >{productCodeOf(p) ?? p}</button>
             );
           })}
-        </div>
+        </ChipScroller>
       )}
       {/* 강제 줄바꿈: 상품 칩까지를 1행에 두고, 날짜 필터는 항상 2행으로 내려 필터바를 2줄로 고정 */}
       <div className="basis-full h-0" aria-hidden />
