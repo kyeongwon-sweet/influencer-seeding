@@ -68,9 +68,12 @@ Api = Callable[[str, dict], dict]
 def report_title(status_word: str, today: str, attention: int = 0) -> str:
     """채널에 올라가는 보고 제목 한 줄. ⚠️ '자정 수집'과 '(YYYY-MM-DD)'는 중복 발송 판정·스레드 찾기의
     열쇠라 빼면 안 된다."""
-    title = "📊 %s %s 알림 (%s)" % (REPORT_KEYWORD, status_word, today)
+    # 2026-10-20 사용자 지정 양식: 제목 굵게 + 날짜, 확인 필요가 있으면 다음 줄에 건수.
+    #   :bar_chart: *자정 수집 성공 알림* (2026-10-20)
+    #    — 확인 필요 8건
+    title = ":bar_chart: *%s %s 알림* (%s)" % (REPORT_KEYWORD, status_word, today)
     if attention:
-        title += " — 확인 필요 %d건" % attention
+        title += "\n — 확인 필요 %d건" % attention
     return title
 
 

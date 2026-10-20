@@ -77,11 +77,15 @@ def test_변수로_전체를_덮어쓸_수_있다():
 
 
 def test_보고_제목은_중복판정_열쇠를_유지한다():
+    # 2026-10-20 사용자 지정 양식(굵은 제목 + 다음 줄 '확인 필요 N건')
     t = crt.report_title("성공", TODAY)
-    assert t == "📊 자정 수집 성공 알림 (2026-10-19)"
+    assert t == ":bar_chart: *자정 수집 성공 알림* (2026-10-19)"
     assert crt.is_report_message(t, TODAY)
     t2 = crt.report_title("성공", TODAY, attention=3)
-    assert t2.endswith("— 확인 필요 3건") and crt.is_report_message(t2, TODAY)
+    assert t2 == ":bar_chart: *자정 수집 성공 알림* (2026-10-19)\n — 확인 필요 3건"
+    assert crt.is_report_message(t2, TODAY)
+    # 굵게·줄바꿈이 들어가도 스레드 찾기가 그대로 된다
+    assert crt.find_report_ts([{"ts": "1.1", "text": t2}], TODAY) == "1.1"
 
 
 def test_소스계약_세_알림이_스레드_경로를_쓴다():
