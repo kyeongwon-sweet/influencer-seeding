@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { isPintProduct } from "../lib/productCode.ts";
+import { familyOf } from "../lib/organicProductFamily.ts";
 
 test("🚨 P바치는 파인트다", () => {
   assert.equal(isPintProduct("P바치"), true);
@@ -36,10 +37,9 @@ test("협찬 필터엔 '파인트' 묶음 칩이 없다 — 2026-10-20 사용자
   assert.doesNotMatch(src, /__pint_family/);
 });
 
-test("무상노출 파인트 묶음에 바치케·라즈베리오렌지·애플민트 파인트 표기가 있다(소스 계약)", () => {
-  const src = readFileSync(join(import.meta.dirname, "../app/organic/page.tsx"), "utf8");
-  const pint = src.slice(src.indexOf('"파인트": ['), src.indexOf("],", src.indexOf('"파인트": [')));
-  assert.match(pint, /"바스크치즈케이크파인트"/);
-  assert.match(pint, /"라즈베리오렌지파인트"/);
-  assert.match(pint, /"애플민트파인트"/);
+test("무상노출 파인트 묶음에 바치케·라즈베리오렌지·애플민트 파인트가 들어간다", () => {
+  // 2026-10-22부터 묶음은 명시 목록이 아니라 '…파인트'로 끝나는 이름 전부(lib/organicProductFamily.ts).
+  for (const p of ["바스크치즈케이크파인트", "라즈베리오렌지파인트", "애플민트파인트", "망고요거트파인트"]) {
+    assert.equal(familyOf(p), "파인트", p);
+  }
 });

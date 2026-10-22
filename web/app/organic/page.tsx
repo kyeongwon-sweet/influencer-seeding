@@ -7,6 +7,7 @@ import { platformFromUrl, platformLabel } from "@/lib/platform";
 import { parseNumInput } from "@/lib/num";
 import { matchesSearch } from "@/lib/search-filter";
 import { maxDateKST, isValidEntryDate, todayKST } from "@/lib/dateRule";
+import { PRODUCT_FAMILY_ORDER, toggleProductSelection } from "@/lib/organicProductFamily";
 
 // 보도자료·커뮤니티는 URL로 자동판정되지 않는 수동 분류 플랫폼(추가/편집 시 직접 선택). 저장값=한글 그대로.
 // (커뮤니티=블라인드 등 커뮤니티 글. enrich ACTOR 허용목록에 없어 조회수 자동수집 대상이 아니며 수기 입력만.)
@@ -46,54 +47,11 @@ function isHiddenAd(m: { content_summary: string | null }): boolean {
   return cap.includes("(광고)") || cap.includes("#광고");
 }
 
-/**
- * 제품 칩을 화면에 늘어놓는 **계열 순서**. 각 계열은 [대표 칩 → 그 계열 종류들] 로 붙어서 나온다.
- * ⚠️ 접미사(endsWith)로 계열을 판정하므로 **더 긴 이름이 먼저 와야 한다.**
- *    예) `요거트바`가 `쫀득바`보다 앞: 그래야 '딸기생요거트바'가 요거트바로 잡힌다.
- *    (지금 목록엔 서로 접미사 관계인 계열이 없지만, 계열을 추가할 때 이 규칙을 지킬 것)
- */
-const PRODUCT_FAMILY_ORDER = ["듬뿍바", "쫀득바", "초코바", "제로바", "요거트바", "파인트", "모나카", "빵샌드"];
+// 제품 칩 계열(쫀득바 ↔ 멜론쫀득바·그릭복숭아쫀득바 …) 순서·묶음·제외는 lib/organicProductFamily.ts 한 곳에서 정한다.
+// ⚠️ 하위 제품을 여기에 목록으로 다시 적지 말 것 — 2026-10-22 '그릭복숭아쫀득바'가 목록에 없어 '쫀득바'와 같이 안 켜졌다.
 
 /** 제품이 아니라 "브랜드 자체 언급"을 뜻하는 값 — 칩 순서에서 전체·미정 다음에 둔다. */
 const BRAND_PRODUCT = "라라스윗";
-
-const PRODUCT_PARENTS = ["쫀득바", "듬뿍바", "제로바", "요거트바", "모나카"];
-function parentProductOf(p: string): string | null {
-  for (const parent of PRODUCT_PARENTS) if (p !== parent && p.endsWith(parent)) return parent;
-  return null;
-}
-
-// 상위 제품을 고르면 함께 선택되는 하위 제품(2026-08-04 사용자 지정).
-// ⚠️ 접미사 자동 매칭이 아니라 **명시 목록**이다. 이름은 같은 계열이지만 함께 묶으면 안 되는 것들이 있다:
-//    초코바 ← 넛티초코바·초콜릿초코바 제외 / 듬뿍바 ← 옥수수듬뿍바 제외.
-//    (감귤제로바는 아직 데이터에 없지만 생기면 바로 묶이도록 미리 넣어둔다)
-// 파인트·모나카·요거트바는 사용자가 제외를 지정하지 않아 계열 전체를 넣었다(2026-08-04 DB 실측 기준).
-//    ⚠️ '망고요거트파인트/복숭아요거트파인트/생요거트파인트'는 이름에 요거트가 있어도 **파인트**다.
-//       요거트바 그룹에 넣지 않는다.
-const PRODUCT_GROUPS: Record<string, string[]> = {
-  "초코바": ["바닐라초코바", "말차초코바", "쿠키앤크림초코바"],
-  "쫀득바": ["멜론쫀득바", "망고쫀득바"],
-  "듬뿍바": ["딸기듬뿍바", "골드키위듬뿍바", "피치망고듬뿍바"],
-  "제로바": ["자두제로바", "포도제로바", "감귤제로바", "오렌지제로바", "골드파인제로바"],
-  // 2026-08-06 사용자 지시로 제품명에서 '저당' 접두어를 전부 뺐다('저당 초콜릿 파인트'→'초콜릿파인트' 등).
-  // 옛 이름은 목록에 남기지 않는다 — 남겨두면 잘못된 이름을 다시 쓰게 만든다(딸기요거트바 때와 같은 이유).
-  "파인트": [
-    "꿀고구마파인트", "딸기파인트", "라즈베리오렌지파인트", "레인보우샤베트파인트", "말차파인트", "망고요거트파인트",
-    "밀크티파인트", "민트초코파인트", "바닐라빈파인트", "복숭아요거트파인트", "생요거트파인트",
-    "생우유파인트", "애플민트파인트", "옥수수파인트", "쿠앤크파인트", "초코파인트", "초콜릿파인트", "치즈케이크파인트",
-    // 바치케 파인트(협찬 코드 P바치). 2026-10-16 사용자 지시 — 무상노출 DB 표기는 '바스크치즈케이크파인트'(4건).
-    "바스크치즈케이크파인트",
-  ],
-  "모나카": ["꿀고구마모나카", "생우유모나카", "옥수수모나카", "쿠앤크모나카", "초코모나카"],
-  // '딸기요거트바'는 2026-08-04 사용자 지시로 DB 5건을 전부 '딸기생요거트바'로 고쳤다(정식 이름).
-  // 옛 이름은 목록에서도 뺀다 — 남겨두면 잘못된 이름을 다시 쓰게 만든다.
-  // '복숭아요거트바'도 2026-08-06 사용자 지시로 DB 8건을 '복숭아생요거트바'로 고쳤다(정식 이름).
-  // '애플망고요거트바'는 사용자가 '생' 없이 지정한 이름이라 그대로 둔다(제품별로 다르다).
-  // 2026-08-06 사용자 지시로 요거트바 계열은 '생'을 붙인 정식명으로 통일했다(애플망고 포함).
-  "요거트바": ["딸기생요거트바", "블루베리생요거트바", "복숭아생요거트바", "애플망고생요거트바"],
-  // 빵샌드는 상위 항목, 생우유빵샌드가 그 하위(2026-08-06 사용자 확인).
-  "빵샌드": ["생우유빵샌드"],
-};
 
 type Mention = {
   id: string;
@@ -805,30 +763,7 @@ export default function OrganicPage() {
 
   // 제품 칩 토글 — 변형(멜론쫀득바 등) 선택 시 상위 라인(쫀득바)도 자동 포함. 변형 해제 시 같은 상위의 다른 변형이 없으면 상위도 해제.
   function toggleProduct(p: string) {
-    setFilters(prev => {
-      // 상위 제품(PRODUCT_GROUPS 키)은 지정된 하위 제품과 함께 켜지고 함께 꺼진다.
-      const group = PRODUCT_GROUPS[p];
-      if (group) {
-        if (prev.products.includes(p)) {
-          const drop = new Set([p, ...group]);
-          return { ...prev, products: prev.products.filter(x => !drop.has(x)) };
-        }
-        const add = [p, ...group].filter(x => !prev.products.includes(x));
-        return { ...prev, products: [...prev.products, ...add] };
-      }
-
-      const parent = parentProductOf(p);
-      if (prev.products.includes(p)) {
-        let next = prev.products.filter(x => x !== p);
-        if (parent && next.includes(parent) && !next.some(x => parentProductOf(x) === parent)) {
-          next = next.filter(x => x !== parent);
-        }
-        return { ...prev, products: next };
-      }
-      const next = [...prev.products, p];
-      if (parent && !next.includes(parent)) next.push(parent);
-      return { ...prev, products: next };
-    });
+    setFilters(prev => ({ ...prev, products: toggleProductSelection(prev.products, p, productOptions) }));
   }
 
   // 매 렌더(검색 타이핑 등) 전체 재필터/재정렬 방지
@@ -886,6 +821,7 @@ export default function OrganicPage() {
       // 계열 대표 칩이 데이터에 있으면 먼저(없어도 하위는 묶어서 보여준다)
       if (all.includes(family)) { ordered.push(family); used.add(family); }
       for (const p of all) {
+        // 표시 순서는 이름 접미사로만 붙인다(넛티초코바·옥수수듬뿍바처럼 묶음에서 빠진 것도 계열 옆에 보이게).
         if (!used.has(p) && p !== family && p.endsWith(family)) { ordered.push(p); used.add(p); }
       }
     }
