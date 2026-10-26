@@ -15,36 +15,16 @@ jobs:
           import urllib.request, json, os, sys
 
           TOKEN = os.environ['SLACK_BOT_TOKEN']
-          CHANNEL = 'C0BFPQAPHEK'
-          TS = '1793016625.520459'
-
-          def api_get(endpoint, params=''):
-              req = urllib.request.Request(
-                  f'https://slack.com/api/{endpoint}?{params}',
-                  headers={'Authorization': 'Bearer ' + TOKEN}
-              )
-              return json.load(urllib.request.urlopen(req, timeout=15))
-
-          def api_post(endpoint, payload):
-              data = json.dumps(payload).encode('utf-8')
-              req = urllib.request.Request(
-                  f'https://slack.com/api/{endpoint}', data=data,
-                  headers={'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json'}
-              )
-              return json.load(urllib.request.urlopen(req, timeout=15))
-
-          # 1. auth.test로 bot 확인
-          at = api_get('auth.test')
-          print('bot_id:', at.get('bot_id'), 'user_id:', at.get('user_id'))
-
-          # 2. conversations.history로 메시지 조회
-          hist = api_get('conversations.history', f'channel={CHANNEL}&oldest={TS}&latest={TS}&inclusive=true&limit=1')
-          msgs = hist.get('messages', [])
-          print('메시지 조회:', len(msgs), '건', [m.get('ts') for m in msgs])
-
-          # 3. chat.delete
-          r = api_post('chat.delete', {'channel': CHANNEL, 'ts': TS})
-          print('삭제:', r.get('ok'), r.get('error', ''))
+          payload = json.dumps({
+              'channel': 'C0BFPQAPHEK',
+              'ts': '1793016625.520459'
+          }).encode('utf-8')
+          req = urllib.request.Request(
+              'https://slack.com/api/chat.delete', data=payload,
+              headers={'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json'}
+          )
+          r = json.load(urllib.request.urlopen(req, timeout=15))
+          print('ok:', r.get('ok'), 'error:', r.get('error', ''))
           if not r.get('ok'):
               sys.exit(1)
           EOF
