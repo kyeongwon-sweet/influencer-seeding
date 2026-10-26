@@ -3,6 +3,7 @@ import { addDaysToDate } from "./dateRule.ts";
 export const DASHBOARD_HISTORY_DAYS = 60;
 export const STATS_LOADED_FROM_HEADER = "X-Stats-Loaded-From";
 export const STATS_LOADED_BEFORE_HEADER = "X-Stats-Loaded-Before";
+export const STATS_AVAILABLE_FROM_HEADER = "X-Stats-Available-From";
 export const STATS_HISTORY_MODE_HEADER = "X-Stats-History-Mode";
 
 export type DashboardStatRow = {
@@ -156,6 +157,34 @@ export function monotonicDashboardStats(rows: DashboardStatRow[]): DashboardStat
 
 export function visibleDashboardStats<T extends { history_baseline?: boolean }>(rows: T[]): T[] {
   return rows.filter((row) => row.history_baseline !== true);
+}
+
+/**
+ * legacy/full-fallback 응답이 이미 읽은 전이력에서 기존 차트의 실제 최초 날짜를 구한다.
+ * 검색량 KPI의 암묵적 기간도 이 날짜였으므로 bounded 전환·롤백 어느 쪽에서도 같은
+ * 숫자를 유지해야 한다. 좋아요만 있는 행, 게시일 전 오염행, 오늘(KST) 미완성행은
+ * 기존 chartData와 똑같이 시작점으로 인정하지 않는다.
+ */
+export function earliestLegacyChartDate(
+  posts: Array<{
+    posted_at?: string | null;
+    post_daily_stats?: Array<Pick<DashboardStatRow, "measured_at" | "play_count">>;
+  }>,
+  beforeDate: string,
+): string | null {
+  let earliest: string | null = null;
+  for (const post of posts) {
+    const postedAt = post.posted_at ? String(post.posted_at).slice(0, 10) : null;
+    for (const stat of post.post_daily_stats ?? []) {
+      const measuredAt = String(stat.measured_at).slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(measuredAt)) continue;
+      if (measuredAt >= beforeDate) continue;
+      if (postedAt && measuredAt < postedAt) continue;
+      if (stat.play_count == null) continue;
+      if (earliest == null || measuredAt < earliest) earliest = measuredAt;
+    }
+  }
+  return earliest;
 }
 
 /** full-history fallback와 RPC parity 검증에 쓰는 기존 UI summary semantics. */

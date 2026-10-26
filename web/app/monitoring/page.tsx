@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { MISSING_PAGES_HEADER, PARTIAL_HEADER, POSTS_TRUNCATED_HEADER } from "@/lib/stats-pages";
-import { STATS_HISTORY_MODE_HEADER, STATS_LOADED_FROM_HEADER } from "@/lib/monitoring-bounded-stats";
+import { STATS_AVAILABLE_FROM_HEADER, STATS_HISTORY_MODE_HEADER, STATS_LOADED_FROM_HEADER } from "@/lib/monitoring-bounded-stats";
 import { ElapsedTimer, useStableHandlers } from "./perf-utils";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
@@ -63,6 +63,7 @@ export default function MonitoringPage() {
   const [trendPost, setTrendPost] = useState<Post | null>(null);
   const [trendLoading, setTrendLoading] = useState(false);
   const [statsLoadedFrom, setStatsLoadedFrom] = useState<string | null>(null);
+  const [statsAvailableFrom, setStatsAvailableFrom] = useState<string | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyLoadError, setHistoryLoadError] = useState(false);
   const [historyRetryNonce, setHistoryRetryNonce] = useState(0);
@@ -518,11 +519,16 @@ export default function MonitoringPage() {
   }, [productTrends, lsStartDate, lsEndDate]);
 
   // sponsored stats만 최근 60일로 줄였다고 검색량 KPI의 의미까지 바뀌면 안 된다.
-  // 차트용 lsSearchData는 최근 차트 축을 유지하고, 카드는 기존처럼 전체 보유기간
-  // (또는 사용자가 명시한 조회수 기간) 검색량을 별도로 합산한다.
+  // 차트용 lsSearchData는 최근 차트 축을 유지하고, 카드는 기존 차트의 실제 최초
+  // 측정일부터(또는 사용자가 명시한 조회수 기간) 검색량을 별도로 합산한다.
   const searchSummaryData = useMemo(
-    () => searchSummaryRows(productTrends.data, productTrends.brandKey, filters.dateFrom, filters.dateTo),
-    [productTrends, filters.dateFrom, filters.dateTo],
+    () => searchSummaryRows(
+      productTrends.data,
+      productTrends.brandKey,
+      filters.dateFrom || statsAvailableFrom || "",
+      filters.dateTo,
+    ),
+    [productTrends, filters.dateFrom, filters.dateTo, statsAvailableFrom],
   );
 
   // 보조 그래프 데이터(검색량·B2B·광고비 등) 로드 실패 시 1회만 알림 (토스트 도배 방지)
@@ -784,9 +790,12 @@ export default function MonitoringPage() {
     );
     const historyMode = res.headers.get(STATS_HISTORY_MODE_HEADER);
     const responseLoadedFrom = res.headers.get(STATS_LOADED_FROM_HEADER);
+    const responseAvailableFrom = res.headers.get(STATS_AVAILABLE_FROM_HEADER);
     const json = await res.json();
     if (requestSeq !== loadPostsRequestSeqRef.current) return true;
     setStatsLoadedFrom(historyMode === "bounded" ? responseLoadedFrom : "full");
+    // legacy·shadow·bounded·full-fallback 모두 같은 기존 KPI 시작점을 헤더로 보낸다.
+    setStatsAvailableFrom(responseAvailableFrom);
     // 서버는 일별 이력을 튜플(stats_v2)로 보낸다. 일반 행은 기존 all_stats 모양으로 복원하고,
     // bounded 합성 baseline만 history_* metadata를 가진다(차트·날짜필터에서는 공통 헬퍼가 숨김).
     // stats_v2가 없는 옛 응답이면 all_stats를 그대로 쓴다.

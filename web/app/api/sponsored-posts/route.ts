@@ -24,9 +24,11 @@ import { daysAgoKST, isValidEntryDate, todayKST } from "@/lib/dateRule";
 import {
   DASHBOARD_HISTORY_DAYS,
   decodeDashboardStatSummaryBundle,
+  earliestLegacyChartDate,
   exactDashboardSummary,
   historyBaselineRow,
   monotonicDashboardStats,
+  STATS_AVAILABLE_FROM_HEADER,
   STATS_HISTORY_MODE_HEADER,
   STATS_LOADED_BEFORE_HEADER,
   STATS_LOADED_FROM_HEADER,
@@ -84,7 +86,7 @@ type SponsoredPostRow = Record<string, unknown> & {
 };
 
 type SummaryBundleResult = {
-  data: { summaries?: unknown } | null;
+  data: { summaries?: unknown; available_from?: unknown } | null;
   error: { message?: string } | null;
 };
 
@@ -100,7 +102,7 @@ async function fetchSummaryBundle(
   loadedFrom: string,
   beforeDate: string,
   statsSnapshot: string,
-): Promise<{ rows: DashboardStatSummary[]; error: string | null }> {
+): Promise<{ rows: DashboardStatSummary[]; availableFrom: string | null; error: string | null }> {
   const { data, error } = await supabase
     .rpc("monitoring_dashboard_stat_summary_bundle_v1", {
       p_from: loadedFrom,
@@ -108,10 +110,13 @@ async function fetchSummaryBundle(
       p_created_before: statsSnapshot,
     })
     .single() as unknown as SummaryBundleResult;
-  if (error) return { rows: [], error: error.message ?? "summary bundle RPC failed" };
+  if (error) return { rows: [], availableFrom: null, error: error.message ?? "summary bundle RPC failed" };
   const rows = decodeDashboardStatSummaryBundle(data?.summaries);
-  if (!rows) return { rows: [], error: "summary bundle shape invalid" };
-  return { rows, error: null };
+  if (!rows) return { rows: [], availableFrom: null, error: "summary bundle shape invalid" };
+  const availableFrom = typeof data?.available_from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(data.available_from)
+    ? data.available_from
+    : null;
+  return { rows, availableFrom, error: null };
 }
 
 function finiteNumber(value: unknown): number | null {
@@ -308,7 +313,7 @@ export async function GET(req: NextRequest) {
   const loadedFrom = requestedFrom ?? daysAgoKST(DASHBOARD_HISTORY_DAYS);
   const rollout = dashboardHistoryRollout();
   let summaries = rollout === "legacy"
-    ? { rows: [] as DashboardStatSummary[], error: null as string | null }
+    ? { rows: [] as DashboardStatSummary[], availableFrom: null as string | null, error: null as string | null }
     : await fetchSummaryBundle(supabase, loadedFrom, beforeDate, statsSnapshot);
   if (!summaries.error && rollout !== "legacy") {
     const expected = new Set(uniquePosts.map((post) => post.id));
@@ -319,6 +324,7 @@ export async function GET(req: NextRequest) {
     if (!coverageOk) {
       summaries = {
         rows: [],
+        availableFrom: null,
         error: `summary coverage mismatch expected=${expected.size} returned=${returned.size} rows=${summaries.rows.length}`,
       };
     }
@@ -470,6 +476,9 @@ export async function GET(req: NextRequest) {
     ...post,
     post_daily_stats: statsByPost.get(post.id) ?? [],
   }));
+  // bounded RPC가 살아 있으면 DB가 계산한 동일 기준을 쓰고, legacy·RPC 장애 폴백은
+  // 이미 읽은 전이력에서 계산한다. 어느 롤아웃 모드에서도 검색량 KPI 기간이 바뀌지 않는다.
+  const statsAvailableFrom = summaries.availableFrom ?? earliestLegacyChartDate(data, beforeDate);
 
   if (rollout === "shadow" && !summaries.error) {
     let mismatchCount = 0;
@@ -587,6 +596,7 @@ export async function GET(req: NextRequest) {
         [POSTS_TRUNCATED_HEADER]: postsTruncated ? "1" : "0",
         [STATS_LOADED_FROM_HEADER]: loadedFrom,
         [STATS_LOADED_BEFORE_HEADER]: beforeDate,
+        ...(statsAvailableFrom ? { [STATS_AVAILABLE_FROM_HEADER]: statsAvailableFrom } : {}),
         [STATS_HISTORY_MODE_HEADER]: "bounded-partial-failed",
       },
     });
@@ -596,6 +606,7 @@ export async function GET(req: NextRequest) {
       "Cache-Control": "no-store",
       [STATS_LOADED_FROM_HEADER]: useBounded ? loadedFrom : "full",
       [STATS_LOADED_BEFORE_HEADER]: useBounded ? beforeDate : "full",
+      ...(statsAvailableFrom ? { [STATS_AVAILABLE_FROM_HEADER]: statsAvailableFrom } : {}),
       [STATS_HISTORY_MODE_HEADER]: historyMode,
       ...(partial
         ? {

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   historyBaselineRow,
   decodeDashboardStatSummaryBundle,
+  earliestLegacyChartDate,
   exactDashboardSummary,
   monotonicDashboardStats,
   visibleDashboardStats,
@@ -115,11 +116,34 @@ test("search KPI: sponsored history cutoff does not silently shrink the unfilter
     { date: "2026-08-27", values: { brand: 20 } },
     { date: "2026-10-25", values: { brand: 30 } },
   ];
-  assert.deepEqual(searchSummaryRows(rows, "brand").map(row => row.value), [10, 20, 30]);
+  assert.deepEqual(searchSummaryRows(rows, "brand", "2026-01-01").map(row => row.value), [10, 20, 30]);
   assert.deepEqual(searchSummaryRows(rows, "brand", "2026-08-27", "2026-09-30"), [
     { date: "2026-08-27", value: 20 },
   ]);
   assert.deepEqual(searchSummaryRows(rows, "missing"), []);
+});
+
+test("legacy fallback: 기존 차트 최초 측정일을 정확히 보존한다", () => {
+  assert.equal(earliestLegacyChartDate([
+    {
+      posted_at: "2026-05-10",
+      post_daily_stats: [
+        { measured_at: "2026-05-15", play_count: null }, // likes-only: chart 기준 아님
+        { measured_at: "2026-05-17", play_count: 0 },
+        { measured_at: "2026-10-26", play_count: 99 }, // 오늘 미완성: 제외
+      ],
+    },
+    {
+      posted_at: "2026-06-01",
+      post_daily_stats: [
+        { measured_at: "2026-05-01", play_count: 100 }, // 게시일 전 오염: 제외
+        { measured_at: "2026-06-01", play_count: 3 },
+      ],
+    },
+  ], "2026-10-26"), "2026-05-17");
+  assert.equal(earliestLegacyChartDate([
+    { posted_at: "2026-01-01", post_daily_stats: [{ measured_at: "2026-01-02", play_count: null }] },
+  ], "2026-10-26"), null);
 });
 
 test("stats_v2 decoder는 새 baseline metadata와 옛 6칸 튜플을 모두 읽는다", () => {
@@ -171,6 +195,17 @@ test("summary bundle SQL 계약: 비싼 v1 요약을 한 번만 계산해 단일
   assert.match(sql, /grant execute on function public\.monitoring_dashboard_stat_summary_bundle_v1\(date, date, timestamptz\) to service_role/i);
 });
 
+test("summary bundle follow-up: legacy chart의 실제 최초 측정일을 1행 metadata로 보존한다", () => {
+  const here = fileURLToPath(new URL(".", import.meta.url));
+  const sql = readFileSync(`${here}../../supabase/migrations/20261026_monitoring_dashboard_stat_summary_bundle_available_from.sql`, "utf8");
+  assert.match(sql, /available_from date/i);
+  assert.match(sql, /min\(s\.measured_at\)::date/i);
+  assert.match(sql, /s\.play_count is not null/i);
+  assert.match(sql, /p\.product_name is not null/i);
+  assert.match(sql, /s\.created_at <= p_created_before/i);
+  assert.match(sql, /grant execute on function public\.monitoring_dashboard_stat_summary_bundle_v1\(date, date, timestamptz\) to service_role/i);
+});
+
 test("rollout 계약: legacy가 기본이고 shadow·bounded만 명시 활성화하며 summary RPC는 한 번만 호출한다", () => {
   const here = fileURLToPath(new URL(".", import.meta.url));
   const route = readFileSync(`${here}../app/api/sponsored-posts/route.ts`, "utf8");
@@ -186,6 +221,10 @@ test("rollout 계약: legacy가 기본이고 shadow·bounded만 명시 활성화
     "successful offset pages still need an exact unique-row coverage check");
   assert.match(route, /bounded history shadow mismatch; legacy response retained/);
   assert.match(route, /const useBounded = rollout === "bounded" && !summaries\.error/);
+  assert.match(route, /summaries\.availableFrom \?\? earliestLegacyChartDate\(data, beforeDate\)/,
+    "legacy and full-fallback must preserve the exact pre-bounded search KPI start date");
+  assert.doesNotMatch(route, /useBounded && summaries\.availableFrom \?/,
+    "available-from metadata must also survive legacy rollback and RPC fallback");
   assert.match(route, /useBounded && partial[\s\S]*status: 503/,
     "a missing recent page must fail explicitly instead of rendering unloaded history as zero");
 });
