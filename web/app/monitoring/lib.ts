@@ -14,6 +14,14 @@ export type DailyStats = {
   // IG↔Facebook 교차게시 글의 play_count 중 **FB 몫**(2026-09-22~). 교차게시가 아니면 null.
   // play_count 는 합계(IG+FB)이고, IG 전용값 = play_count - (fb_play_count ?? 0).
   fb_play_count?: number | null;
+  // 최근 구간 앞의 합성 baseline. 차트/날짜필터에는 숨기고 증분 계산에만 쓴다.
+  history_baseline?: boolean;
+  history_ig_max?: number | null;
+  history_reach_max?: number | null;
+  history_fb_max?: number | null;
+  history_likes_seed?: number | null;
+  history_comments_seed?: number | null;
+  history_latest_increment?: number | null;
 };
 
 export type Post = {
@@ -38,6 +46,7 @@ export type Post = {
   latest_stats: DailyStats | null;
   prev_stats: DailyStats | null;
   all_stats: DailyStats[];
+  day7_play_count?: number | null;
 };
 
 /**
@@ -49,14 +58,20 @@ export type Post = {
  *    ⚠️ FB조회수(7번째)는 2026-09-22 에 **뒤에 덧붙인** 항목이라 없을 수도 있다(배포 과도기·옛 캐시).
  *       없으면 null 로 읽는다 — 0 으로 읽으면 안 된다(교차게시 아님과 미측정을 못 가른다).
  */
-export type StatTupleV2 = [string, number | null, number | null, number | null, number | null, 0 | 1, (number | null)?];
+export type StatTupleV2 = [
+  string, number | null, number | null, number | null, number | null, 0 | 1,
+  (number | null)?, (0 | 1)?, (number | null)?, (number | null)?, (number | null)?,
+  (number | null)?, (number | null)?,
+  (number | null)?,
+];
 
-/** 튜플 → 기존 all_stats와 **완전히 같은 객체 모양**으로 복원. 이후 계산 경로는 전혀 바뀌지 않는다. */
+/** 튜플 → 일반 행은 기존 all_stats 모양으로 복원. 합성 baseline만 history_* metadata를 덧붙인다. */
 export function decodeStatsV2(tuples: unknown): DailyStats[] {
   if (!Array.isArray(tuples)) return [];
   const out: DailyStats[] = [];
   for (const t of tuples) {
     if (!Array.isArray(t) || t.length < 6) continue;   // 형태가 어긋나면 조용히 버린다(값을 지어내지 않음)
+    const isHistoryBaseline = t.length > 7 && t[7] === 1;
     out.push({
       measured_at: String(t[0]),
       play_count: t[1] as number | null,
@@ -66,6 +81,15 @@ export function decodeStatsV2(tuples: unknown): DailyStats[] {
       play_collected: t[5] === 1,
       // 길이 6짜리 옛 튜플과 섞여도 안전하게 — 없으면 null(교차게시 아님/미측정).
       fb_play_count: (t.length > 6 ? (t[6] as number | null) : null),
+      ...(isHistoryBaseline ? {
+        history_baseline: true,
+        history_ig_max: t.length > 8 ? (t[8] as number | null) : null,
+        history_reach_max: t.length > 9 ? (t[9] as number | null) : null,
+        history_fb_max: t.length > 10 ? (t[10] as number | null) : null,
+        history_likes_seed: t.length > 11 ? (t[11] as number | null) : null,
+        history_comments_seed: t.length > 12 ? (t[12] as number | null) : null,
+        history_latest_increment: t.length > 13 ? (t[13] as number | null) : null,
+      } : {}),
     });
   }
   return out;
@@ -116,7 +140,7 @@ export function isStatInDateRange(stat: DailyStats, dateFrom: string, dateTo: st
 }
 
 export function getFilteredStats(allStats: DailyStats[], dateFrom: string, dateTo: string): DailyStats[] {
-  return allStats.filter(s => isStatInDateRange(s, dateFrom, dateTo));
+  return allStats.filter(s => s.history_baseline !== true && isStatInDateRange(s, dateFrom, dateTo));
 }
 
 // 🔒 필터 불변식: 조회수 기간 필터가 걸려 있으면 '값'(현재/직전)은 반드시 범위 안에서만 뽑는다.
@@ -351,7 +375,7 @@ export function fbIncrement(allStats: DailyStats[], s: DailyStats | null | undef
   let baseline = 0, hasBaseline = false;
   for (const st of allStats ?? []) {
     if (st.measured_at >= s!.measured_at) continue;
-    const v = st.fb_play_count ?? null;
+    const v = st.history_baseline === true ? (st.history_fb_max ?? null) : (st.fb_play_count ?? null);
     if (v != null && v > 0) { hasBaseline = true; if (v > baseline) baseline = v; }
   }
   // 첫 FB 측정 = 그때까지 쌓인 FB 전액을 그날에 귀속(사용자 결정). 어느 날인지 모르지만 총량은 지킨다.
@@ -361,6 +385,9 @@ export function fbIncrement(allStats: DailyStats[], s: DailyStats | null | undef
 
 export function safeIncrement(allStats: DailyStats[], s: DailyStats | null | undefined, isBanner: boolean, postedAt?: string | null): number | null {
   if (!s) return null;
+  // 최근 원시 행이 하나도 없는 오래된 글은 합성 baseline 자체가 화면의 latest다.
+  // 그 글의 실제 마지막 날짜 증분은 DB가 전 이력으로 계산한 scalar를 사용한다.
+  if (s.history_baseline === true && s.history_latest_increment != null) return s.history_latest_increment;
   // ⚠️ 증분은 **IG 계열**로 잡는다 — play_count 는 교차게시 글에서 IG+FB 합계라 그대로 쓰면
   //    합산을 시작한 날 하루에 FB 누적 전액이 증분으로 찍힌다. FB 몫은 fbIncrement 로 따로 더한다.
   //    ⚠️ FB 조회가 하루 실패하면 그 행의 fb_play_count 가 비는데, play_count 는 mono(직전 최대)
@@ -377,7 +404,9 @@ export function safeIncrement(allStats: DailyStats[], s: DailyStats | null | und
   let baseline = 0, hasBaseline = false;
   for (const st of allStats ?? []) {
     if (st.measured_at >= s.measured_at) continue;
-    const v = val(st);
+    const v = st.history_baseline === true
+      ? (isBanner ? (st.history_reach_max ?? null) : (st.history_ig_max ?? null))
+      : val(st);
     if (v != null && v > 0) { hasBaseline = true; if (v > baseline) baseline = v; }
   }
   if (!hasBaseline) {
@@ -412,19 +441,36 @@ export function incrementTooltip(post: Post, s: DailyStats | null | undefined): 
     "\n\n※ '게시물별 최신' 증분입니다. 게시물마다 마지막 수집일이 달라, 오른쪽 '일자별 증감표'(특정 하루의 합)와 총합이 다를 수 있어요(정상).";
   const inc = safeIncrement(post.all_stats ?? [], s, isBanner, post.posted_at);
   if (!s || inc == null) return `${label} 증분: 최신 측정값이 없거나 유효하지 않아 표시 안 됨.${note}`;
-  const val = (st: DailyStats) => (isBanner ? bannerDailyMetric(st) : (st.play_count ?? null));
+  if (s.history_baseline === true) {
+    return `${label} 증분 = 전체 이력에서 계산한 실제 마지막 날 증분: ${inc.toLocaleString()}${note}`;
+  }
+  const allStats = post.all_stats ?? [];
+  const val = (st: DailyStats) => {
+    if (st.history_baseline === true) {
+      return isBanner ? (st.history_reach_max ?? null) : (st.history_ig_max ?? null);
+    }
+    if (isBanner) return bannerDailyMetric(st);
+    return st.play_count == null ? null : st.play_count - fbAt(allStats, st);
+  };
   const cur = val(s) ?? 0;
-  let base = 0, baseDate = "";
-  for (const st of post.all_stats ?? []) {
+  let base = 0, baseDate = "", baseIsHistory = false;
+  for (const st of allStats) {
     if (st.measured_at >= s.measured_at) continue;
     const v = val(st);
-    if (v != null && v > 0 && v > base) { base = v; baseDate = st.measured_at; }
+    if (v != null && v > 0 && v > base) {
+      base = v;
+      baseDate = st.measured_at;
+      baseIsHistory = st.history_baseline === true;
+    }
   }
   const md = (d?: string) => (d ? d.slice(5).replace("-", "/") : "");
   const plus = inc > 0 ? "+" : "";
+  const fbDelta = isBanner ? 0 : fbIncrement(allStats, s);
+  const baseLabel = baseIsHistory ? "과거 전체 최대" : `직전 ${md(baseDate)}`;
+  const fbPart = fbDelta > 0 ? ` + FB 증분 ${fbDelta.toLocaleString()}` : "";
   const head = base === 0
-    ? `${label} 증분 = 첫 유효 측정이라 그날 값 전체.\n최신 ${md(s.measured_at)}: ${cur.toLocaleString()} = ${plus}${inc.toLocaleString()}`
-    : `${label} 증분 = 최신값 - 직전 유효값(이전 최대).\n최신 ${md(s.measured_at)}: ${cur.toLocaleString()} - 직전 ${md(baseDate)}: ${base.toLocaleString()} = ${plus}${inc.toLocaleString()}`;
+    ? `${label} 증분 = 첫 유효 측정이라 그날 값 전체.\n최신 ${md(s.measured_at)}: ${cur.toLocaleString()}${fbPart} = ${plus}${inc.toLocaleString()}`
+    : `${label} 증분 = 최신값 - 직전 유효값(이전 최대).\n최신 ${md(s.measured_at)}: ${cur.toLocaleString()} - ${baseLabel}: ${base.toLocaleString()}${fbPart} = ${plus}${inc.toLocaleString()}`;
   return head + note;
 }
 

@@ -1,11 +1,12 @@
 "use client";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { MISSING_PAGES_HEADER, PARTIAL_HEADER, POSTS_TRUNCATED_HEADER } from "@/lib/stats-pages";
+import { STATS_HISTORY_MODE_HEADER, STATS_LOADED_FROM_HEADER } from "@/lib/monitoring-bounded-stats";
 import { ElapsedTimer, useStableHandlers } from "./perf-utils";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
-import { addDaysToDate, isValidEntryDate, todayKST as kstTodayDate } from "@/lib/dateRule";
+import { addDaysToDate, isValidEntryDate, MIN_ENTRY_DATE, todayKST as kstTodayDate } from "@/lib/dateRule";
 import { companyForAccount } from "@/lib/companyMap";
 import { batchFetch } from "@/lib/batchFetch";
 import { dedupeRowsById } from "@/lib/dedupe-rows";
@@ -60,7 +61,11 @@ export default function MonitoringPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [showHelp, setShowHelp] = useState(false);
   const [trendPost, setTrendPost] = useState<Post | null>(null);
-  const trendLoading = false;
+  const [trendLoading, setTrendLoading] = useState(false);
+  const [statsLoadedFrom, setStatsLoadedFrom] = useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyLoadError, setHistoryLoadError] = useState(false);
+  const [historyRetryNonce, setHistoryRetryNonce] = useState(0);
   const [editCell, setEditCell] = useState<EditCell | null>(null);
   const [editPlayCount, setEditPlayCount] = useState<{ postId: string; value: string; measuredAt: string } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -73,6 +78,8 @@ export default function MonitoringPage() {
   const [mainAdCosts, setMainAdCosts] = useState<{ date: string; total_cost: number }[]>([]);
   const [auxErrors, setAuxErrors] = useState<Set<string>>(new Set());
   const previousPlayCountsRef = useRef<Map<string, number | null>>(new Map());
+  const loadPostsRequestSeqRef = useRef(0); // 느린 과거 요청이 더 최신 필터 응답을 덮지 않게 한다.
+  const trendRequestSeqRef = useRef(0); // A→B 트렌드 전환 때 A 응답/로딩 종료가 B를 덮지 않게 한다.
   const runningJobIdRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -226,9 +233,17 @@ export default function MonitoringPage() {
       // 배너는 조회수(play_count)가 없어 도달수(reach_count)를 조회수처럼 취급(사용자 지시) → play 누적에 합산.
       const isBanner = isBannerChannel(post.channel_type, post.posted_at);
 
-      // Forward-fill: 필터 범위 내에서만 데이터 없는 날은 이전 마지막 값 유지
-      // null은 데이터 없음(기여 0)
-      let lastPlay: number | null = null, lastLikes: number | null = null, lastComments: number | null = null;
+      // 기본 60일 화면에서는 숨겨 둔 cutoff baseline으로 forward-fill을 시작해야
+      // 60일 첫 실측 전 구간이 0으로 내려가지 않는다. 명시적 날짜 필터는 기존 정책대로
+      // 범위 안 값만 사용하므로 baseline을 seed하지 않는다.
+      const historySeed = !filters.dateFrom && !filters.dateTo
+        ? (post.all_stats ?? []).find(s => s.history_baseline === true)
+        : undefined;
+      let lastPlay: number | null = historySeed
+        ? (isBanner ? bannerDailyMetric(historySeed) : historySeed.play_count)
+        : null;
+      let lastLikes: number | null = historySeed?.history_likes_seed ?? null;
+      let lastComments: number | null = historySeed?.history_comments_seed ?? null;
       for (const date of allDates) {
         let incAdd = 0;
         if (statsMap.has(date)) {
@@ -266,12 +281,17 @@ export default function MonitoringPage() {
       if (!(post.channel_type ?? "").includes("(영상)")) continue; // 배너 등 제외, 영상만
       const pa = post.posted_at;
       if (!pa) continue;
-      const target = new Date(pa).getTime() + 7 * 86400000; // 게시 후 7일
       let best: { diff: number; v: number } | null = null;
-      for (const s of post.all_stats ?? []) {
-        if (s.play_count == null) continue;
-        const diff = Math.abs(new Date(s.measured_at).getTime() - target) / 86400000;
-        if (diff <= 2 && (!best || diff < best.diff)) best = { diff, v: s.play_count }; // 7일±2 최근접
+      if (Object.prototype.hasOwnProperty.call(post, "day7_play_count")) {
+        if (post.day7_play_count != null) best = { diff: 0, v: post.day7_play_count };
+      } else {
+        // RPC 미배포 시 full-history fallback 응답과의 호환.
+        const target = new Date(pa).getTime() + 7 * 86400000; // 게시 후 7일
+        for (const s of getFilteredStats(post.all_stats ?? [], "", "")) {
+          if (s.play_count == null) continue;
+          const diff = Math.abs(new Date(s.measured_at).getTime() - target) / 86400000;
+          if (diff <= 2 && (!best || diff < best.diff)) best = { diff, v: s.play_count };
+        }
       }
       if (!best) continue;
       const dow = (new Date(pa).getUTCDay() + 6) % 7; // date-only → 월=0…일=6
@@ -447,7 +467,7 @@ export default function MonitoringPage() {
     // O(M×S) 인덱스 빌드: post별 date→play_count Map (forward-fill)
     const postIndex = filteredPosts.map(post => {
       const group = (() => { const ct = post.channel_type ?? '기타'; return ct.startsWith('바이럴') ? '바이럴' : ct.startsWith('협찬') ? '협찬' : '기타'; })();
-      const rawMap = new Map((post.all_stats ?? []).map(s => [s.measured_at, s.play_count]));
+      const rawMap = new Map(getFilteredStats(post.all_stats ?? [], "", "").map(s => [s.measured_at, s.play_count]));
       // 날짜 순서로 forward-fill
       const byDate = new Map<string, number>();
       let last = 0;
@@ -672,6 +692,30 @@ export default function MonitoringPage() {
     };
   }, []);
 
+  // 기본 60일보다 오래된 날짜를 고르면 그 범위가 실제로 로드되기 전에는 0/공백으로
+  // 계산하지 않는다. dateTo만 지정한 경우 의미가 "처음부터 그날까지"라 MIN_ENTRY_DATE부터 읽는다.
+  const historyRequestFrom = useMemo(() => {
+    if (!statsLoadedFrom || statsLoadedFrom === "full") return null;
+    if (filters.dateFrom && filters.dateFrom < statsLoadedFrom) return filters.dateFrom;
+    if (!filters.dateFrom && filters.dateTo && filters.dateTo < statsLoadedFrom) return MIN_ENTRY_DATE;
+    return null;
+  }, [filters.dateFrom, filters.dateTo, statsLoadedFrom]);
+
+  useEffect(() => {
+    if (!historyRequestFrom) return;
+    setHistoryLoading(true);
+    setHistoryLoadError(false);
+    loadPosts(historyRequestFrom)
+      .then((loaded) => {
+        if (!loaded) setHistoryLoadError(true);
+      })
+      .catch(() => {
+        setHistoryLoadError(true);
+        toast("과거 조회 데이터를 불러오지 못했습니다", "error");
+      })
+      .finally(() => setHistoryLoading(false));
+  }, [historyRequestFrom, historyRetryNonce]);
+
   // 광고비 조회 기간(YYYY-MM-DD 문자열). chartData 배열 참조가 아닌 '값'에 의존시켜
   // effect 무한 재요청(루프) 방지 — 87K 폭주 사고의 근본 수정.
   const { adFrom, adTo } = useMemo(() => ({
@@ -709,11 +753,17 @@ export default function MonitoringPage() {
   });
 
 
-  async function loadPosts() {
-    const res = await fetch("/api/sponsored-posts", { cache: "no-store" });
+  async function loadPosts(requestedFrom?: string): Promise<boolean> {
+    const requestSeq = ++loadPostsRequestSeqRef.current;
+    const keepLoadedFrom = statsLoadedFrom && statsLoadedFrom !== "full" ? statsLoadedFrom : undefined;
+    const statsFrom = requestedFrom ?? keepLoadedFrom;
+    const url = new URL("/api/sponsored-posts", window.location.origin);
+    if (statsFrom) url.searchParams.set("statsFrom", statsFrom);
+    const res = await fetch(url.toString(), { cache: "no-store" });
+    if (requestSeq !== loadPostsRequestSeqRef.current) return true;
     if (!res.ok) {
       toast("데이터 로드에 실패했습니다", "error");
-      return;
+      return false;
     }
     // 부분 응답 신호는 헤더로 온다(본문은 배열 그대로라 아래 파싱은 그대로 유지된다).
     setStatsPartial(
@@ -724,10 +774,14 @@ export default function MonitoringPage() {
           }
         : null,
     );
+    const historyMode = res.headers.get(STATS_HISTORY_MODE_HEADER);
+    const responseLoadedFrom = res.headers.get(STATS_LOADED_FROM_HEADER);
     const json = await res.json();
-    // 서버는 일별 이력을 튜플(stats_v2)로 보낸다 — 응답 5.51MB → 2.76MB. 여기서 기존 all_stats와
-    // **완전히 같은 객체 모양**으로 되돌리므로, 아래 모든 계산(증분·누적·배너 reach·정렬·CSV)은
-    // 이 변경을 전혀 모른다. (stats_v2가 없는 옛 응답이면 all_stats를 그대로 쓴다)
+    if (requestSeq !== loadPostsRequestSeqRef.current) return true;
+    setStatsLoadedFrom(historyMode === "bounded" ? responseLoadedFrom : "full");
+    // 서버는 일별 이력을 튜플(stats_v2)로 보낸다. 일반 행은 기존 all_stats 모양으로 복원하고,
+    // bounded 합성 baseline만 history_* metadata를 가진다(차트·날짜필터에서는 공통 헬퍼가 숨김).
+    // stats_v2가 없는 옛 응답이면 all_stats를 그대로 쓴다.
     const decodedPosts: Post[] = (Array.isArray(json) ? json : []).map((p: Post & { stats_v2?: unknown }) => (
       p.stats_v2 !== undefined ? { ...p, all_stats: decodeStatsV2(p.stats_v2) } : p
     ));
@@ -797,12 +851,16 @@ export default function MonitoringPage() {
       return {
         ...p,
         all_stats: stats,
-        latest_stats: latest,
-        prev_stats: prevDay,
+        // bounded 응답의 latest/prev는 DB가 전 이력에서 계산한 exact summary다.
+        // 최근 배열만 보고 다시 계산하면 오래 종료된 게시물과 전일 기준이 0/빈칸으로 퇴행한다.
+        latest_stats: historyMode === "bounded" ? p.latest_stats : latest,
+        prev_stats: historyMode === "bounded" ? p.prev_stats : prevDay,
       };
     });
 
+    if (requestSeq !== loadPostsRequestSeqRef.current) return true;
     setPosts(newPosts);
+    return true;
   }
 
   async function checkAndResumeMonitoring() {
@@ -1342,16 +1400,62 @@ export default function MonitoringPage() {
     window.addEventListener("mouseup", onUp);
   }
 
+  async function openTrendPost(post: Post) {
+    // legacy/shadow/fallback 응답은 이미 전 이력을 갖고 있다. 기본 rollout에서 불필요한
+    // 추가 DB 조회나 UI 지연을 만들지 않고 기존 동작을 그대로 유지한다.
+    if (statsLoadedFrom === "full") {
+      setTrendPost(post);
+      setTrendLoading(false);
+      return;
+    }
+    // bounded 목록의 60일 조각이나 합성 baseline을 "전체 트렌드"처럼 먼저 그리지 않는다.
+    const requestSeq = ++trendRequestSeqRef.current;
+    setTrendPost({ ...post, all_stats: [] });
+    setTrendLoading(true);
+    try {
+      const res = await fetch(`/api/sponsored-posts/${post.id}/stats`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`trend stats ${res.status}`);
+      const body = await res.json() as { all_stats?: DailyStats[] };
+      if (requestSeq !== trendRequestSeqRef.current) return;
+      setTrendPost(current => current?.id === post.id
+        ? { ...current, all_stats: Array.isArray(body.all_stats) ? body.all_stats : [] }
+        : current);
+    } catch (error) {
+      if (requestSeq !== trendRequestSeqRef.current) return;
+      console.error("[monitoring] trend history load failed", error);
+      toast("전체 트렌드 이력을 불러오지 못했습니다", "error");
+    } finally {
+      if (requestSeq === trendRequestSeqRef.current) setTrendLoading(false);
+    }
+  }
+
   // 표(PostsTable)에 넘기는 핸들러들을 정체성 고정 → React.memo(PostsTable)가 실제로 동작.
   // (이게 없으면 매 렌더마다 새 함수라 memo가 무력화됨)
   const tableHandlers = useStableHandlers({
     setFilters, setEditCell, patchPost, patchStat, patchPlayCount, setEditPlayCount,
     toggleSelectAll, handleRowCheck, sp, startResize, copyIncrementList, deletePost, endPost,
-    toast, setTrendPost, setHoverUpdatedId,
+    toast, setTrendPost: openTrendPost, setHoverUpdatedId,
   });
 
   return (
     <div className="min-h-screen">
+      {(historyLoading || (historyRequestFrom && historyLoadError)) && (
+        <div className="fixed inset-0 z-[90] bg-white/80 backdrop-blur-sm flex items-center justify-center" role="status">
+          <div className="rounded-2xl border border-a-hairline bg-white px-6 py-4 shadow-lg text-sm text-a-ink-muted text-center">
+            {historyLoadError ? (
+              <>
+                <div>과거 조회 이력을 불러오지 못했습니다. 불완전한 수치는 표시하지 않습니다.</div>
+                <div className="mt-3 flex justify-center gap-2">
+                  <button className="px-3 py-1.5 rounded-md border border-a-hairline bg-white" onClick={() => setHistoryRetryNonce(n => n + 1)}>다시 시도</button>
+                  <button className="px-3 py-1.5 rounded-md bg-a-ink text-white" onClick={() => setFilters(prev => ({ ...prev, dateFrom: "", dateTo: "" }))}>기간 필터 해제</button>
+                </div>
+              </>
+            ) : (
+              <>과거 조회 이력을 불러오는 중입니다. 완료 전에는 수치를 표시하지 않습니다.</>
+            )}
+          </div>
+        </div>
+      )}
       {statsPartial && (
         <div
           role="alert"

@@ -11,7 +11,27 @@ import {
 } from "@/lib/stats-pages";
 import { normalizeUrl, ALLOWED_POST_URL_RE, isInstagramNonPostUrl, isAccountNonPostUrl, isInvalidTikTokPostUrl } from "@/lib/url-utils";
 import { logger } from "@/lib/logger";
-import { normalizeChannelType, canonicalText } from "@/app/monitoring/lib";
+import {
+  bannerDailyMetric,
+  fbAt,
+  isBannerChannel,
+  normalizeChannelType,
+  canonicalText,
+  safeIncrement,
+  type DailyStats,
+} from "@/app/monitoring/lib";
+import { daysAgoKST, isValidEntryDate, todayKST } from "@/lib/dateRule";
+import {
+  DASHBOARD_HISTORY_DAYS,
+  exactDashboardSummary,
+  historyBaselineRow,
+  monotonicDashboardStats,
+  STATS_HISTORY_MODE_HEADER,
+  STATS_LOADED_BEFORE_HEADER,
+  STATS_LOADED_FROM_HEADER,
+  type DashboardStatRow,
+  type DashboardStatSummary,
+} from "@/lib/monitoring-bounded-stats";
 import { triggerCaptionBackfill, needsCaption } from "@/lib/github-dispatch";
 import { upsertSponsoredRows } from "@/lib/sponsored-write";
 import { stripAssetFileListing } from "@/lib/asset-name-policy";
@@ -27,6 +47,14 @@ type DailyStatRow = {
   reach_count?: number | null;
   manual?: boolean | null;
   fb_play_count?: number | null;   // 교차게시(IG+FB) 글의 FB 몫. play_count 는 합계다.
+  play_collected?: boolean;
+  history_baseline?: boolean;
+  history_ig_max?: number | null;
+  history_reach_max?: number | null;
+  history_fb_max?: number | null;
+  history_likes_seed?: number | null;
+  history_comments_seed?: number | null;
+  history_latest_increment?: number | null;
 };
 
 // fb_play_count 열 존재 여부 — 프로세스당 1회만 확인하고 캐시한다(매 요청 추가 왕복 방지).
@@ -53,6 +81,114 @@ type SponsoredPostRow = Record<string, unknown> & {
   posted_at?: string | null;
   post_daily_stats?: DailyStatRow[];
 };
+
+type SummaryPageResult = {
+  data: DashboardStatSummary[] | null;
+  error: { message?: string } | null;
+};
+
+type DashboardHistoryRollout = "legacy" | "shadow" | "bounded";
+
+function dashboardHistoryRollout(): DashboardHistoryRollout {
+  const configured = String(process.env.MONITORING_DASHBOARD_HISTORY_MODE ?? "legacy").trim().toLowerCase();
+  return configured === "bounded" || configured === "shadow" ? configured : "legacy";
+}
+
+const SUMMARY_PAGE = 1000;
+
+async function fetchSummaryPages(
+  supabase: ReturnType<typeof getServerSupabase>,
+  loadedFrom: string,
+  beforeDate: string,
+  statsSnapshot: string,
+): Promise<{ rows: DashboardStatSummary[]; error: string | null }> {
+  const rows: DashboardStatSummary[] = [];
+  for (let from = 0; ; from += SUMMARY_PAGE) {
+    const { data, error } = await supabase
+      .rpc("monitoring_dashboard_stat_summaries_v1", {
+        p_from: loadedFrom,
+        p_before: beforeDate,
+        p_created_before: statsSnapshot,
+      })
+      .order("id", { ascending: true })
+      .range(from, from + SUMMARY_PAGE - 1) as unknown as SummaryPageResult;
+    if (error) return { rows: [], error: error.message ?? "summary RPC failed" };
+    const page = data ?? [];
+    rows.push(...page);
+    if (page.length < SUMMARY_PAGE) return { rows, error: null };
+  }
+}
+
+function finiteNumber(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function shadowSummaryIssues(
+  summary: DashboardStatSummary | undefined,
+  rawRows: DailyStatRow[],
+  postedAt: string | null,
+  loadedFrom: string,
+  isBanner: boolean,
+): string[] {
+  if (!summary) return ["summary:missing"];
+  const mono = monotonicDashboardStats(rawRows) as Array<DailyStatRow & { play_count: number; play_collected: boolean }>;
+  const exact = exactDashboardSummary(rawRows, postedAt);
+  const prior = mono.filter((row) => row.measured_at < loadedFrom);
+  const lastPrior = prior.length ? prior[prior.length - 1] : null;
+  const bannerPrior = [...prior].reverse().find((row) => {
+    const metric = bannerDailyMetric(row as DailyStats);
+    return metric != null && metric > 0;
+  }) ?? null;
+  const displayPrior = isBanner ? bannerPrior : lastPrior;
+  const latestNonNull = (field: "likes_count" | "comments_count") => (
+    [...prior].reverse().find((row) => row[field] != null)?.[field] ?? null
+  );
+  const positiveMax = (values: Array<number | null | undefined>) => {
+    const finite = values.map(finiteNumber).filter((v): v is number => v != null);
+    return finite.length ? Math.max(...finite) : null;
+  };
+  const expected = {
+    prior_play_seed: lastPrior?.play_count ?? null,
+    prior_reach_seed: bannerPrior ? bannerDailyMetric(bannerPrior as DailyStats) : null,
+    prior_ig_max: positiveMax(prior
+      .filter((row) => row.play_count > 0)
+      .map((row) => Math.max(0, row.play_count - fbAt(mono as DailyStats[], row as DailyStats)))),
+    prior_reach_max: positiveMax(prior.map((row) => bannerDailyMetric(row as DailyStats))),
+    prior_fb_max: positiveMax(prior.map((row) => row.fb_play_count)),
+    prior_likes_seed: latestNonNull("likes_count"),
+    prior_comments_seed: latestNonNull("comments_count"),
+    prior_display_measured_at: displayPrior?.measured_at ?? null,
+    prior_display_likes: displayPrior?.likes_count ?? null,
+    prior_display_comments: displayPrior?.comments_count ?? null,
+    prior_display_increment: displayPrior
+      ? safeIncrement(mono as DailyStats[], displayPrior as DailyStats, isBanner, postedAt)
+      : null,
+    day7_play_count: exact.day7_play_count,
+  };
+  const issues: string[] = [];
+  const compare = (label: string, actual: unknown, wanted: unknown) => {
+    const a = typeof wanted === "number" ? finiteNumber(actual) : (actual ?? null);
+    const w = wanted ?? null;
+    if (a !== w) issues.push(`${label}:${String(a)}!=${String(w)}`);
+  };
+  const compareStat = (label: string, actual: DashboardStatRow | null | undefined, wanted: DashboardStatRow | null) => {
+    if (!actual || !wanted) {
+      if (actual || wanted) issues.push(`${label}:presence`);
+      return;
+    }
+    for (const key of ["measured_at", "play_count", "likes_count", "comments_count", "created_at", "reach_count", "manual", "fb_play_count", "play_collected"] as const) {
+      compare(`${label}.${key}`, actual[key], wanted[key]);
+    }
+  };
+  compareStat("latest", summary.latest_stats, exact.latest_stats);
+  compareStat("prev", summary.prev_stats, exact.prev_stats);
+  for (const [key, value] of Object.entries(expected)) {
+    compare(key, summary[key as keyof DashboardStatSummary], value);
+  }
+  return issues;
+}
 
 const POST_COLS = [
   "id",
@@ -163,14 +299,67 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // 모든 post_daily_stats를 페이지네이션으로 전부 조회 후 post별 그룹핑
-  // (N+1 쿼리 방지 + Supabase 기본 1000행 상한으로 과거 데이터가 잘리는 문제 방지)
+  // 기본 응답은 최근 60일 원시 행만 전송한다. 전이력이 필요한 값(최신/전일/7일차,
+  // 최근 구간 시작 seed, lifetime 증분 baseline)은 Postgres 안에서 post별 1행으로 축약한다.
+  // statsFrom을 명시하면 과거 날짜 필터용으로 그 날짜부터 다시 읽는다.
+  const beforeDate = todayKST();
+  // Summary RPC와 recent raw pages가 정확히 같은 DB snapshot 경계를 보도록 둘 다
+  // 이 시각 이전에 생성된 행만 읽는다. 업무 날짜가 아니라 동시성 watermark다.
+  const statsSnapshot = new Date().toISOString();
+  const requestedFrom = req.nextUrl.searchParams.get("statsFrom");
+  if (requestedFrom && (!isValidEntryDate(requestedFrom) || requestedFrom >= beforeDate)) {
+    return NextResponse.json({ error: "statsFrom 값이 올바른 과거 KST 날짜가 아닙니다." }, { status: 400 });
+  }
+  const loadedFrom = requestedFrom ?? daysAgoKST(DASHBOARD_HISTORY_DAYS);
+  const rollout = dashboardHistoryRollout();
+  let summaries = rollout === "legacy"
+    ? { rows: [] as DashboardStatSummary[], error: null as string | null }
+    : await fetchSummaryPages(supabase, loadedFrom, beforeDate, statsSnapshot);
+  if (!summaries.error && rollout !== "legacy") {
+    const expected = new Set(uniquePosts.map((post) => post.id));
+    const returned = new Set(summaries.rows.map((row) => String(row.post_id)));
+    const coverageOk = returned.size === summaries.rows.length
+      && returned.size === expected.size
+      && [...expected].every((id) => returned.has(id));
+    if (!coverageOk) {
+      summaries = {
+        rows: [],
+        error: `summary coverage mismatch expected=${expected.size} returned=${returned.size} rows=${summaries.rows.length}`,
+      };
+    }
+  }
+  // 기본은 legacy다. shadow는 RPC와 legacy를 함께 계산하되 응답은 legacy만 사용한다.
+  // bounded 명시 활성화 뒤에도 RPC 오류·1,000행 절단·키 누락이면 같은 요청에서 전이력으로 fail-open한다.
+  const useBounded = rollout === "bounded" && !summaries.error;
+  const historyMode = useBounded
+    ? "bounded"
+    : rollout === "shadow"
+      ? (summaries.error ? "shadow-fallback" : "shadow")
+      : rollout === "bounded"
+        ? "full-fallback"
+        : "legacy";
+  if (summaries.error && rollout !== "legacy") {
+    logger.warn("sponsored-posts", "bounded history RPC unavailable; full-history fallback", {
+      rollout,
+      error: summaries.error,
+    });
+  }
+  const summaryByPost = new Map(summaries.rows.map((row) => [String(row.post_id), row]));
+
+  // post_daily_stats 페이지네이션 후 post별 그룹핑. bounded 모드에서는 recent rows만 egress한다.
   const ids = uniquePosts.map((p) => p.id);
   const statsByPost = new Map<string, DailyStatRow[]>();
   // ⚠️ .in("post_id", ids) 쓰지 말 것 — 게시물 수백 개면 id 목록이 쿼리 URL 한도를 넘어
   //    PostgREST가 0행을 반환(2026-07-01 확인). ids=전체 게시물이라 필터 불필요 → 전량 조회 후 post_id로 그룹핑.
   // 성능: select("*") 대신 필요한 컬럼만 + 순차 페이지네이션(왕복 N회) 대신 count 기반 병렬 조회로 로딩 단축.
   const PAGE = 1000;
+  // Offset pagination 중 새 행이 앞 페이지에 끼어들면 성공 응답만으로도 뒤 페이지가
+  // 한 칸 밀려 누락/중복될 수 있다. bounded 경로는 요청 시작 시각을 snapshot watermark로
+  // 고정하고, count와 실제 고유행 수도 다시 대조해 조용한 부분응답을 허용하지 않는다.
+  let expectedStatCount: number | null = null;
+  let loadedStatRowCount = 0;
+  const loadedStatKeys = new Set<string>();
+  let duplicateStatRows = 0;
   // ⚠️ fb_play_count 는 교차게시(IG+FB) 글의 FB 몫 — 증분 계산이 이 값을 빼야 해서 반드시 함께 읽는다.
   //    (없이 보내면 합산 시작일이 하루 증분 71만으로 찍힌다. lib.ts safeIncrement 주석 참고.)
   // ⚠️ 마이그레이션(20260922_cross_post_fb_metrics.sql)보다 코드가 먼저 배포되면 이 열이 없어
@@ -181,6 +370,13 @@ export async function GET(req: NextRequest) {
     : "post_id, measured_at, play_count, likes_count, comments_count, created_at, reach_count, manual";
   const collect = (page: DailyStatRow[] | null | undefined) => {
     for (const s of page ?? []) {
+      loadedStatRowCount++;
+      const statKey = `${s.post_id}\u0000${String(s.measured_at).slice(0, 10)}`;
+      if (loadedStatKeys.has(statKey)) {
+        duplicateStatRows++;
+        continue;
+      }
+      loadedStatKeys.add(statKey);
       const arr = statsByPost.get(s.post_id) ?? [];
       arr.push(s);
       statsByPost.set(s.post_id, arr);
@@ -193,30 +389,47 @@ export async function GET(req: NextRequest) {
   //    → 실패 페이지는 1회 재시도하고, 그래도 실패하면 응답 헤더로 부분 실패를 알린다. 값은 손대지 않는다.
   // Supabase 빌더는 thenable 이라 그대로는 Promise 계약을 만족하지 않는다 → 실제 Promise 로 감싼다.
   const fetchStatPage = async (from: number): Promise<PageResult<DailyStatRow>> => {
-    const { data, error } = await supabase.from("post_daily_stats").select(STAT_COLS)
-      .order("measured_at", { ascending: false }).order("id", { ascending: true })
+    let query = supabase.from("post_daily_stats").select(STAT_COLS);
+    if (useBounded) {
+      query = query
+        .gte("measured_at", loadedFrom)
+        .lt("measured_at", beforeDate)
+        .lte("created_at", statsSnapshot);
+    }
+    const { data, error } = await query.order("measured_at", { ascending: false }).order("id", { ascending: true })
       .range(from, from + PAGE - 1);
     return { data: (data ?? null) as DailyStatRow[] | null, error };
   };
 
   if (ids.length > 0) {
-    const { count, error: cntErr } = await supabase
-      .from("post_daily_stats")
-      .select("post_id", { count: "exact", head: true });
+    let countQuery = supabase.from("post_daily_stats").select("post_id", { count: "exact", head: true });
+    if (useBounded) {
+      countQuery = countQuery
+        .gte("measured_at", loadedFrom)
+        .lt("measured_at", beforeDate)
+        .lte("created_at", statsSnapshot);
+    }
+    const { count, error: cntErr } = await countQuery;
     if (cntErr || count == null) {
-      // count 실패 시 순차 폴백(절단 방지) — 마지막 페이지가 가득 차면 계속 조회.
-      if (cntErr) console.error("[sponsored-posts] stats count 실패, 순차 폴백:", cntErr.message);
-      for (let from = 0; ; from += PAGE) {
-        const { data: page, error } = await fetchPageWithRetry(from, fetchStatPage);
-        if (error) {
-          console.error("[sponsored-posts] stats 조회 실패(재시도 후에도) — 부분 응답:", error.message);
-          missingStatPages++;
-          break;
+      if (useBounded) {
+        console.error("[sponsored-posts] bounded stats count 실패 — 부분 응답을 만들지 않고 중단:", cntErr?.message ?? "count unavailable");
+        missingStatPages++;
+      } else {
+        // count 실패 시 순차 폴백(절단 방지) — 마지막 페이지가 가득 차면 계속 조회.
+        if (cntErr) console.error("[sponsored-posts] stats count 실패, 순차 폴백:", cntErr.message);
+        for (let from = 0; ; from += PAGE) {
+          const { data: page, error } = await fetchPageWithRetry(from, fetchStatPage);
+          if (error) {
+            console.error("[sponsored-posts] stats 조회 실패(재시도 후에도) — 부분 응답:", error.message);
+            missingStatPages++;
+            break;
+          }
+          collect(page as DailyStatRow[]);
+          if (!page || page.length < PAGE) break;
         }
-        collect(page as DailyStatRow[]);
-        if (!page || page.length < PAGE) break;
       }
     } else {
+      expectedStatCount = count;
       // count 확보 → 전 페이지 병렬 조회(순차 왕복 제거).
       const pages = Math.max(1, Math.ceil(count / PAGE));
       // ⚠️ measured_at은 중복(한 날짜에 수백 행) → 단독 정렬 시 range() 페이지 경계에서 행 누락/중복
@@ -239,10 +452,65 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  if (
+    useBounded
+    && expectedStatCount != null
+    && (
+      loadedStatRowCount !== expectedStatCount
+      || loadedStatKeys.size !== expectedStatCount
+      || duplicateStatRows > 0
+    )
+  ) {
+    console.error("[sponsored-posts] bounded stats snapshot coverage mismatch", {
+      expected: expectedStatCount,
+      loaded: loadedStatRowCount,
+      unique: loadedStatKeys.size,
+      duplicates: duplicateStatRows,
+      snapshot: statsSnapshot,
+    });
+    missingStatPages++;
+  }
+
   const data = uniquePosts.map((post) => ({
     ...post,
     post_daily_stats: statsByPost.get(post.id) ?? [],
   }));
+
+  if (rollout === "shadow" && !summaries.error) {
+    let mismatchCount = 0;
+    const sample: Array<{ postId: string; issues: string[] }> = [];
+    for (const post of data) {
+      const postedAt = post.posted_at ? String(post.posted_at).slice(0, 10) : null;
+      const visible = (post.post_daily_stats ?? []).filter((row) => (
+        String(row.measured_at).slice(0, 10) < beforeDate
+        && (!postedAt || String(row.measured_at).slice(0, 10) >= postedAt)
+      ));
+      const issues = shadowSummaryIssues(
+        summaryByPost.get(post.id),
+        visible,
+        postedAt,
+        loadedFrom,
+        isBannerChannel((post as SponsoredPostRow).channel_type as string | null, postedAt),
+      );
+      if (issues.length > 0) {
+        mismatchCount++;
+        if (sample.length < 20) sample.push({ postId: post.id, issues: issues.slice(0, 12) });
+      }
+    }
+    if (mismatchCount > 0) {
+      logger.warn("sponsored-posts", "bounded history shadow mismatch; legacy response retained", {
+        mismatchCount,
+        totalPosts: data.length,
+        sample,
+      });
+    } else {
+      logger.info("sponsored-posts", "bounded history shadow parity ok; legacy response retained", {
+        totalPosts: data.length,
+        loadedFrom,
+        beforeDate,
+      });
+    }
+  }
 
   const result = (data ?? []).map((post: SponsoredPostRow) => {
     // 과거→현재 정렬
@@ -251,48 +519,58 @@ export async function GET(req: NextRequest) {
       const measuredAt = String(s.measured_at).slice(0, 10);
       return !postedAt || measuredAt >= postedAt;
     });
-    const asc = visibleStats.slice().sort(
-      (a: { measured_at: string }, b: { measured_at: string }) =>
-        new Date(a.measured_at).getTime() - new Date(b.measured_at).getTime()
-    );
-    // 🛡️ 누적 조회수는 감소 불가 — Apify 글리치/미완성 수집으로 낮아진 값은 직전 최대값으로 보정.
-    //    (게시물 단위 증분량이 음수로 표시되는 문제 방지)
-    //    단, 수기 수정(manual)은 팀이 의도한 정정값이므로 하향이어도 그대로 인정하고 기준선을 리셋.
-    //    (수기 0은 예외 — 오입력/비우기일 가능성이 높고 이후 증분이 전체값으로 폭주하므로 기존 보정 유지)
-    let maxPlay = 0;
-    const mono: MonotonicDailyStatRow[] = asc.map((s: DailyStatRow) => {
-      const playCollected = s.play_count != null; // 원본 수집 여부 (mono 보정 전)
-      const isManualFix = s.manual === true && playCollected && Number(s.play_count) > 0;
-      const play_count = isManualFix ? Number(s.play_count)
-        : playCollected ? Math.max(maxPlay, Number(s.play_count)) : maxPlay;
-      maxPlay = play_count;
-      return { ...s, play_count, play_collected: playCollected };
-    });
+    const summary = summaryByPost.get(post.id);
+    const baseline = useBounded
+      ? historyBaselineRow(summary, loadedFrom, isBannerChannel(post.channel_type as string | null, postedAt))
+      : null;
+    const mono = monotonicDashboardStats([
+      ...(baseline ? [baseline] : []),
+      ...visibleStats,
+    ]) as MonotonicDailyStatRow[];
     const desc = [...mono].reverse();
     // 일별 이력은 응답의 대부분이다(실측 5.51MB 중 3.77MB = 68.5%). 키 이름이 행마다 반복되는 게
     // 원인이라 **튜플로 인코딩**한다 → 응답 5.51MB → 2.76MB(gzip 614KB → 512KB).
     // 브라우저 JSON.parse/메모리가 절반으로 줄어 첫 렌더 체감이 개선된다.
     //
-    // ⚠️ 값은 하나도 바뀌지 않는다. 클라이언트가 decodeStatsV2()로 **기존 all_stats와 완전히 동일한
-    //    객체 모양**으로 되돌린 뒤 쓰므로, 증분·누적·배너 reach 계산 경로는 전혀 손대지 않았다.
-    // 순서: [측정일(YYYY-MM-DD), 조회수, 좋아요, 댓글, 도달수, 수집여부(1/0), FB조회수]
-    //   — lib.ts의 STATS_V2_FIELDS와 반드시 같은 순서를 유지할 것.
-    const statsV2 = mono.map((s: MonotonicDailyStatRow) => [
-      String(s.measured_at).slice(0, 10),
-      s.play_count ?? null,
-      s.likes_count ?? null,
-      s.comments_count ?? null,
-      s.reach_count ?? null,
-      s.play_collected ? 1 : 0,
-      s.fb_play_count ?? null,       // 7번째 = 교차게시 FB 몫(열 없거나 미측정이면 null). decodeStatsV2 와 순서 일치.
-    ]);
+    // 일반 행은 클라이언트가 decodeStatsV2()로 기존 all_stats와 동일한 객체 모양으로 되돌린다.
+    // bounded 모드의 post당 합성행 1개만 history_* metadata를 더 가지며 차트·날짜필터에서는 숨긴다.
+    // 순서: [측정일, 조회수, 좋아요, 댓글, 도달수, 수집여부, FB조회수,
+    //         history baseline 여부, 과거 IG max, 과거 reach max, 과거 FB max,
+    //         cutoff 직전 좋아요/댓글, 마지막 표시행 증분]
+    //   — lib.ts decodeStatsV2와 반드시 같은 순서를 유지할 것.
+    const statsV2 = mono.map((s: MonotonicDailyStatRow) => {
+      const tuple: Array<string | number | null> = [
+        String(s.measured_at).slice(0, 10),
+        s.play_count ?? null,
+        s.likes_count ?? null,
+        s.comments_count ?? null,
+        s.reach_count ?? null,
+        s.play_collected ? 1 : 0,
+        s.fb_play_count ?? null,       // 7번째 = 교차게시 FB 몫(열 없거나 미측정이면 null). decodeStatsV2 와 순서 일치.
+      ];
+      // 합성행은 post당 최대 1개뿐이다. 일반 recent row에는 trailing null 6개를 붙이지 않아
+      // bounded 응답의 egress 절감 효과를 그대로 유지한다.
+      if (s.history_baseline) tuple.push(
+        1,
+        s.history_ig_max ?? null,
+        s.history_reach_max ?? null,
+        s.history_fb_max ?? null,
+        s.history_likes_seed ?? null,
+        s.history_comments_seed ?? null,
+        s.history_latest_increment ?? null,
+      );
+      return tuple;
+    });
     return {
       ...post,
       post_daily_stats: undefined,
       influencers: null,
       // latest/prev는 객체 그대로 둔다 — created_at·manual 등 all_stats엔 없는 필드를 프런트가 쓴다.
-      latest_stats: desc[0] ?? null,
-      prev_stats: desc[1] ?? null,
+      // legacy/shadow/fallback 응답은 기존 API 계약(desc[0]/desc[1])을 그대로 유지한다.
+      // 화면은 오늘 제외 뒤 달력 전일을 재계산한다. bounded에서만 전이력 exact summary를 쓴다.
+      latest_stats: useBounded ? (summary?.latest_stats ?? null) : desc[0] ?? null,
+      prev_stats: useBounded ? (summary?.prev_stats ?? null) : desc[1] ?? null,
+      ...(useBounded ? { day7_play_count: summary?.day7_play_count ?? null } : {}),
       stats_v2: statsV2,
     };
   });
@@ -302,9 +580,28 @@ export async function GET(req: NextRequest) {
   // 부분 응답 신호는 **헤더**로 낸다 — 본문은 배열 그대로라 기존 소비자에 영향이 없다.
   // 값을 추정·보정하지 않고 "이 응답은 불완전하다"는 사실만 알린다(절대규칙: 자동 보정 금지, 감지 알림만).
   const partial = postsTruncated || missingStatPages > 0;
+  if (useBounded && partial) {
+    // bounded 응답에서 최근 페이지 하나가 빠지면 합성 baseline 다음 구간을 0/정체로 오독한다.
+    // legacy의 기존 부분응답 계약은 유지하되, bounded만 명시적으로 실패해 화면이 옛 정상값을 보존하게 한다.
+    return NextResponse.json({ error: "조회 이력 일부를 불러오지 못해 bounded 응답을 중단했습니다." }, {
+      status: 503,
+      headers: {
+        "Cache-Control": "no-store",
+        [PARTIAL_HEADER]: "1",
+        [MISSING_PAGES_HEADER]: String(missingStatPages),
+        [POSTS_TRUNCATED_HEADER]: postsTruncated ? "1" : "0",
+        [STATS_LOADED_FROM_HEADER]: loadedFrom,
+        [STATS_LOADED_BEFORE_HEADER]: beforeDate,
+        [STATS_HISTORY_MODE_HEADER]: "bounded-partial-failed",
+      },
+    });
+  }
   return NextResponse.json(result, {
     headers: {
       "Cache-Control": "no-store",
+      [STATS_LOADED_FROM_HEADER]: useBounded ? loadedFrom : "full",
+      [STATS_LOADED_BEFORE_HEADER]: useBounded ? beforeDate : "full",
+      [STATS_HISTORY_MODE_HEADER]: historyMode,
       ...(partial
         ? {
             [PARTIAL_HEADER]: "1",

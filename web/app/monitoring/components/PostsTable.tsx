@@ -2,7 +2,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 // 게시물 표 — monitoring/page.tsx 에서 추출. 모든 상태/핸들러는 부모(MonitoringPage) 소유(props).
 // 인라인 편집/정렬/선택/열 리사이즈는 전부 부모 함수를 props로 받아 그대로 호출 → 동작 동일.
-import { type Post, type EditCell, type DailyStats, type Filters, pickRangeStats, hasNotableChange, viewIncrement, incrementTooltip, INCREMENT_HEADER_TOOLTIP, isBannerChannel, fmt, fmtChannelType, effectiveReach, bannerDailyMetric, assetNameOf, pickMetric, CHANNEL_TYPES, INIT_FILTERS, CHART } from "../lib";
+import { type Post, type EditCell, type DailyStats, type Filters, pickRangeStats, hasNotableChange, viewIncrement, incrementTooltip, INCREMENT_HEADER_TOOLTIP, isBannerChannel, fmt, fmtChannelType, effectiveReach, bannerDailyMetric, assetNameOf, pickMetric, getFilteredStats, CHANNEL_TYPES, INIT_FILTERS, CHART } from "../lib";
 import { MIN_ENTRY_DATE, maxDateKST, yesterdayKST } from "@/lib/dateRule";
 import { companyForAccount } from "@/lib/companyMap";
 import { productCodeOf } from "@/lib/productCode";
@@ -87,7 +87,7 @@ function TD({ children, right, muted, col, highlighted, w, leftPos, fixed, group
 
 const Sparkline = memo(function Sparkline({ stats, postId, onClick }: { stats: DailyStats[]; postId: string; onClick: () => void }) {
   const pts = useMemo(
-    () => stats.map(pickMetric).filter((value): value is number => value != null),
+    () => getFilteredStats(stats, "", "").map(pickMetric).filter((value): value is number => value != null),
     [stats],
   );
   if (pts.length < 2) return <button onClick={onClick} className="text-xs text-a-ink-muted">-</button>;

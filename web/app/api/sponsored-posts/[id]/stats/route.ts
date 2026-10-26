@@ -3,8 +3,49 @@ import { isBannerChannel } from "@/app/monitoring/lib";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { isValidEntryDate, todayKST } from "@/lib/dateRule";
+import { monotonicDashboardStats, type DashboardStatRow } from "@/lib/monitoring-bounded-stats";
 
 type PostMeta = { channel_type: string | null; ended_at: string | null; posted_at?: string | null };
+
+// GET /api/sponsored-posts/[id]/stats
+// 메인 목록은 최근 이력만 받는다. 게시물 트렌드를 열 때만 해당 게시물의 전 이력을 lazy-load한다.
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { id } = await params;
+  const supabase = getServerSupabase();
+  const { data: post, error: postError } = await supabase
+    .from("sponsored_posts")
+    .select("posted_at")
+    .eq("id", id)
+    .single();
+  if (postError || !post) return NextResponse.json({ error: postError?.message ?? "게시물을 찾을 수 없습니다." }, { status: 404 });
+
+  const rows: DashboardStatRow[] = [];
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from("post_daily_stats")
+      .select("post_id, measured_at, play_count, likes_count, comments_count, created_at, reach_count, manual, fb_play_count")
+      .eq("post_id", id)
+      .lt("measured_at", todayKST())
+      .order("measured_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    rows.push(...((data ?? []) as DashboardStatRow[]));
+    if (!data || data.length < PAGE) break;
+  }
+  const postedAt = post.posted_at ? String(post.posted_at).slice(0, 10) : null;
+  const visible = rows.filter((row) => !postedAt || String(row.measured_at).slice(0, 10) >= postedAt);
+  return NextResponse.json({ all_stats: monotonicDashboardStats(visible) }, {
+    headers: { "Cache-Control": "no-store" },
+  });
+}
 
 // PATCH /api/sponsored-posts/[id]/stats
 // post_daily_stats 수동 수정: play_count / likes_count / comments_count.
