@@ -11,6 +11,7 @@ import { companyForAccount } from "@/lib/companyMap";
 import { batchFetch } from "@/lib/batchFetch";
 import { dedupeRowsById } from "@/lib/dedupe-rows";
 import { matchesSearch } from "@/lib/search-filter";
+import { matchesPersonFilter, personNameOptions } from "@/lib/personNames";
 import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, decodeStatsV2, INIT_FILTERS, CHANNEL_TYPES, STICKY_COL_ORDER, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, getFilteredStats, pickRangeStats, formatTimestamp, isBannerChannel, normalizeChannelType, fmtChannelType, updatePostLatestStats, viewIncrement, safeIncrement, pickMetric, productLabel, effectiveReach, bannerDailyMetric, assetNameOf, weekKeyOf, pearson, alignedPairs, bestLag, alignMulti, multipleR2, parseCsvLine, searchSummaryRows } from "./lib";
 import { GOOGLE_TREND_GROUPS } from "@/lib/google-trend-groups";
 import { readJsonResponse } from "@/lib/http-json";
@@ -104,8 +105,9 @@ export default function MonitoringPage() {
     if (filters.products.length > 0 && !filters.products.includes(post.product_name ?? "")) return false;
     if (filters.channelTypes.length > 0 && !filters.channelTypes.some(ct => (post.channel_type ?? "").replace(/\s+/g, "") === ct.replace(/\s+/g, ""))) return false;
     if (filters.companies.length > 0 && !filters.companies.includes(post.company_name?.trim() || companyForAccount(post.account_name ?? post.influencers?.name, post.channel_type) || "")) return false;
-    if (filters.creatorNames.length > 0 && !filters.creatorNames.includes((post.creator ?? "").trim())) return false;
-    if (filters.plannerNames.length > 0 && !filters.plannerNames.includes((post.planner ?? "").trim())) return false;
+    // 한 칸에 여러 명("박현지, 김해솔")이면 그중 한 명만 골라도 걸린다(lib/personNames).
+    if (!matchesPersonFilter(post.creator, filters.creatorNames)) return false;
+    if (!matchesPersonFilter(post.planner, filters.plannerNames)) return false;
 
     // 게시일 필터 (posted_at 기준)
     if (filters.postedFrom && (!post.posted_at || post.posted_at < filters.postedFrom)) return false;
@@ -132,13 +134,10 @@ export default function MonitoringPage() {
   ).sort((a, b) => a.localeCompare(b, "ko")), [posts]);
 
   // 제작자·기획자 옵션 — 시트 정본 열(creator/planner)에서 직접. (소재명 파싱은 파일명 오염에 취약해 폐기)
-  const creatorOptions = useMemo(() => Array.from(
-    new Set(posts.map(p => (p.creator ?? "").trim()).filter(Boolean))
-  ).sort((a, b) => a.localeCompare(b, "ko")), [posts]);
+  // 여러 명이 한 칸에 적힌 값("박현지, 김해솔")은 사람별로 나눠 한 번씩만 보인다(2026-10-26 사용자 지시).
+  const creatorOptions = useMemo(() => personNameOptions(posts.map(p => p.creator)), [posts]);
 
-  const plannerOptions = useMemo(() => Array.from(
-    new Set(posts.map(p => (p.planner ?? "").trim()).filter(Boolean))
-  ).sort((a, b) => a.localeCompare(b, "ko")), [posts]);
+  const plannerOptions = useMemo(() => personNameOptions(posts.map(p => p.planner)), [posts]);
 
   const hasFilter = filters.name !== "" || filters.project !== "" || filters.caption !== "" || filters.products.length > 0 || filters.channelTypes.length > 0 || filters.companies.length > 0 || filters.creatorNames.length > 0 || filters.plannerNames.length > 0 || filters.dateFrom !== "" || filters.dateTo !== "" || filters.postedFrom !== "" || filters.postedTo !== "";
   const colSpan = 17;
