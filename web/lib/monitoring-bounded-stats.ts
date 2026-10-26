@@ -44,6 +44,25 @@ export type DashboardStatSummary = {
   day7_play_count?: number | string | null;
 };
 
+/**
+ * RPC JSON bundle의 최소 식별 계약을 검증한다. 숫자 필드는 Postgres/Supabase 설정에
+ * 따라 number 또는 string이 될 수 있어 여기서는 식별자와 행 구조만 엄격히 검사하고,
+ * 전체 게시물 coverage·중복 여부는 route에서 별도로 fail-closed 한다.
+ */
+export function decodeDashboardStatSummaryBundle(value: unknown): DashboardStatSummary[] | null {
+  if (!Array.isArray(value)) return null;
+  const rows: DashboardStatSummary[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+    const row = item as Record<string, unknown>;
+    if (typeof row.id !== "string" || typeof row.post_id !== "string" || row.id !== row.post_id) {
+      return null;
+    }
+    rows.push(row as DashboardStatSummary);
+  }
+  return rows;
+}
+
 function finiteNumber(value: unknown): number | null {
   if (value == null || value === "") return null;
   const n = Number(value);

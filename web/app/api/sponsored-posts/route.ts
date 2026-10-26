@@ -23,6 +23,7 @@ import {
 import { daysAgoKST, isValidEntryDate, todayKST } from "@/lib/dateRule";
 import {
   DASHBOARD_HISTORY_DAYS,
+  decodeDashboardStatSummaryBundle,
   exactDashboardSummary,
   historyBaselineRow,
   monotonicDashboardStats,
@@ -82,8 +83,8 @@ type SponsoredPostRow = Record<string, unknown> & {
   post_daily_stats?: DailyStatRow[];
 };
 
-type SummaryPageResult = {
-  data: DashboardStatSummary[] | null;
+type SummaryBundleResult = {
+  data: { summaries?: unknown } | null;
   error: { message?: string } | null;
 };
 
@@ -94,29 +95,23 @@ function dashboardHistoryRollout(): DashboardHistoryRollout {
   return configured === "bounded" || configured === "shadow" ? configured : "legacy";
 }
 
-const SUMMARY_PAGE = 1000;
-
-async function fetchSummaryPages(
+async function fetchSummaryBundle(
   supabase: ReturnType<typeof getServerSupabase>,
   loadedFrom: string,
   beforeDate: string,
   statsSnapshot: string,
 ): Promise<{ rows: DashboardStatSummary[]; error: string | null }> {
-  const rows: DashboardStatSummary[] = [];
-  for (let from = 0; ; from += SUMMARY_PAGE) {
-    const { data, error } = await supabase
-      .rpc("monitoring_dashboard_stat_summaries_v1", {
-        p_from: loadedFrom,
-        p_before: beforeDate,
-        p_created_before: statsSnapshot,
-      })
-      .order("id", { ascending: true })
-      .range(from, from + SUMMARY_PAGE - 1) as unknown as SummaryPageResult;
-    if (error) return { rows: [], error: error.message ?? "summary RPC failed" };
-    const page = data ?? [];
-    rows.push(...page);
-    if (page.length < SUMMARY_PAGE) return { rows, error: null };
-  }
+  const { data, error } = await supabase
+    .rpc("monitoring_dashboard_stat_summary_bundle_v1", {
+      p_from: loadedFrom,
+      p_before: beforeDate,
+      p_created_before: statsSnapshot,
+    })
+    .single() as unknown as SummaryBundleResult;
+  if (error) return { rows: [], error: error.message ?? "summary bundle RPC failed" };
+  const rows = decodeDashboardStatSummaryBundle(data?.summaries);
+  if (!rows) return { rows: [], error: "summary bundle shape invalid" };
+  return { rows, error: null };
 }
 
 function finiteNumber(value: unknown): number | null {
@@ -314,7 +309,7 @@ export async function GET(req: NextRequest) {
   const rollout = dashboardHistoryRollout();
   let summaries = rollout === "legacy"
     ? { rows: [] as DashboardStatSummary[], error: null as string | null }
-    : await fetchSummaryPages(supabase, loadedFrom, beforeDate, statsSnapshot);
+    : await fetchSummaryBundle(supabase, loadedFrom, beforeDate, statsSnapshot);
   if (!summaries.error && rollout !== "legacy") {
     const expected = new Set(uniquePosts.map((post) => post.id));
     const returned = new Set(summaries.rows.map((row) => String(row.post_id)));

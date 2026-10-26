@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   historyBaselineRow,
+  decodeDashboardStatSummaryBundle,
   exactDashboardSummary,
   monotonicDashboardStats,
   visibleDashboardStats,
@@ -123,6 +124,15 @@ test("stats_v2 decoder는 새 baseline metadata와 옛 6칸 튜플을 모두 읽
   assert.equal(legacy.fb_play_count, null);
 });
 
+test("summary bundle decoder는 식별자가 완전한 행만 허용한다", () => {
+  const valid = [{ id: "p1", post_id: "p1", latest_stats: null }];
+  assert.deepEqual(decodeDashboardStatSummaryBundle(valid), valid);
+  assert.deepEqual(decodeDashboardStatSummaryBundle([]), []);
+  assert.equal(decodeDashboardStatSummaryBundle({ summaries: valid }), null);
+  assert.equal(decodeDashboardStatSummaryBundle([{ id: "p1", post_id: "p2" }]), null);
+  assert.equal(decodeDashboardStatSummaryBundle([{ post_id: "p1" }]), null);
+});
+
 test("summary SQL 계약: KST 경계·manual reset·day7·분리 baseline을 DB 안에서 계산한다", () => {
   const here = fileURLToPath(new URL(".", import.meta.url));
   const sql = readFileSync(`${here}../../supabase/migrations/20261026_monitoring_dashboard_stat_summaries.sql`, "utf8");
@@ -136,13 +146,26 @@ test("summary SQL 계약: KST 경계·manual reset·day7·분리 baseline을 DB 
   assert.match(sql, /grant execute on function public\.monitoring_dashboard_stat_summaries_v1\(date, date, timestamptz\) to service_role/i);
 });
 
-test("rollout 계약: legacy가 기본이고 shadow·bounded만 명시 활성화하며 RPC는 1,000행을 페이지네이션한다", () => {
+test("summary bundle SQL 계약: 비싼 v1 요약을 한 번만 계산해 단일 PostgREST 행으로 묶는다", () => {
+  const here = fileURLToPath(new URL(".", import.meta.url));
+  const sql = readFileSync(`${here}../../supabase/migrations/20261026_monitoring_dashboard_stat_summary_bundle.sql`, "utf8");
+  assert.match(sql, /returns table \(summaries jsonb\)/i);
+  assert.match(sql, /jsonb_agg\(to_jsonb\(s\) order by s\.id\)/i);
+  assert.match(sql, /from public\.monitoring_dashboard_stat_summaries_v1\(/i);
+  assert.match(sql, /revoke all on function public\.monitoring_dashboard_stat_summary_bundle_v1\(date, date, timestamptz\) from public/i);
+  assert.match(sql, /from anon/i);
+  assert.match(sql, /from authenticated/i);
+  assert.match(sql, /grant execute on function public\.monitoring_dashboard_stat_summary_bundle_v1\(date, date, timestamptz\) to service_role/i);
+});
+
+test("rollout 계약: legacy가 기본이고 shadow·bounded만 명시 활성화하며 summary RPC는 한 번만 호출한다", () => {
   const here = fileURLToPath(new URL(".", import.meta.url));
   const route = readFileSync(`${here}../app/api/sponsored-posts/route.ts`, "utf8");
   assert.match(route, /MONITORING_DASHBOARD_HISTORY_MODE\s*\?\?\s*"legacy"/);
   assert.match(route, /configured === "bounded" \|\| configured === "shadow"/);
-  assert.match(route, /for \(let from = 0; ; from \+= SUMMARY_PAGE\)/);
-  assert.match(route, /\.order\("id", \{ ascending: true \}\)\s*\.range\(from, from \+ SUMMARY_PAGE - 1\)/s);
+  assert.match(route, /\.rpc\("monitoring_dashboard_stat_summary_bundle_v1"/);
+  assert.match(route, /decodeDashboardStatSummaryBundle\(data\?\.summaries\)/);
+  assert.doesNotMatch(route, /for \(let from = 0; ; from \+= SUMMARY_PAGE\)/);
   assert.match(route, /summary coverage mismatch/);
   assert.match(route, /\.lte\("created_at", statsSnapshot\)/,
     "count and page reads must share an immutable snapshot watermark");
