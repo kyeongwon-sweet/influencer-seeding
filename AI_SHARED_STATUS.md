@@ -1,5 +1,14 @@
 # AI Shared Status
 
+## ✅ 2026-10-26 [Codex 최적화] Supabase egress 구조적 절감 — 대시보드·부정댓글 봇 운영 반영·실측 완료
+- **결정:** 대시보드는 최근 **60일 원시 통계 + 정확한 과거 요약 + 과거 범위 선택 시 지연 조회**로 바꿨다. 댓글 모니터 봇은 단순히 “미처리 알림만” 읽는 방식이 아니라, **미처리 대상과 재처리 방지에 필요한 최소 완료 상태**를 bounded RPC 한 번으로 가져오도록 했다. 누락 방지·기존 판정 보존과 egress 절감을 함께 만족하는 구조다.
+- **DB 구조·권한:** `monitoring_dashboard_stat_summaries_v1(date,date,timestamptz)`와 bundle RPC `monitoring_dashboard_stat_summary_bundle_v1(date,date,timestamptz)`를 추가하고 `post_daily_stats_measured_id_idx`·`post_daily_stats_post_measured_id_idx`를 생성했다. 함수 실행 권한은 `service_role`만 있고 `anon`·`authenticated`에는 없다.
+- **대시보드 반영:** `f8040eb6` → `4abff6cd` → `ea16d1c5` → `43ad7f7a`. 운영 모드는 `MONITORING_DASHBOARD_HISTORY_MODE=bounded`; 즉시 롤백은 `legacy`, 비교 진단은 `shadow`다. shadow 게시물 **5,032/5,032** 일치, web **711/711**·`tsc --noEmit`·production build 통과.
+- **대시보드 운영 실측:** Vercel production `/monitoring`에서 게시물 **5,032건 · 총 조회수 203,523,468 · 검색 KPI 494,734 · 과거 데이터 시작일 2026-05-17 · 차트 58일**을 확인했다. `2026-08-10~12` 과거 범위를 직접 선택해 lazy-load 성공·오류 없음도 확인했다. 기존 전체기간 검색 KPI·B2B·차트 의미를 보존하며 값·통계 행은 수정하지 않았다.
+- **댓글 모니터 봇 반영:** `2503c28`에서 전체 원시 상태 반복 조회를 bounded RPC로 교체. 사전 라이브 읽기 전용 대조는 대상 **1,208/1,208** 일치, 호출 시간 **3,658ms → 552ms**. 운영 모드는 `MONITOR_TARGET_STATE_MODE=optimized`; 즉시 롤백은 `legacy`, 비교 진단은 `shadow`다. 테스트 **633/633** 통과.
+- **봇 운영 게이트:** GitHub run **40264442564** success. self-chain 4회 모두 `[monitor-target-state] mode=optimized targets=1206 matched=1206`(03:32·03:47·04:03·04:19 UTC)였고, target-state `RPC failed/falling back`·mismatch 로그 0. 같은 run에서 `failedTargets=0 · failedBatches=0 · moderationFailed=0 · persistenceFailed=0 · slackUpdateFailed=0`을 확인했다. 앞서 pending이던 run `40261022748`은 job 시작 전 concurrency 교체로 취소돼 검증 근거에서 제외했다.
+- **절감 해석:** 대시보드는 평소 전체 누적 `post_daily_stats` 원문 대신 최근 60일+요약 1행만 읽고, 봇은 여러 광범위 조회 대신 필요한 상태 집합만 읽는다. 따라서 구조적으로 큰 절감이지만 실제 Supabase 사용량 감소율은 다음 사용량 창에서 실측하며 추정 퍼센트는 기록하지 않는다.
+
 ## ✅ 2026-10-26 [Codex 최종감사·복구] 대시보드 정상화 · RD 시트 10-25 누락분·재시도 20건 반영 완료
 - **대시보드:** 인증된 프로덕션 `/monitoring`에서 데이터 행까지 정상 렌더. 화면 기준 `마지막 업데이트 2026.10.26 10:23 · 자동 실행`, 총 **5,032건**이며 10-23 신규 데이터(예: `떵개떵` P바치 29,739)도 표시된다.
 - **원천 날짜 경계:** DB `post_daily_stats`는 10-23 정상, **10-24 0행**, 10-25 복구 수집 존재. 10-24는 Supabase 402 정지 중 원천 자체가 없어 값을 추정·복사하지 않았고, 사용자 결정대로 날짜열도 만들지 않았다. 시트 최신 머리글은 `FS=2026.10.23 · FT=2026.10.25 · FU=등록상태`다.
