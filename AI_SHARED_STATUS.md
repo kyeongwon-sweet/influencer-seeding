@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## ✅ 2026-10-26 [Codex 추가 최적화] Supabase 반복 전체이력 3경로 RPC 전환 · 실데이터 exact parity 후 운영 활성화 (`ef5c4bc0`)
+- **범위:** 기존 대시보드·부정댓글 봇 최적화에 이어 ① 조회수 누락 재시도 큐 ② 누적지표 역행 워치독 ③ `run_monitoring.py`의 활성글 이력 요약·일일 스냅샷 합계를 PostgreSQL RPC로 내렸다. 값 판정·제외 규칙·빈칸≠0·배너 reach 정책은 바꾸지 않고, 원시 `post_daily_stats` 전체 다운로드만 제거했다.
+- **라이브 DB:** `monitoring_view_missing_candidates_v1` · `monitoring_reverse_events_v1` · `monitoring_collection_active_summary_v1` · `monitoring_collection_snapshot_totals_v1` 설치 및 4개 시그니처를 `pg_proc`에서 확인했다. 응답은 PostgREST 1,000행 제한에 잘리지 않도록 JSON bundle/집계 1행이고, 실행권한은 `service_role`만 유지한다. DB 통계값 쓰기·보정은 0건이다.
+- **exact shadow 검증:** View Missing run **40278691646** — 후보 **1,351/1,351**, 원천 통계 **71,500행**, 최종 `eligible=1,222 · queue=140 · retryable=10`까지 기존 경로와 동일. Reverse run **40278836783** — 전수 **124,703행**, 최근창 **2,527행**, 전체 event **72건**과 렌더된 알림이 exact(최근 2일 역행 0). Collection parity run **40279344203** — 활성 **1,352건/전체 5,082건**의 6개 요약 map 및 snapshot `play=155,491,801 · likes=1,575,978 · comments=18,652 · post_count=3,812` exact.
+- **운영 전환:** repo variables `VIEW_MISSING_QUERY_MODE` · `REVERSE_WATCHDOG_MODE` · `MONITORING_COLLECTION_SUMMARY_MODE`를 모두 **`optimized`**로 설정했다. 최적화 모드 재실행 run **40279634409**(누락 큐)·**40279637241**(역행 dry-run) 모두 RPC 경로로 성공했고 fallback/WARN 0. RPC·decoder 오류 시 각 작업은 검증된 legacy 경로로 fail-open한다.
+- **검증·배포:** scripts **530 passed · 7 skipped · 4 subtests**, web **711/711**, `tsc --noEmit`, production build, YAML 6개 parse, `git diff --check` 통과. push CI Build **40278664017**·Workflow Lint **40278664013** success. 첫 collection parity run **40279026348**은 SQL Editor 기존 쿼리와의 결합으로 함수가 미생성돼 `PGRST202`였으며, 빈 쿼리에서 migration 재실행→4함수 확인→PostgREST schema reload 후 위 exact run으로 종결했다.
+- **절감 해석·플랜 판단:** 매일 반복하던 71,500행·124,703행·활성/전체 이력 다중 전송이 후보 JSON/이벤트 JSON/집계 1행으로 바뀌었다. 절감률은 사용량 창에서 실측하며 추정 퍼센트는 만들지 않는다. **Free 재전환은 아직 보류**하고 최소 7일(권장 14일) 실측을 월 환산해 **3.5GB 이하**(5GB 한도의 30% 여유)일 때만 결정한다.
+
 ## ✅ 2026-10-26 [Codex 최적화] Supabase egress 구조적 절감 — 대시보드·부정댓글 봇 운영 반영·실측 완료
 - **결정:** 대시보드는 최근 **60일 원시 통계 + 정확한 과거 요약 + 과거 범위 선택 시 지연 조회**로 바꿨다. 댓글 모니터 봇은 단순히 “미처리 알림만” 읽는 방식이 아니라, **미처리 대상과 재처리 방지에 필요한 최소 완료 상태**를 bounded RPC 한 번으로 가져오도록 했다. 누락 방지·기존 판정 보존과 egress 절감을 함께 만족하는 구조다.
 - **DB 구조·권한:** `monitoring_dashboard_stat_summaries_v1(date,date,timestamptz)`와 bundle RPC `monitoring_dashboard_stat_summary_bundle_v1(date,date,timestamptz)`를 추가하고 `post_daily_stats_measured_id_idx`·`post_daily_stats_post_measured_id_idx`를 생성했다. 함수 실행 권한은 `service_role`만 있고 `anon`·`authenticated`에는 없다.
