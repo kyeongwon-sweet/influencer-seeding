@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { logger } from "@/lib/logger";
-import { splitDuplicateMentions, type Mentionish } from "@/lib/url-utils";
+import { duplicateMentionMessage, splitDuplicateMentions, type Mentionish } from "@/lib/url-utils";
 
 type OrganicMentionPayload = Mentionish;
 
@@ -61,20 +61,22 @@ export async function GET(req: NextRequest) {
 /** 저장된 URL 전량(중복 판정용). 목록이 크지 않아 한 번에 읽되 페이지네이션은 지킨다. */
 // ⚠️ `uploaded_at` 을 함께 읽는다 — 프로필 URL(인스타 스토리 등)은 URL+업로드일자로 식별하므로
 //    URL만 넘기면 같은 계정의 다른 날짜 노출이 기존 1건에 전부 흡수된다(`mentionDedupeKey` 참조).
+// `id`·`account_name` 은 중복 안내용 — "이미 등록됨"만 띄우면 어느 행인지 몰라 목록에서 못 찾는다(2026-10-26).
+type ExistingMention = { id: string; url: string; uploaded_at: string | null; account_name: string | null };
 async function loadExistingUrls(
   supabase: ReturnType<typeof getServerSupabase>,
-): Promise<Array<{ url: string; uploaded_at: string | null }>> {
-  const rows: Array<{ url: string; uploaded_at: string | null }> = [];
+): Promise<ExistingMention[]> {
+  const rows: ExistingMention[] = [];
   const PAGE = 1000;
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await supabase
       .from("organic_mentions")
-      .select("url,uploaded_at")
+      .select("id,url,uploaded_at,account_name")
       .order("id", { ascending: true })
       .range(from, from + PAGE - 1);
     if (error) throw new Error(error.message);
-    for (const row of (data ?? []) as Array<{ url: string | null; uploaded_at: string | null }>) {
-      if (row.url) rows.push({ url: row.url, uploaded_at: row.uploaded_at ?? null });
+    for (const row of (data ?? []) as Array<{ id: string; url: string | null; uploaded_at: string | null; account_name: string | null }>) {
+      if (row.url) rows.push({ id: row.id, url: row.url, uploaded_at: row.uploaded_at ?? null, account_name: row.account_name ?? null });
     }
     if (!data || data.length < PAGE) break;
   }
@@ -91,7 +93,7 @@ export async function POST(req: NextRequest) {
   // URL 정규화 + 중복 차단.
   //  - 정규화(normalizeUrl)가 쿼리스트링을 버리므로 utm_source·igsh·fbclid 등이 붙어도 같은 글로 접힌다.
   //  - 이미 저장된 URL, 그리고 같은 요청 안에서 겹치는 URL 모두 저장하지 않는다.
-  let existingUrls: Array<{ url: string; uploaded_at: string | null }>;
+  let existingUrls: ExistingMention[];
   try {
     existingUrls = await loadExistingUrls(supabase);
   } catch (e) {
@@ -109,10 +111,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "링크(URL)를 입력해주세요." }, { status: 400 });
     }
     if (duplicates.length > 0) {
-      const url = duplicates[0].url;
-      logger.info("organic-mentions-api", "중복 링크 차단", { url });
+      const { url, existing } = duplicates[0];
+      logger.info("organic-mentions-api", "중복 링크 차단", { url, existingId: existing?.id });
+      // 화면이 그 행을 바로 보여 줄 수 있게 기존 행의 id·계정명·업로드일을 함께 돌려준다.
       return NextResponse.json(
-        { error: `이미 등록된 링크입니다. (${url})`, duplicate: true, url },
+        {
+          error: duplicateMentionMessage(existing),
+          duplicate: true,
+          url,
+          existing: existing
+            ? { id: existing.id ?? null, account_name: existing.account_name ?? null, uploaded_at: existing.uploaded_at ?? null }
+            : null,
+        },
         { status: 409 },
       );
     }
