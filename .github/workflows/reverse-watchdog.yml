@@ -34,5 +34,6 @@ jobs:
           STATUS_USER: U0B2Y0ZC8QZ
           REVERSE_THRESHOLD: "0.05"
           REVERSE_RECENT_DAYS: "2"
+          REVERSE_WATCHDOG_MODE: ${{ vars.REVERSE_WATCHDOG_MODE }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true && '1' || '0' }}
         run: python scripts/reverse_watchdog.py

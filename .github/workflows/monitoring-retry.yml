@@ -37,6 +37,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          VIEW_MISSING_QUERY_MODE: ${{ vars.VIEW_MISSING_QUERY_MODE }}
         run: |
           export TODAY_KST=$(TZ=Asia/Seoul date -d 'yesterday' +%F)
           cd scripts
@@ -78,6 +79,7 @@ jobs:
           # (2026-08-03 사고: cron-daily-collect에도 같은 누락이 있어 74건이 무통보 방치됐다)
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           STATUS_USER: U0B2Y0ZC8QZ
+          MONITORING_COLLECTION_SUMMARY_MODE: ${{ vars.MONITORING_COLLECTION_SUMMARY_MODE }}
         run: |
           export MONITORING_DATE=$(TZ=Asia/Seoul date -d 'yesterday' +%F)
           echo "MONITORING_DATE=${MONITORING_DATE}"

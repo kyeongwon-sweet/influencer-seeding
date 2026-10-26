@@ -1,15 +1,26 @@
 import unittest
 
 from pathlib import Path
+from unittest.mock import patch
+
+import build_view_missing_queue as queue_module
 
 from build_view_missing_queue import (
     NON_RETRYABLE_REASONS,
+    build_queue_summary,
     build_history_state,
+    build_same_day_state,
+    decode_candidate_bundle,
     decide_reason,
+    decide_reason_from_state,
     exclusion_reason,
     has_same_day_measurement,
+    has_same_day_measurement_from_state,
     is_tiktok_view_post,
     has_no_public_view_metric,
+    load_queue_source,
+    source_parity_issues,
+    view_missing_query_mode,
 )
 
 
@@ -431,3 +442,199 @@ class ReachOnlyManualChannelTest(unittest.TestCase):
         source = Path(__file__).with_name("build_view_missing_queue.py").read_text(encoding="utf-8")
         for reason in NON_RETRYABLE_REASONS:
             self.assertIn(f'"{reason}": 0', source, f"excluded 초기값에 {reason} 누락")
+
+
+def _rpc_candidate(post_id="00000000-0000-0000-0000-000000000001", **overrides):
+    row = {
+        "id": post_id,
+        "url": "https://www.instagram.com/reel/Example123/",
+        "account_name": "example",
+        "created_at": "2026-10-26T00:10:00+00:00",
+        "posted_at": "2026-10-25",
+        "ended_at": None,
+        "channel_type": "바이럴 (영상)",
+        "notes": None,
+        "not_found_streak": 0,
+        "not_found_last_at": None,
+        "review_requested_at": None,
+        "same_day_rows": 0,
+        "same_day_has_positive_metric": False,
+        "same_day_has_null_metric": False,
+        "same_day_has_play_zero": False,
+        "has_metric": False,
+        "has_likes_or_comments": False,
+        "has_manual_zero": False,
+        "has_auto_play_ever": False,
+        "has_auto_reach_ever": False,
+        "has_reach_ever": False,
+        "last_metric": None,
+        "last_metric_date": None,
+    }
+    row.update(overrides)
+    return row
+
+
+class AggregatedStateParityTest(unittest.TestCase):
+    def test_same_day_summary_preserves_positive_null_and_youtube_zero(self):
+        rows = [
+            {"play_count": None, "reach_count": None},
+            {"play_count": 0, "reach_count": 99},
+            {"play_count": 120, "reach_count": None},
+        ]
+        state = build_same_day_state(rows)
+        self.assertEqual(state["same_day_rows"], 3)
+        self.assertTrue(state["same_day_has_positive_metric"])
+        self.assertTrue(state["same_day_has_null_metric"])
+        self.assertTrue(state["same_day_has_play_zero"])
+        # play=0 wins over reach=99, exactly like metric(); the third row is
+        # the only positive measurement.
+        self.assertTrue(has_same_day_measurement_from_state(
+            {"url": "https://www.youtube.com/watch?v=x"}, state,
+        ))
+
+    def test_aggregated_reason_matches_raw_reason(self):
+        post = {
+            "url": "https://www.tiktok.com/@a/video/123/",
+            "channel_type": "위성채널",
+            "posted_at": "2026-10-01",
+        }
+        rows = [{"play_count": None, "reach_count": None, "manual": False}]
+        history = build_history_state(rows)
+        self.assertEqual(
+            decide_reason(post, rows, history, "2026-10-25"),
+            decide_reason_from_state(post, build_same_day_state(rows), history, "2026-10-25"),
+        )
+        self.assertEqual(
+            has_same_day_measurement(post, rows),
+            has_same_day_measurement_from_state(post, build_same_day_state(rows)),
+        )
+
+
+class CandidateBundleValidationTest(unittest.TestCase):
+    def test_single_json_bundle_is_not_subject_to_the_1000_row_result_cap(self):
+        candidates = [
+            _rpc_candidate(f"00000000-0000-0000-0000-{index:012d}")
+            for index in range(1001)
+        ]
+        decoded, stat_rows = decode_candidate_bundle([{
+            "candidates": candidates,
+            "candidate_count": len(candidates),
+            "source_stat_rows": 5000,
+        }])
+        self.assertEqual(len(decoded), 1001)
+        self.assertEqual(stat_rows, 5000)
+
+    def test_declared_coverage_mismatch_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "candidate coverage mismatch"):
+            decode_candidate_bundle([{
+                "candidates": [_rpc_candidate()],
+                "candidate_count": 2,
+                "source_stat_rows": 0,
+            }])
+
+    def test_duplicate_id_is_rejected(self):
+        candidate = _rpc_candidate()
+        with self.assertRaisesRegex(ValueError, "duplicate candidate id"):
+            decode_candidate_bundle([{
+                "candidates": [candidate, dict(candidate)],
+                "candidate_count": 2,
+                "source_stat_rows": 0,
+            }])
+
+    def test_missing_policy_fact_is_rejected(self):
+        candidate = _rpc_candidate()
+        candidate.pop("has_manual_zero")
+        with self.assertRaisesRegex(ValueError, "missing fields"):
+            decode_candidate_bundle([{
+                "candidates": [candidate],
+                "candidate_count": 1,
+                "source_stat_rows": 0,
+            }])
+
+    def test_impossible_stat_coverage_is_rejected(self):
+        candidate = _rpc_candidate(same_day_rows=2)
+        with self.assertRaisesRegex(ValueError, "stat coverage mismatch"):
+            decode_candidate_bundle([{
+                "candidates": [candidate],
+                "candidate_count": 1,
+                "source_stat_rows": 1,
+            }])
+
+
+class QueryRolloutTest(unittest.TestCase):
+    EMPTY = {"raw_eligible": [], "same_day": {}, "history": {}, "source_stat_rows": 0}
+
+    def test_unknown_mode_fails_closed_to_legacy_selection(self):
+        self.assertEqual(view_missing_query_mode("typo"), "legacy")
+
+    def test_optimized_rpc_failure_fails_open_to_complete_legacy_query(self):
+        with patch.object(queue_module, "_rpc_source", side_effect=RuntimeError("rpc unavailable")), \
+                patch.object(queue_module, "_legacy_source", return_value=self.EMPTY) as legacy:
+            result = load_queue_source(
+                "2026-10-25", mode="optimized", created_before="2026-10-26T10:00:00+09:00",
+            )
+        self.assertIs(result, self.EMPTY)
+        legacy.assert_called_once_with("2026-10-25")
+
+    def test_shadow_mismatch_keeps_legacy_result(self):
+        optimized = {
+            "raw_eligible": [_rpc_candidate()],
+            "same_day": {},
+            "history": {},
+            "source_stat_rows": 0,
+        }
+        with patch.object(queue_module, "_rpc_source", return_value=optimized), \
+                patch.object(queue_module, "_legacy_source", return_value=self.EMPTY):
+            result = load_queue_source(
+                "2026-10-25", mode="shadow", created_before="2026-10-26T10:00:00+09:00",
+            )
+        self.assertIs(result, self.EMPTY)
+
+    def test_parity_checks_policy_state_not_only_candidate_count(self):
+        post = _rpc_candidate()
+        legacy = {
+            "raw_eligible": [post],
+            "same_day": {post["id"]: build_same_day_state([])},
+            "history": {post["id"]: build_history_state([])},
+            "source_stat_rows": 0,
+        }
+        optimized = {
+            **legacy,
+            "history": {post["id"]: {**build_history_state([]), "has_manual_zero": True}},
+        }
+        self.assertEqual(source_parity_issues(legacy, legacy), [])
+        self.assertEqual(source_parity_issues(legacy, optimized), [f"state:{post['id']}"])
+
+    def test_queue_output_contract_is_unchanged_for_optimized_source(self):
+        post = _rpc_candidate(
+            same_day_rows=1,
+            same_day_has_null_metric=True,
+            has_likes_or_comments=True,
+        )
+        source = {
+            "raw_eligible": [post],
+            "same_day": {post["id"]: {field: post[field] for field in queue_module.SAME_DAY_FIELDS}},
+            "history": {post["id"]: {field: post[field] for field in queue_module.HISTORY_FIELDS}},
+            "source_stat_rows": 1,
+        }
+        summary = build_queue_summary("2026-10-25", False, source)
+        self.assertEqual(summary["queue_count"], 1)
+        self.assertEqual(summary["queue"][0]["reason"], "same_day_row_without_view_metric")
+        self.assertEqual(summary["queue"][0]["same_day_rows"], 1)
+
+
+class CandidateRpcSqlContractTest(unittest.TestCase):
+    def test_rpc_is_single_row_service_role_only_and_preserves_metric_semantics(self):
+        migration = Path(__file__).resolve().parents[1] / "supabase" / "migrations" / \
+            "20261026_monitoring_view_missing_candidates.sql"
+        sql = migration.read_text(encoding="utf-8").lower()
+        self.assertIn("returns table", sql)
+        self.assertIn("candidates jsonb", sql)
+        self.assertIn("jsonb_agg", sql)
+        self.assertIn("security invoker", sql)
+        self.assertIn("grant execute on function public.monitoring_view_missing_candidates_v1", sql)
+        self.assertIn("to service_role", sql)
+        self.assertIn("when s.play_count is not null then s.play_count", sql)
+        self.assertIn("s.manual is distinct from true", sql)
+        self.assertIn("order by s.post_id, s.measured_at desc, s.id desc", sql)
+        self.assertNotIn("current_date", sql, "업무 날짜는 호출자가 넘긴 KST p_target만 써야 한다")

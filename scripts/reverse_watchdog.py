@@ -5,12 +5,12 @@
 오탐/미탐이 반복됐다. 단조(역행) 검사를 **시트 수식에서 DB 워치독으로 이관**한다.
 DB는 편집과 무관하게 안정적이고, 이미 배너 reach 정리 때 쓴 역행 로직을 그대로 쓴다.
 
-역행 = 누적 지표(배너는 reach_count, 그 외는 play_count)가 **그 게시물의 이전 최댓값보다
+역행 = 누적 지표(배너는 reach_count, 그 외는 play_count)가 **그 게시물의 직전 유효값보다
 낮아진 것**(누적이라 불가능 = 확실한 오류). 스냅샷 복붙·수집 글리치·오배정의 시그니처.
 
 cry-wolf 방지(2026-08-05 교훈):
   - 삭제 신호(0/null)는 제외(게시물 비공개/삭제는 별도 태깅 대상).
-  - 미세 감소(스크래퍼 노이즈)는 제외 — 이전 peak 대비 THRESHOLD(기본 5%) 이상 하락만.
+  - 미세 감소(스크래퍼 노이즈)는 제외 — 직전 유효값 대비 THRESHOLD(기본 5%) 이상 하락만.
   - **알림은 최근 RECENT_DAYS(기본 2일) 측정분만**(오늘·어제 새로 생긴 역행 = 조치 대상).
     전체 이력 역행 수는 참고로만 로그. → 평소엔 0건이라 알림이 안 뜬다(조용한 정상).
 
@@ -20,16 +20,21 @@ cry-wolf 방지(2026-08-05 교훈):
 from __future__ import annotations
 
 from channel_kind import is_banner_channel
+from kst_dates import kst_now
 
 import json
+import math
 import os
 import sys
 import urllib.error
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
-THRESHOLD = float(os.environ.get("REVERSE_THRESHOLD", "0.05"))  # 이전 peak 대비 하락 비율 하한
+THRESHOLD = float(os.environ.get("REVERSE_THRESHOLD", "0.05"))  # 직전 유효값 대비 하락 비율 하한
 RECENT_DAYS = int(os.environ.get("REVERSE_RECENT_DAYS", "2"))    # 알림 대상 최근 일수
+MODE_ENV = "REVERSE_WATCHDOG_MODE"
+VALID_MODES = {"legacy", "shadow", "optimized"}
+RPC_NAME = "monitoring_reverse_events_v1"
 
 
 def detect_reverses(stats: list[dict], posts: dict[str, dict], threshold: float) -> list[dict]:
@@ -118,6 +123,15 @@ def merge_reverse_events(*groups: list[dict]) -> list[dict]:
     return list(merged.values())
 
 
+def resolve_mode(raw: str | None) -> str:
+    """Rollout mode. Unknown values fail safely to the proven legacy scan."""
+    mode = str(raw or "legacy").strip().lower()
+    if mode in VALID_MODES:
+        return mode
+    print(f"[reverse-watchdog] [WARN] {MODE_ENV}={raw!r} 무효 — legacy로 폴백")
+    return "legacy"
+
+
 def recent_scan_start(recent_days: int, today: datetime) -> str:
     """Include one comparison day before the alert window."""
     return (today.date() - timedelta(days=recent_days + 1)).isoformat()
@@ -165,6 +179,196 @@ def _sb_get(url: str, key: str, path: str) -> list[dict]:
     return out
 
 
+def _sb_rpc(url: str, key: str, function: str, payload: dict) -> object:
+    """Call a PostgREST RPC once. Optimized RPCs return one JSON bundle row."""
+    req = urllib.request.Request(
+        f"{url}/rest/v1/rpc/{function}",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "apikey": key,
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json; charset=utf-8",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=120) as res:
+        return json.loads(res.read().decode("utf-8"))
+
+
+def _positive_integer(value: object, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{field} must be numeric")
+    numeric = float(value)
+    if not math.isfinite(numeric) or numeric <= 0 or not numeric.is_integer():
+        raise ValueError(f"{field} must be a positive integer")
+    return int(numeric)
+
+
+def _iso_date(value: object, field: str) -> str:
+    text = str(value or "")
+    try:
+        parsed = datetime.strptime(text, "%Y-%m-%d")
+    except ValueError as exc:
+        raise ValueError(f"{field} must be YYYY-MM-DD") from exc
+    if parsed.strftime("%Y-%m-%d") != text:
+        raise ValueError(f"{field} must be YYYY-MM-DD")
+    return text
+
+
+def decode_reverse_event_bundle(payload: object, threshold: float) -> list[dict]:
+    """Validate the single-row RPC contract and rebuild the exact legacy shape.
+
+    Validation is deliberately fail-closed: optimized/shadow callers fall back
+    to the legacy scan rather than accepting a partial or malformed event list.
+    drop_ratio is recomputed with Python's round(), preserving alert parity at
+    rounding boundaries instead of trusting a database numeric representation.
+    """
+    if not isinstance(payload, list) or len(payload) != 1 or not isinstance(payload[0], dict):
+        raise ValueError("RPC response must contain exactly one bundle row")
+    raw_events = payload[0].get("events")
+    if not isinstance(raw_events, list):
+        raise ValueError("RPC bundle events must be a list")
+
+    out: list[dict] = []
+    identities: set[tuple] = set()
+    for index, raw in enumerate(raw_events):
+        if not isinstance(raw, dict):
+            raise ValueError(f"events[{index}] must be an object")
+        post_id = str(raw.get("post_id") or "")
+        date = _iso_date(raw.get("date"), f"events[{index}].date")
+        prev_date = _iso_date(raw.get("prev_date"), f"events[{index}].prev_date")
+        metric = raw.get("metric")
+        if not post_id:
+            raise ValueError(f"events[{index}].post_id is empty")
+        if prev_date >= date:
+            raise ValueError(f"events[{index}] does not move forward by day")
+        if metric not in {"조회수", "도달수"}:
+            raise ValueError(f"events[{index}].metric is invalid")
+        value = _positive_integer(raw.get("value"), f"events[{index}].value")
+        prev = _positive_integer(raw.get("prev"), f"events[{index}].prev")
+        if value >= prev:
+            raise ValueError(f"events[{index}] is not a reverse")
+        drop_ratio = round((prev - value) / prev, 3)
+        # SQL applies the unrounded threshold. Recheck the unrounded ratio so an
+        # under-threshold row can never enter optimized alerts through bad RPC data.
+        if (prev - value) / prev < threshold:
+            raise ValueError(f"events[{index}] is below threshold")
+        row = {
+            "post_id": post_id,
+            "url": str(raw.get("url") or "(URL 없음)"),
+            "account_name": str(raw.get("account_name") or ""),
+            "date": date,
+            "metric": metric,
+            "value": value,
+            "prev": prev,
+            "prev_date": prev_date,
+            "suspect_value": prev,
+            "suspect_date": prev_date,
+            "drop_ratio": drop_ratio,
+        }
+        identity = _reverse_identity(row)
+        if identity in identities:
+            raise ValueError(f"events[{index}] duplicates an earlier event")
+        identities.add(identity)
+        out.append(row)
+    return out
+
+
+def load_optimized_reverses(url: str, key: str, threshold: float) -> list[dict]:
+    payload = _sb_rpc(url, key, RPC_NAME, {"p_threshold": threshold})
+    return decode_reverse_event_bundle(payload, threshold)
+
+
+def load_legacy_reverses(
+    url: str,
+    key: str,
+    threshold: float,
+    recent_days: int,
+    now: datetime,
+) -> list[dict]:
+    """Existing full-history + direct recent-window scan, unchanged in meaning."""
+    scan_start = recent_scan_start(recent_days, now)
+    posts_rows = _sb_get(url, key, "sponsored_posts?select=id,url,account_name,channel_type,posted_at")
+    posts = {p["id"]: p for p in posts_rows}
+    select = "id,post_id,measured_at,play_count,reach_count,created_at"
+    stats = _sb_get(url, key, f"post_daily_stats?select={select}")
+
+    # A direct recent scan remains authoritative in legacy mode. It protects
+    # against a missing page in the long offset-paginated history scan.
+    recent_stats = _sb_get(
+        url,
+        key,
+        f"post_daily_stats?select={select}&measured_at=gte.{scan_start}",
+    )
+    full_recent_ids = {
+        _stat_identity(row)
+        for row in stats
+        if str(row.get("measured_at") or "")[:10] >= scan_start
+    }
+    direct_recent_ids = {_stat_identity(row) for row in recent_stats}
+    if full_recent_ids != direct_recent_ids:
+        print(
+            "[reverse-watchdog] [WARN] 전수/최근창 입력 범위 불일치 — "
+            f"전수내최근={len(full_recent_ids)}, 직접최근={len(direct_recent_ids)}, "
+            f"전수누락={len(direct_recent_ids - full_recent_ids)}, "
+            f"직접누락={len(full_recent_ids - direct_recent_ids)}"
+        )
+    else:
+        print(
+            "[reverse-watchdog] 입력 범위 확인 — "
+            f"전수={len(stats)}, 최근창({scan_start}~)={len(recent_stats)}, 불일치=0"
+        )
+
+    full_reverses = detect_reverses(stats, posts, threshold)
+    recent_reverses = detect_reverses(recent_stats, posts, threshold)
+    return merge_reverse_events(full_reverses, recent_reverses)
+
+
+def select_reverse_events(
+    mode: str,
+    url: str,
+    key: str,
+    threshold: float,
+    recent_days: int,
+    now: datetime,
+) -> tuple[list[dict], str]:
+    """Select rollout path; every optimized error falls back to legacy."""
+    if mode == "legacy":
+        return load_legacy_reverses(url, key, threshold, recent_days, now), "legacy"
+
+    if mode == "optimized":
+        try:
+            events = load_optimized_reverses(url, key, threshold)
+            print(f"[reverse-watchdog] mode=optimized events={len(events)}")
+            return events, "optimized"
+        # This is an optimization boundary, not a correctness boundary. Any RPC,
+        # decoder, or unexpected optimized-path error must preserve the proven job.
+        except Exception as exc:
+            print(f"[reverse-watchdog] [WARN] optimized RPC 실패/무효 — legacy 폴백: {exc}")
+            return load_legacy_reverses(url, key, threshold, recent_days, now), "optimized-fallback"
+
+    # shadow always returns the proven legacy result. Both the complete event
+    # list and rendered alert must match before optimized can be promoted.
+    legacy = load_legacy_reverses(url, key, threshold, recent_days, now)
+    try:
+        optimized = load_optimized_reverses(url, key, threshold)
+    except Exception as exc:
+        print(f"[reverse-watchdog] [WARN] shadow RPC 실패/무효 — legacy 유지: {exc}")
+        return legacy, "shadow-fallback"
+
+    event_parity = optimized == legacy
+    alert_parity = build_alert(optimized, recent_days, now) == build_alert(legacy, recent_days, now)
+    if event_parity and alert_parity:
+        print(f"[reverse-watchdog] shadow parity ok — events={len(legacy)}, alert=exact")
+        return legacy, "shadow"
+    print(
+        "[reverse-watchdog] [WARN] shadow mismatch — legacy 유지: "
+        f"events={event_parity}, alert={alert_parity}, "
+        f"legacy_count={len(legacy)}, optimized_count={len(optimized)}"
+    )
+    return legacy, "shadow-mismatch"
+
+
 def notify(text: str) -> None:
     token = os.environ.get("SLACK_BOT_TOKEN")
     channel = os.environ.get("STATUS_USER") or os.environ.get("SLACK_CHANNEL")
@@ -194,47 +398,20 @@ def main() -> int:
         print("[reverse-watchdog] SUPABASE_URL/SERVICE_ROLE_KEY 없음")
         return 1
 
-    now = datetime.now(timezone.utc) + timedelta(hours=9)  # KST
-    scan_start = recent_scan_start(RECENT_DAYS, now)
-
-    posts_rows = _sb_get(url, key, "sponsored_posts?select=id,url,account_name,channel_type,posted_at")
-    posts = {p["id"]: p for p in posts_rows}
-    select = "id,post_id,measured_at,play_count,reach_count,created_at"
-    stats = _sb_get(url, key, f"post_daily_stats?select={select}")
-
-    # The 2026-08-30 cross-contamination incident proved that a recent 65,500 ->
-    # 745 transition could be absent from the alert even though the collection
-    # had finished 40 minutes before this workflow. The pure detector catches
-    # that pair, so recent data coverage is now queried independently instead of
-    # trusting only the long offset-paginated history scan. The scans are compared
-    # and the direct recent scan is authoritative for the alert window.
-    recent_stats = _sb_get(
+    now = kst_now()
+    requested_mode = resolve_mode(os.environ.get(MODE_ENV))
+    reverses, effective_mode = select_reverse_events(
+        requested_mode,
         url,
         key,
-        f"post_daily_stats?select={select}&measured_at=gte.{scan_start}",
+        THRESHOLD,
+        RECENT_DAYS,
+        now,
     )
-    full_recent_ids = {
-        _stat_identity(row)
-        for row in stats
-        if str(row.get("measured_at") or "")[:10] >= scan_start
-    }
-    direct_recent_ids = {_stat_identity(row) for row in recent_stats}
-    if full_recent_ids != direct_recent_ids:
-        print(
-            "[reverse-watchdog] [WARN] 전수/최근창 입력 범위 불일치 — "
-            f"전수내최근={len(full_recent_ids)}, 직접최근={len(direct_recent_ids)}, "
-            f"전수누락={len(direct_recent_ids - full_recent_ids)}, "
-            f"직접누락={len(full_recent_ids - direct_recent_ids)}"
-        )
-    else:
-        print(
-            "[reverse-watchdog] 입력 범위 확인 — "
-            f"전수={len(stats)}, 최근창({scan_start}~)={len(recent_stats)}, 불일치=0"
-        )
-
-    full_reverses = detect_reverses(stats, posts, THRESHOLD)
-    recent_reverses = detect_reverses(recent_stats, posts, THRESHOLD)
-    reverses = merge_reverse_events(full_reverses, recent_reverses)
+    print(
+        "[reverse-watchdog] rollout — "
+        f"requested={requested_mode}, effective={effective_mode}, events={len(reverses)}"
+    )
     text = build_alert(reverses, RECENT_DAYS, now)
 
     if text is None:

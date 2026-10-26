@@ -1,6 +1,8 @@
-"""reverse_watchdog 순수 함수 회귀 테스트 (stdlib, pytest)."""
+"""reverse_watchdog 순수 함수·optimized rollout 회귀 테스트."""
 from datetime import datetime, timezone
+from pathlib import Path
 
+import pytest
 import reverse_watchdog as w
 
 POSTS = {
@@ -132,3 +134,177 @@ def test_same_day_rows_use_created_at_then_id_order():
     # The later same-day correction (745) becomes the baseline, so 08-31=760
     # is monotonic. Input list order cannot fabricate a 65,500 -> 745 reverse.
     assert w.detect_reverses(rows, POSTS, 0.05) == []
+
+
+RAW_EVENT = {
+    "post_id": "vid",
+    "url": "https://x/vid",
+    "account_name": "acc_vid",
+    "date": "2026-08-31",
+    "metric": "조회수",
+    "value": 745,
+    "prev": 65_500,
+    "prev_date": "2026-08-30",
+}
+
+
+def test_rollout_mode_defaults_and_invalid_value_fail_to_legacy():
+    assert w.resolve_mode(None) == "legacy"
+    assert w.resolve_mode("") == "legacy"
+    assert w.resolve_mode(" SHADOW ") == "shadow"
+    assert w.resolve_mode("optimized") == "optimized"
+    assert w.resolve_mode("unexpected") == "legacy"
+
+
+def test_rpc_decoder_rebuilds_exact_legacy_event_shape():
+    out = w.decode_reverse_event_bundle([{"events": [RAW_EVENT]}], 0.05)
+    assert out == [{
+        **RAW_EVENT,
+        "suspect_value": 65_500,
+        "suspect_date": "2026-08-30",
+        "drop_ratio": 0.989,
+    }]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        [],
+        [{"events": []}, {"events": []}],
+        [{"events": None}],
+        [{"events": [{**RAW_EVENT, "value": 0}]}],
+        [{"events": [{**RAW_EVENT, "date": "not-a-date"}]}],
+        [{"events": [{**RAW_EVENT, "prev_date": "2026-09-01"}]}],
+        [{"events": [{**RAW_EVENT, "value": 64_000}]}],  # 2.3% < 5%
+        [{"events": [RAW_EVENT, RAW_EVENT]}],
+    ],
+)
+def test_rpc_decoder_rejects_partial_or_invalid_payload(payload):
+    with pytest.raises(ValueError):
+        w.decode_reverse_event_bundle(payload, 0.05)
+
+
+def test_optimized_loader_uses_one_rpc_call(monkeypatch):
+    calls = []
+
+    def fake_rpc(url, key, function, payload):
+        calls.append((url, key, function, payload))
+        return [{"events": [RAW_EVENT]}]
+
+    monkeypatch.setattr(w, "_sb_rpc", fake_rpc)
+    out = w.load_optimized_reverses("https://db", "secret", 0.05)
+    assert len(calls) == 1
+    assert calls[0][2:] == (w.RPC_NAME, {"p_threshold": 0.05})
+    assert out[0]["drop_ratio"] == 0.989
+
+
+def test_optimized_success_does_not_download_legacy(monkeypatch):
+    expected = w.decode_reverse_event_bundle([{"events": [RAW_EVENT]}], 0.05)
+    monkeypatch.setattr(w, "load_optimized_reverses", lambda *_: expected)
+
+    def unexpected_legacy(*_):
+        raise AssertionError("legacy scan must not run after a valid optimized response")
+
+    monkeypatch.setattr(w, "load_legacy_reverses", unexpected_legacy)
+    out, effective = w.select_reverse_events(
+        "optimized", "u", "k", 0.05, 2, datetime(2026, 9, 1)
+    )
+    assert out == expected
+    assert effective == "optimized"
+
+
+def test_optimized_invalid_response_falls_back_to_legacy(monkeypatch):
+    expected = [{"legacy": True}]
+
+    def invalid(*_):
+        raise RuntimeError("unexpected optimized-path failure")
+
+    monkeypatch.setattr(w, "load_optimized_reverses", invalid)
+    monkeypatch.setattr(w, "load_legacy_reverses", lambda *_: expected)
+    out, effective = w.select_reverse_events(
+        "optimized", "u", "k", 0.05, 2, datetime(2026, 9, 1)
+    )
+    assert out is expected
+    assert effective == "optimized-fallback"
+
+
+def test_shadow_requires_exact_event_and_alert_parity(monkeypatch):
+    legacy = w.decode_reverse_event_bundle([{"events": [RAW_EVENT]}], 0.05)
+    monkeypatch.setattr(w, "load_legacy_reverses", lambda *_: legacy)
+    monkeypatch.setattr(w, "load_optimized_reverses", lambda *_: [dict(legacy[0])])
+    out, effective = w.select_reverse_events(
+        "shadow", "u", "k", 0.05, 2, datetime(2026, 9, 1)
+    )
+    assert out is legacy
+    assert effective == "shadow"
+
+    mismatched = [{**legacy[0], "account_name": "wrong-account"}]
+    monkeypatch.setattr(w, "load_optimized_reverses", lambda *_: mismatched)
+    out, effective = w.select_reverse_events(
+        "shadow", "u", "k", 0.05, 2, datetime(2026, 9, 1)
+    )
+    assert out is legacy
+    assert effective == "shadow-mismatch"
+
+
+def test_shadow_rpc_error_falls_back_to_legacy(monkeypatch):
+    legacy = [{"legacy": True}]
+    monkeypatch.setattr(w, "load_legacy_reverses", lambda *_: legacy)
+
+    def rpc_error(*_):
+        raise OSError("network down")
+
+    monkeypatch.setattr(w, "load_optimized_reverses", rpc_error)
+    out, effective = w.select_reverse_events(
+        "shadow", "u", "k", 0.05, 2, datetime(2026, 9, 1)
+    )
+    assert out is legacy
+    assert effective == "shadow-fallback"
+
+
+def test_rpc_decoded_events_and_alert_match_legacy_exactly():
+    posts = {
+        "vid": POSTS["vid"],
+        "ban": POSTS["ban"],
+    }
+    rows = [
+        {**_s("vid", "2026-08-30", 65_500), "created_at": "2026-08-30T01:00:00Z", "id": "a"},
+        # Same-day later correction must be the baseline used by both paths.
+        {**_s("vid", "2026-08-30", 66_000), "created_at": "2026-08-30T02:00:00Z", "id": "b"},
+        {**_s("vid", "2026-08-31", 745), "created_at": "2026-08-31T01:00:00Z", "id": "c"},
+        {**_s("ban", "2026-08-30", reach=5_000), "created_at": "2026-08-30T01:00:00Z", "id": "d"},
+        {**_s("ban", "2026-08-31", reach=0), "created_at": "2026-08-31T01:00:00Z", "id": "e"},
+        {**_s("ban", "2026-09-01", reach=3_000), "created_at": "2026-09-01T01:00:00Z", "id": "f"},
+    ]
+    legacy = w.detect_reverses(rows, posts, 0.05)
+    raw = [{key: event[key] for key in (
+        "post_id", "url", "account_name", "date", "metric", "value", "prev", "prev_date"
+    )} for event in legacy]
+    optimized = w.decode_reverse_event_bundle([{"events": raw}], 0.05)
+    now = datetime(2026, 9, 1)
+    assert optimized == legacy
+    assert w.build_alert(optimized, 2, now) == w.build_alert(legacy, 2, now)
+
+
+def test_reverse_rpc_sql_contract_preserves_detector_semantics_and_permissions():
+    migration = (
+        Path(__file__).resolve().parents[1]
+        / "supabase"
+        / "migrations"
+        / "20261026_monitoring_reverse_events.sql"
+    ).read_text(encoding="utf-8").lower()
+    compact = " ".join(migration.split())
+
+    assert "returns table (events jsonb)" in compact
+    assert "jsonb_agg(" in compact
+    assert "partition by s.post_id, s.measured_at::date" in compact
+    assert "order by s.measured_at desc, s.created_at desc nulls last, s.id desc" in compact
+    assert "left join public.sponsored_posts p on p.id = s.post_id" in compact
+    assert "where metric_value is not null and metric_value > 0" in compact
+    assert "lag(v.metric_value) over ( partition by v.post_id order by v.measured_at )" in compact
+    assert "p.posted_at::date >= date '2026-08-18'" in compact
+    assert migration.index("valid_daily as") < migration.index("with_previous as")
+    assert "revoke all on function public.monitoring_reverse_events_v1(double precision) from public" in compact
+    assert "revoke all on function public.monitoring_reverse_events_v1(double precision) from anon" in compact
+    assert "revoke all on function public.monitoring_reverse_events_v1(double precision) from authenticated" in compact
+    assert "grant execute on function public.monitoring_reverse_events_v1(double precision) to service_role" in compact

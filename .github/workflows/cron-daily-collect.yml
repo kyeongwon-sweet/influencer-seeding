@@ -68,6 +68,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          VIEW_MISSING_QUERY_MODE: ${{ vars.VIEW_MISSING_QUERY_MODE }}
         run: |
           export TODAY=$(TZ=Asia/Seoul date -d 'yesterday' +%F)
           echo "kdate=${TODAY}" >> "$GITHUB_OUTPUT"
@@ -120,6 +121,7 @@ jobs:
           # 전달 경로가 봇토큰+채널 / 웹훅뿐이라 둘 다 없으면 예외도 실패로그도 없다. 절대 지우지 말 것.
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           STATUS_USER: U0B2Y0ZC8QZ   # 황경원 Slack user id (DM)
+          MONITORING_COLLECTION_SUMMARY_MODE: ${{ vars.MONITORING_COLLECTION_SUMMARY_MODE }}
         # 실패 사유 알럿용으로 출력을 로그 파일에 캡처(pipefail로 python 실패가 단계 실패에 반영).
         run: |
           cd scripts

@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from kst_dates import kst_date, kst_today
+from kst_dates import kst_date, kst_now, kst_today
 from channel_kind import is_banner_channel, is_reach_only_manual_channel
 from platform_kind import is_view_capable, platform
 
@@ -20,6 +20,23 @@ from db import get_client
 
 PAGE = 1000
 INTERNAL_VIEW_RETRY_FROM = "2026-08-07"
+VIEW_MISSING_RPC = "monitoring_view_missing_candidates_v1"
+VIEW_MISSING_QUERY_MODES = frozenset({"legacy", "shadow", "optimized"})
+
+POST_FIELDS = (
+    "id", "url", "account_name", "created_at", "posted_at", "ended_at",
+    "channel_type", "notes", "not_found_streak", "not_found_last_at",
+    "review_requested_at",
+)
+SAME_DAY_FIELDS = (
+    "same_day_rows", "same_day_has_positive_metric",
+    "same_day_has_null_metric", "same_day_has_play_zero",
+)
+HISTORY_FIELDS = (
+    "has_metric", "has_likes_or_comments", "has_manual_zero",
+    "has_auto_play_ever", "has_auto_reach_ever", "has_reach_ever",
+    "last_metric", "last_metric_date",
+)
 
 
 def fetch_pages(table: str, select: str, query=None) -> list[dict[str, Any]]:
@@ -41,6 +58,13 @@ def fetch_pages(table: str, select: str, query=None) -> list[dict[str, Any]]:
 def chunks(values: list[str], size: int = 100):
     for index in range(0, len(values), size):
         yield values[index:index + size]
+
+
+def view_missing_query_mode(value: str | None = None) -> str:
+    """Select the rollout lane. Unknown values stay on the proven legacy path."""
+    configured = str(value if value is not None else os.getenv("VIEW_MISSING_QUERY_MODE", "legacy"))
+    configured = configured.strip().lower()
+    return configured if configured in VIEW_MISSING_QUERY_MODES else "legacy"
 
 
 # 매체 판정은 platform_kind 단일 정본을 쓴다(알림과 큐가 갈라지지 않게). 이름은 재수출해
@@ -143,6 +167,27 @@ def exclusion_reason(post: dict[str, Any], target_date: str | None = None) -> st
     return None
 
 
+def empty_same_day_state() -> dict[str, Any]:
+    return {
+        "same_day_rows": 0,
+        "same_day_has_positive_metric": False,
+        "same_day_has_null_metric": False,
+        "same_day_has_play_zero": False,
+    }
+
+
+def build_same_day_state(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Reduce target-day rows without collapsing NULL into zero."""
+    return {
+        "same_day_rows": len(rows),
+        "same_day_has_positive_metric": any((metric(row) or 0) > 0 for row in rows),
+        "same_day_has_null_metric": any(
+            row.get("play_count") is None and row.get("reach_count") is None for row in rows
+        ),
+        "same_day_has_play_zero": any(row.get("play_count") == 0 for row in rows),
+    }
+
+
 def build_history_state(rows: list[dict[str, Any]]) -> dict[str, Any]:
     """게시물 한 건의 이력 요약(순수 함수 — 행동 테스트용).
 
@@ -227,9 +272,19 @@ def decide_reason(
       ⚠️ **양수 실측 이력이 한 번이라도 있으면 적용하지 않는다** → 나중에 값이 붙는 순간
          조건이 깨져 자동으로 큐에 복귀한다(self-heal). 값을 지어내거나 고치지 않는다.
     """
-    if not rows:
+    return decide_reason_from_state(post, build_same_day_state(rows), state, target_date)
+
+
+def decide_reason_from_state(
+    post: dict[str, Any],
+    same_day: dict[str, Any],
+    state: dict[str, Any],
+    target_date: str | None,
+) -> str:
+    """The existing reason policy applied to losslessly aggregated DB facts."""
+    if int(same_day.get("same_day_rows") or 0) == 0:
         reason = "missing_same_day_row"
-    elif any(row.get("play_count") is None and row.get("reach_count") is None for row in rows):
+    elif same_day.get("same_day_has_null_metric") is True:
         reason = "same_day_row_without_view_metric"
     else:
         reason = "same_day_non_positive_metric"
@@ -270,35 +325,39 @@ def has_same_day_measurement(post: dict[str, Any], rows: list[dict[str, Any]]) -
     저장하므로, 같은 날짜의 play_count=0도 유효 측정이다. 수기 0도 그 날짜에 한해서만
     유효하고, 다음 날짜에는 다시 공식 API를 조회한다.
     """
-    if any((metric(row) or 0) > 0 for row in rows):
+    return has_same_day_measurement_from_state(post, build_same_day_state(rows))
+
+
+def has_same_day_measurement_from_state(post: dict[str, Any], same_day: dict[str, Any]) -> bool:
+    """Aggregated equivalent of :func:`has_same_day_measurement`."""
+    if same_day.get("same_day_has_positive_metric") is True:
         return True
     if platform(post.get("url")) != "youtube":
         return False
-    return any(row.get("play_count") == 0 for row in rows)
+    return same_day.get("same_day_has_play_zero") is True
 
 
 def tail(url: str | None) -> str:
     return (url or "").rstrip("/").split("/")[-1]
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--date", default=kst_today())
-    parser.add_argument("--out-dir", default=os.getenv("RUNNER_TEMP") or "data/monitoring")
-    parser.add_argument("--include-all", action="store_true", help="Include non-retryable diagnostics in queue.")
-    args = parser.parse_args()
-    target = args.date
-
-    posts = fetch_pages(
-        "sponsored_posts",
-        "id,url,account_name,created_at,posted_at,ended_at,channel_type,notes,not_found_streak,not_found_last_at,review_requested_at",
-    )
-    raw_eligible = [
+def _raw_eligible(posts: list[dict[str, Any]], target: str) -> list[dict[str, Any]]:
+    """Keep the existing Python policy as the only platform eligibility source."""
+    return [
         post for post in posts
         if not post.get("ended_at")
         and (not post.get("posted_at") or str(post.get("posted_at"))[:10] <= target)
         and is_view_capable(post)
     ]
+
+
+def _legacy_source(target: str) -> dict[str, Any]:
+    """Original fully paginated implementation, retained as the fail-open path."""
+    posts = fetch_pages(
+        "sponsored_posts",
+        "id,url,account_name,created_at,posted_at,ended_at,channel_type,notes,not_found_streak,not_found_last_at,review_requested_at",
+    )
+    raw_eligible = _raw_eligible(posts, target)
     eligible = [post for post in raw_eligible if not exclusion_reason(post, target)]
     eligible_ids = [post["id"] for post in eligible if post.get("id")]
 
@@ -331,7 +390,201 @@ def main() -> None:
         for row in hist_rows:
             hist_by_post.setdefault(row["post_id"], []).append(row)
 
-    history = {pid: build_history_state(rows) for pid, rows in hist_by_post.items()}
+    return {
+        "raw_eligible": raw_eligible,
+        "same_day": {
+            pid: build_same_day_state(same_day_rows.get(pid, [])) for pid in eligible_ids
+        },
+        "history": {
+            pid: build_history_state(hist_by_post.get(pid, [])) for pid in eligible_ids
+        },
+        "source_stat_rows": sum(len(rows) for rows in hist_by_post.values()),
+    }
+
+
+def _as_nonnegative_int(value: Any, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"RPC {field} must be a non-negative integer")
+    return value
+
+
+def decode_candidate_bundle(data: Any) -> tuple[list[dict[str, Any]], int]:
+    """Validate the single-row RPC bundle before it can influence a retry queue."""
+    if not isinstance(data, list) or len(data) != 1 or not isinstance(data[0], dict):
+        raise ValueError("RPC must return exactly one bundle row")
+    bundle = data[0]
+    candidates = bundle.get("candidates")
+    if isinstance(candidates, str):
+        try:
+            candidates = json.loads(candidates)
+        except json.JSONDecodeError as exc:
+            raise ValueError("RPC candidates is not valid JSON") from exc
+    if not isinstance(candidates, list):
+        raise ValueError("RPC candidates must be a JSON array")
+
+    candidate_count = _as_nonnegative_int(bundle.get("candidate_count"), "candidate_count")
+    source_stat_rows = _as_nonnegative_int(bundle.get("source_stat_rows"), "source_stat_rows")
+    if candidate_count != len(candidates):
+        raise ValueError(
+            f"RPC candidate coverage mismatch: declared={candidate_count} returned={len(candidates)}"
+        )
+
+    seen: set[str] = set()
+    target_day_rows = 0
+    for index, candidate in enumerate(candidates):
+        if not isinstance(candidate, dict):
+            raise ValueError(f"RPC candidate[{index}] is not an object")
+        missing = [field for field in (*POST_FIELDS, *SAME_DAY_FIELDS, *HISTORY_FIELDS) if field not in candidate]
+        if missing:
+            raise ValueError(f"RPC candidate[{index}] missing fields: {','.join(missing)}")
+        post_id = candidate.get("id")
+        if not isinstance(post_id, str) or not post_id:
+            raise ValueError(f"RPC candidate[{index}] has invalid id")
+        if post_id in seen:
+            raise ValueError(f"RPC duplicate candidate id: {post_id}")
+        seen.add(post_id)
+
+        same_day_count = _as_nonnegative_int(candidate.get("same_day_rows"), "same_day_rows")
+        target_day_rows += same_day_count
+        for field in (*SAME_DAY_FIELDS[1:], *HISTORY_FIELDS[:6]):
+            if not isinstance(candidate.get(field), bool):
+                raise ValueError(f"RPC candidate[{index}].{field} must be boolean")
+        last_metric = candidate.get("last_metric")
+        if last_metric is not None and (isinstance(last_metric, bool) or not isinstance(last_metric, int)):
+            raise ValueError(f"RPC candidate[{index}].last_metric must be integer or null")
+        last_date = candidate.get("last_metric_date")
+        if last_date is not None:
+            try:
+                date.fromisoformat(str(last_date))
+            except ValueError as exc:
+                raise ValueError(f"RPC candidate[{index}].last_metric_date is invalid") from exc
+        if (last_metric is None) != (last_date is None):
+            raise ValueError(f"RPC candidate[{index}] last metric/date pair is incomplete")
+
+    if source_stat_rows < target_day_rows:
+        raise ValueError(
+            f"RPC stat coverage mismatch: source={source_stat_rows} target_day={target_day_rows}"
+        )
+    return candidates, source_stat_rows
+
+
+def _rpc_source(target: str, created_before: str) -> dict[str, Any]:
+    response = get_client().rpc(VIEW_MISSING_RPC, {
+        "p_target": target,
+        "p_created_before": created_before,
+    }).execute()
+    candidates, source_stat_rows = decode_candidate_bundle(response.data)
+    raw_eligible = _raw_eligible(candidates, target)
+    eligible = [post for post in raw_eligible if not exclusion_reason(post, target)]
+    eligible_ids = {str(post["id"]) for post in eligible}
+    return {
+        "raw_eligible": raw_eligible,
+        "same_day": {
+            str(post["id"]): {field: post[field] for field in SAME_DAY_FIELDS}
+            for post in candidates if str(post["id"]) in eligible_ids
+        },
+        "history": {
+            str(post["id"]): {field: post[field] for field in HISTORY_FIELDS}
+            for post in candidates if str(post["id"]) in eligible_ids
+        },
+        "source_stat_rows": source_stat_rows,
+    }
+
+
+def _source_fingerprint(source: dict[str, Any]) -> dict[str, Any]:
+    posts = {
+        str(post["id"]): {
+            "id": str(post["id"]),
+            "url": post.get("url"),
+            "account_name": post.get("account_name"),
+            "created_at": kst_date(post.get("created_at")) or None,
+            "posted_at": str(post.get("posted_at") or "")[:10] or None,
+            "channel_type": post.get("channel_type"),
+            "notes": post.get("notes"),
+            "not_found_streak": post.get("not_found_streak"),
+            # Only presence affects the queue policy; PostgREST and jsonb can
+            # serialize the same timestamptz with different textual offsets.
+            "review_requested": bool(post.get("review_requested_at")),
+        }
+        for post in source["raw_eligible"]
+    }
+    return {
+        post_id: {
+            "post": posts[post_id],
+            "same_day": source["same_day"].get(post_id, empty_same_day_state()),
+            "history": source["history"].get(post_id, build_history_state([])),
+        }
+        for post_id in sorted(posts)
+    }
+
+
+def source_parity_issues(legacy: dict[str, Any], optimized: dict[str, Any]) -> list[str]:
+    """Return bounded diagnostics; shadow mode always serves the legacy result."""
+    left = _source_fingerprint(legacy)
+    right = _source_fingerprint(optimized)
+    issues: list[str] = []
+    left_ids, right_ids = set(left), set(right)
+    if left_ids != right_ids:
+        issues.append(
+            f"candidate_ids legacy={len(left_ids)} optimized={len(right_ids)} "
+            f"legacy_only={len(left_ids - right_ids)} optimized_only={len(right_ids - left_ids)}"
+        )
+    for post_id in sorted(left_ids & right_ids):
+        if left[post_id] != right[post_id]:
+            issues.append(f"state:{post_id}")
+            if len(issues) >= 21:
+                break
+    return issues
+
+
+def load_queue_source(target: str, mode: str | None = None, created_before: str | None = None) -> dict[str, Any]:
+    rollout = view_missing_query_mode(mode)
+    snapshot = created_before or kst_now().isoformat()
+    if rollout == "legacy":
+        source = _legacy_source(target)
+        print(f"[view-missing-state] mode=legacy stats={source['source_stat_rows']}")
+        return source
+
+    if rollout == "shadow":
+        legacy = _legacy_source(target)
+        try:
+            optimized = _rpc_source(target, snapshot)
+            issues = source_parity_issues(legacy, optimized)
+            if issues:
+                print(
+                    "[view-missing-state] [WARN] shadow mismatch; legacy retained — "
+                    + " | ".join(issues[:20])
+                )
+            else:
+                print(
+                    "[view-missing-state] shadow parity ok; legacy retained — "
+                    f"candidates={len(legacy['raw_eligible'])} stats={optimized['source_stat_rows']}"
+                )
+        except Exception as exc:
+            print(f"[view-missing-state] [WARN] shadow RPC failed; legacy retained — {exc}")
+        return legacy
+
+    try:
+        optimized = _rpc_source(target, snapshot)
+        print(
+            "[view-missing-state] mode=optimized "
+            f"candidates={len(optimized['raw_eligible'])} stats={optimized['source_stat_rows']}"
+        )
+        return optimized
+    except Exception as exc:
+        print(f"[view-missing-state] [WARN] optimized RPC failed; falling back to legacy — {exc}")
+        return _legacy_source(target)
+
+
+def build_queue_summary(
+    target: str,
+    include_all: bool,
+    source: dict[str, Any],
+) -> dict[str, Any]:
+    raw_eligible = source["raw_eligible"]
+    same_day = source["same_day"]
+    history = source["history"]
+    eligible = [post for post in raw_eligible if not exclusion_reason(post, target)]
 
     queue: list[dict[str, Any]] = []
     excluded = {
@@ -352,7 +605,7 @@ def main() -> None:
         if not reason:
             continue
         excluded[reason] += 1
-        if args.include_all:
+        if include_all:
             queue.append({
                 "post_id": post.get("id"),
                 "account_name": post.get("account_name"),
@@ -369,17 +622,17 @@ def main() -> None:
                 "last_metric_date": None,
             })
     for post in eligible:
-        rows = same_day_rows.get(post["id"], [])
-        if has_same_day_measurement(post, rows):
+        day_state = same_day.get(post["id"], empty_same_day_state())
+        if has_same_day_measurement_from_state(post, day_state):
             excluded["measured"] += 1
             continue
 
         state = history.get(post["id"], {})
-        reason = decide_reason(post, rows, state, target)
+        reason = decide_reason_from_state(post, day_state, state, target)
 
         pf = platform(post.get("url"))
         retryable = pf in {"instagram", "youtube", "tiktok"} and reason not in NON_RETRYABLE_REASONS
-        if not retryable and not args.include_all:
+        if not retryable and not include_all:
             excluded[reason if reason in NON_RETRYABLE_REASONS else "not_retryable"] += 1
             continue
 
@@ -394,14 +647,11 @@ def main() -> None:
             "created_at": kst_date(post.get("created_at")) or None,
             "reason": reason,
             "retryable": retryable,
-            "same_day_rows": len(rows),
+            "same_day_rows": int(day_state.get("same_day_rows") or 0),
             "last_metric": state.get("last_metric"),
             "last_metric_date": state.get("last_metric_date"),
         })
 
-    out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"view_missing_queue_{target}.json"
     summary = {
         "ok": True,
         "date": target,
@@ -417,6 +667,22 @@ def main() -> None:
     for item in queue:
         summary["by_reason"][item["reason"]] = summary["by_reason"].get(item["reason"], 0) + 1
         summary["by_platform"][item["platform"]] = summary["by_platform"].get(item["platform"], 0) + 1
+    return summary
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--date", default=kst_today())
+    parser.add_argument("--out-dir", default=os.getenv("RUNNER_TEMP") or "data/monitoring")
+    parser.add_argument("--include-all", action="store_true", help="Include non-retryable diagnostics in queue.")
+    args = parser.parse_args()
+    target = args.date
+
+    source = load_queue_source(target)
+    summary = build_queue_summary(target, args.include_all, source)
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"view_missing_queue_{target}.json"
     out_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     print("[VIEW_MISSING_QUEUE] " + json.dumps({k: v for k, v in summary.items() if k != "queue"}, ensure_ascii=False, default=str))
     print(f"[VIEW_MISSING_QUEUE_FILE] {out_path}")

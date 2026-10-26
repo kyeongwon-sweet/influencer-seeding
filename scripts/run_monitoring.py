@@ -47,6 +47,8 @@ UPWARD_SPIKE_CONFIRM_REL_TOLERANCE = float(
 UPWARD_SPIKE_CONFIRM_ABS_TOLERANCE = int(
     os.environ.get("UPWARD_SPIKE_CONFIRM_ABS_TOLERANCE", "1000")
 )
+COLLECTION_SUMMARY_MODE_ENV = "MONITORING_COLLECTION_SUMMARY_MODE"
+COLLECTION_SUMMARY_MODES = frozenset({"legacy", "shadow", "optimized"})
 
 
 def _has_positive_views(stats: dict | None) -> bool:
@@ -824,6 +826,200 @@ def _active_stats_summary(db, post_ids):
     )
 
 
+def _collection_summary_mode() -> str:
+    """Return the egress-optimization mode, failing open to the legacy queries."""
+    raw = str(os.environ.get(COLLECTION_SUMMARY_MODE_ENV, "legacy") or "legacy").strip().lower()
+    if raw not in COLLECTION_SUMMARY_MODES:
+        print(
+            f"[WARN] {COLLECTION_SUMMARY_MODE_ENV}={raw!r} is invalid; "
+            "using legacy collection summaries"
+        )
+        return "legacy"
+    return raw
+
+
+def _rpc_date(value, field: str):
+    if value is None or value == "":
+        return None
+    text = str(value)
+    try:
+        return date.fromisoformat(text).isoformat()
+    except ValueError as exc:
+        raise ValueError(f"active summary RPC returned invalid {field}: {value!r}") from exc
+
+
+def _rpc_optional_int(value, field: str):
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError(f"collection summary RPC returned boolean {field}")
+    if isinstance(value, float) and not value.is_integer():
+        raise ValueError(f"collection summary RPC returned non-integer {field}: {value!r}")
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"collection summary RPC returned invalid {field}: {value!r}") from exc
+
+
+def _active_stats_summary_from_rpc_rows(response_rows, post_ids):
+    """Convert the single JSON-bundle RPC output to the legacy tuple shape.
+
+    Completeness is a safety boundary: an absent, duplicate, or unexpected id
+    means the RPC result cannot drive auto-end or monotonic guards.
+    """
+    requested = list(dict.fromkeys(post_id for post_id in post_ids if post_id))
+    requested_set = set(requested)
+    if (
+        not isinstance(response_rows, list)
+        or len(response_rows) != 1
+        or not isinstance(response_rows[0], dict)
+    ):
+        raise ValueError("active summary RPC must return exactly one bundle row")
+    bundle = response_rows[0]
+    rows = bundle.get("summary_rows")
+    if isinstance(rows, str):
+        try:
+            rows = json.loads(rows)
+        except json.JSONDecodeError as exc:
+            raise ValueError("active summary RPC summary_rows is not valid JSON") from exc
+    if not isinstance(rows, list):
+        raise ValueError("active summary RPC summary_rows must be a JSON array")
+    row_count = _rpc_optional_int(bundle.get("row_count"), "row_count")
+    if row_count is None or row_count < 0 or row_count != len(rows):
+        raise ValueError(
+            "active summary RPC row_count mismatch: "
+            f"declared={row_count!r} returned={len(rows)}"
+        )
+    if row_count != len(requested):
+        raise ValueError(
+            "active summary RPC request coverage mismatch: "
+            f"declared={row_count} requested={len(requested)}"
+        )
+
+    by_id = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError("active summary RPC returned a non-object row")
+        post_id = str(row.get("post_id") or "")
+        if post_id not in requested_set:
+            raise ValueError(f"active summary RPC returned unexpected post_id={post_id!r}")
+        if post_id in by_id:
+            raise ValueError(f"active summary RPC returned duplicate post_id={post_id}")
+        by_id[post_id] = row
+    missing = [post_id for post_id in requested if post_id not in by_id]
+    if missing:
+        raise ValueError(
+            f"active summary RPC omitted {len(missing)}/{len(requested)} requested posts"
+        )
+
+    last = {}
+    max_metric_by_post = {}
+    manual_tracked_ids = set()
+    last_valid_metric_date_by_post = {}
+    had_play_by_post = set()
+    last_manual_at_by_post = {}
+    for post_id in requested:
+        row = by_id[post_id]
+        last_measured_at = _rpc_date(row.get("last_measured_at"), "last_measured_at")
+        last_manual = row.get("last_manual")
+        if last_manual is not None and not isinstance(last_manual, bool):
+            raise ValueError("active summary RPC returned invalid last_manual")
+        if last_measured_at:
+            last[post_id] = {
+                "post_id": post_id,
+                "play_count": _rpc_optional_int(row.get("last_play_count"), "last_play_count"),
+                "reach_count": _rpc_optional_int(row.get("last_reach_count"), "last_reach_count"),
+                "likes_count": _rpc_optional_int(row.get("last_likes_count"), "last_likes_count"),
+                "comments_count": _rpc_optional_int(row.get("last_comments_count"), "last_comments_count"),
+                "measured_at": last_measured_at,
+                "manual": last_manual,
+            }
+
+        max_metric = _rpc_optional_int(row.get("max_metric"), "max_metric")
+        if max_metric is None or max_metric < 0:
+            raise ValueError(f"active summary RPC returned invalid max_metric={max_metric!r}")
+        if max_metric > 0:
+            max_metric_by_post[post_id] = max_metric
+
+        manual_tracked = row.get("manual_tracked")
+        had_positive_play = row.get("had_positive_play")
+        if not isinstance(manual_tracked, bool) or not isinstance(had_positive_play, bool):
+            raise ValueError("active summary RPC returned invalid boolean aggregate")
+        if manual_tracked:
+            manual_tracked_ids.add(post_id)
+        if had_positive_play:
+            had_play_by_post.add(post_id)
+
+        last_valid = _rpc_date(row.get("last_valid_metric_date"), "last_valid_metric_date")
+        if last_valid:
+            last_valid_metric_date_by_post[post_id] = last_valid
+        last_manual_at = _rpc_date(row.get("last_manual_at"), "last_manual_at")
+        if last_manual_at:
+            last_manual_at_by_post[post_id] = last_manual_at
+
+    return (
+        last,
+        max_metric_by_post,
+        manual_tracked_ids,
+        last_valid_metric_date_by_post,
+        had_play_by_post,
+        last_manual_at_by_post,
+    )
+
+
+def _active_stats_summary_rpc(db, post_ids, target_date):
+    ids = list(dict.fromkeys(post_id for post_id in post_ids if post_id))
+    if not ids:
+        return ({}, {}, set(), {}, set(), {})
+    # Validate the caller-supplied KST business boundary before it reaches SQL.
+    target_date = date.fromisoformat(str(target_date)).isoformat()
+    response = db.rpc(
+        "monitoring_collection_active_summary_v1",
+        {"p_post_ids": ids, "p_target_date": target_date},
+    ).execute()
+    return _active_stats_summary_from_rpc_rows(response.data or [], ids)
+
+
+def _load_active_stats_summary(db, post_ids, target_date):
+    """Load active history with legacy/shadow/optimized rollout controls.
+
+    - legacy (default): current raw-history query only.
+    - shadow: run both, require exact tuple parity, always use legacy.
+    - optimized: use RPC; invalid/failed RPC falls back to legacy.
+    """
+    mode = _collection_summary_mode()
+    if mode == "legacy":
+        return _active_stats_summary(db, post_ids)
+    try:
+        optimized = _active_stats_summary_rpc(db, post_ids, target_date)
+    except Exception as exc:
+        print(
+            f"[WARN] [monitoring-collection-summary] active mode={mode} "
+            f"RPC failed/invalid; falling back to legacy: {exc}"
+        )
+        return _active_stats_summary(db, post_ids)
+
+    if mode == "shadow":
+        legacy = _active_stats_summary(db, post_ids)
+        if optimized != legacy:
+            print(
+                "[WARN] [monitoring-collection-summary] active shadow mismatch; "
+                "using legacy"
+            )
+        else:
+            print(
+                f"[LOG] [monitoring-collection-summary] active shadow parity ok "
+                f"posts={len(set(post_ids))}"
+            )
+        return legacy
+
+    print(
+        f"[LOG] [monitoring-collection-summary] active mode=optimized "
+        f"posts={len(set(post_ids))}"
+    )
+    return optimized
+
+
 def _influencer_ids_by_profile_url(db, profile_urls):
     """Instagram 프로필 URL들의 influencer id를 100개 청크로 일괄 조회한다."""
     urls = list(dict.fromkeys(url for url in profile_urls if url))
@@ -1144,6 +1340,64 @@ def _snapshot_totals(db, post_ids, upto):
     tl = sum((v.get("likes_count") or 0) for v in last.values() if (v.get("likes_count") or 0) >= 0)
     tc = sum((v.get("comments_count") or 0) for v in last.values() if (v.get("comments_count") or 0) >= 0)
     return {"total_play": tp, "total_likes": tl, "total_comments": tc, "post_count": len(last)}
+
+
+def _snapshot_totals_from_rpc_rows(rows):
+    if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
+        raise ValueError("snapshot totals RPC must return exactly one object row")
+    row = rows[0]
+    out = {}
+    for field in ("total_play", "total_likes", "total_comments", "post_count"):
+        value = _rpc_optional_int(row.get(field), field)
+        if value is None or value < 0:
+            raise ValueError(f"snapshot totals RPC returned invalid {field}={value!r}")
+        out[field] = value
+    return out
+
+
+def _snapshot_totals_rpc(db, post_ids, upto):
+    ids = list(dict.fromkeys(post_id for post_id in post_ids if post_id))
+    upto = date.fromisoformat(str(upto)).isoformat()
+    response = db.rpc(
+        "monitoring_collection_snapshot_totals_v1",
+        {"p_post_ids": ids, "p_upto": upto},
+    ).execute()
+    return _snapshot_totals_from_rpc_rows(response.data or [])
+
+
+def _load_snapshot_totals(db, post_ids, upto):
+    """Load daily snapshot totals under the shared safe rollout mode."""
+    mode = _collection_summary_mode()
+    if mode == "legacy":
+        return _snapshot_totals(db, post_ids, upto)
+    try:
+        optimized = _snapshot_totals_rpc(db, post_ids, upto)
+    except Exception as exc:
+        print(
+            f"[WARN] [monitoring-collection-summary] snapshot mode={mode} "
+            f"RPC failed/invalid; falling back to legacy: {exc}"
+        )
+        return _snapshot_totals(db, post_ids, upto)
+
+    if mode == "shadow":
+        legacy = _snapshot_totals(db, post_ids, upto)
+        if optimized != legacy:
+            print(
+                "[WARN] [monitoring-collection-summary] snapshot shadow mismatch; "
+                f"using legacy optimized={optimized} legacy={legacy}"
+            )
+        else:
+            print(
+                f"[LOG] [monitoring-collection-summary] snapshot shadow parity ok "
+                f"posts={len(set(post_ids))}"
+            )
+        return legacy
+
+    print(
+        f"[LOG] [monitoring-collection-summary] snapshot mode=optimized "
+        f"posts={len(set(post_ids))}"
+    )
+    return optimized
 
 
 def _stats_key(url: str) -> str:
@@ -1609,7 +1863,7 @@ def run():
                 last_valid_metric_date_by_post,
                 had_play_ids,
                 last_manual_at_by_post,
-            ) = _active_stats_summary(db, active_ids)
+            ) = _load_active_stats_summary(db, active_ids, TODAY)
             to_end = []
             for p in all_posts:
                 if p.get("ended_at"):
@@ -2357,7 +2611,7 @@ def run():
         #    이후 게시물이 늦게 추가돼도 과거 스냅샷은 안 바뀜 → '일자별 증감' 과거값 안정화.
         #    best-effort: 테이블 미생성 등 어떤 오류도 수집 자체엔 영향 주지 않음(경고만).
         try:
-            snap = _snapshot_totals(db, [p["id"] for p in all_posts], TODAY)
+            snap = _load_snapshot_totals(db, [p["id"] for p in all_posts], TODAY)
             db.table("daily_view_snapshot").upsert({"date": TODAY, **snap}, on_conflict="date").execute()
             print(f"[LOG] 📸 일별 스냅샷 저장({TODAY}): {snap}")
         except Exception as e:
