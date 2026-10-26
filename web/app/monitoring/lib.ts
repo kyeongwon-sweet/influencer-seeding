@@ -49,6 +49,30 @@ export type Post = {
   day7_play_count?: number | null;
 };
 
+export type ProductTrendRow = {
+  date: string;
+  values: Record<string, number | null>;
+};
+
+/**
+ * 상단 검색량 KPI는 sponsored stats의 전송 절감 cutoff와 무관하다.
+ * 명시적 조회수 기간이 없으면 기존처럼 보유한 전체 검색량을, 기간이 있으면 그 범위만 반환한다.
+ */
+export function searchSummaryRows(
+  rows: ProductTrendRow[],
+  brandKey: string,
+  dateFrom = "",
+  dateTo = "",
+): { date: string; value: number }[] {
+  if (!brandKey) return [];
+  return rows
+    .filter(row => (!dateFrom || row.date >= dateFrom) && (!dateTo || row.date <= dateTo))
+    .flatMap(row => {
+      const value = row.values[brandKey];
+      return value == null ? [] : [{ date: row.date, value }];
+    });
+}
+
 /**
  * 서버가 일별 이력을 보내는 압축 형태(튜플). 키 이름이 행마다 반복되는 걸 없앤 것뿐이고
  * 의미는 기존 `all_stats`와 동일하다. 실측: 응답 5.51MB → 2.76MB.

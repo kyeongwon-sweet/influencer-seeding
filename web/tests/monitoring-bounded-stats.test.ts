@@ -9,7 +9,7 @@ import {
   monotonicDashboardStats,
   visibleDashboardStats,
 } from "../lib/monitoring-bounded-stats.ts";
-import { decodeStatsV2, getFilteredStats, incrementTooltip, pickRangeStats, safeIncrement, type Post } from "../app/monitoring/lib.ts";
+import { decodeStatsV2, getFilteredStats, incrementTooltip, pickRangeStats, safeIncrement, searchSummaryRows, type Post } from "../app/monitoring/lib.ts";
 
 const post = (all_stats: Post["all_stats"], channel_type = "바이럴(영상)"): Post => ({
   id: "p1", url: "https://www.instagram.com/reel/example/", posted_at: "2026-01-01",
@@ -107,6 +107,19 @@ test("old range: lazy-loaded rows use actual historical values, never a syntheti
     { measured_at: "2026-07-02", play_count: 450, likes_count: null, comments_count: null },
   ];
   assert.deepEqual(getFilteredStats([baseline, ...oldRows], "2026-07-01", "2026-07-02"), oldRows);
+});
+
+test("search KPI: sponsored history cutoff does not silently shrink the unfiltered total", () => {
+  const rows = [
+    { date: "2026-01-01", values: { brand: 10 } },
+    { date: "2026-08-27", values: { brand: 20 } },
+    { date: "2026-10-25", values: { brand: 30 } },
+  ];
+  assert.deepEqual(searchSummaryRows(rows, "brand").map(row => row.value), [10, 20, 30]);
+  assert.deepEqual(searchSummaryRows(rows, "brand", "2026-08-27", "2026-09-30"), [
+    { date: "2026-08-27", value: 20 },
+  ]);
+  assert.deepEqual(searchSummaryRows(rows, "missing"), []);
 });
 
 test("stats_v2 decoder는 새 baseline metadata와 옛 6칸 튜플을 모두 읽는다", () => {

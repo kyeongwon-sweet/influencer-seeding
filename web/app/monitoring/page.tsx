@@ -11,7 +11,7 @@ import { companyForAccount } from "@/lib/companyMap";
 import { batchFetch } from "@/lib/batchFetch";
 import { dedupeRowsById } from "@/lib/dedupe-rows";
 import { matchesSearch } from "@/lib/search-filter";
-import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, decodeStatsV2, INIT_FILTERS, CHANNEL_TYPES, STICKY_COL_ORDER, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, getFilteredStats, pickRangeStats, formatTimestamp, isBannerChannel, normalizeChannelType, fmtChannelType, updatePostLatestStats, viewIncrement, safeIncrement, pickMetric, productLabel, effectiveReach, bannerDailyMetric, assetNameOf, weekKeyOf, pearson, alignedPairs, bestLag, alignMulti, multipleR2, parseCsvLine } from "./lib";
+import { type DailyStats, type Post, type CsvRow, type B2bDaily, type Filters, type EditCell, decodeStatsV2, INIT_FILTERS, CHANNEL_TYPES, STICKY_COL_ORDER, META_ADS_MANAGER_URL, NAVER_DATALAB_URL, PRODUCT_COLORS, CHART, getFilteredStats, pickRangeStats, formatTimestamp, isBannerChannel, normalizeChannelType, fmtChannelType, updatePostLatestStats, viewIncrement, safeIncrement, pickMetric, productLabel, effectiveReach, bannerDailyMetric, assetNameOf, weekKeyOf, pearson, alignedPairs, bestLag, alignMulti, multipleR2, parseCsvLine, searchSummaryRows } from "./lib";
 import { GOOGLE_TREND_GROUPS } from "@/lib/google-trend-groups";
 import { readJsonResponse } from "@/lib/http-json";
 import CorrelationPanel from "./components/CorrelationPanel";
@@ -516,6 +516,14 @@ export default function MonitoringPage() {
       .filter((x): x is { date: string; ratio: number; value: number } => x !== null);
     setLsSearchData(rows);
   }, [productTrends, lsStartDate, lsEndDate]);
+
+  // sponsored stats만 최근 60일로 줄였다고 검색량 KPI의 의미까지 바뀌면 안 된다.
+  // 차트용 lsSearchData는 최근 차트 축을 유지하고, 카드는 기존처럼 전체 보유기간
+  // (또는 사용자가 명시한 조회수 기간) 검색량을 별도로 합산한다.
+  const searchSummaryData = useMemo(
+    () => searchSummaryRows(productTrends.data, productTrends.brandKey, filters.dateFrom, filters.dateTo),
+    [productTrends, filters.dateFrom, filters.dateTo],
+  );
 
   // 보조 그래프 데이터(검색량·B2B·광고비 등) 로드 실패 시 1회만 알림 (토스트 도배 방지)
   const auxErrShown = useRef(false);
@@ -1642,9 +1650,9 @@ export default function MonitoringPage() {
             {/* 요약 수치 */}
             <div className="grid grid-cols-1 sm:grid-cols-3 border-b border-slate-200">
               {(() => {
-                // 라라스윗 검색량 총합 = 조회 기간 동안의 일자별 절대검색량(사이트 보정값) 합계
-                // (차트 점선 '검색량'과 동일 기준. chartData는 조회수라 검색량과 무관 → lsSearchData 사용)
-                const searchTotalSum = (lsSearchData ?? []).reduce((acc, d) => acc + (d.value ?? 0), 0);
+                // 라라스윗 검색량 총합 = 사용자가 명시한 조회 기간(없으면 전체 보유기간)의
+                // 일자별 절대검색량 합계. 차트의 암묵적 60일 cutoff와는 분리한다.
+                const searchTotalSum = searchSummaryData.reduce((acc, d) => acc + d.value, 0);
                 // B2B 발주량 월 누계 — 오늘까지 실데이터만(미래 계획행 제외), 카테고리 필터 반영
                 const today = kstTodayDate();
                 const b2bTotal = b2bDaily
@@ -1685,7 +1693,7 @@ export default function MonitoringPage() {
                       <div className="text-a-ink-muted leading-relaxed">바이럴(배너) 소재는 조회수 대신 <span className="font-semibold text-a-ink">도달수</span>가 합산됩니다.</div>
                     )
                   ) as React.ReactNode },
-                  { label: "라라스윗 검색량 총합", value: searchTotalSum, color: "text-gray-600", suffix: "", delta: auxErrors.has("라라스윗 검색량") ? null : wow((lsSearchData ?? []).map(d => ({ date: d.date, v: d.value ?? 0 }))), loadError: auxErrors.has("라라스윗 검색량") ? "불러오기 실패" : null, tooltip: null as React.ReactNode },
+                  { label: "라라스윗 검색량 총합", value: searchTotalSum, color: "text-gray-600", suffix: "", delta: auxErrors.has("라라스윗 검색량") ? null : wow(searchSummaryData.map(d => ({ date: d.date, v: d.value }))), loadError: auxErrors.has("라라스윗 검색량") ? "불러오기 실패" : null, tooltip: null as React.ReactNode },
                   { label: "B2B 발주량", value: b2bTotal, color: "text-green-600", suffix: "", delta: auxErrors.has("B2B 발주량") ? null : wow(b2bDaily.map(d => ({ date: d.date, v: b2bOrderOf(d) ?? 0 }))), loadError: auxErrors.has("B2B 발주량") ? "불러오기 실패" : null, tooltip: b2bTooltip },
                 ];
               })().map((item, i) => (
