@@ -119,7 +119,9 @@ test("두 호출부가 uploaded_at을 함께 읽는다(소스 계약)", async ()
   for (const rel of ["../app/api/organic-mentions/route.ts",
                      "../app/api/organic-mentions/import-notion/route.ts"]) {
     const src = readFileSync(join(import.meta.dirname, rel), "utf8");
-    assert.match(src, /select\("url,uploaded_at"\)/,
+    // 컬럼이 더 붙어도(id·account_name — 중복 안내용, 2026-10-26) url·uploaded_at 둘 다 읽기만 하면 된다.
+    const selects = [...src.matchAll(/select\("([^"]*)"\)/g)].map((m) => m[1].split(",").map((c) => c.trim()));
+    assert.ok(selects.some((cols) => cols.includes("url") && cols.includes("uploaded_at")),
       `${rel}: url만 읽으면 프로필 신규분이 조용히 흡수된다`);
   }
 });

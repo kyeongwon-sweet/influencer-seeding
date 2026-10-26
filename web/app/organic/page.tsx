@@ -6,6 +6,7 @@ import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
 import { platformFromUrl, platformLabel } from "@/lib/platform";
 import { parseNumInput } from "@/lib/num";
 import { matchesSearch } from "@/lib/search-filter";
+import { canonicalMentionUrl, mentionLinkQuery, mentionUrlHandle } from "@/lib/url-utils";
 import { maxDateKST, isValidEntryDate, todayKST } from "@/lib/dateRule";
 import { PRODUCT_FAMILY_ORDER, toggleProductSelection } from "@/lib/organicProductFamily";
 
@@ -551,8 +552,20 @@ export default function OrganicPage() {
     });
     setAdding(false);
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      toast(`추가 실패: ${(err as { error?: string }).error ?? "오류가 발생했습니다."}`, "error");
+      const err = (await res.json().catch(() => ({}))) as {
+        error?: string; duplicate?: boolean; url?: string; existing?: { id?: string | null } | null;
+      };
+      if (res.status === 409 && err.duplicate && err.url) {
+        // 이미 있는 행을 **바로 보여 준다**: 다른 필터를 비우고 계정명 검색에 그 링크를 넣는다.
+        // (2026-10-26: '이미 등록됨'만 뜨고 어느 행인지 몰라 목록에서 못 찾았다 — 계정명이 다른 이름이었다.)
+        setShowAdd(false);
+        setFilters({ ...INIT_FILTERS, name: err.url });
+        const id = err.existing?.id;
+        if (id && !mentions.some(m => m.id === id)) await loadMentions();   // 목록이 오래됐으면 새로 받는다
+        toast(`${err.error ?? "이미 등록된 링크입니다."} 목록에 그 행을 띄웠습니다.`, "error");
+        return;
+      }
+      toast(`추가 실패: ${err.error ?? "오류가 발생했습니다."}`, "error");
       return;
     }
     const created = (await res.json().catch(() => null)) as { id?: string } | null;
@@ -786,10 +799,31 @@ export default function OrganicPage() {
   // 캡션 검색도 타자마다 전체 재필터가 돌면 버벅이므로 계정명과 같이 지연값을 쓴다.
   const deferredCaption = useDeferredValue(filters.caption);
 
-  const filtered = useMemo(() => mentions.filter(m => {
-    if (isHiddenAd(m)) return false;
+  // 계정명 검색은 **링크·계정 아이디**로도 찾는다(2026-10-26).
+  //   - 링크를 붙여 넣으면 중복 판정과 같은 표준화로 비교 → '이미 등록됨'인 행이 반드시 걸린다.
+  //   - 아이디(@P_kh627 / P_kh627)는 URL에서 뽑아 계정명 뒤에 붙여 대조한다(계정명이 '원어스 건희'처럼 달라도 찾게).
+  const nameLink = useMemo(() => mentionLinkQuery(deferredName), [deferredName]);
+  const searchIndex = useMemo(() => {
+    const idx = new Map<string, { canonical: string | null; nameHaystack: string }>();
+    for (const m of mentions) {
+      const handle = mentionUrlHandle(m.url);
+      idx.set(m.id, {
+        canonical: canonicalMentionUrl(m.url),
+        nameHaystack: handle ? `${m.account_name ?? ""} @${handle}` : (m.account_name ?? ""),
+      });
+    }
+    return idx;
+  }, [mentions]);
 
-    if (!matchesSearch(m.account_name, deferredName)) return false;
+  const filtered = useMemo(() => mentions.filter(m => {
+    const si = searchIndex.get(m.id);
+    if (nameLink) {
+      // 링크로 찾을 땐 광고 숨김도 건너뛴다 — 등록돼 있다는 행이 '광고라 숨김'으로 안 보이는 일을 막는다.
+      if (si?.canonical !== nameLink) return false;
+    } else {
+      if (isHiddenAd(m)) return false;
+      if (!matchesSearch(si?.nameHaystack ?? m.account_name, deferredName)) return false;
+    }
     if (!matchesSearch(m.content_summary, deferredCaption)) return false;
     if (filters.platform !== "all" && normPlatform(m.platform) !== filters.platform) return false;
     if (filters.products.length > 0) {
@@ -803,7 +837,7 @@ export default function OrganicPage() {
     if (filters.dateFrom && (!m.uploaded_at || m.uploaded_at < filters.dateFrom)) return false;
     if (filters.dateTo && (!m.uploaded_at || m.uploaded_at > filters.dateTo)) return false;
     return true;
-  }), [mentions, deferredName, deferredCaption, filters.platform, filters.products, filters.exposureType, filters.dateFrom, filters.dateTo]);
+  }), [mentions, searchIndex, nameLink, deferredName, deferredCaption, filters.platform, filters.products, filters.exposureType, filters.dateFrom, filters.dateTo]);
 
   const hasFilter = filters.name !== "" || filters.caption !== "" || filters.platform !== "all" || filters.products.length > 0 || filters.exposureType !== "all" || filters.dateFrom !== "" || filters.dateTo !== "";
 
@@ -953,8 +987,8 @@ export default function OrganicPage() {
         <div className="flex flex-wrap items-center gap-1.5">
           <input
             type="text"
-            placeholder="계정명 검색"
-            title="여러 단어는 모두 포함(AND) · 제외는 -단어 (예: 딸기 -광고)"
+            placeholder="계정명·링크"
+            title="계정명·계정 아이디(@아이디)·게시물 링크로 찾습니다. 여러 단어는 모두 포함(AND) · 제외는 -단어 (예: 딸기 -광고)"
             value={filters.name}
             onChange={e => setFilters(p => ({ ...p, name: e.target.value }))}
             className={`filter-input h-9 w-24 shrink-0 ${filters.name ? "border-a-blue" : ""}`}

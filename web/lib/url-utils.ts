@@ -253,11 +253,71 @@ export function mentionDedupeKey(item: Mentionish | string): string | null {
   return /^\d{4}-\d{2}-\d{2}$/.test(day) ? `${key}#uploaded=${day}` : key;
 }
 
+/**
+ * 검색창에 **링크를 붙여 넣었는지** 판정하고, 그렇다면 표준 URL을 돌려준다(아니면 null).
+ *
+ * 왜(2026-10-26): 추가하려던 X 링크가 '이미 등록됨'으로 막혔는데 목록에서 못 찾았다. 행은 계정명이
+ * '원어스 건희'로 저장돼 있었고, 검색은 계정명만 봐서 링크·아이디(P_kh627)로는 안 걸렸다.
+ * 링크 검색은 중복 판정과 **같은 표준화(`canonicalMentionUrl`)** 로 비교해야 "등록돼 있다는데
+ * 검색에는 안 나오는" 어긋남이 다시 생기지 않는다(utm·/reel/·www 변형도 같은 글로 잡힌다).
+ */
+export function mentionLinkQuery(query: string | null | undefined): string | null {
+  const q = (query ?? "").trim();
+  // 공백·쉼표가 있으면 일반 검색어(AND/OR 문법)다. 링크는 한 덩어리로 붙여 넣는다.
+  if (!q || /[\s,]/.test(q)) return null;
+  if (!/^(https?:\/\/)?([a-z0-9-]+\.)+[a-z]{2,}\//i.test(q)) return null;
+  return canonicalMentionUrl(q);
+}
+
+/**
+ * 게시물 URL에 들어 있는 **계정 아이디**(소문자, `@` 없음). 없으면 null.
+ * 계정명 칸에는 사람이 붙인 이름('원어스 건희')이 들어가 아이디로는 못 찾기 때문에, 검색 대상에 더한다.
+ *  - `@아이디` 경로(틱톡·유튜브·스레드): 그 조각
+ *  - X/트위터: 첫 경로 조각(`x.com/<아이디>/status/…`)
+ *  - 인스타 프로필·스토리: `instagram.com/<아이디>/`, `instagram.com/stories/<아이디>/…`
+ *    (게시물 `/p/<코드>/` 에는 아이디가 없다)
+ */
+export function mentionUrlHandle(url: string | null | undefined): string | null {
+  if (!url) return null;
+  let u: URL;
+  try {
+    u = new URL(url.startsWith("http") ? url : "https://" + url);
+  } catch {
+    return null;
+  }
+  const host = u.hostname.toLowerCase().replace(/^(www|m|mobile)\./, "");
+  const parts = u.pathname.split("/").filter(Boolean);
+  const at = parts.find((p) => p.startsWith("@") && p.length > 1);
+  if (at) return decodeURIComponent(at.slice(1)).toLowerCase();
+  const first = parts[0]?.toLowerCase();
+  if (!first) return null;
+  if (host === "x.com" || host === "twitter.com") {
+    const reserved = ["i", "home", "search", "hashtag", "intent", "explore", "share"];
+    return reserved.includes(first) ? null : first;
+  }
+  if (host.endsWith("instagram.com")) {
+    if (first === "stories") return parts[1]?.toLowerCase() ?? null;
+    return ["p", "reel", "reels", "tv", "explore"].includes(first) ? null : first;
+  }
+  return null;
+}
+
+/** 중복 409 안내 문구 — 어느 행과 겹쳤는지 이름·날짜로 알려 준다(목록에서 바로 찾을 수 있게). */
+export function duplicateMentionMessage(existing: Mentionish | null | undefined): string {
+  const name = typeof existing?.account_name === "string" ? existing.account_name.trim() : "";
+  const day = typeof existing?.uploaded_at === "string" ? existing.uploaded_at.slice(0, 10) : "";
+  if (name) return `이미 '${name}'${day ? `(${day})` : ""} 행으로 등록돼 있습니다.`;
+  return `이미 등록돼 있습니다(계정명 비어 있음${day ? `, ${day}` : ""}).`;
+}
+
 export type SplitResult<T> = {
   /** 저장할 항목(url이 정규화된 상태) */
   unique: T[];
-  /** 이미 있거나 같은 요청 안에서 겹친 항목 */
-  duplicates: Array<{ item: T; url: string; reason: "existing" | "in_batch" }>;
+  /**
+   * 이미 있거나 같은 요청 안에서 겹친 항목.
+   * `existing` = 겹친 **기존 행**(reason='existing'이고 기존 목록을 객체로 넘겼을 때만) — 화면이 그 행을 짚어 준다.
+   */
+  duplicates: Array<{ item: T; url: string; reason: "existing" | "in_batch"; existing?: Mentionish }>;
   /** 링크가 비어 판정 불가한 항목 */
   invalid: T[];
 };
@@ -278,12 +338,19 @@ export function splitDuplicateMentions<T extends Mentionish>(
   // 날짜를 모르는 기존 행은 그 URL의 **모든 날짜**를 덮는다. 같은 프로필의 다른 노출을 놓칠 수는
   // 있어도, 같은 노출을 두 번 적재하는 것보다 낫다(계정·조회수가 뒤섞이면 되돌리기 어렵다).
   const seenAnyDate = new Set<string>();
+  // 키 → 기존 행(객체로 넘어온 것만). 중복 안내에서 "어느 행과 겹쳤는지"를 짚기 위해서다.
+  const rowByKey = new Map<string, Mentionish>();
+  const rowByAnyDate = new Map<string, Mentionish>();
   for (const row of existing) {
     const key = mentionDedupeKey(row);
     if (!key) continue;
     seen.add(key);
+    if (typeof row !== "string" && !rowByKey.has(key)) rowByKey.set(key, row);
     // 키가 canonical 그대로면 = 날짜가 키에 안 붙은 행이다(게시물 URL이거나 날짜 미상).
-    if (key === canonicalMentionUrl(typeof row === "string" ? row : row.url)) seenAnyDate.add(key);
+    if (key === canonicalMentionUrl(typeof row === "string" ? row : row.url)) {
+      seenAnyDate.add(key);
+      if (typeof row !== "string" && !rowByAnyDate.has(key)) rowByAnyDate.set(key, row);
+    }
   }
 
   // 이번 배치에서 unique로 채택된 canonical 키 — in_batch/existing 판정을 O(1)로(기존 out.unique 전체 재순회 O(n²) 제거).
@@ -301,7 +368,8 @@ export function splitDuplicateMentions<T extends Mentionish>(
     if (seen.has(key) || seenAnyDate.has(canonical)) {
       // 이미 DB에 있던 것인지, 이번 요청 안에서 겹친 것인지 구분해 메시지를 정확히 낸다.
       const reason = batchKeys.has(key) ? "in_batch" : "existing";
-      out.duplicates.push({ item, url: canonical, reason });
+      const match = reason === "existing" ? (rowByKey.get(key) ?? rowByAnyDate.get(canonical)) : undefined;
+      out.duplicates.push(match ? { item, url: canonical, reason, existing: match } : { item, url: canonical, reason });
       continue;
     }
     seen.add(key);
