@@ -1,5 +1,14 @@
 # AI Shared Status
 
+## ✅ 2026-10-26 [Codex 최종감사·복구] 대시보드 정상화 · RD 시트 10-25 누락분·재시도 20건 반영 완료
+- **대시보드:** 인증된 프로덕션 `/monitoring`에서 데이터 행까지 정상 렌더. 화면 기준 `마지막 업데이트 2026.10.26 10:23 · 자동 실행`, 총 **5,032건**이며 10-23 신규 데이터(예: `떵개떵` P바치 29,739)도 표시된다.
+- **원천 날짜 경계:** DB `post_daily_stats`는 10-23 정상, **10-24 0행**, 10-25 복구 수집 존재. 10-24는 Supabase 402 정지 중 원천 자체가 없어 값을 추정·복사하지 않았고, 사용자 결정대로 날짜열도 만들지 않았다. 시트 최신 머리글은 `FS=2026.10.23 · FT=2026.10.25 · FU=등록상태`다.
+- **수집·재시도:** 최초 복구 수집 `40249230988` 성공. 이어 target-only 재시도 `40253469204`가 대상 30건을 재확인해 **실측 20건**(IG 1 · TikTok 16 · YouTube 3)을 저장했다. 기존 YouTube 10건은 다시 확인해도 지표가 NULL이라 값을 만들지 않고 공란 유지했다.
+- **시트 최종 반영:** 라이브 `exportStats` 10:30:55 KST 실행이 643.39초 후 완료. 결과 `URL-key 날짜 쓰기 20칸 · 빈칸 실측 보강 85칸 · 증분 수식 5,090행 · 새 날짜열 0`. 재수집 20건의 FT(10-25) 값은 DB와 **20/20 정확 일치**, 누락 0. FT 비공란 1,205셀, 10-24 열 부재를 독립 재확인했다.
+- **CPV 부수 결함도 수술 복구:** 감사에서 신규 YouTube 두 묶음 `J5044:J5050 · J5065:J5071`이 표준 수식 대신 literal `0`인 구조적 누락 14건을 발견했다. 전부 `G=0 · manual_fields=[]`이고 같은 일괄 생성 패턴이라 수기 보정이 아님을 확인한 뒤, 해당 J 14셀만 표준 `IF(G="",…,G/H)` 수식으로 교체했다. 표시값 `₩0.00` 및 다른 열은 불변이다.
+- **CPV 재발방지·라이브 배포:** 신규행 보강에서만 `G=0 + J literal 0`을 표준 CPV 수식으로 승격한다. 비용이 비었거나 0이 아닌 행의 literal, 기존 수식, 비zero 수기값은 계속 보존하며 전역 literal 보존 정책은 불변이다. 경계 계약 6종을 추가해 web **697/697**·`tsc` 통과. 10:50 KST guarded Apps Script push 후 fresh pull에서 repo-owned 8파일·라이브 인벤토리 10파일 일치를 확인했다.
+- **최종 공식 강제감사:** `formula-audit` run **40255934658** success/HTTP 200, `healthy=true`. `targetDate=2026-10-25 · metricRange=P:FT · dateColumnCount=161 · snapshotRetryCount=0 · sheetOnly=0 · orphanRows=0 · hInvalid=0 · incInvalid=0 · incMismatch=0 · cpv.invalid=0 · stale=0 · shortLinkRows=0`; H 오류셀·데이터 있는데 H 공란도 0. 수집 불가 정상 제외 11건은 별도 카운트로 유지된다.
+
 ## 🔴→✅ 2026-10-26 [Claude 복구] Supabase 전송량(egress) 한도 초과로 DB 정지 10-24 07:36~10-26 09:20 KST → 사용자 Pro 업그레이드로 복구
 - **증상:** 대시보드 안 열림 + RD 시트 10-23 이후 미갱신. **원인:** 무료 플랜 월 egress 5GB 초과 → 모든 DB 요청 `402 exceed_egress_quota`(GHA 수집·리포트·감시, Vercel API, Apps Script, 댓글 모니터 봇 전부). 코드 변경 아님(마지막 배포 10-22). Cron Watchdog은 "실패 N건"만 알렸고 원인(402)은 안 보였다.
 - **복구:** 수집 dispatch `40249230988` success → 10-25 **1,222행**(평소 수준). **10-24는 수집 0행 = 영구 공백**(값 지어내지 않음). 시트: 10:12 자동 collection_retry export(fill_blanks 2,455칸) → 10:15 수동 importStats(saved 62) → 10:25 수동 exportStats full(65칸 추가, 보정 0).

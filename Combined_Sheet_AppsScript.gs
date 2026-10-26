@@ -1503,6 +1503,19 @@ function repairStaleMetricFormulaRanges() {
   });
 }
 
+function shouldInstallNewRowCpvFormula_(currentFormula, currentValue, costValue) {
+  if (currentFormula) return false;
+  const isBlank = String(currentValue == null ? "" : currentValue).trim() === "";
+  if (isBlank) return true;
+  // 신규 행을 여러 칸 붙여넣을 때 G=0과 함께 J=0이 값으로 들어오면 이후 비용 입력에도
+  // CPV가 0에 고정된다. 신규행 보강 경로에서만 이 무해한 0/0 조합을 수식으로 승격한다.
+  // 비용이 비었거나 0이 아닌 행의 literal CPV는 기존 수기 보존 정책대로 건드리지 않는다.
+  return typeof currentValue === "number"
+    && currentValue === 0
+    && typeof costValue === "number"
+    && costValue === 0;
+}
+
 function ensureNewRowsMetricFormulas_(sheet, startRow, endRow) {
   if (!sheet || startRow > endRow) return { cumulative: 0, increment: 0, cpv: 0 };
   const dateCols = metricDateColumns_(sheet);
@@ -1541,7 +1554,10 @@ function ensureNewRowsMetricFormulas_(sheet, startRow, endRow) {
     }
     if (cpvCol && costCol && cumulativeCol) {
       const cell = sheet.getRange(row, cpvCol);
-      if (!cell.getFormula() && String(cell.getValue() == null ? "" : cell.getValue()).trim() === "") {
+      const currentFormula = cell.getFormula();
+      const currentValue = cell.getValue();
+      const costValue = sheet.getRange(row, costCol).getValue();
+      if (shouldInstallNewRowCpvFormula_(currentFormula, currentValue, costValue)) {
         cell.setFormula(metricCpvFormula_(row, costLetter, cumulativeLetter));
         cpv++;
       }

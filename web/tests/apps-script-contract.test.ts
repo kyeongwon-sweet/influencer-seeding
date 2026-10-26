@@ -485,12 +485,30 @@ test("new DB-appended rows immediately receive H/I/J formulas and numeric date h
   assert.match(helperBody, /metricIncrementFormula_\(row, firstLetter, lastLetter, targetLetter\)/);
   assert.match(helperBody, /metricCpvFormula_\(row, costLetter, cumulativeLetter\)/);
   assert.match(helperBody, /const cpvCol = findHeaderCol_\(sheet, \["CPV", "cpv"\]\)/);
+  assert.match(helperBody, /shouldInstallNewRowCpvFormula_\(currentFormula, currentValue, costValue\)/);
 
   const parserStart = appsScript.indexOf("function parseMonthDay_(label)");
   const parserEnd = appsScript.indexOf("function onEdit", parserStart);
   const parserBody = appsScript.slice(parserStart, parserEnd);
   assert.match(parserBody, /typeof label === "number" && label >= 44000 && label <= 48000/);
   assert.match(parserBody, /Date\.UTC\(1899, 11, 30\)/);
+});
+
+test("new-row CPV repair upgrades only blank or cost-zero literal-zero cells", () => {
+  const start = appsScript.indexOf("function shouldInstallNewRowCpvFormula_(");
+  const end = appsScript.indexOf("function ensureNewRowsMetricFormulas_", start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const shouldInstall = new Function(
+    `${appsScript.slice(start, end)}\nreturn shouldInstallNewRowCpvFormula_;`,
+  )() as (formula: unknown, cpvValue: unknown, costValue: unknown) => boolean;
+
+  assert.equal(shouldInstall("", "", 0), true, "blank CPV should receive the standard formula");
+  assert.equal(shouldInstall("", 0, 0), true, "new pasted G=0/J=0 should become a formula");
+  assert.equal(shouldInstall("", 0, 100_000), false, "manual zero with nonzero cost must be preserved");
+  assert.equal(shouldInstall("", 12.5, 0), false, "nonzero manual CPV must be preserved");
+  assert.equal(shouldInstall("", 0, ""), false, "blank cost must not change a displayed literal zero");
+  assert.equal(shouldInstall("=G2/H2", 0, 0), false, "existing formulas must be preserved");
 });
 
 test("syncNew fills missing H/I/J formulas before marking rows registered", () => {
