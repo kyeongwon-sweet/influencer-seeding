@@ -1,5 +1,9 @@
 # AI Shared Status
 
+## ✅ 2026-10-26 [Claude 수정] 협찬 모니터링 제작자·기획자 필터 — 한 칸 여러 명("박현지, 김해솔")을 사람별로 분리 (`bdab9235`)
+- 실측: 기획자 33종 중 묶음 4종(박현지, 김해솔 2 · 박현지, 이선민 13 · 이선민, 권설호 7 · 이선민, 박현지 6), 제작자는 묶음 없음. 시트·DB 원문은 그대로, 표시·필터 단계에서만 나눔(`web/lib/personNames.ts`, 구분자 , / · & +).
+- 배포 후 실화면 확인: 기획자 옵션 29명(묶음 없음), '박현지' 선택 시 94건 = 73+2+13+6 일치. web 716 pass·tsc·build 통과.
+
 ## ✅ 2026-10-26 [Codex 추가 최적화] Supabase 반복 전체이력 3경로 RPC 전환 · 실데이터 exact parity 후 운영 활성화 (`ef5c4bc0`)
 - **범위:** 기존 대시보드·부정댓글 봇 최적화에 이어 ① 조회수 누락 재시도 큐 ② 누적지표 역행 워치독 ③ `run_monitoring.py`의 활성글 이력 요약·일일 스냅샷 합계를 PostgreSQL RPC로 내렸다. 값 판정·제외 규칙·빈칸≠0·배너 reach 정책은 바꾸지 않고, 원시 `post_daily_stats` 전체 다운로드만 제거했다.
 - **라이브 DB:** `monitoring_view_missing_candidates_v1` · `monitoring_reverse_events_v1` · `monitoring_collection_active_summary_v1` · `monitoring_collection_snapshot_totals_v1` 설치 및 4개 시그니처를 `pg_proc`에서 확인했다. 응답은 PostgREST 1,000행 제한에 잘리지 않도록 JSON bundle/집계 1행이고, 실행권한은 `service_role`만 유지한다. DB 통계값 쓰기·보정은 0건이다.
