@@ -1,5 +1,16 @@
 # AI Shared Status
 
+## 🔴→✅ 2026-10-26 [Claude 복구] Supabase 전송량(egress) 한도 초과로 DB 정지 10-24 07:36~10-26 09:20 KST → 사용자 Pro 업그레이드로 복구
+- **증상:** 대시보드 안 열림 + RD 시트 10-23 이후 미갱신. **원인:** 무료 플랜 월 egress 5GB 초과 → 모든 DB 요청 `402 exceed_egress_quota`(GHA 수집·리포트·감시, Vercel API, Apps Script, 댓글 모니터 봇 전부). 코드 변경 아님(마지막 배포 10-22). Cron Watchdog은 "실패 N건"만 알렸고 원인(402)은 안 보였다.
+- **복구:** 수집 dispatch `40249230988` success → 10-25 **1,222행**(평소 수준). **10-24는 수집 0행 = 영구 공백**(값 지어내지 않음). 시트: 10:12 자동 collection_retry export(fill_blanks 2,455칸) → 10:15 수동 importStats(saved 62) → 10:25 수동 exportStats full(65칸 추가, 보정 0).
+  - 검증(CSV 전후 대조): 행 5,091 불변·헤더 불변, 10-23 **1,192칸**·10-25 **1,193칸**, H 누적 621행 증가·10행 신규·**감소 0·소실 0**. 옛 열 변경 6칸 = 빈칸 채움 5 + `p/Dd897iZBUHq` 10-22 칸 91,922 삭제(종료 10-17 이후 복사값, 규칙상 정리; H 91,922 불변).
+  - ⚠️ 시트에 **10-24 날짜열이 없다**(10-25 열이 바로 뒤). exportStats는 중간 열을 넣지 않음. 빈 10-24 열을 넣을지는 사용자 결정 대기.
+- **egress 원인(실측 크기 × 실제 실행 횟수, Supabase 사용량 화면은 미확인):** post_daily_stats 123,399행·238B/행, sponsored_posts 5,062행.
+  1. 대시보드 `GET /api/sponsored-posts`(route.ts:166-225) — post_daily_stats **전체**(≈29MB)+게시물(≈4MB)을 **페이지 열 때마다·편집할 때마다** 읽음. 테이블이 하루 ~1.2k행씩 커져 계속 증가.
+  2. 댓글 모니터 봇(같은 DB) — 스캔마다 sponsored_posts 전체(캡션 포함 ≈1.9MB)+30일 stats(33,844행 ≈2.9MB)+유튜브 알림 전체 comment_text(7,515행×506B ≈3.8MB, `youtube-owner-moderation.js:121` 필터 없음) ≈9MB, 실제 하루 ~30회 실행(회당 최대 4스캔).
+  3. 그 외 전체 스캔: stats-for-sheet(≈25MB/회), run_monitoring 이력 다중 스캔, reverse_watchdog(전체), list-for-sheet(3시간마다), banner-reach-sync.
+  - 추정 합계 하루 0.5~1.5GB → 무료 5GB/월 초과는 필연. Pro(250GB/월)에선 여유. 줄이기(대시보드 기간 제한·알림 미처리분만 등)는 사용자 결정 대기.
+
 ## ✅ 2026-10-26 [Claude 재발방지] 무상노출 '이미 등록됨인데 목록에 없음' — 계정명 검색이 링크·@아이디로도 찾고, 중복 안내가 기존 행을 짚어 띄움
 - **사례:** `x.com/P_kh627/status/2104202774653399065` 추가 → '이미 등록된 링크'인데 목록에서 못 찾음. 행은 DB에 정상(`d31d24c6…`, 계정명 **'원어스 건희'**, 2026-09-27, 트위터·쫀득바). 검색이 계정명만 봐서 링크·아이디로는 안 걸렸고, 409 안내도 어느 행인지 안 알려 줌.
 - **수정:** ① `organic/page.tsx` 계정명 검색 — 링크를 붙여 넣으면 **중복 판정과 같은 표준화(`canonicalMentionUrl`)** 로 그 행을 찾음(광고 숨김 무시), 일반 검색어는 계정명+URL 속 아이디(`@p_kh627`)를 대상으로 기존 문법 그대로. ② POST 409가 `existing{id,account_name,uploaded_at}`+"이미 '원어스 건희'(2026-09-27) 행으로 등록돼 있습니다." 반환 → 화면이 모달을 닫고 필터를 비운 뒤 그 링크로 검색해 행을 띄움. 헬퍼는 `web/lib/url-utils.ts`(`mentionLinkQuery`·`mentionUrlHandle`·`duplicateMentionMessage`, `splitDuplicateMentions`가 겹친 기존 행 반환). 공용 `matchesSearch`는 무변경.
