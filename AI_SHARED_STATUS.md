@@ -11,6 +11,12 @@
 - **사전 결함 발견·보완:** 라이브 DB에 repo의 옛 `ops_daily_runs` migration이 적용돼 있지 않아 원안은 광고 행 upsert 뒤 마커 단계에서 실패할 상태였다. 프로덕션 정본인 `jobs.payload`에 날짜별 `ops_marker=google_ads_sync:pbachi`를 멱등 저장하도록 `29d12449`에서 수정했다. 최초 실행은 INSERT, 재실행은 UPDATE라 중복 마커가 생기지 않으며, 확정 0과 조회 실패 구분은 유지한다. Google Ads sync 테스트 **11/11**, `py_compile`, KST pre-push, `tsc` 통과.
 - **현재 대기:** Supabase `influencer-seeding` 프로젝트(ref `vkdvncwzccqtqnszxdwo`)에 `ad_platform_daily`가 아직 없어 migration·Google Ads dry-run/apply는 미실행. SQL Editor 탭은 로그인 상태로 열렸으나 Windows Computer Use가 현재 브라우저 URL을 안전하게 확정하지 못해 자동 조작이 중단됐다. Supabase 탭을 다시 전면에 열어 안전하게 재개한 뒤 `20261027_ad_platform_daily.sql` → dry-run(10-13~10-26, N>0·조회수 지표명 확인) → apply·재조회 순으로 마무리할 것.
 
+## ✅ 2026-10-27 [Claude] 바치케 Google Ads — 일자별 대조 완료·10/26 리포트 유튜브 줄 교체·일일 자동 적재 시작 (`82688729`·`b41419a5`)
+- **일자별 대조(소급 10/13~10/26):** 무노출일 4일 양쪽 일치, 나머지 날 차이는 Google 후행 보정 수준(1% 미만). ※ 공개 레포라 상태판엔 광고비·지표 값을 적지 않는다(안전검사 차단 이력) — 값은 대시보드·DB에서 확인.
+- **10/26 바치케 리포트:** 사용자 지시로 유튜브 줄(조회수·CPV)과 총 증분만 Google Ads 값으로 교체(`report-patch-youtube-gads.yml`, Slack 실물 재조회 일치). 보정 도구는 Codex `29d12449`에 맞춰 조회 마커를 `jobs.payload`에서 읽음.
+- **일일 자동 적재(사용자 결정):** `google-ads-sync.yml` 06:20·11:20 KST, 예약은 적용 모드·최근 10일 재조회. 미실행 감시 = `cron_watchdog` 마감 13:10 KST(since 2026-10-28, 유예는 추정치 — 실측 쌓이면 재산정).
+- **아직 시트 기준:** 매일 바치케 리포트 유튜브 줄·대시보드. 다음 = 대시보드 병행 표시(출처 라벨) → 14일 무사고 운영 뒤 리포트 정본 전환.
+
 ## 🔧 2026-10-27 [Claude 조사·코드 / Codex 인계 대기] 바치케 유튜브 성과 Google Ads 직접 연동(읽기 전용) — 자격증명·테이블 대기
 - **요청:** 시트 「파인트 인지광고 대시보드」 `인지영상_YouTube` 대신 Google Ads에서 직접. 범위 P바치, 읽기 전용, 병행 비교 후 정본 전환, 실패 시 시트 fail-open.
 - **조사(실측):** 계정 `815-143-8670`(MCC `323-466-8229`) 시간대 **Asia/Seoul**. P바치 광고그룹 16개가 전부 인지 Video 캠페인 2개 안 — `[파인트] 인지광고_조회_26.10_관심사타깃_전체` `24375681538` · `[파인트] 인지광고_조회_26.08_관심사타깃_전체` `24178660252`(TrueView 타깃 CPV). **P바치 유튜브 전환 캠페인은 없음.**
