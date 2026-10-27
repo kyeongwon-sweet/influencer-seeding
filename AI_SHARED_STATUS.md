@@ -1,5 +1,10 @@
 # AI Shared Status
 
+## ⏳ 2026-10-27 [Codex 진행 중] 바치케 Google Ads 자격증명 등록 완료 · 라이브 테이블 적용 대기
+- **자격증명:** `influencer-seeding` Actions secrets 4개(`GOOGLE_ADS_DEVELOPER_TOKEN`·`GOOGLE_ADS_CLIENT_ID`·`GOOGLE_ADS_CLIENT_SECRET`·`GOOGLE_ADS_REFRESH_TOKEN`)와 variables `GOOGLE_ADS_LOGIN_CUSTOMER_ID=3234668229`·`GOOGLE_ADS_CUSTOMER_ID=8151438670` 등록 완료. `negative-comment-monitor` 기존 secrets를 일회성 RSA+AES 암호화 아티팩트로 전달해 평문을 로그·파일에 출력하지 않았고, 등록 뒤 원격 아티팩트·임시 브랜치와 로컬 키·암호문을 모두 삭제했다(이름 목록으로만 사후 확인).
+- **사전 결함 발견·보완:** 라이브 DB에 repo의 옛 `ops_daily_runs` migration이 적용돼 있지 않아 원안은 광고 행 upsert 뒤 마커 단계에서 실패할 상태였다. 프로덕션 정본인 `jobs.payload`에 날짜별 `ops_marker=google_ads_sync:pbachi`를 멱등 저장하도록 `29d12449`에서 수정했다. 최초 실행은 INSERT, 재실행은 UPDATE라 중복 마커가 생기지 않으며, 확정 0과 조회 실패 구분은 유지한다. Google Ads sync 테스트 **11/11**, `py_compile`, KST pre-push, `tsc` 통과.
+- **현재 대기:** Supabase `influencer-seeding` 프로젝트(ref `vkdvncwzccqtqnszxdwo`)에 `ad_platform_daily`가 아직 없어 migration·Google Ads dry-run/apply는 미실행. SQL Editor 탭은 로그인 상태로 열렸으나 Windows Computer Use가 현재 브라우저 URL을 안전하게 확정하지 못해 자동 조작이 중단됐다. Supabase 탭을 다시 전면에 열어 안전하게 재개한 뒤 `20261027_ad_platform_daily.sql` → dry-run(10-13~10-26, N>0·조회수 지표명 확인) → apply·재조회 순으로 마무리할 것.
+
 ## 🔧 2026-10-27 [Claude 조사·코드 / Codex 인계 대기] 바치케 유튜브 성과 Google Ads 직접 연동(읽기 전용) — 자격증명·테이블 대기
 - **요청:** 시트 「파인트 인지광고 대시보드」 `인지영상_YouTube` 대신 Google Ads에서 직접. 범위 P바치, 읽기 전용, 병행 비교 후 정본 전환, 실패 시 시트 fail-open.
 - **조사(실측):** 계정 `815-143-8670`(MCC `323-466-8229`) 시간대 **Asia/Seoul**. P바치 광고그룹 16개가 전부 인지 Video 캠페인 2개 안 — `[파인트] 인지광고_조회_26.10_관심사타깃_전체` `24375681538` · `[파인트] 인지광고_조회_26.08_관심사타깃_전체` `24178660252`(TrueView 타깃 CPV). **P바치 유튜브 전환 캠페인은 없음.**
