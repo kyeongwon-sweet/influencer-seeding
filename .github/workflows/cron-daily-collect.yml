@@ -73,7 +73,9 @@ jobs:
           export TODAY=$(TZ=Asia/Seoul date -d 'yesterday' +%F)
           echo "kdate=${TODAY}" >> "$GITHUB_OUTPUT"
           cd scripts
-          python build_view_missing_queue.py --date "$TODAY" --out-dir "$RUNNER_TEMP"
+          set -o pipefail
+          # 실패 사유(예: Supabase 402 exceed_egress_quota)를 DB 없이 알리려고 로그를 남긴다.
+          python build_view_missing_queue.py --date "$TODAY" --out-dir "$RUNNER_TEMP" 2>&1 | tee "$RUNNER_TEMP/check.log"
           export SUMMARY_FILE="$RUNNER_TEMP/view_missing_queue_${TODAY}.json"
           RETRYABLE=$(python -c "import json, os; print(json.load(open(os.environ['SUMMARY_FILE'], encoding='utf-8'))['retryable_count'])")
           QUEUE_COUNT=$(python -c "import json, os; print(json.load(open(os.environ['SUMMARY_FILE'], encoding='utf-8'))['queue_count'])")
@@ -131,12 +133,18 @@ jobs:
       # 성공 workflow 자체는 수집 완료의 충분조건이 아니다. status_test/api_only/metadata_only도
       # 초록으로 끝날 수 있어 소비자가 이력을 보고 수집 완료로 오인한다. 실제 전체수집 성공 또는
       # 누락 0으로 의도적으로 건너뛴 경우만 명시적 완료 마커를 남긴다. 보고·시트 역채움의 공통 정본.
+      # ⛔ 2026-10-26 사고: Supabase 402로 'Check today' 가 실패 → decide 가 skipped 되어 go 가 **빈 값**이
+      #   됐는데, GitHub 조건식은 빈 값(null)과 '0' 을 둘 다 숫자 0 으로 바꿔 비교해 `go == '0'` 이 참이 됐다.
+      #   수집을 안 했는데 마커가 찍혀(run 40238166718) 리포트가 dispatch → '미수집 181건' 오보.
+      #   → check·decide 가 실제로 성공했을 때만 go 값을 믿는다. 빈 값 비교에 기대지 말 것.
       - name: Collection completion marker
         id: collection_complete
         if: >-
           always() &&
           github.event.inputs.api_only != 'true' &&
           github.event.inputs.metadata_only != 'true' &&
+          steps.check.outcome == 'success' &&
+          steps.decide.outcome == 'success' &&
           (steps.decide.outputs.go == '0' || steps.collect.outcome == 'success')
         run: echo "[COLLECTION_COMPLETE] measured_at=${{ steps.check.outputs.kdate }}"
 
@@ -189,6 +197,19 @@ jobs:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           PYTHONUNBUFFERED: "1"
         run: cd scripts && python notify_status.py
+
+      # 위 알럿은 decide 가 돌아야(go=='1') 뜨고, 본문도 DB 를 읽는다 → DB 가 막히면(2026-10-24~26
+      #   Supabase 402) 'Check today' 실패 → decide skipped → **알럿도 skipped**, 원인은 어디에도 안 보였다.
+      #   여기는 DB 없이 점검 로그 끝부분만 DM 한다(egress 한도 초과면 그 사실을 첫 줄에).
+      - name: 수집 사전점검 실패 알럿 (DB 불통, 황경원 DM)
+        if: always() && steps.check.outcome == 'failure'
+        continue-on-error: true
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          STATUS_USER: U0B2Y0ZC8QZ   # 황경원 Slack user id (DM)
+          CHECK_LOG: ${{ runner.temp }}/check.log
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: cd scripts && python precheck_failure_alert.py
 
       # 재발방지(2026-08-28 사고): 유머박스(틱톡) 활성 56건이 08-19부터 9일 연속 0건이었는데
       #   알림이 한 번도 없었다. 삭제 감지가 not_found에만 걸려 있어 틱톡 삭제/비공개가

@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## ✅ 2026-10-27 [Claude 재발방지] DB 불통인데 '수집 완료'가 찍혀 리포트 오보(10-26 '미수집 181건') — 완료 마커 빈 값 비교 버그 수정 + DB 없이 도는 사전점검 실패 알림
+- **원인(실측):** 10-26 run `40238166718` = `Check today` **failure**(Supabase 402) → `Decide collect`·수집 **skipped** → 그런데 `Collection completion marker` **success**. 마커 조건 `steps.decide.outputs.go == '0'`에서 decide가 안 돌아 go가 빈 값(null)이었고, **GitHub 조건식은 null과 '0'을 둘 다 숫자 0으로 바꿔 비교해 참**. 마커가 '완료'로 보여 리포트 run `40249911758`이 복구 수집(`40249230988`, 00:24Z~01:05Z) 도중 나가 '미수집 181건' 오보. 같은 이유로 '수집 실패 시 알럿'도 skipped(그 알럿은 go=='1' 조건+본문이 DB를 읽어 DB 불통엔 원래 못 돎).
+- **수정:** ① 워크플로 마커에 `steps.check.outcome == 'success' && steps.decide.outcome == 'success'` 추가(빈 값 비교에 기대지 않음). ② 소비자 2곳 방어 — `daily_collect_report.collection_completed_from_jobs`·`web/lib/collection-completion.ts`(시트 exportStats 게이트용 `/api/ops/collection-status`)가 마커 성공이어도 `Check today`/`Decide collect` 단계가 success 아니면 미완료(`precheck_not_success`). 과거 이력도 소급해 올바로 판정. ③ 새 단계 `수집 사전점검 실패 알럿 (DB 불통)` — check 실패 시 `scripts/precheck_failure_alert.py`가 **DB 없이** 점검 로그 끝 12줄을 황경원 DM, `exceed_egress_quota`면 첫 줄에 "Supabase egress 한도 초과 — DB 정지". check 로그는 `$RUNNER_TEMP/check.log`로 tee.
+- **검증:** 새 테스트는 옛 코드에서 2건 실패·새 코드 통과 확인(실측 run 단계 결과를 그대로 픽스처로). 정상일(누락0 skip)·진행 중 복구 run은 여전히 완료. scripts **534 passed**·web **717/717**·`tsc`·build·YAML parse 통과. 새 알림의 실제 Slack 도착은 **미검증**(DB 장애가 있어야 발동).
+- **이미 처리돼 있던 것(다른 세션, 위 10-26 항목):** Pro 업그레이드 복구·10-24 공백 유지·181건 스레드 '해결됨' 정정·egress 절감 RPC.
+
 ## ✅ 2026-10-26 [Claude 수정] 협찬 모니터링 제작자·기획자 필터 — 한 칸 여러 명("박현지, 김해솔")을 사람별로 분리 (`bdab9235`)
 - 실측: 기획자 33종 중 묶음 4종(박현지, 김해솔 2 · 박현지, 이선민 13 · 이선민, 권설호 7 · 이선민, 박현지 6), 제작자는 묶음 없음. 시트·DB 원문은 그대로, 표시·필터 단계에서만 나눔(`web/lib/personNames.ts`, 구분자 , / · & +).
 - 배포 후 실화면 확인: 기획자 옵션 29명(묶음 없음), '박현지' 선택 시 94건 = 73+2+13+6 일치. web 716 pass·tsc·build 통과.

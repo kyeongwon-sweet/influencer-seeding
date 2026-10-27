@@ -75,3 +75,23 @@ test("collection status route is cron-authenticated and public at middleware onl
   assert.match(route, /export async function POST/);
   assert.match(middleware, /\/api\/ops\/collection-status/);
 });
+
+test("a marker after a failed precheck is not a completion (2026-10-26 Supabase 402)", () => {
+  // Real run 40238166718: precheck failed, decide/collector skipped, marker still success
+  // because the workflow expression `null == '0'` is true.
+  const jobs = (check: string, decide: string, collector: string) => [{
+    name: "collect",
+    conclusion: "success",
+    steps: [
+      { name: "Check today (KST) data", conclusion: check },
+      { name: "Decide collect", conclusion: decide },
+      { name: "협찬 전체 수집 (IG+YT+틱톡+페북+스레드+트위터)", conclusion: collector },
+      { name: COLLECTION_COMPLETE_STEP, conclusion: "success" },
+    ],
+  }];
+  assert.deepEqual(collectionCompletedFromJobs(jobs("failure", "skipped", "skipped"), "schedule", true), {
+    completed: false, markerSeen: true, reason: "precheck_not_success",
+  });
+  assert.equal(collectionCompletedFromJobs(jobs("success", "success", "success"), "workflow_dispatch", true, null).completed, true);
+  assert.equal(collectionCompletedFromJobs(jobs("success", "success", "skipped"), "schedule", true).completed, true);
+});

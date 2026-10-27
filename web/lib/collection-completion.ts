@@ -1,5 +1,6 @@
 import { addDaysToDate, isIsoDateString, kstDateOf } from "./dateRule.ts";
 export const COLLECTION_COMPLETE_STEP = "Collection completion marker";
+export const COLLECTION_PRECHECK_STEPS = ["Check today (KST) data", "Decide collect"];
 export const COLLECTION_MARKER_REQUIRED_AFTER = "2026-08-28T03:00:00Z";
 
 export type CollectionWorkflowRun = {
@@ -36,7 +37,7 @@ export function isCandidateCollectionRun(run: CollectionWorkflowRun, targetDate:
 export type CollectionJobDecision = {
   completed: boolean;
   markerSeen: boolean;
-  reason: "marker_success" | "marker_not_success" | "marker_missing" | "legacy_schedule" | "legacy_manual_collect" | "not_collect_job";
+  reason: "marker_success" | "marker_not_success" | "precheck_not_success" | "marker_missing" | "legacy_schedule" | "legacy_manual_collect" | "not_collect_job";
 };
 
 /**
@@ -57,6 +58,14 @@ export function collectionCompletedFromJobs(
 
   const marker = (collectJob.steps ?? []).find((step) => step.name === COLLECTION_COMPLETE_STEP);
   if (marker) {
+    // 2026-10-26: Supabase 402 made the precheck fail, decide was skipped, and the
+    // workflow expression `null == '0'` still stamped the marker. Trust the marker
+    // only when the precheck and decide steps really succeeded.
+    const precheckFailed = COLLECTION_PRECHECK_STEPS.some((name) => {
+      const step = (collectJob.steps ?? []).find((s) => s.name === name);
+      return !!step && step.conclusion !== "success";
+    });
+    if (precheckFailed) return { completed: false, markerSeen: true, reason: "precheck_not_success" };
     const completed = marker.conclusion === "success";
     return { completed, markerSeen: true, reason: completed ? "marker_success" : "marker_not_success" };
   }

@@ -141,3 +141,38 @@ if __name__ == "__main__":
         if name.startswith("test_") and callable(fn):
             fn()
     print("daily_collect_report tests passed (watchdog 3 + 수집게이트/마커 9)")
+
+
+def _steps(check, decide, collector, marker):
+    return [{"name": "collect", "conclusion": "success", "steps": [
+        {"name": "Check today (KST) data", "conclusion": check},
+        {"name": "Decide collect", "conclusion": decide},
+        {"name": "협찬 전체 수집 (IG+YT+틱톡+페북+스레드+트위터)", "conclusion": collector},
+        {"name": COLLECTION_COMPLETE_STEP, "conclusion": marker},
+    ]}]
+
+
+def test_marker_after_failed_precheck_is_not_completion():
+    # 실측 run 40238166718(2026-10-26, Supabase 402): 점검 실패·판정/수집 skipped 인데 마커 success.
+    # 이걸 완료로 봐서 리포트가 dispatch 됐고 '미수집 181건' 오보가 나갔다.
+    bad = _steps("failure", "skipped", "skipped", "success")
+    assert collection_completed_from_jobs(bad, "schedule", True) is False
+    # 복구 run 40249230988: 점검·판정·수집 모두 success → 완료(진행 중 conclusion=None 이어도).
+    good = _steps("success", "success", "success", "success")
+    assert collection_completed_from_jobs(good, "workflow_dispatch", True, None) is True
+    # 누락 0이라 의도적으로 건너뛴 정상일은 여전히 완료.
+    nothing_missing = _steps("success", "success", "skipped", "success")
+    assert collection_completed_from_jobs(nothing_missing, "schedule", True) is True
+
+
+def test_workflow_marker_does_not_trust_empty_decide_output():
+    # GitHub 조건식은 null == '0' 을 참으로 본다 → check·decide 실제 성공을 함께 요구해야 한다.
+    workflow = (Path(__file__).resolve().parents[1] / ".github" / "workflows" /
+                "cron-daily-collect.yml").read_text(encoding="utf-8")
+    block = workflow.split("id: collection_complete", 1)[1].split("run:", 1)[0]
+    assert "steps.check.outcome == 'success'" in block
+    assert "steps.decide.outcome == 'success'" in block
+    # DB 불통이면 notify_status 도 못 도니, DB 없이 도는 사전점검 실패 알럿이 있어야 한다.
+    assert "steps.check.outcome == 'failure'" in workflow
+    assert "python precheck_failure_alert.py" in workflow
+    assert 'tee "$RUNNER_TEMP/check.log"' in workflow

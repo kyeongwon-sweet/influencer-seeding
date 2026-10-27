@@ -59,6 +59,7 @@ def load_auto_end_watchdog(report_path, outcome="success"):
 
 COLLECT_WORKFLOW = "cron-daily-collect.yml"
 COLLECTION_COMPLETE_STEP = "Collection completion marker"
+COLLECTION_PRECHECK_STEPS = ("Check today (KST) data", "Decide collect")
 COLLECTION_MARKER_REQUIRED_AFTER = datetime.datetime.fromisoformat("2026-08-28T03:00:00+00:00")
 
 
@@ -70,6 +71,12 @@ def collection_completed_from_jobs(jobs, event, marker_required=False, run_concl
     steps = collect_job.get("steps") or []
     marker = next((step for step in steps if step.get("name") == COLLECTION_COMPLETE_STEP), None)
     if marker is not None:
+        # 2026-10-26: DB 402로 점검이 실패했는데 워크플로 조건식(null == '0')이 마커를 찍었다.
+        # 마커가 성공이어도 사전점검·판정 단계가 실제로 성공한 실행만 완료로 본다.
+        for name in COLLECTION_PRECHECK_STEPS:
+            pre = next((step for step in steps if step.get("name") == name), None)
+            if pre is not None and pre.get("conclusion") != "success":
+                return False
         return marker.get("conclusion") == "success"
     if marker_required:
         return False
