@@ -274,6 +274,7 @@ def main() -> int:
         "invalid-creator-fields.yml": 97,
         "cron-kpi.yml": 90,
         "daily-increment-report.yml": 253, # 마지막 15:20 슬롯이 최대 16:32 완료(첫 12:20 대비)
+        "google-ads-sync.yml": 372,        # ⚠️ 추정(2026-10-27 신규): 마지막 11:20 슬롯 + 타 워크플로 실측 최대 72분. 실측 쌓이면 교체
     }
     if set(observed_max_delay_min) != set(DAILY_DEADLINE_KST):
         fails.append(

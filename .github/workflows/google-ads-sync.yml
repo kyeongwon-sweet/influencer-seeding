@@ -3,9 +3,14 @@ name: Google Ads sync — 바치케 유튜브 (읽기 전용)
 # Google Ads 광고그룹×일 성과(비용·노출·TrueView 조회수) → Supabase ad_platform_daily. 2026-10-27.
 # 범위: 광고그룹 이름에 'P바치'(사용자 결정). 광고 설정은 읽기만 한다(GAQL search 만 호출).
 # 시트 수기값은 건드리지 않는다 — 병행 비교로 검증한 뒤에만 정본 전환.
-# ⚠️ 아직 수동 실행 전용: 자격증명 등록(Codex) + 테이블 생성 + 14일 이상 대조 확인 뒤 schedule 을 붙인다
-#    (붙일 때 결과 워치독도 같이 — 스케줄 조용한 미실행 재발방지).
+# 2026-10-27 사용자 결정: 매일 자동 적재 시작(병행 비교 단계 — 리포트·대시보드는 아직 시트).
+#   소급 14일(10/13~26) 일자별 대조는 끝남(무노출일 일치, 차이 ≤0.7% 후행 보정). 남은 검증 = 매일 안정적으로 도는지.
+#   미실행 감시: scripts/cron_watchdog.py DAILY_DEADLINE_KST(마감 13:00 KST, 오늘 예약 성공 없으면 Slack).
+#   매번 최근 10일을 다시 읽어 후행 보정을 흡수한다(upsert, 재실행 안전).
 on:
+  schedule:
+    - cron: "20 21 * * *"   # 06:20 KST
+    - cron: "20 2 * * *"    # 11:20 KST 백업(UTC 0시=KST 9시 드롭 구간 회피)
   workflow_dispatch:
     inputs:
       since:
@@ -54,7 +59,8 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SINCE: ${{ github.event.inputs.since }}
           UNTIL: ${{ github.event.inputs.until }}
-          DAYS: ${{ github.event.inputs.days }}
-          DRY_RUN: ${{ github.event.inputs.dry_run }}
+          DAYS: ${{ github.event.inputs.days || '10' }}
+          # 예약 실행은 inputs 가 없으므로 적용 모드로 고정
+          DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || github.event.inputs.dry_run }}
           PYTHONUTF8: "1"
         run: python scripts/google_ads_sync.py
