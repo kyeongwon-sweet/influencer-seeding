@@ -1619,19 +1619,32 @@ def _tt_canonical(url: str) -> str:
     return cur if _tt_id(cur) else url
 
 
-def _fetch_tiktok(urls: list) -> dict:
-    """틱톡 영상 조회수 수집 (clockworks/tiktok-scraper). 반환: {video_id: {views,likes,comments}}"""
+# 2026-10-27 실측: 위성 틱톡 일부 글은 TikTok이 **한국에서만** 보여준다. 액터 기본(해외 프록시)은
+# `POST_NOT_FOUND_OR_PRIVATE`인데 같은 액터에 proxyCountryCode="KR"만 주면 정상(7698138117114465556=1,165
+# · 7687972711502630165=7,889). 한국 로그아웃 열람으로 10-26 실패 107건 중 살아 있는 7건이 전부 이 경우였다.
+# 본 수집은 그대로 두고 '미반환분 재시도'만 한국 경유로 보낸다(호출량 불변).
+TIKTOK_RETRY_PROXY_COUNTRY = "KR"
+
+
+def _fetch_tiktok(urls: list, proxy_country: str | None = None) -> dict:
+    """틱톡 영상 조회수 수집 (clockworks/tiktok-scraper). 반환: {video_id: {views,likes,comments}}
+
+    proxy_country: 액터 `proxyCountryCode`(예: "KR"). None이면 액터 기본 프록시.
+    """
     from apify_client import ApifyClient
     client = ApifyClient(os.getenv("APIFY_API_TOKEN"))
     if not urls:              # 빈 배치 → Apify 호출 스킵
         return {}
-    run = client.actor("clockworks/tiktok-scraper").call(run_input={
+    run_input = {
         "postURLs": urls,
         "resultsPerPage": 1,
         "shouldDownloadVideos": False,
         "shouldDownloadCovers": False,
         "shouldDownloadSubtitles": False,
-    })
+    }
+    if proxy_country:
+        run_input["proxyCountryCode"] = proxy_country
+    run = client.actor("clockworks/tiktok-scraper").call(run_input=run_input)
     out = {}
     dropped = total = 0
     first_bad = None
@@ -2453,13 +2466,17 @@ def run():
                 tt_stats = _fetch_tiktok([tt_canon[p["url"]] for p in tt_posts])
                 # 액터가 간헐적으로 일부 영상만 미반환/0 (살아있는 영상인데 그날 수집 공백 발생,
                 # 2026-07-08 시으니네 등 3/26건). 미반환분만 모아 1회 재시도.
+                # 재시도는 한국 경유 — 한국에서만 보이는 글이 기본 프록시에선 '없음'으로 온다(2026-10-27).
                 retry_urls = [tt_canon[p["url"]] for p in tt_posts
                               if (tt_stats.get(_tt_id(tt_canon[p["url"]])) or {}).get("views") in (None, 0)]
                 if retry_urls:
-                    print(f"[LOG] 틱톡 미반환 {len(retry_urls)}건 재시도")
-                    for vid, s in _fetch_tiktok(retry_urls).items():
+                    print(f"[LOG] 틱톡 미반환 {len(retry_urls)}건 재시도(proxy={TIKTOK_RETRY_PROXY_COUNTRY})")
+                    recovered = 0
+                    for vid, s in _fetch_tiktok(retry_urls, TIKTOK_RETRY_PROXY_COUNTRY).items():
                         if _has_positive_views(s):
                             tt_stats[vid] = s
+                            recovered += 1
+                    print(f"[LOG] 틱톡 재시도 회복 {recovered}건 / {len(retry_urls)}건")
                 got = sum(1 for s in tt_stats.values() if _has_positive_views(s))
                 print(f"[LOG] 틱톡 수집: 실값 {got}건 / {len(tt_posts)}개 요청")
                 tt_photo_posts = [p for p in tt_posts if re.search(r"/photo/\d+", p.get("url") or "")]

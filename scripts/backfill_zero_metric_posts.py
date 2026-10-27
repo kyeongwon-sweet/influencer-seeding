@@ -20,6 +20,7 @@ from account_name_policy import collected_account_name_update
 from auto_end_rules import row_metric
 from db import get_client
 from run_monitoring import (
+    TIKTOK_RETRY_PROXY_COUNTRY,
     _fetch_ig_fallback,
     _fetch_stats,
     _fetch_tiktok,
@@ -244,7 +245,8 @@ def collect_tiktok(db, posts: list[dict[str, Any]], rows: list[dict[str, Any]]) 
     stats = _fetch_tiktok([canon[p["url"]] for p in posts])
     missing = [canon[p["url"]] for p in posts if not positive_int((stats.get(_tt_id(canon[p["url"]])) or {}).get("views"))]
     if missing:
-        for vid, stat in _fetch_tiktok(missing).items():
+        # 재시도는 한국 경유 — 한국에서만 보이는 글(run_monitoring.TIKTOK_RETRY_PROXY_COUNTRY 참고).
+        for vid, stat in _fetch_tiktok(missing, TIKTOK_RETRY_PROXY_COUNTRY).items():
             if positive_int(stat.get("views")):
                 stats[vid] = stat
 
