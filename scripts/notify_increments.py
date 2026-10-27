@@ -153,7 +153,8 @@ def _fetch_awareness_ads(target: str):
             d["conversion"]["views"] = fetch_meta_conversion(base, secret, target, attempts=2)
         except Exception as e:
             print("[notify] 메타 전환 조회 실패('미집계' 표시, 보정 스케줄이 채움):", e)
-        print(f"[notify] 전환(메타 P바치 노출수) {target}: {d['conversion']['views']}")
+        # 공개 레포 로그 — 값은 찍지 않고 확보 여부만
+        print(f"[notify] 전환(메타 P바치 노출수) {target}: {'확보' if d['conversion']['views'] is not None else '미집계'}")
     if PROFILE["yt_source"] == "google_ads":
         # 유튜브는 Google Ads 직접 값(시트 '인지영상_YouTube'와 같은 정의 = TrueView 조회수, 10/13~26 일자별 대조 1% 미만).
         gd = None
