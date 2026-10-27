@@ -3,7 +3,8 @@
 
 바꾸는 것: 인지 광고의 `    유튜브 *+조회수*  CPV n원` 한 줄 + 총 증분(조회수 차이만큼). 다른 줄은 발송 당시 그대로.
 값: Google Ads TrueView 조회수·비용(광고그룹 이름에 'P바치', google_ads_sync 가 적재). 그날을 조회했다는 마커
-  (ops_daily_runs service=google_ads_sync:pbachi)가 없으면 '빈 값'이라 건드리지 않는다.
+  (jobs.payload ops_marker=google_ads_sync:pbachi, run_date=그날 — google_ads_sync.upsert_job_markers 와 같은 키)가
+  없으면 '빈 값'이라 건드리지 않는다. (ops_daily_runs 는 프로덕션에 없음 — Codex 29d12449)
 공개 레포 — 로그에는 날짜·변경 여부만, 조회수·광고비 값은 찍지 않는다.
 
 env: SLACK_BOT_TOKEN, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, DATES(쉼표 YYYY-MM-DD, 필수), DRY_RUN("true" 기본)
@@ -19,7 +20,7 @@ import patch_report_conversion as prc  # noqa: E402  (find_report·_slack·TOTAL
 
 LABEL = "유튜브"
 YT_RE = re.compile(r"^    유튜브 \*\+([\d,]+)\*(?:  CPV [^\n]*)?$", re.M)
-RUN_SERVICE = "google_ads_sync:pbachi"
+from google_ads_sync import RUN_SERVICE  # noqa: E402  (마커 키 단일 정본 — 쓰는 쪽과 같은 값)
 
 
 def ad_cpv(cost, views) -> str:
@@ -65,7 +66,8 @@ def replace_youtube_line(text: str, views: int, cost: float):
 
 def gads_day(sb, date: str):
     """그날 Google Ads P바치 합계 (views, cost) / 조회 마커가 없으면 None(빈 값). 조회수 지표가 빈 값인 행이 있으면 None."""
-    mk = sb.table("ops_daily_runs").select("run_date").eq("service", RUN_SERVICE).eq("run_date", date).execute()
+    mk = (sb.table("jobs").select("id").eq("type", "monitoring").eq("status", "done")
+          .contains("payload", {"ops_marker": RUN_SERVICE, "run_date": date}).limit(1).execute())
     if not mk.data:
         return None
     rows = (sb.table("ad_platform_daily").select("views,cost_krw")

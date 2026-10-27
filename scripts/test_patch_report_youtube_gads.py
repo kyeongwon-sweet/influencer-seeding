@@ -66,6 +66,8 @@ class _Q:
         self.data = data
     def select(self, *a, **k): return self
     def eq(self, *a, **k): return self
+    def contains(self, *a, **k): return self
+    def limit(self, *a, **k): return self
     def execute(self): return self
 
 
@@ -73,7 +75,7 @@ class _SB:
     def __init__(self, marker, rows):
         self.marker, self.rows = marker, rows
     def table(self, name):
-        return _Q(self.marker if name == "ops_daily_runs" else self.rows)
+        return _Q(self.marker if name == "jobs" else self.rows)
 
 
 def test_unfetched_day_or_blank_views_is_blank_not_zero():
@@ -82,3 +84,11 @@ def test_unfetched_day_or_blank_views_is_blank_not_zero():
     assert p.gads_day(_SB([{"run_date": "x"}], []), "2026-10-26") == (0, 0)   # 조회했고 행 없음 = 노출 없음
     assert p.gads_day(_SB([{"run_date": "x"}], [{"views": 3, "cost_krw": "10.5"}, {"views": 4, "cost_krw": 1}]),
                       "2026-10-26") == (7, 11.5)
+
+
+def test_reader_matches_marker_written_by_sync():
+    """보정 도구가 찾는 마커 = 수집기가 jobs 에 쓰는 마커(type·status·payload 키) — 한쪽만 바뀌면 조용히 '미조회'가 된다."""
+    import google_ads_sync as g
+    m = g.run_markers(["2026-10-26"], [], "metrics.video_trueview_views", "t")[0]
+    assert m["type"] == "monitoring" and m["status"] == "done"
+    assert m["payload"]["ops_marker"] == p.RUN_SERVICE and m["payload"]["run_date"] == "2026-10-26"
