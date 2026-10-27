@@ -72,3 +72,11 @@ def test_title_helper_matches_web_constant():
     src = open(os.path.join(os.path.dirname(__file__), "..", "web", "lib", "report-message.ts"), encoding="utf-8").read()
     m = re.search(r'REPORT_TITLE = "([^"]+)"', src)
     assert m and m.group(1) == report_title()
+
+
+def test_custom_emoji_title_still_matches():
+    """바치케 제목 이모지를 커스텀 :바치케: 로 바꿔도(2026-10-27) 판정은 문구로 하므로 그대로 잡혀야 한다."""
+    from notify_increments import PRODUCT_PROFILES
+    assert PRODUCT_PROFILES["pbachi"]["emoji"] == ":바치케:" and PRODUCT_PROFILES["jd"]["emoji"] == "📈"
+    head = ":바치케: *바치케 조회수 일일 증분* `(2026-10-27)`\n오늘 총 증분 *+1*"
+    assert is_report_for(head, "2026-10-27", "바치케") and not is_report_for(head, "2026-10-27")

@@ -32,11 +32,12 @@ def _norm_prod(p) -> str:
 #   title: 제목·리포트 판정 키(report_message.is_report_for) / match: DB product_name으로 대상 게시물 선택
 #   ads_tab: 인지광고 시트 탭(/api/awareness-ads?tab=) — 빈값=[인지_쫀득바], pint=파인트 인지광고 대시보드
 #   goal: 일일 목표 줄 / product_line: 제품별 요약 줄(여러 SKU가 섞일 때만 의미)
+#   emoji: 제목 맨 앞 이모지(바치케=워크스페이스 커스텀 :바치케:, 사용자 지시 2026-10-27). 리포트 판정은 제목 문구로만 해 영향 없음
 PRODUCT_PROFILES = {
     "jd": {"title": "쫀득바", "match": lambda p: "jd" in (p or "").lower(),
-           "ads_tab": "", "goal": True, "product_line": True},
+           "ads_tab": "", "goal": True, "product_line": True, "emoji": "📈"},
     "pbachi": {"title": "바치케", "match": lambda p: _norm_prod(p) == "P바치",
-               "ads_tab": "pint", "goal": False, "product_line": False},
+               "ads_tab": "pint", "goal": False, "product_line": False, "emoji": ":바치케:"},
 }
 REPORT_PRODUCT = (os.getenv("REPORT_PRODUCT") or "jd").strip().lower()
 if REPORT_PRODUCT not in PRODUCT_PROFILES:
@@ -681,7 +682,7 @@ def main():
         if _parts:
             _prod_line = "◾ *제품별*  " + " · ".join(_parts)
     lines = [
-        f"📈 *{report_title(PROFILE['title'])}* `({target})`",
+        f"{PROFILE['emoji']} *{report_title(PROFILE['title'])}* `({target})`",
         f"오늘 총 증분 *+{f(total)}*",
     ]
     # 일일 목표 줄은 목표가 정해진 제품만(바치케는 목표 미정 — 2026-10-27 사용자 결정 '목표 줄 없이').
