@@ -13,6 +13,7 @@
   - '주 수집' 판정 규칙은 TS(`web/lib/collect-primary.ts`)·Python 동일(오늘 KST 00:00 이후 + `[final_snapshot]` 제목 또는 02:30 KST 전 예약 실행). 계약 테스트로 묶음.
 - **검증:** web 725·scripts 543 pass, tsc·build·Workflow Lint 통과. 프로덕션 dry-run(smoke `40428807483`): 인증 OK, kstHour=9 → outside_midnight_window, **runsSeen=3 = 실제 오늘 실행 3건**(토큰·조회 경로 확인). dispatch 경로는 같은 GH_DISPATCH_TOKEN 을 쓰는 ensure-daily-report 로 이미 운영 중. 실제 자정 dispatch 는 트리거 설치 후 첫 밤에 확인 필요.
 - **Codex 몫(라이브 Apps Script, repo `Combined_Sheet_AppsScript.gs` 참고 — 라이브≠repo라 덮어쓰기 금지, 아래만 추가):** ① CONFIG 에 `ENSURE_DAILY_COLLECT_URL` 1줄 ② `ensureDailyCollect`·`installEnsureDailyCollectTrigger`·`removeEnsureDailyCollectTrigger` 3함수 ③ 편집기에서 `installEnsureDailyCollectTrigger` 1회 실행 → 트리거 2개 확인.
+- ⚠️ **정정(`cd6a8241`):** 처음 올린 `installEnsureDailyCollectTrigger` 알림 문구 따옴표 안에 실제 줄바꿈이 있어 **문법 오류**였다(그대로 붙이면 시트 스크립트 전체 정지). 수정본(`cd6a8241` 이후 main)에서 복사할 것. 재발방지: `web/tests/apps-script-syntax.test.ts` 가 모든 .gs 를 컴파일(깨진 판에서 실패 확인).
 
 ## ✅ 2026-10-27 [Claude 재발방지] DB 불통인데 '수집 완료'가 찍혀 리포트 오보(10-26 '미수집 181건') — 완료 마커 빈 값 비교 버그 수정 + DB 없이 도는 사전점검 실패 알림
 - **원인(실측):** 10-26 run `40238166718` = `Check today` **failure**(Supabase 402) → `Decide collect`·수집 **skipped** → 그런데 `Collection completion marker` **success**. 마커 조건 `steps.decide.outputs.go == '0'`에서 decide가 안 돌아 go가 빈 값(null)이었고, **GitHub 조건식은 null과 '0'을 둘 다 숫자 0으로 바꿔 비교해 참**. 마커가 '완료'로 보여 리포트 run `40249911758`이 복구 수집(`40249230988`, 00:24Z~01:05Z) 도중 나가 '미수집 181건' 오보. 같은 이유로 '수집 실패 시 알럿'도 skipped(그 알럿은 go=='1' 조건+본문이 DB를 읽어 DB 불통엔 원래 못 돎).
