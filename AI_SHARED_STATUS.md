@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## ✅ 2026-10-27 [Codex 완료] 바치케 유튜브 Google Ads 직접 연동 — 자격증명·테이블·첫 적재 검증 완료
+- **자격증명·보안:** `influencer-seeding` Actions secrets 4개와 MCC/고객 variables 2개 등록 완료. `negative-comment-monitor`의 기존 값은 일회성 RSA+AES 암호화 전달로 복사했고, 평문은 로그·파일에 출력하지 않았다. 등록 뒤 원격 암호화 아티팩트·임시 브랜치와 로컬 키·암호문을 모두 삭제했다.
+- **DB:** Supabase PRODUCTION(ref `vkdvncwzccqtqnszxdwo`)에 `ad_platform_daily`와 `ad_platform_daily_product_date` 인덱스를 migration으로 생성하고 RLS를 활성화했다. 라이브에 없는 `ops_daily_runs` 의존은 실제 운영 정본 `jobs.payload` 멱등 마커로 `29d12449`에서 선행 교정(테스트 11/11, `py_compile`, KST pre-push, `tsc` 통과).
+- **읽기 전용 게이트:** dry-run `40463658541` — 기간 2026-10-13~10-26, Google Ads API 299행 중 **P바치 광고그룹 13개·38행**, 조회수 지표 **`metrics.video_trueview_views`**, 노출 있는 날 10/14일 확인. 광고 설정·시트 수기값은 무변경.
+- **첫 적재:** apply `40463722725` success — **38행 저장 / 재조회 38행 ✅ / 조회 마커 14일**. SQL 독립 재조회도 `ad_rows=38 · marker_rows=14 · first_date=2026-10-16 · last_date=2026-10-26` 일치. 현재 workflow는 의도대로 수동 전용이며, 데이터 병행 대조 뒤에만 리포트·대시보드 정본 전환·schedule을 검토한다.
+
 ## ⏳ 2026-10-27 [Codex 진행 중] 바치케 Google Ads 자격증명 등록 완료 · 라이브 테이블 적용 대기
 - **자격증명:** `influencer-seeding` Actions secrets 4개(`GOOGLE_ADS_DEVELOPER_TOKEN`·`GOOGLE_ADS_CLIENT_ID`·`GOOGLE_ADS_CLIENT_SECRET`·`GOOGLE_ADS_REFRESH_TOKEN`)와 variables `GOOGLE_ADS_LOGIN_CUSTOMER_ID=3234668229`·`GOOGLE_ADS_CUSTOMER_ID=8151438670` 등록 완료. `negative-comment-monitor` 기존 secrets를 일회성 RSA+AES 암호화 아티팩트로 전달해 평문을 로그·파일에 출력하지 않았고, 등록 뒤 원격 아티팩트·임시 브랜치와 로컬 키·암호문을 모두 삭제했다(이름 목록으로만 사후 확인).
 - **사전 결함 발견·보완:** 라이브 DB에 repo의 옛 `ops_daily_runs` migration이 적용돼 있지 않아 원안은 광고 행 upsert 뒤 마커 단계에서 실패할 상태였다. 프로덕션 정본인 `jobs.payload`에 날짜별 `ops_marker=google_ads_sync:pbachi`를 멱등 저장하도록 `29d12449`에서 수정했다. 최초 실행은 INSERT, 재실행은 UPDATE라 중복 마커가 생기지 않으며, 확정 0과 조회 실패 구분은 유지한다. Google Ads sync 테스트 **11/11**, `py_compile`, KST pre-push, `tsc` 통과.
