@@ -190,7 +190,7 @@ def test_products_match_notify_profiles():
     from notify_increments import PRODUCT_PROFILES
     assert set(prc.PRODUCTS) == set(PRODUCT_PROFILES)
     for k, p in PRODUCT_PROFILES.items():
-        assert prc.PRODUCTS[k] == {"title": p["title"], "tab": p["ads_tab"]}, k
+        assert prc.PRODUCTS[k] == {"title": p["title"], "tab": p["ads_tab"], "conv": p["conv_source"]}, k
 
 
 def test_find_report_is_scoped_to_product(monkeypatch):
@@ -211,3 +211,124 @@ def test_notify_profile_product_match():
     jd, pb = PRODUCT_PROFILES["jd"]["match"], PRODUCT_PROFILES["pbachi"]["match"]
     assert jd("JD혼") and jd("jd멜") and not jd("P바치") and not jd(None)
     assert pb("P바치") and pb(" P 바치 ") and not pb("P바") and not pb("P망") and not pb("JD혼") and not pb(None)
+
+
+# ── 2026-10-27 바치케 전환 = 메타 광고 관리자 P바치 전환 광고 노출수, 7일 뒤 확정값 덮어쓰기 ──
+
+BACHI_WITH_CONV = BACHI_REPORT.replace(
+    "    유튜브 *+144,255*  CPV 15.8원\n", "    유튜브 *+144,255*  CPV 15.8원\n    전환 조회수 *+97,549*\n"
+).replace("오늘 총 증분 *+658,089*", "오늘 총 증분 *+755,638*")
+
+
+def test_replace_conversion_value_adjusts_total_by_delta_only():
+    from patch_report_conversion import replace_conversion_value
+    new, info = replace_conversion_value(BACHI_WITH_CONV, 81038)
+    assert info["old_conv"] == 97_549 and info["new_total"] == 755_638 - 97_549 + 81_038
+    assert "    전환 조회수 *+81,038*" in new and "오늘 총 증분 *+739,127*" in new
+    changed = [ln for ln in BACHI_WITH_CONV.split("\n") if ln not in new.split("\n")]
+    assert len(changed) == 2   # 전환 줄·총 증분 줄만
+    again, reason = replace_conversion_value(new, 81038)
+    assert again is None and "같음" in reason
+
+
+def test_replace_conversion_value_recomputes_goal():
+    from patch_report_conversion import replace_conversion_value
+    jd = REPORT.replace("    유튜브 *+144,255*  CPV 15.8원\n", "    유튜브 *+144,255*  CPV 15.8원\n    전환 조회수 *+1,000*\n")
+    new, info = replace_conversion_value(jd, 11000)
+    assert info["new_total"] == 668_089 and "*일 190만 목표* 35% · 미달 -1,231,911" in new
+
+
+def test_meta_conversion_views_blank_is_not_zero():
+    from meta_conversion import meta_conversion_views as v
+    assert v({"scanned": 40, "conversion": {"impressions": 81038, "spend": 1, "ads": 3}}) == 81038
+    assert v({"scanned": 40, "conversion": {"impressions": 0, "spend": 0, "ads": 0}}) == 0   # 계정은 돌았는데 P바치 전환 없음
+    assert v({"scanned": 0, "conversion": {"impressions": 0}}) is None    # 그날 계정 행 0 = 집계 전/이상 → 빈 값
+    assert v({"error": "Meta Graph 오류"}) is None
+    assert v({"scanned": 5}) is None                                        # 구버전 라우트(conversion 없음)
+    assert v(None) is None
+
+
+def test_notify_meta_pending_line_is_patchable():
+    from notify_increments import CONV_PENDING_LINE_META, conversion_line
+    assert conversion_line({"views": None, "source": "meta"}) == CONV_PENDING_LINE_META
+    assert conversion_line({"views": 5, "source": "meta"}) == "    전환 조회수 *+5*"
+    pending = BACHI_REPORT.replace("    유튜브 *+144,255*  CPV 15.8원\n",
+                                   "    유튜브 *+144,255*  CPV 15.8원\n" + CONV_PENDING_LINE_META + "\n")
+    new, info = patch_text(pending, 81038)
+    assert new is not None, info
+    assert CONV_PENDING_LINE_META not in new and "    전환 조회수 *+81,038*" in new
+
+
+def test_notify_meta_conversion_replaces_sheet_value(monkeypatch):
+    """바치케: 시트 전환 값은 버리고 메타 값 / 시트 행이 없어도 전환은 남고 / 메타 실패면 '미집계'."""
+    import io
+    import json as _json
+    import urllib.error
+    import notify_increments as ni
+
+    monkeypatch.setenv("APP_URL", "https://x.example")
+    monkeypatch.setenv("CRON_SECRET", "s")
+    monkeypatch.setattr(ni, "PROFILE", ni.PRODUCT_PROFILES["pbachi"])
+    import meta_conversion
+    monkeypatch.setattr(meta_conversion.time, "sleep", lambda s: None)
+    state = {"sheet": {"found": True, "meta": {"views": 10, "cost": 1}, "conversion": {"views": 97549}}, "meta": "ok"}
+
+    def fake_urlopen(req, timeout=0):
+        if "/api/meta-ads-pbachi" in req.full_url:
+            if state["meta"] != "ok":
+                raise urllib.error.HTTPError(req.full_url, 502, "Bad Gateway", {}, None)
+            return io.BytesIO(_json.dumps({"scanned": 40, "conversion": {"impressions": 81038}}).encode())
+        return io.BytesIO(_json.dumps(state["sheet"]).encode())
+
+    monkeypatch.setattr(ni.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(meta_conversion.urllib.request, "urlopen", fake_urlopen)
+    d = ni._fetch_awareness_ads("2026-10-26")
+    assert d["conversion"] == {"views": 81038, "source": "meta"} and d["meta"]["views"] == 10
+    state["sheet"] = {"found": False}
+    assert ni._fetch_awareness_ads("2026-10-26") == {"conversion": {"views": 81038, "source": "meta"}}
+    state["meta"] = "down"
+    assert ni.conversion_line(ni._fetch_awareness_ads("2026-10-26")["conversion"]) == ni.CONV_PENDING_LINE_META
+    # 쫀득바는 그대로 시트 값
+    monkeypatch.setattr(ni, "PROFILE", ni.PRODUCT_PROFILES["jd"])
+    state["sheet"] = {"found": True, "conversion": {"views": 7}}
+    assert ni._fetch_awareness_ads("2026-10-26")["conversion"] == {"views": 7}
+
+
+def _run_main(monkeypatch, prc, product, date, text, conv, overwrite="false"):
+    edits = []
+    monkeypatch.setenv("SLACK_BOT_TOKEN", "t")
+    monkeypatch.setenv("DATES", date)
+    monkeypatch.setenv("DRY_RUN", "false")
+    monkeypatch.setenv("OVERWRITE", overwrite)
+    monkeypatch.setattr(prc, "PRODUCT", product)
+    monkeypatch.setattr(prc, "fetch_conversion", lambda d: conv)
+    monkeypatch.setattr(prc, "find_report", lambda tok, d: [{"ts": "1", "text": text, "bot_id": "B"}])
+
+    def fake_slack(method, token, params=None, post=False):
+        if method == "chat.update":
+            edits.append(params["text"])
+            return {"ok": True}
+        return {"ok": True, "messages": [{"text": edits[-1] if edits else text}]}
+
+    monkeypatch.setattr(prc, "_slack", fake_slack)
+    try:
+        prc.main()
+    except SystemExit as e:
+        assert e.code == 0, e.code
+    return edits
+
+
+def test_main_meta_final_overwrite_only_after_7_days(monkeypatch):
+    import datetime as dt
+    import patch_report_conversion as prc
+    now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+    recent, old = prc.default_dates(now, 7)[5], prc.default_dates(now, 7)[6]   # 6일 전, 7일 전
+    assert prc.report_age_days(recent, now) == 6 and prc.report_age_days(old, now) == 7
+    assert _run_main(monkeypatch, prc, "pbachi", recent, BACHI_WITH_CONV, 81038) == []
+    edits = _run_main(monkeypatch, prc, "pbachi", old, BACHI_WITH_CONV, 81038)
+    assert len(edits) == 1 and "    전환 조회수 *+81,038*" in edits[0]
+    # 수동 OVERWRITE=true면 나이와 무관하게
+    assert len(_run_main(monkeypatch, prc, "pbachi", recent, BACHI_WITH_CONV, 81038, overwrite="true")) == 1
+    # 쫀득바(시트 출처)는 기존 값을 절대 덮어쓰지 않는다
+    jd = REPORT.replace("    유튜브 *+144,255*  CPV 15.8원\n", "    유튜브 *+144,255*  CPV 15.8원\n    전환 조회수 *+1,000*\n")
+    assert _run_main(monkeypatch, prc, "jd", old, jd, 2000, overwrite="true") == []

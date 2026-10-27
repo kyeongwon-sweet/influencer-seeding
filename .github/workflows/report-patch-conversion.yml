@@ -5,6 +5,8 @@ name: Report patch — add conversion views
 # update_ts 재생성은 늦게 들어온 다른 데이터까지 바꾸므로 그 대신 쓴다.
 #  - 스케줄: 최근 5일(KST 어제부터) 중 전환 줄이 없고 시트에 값이 생긴 리포트만 편집. 재실행 안전.
 #  - 수동: dates 지정(비우면 최근 5일), 기본 dry_run=true(편집 없이 대상·변경 수치만 출력).
+#  - 바치케(2026-10-27~): 전환 = 메타 광고 관리자 'P바치' 전환 광고 노출수(/api/meta-ads-pbachi). 최근 9일을 보고
+#    '미집계' 줄은 채우고, 대상일 + 7일 지난 리포트는 메타 확정값과 다르면 덮어쓴다(사용자 지시 "일주일 기준 최종 데이터로").
 on:
   schedule:
     - cron: "30 8 * * *"    # 17:30 KST
@@ -26,6 +28,11 @@ on:
         type: choice
         options: [jd, pbachi]
         default: jd
+      overwrite:
+        description: "바치케만: true면 7일 안 된 리포트의 전환 값도 지금 메타 값으로 덮어쓰기"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: report-patch-conversion
@@ -62,5 +69,7 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           DATES: ${{ github.event.inputs.dates }}
           DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || github.event.inputs.dry_run }}
-          AUTO_DAYS: "5"
+          OVERWRITE: ${{ github.event.inputs.overwrite || 'false' }}
+          # 7일 경과 확정 덮어쓰기가 하루 두 번 × 사흘(7~9일차) 기회를 갖게
+          AUTO_DAYS: "9"
         run: python scripts/patch_report_conversion.py

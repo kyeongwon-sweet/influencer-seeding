@@ -10,6 +10,7 @@ import json
 import urllib.parse
 import urllib.request
 from cross_post_metrics import fb_increment, ig_only
+from meta_conversion import fetch_meta_conversion
 from report_message import is_report_for, report_title
 from datetime import date
 from channel_kind import free_cpv_label, free_reason, is_banner_channel, is_free_by_design
@@ -32,12 +33,15 @@ def _norm_prod(p) -> str:
 #   title: 제목·리포트 판정 키(report_message.is_report_for) / match: DB product_name으로 대상 게시물 선택
 #   ads_tab: 인지광고 시트 탭(/api/awareness-ads?tab=) — 빈값=[인지_쫀득바], pint=파인트 인지광고 대시보드
 #   goal: 일일 목표 줄 / product_line: 제품별 요약 줄(여러 SKU가 섞일 때만 의미)
+#   conv_source: 전환 조회수 출처 — sheet=위 시트 탭 / meta=메타 광고 관리자 P바치 전환 광고 노출수
+#     (2026-10-27 사용자 결정, scripts/meta_conversion.py). meta면 patch_report_conversion이 7일 뒤 확정값으로 덮어쓴다.
 #   emoji: 제목 맨 앞 이모지(바치케=워크스페이스 커스텀 :바치케:, 사용자 지시 2026-10-27). 리포트 판정은 제목 문구로만 해 영향 없음
 PRODUCT_PROFILES = {
     "jd": {"title": "쫀득바", "match": lambda p: "jd" in (p or "").lower(),
-           "ads_tab": "", "goal": True, "product_line": True, "emoji": "📈"},
+           "ads_tab": "", "goal": True, "product_line": True, "emoji": "📈", "conv_source": "sheet"},
     "pbachi": {"title": "바치케", "match": lambda p: _norm_prod(p) == "P바치",
-               "ads_tab": "pint", "goal": False, "product_line": False, "emoji": ":바치케:"},
+               "ads_tab": "pint", "goal": False, "product_line": False, "emoji": ":바치케:",
+               "conv_source": "meta"},
 }
 REPORT_PRODUCT = (os.getenv("REPORT_PRODUCT") or "jd").strip().lower()
 if REPORT_PRODUCT not in PRODUCT_PROFILES:
@@ -97,6 +101,8 @@ CONV_LABEL = "전환 조회수"
 # 예전처럼 줄을 숨기면 누락을 아무도 모른다(2026-10 반복 누락) → 드러내고, 값이 들어오면
 # report-patch-conversion 스케줄(scripts/patch_report_conversion.py)이 이 줄을 값으로 바꾼다.
 CONV_PENDING_LINE = f"    {CONV_LABEL} _미입력 — 시트에 입력되면 자동 반영_"
+# 출처가 메타(바치케)인데 발송 때 라우트 조회가 실패한 경우 — 같은 보정 스케줄이 메타 값으로 채운다.
+CONV_PENDING_LINE_META = f"    {CONV_LABEL} _미집계 — 메타 광고 관리자 조회되면 자동 반영_"
 
 
 def conversion_line(conv):
@@ -108,20 +114,23 @@ def conversion_line(conv):
     v = conv.get("views")
     if isinstance(v, (int, float)):
         return f"    {CONV_LABEL} *+{round(v):,}*"
-    return CONV_PENDING_LINE
+    return CONV_PENDING_LINE_META if conv.get("source") == "meta" else CONV_PENDING_LINE
 
 
 def _fetch_awareness_ads(target: str):
     """마케팅T 시트의 그날 인지광고(메타/틱톡/유튜브) '일별' 조회수·광고비 + 전환 조회수.
     쫀득바=[인지_쫀득바] 탭, 바치케=파인트 인지광고 대시보드 탭(PROFILE['ads_tab']).
     값이 DB에 없고 시트에만 있어(팀 수동입력) 웹 라우트(/api/awareness-ads, Vercel 서비스계정)로 읽는다.
-    APP_URL/CRON_SECRET 없거나·조회 실패·해당일 행 없음이면 None → 인지광고 섹션만 생략(리포트 본문은 정상)."""
+    APP_URL/CRON_SECRET 없거나·조회 실패·해당일 행 없음이면 None → 인지광고 섹션만 생략(리포트 본문은 정상).
+    전환 출처가 메타인 제품(바치케)은 conversion만 메타 라우트 값으로 바꾼다 — 시트 행이 없어도 전환은 남고,
+    메타 조회 실패면 {"views": None, "source": "meta"} → '미집계' 줄."""
     base = (os.getenv("APP_URL") or "").rstrip("/")
     secret = os.getenv("CRON_SECRET")
     if not base or not secret:
         print("[notify] APP_URL/CRON_SECRET 없음 → 인지광고 섹션 생략")
         return None
     tab = PROFILE["ads_tab"]
+    d = None
     try:
         req = urllib.request.Request(
             f"{base}/api/awareness-ads?date={urllib.parse.quote(target)}" + (f"&tab={tab}" if tab else ""),
@@ -129,10 +138,18 @@ def _fetch_awareness_ads(target: str):
         d = json.load(urllib.request.urlopen(req, timeout=30))
     except Exception as e:
         print("[notify] 인지광고 조회 실패(섹션 생략):", e)
-        return None
-    if not d.get("found"):
+    if d is not None and not d.get("found"):
         print(f"[notify] 인지광고 {target} 시트 행 없음 → 섹션 생략")
-        return None
+        d = None
+    if PROFILE["conv_source"] == "meta":
+        # 전환은 시트가 아니라 메타 광고 관리자 값 — 시트 행이 없어도 전환 줄은 낸다(시트 전환 값은 버림).
+        d = {k: v for k, v in (d or {}).items() if k != "conversion"}
+        d["conversion"] = {"views": None, "source": "meta"}
+        try:
+            d["conversion"]["views"] = fetch_meta_conversion(base, secret, target, attempts=2)
+        except Exception as e:
+            print("[notify] 메타 전환 조회 실패('미집계' 표시, 보정 스케줄이 채움):", e)
+        print(f"[notify] 전환(메타 P바치 노출수) {target}: {d['conversion']['views']}")
     return d
 
 

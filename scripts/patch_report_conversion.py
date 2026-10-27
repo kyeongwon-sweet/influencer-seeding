@@ -10,6 +10,11 @@ update_ts 재생성을 쓰면 늦게 등록된 게시물의 첫 측정 몰림 �
 env: SLACK_BOT_TOKEN, APP_URL, CRON_SECRET, DATES(쉼표 구분 YYYY-MM-DD), DRY_RUN("true"면 미편집)
      DATES가 비면(스케줄 실행) 최근 AUTO_DAYS일(기본 5, KST 어제부터)을 본다 — 전환 탭은 주말분을
      다음 주에 몰아 채우는 경우가 있어 넉넉히 잡는다. 이미 전환 줄이 있거나 시트가 비어 있으면 건너뛴다.
+     OVERWRITE("true"면 전환 출처가 메타인 제품의 기존 전환 값을 나이와 무관하게 메타 값으로 교체 — 수동용)
+
+바치케(전환 출처=메타 광고 관리자, 2026-10-27 사용자 결정 "일주일 기준으로 최종 데이터로 엎어줘"):
+  ① '미집계' 줄은 메타 값으로 채우고 ② 리포트 대상일이 FINAL_AGE_DAYS(7)일 이상 지났으면 메타 확정값과
+  다를 때 전환 값·총 증분을 덮어쓴다(replace_conversion_value). 쫀득바(시트)는 덮어쓰지 않는다.
 """
 import datetime as dt
 import json
@@ -20,23 +25,26 @@ import time
 import urllib.parse
 import urllib.request
 
+from meta_conversion import fetch_meta_conversion  # noqa: E402
 from report_message import is_report_for  # noqa: E402  (scripts/ 가 sys.path[0])
 
 CHANNEL = os.getenv("SLACK_CHANNEL") or "C0B4F7GBX17"  # #빙과_마케팅_리포트
 
 # 리포트 제품(2026-10-27 바치케 추가). notify_increments.PRODUCT_PROFILES 와 같은 값이어야 한다
 #   (이 워크플로는 requirements 를 설치하지 않아 notify 를 import 할 수 없음 → 짝 테스트로 묶음).
+#   conv: 전환 조회수 출처(sheet=시트 탭 / meta=메타 광고 관리자 P바치 전환 광고 노출수)
 PRODUCTS = {
-    "jd": {"title": "쫀득바", "tab": ""},
-    "pbachi": {"title": "바치케", "tab": "pint"},
+    "jd": {"title": "쫀득바", "tab": "", "conv": "sheet"},
+    "pbachi": {"title": "바치케", "tab": "pint", "conv": "meta"},
 }
+FINAL_AGE_DAYS = 7   # 메타 출처: 대상일 + 7일부터 확정값으로 덮어쓴다
 PRODUCT = (os.getenv("REPORT_PRODUCT") or "jd").strip().lower()
 
 TOTAL_RE = re.compile(r"오늘 총 증분 \*\+([\d,]+)\*")
 # 이모지는 Slack이 단축코드(:dart:)로 돌려줄 수 있어 패턴에서 제외
 GOAL_RE = re.compile(r"\*일 (\d+)만 목표\* \d+% · (?:달성 \+|미달 -)[\d,]+")
 CONV_LABEL = "전환 조회수"
-CONV_VALUE_RE = re.compile(r"^    전환 조회수 \*\+[\d,]+\*", re.M)
+CONV_VALUE_RE = re.compile(r"^    전환 조회수 \*\+([\d,]+)\*", re.M)
 # 발송 시점에 시트가 비어 notify가 남긴 '미입력' 줄(값 없는 전환 줄). 이 줄을 값으로 바꾼다.
 CONV_PENDING_RE = re.compile(r"^    전환 조회수(?! \*\+).*$", re.M)
 
@@ -100,6 +108,49 @@ def patch_text(text, conv):
     return new, {"old_total": old_total, "new_total": new_total, "conv": conv, "pct": pct, "tail": tail}
 
 
+def replace_conversion_value(text, conv):
+    """이미 들어간 전환 값을 conv로 교체(메타 확정값 덮어쓰기). 총 증분은 차이만큼, 목표%는 다시 계산.
+    (new_text, info) / 고칠 필요 없거나 못 고치면 (None, 사유)."""
+    conv = round(conv)
+    cm, m = CONV_VALUE_RE.search(text), TOTAL_RE.search(text)
+    if not cm:
+        return None, "전환 값 줄 없음"
+    if not m:
+        return None, "총 증분 줄 형식을 찾지 못함"
+    old_conv = int(cm.group(1).replace(",", ""))
+    if old_conv == conv:
+        return None, f"이미 확정값과 같음(+{f(conv)})"
+    old_total = int(m.group(1).replace(",", ""))
+    new_total = old_total - old_conv + conv
+    if new_total < 0:
+        return None, f"총 증분이 음수가 됨({f(new_total)})"
+    new = CONV_VALUE_RE.sub(f"    {CONV_LABEL} *+{f(conv)}*", text, count=1)
+    new = TOTAL_RE.sub(f"오늘 총 증분 *+{f(new_total)}*", new, count=1)
+    g = GOAL_RE.search(new)
+    pct = tail = None
+    if g:
+        goal_man = int(g.group(1))
+        goal = goal_man * 10000
+        pct = f"{new_total / (goal / 100):.0f}"
+        tail = ("달성 +" + f(new_total - goal)) if new_total >= goal else ("미달 " + f(new_total - goal))
+        new = GOAL_RE.sub(f"*일 {goal_man}만 목표* {pct}% · {tail}", new, count=1)
+    # 안전장치: 바뀐 줄은 전환 값·총 증분·목표 줄뿐이어야 한다
+    old_set, new_set = text.split("\n"), new.split("\n")
+    removed = [ln for ln in old_set if ln not in new_set]
+    added = [ln for ln in new_set if ln not in old_set]
+    if len(removed) > 3 or len(added) != len(removed) or not all(
+            ("총 증분" in ln or "만 목표" in ln or CONV_VALUE_RE.match(ln)) for ln in removed + added):
+        return None, f"예상 외 변경(삭제 {removed} / 추가 {added})"
+    return new, {"old_total": old_total, "new_total": new_total, "conv": conv, "old_conv": old_conv,
+                 "pct": pct, "tail": tail}
+
+
+def report_age_days(date, now_utc):
+    """리포트 대상일이 KST 오늘로부터 며칠 전인가(default_dates와 같은 KST 기준)."""
+    today_kst = (now_utc + dt.timedelta(hours=9)).date()
+    return (today_kst - dt.date.fromisoformat(date)).days
+
+
 def _slack(method, token, params=None, post=False):
     url = f"https://slack.com/api/{method}"
     hdr = {"Authorization": "Bearer " + token}
@@ -148,8 +199,11 @@ def find_report(token, date):
 
 
 def fetch_conversion(date, attempts=3, wait=5):
-    """라우트(시트 조회)는 간헐 502를 낸다 → 몇 번 재시도. 끝내 실패하면 예외(호출부가 그 날짜만 실패 처리)."""
+    """라우트(시트 조회)는 간헐 502를 낸다 → 몇 번 재시도. 끝내 실패하면 예외(호출부가 그 날짜만 실패 처리).
+    전환 출처가 메타인 제품은 메타 라우트(/api/meta-ads-pbachi)의 P바치 전환 노출수."""
     base = os.environ["APP_URL"].rstrip("/")
+    if PRODUCTS[PRODUCT]["conv"] == "meta":
+        return fetch_meta_conversion(base, os.environ["CRON_SECRET"], date, attempts, wait)
     tab = PRODUCTS[PRODUCT]["tab"]
     req = urllib.request.Request(f"{base}/api/awareness-ads?date={urllib.parse.quote(date)}" + (f"&tab={tab}" if tab else ""),
                                  headers={"Authorization": "Bearer " + os.environ["CRON_SECRET"]})
@@ -170,24 +224,30 @@ def fetch_conversion(date, attempts=3, wait=5):
 def main():
     token = os.environ["SLACK_BOT_TOKEN"]
     dry = (os.getenv("DRY_RUN") or "true").lower() == "true"
+    overwrite = (os.getenv("OVERWRITE") or "false").lower() == "true"
+    now_utc = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
     dates = [s.strip() for s in (os.getenv("DATES") or "").split(",") if s.strip()]
     auto = not dates
     if not dates:
-        dates = default_dates(dt.datetime.now(dt.timezone.utc).replace(tzinfo=None), int(os.getenv("AUTO_DAYS") or 5))
+        dates = default_dates(now_utc, int(os.getenv("AUTO_DAYS") or 5))
     if PRODUCT not in PRODUCTS:
         print(f"알 수 없는 REPORT_PRODUCT={PRODUCT!r}")
         sys.exit(1)
-    print(f"모드: {'DRY_RUN(편집 안 함)' if dry else 'APPLY'} / 제품 {PRODUCTS[PRODUCT]['title']} / 채널 {CHANNEL} / 대상 {dates}")
+    meta = PRODUCTS[PRODUCT]["conv"] == "meta"
+    src = "메타 광고 관리자" if meta else "시트"
+    final = (" / 확정값 덮어쓰기 " + ("강제" if overwrite else f"{FINAL_AGE_DAYS}일 경과분")) if meta else ""
+    print(f"모드: {'DRY_RUN(편집 안 함)' if dry else 'APPLY'} / 제품 {PRODUCTS[PRODUCT]['title']} / 전환 출처 {src}{final}"
+          f" / 채널 {CHANNEL} / 대상 {dates}")
     failed = 0
     for date in dates:
         try:
             conv = fetch_conversion(date)
         except Exception as e:  # 한 날짜의 조회 실패로 나머지 날짜까지 멈추지 않게
-            print(f"[{date}] 시트 조회 실패(재시도 후) → 건너뜀: {e}")
+            print(f"[{date}] {src} 조회 실패(재시도 후) → 건너뜀: {e}")
             failed += 1
             continue
         if conv is None:
-            print(f"[{date}] 시트 전환 조회수 없음(빈칸/행없음) → 건너뜀")
+            print(f"[{date}] {src} 전환 조회수 없음(빈칸/행없음/집계 전) → 건너뜀")
             continue
         hits = find_report(token, date)
         if not hits and auto:
@@ -200,12 +260,21 @@ def main():
             failed += 1
             continue
         msg = hits[0]
-        new, info = patch_text(msg.get("text") or "", conv)
+        text = msg.get("text") or ""
+        if meta and CONV_VALUE_RE.search(text):
+            age = report_age_days(date, now_utc)
+            if not overwrite and age < FINAL_AGE_DAYS:
+                print(f"[{date}] ts={msg['ts']} 건너뜀: 전환 값 있음, 확정 덮어쓰기는 {FINAL_AGE_DAYS}일 뒤(현재 {age}일)")
+                continue
+            new, info = replace_conversion_value(text, conv)
+        else:
+            new, info = patch_text(text, conv)
         if new is None:
             print(f"[{date}] ts={msg['ts']} 건너뜀: {info}")
             continue
         goal_txt = f" | 목표 {info['pct']}% · {info['tail']}" if info["pct"] else ""
-        print(f"[{date}] ts={msg['ts']} 전환 +{f(info['conv'])} | 총 증분 {f(info['old_total'])} → {f(info['new_total'])}{goal_txt}")
+        was = f" (기존 +{f(info['old_conv'])} → 확정값)" if "old_conv" in info else ""
+        print(f"[{date}] ts={msg['ts']} 전환 +{f(info['conv'])}{was} | 총 증분 {f(info['old_total'])} → {f(info['new_total'])}{goal_txt}")
         if dry:
             continue
         r = _slack("chat.update", token, {"channel": CHANNEL, "ts": msg["ts"], "text": new}, post=True)
@@ -217,7 +286,7 @@ def main():
         chk = _slack("conversations.history", token,
                      {"channel": CHANNEL, "latest": msg["ts"], "inclusive": "true", "limit": 1})
         cur = ((chk.get("messages") or [{}])[0].get("text") or "")
-        ok = bool(CONV_VALUE_RE.search(cur)) and f"*+{f(info['new_total'])}*" in cur
+        ok = f"    {CONV_LABEL} *+{f(info['conv'])}*" in cur and f"오늘 총 증분 *+{f(info['new_total'])}*" in cur
         print(f"[{date}] 편집 {'확인됨' if ok else '⚠️ 재조회 불일치'}")
         failed += 0 if ok else 1
     sys.exit(1 if failed else 0)

@@ -32,3 +32,18 @@ test("광고 목적이 없으면 UNKNOWN으로 묶는다", () => {
   const agg = aggregatePbachi([{ ad_name: "P바치", impressions: 5 }]);
   assert.equal(agg.byObjective.UNKNOWN.impressions, 5);
 });
+
+test("리포트 전환 = P바치 + 전환(구매) 목적 광고의 노출수만 — 인지 목적·다른 제품은 빠진다", () => {
+  const agg = aggregatePbachi([
+    { campaign_name: "[빙과_파인트] 26.10_바치케파인트990원_수동_전환", ad_name: "F_I_P바치_전환_A", objective: "OUTCOME_SALES", impressions: "60000", spend: "700000" },
+    { campaign_name: "[빙과_파인트] 26.08_파인트990원_재집행", ad_name: "파인트990원_B", objective: "OUTCOME_SALES", impressions: "16511" },   // P바치 표시 없음 → 제외
+    { ad_name: "P바치 인지영상", objective: "OUTCOME_AWARENESS", impressions: "90000", spend: "449431" },                                   // 인지 목적 → 제외
+    { adset_name: "260929_P바치_990원", objective: "OUTCOME_SALES", impressions: 21038, spend: 308329 },
+  ]);
+  assert.deepEqual(agg.conversion, { impressions: 81038, spend: 1008329, ads: 2 });
+});
+
+test("그날 P바치 전환 광고가 없으면 전환은 0(광고 관리자 기준 집행 없음)", () => {
+  assert.deepEqual(aggregatePbachi([{ ad_name: "JD혼", objective: "OUTCOME_SALES", impressions: 5 }]).conversion,
+    { impressions: 0, spend: 0, ads: 0 });
+});
