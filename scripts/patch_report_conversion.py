@@ -20,7 +20,17 @@ import time
 import urllib.parse
 import urllib.request
 
+from report_message import is_report_for  # noqa: E402  (scripts/ 가 sys.path[0])
+
 CHANNEL = os.getenv("SLACK_CHANNEL") or "C0B4F7GBX17"  # #빙과_마케팅_리포트
+
+# 리포트 제품(2026-10-27 바치케 추가). notify_increments.PRODUCT_PROFILES 와 같은 값이어야 한다
+#   (이 워크플로는 requirements 를 설치하지 않아 notify 를 import 할 수 없음 → 짝 테스트로 묶음).
+PRODUCTS = {
+    "jd": {"title": "쫀득바", "tab": ""},
+    "pbachi": {"title": "바치케", "tab": "pint"},
+}
+PRODUCT = (os.getenv("REPORT_PRODUCT") or "jd").strip().lower()
 
 TOTAL_RE = re.compile(r"오늘 총 증분 \*\+([\d,]+)\*")
 # 이모지는 Slack이 단축코드(:dart:)로 돌려줄 수 있어 패턴에서 제외
@@ -41,12 +51,10 @@ def patch_text(text, conv):
         return None, "이미 전환 조회수 줄 있음"
     conv = round(conv)
     m = TOTAL_RE.search(text)
-    g = GOAL_RE.search(text)
-    if not m or not g:
-        return None, "총 증분/목표 줄 형식을 찾지 못함"
+    g = GOAL_RE.search(text)   # 목표 줄은 목표가 있는 제품만(바치케는 없음) → 있으면 다시 계산
+    if not m:
+        return None, "총 증분 줄 형식을 찾지 못함"
     old_total = int(m.group(1).replace(",", ""))
-    goal_man = int(g.group(1))
-    goal = goal_man * 10000
     new_total = old_total + conv
 
     lines = text.split("\n")
@@ -70,9 +78,13 @@ def patch_text(text, conv):
 
     new = "\n".join(lines)
     new = TOTAL_RE.sub(f"오늘 총 증분 *+{f(new_total)}*", new, count=1)
-    pct = f"{new_total / (goal / 100):.0f}"
-    tail = ("달성 +" + f(new_total - goal)) if new_total >= goal else ("미달 " + f(new_total - goal))
-    new = GOAL_RE.sub(f"*일 {goal_man}만 목표* {pct}% · {tail}", new, count=1)
+    pct = tail = None
+    if g:
+        goal_man = int(g.group(1))
+        goal = goal_man * 10000
+        pct = f"{new_total / (goal / 100):.0f}"
+        tail = ("달성 +" + f(new_total - goal)) if new_total >= goal else ("미달 " + f(new_total - goal))
+        new = GOAL_RE.sub(f"*일 {goal_man}만 목표* {pct}% · {tail}", new, count=1)
 
     # 안전장치: 바뀐 줄이 정확히 총 증분·목표 두 줄이고, 추가된 줄은 전환/섹션 줄뿐인지 확인
     old_set, new_set = text.split("\n"), new.split("\n")
@@ -111,9 +123,11 @@ _history = {"msgs": [], "cursor": None, "done": False, "pages": 0}
 def find_report(token, date):
     """채널에서 그 날짜 증분 리포트(제목 줄 기준) 메시지를 찾는다. 반환은 매칭 목록(정확히 1건이어야 정상).
     채널 기록은 페이지 단위로 한 번만 읽어 날짜 간에 재사용한다(여러 날짜 실행 시 호출 수 절약)."""
+    title = PRODUCTS[PRODUCT]["title"]
+
     def match(msg):
-        first = (msg.get("text") or "").split("\n", 1)[0]
-        return "일일 증분" in first and f"`({date})`" in first and msg.get("bot_id")
+        # 제품명까지 본다 — 같은 채널의 다른 제품 리포트(쫀득바↔바치케)를 고치지 않게.
+        return is_report_for(msg.get("text") or "", date, title) and msg.get("bot_id")
 
     while True:
         hits = [m for m in _history["msgs"] if match(m)]
@@ -136,7 +150,8 @@ def find_report(token, date):
 def fetch_conversion(date, attempts=3, wait=5):
     """라우트(시트 조회)는 간헐 502를 낸다 → 몇 번 재시도. 끝내 실패하면 예외(호출부가 그 날짜만 실패 처리)."""
     base = os.environ["APP_URL"].rstrip("/")
-    req = urllib.request.Request(f"{base}/api/awareness-ads?date={urllib.parse.quote(date)}",
+    tab = PRODUCTS[PRODUCT]["tab"]
+    req = urllib.request.Request(f"{base}/api/awareness-ads?date={urllib.parse.quote(date)}" + (f"&tab={tab}" if tab else ""),
                                  headers={"Authorization": "Bearer " + os.environ["CRON_SECRET"]})
     for i in range(attempts):
         try:
@@ -156,9 +171,13 @@ def main():
     token = os.environ["SLACK_BOT_TOKEN"]
     dry = (os.getenv("DRY_RUN") or "true").lower() == "true"
     dates = [s.strip() for s in (os.getenv("DATES") or "").split(",") if s.strip()]
+    auto = not dates
     if not dates:
         dates = default_dates(dt.datetime.now(dt.timezone.utc).replace(tzinfo=None), int(os.getenv("AUTO_DAYS") or 5))
-    print(f"모드: {'DRY_RUN(편집 안 함)' if dry else 'APPLY'} / 채널 {CHANNEL} / 대상 {dates}")
+    if PRODUCT not in PRODUCTS:
+        print(f"알 수 없는 REPORT_PRODUCT={PRODUCT!r}")
+        sys.exit(1)
+    print(f"모드: {'DRY_RUN(편집 안 함)' if dry else 'APPLY'} / 제품 {PRODUCTS[PRODUCT]['title']} / 채널 {CHANNEL} / 대상 {dates}")
     failed = 0
     for date in dates:
         try:
@@ -171,6 +190,11 @@ def main():
             print(f"[{date}] 시트 전환 조회수 없음(빈칸/행없음) → 건너뜀")
             continue
         hits = find_report(token, date)
+        if not hits and auto:
+            # 자동 범위(최근 N일)에선 그날 리포트가 없을 수 있다 — 신규 제품 첫 주, 증가분 없어 발송 생략한 날.
+            # 리포트 미발송 감지는 도착 워치독 몫이라 여기선 실패로 치지 않는다(매일 빨간불 방지).
+            print(f"[{date}] 리포트 없음 → 건너뜀(자동 범위)")
+            continue
         if len(hits) != 1:
             print(f"[{date}] 리포트 메시지 {len(hits)}건 → 건너뜀(정확히 1건이어야 함)")
             failed += 1
@@ -180,8 +204,8 @@ def main():
         if new is None:
             print(f"[{date}] ts={msg['ts']} 건너뜀: {info}")
             continue
-        print(f"[{date}] ts={msg['ts']} 전환 +{f(info['conv'])} | 총 증분 {f(info['old_total'])} → {f(info['new_total'])}"
-              f" | 목표 {info['pct']}% · {info['tail']}")
+        goal_txt = f" | 목표 {info['pct']}% · {info['tail']}" if info["pct"] else ""
+        print(f"[{date}] ts={msg['ts']} 전환 +{f(info['conv'])} | 총 증분 {f(info['old_total'])} → {f(info['new_total'])}{goal_txt}")
         if dry:
             continue
         r = _slack("chat.update", token, {"channel": CHANNEL, "ts": msg["ts"], "text": new}, post=True)

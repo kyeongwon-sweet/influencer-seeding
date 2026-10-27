@@ -2,6 +2,7 @@ import { yesterdayKST } from "@/lib/dateRule";
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { fetchSheetTabValues } from "@/lib/google-sheets";
+import { readPintDay } from "@/lib/awareness-pint";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -21,6 +22,11 @@ export const maxDuration = 30;
 //   → 탐지 실패 시 값 대신 warn을 반환(발송 전 검수가 warn을 차단하므로 사람이 즉시 인지).
 const SPREADSHEET_ID = "1EITk9hxHPhJ07xvOlVL9kOdZXhthupRwfJLpIqIou2s";
 const GID = 1224959784; // 인지_쫀득바
+// ?tab=pint — 파인트 인지광고 대시보드(바치케 일일 증분 리포트용, 2026-10-27).
+//   구조가 쫀득바 탭과 다르다: '[일자별 현황]' 블록의 섹션행에 인지영상_Meta / 인지영상_YouTube /
+//   인지영상_TikTok (각 광고비·조회수·조회당비용 3칸), 서브헤더행에 월(26.10)·날짜(10.26)·전환 조회수.
+//   같은 탭의 PPL·매거진·먹스타·협찬·무상시딩 열은 DB가 따로 세는 채널이라 여기서 읽지 않는다(중복 합산 방지).
+const PINT_GID = 55181281;
 
 type Cell = string | number | null | undefined;
 type Pair = { cost: number; view: number };
@@ -136,20 +142,26 @@ export async function GET(req: NextRequest) {
   }
   const date = (req.nextUrl.searchParams.get("date") || kstYesterday()).slice(0, 10);
   const parts = date.split("-").map((s) => parseInt(s, 10));
+  const yy = parts[0];
   const mo = parts[1];
   const dy = parts[2];
-  if (!mo || !dy) {
+  if (!yy || !mo || !dy) {
     return NextResponse.json({ error: "date는 YYYY-MM-DD 형식" }, { status: 400 });
+  }
+  const tab = req.nextUrl.searchParams.get("tab") || "";
+  if (tab && tab !== "pint") {
+    return NextResponse.json({ error: "tab은 비우거나 pint" }, { status: 400 });
   }
 
   let rows: Cell[][];
   try {
     // 헤더 자동탐지 + 미래 열삽입 대비해 넉넉히 읽는다.
-    rows = await fetchSheetTabValues(SPREADSHEET_ID, GID, "A1:CZ500");
+    rows = await fetchSheetTabValues(SPREADSHEET_ID, tab === "pint" ? PINT_GID : GID, "A1:CZ500");
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: `시트 조회 실패: ${msg}` }, { status: 502 });
   }
+  if (tab === "pint") return NextResponse.json(readPintDay(rows, date));
 
   const COL = detectColumns(rows);
   if (!COL) {

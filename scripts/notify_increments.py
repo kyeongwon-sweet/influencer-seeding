@@ -10,7 +10,7 @@ import json
 import urllib.parse
 import urllib.request
 from cross_post_metrics import fb_increment, ig_only
-from report_message import is_report_for
+from report_message import is_report_for, report_title
 from datetime import date
 from channel_kind import free_cpv_label, free_reason, is_banner_channel, is_free_by_design
 from db import get_client
@@ -22,6 +22,26 @@ SLACK_UPDATE_API = "https://slack.com/api/chat.update"
 # 온드미디어·위성채널 = 무상 채널: 광고비·업체명이 없어야 함(사용자 지시).
 #   입력돼 있어도 리포트 CPV엔 무시(0 취급)하고, 있으면 리포트에 ⚠️ 오류로 경고한다.
 NO_COST_CH = ("온드미디어", "위성채널")
+
+
+def _norm_prod(p) -> str:
+    return (p or "").replace(" ", "").strip()
+
+
+# 리포트 제품 프로필(2026-10-27 바치케 추가). REPORT_PRODUCT 미설정 = 쫀득바(기존 동작 그대로).
+#   title: 제목·리포트 판정 키(report_message.is_report_for) / match: DB product_name으로 대상 게시물 선택
+#   ads_tab: 인지광고 시트 탭(/api/awareness-ads?tab=) — 빈값=[인지_쫀득바], pint=파인트 인지광고 대시보드
+#   goal: 일일 목표 줄 / product_line: 제품별 요약 줄(여러 SKU가 섞일 때만 의미)
+PRODUCT_PROFILES = {
+    "jd": {"title": "쫀득바", "match": lambda p: "jd" in (p or "").lower(),
+           "ads_tab": "", "goal": True, "product_line": True},
+    "pbachi": {"title": "바치케", "match": lambda p: _norm_prod(p) == "P바치",
+               "ads_tab": "pint", "goal": False, "product_line": False},
+}
+REPORT_PRODUCT = (os.getenv("REPORT_PRODUCT") or "jd").strip().lower()
+if REPORT_PRODUCT not in PRODUCT_PROFILES:
+    raise SystemExit(f"알 수 없는 REPORT_PRODUCT={REPORT_PRODUCT!r} (가능: {', '.join(PRODUCT_PROFILES)})")
+PROFILE = PRODUCT_PROFILES[REPORT_PRODUCT]
 
 
 def _platform(url: str) -> str:
@@ -91,7 +111,8 @@ def conversion_line(conv):
 
 
 def _fetch_awareness_ads(target: str):
-    """마케팅T [인지_쫀득바] 시트의 그날 인지광고(메타/틱톡/유튜브) '일별' 조회수·광고비.
+    """마케팅T 시트의 그날 인지광고(메타/틱톡/유튜브) '일별' 조회수·광고비 + 전환 조회수.
+    쫀득바=[인지_쫀득바] 탭, 바치케=파인트 인지광고 대시보드 탭(PROFILE['ads_tab']).
     값이 DB에 없고 시트에만 있어(팀 수동입력) 웹 라우트(/api/awareness-ads, Vercel 서비스계정)로 읽는다.
     APP_URL/CRON_SECRET 없거나·조회 실패·해당일 행 없음이면 None → 인지광고 섹션만 생략(리포트 본문은 정상)."""
     base = (os.getenv("APP_URL") or "").rstrip("/")
@@ -99,9 +120,10 @@ def _fetch_awareness_ads(target: str):
     if not base or not secret:
         print("[notify] APP_URL/CRON_SECRET 없음 → 인지광고 섹션 생략")
         return None
+    tab = PROFILE["ads_tab"]
     try:
         req = urllib.request.Request(
-            f"{base}/api/awareness-ads?date={urllib.parse.quote(target)}",
+            f"{base}/api/awareness-ads?date={urllib.parse.quote(target)}" + (f"&tab={tab}" if tab else ""),
             headers={"Authorization": "Bearer " + secret})
         d = json.load(urllib.request.urlopen(req, timeout=30))
     except Exception as e:
@@ -128,7 +150,7 @@ def _already_posted(token: str, channel: str, target: str) -> bool:
         print("[notify] 중복조회 ok=False(발송 진행):", d.get("error"))
         return False
     for m in d.get("messages", []):
-        if is_report_for(m.get("text", ""), target):
+        if is_report_for(m.get("text", ""), target, PROFILE["title"]):
             return True
     return False
 
@@ -145,7 +167,7 @@ def _find_report_ts(token: str, channel: str, target: str) -> list:
         return []
     out = []
     for m in d.get("messages", []):
-        if is_report_for(m.get("text", ""), target) and m.get("ts"):
+        if is_report_for(m.get("text", ""), target, PROFILE["title"]) and m.get("ts"):
             out.append(m["ts"])
     return out
 
@@ -209,9 +231,21 @@ def _hold_notice_exists(token: str, channel: str, target: str, final_retry: bool
     for m in d.get("messages", []):
         t = m.get("text", "")
         marker = "최종 재시도 후 발송 보류" if final_retry else "발송 보류"
-        if marker in t and f"({target})" in t:
+        if marker in t and f"({target})" in t and _is_own_hold_notice(t):
             return True
     return False
+
+
+def _hold_label() -> str:
+    """보류 공지 제목의 제품 표시. 쫀득바는 기존 문구 그대로('리포트 발송 보류'), 그 외는 제품명을 앞에 붙인다."""
+    return "" if REPORT_PRODUCT == "jd" else f"{PROFILE['title']} "
+
+
+def _is_own_hold_notice(text: str) -> bool:
+    """이 보류 공지가 지금 제품의 것인가 — 한 채널에 두 제품 공지가 섞여도 서로의 중복 억제에 걸리지 않게."""
+    if REPORT_PRODUCT == "jd":
+        return not any(p["title"] in text for k, p in PRODUCT_PROFILES.items() if k != "jd")
+    return PROFILE["title"] in text
 
 
 def _fetch_day(db, target):
@@ -348,10 +382,10 @@ def main():
         for r in (res.data or []):
             meta[r["id"]] = r
 
-    # 🎯 쫀득바(JD)만: 각 게시물의 ≤target 시리즈를 가져와 안전 증분 + CPV용 누적(이력 최댓값)을 계산.
-    jd_pids = [pid for pid in dayrows if "jd" in ((meta.get(pid) or {}).get("product_name") or "").lower()]
+    # 🎯 리포트 제품만(쫀득바=JD*, 바치케=P바치): 각 게시물의 ≤target 시리즈를 가져와 안전 증분 + CPV용 누적(이력 최댓값)을 계산.
+    prod_pids = [pid for pid in dayrows if PROFILE["match"]((meta.get(pid) or {}).get("product_name"))]
     series = {}
-    for chunk in _chunks(jd_pids, 100):
+    for chunk in _chunks(prod_pids, 100):
         frm = 0
         while True:
             cr = (db.table("post_daily_stats").select("post_id, measured_at, play_count, reach_count, fb_play_count")
@@ -404,7 +438,7 @@ def main():
 
     # items: 안전 규칙으로 재계산(저장 increment 무시). 첫 측정/0 baseline은 증분 아님 → 제외(과집계 차단).
     items = []
-    for pid in jd_pids:
+    for pid in prod_pids:
         m = meta.get(pid, {})
         # 🛑 종료(ended_at) 게시물 제외 — target일 이전에 이미 종료된 글은 급상승/증분 리포트에서 뺀다.
         #    종료 후 남은 carry-forward·오염 행(다른 글 값 복사 등)이 가짜 증분으로 TOP에 오르는 것 방지.
@@ -446,10 +480,10 @@ def main():
                     .ilike("channel_type", "%배너%").order("id").range(boff, boff + 999).execute())
             bchunk = bres.data or []
             for b in bchunk:
-                # 쫀득바(JD)만: 상품명에 JD 없는 배너 채널은 라인 노출 안 함(사용자 지시).
+                # 리포트 제품만: 다른 제품 배너 채널은 라인 노출 안 함(사용자 지시 — 쫀득바는 JD만).
                 # 위성채널(배너)은 위성채널 라인에 묶여 계산되므로 별도 '미수집' 라인 강제 안 함(사용자 지시).
                 bct = (b.get("channel_type") or "").strip()
-                if not b.get("ended_at") and bct and "jd" in (b.get("product_name") or "").lower() and "위성채널" not in bct:
+                if not b.get("ended_at") and bct and PROFILE["match"](b.get("product_name")) and "위성채널" not in bct:
                     banner_cts.add(bct)
             if len(bchunk) < 1000:
                 break
@@ -503,7 +537,7 @@ def main():
     #   과거 날짜도 series(전체이력)+_safe_inc(tgt)로 같은 규칙 계산. 기준 대비 ±50%↑ + 최소절대량이면 노티.
     def _ch_incs(_tgt):
         o = {}
-        for _pid in jd_pids:
+        for _pid in prod_pids:
             _m = meta.get(_pid, {})
             _e = _m.get("ended_at")
             if _e and str(_e)[:10] < _tgt:
@@ -549,7 +583,7 @@ def main():
                 if _iv2 is not None and _iv2 >= 0:
                     _vv.append(_iv2)
             return (sum(_vv) / len(_vv)) if len(_vv) >= 2 else None
-        for _pid in jd_pids:
+        for _pid in prod_pids:
             _m2 = meta.get(_pid, {})
             _e2 = _m2.get("ended_at")
             if _e2 and str(_e2)[:10] < target:
@@ -647,11 +681,13 @@ def main():
         if _parts:
             _prod_line = "◾ *제품별*  " + " · ".join(_parts)
     lines = [
-        f"📈 *쫀득바 조회수 일일 증분* `({target})`",
+        f"📈 *{report_title(PROFILE['title'])}* `({target})`",
         f"오늘 총 증분 *+{f(total)}*",
-        f"🎯 *일 {goal_man}만 목표* {total / (goal / 100):.0f}% · {('달성 +' + f(total - goal)) if total >= goal else ('미달 ' + f(total - goal))}",
     ]
-    if _prod_line:
+    # 일일 목표 줄은 목표가 정해진 제품만(바치케는 목표 미정 — 2026-10-27 사용자 결정 '목표 줄 없이').
+    if PROFILE["goal"]:
+        lines.append(f"🎯 *일 {goal_man}만 목표* {total / (goal / 100):.0f}% · {('달성 +' + f(total - goal)) if total >= goal else ('미달 ' + f(total - goal))}")
+    if _prod_line and PROFILE["product_line"]:
         lines.append(_prod_line)
     # REPORT_NOTE — 그날 숫자를 곧이곧대로 읽으면 오해가 생기는 경우의 주석 한 줄(사용자 승인 시에만).
     #   예: 수집기 장애 복구로 값이 소급 반영돼 증분에 하루치 이상이 섞인 날.
@@ -802,7 +838,8 @@ def main():
             # 하나라도 있으면 사람 조치가 필요하므로 팀 채널에 노출. 어느 경우든 같은 날짜 1회만(중복 억제).
             _real = [b for b in _blocks if not is_collection_hold(b)]
             _final_retry = os.getenv("FINAL_RETRY") == "1"
-            _alert_head = "🚨 *리포트 최종 재시도 후 발송 보류*" if _final_retry else "🚫 *리포트 발송 보류*"
+            _alert_head = (f"🚨 *{_hold_label()}리포트 최종 재시도 후 발송 보류*" if _final_retry
+                           else f"🚫 *{_hold_label()}리포트 발송 보류*")
             _alert = _alert_head + " `(" + target + ")`\n" + "\n".join(f"• {b}" for b in _blocks)
             if _warns:
                 _alert += "\n\n⚠️ 참고(비차단):\n" + "\n".join(f"• {w}" for w in _warns)

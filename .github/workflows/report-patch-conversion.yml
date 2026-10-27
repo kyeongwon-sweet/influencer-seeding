@@ -21,6 +21,11 @@ on:
         required: false
         type: boolean
         default: true
+      product:
+        description: "수동 실행 대상(jd=쫀득바, pbachi=바치케). 예약 실행은 둘 다"
+        type: choice
+        options: [jd, pbachi]
+        default: jd
 
 concurrency:
   group: report-patch-conversion
@@ -35,13 +40,27 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Patch conversion views into sent reports
+      - name: Patch conversion views — 쫀득바
+        if: github.event_name == 'schedule' || github.event.inputs.product != 'pbachi'
         env:
+          REPORT_PRODUCT: jd
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           APP_URL: "https://influencer-seeding-mu.vercel.app"
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           DATES: ${{ github.event.inputs.dates }}
           # 스케줄 실행은 inputs가 없으므로 적용 모드로 고정
+          DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || github.event.inputs.dry_run }}
+          AUTO_DAYS: "5"
+        run: python scripts/patch_report_conversion.py
+      # 바치케(2026-10-27~). 쫀득바 단계가 실패해도(어느 날짜 조회 실패 등) 이 단계는 돈다.
+      - name: Patch conversion views — 바치케
+        if: ${{ !cancelled() && (github.event_name == 'schedule' || github.event.inputs.product == 'pbachi') }}
+        env:
+          REPORT_PRODUCT: pbachi
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          APP_URL: "https://influencer-seeding-mu.vercel.app"
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DATES: ${{ github.event.inputs.dates }}
           DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || github.event.inputs.dry_run }}
           AUTO_DAYS: "5"
         run: python scripts/patch_report_conversion.py

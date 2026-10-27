@@ -169,3 +169,45 @@ def test_fetch_conversion_retries_transient_502(monkeypatch):
 
     monkeypatch.setattr(prc.urllib.request, "urlopen", fake_urlopen)
     assert prc.fetch_conversion("2026-09-21") == 7 and calls["n"] == 3
+
+
+# ── 2026-10-27 바치케: 목표 줄 없는 리포트·제품 구분 ──
+
+BACHI_REPORT = REPORT.replace("쫀득바", "바치케").replace(":dart: *일 190만 목표* 35% · 미달 -1,241,911\n", "")
+
+
+def test_patch_without_goal_line():
+    assert "만 목표" not in BACHI_REPORT
+    new, info = patch_text(BACHI_REPORT, 97539)
+    assert new is not None, info
+    assert info["new_total"] == 658_089 + 97_539 and info["pct"] is None
+    assert "오늘 총 증분 *+755,628*" in new and "만 목표" not in new
+
+
+def test_products_match_notify_profiles():
+    """이 스크립트(의존성 없이 도는 워크플로)의 제품표가 리포트 생성기와 어긋나면 엉뚱한 탭·제목을 고친다."""
+    import patch_report_conversion as prc
+    from notify_increments import PRODUCT_PROFILES
+    assert set(prc.PRODUCTS) == set(PRODUCT_PROFILES)
+    for k, p in PRODUCT_PROFILES.items():
+        assert prc.PRODUCTS[k] == {"title": p["title"], "tab": p["ads_tab"]}, k
+
+
+def test_find_report_is_scoped_to_product(monkeypatch):
+    import patch_report_conversion as prc
+    page = {"ok": True, "messages": [
+        {"ts": "2", "bot_id": "B", "text": "📈 *바치케 조회수 일일 증분* `(2026-10-26)`\n오늘 총 증분 *+1*"},
+        {"ts": "1", "bot_id": "B", "text": "📈 *쫀득바 조회수 일일 증분* `(2026-10-26)`\n오늘 총 증분 *+1*"},
+    ], "response_metadata": {"next_cursor": ""}}
+    monkeypatch.setattr(prc, "_slack", lambda *a, **k: page)
+    for product, want in (("jd", ["1"]), ("pbachi", ["2"])):
+        monkeypatch.setattr(prc, "PRODUCT", product)
+        monkeypatch.setattr(prc, "_history", {"msgs": [], "cursor": None, "done": False, "pages": 0})
+        assert [m["ts"] for m in prc.find_report("tok", "2026-10-26")] == want, product
+
+
+def test_notify_profile_product_match():
+    from notify_increments import PRODUCT_PROFILES
+    jd, pb = PRODUCT_PROFILES["jd"]["match"], PRODUCT_PROFILES["pbachi"]["match"]
+    assert jd("JD혼") and jd("jd멜") and not jd("P바치") and not jd(None)
+    assert pb("P바치") and pb(" P 바치 ") and not pb("P바") and not pb("P망") and not pb("JD혼") and not pb(None)

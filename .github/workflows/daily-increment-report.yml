@@ -50,9 +50,16 @@ on:
         description: "16:10 최종 재시도 — 다시 보류되면 담당자 DM으로 에스컬레이션"
         type: boolean
         default: false
+      product:
+        description: "수동 실행 대상 리포트(jd=쫀득바, pbachi=바치케). 예약 실행은 둘 다 돈다"
+        type: choice
+        options: [jd, pbachi]
+        default: jd
 
 jobs:
   report:
+    # 쫀득바. 자가치유(ensure-daily-report)·수동 실행은 product 없이/jd로 dispatch → 이 작업만 돈다.
+    if: github.event_name == 'schedule' || github.event.inputs.product != 'pbachi'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -119,3 +126,41 @@ jobs:
           export MONITORING_DATE="${{ github.event.inputs.date }}"
           [ -z "$MONITORING_DATE" ] && export MONITORING_DATE=$(TZ=Asia/Seoul date -d 'yesterday' +%F)
           cd scripts && python notify_status.py
+
+  # 바치케(P바치) 일일 증분 — 2026-10-27 추가. 쫀득바와 같은 채널·같은 스케줄(12:20 + 백업 3회),
+  # 제품 필터·제목·인지광고 출처(파인트 인지광고 대시보드 탭)만 다르다. 목표 줄 없음(사용자 결정).
+  # 쫀득바 작업과 독립 — 한쪽 실패가 다른 쪽 발송을 막지 않는다. 상태 알럿 댓글은 쫀득바 리포트에만 단다.
+  report-pbachi:
+    if: github.event_name == 'schedule' || github.event.inputs.product == 'pbachi'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: 바치케 조회수 증분 리포트 발송 (#빙과_마케팅_리포트)
+        env:
+          REPORT_PRODUCT: pbachi
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          APP_URL: "https://influencer-seeding-mu.vercel.app"
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SLACK_CHANNEL: ${{ github.event.inputs.to_dm == 'true' && 'U0B2Y0ZC8QZ' || '' }}
+          STRICT_DATE: ${{ github.event_name == 'schedule' && '1' || '' }}
+          DEDUP: ${{ github.event.inputs.to_dm == 'true' && '' || '1' }}
+          REPLACE: ${{ github.event.inputs.replace == 'true' && '1' || '' }}
+          DELETE_ONLY: ${{ github.event.inputs.delete_only == 'true' && '1' || '' }}
+          DELETE_TS: ${{ github.event.inputs.delete_ts }}
+          UPDATE_TS: ${{ github.event.inputs.update_ts }}
+          REPORT_NOTE: ${{ github.event.inputs.note }}
+          FINAL_RETRY: ${{ github.event.inputs.final_retry == 'true' && '1' || '' }}
+          DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && '1' || '' }}
+          PYTHONUNBUFFERED: "1"
+        run: |
+          export MONITORING_DATE="${{ github.event.inputs.date }}"
+          [ -z "$MONITORING_DATE" ] && export MONITORING_DATE=$(TZ=Asia/Seoul date -d 'yesterday' +%F)
+          cd scripts && python notify_increments.py

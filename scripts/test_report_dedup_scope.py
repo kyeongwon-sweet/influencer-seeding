@@ -45,3 +45,30 @@ def test_non_report_message_with_same_date():
     """검색량 리포트 등 다른 봇 메시지는 제목에 '일일 증분'이 없다."""
     other_bot = "📊 *라라스윗 검색량 리포트* (2026-09-22 화요일 기준)\n전일 검색량: *2,311*"
     assert not is_report_for(other_bot, "2026-09-22")
+
+
+# ── 2026-10-27: 같은 채널에 바치케 리포트 추가 — 제품명까지 봐야 서로 착각하지 않는다 ──
+BACHI = "📈 *바치케 조회수 일일 증분* `(2026-10-26)`\n오늘 총 증분 *+120,000*"
+JJON = "📈 *쫀득바 조회수 일일 증분* `(2026-10-26)`\n오늘 총 증분 *+500,000*"
+
+
+def test_default_is_jjondeukba_and_ignores_bachike():
+    """쫀득바 발송기·워치독·REPLACE 는 기본값(쫀득바)으로 판정 — 바치케 리포트를 쫀득바로 보면
+    쫀득바 발송이 '중복'으로 막히고, REPLACE/DELETE 가 바치케 리포트를 지운다."""
+    assert is_report_for(JJON, "2026-10-26")
+    assert not is_report_for(BACHI, "2026-10-26")
+
+
+def test_bachike_scope_matches_only_bachike():
+    assert is_report_for(BACHI, "2026-10-26", "바치케")
+    assert not is_report_for(JJON, "2026-10-26", "바치케")
+    assert not is_report_for(BACHI, "2026-10-25", "바치케")
+
+
+def test_title_helper_matches_web_constant():
+    """웹 쪽 web/lib/report-message.ts 의 REPORT_TITLE(쫀득바)과 같은 문구여야 자가치유가 같은 판단을 한다."""
+    import re
+    from report_message import report_title
+    src = open(os.path.join(os.path.dirname(__file__), "..", "web", "lib", "report-message.ts"), encoding="utf-8").read()
+    m = re.search(r'REPORT_TITLE = "([^"]+)"', src)
+    assert m and m.group(1) == report_title()
