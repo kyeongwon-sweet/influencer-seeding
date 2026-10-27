@@ -23,6 +23,30 @@ def meta_conversion_views(payload):
     return round(v) if isinstance(v, (int, float)) else None
 
 
+def meta_awareness_values(payload):
+    """인지 계정 라우트 응답(account=awareness) → {"views": ThruPlay, "cost": 광고비} 또는 None(오류).
+    인지 계정은 광고가 없는 날이 정상이라 scanned=0 도 '0'이다(메인 계정과 다름) — 오류 응답만 빈 값."""
+    if not isinstance(payload, dict) or payload.get("error") or payload.get("account") != "awareness":
+        return None
+    t = payload.get("total")
+    if not isinstance(t, dict):
+        return None
+    return {"views": round(t.get("thruplay") or 0), "cost": round(t.get("spend") or 0)}
+
+
+def fetch_meta_awareness(base, secret, date, attempts=3, wait=5):
+    req = urllib.request.Request(
+        f"{base.rstrip('/')}/api/meta-ads-pbachi?account=awareness&date={urllib.parse.quote(date)}",
+        headers={"Authorization": "Bearer " + secret})
+    for i in range(attempts):
+        try:
+            return meta_awareness_values(json.load(urllib.request.urlopen(req, timeout=60)))
+        except Exception:
+            if i == attempts - 1:
+                raise
+            time.sleep(wait * (i + 1))
+
+
 def fetch_meta_conversion(base, secret, date, attempts=3, wait=5):
     """라우트 호출(간헐 502 재시도). 끝내 실패하면 예외 — 호출부가 '미집계'/그 날짜 실패로 처리."""
     req = urllib.request.Request(

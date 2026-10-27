@@ -43,6 +43,11 @@ function sumOf(rows: MetaAdRow[]): MetricSum {
   return o;
 }
 
+// 인지 광고는 메인 계정(env META_BUSINESS_ACCOUNT_ID, 전환 전용)이 아니라 별도 '인지' 계정에 있다(2026-10-27 확인:
+// 빙과 대시보드 meta_api.py 의 SUB 계정 = 인지, 같은 토큰 접근). 바치케 리포트 메타 인지 줄 = 이 계정의 P바치 광고
+// ThruPlay(조회수)·광고비 — 시트 '인지영상_Meta' 와 같은 정의(10/20 ThruPlay 일치). 계정 ID는 비밀값 아님.
+export const AWARENESS_ACCOUNT_ID = "550617335901928";
+
 // 전환(구매) 목적 — 바치케 리포트 '전환 조회수'에 넣는 광고. 같은 계정에 인지 목적 광고가 생겨도 섞이지 않게.
 export const CONVERSION_OBJECTIVES = ["OUTCOME_SALES"];
 

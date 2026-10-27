@@ -1,7 +1,7 @@
 import { yesterdayKST } from "@/lib/dateRule";
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
-import { aggregatePbachi, isPbachiAd, type MetaAdRow } from "@/lib/meta-pbachi";
+import { AWARENESS_ACCOUNT_ID, aggregatePbachi, isPbachiAd, type MetaAdRow } from "@/lib/meta-pbachi";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -21,8 +21,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "date는 YYYY-MM-DD 형식" }, { status: 400 });
   }
   const debug = req.nextUrl.searchParams.get("debug") === "1";
+  // account=awareness → 인지 전용 계정(고정 ID). 그 외 값은 받지 않는다(임의 계정 조회 금지).
+  const which = req.nextUrl.searchParams.get("account") || "main";
+  if (which !== "main" && which !== "awareness") {
+    return NextResponse.json({ error: "account는 main|awareness" }, { status: 400 });
+  }
   const token = process.env.META_BUSINESS_ACCESS_TOKEN;
-  const accountId = (process.env.META_BUSINESS_ACCOUNT_ID || "").replace(/^act_/, "");
+  const accountId = which === "awareness"
+    ? AWARENESS_ACCOUNT_ID
+    : (process.env.META_BUSINESS_ACCOUNT_ID || "").replace(/^act_/, "");
   if (!token || !accountId) {
     return NextResponse.json({ error: "META_BUSINESS_ACCESS_TOKEN/ACCOUNT_ID 미설정" }, { status: 503 });
   }
@@ -66,6 +73,7 @@ export async function GET(req: NextRequest) {
   }
   return NextResponse.json({
     date,
+    account: which,
     accountId,
     ...agg,
     ...(debug

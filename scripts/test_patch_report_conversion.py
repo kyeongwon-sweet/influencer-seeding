@@ -332,3 +332,14 @@ def test_main_meta_final_overwrite_only_after_7_days(monkeypatch):
     # 쫀득바(시트 출처)는 기존 값을 절대 덮어쓰지 않는다
     jd = REPORT.replace("    유튜브 *+144,255*  CPV 15.8원\n", "    유튜브 *+144,255*  CPV 15.8원\n    전환 조회수 *+1,000*\n")
     assert _run_main(monkeypatch, prc, "jd", old, jd, 2000, overwrite="true") == []
+
+
+def test_meta_awareness_values_zero_is_real_but_error_is_blank():
+    """인지 계정은 광고 없는 날이 정상 → scanned=0 도 0. 오류·다른 계정 응답은 빈 값(None)."""
+    from meta_conversion import meta_awareness_values as v
+    ok = {"account": "awareness", "scanned": 30, "total": {"thruplay": 24253.0, "spend": 449429.6, "impressions": 1}}
+    assert v(ok) == {"views": 24253, "cost": 449430}
+    assert v({"account": "awareness", "scanned": 0, "total": {"thruplay": 0, "spend": 0}}) == {"views": 0, "cost": 0}
+    assert v({"account": "awareness", "error": "Meta Graph 오류"}) is None
+    assert v({"account": "main", "total": {"thruplay": 5, "spend": 5}}) is None   # 계정 혼동 방지
+    assert v(None) is None
