@@ -1,5 +1,14 @@
 # AI Shared Status
 
+## 🟡 2026-10-27 [Claude 구현·배포 / Codex 라이브 설치 대기] 자정 수집을 00:05~00:35 KST에 시작 (`c2364344`·`8ee3baaa`·`ce05a755`)
+- **왜:** GitHub 예약 00:41 KST 실측(09-27~10-27, 31일) — 첫 수집 시작 **중앙값 +4.0h, 최대 +6.9h, 1시간 안 0일**. 사용자: "최대한 00시 자정 가까이 수집되었으면 좋겠어" → 구글 트리거 방식 선택.
+- **구조(리포트·감사 보장과 동일):** Apps Script 시간 트리거 `ensureDailyCollect`(주 00:05~00:35, 백업 01:15~01:45) → `POST /api/ops/ensure-daily-collect`(CRON_SECRET) → 오늘 밤 주 수집 없으면 `cron-daily-collect.yml` 을 `final_snapshot=true` 로 dispatch(제목 `[final_snapshot]`).
+  - 라우트는 **00~05시 KST에만** 시작(낮 호출은 `outside_midnight_window` 무동작 — 낮 값이 전일 최종값을 덮는 것 방지). 실행 목록 조회 실패 시 시작 안 함(+Slack).
+  - 워크플로 `Collect role` 단계(`scripts/collect_role.py`): primary(주 수집, FINAL_SNAPSHOT)·backup(누락분만)·deferred(주 수집 진행 중 → 수집 안 함, **완료 마커 안 찍음**)·manual. 00:41 예약은 주 수집이 없을 때만 primary(구글 트리거가 안 떴을 때의 폴백 = 기존 동작). 하루 1회 DM 감사 2종은 primary/manual 에서만.
+  - '주 수집' 판정 규칙은 TS(`web/lib/collect-primary.ts`)·Python 동일(오늘 KST 00:00 이후 + `[final_snapshot]` 제목 또는 02:30 KST 전 예약 실행). 계약 테스트로 묶음.
+- **검증:** web 725·scripts 543 pass, tsc·build·Workflow Lint 통과. 프로덕션 dry-run(smoke `40428807483`): 인증 OK, kstHour=9 → outside_midnight_window, **runsSeen=3 = 실제 오늘 실행 3건**(토큰·조회 경로 확인). dispatch 경로는 같은 GH_DISPATCH_TOKEN 을 쓰는 ensure-daily-report 로 이미 운영 중. 실제 자정 dispatch 는 트리거 설치 후 첫 밤에 확인 필요.
+- **Codex 몫(라이브 Apps Script, repo `Combined_Sheet_AppsScript.gs` 참고 — 라이브≠repo라 덮어쓰기 금지, 아래만 추가):** ① CONFIG 에 `ENSURE_DAILY_COLLECT_URL` 1줄 ② `ensureDailyCollect`·`installEnsureDailyCollectTrigger`·`removeEnsureDailyCollectTrigger` 3함수 ③ 편집기에서 `installEnsureDailyCollectTrigger` 1회 실행 → 트리거 2개 확인.
+
 ## ✅ 2026-10-27 [Claude 재발방지] DB 불통인데 '수집 완료'가 찍혀 리포트 오보(10-26 '미수집 181건') — 완료 마커 빈 값 비교 버그 수정 + DB 없이 도는 사전점검 실패 알림
 - **원인(실측):** 10-26 run `40238166718` = `Check today` **failure**(Supabase 402) → `Decide collect`·수집 **skipped** → 그런데 `Collection completion marker` **success**. 마커 조건 `steps.decide.outputs.go == '0'`에서 decide가 안 돌아 go가 빈 값(null)이었고, **GitHub 조건식은 null과 '0'을 둘 다 숫자 0으로 바꿔 비교해 참**. 마커가 '완료'로 보여 리포트 run `40249911758`이 복구 수집(`40249230988`, 00:24Z~01:05Z) 도중 나가 '미수집 181건' 오보. 같은 이유로 '수집 실패 시 알럿'도 skipped(그 알럿은 go=='1' 조건+본문이 DB를 읽어 DB 불통엔 원래 못 돎).
 - **수정:** ① 워크플로 마커에 `steps.check.outcome == 'success' && steps.decide.outcome == 'success'` 추가(빈 값 비교에 기대지 않음). ② 소비자 2곳 방어 — `daily_collect_report.collection_completed_from_jobs`·`web/lib/collection-completion.ts`(시트 exportStats 게이트용 `/api/ops/collection-status`)가 마커 성공이어도 `Check today`/`Decide collect` 단계가 success 아니면 미완료(`precheck_not_success`). 과거 이력도 소급해 올바로 판정. ③ 새 단계 `수집 사전점검 실패 알럿 (DB 불통)` — check 실패 시 `scripts/precheck_failure_alert.py`가 **DB 없이** 점검 로그 끝 12줄을 황경원 DM, `exceed_egress_quota`면 첫 줄에 "Supabase egress 한도 초과 — DB 정지". check 로그는 `$RUNNER_TEMP/check.log`로 tee.
