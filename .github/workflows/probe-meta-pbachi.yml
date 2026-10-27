@@ -37,8 +37,11 @@ jobs:
               except urllib.error.HTTPError as e:
                   j = {"httpError": e.code, "body": e.read().decode("utf-8", "replace")[:600]}
               ads = j.pop("ads", None)
+              camps = j.pop("campaigns", None)
               print(f"===== {d} =====")
               print(json.dumps(j, ensure_ascii=False, indent=1))
+              for c in (camps or [])[:60]:
+                  print(f"  [캠페인] 노출 {c['impressions']:>9,} 광고비 {c['spend']:>11,} 광고 {c['ads']:>3} (P바치 {c['pbachiAds']:>3}) {c['objective']} | {c['campaign']}")
               for a in (ads or [])[:80]:
                   print("  ·", a.get("objective"), "|", a.get("campaign"), "|", a.get("adset"), "|", a.get("ad"),
                         "| 노출", a.get("impressions"), "| 광고비", a.get("spend"), "| ThruPlay", a.get("thruplay"))

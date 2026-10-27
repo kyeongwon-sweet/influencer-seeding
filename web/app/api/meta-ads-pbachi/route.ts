@@ -51,12 +51,26 @@ export async function GET(req: NextRequest) {
   }
 
   const agg = aggregatePbachi(rows);
+  // 점검용: 계정 전체를 캠페인 단위로(P바치 표시 여부 포함) — 시트 '전환' 숫자가 무엇의 합인지 맞춰 보기 위함.
+  const byCampaign = new Map<string, { campaign: string; objective: string; impressions: number; spend: number; ads: number; pbachiAds: number }>();
+  if (debug) {
+    for (const r of rows) {
+      const k = r.campaign_name || "(이름 없음)";
+      const c = byCampaign.get(k) ?? { campaign: k, objective: r.objective || "UNKNOWN", impressions: 0, spend: 0, ads: 0, pbachiAds: 0 };
+      c.impressions += Number(r.impressions) || 0;
+      c.spend += Math.round(Number(r.spend) || 0);
+      c.ads += 1;
+      if (isPbachiAd(r)) c.pbachiAds += 1;
+      byCampaign.set(k, c);
+    }
+  }
   return NextResponse.json({
     date,
     accountId,
     ...agg,
     ...(debug
       ? {
+          campaigns: Array.from(byCampaign.values()).sort((a, b) => b.impressions - a.impressions),
           ads: rows.filter(isPbachiAd).map((r) => ({
             campaign: r.campaign_name, adset: r.adset_name, ad: r.ad_name, objective: r.objective,
             impressions: r.impressions, spend: r.spend,
