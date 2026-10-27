@@ -1,4 +1,7 @@
 name: Daily Collect (Vercel 크론 대체)
+# 주 수집(구글 트리거 → /api/ops/ensure-daily-collect → final_snapshot=true)은 제목에 [final_snapshot] 꼬리표.
+# ⚠️ 라우트(lib/collect-primary.ts)와 scripts/collect_role.py 가 이 꼬리표로 "오늘 밤 주 수집"을 찾는다. 바꾸지 말 것.
+run-name: ${{ github.event.inputs.final_snapshot == 'true' && format('{0} [final_snapshot]', github.workflow) || github.workflow }}
 
 # Vercel 크론을 GitHub Actions로 이전(무료) — Vercel Hobby 다운그레이드용.
 # 00:00 KST 목표 수집: 전체 수집(run_monitoring) → 브랜드지표·유튜브트렌드·B2B.
@@ -36,6 +39,10 @@ on:
         description: "Recollect metadata only for Instagram posts with a blank account name"
         type: boolean
         default: false
+      final_snapshot:
+        description: "자정 주 수집(전일 최종값으로 전체 재측정). 평소엔 구글 트리거가 00:05~00:35 KST에 자동으로 켠다"
+        type: boolean
+        default: false
 
 # 배포 URL은 여기 한 곳에서만 관리(프로젝트 이전·alias 변경 시 이 줄만 수정).
 # ⚠️ -mu(프로덕션 도메인)만 사용 — -kwhwang-s-projects는 Vercel 배포보호(SSO)로 302되어 cron 차단됨(2026-06-30 확인).
@@ -59,6 +66,19 @@ jobs:
           cache: "pip"
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      # 2026-10-27: 주 수집은 구글 트리거가 00:05~00:35 KST에 dispatch(final_snapshot)한다(GitHub 예약은 중앙값 4시간 지연).
+      #   이 단계가 실행 역할을 정한다 — primary(주 수집)·backup(누락분만)·deferred(주 수집 진행 중 → 대기)·manual.
+      #   DB를 안 쓰고 GitHub 실행 목록만 본다. 조회 실패 시 예전 동작(00:41 슬롯=주 수집)으로 후퇴하고 절대 실패하지 않는다.
+      - name: Collect role
+        id: role
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+          FINAL_INPUT: ${{ github.event.inputs.final_snapshot }}
+          RUN_ID: ${{ github.run_id }}
+        run: cd scripts && python collect_role.py
 
       # 오늘(KST) 데이터가 이미 있으면(IG + 유튜브) 이번 창은 무거운 수집을 건너뛴다.
       # KST 자정 직후 창(15:41 UTC=00:41 KST)이 UTC 어제로 적재돼 KST '오늘'이 비던 문제 →
@@ -89,7 +109,10 @@ jobs:
       - name: Decide collect
         id: decide
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ steps.check.outputs.status }}" = "missing" ]; then
+          if [ "${{ steps.role.outputs.role }}" = "deferred" ]; then
+            echo "주 수집이 지금 진행 중 → 이번 창은 수집하지 않음(동시 수집 방지)"
+            echo "go=0" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ steps.check.outputs.status }}" = "missing" ]; then
             echo "수집 진행(누락 또는 수동 실행)"
             echo "go=1" >> "$GITHUB_OUTPUT"
           else
@@ -108,15 +131,15 @@ jobs:
           PYTHONUNBUFFERED: "1"
           MONITORING_DATE: ${{ steps.check.outputs.kdate }}   # 새벽 예약수집은 전일 최종값으로 적재
           RECOLLECT_ALL: ${{ github.event.inputs.recollect_all == 'true' && '1' || '0' }}
-          # 주 실행은 등록 직후의 낮 시간 중간값이 있어도 전일 최종값을 다시 측정한다.
-          # 02:41/04:41 백업은 기존 측정행을 제외해 Apify 비용 가드를 유지한다.
-          FINAL_SNAPSHOT: ${{ github.event_name == 'schedule' && github.event.schedule == '41 15 * * *' && '1' || '0' }}
+          # 주 수집(role=primary)은 등록 직후의 낮 시간 중간값이 있어도 전일 최종값을 다시 측정한다.
+          # 백업(role=backup)은 기존 측정행을 제외해 Apify 비용 가드를 유지한다(collect_role.py).
+          FINAL_SNAPSHOT: ${{ steps.role.outputs.role == 'primary' && '1' || '0' }}
           METADATA_RECOLLECT_ONLY: ${{ github.event.inputs.metadata_only == 'true' && '1' || '0' }}
           VIEW_MISSING_QUEUE_FILE: ${{ runner.temp }}/view_missing_queue_${{ steps.check.outputs.kdate }}.json
-          VIEW_MISSING_TARGET_ONLY: ${{ github.event_name == 'schedule' && github.event.schedule != '41 15 * * *' && '1' || '0' }}
+          VIEW_MISSING_TARGET_ONLY: ${{ steps.role.outputs.role == 'backup' && '1' || '0' }}
           # Backup windows are recovery attempts. Keep genuine zero-result alerts in
           # Monitoring Backup & Retry, but do not mark the healthy daily collection red.
-          RETRY_ZERO_FATAL: ${{ github.event_name == 'schedule' && github.event.schedule != '41 15 * * *' && '0' || '1' }}
+          RETRY_ZERO_FATAL: ${{ steps.role.outputs.role == 'backup' && '0' || '1' }}
           # ⚠️ run_monitoring.py 자체가 보내는 알림용(IG 접근불가 3일 연속 검토요청·수동 과대기록 경고).
           # 2026-08-03 실측 사고: 이 두 키가 없어 `_send_status_alert`가 조용히 return —
           # 로그엔 `[ALERT] IG not_found 3일 연속` 이 찍혔는데 Slack엔 **한 번도** 안 갔다(74건 방치).
@@ -145,6 +168,7 @@ jobs:
           github.event.inputs.metadata_only != 'true' &&
           steps.check.outcome == 'success' &&
           steps.decide.outcome == 'success' &&
+          steps.role.outputs.role != 'deferred' &&
           (steps.decide.outputs.go == '0' || steps.collect.outcome == 'success')
         run: echo "[COLLECTION_COMPLETE] measured_at=${{ steps.check.outputs.kdate }}"
 
@@ -217,9 +241,9 @@ jobs:
       #   자정수집 리포트는 위성/온드를 '측정 제외'로 빼서 그 스코프로도 안 잡힌다.
       #   → 사유 무관하게 '계정 전체가 며칠 연속 0건'을 결과로만 판정해 DM 알림.
       #   임계 1일은 34일 전 계정 백테스트로 정했다(오탐 0건). 미해결 시 7일 간격 재알림.
-      #   하루 1회만 — 주 슬롯(00:41 KST = FINAL_SNAPSHOT 슬롯) 또는 수동 실행에서만 돈다.
+      #   하루 1회만 — 주 수집(role=primary) 또는 수동 실행에서만 돈다(collect_role.py).
       - name: 계정 단위 수집 전멸 감시 (황경원 DM)
-        if: always() && github.event.inputs.status_test != 'true' && (github.event_name == 'workflow_dispatch' || github.event.schedule == '41 15 * * *')
+        if: always() && github.event.inputs.status_test != 'true' && (steps.role.outputs.role == 'primary' || steps.role.outputs.role == 'manual')
         continue-on-error: true
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -236,7 +260,7 @@ jobs:
       #   → 값·날짜를 몰라도 패턴(급등 후 동결 / 비라운드 값 충돌)으로 찾는다.
       #   임계는 2026-08-12~31 실측 보정 — 정상 바이럴 3건은 걸러지고 오염 4건만 잡힌다.
       - name: 조회수 교차오염 감사 (황경원 DM)
-        if: always() && github.event.inputs.status_test != 'true' && (github.event_name == 'workflow_dispatch' || github.event.schedule == '41 15 * * *')
+        if: always() && github.event.inputs.status_test != 'true' && (steps.role.outputs.role == 'primary' || steps.role.outputs.role == 'manual')
         continue-on-error: true
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

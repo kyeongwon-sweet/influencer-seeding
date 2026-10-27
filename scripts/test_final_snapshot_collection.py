@@ -37,9 +37,11 @@ def test_manual_full_recollection_also_bypasses_cost_guard():
 def test_workflow_marks_only_primary_schedule_as_final_snapshot():
     text = WORKFLOW.read_text(encoding="utf-8")
 
-    assert "FINAL_SNAPSHOT:" in text
-    assert "github.event.schedule == '41 15 * * *'" in text
-    assert "github.event.schedule != '41 15 * * *'" in text
+    # 2026-10-27: 주 수집 판정은 collect_role.py 가 한다(구글 트리거 dispatch 또는 00:41 슬롯 폴백).
+    assert "FINAL_SNAPSHOT: ${{ steps.role.outputs.role == 'primary' && '1' || '0' }}" in text
+    assert "VIEW_MISSING_TARGET_ONLY: ${{ steps.role.outputs.role == 'backup' && '1' || '0' }}" in text
+    # 주 수집 진행 중(deferred) 실행은 수집 완료 마커를 찍지 않는다.
+    assert "steps.role.outputs.role != 'deferred'" in text
 
 
 if __name__ == "__main__":

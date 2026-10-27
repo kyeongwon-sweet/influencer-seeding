@@ -61,7 +61,7 @@ def test_cron_backup_zero_result_is_nonfatal_but_retry_workflow_remains_fatal():
     retry_text = WORKFLOW.read_text(encoding="utf-8")
 
     assert "RETRY_ZERO_FATAL:" in cron_text
-    assert "github.event.schedule != '41 15 * * *'" in cron_text
+    assert "RETRY_ZERO_FATAL: ${{ steps.role.outputs.role == 'backup' && '0' || '1' }}" in cron_text
     assert "RETRY_ZERO_FATAL:" not in retry_text
 
 

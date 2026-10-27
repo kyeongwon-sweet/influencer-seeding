@@ -41,6 +41,7 @@ const CONFIG = {
   AUDIT_FALLBACK_URL: "https://influencer-seeding-mu.vercel.app/api/ops/audit-fallback",          // 아침 수식감사 미발화 시 폴백 감사(오늘 감사 없을 때만 동작)
   ENSURE_DAILY_AUDITS_URL: "https://influencer-seeding-mu.vercel.app/api/ops/ensure-daily-audits", // 수식·제작자 감사를 함께 보장(오늘 성공한 워크플로는 건너뜀)
   ENSURE_DAILY_REPORT_URL: "https://influencer-seeding-mu.vercel.app/api/ops/ensure-daily-report", // 일일 증분 리포트 발송 보장(오늘 성공 실행 0건이면 자동 dispatch)
+  ENSURE_DAILY_COLLECT_URL: "https://influencer-seeding-mu.vercel.app/api/ops/ensure-daily-collect", // 자정 주 수집 시작(오늘 밤 주 수집이 없을 때만 dispatch)
   COLLECTION_STATUS_URL: "https://influencer-seeding-mu.vercel.app/api/ops/collection-status", // exportStats 전 대상일 자정수집 완료 마커 확인
   EXPORT_STATS_HEARTBEAT_URL: "https://influencer-seeding-mu.vercel.app/api/ops/automation-heartbeat", // exportStats 완료 마커(DB ops_daily_runs)
   DB_SHEET_SYNC_ALERT_URL: "https://influencer-seeding-mu.vercel.app/api/ops/db-sheet-sync-alert", // DB→시트 독립 동기화 실패 Slack 경고
@@ -5632,6 +5633,42 @@ function installEnsureDailyReportTrigger() {
   ScriptApp.newTrigger("ensureDailyReport")
     .timeBased().atHour(16).nearMinute(10).everyDays(1).create();  // 백업
   safeAlert_("✅ 리포트 발송 보장 트리거 2개(매일 12:35·16:10 KST 전후)를 설치했습니다.\n그 시각까지 오늘 리포트가 안 나갔으면 자동 발송합니다(이미 나간 날은 무동작, DEDUP으로 중복 없음).");
+}
+
+// 자정 수집 시작 — 구글 트리거가 00:05~00:35 KST에 부른다(백업 01:15~01:45).
+// 2026-10-27: GitHub 예약 00:41 KST가 31일 중앙값 +4시간 늦게 떠서(1시간 안 0일) 시각을 구글이 보장한다.
+// 서버가 '오늘 밤 주 수집'이 이미 돌거나 끝났는지 먼저 보므로 두 번 불려도 한 번만 수집한다.
+// ⚠️ nearMinute 는 ±15분이다. atHour(0).nearMinute(20) = 00:05~00:35. 20보다 작게 두면 23시대에 떠서
+//    '어제'가 끝나기 전에 불릴 수 있다(서버도 22시 이후 호출은 거부하지만 이중 방어).
+function ensureDailyCollect() {
+  const res = UrlFetchApp.fetch(CONFIG.ENSURE_DAILY_COLLECT_URL, {
+    method: "post",
+    headers: authHeaders_(),
+    muteHttpExceptions: true,
+  });
+  const code = res.getResponseCode();
+  const body = res.getContentText();
+  Logger.log("[ensureDailyCollect] HTTP " + code + " " + body.slice(0, 500));
+  if (code !== 200) throw new Error("ensureDailyCollect HTTP " + code + ": " + body.slice(0, 200));
+  return true;
+}
+
+function installEnsureDailyCollectTrigger() {
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === "ensureDailyCollect")
+    .forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger("ensureDailyCollect")
+    .timeBased().atHour(0).nearMinute(20).everyDays(1).create();  // 주: 00:05~00:35
+  ScriptApp.newTrigger("ensureDailyCollect")
+    .timeBased().atHour(1).nearMinute(30).everyDays(1).create();  // 백업: 01:15~01:45 (이미 돌면 무동작)
+  safeAlert_("✅ 자정 수집 시작 트리거 2개(매일 00:05~00:35 · 01:15~01:45 KST)를 설치했습니다.
+오늘 밤 수집이 이미 돌고 있거나 끝났으면 무동작합니다.");
+}
+
+function removeEnsureDailyCollectTrigger() {
+  const triggers = ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === "ensureDailyCollect");
+  triggers.forEach(t => ScriptApp.deleteTrigger(t));
+  safeAlert_("자정 수집 시작 트리거를 제거했습니다. (" + triggers.length + "개)");
 }
 
 function removeEnsureDailyReportTrigger() {

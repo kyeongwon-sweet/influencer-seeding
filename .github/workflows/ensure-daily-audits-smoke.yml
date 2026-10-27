@@ -37,3 +37,15 @@ jobs:
           echo "HTTP ${code}"
           # 2xx가 아니면 실패로 남긴다(조용한 실패 금지)
           [ "${code:0:1}" = "2" ] || { echo "::error::ensure-daily-audits failed HTTP=$code"; exit 1; }
+
+      # 2026-10-27 추가: 자정 수집 시작 라우트(구글 트리거 00:05~00:35 KST가 평소 호출).
+      #   ⚠️ dry_run=false 로 낮에 돌리면 '오늘 밤 주 수집'이 없을 때 전일 최종값 전체 재측정이 지금 시작된다.
+      - name: Call ensure-daily-collect
+        run: |
+          q=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then q="?dry_run=1"; fi
+          code=$(curl -sS -X POST -o /tmp/collect.json -w "%{http_code}"             --max-time 120             "$APP_URL/api/ops/ensure-daily-collect${q}"             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          cat /tmp/collect.json
+          echo ""
+          echo "HTTP ${code}"
+          [ "${code:0:1}" = "2" ] || { echo "::error::ensure-daily-collect failed HTTP=$code"; exit 1; }
