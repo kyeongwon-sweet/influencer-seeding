@@ -1,0 +1,60 @@
+name: Google Ads sync — 바치케 유튜브 (읽기 전용)
+
+# Google Ads 광고그룹×일 성과(비용·노출·TrueView 조회수) → Supabase ad_platform_daily. 2026-10-27.
+# 범위: 광고그룹 이름에 'P바치'(사용자 결정). 광고 설정은 읽기만 한다(GAQL search 만 호출).
+# 시트 수기값은 건드리지 않는다 — 병행 비교로 검증한 뒤에만 정본 전환.
+# ⚠️ 아직 수동 실행 전용: 자격증명 등록(Codex) + 테이블 생성 + 14일 이상 대조 확인 뒤 schedule 을 붙인다
+#    (붙일 때 결과 워치독도 같이 — 스케줄 조용한 미실행 재발방지).
+on:
+  workflow_dispatch:
+    inputs:
+      since:
+        description: "시작일 YYYY-MM-DD (비우면 KST 어제부터 days일)"
+        required: false
+        default: ""
+      until:
+        description: "종료일 YYYY-MM-DD"
+        required: false
+        default: ""
+      days:
+        description: "since/until 비울 때 일수"
+        required: false
+        default: "10"
+      dry_run:
+        description: "true면 DB 미기록(건수만 출력)"
+        type: boolean
+        default: true
+
+concurrency:
+  group: google-ads-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - name: Sync (공개 로그 — 건수만 출력)
+        env:
+          GOOGLE_ADS_DEVELOPER_TOKEN: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}
+          GOOGLE_ADS_CLIENT_ID: ${{ secrets.GOOGLE_ADS_CLIENT_ID }}
+          GOOGLE_ADS_CLIENT_SECRET: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET }}
+          GOOGLE_ADS_REFRESH_TOKEN: ${{ secrets.GOOGLE_ADS_REFRESH_TOKEN }}
+          GOOGLE_ADS_LOGIN_CUSTOMER_ID: ${{ vars.GOOGLE_ADS_LOGIN_CUSTOMER_ID }}
+          GOOGLE_ADS_CUSTOMER_ID: ${{ vars.GOOGLE_ADS_CUSTOMER_ID }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SINCE: ${{ github.event.inputs.since }}
+          UNTIL: ${{ github.event.inputs.until }}
+          DAYS: ${{ github.event.inputs.days }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+          PYTHONUTF8: "1"
+        run: python scripts/google_ads_sync.py

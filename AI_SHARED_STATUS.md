@@ -1,5 +1,15 @@
 # AI Shared Status
 
+## 🔧 2026-10-27 [Claude 조사·코드 / Codex 인계 대기] 바치케 유튜브 성과 Google Ads 직접 연동(읽기 전용) — 자격증명·테이블 대기
+- **요청:** 시트 「파인트 인지광고 대시보드」 `인지영상_YouTube` 대신 Google Ads에서 직접. 범위 P바치, 읽기 전용, 병행 비교 후 정본 전환, 실패 시 시트 fail-open.
+- **조사(실측):** 계정 `815-143-8670`(MCC `323-466-8229`) 시간대 **Asia/Seoul**. P바치 광고그룹 16개가 전부 인지 Video 캠페인 2개 안 — `[파인트] 인지광고_조회_26.10_관심사타깃_전체` `24375681538` · `[파인트] 인지광고_조회_26.08_관심사타깃_전체` `24178660252`(TrueView 타깃 CPV). **P바치 유튜브 전환 캠페인은 없음.**
+- **지표 정의 대조(9/25~10/26 합계):** 시트 조회수 = Google Ads **TrueView 조회수**(광고 조회수, 영상 공개 조회수 아님). 비용 시트 14,445,969 vs Ads 14,446,989(0.007%) · 노출 3,046,158 vs 3,046,129 · 조회 1,043,795 vs 1,043,959(0.016%). 일자별은 미검증(시트에 10/11~15·10/22 행 없음, 소재당 정확히 3일 패턴) → 연동 후 14일+ 일자 대조로 확인.
+- **사용자 결정:** ① 집계 = **광고그룹 이름에 'P바치'가 든 모든 것**(캠페인 무관) ② 인지만 연동, P바치 전환 캠페인 생기면 추가 ③ 자격증명 등록은 Codex.
+- **방식:** API 직접(권고·채택). 기존 Google Ads Script(`sonyg-ops/lalasweet-icecream-dashboard` `scripts/google_ads_script.js` → 시트 `1uguMBQ8…` `google_raw`→`통합RD_원본`)는 Video 캠페인만·광고목적 '인지' 고정·ID 없음 → 교차검증용으로만.
+- **코드(이 커밋):** `scripts/google_ads_sync.py`(GAQL search만, 계정 시간대≠Asia/Seoul이면 저장 거부, 조회수 지표명 버전 폴백 video_trueview_views→video_views, 조회한 날은 `ops_daily_runs` service=`google_ads_sync:pbachi`로 '확정 0' 구분, 공개 로그엔 건수만) + 테스트 11 + `google-ads-sync.yml`(**수동 전용, schedule 없음**) + 마이그레이션 `supabase/migrations/20261027_ad_platform_daily.sql`. 리포트·대시보드 연결은 아직 안 함(데이터 쌓인 뒤 병행 표시).
+- **🟡 Codex 인계(대기):** ① influencer-seeding Actions secrets `GOOGLE_ADS_DEVELOPER_TOKEN`·`GOOGLE_ADS_CLIENT_ID`·`GOOGLE_ADS_CLIENT_SECRET`·`GOOGLE_ADS_REFRESH_TOKEN`(negative-comment-monitor와 같은 값, 원본 보관처에서 — 값 출력 금지) + variables `GOOGLE_ADS_LOGIN_CUSTOMER_ID=3234668229`·`GOOGLE_ADS_CUSTOMER_ID=8151438670` ② SQL Editor에서 위 마이그레이션 실행 ③ `google-ads-sync.yml` since=2026-10-13 until=2026-10-26 dry_run=true → 'P바치 광고그룹 N개'·조회수 지표명 확인 → dry_run=false 1회 → 재조회 ✅. refresh token을 두 레포가 공유하므로 교체 시 둘 다 갱신.
+- **보안 메모:** 두 레포 모두 PUBLIC — Actions 로그에 광고 금액·지표를 찍지 말 것. 오늘 `probe-meta-pbachi.yml` 실행 로그엔 캠페인명·광고비가 평문으로 남음(삭제 여부 사용자 확인 필요). 암호화 출력 임시 프로브는 안전검사가 '데이터 반출'로 차단 → 미사용·폐기.
+
 ## ✅ 2026-10-27 [Claude 완료·배포] 바치케 전환 조회수 = 메타 광고 관리자 'P바치' 전환 광고 노출수 + 7일 뒤 확정값 덮어쓰기 (`52672cba`)
 - **사용자 결정(아래 '결정 대기' 항목을 닫음):** 전환 = **'P바치' 광고만**(광고명·광고그룹명·캠페인명 중 하나에 'P바치') 노출수 — `[빙과_파인트]` 전환 전체(=시트 값)보다 13~17% 적은 게 정상. **인지광고(메타/틱톡/유튜브) 줄은 당분간 시트 유지.** "일주일 기준으로 최종 데이터로 엎어줘".
 - **정의 한 곳:** `web/lib/meta-pbachi.ts` `aggregatePbachi().conversion` = P바치 & `OUTCOME_SALES` 노출수 → `/api/meta-ads-pbachi` 응답 `conversion.impressions`. 파이썬은 `scripts/meta_conversion.py`(표준 라이브러리만)로 읽기만. 그날 계정 광고 행 0건(scanned=0)·라우트 오류 = **빈 값(0 아님)**.
