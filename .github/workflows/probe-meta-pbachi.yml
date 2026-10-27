@@ -1,0 +1,45 @@
+name: Probe — 바치케 메타 광고 관리자 지표 (manual, read-only)
+
+# /api/meta-ads-pbachi 를 날짜별로 호출해 P바치 메타 광고의 노출·광고비·ThruPlay(광고 목적별)를 출력한다.
+# 시트(파인트 인지광고 대시보드)와 광고 관리자 숫자를 대조하는 점검용. 읽기 전용 GET 한 경로만 부른다.
+on:
+  workflow_dispatch:
+    inputs:
+      dates:
+        description: "조회 날짜(쉼표 구분 YYYY-MM-DD)"
+        required: true
+        type: string
+      debug:
+        description: "광고별 내역까지 출력"
+        type: boolean
+        default: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Query /api/meta-ads-pbachi
+        env:
+          APP_URL: "https://influencer-seeding-mu.vercel.app"
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DATES: ${{ github.event.inputs.dates }}
+          DEBUG: ${{ github.event.inputs.debug == 'true' && '1' || '0' }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request, urllib.error
+          base, sec = os.environ["APP_URL"].rstrip("/"), os.environ["CRON_SECRET"]
+          for d in [x.strip() for x in os.environ["DATES"].split(",") if x.strip()]:
+              url = f"{base}/api/meta-ads-pbachi?date={d}&debug={os.environ['DEBUG']}"
+              req = urllib.request.Request(url, headers={"Authorization": "Bearer " + sec})
+              try:
+                  j = json.load(urllib.request.urlopen(req, timeout=90))
+              except urllib.error.HTTPError as e:
+                  j = {"httpError": e.code, "body": e.read().decode("utf-8", "replace")[:600]}
+              ads = j.pop("ads", None)
+              print(f"===== {d} =====")
+              print(json.dumps(j, ensure_ascii=False, indent=1))
+              for a in (ads or [])[:80]:
+                  print("  ·", a.get("objective"), "|", a.get("campaign"), "|", a.get("adset"), "|", a.get("ad"),
+                        "| 노출", a.get("impressions"), "| 광고비", a.get("spend"), "| ThruPlay", a.get("thruplay"))
+          PY

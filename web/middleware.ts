@@ -47,6 +47,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/google-trends/webhook(.*)",
   "/api/b2b-revenue/fetch(.*)",
   "/api/awareness-ads(.*)",
+  "/api/meta-ads-pbachi(.*)",                // 바치케 메타 광고 관리자 지표(자체 CRON_SECRET 검사, 읽기 전용)
 ]);
 
 const isAdminPage = createRouteMatcher([
