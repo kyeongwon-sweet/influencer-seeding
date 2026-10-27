@@ -1,7 +1,8 @@
 -- 광고 플랫폼(1차: Google Ads/YouTube) 광고그룹×일 성과 — 2026-10-27, 바치케(P바치) 유튜브 직접 연동.
 -- 시트(파인트 인지광고 대시보드) 수기값과 병행 비교하다가, 검증 뒤에만 정본으로 바꾼다. 수기값을 덮어쓰지 않는다.
 -- 날짜 = Google Ads segments.date(계정 시간대). 계정 815-143-8670 시간대는 Asia/Seoul(수집기가 매번 확인, 다르면 저장 안 함).
--- 행이 없는 날 = 그날 노출 없음. 단 '그날을 조회했다'는 사실은 ops_daily_runs(service='google_ads_sync')에 남겨
+-- 행이 없는 날 = 그날 노출 없음. 단 '그날을 조회했다'는 사실은 실재 운영 테이블
+-- jobs.payload(ops_marker='google_ads_sync:pbachi', run_date=그날)에 남겨
 -- 조회 실패(빈 값)와 확정 0을 구분한다.
 -- SQL Editor에서 1회 실행(추가만·재실행 안전).
 

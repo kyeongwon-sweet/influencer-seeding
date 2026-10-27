@@ -6,8 +6,8 @@
 지표: 비용(cost_micros/1e6, KRW)·노출·TrueView 조회수(광고 조회수 — 시트 '인지영상_YouTube 조회수'와 같은 정의,
   9/25~10/26 합계 대조: 비용 0.007%·노출 0.001%·조회 0.016% 차이).
 날짜: segments.date = 계정 시간대. 계정이 Asia/Seoul 이 아니면 저장하지 않고 실패한다(KST 규칙).
-조회했다는 사실은 ops_daily_runs(service=google_ads_sync:pbachi, run_date=그날)에 남겨, 행이 없는 날(=노출 없음, 확정 0)과
-  조회 실패(빈 값)를 구분한다. 시트 수기값은 건드리지 않는다(병행 비교 단계).
+조회했다는 사실은 운영 정본인 jobs.payload(ops_marker=google_ads_sync:pbachi, run_date=그날)에 남겨,
+  행이 없는 날(=노출 없음, 확정 0)과 조회 실패(빈 값)를 구분한다. 시트 수기값은 건드리지 않는다(병행 비교 단계).
 공개 레포 — 로그에는 건수만 남기고 금액·지표 값은 찍지 않는다.
 
 env: GOOGLE_ADS_DEVELOPER_TOKEN, GOOGLE_ADS_CLIENT_ID, GOOGLE_ADS_CLIENT_SECRET, GOOGLE_ADS_REFRESH_TOKEN,
@@ -165,9 +165,47 @@ def run_markers(dates: list[str], rows: list[dict], view_field: str | None, fetc
     out = []
     for d in dates:
         day = [x for x in rows if x["date"] == d]
-        out.append({"service": RUN_SERVICE, "run_date": d, "status": "done",
-                    "payload": {"fetched_at": fetched_at, "ad_groups": len(day), "view_field": view_field}})
+        out.append({
+            "type": "monitoring",
+            "status": "done",
+            "payload": {
+                "ops_marker": RUN_SERVICE,
+                "run_date": d,
+                "fetched_at": fetched_at,
+                "ad_groups": len(day),
+                "view_field": view_field,
+            },
+        })
     return out
+
+
+def upsert_job_markers(sb, markers: list[dict]) -> None:
+    """실재하는 jobs 테이블에 날짜별 마커를 멱등 저장한다.
+
+    프로덕션에는 과거 migration의 ops_daily_runs 테이블이 없고, formula-audit 등도
+    jobs.payload fallback을 운영 정본으로 사용한다. workflow concurrency가 실행을 직렬화하므로
+    날짜별 기존 마커를 찾아 갱신하고, 없을 때만 삽입하면 재실행에도 중복이 생기지 않는다.
+    """
+    for marker in markers:
+        payload = marker["payload"]
+        existing = (
+            sb.table("jobs")
+            .select("id")
+            .eq("type", "monitoring")
+            .contains("payload", {"ops_marker": RUN_SERVICE, "run_date": payload["run_date"]})
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if existing.data:
+            (
+                sb.table("jobs")
+                .update({"status": "done", "payload": payload, "error": None})
+                .eq("id", existing.data[0]["id"])
+                .execute()
+            )
+        else:
+            sb.table("jobs").insert(marker).execute()
 
 
 def main() -> int:
@@ -195,7 +233,7 @@ def main() -> int:
     sb = get_client()
     for i in range(0, len(rows), 500):
         sb.table("ad_platform_daily").upsert(rows[i:i + 500], on_conflict="platform,ad_group_id,date").execute()
-    sb.table("ops_daily_runs").upsert(markers, on_conflict="service,run_date").execute()
+    upsert_job_markers(sb, markers)
     # 재조회로 저장 확인(건수만)
     got = (sb.table("ad_platform_daily").select("ad_group_id", count="exact")
            .eq("platform", PLATFORM).eq("product", PRODUCT).gte("date", since).lte("date", until).execute())

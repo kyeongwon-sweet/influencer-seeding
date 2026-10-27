@@ -72,8 +72,101 @@ def test_date_range_defaults_to_kst_yesterday_backwards():
 def test_run_markers_distinguish_confirmed_zero_days():
     rows = g.to_rows([_row("x_P바치", "2026-10-25")], "metrics.video_trueview_views", "1", "t")
     mk = g.run_markers(["2026-10-24", "2026-10-25"], rows, "metrics.video_trueview_views", "t")
-    assert [(m["run_date"], m["payload"]["ad_groups"]) for m in mk] == [("2026-10-24", 0), ("2026-10-25", 1)]
-    assert all(m["service"] == "google_ads_sync:pbachi" for m in mk)
+    assert [(m["payload"]["run_date"], m["payload"]["ad_groups"]) for m in mk] == [
+        ("2026-10-24", 0), ("2026-10-25", 1)
+    ]
+    assert all(m["type"] == "monitoring" and m["status"] == "done" for m in mk)
+    assert all(m["payload"]["ops_marker"] == "google_ads_sync:pbachi" for m in mk)
+
+
+class _FakeResult:
+    def __init__(self, data=None):
+        self.data = data or []
+
+
+class _FakeJobsQuery:
+    def __init__(self, db):
+        self.db, self.mode, self.filters, self.contains_filter = db, None, [], None
+        self.values, self.limit_n = None, None
+
+    def select(self, *_args):
+        self.mode = "select"
+        return self
+
+    def update(self, values):
+        self.mode, self.values = "update", values
+        return self
+
+    def insert(self, values):
+        self.mode, self.values = "insert", values
+        return self
+
+    def eq(self, column, value):
+        self.filters.append((column, value))
+        return self
+
+    def contains(self, column, value):
+        self.contains_filter = (column, value)
+        return self
+
+    def order(self, *_args, **_kwargs):
+        return self
+
+    def limit(self, value):
+        self.limit_n = value
+        return self
+
+    def _matches(self, row):
+        if any(row.get(k) != v for k, v in self.filters):
+            return False
+        if self.contains_filter:
+            column, subset = self.contains_filter
+            value = row.get(column) or {}
+            if any(value.get(k) != v for k, v in subset.items()):
+                return False
+        return True
+
+    def execute(self):
+        if self.mode == "select":
+            rows = [row for row in self.db.rows if self._matches(row)]
+            return _FakeResult(rows[: self.limit_n] if self.limit_n else rows)
+        if self.mode == "insert":
+            row = {**self.values, "id": f"job-{len(self.db.rows) + 1}"}
+            self.db.rows.append(row)
+            self.db.inserts += 1
+            return _FakeResult([row])
+        if self.mode == "update":
+            matched = []
+            for row in self.db.rows:
+                if self._matches(row):
+                    row.update(self.values)
+                    matched.append(row)
+            self.db.updates += len(matched)
+            return _FakeResult(matched)
+        raise AssertionError("query mode missing")
+
+
+class _FakeJobsDb:
+    def __init__(self):
+        self.rows, self.inserts, self.updates = [], 0, 0
+
+    def table(self, name):
+        assert name == "jobs"
+        return _FakeJobsQuery(self)
+
+
+def test_job_markers_insert_once_then_update_idempotently():
+    db = _FakeJobsDb()
+    markers = g.run_markers(["2026-10-24", "2026-10-25"], [], "metrics.video_views", "t1")
+    g.upsert_job_markers(db, markers)
+    assert (len(db.rows), db.inserts, db.updates) == (2, 2, 0)
+
+    changed = g.run_markers(["2026-10-24", "2026-10-25"], [], "metrics.video_views", "t2")
+    changed[1]["payload"]["ad_groups"] = 3
+    g.upsert_job_markers(db, changed)
+    assert (len(db.rows), db.inserts, db.updates) == (2, 2, 2)
+    assert [row["payload"]["fetched_at"] for row in db.rows] == ["t2", "t2"]
+    assert db.rows[1]["payload"]["ad_groups"] == 3
 
 
 class _FakeOpen:
