@@ -10,6 +10,7 @@ import json
 import urllib.parse
 import urllib.request
 from cross_post_metrics import fb_increment, ig_only
+from google_ads_sync import product_day_totals
 from meta_conversion import fetch_meta_conversion
 from report_message import is_report_for, report_title
 from datetime import date
@@ -35,13 +36,16 @@ def _norm_prod(p) -> str:
 #   goal: 일일 목표 줄 / product_line: 제품별 요약 줄(여러 SKU가 섞일 때만 의미)
 #   conv_source: 전환 조회수 출처 — sheet=위 시트 탭 / meta=메타 광고 관리자 P바치 전환 광고 노출수
 #     (2026-10-27 사용자 결정, scripts/meta_conversion.py). meta면 patch_report_conversion이 7일 뒤 확정값으로 덮어쓴다.
+#   yt_source: 인지 광고 유튜브 줄 출처 — sheet=위 시트 탭 / google_ads=ad_platform_daily(광고그룹명 'P바치',
+#     google-ads-sync 가 매일 적재). 2026-10-27 사용자 결정 "지금 바꿔". 그날 미조회면 시트 값 + '(시트)' 표시(fail-open).
 #   emoji: 제목 맨 앞 이모지(바치케=워크스페이스 커스텀 :바치케:, 사용자 지시 2026-10-27). 리포트 판정은 제목 문구로만 해 영향 없음
 PRODUCT_PROFILES = {
     "jd": {"title": "쫀득바", "match": lambda p: "jd" in (p or "").lower(),
-           "ads_tab": "", "goal": True, "product_line": True, "emoji": "📈", "conv_source": "sheet"},
+           "ads_tab": "", "goal": True, "product_line": True, "emoji": "📈", "conv_source": "sheet",
+           "yt_source": "sheet"},
     "pbachi": {"title": "바치케", "match": lambda p: _norm_prod(p) == "P바치",
                "ads_tab": "pint", "goal": False, "product_line": False, "emoji": ":바치케:",
-               "conv_source": "meta"},
+               "conv_source": "meta", "yt_source": "google_ads"},
 }
 REPORT_PRODUCT = (os.getenv("REPORT_PRODUCT") or "jd").strip().lower()
 if REPORT_PRODUCT not in PRODUCT_PROFILES:
@@ -150,6 +154,20 @@ def _fetch_awareness_ads(target: str):
         except Exception as e:
             print("[notify] 메타 전환 조회 실패('미집계' 표시, 보정 스케줄이 채움):", e)
         print(f"[notify] 전환(메타 P바치 노출수) {target}: {d['conversion']['views']}")
+    if PROFILE["yt_source"] == "google_ads":
+        # 유튜브는 Google Ads 직접 값(시트 '인지영상_YouTube'와 같은 정의 = TrueView 조회수, 10/13~26 일자별 대조 1% 미만).
+        gd = None
+        try:
+            gd = product_day_totals(get_client(), target)
+        except Exception as e:
+            print("[notify] Google Ads 유튜브 조회 실패 → 시트 값 사용:", e)
+        if gd is not None:
+            d = dict(d or {})
+            d["youtube"] = {"views": gd[0], "cost": gd[1], "source": "google_ads"}
+            print(f"[notify] 유튜브 {target}: Google Ads 값 사용")
+        elif d and d.get("youtube"):
+            d["youtube"] = {**d["youtube"], "source": "sheet_fallback"}
+            print(f"[notify] 유튜브 {target}: Google Ads 미조회 → 시트 값 + '(시트)' 표시")
     return d
 
 
@@ -722,7 +740,8 @@ def main():
             a = ads.get(_k) or {}
             v, c = a.get("views"), a.get("cost")
             if isinstance(v, (int, float)) and v > 0:
-                ad_lines.append(f"    {_lab} *+{f(v)}*  {_ad_cpv(c or 0, v)}".rstrip())
+                _src = "  _(시트)_" if a.get("source") == "sheet_fallback" else ""   # 정본(Google Ads) 못 읽은 날 표시
+                ad_lines.append(f"    {_lab} *+{f(v)}*  {_ad_cpv(c or 0, v)}".rstrip() + _src)
         # 전환 조회수 — CPV 없이 조회수만, 0도 표시(사용자 지시). 값이 있으면 총증분엔 위에서 합산됨.
         #   시트가 비어 있으면 숨기지 않고 '미입력'으로 드러낸다(conversion_line 참고).
         _conv = ads.get("conversion")

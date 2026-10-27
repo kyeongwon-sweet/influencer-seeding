@@ -92,3 +92,52 @@ def test_reader_matches_marker_written_by_sync():
     m = g.run_markers(["2026-10-26"], [], "metrics.video_trueview_views", "t")[0]
     assert m["type"] == "monitoring" and m["status"] == "done"
     assert m["payload"]["ops_marker"] == p.RUN_SERVICE and m["payload"]["run_date"] == "2026-10-26"
+
+
+# ── 2026-10-27 사용자 결정 "지금 바꿔": 바치케 리포트 유튜브 줄 = Google Ads, 미조회 날은 시트 + '(시트)' ──
+
+def _notify_with(monkeypatch, product, gads):
+    """notify._fetch_awareness_ads 를 가짜 시트·메타 라우트 + 가짜 DB(gads=(views,cost) | None=미조회)로 돌린다."""
+    import io
+    import json as _json
+    import meta_conversion
+    import notify_increments as ni
+    monkeypatch.setenv("APP_URL", "https://x.example")
+    monkeypatch.setenv("CRON_SECRET", "s")
+    monkeypatch.setattr(ni, "PROFILE", ni.PRODUCT_PROFILES[product])
+    sheet = {"found": True, "youtube": {"views": 193586, "cost": 4684875}, "meta": {"views": None, "cost": None},
+             "conversion": {"views": 97539}}
+
+    def fake_urlopen(req, timeout=0):
+        if "/api/meta-ads-pbachi" in req.full_url:
+            return io.BytesIO(_json.dumps({"scanned": 5, "conversion": {"impressions": 81038}}).encode())
+        return io.BytesIO(_json.dumps(sheet).encode())
+
+    monkeypatch.setattr(ni.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(meta_conversion.urllib.request, "urlopen", fake_urlopen)
+    calls = []
+    monkeypatch.setattr(ni, "get_client", lambda: calls.append(1) or object())
+    monkeypatch.setattr(ni, "product_day_totals", lambda sb, d: gads)
+    return ni, ni._fetch_awareness_ads("2026-10-26"), calls
+
+
+def test_pbachi_report_youtube_uses_google_ads(monkeypatch):
+    ni, d, _ = _notify_with(monkeypatch, "pbachi", (193585, 4684658.0))
+    assert d["youtube"] == {"views": 193585, "cost": 4684658.0, "source": "google_ads"}
+    assert d["conversion"]["views"] == 81038   # 전환(메타)은 그대로
+
+
+def test_pbachi_unfetched_day_falls_back_to_sheet_and_is_marked(monkeypatch):
+    ni, d, _ = _notify_with(monkeypatch, "pbachi", None)
+    assert d["youtube"] == {"views": 193586, "cost": 4684875, "source": "sheet_fallback"}
+
+
+def test_jd_report_youtube_untouched(monkeypatch):
+    ni, d, calls = _notify_with(monkeypatch, "jd", (1, 1.0))
+    assert d["youtube"] == {"views": 193586, "cost": 4684875} and calls == []   # 쫀득바는 DB 조회도 안 함
+
+
+def test_patch_can_replace_sheet_fallback_line():
+    fb = REPORT.replace("    유튜브 *+193,586*  CPV 24.2원", "    유튜브 *+193,586*  CPV 24.2원  _(시트)_")
+    new, info = p.replace_youtube_line(fb, 193_585, 4_684_658.0)
+    assert "_(시트)_" not in new and "    유튜브 *+193,585*  CPV 24.2원" in new and info["new_total"] == 303_318

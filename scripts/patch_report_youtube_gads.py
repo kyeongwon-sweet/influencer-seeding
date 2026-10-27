@@ -19,8 +19,9 @@ os.environ.setdefault("REPORT_PRODUCT", "pbachi")
 import patch_report_conversion as prc  # noqa: E402  (find_report·_slack·TOTAL_RE·GOAL_RE 재사용)
 
 LABEL = "유튜브"
-YT_RE = re.compile(r"^    유튜브 \*\+([\d,]+)\*(?:  CPV [^\n]*)?$", re.M)
-from google_ads_sync import RUN_SERVICE  # noqa: E402  (마커 키 단일 정본 — 쓰는 쪽과 같은 값)
+# 뒤꼬리(CPV·'(시트)' 대체 표시)까지 한 줄 전체 — 시트 대체로 나간 줄도 Google Ads 값으로 바꿀 수 있게
+YT_RE = re.compile(r"^    유튜브 \*\+([\d,]+)\*(?:  [^\n]*)?$", re.M)
+from google_ads_sync import RUN_SERVICE, product_day_totals  # noqa: E402,F401  (마커·합계 단일 정본)
 
 
 def ad_cpv(cost, views) -> str:
@@ -65,16 +66,8 @@ def replace_youtube_line(text: str, views: int, cost: float):
 
 
 def gads_day(sb, date: str):
-    """그날 Google Ads P바치 합계 (views, cost) / 조회 마커가 없으면 None(빈 값). 조회수 지표가 빈 값인 행이 있으면 None."""
-    mk = (sb.table("jobs").select("id").eq("type", "monitoring").eq("status", "done")
-          .contains("payload", {"ops_marker": RUN_SERVICE, "run_date": date}).limit(1).execute())
-    if not mk.data:
-        return None
-    rows = (sb.table("ad_platform_daily").select("views,cost_krw")
-            .eq("platform", "google_ads").eq("product", "P바치").eq("date", date).execute()).data or []
-    if any(r.get("views") is None for r in rows):
-        return None
-    return sum(int(r["views"]) for r in rows), sum(float(r["cost_krw"] or 0) for r in rows)
+    """그날 Google Ads P바치 합계 (views, cost) / 미조회·빈 값이면 None — google_ads_sync.product_day_totals."""
+    return product_day_totals(sb, date)
 
 
 def main() -> int:

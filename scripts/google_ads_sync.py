@@ -208,6 +208,21 @@ def upsert_job_markers(sb, markers: list[dict]) -> None:
             sb.table("jobs").insert(marker).execute()
 
 
+def product_day_totals(sb, date: str, product: str = PRODUCT):
+    """그날 제품 합계 (views, cost_krw) — 리포트 생성기·보정 도구 공용(2026-10-27).
+    그날을 조회한 마커(upsert_job_markers)가 없거나 조회수가 빈 값인 행이 있으면 None(빈 값 — 0 아님).
+    마커는 있는데 행이 없으면 (0, 0) = 그날 노출 없음(확정 0)."""
+    mk = (sb.table("jobs").select("id").eq("type", "monitoring").eq("status", "done")
+          .contains("payload", {"ops_marker": RUN_SERVICE, "run_date": date}).limit(1).execute())
+    if not mk.data:
+        return None
+    rows = (sb.table("ad_platform_daily").select("views,cost_krw")
+            .eq("platform", PLATFORM).eq("product", product).eq("date", date).execute()).data or []
+    if any(r.get("views") is None for r in rows):
+        return None
+    return sum(int(r["views"]) for r in rows), sum(float(r["cost_krw"] or 0) for r in rows)
+
+
 def main() -> int:
     dry = (os.getenv("DRY_RUN") or "false").lower() == "true"
     since, until = date_range(os.getenv("SINCE"), os.getenv("UNTIL"), int(os.getenv("DAYS") or 10), kst_today())
