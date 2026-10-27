@@ -44,8 +44,9 @@ test("어제 날짜 실행은 오늘 주 수집이 아니다", () => {
   assert.equal(primaryState([yesterday], K), "none");
 });
 
-test("자정 전(22시 이후)에 불리면 절대 시작하지 않는다 — 트리거 시각 오차 방어", () => {
-  assert.equal(decideEnsureCollect([], K, 23).reason, "before_midnight");
+test("00~05시에만 시작한다 — 자정 전(어제가 안 끝남)·낮(전일 최종값을 낮 값으로 덮음)은 거부", () => {
+  for (const h of [0, 1, 5]) assert.equal(decideEnsureCollect([], K, h).action, "dispatch", String(h));
+  for (const h of [6, 12, 22, 23]) assert.equal(decideEnsureCollect([], K, h).reason, "outside_midnight_window", String(h));
 });
 
 test("실행 목록을 못 읽으면 시작하지 않는다(00:41 예약이 대신 수집)", () => {

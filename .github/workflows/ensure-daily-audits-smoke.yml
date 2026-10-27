@@ -39,7 +39,7 @@ jobs:
           [ "${code:0:1}" = "2" ] || { echo "::error::ensure-daily-audits failed HTTP=$code"; exit 1; }
 
       # 2026-10-27 추가: 자정 수집 시작 라우트(구글 트리거 00:05~00:35 KST가 평소 호출).
-      #   ⚠️ dry_run=false 로 낮에 돌리면 '오늘 밤 주 수집'이 없을 때 전일 최종값 전체 재측정이 지금 시작된다.
+      #   라우트는 00~05시 KST에만 수집을 시작한다(낮에는 dry_run=false 여도 outside_midnight_window 로 무동작).
       - name: Call ensure-daily-collect
         run: |
           q=""

@@ -49,12 +49,16 @@ export function primaryState(runs: readonly CollectRun[], kdate: string): Primar
 
 export type EnsureCollectDecision = { action: "dispatch" | "skip"; reason: string; state: PrimaryState | null };
 
+/** 자정 주 수집을 시작해도 되는 KST 시각 창: 00:00 ≤ t < 06:00. */
+export const ENSURE_COLLECT_WINDOW_END_HOUR = 6;
+
 /**
  * 라우트 판정. kstHour = 지금 KST 시(0~23).
- * 자정 직전(22시 이후)에 불리면 '어제'가 아직 끝나지 않았으므로 절대 시작하지 않는다(트리거 시각 오차 방어).
+ * 00~05시에만 시작한다. 자정 직전에 불리면 '어제'가 아직 끝나지 않았고, 낮에 불리면 전일 '최종값' 자리에
+ * 낮 값을 덮어쓰게 된다(final_snapshot 은 같은 날 기존 자동값을 교체). 창 밖이면 GitHub 예약이 맡는다.
  */
 export function decideEnsureCollect(runs: readonly CollectRun[] | null, kdate: string, kstHour: number): EnsureCollectDecision {
-  if (kstHour >= 22) return { action: "skip", reason: "before_midnight", state: null };
+  if (!(kstHour >= 0 && kstHour < ENSURE_COLLECT_WINDOW_END_HOUR)) return { action: "skip", reason: "outside_midnight_window", state: null };
   // 실행 목록을 못 읽으면 중복 수집(Apify 이중 과금·낮 값 덮어쓰기) 위험이 있어 시작하지 않는다.
   // GitHub 예약 00:41 슬롯이 그대로 주 수집 역할을 하므로 데이터는 비지 않는다(늦을 뿐).
   if (runs == null) return { action: "skip", reason: "runs_unreadable", state: null };

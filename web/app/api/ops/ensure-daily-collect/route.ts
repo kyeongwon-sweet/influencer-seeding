@@ -16,7 +16,7 @@ export const maxDuration = 60;
  * 1시간 안에 뜬 날이 0일이었다. 시각은 구글이 보장하고, 실행은 GitHub(workflow_dispatch)이 한다
  * (ensure-daily-audits·ensure-daily-report 와 같은 구조).
  *
- * 동작: 오늘 밤 주 수집이 없으면 cron-daily-collect.yml 을 final_snapshot=true 로 dispatch.
+ * 동작: 00~05시 KST에 오늘 밤 주 수집이 없으면 cron-daily-collect.yml 을 final_snapshot=true 로 dispatch.
  *       이미 돌고 있거나 끝났으면 무동작. 판정 규칙은 lib/collect-primary.ts(= scripts/collect_role.py).
  * 알림: 정상 dispatch·무동작은 조용히. dispatch 실패·실행 목록 조회 실패만 Slack.
  * `?dry_run=1` 이면 판정만 한다.
