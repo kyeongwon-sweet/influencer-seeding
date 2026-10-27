@@ -44,7 +44,10 @@ jobs:
         run: |
           q=""
           if [ "${{ inputs.dry_run }}" = "true" ]; then q="?dry_run=1"; fi
-          code=$(curl -sS -X POST -o /tmp/collect.json -w "%{http_code}"             --max-time 120             "$APP_URL/api/ops/ensure-daily-collect${q}"             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          code=$(curl -sS -X POST -o /tmp/collect.json -w "%{http_code}" \
+            --max-time 120 \
+            "$APP_URL/api/ops/ensure-daily-collect${q}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
           cat /tmp/collect.json
           echo ""
           echo "HTTP ${code}"

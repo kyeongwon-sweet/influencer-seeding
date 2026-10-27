@@ -5639,7 +5639,7 @@ function installEnsureDailyReportTrigger() {
 // 2026-10-27: GitHub 예약 00:41 KST가 31일 중앙값 +4시간 늦게 떠서(1시간 안 0일) 시각을 구글이 보장한다.
 // 서버가 '오늘 밤 주 수집'이 이미 돌거나 끝났는지 먼저 보므로 두 번 불려도 한 번만 수집한다.
 // ⚠️ nearMinute 는 ±15분이다. atHour(0).nearMinute(20) = 00:05~00:35. 20보다 작게 두면 23시대에 떠서
-//    '어제'가 끝나기 전에 불릴 수 있다(서버도 22시 이후 호출은 거부하지만 이중 방어).
+//    '어제'가 끝나기 전에 불릴 수 있다(서버도 00~05시 KST 밖의 호출은 무동작이지만 이중 방어).
 function ensureDailyCollect() {
   const res = UrlFetchApp.fetch(CONFIG.ENSURE_DAILY_COLLECT_URL, {
     method: "post",
@@ -5661,8 +5661,7 @@ function installEnsureDailyCollectTrigger() {
     .timeBased().atHour(0).nearMinute(20).everyDays(1).create();  // 주: 00:05~00:35
   ScriptApp.newTrigger("ensureDailyCollect")
     .timeBased().atHour(1).nearMinute(30).everyDays(1).create();  // 백업: 01:15~01:45 (이미 돌면 무동작)
-  safeAlert_("✅ 자정 수집 시작 트리거 2개(매일 00:05~00:35 · 01:15~01:45 KST)를 설치했습니다.
-오늘 밤 수집이 이미 돌고 있거나 끝났으면 무동작합니다.");
+  safeAlert_("✅ 자정 수집 시작 트리거 2개(매일 00:05~00:35 · 01:15~01:45 KST)를 설치했습니다.\n오늘 밤 수집이 이미 돌고 있거나 끝났으면 무동작합니다.");
 }
 
 function removeEnsureDailyCollectTrigger() {
