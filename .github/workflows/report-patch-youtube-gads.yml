@@ -1,0 +1,43 @@
+name: Report patch — 바치케 유튜브 줄 ← Google Ads (수동)
+
+# 발송된 바치케 리포트의 '유튜브' 줄(조회수·CPV)과 총 증분만 Google Ads 값(ad_platform_daily)으로 교체. 2026-10-27 사용자 지시.
+# 그날 google-ads-sync 조회 마커가 없으면 건너뛴다(빈 값≠0). 공개 레포 — 로그엔 날짜·변경 여부만.
+on:
+  workflow_dispatch:
+    inputs:
+      dates:
+        description: "리포트 대상 날짜(쉼표 구분 YYYY-MM-DD)"
+        required: true
+        type: string
+      dry_run:
+        description: "true면 편집 없이 대상만 확인"
+        type: boolean
+        default: true
+
+concurrency:
+  group: report-patch-conversion   # 같은 리포트를 고치는 전환 보정과 겹치지 않게
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - name: Patch YouTube line
+        env:
+          REPORT_PRODUCT: pbachi
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DATES: ${{ github.event.inputs.dates }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+          PYTHONUTF8: "1"
+        run: python scripts/patch_report_youtube_gads.py
