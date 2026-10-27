@@ -11,6 +11,12 @@
 - **사전 결함 발견·보완:** 라이브 DB에 repo의 옛 `ops_daily_runs` migration이 적용돼 있지 않아 원안은 광고 행 upsert 뒤 마커 단계에서 실패할 상태였다. 프로덕션 정본인 `jobs.payload`에 날짜별 `ops_marker=google_ads_sync:pbachi`를 멱등 저장하도록 `29d12449`에서 수정했다. 최초 실행은 INSERT, 재실행은 UPDATE라 중복 마커가 생기지 않으며, 확정 0과 조회 실패 구분은 유지한다. Google Ads sync 테스트 **11/11**, `py_compile`, KST pre-push, `tsc` 통과.
 - **현재 대기:** Supabase `influencer-seeding` 프로젝트(ref `vkdvncwzccqtqnszxdwo`)에 `ad_platform_daily`가 아직 없어 migration·Google Ads dry-run/apply는 미실행. SQL Editor 탭은 로그인 상태로 열렸으나 Windows Computer Use가 현재 브라우저 URL을 안전하게 확정하지 못해 자동 조작이 중단됐다. Supabase 탭을 다시 전면에 열어 안전하게 재개한 뒤 `20261027_ad_platform_daily.sql` → dry-run(10-13~10-26, N>0·조회수 지표명 확인) → apply·재조회 순으로 마무리할 것.
 
+## ✅ 2026-10-27 [Claude] 바치케 리포트 메타·틱톡 인지 줄도 P바치만 (사용자 지시)
+- **메타 인지:** 인지 광고는 메인 계정이 아니라 별도 인지 계정 `act_550617335901928`(빙과 대시보드 meta_api.py SUB 계정, 같은 토큰). `/api/meta-ads-pbachi?account=awareness`(고정 ID만 허용) → P바치 광고 ThruPlay·광고비 = 시트 '인지영상_Meta'와 같은 정의. 접근 점검(건수만): 10/20 P바치 18개·10/21 6개·10/26 0개(OUTCOME_ENGAGEMENT) — 빙과 대시보드 raw와 같은 광고 수. 조회 실패면 시트 값 + `(시트)`.
+- **틱톡 인지:** P바치 틱톡 광고 없음(빙과 대시보드 틱톡 raw 9/15~10/26 '바치'·'파인트' 0행) + P바치 출처 미연동 → 시트(파인트 합계)를 바치케 줄로 쓰지 않음. 시트에 값이 생기면 '틱톡 _P바치 미연동 — 확인 필요_' 경고 줄(총 증분 미포함). P바치 틱톡 집행 시작하면 TikTok 리포팅 자격증명 연동 필요(Codex).
+- **점검 워크플로 `probe-meta-pbachi.yml`:** 공개 레포라 지표·캠페인명 출력 제거, 접근 여부·건수만. (사용자 지시로 옛 실행 3건 삭제 완료)
+- 쫀득바는 변경 없음. 10/26 바치케 리포트는 메타 인지 P바치 0·틱톡 없음이라 내용 변화 없음.
+
 ## ✅ 2026-10-27 [Claude] 바치케 리포트 유튜브 줄 정본 = Google Ads (사용자 "지금 바꿔")
 - **변경:** `notify_increments` 프로필 `yt_source`(쫀득바 sheet / 바치케 google_ads). 바치케 유튜브 줄 = `ad_platform_daily`(광고그룹명 'P바치') 그날 합계 — `google_ads_sync.product_day_totals`(리포트·보정 도구 공용, 조회 마커 = `jobs.payload`). 그날 미조회면 시트 값 + `_(시트)_` 표시(fail-open), 보정 도구 `report-patch-youtube-gads.yml`로 나중에 교체 가능.
 - **대시보드는 손대지 않음**(사용자: "리포트만 발송하면 돼") — 출처 구분 표시는 리포트의 `(시트)` 표시로 한정.

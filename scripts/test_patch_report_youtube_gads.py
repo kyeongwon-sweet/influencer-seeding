@@ -96,7 +96,7 @@ def test_reader_matches_marker_written_by_sync():
 
 # ── 2026-10-27 사용자 결정 "지금 바꿔": 바치케 리포트 유튜브 줄 = Google Ads, 미조회 날은 시트 + '(시트)' ──
 
-def _notify_with(monkeypatch, product, gads):
+def _notify_with(monkeypatch, product, gads, meta_aw=(0, 0), tiktok_sheet=None):
     """notify._fetch_awareness_ads 를 가짜 시트·메타 라우트 + 가짜 DB(gads=(views,cost) | None=미조회)로 돌린다."""
     import io
     import json as _json
@@ -108,13 +108,21 @@ def _notify_with(monkeypatch, product, gads):
     sheet = {"found": True, "youtube": {"views": 193586, "cost": 4684875}, "meta": {"views": None, "cost": None},
              "conversion": {"views": 97539}}
 
+    sheet["tiktok"] = {"views": tiktok_sheet, "cost": 1}
+
     def fake_urlopen(req, timeout=0):
+        if "account=awareness" in req.full_url:
+            if meta_aw is None:
+                raise OSError("meta down")
+            return io.BytesIO(_json.dumps({"account": "awareness", "scanned": 9,
+                                           "total": {"thruplay": meta_aw[0], "spend": meta_aw[1]}}).encode())
         if "/api/meta-ads-pbachi" in req.full_url:
             return io.BytesIO(_json.dumps({"scanned": 5, "conversion": {"impressions": 81038}}).encode())
         return io.BytesIO(_json.dumps(sheet).encode())
 
     monkeypatch.setattr(ni.urllib.request, "urlopen", fake_urlopen)
     monkeypatch.setattr(meta_conversion.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(meta_conversion.time, "sleep", lambda s: None)
     calls = []
     monkeypatch.setattr(ni, "get_client", lambda: calls.append(1) or object())
     monkeypatch.setattr(ni, "product_day_totals", lambda sb, d: gads)
@@ -141,3 +149,25 @@ def test_patch_can_replace_sheet_fallback_line():
     fb = REPORT.replace("    유튜브 *+193,586*  CPV 24.2원", "    유튜브 *+193,586*  CPV 24.2원  _(시트)_")
     new, info = p.replace_youtube_line(fb, 193_585, 4_684_658.0)
     assert "_(시트)_" not in new and "    유튜브 *+193,585*  CPV 24.2원" in new and info["new_total"] == 303_318
+
+
+# ── 2026-10-27 사용자 지시 "메타·틱톡 인지 광고 줄도 P바치만" ──
+
+def test_pbachi_meta_awareness_uses_p_bachi_api_values(monkeypatch):
+    ni, d, _ = _notify_with(monkeypatch, "pbachi", None, meta_aw=(24253.0, 449429.6))
+    assert d["meta"] == {"views": 24253, "cost": 449430, "source": "meta_api"}
+
+
+def test_pbachi_meta_awareness_api_down_falls_back_to_sheet_marked(monkeypatch):
+    ni, d, _ = _notify_with(monkeypatch, "pbachi", None, meta_aw=None)
+    assert d["meta"]["source"] == "sheet_fallback"
+
+
+def test_pbachi_tiktok_sheet_total_is_not_used_but_surfaced(monkeypatch):
+    ni, d, _ = _notify_with(monkeypatch, "pbachi", None, tiktok_sheet=5000)
+    assert d["tiktok"] == {"views": None, "cost": None, "source": "unlinked", "sheet_views": 5000}
+
+
+def test_jd_meta_tiktok_untouched(monkeypatch):
+    ni, d, _ = _notify_with(monkeypatch, "jd", None, meta_aw=(1, 1), tiktok_sheet=7)
+    assert "source" not in d["meta"] and d["tiktok"] == {"views": 7, "cost": 1}

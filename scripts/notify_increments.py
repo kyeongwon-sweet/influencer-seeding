@@ -11,7 +11,7 @@ import urllib.parse
 import urllib.request
 from cross_post_metrics import fb_increment, ig_only
 from google_ads_sync import product_day_totals
-from meta_conversion import fetch_meta_conversion
+from meta_conversion import fetch_meta_awareness, fetch_meta_conversion
 from report_message import is_report_for, report_title
 from datetime import date
 from channel_kind import free_cpv_label, free_reason, is_banner_channel, is_free_by_design
@@ -38,14 +38,19 @@ def _norm_prod(p) -> str:
 #     (2026-10-27 사용자 결정, scripts/meta_conversion.py). meta면 patch_report_conversion이 7일 뒤 확정값으로 덮어쓴다.
 #   yt_source: 인지 광고 유튜브 줄 출처 — sheet=위 시트 탭 / google_ads=ad_platform_daily(광고그룹명 'P바치',
 #     google-ads-sync 가 매일 적재). 2026-10-27 사용자 결정 "지금 바꿔". 그날 미조회면 시트 값 + '(시트)' 표시(fail-open).
+#   meta_aw_source / tt_source: 인지 광고 메타·틱톡 줄 출처 — sheet=위 시트 탭(파인트 합계) /
+#     meta_api=메타 인지 계정의 P바치 광고 ThruPlay·광고비(조회 실패면 시트 + '(시트)') /
+#     none=P바치만 읽을 출처가 없음 → 시트(파인트 합계)를 쓰지 않고, 시트에 값이 있으면 '미연동' 경고 줄.
+#     2026-10-27 사용자 지시 "메타·틱톡 인지 광고 줄도 P바치만". 틱톡은 P바치 광고가 아직 없어(9/15~ 실측 0) 미연동.
 #   emoji: 제목 맨 앞 이모지(바치케=워크스페이스 커스텀 :바치케:, 사용자 지시 2026-10-27). 리포트 판정은 제목 문구로만 해 영향 없음
 PRODUCT_PROFILES = {
     "jd": {"title": "쫀득바", "match": lambda p: "jd" in (p or "").lower(),
            "ads_tab": "", "goal": True, "product_line": True, "emoji": "📈", "conv_source": "sheet",
-           "yt_source": "sheet"},
+           "yt_source": "sheet", "meta_aw_source": "sheet", "tt_source": "sheet"},
     "pbachi": {"title": "바치케", "match": lambda p: _norm_prod(p) == "P바치",
                "ads_tab": "pint", "goal": False, "product_line": False, "emoji": ":바치케:",
-               "conv_source": "meta", "yt_source": "google_ads"},
+               "conv_source": "meta", "yt_source": "google_ads", "meta_aw_source": "meta_api",
+               "tt_source": "none"},
 }
 REPORT_PRODUCT = (os.getenv("REPORT_PRODUCT") or "jd").strip().lower()
 if REPORT_PRODUCT not in PRODUCT_PROFILES:
@@ -155,6 +160,22 @@ def _fetch_awareness_ads(target: str):
             print("[notify] 메타 전환 조회 실패('미집계' 표시, 보정 스케줄이 채움):", e)
         # 공개 레포 로그 — 값은 찍지 않고 확보 여부만
         print(f"[notify] 전환(메타 P바치 노출수) {target}: {'확보' if d['conversion']['views'] is not None else '미집계'}")
+    if PROFILE["meta_aw_source"] == "meta_api":
+        mv = None
+        try:
+            mv = fetch_meta_awareness(base, secret, target, attempts=2)
+        except Exception as e:
+            print("[notify] 메타 인지(P바치) 조회 실패 → 시트 값 사용:", e)
+        if mv is not None:
+            d = dict(d or {})
+            d["meta"] = {**mv, "source": "meta_api"}
+            print(f"[notify] 메타 인지 {target}: P바치 직접 값 사용")
+        elif d and d.get("meta"):
+            d["meta"] = {**d["meta"], "source": "sheet_fallback"}
+    if PROFILE["tt_source"] == "none" and d and d.get("tiktok"):
+        # 시트 틱톡은 파인트 합계라 바치케 줄로 쓰지 않는다. 값이 있으면 경고 줄로만 드러낸다(합산 안 함).
+        d["tiktok"] = {"views": None, "cost": None, "source": "unlinked",
+                       "sheet_views": (d["tiktok"] or {}).get("views")}
     if PROFILE["yt_source"] == "google_ads":
         # 유튜브는 Google Ads 직접 값(시트 '인지영상_YouTube'와 같은 정의 = TrueView 조회수, 10/13~26 일자별 대조 1% 미만).
         gd = None
@@ -741,8 +762,11 @@ def main():
             a = ads.get(_k) or {}
             v, c = a.get("views"), a.get("cost")
             if isinstance(v, (int, float)) and v > 0:
-                _src = "  _(시트)_" if a.get("source") == "sheet_fallback" else ""   # 정본(Google Ads) 못 읽은 날 표시
+                _src = "  _(시트)_" if a.get("source") == "sheet_fallback" else ""   # 정본(Google Ads·메타 API) 못 읽은 날 표시
                 ad_lines.append(f"    {_lab} *+{f(v)}*  {_ad_cpv(c or 0, v)}".rstrip() + _src)
+            elif a.get("source") == "unlinked" and isinstance(a.get("sheet_views"), (int, float)) and a["sheet_views"] > 0:
+                # P바치만 읽을 출처가 없는 채널인데 시트(파인트 합계)엔 값이 있음 — 숨기지 않고 확인 요청(총 증분엔 미포함)
+                ad_lines.append(f"    {_lab} _P바치 미연동 — 시트(파인트 합계)에 값 있음, 확인 필요_")
         # 전환 조회수 — CPV 없이 조회수만, 0도 표시(사용자 지시). 값이 있으면 총증분엔 위에서 합산됨.
         #   시트가 비어 있으면 숨기지 않고 '미입력'으로 드러낸다(conversion_line 참고).
         _conv = ads.get("conversion")
