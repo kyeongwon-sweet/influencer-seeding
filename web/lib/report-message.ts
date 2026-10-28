@@ -14,9 +14,17 @@
 
 export const REPORT_TITLE = "쫀득바 조회수 일일 증분";
 
-export function isReportForDate(text: string | undefined | null, target: string): boolean {
+// 제품별 리포트(2026-10-27 바치케 추가) — 파이썬 notify_increments.PRODUCT_PROFILES 의 title + " 조회수 일일 증분".
+//   같은 채널에 두 리포트가 나가므로 자가치유도 제품별로 '게시됐나'를 따로 본다(10-28 바치케 미발송 사고:
+//   자가치유가 쫀득바만 보고 dispatch 도 쫀득바만 돌려 바치케가 GitHub 지연 크론만 기다렸다).
+export const REPORT_PRODUCTS = [
+  { key: "jd", title: REPORT_TITLE },
+  { key: "pbachi", title: "바치케 조회수 일일 증분" },
+] as const;
+
+export function isReportForDate(text: string | undefined | null, target: string, title: string = REPORT_TITLE): boolean {
   const body = text ?? "";
   if (!body.trim()) return false;
   const head = body.split("\n", 1)[0];
-  return head.includes(REPORT_TITLE) && head.includes(`(${target})`);
+  return head.includes(title) && head.includes(`(${target})`);
 }

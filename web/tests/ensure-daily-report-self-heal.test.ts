@@ -34,7 +34,7 @@ test("리포트 워치독은 미게시일 때 syncAll을 먼저 실행한 뒤 di
 
 test("probe 요청은 알림이나 GitHub dispatch 없이 게시 여부만 반환한다", () => {
   const probeAt = route.indexOf("if (probe)");
-  const dispatchAt = route.indexOf("dispatchReport(finalRetry)");
+  const dispatchAt = route.indexOf("dispatchReport(finalRetry, p.key)");
   const notifyAt = route.indexOf("await notifyBot(msg)");
 
   assert.ok(probeAt >= 0);
@@ -46,11 +46,19 @@ test("probe 요청은 알림이나 GitHub dispatch 없이 게시 여부만 반�
 });
 
 test("16시 최종 재시도 표식이 workflow와 담당자 DM까지 전달된다", () => {
-  assert.match(route, /inputs: \{ final_retry: finalRetry \? "true" : "false" \}/);
+  assert.match(route, /inputs: \{ final_retry: finalRetry \? "true" : "false", product \}/);
   assert.match(workflow, /final_retry:[\s\S]*?type: boolean[\s\S]*?default: false/);
   assert.match(workflow, /FINAL_RETRY: \$\{\{ github\.event\.inputs\.final_retry == 'true' && '1' \|\| '' \}\}/);
   assert.match(report, /_final_retry = os\.getenv\("FINAL_RETRY"\) == "1"/);
   assert.match(report, /if _final_retry:[\s\S]*?_dest = _uid[\s\S]*?_hist_ch = _open_dm\(token, _uid\)/);
   assert.match(report, /최종 재시도 후 발송 보류/);
   assert.match(report, /final_retry=_final_retry/);
+});
+
+test("자가치유는 제품별로 dispatch 하고, workflow 는 product 입력으로 해당 작업만 돌린다(10-28 바치케 미발송 사고)", () => {
+  assert.match(route, /for \(const p of REPORT_PRODUCTS\)/);
+  assert.match(route, /if \(pp === true\) continue;/);
+  assert.match(workflow, /product:[\s\S]*?options: \[jd, pbachi\]/);
+  assert.match(workflow, /report:\s*\n[\s\S]*?if: github\.event_name == 'schedule' \|\| github\.event\.inputs\.product != 'pbachi'/);
+  assert.match(workflow, /report-pbachi:\s*\n\s*if: github\.event_name == 'schedule' \|\| github\.event\.inputs\.product == 'pbachi'/);
 });
