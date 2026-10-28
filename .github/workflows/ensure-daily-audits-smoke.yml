@@ -52,3 +52,16 @@ jobs:
           echo ""
           echo "HTTP ${code}"
           [ "${code:0:1}" = "2" ] || { echo "::error::ensure-daily-collect failed HTTP=$code"; exit 1; }
+
+      # 2026-10-28 추가: 리포트 자가치유(ensure-daily-report) — 항상 probe=1(게시 여부만, dispatch·알림 없음).
+      #   제품별 판정(byProduct: jd·pbachi)이 실제 채널 기준으로 맞는지 확인용. 값·지표는 응답에 없다.
+      - name: Probe ensure-daily-report (게시 여부만)
+        run: |
+          code=$(curl -sS -X POST -o /tmp/report.json -w "%{http_code}" \
+            --max-time 60 \
+            "$APP_URL/api/ops/ensure-daily-report?probe=1" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          cat /tmp/report.json
+          echo ""
+          echo "HTTP ${code}"
+          [ "${code:0:1}" = "2" ] || { echo "::error::ensure-daily-report probe failed HTTP=$code"; exit 1; }
