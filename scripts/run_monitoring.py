@@ -1886,7 +1886,6 @@ def run():
                     target_date=TODAY,
                     max_metric=max_metric_by_post.get(p["id"], 0),
                     manual_tracked=(p["id"] in manual_tracked_ids),
-                    last_manual_at=last_manual_at_by_post.get(p["id"]),
                 )
                 if decision.should_end:
                     to_end.append(p["id"])

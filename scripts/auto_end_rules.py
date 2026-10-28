@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from kst_dates import kst_date
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
@@ -19,20 +18,15 @@ HIGH_METRIC_THRESHOLD = 500_000  # 누적 50만 이상 = 고성과 → 나이(�
 #   ⚠️ 이 예외는 '영구 활성'을 만든다 → stale_high_cost_actives() 감지 알림과 반드시 세트로 운영.
 HIGH_COST_THRESHOLD = 10_000_000
 
-# 단기형(배너·피드·캐러셀)의 수기추적 면제 유효기간.
-#   배너 도달수는 **수기로만** 들어온다 → 배너는 예외 없이 수기 행이 생기고,
-#   'manual_stat_tracked' 면제가 만료 없이 걸려 **영구 활성**이 됐다(2026-10-06 실측:
-#   활성 배너 332건 전부 이 분기에서 막혀 있었고, 그중 300건은 수기 입력이 30일+ 끊긴 상태).
-#   면제의 원래 목적은 "지금 사람이 입력 중인 글을 끊지 않는다"이지 "한 번 적었으면 영원히"가
-#   아니다. 마지막 수기 입력이 이 기간을 넘기면 면제를 풀고 나이 규칙으로 되돌린다.
-#   ⚠️ 영상 등 장기형은 손대지 않는다 — exportStats 가 종료일 이후 수기값을 지우는 사고
-#      (2026-07-24)의 보호 대상이 그쪽이다. 단기형은 유예가 나이 임계(7일)보다 길어 안전하다.
-MANUAL_TRACK_GRACE_DAYS = 14
-
-# "호출부가 날짜를 안 줬다"와 "사람이 숫자를 적은 적이 없다"는 전혀 다른 상태다.
-#   전자는 판정 불가 → 면제 유지(종전 동작). 후자는 보호할 값이 없음 → 면제 해제.
-#   None 하나로 뭉치면, 날짜를 넘기지 않는 기존 호출부가 조용히 배너를 대량 종료시킨다.
-_UNSET = object()
+# 단기형(배너·피드·캐러셀)은 수기 입력과 무관하게 나이 규칙(게시 후 7일)으로 종료한다.
+#   2026-10-06: 수기추적 면제가 만료 없이 걸려 배너가 영구 활성이 됐다 → '마지막 수기 입력 후 14일' 유예로 줄였다.
+#   2026-10-28: 그래도 배너가 7일 트래킹이 끝난 뒤 2주 넘게 '트래킹 중'으로 남아 시트 빈칸이 '수집 누락'처럼
+#     보였다(https://www.instagram.com/p/DeYt9OAiSfy/ 10-12 게시·도달수 입력 10-19까지·11-03 예정 종료).
+#     게다가 reconcile_auto_end 는 마지막 입력일을 넘기지 않아 유예가 아예 안 풀렸다.
+#     사용자: "7일 지나서 트래킹 종료처리되었어야하잖아" → 단기형은 면제를 적용하지 않는다.
+#   안전성: 종료일(ended_at=판정일, 게시 8일째 이후) **이전** 날짜의 수기값은 exportStats 가 지우지 않는다.
+#     7일 트래킹 기간 값은 늦게 적어도 보존된다.
+#   ⚠️ 장기형(영상 등)은 그대로 면제 — exportStats 가 종료일 이후 수기값을 지우던 사고(2026-07-24)의 보호 대상.
 
 
 @dataclass(frozen=True)
@@ -75,35 +69,12 @@ def row_metric(row: dict[str, Any]) -> int:
     return max(values, default=0)
 
 
-def _manual_track_expired(
-    post: dict[str, Any], target_date: str, last_manual_at: Any
-) -> bool:
-    """단기형 글의 수기추적 면제가 만료됐나 — '지금 입력 중'이 아니면 면제를 풀어 준다.
-
-    장기형(영상 등)은 항상 False = 면제 유지. 단기형만 유예를 적용한다.
-    판정 불가(호출부가 날짜 미전달 / 날짜 파싱 실패)면 False — 종료 쪽으로 기울지 않는다.
-    """
-    if last_manual_at is _UNSET:
-        return False
-    if not is_short_lived_type(post.get("channel_type")):
-        return False
-    if not last_manual_at:
-        # 수기 행은 있는데 값이 기록된 적이 없다 = 사람이 숫자를 넣은 적 없음 → 보호할 값이 없다.
-        return True
-    try:
-        gap = (date.fromisoformat(target_date) - date.fromisoformat(kst_date(last_manual_at))).days
-    except ValueError:
-        return False
-    return gap >= MANUAL_TRACK_GRACE_DAYS
-
-
 def classify_auto_end(
     post: dict[str, Any],
     *,
     target_date: str,
     max_metric: int = 0,
     manual_tracked: bool = False,
-    last_manual_at: Any = _UNSET,
 ) -> AutoEndDecision:
     # 수동 트래킹 재개 존중: ended_at을 사람이 직접 관리(manual_fields 포함)하면 자동종료로 덮지 않는다.
     # (대시보드/시트에서 수동으로 살린 글이 나이 규칙으로 매일 재종료돼 수동 입력이 사라지던 버그 수정.)
@@ -120,7 +91,8 @@ def classify_auto_end(
     # 수동 입력값 보존(사용자 지시 2026-07-24): 팀이 손으로 조회수를 입력 중인 글(manual stat 존재,
     # 대개 틱톡 민감·유튜브 비공개 등 자동수집 불가라 수동추적)은 나이 규칙으로 종료하지 않는다.
     # 종료되면 exportStats가 종료일 이후 수동값을 지워 매일 사라지던 문제의 근본 차단.
-    if manual_tracked and not _manual_track_expired(post, target_date, last_manual_at):
+    # 단기형(배너·피드·캐러셀)은 면제 없이 아래 나이 규칙(7일)을 따른다(2026-10-28, 위 주석).
+    if manual_tracked and not is_short_lived_type(post.get("channel_type")):
         return AutoEndDecision(False, "manual_stat_tracked", None, None, int(max_metric or 0))
 
     metric = int(max_metric or 0)
