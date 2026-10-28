@@ -48,6 +48,13 @@ def test_피드_캐러셀도_같은_7일_규칙():
         assert _call(_banner(channel_type=ct)).reason == "age_after_7", ct
 
 
+def test_매거진_협찬도_배너와_같은_7일():
+    # 2026-10-28 사용자: 매거진 협찬 트래킹 기간 = "배너와 같이 7일". 예: 오늘의메뉴 08-25 마지막 입력인데 10월까지 활성.
+    d = _call(_banner(channel_type="협찬 (파워채널/매거진)", posted_at="2026-08-07"), metric=45_795)
+    assert d.should_end is True and d.reason == "age_after_7"
+    assert _call(_banner(channel_type="협찬 (파워채널/매거진)", posted_at="2026-10-22")).reason == "not_due"
+
+
 def test_장기형은_수기추적_면제가_그대로():
     d = _call(_banner(channel_type="협찬 (인플루언서)", posted_at="2026-01-01"))
     assert d.should_end is False

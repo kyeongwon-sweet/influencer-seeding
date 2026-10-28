@@ -42,9 +42,14 @@ def text_of(value: Any) -> str:
     return str(value or "")
 
 
+# 매거진 협찬도 배너와 같은 7일 트래킹(2026-10-28 사용자: "배너와 같이 7일").
+#   그전엔 '일반 글'(14일 + 수기 면제 무기한)으로 봐서 8월 매거진까지 '트래킹 중'으로 남았다.
+SHORT_LIVED_TERMS = ("배너", "피드", "캐러셀", "매거진")
+
+
 def is_short_lived_type(channel_type: Any) -> bool:
     text = text_of(channel_type)
-    return any(term in text for term in ("배너", "피드", "캐러셀"))
+    return any(term in text for term in SHORT_LIVED_TERMS)
 
 
 def is_auto_end_excluded(post: dict[str, Any]) -> bool:
