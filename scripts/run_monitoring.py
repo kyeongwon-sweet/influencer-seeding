@@ -1860,7 +1860,8 @@ def run():
             _start += _PAGE
 
         # 🛑 자동 종료 정책 — ended_at 딱지 부여(삭제 아님, 데이터 보존).
-        #   규칙: 배너·캐러셀(피드) 업로드일 제외 7일 이후(8일째 종료) / 그 외(영상) 14일 이후(15일째 종료) / 캡션(content_summary) '종료·보관·삭제'.
+        #   규칙: 배너·피드·캐러셀·매거진 업로드일 제외 7일 이후(8일째 종료, 수기 입력 있어도 — 2026-10-28) / 그 외(영상) 14일 이후(15일째 종료) / 캡션(content_summary) '종료·보관·삭제'.
+        #   판정 정본은 auto_end_rules.classify_auto_end (SHORT_LIVED_TERMS).
         #   예외: 위성채널·온드미디어만(무상시딩·50만 예외는 2026-07-14 사용자 지시로 제거 — 무상시딩(피드)도 7일 종료). 업로드일은 카운트에서 제외(age 0).
         history_last_stat = None
         last_valid_metric_date_by_post = {}
