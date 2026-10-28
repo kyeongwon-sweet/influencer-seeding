@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## ✅ 2026-10-28 [Claude 수정·배포] 배너·피드·캐러셀·매거진은 수기 입력이 있어도 게시 7일 지나면 자동 종료 (`96f6daaf`·`6e673270`)
+- **발단:** RD 4922행 `instagram.com/p/DeYt9OAiSfy`(wikitrip.kr, 바이럴 배너, 10-12 게시) 10-20부터 빈칸 → "수집 누락" 문의. 실제는 **7일 트래킹(10-12~10-19)이 끝났는데 종료 처리가 안 된 것**(도달수 입력은 10-19에서 정상 종료). ⚠️ Claude가 처음엔 '도달수 입력 끊김'으로 잘못 설명했다가 정정 — 입력 끊김 알림 코드는 폐기(미배포).
+- **원인:** `auto_end_rules.manual_stat_tracked` 면제. 단기형은 '마지막 수기 입력 후 14일' 유예(10-06)라 7일 뒤에도 2주+ 활성, `reconcile_auto_end` 는 마지막 입력일을 안 넘겨 유예가 영원히 안 풀림. 매거진(`협찬 (파워채널/매거진)`)은 장기형으로 분류돼 면제 무기한 → 8월 글까지 '트래킹 중'.
+- **수정:** 단기형(`SHORT_LIVED_TERMS` = 배너·피드·캐러셀·**매거진**)은 수기 면제 없이 7일 나이 규칙. 장기형(영상)은 면제 유지(07-24 exportStats 보호). 분류기는 더 이상 last_manual_at 을 받지 않음(두 호출부 판정 일치). 매거진 7일 = 사용자 결정.
+- **영향(10-28 dry-run, 오늘 밤 자동 종료 예정 17건):** P바치 배너 7(apple_enter·Ufo__blue·Ufo__RED·Ufo__NIGHT·flower_words03·anavocado12345·틱톡 panseob_pyeong) + 매거진 10(오늘의메뉴 DbutARtkWS8·DcfotRKkRxw·Dd-5f6SCdaz / 이짓매거진 Dcf5OKEiZvJ·Dd8rivfCZ-H / 골목대장 Dcz8HU6kRe7·Dd8VOSOEUIv / 푸드의먹스타그램 Dck8gpqE1nK / shoushou.mgz Dcm6_35k8fT / 먹킷리스트 Dd8Kc27EYjg). 사용자 목록 확인 후 승인. 50만+ 1건은 기존 규칙대로 유지. wikitrip 은 사용자가 10-28 수동 종료.
+- scripts 585 pass·web 762 pass. 다음 확인: 10-29 아침 위 17건 ended_at 반영 여부.
+
 ## ✅ 2026-10-27 [Codex 완료] 바치케 유튜브 Google Ads 직접 연동 — 자격증명·테이블·첫 적재 검증 완료
 - **자격증명·보안:** `influencer-seeding` Actions secrets 4개와 MCC/고객 variables 2개 등록 완료. `negative-comment-monitor`의 기존 값은 일회성 RSA+AES 암호화 전달로 복사했고, 평문은 로그·파일에 출력하지 않았다. 등록 뒤 원격 암호화 아티팩트·임시 브랜치와 로컬 키·암호문을 모두 삭제했다.
 - **DB:** Supabase PRODUCTION(ref `vkdvncwzccqtqnszxdwo`)에 `ad_platform_daily`와 `ad_platform_daily_product_date` 인덱스를 migration으로 생성하고 RLS를 활성화했다. 라이브에 없는 `ops_daily_runs` 의존은 실제 운영 정본 `jobs.payload` 멱등 마커로 `29d12449`에서 선행 교정(테스트 11/11, `py_compile`, KST pre-push, `tsc` 통과).
