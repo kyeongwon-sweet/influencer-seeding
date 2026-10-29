@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## 🟡 2026-10-29 [Claude repo 수정 / Codex 라이브 적용 대기] 입력 검증 규칙을 '자기 열'에만 (`e84962c9`)
+- **발단:** RD C5153:C5162(채널명, 10-29 P바치 바이럴 10건)에 B열 URL 규칙이 붙여넣기로 따라와 '유효성 위반'. Claude가 C5152의 '데이터 확인만 붙여넣기'로 C5153:C5162 규칙만 제거(시트 5,162행 전후 CSV 대조 변경 0, 패널에서 URL 규칙 범위 `B2:B5458`만 남음 확인). B열 URL 빈칸은 업로드 전이라 정상(이재원 댓글).
+- **근본:** `applyLinkedFixedInputValidationsRows_`(편집 시 `repairLinkedInputValidationsOnEdit_`·일일 `applyLinkedSheetInputValidation_` 경유)가 허용 열엔 규칙을 다시 씌우지만 **지우는 건 H·I만** → 무규칙 열(C 등)에 따라온 규칙은 영구 잔존.
+- **수정(repo):** 허용 열 = A(업로드일)·채널분류(D 드롭다운)·고정 규칙 열(B·F·G·CPV·기획자·제작자)·날짜열. 그 밖의 편집 범위 열은 `clearDataValidations()`(값 불변). 순수 함수 `linkedColumnsToClearValidation_` + `web/tests/apps-script-validation-scope.test.ts`(실제 함수 추출 실행). web 771 pass, .gs 문법 검사 통과. 라이브 실측 규칙 구성(10-29 패널): A·B·D(5개)·F·G·J·K:L·P~ — 이 외 열엔 규칙 없음.
+- **Codex 몫(라이브 Apps Script):** ① `applyLinkedFixedInputValidationsRows_` 끝의 'H(누적)·I(증분)… 두 열의 검증 규칙만 제거' 블록을 repo `e84962c9` 의 새 블록으로 교체 ② `linkedColumnsToClearValidation_` 함수 추가 ③ 라이브 `onStatusEdit_` 가 `repairLinkedInputValidationsOnEdit_(e, sheet)` 를 부르는지 확인 ④ 저장 오류 없음 확인 후 빈 행에서 B칸→C칸 붙여넣기 시험(C 규칙 사라지면 정상, 시험 후 되돌리기).
+
 ## ✅ 2026-10-28 [Claude 수정·배포] 배너·피드·캐러셀·매거진은 수기 입력이 있어도 게시 7일 지나면 자동 종료 (`96f6daaf`·`6e673270`)
 - **발단:** RD 4922행 `instagram.com/p/DeYt9OAiSfy`(wikitrip.kr, 바이럴 배너, 10-12 게시) 10-20부터 빈칸 → "수집 누락" 문의. 실제는 **7일 트래킹(10-12~10-19)이 끝났는데 종료 처리가 안 된 것**(도달수 입력은 10-19에서 정상 종료). ⚠️ Claude가 처음엔 '도달수 입력 끊김'으로 잘못 설명했다가 정정 — 입력 끊김 알림 코드는 폐기(미배포).
 - **원인:** `auto_end_rules.manual_stat_tracked` 면제. 단기형은 '마지막 수기 입력 후 14일' 유예(10-06)라 7일 뒤에도 2주+ 활성, `reconcile_auto_end` 는 마지막 입력일을 안 넘겨 유예가 영원히 안 풀림. 매거진(`협찬 (파워채널/매거진)`)은 장기형으로 분류돼 면제 무기한 → 8월 글까지 '트래킹 중'.
