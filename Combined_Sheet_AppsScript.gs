@@ -4074,11 +4074,21 @@ function applyLinkedFixedInputValidationsRows_(sheet, startRow, rowCount, firstC
   //   ⚠️ 값은 건드리지 않는다(clearDataValidations 는 규칙만 지움).
   const cumulativeCol = findHeaderCol_(sheet, ["누적 조회수", "누적조회수"]);
   const incrementCol = getIncrementCol_(sheet);
-  const allowedCols = [1, findHeaderCol_(sheet, ["채널분류", "채널 분류"])]
-    .concat(linkedFixedInputValidationSpecs_(sheet, startRow).map(function(spec) { return spec.col; }))
-    .concat(Object.keys(linkedDateColumns_(sheet)).map(Number))
-    .filter(function(col) { return col && col !== cumulativeCol && col !== incrementCol; });
-  const runs = linkedColumnsToClearValidation_(fromCol, toCol, allowedCols);
+  const channelTypeCol = findHeaderCol_(sheet, ["채널분류", "채널 분류"]);
+  let runs;
+  if (channelTypeCol) {
+    const allowedCols = [1, channelTypeCol]
+      .concat(linkedFixedInputValidationSpecs_(sheet, startRow).map(function(spec) { return spec.col; }))
+      .concat(Object.keys(linkedDateColumns_(sheet)).map(Number))
+      .filter(function(col) { return col && col !== cumulativeCol && col !== incrementCol; });
+    runs = linkedColumnsToClearValidation_(fromCol, toCol, allowedCols);
+  } else {
+    // ⚠️ 채널분류 머리글을 못 찾으면(이름 변경 등) 드롭다운 열을 '무규칙 열'로 오판해 지울 수 있다
+    //    → 예전 동작(H·I만 정리)으로 후퇴한다.
+    runs = [cumulativeCol, incrementCol]
+      .filter(function(col, index, cols) { return col && col >= fromCol && col <= toCol && cols.indexOf(col) === index; })
+      .map(function(col) { return [col, 1]; });
+  }
   let clearedCells = 0;
   runs.forEach(function(run) {
     sheet.getRange(startRow, run[0], rowCount, run[1]).clearDataValidations();
