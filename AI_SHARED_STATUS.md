@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## ✅ 2026-10-29 [Codex 라이브 적용·검증] 입력 검증 규칙을 '자기 열'에만 (`e84962c9`)
+- **라이브 적용:** 18:23 KST에 바운드 Apps Script를 먼저 pull한 뒤, `applyLinkedFixedInputValidationsRows_`의 검증 제거 블록과 `linkedColumnsToClearValidation_`만 라이브 본문에 수술적으로 합쳐 push했다. 작업 중 상류에 추가된 안전 보강 `6e7111dd`(채널분류 머리글을 못 찾으면 H·I만 정리하는 기존 동작으로 후퇴)도 18:29 KST에 같은 블록에 추가 반영했다. 두 차례 모두 live pull을 다시 받아 배포 본문 해시가 push 직전 본문과 일치함을 확인했으며, 라이브에만 있던 다른 코드는 덮어쓰지 않았다.
+- **즉시 복구 배선:** 라이브 `onStatusEdit_`가 `repairLinkedInputValidationsOnEdit_(e, sheet)`를 호출함을 확인했다. 아래 붙여넣기 시험에 대응한 `onStatusEdit_` 실행(18:24:51 KST)도 오류율 0%로 완료됐다.
+- **실물 시험:** 빈 행의 `B5200`(URL 규칙)을 `C5200`(채널명)에 붙여넣은 뒤 데이터 확인 패널을 다시 열었다. URL 규칙 범위가 `B2:B5458`만 남고 `C5200`은 모든 검증 규칙 범위에서 빠진 것을 확인했다. 시험 후 `C5200` 값은 빈칸, 서식은 같은 열의 빈칸 `C5199` 기준으로 복원했다.
+- **검증:** Apps Script 저장 시 문법 오류 없음, post-push live pull 성공. 최신 회귀 테스트 `apps-script-validation-scope` **9/9**, `tsc --noEmit` 통과. 값·수식은 변경하지 않았다.
+
 ## 🟡 2026-10-29 [Claude repo 수정 / Codex 라이브 적용 대기] 입력 검증 규칙을 '자기 열'에만 (`e84962c9`)
 - **발단:** RD C5153:C5162(채널명, 10-29 P바치 바이럴 10건)에 B열 URL 규칙이 붙여넣기로 따라와 '유효성 위반'. Claude가 C5152의 '데이터 확인만 붙여넣기'로 C5153:C5162 규칙만 제거(시트 5,162행 전후 CSV 대조 변경 0, 패널에서 URL 규칙 범위 `B2:B5458`만 남음 확인). B열 URL 빈칸은 업로드 전이라 정상(이재원 댓글).
 - **근본:** `applyLinkedFixedInputValidationsRows_`(편집 시 `repairLinkedInputValidationsOnEdit_`·일일 `applyLinkedSheetInputValidation_` 경유)가 허용 열엔 규칙을 다시 씌우지만 **지우는 건 H·I만** → 무규칙 열(C 등)에 따라온 규칙은 영구 잔존.
