@@ -5,6 +5,7 @@
 - **근본:** `applyLinkedFixedInputValidationsRows_`(편집 시 `repairLinkedInputValidationsOnEdit_`·일일 `applyLinkedSheetInputValidation_` 경유)가 허용 열엔 규칙을 다시 씌우지만 **지우는 건 H·I만** → 무규칙 열(C 등)에 따라온 규칙은 영구 잔존.
 - **수정(repo):** 허용 열 = A(업로드일)·채널분류(D 드롭다운)·고정 규칙 열(B·F·G·CPV·기획자·제작자)·날짜열. 그 밖의 편집 범위 열은 `clearDataValidations()`(값 불변). 순수 함수 `linkedColumnsToClearValidation_` + `web/tests/apps-script-validation-scope.test.ts`(실제 함수 추출 실행). web 771 pass, .gs 문법 검사 통과. 라이브 실측 규칙 구성(10-29 패널): A·B·D(5개)·F·G·J·K:L·P~ — 이 외 열엔 규칙 없음.
 - **Codex 몫(라이브 Apps Script):** ① `applyLinkedFixedInputValidationsRows_` 끝의 'H(누적)·I(증분)… 두 열의 검증 규칙만 제거' 블록을 repo `e84962c9` 의 새 블록으로 교체 ② `linkedColumnsToClearValidation_` 함수 추가 ③ 라이브 `onStatusEdit_` 가 `repairLinkedInputValidationsOnEdit_(e, sheet)` 를 부르는지 확인 ④ 저장 오류 없음 확인 후 빈 행에서 B칸→C칸 붙여넣기 시험(C 규칙 사라지면 정상, 시험 후 되돌리기).
+- ⚠️ **보강(재검증):** 채널분류 머리글을 못 찾으면 D 드롭다운을 지울 수 있어 H·I만 정리하는 예전 동작으로 후퇴하도록 고침. **Codex는 이 보강판(main 최신, e84962c9 다음 커밋)에서 복사할 것.** 실제 함수를 가짜 시트로 실행하는 테스트 3개 추가(전체 정리 시 지우는 열=C·E·H·I·M·N·O·등록상태, A·B·D·F·G·J·K·L·날짜열은 안 지움).
 
 ## ✅ 2026-10-28 [Claude 수정·배포] 배너·피드·캐러셀·매거진은 수기 입력이 있어도 게시 7일 지나면 자동 종료 (`96f6daaf`·`6e673270`)
 - **발단:** RD 4922행 `instagram.com/p/DeYt9OAiSfy`(wikitrip.kr, 바이럴 배너, 10-12 게시) 10-20부터 빈칸 → "수집 누락" 문의. 실제는 **7일 트래킹(10-12~10-19)이 끝났는데 종료 처리가 안 된 것**(도달수 입력은 10-19에서 정상 종료). ⚠️ Claude가 처음엔 '도달수 입력 끊김'으로 잘못 설명했다가 정정 — 입력 끊김 알림 코드는 폐기(미배포).
