@@ -4066,20 +4066,45 @@ function applyLinkedFixedInputValidationsRows_(sheet, startRow, rowCount, firstC
     validationCells += rowCount;
   });
 
-  // H(누적)·I(증분)는 계산 수식 열이다. 붙여넣기로 입력 검증이 복사되면 수식 자체는
-  // 정상이어도 빨간 경고가 남으므로, 헤더로 찾은 두 열의 검증 규칙만 제거한다.
+  // 규칙은 '자기 열'에만 있어야 한다. 붙여넣기는 내용과 함께 원래 칸의 검증 규칙도 옮긴다.
+  //   2026-10-29: B열(URL) 규칙이 C5153:C5162(채널명)로 따라와 채널명마다 '유효성 위반'이 떴다.
+  //   예전엔 H(누적)·I(증분)만 지웠고 나머지 무규칙 열은 그대로 둬서 못 막았다.
+  // → 규칙이 허용된 열(업로드일·위 고정 규칙 열·채널분류 드롭다운·날짜열)을 뺀 모든 열의 규칙을 지운다.
+  //   허용 열은 위에서 원래 규칙으로 다시 씌우므로(날짜열·업로드일은 호출부가 씌움) 남의 규칙이 와도 바로 돌아간다.
+  //   ⚠️ 값은 건드리지 않는다(clearDataValidations 는 규칙만 지움).
   const cumulativeCol = findHeaderCol_(sheet, ["누적 조회수", "누적조회수"]);
   const incrementCol = getIncrementCol_(sheet);
-  const metricCols = [cumulativeCol, incrementCol].filter(function(col, index, cols) {
-    return col && col >= fromCol && col <= toCol && cols.indexOf(col) === index;
-  });
-  metricCols.forEach(function(col) {
-    sheet.getRange(startRow, col, rowCount, 1).clearDataValidations();
+  const allowedCols = [1, findHeaderCol_(sheet, ["채널분류", "채널 분류"])]
+    .concat(linkedFixedInputValidationSpecs_(sheet, startRow).map(function(spec) { return spec.col; }))
+    .concat(Object.keys(linkedDateColumns_(sheet)).map(Number))
+    .filter(function(col) { return col && col !== cumulativeCol && col !== incrementCol; });
+  const runs = linkedColumnsToClearValidation_(fromCol, toCol, allowedCols);
+  let clearedCells = 0;
+  runs.forEach(function(run) {
+    sheet.getRange(startRow, run[0], rowCount, run[1]).clearDataValidations();
+    clearedCells += rowCount * run[1];
   });
   return {
     validation_cells: validationCells,
-    cleared_metric_cells: metricCols.length * rowCount,
+    cleared_metric_cells: clearedCells,
   };
+}
+
+// [fromCol, toCol] 중 규칙 허용 열이 아닌 열을 연속 구간 [시작열, 개수] 목록으로 (순수 함수 — 테스트 대상).
+function linkedColumnsToClearValidation_(fromCol, toCol, allowedCols) {
+  const allowed = {};
+  (allowedCols || []).forEach(function(col) { if (col) allowed[Number(col)] = true; });
+  const runs = [];
+  let runStart = 0;
+  for (let col = Number(fromCol); col <= Number(toCol) + 1; col++) {
+    const clear = col <= Number(toCol) && !allowed[col];
+    if (clear && !runStart) runStart = col;
+    if (!clear && runStart) {
+      runs.push([runStart, col - runStart]);
+      runStart = 0;
+    }
+  }
+  return runs;
 }
 
 function normalizeLinkedUploadDatesWithBackup() {
