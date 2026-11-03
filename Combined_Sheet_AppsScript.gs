@@ -1950,6 +1950,16 @@ function captionFromAssetName_(assetName, channelType) {
   return cleanAssetCaption_(body.join("_"));
 }
 
+// 새 형식 바이럴 소재명인가: 날짜(YYMMDD) 두 칸 앞 제품 표시가 P 없는 '파인트'·'스틱바'(2026-10-29~).
+//   예) …X_스틱바__261029_빙과_… / …X_파인트__261030_빙과_…  (옛 형식은 2P·파인트P·스틱바P)
+function isNewViralAssetFormat_(assetName) {
+  const parts = String(assetName || "").split("_");
+  for (var i = parts.length - 1; i >= 2; i--) {
+    if (/^\d{6}$/.test(parts[i])) return /^(?:파인트|스틱바)$/.test(String(parts[i - 2] || "").trim());
+  }
+  return false;
+}
+
 function fillCaptionFromAsset_() {
   const sheet = getSheet_();
   const lastRow = sheet.getLastRow();
@@ -1973,7 +1983,10 @@ function fillCaptionFromAsset_() {
       const desiredCaption = captionFromAssetName_(assets[i][0], channelType);
       // 사용자 확정(2026-08-24): Instagram 원문 스크랩이 확실한 해시태그 캡션은
       // 소재명 파생 캡션으로 전부 교체한다. 해시태그가 없는 기존 수기 캡션은 보존한다.
-      const mayDerive = currentCaption.trim() === "" || currentCaption.indexOf("#") >= 0;
+      // 사용자 확정(2026-11-03): 새 형식 소재명(제품 표시 P 없음, 10-29~)은 규칙이 맞으면
+      // 해시태그가 없어도 항상 소재명 캡션으로 둔다. 옛 형식 행의 문장 캡션은 그대로 보존한다.
+      const mayDerive = currentCaption.trim() === "" || currentCaption.indexOf("#") >= 0
+        || isNewViralAssetFormat_(assets[i][0]);
       if (mayDerive && desiredCaption && desiredCaption !== currentCaption) {
         edits.push({ row: CONFIG.DATA_START_ROW + i, value: desiredCaption });
       }
