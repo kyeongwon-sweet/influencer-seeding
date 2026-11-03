@@ -1937,8 +1937,10 @@ function captionFromAssetName_(assetName, channelType) {
 
   var endExclusive = dateIdx - 1;
   if (!isBanner) {
+    // 제품 표시: 옛 형식 `…X_2P_기획자_YYMMDD`·`파인트P`·`스틱바P` / 2026-10-29~ 새 형식 `…X_스틱바__YYMMDD`·`파인트`(P 없음, 기획자 칸 빈칸).
+    //   새 형식을 몰라 캡션을 못 뽑고 스크랩 해시태그 캡션이 그대로 남았다(2026-11-03 사용자 지적). 숫자는 P 필수(오탐 방지).
     const productToken = String(parts[dateIdx - 2] || "").trim();
-    if (!/^(?:\d+|파인트|스틱바)P$/.test(productToken)) return "";
+    if (!/^(?:\d+P|파인트P?|스틱바P?)$/.test(productToken)) return "";
     endExclusive = dateIdx - 2;
   }
   if (endExclusive <= markerIdx + 1) return "";
