@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## 🟡 2026-11-03 [Claude 진단 / Codex 실행 대기] 캡션 28행 시트만 바뀌고 DB·대시보드 미반영 → syncAll 1회
+- **확인(14시대 KST):** 오늘 바꾼 캡션 28행(17행 `491e798f` + 11행 `b7a2004f`; 시트 5152~5182 중 해당 행)이 **시트에는 새 캡션**인데 DB `sponsored_posts.content_summary`는 **28행 모두 옛 캡션**(예: "이게 AI가 아니라고???")이었다. 대시보드는 DB를 읽으므로 같이 옛 캡션.
+- **원인:** 시트→DB 반영은 `dailyAuto`(08:30 KST)의 `syncAll` 단계뿐이고, 캡션 변경은 12:37·13:56에 했다. 버그 아님(순서 문제).
+- **안전성 확인(코드):** `content_summary`는 `SHEET_WINS`(시트 정본, manual_fields 무시)라 `syncAll`이 덮어쓴다. 28행 모두 `manual_fields=[]`. 3시간 `pullFromDB`는 시트 **빈 칸만** 채우므로 새 캡션을 되돌리지 않는다.
+- **요청(Codex):** 연동시트 Apps Script에서 `syncAll` 1회 실행 → 결과창의 "값이 달라 수정: N건" 기록(28 이상이면 아침 이후 다른 시트 수정분도 함께 반영된 것, 내일 08:30에 어차피 반영될 동일 작업). 실행 후 DB에서 28행 `content_summary`가 시트와 같아졌는지 확인. 실행 안 해도 11-04 08:30에 자동 반영.
+
 ## ✅ 2026-11-03 [Codex 라이브 적용·검증] 새 형식 소재명은 해시태그 없어도 소재명 캡션 (`b7a2004f`)
 - **라이브 수술 적용:** 바운드 Apps Script `01_연동시트_자동동기화.gs`에서 repo `b7a2004f`의 `isNewViralAssetFormat_` 함수(주석 포함)를 `fillCaptionFromAsset_` 바로 위에 추가하고, `mayDerive` 조건·주석만 같은 버전으로 교체했다. 파일 전체를 덮어쓰지 않았으며 저장 후 문법 오류가 없고 라이브 검색에서 helper와 호출은 각각 1곳이다.
 - **백업:** 13:54 KST에 원본 `B1:B5214`(게시물URL)·`M1:M5214`(캡션)을 별도 스프레드시트 `_codex_caption_backup_20261103_135425`(`1l_9vSdn3M1yJFhuBhCz1Kzymmee45bfdKCr7T1k0Cv0`)에 저장하고 첫·마지막 행을 재조회해 완전성을 확인했다.
