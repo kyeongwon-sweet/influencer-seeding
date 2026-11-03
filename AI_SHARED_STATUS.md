@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## ✅ 2026-11-03 [Codex 라이브 적용·검증] 리포트 발송 트리거 12:20·13:20·16:10 (`dd9fd6de`)
+- **라이브 함수만 수술적 반영:** 바운드 Apps Script `01_연동시트_자동동기화.gs`에서 `installEnsureDailyReportTrigger`만 repo `dd9fd6de` 본문으로 교체했다. `ensureDailyReport` 본문과 다른 라이브 코드는 변경하지 않았고, 10:44 KST 저장·실행이 오류 없이 완료됐다.
+- **예약 검증:** 설치 함수는 기존 `ensureDailyReport`만 골라 삭제한 뒤 `atHour(12).nearMinute(20)`·`atHour(13).nearMinute(20)`·`atHour(16).nearMinute(10)`을 생성한다. 트리거 화면 실측은 `ensureDailyReport=3`이며 12시대·13시대·16시대 예약이다.
+- **다른 트리거 보존:** 같은 화면에서 `ensureDailyCollect=2`, `dailyAuto=1`, 전체 트리거 20개를 확인했다. 설치 함수의 삭제 필터도 `getHandlerFunction() === "ensureDailyReport"`로 한정돼 다른 트리거는 변경 대상이 아니다.
+- **회귀 검증:** `ensure-daily-report-self-heal` 표적 테스트 **6/6**, `tsc --noEmit` 통과.
+
 ## ✅ 2026-10-29 [Codex 라이브 적용·검증] 입력 검증 규칙을 '자기 열'에만 (`6e7111dd`; base `e84962c9`)
 - **라이브 적용:** 18:23 KST에 바운드 Apps Script를 먼저 pull한 뒤, `applyLinkedFixedInputValidationsRows_`의 검증 제거 블록과 `linkedColumnsToClearValidation_`만 라이브 본문에 수술적으로 합쳐 push했다. 작업 중 상류에 추가된 안전 보강 `6e7111dd`(채널분류 머리글을 못 찾으면 H·I만 정리하는 기존 동작으로 후퇴)도 18:29 KST에 같은 블록에 추가 반영했다. 두 차례 모두 live pull을 다시 받아 배포 본문 해시가 push 직전 본문과 일치함을 확인했으며, 라이브에만 있던 다른 코드는 덮어쓰지 않았다.
 - **즉시 복구 배선:** 라이브 `onStatusEdit_`가 `repairLinkedInputValidationsOnEdit_(e, sheet)`를 호출함을 확인했다. 아래 붙여넣기 시험에 대응한 `onStatusEdit_` 실행(18:24:51 KST)도 오류율 0%로 완료됐다.
