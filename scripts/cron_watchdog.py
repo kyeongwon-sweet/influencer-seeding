@@ -97,10 +97,13 @@ REPORT_DELIVERY = {
     # (GitHub 4중 크론 마지막 슬롯 + Apps Script 16:10 최종재시도 이후).
     "channel": os.environ.get("REPORT_CHANNEL") or "C0B4F7GBX17",
     "due_kst": "17:05",
+    # 같은 채널에 나가는 리포트 제품(제목의 제품명) — notify_increments.PRODUCT_PROFILES title 과 짝(테스트로 고정).
+    #   2026-11-03 재발방지: 바치케(10-27~)가 이 감시에서 빠져 있어 바치케가 안 나가도 알림이 없었다.
+    "products": ["쫀득바", "바치케"],
 }
 
 
-def _slack_history(channel: str, token: str, limit: int = 30) -> list[dict]:
+def _slack_history(channel: str, token: str, limit: int = 50) -> list[dict]:
     req = urllib.request.Request(
         f"https://slack.com/api/conversations.history?channel={channel}&limit={limit}",
         headers={"Authorization": f"Bearer {token}"},
@@ -131,14 +134,18 @@ def check_report_delivery(now: datetime, token: str | None, fetch=None) -> list[
         msgs = (fetch or (lambda: _slack_history(REPORT_DELIVERY["channel"], token)))()
     except Exception as e:  # noqa: BLE001 — 어떤 실패든 침묵하지 않는다
         return [f"⚠️ 증분 리포트 도착 확인 실패({target}): {type(e).__name__} {e}"]
-    if any(is_report_for(m.get("text", ""), target) for m in msgs):
-        return []
-    return [
-        f"🚨 증분 리포트 미발송 — 대상일 {target} 리포트가 "
-        f"{REPORT_DELIVERY['due_kst']} KST 까지 채널에 없습니다. "
-        f"워크플로가 '성공'이어도 발송은 0일 수 있습니다(2026-09-23 실사고). "
-        f"수동 발송: Actions → Daily Increment Report → date={target}"
-    ]
+    out = []
+    for name in REPORT_DELIVERY["products"]:
+        if any(is_report_for(m.get("text", ""), target, name) for m in msgs):
+            continue
+        key = "pbachi" if name == "바치케" else "jd"
+        out.append(
+            f"🚨 {name} 증분 리포트 미발송 — 대상일 {target} 리포트가 "
+            f"{REPORT_DELIVERY['due_kst']} KST 까지 채널에 없습니다. "
+            f"워크플로가 '성공'이어도 발송은 0일 수 있습니다(2026-09-23 실사고). "
+            f"수동 발송: Actions → Daily Increment Report → product={key}, date={target}"
+        )
+    return out
 
 
 def _api(path: str, token: str) -> dict:

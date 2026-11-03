@@ -19,8 +19,12 @@ def at(hh, mm=0, day=24):
     return datetime(2026, 9, day, hh, mm, tzinfo=KST)
 
 
-def msg(target, extra=""):
-    return {"text": f"📈 *쫀득바 조회수 일일 증분* `({target})`\n오늘 총 증분 *+1,000*{extra}"}
+def msg(target, extra="", product="쫀득바"):
+    return {"text": f"📈 *{product} 조회수 일일 증분* `({target})`\n오늘 총 증분 *+1,000*{extra}"}
+
+
+def both(target):
+    return [msg(target), msg(target, product="바치케")]
 
 
 def test_silent_before_deadline():
@@ -30,12 +34,12 @@ def test_silent_before_deadline():
 
 def test_alerts_when_missing_after_deadline():
     out = check_report_delivery(at(17, 30), "tok", fetch=lambda: [])
-    assert len(out) == 1 and "미발송" in out[0]
-    assert "2026-09-23" in out[0], "대상일(어제)을 알려야 사람이 바로 조치한다"
+    assert len(out) == 2 and all("미발송" in x for x in out)   # 쫀득바·바치케 각각
+    assert all("2026-09-23" in x for x in out), "대상일(어제)을 알려야 사람이 바로 조치한다"
 
 
 def test_silent_when_delivered():
-    out = check_report_delivery(at(17, 30), "tok", fetch=lambda: [msg("2026-09-23")])
+    out = check_report_delivery(at(17, 30), "tok", fetch=lambda: both("2026-09-23"))
     assert out == []
 
 
@@ -78,3 +82,17 @@ def test_wired_into_main():
     body = src[src.index("def main() -> int:"):]
     assert "check_report_delivery(" in body, "main 에서 호출하지 않는다"
     assert "not undelivered" in body, "'이상 없음' 조기 반환이 미도착을 무시한다"
+
+
+# ── 2026-11-03 재발방지: 바치케도 도착 감시 ──
+
+def test_pbachi_missing_alone_is_reported():
+    """쫀득바만 왔고 바치케가 안 왔으면 바치케만 경고(예전엔 바치케를 아예 안 봐서 침묵)."""
+    out = check_report_delivery(at(17, 30), "tok", fetch=lambda: [msg("2026-09-23")])
+    assert len(out) == 1 and "바치케" in out[0] and "product=pbachi" in out[0]
+
+
+def test_products_match_report_generator():
+    """감시 대상 제품명 = 발송기 PRODUCT_PROFILES 제목 — 제품이 늘면 둘 다 바꿔야 한다."""
+    from notify_increments import PRODUCT_PROFILES
+    assert sorted(REPORT_DELIVERY["products"]) == sorted(p["title"] for p in PRODUCT_PROFILES.values())
