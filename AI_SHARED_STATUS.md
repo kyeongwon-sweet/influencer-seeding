@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## 🟡 2026-11-03 [Claude repo 수정 / Codex 라이브 적용 대기] 새 형식 소재명은 해시태그 없어도 소재명 캡션 (`b7a2004f`)
+- **사용자 결정:** "파일명 규칙이 맞으면 전부" → 범위 확인 결과 **"새 형식만 전부"**(전체 바이럴로 넓히면 1,709행이 바뀌고 6~9월 사람이 쓴 문장 캡션이 조각으로 바뀌며 깨진 값 133건 → 사용자가 새 형식만 선택).
+- **수정(repo):** `isNewViralAssetFormat_`(날짜 두 칸 앞이 P 없는 `파인트`/`스틱바`) 추가, `fillCaptionFromAsset_` 바이럴 분기 `mayDerive` 에 `|| isNewViralAssetFormat_(assets[i][0])`. 옛 형식 '해시태그 없는 캡션 보존'(08-24) 유지. 테스트: 실제 함수를 가짜 시트로 실행 4건 추가(새 형식 문장캡션 교체·옛 형식 보존·해시태그 교체·재쓰기 없음). web 780+ pass, .gs 문법 통과.
+- **영향(라이브 CSV + 고친 규칙 미리계산, 쓰기 없음):** 새 형식 바이럴 28행 중 **바뀌는 행 11행** = 5159·5161·5162·5165·5171·5174·5175·5176·5179·5180·5182 (나머지 17행은 이미 소재명 캡션).
+- **Codex 몫(라이브):** ① repo `b7a2004f` 의 `isNewViralAssetFormat_` 함수를 `fillCaptionFromAsset_` 바로 위에 추가 ② `fillCaptionFromAsset_` 의 `const mayDerive = …` 를 repo 와 같게(주석 2줄 포함) ③ 저장·문법 확인 ④ 캡션 열 백업 후 `backfillViralCaptionsFromAsset()` 1회 → `changed: 11`, 위 11행만 바뀌고 그 외 변경 0 전후 대조.
+
 ## ✅ 2026-11-03 [Codex 라이브 적용·검증] 캡션 소재명 파생 — 새 소재명 형식 인식 (`491e798f`)
 - **라이브 수술 적용:** 바운드 Apps Script `01_연동시트_자동동기화.gs`의 `captionFromAssetName_` 제품 표시 판정 한 줄과 바로 위 주석 2줄만 repo `491e798f`와 같게 반영했다. `^(?:\d+P|파인트P?|스틱바P?)$`라서 새 `스틱바`·`파인트` 형식을 받고 숫자 무P 오탐은 계속 막는다. 저장 후 문법 오류가 없고 라이브 검색 결과는 새 정규식 1곳뿐이다.
 - **백업:** 12:32 KST에 원본 전체 사본(`1vewyLm_Q-k2EOznbVr6rts_9QNsUPBV2bH0nDe2ImuE`)과 URL·캡션 전용 사본(`1k_mzM3pjhsBRuYWJLF5B7PtDuPIMk4UxsJUYShjQj9w`, B·M 1:5214)을 만들고 저장 완료를 확인했다.
