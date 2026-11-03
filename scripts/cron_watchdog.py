@@ -67,7 +67,7 @@ DAILY_DEADLINE_KST: dict[str, dict[str, object]] = {
     #    데이터는 매일 복구되는데 마감만 못 지켜 매일 울리던 것을 없앤다.
     #    ⚠️ 이 값을 다시 줄이면 test_cron_watchdog 의 check_deadline_after_last_slot 이 막는다.
     "cron-kpi.yml":                {"due": "10:05", "grace": 320},  # 마감 15:25 KST
-    # 증분 리포트는 GitHub 4중 크론(12:20~15:20) + Apps Script 자가치유(12:35·16:10)
+    # 증분 리포트는 Apps Script 트리거(12:20 주 발송·13:20·16:10) + GitHub 4중 크론(12:20~15:20, 상시 지연)
     # 뒤에 검사한다. 워치독은 재발송하지 않고, 오늘 예약 성공이 끝내 없었다는 사실만 알린다.
     # 실제 발송은 ensure-daily-report가 담당하고 DEDUP이 중복을 막는다.
     "daily-increment-report.yml":  {"due": "12:20", "grace": 285, "since": "2026-08-27"},

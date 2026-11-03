@@ -60,5 +60,22 @@ test("자가치유는 제품별로 dispatch 하고, workflow 는 product 입력�
   assert.match(route, /if \(pp === true\) continue;/);
   assert.match(workflow, /product:[\s\S]*?options: \[jd, pbachi\]/);
   assert.match(workflow, /report:\s*\n[\s\S]*?if: github\.event_name == 'schedule' \|\| github\.event\.inputs\.product != 'pbachi'/);
-  assert.match(workflow, /report-pbachi:\s*\n\s*if: github\.event_name == 'schedule' \|\| github\.event\.inputs\.product == 'pbachi'/);
+  assert.match(workflow, /report-pbachi:\s*\n(?:\s*(?:concurrency:|group:|cancel-in-progress:)[^\n]*\n)*\s*if: github\.event_name == 'schedule' \|\| github\.event\.inputs\.product == 'pbachi'/);
+});
+
+test("리포트 주 발송은 구글 트리거 12:20 — GitHub 예약은 상시 지연(2026-11-03 새벽 발송 사고)", () => {
+  const start = appsScript.indexOf("function installEnsureDailyReportTrigger()");
+  assert.ok(start >= 0);
+  const body = appsScript.slice(start, appsScript.indexOf("\n}", start));   // 함수 본문만(뒤 주석 제외)
+  assert.match(body, /atHour\(12\)\.nearMinute\(20\)/, "정시 12:20 주 발송 트리거가 있어야 한다");
+  assert.match(body, /atHour\(13\)\.nearMinute\(20\)/, "13:20 백업");
+  assert.match(body, /atHour\(16\)\.nearMinute\(10\)/, "16:10 최종(final_retry 는 15시 이후로 판정)");
+  assert.doesNotMatch(body, /atHour\((?:[0-9]|1[01])\)/, "정오 전 트리거 금지 — 데이터·시트 입력 전 발송");
+});
+
+test("같은 제품 리포트 실행은 줄 세운다 — 구글 dispatch 와 지연된 예약이 동시에 DEDUP 을 통과하지 않게", () => {
+  const wf = workflow.replace(/\r\n/g, "\n");
+  for (const g of ["daily-increment-report-jd", "daily-increment-report-pbachi"]) {
+    assert.ok(wf.includes(`concurrency:\n      group: ${g}\n      cancel-in-progress: false`), g);
+  }
 });

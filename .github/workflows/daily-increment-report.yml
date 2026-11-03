@@ -58,6 +58,11 @@ on:
 
 jobs:
   report:
+    # 같은 제품 리포트 실행은 한 줄로(구글 트리거 dispatch 와 지연된 GitHub 예약이 동시에 돌아 DEDUP 을 둘 다
+    # 통과하는 이중 발송 방지, 2026-11-03). cancel 하지 않음 — 뒤 실행은 앞 발송을 보고 DEDUP 으로 생략.
+    concurrency:
+      group: daily-increment-report-jd
+      cancel-in-progress: false
     # 쫀득바. 자가치유(ensure-daily-report)·수동 실행은 product 없이/jd로 dispatch → 이 작업만 돈다.
     if: github.event_name == 'schedule' || github.event.inputs.product != 'pbachi'
     runs-on: ubuntu-latest
@@ -131,6 +136,9 @@ jobs:
   # 제품 필터·제목·인지광고 출처(파인트 인지광고 대시보드 탭)만 다르다. 목표 줄 없음(사용자 결정).
   # 쫀득바 작업과 독립 — 한쪽 실패가 다른 쪽 발송을 막지 않는다. 상태 알럿 댓글은 쫀득바 리포트에만 단다.
   report-pbachi:
+    concurrency:
+      group: daily-increment-report-pbachi
+      cancel-in-progress: false
     if: github.event_name == 'schedule' || github.event.inputs.product == 'pbachi'
     runs-on: ubuntu-latest
     steps:

@@ -31,6 +31,11 @@
 - **사전 결함 발견·보완:** 라이브 DB에 repo의 옛 `ops_daily_runs` migration이 적용돼 있지 않아 원안은 광고 행 upsert 뒤 마커 단계에서 실패할 상태였다. 프로덕션 정본인 `jobs.payload`에 날짜별 `ops_marker=google_ads_sync:pbachi`를 멱등 저장하도록 `29d12449`에서 수정했다. 최초 실행은 INSERT, 재실행은 UPDATE라 중복 마커가 생기지 않으며, 확정 0과 조회 실패 구분은 유지한다. Google Ads sync 테스트 **11/11**, `py_compile`, KST pre-push, `tsc` 통과.
 - **현재 대기:** Supabase `influencer-seeding` 프로젝트(ref `vkdvncwzccqtqnszxdwo`)에 `ad_platform_daily`가 아직 없어 migration·Google Ads dry-run/apply는 미실행. SQL Editor 탭은 로그인 상태로 열렸으나 Windows Computer Use가 현재 브라우저 URL을 안전하게 확정하지 못해 자동 조작이 중단됐다. Supabase 탭을 다시 전면에 열어 안전하게 재개한 뒤 `20261027_ad_platform_daily.sql` → dry-run(10-13~10-26, N>0·조회수 지표명 확인) → apply·재조회 순으로 마무리할 것.
 
+## 🟡 2026-11-03 [Claude 코드 / Codex 라이브 인계] 리포트 주 발송을 구글 트리거 12:20으로 (GitHub 예약 상시 지연)
+- **배경:** GitHub 12:20 예약이 매일 수시간 지연(최근 18~22시, 11/03은 01:15) → 실제 발송은 Apps Script 자가치유(12:35±15분)가 해 왔고 시각이 들쭉날쭉. 사용자 "재발방지·진행해".
+- **repo 변경(이 커밋):** `installEnsureDailyReportTrigger` 트리거 12:35·16:10 → **12:20·13:20·16:10**(nearMinute ±15분, 정오 전 트리거 없음 — 테스트로 고정). 워크플로 `daily-increment-report.yml` 두 작업에 제품별 `concurrency`(cancel 안 함) — 구글 dispatch와 지연 예약이 동시에 DEDUP을 통과해 이중 발송되는 경합 차단. 발송 창 가드(12시 이후)·제품별 도착 감시(17:05)는 앞 커밋.
+- **🟡 Codex 인계(라이브 Apps Script):** 연동시트 Apps Script 편집기에서 `installEnsureDailyReportTrigger` 함수만 repo 본(12:20·13:20·16:10)으로 교체 → 저장 → 편집기에서 `installEnsureDailyReportTrigger` 1회 실행 → 트리거 목록에 ensureDailyReport 3개(12·13·16시)만 있는지 확인. ⚠️ repo .gs 통째로 덮어쓰기 금지(라이브가 더 최신일 수 있음). `ensureDailyReport` 본문·final_retry(15시 이후) 판정은 그대로.
+
 ## ✅ 2026-11-03 [Claude] 리포트가 새벽 01:15에 나간 사고 — 예약 발송 창(12시 이후) + 마감 워치독 보강
 - **증상:** 11/02 리포트(쫀득바·바치케)가 11/03 01:16 KST에 발송. 쫀득바는 시트 인지광고·전환 입력 전이라 메타·틱톡 줄 없음·전환 '미입력'(지금 데이터로는 총 증분이 약 2배).
 - **원인:** 11/02 12:20 예약 실행이 GitHub에서 약 13시간 지연돼 11/03 01:15에 발화 → 그 시각 기준 '어제'=11/02로 계산해 발송(11/02 수집은 00:55 완료라 데이터 게이트 통과). 11/02 몫(11/01 리포트)은 12:37 자가치유가 이미 보냄. 이렇게 먼저 나가면 오늘 12:20 예약은 DEDUP으로 생략돼 미완성본이 그대로 남는다.
