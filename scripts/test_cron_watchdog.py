@@ -346,6 +346,15 @@ def main() -> int:
     for msg in check_deadline_after_last_slot():
         fails.append("⑲마감이 마지막 슬롯보다 이름 — " + msg)
 
+    # ⑳ 2026-11-03 사고: 전날 12:20 리포트 예약이 13시간 지연돼 오늘 01:15 KST에 성공(발송 창 밖이라 실제로는 아무것도
+    #    안 함). 이걸 '오늘 예약 성공'으로 치면 오늘 12:20 예약이 안 돌아도 마감 경고가 안 뜬다 → 예정 시각 이후만 인정.
+    early_today = {"daily-increment-report.yml": "2026-11-02T16:15:45Z"}   # = 11-03 01:15 KST
+    if len(check_daily_deadlines(early_today, at_kst(11, 3, 17, 5), deadlines=REPORT)) != 1:
+        fails.append("⑳예정 시각 전(01:15) 예약 성공을 오늘 실행으로 쳐서 미실행을 가림")
+    on_time_today = {"daily-increment-report.yml": "2026-11-03T03:25:00Z"}  # = 12:25 KST
+    if check_daily_deadlines(on_time_today, at_kst(11, 3, 17, 5), deadlines=REPORT):
+        fails.append("⑳예정 시각 이후 성공인데 경고함")
+
     if fails:
         print("[FAIL] test_cron_watchdog 실패")
         for x in fails:

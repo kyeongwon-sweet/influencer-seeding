@@ -31,6 +31,11 @@
 - **사전 결함 발견·보완:** 라이브 DB에 repo의 옛 `ops_daily_runs` migration이 적용돼 있지 않아 원안은 광고 행 upsert 뒤 마커 단계에서 실패할 상태였다. 프로덕션 정본인 `jobs.payload`에 날짜별 `ops_marker=google_ads_sync:pbachi`를 멱등 저장하도록 `29d12449`에서 수정했다. 최초 실행은 INSERT, 재실행은 UPDATE라 중복 마커가 생기지 않으며, 확정 0과 조회 실패 구분은 유지한다. Google Ads sync 테스트 **11/11**, `py_compile`, KST pre-push, `tsc` 통과.
 - **현재 대기:** Supabase `influencer-seeding` 프로젝트(ref `vkdvncwzccqtqnszxdwo`)에 `ad_platform_daily`가 아직 없어 migration·Google Ads dry-run/apply는 미실행. SQL Editor 탭은 로그인 상태로 열렸으나 Windows Computer Use가 현재 브라우저 URL을 안전하게 확정하지 못해 자동 조작이 중단됐다. Supabase 탭을 다시 전면에 열어 안전하게 재개한 뒤 `20261027_ad_platform_daily.sql` → dry-run(10-13~10-26, N>0·조회수 지표명 확인) → apply·재조회 순으로 마무리할 것.
 
+## ✅ 2026-11-03 [Claude] 리포트가 새벽 01:15에 나간 사고 — 예약 발송 창(12시 이후) + 마감 워치독 보강
+- **증상:** 11/02 리포트(쫀득바·바치케)가 11/03 01:16 KST에 발송. 쫀득바는 시트 인지광고·전환 입력 전이라 메타·틱톡 줄 없음·전환 '미입력'(지금 데이터로는 총 증분이 약 2배).
+- **원인:** 11/02 12:20 예약 실행이 GitHub에서 약 13시간 지연돼 11/03 01:15에 발화 → 그 시각 기준 '어제'=11/02로 계산해 발송(11/02 수집은 00:55 완료라 데이터 게이트 통과). 11/02 몫(11/01 리포트)은 12:37 자가치유가 이미 보냄. 이렇게 먼저 나가면 오늘 12:20 예약은 DEDUP으로 생략돼 미완성본이 그대로 남는다.
+- **조치:** ① `notify_increments.outside_report_window` — 예약 실행(STRICT_DATE)은 KST 12시 이후에만 발송, 창 밖이면 아무것도 안 하고 종료(수동·자가치유 dispatch·update_ts 편집은 제외). ② `cron_watchdog.check_daily_deadlines` — '오늘 예정 시각 이후' 예약 성공만 오늘 실행으로 인정(01:15 지연분이 오늘 성공으로 잡혀 미실행을 가리던 구멍). 테스트: test_report_window.py, watchdog ⑳.
+
 ## ✅ 2026-10-28 [Claude] 바치케 리포트 미발송 → 수동 발송 + 자가치유를 제품별로
 - **증상:** 10/27분 바치케 리포트가 13시 넘도록 미발송(사용자 발견). 쫀득바는 12:40 발송.
 - **원인:** GitHub 예약(12:20 KST)이 수시간 지연(전날 첫 예약 실행 18:07 KST). 백업인 Apps Script 자가치유(`ensure-daily-report`, 12:35·16:10)가 **쫀득바 제목만 보고**, product 없이 dispatch → 워크플로 `report-pbachi` 작업 skip. 바치케는 지연된 예약만 기다림(10-27 바치케 추가 때 '자가치유는 쫀득바만'으로 알고 남겨둔 공백).

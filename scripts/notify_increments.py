@@ -16,6 +16,19 @@ from report_message import is_report_for, report_title
 from datetime import date
 from channel_kind import free_cpv_label, free_reason, is_banner_channel, is_free_by_design
 from db import get_client
+from kst_dates import kst_now
+
+# 예약 발송 창 시작(KST 시). 2026-11-03 사고: 전날 12:20 예약이 GitHub에서 13시간 지연돼 새벽 01:15에 돌았고,
+#   그 시각 기준 '어제'(=막 끝난 날) 리포트를 시트 입력·광고 집계 전에 보냈다(쫀득바 인지광고·전환 빠짐, 총 증분 절반).
+#   예약 실행은 이 시각 이후에만 보낸다. 창 밖 예약 실행은 아무것도 안 하고 끝냄 → 그날 12:20 예약·자가치유(12:35·16:10)가 발송.
+REPORT_WINDOW_START_HOUR = 12
+
+
+def outside_report_window(strict: bool, update_ts: str, now=None) -> bool:
+    """예약 실행(STRICT_DATE=1)이 발송 창(KST 12시 이후) 밖이면 True. 수동·자가치유(dispatch)·편집(update_ts)은 해당 없음."""
+    if not strict or update_ts:
+        return False
+    return (now or kst_now()).hour < REPORT_WINDOW_START_HOUR
 
 CHANNEL = os.getenv("SLACK_CHANNEL") or "C0B4F7GBX17"  # 기본 #빙과_마케팅_리포트 (빈값이면 폴백). DM 미리보기 시 user id 주입
 SLACK_API = "https://slack.com/api/chat.postMessage"
@@ -385,6 +398,10 @@ def main():
 
     target = os.getenv("MONITORING_DATE") or None
     strict = os.getenv("STRICT_DATE") == "1"
+    if outside_report_window(strict, update_ts):
+        print(f"[notify] 예약 실행이 발송 창(KST {REPORT_WINDOW_START_HOUR}시 이후) 밖({kst_now():%H:%M}) — "
+              "지연된 전날 예약으로 보고 발송하지 않음(그날 12:20 예약·자가치유가 보냄)")
+        return
 
     # 삭제 전용(DELETE_ONLY=1): 그 날짜(target) 리포트+댓글만 지우고 재발송/데이터조회 없이 종료(잘못 나간 리포트 정리용).
     if os.getenv("DELETE_ONLY") == "1" and target and CHANNEL[:1] in ("C", "G"):

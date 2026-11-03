@@ -322,7 +322,10 @@ def check_daily_deadlines(
         if now_kst < deadline:
             continue
         ts = last_schedule_success.get(wf)
-        if ts and (_parse_github_ts(ts) + timedelta(hours=9)).date() == today:
+        due_today = now_kst.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        # 오늘 '예정 시각 이후'의 예약 성공만 오늘 실행으로 친다 — 예정 시각 전 성공은 전날 예약이 지연돼 넘어온 것
+        #   (2026-11-03: 전날 12:20 리포트 예약이 01:15에 돌아 '오늘 성공'으로 잡히면 오늘 미실행을 가린다).
+        if ts and _parse_github_ts(ts) + timedelta(hours=9) >= due_today:
             continue  # 오늘 예약 성공 있음 → 정상
         seen = f"최근 예약 성공 {kst(ts)} KST" if ts else "예약 성공 기록 없음"
         note = ""
