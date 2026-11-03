@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 🟡 2026-11-03 [Claude repo 수정 / Codex 라이브 적용 대기] 캡션 소재명 파생 — 새 소재명 형식 인식 (`491e798f`)
+- **발단:** 사용자 "소재명에서 규칙에 맞으면 캡션에 자동적용하기로 했잖아". 10-29~31 바이럴 행 다수가 스크랩 해시태그 캡션 그대로(예: "쟁여둔 거 졸귀ㅋㅋ #아이돌 #예쁘다").
+- **원인:** 10-29부터 새 소재명 형식 `…X_스틱바__261029_빙과_…`·`…X_파인트__261030_…`(제품 표시에 **P 없음**, 기획자 칸 빈칸). `captionFromAssetName_` 이 `^(\d+|파인트|스틱바)P$` 만 인정 → 빈 값 → `fillCaptionFromAsset_`(dailyAuto 단계) 무동작.
+- **수정(repo):** `^(?:\d+P|파인트P?|스틱바P?)$`(숫자는 P 필수). 테스트 `web/tests/apps-script-caption-new-asset-format.test.ts`(실제 소재명 4건). web 780 pass, .gs 문법 통과.
+- **영향(라이브 CSV + 고친 함수 미리계산, 쓰기 없음):** 파생이 달라지는 28행 = **교체될 17행**(캡션 빈칸/해시태그 → 정책상 교체: 5152·5153·5154·5155·5160·5163·5164·5166·5167·5168·5169·5170·5172·5173·5177·5178·5181) + **보존 11행**(해시태그 없는 캡션, 08-24 정책 '해시태그 없는 기존 캡션 보존') — 보존분은 사용자 결정 대기.
+- **Codex 몫(라이브 Apps Script):** ① 라이브 `captionFromAssetName_` 의 제품 표시 정규식 한 줄을 repo `491e798f` 와 같게 교체(주석 2줄 포함) ② 저장 후 문법 오류 없음 확인 ③ `backfillViralCaptionsFromAsset()` 1회 실행 또는 다음 dailyAuto 대기 → 위 17행 캡션이 소재명 파생값으로 바뀌었는지·그 외 캡션 열 변경 0인지 전후 대조.
+
 ## ✅ 2026-11-03 [Codex 라이브 적용·검증] 리포트 발송 트리거 12:20·13:20·16:10 (`dd9fd6de`)
 - **라이브 함수만 수술적 반영:** 바운드 Apps Script `01_연동시트_자동동기화.gs`에서 `installEnsureDailyReportTrigger`만 repo `dd9fd6de` 본문으로 교체했다. `ensureDailyReport` 본문과 다른 라이브 코드는 변경하지 않았고, 10:44 KST 저장·실행이 오류 없이 완료됐다.
 - **예약 검증:** 설치 함수는 기존 `ensureDailyReport`만 골라 삭제한 뒤 `atHour(12).nearMinute(20)`·`atHour(13).nearMinute(20)`·`atHour(16).nearMinute(10)`을 생성한다. 트리거 화면 실측은 `ensureDailyReport=3`이며 12시대·13시대·16시대 예약이다.
