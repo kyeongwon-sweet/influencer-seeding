@@ -471,8 +471,8 @@ test("new DB-appended rows immediately receive H/I/J formulas and numeric date h
   const pullStart = appsScript.indexOf("function pullFromDB()");
   const pullEnd = appsScript.indexOf("function dailyAuto()", pullStart);
   const pullBody = appsScript.slice(pullStart, pullEnd);
-  assert.match(pullBody, /appendRange\.setValues\(pendingRows\.map\(x => x\.values\)\)/);
-  assert.match(pullBody, /assertRowCountStable_\(sheet, lastRow, "pullFromDB append"\)/);
+  assert.match(pullBody, /appendRange\.setValues\(rowsToAppend\.map\(x => x\.values\)\)/);
+  assert.match(pullBody, /assertRowCountStable_\(sheet, appendBaseRow, "pullFromDB append"\)/);
   assert.match(pullBody, /writtenUrls/);
   assert.match(pullBody, /appendRange\.clearContent\(\)/);
   assert.match(pullBody, /ensureNewRowsMetricFormulas_\(sheet, startRow, startRow \+ added - 1\)/);
@@ -1706,8 +1706,12 @@ test("pullFromDB: 기존 행 빈칸 채움을 열 단위 배치로 쓴다(개별
   assert.notEqual(start, -1);
   // 편집을 모아서 열 단위로 1회씩 쓴다
   assert.match(body, /const fillEdits = \[\]/);
-  assert.match(body, /fillEdits\.push\(\{ col: fieldCols\[f\], row: rowNum, value: val \}\)/);
-  assert.match(body, /writeColumnRuns_\(sheet, Number\(col\), byCol\[col\], lastRow\)/);
+  assert.match(body, /fillEdits\.push\(\{ col: fieldCols\[f\], key: key, value: val \}\)/);
+  assert.match(body, /filled = writePullFillsByKey_\(sheet, urlCol, fillEdits\)/);
+  // 쓰기 직전 현재 위치로 다시 맞춘 뒤에도 열 단위 배치로 쓴다(2026-11-04 동시 편집 실패 재발방지)
+  const helper = appsScript.slice(appsScript.indexOf("function writePullFillsByKey_("), start);
+  assert.match(helper, /writeColumnRuns_\(sheet, Number\(col\), runs, lastRow\)/);
+  assert.doesNotMatch(helper, /setValue\(/);
   // 🚫 기존 행 채움에 개별 setValue를 되살리지 말 것 — 타임아웃 재발 경로다
   assert.doesNotMatch(body, /cell\.setValue\(val\)/);
 });

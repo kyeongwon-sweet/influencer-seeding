@@ -1,5 +1,15 @@
 # AI Shared Status
 
+## 🟡 2026-11-04 [Claude repo 수정 / Codex 라이브 적용 대기] DB→시트 3시간 동기화가 사람 편집과 겹쳐도 안 멈추게
+- **사고:** 11-04 18:04 `scheduledDbPullSync_` 실패 DM("pullFromDB returned false"). 실행 기록의 실제 이유는 `행 수 변경으로 쓰기 취소(writeColumnRuns): 5267→5270. 시트가 동시 편집됨` — 처음 읽고 3분 뒤 쓰는 사이 사람이 맨 아래에 바치케 바이럴 3행(5268~5270)을 넣었다. 가드가 쓰기를 취소해 손상 없음, 18:15 재시도 OK(추가 0·채움 0). Slack 검색상 첫 발생.
+- **근본 원인:** 처음 읽은 행 번호를 3분 뒤 그대로 쓰고, 그 사이 행 수가 바뀌면 전체 취소하는 구조(행 수=대리 신호). 근무시간 3시간 주기라 사람 입력과 또 겹친다. 그리고 알림에는 실제 이유가 빠져 실행 기록을 뒤져야 했다.
+- **수정(repo `Combined_Sheet_AppsScript.gs`):**
+  1. `currentRowIndexByKey_`·`writePullFillsByKey_` 추가 — 빈칸 채움을 **쓰기 직전 URL로 현재 행을 다시 찾아** 쓰고, 그 사이 사람이 채운 칸은 보존. 열 단위 배치(`writeColumnRuns_`) 유지, 가드 창은 몇 초로 축소. `fillEdits`는 행 번호 대신 `key`를 담음, `filled`=실제 쓴 칸 수.
+  2. 새 행 추가 직전 현재 시트를 다시 읽어 **현재 맨 아래부터** 붙이고, 사람이 이미 넣은 같은 글은 제외(`rowsToAppend`). 직후 URL 검증·롤백은 그대로.
+  3. `PULL_FROM_DB_LAST_ERROR_` — 실패 DM에 `pullFromDB returned false — <실제 이유>`가 실림.
+- **검증:** 실제 함수를 가짜 시트로 실행하는 `web/tests/apps-script-pull-concurrent-edit.test.ts` 5건(맨 아래 추가·사람이 먼저 채운 칸 보존·중간 끼어듦·추가 중복 방지·실패 이유) + 계약 테스트 2건 갱신. web 전체 **789/789**, .gs 문법 통과.
+- **Codex 요청:** 라이브 `01_연동시트_자동동기화`에 위 변경만 수술 적용(파일 통째 덮어쓰기 금지, 라이브 `pullFromDB`가 repo 이전본과 같은지 먼저 대조). `writeColumnRuns_`·`assertRowCountStable_`는 `02_시트쓰기_충돌방지`의 것을 그대로 쓴다(수정 없음). 적용 후 `runDbPullSyncNow()` 1회 → 로그 `dbPullSync_result {"status":"OK"...}` 확인, 다음 정기 실행 OK 확인.
+
 ## 🟡 2026-11-03 [Claude 진단 / Codex 실행 대기] 캡션 28행 시트만 바뀌고 DB·대시보드 미반영 → syncAll 1회
 - **확인(14시대 KST):** 오늘 바꾼 캡션 28행(17행 `491e798f` + 11행 `b7a2004f`; 시트 5152~5182 중 해당 행)이 **시트에는 새 캡션**인데 DB `sponsored_posts.content_summary`는 **28행 모두 옛 캡션**(예: "이게 AI가 아니라고???")이었다. 대시보드는 DB를 읽으므로 같이 옛 캡션.
 - **원인:** 시트→DB 반영은 `dailyAuto`(08:30 KST)의 `syncAll` 단계뿐이고, 캡션 변경은 12:37·13:56에 했다. 버그 아님(순서 문제).

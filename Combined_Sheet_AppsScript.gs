@@ -1570,6 +1570,43 @@ function ensureNewRowsMetricFormulas_(sheet, startRow, endRow) {
   return result;
 }
 
+// 지금 시트의 URL 열을 읽어 {글 키: 행 인덱스(0부터)}를 만든다. 같은 키면 마지막 행(pullFromDB 첫 인덱스와 같은 규칙).
+function currentRowIndexByKey_(sheet, urlCol, lastRow) {
+  const index = Object.create(null);
+  if (lastRow < CONFIG.DATA_START_ROW) return index;
+  sheet.getRange(CONFIG.DATA_START_ROW, urlCol, lastRow - CONFIG.DATA_START_ROW + 1, 1).getValues().forEach((r, i) => {
+    const u = String(r[0] || "").trim();
+    const key = u ? linkKey_(u) : "";
+    if (key) index[key] = i;
+  });
+  return index;
+}
+
+// DB→시트 빈칸 채움을 '쓰기 직전 현재 위치' 기준으로 쓴다. edits: [{col, key, value}]
+// 2026-11-04 18:04 실패 알림: 처음 읽고 3분 뒤 쓰는 사이 사람이 맨 아래에 3행을 넣어(5267→5270)
+// 행 수 가드가 전체를 취소했다. 이제 열마다 URL 열과 그 열을 다시 읽어 같은 글의 현재 행에 쓰고,
+// 그 사이 사람이 채운 칸은 건드리지 않는다. 다시 읽은 직후 바로 쓰므로 행 수 가드 창은 몇 초로 줄어든다.
+function writePullFillsByKey_(sheet, urlCol, edits) {
+  const byCol = {};
+  edits.forEach(e => { (byCol[e.col] = byCol[e.col] || []).push(e); });
+  let written = 0;
+  Object.keys(byCol).forEach(col => {
+    const lastRow = sheet.getLastRow();
+    if (lastRow < CONFIG.DATA_START_ROW) return;
+    const rowIndex = currentRowIndexByKey_(sheet, urlCol, lastRow);
+    const current = sheet.getRange(CONFIG.DATA_START_ROW, Number(col), lastRow - CONFIG.DATA_START_ROW + 1, 1).getValues();
+    const runs = [];
+    byCol[col].forEach(e => {
+      if (!(e.key in rowIndex)) return;   // 그 사이 행이 지워졌으면 건너뜀
+      const i = rowIndex[e.key];
+      if (String(current[i][0] == null ? "" : current[i][0]).trim() !== "") return;   // 그 사이 사람이 채운 칸은 보존
+      runs.push({ row: CONFIG.DATA_START_ROW + i, value: e.value });
+    });
+    written += writeColumnRuns_(sheet, Number(col), runs, lastRow);
+  });
+  return written;
+}
+
 function pullFromDB() {
   try {
     const sheet = getSheet_();
@@ -1645,8 +1682,7 @@ function pullFromDB() {
           //    시트 성장에 따라 왕복이 선형 증가해 20~30분 한도를 넘긴다(3,216행 × 11필드).
           //    여기서는 메모리 블록만 갱신하고, 실제 쓰기는 아래에서 **열 단위 1회**로 모은다.
           _pfBlock[_pfBi][_pfCi] = val;
-          fillEdits.push({ col: fieldCols[f], row: rowNum, value: val });
-          filled++;
+          fillEdits.push({ col: fieldCols[f], key: key, value: val });
         });
       } else if (holdTikTokAppends && /tiktok\.com/i.test(normalizedUrl)) {
         heldTikTok++;
@@ -1668,36 +1704,37 @@ function pullFromDB() {
     // 모아둔 기존 행 빈칸 채움을 **열 단위로 1회씩** 쓴다.
     // 개별 setValue()는 시트가 커질수록 왕복이 선형 증가해 Apps Script 실행 한도를 넘겼다
     // (2026-08-26 WATCHDOG_TIMEOUT: 3,216행 × fillFields 11개 → 최악 3.5만 회 왕복).
-    // writeColumnRuns_는 연속 구간을 묶어 쓰고 행 수 안정성까지 검증한다(고아 행 방지).
-    if (fillEdits.length > 0) {
-      const byCol = {};
-      fillEdits.forEach(e => { (byCol[e.col] = byCol[e.col] || []).push(e); });
-      Object.keys(byCol).forEach(col => {
-        writeColumnRuns_(sheet, Number(col), byCol[col], lastRow);
-      });
-    }
+    // 처음 읽은 행 번호를 그대로 쓰지 않고 쓰기 직전 URL로 현재 행을 다시 찾는다(writePullFillsByKey_).
+    if (fillEdits.length > 0) filled = writePullFillsByKey_(sheet, urlCol, fillEdits);
 
     if (pendingRows.length > 0) {
-      assertRowCountStable_(sheet, lastRow, "pullFromDB append");
-      const startRow = lastRow + 1;
-      const appendRange = sheet.getRange(startRow, 1, pendingRows.length, lastCol);
-      appendRange.setValues(pendingRows.map(x => x.values));
-      SpreadsheetApp.flush();
+      // 추가 직전 현재 시트를 다시 읽는다. 그 사이 사람이 맨 아래에 행을 넣었으면 그 아래부터 붙이고,
+      // 같은 글을 사람이 직접 넣었으면 빼서 두 줄이 되지 않게 한다.
+      const appendBaseRow = sheet.getLastRow();
+      const currentRows = currentRowIndexByKey_(sheet, urlCol, appendBaseRow);
+      const rowsToAppend = pendingRows.filter(x => !(x.key in currentRows));
+      if (rowsToAppend.length > 0) {
+        assertRowCountStable_(sheet, appendBaseRow, "pullFromDB append");
+        const startRow = appendBaseRow + 1;
+        const appendRange = sheet.getRange(startRow, 1, rowsToAppend.length, lastCol);
+        appendRange.setValues(rowsToAppend.map(x => x.values));
+        SpreadsheetApp.flush();
 
-      // 쓰기 직후 URL-key를 다시 확인한다. 하나라도 어긋나면 방금 쓴 범위를 지우고 실패 처리해
-      // 메타와 조회수의 행 분리를 차단한다(문서락 안에서 실행돼 다른 쓰기와 섞이지 않음).
-      const writtenUrls = sheet.getRange(startRow, urlCol, pendingRows.length, 1).getValues();
-      const mismatches = [];
-      for (let i = 0; i < pendingRows.length; i++) {
-        if (linkKey_(String(writtenUrls[i][0] || "")) !== pendingRows[i].key) mismatches.push(startRow + i);
+        // 쓰기 직후 URL-key를 다시 확인한다. 하나라도 어긋나면 방금 쓴 범위를 지우고 실패 처리해
+        // 메타와 조회수의 행 분리를 차단한다(문서락 안에서 실행돼 다른 쓰기와 섞이지 않음).
+        const writtenUrls = sheet.getRange(startRow, urlCol, rowsToAppend.length, 1).getValues();
+        const mismatches = [];
+        for (let i = 0; i < rowsToAppend.length; i++) {
+          if (linkKey_(String(writtenUrls[i][0] || "")) !== rowsToAppend[i].key) mismatches.push(startRow + i);
+        }
+        if (mismatches.length > 0) {
+          appendRange.clearContent();
+          throw new Error("pullFromDB 신규 행 URL 검증 실패 — 롤백 행: " + mismatches.join(", "));
+        }
+        added = rowsToAppend.length;
+        ensureNewRowsMetricFormulas_(sheet, startRow, startRow + added - 1);
+        applyLinkedInputValidationsToRows_(sheet, startRow, added);
       }
-      if (mismatches.length > 0) {
-        appendRange.clearContent();
-        throw new Error("pullFromDB 신규 행 URL 검증 실패 — 롤백 행: " + mismatches.join(", "));
-      }
-      added = pendingRows.length;
-      ensureNewRowsMetricFormulas_(sheet, startRow, startRow + added - 1);
-      applyLinkedInputValidationsToRows_(sheet, startRow, added);
     }
 
     const rejectedSummary = Object.keys(rejectedReasons)
@@ -1711,6 +1748,7 @@ function pullFromDB() {
   } catch (e) {
     safeAlert_("❌ DB→시트 반영 오류\n" + e.message);
     Logger.log(e.stack || e.message);
+    PULL_FROM_DB_LAST_ERROR_ = String(e.message || e);   // 실패 알림에 실제 이유를 싣는다
     return false;
   }
 }
@@ -2718,6 +2756,8 @@ function dailyAuto() {
 // watchdog을 예약하고 성공 시 제거한다. watchdog은 원 실행과 겹쳐 쓰지 않고 30분 이후에만 재시도한다.
 // ═══════════════════════════════════════════════════════════════
 const DB_PULL_SYNC_INTERVAL_HOURS_ = 3;
+// pullFromDB가 false를 돌려줄 때의 실제 오류. 예전 알림은 "returned false"만 보여 원인을 실행 기록에서 찾아야 했다(2026-11-04).
+var PULL_FROM_DB_LAST_ERROR_ = "";
 const DB_PULL_SYNC_RETRY_DELAY_MS_ = 7 * 60 * 1000;
 // 🚨 2026-08-26: 20분이던 워치독이 **본 실행보다 먼저 울려** 성공한 실행도 실패로 알렸다.
 //    Apps Script 실행 한도는 30분이므로, 워치독은 그 뒤에 울려야 "완료 기록 없음"이 실제 실패를 뜻한다.
@@ -2784,8 +2824,9 @@ function runDbPullSyncAttempt_(source, attempt) {
         .create();
 
       try {
+        PULL_FROM_DB_LAST_ERROR_ = "";
         const ok = pullFromDB();
-        if (ok === false) throw new Error("pullFromDB returned false");
+        if (ok === false) throw new Error("pullFromDB returned false" + (PULL_FROM_DB_LAST_ERROR_ ? " — " + PULL_FROM_DB_LAST_ERROR_ : ""));
         const finishedAt = new Date().toISOString();
         removeDbPullSyncTriggersByHandler_(["dbPullSyncWatchdog_", "dbPullSyncRetry_"]);
         props.deleteProperty("DB_PULL_SYNC_PENDING_JSON");

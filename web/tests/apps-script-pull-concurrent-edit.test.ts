@@ -1,0 +1,147 @@
+// DB→시트 3시간 동기화(pullFromDB)가 사람의 시트 편집과 겹쳐도 멈추지 않고, 엉뚱한 칸에 쓰지도 않는다.
+// 2026-11-04 18:04 실패 알림: 처음 읽고 3분 뒤 쓰는 사이 사람이 맨 아래에 3행을 넣어(5267→5270)
+//   행 수 가드가 쓰기 전체를 취소했다(데이터 손상은 없었고 7분 뒤 재시도 성공).
+// 실제 pullFromDB·쓰기 가드 함수를 가짜 시트로 그대로 돌린다.
+
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const appsScript = readFileSync(join(import.meta.dirname, "../../Combined_Sheet_AppsScript.gs"), "utf8");
+const slice = (from: string, to: string) => {
+  const start = appsScript.indexOf(from);
+  const end = appsScript.indexOf(to, start);
+  assert.ok(start >= 0 && end > start, `${from} 구간을 찾지 못함`);
+  return appsScript.slice(start, end);
+};
+const guardSrc = slice("function assertRowCountStable_(", "// 기본 필터가 켜진 시트에서");
+const pullStart = appsScript.indexOf("function currentRowIndexByKey_(");
+const pullFnStart = appsScript.indexOf("function pullFromDB()", pullStart);
+const pullEnd = appsScript.slice(pullFnStart).search(/\r?\n\}\r?\n/);
+assert.ok(pullStart >= 0 && pullEnd > 0, "pullFromDB 구간을 찾지 못함");
+const pullSrc = appsScript.slice(pullStart, pullFnStart + pullEnd) + "\n}\n";
+
+// 열: 1 업로드일 · 2 게시물URL · 3 채널명 · 4 캡션. 1행 = 헤더, 데이터는 2행부터.
+const COLS = { posted_at: 1, url: 2, account_name: 3, content_summary: 4 };
+
+type Cell = string;
+function makeSheet(rows: Cell[][], onFirstBlockRead?: (data: Cell[][]) => void) {
+  const data: Cell[][] = [["업로드일", "게시물URL", "채널명", "캡션"], ...rows.map((r) => r.slice())];
+  let blockRead = false;
+  const sheet = {
+    data,
+    getLastRow: () => {
+      for (let i = data.length - 1; i >= 0; i--) if (data[i].some((v) => String(v ?? "") !== "")) return i + 1;
+      return 0;
+    },
+    getLastColumn: () => 4,
+    getRange: (row: number, col: number, nr = 1, nc = 1) => ({
+      getValues: () => {
+        const out = Array.from({ length: nr }, (_, i) =>
+          Array.from({ length: nc }, (_, j) => (data[row - 1 + i] ?? [])[col - 1 + j] ?? ""));
+        // pullFromDB가 전체 블록을 처음 읽은 '직후' 사람이 편집하는 상황을 만든다.
+        if (nc > 1 && !blockRead) { blockRead = true; onFirstBlockRead?.(data); }
+        return out;
+      },
+      setValues: (vals: Cell[][]) => {
+        vals.forEach((r, i) => {
+          while (data.length < row + i) data.push(["", "", "", ""]);
+          r.forEach((v, j) => { data[row - 1 + i][col - 1 + j] = v; });
+        });
+      },
+      clearContent: () => {},
+    }),
+  };
+  return sheet;
+}
+
+function runPull(sheet: ReturnType<typeof makeSheet>, posts: Record<string, string>[]) {
+  const alerts: string[] = [];
+  const fn = new Function(
+    "getSheet_", "buildFieldCols_", "CONFIG", "UrlFetchApp", "authHeaders_", "resolveSheetShortLinks_",
+    "linkKey_", "classifySheetSyncUrl_", "fmtVal_", "SpreadsheetApp", "ensureNewRowsMetricFormulas_",
+    "applyLinkedInputValidationsToRows_", "safeAlert_", "Logger", "shortLinkNote_",
+    `var PULL_FROM_DB_LAST_ERROR_ = "";\n${guardSrc}\n${pullSrc}\nreturn { pullFromDB, lastError: () => PULL_FROM_DB_LAST_ERROR_ };`,
+  )(
+    () => sheet,
+    () => COLS,
+    { DATA_START_ROW: 2, LIST_API_URL: "x" },
+    { fetch: () => ({ getResponseCode: () => 200, getContentText: () => JSON.stringify({ posts }) }) },
+    () => ({}),
+    () => ({ unresolved: [] }),
+    (u: string) => u.replace(/\/$/, "").split("/").pop(),
+    (u: string) => ({ valid: true, url: u }),
+    (_f: string, v: unknown) => (v == null ? "" : String(v)),
+    { flush: () => {} },
+    () => {},
+    () => {},
+    (m: string) => alerts.push(m),
+    { log: () => {} },
+    () => "",
+  );
+  return { ok: fn.pullFromDB(), alerts, lastError: fn.lastError() };
+}
+
+const u = (id: string) => `https://www.instagram.com/p/${id}/`;
+
+test("🚨 동기화 중 사람이 맨 아래에 행을 넣어도 멈추지 않고, 빈칸은 같은 글 행에 채운다", () => {
+  const sheet = makeSheet(
+    [["2026-11-04", u("A1"), "", ""], ["2026-11-04", u("B2"), "acct_b", ""]],
+    (data) => { data.push(["", u("H1"), "사람입력1", ""], ["", u("H2"), "사람입력2", ""], ["", u("H3"), "사람입력3", ""]); },
+  );
+  const r = runPull(sheet, [
+    { url: u("A1"), account_name: "acct_a", content_summary: "캡션A" },
+    { url: u("B2"), account_name: "DB값은무시", content_summary: "캡션B" },
+  ]);
+  assert.equal(r.ok, true, r.alerts.join("\n"));
+  assert.equal(sheet.data[1][2], "acct_a");
+  assert.equal(sheet.data[1][3], "캡션A");
+  assert.equal(sheet.data[2][2], "acct_b", "채워져 있던 칸은 DB값으로 덮지 않는다");
+  assert.equal(sheet.data[2][3], "캡션B");
+  assert.deepEqual(sheet.data.slice(3).map((x) => x[2]), ["사람입력1", "사람입력2", "사람입력3"], "사람이 넣은 행은 그대로");
+});
+
+test("동기화 중 사람이 같은 빈칸을 먼저 채웠으면 사람 값을 보존한다", () => {
+  const sheet = makeSheet([["2026-11-04", u("A1"), "", ""]], (data) => { data[1][3] = "사람이쓴캡션"; });
+  const r = runPull(sheet, [{ url: u("A1"), content_summary: "DB캡션" }]);
+  assert.equal(r.ok, true);
+  assert.equal(sheet.data[1][3], "사람이쓴캡션");
+});
+
+test("동기화 중 행이 중간에 끼어들어 밀려도 값은 원래 글 행으로 간다", () => {
+  const sheet = makeSheet(
+    [["", u("A1"), "", ""], ["", u("B2"), "", ""]],
+    (data) => { data.splice(1, 0, ["", u("X9"), "끼어든행", ""]); },
+  );
+  const r = runPull(sheet, [{ url: u("A1"), content_summary: "캡션A" }, { url: u("B2"), content_summary: "캡션B" }]);
+  assert.equal(r.ok, true);
+  assert.deepEqual(sheet.data.slice(1).map((x) => [x[1], x[3]]), [[u("X9"), ""], [u("A1"), "캡션A"], [u("B2"), "캡션B"]]);
+});
+
+test("새 글 추가: 사람이 넣은 행 아래에 붙이고, 사람이 이미 넣은 같은 글은 두 줄로 만들지 않는다", () => {
+  const sheet = makeSheet(
+    [["", u("A1"), "a", "c"]],
+    (data) => { data.push(["", u("N1"), "사람이먼저넣음", ""], ["", u("H1"), "사람입력", ""]); },
+  );
+  const r = runPull(sheet, [
+    { url: u("A1") },
+    { url: u("N1"), account_name: "DB" },
+    { url: u("N2"), account_name: "DB새글" },
+  ]);
+  assert.equal(r.ok, true, r.alerts.join("\n"));
+  assert.deepEqual(sheet.data.slice(1).map((x) => x[1]), [u("A1"), u("N1"), u("H1"), u("N2")]);
+  assert.equal(sheet.data[4][2], "DB새글");
+  assert.match(r.alerts[0], /신규 행 추가: 1건/);
+});
+
+test("실패하면 실제 이유를 남긴다(알림에 'returned false'만 오지 않게)", () => {
+  const sheet = makeSheet([["", u("A1"), "", ""]]);
+  sheet.getRange = () => { throw new Error("가짜 시트 오류"); };
+  const r = runPull(sheet, [{ url: u("A1"), content_summary: "x" }]);
+  assert.equal(r.ok, false);
+  assert.equal(r.lastError, "가짜 시트 오류");
+  const attempt = slice("function runDbPullSyncAttempt_(", "function scheduledDbPullSync_(");
+  assert.match(attempt, /PULL_FROM_DB_LAST_ERROR_ = "";\s*const ok = pullFromDB\(\);/);
+  assert.match(attempt, /"pullFromDB returned false" \+ \(PULL_FROM_DB_LAST_ERROR_ \? " — " \+ PULL_FROM_DB_LAST_ERROR_ : ""\)/);
+});
