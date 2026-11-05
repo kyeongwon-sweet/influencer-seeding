@@ -145,3 +145,88 @@ test("실패하면 실제 이유를 남긴다(알림에 'returned false'만 오�
   assert.match(attempt, /PULL_FROM_DB_LAST_ERROR_ = "";\s*const ok = pullFromDB\(\);/);
   assert.match(attempt, /"pullFromDB returned false" \+ \(PULL_FROM_DB_LAST_ERROR_ \? " — " \+ PULL_FROM_DB_LAST_ERROR_ : ""\)/);
 });
+
+// ── 2026-11-05 09:04: 아침 dailyAuto가 문서 락을 쥐고 있어 SHEET_LOCKED로 조용히 끝났다(알림·재시도 없음) ──
+function runAttempt(opts: { lockBusy: boolean; pullThrows?: string; lockWaits?: number; attempt?: number; pending?: object | null }) {
+  const src = slice("const DB_PULL_SYNC_INTERVAL_HOURS_", "function dbPullSyncWatchdog_(");
+  const props: Record<string, string> = {};
+  if (opts.pending) props.DB_PULL_SYNC_PENDING_JSON = JSON.stringify(opts.pending);
+  const triggers: { handler: string; after: number }[] = [];
+  const alerts: Record<string, unknown>[] = [];
+  const pullCalls: number[] = [];
+  const env = new Function(
+    "withAutoWriteGuard_", "withDocLock_", "PropertiesService", "ScriptApp", "UrlFetchApp", "CONFIG", "authHeaders_", "Logger", "pullFromDB",
+    `${src}\nreturn { runDbPullSyncAttempt_, dbPullSyncRetry_, notifyDbPullSyncFailure_ };`,
+  )(
+    (fn: () => unknown) => fn(),
+    (fn: () => unknown) => {
+      if (opts.lockBusy) throw new Error("SHEET_LOCKED: 다른 작업이 시트를 수정 중입니다.");
+      return fn();
+    },
+    {
+      getScriptProperties: () => ({
+        getProperty: (k: string) => props[k] ?? null,
+        setProperty: (k: string, v: string) => { props[k] = v; },
+        setProperties: (o: Record<string, string>) => Object.assign(props, o),
+        deleteProperty: (k: string) => { delete props[k]; },
+      }),
+    },
+    {
+      getProjectTriggers: () => triggers.map((t, i) => ({ getHandlerFunction: () => t.handler, i })),
+      deleteTrigger: (t: { i: number }) => { triggers.splice(t.i, 1); },
+      newTrigger: (handler: string) => {
+        const b = { timeBased: () => b, after: (ms: number) => { triggers.push({ handler, after: ms }); return b; }, create: () => {} };
+        return b;
+      },
+    },
+    { fetch: (_u: string, o: { payload: string }) => { alerts.push(JSON.parse(o.payload)); return { getResponseCode: () => 200, getContentText: () => "" }; } },
+    { DB_SHEET_SYNC_ALERT_URL: "x" },
+    () => ({}),
+    { log: () => {} },
+    () => { pullCalls.push(1); if (opts.pullThrows) throw new Error(opts.pullThrows); return true; },
+  );
+  let result: unknown; let thrown: unknown = null;
+  try {
+    result = opts.pending ? env.dbPullSyncRetry_() : env.runDbPullSyncAttempt_("scheduled", opts.attempt ?? 0, opts.lockWaits ?? 0);
+  } catch (e) { thrown = e; }
+  return { result, thrown, props, triggers, alerts, pullCalls };
+}
+
+test("🚨 락이 바쁘면 조용히 끝나지 않고 15분 뒤 다시 시도한다(알림 없음, 실패 재시도 횟수 보존)", () => {
+  const r = runAttempt({ lockBusy: true });
+  assert.equal(r.thrown, null);
+  assert.deepEqual(r.triggers, [{ handler: "dbPullSyncRetry_", after: 15 * 60 * 1000 }]);
+  const pending = JSON.parse(r.props.DB_PULL_SYNC_PENDING_JSON);
+  assert.equal(pending.attempt, 0);
+  assert.equal(pending.lock_waits, 1);
+  assert.equal(r.alerts.length, 0);
+});
+
+test("락 대기 재시도는 attempt 0을 그대로 넘긴다(0이 1로 바뀌면 실패 재시도 기회를 잃음)", () => {
+  const r = runAttempt({ lockBusy: true, pending: { attempt: 0, lock_waits: 2 } });
+  assert.equal(JSON.parse(r.props.DB_PULL_SYNC_PENDING_JSON).lock_waits, 3);
+  assert.equal(JSON.parse(r.props.DB_PULL_SYNC_PENDING_JSON).attempt, 0);
+});
+
+test("락이 약 1시간(4번) 넘게 바쁘면 알리고 이번 회차는 접는다", () => {
+  const r = runAttempt({ lockBusy: true, lockWaits: 4 });
+  assert.equal(r.triggers.length, 0);
+  assert.equal(r.alerts.length, 1);
+  assert.equal(r.alerts[0].status, "LOCK_BUSY");
+  assert.equal(r.props.DB_PULL_SYNC_PENDING_JSON, undefined);
+});
+
+test("락을 잡은 뒤 난 오류는 기존대로(7분 재시도·알림), 락 대기로 오인하지 않는다", () => {
+  const r = runAttempt({ lockBusy: false, pullThrows: "SHEET_LOCKED: 안쪽에서 난 오류" });
+  assert.ok(r.thrown);
+  assert.equal(r.alerts.length, 1);
+  assert.equal(r.alerts[0].status, "ERROR");
+  assert.deepEqual(r.triggers.filter((t) => t.handler === "dbPullSyncRetry_"), [{ handler: "dbPullSyncRetry_", after: 7 * 60 * 1000 }]);
+});
+
+test("락이 풀려 있으면 정상 실행된다", () => {
+  const r = runAttempt({ lockBusy: false });
+  assert.equal(r.result, true);
+  assert.equal(r.pullCalls.length, 1);
+  assert.equal(r.props.DB_PULL_SYNC_LAST_STATUS, "OK");
+});

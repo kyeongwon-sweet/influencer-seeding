@@ -1256,7 +1256,8 @@ test("DB to sheet sync runs independently every three hours with retry, watchdog
   //    한도 뒤(32분)에 울려야 "완료 기록 없음"이 생제 실패를 뜼한다.
   assert.match(body, /DB_PULL_SYNC_WATCHDOG_DELAY_MS_ = 32 \* 60 \* 1000/);
   assert.match(body, /DB_PULL_SYNC_TIMEOUT_RETRY_DELAY_MS_ = 5 \* 60 \* 1000/);
-  assert.match(body, /function runDbPullSyncAttempt_\(source, attempt\)/);
+  assert.match(body, /function runDbPullSyncAttempt_\(source, attempt, lockWaits\)/);
+  assert.match(body, /function runDbPullSyncLockedAttempt_\(source, attempt, markEntered\)/);
   assert.match(body, /return withAutoWriteGuard_\(function\(\) \{[\s\S]*?return withDocLock_\(function\(\)/);
   assert.match(body, /newTrigger\("dbPullSyncWatchdog_"\)/);
   assert.match(body, /DB_PULL_SYNC_LAST_STATUS/);

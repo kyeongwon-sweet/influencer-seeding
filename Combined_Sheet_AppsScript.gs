@@ -2802,9 +2802,57 @@ function scheduleDbPullSyncRetry_(pending, delayMs) {
     .create();
 }
 
-function runDbPullSyncAttempt_(source, attempt) {
+// 🚨 2026-11-05 09:04: 아침 dailyAuto(08:28~09:20)가 문서 락을 쥐고 있어 30초 대기 후 SHEET_LOCKED로 끝났다.
+//    락 실패는 아래 try 밖이라 알림·재시도 없이 조용히 넘어가 다음 정기 실행(3시간 뒤)까지 비었다.
+//    이제 락이 바쁘면 15분 뒤 다시 시도하고(실패 재시도 횟수는 쓰지 않음), 4번(약 1시간) 넘게 바쁘면 알린다.
+const DB_PULL_SYNC_LOCK_WAIT_DELAY_MS_ = 15 * 60 * 1000;
+const DB_PULL_SYNC_LOCK_WAIT_MAX_ = 4;
+
+function isSheetLockedError_(error) {
+  return /^SHEET_LOCKED/.test(String((error && error.message) || error));
+}
+
+function runDbPullSyncAttempt_(source, attempt, lockWaits) {
+  let entered = false;
+  try {
+    return runDbPullSyncLockedAttempt_(source, attempt, function() { entered = true; });
+  } catch (error) {
+    // 락을 잡은 뒤 난 오류는 안쪽에서 이미 알림·재시도를 처리했다. 락을 못 잡은 경우만 여기서 다룬다.
+    if (entered || !isSheetLockedError_(error)) throw error;
+    return handleDbPullSyncLockBusy_(source, attempt, Number(lockWaits || 0), error);
+  }
+}
+
+function handleDbPullSyncLockBusy_(source, attempt, lockWaits, error) {
+  const errorText = dbPullSyncErrorText_(error);
+  const willRetry = lockWaits < DB_PULL_SYNC_LOCK_WAIT_MAX_;
+  if (willRetry) {
+    scheduleDbPullSyncRetry_({
+      source: source,
+      attempt: attempt,
+      lock_waits: lockWaits + 1,
+      started_at: new Date().toISOString(),
+      reason: "lock_busy",
+    }, DB_PULL_SYNC_LOCK_WAIT_DELAY_MS_);
+  } else {
+    PropertiesService.getScriptProperties().deleteProperty("DB_PULL_SYNC_PENDING_JSON");
+    notifyDbPullSyncFailure_({
+      status: "LOCK_BUSY",
+      source: source,
+      attempt: attempt,
+      started_at: new Date().toISOString(),
+      retry_scheduled: false,
+      error: "다른 작업이 약 " + (lockWaits * DB_PULL_SYNC_LOCK_WAIT_DELAY_MS_ / 60000) + "분째 시트를 잡고 있어 이번 회차를 건너뜀 — " + errorText,
+    });
+  }
+  Logger.log("dbPullSync_result " + JSON.stringify({ status: "LOCK_BUSY", source: source, attempt: attempt, lock_waits: lockWaits, retry_scheduled: willRetry }));
+  return false;
+}
+
+function runDbPullSyncLockedAttempt_(source, attempt, markEntered) {
   return withAutoWriteGuard_(function() {
     return withDocLock_(function() {
+      markEntered();
       const props = PropertiesService.getScriptProperties();
       const startedAt = new Date().toISOString();
       const runId = startedAt + ":" + String(Math.floor(Math.random() * 1000000));
@@ -2892,7 +2940,8 @@ function dbPullSyncRetry_() {
   }
   let pending;
   try { pending = JSON.parse(raw); } catch (error) { pending = {}; }
-  return runDbPullSyncAttempt_("retry", Number(pending.attempt || 1));
+  // 락 대기 재시도는 attempt 0을 그대로 넘긴다(0을 1로 바꾸면 실패 재시도 기회를 잃는다).
+  return runDbPullSyncAttempt_("retry", pending.attempt == null ? 1 : Number(pending.attempt), Number(pending.lock_waits || 0));
 }
 
 function dbPullSyncWatchdog_() {

@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 🟡 2026-11-05 [Claude 확인·추가 수정 / Codex 라이브 적용 대기] DB→시트 동기화 재발방지 2건 — 11-04 항목 **라이브 미반영** 확인
+- **11-05 09:2x 라이브 직접 확인:** 편집기 9개 파일 어디에도 `writePullFillsByKey_`·`currentRowIndexByKey_`·`PULL_FROM_DB_LAST_ERROR_`가 없고, 라이브 `pullFromDB`·`runDbPullSyncAttempt_`가 repo 수정 전본(`d5ec383c^`)과 **해시까지 동일**. `runDbPullSyncNow` 실행 기록도 없음 → 11-04 요청은 아직 라이브에 안 들어갔다.
+- **새로 찾은 문제(11-05 09:04 실패):** `SHEET_LOCKED` — 아침 `dailyAuto`(08:27~09:21, 연속 실행)가 문서 락을 쥔 동안 09:04 정기 동기화가 30초 대기 후 포기. 락 실패는 `runDbPullSyncAttempt_` 안쪽 try **밖**이라 **알림·재시도 없이 조용히** 끝나고 다음 정기(12:04)까지 6시간 공백. 09:04 회차는 dailyAuto와 매일 겹칠 수 있다.
+- **수정(repo):** 기존 본문을 `runDbPullSyncLockedAttempt_`로 이름만 바꾸고(락 안 첫 줄 `markEntered()`), 새 `runDbPullSyncAttempt_(source, attempt, lockWaits)`가 **락을 못 잡은 경우만** 잡아 `handleDbPullSyncLockBusy_`로 넘긴다 → 15분 뒤 재시도(실패 재시도 횟수 attempt는 그대로), 4번(약 1시간) 넘게 바쁘면 `LOCK_BUSY` 알림 후 접음. 락 안에서 난 오류는 기존 경로 그대로. `dbPullSyncRetry_`는 `pending.attempt`가 0이면 0을 넘김(예전 `|| 1`은 0을 1로 바꿈) + `lock_waits` 전달.
+- **검증:** 가짜 트리거·프로퍼티로 실제 함수 실행 테스트 5건 추가(락 바쁨→15분 재시도·무알림 / 재시도 attempt 0 보존 / 4번 초과→LOCK_BUSY 알림 / 락 안 오류는 기존 7분 재시도 / 정상 실행). web 전체 **794/794**.
+- **Codex 요청:** 11-04 항목(`d5ec383c`) + 이 항목을 **한 번에** 라이브 `01_연동시트_자동동기화`에 수술 적용. 사용자에게 준 합본 인계문 참고.
+
 ## 🟡 2026-11-04 [Claude repo 수정 / Codex 라이브 적용 대기] DB→시트 3시간 동기화가 사람 편집과 겹쳐도 안 멈추게
 - **사고:** 11-04 18:04 `scheduledDbPullSync_` 실패 DM("pullFromDB returned false"). 실행 기록의 실제 이유는 `행 수 변경으로 쓰기 취소(writeColumnRuns): 5267→5270. 시트가 동시 편집됨` — 처음 읽고 3분 뒤 쓰는 사이 사람이 맨 아래에 바치케 바이럴 3행(5268~5270)을 넣었다. 가드가 쓰기를 취소해 손상 없음, 18:15 재시도 OK(추가 0·채움 0). Slack 검색상 첫 발생.
 - **근본 원인:** 처음 읽은 행 번호를 3분 뒤 그대로 쓰고, 그 사이 행 수가 바뀌면 전체 취소하는 구조(행 수=대리 신호). 근무시간 3시간 주기라 사람 입력과 또 겹친다. 그리고 알림에는 실제 이유가 빠져 실행 기록을 뒤져야 했다.
