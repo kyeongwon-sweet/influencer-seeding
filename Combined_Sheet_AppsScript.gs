@@ -2076,6 +2076,11 @@ const DAILY_AUTO_CONTINUATION_DELAY_MS_ = 60 * 1000;
 const DAILY_AUTO_CONTINUATION_WATCHDOG_DELAY_MS_ = 32 * 60 * 1000;
 const DAILY_AUTO_CONTINUATION_MAX_ATTEMPTS_ = 1;
 const DAILY_AUTO_CONTINUATION_PROP_ = "DAILY_AUTO_CONTINUATION_PENDING_JSON";
+// 30분 실행 한도 대비(2026-11-05): exportStats 뒤 나머지 6단계(약 9분)를 같은 실행창에서 돌다
+// 10-31·11-05 시간 초과(11-01 24분, 11-02 29분). 아래 단계는 끝나면 남은 단계를 새 실행창으로 넘기고,
+// 그 밖의 단계도 실행창을 20분 넘게 쓴 뒤에는 새로 시작하지 않고 다음 창으로 넘긴다.
+const DAILY_AUTO_OWN_WINDOW_STAGES_ = ["importStats", "exportStats"];
+const DAILY_AUTO_STAGE_START_BUDGET_MS_ = 20 * 60 * 1000;
 const DAILY_AUTO_IMPORT_RETRY_AFTER_EXPORT_PROP_ = "DAILY_AUTO_IMPORT_RETRY_AFTER_EXPORT_DATE";
 const EXPORT_STATS_GATE_RETRY_DELAY_MS_ = 15 * 60 * 1000;
 const EXPORT_STATS_GATE_MAX_ATTEMPTS_ = 16; // 08:30 실행이 4시간가량 지연된 수집도 따라잡는다.
@@ -2491,9 +2496,27 @@ function dailyAutoContinuation_() {
       DAILY_AUTO_LAST_STATUS: "CONTINUATION_RUNNING",
     }, false);
 
+    const windowStartedMs = Date.now();
+    const windowFirstIndex = pending.next_index;
     for (let i = pending.next_index; i < pending.stages.length; i++) {
       const name = pending.stages[i];
       if (typeof defs[name] !== "function") throw new Error("알 수 없는 dailyAuto 단계: " + name);
+      if (i > windowFirstIndex && Date.now() - windowStartedMs > DAILY_AUTO_STAGE_START_BUDGET_MS_) {
+        // 이 창에서 이미 20분 넘게 썼다 — 이 단계는 새 30분 창에서 시작한다.
+        pending.next_index = i;
+        removeDailyAutoContinuationTriggers_(["dailyAutoContinuationWatchdog_"]);
+        enqueueDailyAutoContinuation_(pending, DAILY_AUTO_CONTINUATION_DELAY_MS_);
+        props.setProperties({
+          DAILY_AUTO_LAST_STATUS: "STAGE_CONTINUATION_SCHEDULED",
+          DAILY_AUTO_LAST_STAGES_JSON: JSON.stringify(mergeDailyAutoStages_(priorStages, stages)),
+          DAILY_AUTO_LAST_CONTINUATION_PHASE_FINISHED_AT: new Date().toISOString(),
+        }, false);
+        Logger.log("dailyAuto_window_budget_handoff " + JSON.stringify({
+          next_stage: name,
+          elapsed_ms: Date.now() - windowStartedMs,
+        }));
+        return true;
+      }
       pending.next_index = i; // 강제종료되면 이 단계부터 멱등 재실행한다.
       pending.active_stage = name;
       pending.stage_started_at = new Date().toISOString();
@@ -2507,19 +2530,19 @@ function dailyAutoContinuation_() {
       pending.attempt = 0;
       saveDailyAutoContinuation_(pending);
 
-      // importStats와 exportStats는 반드시 서로 다른 Apps Script 실행창을 쓴다.
-      // import가 정상 반환한 경우 여기서 새 트리거를 열고, 강제종료는 아래 watchdog이
-      // 같은 방식으로 export부터 재개한다.
-      if (name === "importStats" && pending.next_index < pending.stages.length) {
+      // importStats·exportStats는 각자 Apps Script 실행창을 하나씩 쓴다(DAILY_AUTO_OWN_WINDOW_STAGES_).
+      // 정상 반환하면 여기서 새 트리거로 남은 단계를 넘기고, 강제종료는 아래 watchdog이
+      // 같은 방식으로 이어서 재개한다.
+      if (DAILY_AUTO_OWN_WINDOW_STAGES_.indexOf(name) >= 0 && pending.next_index < pending.stages.length) {
         removeDailyAutoContinuationTriggers_(["dailyAutoContinuationWatchdog_"]);
         enqueueDailyAutoContinuation_(pending, DAILY_AUTO_CONTINUATION_DELAY_MS_);
         const phaseStages = mergeDailyAutoStages_(priorStages, stages);
         props.setProperties({
-          DAILY_AUTO_LAST_STATUS: "EXPORT_CONTINUATION_SCHEDULED",
+          DAILY_AUTO_LAST_STATUS: name === "importStats" ? "EXPORT_CONTINUATION_SCHEDULED" : "STAGE_CONTINUATION_SCHEDULED",
           DAILY_AUTO_LAST_STAGES_JSON: JSON.stringify(phaseStages),
           DAILY_AUTO_LAST_CONTINUATION_PHASE_FINISHED_AT: new Date().toISOString(),
         }, false);
-        Logger.log("dailyAuto_import_phase_result " + JSON.stringify({
+        Logger.log((name === "importStats" ? "dailyAuto_import_phase_result " : "dailyAuto_" + name + "_phase_result ") + JSON.stringify({
           status: stage.status,
           next_stage: pending.stages[pending.next_index],
           stage: stage,
@@ -2812,7 +2835,24 @@ function isSheetLockedError_(error) {
   return /^SHEET_LOCKED/.test(String((error && error.message) || error));
 }
 
+// 아침 dailyAuto는 단계마다 문서 락을 잡았다 놓는다. 그 틈에 09:04 동기화가 락을 4분 잡으면
+// 다음 단계가 SHEET_LOCKED로 실패했다(11-01 refreshCumulativeViews). dailyAuto가 도는 동안은
+// 정기 동기화가 락 대기와 같은 방식(15분 뒤 재시도)으로 비켜 간다. 시작 2시간 30분이 지나면
+// 멈춘 흔적으로 보고 더는 비켜 가지 않는다(멈춘 dailyAuto가 동기화를 영영 막지 않게).
+const DAILY_AUTO_BUSY_MAX_MS_ = 150 * 60 * 1000;
+
+function isDailyAutoBusy_(props, nowMs) {
+  const startedMs = Date.parse(props.getProperty("DAILY_AUTO_LAST_STARTED_AT") || "");
+  if (!(startedMs > 0) || nowMs - startedMs > DAILY_AUTO_BUSY_MAX_MS_) return false;
+  if (props.getProperty("DAILY_AUTO_LAST_STATUS") === "RUNNING") return true;
+  return !!props.getProperty(DAILY_AUTO_CONTINUATION_PROP_);
+}
+
 function runDbPullSyncAttempt_(source, attempt, lockWaits) {
+  if (source !== "manual" && isDailyAutoBusy_(PropertiesService.getScriptProperties(), Date.now())) {
+    return handleDbPullSyncLockBusy_(source, attempt, Number(lockWaits || 0),
+      new Error("SHEET_LOCKED: 아침 dailyAuto 진행 중 — 끝난 뒤 동기화합니다."));
+  }
   let entered = false;
   try {
     return runDbPullSyncLockedAttempt_(source, attempt, function() { entered = true; });
@@ -3080,6 +3120,35 @@ function refreshIncrementFormulasForLatestCollectedDate() {
   return exportStatsWithOptions_({ formulaOnly: true });
 }
 
+// before/after 날짜 블록에서 [startBi, startBi+width) 열 중 값이 바뀐 칸을 직사각형으로 묶는다.
+// 연속으로 바뀐 열끼리 하나로 묶고, 그 열들에서 바뀐 첫 행~끝 행을 세로 범위로 쓴다(0부터 센 블록 인덱스).
+function exportStatsChangedRects_(before, after, startBi, width) {
+  const same = function(a, b) {
+    return a === b || (a instanceof Date && b instanceof Date && a.getTime() === b.getTime());
+  };
+  const rects = [];
+  let run = null;
+  for (let bi = startBi; bi < startBi + width; bi++) {
+    let first = -1, last = -1;
+    for (let i = 0; i < after.length; i++) {
+      if (same(before[i][bi], after[i][bi])) continue;
+      if (first < 0) first = i;
+      last = i;
+    }
+    if (first < 0) { if (run) { rects.push(run); run = null; } continue; }
+    if (run && run.biEnd === bi - 1) {
+      run.biEnd = bi;
+      run.rowStart = Math.min(run.rowStart, first);
+      run.rowEnd = Math.max(run.rowEnd, last);
+    } else {
+      if (run) rects.push(run);
+      run = { biStart: bi, biEnd: bi, rowStart: first, rowEnd: last };
+    }
+  }
+  if (run) rects.push(run);
+  return rects;
+}
+
 function exportStatsWithOptions_(options) {
   const skipFormulaRefresh = !!(options && options.skipFormulaRefresh === true);
   const formulaOnly = !!(options && options.formulaOnly === true);
@@ -3087,6 +3156,11 @@ function exportStatsWithOptions_(options) {
   const heartbeatSource = String((options && options.heartbeatSource) || "exportStats").slice(0, 80);
   const preserveExistingMetrics = !!(options && options.preserveExistingMetrics === true);
   const importGateStatus = String((options && options.importGateStatus) || "UNKNOWN").slice(0, 80);
+  // 단계별 경과(ms). 30분 한도 초과 때 어디서 시간을 쓰는지 로그로 남긴다(2026-11-05 원인 불명 시간 초과).
+  const exportStartedMs = Date.now();
+  const timing = {};
+  const markTiming = function(name) { timing[name] = Date.now() - exportStartedMs; };
+  let dateCellsRewritten = 0;
   try {
     const sheet = getSheet_();
     const fieldCols = buildFieldCols_(sheet);
@@ -3199,6 +3273,7 @@ function exportStatsWithOptions_(options) {
       }
     }
 
+    markTiming("fetched");
     const nRows = lastRow - CONFIG.DATA_START_ROW + 1;
     const urlVals = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.url, nRows, 1).getValues();
     const postedVals = fieldCols.posted_at
@@ -3328,6 +3403,7 @@ function exportStatsWithOptions_(options) {
       safeAlert_(`⚠️ 실행 중 행 수가 ${lastRow}→${latestLastRowForDates}로 바뀌어 날짜값 쓰기를 중단했습니다. 잠시 후 다시 실행됩니다.`);
       return false;
     }
+    markTiming("computed");
     const latestUrlsForDates = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.url, nRows, 1).getValues();
     const latestDateBlock = sheet.getRange(CONFIG.DATA_START_ROW, firstCol, nRows, width).getValues();
     const latestRowByKey = {}, latestKeyCounts = {};
@@ -3380,21 +3456,22 @@ function exportStatsWithOptions_(options) {
       else prev.end = col;
     }
     if (!formulaOnly) {
+      // 바뀐 칸을 감싸는 직사각형(연속으로 바뀐 열 × 그 열들의 첫~끝 바뀐 행)만 쓴다.
+      // 예전엔 칸 하나만 바뀌어도 날짜열 그룹 전체(5,269행×170열≈90만 칸)를 매일 다시 썼다(2026-11-05).
+      // 직사각형 안의 안 바뀐 칸은 방금 다시 읽은 최신값(latestDateBlock) 그대로라 결과는 같다.
       dateColGroups.forEach(function(group) {
-        const startBi = group.start - firstCol;
-        const groupWidth = group.end - group.start + 1;
-        let changed = false;
-        for (let i = 0; i < nRows && !changed; i++) {
-          for (let j = 0; j < groupWidth; j++) {
-            if (finalDateBlock[i][startBi + j] !== latestDateBlock[i][startBi + j]) { changed = true; break; }
-          }
-        }
-        if (!changed) return;
-        assertRowCountStable_(sheet, latestLastRowForDates, "exportStats.dateBlock");
-        const values = finalDateBlock.map(function(row) { return row.slice(startBi, startBi + groupWidth); });
-        sheet.getRange(CONFIG.DATA_START_ROW, group.start, nRows, groupWidth).setValues(values);
+        exportStatsChangedRects_(latestDateBlock, finalDateBlock, group.start - firstCol, group.end - group.start + 1)
+          .forEach(function(rect) {
+            assertRowCountStable_(sheet, latestLastRowForDates, "exportStats.dateBlock");
+            const values = finalDateBlock.slice(rect.rowStart, rect.rowEnd + 1)
+              .map(function(row) { return row.slice(rect.biStart, rect.biEnd + 1); });
+            sheet.getRange(CONFIG.DATA_START_ROW + rect.rowStart, firstCol + rect.biStart, values.length, values[0].length)
+              .setValues(values);
+            dateCellsRewritten += values.length * values[0].length;
+          });
       });
     }
+    markTiming("dates_written");
 
     let incWritten = 0;
     if (incrementCol && !skipFormulaRefresh) {
@@ -3484,8 +3561,10 @@ function exportStatsWithOptions_(options) {
         lastRow
       );
       Logger.log("increment_formula_write " + JSON.stringify(formulaWrite));
+      markTiming("formulas_written");
       if (!formulaOnly) {
         try { refreshCumulativeViews(); } catch (e) { Logger.log(e); }
+        markTiming("cumulative_refreshed");
       }
     }
 
@@ -3531,6 +3610,8 @@ function exportStatsWithOptions_(options) {
       if (concurrentCellSkips) msg += `\n🛡️ 계산 뒤 사람이 수정한 ${concurrentCellSkips}칸은 최신 수기값을 보존했습니다.`;
       if (orphanRows) msg += `\n🧟 URL 없이 H/I·날짜값만 남은 '고아 행' ${orphanRows}개 발견 — 자동수정하지 않았습니다. 백업 후 H/I·날짜값을 확인해 정리하세요.`;
     }
+    markTiming("done");
+    Logger.log("exportStats_timing " + JSON.stringify({ ms: timing, date_cells_rewritten: dateCellsRewritten, rows: nRows, date_cols: dateCols.length }));
     if (!formulaOnly) {
       markExportStatsSuccess_({
         writtenDate: incrementTargetDate,

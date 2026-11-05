@@ -1143,7 +1143,9 @@ test("dailyAuto gates both import and export on collection completion", () => {
   assert.match(continuationBody, /pending\.next_index = i \+ 1;/);
   assert.match(continuationBody, /pending\.completed_stages = stages;/);
   assert.match(continuationBody, /saveDailyAutoContinuation_\(pending\)/);
-  assert.match(continuationBody, /name === "importStats"[\s\S]*?enqueueDailyAutoContinuation_\(pending, DAILY_AUTO_CONTINUATION_DELAY_MS_\)/);
+  // import·export는 각자 실행창을 하나씩 쓴다(2026-11-05 export+나머지 6단계가 한 창에서 30분 초과).
+  assert.match(appsScript, /const DAILY_AUTO_OWN_WINDOW_STAGES_ = \["importStats", "exportStats"\];/);
+  assert.match(continuationBody, /DAILY_AUTO_OWN_WINDOW_STAGES_\.indexOf\(name\) >= 0[\s\S]*?enqueueDailyAutoContinuation_\(pending, DAILY_AUTO_CONTINUATION_DELAY_MS_\)/);
   assert.match(continuationBody, /EXPORT_CONTINUATION_SCHEDULED/);
   assert.match(continuationBody, /DAILY_AUTO_LAST_FINISHED_AT/);
   assert.match(continuationBody, /removeDailyAutoContinuationTriggers_\(\["dailyAutoContinuationWatchdog_"\]\)/);
@@ -1444,7 +1446,10 @@ test("exportStats phase 2 writes date values by URL key and guards row-based for
   assert.match(body, /const preWriteUrls = sheet\.getRange\(CONFIG\.DATA_START_ROW, fieldCols\.url, nRows, 1\)\.getValues\(\)/);
   assert.match(body, /if \(preWriteOrderChanged\)[\s\S]*?return false/);
   assert.match(body, /const dateColGroups = \[\]/);
-  assert.match(body, /sheet\.getRange\(CONFIG\.DATA_START_ROW, group\.start, nRows, groupWidth\)\.setValues\(values\)/);
+  // 2026-11-05: 날짜열 그룹 전체(≈90만 칸)가 아니라 바뀐 칸을 감싸는 직사각형만 쓴다.
+  assert.match(body, /exportStatsChangedRects_\(latestDateBlock, finalDateBlock, group\.start - firstCol, group\.end - group\.start \+ 1\)/);
+  assert.match(body, /sheet\.getRange\(CONFIG\.DATA_START_ROW \+ rect\.rowStart, firstCol \+ rect\.biStart, values\.length, values\[0\]\.length\)\s*\.setValues\(values\)/);
+  assert.doesNotMatch(body, /sheet\.getRange\(CONFIG\.DATA_START_ROW, group\.start, nRows, groupWidth\)\.setValues/);
   assert.match(body, /keyRowCounts\[key\] > 1 \|\| latestKeyCounts\[key\] > 1/);
   assert.doesNotMatch(body, /writeColumnRuns_\(sheet, dc\.col/);
   assert.match(body, /const formulaUrls = sheet\.getRange\(CONFIG\.DATA_START_ROW, fieldCols\.url, nRows, 1\)\.getValues\(\)/);

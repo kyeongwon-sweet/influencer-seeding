@@ -1,5 +1,17 @@
 # AI Shared Status
 
+## 🟡 2026-11-05 [Claude repo 수정 / Codex 라이브 적용 대기] 아침 dailyAuto 30분 시간 초과 근본 수정
+- **증상(실행 기록 직접 확인):** 11-05 이어서 돌기 09:03·09:37 **두 번 다 30분 초과** → 포기. exportStats 뒤 6단계(syncStatus·refreshCumulativeViews·repairMetricFormulaRanges·syncCreators·overwriteViralHandles·normalizeNewRowFormat) 미실행. 10-31도 08:48 1,800초 초과, 11-01 1,456초·11-02 1,735초로 한도 근접. 11-02·11-04·11-05는 사람이 메뉴로 exportStats를 직접 돌림(jobs 하트비트 source=manual). 11-04 값은 수동 실행으로 시트 1,369칸 = DB play>0 1,369건, 표본 38/38 일치.
+- **원인:** ① 이어서 돌기가 exportStats(11-01 901초)와 뒤 6단계(합 약 550초)를 **한 실행창**에서 몰아 돌림. ② exportStats가 칸 하나만 바뀌어도 날짜열 그룹 **전체(5,269행×170열≈90만 칸)**를 매일 다시 씀. ③ 09:04 DB→시트 동기화가 단계 사이에 락을 잡아 다음 단계 SHEET_LOCKED(11-01 refreshCumulativeViews 실패 오류 원문 확인). ④ 단계별 시간 로그가 없어 09:37처럼 로그 0줄로 끝나면 원인 불명.
+- **수정(repo `Combined_Sheet_AppsScript.gs`):**
+  1. `DAILY_AUTO_OWN_WINDOW_STAGES_ = ["importStats","exportStats"]` — export도 끝나면 남은 단계를 새 실행창으로 넘김(상태 `STAGE_CONTINUATION_SCHEDULED`). + `DAILY_AUTO_STAGE_START_BUDGET_MS_` 20분: 창을 20분 넘게 쓴 뒤엔 다음 단계를 새 창에서 시작(창의 첫 단계는 항상 시작).
+  2. `exportStatsChangedRects_` — 바뀐 칸을 감싸는 직사각형(연속 바뀐 열 × 첫~끝 바뀐 행)만 `setValues`. 안의 안 바뀐 칸은 방금 다시 읽은 최신값이라 결과 동일(무작위 200회 동치 테스트).
+  3. `isDailyAutoBusy_` — dailyAuto가 RUNNING이거나 이어서 돌기 표식이 있으면(시작 2시간 30분 이내) **정기** DB→시트 동기화가 락 대기와 같은 15분 재시도로 비켜 감. 수동 실행은 그대로.
+  4. `exportStats_timing` 로그(fetched·computed·dates_written·formulas_written·cumulative_refreshed·done 경과 ms + 다시 쓴 칸 수).
+  - H열(누적 수식)·refreshCumulativeViews 로직은 **무변경**(과거 사고 구역).
+- **검증:** 새 `web/tests/apps-script-daily-auto-window.test.ts` 12건(실제 함수 실행: 직사각형·동치·Date, 창 넘기기 5건, 비켜 가기 3건) + 계약 테스트 2건 갱신. web 전체 **806/806**.
+- **Codex 요청:** 라이브 `01_연동시트_자동동기화`에 이 커밋 diff만 수술 적용 + 함수 해시 확인 + 내일(11-06) 아침 실행 기록에서 `exportStats_timing`·`dailyAuto_exportStats_phase_result`·DB 동기화 비켜 가기 로그 확인. 사용자에게 준 인계문 참고.
+
 ## 🟢 2026-11-05 [Codex 라이브 적용·수동검증 완료 / 자연 실행 확인 대기] DB→시트 3시간 동기화 재발방지 (`d5ec383c`·`cd3f00e4`)
 - **선행 대조 통과:** 라이브 `01_연동시트_자동동기화`의 `pullFromDB()`를 repo `d5ec383c^`와 함수 원문 해시로 대조해 정확히 같음을 확인한 뒤에만 작업했다. 라이브 파일 전체는 repo와 다른 최신 변경을 포함하므로 repo 파일을 통째로 덮지 않고, 라이브를 새로 pull한 별도 작업본에 `d5ec383c`의 해당 diff만 수술 적용했다.
 - **라이브 반영:** `currentRowIndexByKey_`·`writePullFillsByKey_`, URL 키 기반 빈칸 채움, append 직전 현재 행 재조회·중복 제외, `PULL_FROM_DB_LAST_ERROR_`와 실제 실패 사유 전달을 반영했다. `02_시트쓰기_충돌방지`의 `writeColumnRuns_`·`assertRowCountStable_`는 무변경이다. 2026-11-05 09:27 KST guarded push 후 다시 pull해 **10개 라이브 파일 모두 push 직전 작업본과 해시 일치**, 비대상 파일 변경 0을 확인했다.
