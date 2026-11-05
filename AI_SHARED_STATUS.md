@@ -1,10 +1,11 @@
 # AI Shared Status
 
-## 🟢 2026-11-05 [Codex 라이브 적용·수동검증 완료 / 자연 실행 확인 대기] DB→시트 3시간 동기화 동시편집 재발방지 (`d5ec383c`)
+## 🟢 2026-11-05 [Codex 라이브 적용·수동검증 완료 / 자연 실행 확인 대기] DB→시트 3시간 동기화 재발방지 (`d5ec383c`·`cd3f00e4`)
 - **선행 대조 통과:** 라이브 `01_연동시트_자동동기화`의 `pullFromDB()`를 repo `d5ec383c^`와 함수 원문 해시로 대조해 정확히 같음을 확인한 뒤에만 작업했다. 라이브 파일 전체는 repo와 다른 최신 변경을 포함하므로 repo 파일을 통째로 덮지 않고, 라이브를 새로 pull한 별도 작업본에 `d5ec383c`의 해당 diff만 수술 적용했다.
 - **라이브 반영:** `currentRowIndexByKey_`·`writePullFillsByKey_`, URL 키 기반 빈칸 채움, append 직전 현재 행 재조회·중복 제외, `PULL_FROM_DB_LAST_ERROR_`와 실제 실패 사유 전달을 반영했다. `02_시트쓰기_충돌방지`의 `writeColumnRuns_`·`assertRowCountStable_`는 무변경이다. 2026-11-05 09:27 KST guarded push 후 다시 pull해 **10개 라이브 파일 모두 push 직전 작업본과 해시 일치**, 비대상 파일 변경 0을 확인했다.
 - **수동 실측:** 09:28:26 KST `runDbPullSyncNow()` 실행 → 291.497초 후 완료. Cloud 로그: `DB→시트 반영 완료 · 신규 행 0 · 기존 행 빈칸 채움 7 · URL 제외 1(인스타 비게시물)` 및 `dbPullSync_result {"status":"OK","source":"manual","attempt":0,"started_at":"2026-11-05T00:28:28.565Z","finished_at":"2026-11-05T00:33:15.244Z"}` 확인.
-- **검증:** `apps-script-pull-concurrent-edit` **5/5**, `apps-script-contract` **71/71**, `tsc --noEmit`, 임시 라이브 `.gs` `node --check` 모두 통과. 다음 자연 `scheduledDbPullSync_`(12시대)는 실행 기록으로 별도 확인해 이 항목을 완료 상태로 갱신한다.
+- **락 재시도 보강:** 같은 실행 목록에서 09:04 정기 회차가 아침 `dailyAuto`의 문서 락 때문에 `SHEET_LOCKED`로 조용히 끝난 별도 경로를 확인했다. main `cd3f00e4`를 독립 감사한 뒤 09:39 KST 현재 라이브 `d5ec383c` 블록과 해시 일치를 다시 확인하고 추가 수술 적용했다. 락을 못 잡으면 실패 재시도 횟수를 쓰지 않고 15분 뒤 재시도하며, 4회(약 1시간) 초과 시에만 `LOCK_BUSY` 알림을 낸다. 락 안 오류의 기존 7분 재시도는 유지한다. post-push 재pull에서 **10개 파일 모두 작업본과 해시 일치**, `02` 포함 비대상 파일 변경 0.
+- **검증:** `apps-script-pull-concurrent-edit` **10/10**, `apps-script-contract` **71/71**, `tsc --noEmit`, 임시 라이브 `.gs` `node --check` 모두 통과. 다음 자연 `scheduledDbPullSync_`(12시대)는 실행 기록으로 별도 확인해 이 항목을 완료 상태로 갱신한다.
 
 ## 🟡 2026-11-05 [Claude 확인·추가 수정 / Codex 라이브 적용 대기] DB→시트 동기화 재발방지 2건 — 11-04 항목 **라이브 미반영** 확인
 - **11-05 09:2x 라이브 직접 확인:** 편집기 9개 파일 어디에도 `writePullFillsByKey_`·`currentRowIndexByKey_`·`PULL_FROM_DB_LAST_ERROR_`가 없고, 라이브 `pullFromDB`·`runDbPullSyncAttempt_`가 repo 수정 전본(`d5ec383c^`)과 **해시까지 동일**. `runDbPullSyncNow` 실행 기록도 없음 → 11-04 요청은 아직 라이브에 안 들어갔다.
