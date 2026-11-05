@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 🟢 2026-11-05 [Codex 라이브 적용 완료 / 11-06 자연 실행 확인 대기] 아침 dailyAuto 30분 시간 초과 근본 수정 (`11962922`)
+- **사전 게이트 통과:** 10:2x KST 라이브 `01_연동시트_자동동기화`를 새로 pull하고 LF 기준 함수 SHA-256을 계산했다. `exportStatsWithOptions_=013eff2ec3fd`, `dailyAutoContinuation_=38dbed66d064`, `runDbPullSyncAttempt_=04dbc5a93eb1`로 요청한 `89aea3e2` 기준과 3/3 일치했다. push 직전 별도 재pull에서도 라이브 10개 파일 전체 해시가 최초 pull과 동일해 동시 편집이 없음을 확인했다.
+- **수술 적용·저장:** `git diff 89aea3e2 11962922 -- Combined_Sheet_AppsScript.gs`의 `+99/-18` hunks만 라이브 `01` 작업본에 적용했다. 10:27:02 KST guarded push 후 다시 pull해 push 직전 작업본과 **10개 파일 전체 SHA-256 일치**를 확인했다. 실제 변경은 `01`뿐이며 `02_시트쓰기_충돌방지`(`8cdadf…c2d1e`)·`03_누적조회수_수식안전`(`f4c0c3…c7c35`) 및 H열 관련 `refreshCumulativeViews`·`metricIncrementFormula_` 함수 해시는 전후 동일하다.
+- **적용 후 해시 5/5:** `exportStatsChangedRects_=a394eb9b7aae`, `exportStatsWithOptions_=b46510c33782`, `dailyAutoContinuation_=df78128d7a05`, `isDailyAutoBusy_=762f6cdcb509`, `runDbPullSyncAttempt_=2fc7ff8b891a`. post-push 재pull 본문에서도 동일하며 `node --check` 통과.
+- **회귀 검증:** 로컬 표적 테스트 `apps-script-contract`+`apps-script-daily-auto-window` **83/83**, `tsc --noEmit` 통과. 독립 감사에서 변경 범위(상수 3·helper 2·수정 함수 3)와 비대상 함수 무변경을 재확인했고, CI `41947861939`도 web **806/806**·build·Python 성공이다.
+- **운영 주의·다음 게이트:** 지시대로 오늘은 `dailyAuto`·`exportStats`를 수동 실행하지 않았다. 11-06 아침 자연 실행에서 `dailyAuto_exportStats_phase_result`, `exportStats_timing`·`date_cells_rewritten`, 뒤 6단계 완료, 09:04 정기 DB pull의 양보/15분 재시도, 시트 11-05 열 채움 수와 DB `play>0` 건수 일치를 확인해야 완료다.
+
 ## 🟡 2026-11-05 [Claude repo 수정 / Codex 라이브 적용 대기] 아침 dailyAuto 30분 시간 초과 근본 수정
 - **증상(실행 기록 직접 확인):** 11-05 이어서 돌기 09:03·09:37 **두 번 다 30분 초과** → 포기. exportStats 뒤 6단계(syncStatus·refreshCumulativeViews·repairMetricFormulaRanges·syncCreators·overwriteViralHandles·normalizeNewRowFormat) 미실행. 10-31도 08:48 1,800초 초과, 11-01 1,456초·11-02 1,735초로 한도 근접. 11-02·11-04·11-05는 사람이 메뉴로 exportStats를 직접 돌림(jobs 하트비트 source=manual). 11-04 값은 수동 실행으로 시트 1,369칸 = DB play>0 1,369건, 표본 38/38 일치.
 - **원인:** ① 이어서 돌기가 exportStats(11-01 901초)와 뒤 6단계(합 약 550초)를 **한 실행창**에서 몰아 돌림. ② exportStats가 칸 하나만 바뀌어도 날짜열 그룹 **전체(5,269행×170열≈90만 칸)**를 매일 다시 씀. ③ 09:04 DB→시트 동기화가 단계 사이에 락을 잡아 다음 단계 SHEET_LOCKED(11-01 refreshCumulativeViews 실패 오류 원문 확인). ④ 단계별 시간 로그가 없어 09:37처럼 로그 0줄로 끝나면 원인 불명.
