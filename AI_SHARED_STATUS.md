@@ -1,6 +1,7 @@
 # AI Shared Status
 
 ## ✅ 2026-11-06 [Codex 라이브 적용·백업·DB 반영 완료] 자모 분리(NFD) 소재명도 캡션 규칙 적용 (`b8570cc6`)
+- **Claude 독립 검증(18시대):** 라이브 해시 `captionFromAssetName_ 88dd5542feaa`·`isNewViralAssetFormat_ e9ec156761a4`·`toNfc_ bc251bf58c7c`·`cleanAssetCaption_`·`fillCaptionFromAsset_` 무변경, 각 1곳. 이전 수정(dailyAuto·pull) 해시도 그대로. 시트 CSV: NFD 소재명 23행 전부 캡션=파생값, 바이럴 미적용 0. DB: NFD 0건(5,295행), 워치독 58건 검사 0건. 5299행(`DfWhDv8hTmy`, 협찬) 멀티라인 복원은 08-11 '줄바꿈→한 칸' 규칙이 내일 08:30 다시 평탄화한다(정상 동작, 사고 아님).
 - **라이브 사전 게이트:** 바운드 Apps Script를 새로 pull해 `isNewViralAssetFormat_=e0d658884295`, `cleanAssetCaption_=2bb71e331be9`, `fillCaptionFromAsset_=cc915652cad3`을 확인했다. `captionFromAssetName_`은 요청 해시와 주석 위치만 달랐고 실행 본문은 같은 구버전이라 차이를 먼저 보고한 뒤, repo의 주석 배치까지 포함한 해당 함수 블록만 수술 적용했다. 파일 전체 덮어쓰기는 하지 않았다.
 - **수술 적용·라이브 저장:** `toNfc_`를 `cleanAssetCaption_` 바로 아래에 추가하고 `captionFromAssetName_`·`isNewViralAssetFormat_`의 소재명 분해 전에 NFC 정규화를 넣었다. 적용 후 함수 해시는 `captionFromAssetName_=88dd5542feaa`, `isNewViralAssetFormat_=e9ec156761a4`, `toNfc_=bc251bf58c7c`; 비대상은 `cleanAssetCaption_=2bb71e331be9`, `fillCaptionFromAsset_=cc915652cad3`으로 그대로다. 18:13:24 KST guarded push 후 fresh pull에서 라이브 10개 파일이 push 작업본과 전부 일치했고 `.gs` 문법 검사도 통과했다.
 - **백업:** 실행 전에 전체 `10 콘텐츠 대시보드 연동` 탭을 별도 스프레드시트 [`_codex_caption_backup_20261106_181324`](https://docs.google.com/spreadsheets/d/1FVKkOOc1re3PYtMXHwpiBjst8UnSgcq0byUPU4nA_cs/edit?gid=1821278188#gid=1821278188)로 복제하고 첫·마지막 대상 URL·캡션을 재조회했다.
@@ -48,6 +49,7 @@
 - **Codex 요청:** 11-04 항목(`d5ec383c`) + 이 항목을 **한 번에** 라이브 `01_연동시트_자동동기화`에 수술 적용. 사용자에게 준 합본 인계문 참고.
 
 ## 🟡 2026-11-06 [사용자 결정 / Codex 실행 대기] 시트 4836행 채널분류 → '바이럴 (배너)' + 조회수 505 유지
+- **현황(Claude 18시대 확인):** 시트 4836행은 **이미 '바이럴 (배너)'로 바뀌어 있음**(변경 주체 미확인), DB는 아직 '바이럴 (영상)'·`reach_count` 14행 모두 null. 코드 확인 결과 exportStats는 DB 값이 없는 과거 날짜 칸을 **지우지 않으므로** 시트 505는 안전하고, 대시보드는 배너 도달수가 없으면 조회수로 대체 표시. 그래도 틱톡 배너 관례(조회수=reach_count)와 맞추려면 아래 1번(DB 복사)은 여전히 필요 — 순서 제약은 사라짐.
 - **대상:** `https://www.tiktok.com/@mhduchu/video/7693837987792145682/` (DB id `f9cf42e9-0467-40f6-b2ae-b146e3fb3d30`, 소재명 `[26.09]F_I_JD복_…배너_원어스…하이디라오면은우근황…`, 10-22 종료). 지금 '바이럴 (영상)'.
 - **사용자 결정:** "채널분류는 배너로 바꾸고, 틱톡 배너는 조회수를 볼 수 있어서 505 유지".
 - **주의(코드 확인):** 배너는 시트 역채움(`stats-for-sheet`)·리포트가 `reach_count`만 본다. 이 글의 `post_daily_stats` 14행은 `play_count`만 있고 `reach_count`=null(10-07 252 … 10-20 505, 전부 manual=false, play_collected=null) → 분류만 바꾸면 시트·리포트에서 값이 사라질 수 있다. 기존 틱톡 배너 21건은 조회수를 `reach_count`에 저장하는 관례.
