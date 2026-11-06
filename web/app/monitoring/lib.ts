@@ -198,8 +198,15 @@ export function formatTimestamp(ts: string): string {
   return `${d.getUTCFullYear()}.${pad(d.getUTCMonth() + 1)}.${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
 }
 
+// 맥에서 복사한 글자는 한글이 자모로 쪼개진 형태(NFD)로 들어온다. 화면엔 같아 보여도 "파인트"·"떵개" 검색·
+// 판정이 전부 빗나간다(2026-11-06, 소재명 22행). DB에 쓰는 글자는 보통 한글(NFC)로 합쳐 저장한다.
+export function toNfc(value: string): string {
+  return String(value).normalize("NFC");
+}
+
 export function normalizeChannelType(value: string | null): string | null {
   if (!value) return null;
+  value = toNfc(value);
   // 표준 표기로 정규화: 연속/앞뒤 공백 정리 + 괄호 앞 공백 보장("바이럴(영상)"→"바이럴 (영상)").
   // 저장 시점에 적용해 시트·드롭다운·CSV 어디서 와도 표기가 통일됨(필터 매칭 누락 방지).
   return value.trim().replace(/\s+/g, " ").replace(/\s*\(/g, " (");
@@ -210,7 +217,7 @@ export function normalizeChannelType(value: string | null): string | null {
 //    → 그건 아래 CANONICAL_ALIASES(팀이 확정한 표기)로만 교정한다.
 export function normalizeSpacing(value: string | null | undefined): string | null {
   if (value == null) return null;
-  const s = String(value).replace(/\s+/g, " ").trim();
+  const s = toNfc(String(value)).replace(/\s+/g, " ").trim();
   return s || null;
 }
 

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl, isInstagramNonPostUrl } from "@/lib/url-utils";
-import { normalizeChannelType, isFreeChannel } from "@/app/monitoring/lib";
+import { normalizeChannelType, isFreeChannel, toNfc } from "@/app/monitoring/lib";
 import { isNonAdAsset, NON_AD_PRODUCT_NAME } from "@/lib/non-ad-asset";
 import { tagCreatedBy } from "@/lib/sponsored-write";
 import { stripAssetFileListing } from "@/lib/asset-name-policy";
@@ -87,8 +87,8 @@ export async function POST(req: NextRequest) {
       posted_at,
       channel_type,
       asset_name: assetName,
-      project_name: r.project_name ? String(r.project_name).trim() : null,
-      product_name: nonAd ? NON_AD_PRODUCT_NAME : (r.product_name ? String(r.product_name).trim() : null),
+      project_name: r.project_name ? toNfc(String(r.project_name)).trim() : null,
+      product_name: nonAd ? NON_AD_PRODUCT_NAME : (r.product_name ? toNfc(String(r.product_name)).trim() : null),
       cost: free ? 0 : (r.cost != null ? Number(r.cost) : null),
       // 주의: caption과 performance는 현재 저장되지 않음
       // sponsored_posts 테이블에 해당 컬럼이 없으므로

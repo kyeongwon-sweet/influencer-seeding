@@ -39,6 +39,13 @@
 - **검증:** 가짜 트리거·프로퍼티로 실제 함수 실행 테스트 5건 추가(락 바쁨→15분 재시도·무알림 / 재시도 attempt 0 보존 / 4번 초과→LOCK_BUSY 알림 / 락 안 오류는 기존 7분 재시도 / 정상 실행). web 전체 **794/794**.
 - **Codex 요청:** 11-04 항목(`d5ec383c`) + 이 항목을 **한 번에** 라이브 `01_연동시트_자동동기화`에 수술 적용. 사용자에게 준 합본 인계문 참고.
 
+## ✅ 2026-11-06 [Claude 배포] DB 쓰기 입구에서 쪼개진 한글(NFD)→보통 한글(NFC) 자동 합치기 (재발방지 1)
+- **배경:** 위 캡션 건의 재발방지. DB 실측(sponsored_posts 5,293행): NFD는 `asset_name` **22건**(10월 10·11월 12, 그 전 0) + `account_name` 1건, 다른 칸 0. NFD면 대시보드 "떵개" 검색·소재명 키워드 판정(파일목록 제거 `표지/속지` 등)이 조용히 빗나간다.
+- **수정(web, Vercel 자동배포):** `web/app/monitoring/lib.ts`에 `toNfc` 추가, `normalizeSpacing`(→`canonicalText`: 계정명·업체명·소재명·사업명·상품명·기획자·제작자)·`normalizeChannelType`이 먼저 NFC로 합침. `stripAssetFileListing`도 NFC 먼저(모든 소재명 경로). `sponsored-write` 캡션(`content_summary`)·`marketing/sync` 사업명·상품명도 NFC. 시트는 건드리지 않음.
+- **기존 DB 22+1건:** 시트→DB 비교가 문자 그대로(`String(val).trim() === …`)라 다음 `syncAll`(내일 08:30 dailyAuto 또는 Codex 수동 syncAll) 때 NFC로 자동 교정된다. 확인 방법: DB에서 `asset_name != NFC(asset_name)` 0건.
+- **검증:** `web/tests/nfc-write-normalization.test.ts` 7건(실제 5138행 소재명), web 전체 **816/816**, `tsc`·`next build` 통과.
+- **남은 것(미착수, 사용자 결정 대기):** 재발방지 2 — '최근 2주 바이럴 행 중 소재명은 규칙 모양인데 캡션 못 뽑은 행' Slack 알림(시트 실측 기준 오늘 수정 반영 시 0건 출발).
+
 ## 🟡 2026-11-06 [Claude repo 수정 / Codex 라이브 적용 대기] 자모로 쪼개진(NFD) 소재명도 캡션 규칙 적용
 - **사용자 지적:** "모든 바이럴 영상에 파일명 규칙을 동일하게 적용했는데 5138~5144·5156~5158행은 상단카피 대신 게시물 캡션이 기록됨".
 - **원인(라이브 CSV 실측):** 해당 행 소재명이 맥 파일명 형태(NFD, 예: `파인트`=U+1111 U+1161 U+110B…)로 붙여넣어져 정규식의 `파인트`·`릴스`(NFC)와 글자로 안 맞음 → `captionFromAssetName_` 빈 값·`isNewViralAssetFormat_` false → 게시물 캡션 보존. 시트 전체에서 NFD 소재명은 **22행**(5138~5144·5156~5158·5237~5243·5287~5291, 전부 바이럴·P바치), 다른 열은 채널명 1칸 외 0. 상품명 열은 NFC라 제품 귀속은 정상.

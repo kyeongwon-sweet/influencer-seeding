@@ -1,6 +1,6 @@
 import type { getServerSupabase } from "@/lib/supabase-server";
 import { normalizeUrl, postIdentityKey, ALLOWED_POST_URL_RE, isInstagramNonPostUrl, isAccountNonPostUrl, isInvalidTikTokPostUrl, instagramRequestUrl } from "@/lib/url-utils";
-import { normalizeChannelType, isFreeChannel, canonicalText } from "@/app/monitoring/lib";
+import { normalizeChannelType, isFreeChannel, canonicalText, toNfc } from "@/app/monitoring/lib";
 import { repairPollutedCompanyName } from "@/lib/companyMap";
 import { triggerCaptionBackfill, needsCaption } from "@/lib/github-dispatch";
 import { todayKST } from "@/lib/dateRule";
@@ -90,7 +90,7 @@ export async function upsertSponsoredRows(
         posted_at:       r.posted_at || null,
         account_name,
         company_name,
-        content_summary: r.content_summary || null,
+        content_summary: r.content_summary ? toNfc(String(r.content_summary)) : null,
         channel_type,
         project_name:    canonicalText(r.project_name as string | null | undefined, "project_name"),
         product_name:    canonicalText(r.product_name as string | null | undefined, "product_name"),

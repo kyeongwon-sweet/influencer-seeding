@@ -9,7 +9,8 @@ export const ASSET_FILE_LIST_PATTERN = /\.(?:zip|png|jpe?g|gif|webp|mp4|mov|pdf)
 
 export function stripAssetFileListing(value: string | null | undefined): string | null {
   if (value == null) return null;
-  const text = String(value).trim();
+  // 자모로 쪼개진 한글(NFD)이면 "표지"·"속지" 표식을 못 찾는다 → 먼저 합친다(2026-11-06).
+  const text = String(value).normalize("NFC").trim();
   if (!text) return null;
   const match = ASSET_FILE_LIST_PATTERN.exec(text);
   if (!match) return text;
