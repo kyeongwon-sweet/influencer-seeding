@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## ✅ 2026-11-06 [Codex DB·시트 반영 완료] 4836행 채널분류 → `바이럴 (배너)` · 조회수 505 보존
+- **대상·순서 준수:** `tt:7693837987792145682` / DB `f9cf42e9-0467-40f6-b2ae-b146e3fb3d30`. 먼저 `sponsored_posts` 1행과 `post_daily_stats` 14행 전체를 `data/output/row4836_banner_reclass_backup_20261106.json`에 백업한 뒤 DB 지표를 보정했고, 그 다음에만 연동시트 상태를 확인·동기화했다.
+- **DB 지표 보존:** 14행의 빈 `reach_count`만 각 행의 기존 `play_count`로 채웠고 `play_count`는 그대로 보존했다. 사후 전수검증은 **14/14 `reach_count=play_count`**, 10-07 `252`부터 마지막 10-20 `505`까지 일치했다.
+- **시트 실물·분류 반영:** `10 콘텐츠 대시보드 연동`의 `B4836`이 정확히 `https://www.tiktok.com/@mhduchu/video/7693837987792145682/`인지 확인했다. DB 보정 뒤 `D4836`은 이미 `바이럴 (배너)`로 반영돼 있어 같은 셀을 불필요하게 재작성하지 않았다. 18:58:59~19:03:11 KST `syncAll`을 1회 실행했고(`비교 5,294 · 신규 0 · 값 수정 1 · URL 키 병합 1 · URL 자동보완 1 · 제외 5`), 직후 DB `channel_type='바이럴 (배너)'`를 재조회했다.
+- **exportStats·최종값 확인:** 19:03:45~19:12:52 KST `exportStats` 1회 완료. 로그는 `date_cells_rewritten=4`, 증분 수식 `5,309/5,309` 검증, 누적 수식 `13/13` 검증이며 오류 없이 끝났다. 라이브 시트에서 `H4836=505`, `FP4836(2026-10-20)=505`를 직접 확인해 배너 전환 뒤에도 최종 조회수가 사라지지 않았음을 확인했다.
+
 ## ✅ 2026-11-06 [Codex 라이브 적용·백업·DB 반영 완료] 자모 분리(NFD) 소재명도 캡션 규칙 적용 (`b8570cc6`)
 - **Claude 독립 검증(18시대):** 라이브 해시 `captionFromAssetName_ 88dd5542feaa`·`isNewViralAssetFormat_ e9ec156761a4`·`toNfc_ bc251bf58c7c`·`cleanAssetCaption_`·`fillCaptionFromAsset_` 무변경, 각 1곳. 이전 수정(dailyAuto·pull) 해시도 그대로. 시트 CSV: NFD 소재명 23행 전부 캡션=파생값, 바이럴 미적용 0. DB: NFD 0건(5,295행), 워치독 58건 검사 0건. 5299행(`DfWhDv8hTmy`, 협찬) 멀티라인 복원은 08-11 '줄바꿈→한 칸' 규칙이 내일 08:30 다시 평탄화한다(정상 동작, 사고 아님).
 - **라이브 사전 게이트:** 바운드 Apps Script를 새로 pull해 `isNewViralAssetFormat_=e0d658884295`, `cleanAssetCaption_=2bb71e331be9`, `fillCaptionFromAsset_=cc915652cad3`을 확인했다. `captionFromAssetName_`은 요청 해시와 주석 위치만 달랐고 실행 본문은 같은 구버전이라 차이를 먼저 보고한 뒤, repo의 주석 배치까지 포함한 해당 함수 블록만 수술 적용했다. 파일 전체 덮어쓰기는 하지 않았다.
