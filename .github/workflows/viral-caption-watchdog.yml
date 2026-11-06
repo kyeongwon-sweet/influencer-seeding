@@ -1,0 +1,38 @@
+name: Viral Caption Watchdog
+
+# 바이럴 캡션 = 소재명 상단 카피 워치독(scripts/viral_caption_watchdog.py).
+# 소재명 규칙이 조용히 안 먹혀 게시물 캡션이 남는 사고를 매일 감지해, 그날 '자정 수집' 보고 스레드에
+# 담당자 태그와 함께 댓글로 단다(없으면 10분 기다렸다 #빙과_마케팅_스틱바p 채널로).
+# 배경: 같은 종류 사고가 1주일에 2번(10-29 새 파일명 형식 17행, 맥 복사 소재명 NFD 22행), 둘 다 사람이 발견.
+#
+# ⚠️ 필요한 GitHub Secret: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, INJIBOT_SLACK_TOKEN.
+on:
+  schedule:
+    - cron: "40 2 * * *"   # 11:40 KST — 08:30 dailyAuto(캡션 채움→syncAll) 이후 + 버퍼, UTC0 데드존 회피
+  workflow_dispatch:
+
+concurrency:
+  group: viral-caption-watchdog
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run viral caption watchdog
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          INJIBOT_SLACK_TOKEN: ${{ secrets.INJIBOT_SLACK_TOKEN }}
+          REPORT_THREAD_WAIT_SECONDS: "600"
+          COLLECT_ALERT_ASSIGNEES: ${{ vars.COLLECT_ALERT_ASSIGNEES }}
+          PYTHONUTF8: "1"
+          TZ: "Asia/Seoul"
+        run: python scripts/viral_caption_watchdog.py --send

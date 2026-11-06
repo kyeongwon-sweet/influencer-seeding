@@ -104,3 +104,26 @@ test("🚨 NFD 소재명 + 게시물 문장 캡션 → 소재명 캡션으로 �
 test("NFD 옛 형식 문장 캡션은 여전히 보존(정책 그대로)", () => {
   assert.deepEqual(runFill([{ asset: OLD_ASSET.normalize("NFD"), caption: "유행빵의 원가, 알고 나면 놀라는 이유", type: V }]), []);
 });
+
+// ── 워치독 전제(scripts/viral_caption_watchdog.py): 뽑은 캡션은 언제나 소재명(NFC)의 연속된 일부 ──
+// 워치독은 파서를 다시 구현하지 않고 "캡션이 소재명 안에 있나"만 본다. 이 전제가 깨지면(예: 캡션 변환 규칙 추가)
+// 워치독이 정상 행을 오탐한다 → 규칙을 바꿀 땐 워치독도 같이 고칠 것.
+test("🚨 바이럴 캡션 파생값은 항상 소재명(NFC)의 부분 문자열이다(워치독 전제)", () => {
+  const assets = [
+    NEW_ASSET, OLD_ASSET, NFD_ASSET,
+    "[26.10]F_V_JD복_인지_복쫀바출시_유명인활용형__main.렉카_소혜.여돌냉장고에이런거들어있어도되는거예요.흰.안예빈.X_스틱바__261029_빙과_이채윤",
+    "F_V_P혼_바이럴_말차재입고_바이럴형_커뮤니티_var3.렉카_성분비교.제로가아님.X_스틱바P_손유곤_260818_빙과_유영현",
+    "[26.07]F_V_JD멜_바이럴_쫀득바출시_바이럴형_렉카형_var3.렉카_슈기.먹방여캠1황.디자인1.X_2P_김바다_260721_빙과_최재헌",
+    "[26.09]F_I_JD복_바이럴_상시_바이럴형_콘T기획_.배너_지젤.선망성.지젤-10k가능했던이유.__함주현_260907_빙과_함주현",
+  ];
+  let derived = 0;
+  for (const a of assets) {
+    for (const type of [V, "바이럴 (배너)"]) {
+      const c = cap(a, type);
+      if (!c) continue;
+      derived++;
+      assert.ok(a.normalize("NFC").includes(c), `${c} ⊄ ${a}`);
+    }
+  }
+  assert.ok(derived >= 6, "파생된 표본이 너무 적으면 이 테스트가 무력화된 것");
+});
