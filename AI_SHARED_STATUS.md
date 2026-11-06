@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## ✅ 2026-11-06 [Codex 라이브 적용·백업·DB 반영 완료] 자모 분리(NFD) 소재명도 캡션 규칙 적용 (`b8570cc6`)
+- **라이브 사전 게이트:** 바운드 Apps Script를 새로 pull해 `isNewViralAssetFormat_=e0d658884295`, `cleanAssetCaption_=2bb71e331be9`, `fillCaptionFromAsset_=cc915652cad3`을 확인했다. `captionFromAssetName_`은 요청 해시와 주석 위치만 달랐고 실행 본문은 같은 구버전이라 차이를 먼저 보고한 뒤, repo의 주석 배치까지 포함한 해당 함수 블록만 수술 적용했다. 파일 전체 덮어쓰기는 하지 않았다.
+- **수술 적용·라이브 저장:** `toNfc_`를 `cleanAssetCaption_` 바로 아래에 추가하고 `captionFromAssetName_`·`isNewViralAssetFormat_`의 소재명 분해 전에 NFC 정규화를 넣었다. 적용 후 함수 해시는 `captionFromAssetName_=88dd5542feaa`, `isNewViralAssetFormat_=e9ec156761a4`, `toNfc_=bc251bf58c7c`; 비대상은 `cleanAssetCaption_=2bb71e331be9`, `fillCaptionFromAsset_=cc915652cad3`으로 그대로다. 18:13:24 KST guarded push 후 fresh pull에서 라이브 10개 파일이 push 작업본과 전부 일치했고 `.gs` 문법 검사도 통과했다.
+- **백업:** 실행 전에 전체 `10 콘텐츠 대시보드 연동` 탭을 별도 스프레드시트 [`_codex_caption_backup_20261106_181324`](https://docs.google.com/spreadsheets/d/1FVKkOOc1re3PYtMXHwpiBjst8UnSgcq0byUPU4nA_cs/edit?gid=1821278188#gid=1821278188)로 복제하고 첫·마지막 대상 URL·캡션을 재조회했다.
+- **backfill 실측:** 18:20:15~18:21:55 KST `backfillViralCaptionsFromAsset()`를 정확히 1회 실행했고 로그는 `caption_from_asset {"changed":24}`였다. URL 기준 전후 대조 결과 요청된 NFD 22행(5138~5144·5156~5158·5237~5243·5287~5291)은 모두 정상 교체됐다. 실행 직전 새로 추가된 같은 원인의 NFD 바이럴 5302행(`DfZOb2fRlZ2`) 1건도 올바르게 교체돼 유지했다. 나머지 1건 5299행(`DfWhDv8hTmy`)은 기존 함수의 공백 정리 분기가 건드린 비대상 멀티라인 캡션이어서 백업 원문으로 즉시 복원했다. 따라서 **최종 순변경은 올바른 NFD 23행뿐**, 그 밖의 캡션 변경은 0건이다.
+- **DB·대시보드 반영:** 18:24:58~18:28:19 KST `syncAll` 1회 완료. 로그는 `비교 5,294 · 신규 2 · 값 수정 24 · 시트 중복 URL 1건 병합 · URL 자동보완 1 · 제외 5`이며 오류 없이 끝났다. live CSV의 URL→캡션과 `sponsored_posts.content_summary`를 직접 대조해 요청 22건+신규 1건 **23/23 일치**, 누락·중복·불일치 0을 확인했다. 복원한 5299행도 멀티라인 원문과 DB가 정확히 일치한다.
+- **회귀 검증:** caption 표적 테스트 **11/11**, web 전체 **809/809**, `node --check` 통과. 시트 실물에서도 5138~5144와 신규 5302의 NFC 캡션을 확인했다.
+
 ## 🟢 2026-11-05 [Codex 라이브 적용 완료 / 11-06 자연 실행 확인 대기] 아침 dailyAuto 30분 시간 초과 근본 수정 (`11962922`)
 - **사전 게이트 통과:** 10:2x KST 라이브 `01_연동시트_자동동기화`를 새로 pull하고 LF 기준 함수 SHA-256을 계산했다. `exportStatsWithOptions_=013eff2ec3fd`, `dailyAutoContinuation_=38dbed66d064`, `runDbPullSyncAttempt_=04dbc5a93eb1`로 요청한 `89aea3e2` 기준과 3/3 일치했다. push 직전 별도 재pull에서도 라이브 10개 파일 전체 해시가 최초 pull과 동일해 동시 편집이 없음을 확인했다.
 - **수술 적용·저장:** `git diff 89aea3e2 11962922 -- Combined_Sheet_AppsScript.gs`의 `+99/-18` hunks만 라이브 `01` 작업본에 적용했다. 10:27:02 KST guarded push 후 다시 pull해 push 직전 작업본과 **10개 파일 전체 SHA-256 일치**를 확인했다. 실제 변경은 `01`뿐이며 `02_시트쓰기_충돌방지`(`8cdadf…c2d1e`)·`03_누적조회수_수식안전`(`f4c0c3…c7c35`) 및 H열 관련 `refreshCumulativeViews`·`metricIncrementFormula_` 함수 해시는 전후 동일하다.
