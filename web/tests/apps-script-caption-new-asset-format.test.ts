@@ -80,3 +80,27 @@ test("옛 형식 + 해시태그 캡션 → 지금처럼 교체", () => {
 test("이미 소재명 캡션이면 다시 쓰지 않는다", () => {
   assert.deepEqual(runFill([{ asset: NEW_ASSET, caption: "대세감파급력.AI먹방.떵개ai아닌거확실함", type: V }]), []);
 });
+
+// ── 자모로 쪼개진 소재명(NFD, 맥 파일명) — 2026-11-06 사용자 지적 ──
+// 5138~5144·5156~5158·5237~5243·5287~5291(22행) 소재명이 NFD로 붙여넣어져 "파인트"·"릴스"가
+// 글자로 안 맞았다 → 캡션을 못 뽑고 게시물 캡션("진짜 스타성 ㄹㅈㄷ임…")이 남았다.
+// 아래 소재명은 실제 5138행 값을 그대로 NFD로 만든 것(시트 원본이 이 형태).
+const NFD_ASSET = "[26.10]F_V_P바치_인지_바치케출시_바이럴형_맛잘알권위_var3.릴스_떵개파급력.유행어강조.떡잎부터남다른스타성.X_파인트__261030_빙과_박채현".normalize("NFD");
+
+test("🚨 자모로 쪼개진(NFD) 새 형식 소재명도 캡션을 뽑고, 결과는 보통 한글(NFC)", () => {
+  assert.notEqual(NFD_ASSET, NFD_ASSET.normalize("NFC"), "테스트 전제: 원본이 NFD");
+  const got = cap(NFD_ASSET, V);
+  assert.equal(got, "떵개파급력.유행어강조.떡잎부터남다른스타성");
+  assert.equal(got, got.normalize("NFC"));
+});
+
+test("🚨 NFD 소재명 + 게시물 문장 캡션 → 소재명 캡션으로 바꾼다(실제 5138행)", () => {
+  assert.deepEqual(
+    runFill([{ asset: NFD_ASSET, caption: "진짜 스타성 ㄹㅈㄷ임ㅋㅋㅋㅋㅋ", type: V }]),
+    [{ row: 2, value: "떵개파급력.유행어강조.떡잎부터남다른스타성" }],
+  );
+});
+
+test("NFD 옛 형식 문장 캡션은 여전히 보존(정책 그대로)", () => {
+  assert.deepEqual(runFill([{ asset: OLD_ASSET.normalize("NFD"), caption: "유행빵의 원가, 알고 나면 놀라는 이유", type: V }]), []);
+});

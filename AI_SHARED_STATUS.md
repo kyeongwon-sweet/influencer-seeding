@@ -39,6 +39,19 @@
 - **검증:** 가짜 트리거·프로퍼티로 실제 함수 실행 테스트 5건 추가(락 바쁨→15분 재시도·무알림 / 재시도 attempt 0 보존 / 4번 초과→LOCK_BUSY 알림 / 락 안 오류는 기존 7분 재시도 / 정상 실행). web 전체 **794/794**.
 - **Codex 요청:** 11-04 항목(`d5ec383c`) + 이 항목을 **한 번에** 라이브 `01_연동시트_자동동기화`에 수술 적용. 사용자에게 준 합본 인계문 참고.
 
+## 🟡 2026-11-06 [Claude repo 수정 / Codex 라이브 적용 대기] 자모로 쪼개진(NFD) 소재명도 캡션 규칙 적용
+- **사용자 지적:** "모든 바이럴 영상에 파일명 규칙을 동일하게 적용했는데 5138~5144·5156~5158행은 상단카피 대신 게시물 캡션이 기록됨".
+- **원인(라이브 CSV 실측):** 해당 행 소재명이 맥 파일명 형태(NFD, 예: `파인트`=U+1111 U+1161 U+110B…)로 붙여넣어져 정규식의 `파인트`·`릴스`(NFC)와 글자로 안 맞음 → `captionFromAssetName_` 빈 값·`isNewViralAssetFormat_` false → 게시물 캡션 보존. 시트 전체에서 NFD 소재명은 **22행**(5138~5144·5156~5158·5237~5243·5287~5291, 전부 바이럴·P바치), 다른 열은 채널명 1칸 외 0. 상품명 열은 NFC라 제품 귀속은 정상.
+- **수정(repo):** `toNfc_` 헬퍼 추가(`cleanAssetCaption_` 바로 아래), `captionFromAssetName_`·`isNewViralAssetFormat_`의 `String(assetName || "")` → `toNfc_(assetName)`. 결과 캡션도 NFC. `fillCaptionFromAsset_`·`cleanAssetCaption_` 무변경. 테스트 3건(실제 5138행 NFD 소재명) 추가 → caption 11/11, web 전체 **809/809**, .gs 문법 통과.
+- **영향 미리계산(라이브 CSV + 고친 규칙, 쓰기 없음):** 바뀌는 행 **정확히 22행** = 위 NFD 행. 그 밖 0.
+- **Codex 몫(라이브 `01_연동시트_자동동기화`, 수술 적용):**
+  1. 적용 전 해시(LF, `function 이름(`~첫 `
+}
+`, SHA-256 앞 12): `captionFromAssetName_ 563e4ab52edc` · `isNewViralAssetFormat_ e0d658884295` 확인.
+  2. `toNfc_` 함수(주석 1줄 포함)를 `cleanAssetCaption_` 바로 아래에 추가, 두 함수의 `parts` 줄(+`captionFromAssetName_` 주석 2줄)을 repo와 같게.
+  3. 적용 후 해시: `captionFromAssetName_ 88dd5542feaa` · `isNewViralAssetFormat_ e9ec156761a4` · `toNfc_ bc251bf58c7c` · `cleanAssetCaption_ 2bb71e331be9`·`fillCaptionFromAsset_ cc915652cad3`(무변경).
+  4. 캡션 열 백업 후 `backfillViralCaptionsFromAsset()` 1회 → `caption_from_asset {"changed":22}`, 위 22행만 바뀌고 그 외 0 전후 대조. DB·대시보드 반영은 이어서 `syncAll` 1회(또는 내일 08:30 dailyAuto).
+
 ## 🟡 2026-11-04 [Claude repo 수정 / Codex 라이브 적용 대기] DB→시트 3시간 동기화가 사람 편집과 겹쳐도 안 멈추게
 - **사고:** 11-04 18:04 `scheduledDbPullSync_` 실패 DM("pullFromDB returned false"). 실행 기록의 실제 이유는 `행 수 변경으로 쓰기 취소(writeColumnRuns): 5267→5270. 시트가 동시 편집됨` — 처음 읽고 3분 뒤 쓰는 사이 사람이 맨 아래에 바치케 바이럴 3행(5268~5270)을 넣었다. 가드가 쓰기를 취소해 손상 없음, 18:15 재시도 OK(추가 0·채움 0). Slack 검색상 첫 발생.
 - **근본 원인:** 처음 읽은 행 번호를 3분 뒤 그대로 쓰고, 그 사이 행 수가 바뀌면 전체 취소하는 구조(행 수=대리 신호). 근무시간 3시간 주기라 사람 입력과 또 겹친다. 그리고 알림에는 실제 이유가 빠져 실행 기록을 뒤져야 했다.

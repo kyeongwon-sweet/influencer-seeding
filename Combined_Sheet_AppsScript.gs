@@ -1946,13 +1946,21 @@ function cleanAssetCaption_(raw) {
     .trim();
 }
 
+// 자모로 쪼개진 한글(NFD, 맥 파일명)을 보통 한글(NFC)로 합친다. normalize가 없으면 원문 그대로.
+function toNfc_(value) {
+  const s = String(value == null ? "" : value);
+  return typeof s.normalize === "function" ? s.normalize("NFC") : s;
+}
+
 /**
  * 바이럴 소재명은 포맷 표식과 꼬리의 YYMMDD를 함께 확인해야만 캡션으로 인정한다.
  * 캡션 안에도 밑줄이 들어갈 수 있어 날짜에서 고정 칸 수를 빼는 방식은 쓰지 않는다.
  * 포맷을 확정할 수 없는 옛 바이럴 소재명은 추측하지 않고 빈 값으로 반환한다.
  */
 function captionFromAssetName_(assetName, channelType) {
-  const parts = String(assetName || "").split("_");
+  // 맥에서 만든 파일명은 한글이 자모로 쪼개진 형태(NFD)로 붙여넣어진다 → "파인트"·"릴스"가 글자로 안 맞아
+  // 캡션을 못 뽑고 게시물 캡션이 남았다(2026-11-06, 22행). 비교 전에 보통 한글(NFC)로 합친다.
+  const parts = toNfc_(assetName).split("_");
   const type = String(channelType || "");
   const isViral = type.indexOf("바이럴") >= 0;
   if (!isViral) return cleanAssetCaption_(parts[8] || "");
@@ -1991,7 +1999,7 @@ function captionFromAssetName_(assetName, channelType) {
 // 새 형식 바이럴 소재명인가: 날짜(YYMMDD) 두 칸 앞 제품 표시가 P 없는 '파인트'·'스틱바'(2026-10-29~).
 //   예) …X_스틱바__261029_빙과_… / …X_파인트__261030_빙과_…  (옛 형식은 2P·파인트P·스틱바P)
 function isNewViralAssetFormat_(assetName) {
-  const parts = String(assetName || "").split("_");
+  const parts = toNfc_(assetName).split("_");
   for (var i = parts.length - 1; i >= 2; i--) {
     if (/^\d{6}$/.test(parts[i])) return /^(?:파인트|스틱바)$/.test(String(parts[i - 2] || "").trim());
   }
