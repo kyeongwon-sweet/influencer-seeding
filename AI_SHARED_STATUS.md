@@ -1,5 +1,14 @@
 # AI Shared Status
 
+## ✅ 2026-11-10 [Claude 수집·DB 39행] 무디 `말차 파인트 캠페인` 소급등록 41건 최종 조회수 1회 실측 기록
+- **상황:** 42건 중 41건이 11-09 syncAll로 등록되자마자 나이 규칙(게시 9/8~9/30, 14일 초과)으로 `ended_at=2026-11-09` 자동종료 → 통계 0행이라 대시보드 조회수 `-`. 나머지 1건 `DdTfR1VTzxE`(`c8e69328`)는 이미 추적 중(11-09 2,493)이라 제외.
+- **사용자 요청(11-10):** "지금 기준으로 최종 조회수 수집해서 데이터 입력". 10-14 `DdTfR1VTzxE` 선례 방식 그대로.
+- **수집:** Apify `apify/instagram-scraper` 1회(run `OheUj8onwKa4lzhsM`, 41 URL, `run_monitoring._fetch_stats` 재사용). 원본 응답 백업: 스크래치패드 `moody_matcha_fetch_20261110.json`.
+- **기록:** 39건 `post_daily_stats` INSERT(measured_at **2026-11-09**, manual=false — 선례와 같은 D-1 라벨). 계정명 39/39 일치, 사전 통계 0행 확인, 사후 재조회 39행·합계 **313,407**. 좋아요 `-1`(숨김)은 파이프라인 관례대로 그대로 저장.
+- **미기록 2건(삭제/비공개, 빈칸 유지):** `p/DdRNWx9pJ6z`(h_jni___) · `p/DddiLBZhQZH`(mocci._.6) — 액터 `deleted=True`.
+- **참고(게시일 하루 차이 5건, posted_at 무변경):** 실물 KST 게시일이 시트보다 하루 늦음 — `DdB_cV1BUD2`(9/8→9/9) · `DdYCZLtBQw_`(9/16→9/17) · `DdnOxm1S5FF`(9/22→9/23) · `DdDHorCuz9N`(9/8→9/9) · `DdaBJpMSmDf`(9/17→9/18). 계정·URL 일치라 같은 글.
+- **영향:** 첫 측정이라 대시보드 11-09 증분에 313,407이 얹힘(11-09 리포트는 이미 발송). 종료 글이라 이후 자동 수집 없음 → 이 값이 최종. 시트 11.9 칸은 다음 exportStats(T-1)에서 채워지는지 확인 필요(미검증).
+
 ## ✅ 2026-11-06 [Codex DB·시트 반영 완료] 4836행 채널분류 → `바이럴 (배너)` · 조회수 505 보존
 - **대상·순서 준수:** `tt:7693837987792145682` / DB `f9cf42e9-0467-40f6-b2ae-b146e3fb3d30`. 먼저 `sponsored_posts` 1행과 `post_daily_stats` 14행 전체를 `data/output/row4836_banner_reclass_backup_20261106.json`에 백업한 뒤 DB 지표를 보정했고, 그 다음에만 연동시트 상태를 확인·동기화했다.
 - **DB 지표 보존:** 14행의 빈 `reach_count`만 각 행의 기존 `play_count`로 채웠고 `play_count`는 그대로 보존했다. 사후 전수검증은 **14/14 `reach_count=play_count`**, 10-07 `252`부터 마지막 10-20 `505`까지 일치했다.
