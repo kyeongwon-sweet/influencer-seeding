@@ -4,6 +4,7 @@
 - **사용자 지시(11-10):** "소재명을 DB, 연동 시트, AI 대시보드 모두 [말차 파인트 캠페인 - 리빙]으로 맞춰줘". 표기는 기존 `듬뿍바 1차 캠페인 - 리빙`(41)·`듬뿍바 2차 캠페인 - 리빙`(36)·`쫀득바 2차 캠페인 - 리빙`(20)과 같은 형식.
 - **DB(Claude 완료):** `sponsored_posts.asset_name='말차 파인트 캠페인'` 42행(전부 업체 무디) 백업(스크래치패드 `moody_matcha_asset_backup_20261110.json`) 후 PATCH → 재조회 옛 이름 0행·새 이름 42행. 대시보드는 DB를 읽으므로 즉시 반영.
 - **시트(📮 Codex, 내일 08:30 syncAll 전 필수):** 연동시트 `10WpAQU9…` gid `1937186871` E열(소재명) **E4953 + E5361:E5401 = 42칸**(11-10 CSV 실측, 정확히 `말차 파인트 캠페인` 42칸·다른 행 0). 시트가 소재명 정본(SHEET_WINS)이라 **시트를 안 바꾸면 08:30 syncAll이 DB를 옛 이름으로 되돌린다.** DB→시트 pull은 빈칸만 채워서 자동 전파 안 됨.
+- **게시일 5건 추가(사용자 지시 "시트, DB, 대시보드 모두 맞춰서"):** Apify run `OheUj8onwKa4lzhsM` 원본 timestamp→KST로 실제 게시일 재확인 후 DB `posted_at` PATCH(현재값 가드, 백업 `moody_matcha_posted_at_backup_20261110.json`): `DdB_cV1BUD2` yamziniy 9/8→**9/9**(15:19Z) · `DdYCZLtBQw_` dragonjju 9/16→**9/17**(04:51Z) · `DdnOxm1S5FF` winter_beaut 9/22→**9/23**(02:30Z) · `DdDHorCuz9N` tarimi_home 9/8→**9/9**(01:52Z) · `DdaBJpMSmDf` kukeereo 9/17→**9/18**(23:15Z 9/17). posted_at은 manual_fields 잠금이 아니라 **시트 A열(업로드일)이 다르면 08:30 syncAll이 DB를 되돌린다** → 📮 Codex: 시트 **A5365·A5374·A5379·A5388·A5398**도 같은 날짜로(날짜값, 기존 형식 유지).
 
 ## ✅ 2026-11-10 [Claude 수집·DB 39행] 무디 `말차 파인트 캠페인` 소급등록 41건 최종 조회수 1회 실측 기록
 - **상황:** 42건 중 41건이 11-09 syncAll로 등록되자마자 나이 규칙(게시 9/8~9/30, 14일 초과)으로 `ended_at=2026-11-09` 자동종료 → 통계 0행이라 대시보드 조회수 `-`. 나머지 1건 `DdTfR1VTzxE`(`c8e69328`)는 이미 추적 중(11-09 2,493)이라 제외.
