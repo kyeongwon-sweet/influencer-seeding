@@ -8,6 +8,7 @@
 - **DB 사후 원장:** 같은 2026-11-11 큐를 다시 산출한 결과 **29건, 전부 YouTube**만 남고 Instagram은 **3→0**. 즉 이번 토큰 장애로 못 채운 Apify 대상 3건은 전부 복구됐고, 남은 29건은 별도의 YouTube 공개 조회수 결측이다(`collector_uncollectable` 106은 기존 설계대로 재시도 제외 유지).
 - **정리:** 토큰 전달·검증용 임시 파일과 임시 Vercel link/감사 의존성 디렉터리를 삭제했다. 다음 자연 자정 수집이 새 GitHub secret으로 동작하는지는 11-13 첫 회차에서 최종 관찰한다.
 
+- **[Claude 독립 검증 12:3x KST]** GH secret 갱신일 두 repo 모두 2026-11-12T03:18Z · 로컬 정본 env 토큰 `GET /v2/users/me` 200 · run `43147558906` success, 인증 오류 0건, IG run `mvN7p2x44muLsHxQb` · DB measured_at 11-11 = **1,513행**(1,510 + 03:00Z 이후 3) · 큐 32건 = IG `missing_same_day_row` 3 + YouTube 위성채널 `same_day_row_without_view_metric` 29(전부 last_metric=null, 장애 이전부터의 결측) · Vercel 최신 Production 배포 `252bb42f` state=success. **미검증:** 부정댓글 모니터는 교체 후 시작한 실행이 아직 없음(02:53Z 실행은 옛 토큰으로 시작, 03:01Z 대기 중) → 다음 실행에서 `[apify:*] batch failed` 0건 확인 필요. 오늘 밤 00:41 자정 수집 도착도 내일 확인.
 ## 🔴 2026-11-12 [Claude 진단] Apify 토큰 무효 → 아침 재시도 3회 실패, **오늘 밤 00:41 수집 전체 실패 예정**
 - **자정 주 수집(정상):** run `43046293075`(11-11 15:14Z, final_snapshot) 성공 — IG run `pteJwJQdxFr17NBUX`, `데이터 저장 완료: 1510건`, VIEW_MISSING 106(전날과 같은 수준). DB measured_at 2026-11-11 = 1,510행(전부 auto).
 - **이후 재시도 3회 실패:** `43110320051`(22:16Z)·`43121829210`(23:42Z)·`43135990086`(11-12 01:39Z) 모두 `협찬 전체 수집` 단계에서 `ApifyApiError: User was not found or authentication token is not valid`. 전날은 재시도가 +15건(1495→1510) 복구했는데 오늘은 0.
