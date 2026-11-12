@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## ✅ 2026-11-12 [Codex 복구 완료] Apify 새 토큰 전 경로 교체 · 재배포 · 누락 대상 재수집
+- **Apify 계정·원인 확인:** Personal 계정은 정지·결제 경고 없이 정상이고 사용량은 `$82 / $350`. 기존 토큰은 `/v2/users/me` **401**, 보안 사고 대응으로 일괄 교체된 토큰이 원인임을 확인했다. 새 Personal API token을 발급했으며 값은 어디에도 기록하지 않았다.
+- **자격증명 반영(12:18 KST):** `APIFY_API_TOKEN`을 GitHub Actions secret 두 곳(`kyeongwon-sweet/influencer-seeding` 03:18:39Z · `negative-comment-monitor` 03:18:40Z), Vercel Production env(03:18:42Z), 로컬 `web/.env.local`에 모두 교체했다. 로컬 새 토큰으로 Apify `/v2/users/me` **HTTP 200**을 재검증했다.
+- **Vercel 재배포:** production deployment `dpl_47i9eE6ZuaQyZocSetAqY82Nwrzh`가 **Ready**, 운영 alias `https://influencer-seeding-mu.vercel.app` 연결을 확인했다.
+- **누락분 안전 재수집:** 전체 재수집은 하지 않고 `monitoring-retry.yml` run [`43147558906`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/43147558906)을 `target_only=true`, `recollect_all=false`로 1회 실행했다. 사전 큐는 **32건(YouTube 29 · Instagram/Apify 3)**, 로그는 `VIEW_MISSING_TARGET_ONLY=1 - 32/1615 posts`·`데이터 저장 완료: 32건`, 결론 success이며 Apify 인증 오류는 0건이다.
+- **DB 사후 원장:** 같은 2026-11-11 큐를 다시 산출한 결과 **29건, 전부 YouTube**만 남고 Instagram은 **3→0**. 즉 이번 토큰 장애로 못 채운 Apify 대상 3건은 전부 복구됐고, 남은 29건은 별도의 YouTube 공개 조회수 결측이다(`collector_uncollectable` 106은 기존 설계대로 재시도 제외 유지).
+- **정리:** 토큰 전달·검증용 임시 파일과 임시 Vercel link/감사 의존성 디렉터리를 삭제했다. 다음 자연 자정 수집이 새 GitHub secret으로 동작하는지는 11-13 첫 회차에서 최종 관찰한다.
+
 ## 🔴 2026-11-12 [Claude 진단] Apify 토큰 무효 → 아침 재시도 3회 실패, **오늘 밤 00:41 수집 전체 실패 예정**
 - **자정 주 수집(정상):** run `43046293075`(11-11 15:14Z, final_snapshot) 성공 — IG run `pteJwJQdxFr17NBUX`, `데이터 저장 완료: 1510건`, VIEW_MISSING 106(전날과 같은 수준). DB measured_at 2026-11-11 = 1,510행(전부 auto).
 - **이후 재시도 3회 실패:** `43110320051`(22:16Z)·`43121829210`(23:42Z)·`43135990086`(11-12 01:39Z) 모두 `협찬 전체 수집` 단계에서 `ApifyApiError: User was not found or authentication token is not valid`. 전날은 재시도가 +15건(1495→1510) 복구했는데 오늘은 0.
