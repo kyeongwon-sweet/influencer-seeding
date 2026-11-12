@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## 🔴 2026-11-12 [Claude 진단] Apify 토큰 무효 → 아침 재시도 3회 실패, **오늘 밤 00:41 수집 전체 실패 예정**
+- **자정 주 수집(정상):** run `43046293075`(11-11 15:14Z, final_snapshot) 성공 — IG run `pteJwJQdxFr17NBUX`, `데이터 저장 완료: 1510건`, VIEW_MISSING 106(전날과 같은 수준). DB measured_at 2026-11-11 = 1,510행(전부 auto).
+- **이후 재시도 3회 실패:** `43110320051`(22:16Z)·`43121829210`(23:42Z)·`43135990086`(11-12 01:39Z) 모두 `협찬 전체 수집` 단계에서 `ApifyApiError: User was not found or authentication token is not valid`. 전날은 재시도가 +15건(1495→1510) 복구했는데 오늘은 0.
+- **직접 확인:** 로컬 정본 env의 `APIFY_API_TOKEN`으로 `GET /v2/users/me` → **401 `user-or-token-not-found`**. GH secret `APIFY_API_TOKEN` 갱신일은 2026-06-08(변경 없음) → **Apify 쪽에서 토큰이 폐기/재발급됐거나 계정 문제**(사용량 한도 초과면 다른 오류). 11-12 00:43~07:16 KST 사이 발생. 상태판·git에 로테이션 기록 없음. Apify 콘솔은 로그인 안 돼 있어 원인 미확인.
+- **필요(사람·Codex 레인, 자격증명):** Apify 콘솔에서 계정 상태 확인 → 새 API 토큰 → GH secret `APIFY_API_TOKEN` + Vercel env `APIFY_API_TOKEN` + 로컬 `web/.env.local` 교체. **오늘 밤 00:41 전 필수.** 교체 후 `GET /v2/users/me` 200 확인 + `cron-daily-collect.yml` 수동 dispatch(재시도 역할)로 11-11 누락분 복구 및 도착 확인. 토큰 값은 어디에도 기록 금지(repo PUBLIC).
+
 ## 🟡 2026-11-10 [Claude DB 42행 완료 / 📮 Codex 시트 42칸 대기] 무디 소재명 `말차 파인트 캠페인` → `말차 파인트 캠페인 - 리빙`
 - **사용자 지시(11-10):** "소재명을 DB, 연동 시트, AI 대시보드 모두 [말차 파인트 캠페인 - 리빙]으로 맞춰줘". 표기는 기존 `듬뿍바 1차 캠페인 - 리빙`(41)·`듬뿍바 2차 캠페인 - 리빙`(36)·`쫀득바 2차 캠페인 - 리빙`(20)과 같은 형식.
 - **DB(Claude 완료):** `sponsored_posts.asset_name='말차 파인트 캠페인'` 42행(전부 업체 무디) 백업(스크래치패드 `moody_matcha_asset_backup_20261110.json`) 후 PATCH → 재조회 옛 이름 0행·새 이름 42행. 대시보드는 DB를 읽으므로 즉시 반영.
