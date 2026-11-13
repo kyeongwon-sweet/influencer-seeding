@@ -236,7 +236,9 @@ const combined = read("Combined_Sheet_AppsScript.gs");
 const guard = read("_WriteGuard.gs");
 const insightInquiry = read(join("apps-script", insightInquiryFile));
 
-assertMarker("increment V2 SEQUENCE formula", combined.includes("SEQUENCE(1,COLUMNS(rng),COLUMN("));
+// 2026-11-13: I열 표준식은 V4(배열 없는 가벼운 수식). V3 SEQUENCE 식은 옛 수식 인식용 legacy 함수에만 남는다.
+assertMarker("increment V4 light formula", combined.includes("INCREMENT_FORMULA_V4_LIGHT")
+  && combined.includes("function legacyIncrementFormulaV3_("));
 assertMarker("no broken COLUMN(rng) increment formula", !combined.includes("cols,COLUMN(rng)"));
 assertMarker("formula audit function", combined.includes("function auditLinkedSheetFormulas_()"));
 assertMarker("auto write guard", combined.includes("function withAutoWriteGuard_"));

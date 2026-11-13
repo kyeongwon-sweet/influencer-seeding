@@ -55,9 +55,16 @@ test("기대 수식은 전체 날짜 범위와 최신 수집 target 열을 분�
     expectedCumulativeFormula(10, METRIC_RANGE),
     '=IF(COUNT(P10:DJ10)=0,"",MAX(P10:DJ10))',
   );
-  assert.match(expectedIncrementFormula(10, METRIC_RANGE), /rng,\$P10:\$DJ10/);
-  assert.match(expectedIncrementFormula(10, METRIC_RANGE), /targetC,COLUMN\(\$DJ10\)/);
-  assert.doesNotMatch(expectedIncrementFormula(10, METRIC_RANGE), /DH10/);
+  // V4(2026-11-13): 배열 없는 가벼운 식 — target칸 − MAX(첫 날짜칸~target 직전칸)
+  assert.equal(
+    expectedIncrementFormula(10, METRIC_RANGE),
+    '=IFERROR(IF($DJ10>0,IF(MAX($P10:$DI10)>0,MAX(0,$DJ10-MAX($P10:$DI10)),$DJ10),""),"")',
+  );
+  assert.doesNotMatch(expectedIncrementFormula(10, METRIC_RANGE), /LET\(|SEQUENCE|FILTER/);
+  assert.equal(
+    expectedIncrementFormula(10, { ...METRIC_RANGE, targetColumn: "P" }),
+    '=IFERROR(IF($P10>0,$P10,""),"")',
+  );
 });
 
 test("날짜열 최신 헤더가 일시적으로 빈 값이면 등록상태 직전까지 하루 단위로 복구", () => {

@@ -350,7 +350,37 @@ export function expectedCpvFormula(
   return `=IF(${g}="","",IF(N(${g})=0,0,IFERROR(${g}/${h},"?")))`;
 }
 
+/**
+ * I열 증분 표준식 V4(2026-11-13, "연동 시트가 너무 느려") — Apps Script `metricIncrementFormula_` 와 1:1.
+ * target칸 − MAX(첫 날짜칸~target 직전칸). V3(LET·SEQUENCE·FILTER 배열)와 값은 같고 배열 계산이 없다.
+ */
 export function expectedIncrementFormula(
+  row: number,
+  { firstColumn, lastColumn, targetColumn }: SheetAuditRow["metricRange"],
+): string {
+  const target = (targetColumn ?? lastColumn).toUpperCase();
+  const first = firstColumn.toUpperCase();
+  const t = `$${target}${row}`;
+  const fc = columnNumber(first);
+  const tc = columnNumber(target);
+  if (!fc || !tc || tc < fc) return '=""';
+  if (tc === fc) return `=IFERROR(IF(${t}>0,${t},""),"")`;
+  const prev = `MAX($${first}${row}:$${columnLetter(tc - 1)}${row})`;
+  return `=IFERROR(IF(${t}>0,IF(${prev}>0,MAX(0,${t}-${prev}),${t}),""),"")`;
+}
+
+function columnLetter(col: number): string {
+  let n = col, out = "";
+  while (n > 0) {
+    const r = (n - 1) % 26;
+    out = String.fromCharCode(65 + r) + out;
+    n = Math.floor((n - 1) / 26);
+  }
+  return out;
+}
+
+/** V3(2026-07-27~11-13) — 라이브에 남은 옛 수식을 이행 기간 동안 '정상'으로 인정하기 위해서만 쓴다. */
+export function legacyIncrementFormulaV3(
   row: number,
   { firstColumn, lastColumn, targetColumn }: SheetAuditRow["metricRange"],
 ): string {
@@ -384,7 +414,7 @@ function validFormulaEndColumn(
   const endColumn = match[3];
   const expected = kind === "cumulative"
     ? expectedCumulativeFormula(row.sourceRow, { ...row.metricRange, lastColumn: endColumn })
-    : expectedIncrementFormula(row.sourceRow, { ...row.metricRange, lastColumn: endColumn });
+    : legacyIncrementFormulaV3(row.sourceRow, { ...row.metricRange, lastColumn: endColumn });
   if (!sameFormula(actual, expected)) return null;
 
   const allowedColumns = row.metricRange.columns;
@@ -561,7 +591,8 @@ export function auditRows(
     }
     const post = posts.get(row.key);
     const incrementFormulaValid = row.sourceRow && row.incFormula !== undefined && (
-      validFormulaEndColumn(row.incFormula, row, "increment") !== null ||
+      sameFormula(row.incFormula, expectedIncrementFormula(row.sourceRow, row.metricRange)) ||
+      validFormulaEndColumn(row.incFormula, row, "increment") !== null ||   // V3 이행 기간 허용
       isIntentionalBacklogStub(row.incFormula, row, post, targetDate) ||
       isIntentionalEndedStub(row.incFormula, post, targetDate)
     );

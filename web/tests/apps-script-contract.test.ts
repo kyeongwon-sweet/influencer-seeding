@@ -448,18 +448,16 @@ test("Apps Script linkKey_ maps TikTok video and photo URLs to the same tt ident
   assert.match(appsScript, /const MAX_TIKTOK_SNOWFLAKE_ = "18446744073709551615"/);
 });
 
-test("increment V3: target-day formula is range-safe and blanks when target is missing", () => {
+test("increment V4: light target-day formula (no array scan) and blanks when target is missing", () => {
   const helperStart = appsScript.indexOf("function metricIncrementFormula_(");
   const helperEnd = appsScript.indexOf("function metricFormulaText_", helperStart);
   const helperBody = appsScript.slice(helperStart, helperEnd);
   const exportStart = appsScript.indexOf("function exportStats()");
   const body = appsScript.slice(exportStart, appsScript.indexOf("function refreshCumulativeViews()", exportStart));
-  assert.match(helperBody, /=IFERROR\(LET\(rng," \+ rangeRef/);
-  assert.match(helperBody, /targetC,COLUMN\(" \+ targetCellRef/);
-  assert.match(helperBody, /targetV,INDEX\(rng,1,targetC-COLUMN/);
-  assert.match(helperBody, /prevMax,IFERROR\(MAX\(FILTER\(rng,cols<targetC,rng>0\)\),0\)/);
-  assert.match(helperBody, /IF\(targetV>0/);
-  assert.doesNotMatch(helperBody, /lastC,MAX\(FILTER/);
+  // V4(2026-11-13): 실제 생성기(metricIncrementFormula_) 본문만 — legacy V3 사본과 섞지 않는다.
+  const v4Body = helperBody.slice(0, helperBody.indexOf("function metricColumnLetter_("));
+  assert.match(v4Body, /MAX\(0,' \+ t \+ '-' \+ prev/);
+  assert.doesNotMatch(v4Body, /LET\(|SEQUENCE|FILTER/, "범위 훑기 배열수식 금지(07-14 시트 멈춤, 11-13 느림)");
   // 옛 셀주소 목록(MAX({CE743,...})) 생성 코드 금지 — 열 삭제 시 #REF! 전멸의 원인(2026-07-27 사고)
   assert.doesNotMatch(body, /MAX\(\{\$\{prevRefs/);
   assert.doesNotMatch(body, /prevRefs\.join/);
@@ -912,7 +910,7 @@ test("daily metric repair extends H/I and heals CPV formulas without overwriting
   const helperSource = appsScript.slice(helperStart, helperEnd);
   const helpers = Function(
     helperSource
-      + "; return { metricCumulativeFormula_, metricCpvFormula_, metricIncrementFormula_, metricColumnNumber_,"
+      + "; return { metricCumulativeFormula_, metricCpvFormula_, metricIncrementFormula_, legacyIncrementFormulaV3_, metricColumnNumber_,"
       + " standardCumulativeFormulaParts_, standardCumulativeFormulaEnd_, standardIncrementFormulaParts_, standardIncrementFormulaEnd_ };",
   )();
   const hDh = helpers.metricCumulativeFormula_(2764, "P", "DH");
@@ -922,14 +920,26 @@ test("daily metric repair extends H/I and heals CPV formulas without overwriting
   assert.equal(helpers.standardCumulativeFormulaEnd_(hDh, 2764, "P"), "DH");
   assert.equal(cpv, '=IF(G2764="","",IF(N(G2764)=0,0,IFERROR(G2764/H2764,"?")))');
   assert.equal(helpers.standardIncrementFormulaEnd_(iDh, 2764, "P"), "DH");
-  assert.equal(helpers.standardIncrementFormulaEnd_(iTargetDg, 2764, "P"), "DH");
+  // V4는 target 이후 열을 참조하지 않으므로 '끝열' = target.
+  assert.equal(helpers.standardIncrementFormulaEnd_(iTargetDg, 2764, "P"), "DG");
   assert.deepEqual(
     helpers.standardCumulativeFormulaParts_(helpers.metricCumulativeFormula_(2764, "Q", "DU"), 2764),
     { firstLetter: "Q", endLetter: "DU" },
   );
   assert.deepEqual(
     helpers.standardIncrementFormulaParts_(helpers.metricIncrementFormula_(2764, "Q", "DU", "DT"), 2764),
-    { firstLetter: "Q", endLetter: "DU", targetLetter: "DT" },
+    { firstLetter: "Q", endLetter: "DT", targetLetter: "DT", legacy: false },
+  );
+  // 라이브에 남은 V3 수식도 계속 '표준'으로 알아본다(이행 기간 — 수기값으로 오인해 보존하지 않게).
+  assert.deepEqual(
+    helpers.standardIncrementFormulaParts_(helpers.legacyIncrementFormulaV3_(2764, "Q", "DU", "DT"), 2764),
+    { firstLetter: "Q", endLetter: "DU", targetLetter: "DT", legacy: true },
+  );
+  // target 이 첫 날짜열이면 앞칸 비교 없이 전액.
+  assert.equal(helpers.metricIncrementFormula_(2764, "P", "DH", "P"), '=IFERROR(IF($P2764>0,$P2764,""),"")');
+  assert.deepEqual(
+    helpers.standardIncrementFormulaParts_(helpers.metricIncrementFormula_(2764, "P", "DH", "P"), 2764),
+    { firstLetter: "P", endLetter: "P", targetLetter: "P", legacy: false },
   );
   assert.ok(helpers.metricColumnNumber_("DH") < helpers.metricColumnNumber_("DK"));
   assert.equal(helpers.standardCumulativeFormulaEnd_("=MAX(P346:DH346)", 346, "P"), "");
@@ -1074,7 +1084,8 @@ test("Apps Script clasp deploy path is staged and guarded", () => {
   assert.match(manifest, /"runtimeVersion": "V8"/);
   assert.match(deploy, /APPS_SCRIPT_ALLOW_PUSH/);
   assert.match(deploy, /APPS_SCRIPT_EXPECTED_SCRIPT_ID/);
-  assert.match(deploy, /SEQUENCE\(1,COLUMNS\(rng\),COLUMN\(/);
+  assert.match(deploy, /INCREMENT_FORMULA_V4_LIGHT/);
+  assert.match(deploy, /function legacyIncrementFormulaV3_\(/);
   assert.match(deploy, /Refusing clasp push/);
   assert.match(deploy, /function flattenPulledProject\(\)/);
   assert.match(deploy, /duplicate basename/);

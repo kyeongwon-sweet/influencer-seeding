@@ -1332,7 +1332,35 @@ function metricCpvFormula_(row, costLetter, cumulativeLetter) {
   return '=IF(' + costRef + '=\"\",\"\",IF(N(' + costRef + ')=0,0,IFERROR(' + costRef + '/' + cumulativeRef + ',\"?\")))';
 }
 
+// INCREMENT_FORMULA_V4_LIGHT (2026-11-13, 사용자 "연동 시트가 너무 느려"):
+// V3(아래 legacy)는 행마다 SEQUENCE·FILTER 배열을 만들어 날짜열 전체(180여 칸 × 5천여 행, 매일 1열 증가)를
+// 훑었다 — 07-14에 시트를 멈추게 해 금지한 '범위 훑기 배열수식'의 재발. 같은 값을 배열 없이 계산한다:
+//   target칸 − MAX(첫 날짜칸 ~ target 직전칸). MAX는 공란·글자를 무시하고, 0/음수만 있으면 ≤0 이라
+//   '이전 측정 없음'(=target 전액)으로 본다 → V3의 rng>0 필터와 같은 결과. target 미측정이면 공란.
+// target 이 첫 날짜열이면 비교할 앞칸이 없어 전액. target 이 첫 날짜열보다 앞이면(비정상) V3처럼 공란.
 function metricIncrementFormula_(row, firstLetter, lastLetter, targetLetter) {
+  const target = String(targetLetter || lastLetter);
+  const t = "$" + target + row;
+  const firstCol = metricColumnNumber_(firstLetter);
+  const targetCol = metricColumnNumber_(target);
+  if (!firstCol || !targetCol || targetCol < firstCol) return '=""';
+  if (targetCol === firstCol) return '=IFERROR(IF(' + t + '>0,' + t + ',""),"")';
+  const prev = "MAX($" + firstLetter + row + ":$" + metricColumnLetter_(targetCol - 1) + row + ")";
+  return '=IFERROR(IF(' + t + '>0,IF(' + prev + '>0,MAX(0,' + t + '-' + prev + '),' + t + '),""),"")';
+}
+
+function metricColumnLetter_(col) {
+  let n = Number(col), out = "";
+  while (n > 0) {
+    const r = (n - 1) % 26;
+    out = String.fromCharCode(65 + r) + out;
+    n = Math.floor((n - 1) / 26);
+  }
+  return out;
+}
+
+// V3(2026-07-27~11-13) 수식 — 라이브 시트에 남은 옛 수식을 '표준'으로 알아보기 위해서만 보존한다(새로 쓰지 않음).
+function legacyIncrementFormulaV3_(row, firstLetter, lastLetter, targetLetter) {
   const rangeRef = "$" + firstLetter + row + ":$" + lastLetter + row;
   const firstCellRef = "$" + firstLetter + row;
   const targetCellRef = "$" + (targetLetter || lastLetter) + row;
@@ -1378,6 +1406,17 @@ function standardCumulativeFormulaEnd_(formula, row, firstLetter) {
 
 function standardIncrementFormulaParts_(formula, row, firstLetter) {
   const text = metricFormulaText_(formula);
+  // V4 가벼운 수식: endLetter = target(값이 target 이후 열을 참조하지 않으므로 범위 끝 = target).
+  const light = text.match(new RegExp("^=IFERROR\\(IF\\(\\$([A-Z]+)" + row + ">0,IF\\(MAX\\(\\$([A-Z]+)" + row + ":\\$([A-Z]+)" + row + "\\)>0,"));
+  const lightFirst = light ? null : text.match(new RegExp("^=IFERROR\\(IF\\(\\$([A-Z]+)" + row + ">0,\\$([A-Z]+)" + row + ",\"\"\\),\"\"\\)$"));
+  if (light || lightFirst) {
+    const lightTarget = light ? light[1] : lightFirst[1];
+    const lightFirstLetter = light ? light[2] : lightFirst[1];
+    if (firstLetter && lightFirstLetter !== firstLetter) return null;
+    return text === metricFormulaText_(metricIncrementFormula_(row, lightFirstLetter, lightTarget, lightTarget))
+      ? { firstLetter: lightFirstLetter, endLetter: lightTarget, targetLetter: lightTarget, legacy: false }
+      : null;
+  }
   const prefix = new RegExp("^=IFERROR\\(LET\\(RNG,\\$([A-Z]+)" + row + ":\\$([A-Z]+)" + row + ",");
   const match = text.match(prefix);
   if (!match) return null;
@@ -1387,8 +1426,8 @@ function standardIncrementFormulaParts_(formula, row, firstLetter) {
   const targetMatch = text.match(new RegExp(",TARGETC,COLUMN\\(\\$([A-Z]+)" + row + "\\),"));
   if (!targetMatch) return null;
   const targetLetter = targetMatch[1];
-  return text === metricFormulaText_(metricIncrementFormula_(row, actualFirstLetter, endLetter, targetLetter))
-    ? { firstLetter: actualFirstLetter, endLetter: endLetter, targetLetter: targetLetter }
+  return text === metricFormulaText_(legacyIncrementFormulaV3_(row, actualFirstLetter, endLetter, targetLetter))
+    ? { firstLetter: actualFirstLetter, endLetter: endLetter, targetLetter: targetLetter, legacy: true }
     : null;
 }
 
@@ -1458,7 +1497,12 @@ function repairStaleMetricFormulaRanges_(sheet) {
         && dateColumnNumbers[currentEndCol]
         && currentFirstCol >= firstCol
         && currentEndCol <= lastCol;
-      if (isRecognizedRange && (currentFirstCol > firstCol || currentEndCol < lastCol)) {
+      // V4는 target 이후 열을 참조하지 않아 '끝열이 좁다'는 개념이 없다 — 첫 날짜열만 본다.
+      // V3(legacy)는 예전처럼 끝열까지 보고, 고칠 때는 V4로 다시 쓴다(자연 이행).
+      const isStale = current && (current.legacy
+        ? (currentFirstCol > firstCol || currentEndCol < lastCol)
+        : currentFirstCol > firstCol);
+      if (isRecognizedRange && isStale) {
         incrementEdits.push({
           row: row,
           value: metricIncrementFormula_(row, firstLetter, lastLetter, current.targetLetter),

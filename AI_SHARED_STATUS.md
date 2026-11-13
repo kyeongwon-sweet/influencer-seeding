@@ -1,5 +1,16 @@
 # AI Shared Status
 
+## 🟡 2026-11-13 [Claude 코드 완료 → Codex 사본검증·라이브 적용 대기] 연동 시트 느림 — I열 증분 수식 V4(배열 없는 가벼운 식)
+- **사용자:** "지금 연동 시트가 너무 느려" → 1번(I열 수식 교체) 진행 지시.
+- **원인(구조상 최유력, 실측 전):** I열 V3 수식이 행마다 `LET`+`SEQUENCE`+`FILTER` 배열로 날짜열 전체를 훑음. 규모 8월 2,056행×97열 → 지금 5,462행×약 180열(매일 1열 증가). 07-14에 시트를 멈추게 해 금지한 '범위 훑기 배열수식'의 재발. exportStats 가 매일 5,447행 I수식을 다시 써서 전체 재계산도 매일 발생.
+- **수정(repo, 이 커밋):** `metricIncrementFormula_` → V4 `=IFERROR(IF($T>0,IF(MAX($첫:$T-1)>0,MAX(0,$T-MAX($첫:$T-1)),$T),""),"")` (target이 첫 날짜열이면 `=IFERROR(IF($T>0,$T,""),"")`). 값은 V3와 동일(MAX가 공란·글자 무시, ≤0이면 '이전 없음'=전액 — V3의 `rng>0` 필터와 같은 결과). 옛 식은 `legacyIncrementFormulaV3_`로 보존해 **이행 기간에도 '표준'으로 인식**(수기값 오인 보존 방지). `standardIncrementFormulaParts_`가 V4/V3 둘 다 파싱(`legacy` 플래그), `repairStaleMetricFormulaRanges_`는 V4면 첫 날짜열만 비교. 감사(`web/lib/formula-audit.ts`)는 V4 정상 + V3도 정상(이행), target 다른 V4는 오류. 배포 마커 `INCREMENT_FORMULA_V4_LIGHT`. 백로그 `=""`·종료 스텁 규약 무변경.
+- **검증:** 새 테스트 `web/tests/increment-formula-v4.test.ts` — Apps Script 생성기==감사 기대식(글자 단위), V4 값==V3 값 무작위 2만 행, 감사 이행 판정, 파서. 전체 828 pass · tsc · build · `node --check` · 배포 dry-run 마커 통과. 웹 감사는 V3·V4 둘 다 받으므로 **먼저 배포돼도 오탐 없음**.
+- **[Claude→Codex] 적용 요청(레인: Codex):**
+  1. **사본 먼저:** 연동 시트 사본을 만들어, 현재 I열과 **같은 target**으로 V4 식을 빈 임시열에 전 행 설치 → 표시값을 I(V3)와 전수 대조(불일치 0이어야 함, 있으면 행·값 보고하고 중단). 같은 사본에서 V3/V4 각각 날짜칸 하나 수정 시 재계산 체감·열기 시간 대략 비교(숫자로 기록).
+  2. 라이브 Apps Script에 이 커밋의 함수 단위 변경만 graft(파일 통째 금지): `metricIncrementFormula_`(교체)·`metricColumnLetter_`(신규)·`legacyIncrementFormulaV3_`(신규, 옛 본문)·`standardIncrementFormulaParts_`(V4 분기+legacy 비교)·`repairStaleMetricFormulaRanges_` 증분 `isStale`.
+  3. 라이브 I열 전환은 **다음 자연 dailyAuto exportStats**(매일 5,447행 재작성)에 맡김 — 수동 대량 재작성 불필요. 전환 후: 수식감사 `incInvalid` 평소 수준 유지, I열 V4 개수≈전체, 시트 체감 속도 보고.
+  4. 결과를 이 항목 아래에 기록.
+
 ## 🟡 2026-11-13 [Claude 코드 완료 → Codex 라이브 Apps Script 적용 대기] 자정 수집 **전에** 신규 등록 동기화(syncNew)를 무조건 먼저
 - **사용자 지시(11-13):** "수집 시간을 늦추지 말고, 수집 전에 자동동기화를 무조건 진행하고 수집하는 걸로 프로세스화해."
 - **증상:** 아침에 적은 전일 증분이 오후에 커짐. 위성 11/9 10,925→12,882(+1,957) · 11/10 11,683→16,197(+4,514) · 11/11 14,179→18,818(+4,639), 인플 협찬 11/11 62,025→129,705(+67,680). 차이 = **그날 업로드됐는데 자정 수집 뒤에 등록된 새 글의 첫 측정 합과 정확히 일치**(위성 11·15·13건, 협찬 1건 `DflyW6_AVp9`). 첫 측정이 다음날 17:3x~18:00(협찬은 12:22) 보충 수집에서 measured_at=업로드일로 들어가, '게시 7일 내 첫 측정=그날 전액' 규칙으로 과거 날짜에 더해졌다. 중복·오염 아님(각 글 1회 합산).
