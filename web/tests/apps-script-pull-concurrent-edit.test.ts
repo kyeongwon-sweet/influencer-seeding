@@ -33,6 +33,7 @@ function makeSheet(rows: Cell[][], onFirstBlockRead?: (data: Cell[][]) => void) 
   let blockRead = false;
   const sheet = {
     data,
+    getFilter: () => null,
     getLastRow: () => {
       for (let i = data.length - 1; i >= 0; i--) if (data[i].some((v) => String(v ?? "") !== "")) return i + 1;
       return 0;

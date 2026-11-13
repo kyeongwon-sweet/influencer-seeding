@@ -872,9 +872,12 @@ function ensureMetricFormulasForRows_(sheet, rowRefs, expectedLastRow) {
 var __LAST_SYNC_RESULT__ = null;
 function runSync_(onlyNew) {
   try {
+    const sheet = getSheet_();
     // 단축링크를 먼저 정식 주소로 바꾼다 — 그래야 DB에 저장되는 주소와 시트 키가 같아져
     // pullFromDB가 같은 글을 다시 붙이지 않는다.
-    const shortLinks = resolveSheetShortLinks_(getSheet_());
+    const shortLinks = resolveSheetShortLinks_(sheet);
+    // 사람이 맨 아래에 붙인 신규 행도 공유 필터 안에 들어오게 한다. rows=0 조기 종료보다 먼저 실행한다.
+    extendLinkedBasicFilterToLastRow_(sheet);
     const { rows, rowNums, rowRefs, statusCol, skipped, skipDetails, normalizedDetails, dupCount, future, lastRow } = collectRows_(onlyNew);
     if (rows.length === 0) {
       __LAST_SYNC_RESULT__ = { ok: true, created: 0, compared: 0 };
@@ -883,7 +886,6 @@ function runSync_(onlyNew) {
     }
     const { count, created, ended, filled } = postRows_(rows);
     __LAST_SYNC_RESULT__ = { ok: true, created: created, compared: count };
-    const sheet = getSheet_();
     const formulaResult = onlyNew
       ? ensureMetricFormulasForRows_(sheet, rowRefs, lastRow)
       : { rows: 0, cumulative: 0, increment: 0, cpv: 0 };
@@ -1294,20 +1296,81 @@ function writeColumnRuns_(sheet, col, edits, expectedLastRow) {
   return written + values.length;
 }
 
+function linkedBasicFilterState_(filter) {
+  if (!filter) return null;
+  const range = filter.getRange();
+  const criteria = [];
+  for (let col = range.getColumn(); col <= range.getLastColumn(); col++) {
+    const criterion = filter.getColumnFilterCriteria(col);
+    if (criterion) criteria.push({ col: col, criterion: criterion });
+  }
+  return {
+    startRow: range.getRow(),
+    startCol: range.getColumn(),
+    numRows: range.getNumRows(),
+    numCols: range.getNumColumns(),
+    lastRow: range.getLastRow(),
+    criteria: criteria,
+  };
+}
+
+function restoreLinkedBasicFilter_(sheet, state, targetLastRow) {
+  const existing = sheet.getFilter();
+  if (existing) existing.remove();
+  const lastRow = Math.max(state.lastRow, Number(targetLastRow || 0));
+  const restored = sheet.getRange(
+    state.startRow,
+    state.startCol,
+    lastRow - state.startRow + 1,
+    state.numCols
+  ).createFilter();
+  state.criteria.forEach(function(item) {
+    restored.setColumnFilterCriteria(item.col, item.criterion);
+  });
+  SpreadsheetApp.flush();
+  return restored;
+}
+
+// 공유 기본 필터가 신규 행 위에서 끝나면 필터 사용자가 최신 행을 보지 못한다.
+// 필터 조건·시작점·너비는 보존하고 끝 행만 늘린다. Filter View와 수동 숨김 행은 건드리지 않는다.
+function extendLinkedBasicFilterToLastRow_(sheet) {
+  const filter = sheet.getFilter();
+  if (!filter) return { extended: false, reason: "NO_FILTER" };
+  const state = linkedBasicFilterState_(filter);
+  const targetLastRow = sheet.getLastRow();
+  if (targetLastRow <= state.lastRow) return { extended: false, reason: "CURRENT", last_row: state.lastRow };
+
+  filter.remove();
+  SpreadsheetApp.flush();
+  try {
+    restoreLinkedBasicFilter_(sheet, state, targetLastRow);
+    const result = { extended: true, old_last_row: state.lastRow, new_last_row: targetLastRow };
+    Logger.log("linked_filter_extend " + JSON.stringify(Object.assign({ status: "OK" }, result)));
+    return result;
+  } catch (error) {
+    try {
+      restoreLinkedBasicFilter_(sheet, state, state.lastRow);
+      Logger.log("linked_filter_extend " + JSON.stringify({
+        status: "ERROR_ROLLED_BACK",
+        old_last_row: state.lastRow,
+        attempted_last_row: targetLastRow,
+        error: String(error && error.message || error),
+      }));
+      return { extended: false, reason: "ERROR_ROLLED_BACK", error: String(error && error.message || error) };
+    } catch (rollbackError) {
+      throw new Error("공유 필터 확장·복구 모두 실패: " + String(error && error.message || error) +
+        " / rollback: " + String(rollbackError && rollbackError.message || rollbackError));
+    }
+  }
+}
+
 // 기본 필터가 켜진 시트에서 Range.setFormulas()는 표시된 행에만 적용된 사례가 있었다
 // (2026-09-02: 3,996행 갱신 로그 뒤 숨김 3,240행은 구식 수식 유지). 필터 범위와
 // 조건을 보존해 잠깐 해제한 뒤 전 행을 쓰고, 필터 복원 후 실제 수식을 다시 읽어 검증한다.
 function setColumnFormulasWithFilterRestore_(sheet, startRow, col, formulas, expectedLastRow) {
   const filter = sheet.getFilter();
-  let filterState = null;
+  const filterState = linkedBasicFilterState_(filter);
   if (filter) {
-    const filterRange = filter.getRange();
-    const criteria = [];
-    for (let filterCol = filterRange.getColumn(); filterCol <= filterRange.getLastColumn(); filterCol++) {
-      const criterion = filter.getColumnFilterCriteria(filterCol);
-      if (criterion) criteria.push({ col: filterCol, criterion: criterion });
-    }
-    filterState = { rangeA1: filterRange.getA1Notation(), criteria: criteria };
     filter.remove();
     SpreadsheetApp.flush();
   }
@@ -1318,13 +1381,7 @@ function setColumnFormulasWithFilterRestore_(sheet, startRow, col, formulas, exp
     SpreadsheetApp.flush();
   } finally {
     if (filterState) {
-      const unexpectedFilter = sheet.getFilter();
-      if (unexpectedFilter) unexpectedFilter.remove();
-      const restoredFilter = sheet.getRange(filterState.rangeA1).createFilter();
-      filterState.criteria.forEach(function(item) {
-        restoredFilter.setColumnFilterCriteria(item.col, item.criterion);
-      });
-      SpreadsheetApp.flush();
+      restoreLinkedBasicFilter_(sheet, filterState, sheet.getLastRow());
     }
   }
 
@@ -1841,6 +1898,9 @@ function pullFromDB() {
         applyLinkedInputValidationsToRows_(sheet, startRow, added);
       }
     }
+
+    // DB에서 새 행을 붙였거나, 과거 실행에서 필터 밖 행이 남았어도 다음 실행에 자동 포함한다.
+    extendLinkedBasicFilterToLastRow_(sheet);
 
     lap("append");
     timing.added = added;
