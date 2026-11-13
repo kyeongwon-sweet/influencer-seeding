@@ -830,6 +830,8 @@ function ensureMetricFormulasForRows_(sheet, rowRefs, expectedLastRow) {
 // ═══════════════════════════════════════════════════════════════
 // 메뉴 핸들러
 // ═══════════════════════════════════════════════════════════════
+// 수집 전 동기화(preCollectSyncNew_)가 결과를 서버로 넘기려고 마지막 runSync_ 결과를 남긴다(2026-11-13).
+var __LAST_SYNC_RESULT__ = null;
 function runSync_(onlyNew) {
   try {
     // 단축링크를 먼저 정식 주소로 바꾼다 — 그래야 DB에 저장되는 주소와 시트 키가 같아져
@@ -837,10 +839,12 @@ function runSync_(onlyNew) {
     const shortLinks = resolveSheetShortLinks_(getSheet_());
     const { rows, rowNums, rowRefs, statusCol, skipped, skipDetails, normalizedDetails, dupCount, future, lastRow } = collectRows_(onlyNew);
     if (rows.length === 0) {
+      __LAST_SYNC_RESULT__ = { ok: true, created: 0, compared: 0 };
       safeAlert_((onlyNew ? "추가할 신규 광고가 없습니다." : "반영할 시트 행이 없습니다.") + noteExtra_(skipped, dupCount, future, skipDetails, normalizedDetails) + shortLinkNote_(shortLinks));
       return true;
     }
     const { count, created, ended, filled } = postRows_(rows);
+    __LAST_SYNC_RESULT__ = { ok: true, created: created, compared: count };
     const sheet = getSheet_();
     const formulaResult = onlyNew
       ? ensureMetricFormulasForRows_(sheet, rowRefs, lastRow)
@@ -857,6 +861,7 @@ function runSync_(onlyNew) {
     safeAlert_(okMsg + noteExtra_(skipped, dupCount, future, skipDetails, normalizedDetails) + shortLinkNote_(shortLinks) + blankNote_());
     return true;
   } catch (e) {
+    __LAST_SYNC_RESULT__ = { ok: false, error: String(e && e.message || e).slice(0, 300) };
     safeAlert_("❌ 오류\n" + e.message);
     Logger.log(e.stack || e.message);
     return false;
@@ -5874,10 +5879,17 @@ function installEnsureDailyReportTrigger() {
 // 서버가 '오늘 밤 주 수집'이 이미 돌거나 끝났는지 먼저 보므로 두 번 불려도 한 번만 수집한다.
 // ⚠️ nearMinute 는 ±15분이다. atHour(0).nearMinute(20) = 00:05~00:35. 20보다 작게 두면 23시대에 떠서
 //    '어제'가 끝나기 전에 불릴 수 있다(서버도 00~05시 KST 밖의 호출은 무동작이지만 이중 방어).
+// ⭐ 2026-11-13 사용자 지시: "수집 전에 자동동기화를 무조건 진행하고 수집".
+//    자정 syncNew 트리거(atHour(0))가 실제로 00:51 전후에 떠서 00:4x 주 수집보다 늦었다 → 전날 시트에 넣은 URL이
+//    자정 수집을 놓치고 다음날 오후에 첫 측정 → 아침에 적은 전일 증분이 오후에 커졌다(11/11 협찬 +67,680).
+//    그래서 dispatch 직전에 syncNew 를 먼저 돌린다. 실패해도 수집은 시작한다(수집 누락이 더 큰 사고) — 결과는 서버로 넘겨 실패만 Slack.
 function ensureDailyCollect() {
+  const preSync = preCollectSyncNew_();
   const res = UrlFetchApp.fetch(CONFIG.ENSURE_DAILY_COLLECT_URL, {
     method: "post",
     headers: authHeaders_(),
+    contentType: "application/json",
+    payload: JSON.stringify({ pre_sync: preSync }),
     muteHttpExceptions: true,
   });
   const code = res.getResponseCode();
@@ -5885,6 +5897,27 @@ function ensureDailyCollect() {
   Logger.log("[ensureDailyCollect] HTTP " + code + " " + body.slice(0, 500));
   if (code !== 200) throw new Error("ensureDailyCollect HTTP " + code + ": " + body.slice(0, 200));
   return true;
+}
+
+// 수집 전 신규 등록. 시트 락 충돌(SHEET_LOCKED)이면 30초 뒤 1회 재시도. 절대 throw 하지 않는다(수집 dispatch 보장).
+function preCollectSyncNew_() {
+  const started = Date.now();
+  let last = { ok: false, error: "not_run" };
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    __LAST_SYNC_RESULT__ = null;
+    try {
+      const ok = syncNew();
+      last = __LAST_SYNC_RESULT__ || { ok: ok === true, error: ok === true ? "" : "runSync_ returned false" };
+    } catch (e) {
+      last = { ok: false, error: String(e && e.message || e).slice(0, 300) };
+    }
+    last.attempt = attempt;
+    if (last.ok || !/SHEET_LOCKED/.test(String(last.error || ""))) break;
+    Utilities.sleep(30000);
+  }
+  last.ms = Date.now() - started;
+  Logger.log("[preCollectSyncNew] " + JSON.stringify(last));
+  return last;
 }
 
 function installEnsureDailyCollectTrigger() {

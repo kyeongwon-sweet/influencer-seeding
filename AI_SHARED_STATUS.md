@@ -1,5 +1,17 @@
 # AI Shared Status
 
+## 🟡 2026-11-13 [Claude 코드 완료 → Codex 라이브 Apps Script 적용 대기] 자정 수집 **전에** 신규 등록 동기화(syncNew)를 무조건 먼저
+- **사용자 지시(11-13):** "수집 시간을 늦추지 말고, 수집 전에 자동동기화를 무조건 진행하고 수집하는 걸로 프로세스화해."
+- **증상:** 아침에 적은 전일 증분이 오후에 커짐. 위성 11/9 10,925→12,882(+1,957) · 11/10 11,683→16,197(+4,514) · 11/11 14,179→18,818(+4,639), 인플 협찬 11/11 62,025→129,705(+67,680). 차이 = **그날 업로드됐는데 자정 수집 뒤에 등록된 새 글의 첫 측정 합과 정확히 일치**(위성 11·15·13건, 협찬 1건 `DflyW6_AVp9`). 첫 측정이 다음날 17:3x~18:00(협찬은 12:22) 보충 수집에서 measured_at=업로드일로 들어가, '게시 7일 내 첫 측정=그날 전액' 규칙으로 과거 날짜에 더해졌다. 중복·오염 아님(각 글 1회 합산).
+- **원인 2개:** ① 우리 쪽 순서 역전 — 자정 `syncNew` 트리거(`atHour(0)`)가 실측 **00:51~00:53**에 뜨는데 주 수집(`ensureDailyCollect` 00:05~00:35 dispatch → 행 생성 00:43)이 먼저 지나감. 협찬 `DflyW6_AVp9`는 11-12 00:51 등록, 수집 행은 00:43 → 놓침. 10월에도 00:52 등록 위성글 다수가 같은 이유로 빠짐. ② 운영 — 최근 위성 URL은 업로드 다음날 낮(10:11·12:26·12:28·17:11 동기화)에 시트에 들어옴(11-12 00:51 syncNew는 정상 동작했는데 위성 15건은 그때 시트에 없었음). ②는 코드로 못 고침 → 위성 담당과 '업로드 당일 자정 전 입력' 상의 필요(사용자 판단).
+- **수정(①):** `Combined_Sheet_AppsScript.gs` `ensureDailyCollect()`가 dispatch 직전에 `preCollectSyncNew_()`(= `syncNew`, SHEET_LOCKED면 30초 뒤 1회 재시도, 절대 throw 안 함)를 먼저 돌리고 결과를 `{pre_sync:{ok,created,compared,attempt,ms,error}}` 로 `/api/ops/ensure-daily-collect` 에 POST. `runSync_` 는 `__LAST_SYNC_RESULT__` 에 결과만 기록(동작 무변경). 라우트는 `pre_sync.ok!==true` 면 Slack 경고만, **dispatch는 절대 막지 않음**(수집 누락이 더 큰 사고). `pre_sync` 없는 옛 호출은 판정 안 함(하위호환) → 라우트 먼저 배포해도 안전. 기존 자정 `syncNew` 트리거는 백업으로 유지. 테스트 `web/tests/pre-collect-sync.test.ts`(순서·비차단 계약 포함) 6개, 전체 823 pass · tsc · build 통과.
+- **[Claude→Codex] 라이브 Apps Script 적용 요청(레인: Codex):**
+  1. 라이브 편집기에서 `runSync_`·`ensureDailyCollect`·`installEnsureDailyCollectTrigger` 가 repo 직전본(`git show cf3ed2cc:Combined_Sheet_AppsScript.gs`)과 같은지 먼저 대조. 다르면 **파일 통째 붙여넣기 금지**, 이 커밋의 diff(5군데: `var __LAST_SYNC_RESULT__`, runSync_ 내 3줄, `ensureDailyCollect` 본문, 새 `preCollectSyncNew_`)만 함수 단위로 반영.
+  2. 실행 기록에서 `syncNew` 최근 소요시간 확인 — 동기화+dispatch가 6분 한도 안이어야 함(대략 4분 넘으면 알려줄 것).
+  3. 낮에 `ensureDailyCollect` 를 편집기에서 1회 수동 실행해 검증(라우트는 00~05시 KST 밖이면 dispatch 안 하고 skip — 안전). 기대: 로그 `[preCollectSyncNew] {"ok":true,...}` + `[ensureDailyCollect] HTTP 200` 응답 본문에 `"preSync":{"ok":true,...}`. 트리거 재설치는 불필요(핸들러 이름 동일).
+  4. 끝나면 이 항목 아래에 결과·라이브 해시 기록.
+- **Claude 후속 검증(11-14 아침):** 11-13 23:00~11-14 00:35 사이 시트에 들어온 글이 주 수집 전에 등록돼 measured_at=11-13 행이 00:4x에 생겼는지 + 라우트 응답 preSync 로그.
+
 ## ✅ 2026-11-12 [Codex 복구 완료] Apify 새 토큰 전 경로 교체 · 재배포 · 누락 대상 재수집
 - **Apify 계정·원인 확인:** Personal 계정은 정지·결제 경고 없이 정상이고 사용량은 `$82 / $350`. 기존 토큰은 `/v2/users/me` **401**, 보안 사고 대응으로 일괄 교체된 토큰이 원인임을 확인했다. 새 Personal API token을 발급했으며 값은 어디에도 기록하지 않았다.
 - **자격증명 반영(12:18 KST):** `APIFY_API_TOKEN`을 GitHub Actions secret 두 곳(`kyeongwon-sweet/influencer-seeding` 03:18:39Z · `negative-comment-monitor` 03:18:40Z), Vercel Production env(03:18:42Z), 로컬 `web/.env.local`에 모두 교체했다. 로컬 새 토큰으로 Apify `/v2/users/me` **HTTP 200**을 재검증했다.

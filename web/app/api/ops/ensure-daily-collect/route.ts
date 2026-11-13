@@ -4,6 +4,7 @@ import { todayKST } from "@/lib/dateRule";
 import { resolveGitHubActionsToken } from "@/lib/github-actions-auth";
 import { notifyBot } from "@/lib/slack";
 import { decideEnsureCollect, type CollectRun } from "@/lib/collect-primary";
+import { parsePreCollectSync, preCollectSyncAlert, type PreCollectSync } from "@/lib/pre-collect-sync";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -77,6 +78,13 @@ async function handler(req: NextRequest) {
   const dryRun = req.nextUrl.searchParams.get("dry_run") === "1";
   const kdate = todayKST();
   const kstHour = kstHourNow();
+  // 수집 전 신규 등록 동기화 결과(Apps Script가 dispatch 직전에 syncNew를 먼저 돌리고 넘김). 실패해도 수집은 진행.
+  let preSync: PreCollectSync | null = null;
+  if (req.method === "POST") {
+    try { preSync = parsePreCollectSync(await req.json()); } catch { preSync = null; }
+  }
+  const preSyncMsg = preCollectSyncAlert(kdate, preSync);
+  if (preSyncMsg && !dryRun) await notifyBot(preSyncMsg).catch(() => {});
   const runs = await listTodayRuns(kdate);
   const decision = decideEnsureCollect(runs, kdate, kstHour);
   // 관측용: 오늘(KST) 이 워크플로 실행을 몇 개 읽었는지(null=조회 실패). 낮 dry_run 으로 토큰·조회 경로를 미리 확인한다.
@@ -86,17 +94,17 @@ async function handler(req: NextRequest) {
     if (decision.reason === "runs_unreadable" && !dryRun) {
       await notifyBot(`⚠️ *자정 수집 시작* \`${kdate}\` — GitHub 실행 목록을 못 읽어 시작을 보류했습니다(중복 수집 방지). 00:41 GitHub 예약이 대신 수집합니다(늦을 수 있음).`).catch(() => {});
     }
-    return NextResponse.json({ ok: true, kdate, kstHour, dryRun, runsSeen, ...decision, dispatched: false });
+    return NextResponse.json({ ok: true, kdate, kstHour, dryRun, runsSeen, preSync, ...decision, dispatched: false });
   }
 
-  if (dryRun) return NextResponse.json({ ok: true, kdate, kstHour, dryRun, runsSeen, ...decision, dispatched: false });
+  if (dryRun) return NextResponse.json({ ok: true, kdate, kstHour, dryRun, runsSeen, preSync, ...decision, dispatched: false });
 
   const r = await dispatchPrimary();
   if (!r.ok) {
     console.error("[ensure-daily-collect] dispatch 실패", r.detail);
     await notifyBot(`🚨 *자정 수집 시작 실패* \`${kdate}\` — dispatch 실패: ${r.detail}. 00:41 GitHub 예약이 대신 수집합니다(늦을 수 있음).`).catch(() => {});
   }
-  return NextResponse.json({ ok: r.ok, kdate, kstHour, dryRun, runsSeen, ...decision, dispatched: r.ok, detail: r.detail }, { status: r.ok ? 200 : 500 });
+  return NextResponse.json({ ok: r.ok, kdate, kstHour, dryRun, runsSeen, preSync, ...decision, dispatched: r.ok, detail: r.detail }, { status: r.ok ? 200 : 500 });
 }
 
 export async function POST(req: NextRequest) { return handler(req); }
