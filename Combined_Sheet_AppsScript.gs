@@ -1751,6 +1751,24 @@ function writePullFillsByKey_(sheet, urlCol, edits) {
   return written;
 }
 
+// 빈 행 정리 뒤에도 DB 신규 글을 안전하게 붙인다. Apps Script getRange()는 현재 격자
+// 밖의 행을 자동으로 늘린다고 보장되지 않으므로, 필요한 순간에만 100행 여유를 만든다.
+function ensureLinkedAppendRowCapacity_(sheet, requiredLastRow) {
+  const required = Math.max(1, Number(requiredLastRow) || 1);
+  const current = sheet.getMaxRows();
+  if (required <= current) return { inserted: 0, max_rows: current };
+  const inserted = required - current + 100;
+  sheet.insertRowsAfter(current, inserted);
+  Logger.log("linked_row_capacity " + JSON.stringify({
+    status: "EXPANDED",
+    old_max_rows: current,
+    required_last_row: required,
+    inserted: inserted,
+    new_max_rows: current + inserted,
+  }));
+  return { inserted: inserted, max_rows: current + inserted };
+}
+
 function pullFromDB() {
   // 단계별 소요시간(2026-11-13): 자연 회차가 같은 결과(신규0·채움0)인데 198초 → 1,320초로 느려졌지만
   // 로그가 시작/끝 두 줄뿐이라 API·단축링크·읽기·쓰기 중 어디인지 못 갈랐다. 단계마다 ms를 남긴다.
@@ -1878,6 +1896,7 @@ function pullFromDB() {
       if (rowsToAppend.length > 0) {
         assertRowCountStable_(sheet, appendBaseRow, "pullFromDB append");
         const startRow = appendBaseRow + 1;
+        ensureLinkedAppendRowCapacity_(sheet, appendBaseRow + rowsToAppend.length);
         const appendRange = sheet.getRange(startRow, 1, rowsToAppend.length, lastCol);
         appendRange.setValues(rowsToAppend.map(x => x.values));
         SpreadsheetApp.flush();

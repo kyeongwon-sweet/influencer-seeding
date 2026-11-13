@@ -31,9 +31,15 @@ type Cell = string;
 function makeSheet(rows: Cell[][], onFirstBlockRead?: (data: Cell[][]) => void) {
   const data: Cell[][] = [["업로드일", "게시물URL", "채널명", "캡션"], ...rows.map((r) => r.slice())];
   let blockRead = false;
+  let maxRows = 1000;
   const sheet = {
     data,
     getFilter: () => null,
+    getMaxRows: () => maxRows,
+    insertRowsAfter: (after: number, count: number) => {
+      assert.equal(after, maxRows);
+      maxRows += count;
+    },
     getLastRow: () => {
       for (let i = data.length - 1; i >= 0; i--) if (data[i].some((v) => String(v ?? "") !== "")) return i + 1;
       return 0;
