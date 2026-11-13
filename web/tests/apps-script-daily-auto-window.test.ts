@@ -182,3 +182,42 @@ test("정기 동기화만 비켜 가고 수동 실행은 바로 돈다", () => {
   const body = fnSrc("runDbPullSyncAttempt_");
   assert.match(body, /if \(source !== "manual" && isDailyAutoBusy_\(PropertiesService\.getScriptProperties\(\), Date\.now\(\)\)\) \{\s*return handleDbPullSyncLockBusy_\(/);
 });
+
+// ── 4) 자정 '동기화 → 수집' 시간대(23:30~00:45 KST)에는 정기 DB→시트 동기화가 쉰다 (2026-11-13) ──
+// 정기 동기화 00:04 회차가 22분 동안 문서 락을 쥐면, 00:13 ensureDailyCollect 의 수집 전 동기화가 SHEET_LOCKED로 건너뛰어진다.
+const fakeUtilities = {
+  formatDate: (d: Date, tz: string, fmt: string) => {
+    assert.equal(tz, "Asia/Seoul", "업무 시각은 KST로 판단");
+    assert.equal(fmt, "HH:mm");
+    const k = new Date(d.getTime() + 9 * 3600 * 1000);
+    return `${String(k.getUTCHours()).padStart(2, "0")}:${String(k.getUTCMinutes()).padStart(2, "0")}`;
+  },
+};
+const quiet = new Function(
+  "Utilities",
+  `${constSrc("PRE_COLLECT_QUIET_START_HHMM_")}${constSrc("PRE_COLLECT_QUIET_END_HHMM_")}${fnSrc("isPreCollectQuietWindow_")}\nreturn isPreCollectQuietWindow_;`,
+)(fakeUtilities) as (nowMs: number) => boolean;
+const kst = (hh: number, mm: number) => Date.UTC(2026, 10, 13, hh - 9, mm);   // KST hh:mm → epoch ms
+
+test("🚨 자정 수집 준비 시간(00:04 정기 회차·00:13 수집 전 동기화)은 조용한 시간대다", () => {
+  for (const [hh, mm] of [[0, 4], [0, 13], [0, 35], [0, 44], [23, 30], [23, 59]] as const) {
+    assert.equal(quiet(kst(hh, mm)), true, `${hh}:${mm} 은 쉬어야 함`);
+  }
+});
+
+test("그 밖의 정기 회차(03:04·09:04·21:04 등)는 그대로 돈다", () => {
+  for (const [hh, mm] of [[0, 45], [3, 4], [9, 4], [12, 4], [21, 4], [23, 29]] as const) {
+    assert.equal(quiet(kst(hh, mm)), false, `${hh}:${mm} 은 돌아야 함`);
+  }
+});
+
+test("🔒 조용한 시간대 확인은 락을 잡기 전, 수동 실행은 예외", () => {
+  const body = fnSrc("runDbPullSyncAttempt_");
+  const quietAt = body.indexOf('if (source !== "manual" && isPreCollectQuietWindow_(Date.now())) {');
+  assert.ok(quietAt >= 0, "정기·재시도만 쉬고 수동은 돈다");
+  assert.ok(quietAt < body.indexOf("runDbPullSyncLockedAttempt_("), "락(runDbPullSyncLockedAttempt_)보다 먼저 확인");
+  const branch = body.slice(quietAt, body.indexOf("\n  }\n", quietAt));
+  assert.match(branch, /SKIPPED_PRE_COLLECT_WINDOW/);
+  assert.match(branch, /return true;/);
+  assert.doesNotMatch(branch, /scheduleDbPullSyncRetry_|handleDbPullSyncLockBusy_/, "재시도 예약 없이 다음 정기 회차(03:04)에 맡긴다");
+});

@@ -165,19 +165,22 @@ test("실패하면 실제 이유를 남긴다(알림에 'returned false'만 오�
 });
 
 // ── 2026-11-05 09:04: 아침 dailyAuto가 문서 락을 쥐고 있어 SHEET_LOCKED로 조용히 끝났다(알림·재시도 없음) ──
-function runAttempt(opts: { lockBusy: boolean; pullThrows?: string; lockWaits?: number; attempt?: number; pending?: object | null }) {
+function runAttempt(opts: { lockBusy: boolean; pullThrows?: string; lockWaits?: number; attempt?: number; pending?: object | null; kst?: string; source?: string }) {
   const src = slice("const DB_PULL_SYNC_INTERVAL_HOURS_", "function dbPullSyncWatchdog_(");
   const props: Record<string, string> = {};
   if (opts.pending) props.DB_PULL_SYNC_PENDING_JSON = JSON.stringify(opts.pending);
   const triggers: { handler: string; after: number }[] = [];
   const alerts: Record<string, unknown>[] = [];
   const pullCalls: number[] = [];
+  const lockCalls: number[] = [];
+  const logs: string[] = [];
   const env = new Function(
-    "withAutoWriteGuard_", "withDocLock_", "PropertiesService", "ScriptApp", "UrlFetchApp", "CONFIG", "authHeaders_", "Logger", "pullFromDB",
+    "withAutoWriteGuard_", "withDocLock_", "PropertiesService", "ScriptApp", "UrlFetchApp", "CONFIG", "authHeaders_", "Logger", "pullFromDB", "Utilities",
     `${src}\nreturn { runDbPullSyncAttempt_, dbPullSyncRetry_, notifyDbPullSyncFailure_ };`,
   )(
     (fn: () => unknown) => fn(),
     (fn: () => unknown) => {
+      lockCalls.push(1);
       if (opts.lockBusy) throw new Error("SHEET_LOCKED: 다른 작업이 시트를 수정 중입니다.");
       return fn();
     },
@@ -200,14 +203,16 @@ function runAttempt(opts: { lockBusy: boolean; pullThrows?: string; lockWaits?: 
     { fetch: (_u: string, o: { payload: string }) => { alerts.push(JSON.parse(o.payload)); return { getResponseCode: () => 200, getContentText: () => "" }; } },
     { DB_SHEET_SYNC_ALERT_URL: "x" },
     () => ({}),
-    { log: () => {} },
+    { log: (m: string) => { logs.push(m); } },
     () => { pullCalls.push(1); if (opts.pullThrows) throw new Error(opts.pullThrows); return true; },
+    // 기본은 낮 정기 회차 시각(15:04 KST) — 자정 조용한 시간대 밖.
+    { formatDate: (_d: Date, tz: string, fmt: string) => { assert.equal(tz, "Asia/Seoul"); assert.equal(fmt, "HH:mm"); return opts.kst ?? "15:04"; } },
   );
   let result: unknown; let thrown: unknown = null;
   try {
-    result = opts.pending ? env.dbPullSyncRetry_() : env.runDbPullSyncAttempt_("scheduled", opts.attempt ?? 0, opts.lockWaits ?? 0);
+    result = opts.pending ? env.dbPullSyncRetry_() : env.runDbPullSyncAttempt_(opts.source ?? "scheduled", opts.attempt ?? 0, opts.lockWaits ?? 0);
   } catch (e) { thrown = e; }
-  return { result, thrown, props, triggers, alerts, pullCalls };
+  return { result, thrown, props, triggers, alerts, pullCalls, lockCalls, logs };
 }
 
 test("🚨 락이 바쁘면 조용히 끝나지 않고 15분 뒤 다시 시도한다(알림 없음, 실패 재시도 횟수 보존)", () => {
@@ -245,6 +250,37 @@ test("락을 잡은 뒤 난 오류는 기존대로(7분 재시도·알림), 락 
 test("락이 풀려 있으면 정상 실행된다", () => {
   const r = runAttempt({ lockBusy: false });
   assert.equal(r.result, true);
+  assert.equal(r.pullCalls.length, 1);
+  assert.equal(r.props.DB_PULL_SYNC_LAST_STATUS, "OK");
+});
+
+// ── 2026-11-13: 자정 '동기화 → 수집'(00:13 수집 전 syncNew)이 락을 잡도록 00:04 정기 회차는 쉰다 ──
+test("🚨 00:04 정기 회차는 락을 잡지 않고 쉰다(재시도·알림 없음 — 다음 03:04 회차에 맡김)", () => {
+  const r = runAttempt({ lockBusy: false, kst: "00:04" });
+  assert.equal(r.result, true);
+  assert.equal(r.lockCalls.length, 0, "문서 락을 잡으면 안 됨");
+  assert.equal(r.pullCalls.length, 0);
+  assert.equal(r.triggers.length, 0);
+  assert.equal(r.alerts.length, 0);
+  assert.equal(r.props.DB_PULL_SYNC_LAST_STATUS, undefined, "실행 기록을 건드리지 않음");
+  assert.ok(r.logs.some((m) => m.includes("SKIPPED_PRE_COLLECT_WINDOW")));
+});
+
+test("조용한 시간대에 뜬 재시도 회차도 쉰다", () => {
+  const r = runAttempt({ lockBusy: false, kst: "00:20", pending: { attempt: 0, lock_waits: 1 } });
+  assert.equal(r.lockCalls.length, 0);
+  assert.equal(r.pullCalls.length, 0);
+  assert.equal(r.triggers.length, 0);
+});
+
+test("수동 실행은 자정에도 바로 돈다", () => {
+  const r = runAttempt({ lockBusy: false, kst: "00:04", source: "manual" });
+  assert.equal(r.pullCalls.length, 1);
+  assert.equal(r.props.DB_PULL_SYNC_LAST_STATUS, "OK");
+});
+
+test("03:04 정기 회차는 평소대로 돈다", () => {
+  const r = runAttempt({ lockBusy: false, kst: "03:04" });
   assert.equal(r.pullCalls.length, 1);
   assert.equal(r.props.DB_PULL_SYNC_LAST_STATUS, "OK");
 });

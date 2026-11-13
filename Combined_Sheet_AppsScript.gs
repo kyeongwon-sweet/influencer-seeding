@@ -2972,7 +2972,24 @@ function isDailyAutoBusy_(props, nowMs) {
   return !!props.getProperty(DAILY_AUTO_CONTINUATION_PROP_);
 }
 
+// 🌙 2026-11-13: 자정 '동기화 → 수집'(ensureDailyCollect, 실측 매일 00:13~00:14 → preCollectSyncNew_)이
+// 문서 락을 잡아야 한다. 정기 DB→시트 동기화는 00:04에 떠서 끝날 때까지 락을 쥔다(11-13 15:04 회차 22분).
+// 겹치면 수집 전 동기화가 SHEET_LOCKED(30초 대기 2번)로 건너뛰어져, 낮에 시트에 넣은 URL이 자정 수집을 놓친다
+// (= 전날 증분이 다음날 오후에 커지는 원래 사고). 그래서 23:30~00:45 KST에 뜨는 정기·재시도 회차는 쉬고
+// 다음 회차(03:04)에 한다 — DB→시트 반영이 밤에 3시간 늦는 건 무해. 수동 실행은 그대로 돈다.
+const PRE_COLLECT_QUIET_START_HHMM_ = "23:30";
+const PRE_COLLECT_QUIET_END_HHMM_ = "00:45";
+
+function isPreCollectQuietWindow_(nowMs) {
+  const hhmm = Utilities.formatDate(new Date(nowMs), "Asia/Seoul", "HH:mm");
+  return hhmm >= PRE_COLLECT_QUIET_START_HHMM_ || hhmm < PRE_COLLECT_QUIET_END_HHMM_;
+}
+
 function runDbPullSyncAttempt_(source, attempt, lockWaits) {
+  if (source !== "manual" && isPreCollectQuietWindow_(Date.now())) {
+    Logger.log("dbPullSync_result " + JSON.stringify({ status: "SKIPPED_PRE_COLLECT_WINDOW", source: source, attempt: attempt }));
+    return true;
+  }
   if (source !== "manual" && isDailyAutoBusy_(PropertiesService.getScriptProperties(), Date.now())) {
     return handleDbPullSyncLockBusy_(source, attempt, Number(lockWaits || 0),
       new Error("SHEET_LOCKED: 아침 dailyAuto 진행 중 — 끝난 뒤 동기화합니다."));

@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 🔴 2026-11-13 [Claude 코드 완료 → Codex 라이브 적용 — ⏰ 오늘 밤 00:04 전] 자정 '동기화→수집' 락 충돌 방지: 00:04 정기 DB→시트 동기화는 쉰다
+- **배경(실측):** 자정 수집 dispatch는 매일 **00:14**(GitHub workflow_dispatch 11-04~11-13 열흘 전부 00:14) → 오늘 밤부터 그 직전에 `preCollectSyncNew_`(syncNew, 문서 락 `tryLock(30초)` + 30초 뒤 1회 재시도 ≈ 90초)가 돈다. 정기 DB→시트 동기화(`scheduledDbPullSync_`)는 **xx:04**에 떠서 `pullFromDB` 전체를 `withDocLock_` 안에서 돈다. 15:04 회차처럼 22분이 걸리면 **00:04~00:26 락 보유 → 00:13 수집 전 동기화가 SHEET_LOCKED로 건너뜀** → 낮에 시트에 넣은 URL이 자정 수집을 놓침(사용자 지시 "수집 전에 무조건 동기화" 위반, Slack 경고만 감). 예전처럼 3분이면 안 겹친다 — 18:04·21:04 회차 소요시간은 Claude가 볼 수 없음.
+- **수정(repo):** `isPreCollectQuietWindow_`(23:30~00:45 KST, `Utilities.formatDate(…,"Asia/Seoul","HH:mm")`) + `runDbPullSyncAttempt_` 맨 앞: `source !== "manual"`이면 **락 잡기 전에** `dbPullSync_result {status:"SKIPPED_PRE_COLLECT_WINDOW"}` 로그만 남기고 `return true`(재시도 예약·알림·실행기록 변경 없음 → 다음 03:04 회차). 수동 실행은 그대로 돈다. DB→시트 반영이 밤에 3시간 늦는 건 무해.
+- **영향:** 오늘 00:04 회차는 쉼 → `pullFromDB_timing` 첫 자연 표본은 **03:04 회차**부터(06:04 포함 아침까지 2개).
+- **검증:** 시간대 경계 테스트(00:04·00:13·00:44·23:30 쉼 / 00:45·03:04·09:04·21:04·23:29 돎) + 실제 함수 하네스(락 미획득·pull 미호출·트리거/알림 0·재시도 회차도 쉼·수동은 돎·03:04는 돎). 전체 842 pass · tsc · `node --check` · 배포 dry-run 8파일 일치.
+- **[Claude→Codex] 라이브 적용 요청(⏰ 00:04 전):** 함수 단위 graft — 상수 2개 `PRE_COLLECT_QUIET_START_HHMM_`·`PRE_COLLECT_QUIET_END_HHMM_` + 함수 `isPreCollectQuietWindow_`(신규) + `runDbPullSyncAttempt_` 맨 앞 `if` 블록 4줄. 파일 통째 금지. 적용 후 기록: ① 오늘 18:04·21:04 자연 회차 소요시간(실행 기록) ② **11-14 아침 확인** — 00:04 로그 `SKIPPED_PRE_COLLECT_WINDOW`, 00:13 전후 `[preCollectSyncNew] ok:true`, Slack '수집 전 동기화 실패' 경고 없음, 03:04 `pullFromDB_timing`.
+
 ## 🟡 2026-11-13 [Claude 코드 완료(자동배포) → 11-14 09:10 자연 감사에서 판정] I열 V4 전환 최종 게이트 자동 보고
 - **배경:** Codex 기준선(전환 전) — I열 V4 0 / V3 1,665 / 의도 빈칸식 3,797, incInvalid 15(마지막 15행의 옛 기준열). 남은 게이트 = 다음 자연 dailyAuto/exportStats 뒤 incInvalid·V4 개수·속도. 사람이 수식을 세러 가지 않아도 되게 매일 감사가 직접 센다.
 - **수정(repo):** `web/lib/formula-audit.ts` — `incShape {v4,v3,stub,other}`(I열 수식 종류 분포, 정상/오류 판정과 별개) + `incrementFormulaKind()`. 매일 09:10 KST 수식 전수감사 Slack 메시지 끝에 `ℹ️ I열 수식 종류 — 새 식(V4) N · 옛 식(V3) M · 빈칸 식 K · 기타 L` 한 줄, V3·V4가 섞여 있으면 "오늘 exportStats가 전체를 다시 쓰지 못했을 수 있음" 문구. 라우트 JSON에도 `incShape` 포함. 정합 판정·healthy 무변경. 테스트 835 pass · tsc.
