@@ -17,6 +17,10 @@
   2. 라이브 Apps Script에 이 커밋의 함수 단위 변경만 graft(파일 통째 금지): `metricIncrementFormula_`(교체)·`metricColumnLetter_`(신규)·`legacyIncrementFormulaV3_`(신규, 옛 본문)·`standardIncrementFormulaParts_`(V4 분기+legacy 비교)·`repairStaleMetricFormulaRanges_` 증분 `isStale`.
   3. 라이브 I열 전환은 **다음 자연 dailyAuto exportStats**(매일 5,447행 재작성)에 맡김 — 수동 대량 재작성 불필요. 전환 후: 수식감사 `incInvalid` 평소 수준 유지, I열 V4 개수≈전체, 시트 체감 속도 보고.
   4. 결과를 이 항목 아래에 기록.
+- **✅ Codex 사본 전수검증(11-13 12:3x KST):** 원본 탭을 값 사본으로 만든 검증용 스프레드시트(`13jGk6AXHlV1uCKHwRy4rES4WXe4U-WECkmkYdcWo8IY`)에서 라이브와 같은 기준일 **2026-11-12(GL)**·날짜범위 **P:GL**로 V3와 V4를 5,462개 데이터행 전부 계산했다. `현재 I↔V3=0`, `현재 I↔V4=0`, `V3↔V4=0`으로 **불일치 0/5,462**. 기준일 값이 양수인데 I가 공란인 종료·백로그 행도 0건이라 현재 표시 정책까지 그대로 보존된다.
+- **속도 실측(서로 분리한 V3/V4 복제 탭, 각 5회):** 5,462개 수식을 전열 재설치하고 계산값을 읽기까지 중앙값이 **V3 2,330ms → V4 1,100ms(2.12배, 52.8% 단축)**. 동일 날짜칸(GL1256)을 `871,124→871,125`로 바꾸고 계산값 `87→88` 도착을 읽는 단건 재계산은 **1,117ms → 1,047ms**, 이 중 쓰기 뒤 계산값 읽기 구간은 **621ms → 498ms(19.8% 단축)**. 매회 원값·계산값을 복원·확인했다. 전체 수식 문자열도 1,469,220자→527,548자로 2.78배 줄었다.
+- **✅ Codex 라이브 함수 단위 graft(11-13 12:36:57 KST):** fresh pull에서 사전 해시가 `metricIncrementFormula_=082c4c46b663`, `standardIncrementFormulaParts_=fdc2d9a9481e`, `repairStaleMetricFormulaRanges_=50deddd05eca`로 요청 기준과 정확히 같고 신규 helper 2개가 없음을 확인한 뒤에만 적용했다. 변경 파일은 라이브 `01_연동시트_자동동기화.js` **1개뿐**이며, 함수 단위로 `metricIncrementFormula_`·`metricColumnLetter_`·`legacyIncrementFormulaV3_`·`standardIncrementFormulaParts_`·`repairStaleMetricFormulaRanges_`만 반영했다. push 뒤 새 디렉터리로 다시 pull해 다른 9개 파일의 전체 SHA-256 불변, 대상 5함수 posthash `73118e8ca1a2 / 87619fc704ec / f4b865a678dd / e2a50d8e4a03 / 649250ec198e` 일치를 확인했다. 백업·manifest: `data/output/increment_v4_live_graft_20261113123643`(gitignored).
+- **⏳ 자연 전환 대기:** 요청대로 라이브 I열은 수동 대량 재작성하지 않았다. 다음 자연 `dailyAuto/exportStats`가 V4로 전환한 뒤 I열 V4 개수·`incInvalid`·체감 속도를 다시 확인해 이 항목에 이어서 기록한다.
 
 ## 🟡 2026-11-13 [Claude 코드 완료 → Codex 라이브 Apps Script 적용 대기] 자정 수집 **전에** 신규 등록 동기화(syncNew)를 무조건 먼저
 - **사용자 지시(11-13):** "수집 시간을 늦추지 말고, 수집 전에 자동동기화를 무조건 진행하고 수집하는 걸로 프로세스화해."
