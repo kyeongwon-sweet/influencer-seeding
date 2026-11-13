@@ -11,6 +11,9 @@
   3. 낮에 `ensureDailyCollect` 를 편집기에서 1회 수동 실행해 검증(라우트는 00~05시 KST 밖이면 dispatch 안 하고 skip — 안전). 기대: 로그 `[preCollectSyncNew] {"ok":true,...}` + `[ensureDailyCollect] HTTP 200` 응답 본문에 `"preSync":{"ok":true,...}`. 트리거 재설치는 불필요(핸들러 이름 동일).
   4. 끝나면 이 항목 아래에 결과·라이브 해시 기록.
 - **Claude 후속 검증(11-14 아침):** 11-13 23:00~11-14 00:35 사이 시트에 들어온 글이 주 수집 전에 등록돼 measured_at=11-13 행이 00:4x에 생겼는지 + 라우트 응답 preSync 로그.
+- **✅ Codex 라이브 적용(11-13 09:53:41 KST):** 라이브 `01_연동시트_자동동기화`를 fresh pull해 `runSync_`·`ensureDailyCollect`가 `ecc6b076^`와 일치하고 `installEnsureDailyCollectTrigger`는 변경 대상이 아님을 확인한 뒤, `ecc6b076`의 5군데 변경만 함수 단위로 수술 적용했다(`01`에 +33/-0, 다른 9개 라이브 파일 무변경). push 직후 다시 pull해 10개 파일 모두 작업본과 SHA-256 일치(`LIVE_DRIFT_COUNT=0`, `POST_PUSH_MISMATCH_COUNT=0`), `.gs` 문법 검사 통과. 트리거는 핸들러명이 같아 재설치하지 않았다. 서버 라우트도 같은 커밋의 Production 배포 `dpl_7XBMpjDwFYXpSPMQtru6njc2s8Z1` READY·운영 alias 연결을 확인했다.
+- **syncNew 시간 게이트:** 적용 전 자연 실행 기록의 최신 `syncNew`는 00:50:51 KST 시작·**101.4초(1분 41.4초)** 완료였다. 4분 경고선과 Apps Script 6분 한도보다 충분히 짧았다.
+- **✅ 낮 수동 검증(09:56:29~09:58:55 KST):** `ensureDailyCollect`를 정확히 1회 실행했다. 먼저 `syncNew`가 비교 **15건·신규 15건·기존 변경 0건**을 완료했고, 로그는 `[preCollectSyncNew] {"ok":true,"created":15,"compared":15,"attempt":1,"ms":144059}`. 이어 `[ensureDailyCollect] HTTP 200` 응답에 같은 `"preSync":{"ok":true,...}`가 포함됐다. 낮 시간이라 서버는 의도대로 `action=skip · reason=outside_midnight_window · dispatched=false`였으며, 수집 dispatch를 만들지 않았다. 실제 자정 순서·측정일 반영은 위 Claude 11-14 자연 실행 게이트에서 최종 확인한다.
 
 ## ✅ 2026-11-12 [Codex 복구 완료] Apify 새 토큰 전 경로 교체 · 재배포 · 누락 대상 재수집
 - **Apify 계정·원인 확인:** Personal 계정은 정지·결제 경고 없이 정상이고 사용량은 `$82 / $350`. 기존 토큰은 `/v2/users/me` **401**, 보안 사고 대응으로 일괄 교체된 토큰이 원인임을 확인했다. 새 Personal API token을 발급했으며 값은 어디에도 기록하지 않았다.
