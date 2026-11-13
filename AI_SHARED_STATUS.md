@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## ✅ 2026-11-13 [Codex 완료] 연동 시트 불필요 탭 14개 삭제 · 사후 감사 회귀 없음
+- **사용자 승인·복원점:** 사용자가 삭제 직전 `응 삭제해`로 승인했다. 원본 문서의 명명 버전 `_codex_pre_tab_cleanup_20261113_1212`를 복원점으로 보존한 상태에서 실행했다.
+- **삭제(14개, 63→49개 탭):** `_codex_` 8개(`_codex_dup_backup_20260811_113811`, `_codex_layout_backup_20260811_115512`, `_codex_layout_backup_20260811_120717`, `_codex_integrity_backup_20260813_110028`, `_codex_dup_backup_20260818_171502`, `_codex_row_format_backup_20260901_162727`, `_codex_duplicate_backup_20260901_20260901_164716`, `_codex_satellite_dup_backup_20261013`) + `사본` 3개(`파인트_검색량의 사본`, `RD_Main의 사본`, `클로드의 멍청 사본`) + `복구용` 1개 + `완료` 2개(`[25.11] 팝콘_바이럴 트래킹 (완료)`, `(완료)RD_Main`). 문서 잠금·이름+sheetId·계수·계획 서명 가드를 모두 통과한 뒤 삭제했고, 실행 로그는 `before_count=63`, `after_count=49`, `status=OK`다.
+- **보호 탭 보존:** `(~26.04)RD_Main_OLD`, `콘텐츠_대시보드(2)`, `콘텐츠_View(2)`, `콘텐츠_RD(2)` 4개를 삭제 계획에서 명시적으로 제외했고 사후 존재를 재확인했다.
+- **공식 수식감사:** GitHub Actions run `43361483540` success·HTTP 200. 운영 탭 5,462행 기준 `orphanRows=0`, `incMismatch=0`, H/I 오류셀 0, `cpv.invalid=0`, `stale=0`, `sheetOnly=0`, `shortLinkRows=0`. 삭제 전 당일 run `43337953028`과 비교해 `hInvalid=1`, `incInvalid=15` 등 기존 형태 지표가 동일하므로 **탭 삭제로 인한 운영 탭 회귀 0**이다.
+- **별도 `#REF!` 전수검색:** 남은 49개 탭 전체에서는 464셀이 검색됐다. 로그에 담긴 첫 100건은 보호한 레거시·분석 탭 `(~26.04)RD_Main_OLD`, `팝콘_검색량`, `2026상반기_팝콘방향성`, `듬뿍바_View`에 집중됐다. 삭제 전 동일 전수검색 기준선은 없어 464건 전체가 기존이었다고 단정하지 않았고, 운영 정본 탭은 위 공식 감사로 무영향을 확인했다. 레거시 탭의 기존 오류 정리는 이번 14개 탭 삭제와 분리한다.
+- **임시 코드 정리:** 삭제·감사용 일회성 `99_codex_tab_cleanup_tmp`를 라이브 Apps Script에서 제거했다. fresh pull 결과 원격은 정규 파일 **10개**, 임시 파일 0개, 영구 파일 10개의 삭제 전 SHA-256 대비 변경 0개다.
+
 ## 🟡 2026-11-13 [Claude 코드 완료 → Codex 라이브 적용 대기] 연동 시트 코드 병목 — 메타데이터만 쓰는 함수들의 '전체 너비 읽기' 제거
 - **사용자:** Codex 진단(`collectRows_` 411행 부근: 신규 15건 syncNew가 A:GL 약 106만 셀을 읽어 144초) 받고 "코드 병목 해결해".
 - **수정(repo):** 새 도우미 `readSelectedColumns_(sheet,startRow,numRows,cols)` — 필요한 열만 읽어(간격 3칸 이하 묶음) 기존 `row[col-1]` 접근이 그대로 되도록 희소 행 배열 반환, `fieldColList_`. 적용 6곳(전부 날짜열 미사용 확인 후): `collectRows_`(syncNew·syncAll, 메타+**등록상태 열**), `scanBlanks_`(매 동기화 끝 빈칸 경고), `pullFromDB`(3시간마다, fillFields 열), `fillExistingMetadataFromDB_`(url+3열), `syncPricing`(4열), `auditCreatorAssetIntegrity_`(4열). 날짜열이 필요한 `importStats`·메뉴 전용·일회성 함수는 손대지 않음.
