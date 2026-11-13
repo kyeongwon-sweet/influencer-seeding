@@ -95,6 +95,14 @@ export type AuditResult = {
   inc: { ok: number; emptyOk: number; errorCells: number; mismatch: number; blankExpected: number };
   formulaShape: { hInvalid: number; hManual: number; incInvalid: number };
   /**
+   * I열 수식 '종류' 분포(2026-11-13 V4 전환 게이트). 정상/오류와 별개로 실제로 어떤 식이 깔려 있는지 센다.
+   *   · v4    — 가벼운 식(LET/SEQUENCE/FILTER 없음)
+   *   · v3    — 옛 배열식(LET(rng,…)). exportStats 가 돌면 V4로 바뀌어야 하므로, 전환 후 남아 있으면
+   *             'exportStats 미실행/일부 실패' 신호다(값은 같아 정합 오류로는 안 센다).
+   *   · stub  — `=""`(백로그·종료 의도 빈칸)   · other — 그 밖(수기 숫자·깨진 식 등)
+   */
+  incShape: { v4: number; v3: number; stub: number; other: number };
+  /**
    * CPV(J) 감사. 2026-09-29 추가 — 그전까진 누적(H)·증분(I)만 봐서 "CPV 수식 괜찮냐"에
    * 답할 수단이 아예 없었다(사람이 셀을 눈으로 찍어볼 수밖에).
    *   · invalid      — 기대 수식과 다른 형태(수기 덮어쓰기 포함)
@@ -388,6 +396,16 @@ export function legacyIncrementFormulaV3(
   return `=IFERROR(LET(rng,$${firstColumn}${row}:$${lastColumn}${row},cols,SEQUENCE(1,COLUMNS(rng),COLUMN($${firstColumn}${row}),1),targetC,COLUMN($${target}${row}),targetV,INDEX(rng,1,targetC-COLUMN($${firstColumn}${row})+1),prevMax,IFERROR(MAX(FILTER(rng,cols<targetC,rng>0)),0),IF(targetV>0,IF(prevMax>0,MAX(0,targetV-prevMax),targetV),"")),"")`;
 }
 
+/** I열 수식 종류 판별(분포 집계 전용 — 정상/오류 판정은 sameFormula·validFormulaEndColumn 이 한다). */
+export function incrementFormulaKind(f: string | number | boolean | null): "v4" | "v3" | "stub" | "other" {
+  if (typeof f !== "string" || !f.startsWith("=")) return "other";
+  const n = f.replace(/\s+/g, "").toUpperCase();
+  if (n === '=""') return "stub";
+  if (n.startsWith("=IFERROR(LET(RNG,")) return "v3";
+  if (/^=IFERROR\(IF\(\$[A-Z]+\d+>0,/.test(n) && !/LET\(|SEQUENCE\(|FILTER\(/.test(n)) return "v4";
+  return "other";
+}
+
 function sameFormula(actual: string | number | boolean | null, expected: string): boolean {
   if (typeof actual !== "string" || !actual.startsWith("=")) return false;
   const normalize = (value: string) => value.replace(/\s+/g, "").toUpperCase();
@@ -510,6 +528,7 @@ export function auditRows(
     h: { ok: 0, manualKept: 0, emptyOk: 0, valueOnly: 0, errorCells: 0, emptyButData: 0 },
     inc: { ok: 0, emptyOk: 0, errorCells: 0, mismatch: 0, blankExpected: 0 },
     formulaShape: { hInvalid: 0, hManual: 0, incInvalid: 0 },
+    incShape: { v4: 0, v3: 0, stub: 0, other: 0 },
     cpv: { ok: 0, invalid: 0, emptyCost: 0, unmeasured: 0 },
     cpvInvalidRows: [],
     hInvalidRows: [],
@@ -589,6 +608,7 @@ export function auditRows(
         }
       }
     }
+    if (row.sourceRow && row.incFormula !== undefined) res.incShape[incrementFormulaKind(row.incFormula)] += 1;
     const post = posts.get(row.key);
     const incrementFormulaValid = row.sourceRow && row.incFormula !== undefined && (
       sameFormula(row.incFormula, expectedIncrementFormula(row.sourceRow, row.metricRange)) ||
@@ -722,8 +742,12 @@ export function formatAuditMessage(r: AuditResult): { text: string; healthy: boo
     : "";
   const detail = [...r.orphanNotes, ...r.anomalies].slice(0, ANOMALY_CAP);
   const body = problems === 0 ? "" : "\n" + detail.map((a) => "• " + a).join("\n");
+  // V4 전환 게이트: 옛 식이 남아 있으면 '그날 exportStats 가 다 안 돌았다'는 뜻이라 같이 보인다.
+  const s = r.incShape;
+  const shapeTail = `\nℹ️ I열 수식 종류 — 새 식(V4) ${s.v4} · 옛 식(V3) ${s.v3} · 빈칸 식 ${s.stub} · 기타 ${s.other}`
+    + (s.v3 > 0 && s.v4 > 0 ? " (옛 식이 남음 → 오늘 exportStats가 전체를 다시 쓰지 못했을 수 있음)" : "");
   return {
-    text: sheetOnlyHead + head + body + staleTail + staleExcludedTail,
+    text: sheetOnlyHead + head + body + staleTail + staleExcludedTail + shapeTail,
     healthy: problems === 0 && r.stale === 0 && r.sheetOnly === 0,
   };
 }

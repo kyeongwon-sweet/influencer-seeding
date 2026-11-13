@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { auditRows, expectedIncrementFormula, legacyIncrementFormulaV3, type SheetAuditRow } from "../lib/formula-audit.ts";
+import { auditRows, expectedIncrementFormula, formatAuditMessage, incrementFormulaKind, legacyIncrementFormulaV3, type SheetAuditRow } from "../lib/formula-audit.ts";
 
 // 2026-11-13 사용자 "연동 시트가 너무 느려" — I열 증분 수식을 배열 없는 V4로 교체.
 // 지킬 것: ① Apps Script 생성기 == 감사 기대식(글자 단위) ② V4 값 == V3 값 ③ 이행 기간 V3도 정상 판정.
@@ -97,4 +97,26 @@ test("Apps Script 파서: V4·V3 모두 표준으로 인식, 수기·다른 식�
   assert.equal(gs.standardIncrementFormulaParts_(gs.metricIncrementFormula_(4, "P", "GK", "GJ"), 5), null, "행번호 다르면 아님");
   assert.equal(gs.standardIncrementFormulaParts_("=GJ4-GI4", 4), null);
   assert.equal(gs.standardIncrementFormulaParts_(gs.metricIncrementFormula_(4, "Q", "GK", "GJ"), 4, "P"), null, "첫 날짜열 다르면 아님");
+});
+
+test("V4 전환 게이트: 감사가 I열 수식 종류(V4·V3·빈칸·기타)를 세고 메시지에 보인다", () => {
+  assert.equal(incrementFormulaKind(gs.metricIncrementFormula_(4, "P", "GK", "GJ")), "v4");
+  assert.equal(incrementFormulaKind(gs.metricIncrementFormula_(4, "P", "GK", "P")), "v4", "첫 열이 target인 V4");
+  assert.equal(incrementFormulaKind(gs.legacyIncrementFormulaV3_(4, "P", "GK", "GJ")), "v3");
+  assert.equal(incrementFormulaKind('=""'), "stub");
+  assert.equal(incrementFormulaKind(1234), "other");
+  assert.equal(incrementFormulaKind("=GJ4-GI4"), "other");
+  const rows = [
+    row({ key: "a", sourceRow: 10, incFormula: expectedIncrementFormula(10, RANGE) }),
+    row({ key: "b", sourceRow: 11, incFormula: expectedIncrementFormula(11, RANGE) }),
+    row({ key: "c", sourceRow: 12, incFormula: legacyIncrementFormulaV3(12, RANGE) }),
+    row({ key: "d", sourceRow: 13, incFormula: '=""' }),
+  ];
+  const r = auditRows(rows, new Map(), "2026-11-13");
+  assert.deepEqual(r.incShape, { v4: 2, v3: 1, stub: 1, other: 0 });
+  const text = formatAuditMessage(r).text;
+  assert.match(text, /새 식\(V4\) 2 · 옛 식\(V3\) 1 · 빈칸 식 1 · 기타 0/);
+  assert.match(text, /옛 식이 남음/);
+  const allV4 = auditRows(rows.slice(0, 2), new Map(), "2026-11-13");
+  assert.doesNotMatch(formatAuditMessage(allV4).text, /옛 식이 남음/);
 });

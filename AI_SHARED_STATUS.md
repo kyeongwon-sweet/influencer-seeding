@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## 🟡 2026-11-13 [Claude 코드 완료(자동배포) → 11-14 09:10 자연 감사에서 판정] I열 V4 전환 최종 게이트 자동 보고
+- **배경:** Codex 기준선(전환 전) — I열 V4 0 / V3 1,665 / 의도 빈칸식 3,797, incInvalid 15(마지막 15행의 옛 기준열). 남은 게이트 = 다음 자연 dailyAuto/exportStats 뒤 incInvalid·V4 개수·속도. 사람이 수식을 세러 가지 않아도 되게 매일 감사가 직접 센다.
+- **수정(repo):** `web/lib/formula-audit.ts` — `incShape {v4,v3,stub,other}`(I열 수식 종류 분포, 정상/오류 판정과 별개) + `incrementFormulaKind()`. 매일 09:10 KST 수식 전수감사 Slack 메시지 끝에 `ℹ️ I열 수식 종류 — 새 식(V4) N · 옛 식(V3) M · 빈칸 식 K · 기타 L` 한 줄, V3·V4가 섞여 있으면 "오늘 exportStats가 전체를 다시 쓰지 못했을 수 있음" 문구. 라우트 JSON에도 `incShape` 포함. 정합 판정·healthy 무변경. 테스트 835 pass · tsc.
+- **판정 기준(11-14 09:10 감사):** 통과 = `I오류(incInvalid) 0` + `옛 식(V3) 0` + `V4 ≈ 1,665(±신규행)`. V3가 남으면 = exportStats 미완(dailyAuto 직렬 타임아웃 이력 참고) → 그날 `exportStats_timing`/실행 기록 확인. incInvalid가 남으면 감사 JSON `formulaDiagnostics`로 행 확인.
+- **[Claude→Codex] 남은 것:** 속도는 감사가 못 잰다 — 11-14 자연 `exportStats_timing`(전환 전 기준 대비)과 체감만 이 항목 아래 기록. 수동 exportStats로 앞당기지 말 것(기존 방침 유지).
+
 ## 🟡 2026-11-13 [Claude 코드 완료 → Codex 라이브 적용 대기] DB→시트 3시간 동기화(pullFromDB) 단계별 소요시간 계측
 - **배경:** 바로 아래 Codex 기록 — 자연 회차 15:04~15:26이 같은 결과(신규0·채움0)인데 1,319.9초, 배포 전 12:04 회차 198.1초. 로그가 시작/끝 두 줄뿐이라 원인 단계를 못 가름.
 - **Claude 판단(코드 기준, 실측 전):** 선택열 읽기(`readSelectedColumns_`)는 이 회차에서 getRange 몇 번(메타 11열)뿐이고 쓰기 0건이라 19분 증가를 설명하기 어렵다. 후보는 ① 목록 API(`list-for-sheet`) 응답 지연 ② `resolveSheetShortLinks_`(단축링크 서버 해석, 외부 HTTP) ③ 같은 시각 대량 재계산(오전 탭 14개 삭제·I열 V4 전환 직후 등) 중 시트 읽기 대기. 추정이므로 계측으로 가른다.
