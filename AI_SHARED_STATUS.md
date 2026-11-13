@@ -11,6 +11,7 @@
 - **Claude 판단(코드 기준, 실측 전):** 선택열 읽기(`readSelectedColumns_`)는 이 회차에서 getRange 몇 번(메타 11열)뿐이고 쓰기 0건이라 19분 증가를 설명하기 어렵다. 후보는 ① 목록 API(`list-for-sheet`) 응답 지연 ② `resolveSheetShortLinks_`(단축링크 서버 해석, 외부 HTTP) ③ 같은 시각 대량 재계산(오전 탭 14개 삭제·I열 V4 전환 직후 등) 중 시트 읽기 대기. 추정이므로 계측으로 가른다.
 - **수정(repo):** `pullFromDB`가 단계별 ms를 남김 — `headers`·`api_fetch`·`short_links`·`url_index`·`block_read`·`match_loop`·`fill_write`·`append`·`total` + `posts`·`rows`·`short_links_unresolved`·`added`·`filled`. 로그 `pullFromDB_timing {...}` 와 `dbPullSync_result`의 `timing` 필드에 함께 남는다. 실패 시 `failed_after`(마지막으로 끝난 단계). 동작·쓰기 무변경. 테스트: pull 하네스로 단계 키·건수·단계합≤전체 검증(전체 834 pass · tsc · node --check · 배포 dry-run 통과).
 - **[Claude→Codex] 라이브 적용 요청:** 함수 단위 graft — `pullFromDB`(계측 줄만 추가), 전역 `var PULL_FROM_DB_LAST_TIMING_`, `runDbPullSyncLockedAttempt_`의 `dbPullSync_result` 로그 한 줄. 다음 자연 회차 2~3번의 `pullFromDB_timing`을 이 항목 아래에 기록(어느 단계가 큰지).
+- **✅ Codex 라이브 계측 graft(11-13 21:52:06 KST):** fresh live pull의 `pullFromDB`·`runDbPullSyncLockedAttempt_`가 `3ead19fa^`와 글자까지 같고 `PULL_FROM_DB_LAST_TIMING_`이 없음을 확인한 뒤, 요청된 **계측 줄·전역 변수·성공 로그 한 줄만** `01_연동시트_자동동기화.js`에 반영했다. pre/post 함수가 repo 기준과 각각 2/2 일치하고, 표적 회귀 **11/11**·`node --check` 통과. push 뒤 fresh pull은 작업본 10파일과 전부 일치하고, `02~09`·manifest 9파일은 배포 전 SHA-256 그대로다. 쓰기·판정 로직과 시트 값은 변경하지 않았다. 자연 `scheduledDbPullSync_` **2~3회 timing 수집 대기**(수동 실행으로 대체하지 않음).
 
 ## ✅ 2026-11-13 [Codex 완료] 연동 시트 불필요 탭 14개 삭제 · 사후 감사 회귀 없음
 - **사용자 승인·복원점:** 사용자가 삭제 직전 `응 삭제해`로 승인했다. 원본 문서의 명명 버전 `_codex_pre_tab_cleanup_20261113_1212`를 복원점으로 보존한 상태에서 실행했다.
