@@ -16,6 +16,8 @@ const slice = (from: string, to: string) => {
   return appsScript.slice(start, end);
 };
 const guardSrc = slice("function assertRowCountStable_(", "// 기본 필터가 켜진 시트에서");
+// 2026-11-13: pullFromDB 는 필요한 열만 읽는다(readSelectedColumns_) — 실제 도우미를 그대로 주입.
+const selectSrc = slice("function readSelectedColumns_(", "function collectRows_(");
 const pullStart = appsScript.indexOf("function currentRowIndexByKey_(");
 const pullFnStart = appsScript.indexOf("function pullFromDB()", pullStart);
 const pullEnd = appsScript.slice(pullFnStart).search(/\r?\n\}\r?\n/);
@@ -62,7 +64,7 @@ function runPull(sheet: ReturnType<typeof makeSheet>, posts: Record<string, stri
     "getSheet_", "buildFieldCols_", "CONFIG", "UrlFetchApp", "authHeaders_", "resolveSheetShortLinks_",
     "linkKey_", "classifySheetSyncUrl_", "fmtVal_", "SpreadsheetApp", "ensureNewRowsMetricFormulas_",
     "applyLinkedInputValidationsToRows_", "safeAlert_", "Logger", "shortLinkNote_",
-    `var PULL_FROM_DB_LAST_ERROR_ = "";\n${guardSrc}\n${pullSrc}\nreturn { pullFromDB, lastError: () => PULL_FROM_DB_LAST_ERROR_ };`,
+    `var PULL_FROM_DB_LAST_ERROR_ = "";\n${guardSrc}\n${selectSrc}\n${pullSrc}\nreturn { pullFromDB, lastError: () => PULL_FROM_DB_LAST_ERROR_ };`,
   )(
     () => sheet,
     () => COLS,

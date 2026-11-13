@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 🟡 2026-11-13 [Claude 코드 완료 → Codex 라이브 적용 대기] 연동 시트 코드 병목 — 메타데이터만 쓰는 함수들의 '전체 너비 읽기' 제거
+- **사용자:** Codex 진단(`collectRows_` 411행 부근: 신규 15건 syncNew가 A:GL 약 106만 셀을 읽어 144초) 받고 "코드 병목 해결해".
+- **수정(repo):** 새 도우미 `readSelectedColumns_(sheet,startRow,numRows,cols)` — 필요한 열만 읽어(간격 3칸 이하 묶음) 기존 `row[col-1]` 접근이 그대로 되도록 희소 행 배열 반환, `fieldColList_`. 적용 6곳(전부 날짜열 미사용 확인 후): `collectRows_`(syncNew·syncAll, 메타+**등록상태 열**), `scanBlanks_`(매 동기화 끝 빈칸 경고), `pullFromDB`(3시간마다, fillFields 열), `fillExistingMetadataFromDB_`(url+3열), `syncPricing`(4열), `auditCreatorAssetIntegrity_`(4열). 날짜열이 필요한 `importStats`·메뉴 전용·일회성 함수는 손대지 않음.
+- **🔴 함정 차단:** 등록상태 열은 날짜열 **오른쪽 끝**에 있다. 'A:O만 읽기'처럼 앞쪽 고정 범위로 바꾸면 등록상태가 빈칸으로 보여 **전 행이 신규**가 되고, `getStatusCol_`은 헤더를 못 찾으면 새 열을 만든다. 그래서 고정 범위가 아니라 헤더로 찾은 열 번호 목록을 읽게 했고, 계약 테스트가 `collectRows_`의 `statusCol` 포함을 강제한다.
+- **검증:** 새 `web/tests/sheet-read-selected-columns.test.ts`(가짜 시트로 값 동일·읽은 셀 수·묶음·빈 입력, 6함수 전체너비 읽기 금지, 등록상태 포함) + 기존 `apps-script-pull-concurrent-edit` 4개(동시 편집 중 pullFromDB 실동작)가 실제 도우미 주입 상태로 통과. 전체 833 pass · tsc · `node --check` · 배포 dry-run 마커 통과.
+- **[Claude→Codex] 라이브 적용 요청:** 바로 아래 'I열 V4' 항목과 **같이** 함수 단위로 graft(파일 통째 금지). 이 항목 변경 = `readSelectedColumns_`·`fieldColList_`(신규) + 위 6함수의 읽기 한 줄씩. 적용 후 ① 메뉴 '신규 광고 추가'(syncNew) 1회 실행 시간 기록(기준: 수동 144초·자연 101초), 결과 문구의 비교/신규 건수가 정상인지 ② 다음 3시간 DB→시트 동기화(pullFromDB) 로그의 추가·채움 건수가 평소 범위인지 ③ 실행 기록에 오류 없는지 — 상태판에 기록.
+
 ## 🟡 2026-11-13 [Claude 코드 완료 → Codex 사본검증·라이브 적용 대기] 연동 시트 느림 — I열 증분 수식 V4(배열 없는 가벼운 식)
 - **사용자:** "지금 연동 시트가 너무 느려" → 1번(I열 수식 교체) 진행 지시.
 - **원인(구조상 최유력, 실측 전):** I열 V3 수식이 행마다 `LET`+`SEQUENCE`+`FILTER` 배열로 날짜열 전체를 훑음. 규모 8월 2,056행×97열 → 지금 5,462행×약 180열(매일 1열 증가). 07-14에 시트를 멈추게 해 금지한 '범위 훑기 배열수식'의 재발. exportStats 가 매일 5,447행 I수식을 다시 써서 전체 재계산도 매일 발생.

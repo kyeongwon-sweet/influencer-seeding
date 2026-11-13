@@ -405,6 +405,43 @@ function todayStr_() {
 // 행 읽기
 // ═══════════════════════════════════════════════════════════════
 /**
+ * 필요한 열만 읽는다 (2026-11-13 "연동 시트 너무 느려"):
+ *   syncNew·pullFromDB 등이 메타데이터 몇 칸만 쓰면서 A:GL 전체(5,462행 × 194열 ≈ 106만 셀)를
+ *   통째로 읽었다 — 신규 15건 등록에 144초. 날짜열(P:GL, 약 98만 셀)은 이 함수들이 한 칸도 안 쓴다.
+ * 반환: 기존 코드가 row[col - 1] 로 그대로 접근하도록 '희소 행 배열'(읽지 않은 칸은 undefined).
+ *   ⚠️ 그래서 호출부는 넘긴 열 외의 칸을 읽으면 안 된다(빈칸처럼 보임) — 계약 테스트가 지킨다.
+ * 가까운 열(간격 3칸 이하)은 한 번에 묶어 getRange 호출 수를 줄인다.
+ */
+function readSelectedColumns_(sheet, startRow, numRows, cols) {
+  const wanted = [];
+  (cols || []).forEach(function(c) {
+    const n = Number(c);
+    if (n >= 1 && wanted.indexOf(n) === -1) wanted.push(n);
+  });
+  wanted.sort(function(a, b) { return a - b; });
+  const out = [];
+  for (let i = 0; i < numRows; i++) out.push([]);
+  if (!(numRows > 0) || !wanted.length) return out;
+  const runs = [];
+  wanted.forEach(function(c) {
+    const last = runs[runs.length - 1];
+    if (last && c - last.end <= 3) last.end = c;
+    else runs.push({ start: c, end: c });
+  });
+  runs.forEach(function(run) {
+    const block = sheet.getRange(startRow, run.start, numRows, run.end - run.start + 1).getValues();
+    for (let i = 0; i < numRows; i++) {
+      for (let j = 0; j < block[i].length; j++) out[i][run.start - 1 + j] = block[i][j];
+    }
+  });
+  return out;
+}
+
+function fieldColList_(fieldCols, fields) {
+  return (fields || Object.keys(fieldCols)).map(function(f) { return fieldCols[f]; }).filter(Boolean);
+}
+
+/**
  * @param {boolean} onlyNew - true면 등록상태가 비어있는 행만
  * @returns {{rows, rowNums, rowRefs, statusCol, skipped:number, skipDetails:Array, normalizedDetails:Array, dupCount:number, future:number, lastRow:number}}
  */
@@ -414,7 +451,6 @@ function collectRows_(onlyNew) {
   const statusCol = getStatusCol_(sheet);
 
   const lastRow = sheet.getLastRow();
-  const lastCol = sheet.getLastColumn();
   const today = todayStr_();
   let skipped = 0, dupCount = 0, future = 0;
   const skipDetails = [];
@@ -423,9 +459,14 @@ function collectRows_(onlyNew) {
     return { rows: [], rowNums: [], rowRefs: [], statusCol, skipped, skipDetails, normalizedDetails, dupCount, future, lastRow };
   }
 
-  const values = sheet
-    .getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, lastCol)
-    .getValues();
+  // 메타데이터 열 + 등록상태 열만 읽는다. ⚠️ 등록상태는 날짜열 오른쪽 끝에 있어 A:O 같은 '앞쪽 고정 범위'로
+  // 읽으면 못 찾는다 → 빈칸으로 보여 전 행이 '신규'가 된다. 헤더로 찾은 statusCol 을 반드시 함께 넘긴다.
+  const values = readSelectedColumns_(
+    sheet,
+    CONFIG.DATA_START_ROW,
+    lastRow - CONFIG.DATA_START_ROW + 1,
+    fieldColList_(fieldCols).concat([statusCol])
+  );
 
   const byKey = {}; // 정규화된 URL → 전송 객체 (첫 행 우선, 중복 제거)
   const rowNums = [];
@@ -700,15 +741,12 @@ function scanBlanks_() {
   const sheet = getSheet_();
   const fieldCols = buildFieldCols_(sheet);
   const lastRow = sheet.getLastRow();
-  const lastCol = sheet.getLastColumn();
   if (lastRow < CONFIG.DATA_START_ROW) return [];
 
-  const values = sheet
-    .getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, lastCol)
-    .getValues();
   // 업체명(company_name)은 바이럴에만 있는 선택 항목 → 빈칸 검사 대상에서 제외(빈칸이 정상).
   const fields = ["posted_at", "url", "account_name", "content_summary", "channel_type", "project_name", "product_name", "cost"]
     .filter(f => fieldCols[f]);
+  const values = readSelectedColumns_(sheet, CONFIG.DATA_START_ROW, lastRow - CONFIG.DATA_START_ROW + 1, fieldColList_(fieldCols, fields));
   const cell = (row, f) => String(row[fieldCols[f] - 1] == null ? "" : row[fieldCols[f] - 1]).trim();
 
   const blanks = [];
@@ -1694,7 +1732,8 @@ function pullFromDB() {
     // 성능(2026-07-24): 셀단위 getValue 반복(≈행수×필드수 왕복)이 30분 실행한도를 초과시켜 dailyAuto가 타임아웃되던 문제.
     // 데이터 블록을 1회만 읽어 메모리에서 빈칸 판정한다. 쓰기는 기존대로 빈 셀만 개별 setValue(수식·조회수 열 보존).
     const _pfN = (lastRow >= CONFIG.DATA_START_ROW) ? (lastRow - CONFIG.DATA_START_ROW + 1) : 0;
-    const _pfBlock = _pfN > 0 ? sheet.getRange(CONFIG.DATA_START_ROW, 1, _pfN, sheet.getLastColumn()).getValues() : [];
+    // 2026-11-13: 채울 필드 열만 읽는다(날짜열 약 98만 셀 제외). 접근은 fieldCols[f]-1 뿐이라 동일 동작.
+    const _pfBlock = _pfN > 0 ? readSelectedColumns_(sheet, CONFIG.DATA_START_ROW, _pfN, fieldColList_(fieldCols, fillFields)) : [];
 
     let added = 0, filled = 0, rejectedInvalid = 0;
     const rejectedReasons = {};
@@ -1828,7 +1867,7 @@ function fillExistingMetadataFromDB_(silent) {
     });
 
     const fillFields = ["account_name", "company_name", "cost"];
-    const data = sheet.getRange(CONFIG.DATA_START_ROW, 1, n, sheet.getLastColumn()).getValues();
+    const data = readSelectedColumns_(sheet, CONFIG.DATA_START_ROW, n, [urlCol].concat(fieldColList_(fieldCols, fillFields)));
     const formulasByField = {};
     fillFields.forEach(f => {
       if (fieldCols[f]) {
@@ -5276,8 +5315,8 @@ function auditCreatorAssetIntegrity_() {
   }
 
   const n = lastRow - CONFIG.DATA_START_ROW + 1;
-  const lastCol = sheet.getLastColumn();
-  const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, n, lastCol).getValues();
+  const values = readSelectedColumns_(sheet, CONFIG.DATA_START_ROW, n,
+    [sourceCol, plannerCol, makerCol, fieldCols.url]);
   const issues = [];
   const missingPlanners = [];
   const missingCreators = [];
@@ -5572,7 +5611,8 @@ function syncPricing() {
   if (!pricing) throw new Error("가격/업체명 매핑 시트를 찾을 수 없습니다.");
 
   const n = lastRow - CONFIG.DATA_START_ROW + 1;
-  const data = sheet.getRange(CONFIG.DATA_START_ROW, 1, n, sheet.getLastColumn()).getValues();
+  const data = readSelectedColumns_(sheet, CONFIG.DATA_START_ROW, n,
+    fieldColList_(fieldCols, ["account_name", "channel_type", "company_name", "cost"]));
   const companyFormulas = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.company_name, n, 1).getFormulas();
   const costFormulas = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.cost, n, 1).getFormulas();
   const accountLetter = colLetter_(fieldCols.account_name);
