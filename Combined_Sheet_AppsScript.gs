@@ -1695,10 +1695,18 @@ function writePullFillsByKey_(sheet, urlCol, edits) {
 }
 
 function pullFromDB() {
+  // 단계별 소요시간(2026-11-13): 자연 회차가 같은 결과(신규0·채움0)인데 198초 → 1,320초로 느려졌지만
+  // 로그가 시작/끝 두 줄뿐이라 API·단축링크·읽기·쓰기 중 어디인지 못 갈랐다. 단계마다 ms를 남긴다.
+  const timing = {};
+  let lapAt = Date.now();
+  const startedMs = lapAt;
+  const lap = function(name) { const now = Date.now(); timing[name + "_ms"] = now - lapAt; lapAt = now; };
+  PULL_FROM_DB_LAST_TIMING_ = null;
   try {
     const sheet = getSheet_();
     const fieldCols = buildFieldCols_(sheet);   // {field: 1-based col}
     const urlCol = fieldCols.url;
+    lap("headers");
 
     const res = UrlFetchApp.fetch(CONFIG.LIST_API_URL, {
       method: "get",
@@ -1707,10 +1715,14 @@ function pullFromDB() {
     });
     if (res.getResponseCode() !== 200) throw new Error(`API ${res.getResponseCode()}: ${res.getContentText()}`);
     const posts = (JSON.parse(res.getContentText()).posts) || [];
+    lap("api_fetch");
+    timing.posts = posts.length;
 
     // 시트의 단축링크를 먼저 정식 주소로 바꾼 뒤 키 목록을 만든다. 못 푼 단축링크가 남아 있으면
     // 그 행이 어떤 글인지 모르므로, 이번 실행은 틱톡 신규 행 추가를 보류한다(같은 글 두 줄 방지).
     const shortLinks = resolveSheetShortLinks_(sheet);
+    lap("short_links");
+    timing.short_links_unresolved = shortLinks.unresolved.length;
     const holdTikTokAppends = shortLinks.unresolved.length > 0;
     let heldTikTok = 0;
 
@@ -1725,6 +1737,8 @@ function pullFromDB() {
         if (key) rowByKey[key] = CONFIG.DATA_START_ROW + i;   // shortcode/영상ID 기준 — /p/·/reel/ 등 경로만 달라도 같은 글로 인식
       });
     }
+    lap("url_index");
+    timing.rows = lastRow;
 
     // 채울 필드(시트에 해당 헤더가 있는 것만)
     const fillFields = ["posted_at", "account_name", "company_name", "content_summary", "asset_name", "channel_type", "project_name", "product_name", "planner", "creator", "cost"];
@@ -1734,6 +1748,7 @@ function pullFromDB() {
     const _pfN = (lastRow >= CONFIG.DATA_START_ROW) ? (lastRow - CONFIG.DATA_START_ROW + 1) : 0;
     // 2026-11-13: 채울 필드 열만 읽는다(날짜열 약 98만 셀 제외). 접근은 fieldCols[f]-1 뿐이라 동일 동작.
     const _pfBlock = _pfN > 0 ? readSelectedColumns_(sheet, CONFIG.DATA_START_ROW, _pfN, fieldColList_(fieldCols, fillFields)) : [];
+    lap("block_read");
 
     let added = 0, filled = 0, rejectedInvalid = 0;
     const rejectedReasons = {};
@@ -1793,7 +1808,9 @@ function pullFromDB() {
     // 개별 setValue()는 시트가 커질수록 왕복이 선형 증가해 Apps Script 실행 한도를 넘겼다
     // (2026-08-26 WATCHDOG_TIMEOUT: 3,216행 × fillFields 11개 → 최악 3.5만 회 왕복).
     // 처음 읽은 행 번호를 그대로 쓰지 않고 쓰기 직전 URL로 현재 행을 다시 찾는다(writePullFillsByKey_).
+    lap("match_loop");
     if (fillEdits.length > 0) filled = writePullFillsByKey_(sheet, urlCol, fillEdits);
+    lap("fill_write");
 
     if (pendingRows.length > 0) {
       // 추가 직전 현재 시트를 다시 읽는다. 그 사이 사람이 맨 아래에 행을 넣었으면 그 아래부터 붙이고,
@@ -1825,6 +1842,12 @@ function pullFromDB() {
       }
     }
 
+    lap("append");
+    timing.added = added;
+    timing.filled = filled;
+    timing.total_ms = Date.now() - startedMs;
+    PULL_FROM_DB_LAST_TIMING_ = timing;
+    Logger.log("pullFromDB_timing " + JSON.stringify(timing));
     const rejectedSummary = Object.keys(rejectedReasons)
       .map(reason => `${reason} ${rejectedReasons[reason]}건`)
       .join(" · ");
@@ -1834,6 +1857,10 @@ function pullFromDB() {
       shortLinkNote_(shortLinks));
     return true;
   } catch (e) {
+    timing.total_ms = Date.now() - startedMs;
+    timing.failed_after = Object.keys(timing).filter(function(k) { return /_ms$/.test(k) && k !== "total_ms"; }).slice(-1)[0] || "start";
+    PULL_FROM_DB_LAST_TIMING_ = timing;
+    Logger.log("pullFromDB_timing " + JSON.stringify(timing));
     safeAlert_("❌ DB→시트 반영 오류\n" + e.message);
     Logger.log(e.stack || e.message);
     PULL_FROM_DB_LAST_ERROR_ = String(e.message || e);   // 실패 알림에 실제 이유를 싣는다
@@ -2877,6 +2904,7 @@ function dailyAuto() {
 const DB_PULL_SYNC_INTERVAL_HOURS_ = 3;
 // pullFromDB가 false를 돌려줄 때의 실제 오류. 예전 알림은 "returned false"만 보여 원인을 실행 기록에서 찾아야 했다(2026-11-04).
 var PULL_FROM_DB_LAST_ERROR_ = "";
+var PULL_FROM_DB_LAST_TIMING_ = null;   // pullFromDB 단계별 ms — dbPullSync_result 로그에 함께 남긴다(2026-11-13)
 const DB_PULL_SYNC_RETRY_DELAY_MS_ = 7 * 60 * 1000;
 // 🚨 2026-08-26: 20분이던 워치독이 **본 실행보다 먼저 울려** 성공한 실행도 실패로 알렸다.
 //    Apps Script 실행 한도는 30분이므로, 워치독은 그 뒤에 울려야 "완료 기록 없음"이 실제 실패를 뜻한다.
@@ -3019,7 +3047,7 @@ function runDbPullSyncLockedAttempt_(source, attempt, markEntered) {
           DB_PULL_SYNC_LAST_STATUS: "OK",
           DB_PULL_SYNC_LAST_ERROR: "",
         }, false);
-        Logger.log("dbPullSync_result " + JSON.stringify({ status: "OK", source: source, attempt: attempt, started_at: startedAt, finished_at: finishedAt }));
+        Logger.log("dbPullSync_result " + JSON.stringify({ status: "OK", source: source, attempt: attempt, started_at: startedAt, finished_at: finishedAt, timing: PULL_FROM_DB_LAST_TIMING_ }));
         return true;
       } catch (error) {
         const finishedAt = new Date().toISOString();

@@ -64,7 +64,7 @@ function runPull(sheet: ReturnType<typeof makeSheet>, posts: Record<string, stri
     "getSheet_", "buildFieldCols_", "CONFIG", "UrlFetchApp", "authHeaders_", "resolveSheetShortLinks_",
     "linkKey_", "classifySheetSyncUrl_", "fmtVal_", "SpreadsheetApp", "ensureNewRowsMetricFormulas_",
     "applyLinkedInputValidationsToRows_", "safeAlert_", "Logger", "shortLinkNote_",
-    `var PULL_FROM_DB_LAST_ERROR_ = "";\n${guardSrc}\n${selectSrc}\n${pullSrc}\nreturn { pullFromDB, lastError: () => PULL_FROM_DB_LAST_ERROR_ };`,
+    `var PULL_FROM_DB_LAST_ERROR_ = "";\nvar PULL_FROM_DB_LAST_TIMING_ = null;\n${guardSrc}\n${selectSrc}\n${pullSrc}\nreturn { pullFromDB, lastError: () => PULL_FROM_DB_LAST_ERROR_, lastTiming: () => PULL_FROM_DB_LAST_TIMING_ };`,
   )(
     () => sheet,
     () => COLS,
@@ -82,8 +82,24 @@ function runPull(sheet: ReturnType<typeof makeSheet>, posts: Record<string, stri
     { log: () => {} },
     () => "",
   );
-  return { ok: fn.pullFromDB(), alerts, lastError: fn.lastError() };
+  const ok = fn.pullFromDB();
+  return { ok, alerts, lastError: fn.lastError(), timing: fn.lastTiming() as Record<string, number> | null };
 }
+
+test("pullFromDB 는 단계별 소요시간을 남긴다(느려진 단계를 가르기 위해, 2026-11-13)", () => {
+  const sheet = makeSheet([["2026-11-04", u("A1"), "", ""]]);
+  const r = runPull(sheet, [{ url: u("A1"), account_name: "acct_a" }, { url: u("N9"), account_name: "new" }]);
+  assert.equal(r.ok, true, r.alerts.join("\n"));
+  const t = r.timing!;
+  for (const k of ["headers_ms", "api_fetch_ms", "short_links_ms", "url_index_ms", "block_read_ms", "match_loop_ms", "fill_write_ms", "append_ms", "total_ms"]) {
+    assert.equal(typeof t[k], "number", k);
+  }
+  assert.equal(t.posts, 2);
+  assert.equal(t.added, 1);
+  assert.equal(t.filled, 1);
+  const stages = Object.keys(t).filter((k) => k.endsWith("_ms") && k !== "total_ms").reduce((n, k) => n + t[k], 0);
+  assert.ok(stages <= t.total_ms, "단계 합 ≤ 전체");
+});
 
 const u = (id: string) => `https://www.instagram.com/p/${id}/`;
 
