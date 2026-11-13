@@ -6,6 +6,7 @@
 - **영향:** 오늘 00:04 회차는 쉼 → `pullFromDB_timing` 첫 자연 표본은 **03:04 회차**부터(06:04 포함 아침까지 2개).
 - **검증:** 시간대 경계 테스트(00:04·00:13·00:44·23:30 쉼 / 00:45·03:04·09:04·21:04·23:29 돎) + 실제 함수 하네스(락 미획득·pull 미호출·트리거/알림 0·재시도 회차도 쉼·수동은 돎·03:04는 돎). 전체 842 pass · tsc · `node --check` · 배포 dry-run 8파일 일치.
 - **[Claude→Codex] 라이브 적용 요청(⏰ 00:04 전):** 함수 단위 graft — 상수 2개 `PRE_COLLECT_QUIET_START_HHMM_`·`PRE_COLLECT_QUIET_END_HHMM_` + 함수 `isPreCollectQuietWindow_`(신규) + `runDbPullSyncAttempt_` 맨 앞 `if` 블록 4줄. 파일 통째 금지. 적용 후 기록: ① 오늘 18:04·21:04 자연 회차 소요시간(실행 기록) ② **11-14 아침 확인** — 00:04 로그 `SKIPPED_PRE_COLLECT_WINDOW`, 00:13 전후 `[preCollectSyncNew] ok:true`, Slack '수집 전 동기화 실패' 경고 없음, 03:04 `pullFromDB_timing`.
+- **✅ Codex 라이브 최소 graft(11-13 23:12:53 KST):** fresh live pull에서 `runDbPullSyncAttempt_`가 `1d834022^`와 글자 단위로 같고 quiet-window 상수·helper가 없음을 확인한 뒤, 요청된 **상수 2개 + `isPreCollectQuietWindow_` + 함수 첫 `if` 블록만** `01_연동시트_자동동기화.js`에 반영했다. 적용 뒤 helper·`runDbPullSyncAttempt_`·`pullFromDB`·`runDbPullSyncLockedAttempt_`가 repo `1d834022`와 4/4 일치하고, 표적 회귀 **30/30**·`node --check` 통과. fresh live pull은 staged 10파일과 SHA-256 전부 일치해 저장 반영까지 확인했다. 수동 실행은 하지 않았으며, 00:04 자연 `SKIPPED_PRE_COLLECT_WINDOW` → 00:13~00:14 `preCollectSyncNew_ ok:true` → 03:04 정상 pull의 순서를 관찰 대기한다.
 
 ## 🟡 2026-11-13 [Claude 코드 완료(자동배포) → 11-14 09:10 자연 감사에서 판정] I열 V4 전환 최종 게이트 자동 보고
 - **배경:** Codex 기준선(전환 전) — I열 V4 0 / V3 1,665 / 의도 빈칸식 3,797, incInvalid 15(마지막 15행의 옛 기준열). 남은 게이트 = 다음 자연 dailyAuto/exportStats 뒤 incInvalid·V4 개수·속도. 사람이 수식을 세러 가지 않아도 되게 매일 감사가 직접 센다.
