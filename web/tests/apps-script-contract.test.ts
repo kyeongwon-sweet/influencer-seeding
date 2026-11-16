@@ -752,7 +752,8 @@ test("linked-sheet data validation rejects invalid input without including regis
   assert.match(body, /setDataValidation\(linkedUploadDateValidationRule_\(\)\)/);
   assert.doesNotMatch(body, /\[1, '=OR\(A2="",AND\(ISNUMBER\(A2\),A2>0\)\)'/);
   assert.match(body, /applyLinkedFixedInputValidationsRows_\(sheet, CONFIG\.DATA_START_ROW, rowCount\)/);
-  assert.match(body, /linkedDateColumns_\(sheet\)/);
+  assert.match(body, /linkedRecentDateColumns_\(sheet\)/);
+  assert.match(body, /LINKED_DATE_VALIDATION_CUTOFF_PROP_/);
   assert.match(appsScript, /setAllowInvalid\(false\)/);
 
   const dateColsStart = appsScript.indexOf("function linkedDateColumns_(sheet)");
@@ -801,7 +802,7 @@ test("linked-sheet input-validation repair backs up rules and proves values are 
   const body = appsScript.slice(start, end);
   assert.notEqual(start, -1);
   assert.match(body, /function inspectLinkedInputValueState_\(sheet, dateCols\)/);
-  assert.match(body, /function inspectLinkedInputValidationSamples_\(sheet, dateCols\)/);
+  assert.match(body, /function inspectLinkedInputValidationSamples_\(sheet, dateCols, activeDateCols\)/);
   assert.match(body, /for \(let row = CONFIG\.DATA_START_ROW; row <= maxRows; row \+= 250\)/);
   assert.match(body, /getDataValidations\(\)\[0\]/);
   assert.match(body, /const rule = rowRules\[col - 1\]/);
@@ -809,11 +810,14 @@ test("linked-sheet input-validation repair backs up rules and proves values are 
   assert.match(body, /DATE_IS_VALID_DATE/);
   assert.match(body, /CUSTOM_FORMULA/);
   assert.match(body, /formula\.indexOf\("#REF!"\)/);
+  assert.match(body, /DATE_RULE_OUTSIDE_WINDOW/);
   assert.match(body, /SpreadsheetApp\.create\("linked_input_validation_backup_"/);
   assert.match(body, /setDataValidation\(linkedUploadDateValidationRule_\(\)\)/);
-  assert.match(body, /applyDateInputValidation_\(sheet, start, previous - start \+ 1\)/);
+  assert.match(body, /linkedRecentDateColumns_\(sheet, dateColumns\)/);
+  assert.match(body, /linkedDateColumnRuns_\(activeCols\)/);
   assert.match(body, /afterValues\.value_fingerprint !== beforeValues\.value_fingerprint/);
-  assert.match(body, /rewritten_validation_cells: rowCount \* \(cols\.length \+ 1\)/);
+  assert.match(body, /active_validation_date_columns: activeCols\.length/);
+  assert.match(body, /date_outside_window_rule/);
   assert.match(body, /after_remaining: remaining/);
   assert.doesNotMatch(body, /setValues\(.*dateRange|clearContent|deleteRow/);
 });

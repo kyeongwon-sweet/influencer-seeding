@@ -42,14 +42,14 @@ test("허용 목록이 비어 있으면 범위 전체가 지울 대상", () => {
   assert.deepEqual(clearRuns(3, 5, []), [[3, 3]]);
 });
 
-test("허용 열 구성: 업로드일·채널분류·고정 규칙 열·날짜열, 누적·증분은 항상 지움(소스 계약)", () => {
+test("허용 열 구성: 업로드일·채널분류·고정 규칙 열·최근 날짜열, 누적·증분·오래된 날짜열은 지움(소스 계약)", () => {
   const body = extract("applyLinkedFixedInputValidationsRows_");
   assert.match(body, /const channelTypeCol = findHeaderCol_\(sheet, \["채널분류", "채널 분류"\]\)/);
   assert.match(body, /const allowedCols = \[1, channelTypeCol\]/);
   // 채널분류 머리글을 못 찾으면 드롭다운을 지우지 않도록 H·I만 정리하는 예전 동작으로 후퇴
   assert.match(body, /if \(channelTypeCol\) \{[\s\S]*\} else \{[\s\S]*\[cumulativeCol, incrementCol\]/);
   assert.match(body, /linkedFixedInputValidationSpecs_\(sheet, startRow\)\.map\(function\(spec\) \{ return spec\.col; \}\)/);
-  assert.match(body, /Object\.keys\(linkedDateColumns_\(sheet\)\)\.map\(Number\)/);
+  assert.match(body, /Object\.keys\(linkedRecentDateColumns_\(sheet\)\)\.map\(Number\)/);
   assert.match(body, /col !== cumulativeCol && col !== incrementCol/);
   assert.match(body, /linkedColumnsToClearValidation_\(fromCol, toCol, allowedCols\)/);
   assert.match(body, /\.clearDataValidations\(\)/);
@@ -82,13 +82,13 @@ function runApply(opts: { channelHeader: boolean; fromCol?: number; toCol?: numb
   const src = `${extract("applyLinkedFixedInputValidationsRows_")}\n${extract("linkedColumnsToClearValidation_")}
     return applyLinkedFixedInputValidationsRows_;`;
   const fn = new Function(
-    "findHeaderCol_", "getIncrementCol_", "linkedFixedInputValidationSpecs_", "linkedDateColumns_", "linkedValidationRule_",
+    "findHeaderCol_", "getIncrementCol_", "linkedFixedInputValidationSpecs_", "linkedRecentDateColumns_", "linkedValidationRule_",
     src,
   )(
     (_s: unknown, names: string[]) => names.map((n) => headers[n]).find((v) => v) || null,
     () => 9,
     () => [2, 6, 7, 10, 11, 12].map((col) => ({ col, formula: "=TRUE", help: "" })),
-    () => ({ 16: "2026-10-27", 17: "2026-10-28", 18: "2026-10-29" }),
+    () => ({ 17: "2026-10-28", 18: "2026-10-29" }),
     () => ({}),
   );
   fn(sheet, 5153, 10, opts.fromCol, opts.toCol);
@@ -99,10 +99,10 @@ test("실행: C열 붙여넣기 → C 규칙만 지우고 다른 열은 안 건�
   assert.deepEqual(runApply({ channelHeader: true, fromCol: 3, toCol: 3 }).cleared, [3]);
 });
 
-test("실행: 전체 정리 → 무규칙 열(C·E·H·I·M·N·O·등록상태)만 지우고 A·B·D·F·G·J·K·L·날짜열은 절대 안 지움", () => {
+test("실행: 전체 정리 → 무규칙 열과 창 밖 날짜열(P)을 지우고 최근 날짜열(Q·R)은 유지", () => {
   const r = runApply({ channelHeader: true });
-  assert.deepEqual(r.cleared, [3, 5, 8, 9, 13, 14, 15, 19]);
-  for (const keep of [1, 2, 4, 6, 7, 10, 11, 12, 16, 17, 18]) assert.ok(!r.cleared.includes(keep), String(keep));
+  assert.deepEqual(r.cleared, [3, 5, 8, 9, 13, 14, 15, 16, 19]);
+  for (const keep of [1, 2, 4, 6, 7, 10, 11, 12, 17, 18]) assert.ok(!r.cleared.includes(keep), String(keep));
   assert.deepEqual(r.set, [2, 6, 7, 10, 11, 12]);   // 고정 규칙 열은 원래 규칙으로 다시 씌움
 });
 

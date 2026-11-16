@@ -3495,6 +3495,10 @@ function exportStatsWithOptions_(options) {
       }
     }
 
+    // 최근 60일 검사창을 매일 한 칸씩 이동한다. 값·수식은 건드리지 않고,
+    // 새로 창 밖이 된 날짜열의 유효성 규칙만 해제한다.
+    if (!formulaOnly) refreshLinkedDateValidationWindow_(sheet, false);
+
     markTiming("fetched");
     const nRows = lastRow - CONFIG.DATA_START_ROW + 1;
     const urlVals = sheet.getRange(CONFIG.DATA_START_ROW, fieldCols.url, nRows, 1).getValues();
@@ -4301,6 +4305,8 @@ function onStatusEdit_(e) {
 // O 이후는 '날짜 제목이 붙은 열'만 조회수 영역으로 취급한다. 등록상태 등 관리 열은 제외한다.
 // 조회수는 숫자만 허용하며, 해당 행 업로드일 전이나 KST 오늘 이후 날짜 열에는 입력할 수 없다.
 const LINKED_INPUT_FIRST_DATE_COL_ = 15;  // O열
+const LINKED_DATE_VALIDATION_LOOKBACK_DAYS_ = 60;
+const LINKED_DATE_VALIDATION_CUTOFF_PROP_ = "LINKED_DATE_VALIDATION_CUTOFF_DATE";
 
 function isBlankLinkedInput_(value) {
   return value === "" || value == null;
@@ -4348,6 +4354,74 @@ function linkedDateColumns_(sheet) {
     if (key) out[col] = key;
   }
   return out;
+}
+
+// 날짜셀의 값 검증은 onEdit가 전 기간을 계속 담당한다. 셀 자체의 무거운 맞춤 유효성 규칙은
+// 팀이 늦게 수기 보정할 수 있는 최근 60일에만 유지해, 100만칸대 규칙이 모든 읽기를 늦추지 않게 한다.
+function linkedDateValidationCutoff_() {
+  const cutoff = shiftDateStr_(todayStr_(), -(LINKED_DATE_VALIDATION_LOOKBACK_DAYS_ - 1));
+  if (!cutoff) throw new Error("최근 날짜 유효성 검사 기준일을 계산하지 못했습니다.");
+  return cutoff;
+}
+
+function linkedRecentDateColumns_(sheet, dateColumns) {
+  const all = dateColumns || linkedDateColumns_(sheet);
+  const cutoff = linkedDateValidationCutoff_();
+  const out = {};
+  Object.keys(all).forEach(function(col) {
+    if (String(all[col]) >= cutoff) out[col] = all[col];
+  });
+  return out;
+}
+
+function linkedDateColumnRuns_(cols) {
+  const sorted = (cols || []).map(Number).filter(function(col) { return col > 0; })
+    .sort(function(a, b) { return a - b; });
+  const runs = [];
+  if (!sorted.length) return runs;
+  let start = sorted[0], previous = sorted[0];
+  for (let i = 1; i <= sorted.length; i++) {
+    const col = sorted[i];
+    if (i < sorted.length && col === previous + 1) {
+      previous = col;
+      continue;
+    }
+    runs.push([start, previous - start + 1]);
+    start = col;
+    previous = col;
+  }
+  return runs;
+}
+
+// 날짜가 하루 넘어가면 새로 60일 창 밖이 된 열만 규칙을 해제한다. 첫 실행/속성 유실 때만
+// 과거 열 전체를 정리하며, 값·수식·서식은 건드리지 않는다.
+function refreshLinkedDateValidationWindow_(sheet, force) {
+  const cutoff = linkedDateValidationCutoff_();
+  const props = PropertiesService.getScriptProperties();
+  const previous = String(props.getProperty(LINKED_DATE_VALIDATION_CUTOFF_PROP_) || "");
+  if (!force && previous === cutoff) {
+    return { cutoff: cutoff, previous_cutoff: previous, cleared_columns: 0, cleared_cells: 0 };
+  }
+  const dateColumns = linkedDateColumns_(sheet);
+  const validPrevious = /^\d{4}-\d{2}-\d{2}$/.test(previous) && previous < cutoff;
+  const expiredCols = Object.keys(dateColumns).map(Number).filter(function(col) {
+    const date = String(dateColumns[col]);
+    if (!(date < cutoff)) return false;
+    return force || !validPrevious || date >= previous;
+  });
+  const rowCount = Math.max(1, sheet.getMaxRows() - CONFIG.DATA_START_ROW + 1);
+  linkedDateColumnRuns_(expiredCols).forEach(function(run) {
+    sheet.getRange(CONFIG.DATA_START_ROW, run[0], rowCount, run[1]).clearDataValidations();
+  });
+  props.setProperty(LINKED_DATE_VALIDATION_CUTOFF_PROP_, cutoff);
+  const result = {
+    cutoff: cutoff,
+    previous_cutoff: previous || null,
+    cleared_columns: expiredCols.length,
+    cleared_cells: expiredCols.length * rowCount,
+  };
+  Logger.log("linked_date_validation_window " + JSON.stringify(result));
+  return result;
 }
 
 function validateLinkedSheetInputOnEdit_(e, sheet) {
@@ -4487,7 +4561,7 @@ function applyLinkedFixedInputValidationsRows_(sheet, startRow, rowCount, firstC
   if (channelTypeCol) {
     const allowedCols = [1, channelTypeCol]
       .concat(linkedFixedInputValidationSpecs_(sheet, startRow).map(function(spec) { return spec.col; }))
-      .concat(Object.keys(linkedDateColumns_(sheet)).map(Number))
+      .concat(Object.keys(linkedRecentDateColumns_(sheet)).map(Number))
       .filter(function(col) { return col && col !== cumulativeCol && col !== incrementCol; });
     runs = linkedColumnsToClearValidation_(fromCol, toCol, allowedCols);
   } else {
@@ -4674,22 +4748,12 @@ function applyLinkedInputValidationsToRows_(sheet, startRow, rowCount) {
   sheet.getRange(safeStart, 1, safeCount, 1)
     .setDataValidation(linkedUploadDateValidationRule_());
   const fixedResult = applyLinkedFixedInputValidationsRows_(sheet, safeStart, safeCount);
-  const cols = Object.keys(linkedDateColumns_(sheet)).map(Number).sort(function(a, b) { return a - b; });
+  const cols = Object.keys(linkedRecentDateColumns_(sheet)).map(Number).sort(function(a, b) { return a - b; });
   let dateCells = 0;
-  if (cols.length) {
-    let runStart = cols[0], previous = cols[0];
-    for (let i = 1; i <= cols.length; i++) {
-      const col = cols[i];
-      if (i < cols.length && col === previous + 1) {
-        previous = col;
-        continue;
-      }
-      applyDateInputValidationRows_(sheet, safeStart, safeCount, runStart, previous - runStart + 1);
-      dateCells += safeCount * (previous - runStart + 1);
-      runStart = col;
-      previous = col;
-    }
-  }
+  linkedDateColumnRuns_(cols).forEach(function(run) {
+    applyDateInputValidationRows_(sheet, safeStart, safeCount, run[0], run[1]);
+    dateCells += safeCount * run[1];
+  });
   return {
     rows: safeCount,
     validation_cells: safeCount + fixedResult.validation_cells + dateCells,
@@ -4778,23 +4842,13 @@ function repairLinkedInputValidationsOnEdit_(e, sheet) {
   }
   const fixedResult = applyLinkedFixedInputValidationsRows_(sheet, rowStart, rowCount, firstCol, lastCol);
   cells += fixedResult.validation_cells + fixedResult.cleared_metric_cells;
-  const dateCols = Object.keys(linkedDateColumns_(sheet)).map(Number)
+  const dateCols = Object.keys(linkedRecentDateColumns_(sheet)).map(Number)
     .filter(function(col) { return col >= firstCol && col <= lastCol; })
     .sort(function(a, b) { return a - b; });
-  if (dateCols.length) {
-    let runStart = dateCols[0], previous = dateCols[0];
-    for (let i = 1; i <= dateCols.length; i++) {
-      const col = dateCols[i];
-      if (i < dateCols.length && col === previous + 1) {
-        previous = col;
-        continue;
-      }
-      applyDateInputValidationRows_(sheet, rowStart, rowCount, runStart, previous - runStart + 1);
-      cells += rowCount * (previous - runStart + 1);
-      runStart = col;
-      previous = col;
-    }
-  }
+  linkedDateColumnRuns_(dateCols).forEach(function(run) {
+    applyDateInputValidationRows_(sheet, rowStart, rowCount, run[0], run[1]);
+    cells += rowCount * run[1];
+  });
   if (cells) Logger.log("linked_input_validation_edit_repair " + JSON.stringify({ range: range.getA1Notation(), cells: cells }));
   return { rows: rowCount, validation_cells: cells };
 }
@@ -4874,9 +4928,12 @@ function inspectLinkedInputValueState_(sheet, dateCols) {
   return result;
 }
 
-function inspectLinkedInputValidationSamples_(sheet, dateCols) {
+function inspectLinkedInputValidationSamples_(sheet, dateCols, activeDateCols) {
   const maxRows = sheet.getMaxRows();
   const lastRow = Math.max(CONFIG.DATA_START_ROW, sheet.getLastRow());
+  const validationCutoff = linkedDateValidationCutoff_();
+  const active = {};
+  (activeDateCols || dateCols || []).forEach(function(col) { active[Number(col)] = true; });
   const rowSet = {};
   rowSet[CONFIG.DATA_START_ROW] = true;
   rowSet[lastRow] = true;
@@ -4891,6 +4948,7 @@ function inspectLinkedInputValidationSamples_(sheet, dateCols) {
     date_missing_rule: 0,
     date_ref_rule: 0,
     date_wrong_rule: 0,
+    date_outside_window_rule: 0,
     anomalies: [],
   };
   const add = function(cell, kind, detail) {
@@ -4914,6 +4972,13 @@ function inspectLinkedInputValidationSamples_(sheet, dateCols) {
       const cell = colLetter_(col) + row;
       const rule = rowRules[col - 1];
       result.probe_cells++;
+      if (!active[col]) {
+        if (rule) {
+          result.date_outside_window_rule++;
+          add(cell, "DATE_RULE_OUTSIDE_WINDOW", "cutoff=" + validationCutoff);
+        }
+        return;
+      }
       if (!rule) {
         result.date_missing_rule++;
         add(cell, "DATE_RULE_MISSING", "");
@@ -4949,9 +5014,11 @@ function repairLinkedInputValidationsWithBackup() {
       const dateColumns = linkedDateColumns_(sheet);
       const cols = Object.keys(dateColumns).map(Number).sort(function(a, b) { return a - b; });
       if (!cols.length) throw new Error("일자별 데이터 열을 찾지 못했습니다.");
+      const activeDateColumns = linkedRecentDateColumns_(sheet, dateColumns);
+      const activeCols = Object.keys(activeDateColumns).map(Number).sort(function(a, b) { return a - b; });
       const expectedLastRow = sheet.getLastRow();
       const beforeValues = inspectLinkedInputValueState_(sheet, cols);
-      const beforeRules = inspectLinkedInputValidationSamples_(sheet, cols);
+      const beforeRules = inspectLinkedInputValidationSamples_(sheet, cols, activeCols);
 
       const stamp = Utilities.formatDate(new Date(), CONFIG.KST_TIMEZONE, "yyyyMMdd_HHmmss");
       const backup = SpreadsheetApp.create("linked_input_validation_backup_" + stamp, Math.max(20, beforeRules.anomalies.length + 2), 3);
@@ -4971,6 +5038,7 @@ function repairLinkedInputValidationsWithBackup() {
         ["date_missing_rule", beforeRules.date_missing_rule, "표본"],
         ["date_ref_rule", beforeRules.date_ref_rule, "표본"],
         ["date_wrong_rule", beforeRules.date_wrong_rule, "표본"],
+        ["date_outside_window_rule", beforeRules.date_outside_window_rule, "60일 창 밖 규칙"],
       ];
       summary.getRange(1, 1, summaryRows.length, 3).setValues(summaryRows);
       if (beforeRules.anomalies.length) {
@@ -4983,26 +5051,20 @@ function repairLinkedInputValidationsWithBackup() {
       const rowCount = Math.max(1, sheet.getMaxRows() - CONFIG.DATA_START_ROW + 1);
       sheet.getRange(CONFIG.DATA_START_ROW, 1, rowCount, 1)
         .setDataValidation(linkedUploadDateValidationRule_());
-      let start = cols[0], previous = cols[0];
-      for (let i = 1; i <= cols.length; i++) {
-        const col = cols[i];
-        if (i < cols.length && col === previous + 1) {
-          previous = col;
-          continue;
-        }
-        applyDateInputValidation_(sheet, start, previous - start + 1);
-        start = col;
-        previous = col;
-      }
+      const fixedResult = applyLinkedFixedInputValidationsRows_(sheet, CONFIG.DATA_START_ROW, rowCount);
+      linkedDateColumnRuns_(activeCols).forEach(function(run) {
+        applyDateInputValidation_(sheet, run[0], run[1]);
+      });
       SpreadsheetApp.flush();
       assertRowCountStable_(sheet, expectedLastRow, "repairLinkedInputValidationsWithBackup verify");
       const afterValues = inspectLinkedInputValueState_(sheet, cols);
       if (afterValues.value_fingerprint !== beforeValues.value_fingerprint) {
         throw new Error("검사규칙 수정 전후 표시값 지문이 다릅니다. before=" + beforeValues.value_fingerprint + " after=" + afterValues.value_fingerprint);
       }
-      const afterRules = inspectLinkedInputValidationSamples_(sheet, cols);
+      const afterRules = inspectLinkedInputValidationSamples_(sheet, cols, activeCols);
       const remaining = afterValues.a_invalid_values + afterRules.a_missing_rule + afterRules.a_wrong_rule
-        + afterRules.date_missing_rule + afterRules.date_ref_rule + afterRules.date_wrong_rule;
+        + afterRules.date_missing_rule + afterRules.date_ref_rule + afterRules.date_wrong_rule
+        + afterRules.date_outside_window_rule;
       if (remaining !== 0) {
         Logger.log("linked_input_validation_remaining " + JSON.stringify({
           a_invalid_values: afterValues.a_invalid_values,
@@ -5019,19 +5081,25 @@ function repairLinkedInputValidationsWithBackup() {
           date_missing_rule: beforeRules.date_missing_rule,
           date_ref_rule: beforeRules.date_ref_rule,
           date_wrong_rule: beforeRules.date_wrong_rule,
+          date_outside_window_rule: beforeRules.date_outside_window_rule,
         },
         after_remaining: remaining,
         verified_rows: expectedLastRow - CONFIG.DATA_START_ROW + 1,
         verified_date_columns: cols.length,
-        rewritten_validation_cells: rowCount * (cols.length + 1),
+        active_validation_date_columns: activeCols.length,
+        expired_validation_date_columns: cols.length - activeCols.length,
+        rewritten_validation_cells: rowCount + fixedResult.validation_cells
+          + fixedResult.cleared_metric_cells + rowCount * activeCols.length,
         validation_probe_cells: afterRules.probe_cells,
         value_fingerprint: afterValues.value_fingerprint,
         backup_id: backup.getId(),
         backup_url: backup.getUrl(),
       };
       Logger.log("linked_input_validation_repair " + JSON.stringify(result));
+      PropertiesService.getScriptProperties()
+        .setProperty(LINKED_DATE_VALIDATION_CUTOFF_PROP_, linkedDateValidationCutoff_());
       SpreadsheetApp.getActive().toast(
-        "A열·일자별 검사규칙 정리 완료 · 잔여 0건",
+        "A열·최근 60일 검사규칙 정리 완료 · 잔여 0건",
         "✅ 유효성 검사 정리",
         8
       );
@@ -5047,21 +5115,13 @@ function applyLinkedSheetInputValidation_() {
     .setDataValidation(linkedUploadDateValidationRule_());
   applyLinkedFixedInputValidationsRows_(sheet, CONFIG.DATA_START_ROW, rowCount);
 
-  const dateColumns = linkedDateColumns_(sheet);
+  const dateColumns = linkedRecentDateColumns_(sheet);
   const cols = Object.keys(dateColumns).map(Number).sort(function(a, b) { return a - b; });
-  if (cols.length) {
-    let runStart = cols[0], previous = cols[0];
-    for (let i = 1; i <= cols.length; i++) {
-      const col = cols[i];
-      if (i < cols.length && col === previous + 1) {
-        previous = col;
-        continue;
-      }
-      applyDateInputValidation_(sheet, runStart, previous - runStart + 1);
-      runStart = col;
-      previous = col;
-    }
-  }
+  linkedDateColumnRuns_(cols).forEach(function(run) {
+    applyDateInputValidation_(sheet, run[0], run[1]);
+  });
+  PropertiesService.getScriptProperties()
+    .setProperty(LINKED_DATE_VALIDATION_CUTOFF_PROP_, linkedDateValidationCutoff_());
   return true;
 }
 
