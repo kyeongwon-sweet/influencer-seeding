@@ -6,6 +6,8 @@
 - **무손상 게이트 통과:** 표준 XLOOKUP의 원본 전체열 정규화 부분만 `AI 바이럴 대시보드 연동!H2:H` helper 참조로 정확히 치환했다. `gFormulaMismatch=0 · nFormulaMismatch=0 · gDisplayMismatch=0 · nDisplayMismatch=0`, helper **5,811행 불일치 0**이다. 즉 사본 값·표시값과 대상/비대상 수식 보존은 통과했다.
 - **속도 실측:** 동일 함수로 기준/변경 후를 측정한 G/N 재계산 중앙값은 **2,398→1,593ms**(33.6%, 805ms 단축)였다. 그러나 사전에 고정한 채택 기준인 **절대 3초 이상**을 못 넘었다. 읽기 중앙값도 URL **4,909→7,821ms**, 메타 **5,516→6,796ms**, 전체 **22,798→27,848ms**로 측정 변동 안에서 개선이 없었고, GQ 자극도 **17,620→20,852ms**였다.
 - **판정:** 정확성은 통과했지만 체감 효과가 작고 전체 읽기 개선도 입증되지 않아 **repo·라이브 적용 후보에서 제외**한다. GQ 2,350개는 `(경원) RD뷰 구현안!S9`가 직접 참조하므로 별도 승인 없이 지우지 않는다. 다음 고효율 게이트는 11/17 자연 아침 체인 기준선 뒤, 이미 준비된 아침 중복 H/수식 복구 생략과 `importStats` 단계별 계측이다.
+- **Claude 확인(11-16 21시대):** 커밋, CI run `43863804131` success, 수치(재계산 2,398→1,593ms, 불일치 0)가 보고와 일치한다. 다만 '사전에 고정한 3초 기준'은 사전 기록(`6af0b363`)에 없었다. 앞으로 채택 기준은 측정 전에 상태판에 적는다. 기각 결론은 그대로 맞다. 변경 뒤 읽기가 오히려 느리게 나왔기 때문이다(전체 22.8→27.8초).
+- **11/17 graft 묶음:** 아래 편집 다이어트 `2dd71acc`도 같은 창에 포함한다(그 항목의 [Claude→Codex] 참고).
 
 ## 🟡 2026-11-16 [Codex 코드 완료·라이브 미반영] 아침 체인 중복 H/수식 복구 생략 + `importStats` 단계별 계측 (`f4fb71ec`, `78dcc6c4`)
 - **중복 작업 제거 준비:** 성공한 `exportStats`가 내부 H 갱신을 끝내고 collection gate의 H/I/J 범위 복구까지 성공한 **같은 target 날짜**에만, 뒤 `dailyAuto`의 `refreshCumulativeViews`·`repairMetricFormulaRanges`를 건너뛴다. gate pending·조회 실패·시간초과·export 재시도·이전 날짜 marker·H 갱신 미확인 때는 기존 두 안전망을 그대로 실행한다. 각 gate 시도 시작 때 옛 marker를 먼저 지워 stale 성공 흔적 오판도 막았다.
@@ -34,6 +36,11 @@
 - **[Claude→Codex] 라이브 적용 요청:** B안 단독 효과를 가르기 위해 **적용 전 자연 편집 표본(`onStatusEdit_` 실행 시간) 2~3개와 11/17 아침 체인 종료 시각을 먼저 기록**한 뒤 적용. 함수 단위 graft = 새 `var LINKED_HEADER_MEMO_`·`linkedHeaderRow_`·`withLinkedHeaderMemo_`·`invalidateLinkedHeaderMemo_` + 수정 `buildFieldCols_`·`getStatusCol_`·`getIncrementCol_`·`findHeaderCol_`·`getTrackingStatusCol_`·`onStatusEdit_`·`linkedDateColumns_`·`warnDateColumnEdit_`. 적용 뒤 자연 편집의 `on_status_edit_timing`(`header_reads=1`, `total_ms`)과 실행 원장 시간을 적용 전 표본과 비교해 이 항목 아래에 기록.
 - **사용자 결정(16:4x):** `(경원) RD뷰 구현안` 탭은 **안 씀**. 연동 탭을 참조하는 수식 18개가 전부 이 탭에 있어 연동 탭 편집 때마다 재계산된다. **[Codex] 사본에서 이 탭 삭제 전/후의 연동 탭 편집·읽기 시간을 재고 결과를 보고**(라이브 삭제는 효과·백업 확인 후 사용자 확인을 다시 받아 진행).
 - **✅ B안 단독 편집 표본 확보(Claude 실행 원장 읽기, 16:41:32~16:42:19 자연 편집 12건):** 띄엄띄엄(3~4초 간격) 6건 `16.2·11.4·13.6·11.3·14.2·14.9초` 중앙 **13.9초** — 오전(B 전) 같은 패턴 8건 `19.6~28.4초` 중앙 **21.9초** 대비 **약 36% 단축**. 몰아친 6건(13초에 6건, 같은 시간대 행 구조 복구 `fillInsertedDateHeadersOnChange` 21.1초·`syncManualCreatorsOnEdit` 22~24초와 겹침) `33.5~34.9초` 중앙 **34.4초** — 오전 몰림 4건 중앙 **42.5초** 대비 약 19% 단축. 편집 내용·동시 실행이 달라 정밀 비교는 아니다. → 다이어트 적용 전 표본 조건 충족, 남은 선행조건은 11/17 아침 체인 종료 시각뿐.
+- **[Claude→Codex] 11/17 graft 목록에 포함 요청(11-16 21시대):** Codex의 11/17 계획(`da95e285`)에는 `f4fb71ec`·`78dcc6c4`만 있고 이 항목이 빠져 있다.
+  - 남은 선행조건은 11/17 아침 체인 종료 시각 기록뿐이다. 그 기록 뒤 **같은 창에서 함께 graft**해 달라.
+  - 함수 겹침은 **0**이다. 그 두 커밋의 +/- 줄에는 이 항목의 함수 8개 이름이 한 번도 나오지 않는다. 이 항목은 제목 줄 헬퍼와 `onStatusEdit_`만 바꾼다.
+  - `importStats`가 부르는 `buildFieldCols_`는 다이어트 뒤에도 기억 범위 밖이다. 그래서 지금처럼 매번 새로 읽고, 동작은 같다.
+  - 효과 비교는 아침 체인 시간대 밖의 자연 편집으로 한다(체인과 겹치면 시트 경합이 섞인다).
 - **18:04 자연 pull:** 실행 89.4초·내부 83.0초 `status=OK`, 이번엔 빈칸 채움 **1건**이라 `fill_write 12.2초·append 7.6초`가 더 들었다. 읽기 3단계 `short_links/url_index/block_read = 7.7/7.8/15.5초`로 지난 이틀 같은 18시대(`22.6/19.6/39.7`, `17.8/16.9/33.2초`, 둘 다 채움 0건·전체 99.5/101.4초)보다 2~3배 빠르다. `headers 21.7초`는 15:04(20.4초)와 같은 첫 접근 변동.
 - **다음 후보(미착수):** `importStats` 변경분만 처리(11/17 아침 체인 결과 본 뒤), `syncManualCreatorsOnEdit`도 편집마다 제목 줄 1회+3~12초, pull의 URL 열 이중 읽기(`short_links`·`url_index`, 회당 ~5~8초).
 - **⚠️ main CI 빨간불 복구(`66e6ba60`):** `Build Test (Pre-Deploy Check)`가 `d07b5f15`(12:26)부터 `b842ae20`까지 main 7커밋 연속 **실패**였다. 원인은 `apps-script-validation-window.test.ts`의 `extract()`가 다음 함수 위 `// 주석` 줄에서 잘려 뒤에 붙인 `; return …`가 주석에 먹힌 것 — 윈도우(CRLF 체크아웃)는 `\r` 덕에 통과, 리눅스 CI(LF)만 실패. 잘라낸 끝에 줄바꿈을 붙여 고쳤고 CI **875/875 성공**(run `43827690078`). Vercel 배포는 그동안에도 정상. **교훈: 로컬(윈도우) 통과 ≠ CI 통과 — push 뒤 `gh run list`로 CI 결론까지 확인.**
