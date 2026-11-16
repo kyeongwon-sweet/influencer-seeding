@@ -1,5 +1,14 @@
 # AI Shared Status
 
+## 🟡 2026-11-16 [Claude 코드 완료 → Codex 라이브 적용 대기 (B안 단독 편집 표본·11/17 아침 체인 확인 뒤)] 편집 트리거가 제목 줄을 한 번만 읽기 + 단계별 시간 로그 (`2dd71acc`)
+- **배경:** 사용자 "더 빨라지게 할 수 없을까?"(16:38) → '지금 준비 시작' 선택. 칸 하나만 고쳐도 `onStatusEdit_` 안의 검사들이 제목 줄(1행)을 **15번** 다시 읽었다(날짜칸 1칸 기준 `findHeaderCol_` 7 · `buildFieldCols_` 3 · `linkedDateColumns_` 3 · `getIncrementCol_` 1 · `warnDateColumnEdit_` 1, 매번 `getLastColumn`+`getValues` → 시트 호출 약 30회). 오전 실측 편집 1번 20~50초.
+- **수정(repo, 동작 무변경):** 제목 줄 읽기를 `linkedHeaderRow_` 한 곳으로 모으고, `onStatusEdit_`만 `withLinkedHeaderMemo_` 범위를 열어 그 실행 동안 첫 읽기를 재사용한다 → 날짜칸 편집 기준 제목 줄 읽기 **15회 → 1회**. 범위 밖(pull·export·import·감사)은 지금처럼 매번 새로 읽는다. 같은 시트 ID일 때만 재사용, 끝나면(예외 포함) 해제, 제목 줄을 쓰는 `getStatusCol_`·`getTrackingStatusCol_`는 쓴 직후 기억을 지운다.
+- **계측:** 로그 `on_status_edit_timing {normalize_ms, repair_ms, validate_ms, sanitize_ms, heal_ms, warn_ms, (status_post_ms), header_reads, header_reuses, total_ms, range}` — 연동 탭 편집만 남기고 자동쓰기 중 건너뛴 편집은 남기지 않는다.
+- **검증:** 새 `web/tests/apps-script-edit-header-memo.test.ts`(13건)가 실제 `.gs` 두 파일을 가짜 시트로 돌려 편집 6유형(최근 날짜칸·오늘 열·60일 밖 옛 열·상태 '종료'·A:G 2행 붙여넣기·기획자 영문)에서 기억 켬/끔의 쓰기·규칙·토스트·DB 호출·로그·최종 값이 **완전히 같고** 제목 줄 읽기는 1회임을 확인한다. 일부러 망가뜨린 9가지 변형(기억 미설정·무효화 누락·범위 밖 누수·공유 배열 2종·탭 구분 무시·날짜 규칙 재설치 누락·`onStatusEdit_` 범위 누락·시간 로그 누락)이 모두 테스트 실패로 잡혔다. web **875/875**, `tsc --noEmit`, Apps Script prepare dry-run 통과. 다른 배포 파일에 같은 이름 함수 재정의 없음 확인.
+- **[Claude→Codex] 라이브 적용 요청:** B안 단독 효과를 가르기 위해 **적용 전 자연 편집 표본(`onStatusEdit_` 실행 시간) 2~3개와 11/17 아침 체인 종료 시각을 먼저 기록**한 뒤 적용. 함수 단위 graft = 새 `var LINKED_HEADER_MEMO_`·`linkedHeaderRow_`·`withLinkedHeaderMemo_`·`invalidateLinkedHeaderMemo_` + 수정 `buildFieldCols_`·`getStatusCol_`·`getIncrementCol_`·`findHeaderCol_`·`getTrackingStatusCol_`·`onStatusEdit_`·`linkedDateColumns_`·`warnDateColumnEdit_`. 적용 뒤 자연 편집의 `on_status_edit_timing`(`header_reads=1`, `total_ms`)과 실행 원장 시간을 적용 전 표본과 비교해 이 항목 아래에 기록.
+- **사용자 결정(16:4x):** `(경원) RD뷰 구현안` 탭은 **안 씀**. 연동 탭을 참조하는 수식 18개가 전부 이 탭에 있어 연동 탭 편집 때마다 재계산된다. **[Codex] 사본에서 이 탭 삭제 전/후의 연동 탭 편집·읽기 시간을 재고 결과를 보고**(라이브 삭제는 효과·백업 확인 후 사용자 확인을 다시 받아 진행).
+- **다음 후보(미착수):** `importStats` 변경분만 처리(11/17 아침 체인 결과 본 뒤), `syncManualCreatorsOnEdit`도 편집마다 제목 줄 1회+3~12초, pull의 URL 열 이중 읽기(`short_links`·`url_index`, 회당 ~5~8초).
+
 ## ✅ 2026-11-16 [Codex 라이브 적용 완료] 날짜 유효성 검사를 최근 60일만 유지 + 문자열 날짜 정상화
 - **선택 근거:** 같은 사본의 A/B/C 재측정에서 C(`TODAY()`만 제거)는 URL/메타/전체 읽기 중앙값 `24,401 / 49,994 / 50,821ms`, B(최근 60일)는 변경 전 `4,357 / 7,922 / 18,409ms`, 복원 후 `6,343 / 11,353 / 24,124ms`였다. C는 전체 25초 기준을 넘고 B보다 2.11~2.76배 느려 탈락, B를 채택했다.
 - **코드·라이브:** `d07b5f15`에서 설치·전체복구·onEdit·신규행·감사 경로를 **KST 최근 60일** 정책으로 통일했고, `25d67979`에서 A열의 기존 문자열 날짜 경고를 유효성 규칙 복구 실패와 분리했다. main push와 라이브 함수 단위 guarded deploy 완료. web **862/862**, `tsc --noEmit`, build/Apps Script prepare 통과.
