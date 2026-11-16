@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { fetchSheetTabValues } from "@/lib/google-sheets";
 import { readPintDay } from "@/lib/awareness-pint";
+import { viewCellProblem, viewCellWarn } from "@/lib/awareness-guard";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -99,22 +100,18 @@ function numOrNull(v: Cell): number | null {
   return isFinite(n) ? n : null;
 }
 
-// 조회수 칸에 ₩(원화=광고비)가 들어있으면 열이 밀린 것 → 오정렬 신호.
-function rawHasWon(v: Cell): boolean {
-  return typeof v === "string" && v.includes("₩");
-}
-
 // 조회수 합산(메타처럼 릴스+배너 2칸). 하나라도 값 있으면 합, 둘 다 빈칸이면 null(≠0).
-// 조회수 칸에 ₩(광고비)가 잡히면 오정렬로 보고 그 칸 제외 + warns 기록.
+// 조회수 칸이 열 밀림 신호(₩ 광고비·소수=조회당비용)면 그 칸 제외 + warns 기록(발송 전 검수가 차단).
 function sumViews(row: Cell[], idxs: number[], label: string, warns: string[]): number | null {
   let sum = 0;
   let any = false;
   for (const i of idxs) {
-    if (rawHasWon(row[i])) {
-      warns.push(`${label} 조회수 칸(열 ${i})에 ₩값 감지 — 시트 열 정렬 확인 필요(광고비 오독 방지)`);
+    const n = numOrNull(row[i]);
+    const problem = viewCellProblem(row[i], n);
+    if (problem) {
+      warns.push(viewCellWarn(label, i, problem));
       continue;
     }
-    const n = numOrNull(row[i]);
     if (n != null) { sum += n; any = true; }
   }
   return any ? sum : null;

@@ -6,7 +6,7 @@
                      · 시트>DB(DB 미반영) → BLOCK
                      · DB>시트(시트 미반영·carry-forward 고정 의심) → WARN (2026-08-28 추가)
   ③ 채널분류 반영   : 미분류(시트→DB 분류 미반영) 게시물 중 증분>0 건수 >0 차단
-  ④ 인지광고 열매핑 : awareness 라우트 warn(조회수 칸 ₩=열밀림) 있으면 차단
+  ④ 인지광고 열매핑 : awareness 라우트 warn(조회수 칸 ₩·소수=열밀림) 있으면 차단
 
 `run_presend_audit(db, target, items=, ads=, norm_ch=)` → (blocks, warns).
   blocks: 발송 차단 사유(비면 통과). warns: 비차단 참고(검수 자체를 못 돌린 경우 등).
@@ -115,13 +115,13 @@ def check_classification(items: list[dict[str, Any]], norm_ch: Callable[[Any], s
 
 
 def check_awareness(ads: dict[str, Any] | None) -> tuple[str, str] | None:
-    """④ 인지광고 열매핑 — awareness 라우트 warn(조회수 칸 ₩=열밀림)이면 차단. ads 없으면 스킵."""
+    """④ 인지광고 열매핑 — awareness 라우트 warn(조회수 칸 ₩·소수=열밀림)이면 차단. ads 없으면 스킵."""
     if not ads:
         return None
     warns = ads.get("warn")
     if warns:
         lst = warns if isinstance(warns, list) else [str(warns)]
-        return ("BLOCK", "인지광고 시트 열매핑 이상(조회수 칸 ₩=열밀림 의심): " + "; ".join(lst))
+        return ("BLOCK", "인지광고 시트 열매핑 이상(조회수 칸 ₩·소수=열밀림 의심): " + "; ".join(lst))
     return None
 
 

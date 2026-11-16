@@ -8,6 +8,8 @@
 // ⚠️ 같은 탭의 PPL·매거진·먹스타·협찬·무상시딩 열은 DB가 따로 세는 채널이라 읽지 않는다(중복 합산 방지).
 // ⚠️ 열번호 하드코딩 금지 — 헤더 라벨로 찾는다(쫀득바 탭이 열 이동으로 3번 깨진 이력).
 
+import { viewCellProblem, viewCellWarn } from "./awareness-guard.ts";
+
 export type Cell = string | number | null | undefined;
 type Pair = { cost: number; view: number };
 export type Channel = { views: number | null; cost: number | null };
@@ -91,13 +93,15 @@ export function readPintDay(rows: Cell[][], date: string): PintDay {
 
   const row = target;
   const ch = (p: Pair, label: string): Channel => {
-    // 조회수 칸에 ₩(광고비)가 잡히면 열이 밀린 것 → 값 대신 warn(발송 전 검수가 차단).
+    // 조회수 칸이 열 밀림 신호(₩ 광고비·소수=조회당비용)면 값 대신 warn(발송 전 검수가 차단).
     const raw = row[p.view];
-    if (typeof raw === "string" && raw.includes("₩")) {
-      warns.push(`${label} 조회수 칸(열 ${p.view})에 ₩값 감지 — 시트 열 정렬 확인 필요(광고비 오독 방지)`);
+    const views = numOrNull(raw);
+    const problem = viewCellProblem(raw, views);
+    if (problem) {
+      warns.push(viewCellWarn(label, p.view, problem));
       return { views: null, cost: numOrNull(row[p.cost]) };
     }
-    return { views: numOrNull(raw), cost: numOrNull(row[p.cost]) };
+    return { views, cost: numOrNull(row[p.cost]) };
   };
   return {
     date,
