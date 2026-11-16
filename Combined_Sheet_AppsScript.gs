@@ -3995,6 +3995,25 @@ function postStats_(payload) {
 }
 
 function importStats(source) {
+  const timingStartedMs = Date.now();
+  let timingLapStartedMs = timingStartedMs;
+  const timing = {};
+  const timingLap_ = function(name) {
+    const now = Date.now();
+    timing[name + "_ms"] = now - timingLapStartedMs;
+    timingLapStartedMs = now;
+  };
+  const timingLog_ = function(status, extra) {
+    ["headers_ms", "block_read_ms", "scan_ms", "group_ms", "post_ms"].forEach(function(key) {
+      if (timing[key] == null) timing[key] = 0;
+    });
+    Logger.log(JSON.stringify(Object.assign({
+      event: "importStats_timing",
+      status: status,
+      read_ms: (timing.headers_ms || 0) + (timing.block_read_ms || 0),
+      total_ms: Date.now() - timingStartedMs,
+    }, timing, extra || {})));
+  };
   try {
     // 메뉴/자동 실행 모드는 서버 가드의 강도를 정한다. manual 플래그는 서버가
     // 같은 날짜의 기존 DB 값과 대조해 실제 값 출처(시트 신규·변경 여부)로 판정한다.
@@ -4017,12 +4036,22 @@ function importStats(source) {
       prevMonth = md.mo;
       dateCols.push({ col: c, date: `${year}-${("0" + md.mo).slice(-2)}-${("0" + md.da).slice(-2)}` });
     }
-    if (dateCols.length === 0) { safeAlert_("날짜 컬럼(I열~)을 찾지 못했습니다. 헤더를 확인하세요."); return false; }
-    if (lastRow < CONFIG.DATA_START_ROW) { safeAlert_("데이터 행이 없습니다."); return true; }
+    timingLap_("headers");
+    if (dateCols.length === 0) {
+      timingLog_("NO_DATE_COLUMNS", { rows: 0, last_col: lastCol, date_columns: 0, date_cells_scanned: 0, stats_to_send: 0, posts: 0, batches: 0, inserted: 0 });
+      safeAlert_("날짜 컬럼(I열~)을 찾지 못했습니다. 헤더를 확인하세요.");
+      return false;
+    }
+    if (lastRow < CONFIG.DATA_START_ROW) {
+      timingLog_("NO_ROWS", { rows: 0, last_col: lastCol, date_columns: dateCols.length, date_cells_scanned: 0, stats_to_send: 0, posts: 0, batches: 0, inserted: 0 });
+      safeAlert_("데이터 행이 없습니다.");
+      return true;
+    }
 
     const values = sheet
       .getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, lastCol)
       .getValues();
+    timingLap_("block_read");
 
     const today = todayStr_();
     let future = 0;
@@ -4092,6 +4121,7 @@ function importStats(source) {
         prevN = n;
       });
     });
+    timingLap_("scan");
 
     Logger.log(JSON.stringify({
       event: "importStats_scan",
@@ -4112,6 +4142,16 @@ function importStats(source) {
     }));
 
     if (stats.length === 0) {
+      timingLog_("NO_STATS", {
+        rows: values.length,
+        last_col: lastCol,
+        date_columns: dateCols.length,
+        date_cells_scanned: values.length * dateCols.length,
+        stats_to_send: 0,
+        posts: Object.keys(postByKey).length,
+        batches: 0,
+        inserted: 0,
+      });
       safeAlert_("입력할 조회수 데이터가 없습니다." + noteExtra_(skipDetails.length, 0, future, skipDetails, normalizedDetails));
       return true;
     }
@@ -4125,6 +4165,7 @@ function importStats(source) {
 
     const POSTS_PER_BATCH = 300; // 300 게시물/배치 ≈ 본문 수백KB (4.5MB 대비 충분한 여유). 필요시 조정.
     const keys = Object.keys(postByKey);
+    timingLap_("group");
     const res = { missing_sample: [], dropped_sample: [] };
     const AGG = ["inserted", "created_posts", "matched_urls", "banner_reach_inserted",
                  "meta_filled", "ended_marked", "future_date_skipped", "pre_posted_skipped",
@@ -4147,6 +4188,7 @@ function importStats(source) {
       if (Array.isArray(r.missing_sample)) r.missing_sample.forEach(function (x) { if (res.missing_sample.length < 20) res.missing_sample.push(x); });
       if (Array.isArray(r.dropped_sample)) r.dropped_sample.forEach(function (x) { if (res.dropped_sample.length < 8) res.dropped_sample.push(x); });
     }
+    timingLap_("post");
     Logger.log(JSON.stringify({ event: "importStats_batched", batches: _batches, posts: keys.length, stats: stats.length, posts_per_batch: POSTS_PER_BATCH }));
     Logger.log(JSON.stringify({
       event: "importStats_result",
@@ -4158,6 +4200,16 @@ function importStats(source) {
       source: importSource,
       preserved_manual: res.preserved_manual || 0,
     }));
+    timingLog_("OK", {
+      rows: values.length,
+      last_col: lastCol,
+      date_columns: dateCols.length,
+      date_cells_scanned: values.length * dateCols.length,
+      stats_to_send: stats.length,
+      posts: keys.length,
+      batches: _batches,
+      inserted: res.inserted || 0,
+    });
     let msg = `✅ 일자별 조회수 ${res.inserted}건 입력 완료.\n(날짜 ${dateCols.length}개 열 · 매칭 게시물 ${res.matched_urls}개`;
     msg += res.created_posts ? ` · 신규 광고 ${res.created_posts}개 자동 생성)` : `)`;
     if (res.banner_reach_inserted) msg += `\n🖼️ 배너 도달수 ${res.banner_reach_inserted}건 반영.`;
@@ -4187,6 +4239,7 @@ function importStats(source) {
     safeAlert_(msg + noteExtra_(skipDetails.length, 0, 0, skipDetails, normalizedDetails) + blankNote_());
     return true;
   } catch (e) {
+    timingLog_("ERROR", { error: String((e && e.message) || e).slice(0, 300) });
     safeAlert_("❌ 오류\n" + e.message);
     Logger.log(e.stack || e.message);
     return false;
