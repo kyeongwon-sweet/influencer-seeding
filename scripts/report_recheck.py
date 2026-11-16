@@ -32,9 +32,22 @@ def numbers_of(text: str) -> list:
     return _NUM.findall(text or "")
 
 
+# 대시보드에서 오는 줄 = 채널분류별 줄(`• <링크|채널> *+N*`)과 TOP10 줄(`1. [제품] <링크|계정> …`).
+#   ⚠️ 인지 광고 줄(메타·틱톡·유튜브·전환, 들여쓴 줄)과 총 증분·목표 줄은 **판정에서 뺀다.**
+#      실측 11-16: 바치케 전환(메타 노출수)이 발송 뒤 +25 늘어 매일 헛편집·헛알림이 날 뻔했다.
+#      전환은 report-patch-conversion 이 '7일 뒤 확정값'으로 따로 덮는 정책(사용자 결정 10-27)이라
+#      저녁 재확인이 매일 건드리면 그 정책과 어긋난다. 대시보드 숫자가 달라졌을 때만 고친다.
+#      (고칠 때는 본문 전체를 다시 만들므로 그 시점 광고 값도 함께 최신이 된다.)
+_DASH_LINE = re.compile(r"^\s*(?:• <|\d+\. \[)")
+
+
+def dashboard_numbers(text: str) -> list:
+    return [n for line in (text or "").splitlines() if _DASH_LINE.match(line) for n in _NUM.findall(line)]
+
+
 def needs_update(old_text: str, new_text: str) -> bool:
-    """다시 계산한 본문의 숫자가 나간 리포트와 다르면 True."""
-    return numbers_of(old_text) != numbers_of(new_text)
+    """다시 계산한 본문의 '대시보드 줄' 숫자가 나간 리포트와 다르면 True."""
+    return dashboard_numbers(old_text) != dashboard_numbers(new_text)
 
 
 def total_of(text: str):

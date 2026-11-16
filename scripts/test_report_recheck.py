@@ -10,7 +10,8 @@ from report_recheck import (blocked_summary, change_summary, needs_update, numbe
 
 OLD = ("📈 *쫀득바 조회수 일일 증분* `(2026-11-15)`\n오늘 총 증분 *+998,353*\n"
        "• <https://www.instagram.com/p/DfwW3_CShcs/|협찬 (인플루언서)> *+232,669*  CPV 6.2원")
-NEW = OLD.replace("+998,353", "+1,004,954")
+# 늦게 등록된 위성글 → 총 증분과 채널 줄이 함께 바뀐다(실제 11/15: 총 +6,601)
+NEW = OLD.replace("+998,353", "+1,004,954").replace("+232,669", "+239,270")
 
 
 def test_same_numbers_no_update():
@@ -28,6 +29,19 @@ def test_late_registered_views_trigger_update():
 
 def test_cpv_only_change_triggers_update():
     assert needs_update(OLD, OLD.replace("CPV 6.2원", "CPV 6.3원"))
+
+
+def test_ad_only_change_does_not_trigger_update():
+    """11-16 실측: 바치케 전환(메타)이 발송 뒤 +25 — 대시보드 숫자가 아니라 헛편집 대상 아님(전환은 7일 뒤 확정 정책)."""
+    ads = "• *인지 광고*  `CPV는 일일 기준`\n    전환 조회수 *+329,777*\n"
+    old = OLD.replace("*+998,353*\n", "*+998,353*\n" + ads)
+    new = old.replace("+329,777", "+329,802").replace("+998,353", "+998,378")
+    assert old != OLD and not needs_update(old, new)
+
+
+def test_top10_change_triggers_update():
+    old = OLD + "\n1. [JD그사] <https://www.instagram.com/p/Dfwn_EcksX9/|happing_box> _(인스타)_ *+98,684*  CPV 3.5원  `2026-11-15`"
+    assert needs_update(old, old.replace("+98,684", "+98,700"))
 
 
 def test_total_parsed():
