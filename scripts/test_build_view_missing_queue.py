@@ -147,6 +147,25 @@ class TikTokInternalRetryPolicyTest(unittest.TestCase):
             self.assertIsNone(exclusion_reason(post))
 
 
+
+class RegisteredAfterTargetTest(unittest.TestCase):
+    """2026-11-16: 게시일이 빈 신규 글은 등록일(KST) 이전 날짜의 재수집 대상이 아니다."""
+
+    def _post(self, **kw):
+        base = {"id": "p", "url": "https://www.instagram.com/p/DfZEtyBur7a/", "ended_at": None, "channel_type": "협찬 (파워채널/먹스타)"}
+        base.update(kw)
+        return base
+
+    def test_unknown_posted_at_registered_after_target_is_not_eligible(self):
+        post = self._post(posted_at=None, created_at="2026-11-06T08:38:33+00:00")
+        self.assertEqual(queue_module._raw_eligible([post], "2026-11-05"), [])
+        self.assertEqual(len(queue_module._raw_eligible([post], "2026-11-06")), 1)
+
+    def test_known_posted_at_keeps_existing_policy(self):
+        post = self._post(posted_at="2026-11-05", created_at="2026-11-06T03:27:00+00:00")
+        self.assertEqual(len(queue_module._raw_eligible([post], "2026-11-05")), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
 

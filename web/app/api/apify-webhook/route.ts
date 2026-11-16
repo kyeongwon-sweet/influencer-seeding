@@ -247,10 +247,11 @@ async function handleMonitoring(
   // 통계 적재 웹훅은 수집 kickoff에서 확정한 날짜가 필수다. 도착 시각의 KST 날짜를
   // 폴백으로 쓰면 자정 콜백만 오늘 행에 섞여 날짜별 누적이 역행한다.
   const today = requireMonitoringWebhookDate(measuredAt, metadataOnly);
-  const { data: posts } = await supabase.from('sponsored_posts').select('id, url, posted_at, account_name, influencer_id, ended_at, asset_name, project_name, content_summary, channel_type');
+  const { data: posts } = await supabase.from('sponsored_posts').select('id, url, posted_at, created_at, account_name, influencer_id, ended_at, asset_name, project_name, content_summary, channel_type');
   const eligiblePosts = (posts || []).filter((p) => {
-    const postedAt = p.posted_at ? String(p.posted_at).slice(0, 10) : null;
-    return !p.ended_at && (!postedAt || postedAt <= today);
+    // 게시일이 비면 등록일(KST)을 하한으로 — 등록 전 날짜의 측정은 없다(2026-11-16, collect-now·run_monitoring과 같은 규칙).
+    const earliest = p.posted_at ? String(p.posted_at).slice(0, 10) : kstDateOf(p.created_at);
+    return !p.ended_at && (!earliest || earliest <= today);
   });
 
   const statsKey = (url: string) => {

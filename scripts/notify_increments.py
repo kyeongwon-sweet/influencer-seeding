@@ -65,6 +65,24 @@ PRODUCT_PROFILES = {
                "conv_source": "meta", "yt_source": "google_ads", "meta_aw_source": "meta_api",
                "tt_source": "none"},
 }
+def rows_on_or_after_posted(rows, posted_at):
+    """게시일 이전 날짜의 측정행은 세지 않는다(대시보드 API와 같은 규칙, 2026-11-16).
+    그 행의 값은 사라지지 않는다 — 게시일 당일 첫 유효측정이 '그날 전체'로 함께 잡힌다(실측 22건 8,306회 이동·누락 0).
+    11-05 리포트에 11-06 게시 글(여원맛집)의 조회수가 들어갔던 날짜 귀속 오류 방지."""
+    pa = str(posted_at)[:10] if posted_at else ""
+    return [r for r in rows if not pa or str(r["measured_at"])[:10] >= pa]
+
+
+def increment_span_days(rows, posted_at, tgt, value_of):
+    """그날 증분이 몇 날치인지 — 직전 유효(>0) 측정과의 날짜 차이(1=하루치, 직전 없음=1).
+    기록이 며칠 비었다가 들어오면 그동안 늘어난 몫이 하루에 몰린다(11-09 매거진 5일치). 값은 안 바꾸고 표시만."""
+    prev = [str(r["measured_at"])[:10] for r in rows_on_or_after_posted(rows, posted_at)
+            if str(r["measured_at"])[:10] < tgt and (value_of(r) or 0) > 0]
+    if not prev:
+        return 1
+    return max(1, (date.fromisoformat(tgt) - date.fromisoformat(max(prev))).days)
+
+
 REPORT_PRODUCT = (os.getenv("REPORT_PRODUCT") or "jd").strip().lower()
 if REPORT_PRODUCT not in PRODUCT_PROFILES:
     raise SystemExit(f"알 수 없는 REPORT_PRODUCT={REPORT_PRODUCT!r} (가능: {', '.join(PRODUCT_PROFILES)})")
@@ -485,11 +503,17 @@ def main():
             return r.get("play_count")     # 누적·CPV = 합계 그대로(인스타 앱과 같은 값)
         return ig_only(rows, r)            # 증분 = FB 몫을 뺀 IG 계열
 
+    _on_or_after_posted = rows_on_or_after_posted
+
+    def _span_days(rows, isb, posted_at=None, tgt=None):
+        return increment_span_days(rows, posted_at, tgt or target, lambda r: _metric(r, isb))
+
     def _safe_inc(rows, isb, posted_at=None, tgt=None):
         """대시보드 safeIncrement와 동일: 그날값 − 직전 '유효(>0)' 값. 첫 유효측정=그날 전체, 그날0/None=None.
         단 첫 유효측정은 '게시 후 7일 이내'만 전액 — 게시 한참 뒤 첫 측정(백로그)은 스파이크 방지로 제외.
         tgt를 주면 과거 임의 날짜의 증분도 같은 규칙으로 계산(이상감지 baseline용)."""
         tgt = tgt or target
+        rows = _on_or_after_posted(rows, posted_at)
         cur, base, has = None, 0, False
         for r in rows:
             v = _metric(r, isb, rows)
@@ -544,6 +568,7 @@ def main():
             "project": (m.get("project_name") or "").strip(),
             "asset": (m.get("asset_name") or "").strip(),
             "cum": cum,
+            "span": _span_days(rows, isb, m.get("posted_at")),
         })
 
     # 배너 라인은 증분 없어도 항상 노출 — 활성 JD 배너 채널분류 수집(증분 0인 날도 '미수집' 표기용).
@@ -841,6 +866,13 @@ def main():
     if banner_unmapped:
         lines.append("")
         lines.append(f"⚠️ *바이럴 배너 가격 미매핑 {len(banner_unmapped)}건* — 시트 비용 입력 또는 DB cost 동기화 확인 필요. 비용이 채워진 뒤 재발송하면 CPV가 정상 계산됩니다.")
+    # ⚠️ 며칠치 합산 — 기록이 며칠 비었다가 들어온 글은 그동안 늘어난 몫이 오늘 하루에 잡힌다(값은 그대로, 표시만).
+    #    2026-11-16 재발방지: 11-09 매거진 3건(+59,828)이 5일치 합산인데 리포트엔 하루 증분처럼 보였다.
+    multi_day = [it for it in items if it.get("span", 1) >= 2]
+    if multi_day:
+        lines.append("")
+        lines.append(f"⚠️ *며칠치 합산 {len(multi_day)}건 (+{f(sum(it['inc'] for it in multi_day))})* — "
+                     "기록이 며칠 비었다가 들어온 게시물이라 그동안 늘어난 조회수가 오늘 한 번에 잡혔습니다(TOP 10에 `N일치` 표시).")
     lines += ["", DIV, "", "◾ *급상승 TOP 10* 🔥  `CPV는 누적 기준`", ""]
     # 배너는 도달수를 '조회수'로 취급해 TOP에도 섞어 노출(사용자 지시). 배너 CPV = 비용/도달수(도달당비용).
     # 줄마다 제품코드 `[JD멜]`을 노출한다(2026-09-02 사용자 재지시) — JD멜/JD복 등 제품 구분용.
@@ -850,7 +882,8 @@ def main():
         prod = (it.get("product") or "").strip()
         tag = f"[{_esc(prod)}] " if prod else ""
         pdate = it["posted_at"] or "업로드일 미상"
-        lines.append(f"{rank}. {tag}{label} _({it['platform']})_ *+{f(it['inc'])}*  {_cpv(it['cost'], it['cum'], it['channel_type'], it['name'], it.get('project'), it.get('asset'))}  `{pdate}`")
+        span = f" _({it['span']}일치)_" if it.get("span", 1) >= 2 else ""
+        lines.append(f"{rank}. {tag}{label} _({it['platform']})_ *+{f(it['inc'])}*{span}  {_cpv(it['cost'], it['cum'], it['channel_type'], it['name'], it.get('project'), it.get('asset'))}  `{pdate}`")
 
     text = "\n".join(lines)
 

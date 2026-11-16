@@ -42,3 +42,14 @@ test("invalid or future explicit dates are rejected", () => {
   assert.match(scheduled, /resolveMonitoringMeasuredAt[\s\S]*?status: 400/);
   assert.match(manual, /resolveMonitoringMeasuredAt[\s\S]*?status: 400/);
 });
+
+test("collect-now does not measure a post before its registration date when posted_at is empty", () => {
+  // 2026-11-16: 게시일이 빈 신규 글의 오후 측정이 전날로 적힌 사고 재발방지(파이썬 수집기와 같은 규칙).
+  assert.match(manual, /\.select\("id, account_name, url, posted_at, created_at, ended_at, channel_type"\)/);
+  assert.match(manual, /p\.posted_at \? String\(p\.posted_at\)\.slice\(0, 10\) : kstDateOf\(p\.created_at\)/);
+});
+
+test("apify-webhook uses the same registration-date bound when posted_at is empty", () => {
+  assert.match(webhook, /select\('id, url, posted_at, created_at, account_name/);
+  assert.match(webhook, /p\.posted_at \? String\(p\.posted_at\)\.slice\(0, 10\) : kstDateOf\(p\.created_at\)/);
+});

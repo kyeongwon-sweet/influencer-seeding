@@ -545,14 +545,23 @@ def _drop_pre_post_rows(rows, posts):
     (web collect-now의 prePostedSkipped와 동일 정책, 2026-08-06 추가).
     ⚠️ posted_at은 절대 자동수정하지 않는다 — 게시일 오기는 posted_at_mismatch 알림으로 사람이 정정.
 
+    게시일이 비어 있으면 **등록일(created_at, KST)** 을 하한으로 쓴다(2026-11-16 재발방지): 등록 전 날짜의
+    측정은 있을 수 없다. 11-06 오후 재수집(11-05분)이 그날 등록돼 게시일이 아직 빈 여원맛집(11-06 게시)의
+    첫 조회수를 11-05로 적어, 11-05 리포트에 그 글이 없던 날 조회수가 들어갔다.
+
     Returns (kept_rows, dropped_rows).
     """
     posted_by = {p["id"]: str(p.get("posted_at") or "")[:10] for p in posts if p.get("posted_at")}
+    registered_by = {p["id"]: kst_date(p.get("created_at")) for p in posts
+                     if not p.get("posted_at") and p.get("created_at")}
     kept, dropped = [], []
     for r in rows:
         pa = posted_by.get(r.get("post_id"))
+        ra = registered_by.get(r.get("post_id"))
         ma = str(r.get("measured_at") or "")[:10]
         if pa and ma and ma < pa:
+            dropped.append(r)
+        elif not pa and ra and ma and ma < ra:
             dropped.append(r)
         else:
             kept.append(r)
@@ -1851,7 +1860,7 @@ def run():
         _start, _PAGE = 0, 1000
         while True:
             _res = db.table("sponsored_posts").select(
-                "id, url, posted_at, account_name, influencer_id, ended_at, content_summary, notes, channel_type, asset_name, project_name, product_name, manual_fields, not_found_streak, not_found_last_at, review_requested_at"
+                "id, url, posted_at, created_at, account_name, influencer_id, ended_at, content_summary, notes, channel_type, asset_name, project_name, product_name, manual_fields, not_found_streak, not_found_last_at, review_requested_at"
             ).order("id").range(_start, _start + _PAGE - 1).execute()
             _chunk = _res.data or []
             all_posts.extend(_chunk)

@@ -64,7 +64,7 @@ async function collect(req: NextRequest) {
     // 1. 모든 협찬 게시물 조회
     const { data: posts, error: postsError } = await supabase
       .from("sponsored_posts")
-      .select("id, account_name, url, posted_at, ended_at, channel_type");
+      .select("id, account_name, url, posted_at, created_at, ended_at, channel_type");
 
     if (postsError) {
       throw new Error(`Failed to fetch posts: ${postsError.message}`);
@@ -82,13 +82,17 @@ async function collect(req: NextRequest) {
 
     // 2. 수집 날짜는 외부 API·DB 쓰기 전에 확정한다.
     console.log(`[LOG] 📅 수집 날짜: ${measuredAt}`);
+    // 게시일이 비면 등록일(created_at, KST)을 하한으로 본다 — 등록 전 날짜의 측정은 있을 수 없다
+    //   (2026-11-16: 그날 등록돼 게시일이 빈 글의 오후 값이 전날로 적힌 사고. run_monitoring._drop_pre_post_rows와 짝).
+    const earliestDate = (p: { posted_at?: unknown; created_at?: unknown }): string | null =>
+      p.posted_at ? String(p.posted_at).slice(0, 10) : kstDateOf(p.created_at);
     const eligiblePosts = posts.filter((p) => {
-      const postedAt = p.posted_at ? String(p.posted_at).slice(0, 10) : null;
-      return !p.ended_at && (!postedAt || postedAt <= measuredAt!);
+      const earliest = earliestDate(p);
+      return !p.ended_at && (!earliest || earliest <= measuredAt!);
     });
     const prePostedSkipped = posts.filter((p) => {
-      const postedAt = p.posted_at ? String(p.posted_at).slice(0, 10) : null;
-      return postedAt && postedAt > measuredAt!;
+      const earliest = earliestDate(p);
+      return earliest && earliest > measuredAt!;
     }).length;
     const endedSkipped = posts.filter((p) => p.ended_at).length;
     if (prePostedSkipped > 0) {

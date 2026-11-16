@@ -342,11 +342,16 @@ def tail(url: str | None) -> str:
 
 
 def _raw_eligible(posts: list[dict[str, Any]], target: str) -> list[dict[str, Any]]:
-    """Keep the existing Python policy as the only platform eligibility source."""
+    """Keep the existing Python policy as the only platform eligibility source.
+
+    게시일이 비어 있으면 등록일(created_at, KST)이 target 이후인 글은 target 측정 대상이 아니다
+    (2026-11-16): 등록 전 날짜를 재수집하면 그날 오후 값이 전날로 적힌다(run_monitoring._drop_pre_post_rows와 짝).
+    """
     return [
         post for post in posts
         if not post.get("ended_at")
         and (not post.get("posted_at") or str(post.get("posted_at"))[:10] <= target)
+        and (post.get("posted_at") or not post.get("created_at") or kst_date(post.get("created_at")) <= target)
         and is_view_capable(post)
     ]
 
