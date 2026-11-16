@@ -1850,12 +1850,14 @@ function pullFromDB() {
         const rowNum = rowByKey[key];
         fillFields.forEach(f => {
           if (!fieldCols[f]) return;
-          const val = fmtVal_(f, p[f]);
-          if (val === "") return;
           const _pfBi = rowNum - CONFIG.DATA_START_ROW, _pfCi = fieldCols[f] - 1;
           if (_pfBi < 0 || _pfBi >= _pfBlock.length) return;
           const _pfCur = _pfBlock[_pfBi][_pfCi];
           if (String(_pfCur == null ? "" : _pfCur).trim() !== "") return;
+          // 채워진 셀은 DB 값을 변환할 이유가 없다. 특히 posted_at 변환은 Utilities.parseDate를
+          // 호출해 5천 행 전체에서 수분을 쓸 수 있으므로, 실제 빈칸일 때만 수행한다.
+          const val = fmtVal_(f, p[f]);
+          if (val === "") return;
           // 🚨 2026-08-26 WATCHDOG_TIMEOUT 재발방지: 빈 칸마다 setValue()를 부르면
           //    시트 성장에 따라 왕복이 선형 증가해 20~30분 한도를 넘긴다(3,216행 × 11필드).
           //    여기서는 메모리 블록만 갱신하고, 실제 쓰기는 아래에서 **열 단위 1회**로 모은다.

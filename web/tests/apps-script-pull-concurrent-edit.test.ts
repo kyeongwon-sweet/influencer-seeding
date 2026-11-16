@@ -67,6 +67,7 @@ function makeSheet(rows: Cell[][], onFirstBlockRead?: (data: Cell[][]) => void) 
 
 function runPull(sheet: ReturnType<typeof makeSheet>, posts: Record<string, string>[]) {
   const alerts: string[] = [];
+  const fmtCalls: Array<[string, unknown]> = [];
   const fn = new Function(
     "getSheet_", "buildFieldCols_", "CONFIG", "UrlFetchApp", "authHeaders_", "resolveSheetShortLinks_",
     "linkKey_", "classifySheetSyncUrl_", "fmtVal_", "SpreadsheetApp", "ensureNewRowsMetricFormulas_",
@@ -81,7 +82,7 @@ function runPull(sheet: ReturnType<typeof makeSheet>, posts: Record<string, stri
     () => ({ unresolved: [] }),
     (u: string) => u.replace(/\/$/, "").split("/").pop(),
     (u: string) => ({ valid: true, url: u }),
-    (_f: string, v: unknown) => (v == null ? "" : String(v)),
+    (f: string, v: unknown) => { fmtCalls.push([f, v]); return v == null ? "" : String(v); },
     { flush: () => {} },
     () => {},
     () => {},
@@ -90,7 +91,7 @@ function runPull(sheet: ReturnType<typeof makeSheet>, posts: Record<string, stri
     () => "",
   );
   const ok = fn.pullFromDB();
-  return { ok, alerts, lastError: fn.lastError(), timing: fn.lastTiming() as Record<string, number> | null };
+  return { ok, alerts, fmtCalls, lastError: fn.lastError(), timing: fn.lastTiming() as Record<string, number> | null };
 }
 
 test("pullFromDB 는 단계별 소요시간을 남긴다(느려진 단계를 가르기 위해, 2026-11-13)", () => {
@@ -132,6 +133,21 @@ test("동기화 중 사람이 같은 빈칸을 먼저 채웠으면 사람 값을
   const r = runPull(sheet, [{ url: u("A1"), content_summary: "DB캡션" }]);
   assert.equal(r.ok, true);
   assert.equal(sheet.data[1][3], "사람이쓴캡션");
+});
+
+test("기존 행의 채워진 메타데이터는 DB 값을 변환하지 않고, 실제 빈칸만 변환한다", () => {
+  const sheet = makeSheet([["2026-11-04", u("A1"), "acct_a", ""]]);
+  const r = runPull(sheet, [{
+    url: u("A1"),
+    posted_at: "2026-11-04",
+    account_name: "DB계정",
+    content_summary: "DB캡션",
+  }]);
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.fmtCalls, [["content_summary", "DB캡션"]]);
+  assert.equal(sheet.data[1][0], "2026-11-04");
+  assert.equal(sheet.data[1][2], "acct_a");
+  assert.equal(sheet.data[1][3], "DB캡션");
 });
 
 test("동기화 중 행이 중간에 끼어들어 밀려도 값은 원래 글 행으로 간다", () => {
