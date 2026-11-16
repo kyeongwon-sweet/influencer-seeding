@@ -5,7 +5,7 @@
 - **사용자 결정:** "리포트에 포함 — 네이버 글도 DB에 등록, 조회수는 수기 입력, 리포트·대시보드에 잡히게".
 - **왜 단축링크 그대로:** `naver.me`는 `link.naver.com/bridge?…clip.naver.com/contents?seedMediaId=…`(앱 연결 페이지)로만 풀리고 `m.blog.naver.com/…/clip/…` 원래 주소로 안 풀린다. 네이버는 자동 수집이 없고 수기 입력이라 단축링크를 글 주소로 쓴다(DB 식별키 `url:https://naver.me/<소문자>/`, 시트 urlKey_도 소문자 → 매칭 일치).
 - **수정(repo, 이 커밋):** 허용 정규식 4곳에 `naver\.me` 추가 — `web/lib/url-utils.ts`(서버 bulk·sync·stats-import·수동 추가 공통)·`web/lib/sheet-banner-reach.ts`·`scripts/import_linked_sheet_stats.py`·`Combined_Sheet_AppsScript.gs`. 조회수 없는 매체 목록에 `naver.me/` 추가 — `scripts/platform_kind.py`·`web/lib/platform-kind.ts`(재시도 큐·알림이 '미수집'으로 안 띄움)·`view_tracking_watchdog.py`, 매체명 '네이버' 표시 — `notify_increments.py`·`notify_status.py`·`inspect_monitoring_status.py`. 테스트 갱신(naver.me 허용·`evilnaver.me` 차단·무지표 매체). scripts 599 passed · web 854/854 · tsc · build.
-- **➡️ Codex 라이브 적용(필수, 이게 돼야 실제로 등록됨):** 라이브 Apps Script의 `ALLOWED_URL_RE` 한 줄만 repo와 같게(`…|kakao\.com|naver\.com|naver\.me)\//i`) 함수 단위 graft(파일 통째 금지). 적용 후 메뉴 '신규 광고 추가' 1회 → `준맛`(5498행)·`자곰(네이버/미러링)`(4408행)이 DB에 생기는지 확인(⚠️ 자곰 네이버는 9월 글·미러링 — 등록 여부는 사용자에게 먼저 확인), pullFromDB 추가 행 0, 수식감사 5498행 H/I/J 정상.
+- **➡️ Codex 라이브 적용(필수, 이게 돼야 실제로 등록됨):** 라이브 Apps Script의 `ALLOWED_URL_RE` 한 줄만 repo와 같게(`…|kakao\.com|naver\.com|naver\.me)\//i`) 함수 단위 graft(파일 통째 금지). 적용 후 메뉴 '신규 광고 추가' 1회 → `준맛`(5498행)·`자곰(네이버/미러링)`(4408행)이 DB에 생기는지 확인(자곰 네이버 9월 미러링 글도 **등록 — 사용자 확인 완료 11-16 "응"**. 게시 09-03이라 등록 직후 14일 자동종료 대상일 수 있음, 조회수는 수기), pullFromDB 추가 행 0, 수식감사 5498행 H/I/J 정상.
 - **조회수 입력:** 네이버 글은 시트 날짜 칸에 사람이 조회수를 적으면 importStats가 DB에 manual로 저장 → 리포트·대시보드 반영(기존 네이버 클립 에르메키·바니와 같은 방식).
 
 ## ✅ 2026-11-16 [Codex 완료] 연동시트 운영 탭 빈 행 정확히 500개 삭제
