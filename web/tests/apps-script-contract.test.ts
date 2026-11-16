@@ -275,7 +275,7 @@ test("Apps Script mirror keeps live metadata and URL guards", () => {
   }
   assert.match(
     appsScript,
-    /setColumnFormulasWithFilterRestore_\([\s\S]*?incFormulas[\s\S]*?if \(!formulaOnly\) \{\s*try \{ refreshCumulativeViews\(\);/s,
+    /setColumnFormulasWithFilterRestore_\([\s\S]*?incFormulas[\s\S]*?if \(!formulaOnly\) \{\s*try \{ const cumulativeRefreshResult = refreshCumulativeViews\(\);/s,
   );
 });
 
@@ -903,8 +903,8 @@ test("daily metric repair extends H/I and heals CPV formulas without overwriting
   const defsStart = appsScript.indexOf("function dailyAutoStageDefs_()");
   const defsEnd = appsScript.indexOf("function runDailyAutoStage_", defsStart);
   const defsBody = appsScript.slice(defsStart, defsEnd);
-  const refreshIdx = defsBody.indexOf('["refreshCumulativeViews", refreshCumulativeViews]');
-  const repairIdx = defsBody.indexOf('["repairMetricFormulaRanges"');
+  const refreshIdx = defsBody.indexOf('["refreshCumulativeViews", refreshCumulativeViewsDailyAuto_]');
+  const repairIdx = defsBody.indexOf('["repairMetricFormulaRanges", repairMetricFormulaRangesDailyAuto_]');
   assert.notEqual(refreshIdx, -1);
   assert.notEqual(repairIdx, -1);
   assert.ok(refreshIdx < repairIdx, "H 수동값 보존 갱신 뒤 표준 H/I 범위와 CPV 수식을 복구해야 함");
@@ -1251,7 +1251,7 @@ test("formula-only refresh rewrites I without touching date values or H", () => 
   assert.match(body, /exportStatsWithOptions_\(\{ formulaOnly: true \}\)/);
   assert.match(body, /if \(!formulaOnly\) \{[\s\S]*?dateColGroups\.forEach/);
   assert.match(body, /if \(cumulativeCol && !formulaOnly\)/);
-  assert.match(body, /if \(!formulaOnly\) \{\s*try \{ refreshCumulativeViews\(\)/);
+  assert.match(body, /if \(!formulaOnly\) \{\s*try \{ const cumulativeRefreshResult = refreshCumulativeViews\(\)/);
   assert.match(appsScript, /function setColumnFormulasWithFilterRestore_\(/);
   assert.match(body, /setColumnFormulasWithFilterRestore_\([\s\S]*?incFormulas/);
   const restoreFilterStart = appsScript.indexOf("function restoreLinkedBasicFilter_(");

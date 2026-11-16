@@ -2332,6 +2332,7 @@ const DAILY_AUTO_IMPORT_RETRY_AFTER_EXPORT_PROP_ = "DAILY_AUTO_IMPORT_RETRY_AFTE
 const EXPORT_STATS_GATE_RETRY_DELAY_MS_ = 15 * 60 * 1000;
 const EXPORT_STATS_GATE_MAX_ATTEMPTS_ = 16; // 08:30 실행이 4시간가량 지연된 수집도 따라잡는다.
 const EXPORT_STATS_GATE_PENDING_PROP_ = "EXPORT_STATS_COLLECTION_GATE_PENDING_JSON";
+const DAILY_AUTO_EXPORT_MAINTENANCE_TARGET_PROP_ = "DAILY_AUTO_EXPORT_MAINTENANCE_TARGET_DATE";
 const IMPORT_STATS_GATE_STATUS_PROP_ = "IMPORT_STATS_COLLECTION_GATE_LAST_STATUS";
 const IMPORT_STATS_GATE_TARGET_PROP_ = "IMPORT_STATS_COLLECTION_GATE_LAST_TARGET_DATE";
 
@@ -2454,6 +2455,9 @@ function runExportStatsCollectionGate_(source, pending) {
   const targetDate = (pending && pending.target_date) || collectionTargetDate_();
   const attempt = Number((pending && pending.attempt) || 0);
   const sourceStartedAt = (pending && pending.source_started_at) || new Date().toISOString();
+  // 같은 target의 이전 실행 흔적으로 이번 fallback을 잘못 건너뛰지 않는다.
+  // 이 attempt에서 export의 H 갱신과 gate의 수식 복구가 둘 다 성공한 뒤에만 다시 기록한다.
+  props.deleteProperty(DAILY_AUTO_EXPORT_MAINTENANCE_TARGET_PROP_);
   let status;
   try {
     status = fetchCollectionStatus_(targetDate, false);
@@ -2489,19 +2493,23 @@ function runExportStatsCollectionGate_(source, pending) {
 
   clearExportStatsGatePending_();
   let exported = false;
+  let metricMaintenanceCompleted = false;
   const importStatus = props.getProperty(IMPORT_STATS_GATE_STATUS_PROP_) || "UNKNOWN";
   const importTarget = props.getProperty(IMPORT_STATS_GATE_TARGET_PROP_) || "";
   const importReady = importStatus === "OK" && importTarget === targetDate;
   try {
     exported = withDocLock_(function() {
+      const metricMaintenanceState = { cumulativeRefreshed: false };
       const ok = exportStatsWithOptions_({
         incrementTargetDate: targetDate,
         heartbeatSource: source,
         preserveExistingMetrics: !importReady,
         importGateStatus: importReady ? "OK" : importStatus,
+        metricMaintenanceState: metricMaintenanceState,
       });
       if (ok === false) return false;
-      repairStaleMetricFormulaRanges_(getSheet_());
+      const repaired = repairStaleMetricFormulaRanges_(getSheet_());
+      metricMaintenanceCompleted = metricMaintenanceState.cumulativeRefreshed === true && repaired !== false;
       return true;
     });
   } catch (e) {
@@ -2528,6 +2536,15 @@ function runExportStatsCollectionGate_(source, pending) {
     }, false);
     notifyExportStatsGateTimeout_(targetDate, "export_failed");
     return true;
+  }
+
+  if (metricMaintenanceCompleted) {
+    props.setProperty(DAILY_AUTO_EXPORT_MAINTENANCE_TARGET_PROP_, targetDate);
+  } else {
+    Logger.log("dailyAuto_metric_maintenance_fallback_required " + JSON.stringify({
+      target_date: targetDate,
+      reason: "export_refresh_or_repair_not_confirmed",
+    }));
   }
 
   props.setProperties({
@@ -2582,6 +2599,42 @@ function exportStatsAfterCollection_() {
   });
 }
 
+// exportStatsWithOptions_는 실제 export가 끝날 때 H를 갱신하고, collection gate는
+// 곧바로 H/I/J 범위도 복구한다. 같은 target의 gate가 OK일 때만 뒤 단계의 중복 작업을
+// 건너뛴다. 지연·조회 실패·시간초과·export 재시도 중에는 false라 기존 안전망을 유지한다.
+function dailyAutoExportMaintenanceCompleted_(props, targetDate) {
+  if (!props || !targetDate) return false;
+  return props.getProperty(DAILY_AUTO_EXPORT_MAINTENANCE_TARGET_PROP_) === targetDate
+    && props.getProperty("EXPORT_STATS_COLLECTION_GATE_LAST_STATUS") === "OK"
+    && props.getProperty("EXPORT_STATS_COLLECTION_GATE_LAST_TARGET_DATE") === targetDate;
+}
+
+function refreshCumulativeViewsDailyAuto_() {
+  const targetDate = collectionTargetDate_();
+  if (dailyAutoExportMaintenanceCompleted_(PropertiesService.getScriptProperties(), targetDate)) {
+    Logger.log("dailyAuto_metric_maintenance_skip " + JSON.stringify({
+      stage: "refreshCumulativeViews",
+      target_date: targetDate,
+      reason: "exportStats_already_completed",
+    }));
+    return true;
+  }
+  return refreshCumulativeViews();
+}
+
+function repairMetricFormulaRangesDailyAuto_() {
+  const targetDate = collectionTargetDate_();
+  if (dailyAutoExportMaintenanceCompleted_(PropertiesService.getScriptProperties(), targetDate)) {
+    Logger.log("dailyAuto_metric_maintenance_skip " + JSON.stringify({
+      stage: "repairMetricFormulaRanges",
+      target_date: targetDate,
+      reason: "exportStats_already_completed",
+    }));
+    return true;
+  }
+  return repairStaleMetricFormulaRanges_(getSheet_());
+}
+
 function dailyAutoErrorText_(e) {
   // Script Properties 단일 값 제한을 넘지 않도록 스택은 단계당 700자로 제한한다.
   return String((e && (e.stack || e.message)) || e).slice(0, 700);
@@ -2595,8 +2648,8 @@ function dailyAutoStageDefs_() {
     ["importStats", importStatsDailyGate_],
     ["exportStats", exportStatsDailyGate_],
     ["syncStatus", syncStatus],
-    ["refreshCumulativeViews", refreshCumulativeViews],
-    ["repairMetricFormulaRanges", function() { return repairStaleMetricFormulaRanges_(getSheet_()); }],
+    ["refreshCumulativeViews", refreshCumulativeViewsDailyAuto_],
+    ["repairMetricFormulaRanges", repairMetricFormulaRangesDailyAuto_],
     ["syncCreators", syncCreators],
     ["overwriteViralHandles", function() { return overwriteViralHandles_(true); }],
     // 신규 행 서식 통일(정렬·행높이·볼드·폰트). 값·수식은 안 건드리고 **늘어난 행만** 대상.
@@ -3417,6 +3470,8 @@ function exportStatsChangedRects_(before, after, startBi, width) {
 function exportStatsWithOptions_(options) {
   const skipFormulaRefresh = !!(options && options.skipFormulaRefresh === true);
   const formulaOnly = !!(options && options.formulaOnly === true);
+  const metricMaintenanceState = options && options.metricMaintenanceState;
+  if (metricMaintenanceState) metricMaintenanceState.cumulativeRefreshed = false;
   const requestedIncrementTargetDate = String((options && options.incrementTargetDate) || "").slice(0, 10);
   const heartbeatSource = String((options && options.heartbeatSource) || "exportStats").slice(0, 80);
   const preserveExistingMetrics = !!(options && options.preserveExistingMetrics === true);
@@ -3832,7 +3887,9 @@ function exportStatsWithOptions_(options) {
       Logger.log("increment_formula_write " + JSON.stringify(formulaWrite));
       markTiming("formulas_written");
       if (!formulaOnly) {
-        try { refreshCumulativeViews(); } catch (e) { Logger.log(e); }
+        try { const cumulativeRefreshResult = refreshCumulativeViews();
+          if (metricMaintenanceState) metricMaintenanceState.cumulativeRefreshed = cumulativeRefreshResult !== false;
+        } catch (e) { Logger.log(e); }
         markTiming("cumulative_refreshed");
       }
     }
