@@ -111,6 +111,12 @@ test("모든 설치·복구 경로와 감사가 같은 최근 60일 정책을 �
   assert.match(repair, /const remaining = afterRules\.a_missing_rule/);
   assert.doesNotMatch(repair, /const remaining = afterValues\.a_invalid_values/);
   assert.match(repair, /a_invalid_rows: afterValues\.a_invalid_rows/);
+  // 전체 규칙 복구가 성공하면 그날의 60일 기준일도 함께 저장해야 한다.
+  // 그렇지 않으면 다음 exportStats가 창 밖 열 전체를 불필요하게 다시 clear한다.
+  assert.match(
+    repair,
+    /setProperty\(LINKED_DATE_VALIDATION_CUTOFF_PROP_, linkedDateValidationCutoff_\(\)\)/,
+  );
   assert.match(extract("applyLinkedSheetInputValidation_"), /linkedRecentDateColumns_\(sheet\)/);
   assert.match(extract("inspectLinkedInputValidationSamples_"), /DATE_RULE_OUTSIDE_WINDOW/);
   const exportBody = extract("exportStatsWithOptions_");
