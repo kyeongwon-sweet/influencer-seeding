@@ -9,7 +9,10 @@ function extract(name: string): string {
   const start = source.indexOf(`function ${name}(`);
   assert.notEqual(start, -1, name);
   const next = source.indexOf("\nfunction ", start + 10);
-  return source.slice(start, next === -1 ? undefined : next);
+  // 잘라낸 끝이 다음 함수 위의 '// 주석' 줄일 수 있다. 줄바꿈으로 닫지 않으면 뒤에 붙이는
+  // `; return …`가 주석에 먹힌다 — 윈도우(CRLF 체크아웃)에선 \r 덕에 통과하고
+  // 리눅스 CI(LF)에서만 깨졌다(2026-11-16 d07b5f15 이후 main CI 실패).
+  return source.slice(start, next === -1 ? undefined : next) + "\n";
 }
 
 test("최근 날짜 유효성 검사창은 KST 오늘을 포함한 60일이다", () => {
