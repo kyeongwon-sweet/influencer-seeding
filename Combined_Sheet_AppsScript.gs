@@ -301,10 +301,52 @@ function getSheet_() {
   return sheet;
 }
 
+// ─── 제목 줄(1행) 읽기 — 편집 트리거 한 번 안에서는 한 번만 읽는다 (2026-11-16) ───
+// "연동 시트가 너무 느려": 칸 하나만 고쳐도 onStatusEdit_ 안의 검사들이 findHeaderCol_·buildFieldCols_·
+// getIncrementCol_·linkedDateColumns_·warnDateColumnEdit_로 제목 줄을 약 15번(매번 getLastColumn+getValues)
+// 다시 읽어, 편집 1번에 20~50초가 걸렸다(11-16 오전 실측). 편집 트리거 실행 동안만 첫 읽기를 기억해 재사용한다.
+// - 기억은 withLinkedHeaderMemo_ 범위 안에서만 켜지고, 끝나면(예외 포함) 이전 상태로 돌아간다.
+//   배치 작업(pull·export·import 등)은 범위를 안 열므로 지금처럼 매번 새로 읽는다.
+// - 같은 탭(같은 시트 객체 또는 같은 시트 ID)일 때만 재사용한다.
+// - 제목 줄에 쓰는 함수(상태 열 생성 등)는 쓴 직후 invalidateLinkedHeaderMemo_()로 기억을 지운다.
+var LINKED_HEADER_MEMO_ = null;
+
+function linkedHeaderRow_(sheet) {
+  const memo = LINKED_HEADER_MEMO_;
+  const useMemo = !!memo && (memo.sheet === sheet || memo.sheetId === sheet.getSheetId());
+  if (useMemo && memo.headers) {
+    memo.hits++;
+    return { lastCol: memo.lastCol, headers: memo.headers.slice() };
+  }
+  const lastCol = sheet.getLastColumn();
+  // 빈 탭(열 0개)은 getRange가 예외를 내므로 빈 제목 줄로 본다(예전 linkedDateColumns_의 0열 처리와 같음).
+  const headers = lastCol > 0 ? sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0] : [];
+  if (useMemo) {
+    memo.lastCol = lastCol;
+    memo.headers = headers.slice();
+    memo.reads++;
+  }
+  return { lastCol: lastCol, headers: headers };
+}
+
+function withLinkedHeaderMemo_(sheet, sheetId, fn) {
+  const previous = LINKED_HEADER_MEMO_;
+  const memo = { sheet: sheet, sheetId: sheetId, lastCol: 0, headers: null, reads: 0, hits: 0 };
+  LINKED_HEADER_MEMO_ = memo;
+  try {
+    return fn(memo);
+  } finally {
+    LINKED_HEADER_MEMO_ = previous;
+  }
+}
+
+function invalidateLinkedHeaderMemo_() {
+  if (LINKED_HEADER_MEMO_) LINKED_HEADER_MEMO_.headers = null;
+}
+
 /** 헤더 → 컬럼 인덱스(1-based) 매핑. {field: colIndex} */
 function buildFieldCols_(sheet) {
-  const lastCol = sheet.getLastColumn();
-  const headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+  const headers = linkedHeaderRow_(sheet).headers;
   const fieldCols = {};
   headers.forEach((h, i) => {
     const field = FIELD_BY_HEADER[norm_(h)];
@@ -316,18 +358,19 @@ function buildFieldCols_(sheet) {
 
 /** 등록상태 컬럼 인덱스(1-based). 없으면 헤더 끝에 생성. */
 function getStatusCol_(sheet) {
-  const lastCol = sheet.getLastColumn();
-  const headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+  const header = linkedHeaderRow_(sheet);
+  const lastCol = header.lastCol;
+  const headers = header.headers;
   const idx = headers.findIndex(h => norm_(h) === norm_(CONFIG.STATUS_HEADER));
   if (idx !== -1) return idx + 1;
   const col = lastCol + 1;
   sheet.getRange(CONFIG.HEADER_ROW, col).setValue(CONFIG.STATUS_HEADER);
+  invalidateLinkedHeaderMemo_();
   return col;
 }
 
 function getIncrementCol_(sheet) {
-  const lastCol = sheet.getLastColumn();
-  const headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+  const headers = linkedHeaderRow_(sheet).headers;
   const wanted = [norm_("증분"), norm_("증분값")];
   const idx = headers.findIndex(h => wanted.includes(norm_(h)));
   return idx === -1 ? null : idx + 1;
@@ -4192,8 +4235,7 @@ function checkSheetIssues() {
 // DB→시트 pullFromDB는 3시간 독립 트리거로 실행한다.
 // ═══════════════════════════════════════════════════════════════
 function findHeaderCol_(sheet, names) {
-  const lastCol = sheet.getLastColumn();
-  const headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+  const headers = linkedHeaderRow_(sheet).headers;
   const wanted = names.map(n => norm_(n));
   const idx = headers.findIndex(h => wanted.includes(norm_(h)));
   return idx === -1 ? null : idx + 1;
@@ -4204,6 +4246,7 @@ function getTrackingStatusCol_(sheet) {
   if (col) return col;
   const next = sheet.getLastColumn() + 1;
   sheet.getRange(CONFIG.HEADER_ROW, next).setValue("상태");
+  invalidateLinkedHeaderMemo_();
   return next;
 }
 
@@ -4272,30 +4315,57 @@ function syncManualCreatorsOnEdit(e) {
 }
 
 function onStatusEdit_(e) {
+  // 단계별 소요시간(2026-11-16): 편집 1번에 20~50초 — 어느 검사가 큰지 가르고 제목 줄 재사용 효과를 실측한다.
+  // 로그 `on_status_edit_timing {...}` (연동 탭 편집만, 자동쓰기 중 건너뛴 편집은 남기지 않음).
+  const timing = {};
+  const startedMs = Date.now();
+  let lapAt = startedMs;
+  const lap = function(name) { const now = Date.now(); timing[name + "_ms"] = now - lapAt; lapAt = now; };
+  let memoStats = null;
   try {
     if (!e || !e.range || !e.source) return;
     if (skipEditDuringAutoWrite_("onStatusEdit_")) return;
     const sheet = e.range.getSheet();
-    if (sheet.getSheetId() !== CONFIG.SHEET_GID) return;
-    normalizeLinkedUploadDatesOnEdit_(e, sheet);  // YYYY.M.D 등 확실한 날짜 문자열만 실제 Date로 즉시 정규화
-    repairLinkedInputValidationsOnEdit_(e, sheet);  // 붙여넣기로 덮인 입력열 규칙과 H/I 오규칙을 편집 범위만 복구
-    const hasInputIssue = validateLinkedSheetInputOnEdit_(e, sheet);  // 잘못된 단일 입력·다중셀 붙여넣기 즉시 경고(기존 값 자동삭제 금지)
-    sanitizeAssetNameOnEdit_(e, sheet);  // 소재명 뒤 파일 목록(.mp4, 2. 속지 …) 재유입 즉시 제거
-    healCumulativeOnEdit_(e, sheet);  // 누적(H) 열이 편집됐으면 즉시 자가치유 — 다중셀 붙여넣기도 잡아야 하므로 단일셀 제한보다 앞에서
-    if (!hasInputIssue) warnDateColumnEdit_(e, sheet);  // 검증 오류가 없을 때만 오늘 날짜열 안내(오류 토스트 덮어쓰기 방지)
-    if (e.range.getRow() < CONFIG.DATA_START_ROW || e.range.getNumRows() !== 1 || e.range.getNumColumns() !== 1) return;
-    const statusCol = findHeaderCol_(sheet, ["상태"]);
-    if (!statusCol || e.range.getColumn() !== statusCol) return;
-    const endedAt = trackingEndedAtFromStatus_(e.value);
-    if (endedAt === undefined) return;
-    const fieldCols = buildFieldCols_(sheet);
-    const url = String(sheet.getRange(e.range.getRow(), fieldCols.url).getValue() || "").trim();
-    if (!url) return;
-    const result = postTrackingRows_([{ url, ended_at: endedAt }]);
-    SpreadsheetApp.getActive().toast("상태 DB 반영: " + (result.updated || 0) + "건", "완료", 4);
+    const sheetId = sheet.getSheetId();
+    if (sheetId !== CONFIG.SHEET_GID) return;
+    // 아래 검사들은 모두 같은 제목 줄을 쓴다 → 이 편집 처리 동안 한 번만 읽는다(linkedHeaderRow_).
+    withLinkedHeaderMemo_(sheet, sheetId, function(memo) {
+      memoStats = memo;
+      normalizeLinkedUploadDatesOnEdit_(e, sheet);  // YYYY.M.D 등 확실한 날짜 문자열만 실제 Date로 즉시 정규화
+      lap("normalize");
+      repairLinkedInputValidationsOnEdit_(e, sheet);  // 붙여넣기로 덮인 입력열 규칙과 H/I 오규칙을 편집 범위만 복구
+      lap("repair");
+      const hasInputIssue = validateLinkedSheetInputOnEdit_(e, sheet);  // 잘못된 단일 입력·다중셀 붙여넣기 즉시 경고(기존 값 자동삭제 금지)
+      lap("validate");
+      sanitizeAssetNameOnEdit_(e, sheet);  // 소재명 뒤 파일 목록(.mp4, 2. 속지 …) 재유입 즉시 제거
+      lap("sanitize");
+      healCumulativeOnEdit_(e, sheet);  // 누적(H) 열이 편집됐으면 즉시 자가치유 — 다중셀 붙여넣기도 잡아야 하므로 단일셀 제한보다 앞에서
+      lap("heal");
+      if (!hasInputIssue) warnDateColumnEdit_(e, sheet);  // 검증 오류가 없을 때만 오늘 날짜열 안내(오류 토스트 덮어쓰기 방지)
+      lap("warn");
+      if (e.range.getRow() < CONFIG.DATA_START_ROW || e.range.getNumRows() !== 1 || e.range.getNumColumns() !== 1) return;
+      const statusCol = findHeaderCol_(sheet, ["상태"]);
+      if (!statusCol || e.range.getColumn() !== statusCol) return;
+      const endedAt = trackingEndedAtFromStatus_(e.value);
+      if (endedAt === undefined) return;
+      const fieldCols = buildFieldCols_(sheet);
+      const url = String(sheet.getRange(e.range.getRow(), fieldCols.url).getValue() || "").trim();
+      if (!url) return;
+      const result = postTrackingRows_([{ url, ended_at: endedAt }]);
+      lap("status_post");
+      SpreadsheetApp.getActive().toast("상태 DB 반영: " + (result.updated || 0) + "건", "완료", 4);
+    });
   } catch (err) {
     Logger.log("onStatusEdit_: " + (err.stack || err.message));
     SpreadsheetApp.getActive().toast("상태 DB 반영 실패: " + err.message, "오류", 6);
+  } finally {
+    if (memoStats) {
+      timing.header_reads = memoStats.reads;
+      timing.header_reuses = memoStats.hits;
+      timing.total_ms = Date.now() - startedMs;
+      try { timing.range = e.range.getA1Notation(); } catch (_) {}
+      Logger.log("on_status_edit_timing " + JSON.stringify(timing));
+    }
   }
 }
 
@@ -4341,9 +4411,10 @@ function dateKeyFromLinkedValue_(value) {
 }
 
 function linkedDateColumns_(sheet) {
-  const lastCol = sheet.getLastColumn();
+  const header = linkedHeaderRow_(sheet);
+  const lastCol = header.lastCol;
   if (lastCol < LINKED_INPUT_FIRST_DATE_COL_) return {};
-  const headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+  const headers = header.headers;
   const statusCol = headers.findIndex(function(value) {
     return norm_(value) === norm_(CONFIG.STATUS_HEADER);
   }) + 1;
@@ -5223,8 +5294,9 @@ function warnDateColumnEdit_(e, sheet) {
     if (e.range.getRow() < CONFIG.DATA_START_ROW) return;
     const c1 = e.range.getColumn(), c2 = e.range.getLastColumn();
     if (c2 < CONFIG.STATS_FIRST_COL) return;  // 날짜열 영역 밖
-    const lastCol = sheet.getLastColumn();
-    const header = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
+    const headerRow = linkedHeaderRow_(sheet);
+    const lastCol = headerRow.lastCol;
+    const header = headerRow.headers;
     // exportStats/importStats와 동일 규칙으로 열→날짜 매핑(월 줄면 +1년)
     let year = CONFIG.STATS_START_YEAR, prevMonth = null;
     const dateByCol = {};
