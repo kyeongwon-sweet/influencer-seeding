@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## 📮 2026-11-16 [Claude 진단 → Codex 인계] RD 5311행 `smile_puppy_s2` H(누적) 수식이 숫자로 덮임 — 11-11부터 수식감사 매일 healthy=false
+- **대상:** `instagram.com/p/DfbxGy8xjpg` (`smile_puppy_s2` · 바이럴 (영상) · P바치 · ₩80,000 · 게시 2026-11-07), 11-16 09시 기준 시트 5311행. 수식감사 `hInvalidRows`에 `cause=overwritten`으로 11-11부터 매일 단독 표시(Slack 경고 매일 발송, 미처리).
+- **실측:** H5311 = 고정값 **37,696**(DB 11-08 manual=true 값과 동일 → 11-08 수기값을 H에 입력한 것으로 추정). 날짜열은 11-08 37,696 … 11-15 **39,406**(DB와 일치), I(증분) 180 정상. 따라서 누적·CPV(₩2.12 → 정상 약 ₩2.03)만 틀림.
+- **할 일(Codex, 라이브 시트):** URL 키 `ig:DfbxGy8xjpg`로 유일 행 재확인 → H 원본 백업 → 이웃 행과 같은 **표준 H 수식**(생성기 `metricCumulativeFormula_`, 현재 날짜열 범위)으로 H 1칸만 복원. 다른 칸·날짜값·I/J 수식 무변경.
+- **검증:** H=39,406(최신 날짜열 최대값), J≈₩2.03, 강제 수식감사 1회 `hInvalid=0 · healthy=true`(다른 지표 무변화). 결과 이 항목에 기록.
+
 ## 🔴 2026-11-13 [Claude 코드 완료 → Codex 라이브 적용 — ⏰ 오늘 밤 00:04 전] 자정 '동기화→수집' 락 충돌 방지: 00:04 정기 DB→시트 동기화는 쉰다
 - **배경(실측):** 자정 수집 dispatch는 매일 **00:14**(GitHub workflow_dispatch 11-04~11-13 열흘 전부 00:14) → 오늘 밤부터 그 직전에 `preCollectSyncNew_`(syncNew, 문서 락 `tryLock(30초)` + 30초 뒤 1회 재시도 ≈ 90초)가 돈다. 정기 DB→시트 동기화(`scheduledDbPullSync_`)는 **xx:04**에 떠서 `pullFromDB` 전체를 `withDocLock_` 안에서 돈다. 15:04 회차처럼 22분이 걸리면 **00:04~00:26 락 보유 → 00:13 수집 전 동기화가 SHEET_LOCKED로 건너뜀** → 낮에 시트에 넣은 URL이 자정 수집을 놓침(사용자 지시 "수집 전에 무조건 동기화" 위반, Slack 경고만 감). 예전처럼 3분이면 안 겹친다 — 18:04·21:04 회차 소요시간은 Claude가 볼 수 없음.
 - **수정(repo):** `isPreCollectQuietWindow_`(23:30~00:45 KST, `Utilities.formatDate(…,"Asia/Seoul","HH:mm")`) + `runDbPullSyncAttempt_` 맨 앞: `source !== "manual"`이면 **락 잡기 전에** `dbPullSync_result {status:"SKIPPED_PRE_COLLECT_WINDOW"}` 로그만 남기고 `return true`(재시도 예약·알림·실행기록 변경 없음 → 다음 03:04 회차). 수동 실행은 그대로 돈다. DB→시트 반영이 밤에 3시간 늦는 건 무해.
