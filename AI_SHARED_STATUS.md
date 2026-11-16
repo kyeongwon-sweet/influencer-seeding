@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## ✅ 2026-11-16 [Codex 사본 벤치마크 완료 · 라이브 미적용] G/N 정규화 helper는 효과 기준 미달로 기각
+- **범위·원본 무변경:** 독립 사본 [`_codex_formula_benchmark_20261116`](https://docs.google.com/spreadsheets/d/1Ollu_GxGXaIGVD7fwo1_zbi7x06x9OQgqAZ8iCW9pn0/edit?gid=1937186871#gid=1937186871)에서만 측정했다. 원본 연동 시트의 값·수식·서식과 라이브 Apps Script 변경은 **0건**이다. 사본 임시 스크립트 권한도 `spreadsheets.currentonly` 하나로 제한했다.
+- **실제 대상 재분류:** 무거운 표준 XLOOKUP은 G **749개**, N **1,086개**(합계 1,835개)였다. 사전 추정과 달랐던 G 1개는 정규식 표기가 다른 특수식, N 47개는 예전 VLOOKUP이며, G의 비AI 수기 계산식 48개와 함께 모두 무접촉 보존했다.
+- **무손상 게이트 통과:** 표준 XLOOKUP의 원본 전체열 정규화 부분만 `AI 바이럴 대시보드 연동!H2:H` helper 참조로 정확히 치환했다. `gFormulaMismatch=0 · nFormulaMismatch=0 · gDisplayMismatch=0 · nDisplayMismatch=0`, helper **5,811행 불일치 0**이다. 즉 사본 값·표시값과 대상/비대상 수식 보존은 통과했다.
+- **속도 실측:** 동일 함수로 기준/변경 후를 측정한 G/N 재계산 중앙값은 **2,398→1,593ms**(33.6%, 805ms 단축)였다. 그러나 사전에 고정한 채택 기준인 **절대 3초 이상**을 못 넘었다. 읽기 중앙값도 URL **4,909→7,821ms**, 메타 **5,516→6,796ms**, 전체 **22,798→27,848ms**로 측정 변동 안에서 개선이 없었고, GQ 자극도 **17,620→20,852ms**였다.
+- **판정:** 정확성은 통과했지만 체감 효과가 작고 전체 읽기 개선도 입증되지 않아 **repo·라이브 적용 후보에서 제외**한다. GQ 2,350개는 `(경원) RD뷰 구현안!S9`가 직접 참조하므로 별도 승인 없이 지우지 않는다. 다음 고효율 게이트는 11/17 자연 아침 체인 기준선 뒤, 이미 준비된 아침 중복 H/수식 복구 생략과 `importStats` 단계별 계측이다.
+
 ## 🟡 2026-11-16 [Codex 코드 완료·라이브 미반영] 아침 체인 중복 H/수식 복구 생략 + `importStats` 단계별 계측 (`f4fb71ec`, `78dcc6c4`)
 - **중복 작업 제거 준비:** 성공한 `exportStats`가 내부 H 갱신을 끝내고 collection gate의 H/I/J 범위 복구까지 성공한 **같은 target 날짜**에만, 뒤 `dailyAuto`의 `refreshCumulativeViews`·`repairMetricFormulaRanges`를 건너뛴다. gate pending·조회 실패·시간초과·export 재시도·이전 날짜 marker·H 갱신 미확인 때는 기존 두 안전망을 그대로 실행한다. 각 gate 시도 시작 때 옛 marker를 먼저 지워 stale 성공 흔적 오판도 막았다.
 - **`importStats` 계측 준비:** 동작·payload·API 호출은 바꾸지 않고 `importStats_timing` 한 줄에 `headers/block_read/scan/group/post/total_ms`와 `rows/date_columns/date_cells_scanned/stats_to_send/posts/batches/inserted`를 기록한다. 다음 자연 실행에서 12분 병목이 읽기·스캔·POST 중 어디인지 나눈 뒤 변경분 처리 설계를 정한다.
