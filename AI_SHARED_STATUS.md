@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## ✅ 2026-11-16 [Codex 라이브 적용 완료] 날짜 유효성 검사를 최근 60일만 유지 + 문자열 날짜 정상화
+- **선택 근거:** 같은 사본의 A/B/C 재측정에서 C(`TODAY()`만 제거)는 URL/메타/전체 읽기 중앙값 `24,401 / 49,994 / 50,821ms`, B(최근 60일)는 변경 전 `4,357 / 7,922 / 18,409ms`, 복원 후 `6,343 / 11,353 / 24,124ms`였다. C는 전체 25초 기준을 넘고 B보다 2.11~2.76배 느려 탈락, B를 채택했다.
+- **코드·라이브:** `d07b5f15`에서 설치·전체복구·onEdit·신규행·감사 경로를 **KST 최근 60일** 정책으로 통일했고, `25d67979`에서 A열의 기존 문자열 날짜 경고를 유효성 규칙 복구 실패와 분리했다. main push와 라이브 함수 단위 guarded deploy 완료. web **862/862**, `tsc --noEmit`, build/Apps Script prepare 통과.
+- **전체 복원점:** 원본 전체 사본 [`_codex_pre_validation_window_20261116_1229KST`](https://docs.google.com/spreadsheets/d/1zqjaZ6-7JMQAtJHz7QRqHI1YH_v8bhxiTp9Nd2q5ADY/edit?gid=1937186871#gid=1937186871). 규칙 복구 실행 백업은 [`1y1ZBGLr3eltdThpNFW71VjrJ1Jl-yyt22-BvMpbUov8`](https://docs.google.com/spreadsheets/d/1y1ZBGLr3eltdThpNFW71VjrJ1Jl-yyt22-BvMpbUov8/edit)이다.
+- **규칙 복구 실측(12:38 KST):** 데이터 **5,517행**, 날짜열 **182개** 중 최근 **58열**은 검사 유지, 오래된 **124열**은 검사 제거. `date_missing/ref/wrong/outside_window_rule=0`, `after_remaining=0`, 값 지문 `50b26f15` 동일, 다시 쓴 검사 셀 `1,150,578`개다. 값·수식은 변경하지 않았다.
+- **A열 문자열 날짜 15건 정상화(12:40 KST):** 행 `5470~5478 · 5481~5486`의 표시값은 그대로 두고 문자열을 실제 날짜값으로 변환했다. `converted=15 · verified=15 · remaining_invalid=0 · formula_skipped=0`; 실행 백업은 [`1SrfQf1XYICJ20G3R0Ri1IY9Snn64MB0XWFEzt8GBakHQ`](https://docs.google.com/spreadsheets/d/1SrfQf1XYICJ20G3R0Ri1IY9Snn64MB0XWFEzt8GBakHQ/edit)이다.
+- **공식 감사:** force run [`43799604081`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/43799604081) success/HTTP 200 — `dateColumnCount=182 · P:GO · snapshotRetryCount=0 · orphanRows=0 · inc.mismatch=0 · sheetOnly=0`. `healthy=false`는 이 적용과 무관하게 오늘 자연 export 뒤 새로 들어온 하단 10행의 과도기 수식(`incInvalid=10`, 그중 V3 9행)과 마지막 `바니` 행의 H/CPV 미설치(`hInvalid=1 · cpv.invalid=1 · stale=1`) 때문이며, 유효성 규칙 잔여 오류와 A열 비날짜 값은 각각 0이다. 이 10행의 값·수식은 이번 작업에서 건드리지 않았고 다음 자연 dailyAuto의 자가보강 대상으로 남겼다.
+
 ## ✅ 2026-11-16 [Claude 완료(자동배포)] 증분 리포트 날짜 귀속 재발방지 — 게시일 이전 측정·며칠치 합산
 - **사고(실측):** ① 11-05 쫀득바 리포트에 11-06 게시 글 `DfZEtyBur7a`(여원맛집) +6,627 — 11-06 17시 재수집(11-05분)이 그날 등록돼 **게시일이 빈** 글을 측정해 11-05로 기록(기존 pre-post 가드는 게시일 있을 때만 작동). ② 11-09 매거진 3건 +59,828이 11-05~08 공백 뒤 수기 입력이라 **5일치 합산**인데 하루 증분처럼 표시.
 - **수정(repo):** 수집 3경로(run_monitoring `_drop_pre_post_rows`·web collect-now·apify-webhook) + 재수집 큐 `_raw_eligible` — 게시일이 비면 **등록일(created_at, KST)** 을 하한으로(등록 전 날짜 측정 금지). 리포트 `notify_increments` — 게시일 이전 측정행 미집계(대시보드 API와 동일, 실측 22건 8,306회 게시일로 이동·누락 0) + 직전 유효측정과 2일 이상 떨어진 증분은 TOP10 `N일치` 표시와 `⚠️ 며칠치 합산 N건` 줄(값은 그대로). 실측 11-01~14 몰림은 11-09 3건뿐.
