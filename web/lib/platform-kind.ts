@@ -5,7 +5,7 @@
  * 양쪽 목록이 갈라지면 수집기는 정상 제외한 글을 웹 감사가 다시 이상으로 올리므로
  * `tests/platform-kind.test.ts`가 두 상수를 직접 대조한다.
  */
-export const NO_VIEW_METRIC_HOSTS = ["threads.", "facebook.com", "naver.com", "kakao.com"] as const;
+export const NO_VIEW_METRIC_HOSTS = ["threads.", "facebook.com", "naver.com", "naver.me/", "kakao.com"] as const;
 
 export function hasNoViewMetricHost(url: string | null | undefined): boolean {
   const value = String(url ?? "").toLowerCase();

@@ -78,7 +78,7 @@ const FIELD_BY_HEADER = {
 };
 
 // 사이트가 허용하는 URL (인스타 / 유튜브 / 틱톡 / 페이스북 / 스레드 / X(트위터) / 카카오 숏폼 / 네이버 클립, 다단계 서브도메인 포함). 서버 필터와 동일.
-const ALLOWED_URL_RE = /^https:\/\/([a-z0-9-]+\.)*(instagram\.com|youtube\.com|youtu\.be|tiktok\.com|facebook\.com|threads\.com|threads\.net|x\.com|twitter\.com|t\.co|kakao\.com|naver\.com)\//i;
+const ALLOWED_URL_RE = /^https:\/\/([a-z0-9-]+\.)*(instagram\.com|youtube\.com|youtu\.be|tiktok\.com|facebook\.com|threads\.com|threads\.net|x\.com|twitter\.com|t\.co|kakao\.com|naver\.com|naver\.me)\//i;
 
 // 주소 정규화만으로 새 수집 대상이 되면 운영 판단이 필요한 레거시 행.
 // 행번호는 삽입/삭제로 바뀌므로 게시물 식별자로 막는다. 사용자 결정 전까지 DB 등록·통계 import 금지.

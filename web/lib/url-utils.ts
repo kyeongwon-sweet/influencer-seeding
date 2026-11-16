@@ -103,10 +103,12 @@ export function postIdentityKey(url: string): string | null {
 
 /**
  * 협찬 게시물 추가 시 허용하는 플랫폼 URL (인스타 / 유튜브 / 틱톡 / 페이스북 / 스레드 / X(트위터) / 카카오 숏폼 / 네이버 클립, 다단계 서브도메인 포함).
+ * 네이버 단축링크(naver.me)도 받는다(2026-11-16 사용자 결정) — 앱 공유 링크는 원래 클립 주소로 풀리지 않고(브리지 페이지),
+ * 네이버는 조회수 자동 수집이 없어 수기 입력이므로 단축링크 자체를 글 주소로 쓴다. 빠지면 DB 미등록 → 리포트·대시보드 누락.
  * sync · bulk · stats-import 및 Apps Script(Sponsored_Posts_Sync.gs)가 동일 기준 사용.
  * 서브도메인은 `*`(0개 이상) — 네이버 클립이 m.blog.naver.com처럼 2단계라 필요. 도메인 뒤 `/` 앵커로 evil-naver.com 등은 차단됨.
  */
-export const ALLOWED_POST_URL_RE = /^https:\/\/([a-z0-9-]+\.)*(instagram\.com|youtube\.com|youtu\.be|tiktok\.com|facebook\.com|threads\.com|threads\.net|x\.com|twitter\.com|t\.co|kakao\.com|naver\.com)\//i;
+export const ALLOWED_POST_URL_RE = /^https:\/\/([a-z0-9-]+\.)*(instagram\.com|youtube\.com|youtu\.be|tiktok\.com|facebook\.com|threads\.com|threads\.net|x\.com|twitter\.com|t\.co|kakao\.com|naver\.com|naver\.me)\//i;
 
 // TikTok 게시물 ID는 unsigned 64-bit snowflake다. 자릿수만 19로 고정하면 미래의
 // 정상 20자리 ID까지 막으므로 uint64 최댓값과 문자열로 비교한다(BigInt 없는 GAS와 동일 규칙).

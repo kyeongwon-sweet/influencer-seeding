@@ -8,6 +8,7 @@ test("확정 무지표 매체만 정상 제외하고 모르는 주소는 숨기�
     "https://www.threads.net/@a/post/x",
     "https://www.facebook.com/a/videos/1",
     "https://m.blog.naver.com/a/1",
+    "https://naver.me/GzdNQMv2",
     "https://shortform.kakao.com/contents/x/",
   ]) assert.equal(hasNoViewMetricHost(url), true, url);
 

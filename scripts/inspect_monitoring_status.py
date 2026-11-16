@@ -62,6 +62,7 @@ def is_uncollectable_play_platform(post: dict[str, Any]) -> bool:
         "threads." in url
         or "facebook.com" in url
         or "naver.com" in url
+        or "naver.me/" in url
         or "kakao.com" in url
     )
 

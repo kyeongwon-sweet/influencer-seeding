@@ -26,7 +26,7 @@ from linked_sheet_reader import fetch_linked_sheet_rows
 IMPORTSTATS_CLIENT_VERSION = "2026-08-03-import-source-v2"
 ALLOWED_URL_RE = re.compile(
     r"^https://([a-z0-9-]+\.)*"
-    r"(instagram\.com|youtube\.com|youtu\.be|tiktok\.com|facebook\.com|threads\.com|threads\.net|x\.com|twitter\.com|t\.co|kakao\.com|naver\.com)/",
+    r"(instagram\.com|youtube\.com|youtu\.be|tiktok\.com|facebook\.com|threads\.com|threads\.net|x\.com|twitter\.com|t\.co|kakao\.com|naver\.com|naver\.me)/",
     re.I,
 )
 EXCEL_EPOCH = date(1899, 12, 30)

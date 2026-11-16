@@ -41,10 +41,14 @@ test("틱톡 단축주소는 대조 불가로 분리한다 — 서버는 풀어�
 test("서버도 거부하는 주소는 미지원으로 센다", () => {
   for (const u of [
     "https://www.instagram.com/time_holy/reels/",   // 프로필 릴스 탭
-    "https://naver.me/58qsmqEv",                     // 네이버 단축
     "https://m.cafe.daum.net/ok1221/9Zdf/2962938",   // 미지원 도메인
     "",
   ]) assert.equal(classifySheetPostUrl(u), "unsupported", u);
+});
+
+test("네이버 단축링크(naver.me)는 게시물이다 — 2026-11-16 사용자 결정, 수기 조회수로 리포트에 포함", () => {
+  assert.equal(classifySheetPostUrl("https://naver.me/GzdNQMv2"), "post");
+  assert.equal(classifySheetPostUrl("naver.me/GzdNQMv2"), "post");
 });
 
 // ── 감사 ─────────────────────────────────────────────────────────────

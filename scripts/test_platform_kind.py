@@ -29,6 +29,7 @@ class NoViewMetricHostTest(unittest.TestCase):
             "threads.": "https://www.threads.net/@a/post/xyz",
             "facebook.com": "https://www.facebook.com/a/videos/1",
             "naver.com": "https://blog.naver.com/a/1",
+            "naver.me/": "https://naver.me/GzdNQMv2",
             "kakao.com": "https://shortform.kakao.com/contents/x/",
         }
         self.assertEqual(set(samples), set(NO_VIEW_METRIC_HOSTS),

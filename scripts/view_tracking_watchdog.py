@@ -89,7 +89,7 @@ def _q(params: dict) -> str:
 
 def is_view_capable(url: str) -> bool:
     u = (url or "").lower()
-    if any(h in u for h in ("threads.", "facebook.com", "naver.com", "kakao.com")):
+    if any(h in u for h in ("threads.", "facebook.com", "naver.com", "naver.me/", "kakao.com")):
         return False
     return any(h in u for h in ("instagram.com", "youtube.com", "youtu.be", "tiktok.com"))
 

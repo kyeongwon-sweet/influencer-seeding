@@ -123,6 +123,7 @@ test("ALLOWED_POST_URL_RE: 허용 플랫폼만 통과", () => {
     "https://www.threads.net/@a/post/1/",
     "https://shortform.kakao.com/contents/ABC/",
     "https://m.blog.naver.com/aeirmeki/clip/15032187/", // 네이버 클립(2단계 서브도메인)
+    "https://naver.me/GzdNQMv2/", // 네이버 단축링크(2026-11-16, 원래 주소로 안 풀림 → 그대로 글 주소)
   ]) {
     assert.ok(ALLOWED_POST_URL_RE.test(u), `통과해야 함: ${u}`);
   }
@@ -130,6 +131,7 @@ test("ALLOWED_POST_URL_RE: 허용 플랫폼만 통과", () => {
     "https://example.com/x/",
     "http://instagram.com/p/ABC/", // http는 불허(정규화 후 https만)
     "https://evil-naver.com/x/", // 도메인 위장 차단(naver.com 허용이 오용되지 않음)
+    "https://evilnaver.me/x/", // naver.me 위장 차단
   ]) {
     assert.ok(!ALLOWED_POST_URL_RE.test(u), `막아야 함: ${u}`);
   }

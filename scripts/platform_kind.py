@@ -22,7 +22,7 @@ from __future__ import annotations
 from typing import Any
 
 # 조회수(재생수) 지표를 애초에 제공하지 않는 매체. 미수집이 '정상'인 유일한 매체 사유다.
-NO_VIEW_METRIC_HOSTS = ("threads.", "facebook.com", "naver.com", "kakao.com")
+NO_VIEW_METRIC_HOSTS = ("threads.", "facebook.com", "naver.com", "naver.me/", "kakao.com")
 
 VIEW_PLATFORMS = {"instagram", "youtube", "tiktok", "x"}
 

@@ -38,7 +38,7 @@ export type BannerReachExtractOptions = {
 
 const DEFAULT_STATS_FIRST_COL = 9; // Apps Script CONFIG.STATS_FIRST_COL: I
 const DEFAULT_STATS_START_YEAR = 2026;
-const ALLOWED_SHEET_POST_URL_RE = /^https:\/\/([a-z0-9-]+\.)*(instagram\.com|youtube\.com|youtu\.be|tiktok\.com|facebook\.com|threads\.com|threads\.net|x\.com|twitter\.com|t\.co|kakao\.com|naver\.com)\//i;
+const ALLOWED_SHEET_POST_URL_RE = /^https:\/\/([a-z0-9-]+\.)*(instagram\.com|youtube\.com|youtu\.be|tiktok\.com|facebook\.com|threads\.com|threads\.net|x\.com|twitter\.com|t\.co|kakao\.com|naver\.com|naver\.me)\//i;
 
 export function normalizeSheetHeader(value: SheetValue): string {
   return String(value ?? "").replace(/\s+/g, "").toLowerCase();

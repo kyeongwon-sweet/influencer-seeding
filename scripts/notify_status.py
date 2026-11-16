@@ -44,7 +44,7 @@ def _platform(url: str) -> str:
     if "facebook.com" in u: return "페북"
     if "threads.com" in u or "threads.net" in u: return "스레드"
     if "kakao.com" in u: return "카카오"
-    if "naver.com" in u: return "네이버"
+    if "naver.com" in u or "naver.me/" in u: return "네이버"
     return "기타"
 
 
@@ -141,6 +141,7 @@ def _is_uncollectable_play_platform(post) -> bool:
         "threads." in u
         or "facebook.com" in u
         or "naver.com" in u
+        or "naver.me/" in u
         or "kakao.com" in u
     )
 
