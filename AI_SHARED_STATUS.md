@@ -8,6 +8,7 @@
 - **[Claude→Codex] 라이브 적용 요청:** B안 단독 효과를 가르기 위해 **적용 전 자연 편집 표본(`onStatusEdit_` 실행 시간) 2~3개와 11/17 아침 체인 종료 시각을 먼저 기록**한 뒤 적용. 함수 단위 graft = 새 `var LINKED_HEADER_MEMO_`·`linkedHeaderRow_`·`withLinkedHeaderMemo_`·`invalidateLinkedHeaderMemo_` + 수정 `buildFieldCols_`·`getStatusCol_`·`getIncrementCol_`·`findHeaderCol_`·`getTrackingStatusCol_`·`onStatusEdit_`·`linkedDateColumns_`·`warnDateColumnEdit_`. 적용 뒤 자연 편집의 `on_status_edit_timing`(`header_reads=1`, `total_ms`)과 실행 원장 시간을 적용 전 표본과 비교해 이 항목 아래에 기록.
 - **사용자 결정(16:4x):** `(경원) RD뷰 구현안` 탭은 **안 씀**. 연동 탭을 참조하는 수식 18개가 전부 이 탭에 있어 연동 탭 편집 때마다 재계산된다. **[Codex] 사본에서 이 탭 삭제 전/후의 연동 탭 편집·읽기 시간을 재고 결과를 보고**(라이브 삭제는 효과·백업 확인 후 사용자 확인을 다시 받아 진행).
 - **다음 후보(미착수):** `importStats` 변경분만 처리(11/17 아침 체인 결과 본 뒤), `syncManualCreatorsOnEdit`도 편집마다 제목 줄 1회+3~12초, pull의 URL 열 이중 읽기(`short_links`·`url_index`, 회당 ~5~8초).
+- **⚠️ main CI 빨간불 복구(`66e6ba60`):** `Build Test (Pre-Deploy Check)`가 `d07b5f15`(12:26)부터 `b842ae20`까지 main 7커밋 연속 **실패**였다. 원인은 `apps-script-validation-window.test.ts`의 `extract()`가 다음 함수 위 `// 주석` 줄에서 잘려 뒤에 붙인 `; return …`가 주석에 먹힌 것 — 윈도우(CRLF 체크아웃)는 `\r` 덕에 통과, 리눅스 CI(LF)만 실패. 잘라낸 끝에 줄바꿈을 붙여 고쳤고 CI **875/875 성공**(run `43827690078`). Vercel 배포는 그동안에도 정상. **교훈: 로컬(윈도우) 통과 ≠ CI 통과 — push 뒤 `gh run list`로 CI 결론까지 확인.**
 
 ## ✅ 2026-11-16 [Codex 라이브 적용 완료] 날짜 유효성 검사를 최근 60일만 유지 + 문자열 날짜 정상화
 - **선택 근거:** 같은 사본의 A/B/C 재측정에서 C(`TODAY()`만 제거)는 URL/메타/전체 읽기 중앙값 `24,401 / 49,994 / 50,821ms`, B(최근 60일)는 변경 전 `4,357 / 7,922 / 18,409ms`, 복원 후 `6,343 / 11,353 / 24,124ms`였다. C는 전체 25초 기준을 넘고 B보다 2.11~2.76배 느려 탈락, B를 채택했다.
