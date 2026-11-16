@@ -13,6 +13,7 @@ from cross_post_metrics import fb_increment, ig_only
 from google_ads_sync import product_day_totals
 from meta_conversion import fetch_meta_awareness, fetch_meta_conversion
 from report_message import is_report_for, report_title
+from report_recheck import blocked_summary, change_summary, needs_update, permalink, report_messages
 from datetime import date
 from channel_kind import free_cpv_label, free_reason, is_banner_channel, is_free_by_design
 from db import get_client
@@ -304,6 +305,34 @@ def _open_dm(token: str, user_id: str) -> str | None:
     return None
 
 
+def _channel_history(token: str, channel: str, limit: int = 100) -> list:
+    """채널 최근 메시지(저녁 재확인용). 조회 실패면 빈 목록 → 재확인은 '리포트 0건'으로 보고 아무것도 안 고침(안전측)."""
+    try:
+        req = urllib.request.Request(
+            f"https://slack.com/api/conversations.history?channel={channel}&limit={limit}",
+            headers={"Authorization": "Bearer " + token})
+        d = json.load(urllib.request.urlopen(req, timeout=20))
+    except Exception as e:
+        print("[notify] 채널 조회 실패:", e)
+        return []
+    if not d.get("ok"):
+        print("[notify] 채널 조회 ok=False:", d.get("error"))
+        return []
+    return d.get("messages", [])
+
+
+def _post_dm(token: str, text: str) -> None:
+    """운영자(황경원) DM. 실패해도 본 작업은 막지 않는다."""
+    uid = os.getenv("STATUS_USER") or "U0B2Y0ZC8QZ"
+    data = urllib.parse.urlencode({"channel": uid, "text": text, "unfurl_links": "false"}).encode()
+    try:
+        r = json.load(urllib.request.urlopen(urllib.request.Request(SLACK_API, data=data,
+            headers={"Authorization": "Bearer " + token, "Content-Type": "application/x-www-form-urlencoded; charset=utf-8"}), timeout=30))
+        print("[notify] 운영자 DM ok=", r.get("ok"), "error=", r.get("error"))
+    except Exception as e:
+        print("[notify] 운영자 DM 실패:", e)
+
+
 def _hold_notice_exists(token: str, channel: str, target: str, final_retry: bool = False) -> bool:
     """channel에 같은 단계의 (target) 발송보류 공지가 있으면 True(중복 도배 방지)."""
     try:
@@ -445,6 +474,23 @@ def main():
                 n += 1
         print(f"[notify] DELETE_TS: {n}개 삭제 → 종료")
         return
+
+    # 저녁 재확인(RECHECK=1, report-evening-recheck.yml): 이미 나간 그날 리포트를 다시 계산해
+    #   **숫자가 달라졌을 때만** 그 자리에서 고친다(사용자 결정 2026-11-16 "대시보드랑 맞춰줘").
+    #   ⚠️ 날짜 폴백 금지 — 그날 측정이 없을 때 다른 날짜로 계산해 그날 리포트를 덮어쓰면 안 된다(strict 강제).
+    recheck = os.getenv("RECHECK") == "1"
+    recheck_old = ""
+    if recheck:
+        strict = True
+        if not target or CHANNEL[:1] not in ("C", "G"):
+            print("[notify] 저녁 재확인: 대상 날짜/채널 없음 → 종료")
+            return
+        hits = report_messages(_channel_history(token, CHANNEL, 100), target, PROFILE["title"])
+        if len(hits) != 1:
+            # 0건=아직 안 나감(그날 발송 흐름이 처리) / 2건 이상=어느 걸 고칠지 모호 → 손대지 않음
+            print(f"[notify] 저녁 재확인 {target}: 리포트 {len(hits)}건 — 편집 안 함")
+            return
+        update_ts, recheck_old = hits[0]["ts"], hits[0].get("text", "")
 
     dayrows = _measured_on(target) if target else {}
     if not dayrows and not strict:
@@ -985,14 +1031,26 @@ def main():
             print("[notify] 검수 경고(비차단):", _warns)
 
     if update_ts:
+        if recheck and not needs_update(recheck_old, text):
+            print(f"[notify] 저녁 재확인 {target}: 나간 리포트와 숫자 같음 — 편집 안 함")
+            return
         # 수동 편집도 동기화 검수를 '실행해서 결과를 남긴다'(차단은 안 함 — 정정 작업을 막지 않기 위해).
         #   신규 발송은 위에서 BLOCK 차단, 편집은 여기서 결과만 로그로 가시화(사용자 지시 2026-08-21).
+        #   ⚠️ 단 저녁 재확인(자동)은 BLOCK이면 고치지 않는다 — 사람이 안 보는 자동 편집이 시트 열 밀림 같은
+        #      잘못된 숫자로 멀쩡한 리포트를 덮어쓰면 안 된다(11-16 오전 인지_쫀득바 열 밀림 실사례).
+        _eb = []
         try:
             from presend_sync_audit import run_presend_audit
             _eb, _ew = run_presend_audit(db, target, items=items, ads=ads, norm_ch=_norm_ch)
             print(f"[notify] (편집) 동기화 검수 {target} — BLOCK: {_eb or '없음(통과)'} / WARN: {_ew or '없음'}")
         except Exception as _e:
             print("[notify] (편집) 검수 실행 오류(무시):", _e)
+            if recheck:
+                _eb = [f"검수 실행 오류: {_e}"]
+        if recheck and _eb:
+            _post_dm(token, blocked_summary(PROFILE["title"], target, _eb, permalink(CHANNEL, update_ts)))
+            print(f"[notify] 저녁 재확인 {target}: 검수 BLOCK — 편집 안 함(운영자 DM)")
+            return
         data = urllib.parse.urlencode({
             "channel": CHANNEL,
             "ts": update_ts,
@@ -1006,6 +1064,10 @@ def main():
         print("[notify] update ok=", r.get("ok"), "error=", r.get("error"), "channel=", CHANNEL, "ts=", update_ts, "date=", target)
         assert r.get("ok"), r
         _send_acct_comment(token, CHANNEL, update_ts, acct_comment)   # 특이 계정 댓글 갱신(dedup)
+        if recheck:
+            # 숫자는 공개 레포 로그에 남기지 않고 운영자 DM으로만(광고값 포함).
+            _post_dm(token, change_summary(PROFILE["title"], target, recheck_old, text, permalink(CHANNEL, update_ts)))
+            print(f"[notify] 저녁 재확인 {target}: 대시보드 숫자로 편집 완료(운영자 DM)")
         return
 
     data = urllib.parse.urlencode({"channel": CHANNEL, "text": text, "unfurl_links": "false"}).encode()
