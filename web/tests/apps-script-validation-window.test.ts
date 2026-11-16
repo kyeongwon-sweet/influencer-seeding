@@ -104,7 +104,13 @@ test("모든 설치·복구 경로와 감사가 같은 최근 60일 정책을 �
   assert.match(extract("applyLinkedFixedInputValidationsRows_"), /linkedRecentDateColumns_\(sheet\)/);
   assert.match(extract("applyLinkedInputValidationsToRows_"), /linkedRecentDateColumns_\(sheet\)/);
   assert.match(extract("repairLinkedInputValidationsOnEdit_"), /linkedRecentDateColumns_\(sheet\)/);
-  assert.match(extract("repairLinkedInputValidationsWithBackup"), /linkedRecentDateColumns_\(sheet, dateColumns\)/);
+  const repair = extract("repairLinkedInputValidationsWithBackup");
+  assert.match(repair, /linkedRecentDateColumns_\(sheet, dateColumns\)/);
+  // 규칙 복구는 기존 A열 값 오류를 숨기지 않고 별도 경고로 남기되,
+  // 값 정규화 책임까지 떠안아 정상적인 규칙 복구를 실패시키지 않는다.
+  assert.match(repair, /const remaining = afterRules\.a_missing_rule/);
+  assert.doesNotMatch(repair, /const remaining = afterValues\.a_invalid_values/);
+  assert.match(repair, /a_invalid_rows: afterValues\.a_invalid_rows/);
   assert.match(extract("applyLinkedSheetInputValidation_"), /linkedRecentDateColumns_\(sheet\)/);
   assert.match(extract("inspectLinkedInputValidationSamples_"), /DATE_RULE_OUTSIDE_WINDOW/);
   const exportBody = extract("exportStatsWithOptions_");

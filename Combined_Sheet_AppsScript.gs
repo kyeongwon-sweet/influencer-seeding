@@ -4870,6 +4870,7 @@ function inspectLinkedInputValueState_(sheet, dateCols) {
     date_column_count: dateCols.length,
     value_fingerprint: "",
     a_invalid_values: 0,
+    a_invalid_rows: [],
   };
   if (!rowCount) {
     result.value_fingerprint = "0";
@@ -4886,6 +4887,9 @@ function inspectLinkedInputValueState_(sheet, dateCols) {
     const value = aValues[i][0];
     if (value !== "" && value != null && (!(value instanceof Date) || isNaN(value.getTime()))) {
       result.a_invalid_values++;
+      if (result.a_invalid_rows.length < 50) {
+        result.a_invalid_rows.push({ row: row, display: aDisplays[i][0] });
+      }
     }
   }
 
@@ -5062,7 +5066,9 @@ function repairLinkedInputValidationsWithBackup() {
         throw new Error("검사규칙 수정 전후 표시값 지문이 다릅니다. before=" + beforeValues.value_fingerprint + " after=" + afterValues.value_fingerprint);
       }
       const afterRules = inspectLinkedInputValidationSamples_(sheet, cols, activeCols);
-      const remaining = afterValues.a_invalid_values + afterRules.a_missing_rule + afterRules.a_wrong_rule
+      // 이 함수의 책임은 검사규칙 복구다. 기존 A열 값 오류는 별도 정규화 함수가
+      // 백업 후 처리하므로, 규칙 복구 성공 여부와 섞어 정상 복구를 실패로 만들지 않는다.
+      const remaining = afterRules.a_missing_rule + afterRules.a_wrong_rule
         + afterRules.date_missing_rule + afterRules.date_ref_rule + afterRules.date_wrong_rule
         + afterRules.date_outside_window_rule;
       if (remaining !== 0) {
@@ -5084,6 +5090,8 @@ function repairLinkedInputValidationsWithBackup() {
           date_outside_window_rule: beforeRules.date_outside_window_rule,
         },
         after_remaining: remaining,
+        a_invalid_values: afterValues.a_invalid_values,
+        a_invalid_rows: afterValues.a_invalid_rows,
         verified_rows: expectedLastRow - CONFIG.DATA_START_ROW + 1,
         verified_date_columns: cols.length,
         active_validation_date_columns: activeCols.length,
@@ -5099,8 +5107,9 @@ function repairLinkedInputValidationsWithBackup() {
       PropertiesService.getScriptProperties()
         .setProperty(LINKED_DATE_VALIDATION_CUTOFF_PROP_, linkedDateValidationCutoff_());
       SpreadsheetApp.getActive().toast(
-        "A열·최근 60일 검사규칙 정리 완료 · 잔여 0건",
-        "✅ 유효성 검사 정리",
+        "A열·최근 60일 검사규칙 정리 완료 · 규칙 잔여 0건"
+          + (afterValues.a_invalid_values ? " · 기존 날짜값 오류 " + afterValues.a_invalid_values + "건" : ""),
+        afterValues.a_invalid_values ? "⚠️ 유효성 검사 정리" : "✅ 유효성 검사 정리",
         8
       );
       return result;
