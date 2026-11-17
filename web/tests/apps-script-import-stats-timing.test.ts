@@ -60,6 +60,17 @@ function runImportStats(dateValue: unknown) {
     blankNote_: () => "",
     Logger: { log: (message: unknown) => { logs.push(String(message)); } },
     IMPORTSTATS_CLIENT_VERSION: "test-version",
+    // '바뀐 게시물만 보내기' 세션은 별도 테스트(apps-script-import-stats-delta)가 실제 코드로 검증한다.
+    // 여기서는 기록이 없어 전부 보내는 첫 실행(전체 전송)과 같게 둔다.
+    importStatsDeltaSession_: () => ({
+      info: { mode: "full", reason: "store_missing", changed_keys: 1, unchanged_keys: 0, store_error: "" },
+      addRow: () => {},
+      plan: (postByKey: Record<string, unknown>) => Object.keys(postByKey),
+      isChanged: () => true,
+      settleBatch: () => {},
+      save: () => {},
+    }),
+    importFpReasonText_: () => "보낸 기록 없음",
   };
   const importStats = new Function(
     ...Object.keys(env),

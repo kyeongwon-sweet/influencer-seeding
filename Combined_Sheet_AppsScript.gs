@@ -3349,6 +3349,296 @@ function installDbPullSyncTrigger_() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// 시트→DB 조회수(importStats): 바뀐 게시물만 조회수 보내기 (2026-11-17, 사용자 지시 "바뀐 칸만 보내게 해줘")
+// 왜: 매일 아침 조회수 약 7만 6천 칸을 전부 다시 보내느라 8분 넘게 걸리는데, 새로 들어가는 건 거의 0건이다.
+// 규칙:
+//  · 게시물(링크 키)마다 '마지막으로 보낸 내용'의 지문을 숨김 탭에 둔다. 지문이 같으면 그 게시물의 조회수는 보내지 않는다.
+//  · 바뀐 게시물은 그 게시물의 조회수 이력 전체를 보낸다 → 서버의 역행·복사·급변·중복열 검사가 지금과 똑같이 돈다.
+//  · 게시물 기본 정보(posts)는 지금처럼 매일 전부 보낸다(시트 정본 필드·종료 처리 등 기존 동작 유지).
+//  · 지문은 서버가 정상 응답했고 경고·격리·누락이 없는 배치만 저장한다 → 경고가 난 게시물은 다음 날도 다시 보낸다.
+//  · exportStats가 DB 값을 시트에 쓴 행은, 쓰기 직전 내용이 저장된 지문과 정확히 같을 때만 지문을 앞으로 당긴다.
+//    사람이 그 사이 고친 행은 지문이 안 맞아 다음 importStats가 반드시 다시 보낸다.
+//  · 전체 전송(지금과 동일): 메뉴 실행(manual_sheet) · 기록 없음/손상 · 마지막 전체 전송 후 7일 이상.
+// ═══════════════════════════════════════════════════════════════
+const IMPORT_FP_SHEET_NAME_ = "⚙️조회수보낸기록(자동·수정금지)";
+const IMPORT_FP_VERSION_ = "import_fp_v1";
+const IMPORT_FP_FULL_INTERVAL_DAYS_ = 7;
+// 서버 응답에서 이 값이 하나라도 0보다 크면 그 배치의 '조회수를 보낸 게시물' 지문을 저장하지 않는다.
+// (복사·급변·중복열·비영상·잘못된 URL 경고와 누락은 지금처럼 다음 날 다시 보내 매일 드러나게 한다.)
+const IMPORT_FP_UNSETTLED_FIELDS_ = [
+  "copy_suspected_warned", "copy_suspected_skipped",
+  "spike_suspected_warned", "spike_suspected_skipped",
+  "dup_column_skipped", "missing_urls", "non_video_play_rejected",
+  "rejected_invalid_url", "future_date_skipped",
+];
+
+// 문자열 지문(53비트 cyrb53 + 길이). 같은 입력이면 항상 같은 값이다.
+// 'h'로 시작하게 해 시트가 숫자·날짜로 바꿔 읽지 못하게 한다.
+function importFpHash_(text) {
+  const s = String(text);
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return "h" + (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36) + "." + s.length.toString(36);
+}
+
+// 한 행에서 '오늘(KST)까지의 날짜칸 중 숫자로 읽히는 칸'을 `날짜=값;`으로 이은 원문.
+// importStats가 보낼 값과 같은 기준(toNumber_)을 쓰고, 빈칸·미래 날짜는 넣지 않는다.
+// → 새 빈 날짜열이 생겨도 지문이 안 바뀌고, 미리 적어 둔 미래 칸은 그 날짜가 되는 날 '바뀜'이 된다.
+// colBase: row 배열의 0번이 시트 몇 번째 열인지(전체 행=1, 날짜 블록=첫 날짜열).
+function importFpDatesText_(row, dateCols, colBase, today) {
+  let text = "";
+  for (let j = 0; j < dateCols.length; j++) {
+    const dc = dateCols[j];
+    if (dc.date > today) continue;
+    const n = toNumber_(row[dc.col - colBase]);
+    if (n === null) continue;
+    text += dc.date + "=" + n + ";";
+  }
+  return text;
+}
+
+// YYYY-MM-DD 두 날짜 사이 일수(달력 계산만, 시간대 무관). 형식이 아니면 null.
+function importFpDaysBetween_(fromDate, toDate) {
+  const a = String(fromDate || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const b = String(toDate || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!a || !b) return null;
+  return Math.round((Date.UTC(+b[1], +b[2] - 1, +b[3]) - Date.UTC(+a[1], +a[2] - 1, +a[3])) / 86400000);
+}
+
+function importFpReasonText_(reason) {
+  if (reason === "manual_menu") return "메뉴에서 직접 실행";
+  if (reason === "weekly_full") return "주 1회 전체 확인";
+  if (reason === "store_missing") return "보낸 기록 없음";
+  return "보낸 기록을 읽지 못함";
+}
+
+// 보낸 기록 탭 읽기. 1행: [버전, "meta_fp", "dates_fp", "full:YYYY-MM-DD", 메모], 2행~: [링크 키, 정보 지문, 날짜칸 지문].
+// 손상된 행은 버린다 → 그 게시물은 '바뀜'으로 보고 다시 보낸다.
+function readImportFpStore_(ss) {
+  const sh = ss.getSheetByName(IMPORT_FP_SHEET_NAME_);
+  if (!sh) return { ok: false, reason: "missing", map: {}, lastFull: "" };
+  const lastRow = sh.getLastRow();
+  if (lastRow < 1) return { ok: false, reason: "empty", map: {}, lastFull: "" };
+  const head = sh.getRange(1, 1, 1, 4).getValues()[0];
+  if (String(head[0]) !== IMPORT_FP_VERSION_) return { ok: false, reason: "version", map: {}, lastFull: "" };
+  const fullMatch = String(head[3] || "").match(/^full:(\d{4}-\d{2}-\d{2})$/);
+  const map = {};
+  if (lastRow >= 2) {
+    const rows = sh.getRange(2, 1, lastRow - 1, 3).getValues();
+    for (let i = 0; i < rows.length; i++) {
+      const key = String(rows[i][0] == null ? "" : rows[i][0]);
+      const m = String(rows[i][1] == null ? "" : rows[i][1]);
+      const d = String(rows[i][2] == null ? "" : rows[i][2]);
+      if (!key || m.charAt(0) !== "h" || d.charAt(0) !== "h") continue;
+      map[key] = { m: m, d: d };
+    }
+  }
+  return { ok: true, reason: "", map: map, lastFull: fullMatch ? fullMatch[1] : "" };
+}
+
+function createImportFpSheet_(ss) {
+  let active = null;
+  try { active = ss.getActiveSheet(); } catch (e) { active = null; }
+  const sh = ss.insertSheet(IMPORT_FP_SHEET_NAME_, ss.getNumSheets());
+  // 메뉴 실행 중 새 탭으로 화면이 넘어가지 않게 원래 탭으로 돌려놓고 숨긴다.
+  try { if (active) active.activate(); } catch (e) { /* 트리거 실행엔 화면이 없다 */ }
+  try { sh.hideSheet(); } catch (e) { /* 숨김 실패해도 기록은 쓴다 */ }
+  return sh;
+}
+
+// 보낸 기록 탭 쓰기(키 정렬). 모든 칸을 글자 서식(@)으로 써 시트가 값을 바꾸지 못하게 한다. 쓴 게시물 수를 돌려준다.
+function writeImportFpStore_(ss, map, lastFull, note) {
+  const sh = ss.getSheetByName(IMPORT_FP_SHEET_NAME_) || createImportFpSheet_(ss);
+  const keys = Object.keys(map).sort();
+  const rows = keys.map(function(k) { return [k, map[k].m, map[k].d]; });
+  const need = rows.length + 1;
+  const maxRows = sh.getMaxRows();
+  if (maxRows < need) sh.insertRowsAfter(maxRows, need - maxRows);
+  const oldLastRow = sh.getLastRow();
+  sh.getRange(1, 1, 1, 5).setNumberFormat("@")
+    .setValues([[IMPORT_FP_VERSION_, "meta_fp", "dates_fp", lastFull ? "full:" + lastFull : "", String(note || "")]]);
+  if (rows.length) sh.getRange(2, 1, rows.length, 3).setNumberFormat("@").setValues(rows);
+  if (oldLastRow > need) sh.getRange(need + 1, 1, oldLastRow - need, 3).clearContent();
+  return rows.length;
+}
+
+// importStats 한 번 실행 동안의 '바뀐 게시물만 보내기' 상태.
+//  addRow(key, row, dateCols, rowMeta) → plan(postByKey) → isChanged(key) → settleBatch(keys, 응답) → save(전부 끝났는지)
+// 지문 두 개: m = 게시물 정보(첫 행 posts 항목 + 행마다 URL·업로드일·배너 여부 — 조회수 전송 규칙에 쓰이는 값),
+//            d = 날짜칸 숫자. exportStats는 날짜칸만 쓰므로 d만 앞으로 당긴다.
+function importStatsDeltaSession_(sheet, importSource, today) {
+  const datesText = {};
+  const rowMetaText = {};
+  const fp = {};
+  const changed = {};
+  const settled = {};
+  const info = {
+    mode: "full",
+    reason: "",
+    keys: 0,
+    changed_keys: 0,
+    unchanged_keys: 0,
+    settled_keys: 0,
+    unsettled_keys: 0,
+    unsettled_batches: 0,
+    store_entries_before: 0,
+    store_entries_after: null,
+    store_read_ms: 0,
+    store_write_ms: 0,
+    store_error: "",
+    last_full: "",
+  };
+  let store = { ok: false, reason: "not_read", map: {}, lastFull: "" };
+  let ss = null;
+  let planned = false;
+  return {
+    info: info,
+    addRow: function(key, row, dateCols, rowMeta) {
+      const text = importFpDatesText_(row, dateCols, 1, today);
+      datesText[key] = datesText[key] === undefined ? text : datesText[key] + "|" + text;
+      const meta = String(rowMeta == null ? "" : rowMeta);
+      rowMetaText[key] = rowMetaText[key] === undefined ? meta : rowMetaText[key] + "|" + meta;
+    },
+    plan: function(postByKey) {
+      const keys = Object.keys(postByKey);
+      keys.forEach(function(k) {
+        fp[k] = {
+          m: importFpHash_(JSON.stringify(postByKey[k]) + "\n" + (rowMetaText[k] === undefined ? "" : rowMetaText[k])),
+          d: importFpHash_(datesText[k] === undefined ? "" : datesText[k]),
+        };
+      });
+      info.keys = keys.length;
+      const readStartedMs = Date.now();
+      try {
+        ss = sheet.getParent();
+        store = readImportFpStore_(ss);
+      } catch (e) {
+        store = { ok: false, reason: "read_error", map: {}, lastFull: "" };
+        info.store_error = String((e && e.message) || e).slice(0, 200);
+      }
+      info.store_read_ms = Date.now() - readStartedMs;
+      info.store_entries_before = Object.keys(store.map || {}).length;
+      info.last_full = store.lastFull || "";
+      const sinceFull = importFpDaysBetween_(store.lastFull, today);
+      if (importSource !== "daily_auto") info.reason = "manual_menu";
+      else if (!store.ok) info.reason = "store_" + store.reason;
+      else if (sinceFull === null || sinceFull < 0 || sinceFull >= IMPORT_FP_FULL_INTERVAL_DAYS_) info.reason = "weekly_full";
+      else { info.mode = "delta"; info.reason = "changed_only"; }
+      keys.forEach(function(k) {
+        const prev = info.mode === "delta" ? store.map[k] : null;
+        if (!prev || prev.m !== fp[k].m || prev.d !== fp[k].d) changed[k] = true;
+      });
+      info.changed_keys = Object.keys(changed).length;
+      info.unchanged_keys = keys.length - info.changed_keys;
+      planned = true;
+      return keys;
+    },
+    isChanged: function(key) {
+      return changed[key] === true;
+    },
+    settleBatch: function(keyBatch, res) {
+      const unsettled = IMPORT_FP_UNSETTLED_FIELDS_.some(function(f) { return Number(res && res[f]) > 0; });
+      let sentKeys = 0;
+      keyBatch.forEach(function(k) {
+        if (changed[k] !== true) return;
+        sentKeys++;
+        if (unsettled) { info.unsettled_keys++; return; }
+        settled[k] = fp[k];
+        info.settled_keys++;
+      });
+      if (unsettled && sentKeys > 0) info.unsettled_batches++;
+    },
+    save: function(completedAll) {
+      if (!planned || !ss) return;
+      const writeStartedMs = Date.now();
+      try {
+        const map = {};
+        if (info.mode === "delta") {
+          Object.keys(fp).forEach(function(k) { if (store.map[k]) map[k] = store.map[k]; });
+        }
+        Object.keys(settled).forEach(function(k) { map[k] = settled[k]; });
+        const lastFull = info.mode === "full" && completedAll ? today : (store.ok ? store.lastFull : "");
+        const note = Utilities.formatDate(new Date(), CONFIG.KST_TIMEZONE, "yyyy-MM-dd HH:mm:ss")
+          + " " + info.mode + (completedAll ? "" : " partial");
+        info.store_entries_after = writeImportFpStore_(ss, map, lastFull, note);
+      } catch (e) {
+        info.store_error = String((e && e.message) || e).slice(0, 200);
+      }
+      info.store_write_ms = Date.now() - writeStartedMs;
+    },
+  };
+}
+
+// exportStats가 날짜칸에 DB 값을 쓴 직후 호출한다. 쓴 행마다, 쓰기 직전 날짜칸 지문이 '마지막으로 보낸 지문'과
+// 정확히 같을 때만 지문을 쓴 뒤 내용으로 바꾼다(DB에서 온 값이라 다시 보낼 필요가 없다).
+// 다르면(=그 사이 사람이 고쳤거나 아직 못 보낸 행) 그대로 둬 다음 importStats가 다시 보내게 한다.
+// 어떤 오류도 exportStats를 멈추지 않는다 — 못 당긴 행은 다음 importStats가 다시 보낼 뿐이다.
+function advanceImportFpAfterExport_(sheet, urlRows, beforeBlock, afterBlock, dateCols, firstCol, today) {
+  const startedMs = Date.now();
+  const result = { status: "SKIPPED", rows_written: 0, advanced: 0, mismatched: 0, no_entry: 0, dup_skipped: 0, invalid_skipped: 0 };
+  try {
+    const same = function(a, b) {
+      return a === b || (a instanceof Date && b instanceof Date && a.getTime() === b.getTime());
+    };
+    const writtenRows = [];
+    for (let i = 0; i < afterBlock.length; i++) {
+      const before = beforeBlock[i] || [];
+      const after = afterBlock[i];
+      for (let j = 0; j < after.length; j++) {
+        if (!same(before[j], after[j])) { writtenRows.push(i); break; }
+      }
+    }
+    result.rows_written = writtenRows.length;
+    if (!writtenRows.length) { result.status = "NO_WRITES"; return result; }
+    const ss = sheet.getParent();
+    const store = readImportFpStore_(ss);
+    if (!store.ok) { result.status = "NO_STORE_" + store.reason; return result; }
+    // importStats와 같은 기준(정규화 URL → linkKey_)으로 키와 중복 키를 센다.
+    const keys = new Array(urlRows.length);
+    const counts = {};
+    for (let i = 0; i < urlRows.length; i++) {
+      const raw = String((urlRows[i] && urlRows[i][0]) || "").trim();
+      if (!raw) continue;
+      const urlCheck = classifySheetSyncUrl_(raw);
+      if (!urlCheck.valid) continue;
+      const key = linkKey_(urlCheck.url);
+      keys[i] = key;
+      counts[key] = (counts[key] || 0) + 1;
+    }
+    writtenRows.forEach(function(i) {
+      const key = keys[i];
+      if (key === undefined) { result.invalid_skipped++; return; }
+      if (counts[key] > 1) { result.dup_skipped++; return; }
+      const entry = store.map[key];
+      if (!entry) { result.no_entry++; return; }
+      const before = importFpHash_(importFpDatesText_(beforeBlock[i] || [], dateCols, firstCol, today));
+      if (entry.d !== before) { result.mismatched++; return; }
+      entry.d = importFpHash_(importFpDatesText_(afterBlock[i], dateCols, firstCol, today));
+      result.advanced++;
+    });
+    if (result.advanced > 0) {
+      writeImportFpStore_(ss, store.map, store.lastFull,
+        Utilities.formatDate(new Date(), CONFIG.KST_TIMEZONE, "yyyy-MM-dd HH:mm:ss") + " export_advance");
+    }
+    result.status = "OK";
+    return result;
+  } catch (e) {
+    result.status = "ERROR";
+    result.error = String((e && e.message) || e).slice(0, 200);
+    return result;
+  } finally {
+    result.ms = Date.now() - startedMs;
+    Logger.log("importStats_fp_advance " + JSON.stringify(result));
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // 수집 조회수 → 시트 I열~ 역채움 (대시보드 자동수집분을 시트로 내림)
 // importStats(시트→DB)의 반대. 새 날짜는 우측에 열 자동 추가 후, 수집값 있는 날짜 칸만 갱신
 // (없으면 기존값 유지=수동 입력 보존). dailyAuto(매일 8:30)에 연결돼 자동 확장·갱신.
@@ -3794,6 +4084,10 @@ function exportStatsWithOptions_(options) {
             dateCellsRewritten += values.length * values[0].length;
           });
       });
+      // 방금 DB 값을 쓴 행은 importStats '보낸 기록'(날짜칸 지문)도 같이 앞으로 당긴다.
+      // 쓰기 직전 내용이 보낸 기록과 같을 때만 당기므로, 그 사이 사람이 고친 행은 다음 importStats가 다시 보낸다.
+      // 이 함수는 오류를 밖으로 던지지 않는다(못 당긴 행은 다시 보낼 뿐).
+      advanceImportFpAfterExport_(sheet, latestUrlsForDates, latestDateBlock, finalDateBlock, dateCols, firstCol, today);
     }
     markTiming("dates_written");
 
@@ -4064,6 +4358,8 @@ function importStats(source) {
     const normalizedDetails = [];
     const stats = [];
     const postByKey = {}; // url-key → 광고 메타 (첫 행 우선). 없는 광고 생성용, 기존은 서버가 덮어쓰지 않음.
+    // 바뀐 게시물만 조회수를 보내기 위한 지문 수집(같은 키의 행은 시트 순서대로 합친다).
+    const delta = importStatsDeltaSession_(sheet, importSource, today);
     values.forEach((row, rowIndex) => {
       const rawUrl = String(row[fieldCols.url - 1] || "").trim();
       if (!rawUrl) return;
@@ -4101,6 +4397,8 @@ function importStats(source) {
       const channelType = fieldCols.channel_type ? String(row[fieldCols.channel_type - 1] || "") : "";
       const isBanner = channelType.indexOf("배너") >= 0;
       if (isBanner) bannerRows++;
+      // 이 행이 보낼 조회수를 정하는 값(URL·업로드일·배너 여부)과 날짜칸을 지문에 넣는다.
+      delta.addRow(key, row, dateCols, url + "\t" + (postedAt || "") + "\t" + (isBanner ? "B" : "N"));
 
       // 날짜 헤더 라벨을 기준으로 오늘(KST) 이하의 숫자 셀을 전송한다.
       // 배너 입력은 서버 stats-import가 reach_count로 저장하므로 여기서 제외하면 안 된다.
@@ -4164,32 +4462,64 @@ function importStats(source) {
     stats.forEach(function (s) { const k = linkKey_(s.url); (statsByKey[k] = statsByKey[k] || []).push(s); });
 
     const POSTS_PER_BATCH = 300; // 300 게시물/배치 ≈ 본문 수백KB (4.5MB 대비 충분한 여유). 필요시 조정.
-    const keys = Object.keys(postByKey);
     timingLap_("group");
+    // 지난번에 보낸 기록과 비교해 조회수를 보낼 게시물을 정한다(전체 전송이면 모두 '바뀜').
+    const keys = delta.plan(postByKey);
+    // 조회수를 보낼 게시물과 정보만 보낼 게시물을 다른 배치로 나눈다. 정보만 보내는 배치의 서버 경고가
+    // 조회수 기록 저장을 막지 않게 하기 위해서다. 전체 전송이면 모두 '바뀜'이라 기존 배치와 같다.
+    const keyBatches = [];
+    [keys.filter(function (k) { return delta.isChanged(k); }), keys.filter(function (k) { return !delta.isChanged(k); })]
+      .forEach(function (group) {
+        for (let i = 0; i < group.length; i += POSTS_PER_BATCH) keyBatches.push(group.slice(i, i + POSTS_PER_BATCH));
+      });
+    timingLap_("delta");
     const res = { missing_sample: [], dropped_sample: [] };
     const AGG = ["inserted", "created_posts", "matched_urls", "banner_reach_inserted",
                  "meta_filled", "ended_marked", "future_date_skipped", "pre_posted_skipped",
                  "dropped_decrease", "missing_urls", "preserved_manual", "overwrote_manual"];
     AGG.forEach(function (f) { res[f] = 0; });
     let _batches = 0;
-    for (let i = 0; i < keys.length; i += POSTS_PER_BATCH) {
-      const keyBatch = keys.slice(i, i + POSTS_PER_BATCH);
-      const postBatch = keyBatch.map(function (k) { return postByKey[k]; });
-      const statBatch = [];
-      keyBatch.forEach(function (k) { (statsByKey[k] || []).forEach(function (s) { statBatch.push(s); }); });
-      const r = postStats_({
-        posts: postBatch,
-        stats: statBatch,
-        client_version: IMPORTSTATS_CLIENT_VERSION,
+    let statsSent = 0;
+    let completedAll = false;
+    try {
+      for (let b = 0; b < keyBatches.length; b++) {
+        const keyBatch = keyBatches[b];
+        // 게시물 정보는 전부 보내고, 조회수는 바뀐 게시물만 그 게시물의 이력 전체를 보낸다.
+        const postBatch = keyBatch.map(function (k) { return postByKey[k]; });
+        const statBatch = [];
+        keyBatch.forEach(function (k) {
+          if (!delta.isChanged(k)) return;
+          (statsByKey[k] || []).forEach(function (s) { statBatch.push(s); });
+        });
+        const r = postStats_({
+          posts: postBatch,
+          stats: statBatch,
+          client_version: IMPORTSTATS_CLIENT_VERSION,
+          source: importSource,
+        });
+        _batches++;
+        statsSent += statBatch.length;
+        AGG.forEach(function (f) { res[f] += (r[f] || 0); });
+        if (Array.isArray(r.missing_sample)) r.missing_sample.forEach(function (x) { if (res.missing_sample.length < 20) res.missing_sample.push(x); });
+        if (Array.isArray(r.dropped_sample)) r.dropped_sample.forEach(function (x) { if (res.dropped_sample.length < 8) res.dropped_sample.push(x); });
+        delta.settleBatch(keyBatch, r);
+      }
+      completedAll = true;
+    } finally {
+      timingLap_("post");
+      // 정상 응답한 배치의 지문만 저장한다. 중간에 실패하면 남은 게시물은 다음 실행이 다시 보낸다.
+      delta.save(completedAll);
+      timingLap_("store");
+      Logger.log(JSON.stringify(Object.assign({
+        event: "importStats_delta",
         source: importSource,
-      });
-      _batches++;
-      AGG.forEach(function (f) { res[f] += (r[f] || 0); });
-      if (Array.isArray(r.missing_sample)) r.missing_sample.forEach(function (x) { if (res.missing_sample.length < 20) res.missing_sample.push(x); });
-      if (Array.isArray(r.dropped_sample)) r.dropped_sample.forEach(function (x) { if (res.dropped_sample.length < 8) res.dropped_sample.push(x); });
+        completed: completedAll,
+        batches: _batches,
+        stats_candidates: stats.length,
+        stats_sent: statsSent,
+      }, delta.info)));
     }
-    timingLap_("post");
-    Logger.log(JSON.stringify({ event: "importStats_batched", batches: _batches, posts: keys.length, stats: stats.length, posts_per_batch: POSTS_PER_BATCH }));
+    Logger.log(JSON.stringify({ event: "importStats_batched", batches: _batches, posts: keys.length, stats: statsSent, stats_candidates: stats.length, mode: delta.info.mode, posts_per_batch: POSTS_PER_BATCH }));
     Logger.log(JSON.stringify({
       event: "importStats_result",
       inserted: res.inserted || 0,
@@ -4205,13 +4535,24 @@ function importStats(source) {
       last_col: lastCol,
       date_columns: dateCols.length,
       date_cells_scanned: values.length * dateCols.length,
-      stats_to_send: stats.length,
+      stats_to_send: statsSent,
+      stats_candidates: stats.length,
       posts: keys.length,
+      posts_with_stats: delta.info.changed_keys,
+      mode: delta.info.mode,
       batches: _batches,
       inserted: res.inserted || 0,
     });
     let msg = `✅ 일자별 조회수 ${res.inserted}건 입력 완료.\n(날짜 ${dateCols.length}개 열 · 매칭 게시물 ${res.matched_urls}개`;
     msg += res.created_posts ? ` · 신규 광고 ${res.created_posts}개 자동 생성)` : `)`;
+    if (delta.info.mode === "delta") {
+      msg += `\n🔁 바뀐 게시물만 조회수를 보냈습니다: ${delta.info.changed_keys}개 (안 바뀐 ${delta.info.unchanged_keys}개는 게시물 정보만 보냄).`;
+    } else {
+      msg += `\n📦 이번에는 조회수를 전부 보냈습니다(${importFpReasonText_(delta.info.reason)}).`;
+    }
+    if (delta.info.store_error) {
+      msg += `\n⚠️ 보낸 기록을 저장하지 못했습니다. 다음 실행 때 다시 보냅니다: ${delta.info.store_error}`;
+    }
     if (res.banner_reach_inserted) msg += `\n🖼️ 배너 도달수 ${res.banner_reach_inserted}건 반영.`;
     if (res.meta_filled) msg += `\n📝 기존 광고의 빈 항목 ${res.meta_filled}건을 시트 값으로 채움(채널 분류 등).`;
     if (res.ended_marked) msg += `\n🛑 캡션 '삭제/보관' ${res.ended_marked}건 → '종료' 처리됨.`;

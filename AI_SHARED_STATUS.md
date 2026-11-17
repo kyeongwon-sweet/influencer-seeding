@@ -1,9 +1,66 @@
 # AI Shared Status
 
-## 🔒 2026-11-17 [Claude 착수 · 선점] `importStats` "바뀐 칸만 보내기" (사용자 지시)
-- **사용자 지시:** "바뀐 칸만 보내게 해줘". 조건도 함께 줬다. 잘못된 숫자를 걸러내는 검사는 그대로 돌아야 하고, 손으로 적은 조회수가 대시보드에 빠짐없이 가야 한다. 그러니 꼼꼼히 설계하고 시험할 것.
-- **담당:** Claude(설계·코드·테스트). 이 항목의 중복 착수를 피하기 위해 Codex는 이 코드를 만들지 않는다. 라이브 graft는 기존처럼 Codex가 하되, Claude 코드와 테스트가 끝난 뒤에 한다.
-- **진행 중:** 현재 `importStats`와 서버 수신 경로의 계약을 읽고 있다. 설계안은 이 항목 아래에 갱신한다.
+## 🟡 2026-11-17 [Claude 코드 완료 → Codex 라이브 graft 대기] `importStats` 바뀐 게시물만 조회수 보내기 (사용자 지시)
+- **사용자 지시:** "바뀐 칸만 보내게 해줘". 조건도 함께 줬다.
+  - 잘못된 숫자를 걸러내는 검사는 그대로 돌아야 한다.
+  - 손으로 적은 조회수는 빠짐없이 대시보드로 가야 한다.
+  - 꼼꼼히 설계하고 시험할 것.
+- **배경:** 11/17 `importStats` 564.5초 중 POST 19배치가 약 523초(93%)였다. 조회수 76,150건을 보냈지만 `inserted 0`이었다.
+
+**설계(서버 변경 0)** — payload 모양, `client_version`, stats-import route는 그대로다.
+1. **조회수는 바뀐 게시물만 보낸다.**
+   - 게시물(링크 키)마다 지문 두 개를 숨김 탭 `⚙️조회수보낸기록(자동·수정금지)`에 둔다.
+     - `m`: 첫 행 posts 항목 + 행마다 URL·업로드일·배너 여부
+     - `d`: 오늘(KST)까지 날짜칸 중 `toNumber_`로 읽히는 칸의 `날짜=값`
+   - 지문이 같으면 그 게시물의 조회수는 보내지 않는다.
+   - 바뀐 게시물은 **그 게시물의 이력 전체**를 보낸다. 그래서 서버의 역행·복사·급변·중복열·비영상 검사가 지금과 같은 입력으로 돈다.
+2. **게시물 정보(posts)는 지금처럼 매일 전부 보낸다.** 시트 정본 필드(소재명·캡션·비용) 재적용, 무상채널 정리, 캡션 종료 처리, 신규 생성을 그대로 유지한다.
+   - 조회수 배치와 정보만 보내는 배치는 서로 섞지 않는다.
+3. **지문은 정상 응답을 받은 배치만 저장한다.**
+   - 그 배치에 `copy/spike_suspected_*`, `dup_column_skipped`, `missing_urls`, `non_video_play_rejected`, `rejected_invalid_url`, `future_date_skipped` 중 하나라도 0보다 크면 저장하지 않는다. 그래서 다음 날 다시 보내고, **경고도 지금처럼 매일 이어진다.**
+   - 중간 배치가 실패하면 성공한 배치만 저장한다. 나머지는 다음 실행이 보낸다.
+4. **`exportStats`가 DB 값을 쓴 행은 `d` 지문을 앞으로 당긴다** (`advanceImportFpAfterExport_`, 날짜칸 쓰기 직후).
+   - 쓰기 직전 행 내용이 저장된 지문과 **정확히 같을 때만** 당긴다.
+   - 사람이 그 사이 고친 행은 지문이 안 맞아서 다음 날 반드시 보낸다.
+   - 중복 키 행은 당기지 않는다.
+   - 이 함수는 오류를 던지지 않는다.
+5. **전체 전송**(지금과 바이트 단위로 같은 payload)은 다음 경우에 한다.
+   - 메뉴 실행(`manual_sheet`)
+   - 기록 탭이 없거나 손상됐을 때(버전 불일치)
+   - 마지막 전체 전송 뒤 7일 이상 지났을 때
+   - 전체 전송이 중간에 실패하면 그 날짜를 남기지 않는다. 그래서 다음 실행도 전체 전송이다.
+6. **지금과 달라지는 점(의도된 것)** — 아래 경우는 매일이 아니라 **주 1회 전체 전송 때** 반영된다.
+   - DB에서 지워진 조회수 행을 시트 값으로 다시 채우는 것
+   - 역행으로 막힌 값(`dropped_decrease`, 경고 없음)을 다시 판정하는 것
+   - DB 쪽 업로드일·종료일 변경으로 새로 허용되는 값
+   - 급히 반영해야 하면 메뉴 실행으로 즉시 전체 전송하면 된다.
+
+**검증**
+- 새 `web/tests/apps-script-import-stats-delta.test.ts` 24건: 실제 `.gs` 함수를 가짜 스프레드시트로 여러 날 돌린다. 다룬 경우는 다음과 같다.
+  - 첫 실행 전체 전송, 무변경, 사람 수정, export 당기기, import 뒤 사람 수정
+  - 경고 종류별 다음 날 재전송, 정보 배치 경고 분리, 중간 실패, 전체 전송 실패
+  - 7일 주기, 메뉴 실행, 기록 손상·버전, 빈 날짜열 추가, 미래 칸
+  - 업로드일·채널 변경, 중복 키 두 줄, 행 삭제·재추가, 기록 읽기·저장 실패
+- 일부러 망가뜨린 20가지 변형을 전부 테스트가 잡았다.
+- 웹 전체 **908/908**, `tsc --noEmit`, `node --check`, `apps-script:prepare` 드라이런을 통과했다.
+- Codex 계측 테스트(`apps-script-import-stats-timing`)는 세션 stub만 추가했고, 단언은 그대로다.
+
+**[Claude→Codex] 라이브 graft 요청** — 09:57 graft본(`78dcc6c4` 계측 포함) 위에 함수 단위로 넣는다.
+- **새 선언 13개:** `installDbPullSyncTrigger_` 뒤, `// 수집 조회수 → 시트 I열~ 역채움` 머리글 앞에 넣는다.
+  - 상수: `IMPORT_FP_SHEET_NAME_`, `IMPORT_FP_VERSION_`, `IMPORT_FP_FULL_INTERVAL_DAYS_`, `IMPORT_FP_UNSETTLED_FIELDS_`
+  - 함수: `importFpHash_`, `importFpDatesText_`, `importFpDaysBetween_`, `importFpReasonText_`, `readImportFpStore_`, `createImportFpSheet_`, `writeImportFpStore_`, `importStatsDeltaSession_`, `advanceImportFpAfterExport_`
+- **교체할 함수 2개:**
+  - `importStats`: 세션 생성, `addRow`, 배치 분리, try/finally 저장, 로그
+  - `exportStatsWithOptions_`: 날짜칸 쓰기 직후 `advanceImportFpAfterExport_` 1줄
+- **graft 전 확인:** 라이브 전체 파일(02~09 포함)에서 새 이름과 충돌이 0인지 확인한다. repo에서는 0이다.
+- **graft 뒤 확인:**
+  - 첫 자연 실행은 `importStats_delta.mode=full`, `reason=store_missing`이고 숨김 탭이 생긴다. payload는 지금과 같다.
+  - 둘째 날부터 `mode=delta`다. 기대값은 다음과 같다.
+    - `changed_keys` = 수십~수백
+    - `stats_sent` ≪ `stats_candidates`
+    - `importStats_fp_advance.advanced` ≈ export가 쓴 행 수, `mismatched` ≈ 사람이 고친 행
+    - `importStats_timing.post_ms` 523초에서 크게 감소
+  - **수기 1칸 실증:** 연동 탭에 수기 조회수 1칸을 넣는다. 다음 아침 `changed_keys`에 그 게시물이 잡히고 DB에 들어갔는지 확인한다.
 
 ## ✅ 2026-11-17 [Codex 라이브 반영] 아침 중복 유지보수 생략 + `importStats` 계측 + 편집 제목 줄 1회 읽기
 - **자연 기준선 선행 확인:** 08:27:54 `dailyAuto` 시작 → 08:58:37 최종 `OK`(벽 30.7분·작업 25.5분). `importStats` 564.5초(19배치 POST 구간 약 523초), `exportStats` 523.3초, 뒤 중복 `refreshCumulativeViews` 36.6초 + `repairMetricFormulaRanges` 26.1초였다. 수동 `dailyAuto`·`exportStats`로 기준선을 만들지 않았다.
