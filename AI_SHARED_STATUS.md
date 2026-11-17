@@ -62,6 +62,13 @@
     - `importStats_timing.post_ms` 523초에서 크게 감소
   - **수기 1칸 실증:** 연동 탭에 수기 조회수 1칸을 넣는다. 다음 아침 `changed_keys`에 그 게시물이 잡히고 DB에 들어갔는지 확인한다.
 
+## ✅ 2026-11-17 [Codex 라이브 반영] `importStats` 바뀐 게시물만 조회수 보내기 (`dcd2c99c`)
+- **선행 게이트:** 요청한 CI run [`43995085912`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/43995085912)가 `dcd2c99c`에서 `python-tests`·web 단위테스트·회귀 가드·production build 모두 success인 것을 확인한 뒤에만 반영했다.
+- **충돌·preimage 확인:** 10:2x KST fresh pull의 01 SHA-256은 09:57 graft 뒤와 같은 `6f099c347d7d`였고, 01~09 전체에서 새 선언 13개 이름 충돌은 **0건**이었다. 라이브 `importStats`·`exportStatsWithOptions_`가 커밋 부모 `2d952644` 선언과 정확히 같을 때만 교체했다.
+- **라이브 graft:** 10:27:14 KST, 새 상수 4개·함수 9개를 `installDbPullSyncTrigger_` 바로 뒤에 추가하고 두 함수만 교체했다. 적용 뒤 01 SHA-256은 `1a507cbda66a`; 대상 선언 15개는 `origin/main`과 불일치 0, 비대상 top-level 선언은 전후 동일이다. 02~09·manifest는 기존 해시 그대로이며, live 재-pull 10개 파일이 push 준비본과 전부 일치했다.
+- **검증:** 라이브 01 `node --check`·parse diagnostics 0, 삽입 위치 확인, delta 24 + timing 2 + Apps Script 문법 25 = **51/51 통과**. 수동 `importStats`·`exportStats` 실행과 시트 셀 변경은 0건이다.
+- **자연 게이트 대기:** 첫 자연 실행은 `importStats_delta mode=full · reason=store_missing`, 숨김 탭 `⚙️조회수보낸기록(자동·수정금지)` 생성, 기존과 같은 전체 payload를 확인한다. 둘째 날은 `mode=delta`, `changed_keys` 수십~수백·`stats_sent ≪ stats_candidates`·`importStats_fp_advance.advanced`·`post_ms` 감소를 확인한다. 수기 1칸 실증은 별도 안전한 셀을 정해 입력·다음날 DB 반영까지 확인하기 전에는 완료 처리하지 않는다.
+
 ## ✅ 2026-11-17 [Codex 라이브 반영] 아침 중복 유지보수 생략 + `importStats` 계측 + 편집 제목 줄 1회 읽기
 - **자연 기준선 선행 확인:** 08:27:54 `dailyAuto` 시작 → 08:58:37 최종 `OK`(벽 30.7분·작업 25.5분). `importStats` 564.5초(19배치 POST 구간 약 523초), `exportStats` 523.3초, 뒤 중복 `refreshCumulativeViews` 36.6초 + `repairMetricFormulaRanges` 26.1초였다. 수동 `dailyAuto`·`exportStats`로 기준선을 만들지 않았다.
 - **라이브 graft:** 09:57:55 KST, `f4fb71ec`·`78dcc6c4`·`2dd71acc`의 대상 선언만 `01_연동시트_자동동기화`에 반영했다. 기존 함수 12개는 각 커밋 부모 선언과 일치할 때만 교체했고 새 선언 8개를 추가했다. 파일 통째 덮어쓰기나 시트 셀 쓰기는 하지 않았다.
