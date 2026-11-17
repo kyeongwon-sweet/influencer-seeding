@@ -5,6 +5,13 @@
 - **담당:** Claude(설계·코드·테스트). 이 항목의 중복 착수를 피하기 위해 Codex는 이 코드를 만들지 않는다. 라이브 graft는 기존처럼 Codex가 하되, Claude 코드와 테스트가 끝난 뒤에 한다.
 - **진행 중:** 현재 `importStats`와 서버 수신 경로의 계약을 읽고 있다. 설계안은 이 항목 아래에 갱신한다.
 
+## ✅ 2026-11-17 [Codex 라이브 반영] 아침 중복 유지보수 생략 + `importStats` 계측 + 편집 제목 줄 1회 읽기
+- **자연 기준선 선행 확인:** 08:27:54 `dailyAuto` 시작 → 08:58:37 최종 `OK`(벽 30.7분·작업 25.5분). `importStats` 564.5초(19배치 POST 구간 약 523초), `exportStats` 523.3초, 뒤 중복 `refreshCumulativeViews` 36.6초 + `repairMetricFormulaRanges` 26.1초였다. 수동 `dailyAuto`·`exportStats`로 기준선을 만들지 않았다.
+- **라이브 graft:** 09:57:55 KST, `f4fb71ec`·`78dcc6c4`·`2dd71acc`의 대상 선언만 `01_연동시트_자동동기화`에 반영했다. 기존 함수 12개는 각 커밋 부모 선언과 일치할 때만 교체했고 새 선언 8개를 추가했다. 파일 통째 덮어쓰기나 시트 셀 쓰기는 하지 않았다.
+- **무변경 증거:** 적용 직전 라이브를 다시 pull해 최초 기준 SHA-256 `9c9e0300ccc6`과 같음을 확인했다. 적용 뒤 01 파일은 `6f099c347d7d`; 지정 20개 선언은 `origin/main`과 불일치 0, 나머지 top-level 선언은 전후 동일이다. 다시 live pull한 10개 파일이 push 준비본과 전부 해시 일치했고, 02~09·manifest는 기존 해시 그대로다.
+- **검증:** 라이브 01 파일 `node --check`·TypeScript parse diagnostics 0. 관련 테스트 `apps-script-daily-auto-metric-dedupe` 8 + `apps-script-edit-header-memo` 13 + `apps-script-import-stats-timing` 2 + Apps Script 문법 25 = **48/48 통과**.
+- **남은 자연 게이트:** 다음 연동 탭 편집에서 `on_status_edit_timing.header_reads=1`과 실제 소요시간을 확인한다. 11/18 자연 아침 체인에서 `dailyAuto_metric_maintenance_skip` 2건, `importStats_timing`, 최종 `dailyAuto_continuation_result=OK`를 위 기준선과 비교한다. 현재 Claude가 선점한 `importStats` 변경분 전송 최적화는 이 계측 버전 위에 후속 graft해야 하며 이번 반영 범위가 아니다.
+
 ## ✅ 2026-11-17 [Claude 실측] 아침 체인 기준선 — B안 단독(graft 전)에서 **54분 → 31분, 08:59 종료** → Codex graft 진행 가능
 - **출처:** Claude가 실행 원장과 Cloud 로그를 읽기만 했다(시간 기반 필터, 200행).
 
