@@ -1,5 +1,14 @@
 # AI Shared Status
 
+## 🟡 2026-11-19 [Codex 로컬 준비 완료·미배포] `exportStats` DB 조회 166회 → compact RPC 1회, 3일 shadow 완전일치 뒤에만 전환
+- **실측 병목:** 현행 `stats-for-sheet`는 게시물 약 **5,572행**과 일별 통계 약 **159,123행**을 `PAGE=1000`으로 나눠 약 **166회 REST 조회**한다. Apps Script의 `exportStats_timing.fetched`가 최근 **130~137초**인 주원인이다.
+- **추가형 SQL:** `stats_for_sheet_bundle_v1()`가 원시 15.9만 행을 보내지 않고 DB 안에서 최종 key/date 단위로 축약한 compact JSON **1행**만 반환한다. 현행과 같은 대표 URL·identity key·종료일, 배너 reach/그 외 play, 업로드일 전 제외, YouTube 확정 0, key/date 최대값과 `manual`/`zeroConfirmed` OR, `pre_posted_dropped`·`ended_without_stats`를 유지한다. 빈 DB도 `posts=[]`와 진단 0인 한 행을 반환한다. 기존 DB identity helper가 일반 URL 경로를 소문자로 바꾸는 차이도 발견해 재사용하지 않았고, 대문자 `naver.me` 경로·이중 slash·query·IG/YT/TikTok 정상/비정상 10벡터를 TS와 migration 실행 양쪽에서 고정한 RPC 전용 helper를 쓴다.
+- **권한:** 함수는 `security invoker`; `public`·`anon`·`authenticated` 실행권한을 회수하고 `service_role`만 허용한다. Apps Script에는 service-role 키를 전달하지 않고 기존 CRON 인증 Vercel 라우트만 호출한다. 마이그레이션은 반복 실행 가능한 추가형이며 기존 값 수정은 없다.
+- **무손실 전환:** `STATS_FOR_SHEET_MODE=legacy|shadow|optimized`, 기본은 **legacy**다. `shadow`는 legacy와 RPC를 모두 읽어 URL/key/ended_at/모든 `[date,metric,manual,zeroConfirmed]` 튜플·두 진단·원본 post/stat 행 수를 canonical 비교하지만 **응답은 무조건 legacy**다. 비교 중 DB 쓰기가 감지되면 mismatch가 아니라 `inconclusive`로 기록한다. 원문 URL·지표·금액은 로그에 남기지 않고 SHA-256·건수·시간만 `jobs.payload` 운영 마커에 기록한다(`ops_daily_runs`는 라이브에 없으므로 기존 운영 정본 패턴 사용).
+- **fail-closed:** 서로 다른 KST 날짜 **3일**이 quiet snapshot·source count·전체 canonical hash까지 모두 같아야 optimized gate가 열린다. RPC는 45초 hard timeout, payload의 빈/중복 key·잘못된 날짜·중복 날짜·음수/비정상 metric·잘못된 boolean을 거부한다. SQL/정책 변경 때 함께 올리는 `contract_version`도 route와 일치해야 하며, 이전 버전의 3일 승인을 재사용하지 않는다. gate 미충족, RPC 오류·timeout·shape/version 오류는 같은 요청에서 legacy로 fallback한다. Apps Script가 받는 JSON 계약은 바뀌지 않는다.
+- **검증:** 신규/기존 관련 테스트 **10/10**, web 전체 **926/926**, `tsc --noEmit`, 변경 파일 ESLint, Python **625 passed + 7 skipped + 4 subtests**, Apps Script prepare dry-run(8 files match), Next production build(webpack) 통과. 기본 Turbopack build는 이 임시 worktree의 `node_modules`가 다른 temp worktree를 가리키는 junction이라 `points out of filesystem root`로만 중단했으며, 코드/타입 오류는 아니고 실제 소스 production build는 webpack으로 완료했다.
+- **현재 상태·출시 순서:** 로컬 브랜치 `codex/exportstats-rpc-shadow-20261119`에만 준비했다. **push·배포·SQL 실행·환경변수 변경·DB/시트 쓰기 0건**이다. 이후 `SQL 추가 → legacy 배포 → shadow 자연 3일 완전일치 → optimized` 순서로만 진행하고, 문제 시 환경변수를 `legacy`로 돌리면 즉시 원복한다.
+
 ## ✅ 2026-11-19 [Codex 복구·라이브 반영 완료] `dailyAuto`의 `syncAll` 시간초과가 뒤 체인·DB pull을 막는 재발 방지
 - **사고 재현 근거:** 11/19 자연 `dailyAuto`가 08:27:54 KST 시작 후 약 30분 만에 강제종료됐다. `fillCaptionFromAsset` 뒤 `syncAll`에서 실행창을 거의 전부 사용해 continuation·`importStats`·`exportStats`가 생기지 않았고, `DAILY_AUTO_LAST_STATUS=RUNNING`이 남아 09:04 이후 DB→시트 동기화도 계속 `LOCK_BUSY`로 비켜 갔다.
 - **체크포인트:** 최초 `dailyAuto()`는 무거운 단계를 직접 돌리지 않고 전체 단계 목록을 continuation으로 먼저 저장한다. `syncAll`·`importStats`·`exportStats`는 각각 독립 실행창을 쓰며, `syncAll`이 30분 한도에 걸려도 watchdog이 그 단계를 `ERROR`로 기록하고 다음 `syncPricing`부터 계속한다.
