@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
+import { buildStatsImportRetryContract } from "../lib/stats-import-retry.ts";
+
 // importStats '바뀐 게시물만 조회수 보내기'(2026-11-17) — 실제 .gs 코드를 가짜 스프레드시트로 여러 날 돌려 검증한다.
 // 사용자 조건: ① 잘못된 숫자를 걸러내는 서버 검사가 그대로 돌 것(바뀐 게시물은 이력 전체를 보냄)
 //              ② 손으로 적은 조회수가 빠짐없이 대시보드로 갈 것(사람이 고친 행은 반드시 다시 보냄)
@@ -221,6 +223,7 @@ function makeWorld(rows: RowSpec[]) {
   const names = [
     "toNumber_", "isBeforePostedDate_",
     "importFpHash_", "importFpDatesText_", "importFpDaysBetween_", "importFpReasonText_",
+    "importFpRetryKeySet_",
     "readImportFpStore_", "createImportFpSheet_", "writeImportFpStore_",
     "importStatsDeltaSession_", "advanceImportFpAfterExport_", "importStats",
   ];
@@ -323,6 +326,15 @@ const FULL_STATS: Record<string, string[]> = {
   "ig:D": ["2026-11-10=1000", "2026-11-11=1000"],
 };
 
+function identifiedWarning(fields: string[], codes: string[]): ServerResponse {
+  const urls = codes.map(urlOf);
+  const response: ServerResponse = {
+    retry: buildStatsImportRetryContract(fields.map((field) => ({ field, count: 1, urls }))),
+  };
+  for (const field of fields) response[field] = 1;
+  return response;
+}
+
 test("첫 실행(기록 없음)은 지금과 똑같이 전부 보내고, 보낸 기록 탭을 숨김으로 만든다", () => {
   const w = makeWorld(fixtureRows());
   const r = w.run();
@@ -423,33 +435,86 @@ test("import 뒤 사람이 고친 행은 export가 기록을 당기지 않아 �
   });
 });
 
-test("서버가 경고·격리·누락을 알리면 그 배치의 게시물은 다음 날 다시 보낸다(경고가 매일 이어짐)", () => {
-  const w = makeWorld(fixtureRows());
-  w.run();
-  w.setCell("B", "11.13", 5000);
-  w.state.respond = (payload) => (payload.stats.length ? { spike_suspected_warned: 1, spike_suspected_skipped: 1 } : {});
-  const first = w.run();
-  assert.deepEqual(Object.keys(first.statsByKey), ["ig:B"]);
-  assert.equal(first.delta.unsettled_keys, 1);
-  assert.equal(first.delta.unsettled_batches, 1);
-  assert.equal(first.delta.settled_keys, 0);
+test("각 경고 필드는 식별된 문제 키만 남기고 같은 배치의 정상 키를 정착시킨다", () => {
+  const fields = [
+    "copy_suspected_warned", "copy_suspected_skipped",
+    "spike_suspected_warned", "spike_suspected_skipped",
+    "dup_column_skipped", "missing_urls", "non_video_play_rejected",
+    "rejected_invalid_url", "future_date_skipped",
+  ];
+  for (const field of fields) {
+    const w = makeWorld(fixtureRows());
+    w.run();
+    w.setCell("A", "11.14", 300);
+    w.setCell("B", "11.14", 400);
+    w.state.respond = (payload) => payload.stats.length ? identifiedWarning([field], ["A"]) : {};
+    const first = w.run();
+    assert.equal(first.delta.settled_keys, 1, `${field}: 정상 키 정착`);
+    assert.equal(first.delta.unsettled_keys, 1, `${field}: 문제 키만 보류`);
+    assert.equal(first.delta.selective_unsettled_batches, 1, `${field}: 선택 보류 기록`);
+    assert.equal(first.delta.fallback_unsettled_batches, 0, `${field}: 전체 후퇴 없음`);
 
-  const second = w.run();
-  assert.deepEqual(Object.keys(second.statsByKey), ["ig:B"], "경고가 난 게시물은 다시 보냄");
+    w.state.respond = () => ({});
+    assert.deepEqual(Object.keys(w.run().statsByKey), ["ig:A"], `${field}: 다음 날 문제 키만 재전송`);
+    assert.deepEqual(w.run().statsByKey, {}, `${field}: 정상 응답 뒤 정착`);
+  }
+});
+
+test("300개 중 경고 1개면 299개를 정착시키고 다음 날 그 1개만 재전송한다", () => {
+  const rows: RowSpec[] = Array.from({ length: 300 }, (_, i) => ({ code: `P${i}`, values: { "11.10": 10 + i } }));
+  const w = makeWorld(rows);
+  assert.equal(w.run().ok, true);
+  for (let i = 0; i < 300; i++) w.setCell(`P${i}`, "11.11", 1000 + i);
+  w.state.respond = (payload) => payload.stats.length
+    ? identifiedWarning(["spike_suspected_warned", "spike_suspected_skipped"], ["P137"])
+    : {};
+
+  const warned = w.run();
+  assert.equal(Object.keys(warned.statsByKey).length, 300);
+  assert.equal(warned.delta.settled_keys, 299);
+  assert.equal(warned.delta.unsettled_keys, 1);
+  assert.equal(warned.delta.unsettled_batches, 1);
 
   w.state.respond = () => ({});
-  w.run();
-  const fourth = w.run();
-  assert.deepEqual(fourth.statsByKey, {}, "경고가 사라지면 그때 기록");
+  const retry = w.run();
+  assert.deepEqual(Object.keys(retry.statsByKey), ["ig:P137"]);
+  assert.equal(retry.delta.changed_keys, 1);
+  assert.equal(retry.delta.settled_keys, 1);
+  assert.equal(retry.delta.unsettled_keys, 0);
+  assert.deepEqual(w.run().statsByKey, {});
+});
 
-  for (const field of ["copy_suspected_warned", "dup_column_skipped", "missing_urls", "non_video_play_rejected", "rejected_invalid_url"]) {
-    const v = makeWorld(fixtureRows());
-    v.run();
-    v.setCell("A", "11.14", 300);
-    v.state.respond = (payload) => (payload.stats.length ? { [field]: 1 } : {});
-    v.run();
-    v.state.respond = () => ({});
-    assert.deepEqual(Object.keys(v.run().statsByKey), ["ig:A"], `${field} 다음 날 다시 보냄`);
+test("경고 키 계약이 없거나 불완전·배치 밖이면 안전하게 배치 전체를 재전송한다", () => {
+  const cases: Array<[string, ServerResponse]> = [
+    ["구버전/전역 경고", { missing_urls: 1 }],
+    ["서버가 불완전하다고 표시", {
+      missing_urls: 1,
+      retry: { version: 1, complete: false, warning_fields: ["missing_urls"], retry_urls: [urlOf("A")] },
+    }],
+    ["양수 경고 필드 누락", {
+      missing_urls: 1,
+      future_date_skipped: 1,
+      retry: { version: 1, complete: true, warning_fields: ["missing_urls"], retry_urls: [urlOf("A")] },
+    }],
+    ["배치 밖 URL", {
+      missing_urls: 1,
+      retry: { version: 1, complete: true, warning_fields: ["missing_urls"], retry_urls: [urlOf("OUTSIDE")] },
+    }],
+  ];
+
+  for (const [label, response] of cases) {
+    const w = makeWorld(fixtureRows());
+    w.run();
+    w.setCell("A", "11.14", 300);
+    w.setCell("B", "11.14", 400);
+    w.state.respond = (payload) => payload.stats.length ? response : {};
+    const warned = w.run();
+    assert.equal(warned.delta.settled_keys, 0, `${label}: 정상으로 추측하지 않음`);
+    assert.equal(warned.delta.unsettled_keys, 2, `${label}: 배치 전체 보류`);
+    assert.equal(warned.delta.fallback_unsettled_batches, 1, `${label}: 후퇴 기록`);
+
+    w.state.respond = () => ({});
+    assert.deepEqual(Object.keys(w.run().statsByKey).sort(), ["ig:A", "ig:B"], `${label}: 다음 날 전체 재전송`);
   }
 });
 
@@ -494,6 +559,31 @@ test("중간 배치가 실패하면 성공한 배치만 기록하고 남은 게�
   assert.deepEqual(Object.keys(retry.statsByKey).sort(), Array.from({ length: 50 }, (_, i) => `ig:P${300 + i}`).sort());
   assert.equal(w.store().lastFull, "2026-11-16", "부분 실패한 delta는 전체 전송 날짜를 바꾸지 않음");
   assert.ok(w.storeSheet()!.maxRows >= 651, "기록 탭 행을 필요한 만큼 늘림");
+});
+
+test("문제 키 1개를 선택 보류한 뒤 다음 배치가 실패하면 다음 실행은 그 1개와 미처리 키만 보낸다", () => {
+  const rows: RowSpec[] = Array.from({ length: 650 }, (_, i) => ({ code: `P${i}`, values: { "11.10": 10 + i } }));
+  const w = makeWorld(rows);
+  assert.equal(w.run().ok, true);
+  for (let i = 0; i < 350; i++) w.setCell(`P${i}`, "11.11", 1000 + i);
+  w.state.respond = (payload) => payload.stats.some((row) => row.url === urlOf("P0"))
+    ? identifiedWarning(["dup_column_skipped"], ["P0"])
+    : {};
+  w.state.failOnCall = 2;
+
+  const failed = w.run();
+  assert.equal(failed.ok, false);
+  assert.equal(failed.delta.settled_keys, 299);
+  assert.equal(failed.delta.unsettled_keys, 1);
+  assert.equal(failed.delta.selective_unsettled_batches, 1);
+
+  w.state.failOnCall = -1;
+  w.state.respond = () => ({});
+  const retry = w.run();
+  assert.equal(Object.keys(retry.statsByKey).length, 51, "문제 1개 + 실패 전에 못 보낸 50개");
+  assert.ok("ig:P0" in retry.statsByKey);
+  for (let i = 300; i < 350; i++) assert.ok(`ig:P${i}` in retry.statsByKey);
+  assert.deepEqual(w.run().statsByKey, {});
 });
 
 test("전체 전송이 중간에 실패하면 전체 전송 날짜를 남기지 않아 다음 실행도 전부 보낸다", () => {
