@@ -3394,7 +3394,8 @@ function installDbPullSyncTrigger_() {
 //  · 게시물(링크 키)마다 '마지막으로 보낸 내용'의 지문을 숨김 탭에 둔다. 지문이 같으면 그 게시물의 조회수는 보내지 않는다.
 //  · 바뀐 게시물은 그 게시물의 조회수 이력 전체를 보낸다 → 서버의 역행·복사·급변·중복열 검사가 지금과 똑같이 돈다.
 //  · 게시물 기본 정보(posts)는 지금처럼 매일 전부 보낸다(시트 정본 필드·종료 처리 등 기존 동작 유지).
-//  · 지문은 서버가 정상 응답했고 경고·격리·누락이 없는 배치만 저장한다 → 경고가 난 게시물은 다음 날도 다시 보낸다.
+//  · 지문은 서버가 정상 응답한 게시물만 저장한다. 경고 URL을 완전하게 식별하면 그 게시물만,
+//    식별할 수 없으면 배치 전체를 다음 날 다시 보낸다.
 //  · exportStats가 DB 값을 시트에 쓴 행은, 쓰기 직전 내용이 저장된 지문과 정확히 같을 때만 지문을 앞으로 당긴다.
 //    사람이 그 사이 고친 행은 지문이 안 맞아 다음 importStats가 반드시 다시 보낸다.
 //  · 전체 전송(지금과 동일): 메뉴 실행(manual_sheet) · 기록 없음/손상 · 마지막 전체 전송 후 7일 이상.
@@ -3402,14 +3403,59 @@ function installDbPullSyncTrigger_() {
 const IMPORT_FP_SHEET_NAME_ = "⚙️조회수보낸기록(자동·수정금지)";
 const IMPORT_FP_VERSION_ = "import_fp_v1";
 const IMPORT_FP_FULL_INTERVAL_DAYS_ = 7;
-// 서버 응답에서 이 값이 하나라도 0보다 크면 그 배치의 '조회수를 보낸 게시물' 지문을 저장하지 않는다.
-// (복사·급변·중복열·비영상·잘못된 URL 경고와 누락은 지금처럼 다음 날 다시 보내 매일 드러나게 한다.)
+const IMPORT_FP_RETRY_VERSION_ = 1;
+// 서버 응답에서 이 값이 하나라도 0보다 크면 retry 계약으로 해당 게시물만 지문을 저장하지 않는다.
+// 계약이 없거나 불완전하면 배치 전체를 보존한다. 복사·급변·중복열·비영상·잘못된 URL 경고와
+// 누락은 지금처럼 다음 날 다시 보내 매일 드러나게 한다.
 const IMPORT_FP_UNSETTLED_FIELDS_ = [
   "copy_suspected_warned", "copy_suspected_skipped",
   "spike_suspected_warned", "spike_suspected_skipped",
   "dup_column_skipped", "missing_urls", "non_video_play_rejected",
   "rejected_invalid_url", "future_date_skipped",
 ];
+
+// 서버가 경고 게시물 URL을 빠짐없이 식별했을 때만 선택 정착한다.
+// 응답이 구버전이거나, 경고 필드/URL/배치 키가 하나라도 맞지 않으면 null을 돌려
+// 기존처럼 배치 전체를 다음 날 다시 보내게 한다(오류 게시물을 추측하지 않음).
+function importFpRetryKeySet_(keyBatch, res) {
+  const warningFields = IMPORT_FP_UNSETTLED_FIELDS_.filter(function(f) {
+    return Number(res && res[f]) > 0;
+  });
+  if (warningFields.length === 0) return { hasWarnings: false, complete: true, keys: {} };
+
+  const retry = res && res.retry;
+  if (!retry || Number(retry.version) !== IMPORT_FP_RETRY_VERSION_ || retry.complete !== true
+      || !Array.isArray(retry.warning_fields) || !Array.isArray(retry.retry_urls)) {
+    return { hasWarnings: true, complete: false, keys: {} };
+  }
+
+  const expectedFields = {};
+  warningFields.forEach(function(f) { expectedFields[f] = true; });
+  const reportedFields = {};
+  for (let i = 0; i < retry.warning_fields.length; i++) {
+    const field = String(retry.warning_fields[i] || "");
+    if (!expectedFields[field] || reportedFields[field]) {
+      return { hasWarnings: true, complete: false, keys: {} };
+    }
+    reportedFields[field] = true;
+  }
+  if (Object.keys(reportedFields).length !== warningFields.length) {
+    return { hasWarnings: true, complete: false, keys: {} };
+  }
+
+  const batchKeys = {};
+  keyBatch.forEach(function(k) { batchKeys[k] = true; });
+  const retryKeys = {};
+  for (let i = 0; i < retry.retry_urls.length; i++) {
+    const key = linkKey_(retry.retry_urls[i]);
+    if (!key || !batchKeys[key]) return { hasWarnings: true, complete: false, keys: {} };
+    retryKeys[key] = true;
+  }
+  if (Object.keys(retryKeys).length === 0) {
+    return { hasWarnings: true, complete: false, keys: {} };
+  }
+  return { hasWarnings: true, complete: true, keys: retryKeys };
+}
 
 // 문자열 지문(53비트 cyrb53 + 길이). 같은 입력이면 항상 같은 값이다.
 // 'h'로 시작하게 해 시트가 숫자·날짜로 바꿔 읽지 못하게 한다.
@@ -3526,6 +3572,8 @@ function importStatsDeltaSession_(sheet, importSource, today) {
     settled_keys: 0,
     unsettled_keys: 0,
     unsettled_batches: 0,
+    selective_unsettled_batches: 0,
+    fallback_unsettled_batches: 0,
     store_entries_before: 0,
     store_entries_after: null,
     store_read_ms: 0,
@@ -3582,16 +3630,20 @@ function importStatsDeltaSession_(sheet, importSource, today) {
       return changed[key] === true;
     },
     settleBatch: function(keyBatch, res) {
-      const unsettled = IMPORT_FP_UNSETTLED_FIELDS_.some(function(f) { return Number(res && res[f]) > 0; });
-      let sentKeys = 0;
+      const retry = importFpRetryKeySet_(keyBatch, res);
+      let unsettledKeys = 0;
       keyBatch.forEach(function(k) {
         if (changed[k] !== true) return;
-        sentKeys++;
-        if (unsettled) { info.unsettled_keys++; return; }
+        const unsettled = retry.hasWarnings && (!retry.complete || retry.keys[k] === true);
+        if (unsettled) { info.unsettled_keys++; unsettledKeys++; return; }
         settled[k] = fp[k];
         info.settled_keys++;
       });
-      if (unsettled && sentKeys > 0) info.unsettled_batches++;
+      if (unsettledKeys > 0) {
+        info.unsettled_batches++;
+        if (retry.complete) info.selective_unsettled_batches++;
+        else info.fallback_unsettled_batches++;
+      }
     },
     save: function(completedAll) {
       if (!planned || !ss) return;

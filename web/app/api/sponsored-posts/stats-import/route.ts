@@ -21,6 +21,7 @@ import {
   type ExistingMetricSnapshot,
   type StatsImportSource,
 } from "@/lib/stats-import-provenance";
+import { buildStatsImportRetryContract } from "@/lib/stats-import-retry";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -185,10 +186,22 @@ export async function POST(req: NextRequest) {
   }
   const rejectedInvalidUrlAlert = buildRejectedInvalidUrlAlert(rejectedUrls, endedRejectedIdentifiers);
 
+  const rejectedRetryContract = () => buildStatsImportRetryContract([
+    { field: "rejected_invalid_url", count: rejectedInvalidUrl, urls: rejectedUrls },
+  ]);
+
   const allUrls = [...new Set([...items.map(i => i.url), ...[...postByUrl.values()].map(p => String(p.url))])];
   if (allUrls.length === 0) {
     if (rejectedInvalidUrlAlert) await notifyBot(rejectedInvalidUrlAlert).catch(() => {});
-    return NextResponse.json({ ok: true, inserted: 0, created_posts: 0, matched_urls: 0, missing_urls: 0, rejected_invalid_url: rejectedInvalidUrl });
+    return NextResponse.json({
+      ok: true,
+      inserted: 0,
+      created_posts: 0,
+      matched_urls: 0,
+      missing_urls: 0,
+      rejected_invalid_url: rejectedInvalidUrl,
+      retry: rejectedRetryContract(),
+    });
   }
 
   // 1) 기존 URL → id + 현재 메타 조회 (한 번만) — '빈 값만 채우기' 비교용으로 메타도 함께 조회
@@ -785,6 +798,21 @@ export async function POST(req: NextRequest) {
     nonVideoPlayRejected: nonVideoPlayRejected.length,
   });
 
+  // Apps Script의 조회수 지문은 경고가 난 게시물만 다음 날 다시 보내야 한다.
+  // 각 양수 경고 필드에 전체 URL 목록을 붙이고, 하나라도 식별할 수 없으면 complete=false로
+  // 내려 클라이언트가 예전처럼 배치 전체를 보존하게 한다(추측해서 정상 처리하지 않음).
+  const retry = buildStatsImportRetryContract([
+    { field: "copy_suspected_warned", count: copySuspected.length, urls: copySuspected.map((row) => row.url) },
+    { field: "copy_suspected_skipped", count: copySuspectedSkipped, urls: copySuspected.map((row) => row.url) },
+    { field: "dup_column_skipped", count: dupConflict.length, urls: dupConflict.map((row) => row.url) },
+    { field: "spike_suspected_warned", count: spikeSuspected.length, urls: spikeSuspected.map((row) => row.url) },
+    { field: "spike_suspected_skipped", count: spikePartition.quarantined.length, urls: spikeSuspected.map((row) => row.url) },
+    { field: "future_date_skipped", count: futureDated.length, urls: futureDated.map((row) => row.url) },
+    { field: "non_video_play_rejected", count: nonVideoPlayRejected.length, urls: nonVideoPlayRejected.map((row) => row.url) },
+    { field: "missing_urls", count: missing.size, urls: [...missing] },
+    { field: "rejected_invalid_url", count: rejectedInvalidUrl, urls: rejectedUrls },
+  ]);
+
   return NextResponse.json({
     ok: true,
     inserted,
@@ -832,5 +860,6 @@ export async function POST(req: NextRequest) {
     missing_urls: missing.size,
     missing_sample: [...missing].slice(0, 5),
     rejected_invalid_url: rejectedInvalidUrl,
+    retry,
   });
 }

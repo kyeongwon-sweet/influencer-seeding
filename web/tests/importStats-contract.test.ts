@@ -45,6 +45,25 @@ test("stats-import: dailyAuto quarantines cross-post copies and spikes while man
   assert.match(route, /isManualImport\s*\? "수기 입력은 이 사유로 제외하지 않고 보존했습니다\."/);
 });
 
+test("stats-import: response includes complete per-URL retry metadata for every fingerprint warning", () => {
+  assert.match(route, /import \{ buildStatsImportRetryContract \} from "@\/lib\/stats-import-retry"/);
+  for (const pattern of [
+    /field: "copy_suspected_warned", count: copySuspected\.length, urls: copySuspected\.map\(\(row\) => row\.url\)/,
+    /field: "copy_suspected_skipped", count: copySuspectedSkipped, urls: copySuspected\.map\(\(row\) => row\.url\)/,
+    /field: "spike_suspected_warned", count: spikeSuspected\.length, urls: spikeSuspected\.map\(\(row\) => row\.url\)/,
+    /field: "spike_suspected_skipped", count: spikePartition\.quarantined\.length, urls: spikeSuspected\.map\(\(row\) => row\.url\)/,
+    /field: "dup_column_skipped", count: dupConflict\.length, urls: dupConflict\.map\(\(row\) => row\.url\)/,
+    /field: "missing_urls", count: missing\.size, urls: \[\.\.\.missing\]/,
+    /field: "non_video_play_rejected", count: nonVideoPlayRejected\.length, urls: nonVideoPlayRejected\.map\(\(row\) => row\.url\)/,
+    /field: "rejected_invalid_url", count: rejectedInvalidUrl, urls: rejectedUrls/,
+    /field: "future_date_skipped", count: futureDated\.length, urls: futureDated\.map\(\(row\) => row\.url\)/,
+  ]) {
+    assert.match(route, pattern);
+  }
+  assert.match(route, /rejected_invalid_url: rejectedInvalidUrl,[\s\S]*retry: rejectedRetryContract\(\)/);
+  assert.match(route, /rejected_invalid_url: rejectedInvalidUrl,[\s\S]*retry,[\s\S]*\}\);/);
+});
+
 test("stats-import: explicit non-video play is rejected but banner reach routing wins", () => {
   assert.match(route, /if \(isBannerByKey\.get\(it\.key\)\)[\s\S]*?bannerRows\.push[\s\S]*?else if \(explicitlyNonVideoKeys\.has\(it\.key\)\)/);
   assert.match(route, /non_video_play_rejected:\s*nonVideoPlayRejected\.length/);

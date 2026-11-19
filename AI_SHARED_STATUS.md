@@ -1,5 +1,13 @@
 # AI Shared Status
 
+## 🟡 2026-11-19 [Codex 코드 완료·미배포] `importStats` 경고 배치는 실제 문제 게시물만 다음 날 재전송
+- **문제:** 기존 delta 지문 정착은 300개 배치에 경고가 1건만 있어도 그 배치의 바뀐 게시물 300개를 모두 미정착으로 남겼다. 다음 날 같은 300개가 다시 전송되어 경고가 적어도 POST 비용이 배치 단위로 반복됐다.
+- **최소 응답 확장:** `stats-import` 응답에 요청 payload는 바꾸지 않고 `retry={version, complete, warning_fields, retry_urls}`만 추가했다. 복사·급변(경고/격리), 중복 날짜열, 누락 URL, 비영상 play, 잘못된 URL, 미래 날짜의 **전체 URL 목록**을 서버가 보낸다. 기존 검증·격리·수기값 판정·저장 payload·`client_version`은 그대로다.
+- **선택 정착:** Apps Script는 양수 경고 필드가 retry 계약과 정확히 일치하고, 모든 URL이 현재 배치의 `linkKey_`로 빠짐없이 귀속될 때만 문제 키를 미정착으로 남긴다. 같은 배치의 정상 키는 즉시 정착한다. 구버전 서버·`complete=false`·누락 필드·빈/해석 불가 URL·배치 밖 URL이면 **배치 전체 미정착**으로 후퇴해 문제 키를 추측하지 않는다.
+- **부분 실패:** 앞 배치의 정상 키는 저장하고 식별된 문제 키만 남긴다. 뒤 배치가 HTTP 실패하면 아직 호출하지 못한 키도 그대로 남는다. 합성 350개 변경에서 첫 배치 문제 1개 + 둘째 배치 실패 시 다음 실행 재전송이 정확히 **51개(1+50)**임을 고정했다.
+- **회귀:** 경고 필드 9종 각각의 선택 보류, 300개 중 문제 1개→다음 날 1개, 전역/모호/불완전 계약 전체 후퇴, 부분 실패, 다음 날 정착을 실제 `.gs` delta 세션과 서버 계약 생성기를 함께 사용해 검증했다. 관련 **42/42**, web 전체 **927/927**, `tsc --noEmit --incremental false`, Next production build, Apps Script prepare dry-run(8 files match), 대상 ESLint 오류 0 통과.
+- **상태:** 별도 branch `codex/import-settlement-20261119`의 로컬 코드만 변경했다. **push·Vercel 배포·Apps Script 라이브 반영·시트/DB 쓰기 0건**. 서버와 Apps Script 어느 쪽이 먼저 배포돼도 반대쪽이 구버전이면 기존 배치 전체 보류로 동작하므로 순서상 데이터 손실은 없다. 운영 반영 뒤 첫 delta에서 `selective_unsettled_batches`·`fallback_unsettled_batches`와 다음 날 `changed_keys`를 확인해야 한다.
+
 ## ✅ 2026-11-19 [Codex 복구·라이브 반영 완료] `dailyAuto`의 `syncAll` 시간초과가 뒤 체인·DB pull을 막는 재발 방지
 - **사고 재현 근거:** 11/19 자연 `dailyAuto`가 08:27:54 KST 시작 후 약 30분 만에 강제종료됐다. `fillCaptionFromAsset` 뒤 `syncAll`에서 실행창을 거의 전부 사용해 continuation·`importStats`·`exportStats`가 생기지 않았고, `DAILY_AUTO_LAST_STATUS=RUNNING`이 남아 09:04 이후 DB→시트 동기화도 계속 `LOCK_BUSY`로 비켜 갔다.
 - **체크포인트:** 최초 `dailyAuto()`는 무거운 단계를 직접 돌리지 않고 전체 단계 목록을 continuation으로 먼저 저장한다. `syncAll`·`importStats`·`exportStats`는 각각 독립 실행창을 쓰며, `syncAll`이 30분 한도에 걸려도 watchdog이 그 단계를 `ERROR`로 기록하고 다음 `syncPricing`부터 계속한다.
