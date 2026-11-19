@@ -158,10 +158,165 @@ test("importStats 뒤 넘기기는 예전과 같다", () => {
   assert.equal(r.status, "EXPORT_CONTINUATION_SCHEDULED");
 });
 
+test("syncAll도 자기 실행창 뒤에 체크포인트를 남긴다", () => {
+  const r = runContinuation(["fillCaptionFromAsset", "syncAll", "syncPricing", "importStats"], {
+    fillCaptionFromAsset: 1,
+    syncAll: 4,
+  });
+  assert.deepEqual(r.ran, ["fillCaptionFromAsset", "syncAll"]);
+  assert.equal(r.enqueued, 1);
+  assert.equal(r.pending.next_index, 2);
+  assert.equal(r.status, "STAGE_CONTINUATION_SCHEDULED");
+});
+
+test("모든 continuation enqueue는 다음 실행과 32분 watchdog을 한 쌍으로 예약한다", () => {
+  let saved: unknown = null;
+  let continuationTriggers = 0;
+  let watchdogs = 0;
+  const enqueue = new Function(
+    "removeDailyAutoContinuationTriggers_", "saveDailyAutoContinuation_", "ScriptApp",
+    "scheduleDailyAutoContinuationWatchdog_", "DAILY_AUTO_CONTINUATION_DELAY_MS_",
+    `${fnSrc("enqueueDailyAutoContinuation_")}\nreturn enqueueDailyAutoContinuation_;`,
+  )(
+    () => {},
+    (pending: unknown) => { saved = pending; },
+    { newTrigger: () => ({ timeBased: () => ({ after: () => ({ create: () => { continuationTriggers += 1; } }) }) }) },
+    () => { watchdogs += 1; },
+    60 * 1000,
+  ) as (pending: object, delay?: number) => boolean;
+
+  assert.equal(enqueue({ next_index: 2 }, 1234), true);
+  assert.deepEqual(saved, { next_index: 2 });
+  assert.equal(continuationTriggers, 1);
+  assert.equal(watchdogs, 1);
+});
+
+test("watchdog 일반 재시도도 attempt를 올리고 continuation+watchdog을 정확히 하나씩 다시 예약한다", () => {
+  const values: Record<string, string> = {
+    DAILY_AUTO_CONTINUATION_PENDING_JSON: JSON.stringify({
+      source_started_at: "2026-11-18T23:27:54.000Z",
+      stages: ["fillCaptionFromAsset", "syncAll", "importStats"],
+      next_index: 0,
+      completed_stages: [],
+      active_stage: "fillCaptionFromAsset",
+      stage_started_at: "2026-11-18T23:28:20.000Z",
+      attempt: 0,
+    }),
+  };
+  const created: Array<{ handler: string; delay: number }> = [];
+  const source = [
+    constSrc("DAILY_AUTO_CONTINUATION_DELAY_MS_"),
+    constSrc("DAILY_AUTO_CONTINUATION_WATCHDOG_DELAY_MS_"),
+    constSrc("DAILY_AUTO_CONTINUATION_MAX_ATTEMPTS_"),
+    constSrc("DAILY_AUTO_CONTINUATION_PROP_"),
+    fnSrc("removeDailyAutoContinuationTriggers_"),
+    fnSrc("saveDailyAutoContinuation_"),
+    fnSrc("scheduleDailyAutoContinuationWatchdog_"),
+    fnSrc("enqueueDailyAutoContinuation_"),
+    fnSrc("parseDailyAutoContinuation_"),
+    fnSrc("dailyAutoContinuationWatchdog_"),
+  ].join("\n");
+  const run = new Function(
+    "PropertiesService", "ScriptApp", "Logger", "markImportStatsGate_",
+    "collectionTargetDate_", "notifyExportStatsGateTimeout_",
+    `${source}\nreturn dailyAutoContinuationWatchdog_;`,
+  )(
+    { getScriptProperties: () => ({
+      getProperty: (k: string) => values[k] ?? null,
+      setProperty: (k: string, v: string) => { values[k] = String(v); },
+      setProperties: (o: Record<string, unknown>) => Object.entries(o).forEach(([k, v]) => { values[k] = String(v); }),
+    }) },
+    {
+      getProjectTriggers: () => [],
+      deleteTrigger: () => {},
+      newTrigger: (handler: string) => ({
+        timeBased: () => ({
+          after: (delay: number) => ({
+            create: () => { created.push({ handler, delay }); },
+          }),
+        }),
+      }),
+    },
+    { log: () => {} },
+    () => { throw new Error("일반 재시도에서 import gate를 건드리면 안 됨"); },
+    () => "2026-11-18",
+    () => { throw new Error("일반 재시도에서 timeout 알림을 보내면 안 됨"); },
+  ) as () => boolean;
+
+  assert.equal(run(), true);
+  const pending = JSON.parse(values.DAILY_AUTO_CONTINUATION_PENDING_JSON);
+  assert.equal(pending.attempt, 1);
+  assert.equal(pending.next_index, 0);
+  assert.equal(pending.active_stage, "fillCaptionFromAsset");
+  assert.equal(values.DAILY_AUTO_LAST_STATUS, "CONTINUATION_RETRY_SCHEDULED");
+  assert.deepEqual(created, [
+    { handler: "dailyAutoContinuation_", delay: 60 * 1000 },
+    { handler: "dailyAutoContinuationWatchdog_", delay: 32 * 60 * 1000 },
+  ]);
+});
+
+test("syncAll 강제종료 워치독은 실패를 기록하고 다음 단계부터 계속한다", () => {
+  const values: Record<string, string> = {
+    DAILY_AUTO_CONTINUATION_PENDING_JSON: JSON.stringify({
+      source_started_at: "2026-11-18T23:27:54.000Z",
+      stages: ["syncAll", "syncPricing", "importStats", "exportStats"],
+      next_index: 0,
+      completed_stages: [],
+      active_stage: "syncAll",
+      stage_started_at: "2026-11-18T23:28:20.000Z",
+      attempt: 0,
+    }),
+  };
+  let enqueued: Record<string, unknown> | null = null;
+  let importGateCalls = 0;
+  let timeoutAlerts = 0;
+  const source = [
+    constSrc("DAILY_AUTO_CONTINUATION_PROP_"),
+    constSrc("DAILY_AUTO_CONTINUATION_MAX_ATTEMPTS_"),
+    fnSrc("parseDailyAutoContinuation_"),
+    fnSrc("dailyAutoContinuationWatchdog_"),
+  ].join("\n");
+  const run = new Function(
+    "PropertiesService", "removeDailyAutoContinuationTriggers_", "enqueueDailyAutoContinuation_",
+    "markImportStatsGate_", "collectionTargetDate_", "notifyExportStatsGateTimeout_", "Logger",
+    "ScriptApp", "DAILY_AUTO_CONTINUATION_DELAY_MS_", "DAILY_AUTO_CONTINUATION_WATCHDOG_DELAY_MS_",
+    `${source}\nreturn dailyAutoContinuationWatchdog_;`,
+  )(
+    { getScriptProperties: () => ({
+      getProperty: (k: string) => values[k] ?? null,
+      setProperty: (k: string, v: string) => { values[k] = String(v); },
+      setProperties: (o: Record<string, unknown>) => Object.entries(o).forEach(([k, v]) => { values[k] = String(v); }),
+    }) },
+    () => {},
+    (pending: Record<string, unknown>) => {
+      enqueued = JSON.parse(JSON.stringify(pending));
+      values.DAILY_AUTO_CONTINUATION_PENDING_JSON = JSON.stringify(pending);
+      return true;
+    },
+    () => { importGateCalls += 1; },
+    () => "2026-11-18",
+    () => { timeoutAlerts += 1; },
+    { log: () => {} },
+    { newTrigger: () => ({ timeBased: () => ({ after: () => ({ create: () => {} }) }) }) },
+    60 * 1000,
+    32 * 60 * 1000,
+  ) as () => boolean;
+
+  assert.equal(run(), true);
+  assert.ok(enqueued);
+  const pending = enqueued as { next_index: number; active_stage: string; completed_stages: Array<{ name: string; status: string }> };
+  assert.equal(pending.next_index, 1);
+  assert.equal(pending.active_stage, "");
+  assert.deepEqual(pending.completed_stages.map((s) => [s.name, s.status]), [["syncAll", "ERROR"]]);
+  assert.equal(values.DAILY_AUTO_LAST_STATUS, "SYNC_TIMEOUT_REMAINING_SCHEDULED");
+  assert.equal(importGateCalls, 0);
+  assert.equal(timeoutAlerts, 0);
+});
+
 // ── 3) DB→시트 동기화는 아침 dailyAuto가 도는 동안 비켜 간다 ──
 const busy = new Function(
   "DAILY_AUTO_CONTINUATION_PROP_",
-  `${constSrc("DAILY_AUTO_BUSY_MAX_MS_")}\n${fnSrc("isDailyAutoBusy_")}\nreturn isDailyAutoBusy_;`,
+  `${constSrc("DAILY_AUTO_BUSY_MAX_MS_")}\n${constSrc("DAILY_AUTO_BOOTSTRAP_BUSY_MAX_MS_")}\n${fnSrc("isDailyAutoBusy_")}\nreturn isDailyAutoBusy_;`,
 )("DAILY_AUTO_CONTINUATION_PENDING_JSON") as (props: { getProperty: (k: string) => string | null }, now: number) => boolean;
 const propsOf = (o: Record<string, string>) => ({ getProperty: (k: string) => o[k] ?? null });
 const NOW = Date.UTC(2026, 10, 5, 0, 4);
@@ -173,14 +328,42 @@ test("🚨 dailyAuto가 이어서 도는 중이면 동기화는 비켜 간다", 
 });
 
 test("dailyAuto가 끝났거나 2시간 30분 넘게 지난 흔적이면 비켜 가지 않는다", () => {
+  assert.equal(busy(propsOf({ DAILY_AUTO_LAST_STARTED_AT: minAgo(36), DAILY_AUTO_LAST_STATUS: "RUNNING" }), NOW), false);
   assert.equal(busy(propsOf({ DAILY_AUTO_LAST_STARTED_AT: minAgo(60), DAILY_AUTO_LAST_STATUS: "OK" }), NOW), false);
   assert.equal(busy(propsOf({ DAILY_AUTO_LAST_STARTED_AT: minAgo(200), DAILY_AUTO_LAST_STATUS: "RUNNING", DAILY_AUTO_CONTINUATION_PENDING_JSON: "{}" }), NOW), false);
   assert.equal(busy(propsOf({}), NOW), false);
 });
 
+test("pending 없이 35분 넘은 RUNNING 흔적은 오류로 닫아 다음 동기화를 막지 않는다", () => {
+  const values: Record<string, string> = {
+    DAILY_AUTO_LAST_STARTED_AT: minAgo(36),
+    DAILY_AUTO_LAST_STATUS: "RUNNING",
+  };
+  const recover = new Function(
+    "Date", "Logger", "DAILY_AUTO_CONTINUATION_PROP_",
+    `${constSrc("DAILY_AUTO_BOOTSTRAP_BUSY_MAX_MS_")}\n${fnSrc("recoverStaleDailyAutoBootstrap_")}\nreturn recoverStaleDailyAutoBootstrap_;`,
+  )(
+    Date,
+    { log: () => {} },
+    "DAILY_AUTO_CONTINUATION_PENDING_JSON",
+  ) as (props: {
+    getProperty: (k: string) => string | null;
+    setProperties: (o: Record<string, unknown>) => void;
+  }, now: number) => boolean;
+  const props = {
+    getProperty: (k: string) => values[k] ?? null,
+    setProperties: (o: Record<string, unknown>) => Object.entries(o).forEach(([k, v]) => { values[k] = String(v); }),
+  };
+  assert.equal(recover(props, NOW), true);
+  assert.match(values.DAILY_AUTO_LAST_STATUS, /stale dailyAuto bootstrap recovered/);
+  assert.ok(values.DAILY_AUTO_LAST_STALE_RECOVERED_AT);
+  assert.equal(busy(propsOf(values), NOW), false);
+});
+
 test("정기 동기화만 비켜 가고 수동 실행은 바로 돈다", () => {
   const body = fnSrc("runDbPullSyncAttempt_");
-  assert.match(body, /if \(source !== "manual" && isDailyAutoBusy_\(PropertiesService\.getScriptProperties\(\), Date\.now\(\)\)\) \{\s*return handleDbPullSyncLockBusy_\(/);
+  assert.match(body, /if \(source !== "manual"\) recoverStaleDailyAutoBootstrap_\(dailyAutoProps, Date\.now\(\)\)/);
+  assert.match(body, /if \(source !== "manual" && isDailyAutoBusy_\(dailyAutoProps, Date\.now\(\)\)\) \{\s*return handleDbPullSyncLockBusy_\(/);
 });
 
 // ── 4) 자정 '동기화 → 수집' 시간대(23:30~00:45 KST)에는 정기 DB→시트 동기화가 쉰다 (2026-11-13) ──

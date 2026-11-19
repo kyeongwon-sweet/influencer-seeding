@@ -514,7 +514,8 @@ test("syncNew fills missing H/I/J formulas before marking rows registered", () =
   const collectEnd = appsScript.indexOf("function urlKey_(u)", collectStart);
   const collectBody = appsScript.slice(collectStart, collectEnd);
   assert.match(collectBody, /rowRefs\.push\(\{ row: rowNum, key: key \}\)/);
-  assert.match(collectBody, /return \{ rows, rowNums, rowRefs, statusCol, skipped, skipDetails, normalizedDetails, dupCount, future, lastRow \}/);
+  assert.match(collectBody, /if \(!status\) unregisteredRowRefs\.push\(\{ row: rowNum, key: key \}\)/);
+  assert.match(collectBody, /return \{ rows, rowNums, rowRefs, unregisteredRowRefs, statusCol, skipped, skipDetails, normalizedDetails, dupCount, future, lastRow \}/);
 
   const helperStart = appsScript.indexOf("function assertSyncRowsStable_(sheet, rowRefs, expectedLastRow)");
   const helperEnd = appsScript.indexOf("// ═", helperStart);
@@ -527,9 +528,15 @@ test("syncNew fills missing H/I/J formulas before marking rows registered", () =
   const runEnd = appsScript.indexOf("function syncNew()", runStart);
   const runBody = appsScript.slice(runStart, runEnd);
   const fillAt = runBody.indexOf("ensureMetricFormulasForRows_(sheet, rowRefs, lastRow)");
-  const markAt = runBody.indexOf("markRegistered_(sheet, statusCol, rowNums)");
+  const markAt = runBody.indexOf("markRegistered_(sheet, statusCol, unregisteredRowRefs, lastRow)");
   assert.ok(fillAt >= 0, "syncNew formula fill call missing");
   assert.ok(markAt > fillAt, "registration status must be written only after formula fill succeeds");
+  const markStart = appsScript.indexOf("function markRegistered_(sheet, statusCol, rowRefs, expectedLastRow)");
+  const markEnd = appsScript.indexOf("function assertSyncRowsStable_", markStart);
+  const markBody = appsScript.slice(markStart, markEnd);
+  assert.match(markBody, /if \(!rowRefs \|\| rowRefs\.length === 0\) return 0/);
+  assert.match(markBody, /writeColumnRuns_\(sheet, statusCol, edits, expectedLastRow\)/);
+  assert.doesNotMatch(markBody, /forEach\(r => sheet\.getRange/);
   assert.match(runBody, /H\/I\/J 수식 보강/);
   assert.match(runBody, /CPV \$\{formulaResult\.cpv\}칸/);
 
@@ -1016,7 +1023,7 @@ test("refreshSheetDerivedFields fills existing channel metadata before pricing",
   assert.match(refreshBody, /refreshSheetDerivedFields_step_end/);
 });
 
-test("dailyAuto prices sheet rows before deferring gated import and export", () => {
+test("dailyAuto checkpoints every stage before any heavy work starts", () => {
   const defsStart = appsScript.indexOf("function dailyAutoStageDefs_()");
   const dailyStart = appsScript.indexOf("function dailyAuto()");
   const defsBody = appsScript.slice(defsStart, dailyStart);
@@ -1036,10 +1043,9 @@ test("dailyAuto prices sheet rows before deferring gated import and export", () 
   assert.match(appsScript, /dailyAuto_stage /);
   assert.match(appsScript.slice(dailyStart), /return withAutoWriteGuard_\(function\(\)/);
   const dailyBody = appsScript.slice(dailyStart, appsScript.indexOf("// ═", dailyStart));
-  assert.match(dailyBody, /findIndex\(function\(pair\) \{ return pair\[0\] === "importStats"; \}\)/);
-  assert.match(dailyBody, /defs\.slice\(0, continuationIndex\)/);
   assert.match(dailyBody, /scheduleDailyAutoContinuation_/);
-  assert.match(dailyBody, /defs\.slice\(continuationIndex\)/);
+  assert.match(dailyBody, /defs\.map\(function\(pair\) \{ return pair\[0\]; \}\)/);
+  assert.doesNotMatch(dailyBody, /runDailyAutoStage_/);
   assert.match(dailyBody, /CONTINUATION_SCHEDULED/);
 });
 
@@ -1151,6 +1157,11 @@ test("dailyAuto gates both import and export on collection completion", () => {
     appsScript,
     /newTrigger\("dailyAutoContinuationWatchdog_"\)[\s\S]*?\.after\(DAILY_AUTO_CONTINUATION_WATCHDOG_DELAY_MS_\)/,
   );
+  const enqueueStart = appsScript.indexOf("function enqueueDailyAutoContinuation_(pending, delayMs)");
+  const enqueueEnd = appsScript.indexOf("function scheduleDailyAutoContinuationWatchdog_()", enqueueStart);
+  const enqueueBody = appsScript.slice(enqueueStart, enqueueEnd);
+  assert.match(enqueueBody, /newTrigger\("dailyAutoContinuation_"\)/);
+  assert.match(enqueueBody, /scheduleDailyAutoContinuationWatchdog_\(\)/, "모든 handoff는 watchdog도 한 쌍으로 예약");
   const continuationStart = appsScript.indexOf("function dailyAutoContinuation_()");
   const watchdogStart = appsScript.indexOf("function dailyAutoContinuationWatchdog_()", continuationStart);
   const continuationBody = appsScript.slice(continuationStart, watchdogStart);
@@ -1158,20 +1169,23 @@ test("dailyAuto gates both import and export on collection completion", () => {
   assert.match(continuationBody, /pending\.next_index = i \+ 1;/);
   assert.match(continuationBody, /pending\.completed_stages = stages;/);
   assert.match(continuationBody, /saveDailyAutoContinuation_\(pending\)/);
-  // import·export는 각자 실행창을 하나씩 쓴다(2026-11-05 export+나머지 6단계가 한 창에서 30분 초과).
-  assert.match(appsScript, /const DAILY_AUTO_OWN_WINDOW_STAGES_ = \["importStats", "exportStats"\];/);
+  // syncAll·import·export는 각자 실행창을 하나씩 쓴다(한 단계 시간초과가 뒤 단계를 없애지 않게 checkpoint).
+  assert.match(appsScript, /const DAILY_AUTO_OWN_WINDOW_STAGES_ = \["syncAll", "importStats", "exportStats"\];/);
   assert.match(continuationBody, /DAILY_AUTO_OWN_WINDOW_STAGES_\.indexOf\(name\) >= 0[\s\S]*?enqueueDailyAutoContinuation_\(pending, DAILY_AUTO_CONTINUATION_DELAY_MS_\)/);
   assert.match(continuationBody, /EXPORT_CONTINUATION_SCHEDULED/);
   assert.match(continuationBody, /DAILY_AUTO_LAST_FINISHED_AT/);
   assert.match(continuationBody, /removeDailyAutoContinuationTriggers_\(\["dailyAutoContinuationWatchdog_"\]\)/);
   const watchdogBody = appsScript.slice(watchdogStart, appsScript.indexOf("function scheduleDailyAutoRetry_", watchdogStart));
   assert.match(watchdogBody, /pending\.attempt >= DAILY_AUTO_CONTINUATION_MAX_ATTEMPTS_/);
-  assert.match(watchdogBody, /timedOutStage === "importStats"/);
+  assert.match(watchdogBody, /\["syncAll", "importStats"\]\.indexOf\(timedOutStage\) >= 0/);
   assert.match(watchdogBody, /pending\.next_index \+= 1/);
   assert.match(watchdogBody, /IMPORT_TIMEOUT_EXPORT_SCHEDULED/);
+  assert.match(watchdogBody, /SYNC_TIMEOUT_REMAINING_SCHEDULED/);
   assert.match(watchdogBody, /notifyExportStatsGateTimeout_\(collectionTargetDate_\(\), reason\)/);
   assert.match(watchdogBody, /throw new Error\(reason\)/);
   assert.match(watchdogBody, /pending\.attempt \+= 1/);
+  assert.match(watchdogBody, /pending\.attempt \+= 1[\s\S]*?enqueueDailyAutoContinuation_\(pending, DAILY_AUTO_CONTINUATION_DELAY_MS_\)/);
+  assert.doesNotMatch(watchdogBody, /newTrigger\("dailyAutoContinuation_"\)/, "watchdog 재시도도 공용 enqueue를 우회하면 안 됨");
 });
 
 test("exportStats overwrites only automatic DB metrics and never carry-forwards", () => {

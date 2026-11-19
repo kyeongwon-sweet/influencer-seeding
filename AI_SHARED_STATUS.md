@@ -1,5 +1,14 @@
 # AI Shared Status
 
+## 🟡 2026-11-19 [Codex 코드 완료 · 라이브 미반영] `dailyAuto`의 `syncAll` 시간초과가 뒤 체인·DB pull을 막는 재발 방지
+- **사고 재현 근거:** 11/19 자연 `dailyAuto`가 08:27:54 KST 시작 후 약 30분 만에 강제종료됐다. `fillCaptionFromAsset` 뒤 `syncAll`에서 실행창을 거의 전부 사용해 continuation·`importStats`·`exportStats`가 생기지 않았고, `DAILY_AUTO_LAST_STATUS=RUNNING`이 남아 09:04 이후 DB→시트 동기화도 계속 `LOCK_BUSY`로 비켜 갔다.
+- **체크포인트:** 최초 `dailyAuto()`는 무거운 단계를 직접 돌리지 않고 전체 단계 목록을 continuation으로 먼저 저장한다. `syncAll`·`importStats`·`exportStats`는 각각 독립 실행창을 쓰며, `syncAll`이 30분 한도에 걸려도 watchdog이 그 단계를 `ERROR`로 기록하고 다음 `syncPricing`부터 계속한다.
+- **조용한 트리거 누락 안전망:** 최초 예약뿐 아니라 단계 handoff·watchdog 재시도를 포함한 **모든** `enqueueDailyAutoContinuation_`이 continuation 1개와 32분 watchdog 1개를 한 쌍으로 예약한다. 일반 재시도 실행 테스트에서 `attempt 0→1`, `CONTINUATION_RETRY_SCHEDULED`, 트리거 정확히 1+1을 확인했다.
+- **stale 정리:** pending 없이 `RUNNING`만 35분 넘게 남으면 정기 DB pull 진입 시 `ERROR: stale dailyAuto bootstrap recovered`로 닫는다. pending이 있는 정상 continuation은 기존처럼 최대 150분 동안만 DB pull을 비켜 가게 한다.
+- **`syncAll` 저위험 단축:** 등록상태는 이미 채워진 약 5,500행을 매번 한 칸씩 재기록하지 않는다. 수집 시 상태가 비어 있던 행만 URL 키·행 수를 쓰기 직전에 재검증하고, 연속 행은 `setValues` 구간 쓰기로 묶는다. 실행 테스트로 빈 참조 0쓰기, 기존 등록행 무접촉, 행 수/URL drift 시 0쓰기, 연속·비연속 배치를 고정했다.
+- **검증:** 관련 실행·계약 테스트 **96/96**, web 전체 **919/919**, `tsc --noEmit`, Next production build(webpack), Apps Script prepare dry-run(8 files match) 통과. 변경 파일은 `Combined_Sheet_AppsScript.gs`, `web/tests/apps-script-contract.test.ts`, `web/tests/apps-script-daily-auto-window.test.ts`, `web/tests/apps-script-syncall-recovery.test.ts`다.
+- **상태/게이트:** 별도 브랜치 `codex/syncall-fix-20261119`의 commit-ready 변경이며 **push·라이브 graft·수동 실행 0건**이다. 라이브 반영 전 현행 함수 preimage를 대조하고 함수 단위로만 graft한 뒤, 다음 자연 실행에서 `syncAll` 독립창→남은 단계 최종 완료, watchdog 한 쌍, stale `RUNNING` 미잔존, 09:04 이후 DB pull 정상화를 확인해야 한다.
+
 ## 🟡 2026-11-17 [Claude 코드 완료 → Codex 라이브 graft 대기] `importStats` 바뀐 게시물만 조회수 보내기 (사용자 지시)
 - **사용자 지시:** "바뀐 칸만 보내게 해줘". 조건도 함께 줬다.
   - 잘못된 숫자를 걸러내는 검사는 그대로 돌아야 한다.

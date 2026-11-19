@@ -486,7 +486,7 @@ function fieldColList_(fieldCols, fields) {
 
 /**
  * @param {boolean} onlyNew - true면 등록상태가 비어있는 행만
- * @returns {{rows, rowNums, rowRefs, statusCol, skipped:number, skipDetails:Array, normalizedDetails:Array, dupCount:number, future:number, lastRow:number}}
+ * @returns {{rows, rowNums, rowRefs, unregisteredRowRefs, statusCol, skipped:number, skipDetails:Array, normalizedDetails:Array, dupCount:number, future:number, lastRow:number}}
  */
 function collectRows_(onlyNew) {
   const sheet = getSheet_();
@@ -499,7 +499,7 @@ function collectRows_(onlyNew) {
   const skipDetails = [];
   const normalizedDetails = [];
   if (lastRow < CONFIG.DATA_START_ROW) {
-    return { rows: [], rowNums: [], rowRefs: [], statusCol, skipped, skipDetails, normalizedDetails, dupCount, future, lastRow };
+    return { rows: [], rowNums: [], rowRefs: [], unregisteredRowRefs: [], statusCol, skipped, skipDetails, normalizedDetails, dupCount, future, lastRow };
   }
 
   // 메타데이터 열 + 등록상태 열만 읽는다. ⚠️ 등록상태는 날짜열 오른쪽 끝에 있어 A:O 같은 '앞쪽 고정 범위'로
@@ -514,6 +514,7 @@ function collectRows_(onlyNew) {
   const byKey = {}; // 정규화된 URL → 전송 객체 (첫 행 우선, 중복 제거)
   const rowNums = [];
   const rowRefs = [];
+  const unregisteredRowRefs = [];
 
   values.forEach((row, i) => {
     const rowNum = CONFIG.DATA_START_ROW + i;
@@ -558,15 +559,17 @@ function collectRows_(onlyNew) {
       dupCount++;
       rowNums.push(rowNum);
       rowRefs.push({ row: rowNum, key: key });
+      if (!status) unregisteredRowRefs.push({ row: rowNum, key: key });
       return;
     } // 같은 URL 중복 → 전송 1번만, 행은 등록 처리
     byKey[key] = obj;
     rowNums.push(rowNum);
     rowRefs.push({ row: rowNum, key: key });
+    if (!status) unregisteredRowRefs.push({ row: rowNum, key: key });
   });
 
   const rows = Object.keys(byKey).map(k => byKey[k]);
-  return { rows, rowNums, rowRefs, statusCol, skipped, skipDetails, normalizedDetails, dupCount, future, lastRow };
+  return { rows, rowNums, rowRefs, unregisteredRowRefs, statusCol, skipped, skipDetails, normalizedDetails, dupCount, future, lastRow };
 }
 
 /** 중복 판정용 URL 키: 쿼리스트링·끝슬래시 제거 + 소문자 (서버 정규화와 동일 기준) */
@@ -854,9 +857,18 @@ function postRows_(rows) {
   };
 }
 
-function markRegistered_(sheet, statusCol, rowNums) {
+function markRegistered_(sheet, statusCol, rowRefs, expectedLastRow) {
+  if (!rowRefs || rowRefs.length === 0) return 0;
+  // 등록상태는 '신규 여부 표식'이다. 전체 syncAll 때 이미 등록된 5천여 행을 매번
+  // 한 칸씩 다시 쓰지 않고, 수집 시점에 비어 있던 행만 URL 키를 재확인한 뒤 묶어서 쓴다.
+  // 그 사이 행이 움직였으면 assertSyncRowsStable_가 잘못된 행 쓰기를 막는다.
+  assertSyncRowsStable_(sheet, rowRefs, expectedLastRow);
   const stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm");
-  rowNums.forEach(r => sheet.getRange(r, statusCol).setValue("✅ " + stamp));
+  const edits = Array.from(new Set(rowRefs.map(function(ref) { return Number(ref.row); })))
+    .filter(function(row) { return Number.isFinite(row) && row >= CONFIG.DATA_START_ROW; })
+    .sort(function(a, b) { return a - b; })
+    .map(function(row) { return { row: row, value: "✅ " + stamp }; });
+  return writeColumnRuns_(sheet, statusCol, edits, expectedLastRow);
 }
 
 function assertSyncRowsStable_(sheet, rowRefs, expectedLastRow) {
@@ -921,7 +933,7 @@ function runSync_(onlyNew) {
     const shortLinks = resolveSheetShortLinks_(sheet);
     // 사람이 맨 아래에 붙인 신규 행도 공유 필터 안에 들어오게 한다. rows=0 조기 종료보다 먼저 실행한다.
     extendLinkedBasicFilterToLastRow_(sheet);
-    const { rows, rowNums, rowRefs, statusCol, skipped, skipDetails, normalizedDetails, dupCount, future, lastRow } = collectRows_(onlyNew);
+    const { rows, rowNums, rowRefs, unregisteredRowRefs, statusCol, skipped, skipDetails, normalizedDetails, dupCount, future, lastRow } = collectRows_(onlyNew);
     if (rows.length === 0) {
       __LAST_SYNC_RESULT__ = { ok: true, created: 0, compared: 0 };
       safeAlert_((onlyNew ? "추가할 신규 광고가 없습니다." : "반영할 시트 행이 없습니다.") + noteExtra_(skipped, dupCount, future, skipDetails, normalizedDetails) + shortLinkNote_(shortLinks));
@@ -932,7 +944,7 @@ function runSync_(onlyNew) {
     const formulaResult = onlyNew
       ? ensureMetricFormulasForRows_(sheet, rowRefs, lastRow)
       : { rows: 0, cumulative: 0, increment: 0, cpv: 0 };
-    markRegistered_(sheet, statusCol, rowNums);
+    markRegistered_(sheet, statusCol, unregisteredRowRefs, lastRow);
     let okMsg;
     if (onlyNew) {
       okMsg = `✅ 신규 광고 확인 완료\n• 비교한 행: ${count}건\n• 새로 추가: ${created}건\n• 기존 행 변경: ${filled}건`;
@@ -2326,7 +2338,7 @@ const DAILY_AUTO_CONTINUATION_PROP_ = "DAILY_AUTO_CONTINUATION_PENDING_JSON";
 // 30분 실행 한도 대비(2026-11-05): exportStats 뒤 나머지 6단계(약 9분)를 같은 실행창에서 돌다
 // 10-31·11-05 시간 초과(11-01 24분, 11-02 29분). 아래 단계는 끝나면 남은 단계를 새 실행창으로 넘기고,
 // 그 밖의 단계도 실행창을 20분 넘게 쓴 뒤에는 새로 시작하지 않고 다음 창으로 넘긴다.
-const DAILY_AUTO_OWN_WINDOW_STAGES_ = ["importStats", "exportStats"];
+const DAILY_AUTO_OWN_WINDOW_STAGES_ = ["syncAll", "importStats", "exportStats"];
 const DAILY_AUTO_STAGE_START_BUDGET_MS_ = 20 * 60 * 1000;
 const DAILY_AUTO_IMPORT_RETRY_AFTER_EXPORT_PROP_ = "DAILY_AUTO_IMPORT_RETRY_AFTER_EXPORT_DATE";
 const EXPORT_STATS_GATE_RETRY_DELAY_MS_ = 15 * 60 * 1000;
@@ -2741,6 +2753,9 @@ function enqueueDailyAutoContinuation_(pending, delayMs) {
     .timeBased()
     .after(delayMs || DAILY_AUTO_CONTINUATION_DELAY_MS_)
     .create();
+  // 최초 예약뿐 아니라 단계 handoff 때도 continuation 트리거가 조용히 누락될 수 있다.
+  // 매 enqueue마다 watchdog을 한 쌍으로 예약해 pending을 32분 뒤 반드시 다시 깨운다.
+  scheduleDailyAutoContinuationWatchdog_();
   return true;
 }
 
@@ -2830,7 +2845,7 @@ function dailyAutoContinuation_() {
       pending.attempt = 0;
       saveDailyAutoContinuation_(pending);
 
-      // importStats·exportStats는 각자 Apps Script 실행창을 하나씩 쓴다(DAILY_AUTO_OWN_WINDOW_STAGES_).
+      // syncAll·importStats·exportStats는 각자 Apps Script 실행창을 하나씩 쓴다(DAILY_AUTO_OWN_WINDOW_STAGES_).
       // 정상 반환하면 여기서 새 트리거로 남은 단계를 넘기고, 강제종료는 아래 watchdog이
       // 같은 방식으로 이어서 재개한다.
       if (DAILY_AUTO_OWN_WINDOW_STAGES_.indexOf(name) >= 0 && pending.next_index < pending.stages.length) {
@@ -2902,28 +2917,34 @@ function dailyAutoContinuationWatchdog_() {
     return true;
   }
   const timedOutStage = pending.active_stage || pending.stages[pending.next_index] || "unknown";
-  if (timedOutStage === "importStats" && pending.next_index + 1 < pending.stages.length) {
+  if (["syncAll", "importStats"].indexOf(timedOutStage) >= 0 && pending.next_index + 1 < pending.stages.length) {
     const finishedAt = new Date().toISOString();
     pending.completed_stages.push({
-      name: "importStats",
+      name: timedOutStage,
       status: "ERROR",
       started_at: pending.stage_started_at || pending.scheduled_at || "",
       finished_at: finishedAt,
       duration_ms: DAILY_AUTO_CONTINUATION_WATCHDOG_DELAY_MS_,
-      error: "Apps Script 실행 한도 초과 — exportStats를 독립 실행으로 계속합니다.",
+      error: timedOutStage === "importStats"
+        ? "Apps Script 실행 한도 초과 — exportStats를 독립 실행으로 계속합니다."
+        : "Apps Script 실행 한도 초과 — syncAll은 importStats의 메타 전송 안전망에 맡기고 나머지 단계를 계속합니다.",
     });
     pending.next_index += 1;
     pending.active_stage = "";
     pending.stage_started_at = "";
     pending.attempt = 0;
     enqueueDailyAutoContinuation_(pending, DAILY_AUTO_CONTINUATION_DELAY_MS_);
-    markImportStatsGate_("TIMEOUT", collectionTargetDate_(), "continuation_watchdog_timeout");
     props.setProperties({
-      DAILY_AUTO_LAST_STATUS: "IMPORT_TIMEOUT_EXPORT_SCHEDULED",
+      DAILY_AUTO_LAST_STATUS: timedOutStage === "importStats"
+        ? "IMPORT_TIMEOUT_EXPORT_SCHEDULED"
+        : "SYNC_TIMEOUT_REMAINING_SCHEDULED",
       DAILY_AUTO_LAST_CONTINUATION_WATCHDOG_AT: finishedAt,
     }, false);
-    notifyExportStatsGateTimeout_(collectionTargetDate_(), "import_timeout_export_scheduled");
-    Logger.log("dailyAuto_continuation_watchdog_skip_import " + JSON.stringify(pending));
+    if (timedOutStage === "importStats") {
+      markImportStatsGate_("TIMEOUT", collectionTargetDate_(), "continuation_watchdog_timeout");
+      notifyExportStatsGateTimeout_(collectionTargetDate_(), "import_timeout_export_scheduled");
+    }
+    Logger.log("dailyAuto_continuation_watchdog_skip_" + timedOutStage + " " + JSON.stringify(pending));
     return true;
   }
   if (pending.attempt >= DAILY_AUTO_CONTINUATION_MAX_ATTEMPTS_) {
@@ -2938,12 +2959,7 @@ function dailyAutoContinuationWatchdog_() {
   }
   pending.attempt += 1;
   pending.scheduled_at = new Date().toISOString();
-  saveDailyAutoContinuation_(pending);
-  removeDailyAutoContinuationTriggers_(["dailyAutoContinuation_"]);
-  ScriptApp.newTrigger("dailyAutoContinuation_")
-    .timeBased()
-    .after(DAILY_AUTO_CONTINUATION_DELAY_MS_)
-    .create();
+  enqueueDailyAutoContinuation_(pending, DAILY_AUTO_CONTINUATION_DELAY_MS_);
   props.setProperty("DAILY_AUTO_LAST_STATUS", "CONTINUATION_RETRY_SCHEDULED");
   Logger.log("dailyAuto_continuation_watchdog_retry " + JSON.stringify(pending));
   return true;
@@ -3026,16 +3042,13 @@ function dailyAuto() {
     }, false);
 
     const defs = dailyAutoStageDefs_();
-    const continuationIndex = defs.findIndex(function(pair) { return pair[0] === "importStats"; });
-    if (continuationIndex < 0) throw new Error("dailyAuto importStats 단계를 찾지 못했습니다.");
-    const stages = defs.slice(0, continuationIndex)
-      .map(function(pair) { return runDailyAutoStage_(pair[0], pair[1]); });
-    const errors = stages.filter(stage => stage.status !== "OK");
+    const stages = [];
+    const errors = [];
     let continuationScheduled = [];
     try {
       continuationScheduled = scheduleDailyAutoContinuation_(
         startedAt,
-        defs.slice(continuationIndex).map(function(pair) { return pair[0]; }),
+        defs.map(function(pair) { return pair[0]; }),
         DAILY_AUTO_CONTINUATION_DELAY_MS_,
         0
       );
@@ -3141,12 +3154,36 @@ function isSheetLockedError_(error) {
 // 정기 동기화가 락 대기와 같은 방식(15분 뒤 재시도)으로 비켜 간다. 시작 2시간 30분이 지나면
 // 멈춘 흔적으로 보고 더는 비켜 가지 않는다(멈춘 dailyAuto가 동기화를 영영 막지 않게).
 const DAILY_AUTO_BUSY_MAX_MS_ = 150 * 60 * 1000;
+// 최초 dailyAuto는 이제 continuation을 예약하는 짧은 부트스트랩뿐이다. pending 없이 RUNNING이
+// 35분 넘게 남았다면 Apps Script 30분 강제종료의 stale 흔적이므로 DB→시트 동기화를 막지 않는다.
+const DAILY_AUTO_BOOTSTRAP_BUSY_MAX_MS_ = 35 * 60 * 1000;
+
+function recoverStaleDailyAutoBootstrap_(props, nowMs) {
+  const startedMs = Date.parse(props.getProperty("DAILY_AUTO_LAST_STARTED_AT") || "");
+  if (!(startedMs > 0)) return false;
+  if (props.getProperty("DAILY_AUTO_LAST_STATUS") !== "RUNNING") return false;
+  if (props.getProperty(DAILY_AUTO_CONTINUATION_PROP_)) return false;
+  if (nowMs - startedMs <= DAILY_AUTO_BOOTSTRAP_BUSY_MAX_MS_) return false;
+  const recoveredAt = new Date(nowMs).toISOString();
+  props.setProperties({
+    DAILY_AUTO_LAST_STATUS: "ERROR: stale dailyAuto bootstrap recovered",
+    DAILY_AUTO_LAST_FINISHED_AT: recoveredAt,
+    DAILY_AUTO_LAST_STALE_RECOVERED_AT: recoveredAt,
+  }, false);
+  Logger.log("dailyAuto_stale_bootstrap_recovered " + JSON.stringify({
+    started_at: new Date(startedMs).toISOString(),
+    recovered_at: recoveredAt,
+  }));
+  return true;
+}
 
 function isDailyAutoBusy_(props, nowMs) {
   const startedMs = Date.parse(props.getProperty("DAILY_AUTO_LAST_STARTED_AT") || "");
-  if (!(startedMs > 0) || nowMs - startedMs > DAILY_AUTO_BUSY_MAX_MS_) return false;
-  if (props.getProperty("DAILY_AUTO_LAST_STATUS") === "RUNNING") return true;
-  return !!props.getProperty(DAILY_AUTO_CONTINUATION_PROP_);
+  if (!(startedMs > 0)) return false;
+  const elapsedMs = nowMs - startedMs;
+  if (props.getProperty(DAILY_AUTO_CONTINUATION_PROP_)) return elapsedMs <= DAILY_AUTO_BUSY_MAX_MS_;
+  return props.getProperty("DAILY_AUTO_LAST_STATUS") === "RUNNING"
+    && elapsedMs <= DAILY_AUTO_BOOTSTRAP_BUSY_MAX_MS_;
 }
 
 // 🌙 2026-11-13: 자정 '동기화 → 수집'(ensureDailyCollect, 실측 매일 00:13~00:14 → preCollectSyncNew_)이
@@ -3167,7 +3204,9 @@ function runDbPullSyncAttempt_(source, attempt, lockWaits) {
     Logger.log("dbPullSync_result " + JSON.stringify({ status: "SKIPPED_PRE_COLLECT_WINDOW", source: source, attempt: attempt }));
     return true;
   }
-  if (source !== "manual" && isDailyAutoBusy_(PropertiesService.getScriptProperties(), Date.now())) {
+  const dailyAutoProps = PropertiesService.getScriptProperties();
+  if (source !== "manual") recoverStaleDailyAutoBootstrap_(dailyAutoProps, Date.now());
+  if (source !== "manual" && isDailyAutoBusy_(dailyAutoProps, Date.now())) {
     return handleDbPullSyncLockBusy_(source, attempt, Number(lockWaits || 0),
       new Error("SHEET_LOCKED: 아침 dailyAuto 진행 중 — 끝난 뒤 동기화합니다."));
   }
