@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## 🟡 2026-11-19 [Codex 코드 완료 · 라이브 미반영] `syncAll` bulk 기존 게시물 DB 조회 절반 축소
+- **범위:** `web/lib/sponsored-write.ts`의 시트/CSV 공용 bulk 기존행 조회만 최적화했다. normalized_key로 이미 찾은 입력은 같은 URL로 다시 조회하지 않고, **키가 없거나 키 조회에서 못 찾은 입력만** URL fallback을 탄다. 메타 갱신·수기잠금·무상채널 정리·종료 처리·신규 생성·URL 조회 오류 fail-closed는 기존 경로를 그대로 사용한다.
+- **레거시·장애 호환:** `normalized_key IS NULL`인 과거 행은 정확한 URL로 계속 찾는다. normalized_key 컬럼 조회 자체가 실패하면 기존처럼 `supportsNormalizedKey=false`로 내리고 전체 URL fallback 및 URL-conflict 생성 모드를 유지한다. URL fallback 오류는 쓰기 전에 같은 `[조회]` 오류로 중단한다.
+- **쿼리 수 회귀:** 현행 80개 청크에서 5,572행이 모두 키로 매칭되는 정상 syncAll을 모사하면 기존 **key 70 + URL 70 = 140회**에서 **key 70 + URL 0 = 70회(50% 감소)**다. 혼합 배치는 미매칭 URL만 조회한다.
+- **검증:** 신규 pure lookup 회귀 **8/8**(옛 이중 조회와 결과 동등성·혼합 매칭·중복 identity·legacy NULL key·구 스키마 fallback·URL 오류·실 writer 배선·쿼리 수), web 전체 **927/927**, `tsc --noEmit`, Next production build(webpack), Python **110/110** 통과. 운영 DB·시트·Apps Script·배포 변경은 0건이다.
+- **파일/상태:** `web/lib/sponsored-existing-lookup.ts` 신규, `web/lib/sponsored-write.ts`, `web/tests/sponsored-existing-lookup.test.ts`. 별도 로컬 브랜치 `codex/bulk-db-lookup-20261119`이며 main 반영·자연 syncAll 실측은 아직 하지 않았다.
+
 ## ✅ 2026-11-19 [Codex 복구·라이브 반영 완료] `dailyAuto`의 `syncAll` 시간초과가 뒤 체인·DB pull을 막는 재발 방지
 - **사고 재현 근거:** 11/19 자연 `dailyAuto`가 08:27:54 KST 시작 후 약 30분 만에 강제종료됐다. `fillCaptionFromAsset` 뒤 `syncAll`에서 실행창을 거의 전부 사용해 continuation·`importStats`·`exportStats`가 생기지 않았고, `DAILY_AUTO_LAST_STATUS=RUNNING`이 남아 09:04 이후 DB→시트 동기화도 계속 `LOCK_BUSY`로 비켜 갔다.
 - **체크포인트:** 최초 `dailyAuto()`는 무거운 단계를 직접 돌리지 않고 전체 단계 목록을 continuation으로 먼저 저장한다. `syncAll`·`importStats`·`exportStats`는 각각 독립 실행창을 쓰며, `syncAll`이 30분 한도에 걸려도 watchdog이 그 단계를 `ERROR`로 기록하고 다음 `syncPricing`부터 계속한다.

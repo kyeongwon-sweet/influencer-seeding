@@ -10,6 +10,7 @@ import { notifyBot } from "@/lib/slack";
 import { lockedFieldDrift, formatLockedDrift, type LockedDrift } from "@/lib/locked-field-drift";
 import { tagCreatedBy } from "@/lib/created-by";
 import { stripAssetFileListing } from "@/lib/asset-name-policy";
+import { lookupExistingSponsoredRows } from "@/lib/sponsored-existing-lookup";
 
 export { tagCreatedBy };
 
@@ -123,39 +124,31 @@ export async function upsertSponsoredRows(
 
   // 기존 게시물(id+메타) 조회 — '빈 값만 채우기' 비교용.
   // ⚠️ URL이 많으면 .in() 쿼리 URL 길이 한도 초과로 400(Bad Request) → 80개씩 청크로 조회.
-  const existingByUrl = new Map<string, Record<string, unknown>>();
-  const existingByIdentity = new Map<string, Record<string, unknown>>();
-  const allUrls = rows.map(r => r.url);
-  const allIdentityKeys = rows.map(r => r.normalized_key).filter((v): v is string => Boolean(v));
-  let supportsNormalizedKey = allIdentityKeys.length > 0;
-  if (supportsNormalizedKey) {
-    for (let i = 0; i < allIdentityKeys.length; i += 80) {
-      const { data: existing, error: ee } = await supabase
+  const existingLookup = await lookupExistingSponsoredRows(
+    rows,
+    async (column, values) => {
+      const select = column === "normalized_key"
+        ? `id, url, normalized_key, manual_fields, ${META.join(", ")}`
+        : `id, url, manual_fields, ${META.join(", ")}`;
+      const { data, error } = await supabase
         .from("sponsored_posts")
-        .select(`id, url, normalized_key, manual_fields, ${META.join(", ")}`)
-        .in("normalized_key", allIdentityKeys.slice(i, i + 80));
-      if (ee) {
-        supportsNormalizedKey = false;
-        existingByIdentity.clear();
-        break;
-      }
-      for (const e of (existing ?? []) as unknown as Array<Record<string, unknown>>) {
-        const key = String(e.normalized_key ?? postIdentityKey(String(e.url)) ?? e.url);
-        existingByIdentity.set(key, e);
-        existingByUrl.set(String(e.url), e);
-      }
-    }
-  }
-  for (let i = 0; i < allUrls.length; i += 80) {
-    const { data: existing, error: ee } = await supabase
-      .from("sponsored_posts")
-      .select(`id, url, manual_fields, ${META.join(", ")}`)
-      .in("url", allUrls.slice(i, i + 80));
-    if (ee) return { error: `[조회] ${ee.message} | code=${ee.code ?? ""} | details=${ee.details ?? ""} | hint=${ee.hint ?? ""}` };
-    for (const e of (existing ?? []) as unknown as Array<Record<string, unknown>>) {
-      existingByUrl.set(String(e.url), e);
-      existingByIdentity.set(postIdentityKey(String(e.url)) ?? String(e.url), e);
-    }
+        .select(select)
+        .in(column, values);
+      return {
+        data: (data ?? []) as unknown as Array<Record<string, unknown>>,
+        error,
+      };
+    },
+    postIdentityKey,
+  );
+  const {
+    existingByUrl,
+    existingByIdentity,
+    supportsNormalizedKey,
+    urlError: existingLookupError,
+  } = existingLookup;
+  if (existingLookupError) {
+    return { error: `[조회] ${existingLookupError.message} | code=${existingLookupError.code ?? ""} | details=${existingLookupError.details ?? ""} | hint=${existingLookupError.hint ?? ""}` };
   }
 
   // 신규 URL → 전체 메타로 생성
