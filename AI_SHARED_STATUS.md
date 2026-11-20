@@ -1,6 +1,7 @@
 # AI Shared Status
 
-## 🟢 2026-11-20 [Claude 배포(사용자 승인 "배포해줘") → 11/21 아침 자연 게이트 대기] `stats-import` 복사 의심 조회가 1,000행에서 조용히 잘림
+## 🟢 2026-11-20 [Claude 배포 완료(사용자 승인 "배포해줘") → 11/21 아침 자연 게이트 대기] `stats-import` 복사 의심 조회가 1,000행에서 조용히 잘림
+- **배포 확인(20:16 KST):** `main` `11480a03..7f09fac6` push(코드 `6e6a7714`). CI run [`44726197435`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/44726197435) build·python-tests 모두 success. Vercel 커밋 상태 `success`("Deployment has completed"). 운영 `POST /api/sponsored-posts/stats-import` 인증 없이 → **401**(새 모듈 로드 정상, 없는 경로 대조 307). 운영 버전 노출 경로가 없어 커밋 일치는 Vercel 커밋 상태로 판단했다.
 - **발견(11/18):** 아침 `daily_auto` 복사 의심 DM 13건·격리 610행. 라우트 복사 판정 조회 `.in(날짜들).in(값 100개)`가 정렬·`range` 없이 읽어 PostgREST 1,000행 상한에서 **에러 없이** 잘렸다. 기존 `pagination-order` 계약은 `.range(`가 있는 문장만 봐서 이 조회를 놓쳤다.
 - **실측(읽기 전용):** DB를 시트 대용으로 300개 묶음 19개를 재현했다(payload 77,319행, 실제 11/19 77,473행). 잘리는 조회만 운영 PostgREST에 같은 모양으로 다시 보냈다.
   - 조회 556번 중 202번(36%)이 상한 초과. 19묶음 중 18묶음, 매칭 70.6만 행 중 37만 행(52%)이 버려졌다.
