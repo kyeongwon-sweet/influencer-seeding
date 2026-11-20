@@ -1,6 +1,7 @@
 # AI Shared Status
 
-## 🟢 2026-11-20 [Claude 배포(사용자 승인 "배포해줘") → 11/21 아침·11/23 주간 스캔 자연 게이트 대기] 복사 의심 알림 줄이기 + 주간 교차복사 스캔 기준 통일 (사용자 "진행해줘")
+## 🟢 2026-11-20 [Claude 배포 완료(사용자 승인 "배포해줘") → 11/21 아침·11/23 주간 스캔 자연 게이트 대기] 복사 의심 알림 줄이기 + 주간 교차복사 스캔 기준 통일 (사용자 "진행해줘")
+- **배포 확인:** `main` `611d820e..bd330278` push(코드 `fa9041c9`). CI [`44736441912`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/44736441912) build·python-tests success, Workflow Lint [`44736441940`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/44736441940) success. Vercel 커밋 상태 `success`. 운영 `POST /api/sponsored-posts/stats-import` 인증 없이 → 401(없는 경로 대조 307). 주간 스캔 워크플로는 수동 실행하지 않았다(실행하면 Slack 보고가 감) — 첫 검증은 11/23(월) 09:20 예약 실행.
 - **왜:** 아래 완전 검사 배포 뒤 아침마다 잡히는 884행이 **전부 DB에 이미 같은 값**(시트↔DB 왕복값)이다. 격리해도 DB가 안 바뀌고, 매일 같은 DM만 반복되며 그 묶음의 `importStats` 지문이 정산되지 않아 5,601개 중 약 4,500개를 날마다 다시 보낸다.
 - **라우트(`fa9041c9`):**
   - 기존 값 조회(3-a)를 복사 판정 앞으로 옮겼다(쿼리 내용 동일).
