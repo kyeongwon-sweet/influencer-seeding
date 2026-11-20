@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { HelpModal, HelpSection, HelpItem } from "@/lib/HelpModal";
 import { platformLabel } from "@/lib/platform";
+import { adEfficiency, isLegacyScreening } from "@/lib/screeningMetrics";
 import { parseNumInput } from "@/lib/num";
 import { batchFetch } from "@/lib/batchFetch";
 import { MIN_ENTRY_DATE, maxDateKST, isValidEntryDate, addDaysToDate, todayKST } from "@/lib/dateRule";
@@ -489,9 +490,8 @@ export default function ScreeningPage() {
     const rows = sorted.map(inf => {
       const m = latest(inf);
       const s = STATUS.find(o => o.value === inf.status);
-      const adEff = (m?.ad_avg_play_count != null && m?.total_avg_play_count != null)
-        ? ((m.ad_avg_play_count - m.total_avg_play_count) / 10000).toFixed(2)
-        : "";
+      const adEffVal = adEfficiency(m);
+      const adEff = adEffVal != null ? adEffVal.toFixed(2) : "";
       const snapResult = (() => {
         const snap = m?.criteria_snapshot;
         if (!snap) return "";
@@ -637,7 +637,7 @@ export default function ScreeningPage() {
       case "댓글 비율": av = ma?.total_comment_ratio ?? -1; bv = mb?.total_comment_ratio ?? -1; break;
       case "광고 비율": av = (ma?.total_posts && ma?.ad_posts != null) ? ma.ad_posts / ma.total_posts : -1; bv = (mb?.total_posts && mb?.ad_posts != null) ? mb.ad_posts / mb.total_posts : -1; break;
       case "광고 평균 조회수": av = ma?.ad_avg_play_count ?? -1; bv = mb?.ad_avg_play_count ?? -1; break;
-      case "광고 효율": av = (ma?.ad_avg_play_count != null && ma?.total_avg_play_count != null) ? (ma.ad_avg_play_count - ma.total_avg_play_count) / 10000 : -1; bv = (mb?.ad_avg_play_count != null && mb?.total_avg_play_count != null) ? (mb.ad_avg_play_count - mb.total_avg_play_count) / 10000 : -1; break;
+      case "광고 효율": av = adEfficiency(ma) ?? -1; bv = adEfficiency(mb) ?? -1; break;
       case "광고 최고 조회수": av = ma?.top_ad_play_count ?? -1; bv = mb?.top_ad_play_count ?? -1; break;
       case "상태": av = a.status; bv = b.status; break;
     }
@@ -649,16 +649,16 @@ export default function ScreeningPage() {
   const COL_DEFS: Record<string, { ig?: string; yt?: string; both?: string }> = {
     "팔로워 수":        { ig: "인스타그램 팔로워 수 (followersCount)", yt: "유튜브 구독자 수 (channelSubscriberCount)" },
     "알고리즘 계수":    {
-      ig: "팔로워 대비 평균 재생수\n= videoPlayCount 평균 ÷ followersCount\n\n[기준] BEST = 1↑ / GOOD = 0↑ / BAD = 음수\n알고리즘 파급력을 나타내는 지표",
-      yt: "팔로워 대비 평균 재생수\n= 평균 viewCount ÷ 구독자 수\n\n[기준] BEST = 1↑ / GOOD = 0↑ / BAD = 음수",
+      ig: "팔로워 대비 평균 재생수\n= 총 평균 조회수(떡상 제외) ÷ 팔로워 수\n\n[기준] BEST = 1↑ (팔로워보다 더 퍼짐) / 1 미만 = 덜 퍼짐\n* 표시 = 6월 옛 계산(떡상 포함)",
+      yt: "팔로워 대비 평균 재생수\n= 쇼츠 평균 조회수(떡상 제외) ÷ 구독자 수\n\n[기준] BEST = 1↑ (구독자보다 더 퍼짐) / 1 미만 = 덜 퍼짐\n* 표시 = 6월 옛 계산(떡상 포함·롱폼 섞임)",
     },
     "100만뷰 개수":     {
       ig: "최근 1개월 릴스 중 videoPlayCount ≥ 1,000,000 게시물 수\n※ 1개라도 있으면 O",
       yt: "최근 30일 Shorts 중 viewCount ≥ 1,000,000 개수\n※ 1개라도 있으면 O",
     },
     "총 평균 조회수":   {
-      ig: "재생수(videoPlayCount) 평균\n= 인스타그램 앱 공개 조회수. 같은 사람이 여러 번 봐도 모두 카운트\n기준: 최근 1개월 릴스\n\n[기준] BEST = 10만↑ / GOOD = 7만↑ / BAD = 7만↓\n※ 가장 중요한 필수 검토 지표",
-      yt: "viewCount 평균\n기준: 최근 30일 Shorts\n\n[기준] BEST = 10만↑ / GOOD = 7만↑ / BAD = 7만↓",
+      ig: "재생수(videoPlayCount) 평균\n= 인스타그램 앱 공개 조회수. 같은 사람이 여러 번 봐도 모두 카운트\n기준: 최근 30일 영상 · 보통 조회수(중앙값)의 3배가 넘는 떡상 글은 빼고 평균\n\n[기준] BEST = 10만↑ / GOOD = 7만↑ / BAD = 7만↓\n※ 가장 중요한 필수 검토 지표",
+      yt: "viewCount 평균\n기준: 최근 30일 Shorts · 보통 조회수(중앙값)의 3배가 넘는 떡상 글은 빼고 평균\n\n[기준] BEST = 10만↑ / GOOD = 7만↑ / BAD = 7만↓",
     },
     "총 평균 도달수":   {
       ig: "순조회수(videoViewCount) 평균\n= 중복 제거 시청자 수 (unique viewers), 한 사람이 10번 봐도 1로 집계\n※ 인스타그램 앱에서는 공개되지 않는 내부 지표",
@@ -974,6 +974,7 @@ export default function ScreeningPage() {
                       </td>
                       <td style={{ minWidth: screenColWidths["알고리즘 계수"] }} className="px-3 py-4 text-right tabular-nums text-a-ink whitespace-nowrap font-numeric">
                         {m?.avg_views_per_follower?.toFixed(2) ?? "-"}
+                        {isLegacyScreening(m) && <span className="ml-0.5 text-a-ink-muted" title="6월 옛 계산(떡상 영상 포함, 유튜브 롱폼 섞임) — 다시 스크리닝하면 새 계산으로 바뀝니다">*</span>}
                       </td>
                       <td style={{ minWidth: screenColWidths["100만뷰 개수"] }} className="px-3 py-4 text-right tabular-nums text-a-ink whitespace-nowrap font-numeric">
                         {m?.count_1m_view ?? "-"}
@@ -986,9 +987,7 @@ export default function ScreeningPage() {
                       </td>
                       <td style={{ minWidth: screenColWidths["광고 평균 조회수"] }} className="px-3 py-4 text-right tabular-nums text-a-ink whitespace-nowrap font-numeric">{fmt(m?.ad_avg_play_count)}</td>
                       <td style={{ minWidth: screenColWidths["광고 효율"] }} className="px-3 py-4 text-right tabular-nums text-a-ink whitespace-nowrap font-numeric">
-                        {(m?.ad_avg_play_count != null && m?.total_avg_play_count != null)
-                          ? ((m.ad_avg_play_count - m.total_avg_play_count) / 10000).toFixed(2)
-                          : "-"}
+                        {adEfficiency(m)?.toFixed(2) ?? "-"}
                       </td>
                       <td style={{ minWidth: screenColWidths["광고 최고 조회수"] }} className="px-3 py-4 text-right tabular-nums text-a-ink whitespace-nowrap font-numeric">
                         {m?.top_ad_post_url
