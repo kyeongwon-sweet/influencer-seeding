@@ -5,6 +5,7 @@ import Link from "next/link";
 import DOMPurify from "dompurify";
 import { useToast, ToastContainer } from "@/lib/useToast";
 import { platformLabel } from "@/lib/platform";
+import { adEfficiency, isLegacyScreening } from "@/lib/screeningMetrics";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -19,6 +20,8 @@ type Metrics = {
   ad_posts: number | null;
   total_posts: number | null;
   ad_avg_play_count: number | null;
+  general_avg_play_count?: number | null;
+  criteria_snapshot?: unknown;
   top_ad_play_count: number | null;
   top_ad_post_url: string | null;
   kw_keywords: string | null;
@@ -223,9 +226,8 @@ function InfluencerName({ inf }: { inf: Influencer }) {
   const adRatio = (m?.total_posts && m.ad_posts != null)
     ? (m.ad_posts / m.total_posts * 100).toFixed(1) + "%"
     : "-";
-  const adEff = (m?.ad_avg_play_count != null && m.total_avg_play_count != null)
-    ? ((m.ad_avg_play_count - m.total_avg_play_count) / 10000).toFixed(2)
-    : "-";
+  const adEffVal = adEfficiency(m);
+  const adEff = adEffVal != null ? adEffVal.toFixed(2) : "-";
 
   return (
     <div className="relative group inline-block">
@@ -237,7 +239,7 @@ function InfluencerName({ inf }: { inf: Influencer }) {
           <p className="font-semibold text-sm mb-2 truncate">{inf.name}</p>
           <div className="grid grid-cols-2 gap-x-3 gap-y-1">
             <span className="text-gray-400">팔로워</span><span className="text-right">{fmt(m.followers)}</span>
-            <span className="text-gray-400">알고리즘 계수</span><span className="text-right">{m.avg_views_per_follower?.toFixed(2) ?? "-"}</span>
+            <span className="text-gray-400">알고리즘 계수</span><span className="text-right">{m.avg_views_per_follower?.toFixed(2) ?? "-"}{isLegacyScreening(m) && "*"}</span>
             <span className="text-gray-400">100만뷰</span><span className="text-right">{m.count_1m_view ?? "-"}개</span>
             <span className="text-gray-400">평균 조회수</span><span className="text-right">{fmt(m.total_avg_play_count)}</span>
             <span className="text-gray-400">평균 도달수</span><span className="text-right">{fmt(m.total_avg_view_count)}</span>
@@ -702,7 +704,7 @@ export default function ContactPage() {
                           <div className="space-y-3">
                             <div>
                               <p className="text-[11px] font-semibold text-a-ink mb-1">① 평균 조회수</p>
-                              <p className="text-[11px] text-a-ink-muted mb-1.5">최근 콘텐츠 평균 (알고리즘 떡상 건 제외)</p>
+                              <p className="text-[11px] text-a-ink-muted mb-1.5">최근 30일 평균 · 보통 조회수의 3배가 넘는 떡상 글은 빼고 계산</p>
                               <div className="space-y-0.5 text-[11px]">
                                 <p><span className="font-semibold text-emerald-600">BEST</span> <span className="text-a-ink-muted">= 10만 이상</span></p>
                                 <p><span className="font-semibold text-blue-500">GOOD</span> <span className="text-a-ink-muted">= 7만 이상</span></p>
@@ -714,8 +716,7 @@ export default function ContactPage() {
                               <p className="text-[11px] text-a-ink-muted mb-1.5">평균 조회수 ÷ 팔로워 · 알고리즘 파급력 지표</p>
                               <div className="space-y-0.5 text-[11px]">
                                 <p><span className="font-semibold text-emerald-600">BEST</span> <span className="text-a-ink-muted">= 1 이상</span></p>
-                                <p><span className="font-semibold text-blue-500">GOOD</span> <span className="text-a-ink-muted">= 0 이상</span></p>
-                                <p><span className="text-gray-400">BAD = 음수</span></p>
+                                <p><span className="text-gray-400">1 미만 = 팔로워보다 덜 퍼짐</span></p>
                               </div>
                             </div>
                           </div>
@@ -762,6 +763,7 @@ export default function ContactPage() {
                         </td>
                         <td className="px-3 py-3 text-right tabular-nums whitespace-nowrap">
                           {m?.avg_views_per_follower?.toFixed(2) ?? "-"}
+                          {isLegacyScreening(m) && <span className="ml-0.5 text-a-ink-muted" title="6월 옛 계산(떡상 영상 포함, 유튜브 롱폼 섞임) — 다시 스크리닝하면 새 계산으로 바뀝니다">*</span>}
                         </td>
                         <td className="px-3 py-3 text-right tabular-nums whitespace-nowrap">
                           {m?.total_avg_play_count != null ? (

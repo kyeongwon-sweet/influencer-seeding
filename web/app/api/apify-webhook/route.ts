@@ -7,11 +7,9 @@ import { kstDateOf, requireMonitoringWebhookDate } from "@/lib/dateRule";
 import { isBannerChannel } from "@/app/monitoring/lib";
 import { looksLikeEngagementCountAsViews, trustedPlaySourceOf } from "@/lib/ig-metric-guard";
 import { organicExcludeHit, organicOwnedMediaHit, organicTradePostHit } from "@/lib/organic-filter";
+import { calcMetrics, calcTypeMetrics, isAd, isShort, SCREENING_FORMULA, type ScreeningMetrics } from "@/lib/screeningMetrics";
 
-// ── 지표 계산 (metrics.py 포팅) ─────────────────────────────────────
-
-// 화이트리스트: 해당 키워드 있으면 자발적 언급으로 간주 → 광고 여부 체크 없이 수집
-const ORGANIC_WHITELIST = ['내돈내산'];
+// ── 지표 계산은 lib/screeningMetrics.ts(정본) — 2026-11-20 떡상 제외 평균·유튜브 쇼츠만 ──
 
 // 리스트업 제외: 계정명/사용자명에 브랜드·공식 신호 단어가 있으면 수집하지 않음
 const BRAND_EXCLUDE_KEYWORDS = ['official', '공식', '은행', 'bank', '카드', 'card', '페이', 'pay', '보험', '증권', '그룹', 'corp'];
@@ -20,118 +18,7 @@ function isBrandAccount(...names: (string | null | undefined)[]): boolean {
   return BRAND_EXCLUDE_KEYWORDS.some(k => text.includes(k));
 }
 
-function isAd(post: Record<string, unknown>): boolean {
-  // 캡션 필드는 플랫폼마다 다름 (IG=caption, 틱톡=text, 트위터=fullText/text)
-  const caption = String(post.caption ?? post.text ?? post.fullText ?? '').toLowerCase();
-  // 해시태그: IG는 문자열 배열, 틱톡/트위터는 객체 배열({name|title|text}) → 형태 무관하게 문자열 추출
-  const hashtags = (Array.isArray(post.hashtags) ? post.hashtags : [])
-    .map((h) => (typeof h === 'string' ? h : String((h as Record<string, unknown>)?.name ?? (h as Record<string, unknown>)?.title ?? (h as Record<string, unknown>)?.text ?? '')))
-    .filter(Boolean)
-    .map((h) => h.toLowerCase());
-  const fullText = caption + ' ' + hashtags.join(' ');
-
-  // 내돈내산 있으면 자발적 언급 → 비광고
-  if (ORGANIC_WHITELIST.some(k => fullText.includes(k))) return false;
-
-  // (광고) 또는 #광고 패턴만 제외 ("광고 아님" 같은 경우는 통과)
-  if (fullText.includes('(광고)') || fullText.includes('#광고')) return true;
-
-  // 기존: #협찬 #ad #sponsored 해시태그 제외
-  const adHashtags = new Set(['협찬', 'ad', 'sponsored']);
-  return hashtags.some(h => adHashtags.has(h));
-}
-
-function isReel(post: Record<string, unknown>): boolean {
-  // profile-scraper: productType === 'clips'
-  // hashtag-scraper: type === 'Video' or isVideo === true
-  return post.productType === 'clips'
-    || post.type === 'Video'
-    || post.type === 'GraphSidecar' // 슬라이드 릴스
-    || post.isVideo === true
-    || post.mediaType === 'VIDEO';
-}
-
-function isShort(post: Record<string, unknown>): boolean {
-  return ((post.url as string) || '').includes('/shorts/');
-}
-
-function parseTimestamp(ts: string | number | null | undefined): Date {
-  if (!ts) return new Date(0);
-  if (typeof ts === 'number') return new Date(ts * 1000);
-  return new Date((ts as string).replace('Z', '+00:00'));
-}
-
-function avg(posts: Record<string, unknown>[], field: string, ndigits = 0): number | null {
-  const vals = posts.map(p => p[field] as number).filter(v => v != null);
-  if (!vals.length) return null;
-  const result = vals.reduce((a, b) => a + b, 0) / vals.length;
-  return ndigits ? Math.round(result * 10 ** ndigits) / 10 ** ndigits : Math.round(result);
-}
-
-function ratioAvg(posts: Record<string, unknown>[], num: string, den: string): number | null {
-  const ratios = posts
-    .filter(p => p[num] != null && (p[den] as number) > 0)
-    .map(p => ((p[num] as number) / (p[den] as number)) * 100);
-  if (!ratios.length) return null;
-  return Math.round((ratios.reduce((a, b) => a + b, 0) / ratios.length) * 10000) / 10000;
-}
-
-function calcMetrics(profile: Record<string, unknown>, posts: Record<string, unknown>[]) {
-  const followers = (profile?.followers as number) || 0;
-  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const recent = posts.filter(p => parseTimestamp(p.timestamp as string | number) >= cutoff);
-  const adPosts = recent.filter(isAd);
-  const generalPosts = recent.filter(p => !isAd(p));
-  const totalPlay = avg(recent, 'videoPlayCount');
-  return {
-    followers,
-    avg_views_per_follower: totalPlay != null && followers > 0
-      ? Math.round((totalPlay / followers) * 100) / 100 : null,
-    count_1m_view: recent.filter(p => ((p.videoPlayCount as number) || 0) >= 1_000_000).length,
-    total_posts: recent.length,
-    general_posts: generalPosts.length,
-    ad_posts: adPosts.length,
-    total_avg_view_count: avg(recent, 'videoViewCount'),
-    general_avg_view_count: avg(generalPosts, 'videoViewCount'),
-    ad_avg_view_count: avg(adPosts, 'videoViewCount'),
-    total_avg_play_count: totalPlay,
-    general_avg_play_count: avg(generalPosts, 'videoPlayCount'),
-    ad_avg_play_count: avg(adPosts, 'videoPlayCount'),
-    total_avg_like_count: avg(recent, 'likesCount'),
-    total_avg_comment_count: avg(recent, 'commentsCount'),
-    total_like_ratio: ratioAvg(recent, 'likesCount', 'videoPlayCount'),
-    general_like_ratio: ratioAvg(generalPosts, 'likesCount', 'videoPlayCount'),
-    ad_like_ratio: ratioAvg(adPosts, 'likesCount', 'videoPlayCount'),
-    total_comment_ratio: ratioAvg(recent, 'commentsCount', 'videoPlayCount'),
-    general_comment_ratio: ratioAvg(generalPosts, 'commentsCount', 'videoPlayCount'),
-    ad_comment_ratio: ratioAvg(adPosts, 'commentsCount', 'videoPlayCount'),
-    top_ad_play_count: adPosts.length
-      ? Math.max(...adPosts.map(p => (p.videoPlayCount as number) || 0)) : null,
-    top_ad_post_url: adPosts.length
-      ? (adPosts.reduce((a, b) =>
-          ((a.videoPlayCount as number) || 0) > ((b.videoPlayCount as number) || 0) ? a : b
-        ).url as string) || null : null,
-    avg_video_duration: avg(recent, 'videoDuration', 1),
-  };
-}
-
-function calcTypeMetrics(profile: Record<string, unknown>, posts: Record<string, unknown>[], platform: string) {
-  const result: Record<string, ReturnType<typeof calcMetrics>> = {};
-  if (platform === 'instagram') {
-    const reels = posts.filter(isReel);
-    const feed = posts.filter(p => !isReel(p));
-    if (reels.length) result.reels = calcMetrics(profile, reels);
-    if (feed.length) result.feed = calcMetrics(profile, feed);
-  } else if (platform === 'youtube') {
-    const longform = posts.filter(p => !isShort(p));
-    const shorts = posts.filter(isShort);
-    if (longform.length) result.longform = calcMetrics(profile, longform);
-    if (shorts.length) result.shorts = calcMetrics(profile, shorts);
-  }
-  return result;
-}
-
-function evaluateCriteria(criteria: Record<string, number | null>, metrics: ReturnType<typeof calcMetrics>) {
+function evaluateCriteria(criteria: Record<string, number | null>, metrics: ScreeningMetrics) {
   const totalPosts = metrics.total_posts || 0;
   const adPosts = metrics.ad_posts || 0;
   const adRatio = totalPosts > 0 ? Math.round((adPosts / totalPosts) * 100 * 10) / 10 : null;
@@ -650,14 +537,15 @@ async function handleScreening(
         // Apify 응답 필드명: ownerFollowersCount 또는 followersCount
         followers: (posts[0]?.ownerFollowersCount as number) || (posts[0]?.followersCount as number) || 0,
       };
-      const metrics = calcMetrics(profile, posts);
+      const { outliers_excluded, ...metrics } = calcMetrics(profile, posts);
       const typeMetrics = calcTypeMetrics(profile, posts, 'instagram');
-      const { result: resultStatus, details } = evaluateCriteria(criteria, metrics);
+      const { result: resultStatus, details } = evaluateCriteria(criteria, { ...metrics, outliers_excluded });
 
       const { error: metricsErr } = await supabase.from('screening_metrics').insert({
         influencer_id: infId,
         ...metrics,
-        criteria_snapshot: { result: resultStatus, details },
+        // formula: 어떤 공식으로 계산했는지(옛 행 구분용). outliers_excluded: 떡상으로 평균에서 뺀 글 수.
+        criteria_snapshot: { result: resultStatus, details, formula: SCREENING_FORMULA, outliers_excluded },
         type_metrics: Object.keys(typeMetrics).length ? typeMetrics : null,
       });
       if (metricsErr) {
@@ -732,14 +620,16 @@ async function handleScreening(
     }
 
     const profile = { followers: followerCount };
-    const metrics = calcMetrics(profile, posts as Record<string, unknown>[]);
+    // 유튜브 대표 지표는 **쇼츠만**(화면 설명 "최근 30일 Shorts"대로, 2026-11-20). 롱폼은 type_metrics.longform 에 따로 남는다.
+    const shorts = (posts as Record<string, unknown>[]).filter(isShort);
+    const { outliers_excluded, ...metrics } = calcMetrics(profile, shorts);
     const typeMetrics = calcTypeMetrics(profile, posts as Record<string, unknown>[], 'youtube');
-    const { result: resultStatus, details } = evaluateCriteria(criteria, metrics);
+    const { result: resultStatus, details } = evaluateCriteria(criteria, { ...metrics, outliers_excluded });
 
     const { error: ytMetricsErr } = await supabase.from('screening_metrics').insert({
       influencer_id: influencer.id,
       ...metrics,
-      criteria_snapshot: { result: resultStatus, details },
+      criteria_snapshot: { result: resultStatus, details, formula: SCREENING_FORMULA, outliers_excluded },
       type_metrics: Object.keys(typeMetrics).length ? typeMetrics : null,
     });
     if (ytMetricsErr) {

@@ -1,3 +1,6 @@
+# ⚠️ 옛 파이썬 원본 — 자동 실행 경로 없음(run_screening_v2.py 만 import, 워크플로 미연결).
+#    스크리닝 지표의 정본은 web/lib/screeningMetrics.ts 다(2026-11-20 떡상 제외 평균·유튜브 쇼츠만으로 변경).
+#    여기는 그 변경이 반영돼 있지 않으니 공식을 고칠 때 이 파일을 기준으로 삼지 말 것.
 from __future__ import annotations
 from datetime import datetime, timezone, timedelta
 from config import SCREENING_DAYS

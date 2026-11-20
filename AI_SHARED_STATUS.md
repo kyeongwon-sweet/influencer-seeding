@@ -1,5 +1,12 @@
 # AI Shared Status
 
+## ✅ 2026-11-20 [Claude 수정·사용자 결정 "계산을 바꾸자"] 스크리닝 알고리즘 계수(팔로워 대비 평균 조회수) — 떡상 글 제외 평균
+- **왜:** 화면 설명은 "알고리즘 떡상 건 제외"인데 코드는 단순 평균이라 대박 글 1개가 평균 조회수·계수를 끌어올림. 유튜브는 설명("최근 30일 Shorts")과 달리 롱폼까지 섞어 계산할 수 있었고, 광고 효율은 설명(광고−**일반** 평균)과 달리 광고−총 평균이었음. 'BAD=음수'는 나올 수 없는 기준, 리스트업 "최근 5개"는 실제(30일)와 다름.
+- **바뀐 계산(정본 `web/lib/screeningMetrics.ts`, 웹훅에서 분리):** 최근 30일 글 중 **보통 조회수(중앙값)의 3배를 넘는 글을 빼고** 평균 → 총 평균 조회수·총 평균 도달수·알고리즘 계수에 적용(100만뷰 개수·게시물 수는 그대로). 유튜브 대표 지표는 쇼츠만. 광고 효율=(광고 평균−일반 평균)÷1만. 새 행은 `criteria_snapshot.formula='v2-typical-avg'`·`outliers_excluded` 기록, 화면은 옛 공식 행에 `*` 표시(수기 행 제외). `scripts/metrics.py`는 옛 원본(자동 실행 없음) 표시만.
+- **기존 숫자:** 저장된 173행(06월, 155명)은 게시물별 조회수가 없어 **재계산 불가** → 다시 스크리닝해야 새 계산(Apify 비용, 사용자 결정 대기).
+- **함께 발견(미수정, 별도 작업 칩):** DB에 `screening_criteria` 표가 없음(PGRST205) → 통과 기준이 한 번도 적용 안 됨(173행 전부 no_criteria). 65명 계수 빈칸 = 최근 30일 글 0개 46·사진만 18·팔로워0 1. 계수 901(팔로워 105) 등 팔로워 값 의심 행 있음.
+- **검증:** `web/tests/screening-metrics.test.ts`(10, 사용자에게 보여 준 예시 3·4·5·5·60만→4.25만 포함). web 929 pass·tsc·build, scripts 625 passed. 로컬 화면 확인은 로그인 필요라 못 함.
+
 ## ✅ 2026-11-19 [Codex 복구·라이브 반영 완료] `dailyAuto`의 `syncAll` 시간초과가 뒤 체인·DB pull을 막는 재발 방지
 - **사고 재현 근거:** 11/19 자연 `dailyAuto`가 08:27:54 KST 시작 후 약 30분 만에 강제종료됐다. `fillCaptionFromAsset` 뒤 `syncAll`에서 실행창을 거의 전부 사용해 continuation·`importStats`·`exportStats`가 생기지 않았고, `DAILY_AUTO_LAST_STATUS=RUNNING`이 남아 09:04 이후 DB→시트 동기화도 계속 `LOCK_BUSY`로 비켜 갔다.
 - **체크포인트:** 최초 `dailyAuto()`는 무거운 단계를 직접 돌리지 않고 전체 단계 목록을 continuation으로 먼저 저장한다. `syncAll`·`importStats`·`exportStats`는 각각 독립 실행창을 쓰며, `syncAll`이 30분 한도에 걸려도 watchdog이 그 단계를 `ERROR`로 기록하고 다음 `syncPricing`부터 계속한다.

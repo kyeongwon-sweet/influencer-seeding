@@ -1010,7 +1010,7 @@ export default function ListupPage() {
                       <div className="space-y-3">
                         <div>
                           <p className="text-[11px] font-semibold text-a-ink mb-1">① 평균 조회수 (위 숫자)</p>
-                          <p className="text-[11px] text-a-ink-muted mb-1.5">최근 콘텐츠 5개 평균 (알고리즘 떡상 건 제외)</p>
+                          <p className="text-[11px] text-a-ink-muted mb-1.5">최근 30일 평균 · 보통 조회수의 3배가 넘는 떡상 글은 빼고 계산</p>
                           <div className="space-y-0.5 text-[11px]">
                             <p><span className="font-semibold text-emerald-600">BEST</span> <span className="text-a-ink-muted">= 10만 이상</span></p>
                             <p><span className="font-semibold text-blue-500">GOOD</span> <span className="text-a-ink-muted">= 7만 이상</span></p>
@@ -1022,8 +1022,7 @@ export default function ListupPage() {
                           <p className="text-[11px] text-a-ink-muted mb-1.5">평균 조회수 ÷ 팔로워 수 · 알고리즘 파급력 지표</p>
                           <div className="space-y-0.5 text-[11px]">
                             <p><span className="font-semibold text-emerald-600">BEST</span> <span className="text-a-ink-muted">= 1 이상</span></p>
-                            <p><span className="font-semibold text-blue-500">GOOD</span> <span className="text-a-ink-muted">= 0 이상</span></p>
-                            <p><span className="text-gray-400">BAD = 음수</span></p>
+                            <p><span className="text-gray-400">1 미만 = 팔로워보다 덜 퍼짐</span></p>
                           </div>
                         </div>
                       </div>
@@ -1321,7 +1320,7 @@ export default function ListupPage() {
             <HelpItem label="전체 삭제 —">발굴된 계정을 모두 삭제합니다.</HelpItem>
           </HelpSection>
           <HelpSection title="팔로워·조회수·참여수 열">
-            <p className="text-a-ink-muted leading-relaxed">스크리닝 완료 후 채워지는 지표입니다. 조회수 칸은 최근 콘텐츠 5개 평균 조회수와 그 아래 &apos;팔로워 대비 비율&apos;(평균 조회수÷팔로워, 높을수록 확산력 우수)을 함께 보여줍니다. 참여수는 좋아요+댓글 합계입니다. 이 값으로 정렬해 시딩 효율이 높은 계정을 우선순위에 올릴 수 있습니다.</p>
+            <p className="text-a-ink-muted leading-relaxed">스크리닝 완료 후 채워지는 지표입니다. 조회수 칸은 최근 30일 평균 조회수(보통 조회수의 3배가 넘는 떡상 글은 제외)와 그 아래 &apos;팔로워 대비 비율&apos;(평균 조회수÷팔로워, 높을수록 확산력 우수)을 함께 보여줍니다. 참여수는 좋아요+댓글 합계입니다. 이 값으로 정렬해 시딩 효율이 높은 계정을 우선순위에 올릴 수 있습니다.</p>
           </HelpSection>
           <HelpSection title="표에서 바로 수정">
             <p className="text-a-ink-muted leading-relaxed">채널명·발굴 키워드·팔로워·팔로워 대비 비율·캡션·업로드일·특이사항은 셀을 클릭해 바로 수정할 수 있습니다. 스크리닝으로 못 채운 값을 수동으로 보정할 때 사용하세요.</p>
