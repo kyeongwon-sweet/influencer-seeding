@@ -5,6 +5,9 @@ import test from "node:test";
 
 const root = process.cwd();
 const appRoot = join(root, "app");
+// 라우트가 조회를 lib 모듈로 옮겨도 같은 규칙을 받도록 lib도 검사한다
+// (2026-11-20: stats-import 복사 판정 조회를 lib/stats-import-copy.ts로 옮김).
+const libRoot = join(root, "lib");
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -48,7 +51,7 @@ function endsWith(keys: string[], suffix: string[]): boolean {
 test("every range pagination query ends with a unique id order", () => {
   const unsafe: string[] = [];
 
-  for (const file of sourceFiles(appRoot)) {
+  for (const file of [...sourceFiles(appRoot), ...sourceFiles(libRoot)]) {
     const source = readFileSync(file, "utf8");
     const relativePath = relative(root, file).replaceAll("\\", "/");
     for (const match of source.matchAll(/\.range\(/g)) {

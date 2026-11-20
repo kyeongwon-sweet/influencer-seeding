@@ -21,6 +21,7 @@ import {
   type ExistingMetricSnapshot,
   type StatsImportSource,
 } from "@/lib/stats-import-provenance";
+import { findCopySuspects, loadCopyValueOwners, type CopyCandidate } from "@/lib/stats-import-copy";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -406,12 +407,6 @@ export async function POST(req: NextRequest) {
   }
   const describePost = (pid: string) => labelByPid.get(pid) ?? urlByPidForImport.get(pid) ?? pid;
 
-  type CopyCandidate = {
-    post_id: string;
-    measured_at: string;
-    value: number;
-    metric: "play_count" | "reach_count";
-  };
   const copyCandidates: CopyCandidate[] = [
     ...incoming.map(r => ({ post_id: r.post_id, measured_at: r.measured_at, value: r.play_count as number, metric: "play_count" as const })),
     ...bannerRows.map(r => ({ post_id: r.post_id, measured_at: r.measured_at, value: r.reach_count, metric: "reach_count" as const })),
@@ -426,64 +421,14 @@ export async function POST(req: NextRequest) {
   }> = [];
   const copyKeys = new Set<string>(); // `${metric}|${pid}|${date}` — DB 저장 제외
   if (copyCandidates.length > 0) {
-    const dvOwners = new Map<string, Set<string>>();
-    const VCHUNK = 100;
-    for (const metric of ["play_count", "reach_count"] as const) {
-      const metricCandidates = copyCandidates.filter(r => r.metric === metric);
-      const dates = [...new Set(metricCandidates.map(r => r.measured_at))];
-      const vals = [...new Set(metricCandidates.map(r => r.value).filter(v => Number.isFinite(v) && v > 0))];
-      for (let i = 0; i < vals.length && dates.length > 0; i += VCHUNK) {
-        const { data: rows, error } = await supabase
-          .from("post_daily_stats")
-          .select(`post_id, measured_at, ${metric}`)
-          .in("measured_at", dates)
-          .in(metric, vals.slice(i, i + VCHUNK));
-        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-        for (const row of (rows ?? []) as unknown as Array<Record<string, unknown>>) {
-          const value = Number(row[metric]);
-          if (!Number.isFinite(value) || value <= 0) continue;
-          // 조회(play) 값을 배너 도달(reach)에 복사한 사고도 잡아야 하므로 소스 metric은 합쳐서 비교한다.
-          const key = `${String(row.measured_at).slice(0, 10)}|${value}`;
-          let owners = dvOwners.get(key);
-          if (!owners) { owners = new Set(); dvOwners.set(key, owners); }
-          owners.add(String(row.post_id));
-        }
-      }
-    }
-
-    // 같은 타 게시물과 같은 비-라운드 값이 2일 이상 겹칠 때만 복사로 판정한다.
-    // 미러 채널도 URL별 독립 측정이므로 예외를 두지 않고, 배너 reach에도 동일 기준을 적용한다.
-    //
-    // ⚠️ 2026-08-13 실측: 이 판정이 **493행**을 경고해 알림이 사실상 무의미해졌다.
-    //    내용이 `썰박스(틱톡) 06-15=1`, `06-28=14`, `06-30=15`, `06-24=18` 처럼 한 자리·두 자리였다.
-    //    조회수가 그 수준인 게시물끼리 같은 숫자를 갖는 건 우연이 아니라 당연하다.
-    //    기존 필터는 `% 1000`(반올림)만 있고 **최소값 기준이 없었다.**
-    //    scripts/manual_entry_guards.py 에서 같은 문제를 실측 튜닝한 기준(112→10건)을 여기에도 맞춘다.
-    const COPY_MIN_VALUE = 1000;      // 이하는 서로 다른 게시물이 같은 값을 지나가는 게 정상
-    const COPY_ROUNDING_EXCLUDE = 100; // 89,000·267,000 같은 반올림 수기값끼리의 우연 일치 배제
-    const matchDates = new Map<string, Set<string>>(); // `${metric}|${pid}|${other}` → set(date)
-    for (const r of copyCandidates) {
-      const date = r.measured_at.slice(0, 10);
-      if (r.value < COPY_MIN_VALUE) continue;
-      if (r.value % COPY_ROUNDING_EXCLUDE === 0) continue;
-      const owners = dvOwners.get(`${date}|${r.value}`);
-      if (!owners) continue;
-      for (const other of owners) {
-        if (other === r.post_id) continue;
-        const matchKey = `${r.metric}|${r.post_id}|${other}`;
-        let dates = matchDates.get(matchKey);
-        if (!dates) { dates = new Set(); matchDates.set(matchKey, dates); }
-        dates.add(date);
-      }
-    }
-
-    const copySource = new Map<string, string>(); // `${metric}|${pid}` → source post_id
-    for (const [matchKey, dates] of matchDates) {
-      if (dates.size < 2) continue;
-      const [metric, pid, other] = matchKey.split("|") as ["play_count" | "reach_count", string, string];
-      for (const date of dates) copyKeys.add(`${metric}|${pid}|${date}`);
-      if (!copySource.has(`${metric}|${pid}`)) copySource.set(`${metric}|${pid}`, other);
-    }
+    // 판정 규칙(1,000 이상·100 단위 아님·같은 타 게시물과 2일 이상)과 조회는 lib/stats-import-copy.ts.
+    // ⚠️ PostgREST는 한 응답을 1,000행에서 에러 없이 자른다. 정렬·페이지 없이 읽던 예전 조회는 최신 날짜부터
+    //    잘려 복사를 조용히 놓쳤다(2026-11-20 실측: 884행 중 638행만 판정). 끝까지 읽고, 조회가 하나라도
+    //    실패하면 일부 결과로 '복사 없음'을 판정하지 않고 500으로 멈춘다(다른 조회 실패와 같은 원칙).
+    const { owners, error: copyLookupError } = await loadCopyValueOwners(supabase, copyCandidates);
+    if (copyLookupError) return NextResponse.json({ error: copyLookupError }, { status: 500 });
+    const { copyKeys: suspectKeys, copySource } = findCopySuspects(copyCandidates, owners);
+    for (const key of suspectKeys) copyKeys.add(key);
     if (copyKeys.size > 0) {
       const urlByPid = new Map<string, string>();
       for (const [u, id] of idByUrl) urlByPid.set(id, u);
