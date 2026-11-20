@@ -391,6 +391,47 @@ export async function POST(req: NextRequest) {
   }
   const postIds = [...postIdSet];
 
+  // 3-a) 기존 post_daily_stats 조회 — 누적 감소 판정 기준이자, 복사 판정(3-b)의 'DB에 이미 같은 값' 판단 근거.
+  //      페이지네이션으로 전량. (예전 4단계에서 위로 옮김, 2026-11-20 — 조회 내용·순서는 그대로)
+  const existingStats: GuardInput[] = [];
+  const manualSet = new Set<string>(); // 대시보드에서 수동수정된 (post_id|measured_at) → 동기화가 덮지 않고 보존
+  const existingMetricByKey = new Map<string, ExistingMetricSnapshot>();
+  const automaticPlayRows: AutomaticPlayMeasurement[] = [];
+  // ⚠️ .in("post_id", postIds)를 통째로 쓰면 시트가 대량 배치를 보낼 때 id 목록이 쿼리 URL 한도를 넘어
+  //    0행/에러가 됨(sponsored-posts 500 버그와 동일 계열) → id를 청크로 나눠 조회.
+  //    (mono가드 정합성 때문에 조회 에러 시엔 500으로 실패시켜 부분 쓰기 방지 — degrade 안 함)
+  {
+    const ID_CHUNK = 150;
+    for (let c = 0; c < postIds.length; c += ID_CHUNK) {
+      const batch = postIds.slice(c, c + ID_CHUNK);
+      const PAGE = 1000;
+      for (let from = 0; ; from += PAGE) {
+        const { data: page, error: pe2 } = await supabase
+          .from("post_daily_stats")
+          .select("id, post_id, measured_at, play_count, reach_count, manual")
+          .in("post_id", batch)
+          .order("post_id", { ascending: true })
+          .order("measured_at", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (pe2) return NextResponse.json({ error: pe2.message }, { status: 500 });
+        for (const s of (page ?? []) as Array<{ post_id: string; measured_at: string; play_count: number | null; reach_count: number | null; manual: boolean | null }>) {
+          const measuredAt = String(s.measured_at).slice(0, 10);
+          const key = `${s.post_id}|${measuredAt}`;
+          existingStats.push({ post_id: s.post_id, measured_at: measuredAt, play_count: Number(s.play_count ?? 0) });
+          existingMetricByKey.set(key, {
+            play_count: s.play_count == null ? null : Number(s.play_count),
+            reach_count: s.reach_count == null ? null : Number(s.reach_count),
+            manual: s.manual,
+          });
+          if (s.manual) manualSet.add(key);
+          if (!s.manual) automaticPlayRows.push(s);
+        }
+        if (!page || page.length < PAGE) break;
+      }
+    }
+  }
+
   // 3-b) 🛡️ 복사 유입 방지 — 시트 입력값이 '다른 게시물의 같은 날짜 값'과 여러 날 일치하면(=시리즈 복사)
   //   그 행을 저장하지 않는다(남의 값이 DB로 유입돼 대시보드까지 오염되는 것을 원천 차단).
   //   단일 우연 일치는 통과(다른 게시물이 같은 라운드 숫자일 수 있음) — '같은 타 게시물과 2일 이상 일치'만 차단.
@@ -420,6 +461,7 @@ export async function POST(req: NextRequest) {
     metric: "play_count" | "reach_count";
   }> = [];
   const copyKeys = new Set<string>(); // `${metric}|${pid}|${date}` — DB 저장 제외
+  let copyMatchAlreadyInDb = 0; // 규칙엔 걸렸지만 DB에 이미 같은 값이라 경고·격리하지 않은 행
   if (copyCandidates.length > 0) {
     // 판정 규칙(1,000 이상·100 단위 아님·같은 타 게시물과 2일 이상)과 조회는 lib/stats-import-copy.ts.
     // ⚠️ PostgREST는 한 응답을 1,000행에서 에러 없이 자른다. 정렬·페이지 없이 읽던 예전 조회는 최신 날짜부터
@@ -427,7 +469,15 @@ export async function POST(req: NextRequest) {
     //    실패하면 일부 결과로 '복사 없음'을 판정하지 않고 500으로 멈춘다(다른 조회 실패와 같은 원칙).
     const { owners, error: copyLookupError } = await loadCopyValueOwners(supabase, copyCandidates);
     if (copyLookupError) return NextResponse.json({ error: copyLookupError }, { status: 500 });
-    const { copyKeys: suspectKeys, copySource } = findCopySuspects(copyCandidates, owners);
+    // 같은 게시물·날짜·칸에 DB가 이미 같은 값을 갖고 있으면(시트↔DB 왕복) '2일 이상' 근거로만 쓰고
+    // 경고·격리하지 않는다 — 저장해도 DB가 안 바뀌어 막을 게 없고, 매일 같은 경고가 importStats 지문
+    // 정산까지 막았다(2026-11-20 실측: 잡힌 884행 전부 왕복값). DB에 든 교차복사는 주간 교차복사 스캔이 보고한다.
+    const alreadyStored = (c: CopyCandidate) => {
+      const stored = existingMetricByKey.get(`${c.post_id}|${String(c.measured_at).slice(0, 10)}`)?.[c.metric];
+      return stored != null && Number(stored) === c.value;
+    };
+    const { copyKeys: suspectKeys, copySource, alreadyStoredMatches } = findCopySuspects(copyCandidates, owners, { alreadyStored });
+    copyMatchAlreadyInDb = alreadyStoredMatches;
     for (const key of suspectKeys) copyKeys.add(key);
     if (copyKeys.size > 0) {
       const urlByPid = new Map<string, string>();
@@ -475,45 +525,7 @@ export async function POST(req: NextRequest) {
     if (badKeys.size > 0) incoming = incoming.filter(r => !badKeys.has(`${r.post_id}|${r.measured_at.slice(0, 10)}`));
   }
 
-  // 4) 기존 post_daily_stats 조회 (누적 감소 판정 기준) — 페이지네이션으로 전량
-  const existingStats: GuardInput[] = [];
-  const manualSet = new Set<string>(); // 대시보드에서 수동수정된 (post_id|measured_at) → 동기화가 덮지 않고 보존
-  const existingMetricByKey = new Map<string, ExistingMetricSnapshot>();
-  const automaticPlayRows: AutomaticPlayMeasurement[] = [];
-  // ⚠️ .in("post_id", postIds)를 통째로 쓰면 시트가 대량 배치를 보낼 때 id 목록이 쿼리 URL 한도를 넘어
-  //    0행/에러가 됨(sponsored-posts 500 버그와 동일 계열) → id를 청크로 나눠 조회.
-  //    (mono가드 정합성 때문에 조회 에러 시엔 500으로 실패시켜 부분 쓰기 방지 — degrade 안 함)
-  {
-    const ID_CHUNK = 150;
-    for (let c = 0; c < postIds.length; c += ID_CHUNK) {
-      const batch = postIds.slice(c, c + ID_CHUNK);
-      const PAGE = 1000;
-      for (let from = 0; ; from += PAGE) {
-        const { data: page, error: pe2 } = await supabase
-          .from("post_daily_stats")
-          .select("id, post_id, measured_at, play_count, reach_count, manual")
-          .in("post_id", batch)
-          .order("post_id", { ascending: true })
-          .order("measured_at", { ascending: true })
-          .order("id", { ascending: true })
-          .range(from, from + PAGE - 1);
-        if (pe2) return NextResponse.json({ error: pe2.message }, { status: 500 });
-        for (const s of (page ?? []) as Array<{ post_id: string; measured_at: string; play_count: number | null; reach_count: number | null; manual: boolean | null }>) {
-          const measuredAt = String(s.measured_at).slice(0, 10);
-          const key = `${s.post_id}|${measuredAt}`;
-          existingStats.push({ post_id: s.post_id, measured_at: measuredAt, play_count: Number(s.play_count ?? 0) });
-          existingMetricByKey.set(key, {
-            play_count: s.play_count == null ? null : Number(s.play_count),
-            reach_count: s.reach_count == null ? null : Number(s.reach_count),
-            manual: s.manual,
-          });
-          if (s.manual) manualSet.add(key);
-          if (!s.manual) automaticPlayRows.push(s);
-        }
-        if (!page || page.length < PAGE) break;
-      }
-    }
-  }
+  // 4) 기존 post_daily_stats 조회는 3-a로 옮겼다(2026-11-20) — 복사 판정이 'DB에 이미 같은 값'을 알아야 해서.
 
   // 4-b) 수기값 보존은 임포트 실행 주체가 아니라 값의 출처를 따른다.
   //   dailyAuto가 읽더라도 DB에 없거나 같은 날짜 DB값과 다른 시트값은 사람이 시트에 입력한 값이다.
@@ -726,6 +738,7 @@ export async function POST(req: NextRequest) {
     manualRowsWritten,
     automaticRowsWritten,
     copySuspectedSkipped,
+    copyMatchAlreadyInDb,
     spikeSuspectedSkipped: spikePartition.quarantined.length,
     nonVideoPlayRejected: nonVideoPlayRejected.length,
   });
@@ -736,6 +749,9 @@ export async function POST(req: NextRequest) {
     copy_suspected_skipped: copySuspectedSkipped,
     copy_suspected_warned: copySuspected.length,
     copy_suspected_sample: copySuspected.slice(0, 10),
+    // 규칙엔 걸렸지만 DB에 이미 같은 값이라 경고·격리하지 않은 행 수(주간 교차복사 스캔 대상).
+    // importStats 지문 정산 사유(IMPORT_FP_UNSETTLED_FIELDS_)가 아니다 — 같은 경고 반복으로 재전송을 막지 않게.
+    copy_match_already_in_db: copyMatchAlreadyInDb,
     dup_column_skipped: dupConflict.length,
     dup_column_sample: dupConflict.slice(0, 10),
     spike_suspected_skipped: spikePartition.quarantined.length,

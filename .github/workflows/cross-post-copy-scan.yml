@@ -10,9 +10,9 @@ on:
         type: string
         default: "2"
       min_value:
-        description: "스캔 최소 조회수"
+        description: "스캔 최소 조회수·도달수 (시트 입력 복사 검사와 같은 1000)"
         type: string
-        default: "10000"
+        default: "1000"
 
 permissions:
   contents: read
@@ -37,7 +37,7 @@ jobs:
           PYTHONUTF8: "1"
         run: |
           MIN_DAYS="${{ github.event.inputs.min_days || '2' }}"
-          MIN_VALUE="${{ github.event.inputs.min_value || '10000' }}"
+          MIN_VALUE="${{ github.event.inputs.min_value || '1000' }}"
           python scripts/scan_cross_post_copies.py "$MIN_DAYS" "$MIN_VALUE"
 
       - name: Write summary

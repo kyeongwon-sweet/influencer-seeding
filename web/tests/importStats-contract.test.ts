@@ -89,9 +89,27 @@ test("stats-import: 복사 판정은 끝까지 읽는 모듈만 거치고, 조�
   assert.match(route, /import \{ findCopySuspects, loadCopyValueOwners, type CopyCandidate \} from "@\/lib\/stats-import-copy";/);
   assert.match(route, /const \{ owners, error: copyLookupError \} = await loadCopyValueOwners\(supabase, copyCandidates\);/);
   assert.match(route, /if \(copyLookupError\) return NextResponse\.json\(\{ error: copyLookupError \}, \{ status: 500 \}\);/);
-  assert.match(route, /findCopySuspects\(copyCandidates, owners\)/);
+  assert.match(route, /findCopySuspects\(copyCandidates, owners, \{ alreadyStored \}\)/);
   // 모듈 쪽 조회는 끝까지 넘기고(fetchAllPages) 범위·유일 정렬 키로 끝난다.
   assert.match(copyLib, /await fetchAllPages<PageRow>\(\(from, to\) => supabase\s*\.from\("post_daily_stats"\)[\s\S]*?\.order\("id", \{ ascending: true \}\)\s*\.range\(from, to\)/);
+});
+
+// 2026-11-20 사용자 승인("진행해줘"): 잡힌 884행이 전부 DB에 이미 같은 값(왕복값)이라 격리해도 DB가 안 바뀌고,
+// 매일 같은 경고가 importStats 지문 정산을 막아 5,601개 중 약 4,500개를 날마다 다시 보냈다.
+test("stats-import: DB에 이미 같은 값은 복사 근거로만 쓰고 경고·격리·재전송 사유로 만들지 않는다", () => {
+  // 기존 값 조회(3-a)가 복사 판정보다 먼저 와야 'DB에 이미 같은 값'을 알 수 있다.
+  const existingFetch = route.indexOf('.select("id, post_id, measured_at, play_count, reach_count, manual")');
+  const copyLookup = route.indexOf("await loadCopyValueOwners(supabase, copyCandidates)");
+  assert.ok(existingFetch > 0 && copyLookup > existingFetch, "기존 값 조회가 복사 판정 뒤에 있으면 왕복값을 가려낼 수 없다");
+  // 같은 게시물·날짜·칸(조회수/도달수)의 저장값과 정확히 같을 때만 왕복값으로 본다.
+  assert.match(route, /existingMetricByKey\.get\(`\$\{c\.post_id\}\|\$\{String\(c\.measured_at\)\.slice\(0, 10\)\}`\)\?\.\[c\.metric\]/);
+  assert.match(route, /return stored != null && Number\(stored\) === c\.value;/);
+  assert.match(route, /copy_match_already_in_db: copyMatchAlreadyInDb/);
+  // Apps Script는 이 숫자로 지문 정산을 막지 않는다 — 막으면 왕복값 때문에 매일 재전송이 반복된다.
+  const unsettled = appsScript.match(/const IMPORT_FP_UNSETTLED_FIELDS_ = \[([\s\S]*?)\];/);
+  assert.ok(unsettled, "IMPORT_FP_UNSETTLED_FIELDS_ 목록을 찾지 못했다");
+  assert.doesNotMatch(unsettled[1], /copy_match_already_in_db/);
+  assert.match(unsettled[1], /"copy_suspected_warned", "copy_suspected_skipped"/);
 });
 
 test("stats-import: 라우트의 post_daily_stats 읽기는 전부 페이지를 넘긴다(1,000행 상한 무음 절단 차단)", () => {

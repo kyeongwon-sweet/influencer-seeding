@@ -94,7 +94,7 @@ function day(n: number): string {
  * 실제 사고 모양: 대상 게시물의 첫날 값이 다른 게시물 1,200개와 같은 날 겹친다(각자 1일뿐이라 무죄).
  * 진짜 복사 원본은 최근 이틀(11-09·11-10)만 같은 값 → (measured_at, id) 순 앞 1,000행에 못 든다.
  */
-function incidentFixture() {
+function incidentFixture(opts: { newDays?: number[] } = {}) {
   const target = "post-target";
   const source = "post-source";
   const candidates: CopyCandidate[] = [];
@@ -102,7 +102,8 @@ function incidentFixture() {
   for (let d = 1; d <= 10; d += 1) {
     const value = 1_050 + d * 7; // 1,000 이상·100 단위 아님 → 판정 대상
     candidates.push({ post_id: target, measured_at: day(d), value, metric: "play_count" });
-    db.push(stat(target, day(d), value)); // 대상 자신의 기존 행(왕복 값)
+    // 대상 자신의 기존 행(왕복 값). newDays 날짜는 시트에 새로 들어와 아직 DB에 없는 값이다.
+    if (!opts.newDays?.includes(d)) db.push(stat(target, day(d), value));
   }
   for (let i = 0; i < 1_200; i += 1) db.push(stat(`post-filler-${i}`, day(1), 1_057)); // 첫날 값 우연 일치(1일)
   db.push(stat(source, day(9), 1_050 + 9 * 7));
@@ -198,6 +199,67 @@ test("작은 값·100 단위 값은 조회도 판정도 하지 않는다(2026-08
     [`${day(3)}|89000`, new Set(["b"])], [`${day(4)}|267000`, new Set(["b"])],
   ]);
   assert.equal(findCopySuspects(candidates, owners).copyKeys.size, 0);
+});
+
+/** 라우트와 같은 판단: 같은 게시물·날짜·칸에 DB가 이미 같은 값을 갖고 있으면 왕복값. */
+function storedIn(db: StatRow[]) {
+  const byKey = new Map(db.map((r) => [`${r.post_id}|${r.measured_at}`, r]));
+  return (c: CopyCandidate) => {
+    const stored = byKey.get(`${c.post_id}|${c.measured_at}`)?.[c.metric];
+    return stored != null && Number(stored) === c.value;
+  };
+}
+
+test("DB에 이미 같은 값인 일치는 근거로만 쓰고 경고·격리하지 않는다(11/18 위성 왕복값 모양)", () => {
+  // 11/18 실제 표본: 이슈뜨기·이슈박스(틱톡) 두 위성 게시물이 같은 수집 회차에서 같은 값을 받았고,
+  // 시트는 그 DB 값을 그대로 되돌려 보낸다. 저장해도 DB가 안 바뀌므로 막을 것이 없다.
+  const p = "post-issuetteugi";
+  const o = "post-issuebox";
+  const db = [stat(p, "2026-10-22", 1_056), stat(p, "2026-10-27", 1_097), stat(o, "2026-10-22", 1_056), stat(o, "2026-10-27", 1_097)];
+  const candidates: CopyCandidate[] = [
+    { post_id: p, measured_at: "2026-10-22", value: 1_056, metric: "play_count" },
+    { post_id: p, measured_at: "2026-10-27", value: 1_097, metric: "play_count" },
+  ];
+  const owners = new Map([["2026-10-22|1056", new Set([p, o])], ["2026-10-27|1097", new Set([p, o])]]);
+  const result = findCopySuspects(candidates, owners, { alreadyStored: storedIn(db) });
+  assert.equal(result.copyKeys.size, 0, "왕복값만으로는 경고·격리하지 않는다");
+  assert.equal(result.alreadyStoredMatches, 2, "근거로는 셌다는 기록이 남아야 한다");
+  // 대조: 옵션이 없으면(배포 전 동작) 둘 다 잡혔다 — 옵션이 실제로 결과를 바꾼다는 증거.
+  assert.equal(findCopySuspects(candidates, owners).copyKeys.size, 2);
+});
+
+test("새로 들어온 복사값은 과거 왕복 일치를 근거로 삼아 잡는다", () => {
+  const p = "post-p";
+  const o = "post-o";
+  const db = [stat(p, "2026-10-22", 1_056), stat(o, "2026-10-22", 1_056), stat(o, "2026-11-19", 2_341)];
+  const candidates: CopyCandidate[] = [
+    { post_id: p, measured_at: "2026-10-22", value: 1_056, metric: "play_count" }, // 왕복값(근거)
+    { post_id: p, measured_at: "2026-11-19", value: 2_341, metric: "play_count" }, // 새 값 — o 의 같은 날 값과 같다
+  ];
+  const owners = new Map([["2026-10-22|1056", new Set([p, o])], ["2026-11-19|2341", new Set([o])]]);
+  const { copyKeys, copySource, alreadyStoredMatches } = findCopySuspects(candidates, owners, { alreadyStored: storedIn(db) });
+  assert.deepEqual([...copyKeys], [`play_count|${p}|2026-11-19`], "새 값만 경고·격리 대상");
+  assert.equal(copySource.get(`play_count|${p}`), o);
+  assert.equal(alreadyStoredMatches, 1);
+});
+
+test("새 값이 하루만 겹치고 근거가 없으면 통과한다(1일 우연 일치 규칙 유지)", () => {
+  const p = "post-p";
+  const o = "post-o";
+  const db = [stat(o, "2026-11-19", 2_341)];
+  const candidates: CopyCandidate[] = [{ post_id: p, measured_at: "2026-11-19", value: 2_341, metric: "play_count" }];
+  const owners = new Map([["2026-11-19|2341", new Set([o])]]);
+  assert.equal(findCopySuspects(candidates, owners, { alreadyStored: storedIn(db) }).copyKeys.size, 0);
+});
+
+test("1,000행 뒤에 숨은 최신 '새' 복사값을 왕복값 제외와 함께 잡는다", async () => {
+  const { target, source, candidates, db } = incidentFixture({ newDays: [9, 10] });
+  const { client } = fakePostgrest(db);
+  const { owners, error } = await loadCopyValueOwners(client, candidates);
+  assert.equal(error, null);
+  const { copyKeys, copySource } = findCopySuspects(candidates, owners, { alreadyStored: storedIn(db) });
+  assert.deepEqual([...copyKeys].sort(), [`play_count|${target}|${day(10)}`, `play_count|${target}|${day(9)}`].sort());
+  assert.equal(copySource.get(`play_count|${target}`), source);
 });
 
 test("조회가 중간에 실패하면 일부 결과로 판정하지 않고 에러를 돌려준다", async () => {

@@ -114,21 +114,36 @@ export async function loadCopyValueOwners(
   return { owners, error: null, lookups: lookups.length, rows };
 }
 
+export type CopySuspectOptions = {
+  /**
+   * 같은 게시물·날짜·칸에 DB가 **이미 같은 값**을 갖고 있으면 true(시트↔DB 왕복값).
+   * 그런 값은 '2일 이상' 근거로는 세지만 경고·격리하지 않는다 — 저장해도 DB가 바뀌지 않으므로
+   * 막을 것이 없고, 매일 같은 경고만 반복해 importStats 지문 정산까지 막았다(2026-11-20 실측:
+   * 잡힌 884행 전부가 왕복값, 그 때문에 매일 5,601개 중 약 4,500개를 다시 보냄).
+   * 이미 DB에 든 교차복사는 주간 교차복사 스캔(scripts/scan_cross_post_copies.py)이 같은 기준으로 보고한다.
+   */
+  alreadyStored?: (candidate: CopyCandidate) => boolean;
+};
+
 /**
  * 같은 타 게시물과 같은 비-라운드 값이 2일 이상 겹치는 후보를 고른다.
  * 미러 채널도 URL별 독립 측정이므로 예외를 두지 않고, 배너 reach에도 같은 기준을 적용한다.
  * copyKeys: `${metric}|${post_id}|${YYYY-MM-DD}` · copySource: `${metric}|${post_id}` → 처음 찾은 원본 게시물.
+ * alreadyStoredMatches: 규칙엔 걸렸지만 DB에 이미 같은 값이라 경고·격리에서 뺀 행 수.
  */
 export function findCopySuspects(
   candidates: CopyCandidate[],
   owners: CopyValueOwners,
-): { copyKeys: Set<string>; copySource: Map<string, string> } {
+  options: CopySuspectOptions = {},
+): { copyKeys: Set<string>; copySource: Map<string, string>; alreadyStoredMatches: number } {
   const matchDates = new Map<string, Set<string>>(); // `${metric}|${pid}|${other}` → 날짜들
+  const storedKeys = new Set<string>(); // DB에 이미 같은 값인 후보 `${metric}|${pid}|${date}`
   for (const r of candidates) {
     if (!isCopyEligibleValue(r.value)) continue;
     const date = String(r.measured_at).slice(0, 10);
     const others = owners.get(`${date}|${r.value}`);
     if (!others) continue;
+    if (options.alreadyStored?.(r)) storedKeys.add(`${r.metric}|${r.post_id}|${date}`);
     for (const other of others) {
       if (other === r.post_id) continue;
       const matchKey = `${r.metric}|${r.post_id}|${other}`;
@@ -140,11 +155,18 @@ export function findCopySuspects(
 
   const copyKeys = new Set<string>();
   const copySource = new Map<string, string>();
+  const storedMatchKeys = new Set<string>();
   for (const [matchKey, dates] of matchDates) {
     if (dates.size < COPY_MIN_SHARED_DATES) continue;
     const [metric, pid, other] = matchKey.split("|");
-    for (const date of dates) copyKeys.add(`${metric}|${pid}|${date}`);
-    if (!copySource.has(`${metric}|${pid}`)) copySource.set(`${metric}|${pid}`, other);
+    let flagged = false;
+    for (const date of dates) {
+      const key = `${metric}|${pid}|${date}`;
+      if (storedKeys.has(key)) { storedMatchKeys.add(key); continue; } // 근거로만 쓴다
+      copyKeys.add(key);
+      flagged = true;
+    }
+    if (flagged && !copySource.has(`${metric}|${pid}`)) copySource.set(`${metric}|${pid}`, other);
   }
-  return { copyKeys, copySource };
+  return { copyKeys, copySource, alreadyStoredMatches: storedMatchKeys.size };
 }
