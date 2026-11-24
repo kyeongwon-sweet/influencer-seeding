@@ -23,6 +23,10 @@
   - 다음 날 아침 끝 열이 자동으로 연장되는지 확인한다.
   - 롤백 = 원래 숫자 5개 재기입. 인계문 전문은 사용자에게 전달했다.
 - **동시세션:** Claude는 읽기만 했다(시트·DB·코드 무변경). 이 5칸 쓰기는 Codex 몫이다. 다른 행·열, 새 26행, 수기 1,245행, DB, Apps Script 코드는 이 작업 범위 밖이다.
+- **11/24 09:33 정기 감사 재확인(`45298078229`):** 5,697행, 날짜열 P~GW(11/23), H 수식 4,448개 전부 끝 열 GW.
+  - 새 26행은 아침 자동 보강으로 수식이 채워졌다(I 형태오류 26→0, CPV 오류 26→0).
+  - H 문제는 이 5행만 같은 행 번호로 그대로다(`hInvalid=5`, `h.manualKept=5`). 나머지: H 오류칸 0, 데이터 있는데 빈칸 0, I 불일치 0, I 오류칸 0.
+  - 오늘 복원하면 END=GW이고, 예상값은 그 행 날짜칸 최댓값 = DB 11/23 값(441 · 2,485 · 662 · 595 · 1,025)이다.
 
 ## 🟢 2026-11-20 [Claude 배포 완료(사용자 승인 "배포해줘") → 11/21 아침·11/23 주간 스캔 자연 게이트 대기] 복사 의심 알림 줄이기 + 주간 교차복사 스캔 기준 통일 (사용자 "진행해줘")
 - **배포 확인:** `main` `611d820e..bd330278` push(코드 `fa9041c9`). CI [`44736441912`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/44736441912) build·python-tests success, Workflow Lint [`44736441940`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/44736441940) success. Vercel 커밋 상태 `success`. 운영 `POST /api/sponsored-posts/stats-import` 인증 없이 → 401(없는 경로 대조 307). 주간 스캔 워크플로는 수동 실행하지 않았다(실행하면 Slack 보고가 감) — 첫 검증은 11/23(월) 09:20 예약 실행.
