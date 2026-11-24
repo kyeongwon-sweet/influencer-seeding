@@ -1,5 +1,22 @@
 # AI Shared Status
 
+## 🟢 2026-11-24 [Claude 배포 완료(사용자 승인 "응") → 오늘 밤 수집에서 동작 확인 대기(미검증)] IG 새 영상 조회수 보조수집 + 워치독 '영상인데 조회수 한 번도 없음'
+- **배포:** main `10024879`(본 수정) + `88080f4d`(CI 수정).
+  - 첫 CI(`10024879`) build 실패. 원인: 웹 계약 테스트 `web/tests/ig-metric-guard-source.test.ts`는 파이썬 `_TRUSTED_IG_PLAY_SOURCES` 줄을 `{"videoPlayCount", "videoViewCount"}` 그대로 대조하는데, 거기에 data-slayer를 넣었다.
+  - 수정: 공용 목록은 원래대로 두고 파이썬 전용 `_TRUSTED_FALLBACK_PLAY_SOURCES`로 분리했다(동작 동일).
+  - `88080f4d` CI python-tests·build success, Vercel success.
+- **바로 아래 🟡 항목의 브랜치(`b353b35c`)가 이 두 커밋으로 main에 들어갔다.** 4개 파일 작업 잠금은 해제한다(Codex 수정 가능).
+- **확인 예정(오늘 밤 00:15 무렵 수집 이후, 미검증):**
+  - ① 수집 로그에 `직전 조회수 없는 영상 1건 → data-slayer 선택 폴백`이 찍힌다.
+  - ② p.25_d.y `p/DgAd6JuTEBX`의 11/24 행에 play_count가 생긴다.
+  - ③ 다음 워치독 실행에서 새 칸이 0건이 된다(p.25_d.y 해소).
+  - ④ 추가 data-slayer 호출이 1건 수준이다.
+- **자정 수집 스레드 공유:**
+  - 사용자 지시("이런 이슈 자정 수집 스레드에 담당자 태그해서 남겨")로 11/24 스레드에 원인과 할 일을 댓글로 남겼다.
+  - 태그는 김유진 — 사용자가 09:46에 무디 건으로 태그한 담당이다.
+  - 내용: 업로드일 2건 11/20 정정 요청, mist8mist 원글 삭제 확인 요청, p.25_d.y 조치 완료.
+  - 시트 업로드일을 김유진이 고치면 Codex 인계는 필요 없다(인계문에 '이미 고쳐져 있으면 쓰지 말고 보고'를 넣어 두었다).
+
 ## 🟡 2026-11-24 [Claude 코드 완료(브랜치) → 사용자 배포 승인 대기 · Codex 시트 정정 요청] IG 새 영상 조회수 보조수집 + 워치독 '영상인데 조회수 한 번도 없음' (사용자 "고치자"·"재발방지")
 - **브랜치:** `claude/ig-new-video-fallback-20261124` `b353b35c`. main에는 아직 반영하지 않았다 — 사용자가 배포를 승인하면 Claude가 main에 push한다.
   - 파일: `scripts/ig_view_fallback.py`(신규)·`run_monitoring.py`·`view_tracking_watchdog.py`·`collector_reasons.py` + 테스트 2개.
