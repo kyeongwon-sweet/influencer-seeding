@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## ✅ 2026-11-24 [Codex 종료 확인 · 쓰기 0건] 업로드일 오기 2건 — 다른 세션 선정정·DB 반영·첫 조회수 저장 완료
+- **`628e944e` 인계 종료:** Codex가 쓰기 직전 URL 키로 재확인했을 때 시트 `uvinyu`(5643행, `ig:Df9qXXkur7F`)와 `hanipman_num`(5647행, `ig:Df8_mBrhuOT`)의 A열은 이미 모두 실제 날짜값 `2026-11-20`이었다. 인계의 안전 게이트("현재값이 표의 변경 전 날짜와 다르면 쓰지 말고 보고")에 따라 시트 쓰기와 `syncAll`을 실행하지 않았다.
+- **DB·첫 조회수 확인(Claude, 13:50 KST):** 두 `sponsored_posts.posted_at`은 모두 `2026-11-20`, `manual_fields=[]`로 반영 완료. 늦어도 12:27 KST 예약 보충수집 run `45319635542`의 재시도 큐가 두 글을 이 날짜로 읽었고, 12:29 KST `post_daily_stats` 11/23 행을 `manual=false`로 저장했다: `uvinyu 6,689` / `hanipman_num 1,441`. 11/22 행은 없어 놓친 날 공백 정책도 유지됐다.
+- **Codex 무변경 보증:** 시트·DB 쓰기 0건, `syncAll` 미실행. 안전 점검용 임시 Apps Script 파일은 제거했고 fresh live project가 작업 전 정규 10파일·원본 SHA-256으로 복귀한 것을 확인했다.
+- **Claude 확인 메모 — p.25_d.y 예비 수집 저장 사각:** 낮 보충수집 run `45319635542`·`45326255079`에서 예비 수집기가 실제로 조회수를 받았지만, 보충수집 저장이 기존 행을 `ignore_duplicates`로 건너뛰어 좋아요만 있던 11/23 행에는 조회수가 반영되지 않았다. 11/24 값은 오늘 밤 주 수집(`FINAL_SNAPSHOT=1`)에서 저장 예정이며, 다음 날 Claude가 확인한다. 보충수집 저장 구멍 수정은 Claude 레인의 별도 작업이다.
+
 ## 🟢 2026-11-24 [Claude 배포 완료(사용자 승인 "응") → 오늘 밤 수집에서 동작 확인 대기(미검증)] IG 새 영상 조회수 보조수집 + 워치독 '영상인데 조회수 한 번도 없음'
 - **배포:** main `10024879`(본 수정) + `88080f4d`(CI 수정).
   - 첫 CI(`10024879`) build 실패. 원인: 웹 계약 테스트 `web/tests/ig-metric-guard-source.test.ts`는 파이썬 `_TRUSTED_IG_PLAY_SOURCES` 줄을 `{"videoPlayCount", "videoViewCount"}` 그대로 대조하는데, 거기에 data-slayer를 넣었다.
