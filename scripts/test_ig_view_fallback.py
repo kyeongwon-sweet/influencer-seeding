@@ -96,6 +96,14 @@ def test_보조수집_조회수는_비율추정_가드에_걸리지_않는다():
     )
 
 
+def test_웹과_공유하는_신뢰_필드_목록은_그대로_둔다():
+    # web/tests/ig-metric-guard-source.test.ts 가 이 줄을 그대로 대조한다(웹 수집 경로와 같은 목록).
+    # 2026-11-24: 여기에 보조 수집 출처를 넣었다가 웹 계약 테스트가 깨졌다 → 파이썬 전용 목록으로 분리.
+    assert '_TRUSTED_IG_PLAY_SOURCES = frozenset({"videoPlayCount", "videoViewCount"})' in SOURCE
+    assert FALLBACK_PLAY_SOURCE not in rm._TRUSTED_IG_PLAY_SOURCES
+    assert FALLBACK_PLAY_SOURCE in rm._TRUSTED_FALLBACK_PLAY_SOURCES
+
+
 def test_보조수집이라도_숫자가_좋아요수_모양이면_여전히_거른다():
     assert rm._looks_like_engagement_count_as_views(10, 10, 2, None, had_play_before=False, source=FALLBACK_PLAY_SOURCE)
 

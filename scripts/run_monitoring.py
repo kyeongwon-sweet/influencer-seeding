@@ -103,8 +103,12 @@ def _is_instagram_reel_url(url: str | None) -> bool:
 
 
 # 조회수 전용 필드 — 여기서 온 값은 좋아요/댓글 수가 섞여 들어올 경로가 없다.
-# 보조 수집기(data-slayer)의 명시적 조회수 키도 같다(FALLBACK_PLAY_SOURCE — ig_view_fallback.py 참고).
-_TRUSTED_IG_PLAY_SOURCES = frozenset({"videoPlayCount", "videoViewCount", FALLBACK_PLAY_SOURCE})
+# ⚠️ 웹 수집 경로(web/lib/ig-metric-guard.ts TRUSTED_IG_PLAY_SOURCES)와 같은 목록이어야 한다
+#    (web/tests/ig-metric-guard-source.test.ts 계약). 파이썬 전용 출처는 아래에 따로 둔다.
+_TRUSTED_IG_PLAY_SOURCES = frozenset({"videoPlayCount", "videoViewCount"})
+# 보조 수집기(data-slayer)의 명시적 조회수 키 — 일일 수집(파이썬)에만 있는 경로라 공용 목록과 분리.
+# (FALLBACK_PLAY_SOURCE — ig_view_fallback.py 참고)
+_TRUSTED_FALLBACK_PLAY_SOURCES = frozenset({FALLBACK_PLAY_SOURCE})
 
 
 def _pick_instagram_play_count(item: dict, url: str | None):
@@ -175,7 +179,7 @@ def _looks_like_engagement_count_as_views(
         return True
     if likes is not None and comments is not None and play == likes + comments:
         return True
-    if source in _TRUSTED_IG_PLAY_SOURCES:
+    if source in _TRUSTED_IG_PLAY_SOURCES or source in _TRUSTED_FALLBACK_PLAY_SOURCES:
         return False
     # 모호한 필드(또는 출처 미상)에서 온 값만 비율로 추정한다
     if likes is not None and likes >= 100 and play <= max(likes * 3, likes + 50):
