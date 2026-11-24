@@ -26,6 +26,11 @@ from not_found_policy import (
 )
 from slack_alert import send_bot_message
 from posted_at_mismatch import alert_text as posted_at_mismatch_alert_text
+from ig_view_fallback import (
+    FALLBACK_PLAY_SOURCE,
+    selective_fallback_targets,
+    video_missing_without_previous_play,
+)
 
 
 OVERRECORDED_WARNINGS = []
@@ -98,7 +103,8 @@ def _is_instagram_reel_url(url: str | None) -> bool:
 
 
 # 조회수 전용 필드 — 여기서 온 값은 좋아요/댓글 수가 섞여 들어올 경로가 없다.
-_TRUSTED_IG_PLAY_SOURCES = frozenset({"videoPlayCount", "videoViewCount"})
+# 보조 수집기(data-slayer)의 명시적 조회수 키도 같다(FALLBACK_PLAY_SOURCE — ig_view_fallback.py 참고).
+_TRUSTED_IG_PLAY_SOURCES = frozenset({"videoPlayCount", "videoViewCount", FALLBACK_PLAY_SOURCE})
 
 
 def _pick_instagram_play_count(item: dict, url: str | None):
@@ -2009,6 +2015,13 @@ def run():
             expected = [p["url"] for p in posts
                         if (p.get("url") or "") in ig_url_set and (prev_ig.get(p["id"]) or {}).get("play_count") is not None]
             exp_missing = [u for u in expected if not (stats_by_key.get(_stats_key(u)) or {}).get("play_count")]
+            # 직전 행에 조회수가 없는 영상(새 글·한 번 실패한 글)도 보조 수집 대상이다.
+            # 예전엔 위 '직전값 보유' 기준에만 기대서 영구 누락됐다(2026-11-24 p.25_d.y DgAd6JuTEBX).
+            # 배너는 저장 루프가 조회수를 버리고 도달수(수기)만 쓰므로 보조 수집 대상에서 뺀다(헛호출 방지).
+            video_missing = video_missing_without_previous_play(
+                [p for p in posts if not is_banner_channel(p.get("channel_type"), p.get("posted_at"))],
+                ig_url_set, stats_by_key, prev_ig, _stats_key,
+            )
             # 최소 표본(5개↑) 확보 시에만 비율 판정 — 소표본 오탐으로 더 비싼 data-slayer 폴백이 트리거되는 것을 방지.
             if len(expected) >= 5 and len(exp_missing) / len(expected) >= 0.4:
                 missing = [u for u in ig_urls if not (stats_by_key.get(_stats_key(u)) or {}).get("play_count")]
@@ -2023,6 +2036,7 @@ def run():
                     cur = stats_by_key.get(key) or {"url": u}
                     if m.get("play_count") is not None:
                         cur["play_count"] = m["play_count"]
+                        cur["play_count_source"] = FALLBACK_PLAY_SOURCE
                         merged += 1
                     if m.get("likes_count") is not None:
                         cur["likes_count"] = m["likes_count"]
@@ -2038,11 +2052,12 @@ def run():
                     cur["error_code"] = None
                     stats_by_key[key] = cur
                 print(f"[LOG] data-slayer 폴백 보강 완료: 조회수 {merged}건 채움")
-            elif exp_missing:
-                # 전체 차단 비율에는 못 미쳐도 직전 측정값이 있던 개별 게시물이 갑자기 빠지면
-                # 해당 누락분만 data-slayer로 보강한다. 비용 폭주 방지를 위해 일일 20건 상한.
-                missing = exp_missing[:20]
-                print(f"[WARN] IG 개별 조회수 누락 {len(exp_missing)}건 → data-slayer 선택 폴백 {len(missing)}건 호출")
+            elif exp_missing or video_missing:
+                # 전체 차단 비율에는 못 미쳐도 직전 측정값이 있던 개별 게시물이 갑자기 빠지거나,
+                # 직전 행에도 조회수가 없는 영상(새 글 등)이 이번에도 조회수 없이 오면
+                # 해당 누락분만 data-slayer로 보강한다. 비용 폭주 방지를 위해 일일 20건 상한(직전값 보유 글 우선).
+                missing = selective_fallback_targets(exp_missing, video_missing)
+                print(f"[WARN] IG 개별 조회수 누락 {len(exp_missing)}건 · 직전 조회수 없는 영상 {len(video_missing)}건 → data-slayer 선택 폴백 {len(missing)}건 호출")
                 fb = _fetch_ig_fallback(missing)
                 merged = 0
                 for u in missing:
@@ -2059,6 +2074,9 @@ def run():
                     # 안 풀면 아래 저장 루프가 되찾은 값을 '수집 불가'로 버린다.
                     cur["error_code"] = None
                     if m.get("play_count") is not None:
+                        # 출처를 남겨야 새 글의 첫 조회수가 비율 추정 가드(_looks_like_engagement_count_as_views)에
+                        # '출처 미상'으로 걸려 다시 버려지지 않는다.
+                        cur["play_count_source"] = FALLBACK_PLAY_SOURCE
                         merged += 1
                     stats_by_key[key] = cur
                 print(f"[LOG] data-slayer 선택 폴백 완료: 조회수 {merged}건 채움")
@@ -2367,7 +2385,11 @@ def run():
 
             # 조회수 검증
             if play_count is None:
-                _record_missing_view_event(post, "Instagram", "missing_play_count", stat=s, existing=existing)
+                # 글 형식을 함께 남긴다 — 워치독이 '원래 조회수 없는 사진'과 '영상인데 빠짐'을 구별해 안내한다.
+                _record_missing_view_event(
+                    post, "Instagram", "missing_play_count", stat=s, existing=existing,
+                    extra={"media_type": s.get("media_type"), "product_type": s.get("product_type")},
+                )
                 # Apify가 조회수를 반환하지 않음 (게시물 타입상 조회수 없을 수 있음)
                 print(f"  ⚠️  조회수 없음: {post['url']} (account={s.get('account_name')})")
                 play_count = None
@@ -3026,6 +3048,10 @@ def _fetch_stats(urls: list) -> list:
             "url": url,
             "play_count": play_count,
             "play_count_source": play_count_source,
+            # 글 형식(Video·clips / Image / Sidecar) — 조회수가 없을 때 '원래 없는 사진'인지
+            # '영상인데 빠진 것'인지 가르는 근거(ig_view_fallback.is_ig_video).
+            "media_type": item.get("type"),
+            "product_type": item.get("productType"),
             "likes_count": _coalesce_metric(item.get("likesCount"), item.get("likes")),
             "comments_count": _coalesce_metric(item.get("commentsCount"), item.get("comments")),
             "posted_at": posted_at,

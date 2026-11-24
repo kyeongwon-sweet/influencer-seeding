@@ -58,6 +58,11 @@ def reason_text(ev: dict | None) -> str:
         return f"수집은 되는데 버려짐: {describe(ev)} → {CHECK_HINT}"
     if reason == "no_collector_response":
         return "수집기 응답 없음 — 비공개·삭제·지역제한 가능, 링크 직접 확인"
+    if reason == "missing_play_count":
+        media = str(ev.get("media_type") or "").strip()
+        if media.lower() in ("image", "sidecar"):
+            return f"조회수가 없는 사진·캐러셀 글로 응답({media}) — 채널분류가 '영상'이 맞는지 확인"
+        return "수집은 닿는데 조회수만 비어 옴 — 보조 수집기 재시도 대상, 며칠째 계속이면 링크·영상 확인"
     return f"수집기 기록: {reason}"
 
 

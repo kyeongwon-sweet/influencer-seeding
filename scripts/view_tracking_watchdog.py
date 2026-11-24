@@ -108,6 +108,27 @@ def is_uncollectable_url(url: str) -> bool:
     return False
 
 
+def is_video_post(post: dict, event: dict | None = None) -> bool:
+    """'조회수가 한 번도 없음' 칸의 대상인가 — 인스타 영상 글만.
+
+    · 인스타 영상 = 채널분류에 '영상'이 있거나, 수집기 최근 기록이 이 글을 영상(Video·clips)이라고 남긴 글.
+      ('협찬 (인플루언서)'·'온드미디어'는 분류명에 '영상'이 없어도 릴스가 많다. 사진·캐러셀은 원래 조회수가 없다.)
+    · 배너는 조회수가 아니라 도달수(reach)를 쓰므로 제외한다.
+    · 유튜브·틱톡은 제외한다. 새 위성 채널 영상은 실제 조회수 0회가 흔한데, 수집기는 0을
+      '수집 실패'로 보고 저장하지 않아 이 칸에 영원히 남는다(확정된 0을 적을 자리가 없음).
+      2026-11-24 실데이터 점검: 위성 유튜브 29건이 걸렸고, 확인한 4건 모두 공개 상태에 조회수 0회였다."""
+    u = (post.get("url") or "").lower()
+    channel_type = str(post.get("channel_type") or "")
+    if "배너" in channel_type or "instagram.com" not in u:
+        return False
+    if "영상" in channel_type:
+        return True
+    ev = event or {}
+    media = str(ev.get("media_type") or "").strip().lower()
+    product = str(ev.get("product_type") or "").strip().lower()
+    return media == "video" or product in ("clips", "igtv")
+
+
 def fetch_active_posts() -> list[dict]:
     posts: list[dict] = []
     start = 0
@@ -139,6 +160,7 @@ def build(today: date, reasons: dict[str, dict] | None = None) -> dict:
 
     flagged: list[dict] = []
     bad_url: list[dict] = []
+    no_views: list[dict] = []
     review_stale: list[dict] = []
     skipped_known = 0
     for p in posts:
@@ -174,12 +196,18 @@ def build(today: date, reasons: dict[str, dict] | None = None) -> dict:
         ):
             skipped_known += 1
             continue  # 이미 별도 알림/큐가 담당하는 알려진 수집불가
+        # 조회수가 한 번이라도 잡혔으면 정상 — 대부분의 글은 이 쿼리 1번으로 끝난다.
+        views = _get(
+            "post_daily_stats?"
+            + _q({"select": "post_id", "post_id": f"eq.{p['id']}", "play_count": "not.is.null"}),
+            count=True,
+        )
+        if views:
+            continue
         total = _get(
             "post_daily_stats?" + _q({"select": "post_id", "post_id": f"eq.{p['id']}"}),
             count=True,
         )
-        if total != 0:
-            continue
         row = {
             "post_id": p["id"],
             "account_name": p.get("account_name"),
@@ -190,7 +218,19 @@ def build(today: date, reasons: dict[str, dict] | None = None) -> dict:
             "url": url,
             "reason": reason_text((reasons or {}).get(p["id"])),
         }
-        (bad_url if is_uncollectable_url(url) else flagged).append(row)
+        if total == 0:
+            (bad_url if is_uncollectable_url(url) else flagged).append(row)
+            continue
+        # 행은 있는데(좋아요·댓글만) 조회수가 한 번도 없는 '영상'. 0행 기준만으로는 안 보이던 사각이다.
+        # (2026-11-24 p.25_d.y DgAd6JuTEBX: 기본 액터가 조회수 키 없이 응답 → 좋아요·댓글 행만 2개 쌓임)
+        if is_video_post(p, (reasons or {}).get(p["id"])):
+            reach = _get(
+                "post_daily_stats?"
+                + _q({"select": "post_id", "post_id": f"eq.{p['id']}", "reach_count": "not.is.null"}),
+                count=True,
+            )
+            if not reach:
+                no_views.append(row)
 
     return {
         "date": today.isoformat(),
@@ -198,10 +238,12 @@ def build(today: date, reasons: dict[str, dict] | None = None) -> dict:
         "review_stale_days": REVIEW_STALE_DAYS,
         "flagged_count": len(flagged),
         "bad_url_count": len(bad_url),
+        "no_views_count": len(no_views),
         "review_stale_count": len(review_stale),
         "skipped_known_uncollectable": skipped_known,
         "flagged": sorted(flagged, key=lambda r: r["posted_at"]),
         "bad_url": sorted(bad_url, key=lambda r: r["posted_at"]),
+        "no_views": sorted(no_views, key=lambda r: r["posted_at"]),
         "review_stale": sorted(review_stale, key=lambda r: r["review_requested_at"]),
     }
 
@@ -218,6 +260,17 @@ def slack_lines(result: dict) -> str:
             parts.append(f"   ↳ {r['reason']}")
     if n > 20:
         parts.append(f"  …외 {n - 20}건")
+    nv = result.get("no_views_count") or 0
+    if nv:
+        parts.append(
+            f"\n🎬 *영상인데 조회수가 한 번도 안 잡힘* {nv}건 — 수집은 닿는데(좋아요·댓글만) 조회수가 계속 비어 있음:"
+        )
+        for r in result["no_views"][:15]:
+            parts.append(f"• {r['posted_at']} `{r['channel_type']}` {r['account_name']} — {r['url']}")
+            if r.get("reason"):
+                parts.append(f"   ↳ {r['reason']}")
+        if nv > 15:
+            parts.append(f"  …외 {nv - 15}건")
     if result["bad_url_count"]:
         parts.append(
             f"\n⚠️ 식별자 없는(수집 불가능) URL {result['bad_url_count']}건 — 주소 정정 필요:"
@@ -265,11 +318,13 @@ def main() -> int:
     if args.out:
         with open(args.out, "w", encoding="utf-8") as f:
             json.dump(result, f, ensure_ascii=False, indent=2)
-    if result["flagged_count"] or result["bad_url_count"] or result["review_stale_count"]:
+    if (result["flagged_count"] or result["bad_url_count"] or result.get("no_views_count")
+            or result["review_stale_count"]):
         text = slack_lines(result)
         print(text)
         if args.send:
-            products = [r.get("product_name") for k in ("flagged", "bad_url", "review_stale") for r in result.get(k, [])]
+            products = [r.get("product_name") for k in ("flagged", "bad_url", "no_views", "review_stale")
+                        for r in result.get(k, [])]
             send_slack(text, args.date, products)
     else:
         print("✅ 수집 사각 없음")
