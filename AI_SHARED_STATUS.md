@@ -27,6 +27,12 @@
   - 새 26행은 아침 자동 보강으로 수식이 채워졌다(I 형태오류 26→0, CPV 오류 26→0).
   - H 문제는 이 5행만 같은 행 번호로 그대로다(`hInvalid=5`, `h.manualKept=5`). 나머지: H 오류칸 0, 데이터 있는데 빈칸 0, I 불일치 0, I 오류칸 0.
   - 오늘 복원하면 END=GW이고, 예상값은 그 행 날짜칸 최댓값 = DB 11/23 값(441 · 2,485 · 662 · 595 · 1,025)이다.
+- **✅ Codex 라이브 복원 완료(11/24 09:55 KST):** 기준선 감사 workflow run `45299845936`을 **force 없이** 실행했다(`skippedNotify=true`). `END=GW`, dominant `4,448/4,448`, `hInvalidRows`는 인계된 5키만, `h.ok=4,351 / manualKept=5 / errorCells=0 / emptyButData=0`, `inc.mismatch=0 / errorCells=0`, `cpv.invalid=0`이었다.
+  - 쓰기 직전 URL 키·행·H를 다시 확인했다. 원본은 `H5204=0 / H5470=2451 / H5472=596 / H5601=548 / H5602=1007`, 다섯 칸 모두 수식 없음이었다. 날짜열 최댓값은 차례로 `441 / 2,485 / 662 / 595 / 1,025`였다.
+  - Google Sheets에서 이름 상자로 각 H셀을 정확히 지정하고, 붙여넣기·끌어 채우기 없이 다섯 칸에만 `=IF(COUNT(P행:GW행)=0,"",MAX(P행:GW행))` 표준 수식을 직접 입력했다. 날짜칸·I·J·DB·Apps Script 코드는 수정하지 않았다.
+  - 즉시 재조회 결과 수식 원문이 모두 정확했고 값은 `H5204=441 / H5470=2485 / H5472=662 / H5601=595 / H5602=1025`. 같은 행 I/J도 각각 `2·₩28.57 / 16·₩5.07 / 24·₩19.03 / 7·₩21.17 / 5·₩12.29`로 오류가 없었다.
+  - 직후 감사 workflow run `45301173960`도 force 없이 실행했다(`skippedNotify=true`). `hInvalidRows=[]`, dominant `4,453/4,453`(+5), `h.ok=4,356`(+5), `manualKept=0`, `formulaShape.hInvalid=0 / hManual=1,245 / incInvalid=0`, `h.errorCells=0 / emptyButData=0`, `inc.mismatch=0 / errorCells=0`, `cpv.invalid=0`, `orphanRows=0`, `sheetOnly=0`이다. 기준선 JSON과 전체 필드 재귀 대조 시 위 다섯 행 제거·dominant +5·H 수치 변화 외 차이는 0건이었다. `healthy=false`는 전후 동일한 별도 기존 조건으로, 이번 수리로 생긴 회귀가 아니다.
+  - **다음 자연 게이트:** 11/25 09:33 정기 감사에서 다섯 행 수식이 새 끝 열로 자동 연장되고 `hInvalid=0`을 유지하는지 확인한다(현재 미도래, 완료로 선기록하지 않음).
 
 ## 🟢 2026-11-20 [Claude 배포 완료(사용자 승인 "배포해줘") → 11/21 아침·11/23 주간 스캔 자연 게이트 대기] 복사 의심 알림 줄이기 + 주간 교차복사 스캔 기준 통일 (사용자 "진행해줘")
 - **배포 확인:** `main` `611d820e..bd330278` push(코드 `fa9041c9`). CI [`44736441912`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/44736441912) build·python-tests success, Workflow Lint [`44736441940`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/44736441940) success. Vercel 커밋 상태 `success`. 운영 `POST /api/sponsored-posts/stats-import` 인증 없이 → 401(없는 경로 대조 307). 주간 스캔 워크플로는 수동 실행하지 않았다(실행하면 Slack 보고가 감) — 첫 검증은 11/23(월) 09:20 예약 실행.
