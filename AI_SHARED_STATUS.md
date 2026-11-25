@@ -8,6 +8,11 @@
 - **협찬 글 없으면 안 보냄(사용자 지시 "협찬 글 없으면 크봉 리포트 보내지마"):** 11-25 기준 DB에 크봉 제품명 협찬 글 **0건** → 크봉 리포트는 건너뛴다(쫀득바와 같은 '증가분 없음 → 발송 생략'). 헛알림 방지로 도착 워치독(`cron_watchdog.POSTS_REQUIRED`, cron-watchdog.yml에 Supabase 읽기 env 추가)과 웹 자가치유(`REPORT_PRODUCTS.requiresPosts`)는 **대상일까지 게시된 크봉 협찬 글이 DB에 없으면 미발송으로 보지 않는다**. 확인 실패는 '있음'으로 쳐 알림을 삼키지 않는다. 판정 키 정본 `scripts/report_message.py::KBONG_KEYS` ↔ `web/lib/kbong.ts`(테스트로 고정). 글은 있는데 그날 증분이 0이면 발송 생략 + 17:05 미발송 알림(수집 이상 신호). 시트 `[인지_크봉바]` 전환 노출수(N)는 아직 0 자리값(시트 메모: "12월 대시보드 추가 후 연동 예정").
 - **바치케 관련 그대로 둔 것:** Google Ads 동기화(`google-ads-sync`), 메타 P바치 라우트, 바치케 전환 7일 확정 보정. 필요 없어지면 별도 정리.
 
+## ✅ 2026-11-24 [Codex 후속 검증 · 11/25 정기 감사 통과] 연동시트 누적(H) 5칸 복원
+- **자연 실행:** 11/25 09:33:04 KST Apps Script `ensureDailyAudits` 시간 기반 실행 완료(7.075초). Cloud 로그에서 HTTP 200·`formula-audit.yml` 자동 dispatch 204를 확인했다. [정기 감사 run `45518948325`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/45518948325)는 09:33:09~09:35:38 KST, HTTP 200·`healthy=true`. 수동 감사나 `force=1`은 실행하지 않았다.
+- **시트 5/5 실물 대조:** B열 URL 키와 H열 수식 원문을 읽기 전용으로 확인했다. `H5204` (`ig:DfloyCOytHh`), `H5470` (`ig:DfmYFPPorrz`), `H5472` (`ig:DflmygvyQRT`), `H5601` (`ig:Df4D4ejzQpB`), `H5602` (`ig:Df3u_O7BXS8`) 모두 자기 행의 `=IF(COUNT(P{행}:GX{행})=0,"",MAX(P{행}:GX{행}))`로 자동 연장됐다. 전날 끝열 GW → 11/24 데이터 끝열 GX. 시트·DB·Apps Script 수정 없음.
+- **공식 감사:** 대상 5,724행·날짜열 P:GX(191열), 누적 수식 끝열 GX 4,479/4,479, `hInvalid=0`·`hInvalidRows=[]`·`h.manualKept=0`·`h.errorCells=0`·`h.emptyButData=0`·`incInvalid=0`·`inc.errorCells=0`·`inc.mismatch=0`·`cpv.invalid=0`. 아래 11/24 누적(H) 복원 항목의 다음 날 검증을 완료했다.
+
 ## ✅ 2026-11-24 [Codex 종료 확인 · 쓰기 0건] 업로드일 오기 2건 — 다른 세션 선정정·DB 반영·첫 조회수 저장 완료
 - **`628e944e` 인계 종료:** Codex가 쓰기 직전 URL 키로 재확인했을 때 시트 `uvinyu`(5643행, `ig:Df9qXXkur7F`)와 `hanipman_num`(5647행, `ig:Df8_mBrhuOT`)의 A열은 이미 모두 실제 날짜값 `2026-11-20`이었다. 인계의 안전 게이트("현재값이 표의 변경 전 날짜와 다르면 쓰지 말고 보고")에 따라 시트 쓰기와 `syncAll`을 실행하지 않았다.
 - **DB·첫 조회수 확인(Claude, 13:50 KST):** 두 `sponsored_posts.posted_at`은 모두 `2026-11-20`, `manual_fields=[]`로 반영 완료. 늦어도 12:27 KST 예약 보충수집 run `45319635542`의 재시도 큐가 두 글을 이 날짜로 읽었고, 12:29 KST `post_daily_stats` 11/23 행을 `manual=false`로 저장했다: `uvinyu 6,689` / `hanipman_num 1,441`. 11/22 행은 없어 놓친 날 공백 정책도 유지됐다.
