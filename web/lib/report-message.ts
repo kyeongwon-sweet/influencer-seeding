@@ -19,7 +19,8 @@ export const REPORT_TITLE = "쫀득바 조회수 일일 증분";
 //   자가치유가 쫀득바만 보고 dispatch 도 쫀득바만 돌려 바치케가 GitHub 지연 크론만 기다렸다).
 export const REPORT_PRODUCTS = [
   { key: "jd", title: REPORT_TITLE },
-  { key: "pbachi", title: "바치케 조회수 일일 증분" },
+  // 2026-11-25: 바치케 리포트 중단 → 크봉으로 교체(사용자 지시). 자가치유가 바치케를 더 dispatch 하지 않는다.
+  { key: "kbong", title: "크봉 조회수 일일 증분" },
 ] as const;
 
 export function isReportForDate(text: string | undefined | null, target: string, title: string = REPORT_TITLE): boolean {

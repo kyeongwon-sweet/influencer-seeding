@@ -44,6 +44,16 @@ def _norm_prod(p) -> str:
     return (p or "").replace(" ", "").strip()
 
 
+# 크봉(크런치봉봉) 제품명 판정 키 — 하나라도 들어 있으면 크봉(2026-11-25 사용자 지시 "무조건 전부 크봉").
+#   공백 무시 + 영문 대소문자 무시(bb바도 크봉).
+KBONG_KEYS = ("크봉", "BB바", "BB말", "BB초", "봉봉", "크런치봉봉")
+
+
+def is_kbong_product(p) -> bool:
+    n = _norm_prod(p).upper()
+    return any(k.upper() in n for k in KBONG_KEYS)
+
+
 # 리포트 제품 프로필(2026-10-27 바치케 추가). REPORT_PRODUCT 미설정 = 쫀득바(기존 동작 그대로).
 #   title: 제목·리포트 판정 키(report_message.is_report_for) / match: DB product_name으로 대상 게시물 선택
 #   ads_tab: 인지광고 시트 탭(/api/awareness-ads?tab=) — 빈값=[인지_쫀득바], pint=파인트 인지광고 대시보드
@@ -56,15 +66,23 @@ def _norm_prod(p) -> str:
 #     meta_api=메타 인지 계정의 P바치 광고 ThruPlay·광고비(조회 실패면 시트 + '(시트)') /
 #     none=P바치만 읽을 출처가 없음 → 시트(파인트 합계)를 쓰지 않고, 시트에 값이 있으면 '미연동' 경고 줄.
 #     2026-10-27 사용자 지시 "메타·틱톡 인지 광고 줄도 P바치만". 틱톡은 P바치 광고가 아직 없어(9/15~ 실측 0) 미연동.
+#   active: 매일 예약 발송·도착 감시·자가치유 대상인가(False=중단, 수동 정정만). 워치독·웹 REPORT_PRODUCTS 와 짝(테스트).
 #   emoji: 제목 맨 앞 이모지(바치케=워크스페이스 커스텀 :바치케:, 사용자 지시 2026-10-27). 리포트 판정은 제목 문구로만 해 영향 없음
 PRODUCT_PROFILES = {
     "jd": {"title": "쫀득바", "match": lambda p: "jd" in (p or "").lower(),
            "ads_tab": "", "goal": True, "product_line": True, "emoji": "📈", "conv_source": "sheet",
-           "yt_source": "sheet", "meta_aw_source": "sheet", "tt_source": "sheet"},
+           "yt_source": "sheet", "meta_aw_source": "sheet", "tt_source": "sheet", "active": True},
     "pbachi": {"title": "바치케", "match": lambda p: _norm_prod(p) == "P바치",
                "ads_tab": "pint", "goal": False, "product_line": False, "emoji": ":바치케:",
                "conv_source": "meta", "yt_source": "google_ads", "meta_aw_source": "meta_api",
-               "tt_source": "none"},
+               "tt_source": "none", "active": False},   # 2026-11-25 예약 발송 중단(크봉으로 교체) — 지난 리포트 수동 정정용
+    # 크봉(크런치봉봉) — 2026-11-25 사용자 지시 "바치케 말고 크봉이 리포트를 보낼거야".
+    #   제품명에 KBONG_KEYS 중 하나라도 들어 있으면 무조건 크봉(사용자 지시: '크봉','BB바','BB말','BB초','봉봉','크런치봉봉').
+    #   인지광고·전환은 마케팅T 시트 [인지_크봉바] 탭(쫀득바 탭과 같은 구조, ?tab=kbong). 목표 줄 없음(목표 미정).
+    "kbong": {"title": "크봉", "match": lambda p: is_kbong_product(p),
+              "ads_tab": "kbong", "goal": False, "product_line": True, "emoji": ":크봉이:",
+              "conv_source": "sheet", "yt_source": "sheet", "meta_aw_source": "sheet", "tt_source": "sheet",
+              "active": True},
 }
 def rows_on_or_after_posted(rows, posted_at):
     """게시일 이전 날짜의 측정행은 세지 않는다(대시보드 API와 같은 규칙, 2026-11-16).
@@ -638,8 +656,12 @@ def main():
         print("[notify] 배너 채널분류 조회 실패(무시):", e)
 
     if not items:
-        print(f"[notify] {target} 증가분 없음 → 발송 생략")
-        return
+        if REPORT_PRODUCT == "jd":
+            print(f"[notify] {target} 증가분 없음 → 발송 생략")
+            return
+        # 크봉 같은 새 제품은 협찬 글이 아직 없거나(2026-11-25 크봉 시작 시 DB 0건) 그날 증분이 0일 수 있다.
+        #   건너뛰면 도착 워치독·자가치유가 매일 '미발송'으로 울리고 반복 dispatch 한다 → '협찬 0'을 그대로 알리고 발송.
+        print(f"[notify] {target} {PROFILE['title']} 협찬 증가분 없음 → 인지광고·전환만으로 발송")
 
     total = sum(it["inc"] for it in items)
 
@@ -894,6 +916,8 @@ def main():
                 lines.append(f"• {_ital_paren(ct)}  (당일 배너 미수집)")
         else:
             lines.append(f"• {_ch_label(ct)} *+{f(s)}*  {_cpv(cost_by_ch.get(ct, 0), cumviews_by_ch.get(ct, 0), ct)}")
+    if not items:   # 새 제품(크봉 등) 협찬 0건·증분 0 — 빈 섹션 대신 이유를 한 줄로(위 '발송' 분기 참고)
+        lines.append(f"_{PROFILE['title']} 협찬 게시물 증분 없음 — 대시보드에 {PROFILE['title']} 제품 글이 등록·수집되면 잡힙니다_")
     # ⚠️ 미분류 경고 — 시트엔 분류돼 있어도 DB channel_type이 아직 동기화 안 되면 여기로 몰림.
     #    조용히 '미분류'로 넘어가지 않게 표면화(시트→DB 분류 동기화 지연 감지용).
     unclassified_cnt = sum(1 for it in items if _norm_ch(it["channel_type"]) == "미분류")
@@ -919,7 +943,8 @@ def main():
         lines.append("")
         lines.append(f"⚠️ *며칠치 합산 {len(multi_day)}건 (+{f(sum(it['inc'] for it in multi_day))})* — "
                      "기록이 며칠 비었다가 들어온 게시물이라 그동안 늘어난 조회수가 오늘 한 번에 잡혔습니다(TOP 10에 `N일치` 표시).")
-    lines += ["", DIV, "", "◾ *급상승 TOP 10* 🔥  `CPV는 누적 기준`", ""]
+    if items:
+        lines += ["", DIV, "", "◾ *급상승 TOP 10* 🔥  `CPV는 누적 기준`", ""]
     # 배너는 도달수를 '조회수'로 취급해 TOP에도 섞어 노출(사용자 지시). 배너 CPV = 비용/도달수(도달당비용).
     # 줄마다 제품코드 `[JD멜]`을 노출한다(2026-09-02 사용자 재지시) — JD멜/JD복 등 제품 구분용.
     #   (과거 '쫀득바 단일제품이라 중복'으로 제거했으나, 실제로는 여러 제품이 섞여 구분이 필요.)

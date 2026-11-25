@@ -59,12 +59,22 @@ test("파이썬 쪽 정본과 짝이 유지된다 — 한쪽만 고치면 발송
 
 // ── 2026-10-28 바치케 미발송 사고: 자가치유가 제품별로 판정해야 한다 ──
 test("제품별 판정 — 바치케 리포트는 쫀득바로, 쫀득바 리포트는 바치케로 보이지 않는다", async () => {
-  const { REPORT_PRODUCTS } = await import("../lib/report-message.ts");
-  const pb = REPORT_PRODUCTS.find((p) => p.key === "pbachi")!.title;
+  const pb = "바치케 조회수 일일 증분";
   const jdMsg = "📈 *쫀득바 조회수 일일 증분* `(2026-10-27)`\n오늘 총 증분 *+1*";
   const pbMsg = ":바치케: *바치케 조회수 일일 증분* `(2026-10-27)`\n오늘 총 증분 *+1*";
   assert.ok(isReportForDate(jdMsg, "2026-10-27") && !isReportForDate(pbMsg, "2026-10-27"));
   assert.ok(isReportForDate(pbMsg, "2026-10-27", pb) && !isReportForDate(jdMsg, "2026-10-27", pb));
+});
+
+// ── 2026-11-25 바치케 → 크봉 교체(사용자 지시 "바치케 말고 크봉이 리포트를 보낼거야") ──
+test("자가치유 대상은 쫀득바·크봉 — 중단된 바치케는 dispatch 하지 않는다, 크봉 판정은 제목 기준", async () => {
+  const { REPORT_PRODUCTS } = await import("../lib/report-message.ts");
+  assert.deepEqual(REPORT_PRODUCTS.map((p) => p.key), ["jd", "kbong"]);
+  const kb = REPORT_PRODUCTS.find((p) => p.key === "kbong")!.title;
+  const kbMsg = ":크봉이: *크봉 조회수 일일 증분* `(2026-11-25)`\n오늘 총 증분 *+1*";
+  const jdMsg = "📈 *쫀득바 조회수 일일 증분* `(2026-11-25)`\n오늘 총 증분 *+1*";
+  assert.ok(isReportForDate(kbMsg, "2026-11-25", kb) && !isReportForDate(jdMsg, "2026-11-25", kb));
+  assert.ok(!isReportForDate(kbMsg, "2026-11-25"));
 });
 
 test("제품표가 파이썬 발송기와 짝 — 제목 = PRODUCT_PROFILES title + ' 조회수 일일 증분'", async () => {

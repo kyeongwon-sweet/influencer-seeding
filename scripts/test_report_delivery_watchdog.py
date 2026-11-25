@@ -24,7 +24,7 @@ def msg(target, extra="", product="쫀득바"):
 
 
 def both(target):
-    return [msg(target), msg(target, product="바치케")]
+    return [msg(target), msg(target, product="크봉")]
 
 
 def test_silent_before_deadline():
@@ -34,7 +34,7 @@ def test_silent_before_deadline():
 
 def test_alerts_when_missing_after_deadline():
     out = check_report_delivery(at(17, 30), "tok", fetch=lambda: [])
-    assert len(out) == 2 and all("미발송" in x for x in out)   # 쫀득바·바치케 각각
+    assert len(out) == 2 and all("미발송" in x for x in out)   # 쫀득바·크봉 각각
     assert all("2026-09-23" in x for x in out), "대상일(어제)을 알려야 사람이 바로 조치한다"
 
 
@@ -86,13 +86,14 @@ def test_wired_into_main():
 
 # ── 2026-11-03 재발방지: 바치케도 도착 감시 ──
 
-def test_pbachi_missing_alone_is_reported():
-    """쫀득바만 왔고 바치케가 안 왔으면 바치케만 경고(예전엔 바치케를 아예 안 봐서 침묵)."""
+def test_second_product_missing_alone_is_reported():
+    """쫀득바만 왔고 크봉이 안 왔으면 크봉만 경고(2026-11-25 바치케→크봉 교체, 예전엔 둘째 제품을 안 봐서 침묵)."""
     out = check_report_delivery(at(17, 30), "tok", fetch=lambda: [msg("2026-09-23")])
-    assert len(out) == 1 and "바치케" in out[0] and "product=pbachi" in out[0]
+    assert len(out) == 1 and "크봉" in out[0] and "product=kbong" in out[0]
+    assert not any("바치케" in o for o in out)   # 중단된 바치케는 감시하지 않는다
 
 
 def test_products_match_report_generator():
     """감시 대상 제품명 = 발송기 PRODUCT_PROFILES 제목 — 제품이 늘면 둘 다 바꿔야 한다."""
     from notify_increments import PRODUCT_PROFILES
-    assert sorted(REPORT_DELIVERY["products"]) == sorted(p["title"] for p in PRODUCT_PROFILES.values())
+    assert sorted(REPORT_DELIVERY["products"]) == sorted(p["title"] for p in PRODUCT_PROFILES.values() if p["active"])

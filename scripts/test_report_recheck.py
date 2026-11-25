@@ -89,6 +89,7 @@ def test_workflow_contract():
     wf = (Path(__file__).resolve().parent.parent / ".github" / "workflows" / "report-evening-recheck.yml").read_text(encoding="utf-8")
     assert 'RECHECK: "1"' in wf and 'STRICT_DATE: "1"' in wf
     assert "TZ=Asia/Seoul date -d 'yesterday' +%F" in wf
-    assert "product: [jd, pbachi]" in wf
+    assert "product: [jd, kbong, pbachi]" in wf
+    assert '[ "${{ matrix.product }}" != "pbachi" ]' in wf   # 바치케는 2026-11-25 중단 — 예약 재확인 제외
     assert "if: failure()" in wf
     assert wf.count("- cron:") >= 2

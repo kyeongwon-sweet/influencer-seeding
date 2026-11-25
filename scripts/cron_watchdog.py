@@ -99,8 +99,11 @@ REPORT_DELIVERY = {
     "due_kst": "17:05",
     # 같은 채널에 나가는 리포트 제품(제목의 제품명) — notify_increments.PRODUCT_PROFILES title 과 짝(테스트로 고정).
     #   2026-11-03 재발방지: 바치케(10-27~)가 이 감시에서 빠져 있어 바치케가 안 나가도 알림이 없었다.
-    "products": ["쫀득바", "바치케"],
+    #   2026-11-25: 바치케 리포트 중단·크봉 리포트로 교체(사용자 지시 "바치케 말고 크봉이 리포트를 보낼거야").
+    "products": ["쫀득바", "크봉"],
 }
+# 제품 제목 → 수동 발송 워크플로 product 입력값
+REPORT_PRODUCT_KEYS = {"쫀득바": "jd", "크봉": "kbong", "바치케": "pbachi"}
 
 
 def _slack_history(channel: str, token: str, limit: int = 50) -> list[dict]:
@@ -138,7 +141,7 @@ def check_report_delivery(now: datetime, token: str | None, fetch=None) -> list[
     for name in REPORT_DELIVERY["products"]:
         if any(is_report_for(m.get("text", ""), target, name) for m in msgs):
             continue
-        key = "pbachi" if name == "바치케" else "jd"
+        key = REPORT_PRODUCT_KEYS.get(name, "jd")
         out.append(
             f"🚨 {name} 증분 리포트 미발송 — 대상일 {target} 리포트가 "
             f"{REPORT_DELIVERY['due_kst']} KST 까지 채널에 없습니다. "

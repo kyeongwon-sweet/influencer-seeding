@@ -213,6 +213,17 @@ def test_notify_profile_product_match():
     assert pb("P바치") and pb(" P 바치 ") and not pb("P바") and not pb("P망") and not pb("JD혼") and not pb(None)
 
 
+def test_kbong_product_match():
+    """2026-11-25 사용자 지시: '크봉','BB바','BB말','BB초','봉봉','크런치봉봉'이 들어 있으면 무조건 크봉."""
+    from notify_increments import PRODUCT_PROFILES
+    kb, jd = PRODUCT_PROFILES["kbong"]["match"], PRODUCT_PROFILES["jd"]["match"]
+    for name in ("크봉", "BB바", "BB말", "BB초", "봉봉", "크런치봉봉", "크런치 봉봉", "BB 바", "bb말", "[26.11]BB초_인지", "크봉바"):
+        assert kb(name), name
+    for name in ("JD혼", "P바치", "BA혼", "B바", "BB", "-", "", None):
+        assert not kb(name), name
+    assert not any(jd(n) for n in ("BB바", "크봉", "봉봉"))   # 쫀득바 리포트로 새지 않는다
+
+
 # ── 2026-10-27 바치케 전환 = 메타 광고 관리자 P바치 전환 광고 노출수, 7일 뒤 확정값 덮어쓰기 ──
 
 BACHI_WITH_CONV = BACHI_REPORT.replace(

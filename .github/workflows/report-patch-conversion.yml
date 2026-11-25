@@ -24,9 +24,9 @@ on:
         type: boolean
         default: true
       product:
-        description: "수동 실행 대상(jd=쫀득바, pbachi=바치케). 예약 실행은 둘 다"
+        description: "수동 실행 대상(jd=쫀득바, kbong=크봉, pbachi=바치케). 예약 실행은 셋 다(바치케는 리포트 중단 뒤에도 지난 리포트 7일 확정용)"
         type: choice
-        options: [jd, pbachi]
+        options: [jd, kbong, pbachi]
         default: jd
       overwrite:
         description: "바치케만: true면 7일 안 된 리포트의 전환 값도 지금 메타 값으로 덮어쓰기"
@@ -48,7 +48,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Patch conversion views — 쫀득바
-        if: github.event_name == 'schedule' || github.event.inputs.product != 'pbachi'
+        if: github.event_name == 'schedule' || github.event.inputs.product == 'jd'
         env:
           REPORT_PRODUCT: jd
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
@@ -56,6 +56,18 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           DATES: ${{ github.event.inputs.dates }}
           # 스케줄 실행은 inputs가 없으므로 적용 모드로 고정
+          DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || github.event.inputs.dry_run }}
+          AUTO_DAYS: "5"
+        run: python scripts/patch_report_conversion.py
+      # 크봉(2026-11-25~). 전환 = [인지_크봉바] 탭 '전환 노출수'(쫀득바와 같은 시트 방식). 앞 단계가 실패해도 돈다.
+      - name: Patch conversion views — 크봉
+        if: ${{ !cancelled() && (github.event_name == 'schedule' || github.event.inputs.product == 'kbong') }}
+        env:
+          REPORT_PRODUCT: kbong
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          APP_URL: "https://influencer-seeding-mu.vercel.app"
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DATES: ${{ github.event.inputs.dates }}
           DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || github.event.inputs.dry_run }}
           AUTO_DAYS: "5"
         run: python scripts/patch_report_conversion.py

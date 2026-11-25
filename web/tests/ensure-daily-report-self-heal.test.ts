@@ -58,9 +58,11 @@ test("16시 최종 재시도 표식이 workflow와 담당자 DM까지 전달된�
 test("자가치유는 제품별로 dispatch 하고, workflow 는 product 입력으로 해당 작업만 돌린다(10-28 바치케 미발송 사고)", () => {
   assert.match(route, /for \(const p of REPORT_PRODUCTS\)/);
   assert.match(route, /if \(pp === true\) continue;/);
-  assert.match(workflow, /product:[\s\S]*?options: \[jd, pbachi\]/);
-  assert.match(workflow, /report:\s*\n[\s\S]*?if: github\.event_name == 'schedule' \|\| github\.event\.inputs\.product != 'pbachi'/);
-  assert.match(workflow, /report-pbachi:\s*\n(?:\s*(?:concurrency:|group:|cancel-in-progress:)[^\n]*\n)*\s*if: github\.event_name == 'schedule' \|\| github\.event\.inputs\.product == 'pbachi'/);
+  assert.match(workflow, /product:[\s\S]*?options: \[jd, kbong, pbachi\]/);
+  assert.match(workflow, /report:\s*\n[\s\S]*?if: github\.event_name == 'schedule' \|\| \(github\.event\.inputs\.product != 'pbachi' && github\.event\.inputs\.product != 'kbong'\)/);
+  assert.match(workflow, /report-kbong:\s*\n(?:\s*(?:concurrency:|group:|cancel-in-progress:)[^\n]*\n)*\s*if: github\.event_name == 'schedule' \|\| github\.event\.inputs\.product == 'kbong'/);
+  // 2026-11-25 바치케 예약 발송 중단(크봉으로 교체) — 수동 dispatch 로만 돈다.
+  assert.match(workflow, /report-pbachi:\s*\n(?:\s*(?:concurrency:|group:|cancel-in-progress:)[^\n]*\n)*\s*if: github\.event\.inputs\.product == 'pbachi'\n/);
 });
 
 test("리포트 주 발송은 구글 트리거 12:20 — GitHub 예약은 상시 지연(2026-11-03 새벽 발송 사고)", () => {
@@ -75,7 +77,7 @@ test("리포트 주 발송은 구글 트리거 12:20 — GitHub 예약은 상시
 
 test("같은 제품 리포트 실행은 줄 세운다 — 구글 dispatch 와 지연된 예약이 동시에 DEDUP 을 통과하지 않게", () => {
   const wf = workflow.replace(/\r\n/g, "\n");
-  for (const g of ["daily-increment-report-jd", "daily-increment-report-pbachi"]) {
+  for (const g of ["daily-increment-report-jd", "daily-increment-report-kbong", "daily-increment-report-pbachi"]) {
     assert.ok(wf.includes(`concurrency:\n      group: ${g}\n      cancel-in-progress: false`), g);
   }
 });

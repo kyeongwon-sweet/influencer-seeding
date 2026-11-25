@@ -17,9 +17,9 @@ on:
         type: string
         default: ""
       product:
-        description: "수동 실행 대상(jd=쫀득바, pbachi=바치케). 예약 실행은 둘 다"
+        description: "수동 실행 대상(jd=쫀득바, kbong=크봉, pbachi=바치케-중단됨). 예약 실행은 쫀득바·크봉"
         type: choice
-        options: [jd, pbachi]
+        options: [jd, kbong, pbachi]
         default: jd
 
 jobs:
@@ -27,8 +27,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        product: [jd, pbachi]
-    # 수동 실행은 고른 제품만, 예약 실행은 둘 다.
+        product: [jd, kbong, pbachi]
+    # 수동 실행은 고른 제품만, 예약 실행은 쫀득바·크봉(바치케는 2026-11-25 리포트 중단 → 수동만).
     if: github.event_name == 'schedule' || github.event.inputs.product != ''
     concurrency:
       group: report-evening-recheck-${{ matrix.product }}
@@ -39,7 +39,7 @@ jobs:
       - name: 대상 제품 확인
         id: gate
         run: |
-          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event.inputs.product }}" = "${{ matrix.product }}" ]; then
+          if { [ "${{ github.event_name }}" = "schedule" ] && [ "${{ matrix.product }}" != "pbachi" ]; } || [ "${{ github.event.inputs.product }}" = "${{ matrix.product }}" ]; then
             echo "run=1" >> "$GITHUB_OUTPUT"
           fi
       - uses: actions/checkout@v4
