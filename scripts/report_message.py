@@ -17,6 +17,16 @@
 
 DEFAULT_PRODUCT_TITLE = "쫀득바"
 
+# 크봉(크런치봉봉) 제품명 판정 키 — 하나라도 들어 있으면 크봉(2026-11-25 사용자 지시 "무조건 전부 크봉").
+#   공백 무시 + 영문 대소문자 무시(bb바도 크봉). 발송기·워치독이 같이 쓰도록 의존성 없는 이 모듈에 둔다.
+#   웹 짝: web/lib/kbong.ts (KBONG_KEYS 동일 — 테스트로 고정).
+KBONG_KEYS = ("크봉", "BB바", "BB말", "BB초", "봉봉", "크런치봉봉")
+
+
+def is_kbong_product(p) -> bool:
+    n = (p or "").replace(" ", "").strip().upper()
+    return any(k.upper() in n for k in KBONG_KEYS)
+
 
 def report_title(product_title: str = DEFAULT_PRODUCT_TITLE) -> str:
     """제목줄의 고정 문구. 예: '쫀득바 조회수 일일 증분'."""

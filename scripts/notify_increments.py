@@ -12,7 +12,7 @@ import urllib.request
 from cross_post_metrics import fb_increment, ig_only
 from google_ads_sync import product_day_totals
 from meta_conversion import fetch_meta_awareness, fetch_meta_conversion
-from report_message import is_report_for, report_title
+from report_message import is_kbong_product, is_report_for, report_title
 from report_recheck import blocked_summary, change_summary, needs_update, permalink, report_messages
 from datetime import date
 from channel_kind import free_cpv_label, free_reason, is_banner_channel, is_free_by_design
@@ -42,16 +42,6 @@ NO_COST_CH = ("온드미디어", "위성채널")
 
 def _norm_prod(p) -> str:
     return (p or "").replace(" ", "").strip()
-
-
-# 크봉(크런치봉봉) 제품명 판정 키 — 하나라도 들어 있으면 크봉(2026-11-25 사용자 지시 "무조건 전부 크봉").
-#   공백 무시 + 영문 대소문자 무시(bb바도 크봉).
-KBONG_KEYS = ("크봉", "BB바", "BB말", "BB초", "봉봉", "크런치봉봉")
-
-
-def is_kbong_product(p) -> bool:
-    n = _norm_prod(p).upper()
-    return any(k.upper() in n for k in KBONG_KEYS)
 
 
 # 리포트 제품 프로필(2026-10-27 바치케 추가). REPORT_PRODUCT 미설정 = 쫀득바(기존 동작 그대로).
@@ -656,12 +646,10 @@ def main():
         print("[notify] 배너 채널분류 조회 실패(무시):", e)
 
     if not items:
-        if REPORT_PRODUCT == "jd":
-            print(f"[notify] {target} 증가분 없음 → 발송 생략")
-            return
-        # 크봉 같은 새 제품은 협찬 글이 아직 없거나(2026-11-25 크봉 시작 시 DB 0건) 그날 증분이 0일 수 있다.
-        #   건너뛰면 도착 워치독·자가치유가 매일 '미발송'으로 울리고 반복 dispatch 한다 → '협찬 0'을 그대로 알리고 발송.
-        print(f"[notify] {target} {PROFILE['title']} 협찬 증가분 없음 → 인지광고·전환만으로 발송")
+        # 협찬 글이 없으면 보내지 않는다(크봉 포함 — 2026-11-25 사용자 지시 "협찬 글 없으면 크봉 리포트 보내지마").
+        #   도착 워치독·자가치유는 크봉 협찬 글이 DB에 없으면 '미발송'으로 보지 않는다(report_message.is_kbong_product 짝).
+        print(f"[notify] {target} {PROFILE['title']} 증가분 없음 → 발송 생략")
+        return
 
     total = sum(it["inc"] for it in items)
 
@@ -916,8 +904,6 @@ def main():
                 lines.append(f"• {_ital_paren(ct)}  (당일 배너 미수집)")
         else:
             lines.append(f"• {_ch_label(ct)} *+{f(s)}*  {_cpv(cost_by_ch.get(ct, 0), cumviews_by_ch.get(ct, 0), ct)}")
-    if not items:   # 새 제품(크봉 등) 협찬 0건·증분 0 — 빈 섹션 대신 이유를 한 줄로(위 '발송' 분기 참고)
-        lines.append(f"_{PROFILE['title']} 협찬 게시물 증분 없음 — 대시보드에 {PROFILE['title']} 제품 글이 등록·수집되면 잡힙니다_")
     # ⚠️ 미분류 경고 — 시트엔 분류돼 있어도 DB channel_type이 아직 동기화 안 되면 여기로 몰림.
     #    조용히 '미분류'로 넘어가지 않게 표면화(시트→DB 분류 동기화 지연 감지용).
     unclassified_cnt = sum(1 for it in items if _norm_ch(it["channel_type"]) == "미분류")
@@ -943,8 +929,7 @@ def main():
         lines.append("")
         lines.append(f"⚠️ *며칠치 합산 {len(multi_day)}건 (+{f(sum(it['inc'] for it in multi_day))})* — "
                      "기록이 며칠 비었다가 들어온 게시물이라 그동안 늘어난 조회수가 오늘 한 번에 잡혔습니다(TOP 10에 `N일치` 표시).")
-    if items:
-        lines += ["", DIV, "", "◾ *급상승 TOP 10* 🔥  `CPV는 누적 기준`", ""]
+    lines += ["", DIV, "", "◾ *급상승 TOP 10* 🔥  `CPV는 누적 기준`", ""]
     # 배너는 도달수를 '조회수'로 취급해 TOP에도 섞어 노출(사용자 지시). 배너 CPV = 비용/도달수(도달당비용).
     # 줄마다 제품코드 `[JD멜]`을 노출한다(2026-09-02 사용자 재지시) — JD멜/JD복 등 제품 구분용.
     #   (과거 '쫀득바 단일제품이라 중복'으로 제거했으나, 실제로는 여러 제품이 섞여 구분이 필요.)

@@ -57,7 +57,7 @@ test("16시 최종 재시도 표식이 workflow와 담당자 DM까지 전달된�
 
 test("자가치유는 제품별로 dispatch 하고, workflow 는 product 입력으로 해당 작업만 돌린다(10-28 바치케 미발송 사고)", () => {
   assert.match(route, /for \(const p of REPORT_PRODUCTS\)/);
-  assert.match(route, /if \(pp === true\) continue;/);
+  assert.match(route, /if \(pp === true \|\| noPosts\.includes\(p\.key\)\) continue;/);
   assert.match(workflow, /product:[\s\S]*?options: \[jd, kbong, pbachi\]/);
   assert.match(workflow, /report:\s*\n[\s\S]*?if: github\.event_name == 'schedule' \|\| \(github\.event\.inputs\.product != 'pbachi' && github\.event\.inputs\.product != 'kbong'\)/);
   assert.match(workflow, /report-kbong:\s*\n(?:\s*(?:concurrency:|group:|cancel-in-progress:)[^\n]*\n)*\s*if: github\.event_name == 'schedule' \|\| github\.event\.inputs\.product == 'kbong'/);

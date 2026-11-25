@@ -97,3 +97,48 @@ def test_products_match_report_generator():
     """감시 대상 제품명 = 발송기 PRODUCT_PROFILES 제목 — 제품이 늘면 둘 다 바꿔야 한다."""
     from notify_increments import PRODUCT_PROFILES
     assert sorted(REPORT_DELIVERY["products"]) == sorted(p["title"] for p in PRODUCT_PROFILES.values() if p["active"])
+
+
+# ── 2026-11-25 사용자 지시 "협찬 글 없으면 크봉 리포트 보내지마" ──
+
+def test_kbong_without_posts_is_not_undelivered():
+    """크봉 협찬 글이 DB에 없으면 크봉 리포트가 없는 게 정상 — 미발송 알림 없음."""
+    out = check_report_delivery(at(17, 30), "tok", fetch=lambda: [msg("2026-09-23")],
+                                has_posts=lambda name, target: False)
+    assert out == []
+
+
+def test_kbong_with_posts_but_no_report_alerts():
+    out = check_report_delivery(at(17, 30), "tok", fetch=lambda: [msg("2026-09-23")],
+                                has_posts=lambda name, target: True)
+    assert len(out) == 1 and "크봉" in out[0]
+
+
+def test_jd_never_skipped_by_posts_gate():
+    """쫀득바는 협찬 글 게이트 대상이 아니다 — 안 왔으면 항상 알림."""
+    out = check_report_delivery(at(17, 30), "tok", fetch=lambda: [msg("2026-09-23", product="크봉")],
+                                has_posts=lambda name, target: False)
+    assert len(out) == 1 and "쫀득바" in out[0]
+
+
+def test_posts_check_unknown_keeps_alert(monkeypatch):
+    """DB 확인을 못 하면(환경변수 없음) 알림을 삼키지 않는다."""
+    import cron_watchdog as cw
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    assert cw._product_has_posts("크봉", "2026-09-23") is True
+
+
+def test_posts_check_filters_exact_match_and_date(monkeypatch):
+    """넓은 후보(BB·봉) 중 정확한 크봉 판정 + 게시일이 대상일 이후인 글은 제외."""
+    import io as _io, json as _json, cron_watchdog as cw
+    rows = [{"id": 1, "product_name": "BBQ", "posted_at": "2026-09-01"},
+            {"id": 2, "product_name": "BB바", "posted_at": "2026-09-30"}]
+    monkeypatch.setenv("SUPABASE_URL", "https://x.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "k")
+    class R(_io.BytesIO):
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+    monkeypatch.setattr(cw.urllib.request, "urlopen", lambda req, timeout=0: R(_json.dumps(rows).encode()))
+    assert cw._product_has_posts("크봉", "2026-09-23") is False
+    rows[1]["posted_at"] = "2026-09-20"
+    assert cw._product_has_posts("크봉", "2026-09-23") is True

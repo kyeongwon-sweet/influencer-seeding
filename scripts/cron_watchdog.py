@@ -15,10 +15,11 @@ import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
-from report_message import is_report_for
+from report_message import is_kbong_product, is_report_for
 
 SuccessRun = dict[str, str]
 
@@ -104,6 +105,42 @@ REPORT_DELIVERY = {
 }
 # 제품 제목 → 수동 발송 워크플로 product 입력값
 REPORT_PRODUCT_KEYS = {"쫀득바": "jd", "크봉": "kbong", "바치케": "pbachi"}
+# 협찬 글이 없으면 리포트를 보내지 않는 제품(2026-11-25 사용자 지시 "협찬 글 없으면 크봉 리포트 보내지마").
+#   DB에 그 제품 협찬 글이 없으면 '미발송'으로 보지 않는다. 판정 = report_message 제품명 매처.
+#   웹 자가치유(ensure-daily-report)의 requiresPosts 와 짝.
+POSTS_REQUIRED = {"크봉": is_kbong_product}
+
+
+def _product_has_posts(name: str, target: str) -> bool:
+    """target 일까지 게시된(게시일 비어 있음 포함) 그 제품 협찬 글이 DB에 하나라도 있나.
+    ⚠️ 확인 못 하면(환경변수 없음·조회 실패) True — 알림을 삼키지 않는다(헛알림이 침묵보다 낫다)."""
+    match = POSTS_REQUIRED.get(name)
+    base = (os.environ.get("SUPABASE_URL") or "").rstrip("/")
+    key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or ""
+    if not match or not base or not key:
+        return True
+    try:
+        # 후보만 넓게(대소문자 무시 BB·봉) 받고 정확한 판정은 파이썬 매처로. 1,000행 절단 방지로 id 정렬 페이지 순회.
+        off = 0
+        while True:
+            q = urllib.parse.urlencode({
+                "select": "id,product_name,posted_at",
+                "or": "(product_name.ilike.*BB*,product_name.ilike.*봉*)",
+                "order": "id", "limit": "1000", "offset": str(off)})
+            req = urllib.request.Request(f"{base}/rest/v1/sponsored_posts?{q}",
+                                         headers={"apikey": key, "Authorization": f"Bearer {key}"})
+            with urllib.request.urlopen(req, timeout=20) as res:
+                rows = json.loads(res.read().decode("utf-8"))
+            for r in rows:
+                pa = str(r.get("posted_at") or "")[:10]   # 게시일(DATE 값, 타임스탬프 아님)
+                if match(r.get("product_name")) and (not pa or pa <= target):
+                    return True
+            if len(rows) < 1000:
+                return False
+            off += 1000
+    except Exception as e:  # noqa: BLE001
+        print(f"[watchdog] {name} 협찬 글 확인 실패 → 미발송 감시 유지: {type(e).__name__}")
+        return True
 
 
 def _slack_history(channel: str, token: str, limit: int = 50) -> list[dict]:
@@ -118,7 +155,7 @@ def _slack_history(channel: str, token: str, limit: int = 50) -> list[dict]:
     return d.get("messages", [])
 
 
-def check_report_delivery(now: datetime, token: str | None, fetch=None) -> list[str]:
+def check_report_delivery(now: datetime, token: str | None, fetch=None, has_posts=None) -> list[str]:
     """어제(KST) 증분 리포트가 **채널에 실제로 있는지** 본다. 마감 전이면 조용하다.
 
     ⚠️ 조회 실패는 '없음'으로 단정하지 않는다 — 스코프/네트워크 문제로 매시간 오탐이 난다.
@@ -141,6 +178,8 @@ def check_report_delivery(now: datetime, token: str | None, fetch=None) -> list[
     for name in REPORT_DELIVERY["products"]:
         if any(is_report_for(m.get("text", ""), target, name) for m in msgs):
             continue
+        if name in POSTS_REQUIRED and not (has_posts or _product_has_posts)(name, target):
+            continue   # 협찬 글이 없어 일부러 안 보낸 날(사용자 지시) — 미발송 아님
         key = REPORT_PRODUCT_KEYS.get(name, "jd")
         out.append(
             f"🚨 {name} 증분 리포트 미발송 — 대상일 {target} 리포트가 "

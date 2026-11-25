@@ -18,9 +18,11 @@ export const REPORT_TITLE = "쫀득바 조회수 일일 증분";
 //   같은 채널에 두 리포트가 나가므로 자가치유도 제품별로 '게시됐나'를 따로 본다(10-28 바치케 미발송 사고:
 //   자가치유가 쫀득바만 보고 dispatch 도 쫀득바만 돌려 바치케가 GitHub 지연 크론만 기다렸다).
 export const REPORT_PRODUCTS = [
-  { key: "jd", title: REPORT_TITLE },
+  { key: "jd", title: REPORT_TITLE, requiresPosts: false },
   // 2026-11-25: 바치케 리포트 중단 → 크봉으로 교체(사용자 지시). 자가치유가 바치케를 더 dispatch 하지 않는다.
-  { key: "kbong", title: "크봉 조회수 일일 증분" },
+  //   requiresPosts: 협찬 글이 없으면 발송기가 일부러 안 보낸다(사용자 지시 "협찬 글 없으면 크봉 리포트 보내지마")
+  //   → 자가치유는 DB에 그 제품 협찬 글이 없으면 '미게시'로 보지 않는다(파이썬 워치독 POSTS_REQUIRED 와 짝).
+  { key: "kbong", title: "크봉 조회수 일일 증분", requiresPosts: true },
 ] as const;
 
 export function isReportForDate(text: string | undefined | null, target: string, title: string = REPORT_TITLE): boolean {

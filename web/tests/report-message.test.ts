@@ -89,3 +89,22 @@ test("제품표가 파이썬 발송기와 짝 — 제목 = PRODUCT_PROFILES titl
     assert.match(notify, new RegExp(`"${p.key}": \{"title": "${name}"`), `${p.key} 제목이 발송기와 다르다`);
   }
 });
+
+// ── 2026-11-25 사용자 지시 "협찬 글 없으면 크봉 리포트 보내지마" — 자가치유가 그날을 미게시로 보지 않는다 ──
+test("크봉 제품명 판정 = 파이썬 정본과 같은 키, 자가치유는 협찬 글 없으면 dispatch 안 함", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { KBONG_KEYS, isKbongProduct } = await import("../lib/kbong.ts");
+  const py = readFileSync(join(import.meta.dirname, "../../scripts/report_message.py"), "utf8");
+  const m = py.match(/KBONG_KEYS = \(([^)]*)\)/);
+  assert.ok(m, "파이썬 KBONG_KEYS 를 못 찾음");
+  assert.deepEqual([...m![1].matchAll(/"([^"]+)"/g)].map((x) => x[1]), [...KBONG_KEYS]);
+  for (const n of ["크봉", "BB바", "bb말", "BB 초", "크런치 봉봉", "봉봉"]) assert.ok(isKbongProduct(n), n);
+  for (const n of ["JD혼", "P바치", "B바", "", null]) assert.ok(!isKbongProduct(n), String(n));
+  const { REPORT_PRODUCTS } = await import("../lib/report-message.ts");
+  assert.equal(REPORT_PRODUCTS.find((p) => p.key === "kbong")!.requiresPosts, true);
+  assert.equal(REPORT_PRODUCTS.find((p) => p.key === "jd")!.requiresPosts, false);
+  const route = readFileSync(join(import.meta.dirname, "../app/api/ops/ensure-daily-report/route.ts"), "utf8");
+  assert.match(route, /p\.requiresPosts && byProduct\[p\.key\] !== true && !\(await productHasPosts/);
+  assert.match(route, /\.order\("id"\)\s*\.range\(from, from \+ 999\)/);   // 1,000행 절단 방지
+});

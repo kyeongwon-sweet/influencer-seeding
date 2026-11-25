@@ -4,6 +4,8 @@ import { addDaysToDate, todayKST } from "@/lib/dateRule";
 import { resolveGitHubActionsToken } from "@/lib/github-actions-auth";
 import { notifyBot } from "@/lib/slack";
 import { REPORT_PRODUCTS, isReportForDate } from "@/lib/report-message";
+import { isKbongProduct } from "@/lib/kbong";
+import { getServerSupabase } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -60,6 +62,31 @@ async function postedByProduct(reportDate: string): Promise<Record<ProductKey, P
   }
 }
 
+// 협찬 글이 없으면 발송기가 일부러 안 보내는 제품(크봉) — 대상일까지 게시된 그 제품 협찬 글이 DB에 있나.
+//   ⚠️ 확인 실패는 true(있다고 보고 평소처럼 dispatch) — 발송기가 다시 '증가분 없음'으로 건너뛸 뿐, 누락을 삼키지 않는다.
+async function productHasPosts(key: ProductKey, reportDate: string): Promise<boolean> {
+  if (key !== "kbong") return true;
+  try {
+    const sb = getServerSupabase();
+    // 후보만 넓게(대소문자 무시 BB·봉) 받고 정확한 판정은 isKbongProduct. 1,000행 절단 방지로 id 정렬 페이지 순회.
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await sb
+        .from("sponsored_posts")
+        .select("id, product_name, posted_at")
+        .or("product_name.ilike.*BB*,product_name.ilike.*봉*")
+        .order("id")
+        .range(from, from + 999);
+      if (error) throw error;
+      const rows = (data ?? []) as Array<{ product_name: string | null; posted_at: string | null }>;
+      if (rows.some((r) => isKbongProduct(r.product_name) && (!r.posted_at || String(r.posted_at).slice(0, 10) <= reportDate))) return true;
+      if (rows.length < 1000) return false;
+    }
+  } catch (e) {
+    console.error("[ensure-daily-report] 협찬 글 확인 실패 → 평소처럼 판정", key, e);
+    return true;
+  }
+}
+
 async function dispatchReport(finalRetry: boolean, product: ProductKey): Promise<{ ok: boolean; detail: string }> {
   // ⚠️ 조회용 토큰은 읽기 전용일 수 있어 dispatch 전용 토큰을 우선(ensure-daily-audits와 동일).
   const token = process.env.GH_DISPATCH_TOKEN?.trim() || resolveGitHubActionsToken();
@@ -98,17 +125,22 @@ async function handler(req: NextRequest) {
   const kdate = todayKST();
   const reportDate = kstYesterday(kdate);
   const byProduct = await postedByProduct(reportDate);
+  // 협찬 글이 없어 일부러 안 보낸 제품은 '게시됨'과 같게 친다(dispatch·알림 없음).
+  const noPosts: ProductKey[] = [];
+  for (const p of REPORT_PRODUCTS) {
+    if (p.requiresPosts && byProduct[p.key] !== true && !(await productHasPosts(p.key, reportDate))) noPosts.push(p.key);
+  }
   // posted = 전 제품 게시됨일 때만 true(Apps Script 는 이 값 하나로 syncAll·dispatch 여부를 정한다).
-  const vals = Object.values(byProduct);
+  const vals = REPORT_PRODUCTS.filter((p) => !noPosts.includes(p.key)).map((p) => byProduct[p.key]);
   const posted: Posted = vals.every((v) => v === true) ? true : vals.some((v) => v === false) ? false : null;
 
   // Apps Script가 syncAll 필요 여부만 확인하는 1차 조회. 알림·dispatch·상태 변경이 없다.
   if (probe) {
-    return NextResponse.json({ ok: true, kdate, reportDate, posted, byProduct, acted: false, probe: true });
+    return NextResponse.json({ ok: true, kdate, reportDate, posted, byProduct, noPosts, acted: false, probe: true });
   }
 
   if (posted === true) {
-    return NextResponse.json({ ok: true, kdate, reportDate, posted: true, byProduct, acted: false }); // 이미 게시됨 → 무동작
+    return NextResponse.json({ ok: true, kdate, reportDate, posted: true, byProduct, noPosts, acted: false }); // 이미 게시됨 → 무동작
   }
 
   // 제품별로 미게시(false) 또는 확인불가(null)만 dispatch(리포트 자체 DEDUP이 중복 최종 차단).
@@ -117,7 +149,7 @@ async function handler(req: NextRequest) {
   const results: Array<{ product: ProductKey; posted: Posted; dispatched: boolean; detail: string }> = [];
   for (const p of REPORT_PRODUCTS) {
     const pp = byProduct[p.key];
-    if (pp === true) continue;
+    if (pp === true || noPosts.includes(p.key)) continue;
     let dispatched = false;
     let detail = "dry_run";
     if (!dryRun) {
@@ -133,7 +165,7 @@ async function handler(req: NextRequest) {
     await notifyBot(msg).catch(() => {});
   }
   const ok = dryRun || results.every((r) => r.dispatched);
-  return NextResponse.json({ ok, kdate, reportDate, posted, byProduct, acted: true, results, finalRetry, syncOk }, { status: ok ? 200 : 500 });
+  return NextResponse.json({ ok, kdate, reportDate, posted, byProduct, noPosts, acted: true, results, finalRetry, syncOk }, { status: ok ? 200 : 500 });
 }
 
 export async function POST(req: NextRequest) { return handler(req); }

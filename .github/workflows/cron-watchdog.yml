@@ -39,6 +39,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          # 크봉 협찬 글 유무 확인용(읽기만) — 협찬 글이 없으면 크봉 리포트를 안 보내는 게 정상(2026-11-25 사용자 지시)
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           STATUS_USER: U0B2Y0ZC8QZ
           # 결과(도착) 검사 대상 — #빙과_마케팅_리포트
           REPORT_CHANNEL: C0B4F7GBX17
