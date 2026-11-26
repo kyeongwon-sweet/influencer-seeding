@@ -1,5 +1,10 @@
 # AI Shared Status
 
+## ⚠️ 2026-11-26 [Claude 쓰기 1건] 네이버 숏폼(닥터후 네이버클립) 수기 조회수 기록 + **주소 영상번호 소실 버그 발견(미수정)**
+- **기록:** 사용자 지시로 `post_daily_stats`에 1행 upsert — post `433f62d0`(닥터후 (네이버클립/서비스), JD멜, 협찬 (인플루언서), 게시 08-27, 시트 4164행) `measured_at=2026-11-25 play_count=3145 manual=true`(11-26 11:3x 사용자 실측 → T-1 규칙). 기존 통계 0행, 백업 `scratchpad/backup_naver_shorts_433f62d0.json`. 메타(게시일·상품·채널)는 시트 동기화가 먼저 채워서 쓰지 않음.
+- **시트:** 4164행 11-25 칸은 아직 빈칸(라이브 시트 쓰기는 Claude 차단) → 사람이 3,145 입력 또는 'DB→시트 반영' 메뉴.
+- **🐞 버그(미수정, 결정 대기):** 네이버 숏폼 주소 `m.naver.com/shorts/?seedMediaId=<ID>&serviceType=CLIP`의 **영상번호가 쿼리에 있어** 서버 `normalizeUrl`·DB `sponsored_post_identity_key`(SQL)가 쿼리를 잘라 `url:https://m.naver.com/shorts/`로 저장. **두 번째 네이버 숏폼이 들어오면 같은 글로 합쳐짐**(유튜브 watch?v= 때와 같은 유형). 수정 범위 = TS normalizeUrl/postIdentityKey + SQL 함수 마이그레이션 + Python `_canon_url` + Apps Script `linkKey_`/`urlKey_`(Codex) + 기존 1행 url 갱신.
+
 ## ✅ 2026-11-26 [Claude 배포] 검색 별칭 — 원어스 ↔ 건희 양방향 (사용자 지시)
 - **요구:** `원어스`로 쳐도, `건희`로 쳐도 원어스·건희·원어스건희가 들어간 소재명이 모두 나오게.
 - **변경:** `web/lib/search-filter.ts` `ONEUS=["원어스","건희"]`를 두 키 모두에 연결. 기존 별칭은 단방향(그룹명으로 칠 때만 확장)인데 **이건 사용자 지시에 따른 양방향 예외**(주석 명시). `원어스건희`는 부분일치로 자동 포함.
