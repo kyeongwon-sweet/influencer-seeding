@@ -116,3 +116,11 @@ def test_identity_matches_web_post_identity_key_rules() -> None:
     assert post_identity("https://youtube.com/@issuebox_x/shorts/").startswith("url:")
     # uint64 범위를 넘는 틱톡 ID는 게시물로 인정하지 않는다
     assert post_identity("https://www.tiktok.com/@a/video/99999999999999999999").startswith("url:")
+
+
+def test_identity_naver_shorts_keeps_query_media_id() -> None:
+    # 영상 ID가 쿼리에 있다 — web postIdentityKey 와 같은 nvs:<ID 대문자> (2026-11-26)
+    a = "https://m.naver.com/shorts/?seedMediaId=A7EFAF4207F5E76994E524E10033CB9032CF&serviceType=CLIP"
+    assert post_identity(a) == "nvs:A7EFAF4207F5E76994E524E10033CB9032CF"
+    assert post_identity("https://naver.com/shorts?serviceType=CLIP&seedMediaId=a7efaf4207f5e76994e524e10033cb9032cf") == post_identity(a)
+    assert post_identity("https://m.naver.com/shorts/?seedMediaId=B1234567890ABCDEF") != post_identity(a)

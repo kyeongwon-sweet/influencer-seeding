@@ -14,6 +14,28 @@
  */
 
 /**
+ * 네이버 숏폼(클립) 영상 ID — 영상 번호가 **경로가 아니라 쿼리**(`?seedMediaId=`)에 있다.
+ * 일반 규칙(쿼리 제거)을 타면 ID가 통째로 사라져 서로 다른 숏폼이 `m.naver.com/shorts/` 한 글로
+ * 합쳐진다(2026-11-26 발견, 유튜브 watch?v= 와 같은 유형). 표준형은 `https://m.naver.com/shorts/?seedMediaId=<ID>`,
+ * 식별키는 `nvs:<ID 대문자>`. ⚠️ SQL `sponsored_post_identity_key`·Apps Script `linkKey_`·
+ * Python `_canon_url`/`_urlkey`/`post_identity` 와 같은 규칙 — 한쪽만 고치면 시트↔DB가 어긋난다.
+ */
+export function naverShortsMediaId(url: string): string | null {
+  try {
+    const u = new URL(url.startsWith("http") ? url : "https://" + url);
+    const host = u.hostname.toLowerCase().replace(/^www\./, "");
+    if (host !== "naver.com" && host !== "m.naver.com") return null;
+    if (!/^\/shorts\/?$/i.test(u.pathname)) return null;
+    for (const [k, v] of u.searchParams) {
+      if (k.toLowerCase() === "seedmediaid" && /^[A-Za-z0-9]{8,64}$/.test(v)) return v.toUpperCase();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * 범용 URL 정규화 함수 (모든 페이지에서 사용)
  * - 프로토콜 + trailing slash + 쿼리 제거 통일
  * - 플랫폼별 추가 정규화는 별도 함수 사용
@@ -46,6 +68,11 @@ export function normalizeUrl(url: string): string | null {
         if (id && /^[A-Za-z0-9_-]{6,}$/.test(id)) return `https://www.youtube.com/watch?v=${id}`;
         // ID가 없으면(채널/재생목록 등) 일반 규칙으로 진행
       }
+    }
+    // 네이버 숏폼: ID가 쿼리에 있어 일반 규칙을 타면 소실 → 표준형으로 보존(naverShortsMediaId 참고).
+    {
+      const nvs = naverShortsMediaId(u.toString());
+      if (nvs) return `https://m.naver.com/shorts/?seedMediaId=${nvs}`;
     }
     // 일반(비 IG/YouTube): host 표준화로 www/스킴/이중슬래시 변형 중복을 한 곳에서 차단(틱톡·X·페북·스레드 등).
     //   - 선행 www. 만 제거(m.blog.naver.com 같은 유의미 서브도메인은 보존) + host 소문자
@@ -93,6 +120,9 @@ export function postIdentityKey(url: string): string | null {
         : pathId?.[1] ?? (u.pathname.replace(/\/$/, "") === "/watch" ? u.searchParams.get("v") : null);
       if (id && /^[A-Za-z0-9_-]{6,}$/.test(id)) return `yt:${id}`;
     }
+
+    const nvs = naverShortsMediaId(u.toString());
+    if (nvs) return `nvs:${nvs}`;
 
     const normalized = normalizeUrl(url);
     return normalized ? `url:${normalized}` : null;

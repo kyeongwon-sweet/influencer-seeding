@@ -53,6 +53,15 @@ def _chunks(lst, n):
         yield lst[i:i + n]
 
 
+_NVS_RE = re.compile(r"^https?://(?:www\.)?(?:m\.)?naver\.com/shorts/?\?(?:[^#]*&)?seedmediaid=([A-Za-z0-9]{8,64})(?:[&#]|$)", re.I)
+
+
+def _naver_shorts_id(u: str):
+    """네이버 숏폼 영상 ID(쿼리 seedMediaId, 대문자). web/lib/url-utils.ts naverShortsMediaId 와 같은 규칙."""
+    m = _NVS_RE.match((u or "").strip())
+    return m.group(1).upper() if m else None
+
+
 def _urlkey(u: str) -> str:
     # 같은 게시물을 가리키는 URL 변형(/reel/↔/p/, /<계정>/p/<code>, 끝슬래시 등)을 한 키로 접음.
     # IG shortcode는 대소문자 구분이라 원문에서 추출.
@@ -60,6 +69,9 @@ def _urlkey(u: str) -> str:
     m = re.search(r"instagram\.com/(?:[^/]+/)?(?:p|reels|reel|tv)/([A-Za-z0-9_-]+)", u, re.I)
     if m:
         return "ig:" + m.group(1)
+    nvs = _naver_shorts_id(u)
+    if nvs:
+        return "nvs:" + nvs  # ID가 쿼리에 있어 아래 쿼리 제거 규칙을 타면 소실된다
     v = re.sub(r"^https?://(?:www\.)?", "", u, flags=re.I).split("?")[0].split("#")[0].rstrip("/")
     host, _, path = v.partition("/")
     return (host.lower() + "/" + path) if path else host.lower()
@@ -73,6 +85,9 @@ def _canon_url(u: str) -> str:
     m = re.search(r"(?:instagram\.com|instagr\.am)/(?:[^/]+/)?(?:p|reels|reel|tv)/([A-Za-z0-9_-]+)", u, re.I)
     if m:
         return f"https://www.instagram.com/p/{m.group(1)}/"
+    nvs = _naver_shorts_id(u)
+    if nvs:
+        return f"https://m.naver.com/shorts/?seedMediaId={nvs}"
     hm = re.match(r"https?://([^/]+)(/[^?#]*)?(\?[^#]*)?", u, re.I)
     if not hm:
         return u
