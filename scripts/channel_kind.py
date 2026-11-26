@@ -12,6 +12,7 @@ TS 측 정본은 `web/app/monitoring/lib.ts`의 `isBannerChannel`이며 규칙�
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 
 MAGAZINE_BANNER_FROM = "2026-08-18"
@@ -84,6 +85,10 @@ MIRROR_MARK = "미러링"
 #   cost>0 은 0건. ⚠️ '/' 를 요구하고 **account_name 만** 본다 — 소재명(asset_name)에는
 #   "팬서비스로 커뮤에서 난리난" 같은 문구가 실제로 있어(2건) 그대로 훑으면 오판정한다.
 SERVICE_MARK = "/서비스"
+# 2026-11-26 사용자 지시 "채널명에 (서비스), (미러링)이 써 있으면 가격 0원이야" — '(서비스)'처럼 슬래시 없이
+#   괄호 안에 '서비스'만 쓴 라벨도 같다(실측 4건: man2man_studio(서비스)·음식덕후(서비스) 등, 전부 cost=0인데
+#   '/서비스'만 보던 규칙이라 '가격미매핑'으로 오경고). 괄호 안에 있어야 한다 — '고객서비스센터' 같은 이름은 제외.
+_SERVICE_PAREN = re.compile(r"\([^()]*서비스[^()]*\)")
 # 프로젝트/소재명이 '무상협찬' = 팀이 무상으로 명시한 협찬 → 0원이 정상.
 #   실측: 이 문구가 든 3건(투데이단·한입혜원·오부심) 전부 cost=0. ⚠️ 바로 '무상' 으로
 #   넓히지 않는다 — '트위터 무상시딩' 2건은 cost=14,408(>0)이라 성격이 다르다.
@@ -104,7 +109,8 @@ def is_service_label(account_name: Any) -> bool:
 
     ⚠️ account_name 전용. asset_name/project_name 에 쓰면 '팬서비스' 같은 소재 문구에 걸린다.
     """
-    return SERVICE_MARK in str(account_name or "")
+    name = str(account_name or "")
+    return SERVICE_MARK in name or bool(_SERVICE_PAREN.search(name))
 
 
 def free_reason(channel_type: Any, account_name: Any = None,

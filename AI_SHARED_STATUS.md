@@ -1,5 +1,9 @@
 # AI Shared Status
 
+## ✅ 2026-11-26 [Claude] 무상 판정 — 채널명 '(서비스)'도 0원 정상 + 배너 비용 0 고정 행 발견(시트 정정 필요)
+- **사용자 지시:** "채널명에 (서비스), (미러링)이 써 있으면 가격 0원이야". `channel_kind.is_service_label`이 '/서비스'만 보던 것을 괄호 안 '서비스'까지 확장(괄호 밖 '고객서비스센터'는 제외). 실측: 라벨이 있는데 무상으로 안 잡히던 4건 → 0건. 리포트 '가격미매핑'·cost_mapping_guard·owner_fields_guard가 같은 정본을 씀.
+- **11/21 쫀득바 배너 1건 '가격미매핑' 원인:** RD 시트 해당 행 비용 칸에 숫자 0이 직접 들어 있어 `syncPricing`(빈칸에만 단가표 XLOOKUP)이 건너뜀. 단가표에 가격이 있고 비용 칸이 0이며 무상 라벨이 없는 행이 9개(행 번호는 사용자에게 전달). 정정(0 지우고 빈칸 → syncPricing)은 시트 레인, 정정 뒤 해당 리포트 재생성.
+
 ## 🟢 2026-11-26 [Claude 배포 완료·운영 실행 확인(사용자 승인 "응") → 11/30(월) 예약 실행 자연 게이트 대기] 주간 교차복사 스캔: 복사 증거가 있는 쌍만 '진짜의심' + 슬랙은 최근 14일 새 증거가 있을 때만 (사용자 "고쳐줘")
 - **배포 확인:**
   - `main` `81a56e95..47892c2e` push. CI [`45762905468`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/45762905468)의 build·python-tests success, Workflow Lint [`45762905507`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/45762905507) success, Vercel 커밋 상태 `success`(웹 코드 변경 없음).

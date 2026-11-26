@@ -111,3 +111,16 @@ def test_mirror_judgment_is_not_scattered():
             if "미러링" in line and ("in " in line or "==" in line) and not line.lstrip().startswith("#"):
                 bad.append(f"{f.name}:{i}: {line.strip()}")
     assert not bad, "미러링 판정은 channel_kind.is_mirror_label 을 쓰세요: " + " | ".join(bad)
+
+
+def test_service_paren_label_is_free_by_design():
+    """2026-11-26 사용자 지시: 채널명에 '(서비스)'·'(미러링)'이 있으면 0원 — 슬래시 없는 '(서비스)'도 무상.
+    실측 4건(man2man_studio(서비스)·음식덕후(서비스)·힐링하고 가세요(서비스)·한입혜원(서비스)) 전부 cost=0인데
+    '/서비스'만 보던 규칙이라 가격미매핑으로 오경고했다."""
+    for name in ("man2man_studio(서비스)", "음식덕후 (서비스)", "힐링하고 가세요(서비스)"):
+        assert free_reason("바이럴 (배너)", name) == "서비스", name
+    assert free_reason("바이럴 (배너)", "오하루 (미러링)") == "미러링"
+    # 괄호 밖 '서비스'는 아니다
+    assert free_reason("바이럴 (영상)", "고객서비스센터") is None
+    # 단가표에 가격이 있는 일반 배너 계정은 무상이 아니다(cost=0 이면 가격미매핑 경고가 맞다)
+    assert free_reason("바이럴 (배너)", "happy__pyeong") is None
