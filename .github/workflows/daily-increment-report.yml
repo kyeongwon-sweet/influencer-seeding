@@ -149,7 +149,7 @@ jobs:
           cache: "pip"
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: 크봉 조회수 증분 리포트 발송 (#빙과_마케팅_리포트)
+      - name: 크런치봉봉 조회수 증분 리포트 발송 (#빙과_마케팅_리포트)
         env:
           REPORT_PRODUCT: kbong
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

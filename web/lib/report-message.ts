@@ -22,7 +22,7 @@ export const REPORT_PRODUCTS = [
   // 2026-11-25: 바치케 리포트 중단 → 크봉으로 교체(사용자 지시). 자가치유가 바치케를 더 dispatch 하지 않는다.
   //   requiresPosts: 협찬 글이 없으면 발송기가 일부러 안 보낸다(사용자 지시 "협찬 글 없으면 크봉 리포트 보내지마")
   //   → 자가치유는 DB에 그 제품 협찬 글이 없으면 '미게시'로 보지 않는다(파이썬 워치독 POSTS_REQUIRED 와 짝).
-  { key: "kbong", title: "크봉 조회수 일일 증분", requiresPosts: true },
+  { key: "kbong", title: "크런치봉봉 조회수 일일 증분", requiresPosts: true },
 ] as const;
 
 export function isReportForDate(text: string | undefined | null, target: string, title: string = REPORT_TITLE): boolean {

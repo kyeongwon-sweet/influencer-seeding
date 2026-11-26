@@ -71,7 +71,7 @@ test("자가치유 대상은 쫀득바·크봉 — 중단된 바치케는 dispat
   const { REPORT_PRODUCTS } = await import("../lib/report-message.ts");
   assert.deepEqual(REPORT_PRODUCTS.map((p) => p.key), ["jd", "kbong"]);
   const kb = REPORT_PRODUCTS.find((p) => p.key === "kbong")!.title;
-  const kbMsg = ":크봉이: *크봉 조회수 일일 증분* `(2026-11-25)`\n오늘 총 증분 *+1*";
+  const kbMsg = ":크봉이: *크런치봉봉 조회수 일일 증분* `(2026-11-25)`\n오늘 총 증분 *+1*";
   const jdMsg = "📈 *쫀득바 조회수 일일 증분* `(2026-11-25)`\n오늘 총 증분 *+1*";
   assert.ok(isReportForDate(kbMsg, "2026-11-25", kb) && !isReportForDate(jdMsg, "2026-11-25", kb));
   assert.ok(!isReportForDate(kbMsg, "2026-11-25"));

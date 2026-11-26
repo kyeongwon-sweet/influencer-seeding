@@ -24,7 +24,7 @@ def msg(target, extra="", product="쫀득바"):
 
 
 def both(target):
-    return [msg(target), msg(target, product="크봉")]
+    return [msg(target), msg(target, product="크런치봉봉")]
 
 
 def test_silent_before_deadline():
@@ -89,7 +89,7 @@ def test_wired_into_main():
 def test_second_product_missing_alone_is_reported():
     """쫀득바만 왔고 크봉이 안 왔으면 크봉만 경고(2026-11-25 바치케→크봉 교체, 예전엔 둘째 제품을 안 봐서 침묵)."""
     out = check_report_delivery(at(17, 30), "tok", fetch=lambda: [msg("2026-09-23")])
-    assert len(out) == 1 and "크봉" in out[0] and "product=kbong" in out[0]
+    assert len(out) == 1 and "크런치봉봉" in out[0] and "product=kbong" in out[0]
     assert not any("바치케" in o for o in out)   # 중단된 바치케는 감시하지 않는다
 
 
@@ -111,12 +111,12 @@ def test_kbong_without_posts_is_not_undelivered():
 def test_kbong_with_posts_but_no_report_alerts():
     out = check_report_delivery(at(17, 30), "tok", fetch=lambda: [msg("2026-09-23")],
                                 has_posts=lambda name, target: True)
-    assert len(out) == 1 and "크봉" in out[0]
+    assert len(out) == 1 and "크런치봉봉" in out[0]
 
 
 def test_jd_never_skipped_by_posts_gate():
     """쫀득바는 협찬 글 게이트 대상이 아니다 — 안 왔으면 항상 알림."""
-    out = check_report_delivery(at(17, 30), "tok", fetch=lambda: [msg("2026-09-23", product="크봉")],
+    out = check_report_delivery(at(17, 30), "tok", fetch=lambda: [msg("2026-09-23", product="크런치봉봉")],
                                 has_posts=lambda name, target: False)
     assert len(out) == 1 and "쫀득바" in out[0]
 
@@ -125,7 +125,7 @@ def test_posts_check_unknown_keeps_alert(monkeypatch):
     """DB 확인을 못 하면(환경변수 없음) 알림을 삼키지 않는다."""
     import cron_watchdog as cw
     monkeypatch.delenv("SUPABASE_URL", raising=False)
-    assert cw._product_has_posts("크봉", "2026-09-23") is True
+    assert cw._product_has_posts("크런치봉봉", "2026-09-23") is True
 
 
 def test_posts_check_filters_exact_match_and_date(monkeypatch):
@@ -139,6 +139,6 @@ def test_posts_check_filters_exact_match_and_date(monkeypatch):
         def __enter__(self): return self
         def __exit__(self, *a): return False
     monkeypatch.setattr(cw.urllib.request, "urlopen", lambda req, timeout=0: R(_json.dumps(rows).encode()))
-    assert cw._product_has_posts("크봉", "2026-09-23") is False
+    assert cw._product_has_posts("크런치봉봉", "2026-09-23") is False
     rows[1]["posted_at"] = "2026-09-20"
-    assert cw._product_has_posts("크봉", "2026-09-23") is True
+    assert cw._product_has_posts("크런치봉봉", "2026-09-23") is True

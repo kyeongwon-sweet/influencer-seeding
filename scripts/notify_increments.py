@@ -66,10 +66,10 @@ PRODUCT_PROFILES = {
                "ads_tab": "pint", "goal": False, "product_line": False, "emoji": ":바치케:",
                "conv_source": "meta", "yt_source": "google_ads", "meta_aw_source": "meta_api",
                "tt_source": "none", "active": False},   # 2026-11-25 예약 발송 중단(크봉으로 교체) — 지난 리포트 수동 정정용
-    # 크봉(크런치봉봉) — 2026-11-25 사용자 지시 "바치케 말고 크봉이 리포트를 보낼거야".
+    # 크봉(크런치봉봉) — 2026-11-25 사용자 지시 "바치케 말고 크봉이 리포트를 보낼거야". 제목 "크런치봉봉 조회수 일일 증분"(11-26 사용자 지시).
     #   제품명에 KBONG_KEYS 중 하나라도 들어 있으면 무조건 크봉(사용자 지시: '크봉','BB바','BB말','BB초','봉봉','크런치봉봉').
     #   인지광고·전환은 마케팅T 시트 [인지_크봉바] 탭(쫀득바 탭과 같은 구조, ?tab=kbong). 목표 줄 없음(목표 미정).
-    "kbong": {"title": "크봉", "match": lambda p: is_kbong_product(p),
+    "kbong": {"title": "크런치봉봉", "match": lambda p: is_kbong_product(p),
               "ads_tab": "kbong", "goal": False, "product_line": True, "emoji": ":크봉이:",
               "conv_source": "sheet", "yt_source": "sheet", "meta_aw_source": "sheet", "tt_source": "sheet",
               "active": True},

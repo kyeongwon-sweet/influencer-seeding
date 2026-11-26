@@ -101,14 +101,14 @@ REPORT_DELIVERY = {
     # 같은 채널에 나가는 리포트 제품(제목의 제품명) — notify_increments.PRODUCT_PROFILES title 과 짝(테스트로 고정).
     #   2026-11-03 재발방지: 바치케(10-27~)가 이 감시에서 빠져 있어 바치케가 안 나가도 알림이 없었다.
     #   2026-11-25: 바치케 리포트 중단·크봉 리포트로 교체(사용자 지시 "바치케 말고 크봉이 리포트를 보낼거야").
-    "products": ["쫀득바", "크봉"],
+    "products": ["쫀득바", "크런치봉봉"],
 }
 # 제품 제목 → 수동 발송 워크플로 product 입력값
-REPORT_PRODUCT_KEYS = {"쫀득바": "jd", "크봉": "kbong", "바치케": "pbachi"}
+REPORT_PRODUCT_KEYS = {"쫀득바": "jd", "크런치봉봉": "kbong", "바치케": "pbachi"}
 # 협찬 글이 없으면 리포트를 보내지 않는 제품(2026-11-25 사용자 지시 "협찬 글 없으면 크봉 리포트 보내지마").
 #   DB에 그 제품 협찬 글이 없으면 '미발송'으로 보지 않는다. 판정 = report_message 제품명 매처.
 #   웹 자가치유(ensure-daily-report)의 requiresPosts 와 짝.
-POSTS_REQUIRED = {"크봉": is_kbong_product}
+POSTS_REQUIRED = {"크런치봉봉": is_kbong_product}
 
 
 def _product_has_posts(name: str, target: str) -> bool:

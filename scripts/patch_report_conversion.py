@@ -36,7 +36,7 @@ CHANNEL = os.getenv("SLACK_CHANNEL") or "C0B4F7GBX17"  # #빙과_마케팅_리�
 PRODUCTS = {
     "jd": {"title": "쫀득바", "tab": "", "conv": "sheet"},
     "pbachi": {"title": "바치케", "tab": "pint", "conv": "meta"},
-    "kbong": {"title": "크봉", "tab": "kbong", "conv": "sheet"},   # 2026-11-25 크봉 추가([인지_크봉바] 탭)
+    "kbong": {"title": "크런치봉봉", "tab": "kbong", "conv": "sheet"},   # 2026-11-25 크봉 추가([인지_크봉바] 탭)
 }
 FINAL_AGE_DAYS = 7   # 메타 출처: 대상일 + 7일부터 확정값으로 덮어쓴다
 PRODUCT = (os.getenv("REPORT_PRODUCT") or "jd").strip().lower()
