@@ -1,10 +1,14 @@
 # AI Shared Status
 
-## ⏳ 2026-11-26 [Claude 코드 완료 · Codex 순서 실행 대기] 네이버 숏폼 영상 ID 보존 — 브랜치 `fix/naver-shorts-identity` (20299fa7)
+## ✅ 2026-11-26 [Codex 운영 적용·대조 완료] 네이버 숏폼 영상 ID 보존 — `d1546cbb` (원안 `20299fa7`)
 - **문제:** `m.naver.com/shorts/?seedMediaId=<ID>` 의 ID가 쿼리라 서버·DB·Apps Script·Python이 모두 지워 `m.naver.com/shorts/` 한 글로 합침 → 두 번째 숏폼부터 합쳐짐/유니크 충돌(시트 동기화 배치 실패 위험).
-- **수정(브랜치, main 미반영):** TS `naverShortsMediaId` + normalizeUrl 표준형 `https://m.naver.com/shorts/?seedMediaId=<ID 대문자>` + postIdentityKey `nvs:<ID>` / SQL 마이그레이션 `20261126_naver_shorts_identity.sql`(함수만) / Apps Script `linkKey_` nvs 분기 / Python `_canon_url`·`_urlkey`·`post_identity`. 테스트: web 940/941(실패 1=로컬 CRLF 전용), scripts 669 passed, tsc 0, build(webpack) 통과.
+- **수정 범위:** TS `naverShortsMediaId` + normalizeUrl 표준형 `https://m.naver.com/shorts/?seedMediaId=<ID 대문자>` + postIdentityKey `nvs:<ID>` / SQL 마이그레이션 `20261126_naver_shorts_identity.sql`(함수만) / Apps Script `linkKey_` nvs 분기 / Python `_canon_url`·`_urlkey`·`post_identity`.
 - **⛔ main에 먼저 올리지 말 것** — 새 서버 코드가 옛 DB 함수와 만나면 새 행이 옛 키로 계산돼 유니크 충돌.
 - **실행 순서(Codex):** ① 라이브 함수가 repo 20261015판과 같은지 확인 후 마이그레이션 적용, `normalized_key is distinct from sponsored_post_identity_key(url)` 0건 확인 ② 브랜치를 main에 반영 → Vercel 성공 대기 ③ **즉시** `update sponsored_posts set url='https://m.naver.com/shorts/?seedMediaId=A7EFAF4207F5E76994E524E10033CB9032CF' where id='433f62d0-6e9e-4266-b66d-e55c97a783d4' and url='https://m.naver.com/shorts/'` → normalized_key=`nvs:A7EF…` 확인(②~③ 사이 동기화가 빈 중복행을 만들었으면 통계 0건 확인 후 그 행만 지우고 ③) ④ 라이브 Apps Script `linkKey_`에 브랜치와 같은 2곳만 수술 반영(라이브≠repo, 전체 덮어쓰기 금지) → 동기화 1회 후 시트 4164행 매칭·중복행 0 확인.
+- **① DB 함수:** `pg_get_functiondef`의 함수 선언, 공백 정규화 본문 및 인자 리터럴 42개 원문이 20261015판과 일치했다. 기준선과 불일치 0건을 트랜잭션 안에서 검증한 뒤 함수만 교체했다. 새 함수가 `nvs:A7EFAF4207F5E76994E524E10033CB9032CF`를 반환하고, 적용 직후와 최종 DB 재검사에서 저장 키 불일치가 모두 **0건**이었다.
+- **② 서버:** origin/main에 리베이스한 [`d1546cbb`](https://github.com/kyeongwon-sweet/influencer-seeding/commit/d1546cbb11250a3488b2bdb045ae7185bc2d7de0) main 반영. web 941/941, Python 669 passed(7 skipped), tsc·webpack build 통과. [CI `45761715406`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/45761715406)·[Workflow Lint](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/45761715486) 성공, [Vercel Production](https://vercel.com/kwhwang-s-projects/influencer-seeding/2u61hAu3HRfZchQbSXJs8syFB8uD) Ready 및 운영 별칭 연결 확인.
+- **③ DB 주소:** Production Ready 직후 원래 ID `433f62d0-6e9e-4266-b66d-e55c97a783d4`의 URL만 조건부 갱신했다. 트리거가 지정된 `nvs:` 키를 계산했고 실제 바뀐 필드는 URL·normalized_key뿐이다. 네이버 숏폼은 1행, 중복·삭제 0. 같은 게시물의 11/25 조회수 **3,145(`manual=true`)**와 통계 1행 전체 지문이 불변이다.
+- **④ 라이브 Apps Script·시트:** `01_연동시트_자동동기화`의 `linkKey_` 두 곳만 반영했다. 재조회한 함수 SHA-256 앞 12자리 `b074126fc7a8`, 다른 9개 파일 및 함수 밖 내용 불변. 14:29:08 KST 메뉴 `runDbPullSyncNow` 1회 완료(52.952초, `status=OK`, 신규 0·기존 빈칸 채움 1·단축링크 미해결 0). 시트에서 영상 ID가 전후 모두 `B4164` 한 행(1/1)에만 있었고, DB도 동일 원본 행 1건으로 유지됐다. 지표를 수동으로 다시 쓰지 않았다.
 
 ## 🔎 2026-11-26 [Claude 진단 완료(읽기 전용·쓰기 0건) · 사용자 결정 대기] 주간 교차복사 보고의 '계속 생기는 위성 쌍' = 복사 아님(진짜 값의 우연 일치)
 - **질문(사용자 "원인 봐줘"):** 11/26 주간 스캔 324쌍 중 마지막 겹친 날이 11/15 이후인 79쌍이 매일 새로 생기는 이유. 최신 DB(stats 170,781행)로 대조했다.
