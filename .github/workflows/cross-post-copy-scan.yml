@@ -46,8 +46,10 @@ jobs:
           {
             echo "## Cross-post Copy Scan"
             echo
+            echo "- recent_count (최근 14일 새 의심 — 슬랙 알림 조건): ${{ steps.scan.outputs.recent_count || 'unknown' }}"
             echo "- genuine_count: ${{ steps.scan.outputs.genuine_count || 'unknown' }}"
             echo "- noisy_count: ${{ steps.scan.outputs.noisy_count || 'unknown' }}"
+            echo "- coincidence_count (자동값끼리 우연 일치, 목록 제외): ${{ steps.scan.outputs.coincidence_count || 'unknown' }}"
             echo
             echo '```'
             cat "${RUNNER_TEMP}/cross-post-copy-scan.txt" 2>/dev/null || true
@@ -62,12 +64,14 @@ jobs:
           path: ${{ runner.temp }}/cross-post-copy-scan.txt
           if-no-files-found: ignore
 
+      # 옛 오염 목록을 매주 반복해 보내지 않는다 — 최근 14일 안에 증거 날짜가 있는 진짜 의심이 있을 때만(2026-11-26).
       - name: Slack alert on findings
-        if: steps.scan.outputs.genuine_count != '0'
+        if: steps.scan.outputs.recent_count != '0'
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL: ${{ vars.CROSS_POST_SCAN_SLACK_CHANNEL }}
           STATUS_USER: U0B2Y0ZC8QZ
+          RECENT_COUNT: ${{ steps.scan.outputs.recent_count }}
           GENUINE_COUNT: ${{ steps.scan.outputs.genuine_count }}
           NOISY_COUNT: ${{ steps.scan.outputs.noisy_count }}
           REPORT_PATH: ${{ runner.temp }}/cross-post-copy-scan.txt
@@ -93,7 +97,7 @@ jobs:
               report = report[:2500] + "\n... (truncated)"
 
           text = (
-              f"🚨 교차-복사 오염 스캔: 진짜의심 {os.getenv('GENUINE_COUNT')}쌍 "
+              f"🚨 교차-복사 오염 스캔: 최근 14일 새 의심 {os.getenv('RECENT_COUNT')}쌍 · 진짜의심 {os.getenv('GENUINE_COUNT')}쌍 "
               f"(라운드오탐 {os.getenv('NOISY_COUNT')}쌍)\n"
               f"{os.getenv('RUN_URL')}\n"
               f"```{report}```"
