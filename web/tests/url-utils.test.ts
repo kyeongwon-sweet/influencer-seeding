@@ -11,7 +11,10 @@ import {
   isValidTikTokSnowflake,
   normalizeInstagramUrl,
   normalizeYouTubeUrl,
+  naverShortsMediaId,
+  postIdentityKey,
 } from "../lib/url-utils.ts";
+import { readFileSync } from "node:fs";
 
 test("normalizeUrl: 프로토콜·trailing slash 통일 + 쿼리 제거", () => {
   // IG 게시물 표준형은 shortcode 기준 www.instagram.com/p/<code>/ (64234f3 정준화 — DB 저장형과 동일)
@@ -171,4 +174,46 @@ test("instagramRequestUrl: 프로필·타플랫폼 URL은 건드리지 않는다
                    "https://www.youtube.com/shorts/abc"]) {
     assert.equal(instagramRequestUrl(u), u);
   }
+});
+
+// ── 네이버 숏폼: 영상 ID가 쿼리(seedMediaId)에 있다 (2026-11-26) ─────────────────
+// 쿼리를 지우는 일반 규칙을 타면 모든 숏폼이 m.naver.com/shorts/ 한 글로 합쳐졌다.
+const NVS_A = "https://m.naver.com/shorts/?seedMediaId=A7EFAF4207F5E76994E524E10033CB9032CF&serviceType=CLIP";
+const NVS_B = "https://m.naver.com/shorts/?seedMediaId=B1234567890ABCDEF&serviceType=CLIP";
+test("네이버 숏폼: 영상 ID를 보존해 서로 다른 숏폼이 합쳐지지 않는다", () => {
+  assert.equal(normalizeUrl(NVS_A), "https://m.naver.com/shorts/?seedMediaId=A7EFAF4207F5E76994E524E10033CB9032CF");
+  assert.equal(postIdentityKey(NVS_A), "nvs:A7EFAF4207F5E76994E524E10033CB9032CF");
+  assert.notEqual(postIdentityKey(NVS_A), postIdentityKey(NVS_B));
+  // 같은 숏폼의 변형(www·naver.com·파라미터 순서·소문자·끝슬래시)은 같은 글
+  for (const v of [
+    "https://naver.com/shorts?serviceType=CLIP&seedMediaId=a7efaf4207f5e76994e524e10033cb9032cf",
+    "https://www.m.naver.com/shorts/?seedMediaId=A7EFAF4207F5E76994E524E10033CB9032CF",
+    "m.naver.com/shorts/?seedMediaId=A7EFAF4207F5E76994E524E10033CB9032CF#x",
+  ]) {
+    assert.equal(postIdentityKey(v), "nvs:A7EFAF4207F5E76994E524E10033CB9032CF", v);
+  }
+  // 표준형은 다시 정규화해도 그대로(멱등) + 허용 플랫폼 통과
+  const canon = normalizeUrl(NVS_A)!;
+  assert.equal(normalizeUrl(canon), canon);
+  assert.ok(ALLOWED_POST_URL_RE.test(canon));
+});
+
+test("네이버 숏폼: ID 없는 주소·다른 네이버 주소는 예전 규칙 그대로", () => {
+  assert.equal(naverShortsMediaId("https://m.naver.com/shorts/"), null);
+  assert.equal(naverShortsMediaId("https://m.naver.com/shorts/?seedMediaId=../x"), null);
+  assert.equal(naverShortsMediaId("https://m.blog.naver.com/aeirmeki/clip/15032187"), null);
+  assert.equal(naverShortsMediaId("https://evilnaver.com/shorts/?seedMediaId=A7EFAF4207F5E769"), null);
+  assert.equal(normalizeUrl("https://m.naver.com/shorts/"), "https://m.naver.com/shorts/");
+  assert.equal(postIdentityKey("https://naver.me/GzdNQMv2"), "url:https://naver.me/GzdNQMv2/");
+});
+
+test("네이버 숏폼 규칙은 DB(SQL)·Apps Script에도 같이 있다 — 한쪽만 고치면 시트↔DB 어긋남", () => {
+  const sql = readFileSync(new URL("../../supabase/migrations/20261126_naver_shorts_identity.sql", import.meta.url), "utf8");
+  assert.match(sql, /seedmediaid=\(\[A-Za-z0-9\]\{8,64\}\)/);
+  assert.match(sql, /'nvs:' \|\| upper\(m\[1\]\)/);
+  const gs = readFileSync(new URL("../../Combined_Sheet_AppsScript.gs", import.meta.url), "utf8");
+  const body = gs.slice(gs.indexOf("function linkKey_(u)"), gs.indexOf("function isTikTokShortLink_("));
+  assert.match(body, /\(ig\|yt\|tt\|nvs\)/);
+  assert.match(body, /seedmediaid=\(\[A-Za-z0-9\]\{8,64\}\)/);
+  assert.match(body, /"nvs:" \+ nvs\[1\]\.toUpperCase\(\)/);
 });

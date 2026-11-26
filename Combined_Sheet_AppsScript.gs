@@ -592,9 +592,10 @@ function linkKey_(u) {
   u = String(u || "").trim();
   // stats-for-sheet may already return canonical keys like ig:<shortcode>, yt:<videoId>, tt:<videoId>.
   // Preserve ID case; IG/YouTube IDs are case-sensitive, and lowercasing breaks sheet row matching.
-  var canonical = u.match(/^(ig|yt|tt):(.+)$/i);
+  var canonical = u.match(/^(ig|yt|tt|nvs):(.+)$/i);
   if (canonical) {
     if (canonical[1].toLowerCase() === "tt" && !isValidTikTokSnowflake_(canonical[2])) return "";
+    if (canonical[1].toLowerCase() === "nvs") return "nvs:" + canonical[2].toUpperCase();
     return canonical[1].toLowerCase() + ":" + canonical[2];
   }
   // /p/·/reel/ 앞에 계정명이 낀 형태(instagram.com/<user>/p/<code>/)도 인식 — 서버 normalizeUrl과 동일.
@@ -610,6 +611,10 @@ function linkKey_(u) {
   var tt = u.match(/tiktok\.com\/(?:.*\/)?(?:video|photo)\/(\d+)/i)
         || u.match(/\/(?:video|photo)\/(\d+)/i);
   if (tt) return isValidTikTokSnowflake_(tt[1]) ? "tt:" + tt[1] : "";
+  // 네이버 숏폼: 영상 ID가 쿼리(?seedMediaId=)에 있어 urlKey_(쿼리 제거)를 타면 모든 숏폼이 한 키로 합쳐진다
+  // (2026-11-26). 서버 naverShortsMediaId(web/lib/url-utils.ts)와 같은 규칙 — nvs:<ID 대문자>.
+  var nvs = u.match(/^(?:https?:\/\/)?(?:www\.)?(?:m\.)?naver\.com\/shorts\/?\?(?:[^#]*&)?seedmediaid=([A-Za-z0-9]{8,64})(?:[&#]|$)/i);
+  if (nvs) return "nvs:" + nvs[1].toUpperCase();
   return urlKey_(u);
 }
 

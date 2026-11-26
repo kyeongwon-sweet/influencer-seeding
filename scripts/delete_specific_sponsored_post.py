@@ -101,6 +101,12 @@ def post_identity(url: str) -> str:
         if vid and re.fullmatch(r"[A-Za-z0-9_-]{6,}", vid):
             return f"yt:{vid}"
 
+    # 네이버 숏폼: 영상 ID가 쿼리(seedMediaId)에 있다 — web/lib/url-utils.ts naverShortsMediaId 와 같은 규칙.
+    if host in ("naver.com", "m.naver.com") and re.fullmatch(r"/shorts/?", path, re.I):
+        for key, values in parse_qs(parts.query).items():
+            if key.lower() == "seedmediaid" and values and re.fullmatch(r"[A-Za-z0-9]{8,64}", values[0]):
+                return f"nvs:{values[0].upper()}"
+
     rest = path.rstrip("/") + (("?" + parts.query) if parts.query else "")
     return f"url:{host}{rest}"
 
