@@ -131,7 +131,13 @@
   - 직후 감사 workflow run `45301173960`도 force 없이 실행했다(`skippedNotify=true`). `hInvalidRows=[]`, dominant `4,453/4,453`(+5), `h.ok=4,356`(+5), `manualKept=0`, `formulaShape.hInvalid=0 / hManual=1,245 / incInvalid=0`, `h.errorCells=0 / emptyButData=0`, `inc.mismatch=0 / errorCells=0`, `cpv.invalid=0`, `orphanRows=0`, `sheetOnly=0`이다. 기준선 JSON과 전체 필드 재귀 대조 시 위 다섯 행 제거·dominant +5·H 수치 변화 외 차이는 0건이었다. `healthy=false`는 전후 동일한 별도 기존 조건으로, 이번 수리로 생긴 회귀가 아니다.
   - **다음 자연 게이트:** 11/25 09:33 정기 감사에서 다섯 행 수식이 새 끝 열로 자동 연장되고 `hInvalid=0`을 유지하는지 확인한다(현재 미도래, 완료로 선기록하지 않음).
 
-## 🟢 2026-11-20 [Claude 배포 완료(사용자 승인 "배포해줘") → 11/21 아침·11/23 주간 스캔 자연 게이트 대기] 복사 의심 알림 줄이기 + 주간 교차복사 스캔 기준 통일 (사용자 "진행해줘")
+## 🟢 2026-11-20 [Claude 배포 완료 · 주간 스캔 실동작 확인(11/23 예약·11/26 수동) · 11/21 이후 아침 DM 0건은 미확인] 복사 의심 알림 줄이기 + 주간 교차복사 스캔 기준 통일 (사용자 "진행해줘")
+- **주간 스캔 실동작(11/26 Claude 확인):**
+  - 11/23(월) 예약 실행 [`45134140453`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/45134140453)은 GitHub 지연으로 16:51 KST에 돌아 success였다. 진짜의심 304쌍·라운드오탐 139쌍, 여믄봇 DM(황경원 `U0B2Y0ZC8QZ`) 16:53 실제 도착.
+  - 11/26 사용자 지시("지금 실행해줘")로 수동 실행 [`45732625002`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/45732625002)도 success였다. 진짜의심 **324쌍**·라운드오탐 143쌍(stats 170,780행), 10:01 같은 DM 도착.
+  - **오염이 지금도 새로 생긴다:** 마지막 겹친 날짜가 11/15 이후인 쌍은 79개(월요일 58개), 11/23 이후인 쌍은 31개다. 대부분 위성(썰뜨기·썰박스·이슈박스·유머박스·이슈뜨기 유튜브/틱톡)끼리와 `lm_not_sweet_`가 낀 쌍이다.
+  - 예: 썰뜨기(유튜브) 두 행이 97일째 같은 값 1,204, 이슈박스(틱톡) ↔ lm_not_sweet_ 16일(최근 11/25, 1,088~1,091), 썰박스(유튜브) 두 행이 15일째 1,528. 시트 입력 검사는 이제 이런 DB 왕복값을 매일 알리지 않으므로, 원인(같은 영상 중복 등록·수집 매칭 등)은 따로 봐야 한다.
+- **미확인:** 11/21 이후 아침 `stats-import` 복사 의심 DM이 0건으로 줄었는지는 Claude가 확인하지 못했다. 그 알림은 웹훅으로 가서 Claude 계정 슬랙 검색·DM 읽기로 보이지 않는다. `importStats_delta` 로그(`unsettled_batches`·`changed_keys`)로 확인할 수 있다.
 - **배포 확인:** `main` `611d820e..bd330278` push(코드 `fa9041c9`). CI [`44736441912`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/44736441912) build·python-tests success, Workflow Lint [`44736441940`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/44736441940) success. Vercel 커밋 상태 `success`. 운영 `POST /api/sponsored-posts/stats-import` 인증 없이 → 401(없는 경로 대조 307). 주간 스캔 워크플로는 수동 실행하지 않았다(실행하면 Slack 보고가 감) — 첫 검증은 11/23(월) 09:20 예약 실행.
 - **왜:** 아래 완전 검사 배포 뒤 아침마다 잡히는 884행이 **전부 DB에 이미 같은 값**(시트↔DB 왕복값)이다. 격리해도 DB가 안 바뀌고, 매일 같은 DM만 반복되며 그 묶음의 `importStats` 지문이 정산되지 않아 5,601개 중 약 4,500개를 날마다 다시 보낸다.
 - **라우트(`fa9041c9`):**
