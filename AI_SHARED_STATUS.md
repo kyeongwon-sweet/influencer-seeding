@@ -1,6 +1,9 @@
 # AI Shared Status
 
-## 🟢 2026-11-26 [Claude 배포(사용자 승인 "응") → 11/30(월) 예약 실행 자연 게이트 대기] 주간 교차복사 스캔: 복사 증거가 있는 쌍만 '진짜의심' + 슬랙은 최근 14일 새 증거가 있을 때만 (사용자 "고쳐줘")
+## 🟢 2026-11-26 [Claude 배포 완료·운영 실행 확인(사용자 승인 "응") → 11/30(월) 예약 실행 자연 게이트 대기] 주간 교차복사 스캔: 복사 증거가 있는 쌍만 '진짜의심' + 슬랙은 최근 14일 새 증거가 있을 때만 (사용자 "고쳐줘")
+- **배포 확인:**
+  - `main` `81a56e95..47892c2e` push. CI [`45762905468`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/45762905468)의 build·python-tests success, Workflow Lint [`45762905507`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/45762905507) success, Vercel 커밋 상태 `success`(웹 코드 변경 없음).
+  - 배포 직후 수동 실행 [`45762942736`](https://github.com/kyeongwon-sweet/influencer-seeding/actions/runs/45762942736) success. 진짜의심 40쌍·라운드오탐 143쌍·우연 일치 284쌍, 최근 14일(2026-11-12~2026-11-26, KST) 새 증거 0쌍이었다. 그래서 'Slack alert on findings' 단계는 **skipped**(DM 없음, 의도대로)였다.
 - **배경:** 바로 아래 진단. 324쌍 중 284쌍이 자동 측정값끼리의 우연 일치였다.
 - **변경(커밋 `5c3ebfb3`, main 푸시):**
   - '진짜의심'은 증거가 있는 쌍만이다. ① 겹친 날 중 한쪽이 시트 수기값(`manual=true`)인 날이 2일 이상 ② 같은 영상 중복 등록 의심(자동값의 조회수·도달수·좋아요·댓글이 모두 같은 날이 3일 이상, 함께 측정한 날의 80% 이상). 나머지는 '우연 일치'로 개수만 센다.
