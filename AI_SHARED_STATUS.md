@@ -1,5 +1,11 @@
 # AI Shared Status
 
+## ⏳ 2026-11-26 [Claude 코드 완료 · Codex 순서 실행 대기] 네이버 숏폼 영상 ID 보존 — 브랜치 `fix/naver-shorts-identity` (20299fa7)
+- **문제:** `m.naver.com/shorts/?seedMediaId=<ID>` 의 ID가 쿼리라 서버·DB·Apps Script·Python이 모두 지워 `m.naver.com/shorts/` 한 글로 합침 → 두 번째 숏폼부터 합쳐짐/유니크 충돌(시트 동기화 배치 실패 위험).
+- **수정(브랜치, main 미반영):** TS `naverShortsMediaId` + normalizeUrl 표준형 `https://m.naver.com/shorts/?seedMediaId=<ID 대문자>` + postIdentityKey `nvs:<ID>` / SQL 마이그레이션 `20261126_naver_shorts_identity.sql`(함수만) / Apps Script `linkKey_` nvs 분기 / Python `_canon_url`·`_urlkey`·`post_identity`. 테스트: web 940/941(실패 1=로컬 CRLF 전용), scripts 669 passed, tsc 0, build(webpack) 통과.
+- **⛔ main에 먼저 올리지 말 것** — 새 서버 코드가 옛 DB 함수와 만나면 새 행이 옛 키로 계산돼 유니크 충돌.
+- **실행 순서(Codex):** ① 라이브 함수가 repo 20261015판과 같은지 확인 후 마이그레이션 적용, `normalized_key is distinct from sponsored_post_identity_key(url)` 0건 확인 ② 브랜치를 main에 반영 → Vercel 성공 대기 ③ **즉시** `update sponsored_posts set url='https://m.naver.com/shorts/?seedMediaId=A7EFAF4207F5E76994E524E10033CB9032CF' where id='433f62d0-6e9e-4266-b66d-e55c97a783d4' and url='https://m.naver.com/shorts/'` → normalized_key=`nvs:A7EF…` 확인(②~③ 사이 동기화가 빈 중복행을 만들었으면 통계 0건 확인 후 그 행만 지우고 ③) ④ 라이브 Apps Script `linkKey_`에 브랜치와 같은 2곳만 수술 반영(라이브≠repo, 전체 덮어쓰기 금지) → 동기화 1회 후 시트 4164행 매칭·중복행 0 확인.
+
 ## 🔎 2026-11-26 [Claude 진단 완료(읽기 전용·쓰기 0건) · 사용자 결정 대기] 주간 교차복사 보고의 '계속 생기는 위성 쌍' = 복사 아님(진짜 값의 우연 일치)
 - **질문(사용자 "원인 봐줘"):** 11/26 주간 스캔 324쌍 중 마지막 겹친 날이 11/15 이후인 79쌍이 매일 새로 생기는 이유. 최신 DB(stats 170,781행)로 대조했다.
 - **결론: 복사·수집 오류가 아니다.** 조회수 1,000~3,000에 머문 저조회 위성 쇼츠·사진 수백 개가 같은 숫자에서 우연히 만난다. 그러니 이런 쌍을 오염으로 정정하지 말 것.
