@@ -180,3 +180,22 @@ test("키는 자기 자신을 반드시 포함한다 — 빼먹으면 그룹명 
       `"${key}" 가 자기 목록에 없다 — 그 단어로 검색하면 정작 그 단어 행이 안 나온다`);
   }
 });
+
+// ── 프로그램명 별칭 (2026-11-26 사용자 지시) ─────────────────────────
+// 요구: "글램미만 검색해도 글램미·유주·소혜·이엘", "트렌드쇼퍼만 검색해도 트렌드쇼퍼·소혜·창섭·조현아·효민·소유"
+test("글램미로 치면 출연자 이름만 적힌 소재명도 잡힌다", () => {
+  for (const name of ["글램미", "유주", "소혜", "이엘"]) {
+    assert.equal(matchesSearch(`렉카.${name}.황경원.X_스틱바`, "글램미"), true, name);
+  }
+  assert.equal(matchesSearch("렉카.창섭.X_스틱바", "글램미"), false); // 트렌드쇼퍼 출연자는 아님
+  assert.equal(matchesSearch("유주 편집본", "유주"), true);
+  assert.equal(matchesSearch("글램미6 2화", "유주"), false); // 단방향: 출연자명은 그 사람만
+});
+
+test("트렌드쇼퍼로 치면 출연자 이름만 적힌 소재명도 잡힌다", () => {
+  for (const name of ["트렌드쇼퍼", "소혜", "창섭", "조현아", "효민", "소유"]) {
+    assert.equal(matchesSearch(`배너_${name}.선망성.X_스틱바`, "트렌드쇼퍼"), true, name);
+  }
+  assert.equal(matchesSearch("렉카.이엘.X_스틱바", "트렌드쇼퍼"), false); // 글램미 출연자는 아님
+  assert.equal(matchesSearch("배너_소혜", "트렌드쇼퍼 -소혜"), false);    // 제외어는 그대로 동작
+});
