@@ -201,3 +201,14 @@ test("트렌드쇼퍼로 치면 출연자 이름만 적힌 소재명도 잡힌�
   assert.equal(matchesSearch("렉카.이엘.X_스틱바", "트렌드쇼퍼"), false); // 글램미 출연자는 아님
   assert.equal(matchesSearch("배너_소혜", "트렌드쇼퍼 -소혜"), false);    // 제외어는 그대로 동작
 });
+
+// ── 원어스 ↔ 건희 양방향 (2026-11-26 사용자 지시) ─────────────────────
+test("원어스로 치든 건희로 치든 원어스·건희·원어스건희가 모두 나온다", () => {
+  for (const q of ["원어스", "건희"]) {
+    assert.equal(matchesSearch("배너_원어스.예능캐.하이디라오", q), true, `${q}→원어스`);
+    assert.equal(matchesSearch("렉카_건희소스2.X_스틱바", q), true, `${q}→건희`);
+    assert.equal(matchesSearch("릴스_원어스건희.하이디라오", q), true, `${q}→원어스건희`);
+    assert.equal(matchesSearch("렉카.유주.X_스틱바", q), false, `${q}→무관`);
+  }
+  assert.equal(matchesSearch("배너_원어스.예능캐", "건희 -원어스"), false); // 제외어는 그룹 전원
+});
